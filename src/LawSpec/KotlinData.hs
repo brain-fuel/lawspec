@@ -172,7 +172,9 @@ emitKotlinDataWithProfile bits layout declarations = do
                 [candidate | i <- [0::Int ..], let candidate = "E" ++ show i, candidate /= name]
               scope = parameters ++ existentials ++ [(e, "Any?") | e <- free]
               equations = C.constructorEquations variant
-              own = if null equations && null existentials then arguments
+              -- A product class is the public type itself, so it keeps the
+              -- declaration's parameters even when its constructor fixes one.
+              own = if isProduct declaration || (null equations && null existentials) then arguments
                 else [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
           declared <- forM (C.constructorFields variant) $ \field -> do
             identifier (C.binderName field)

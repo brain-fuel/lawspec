@@ -1,0 +1,6 @@
+@@ src/example_alternatives.erl
+<<<<<<<
+reference_render(Value) -> list_to_binary(integer_to_list(Value)).
+=======
+reference_render(_Value) -> <<"broken">>.
+>>>>>>>

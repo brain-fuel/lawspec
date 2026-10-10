@@ -1,0 +1,6 @@
+@@ src/example_parse_port.erl
+<<<<<<<
+parse(Value) -> binary_to_integer(Value).
+=======
+parse(_Value) -> 0.
+>>>>>>>

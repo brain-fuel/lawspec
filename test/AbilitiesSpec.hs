@@ -150,6 +150,50 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
         , "handler stuck for Toggle is flip b is true end end" ]) >>= dischargeEvidence)
         `shouldSatisfy` failsWith "flipping twice is identity [stuck] is false"
   describe "laws and handlers" $ do
+    -- ref:REQ-law-primitives ref:REQ-harness-units
+    let resourceOnly callback using = unlines
+          [ "unit example.resourceHandler"
+          , "handle Ticket"
+          , "ability Gate is tick :: Unit -> Bool end"
+          , "handler fakeGate for Gate is tick ignored is true end end"
+          , "open :: Bool -> Ticket"
+          , "close :: Ticket -> Bool -> Unit"
+          , "resource Ticket is"
+          , "  acquire is open " ++ (if callback == "acquire" then "(tick unitValue)" else "true") ++ " end"
+          , "  release ticket is close ticket " ++ (if callback == "release" then "(tick unitValue)" else "true") ++ " end"
+          , "  reset ticket is close ticket " ++ (if callback == "reset" then "(tick unitValue)" else "true") ++ " end"
+          , "end"
+          , "law `a resource handler` " ++ using ++ " for ticket :: Ticket is definition is true end end" ]
+        resourceHandlers source = fmap
+          (\p -> [(C.propertyName l, map snd (C.propertyHandlers l)) | u <- C.programUnits p, l <- C.unitProperties u])
+          (program source)
+    forM_ ["acquire", "release", "reset"] $ \callback ->
+      it ("selects a handler used only by resource " ++ callback) $
+        resourceHandlers (resourceOnly callback "using fakeGate") `shouldBe`
+          Right [("a resource handler", [C.SpecHandler (C.Id "example.resourceHandler::handler::fakeGate")])]
+    it "keeps production as the default for resource-only abilities" $
+      resourceHandlers (resourceOnly "acquire" "") `shouldBe`
+        Right [("a resource handler", [C.ProductionHandler])]
+    it "supplies the production handler to resource adapters with an ability row" $
+      resourceHandlers (unlines
+        [ "unit example.resourceHandler", "handle Ticket"
+        , "ability Gate is tick :: Unit -> Bool end"
+        , "open :: Unit -> Ticket uses Gate", "close :: Ticket -> Unit uses Gate"
+        , "resource Ticket is acquire is open unitValue end release t is close t end end"
+        , "law `a resource handler` for ticket :: Ticket is definition is true end end" ])
+        `shouldBe` Right [("a resource handler", [C.ProductionHandler])]
+    it "rejects a handler unused by both the assertion and its resource callbacks" $
+      program (resourceOnly "none" "using fakeGate")
+        `shouldSatisfy` failsWith "nothing it calls uses Gate"
+    it "does not treat a resource binder as an ability operation with the same name" $
+      program (unlines
+        [ "unit example.resourceHandler", "handle Ticket"
+        , "ability Gate is tick :: Unit -> Bool end"
+        , "handler fakeGate for Gate is tick ignored is true end end"
+        , "open :: Unit -> Ticket", "close :: Ticket -> Unit", "isOpen :: Ticket -> Bool"
+        , "resource Ticket is acquire is open unitValue end release tick is close tick end end"
+        , "law `shadowed` using fakeGate for tick :: Ticket is definition is isOpen tick end end" ])
+        `shouldSatisfy` failsWith "nothing it calls uses Gate"
     it "runs a law without using under each lawful handler" $ do
       let Right compiled = program (with [checkout, "law `checkout works` is definition is `for all` (cents :: Int32) . checkout cents = true end end"])
           names = [C.propertyName p | u <- C.programUnits compiled, p <- C.unitProperties u]

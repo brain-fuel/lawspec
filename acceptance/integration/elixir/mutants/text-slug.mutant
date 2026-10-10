@@ -1,0 +1,6 @@
+@@ lib/example_slug.ex
+<<<<<<<
+value |> String.split(" ") |> Enum.join("-")
+=======
+value
+>>>>>>>

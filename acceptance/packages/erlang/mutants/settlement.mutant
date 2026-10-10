@@ -1,0 +1,6 @@
+@@ src/shop_orders.erl
+<<<<<<<
+settlement(shop_orders_type_currency_gbp) -> shop_domain_type_currency_eur.
+=======
+settlement(shop_orders_type_currency_gbp) -> shop_domain_type_currency_usd.
+>>>>>>>

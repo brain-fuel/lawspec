@@ -1,0 +1,7 @@
+expect: expectations run before release
+@@ src/beam_resource_support.erl
+<<<<<<<
+is_open(Owner) -> lawspec_beam_resource:call(Owner, fun() -> ets:info(hd(stack())) =/= undefined end).
+=======
+is_open(Owner) -> lawspec_beam_resource:call(Owner, fun() -> ets:info(hd(stack())) =:= undefined end).
+>>>>>>>

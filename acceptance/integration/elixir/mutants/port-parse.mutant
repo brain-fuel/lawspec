@@ -1,0 +1,6 @@
+@@ lib/example_parse_port.ex
+<<<<<<<
+def parse(value), do: String.to_integer(value)
+=======
+def parse(_value), do: 0
+>>>>>>>

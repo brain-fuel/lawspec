@@ -1,0 +1,7 @@
+expect: test_cleanup_failed
+@@ src/beam_example_resources.erl
+<<<<<<<
+    true = ets:delete(Table),
+=======
+    true = is_reference(Table),
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example_canonical_url.erl
+<<<<<<<
+canonicalize(binary:part(Value, 0, byte_size(Value) - 1))
+=======
+binary:part(Value, 0, byte_size(Value) - 1)
+>>>>>>>

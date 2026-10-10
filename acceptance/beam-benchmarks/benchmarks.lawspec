@@ -1,0 +1,23 @@
+unit example.benchmarks
+
+ordinary :: Int32 -> Int32
+work :: Int32 -> Int32
+async asyncWork :: Int32 -> Int32
+falseValue :: Unit -> Bool
+
+definition checked (n :: Int32) :: Int32 is n end
+
+ability Meter is
+  read :: Unit -> Int32
+end
+
+definition measured (u :: Unit) :: Int32 uses Meter is read u end
+
+law `ordinary check` is definition is ordinary 99 = 99 end end
+
+harness example.benchmarks.testing for example.benchmarks is
+  benchmark `checked adapter` is work (checked 7) end
+  benchmark `async adapter` is asyncWork 8 end
+  benchmark `false is a value` is falseValue unitValue end
+  benchmark `production handler` is measured unitValue end
+end

@@ -1,4 +1,5 @@
 import {propertyFiles} from './artifacts.mjs';
+import {targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -11,7 +12,7 @@ const sources = await Promise.all(
   ["algebra", "currying"].map(async (n) => ({
     path: n + ".lawspec",
     content: await readFile(
-      new URL(`../../examples/specs/${n}.lawspec`, import.meta.url),
+      new URL(`../examples/specs/${n}.lawspec`, import.meta.url),
       "utf8",
     ),
   })),
@@ -78,16 +79,7 @@ test("all algebra laws expand, including both sides and four division equations"
     r.expansions.at(-1),
     /format \("port:"\) \(true\) \(443\) \(trim \(x\)\)/,
   );
-  for (const target of [
-    "java",
-    "python",
-    "javascript",
-    "typescript",
-    "go",
-    "haskell",
-    "kotlin",
-    "rust",
-  ]) {
+  for (const target of targets) {
     const plan = await compiler.planGeneration({ sources, target });
     assert.deepEqual(plan.diagnostics, [], target);
     assert.equal(plan.files.filter(f => f.ownership === "user").length, 2);
@@ -102,21 +94,16 @@ test("currying has no fixed arity cap and rejects incomplete or mistyped applica
   const check = (content) =>
     compiler.check({ sources: [{ path: "arity.lawspec", content }] });
   assert.deepEqual((await check(content)).diagnostics, []);
-  for (const target of [
-    "java",
-    "python",
-    "javascript",
-    "typescript",
-    "go",
-    "haskell",
-    "kotlin",
-  ]) {
+  for (const target of targets) {
     const plan = await compiler.planGeneration({
       sources: [{ path: "arity.lawspec", content }],
       target,
     });
     assert.deepEqual(plan.diagnostics, []);
-    if (target !== "haskell") assert.match(plan.files[0].content, /value11/);
+    const adapter = plan.files.find(file => file.ownership === 'user').content;
+    if (target === 'erlang') assert.match(adapter, /_Argument11/);
+    else if (target === 'elixir' || target === 'gleam') assert.match(adapter, /_argument11/);
+    else if (target !== "haskell") assert.match(adapter, /value11/);
   }
   for (const bad of [
     content.replace("Int32 -> Int32", "Bool -> Int32"),

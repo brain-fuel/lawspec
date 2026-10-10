@@ -1,0 +1,6 @@
+@@ lib/example_alternatives.ex
+<<<<<<<
+if(value < 0, do: 0, else: value)
+=======
+if(value < 0, do: -1, else: value)
+>>>>>>>

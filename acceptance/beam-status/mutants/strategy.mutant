@@ -1,0 +1,7 @@
+expect-any: strategy_outside_refinement | StrategyOutsideRefinement
+@@ acceptance/beam-status/status.lawspec
+<<<<<<<
+  strategy seven :: Int32 is one of 7 end
+=======
+  strategy seven :: Int32 is one of -1 end
+>>>>>>>

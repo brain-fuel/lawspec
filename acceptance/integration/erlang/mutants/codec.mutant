@@ -1,0 +1,6 @@
+@@ src/example_atoi_codec.erl
+<<<<<<<
+atoi(Value) -> binary_to_integer(Value).
+=======
+atoi(_Value) -> 0.
+>>>>>>>

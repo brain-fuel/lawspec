@@ -1,0 +1,7 @@
+expect-any: strategy_discards | StrategyDiscards
+@@ acceptance/beam-strategies/strategies.lawspec
+<<<<<<<
+  strategy spikes :: Int32 is one of 1, 9 end
+=======
+  strategy spikes :: Int32 is (one of 1) such that false at most 1 discards end
+>>>>>>>

@@ -1,0 +1,7 @@
+@@ lib/example_distribution.ex
+<<<<<<<
+        TallyActorRemote.add(tally, value)
+        TallyActorRemote.add(tally, value)
+=======
+        TallyActorRemote.add(tally, value)
+>>>>>>>

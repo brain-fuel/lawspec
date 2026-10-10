@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/example_matchers.erl
+<<<<<<<
+lists:sort(Items)
+=======
+lists:usort(Items)
+>>>>>>>

@@ -13,6 +13,34 @@ box() -> definition(<<"Box">>, 1,
     [ctor(<<"Box::Box">>, box, [{<<"value">>, {parameter, 0}}])]).
 box_type() -> {<<"Box">>, [{<<"Int8">>, []}]}.
 
+%% ref:DEC-typed-core-boundary
+canonical_collections_test() ->
+    Set = <<"lawspec.collections::type::Set">>, Map = <<"lawspec.collections::type::KeyVal">>,
+    Entry = <<"lawspec.collections::type::Entry">>,
+    P0 = {parameter, 0}, P1 = {parameter, 1},
+    S = schema([
+        definition(Set, 1, [ctor(<<"SetItems">>, set, [{<<"items">>, {<<"List">>, [P0]}}])]),
+        definition(Entry, 2, [ctor(<<"Entry">>, entry, [{<<"key">>, P0}, {<<"value">>, P1}])]),
+        definition(Map, 2, [ctor(<<"KeyValEntries">>, key_val, [{<<"entries">>, {<<"List">>, [{Entry, [P0, P1]}]}}])])
+    ]),
+    Type = {Set, [{<<"Int8">>, []}]},
+    Good = {ls_data, <<"SetItems">>, [[-1, 0, 1]]},
+    ?assertEqual(Good, lawspec_beam_schema:from_native({set, [-1, 0, 1]}, Type, S)),
+    lists:foreach(fun(Items) ->
+        ?assertError({lawspec, {refinement_violation, Set}},
+            lawspec_beam_schema:from_native({set, Items}, Type, S)),
+        ?assertError({lawspec, {refinement_violation, Set}},
+            lawspec_beam_schema:construct(<<"SetItems">>, [Items], Type, S))
+    end, [[1, 0], [1, 1]]),
+    MapType = {Map, [{<<"Rational">>, []}, {<<"Int8">>, []}]},
+    Half = lawspec_beam_scalar:ratio(1, 2), Whole = lawspec_beam_scalar:ratio(1, 1),
+    ?assertMatch({ls_data, <<"KeyValEntries">>, [_]},
+        lawspec_beam_schema:from_native({key_val, [{entry, Half, 1}, {entry, Whole, 2}]}, MapType, S)),
+    lists:foreach(fun(Entries) ->
+        ?assertError({lawspec, {refinement_violation, Map}},
+            lawspec_beam_schema:from_native({key_val, Entries}, MapType, S))
+    end, [[{entry, Whole, 1}, {entry, Half, 2}], [{entry, Half, 1}, {entry, Half, 2}]]).
+
 generic_bridge_test() ->
     S = schema([box()]), T = box_type(),
     Value = {ls_data, <<"Box::Box">>, [42]},

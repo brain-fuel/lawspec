@@ -1,0 +1,9 @@
+@@ lib/example_slug.ex
+<<<<<<<
+*
+=======
+defmodule Example.Slug do
+  def normalize(value), do: value
+  def reference_normalize(value), do: value
+end
+>>>>>>>

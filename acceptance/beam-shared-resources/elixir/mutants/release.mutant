@@ -1,0 +1,9 @@
+expect: deliberate_release_failure
+@@ src/beam_shared_resource_support.erl
+<<<<<<<
+    true = ets:delete(Store),
+    ok.
+=======
+    true = ets:delete(Store),
+    error(deliberate_release_failure).
+>>>>>>>

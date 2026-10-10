@@ -8,7 +8,7 @@ import {planWrites, applyWrites} from '../files.mjs';
 
 const compiler = await createCompiler();
 const sources = [{path: 'payments.lawspec', content:
-  await readFile(new URL('../../examples/specs/payments.lawspec', import.meta.url), 'utf8')}];
+  await readFile(new URL('../examples/specs/payments.lawspec', import.meta.url), 'utf8')}];
 const nativeBindings = JSON.parse(await readFile(
   new URL('../../test/fixtures/native-payments/bindings.json', import.meta.url), 'utf8'));
 

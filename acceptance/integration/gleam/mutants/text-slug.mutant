@@ -1,0 +1,6 @@
+@@ src/example/slug.gleam
+<<<<<<<
+string.join(string.split(value, " "), "-")
+=======
+value
+>>>>>>>

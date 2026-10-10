@@ -69,7 +69,8 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
             bridges = concat [ [(startRun s,startSystem s) | Just s <- [machineStart m]] ++
               [(commandRun c,commandSystem c) | c <- machineCommands m]
               | u <- units, m <- C.unitMachines u]
-        length bridges `shouldBe` 4
+        [C.declarationName a | (_,adapter) <- bridges, Just a <- [lookup adapter declarations]]
+          `shouldMatchList` ["openCounter", "add", "total", "clear", "echo", "reopen"]
         forM_ bridges $ \(bridge,adapter) -> case (lookup bridge declarations,lookup adapter declarations) of
           (Just b,Just a) -> do
             C.declarationUses b `shouldBe` C.declarationUses a

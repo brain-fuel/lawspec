@@ -87,6 +87,9 @@ emitPythonDataWithProfile bits layout declarations = do
             scope = parameters ++ existentials
             open = [D.text v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations constructor)] ++
               map (D.text . snd) existentials
+            -- Products use one class for both the type and its constructor.
+            -- Its public type arguments must remain available in its fields.
+            classArgs = if isProduct declaration then args ++ map (D.text . snd) existentials else open
         baseArgs <- forM parameters $ \(p, v) -> maybe (pure (D.text v)) (typeDocWith handles "" names scope)
           (lookup p (C.constructorEquations constructor))
         fields <- forM (C.constructorFields constructor) $ \field -> do
@@ -99,7 +102,7 @@ emitPythonDataWithProfile bits layout declarations = do
             witnesses = [D.text (S.witnessFieldName (length free) k ++ ": str") | k <- [0 .. length free - 1]]
         let fields' = fields ++ witnesses
         pure (D.text "@_dataclasses.dataclass(frozen=True, slots=True, eq=False)" <> D.hardline <>
-          suite (D.text "class " <> application native open <>
+          suite (D.text "class " <> application native classArgs <>
             (if isProduct declaration then mempty else D.text "(" <> application name baseArgs <> D.text ")"))
             (if null fields' then D.text "pass" else D.joinWith D.hardline fields'))
       -- A product is a single dataclass named after its type.

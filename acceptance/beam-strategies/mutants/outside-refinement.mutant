@@ -1,0 +1,7 @@
+expect-any: strategy_outside_refinement | StrategyOutsideRefinement
+@@ acceptance/beam-strategies/strategies.lawspec
+<<<<<<<
+  strategy spikes :: Int32 is one of 1, 9 end
+=======
+  strategy spikes :: Int32 is one of 0 end
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ lib/example_matchers.ex
+<<<<<<<
+(a + b) / 2
+=======
+(a + b) / 2 + 1
+>>>>>>>

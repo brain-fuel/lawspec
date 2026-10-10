@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ src/example/matchers.gleam
+<<<<<<<
+data.OrderShipped(id, "post")
+=======
+data.OrderPending(id)
+>>>>>>>

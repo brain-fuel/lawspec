@@ -1,0 +1,6 @@
+@@ src/example_collections.erl
+<<<<<<<
+fun(N) -> N + 1 end
+=======
+fun(_N) -> 1 end
+>>>>>>>

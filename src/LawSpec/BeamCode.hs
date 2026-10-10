@@ -143,7 +143,7 @@ nativeName "gleam" name = gleamName name
 nativeName _ name = name
 
 gleamPath :: C.Id -> String
-gleamPath = intercalate "/" . map snake . splitDot . C.idText
+gleamPath = intercalate "/" . map (gleamName . snake) . splitDot . C.idText
   where splitDot s = case break (== '.') s of (a,[]) -> [a]; (a,_:b) -> a : splitDot b
 
 gleamName :: String -> String

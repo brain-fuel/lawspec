@@ -1,0 +1,6 @@
+@@ src/example/ordering.gleam
+<<<<<<<
+value.quantity.value * 25
+=======
+value.quantity.value * 250
+>>>>>>>

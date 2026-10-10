@@ -1,0 +1,6 @@
+@@ lib/example_canonical_url.ex
+<<<<<<<
+String.trim_trailing(value, "/")
+=======
+String.slice(value, 0, 0)
+>>>>>>>

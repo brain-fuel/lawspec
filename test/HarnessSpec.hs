@@ -14,6 +14,8 @@ import LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), be
 import LawSpec.Search (lawDescriptors)
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Bounds (inputRange)
+import LawSpec.Testing (planTesting)
+import LawSpec.CoreEmit (emitPlanWithFormat)
 
 -- A unit, and a harness in a file of its own.
 compiled :: String -> Either [Diagnostic] C.Program
@@ -152,6 +154,39 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
         Just h | [(_, "digits", C.DrawSuchThat (C.DrawAny _ (Just aim)) _ _ 100)] <- C.harnessDraws h ->
           inputRange 64 aim `shouldBe` Just (1, 9)
         other -> expectationFailure (show other)
+  it "keeps a named strategy's refinement and directed any through aliases and frequency" $
+    case compiled (harness
+      [ "  strategy digits :: (n :: Int32 where n >= 1 && n <= 9) is any end"
+      , "  strategy alias :: Int32 is digits end"
+      , "  strategy mixed :: Int32 is frequency 3 alias, 1 (one of 20) end"
+      , "  for law `reflexive`", "    use mixed for x" ]) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> case lawHarness "reflexive" program of
+        Just h | [(_, "mixed", C.DrawFrequency [(3,C.DrawSuchThat (C.DrawAny _ (Just aim)) _ _ 100),(1,C.DrawOneOf _ _)])] <- C.harnessDraws h ->
+          inputRange 64 aim `shouldBe` Just (1, 9)
+        other -> expectationFailure (show other)
+  it "checks the type of a named strategy where it is used inside a draw" $ do
+    compiled (harness
+      [ "  strategy flags :: Bool is any end", "  strategy numbers :: Int32 is flags end"
+      , "  for law `reflexive`", "    use numbers for x" ])
+      `shouldSatisfy` failsWith "the strategy flags produces values of Bool, but this draw expects Int32"
+    compiled (harness
+      [ "  strategy flags :: Bool is any end"
+      , "  strategy numbers :: Int32 is bind n :: Int32 from flags in one of n end"
+      , "  for law `reflexive`", "    use numbers for x" ])
+      `shouldSatisfy` failsWith "this draw expects Int32"
+  it "does not capture a caller's bind when elaborating a named strategy" $
+    compiled (harness
+      [ "  strategy inner :: Int32 is one of hidden end"
+      , "  strategy outer :: Int32 is bind hidden :: Int32 from (one of 7) in inner end"
+      , "  for law `reflexive`", "    use outer for x" ])
+      `shouldSatisfy` failsWith "hidden"
+  mapM_ (\target -> it (target ++ " emits the shared named-strategy refinement plan") $ do
+    input <- readFile "acceptance/beam-strategies/strategies.lawspec"
+    case compileCore 64 defaultGeneration [Source "strategies.lawspec" input] >>= planTesting >>= emitPlanWithFormat False target of
+      Left ds -> expectationFailure (show ds)
+      Right artifacts -> artifacts `shouldSatisfy` (not . null)
+    ) ["javascript","typescript","python","go","java","kotlin","haskell","rust"]
   it "runs a benchmark that uses abilities under their production handlers" $
     case compiled (harness ["  benchmark `booking` is book 100 end"]) of
       Left ds -> expectationFailure (show ds)

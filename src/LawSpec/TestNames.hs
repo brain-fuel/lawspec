@@ -8,7 +8,7 @@
 -- __property, Go's _Property, the JVM's _property), so selecting one law's
 -- tests never selects another's. JavaScript and TypeScript name tests by
 -- the label itself.
-module LawSpec.TestNames (lawWords, unitTestNames, testIdentifier, kindSuffix) where
+module LawSpec.TestNames (lawWords, unitTestNames, unitBenchmarkNames, testIdentifier, kindSuffix) where
 
 import Data.Char (isAlphaNum, isAscii, isDigit, toLower, toUpper)
 import Data.List (intercalate)
@@ -42,6 +42,11 @@ unitTestNames target labels = go [] (map (bounded . lawWords) labels)
       let candidates = map (testIdentifier target) (ws : [ws ++ [show n] | n <- [2 :: Int ..]])
           chosen = head [c | c <- candidates, c `notElem` seen]
       in chosen : go (chosen : seen) rest
+
+-- BEAM benchmarks have their own namespace, with the same bounded, unique
+-- identifiers as laws. Manifest selection and native facades share this rule.
+unitBenchmarkNames :: [String] -> [String]
+unitBenchmarkNames = map (("benchmark_" ++) . drop 4) . unitTestNames "erlang"
 
 -- The base identifier of a law's tests on a target.
 testIdentifier :: String -> [String] -> String

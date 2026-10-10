@@ -1,0 +1,6 @@
+@@ src/example/flow.gleam
+<<<<<<<
+data.PushFlow(data.StackPush(value, stack))
+=======
+data.PushFlow(stack)
+>>>>>>>

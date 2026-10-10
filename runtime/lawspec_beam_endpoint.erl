@@ -36,6 +36,7 @@ init({Node, Name, Options}) ->
         true ->
             Address = lawspec_beam_node:register_service(Node, Name),
             {ok, #{node => Node, name => Name, node_monitor => monitor(process, Node),
+                owner_monitor => case maps:get(owner, Options, none) of none -> none; Owner -> monitor(process, Owner) end,
                 protocol => lawspec_beam_channel_protocol:new(Address, Deadline * 1000),
                 reader => none, taking => none, timer => none}}
     end.
@@ -54,6 +55,10 @@ handle_info({tick, Ref}, State = #{timer := {Ref, _}, protocol := Protocol}) ->
 handle_info({read_timeout, Ticket}, State = #{reader := #{ticket := Ticket}}) ->
     {noreply, finish(reader, {error, receive_timeout}, State)};
 handle_info({'DOWN', Monitor, process, _, _}, State = #{node_monitor := Monitor}) -> {stop, normal, State};
+handle_info({'DOWN', Monitor, process, _, _}, State = #{owner_monitor := Monitor, protocol := Protocol}) ->
+    %% An untrappable kill of the typed coordinator must still publish EOF.
+    %% The raw service remains with the node to finish accepted deliveries.
+    {noreply, update(lawspec_beam_channel_protocol:abandon(Protocol, now_us()), State#{owner_monitor := none})};
 handle_info({'DOWN', Monitor, process, _, _}, State = #{reader := #{monitor := Monitor}}) ->
     {noreply, finish(reader, cancelled, State)};
 handle_info({'DOWN', Monitor, process, _, _}, State = #{taking := #{monitor := Monitor}}) ->
@@ -92,9 +97,12 @@ local({cancel, Ticket}, {Caller, _}, State) ->
     {reply, {ok, ok}, Next};
 local(offer, _, State = #{protocol := Protocol}) ->
     idle_take(State), require(maps:get(reader, State) =:= none, already_receiving),
-    Token = binary:encode_hex(crypto:strong_rand_bytes(24)),
+    Token = binary:encode_hex(crypto:strong_rand_bytes(32)),
     {Address, Next} = lawspec_beam_channel_protocol:offer(Protocol, Token),
-    {reply, {ok, Address}, State#{protocol := Next}};
+    %% Offering transfers custody to the wire. The old typed coordinator
+    %% can leave while this service waits for the taker and forwards frames.
+    case maps:get(owner_monitor, State) of none -> ok; Ref -> demonitor(Ref, [flush]) end,
+    {reply, {ok, Address}, State#{protocol := Next, owner_monitor := none}};
 local({take, Address}, From, State = #{protocol := Protocol}) ->
     idle_take(State), require(maps:get(reader, State) =:= none, already_receiving),
     require(maps:get(peer, Protocol) =:= none andalso maps:get(unacked, Protocol) =:= #{} andalso

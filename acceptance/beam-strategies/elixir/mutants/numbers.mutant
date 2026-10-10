@@ -1,0 +1,7 @@
+expect: weighted refined numbers
+@@ lib/example_strategies.ex
+<<<<<<<
+  def numbers(n), do: :beam_strategy_support.record(:numbers, n)
+=======
+  def numbers(n), do: :beam_strategy_support.record(:numbers, n) + 1
+>>>>>>>

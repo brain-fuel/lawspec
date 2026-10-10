@@ -1,4 +1,4 @@
--- | Which generated tests check which law, for running a subset of them.
+-- | Which generated tests check each piece of evidence, for subset runs.
 --
 -- Every target writes one test file per unit, and names a law's tests after
 -- its label (LawSpec.TestNames), or, in JavaScript and TypeScript, by the
@@ -6,16 +6,19 @@
 -- its unit's test file, the law's dependency key (the plan key of
 -- LawSpec.Dependencies), and its harness: tags, and whether it is skipped or
 -- known to fail. A runner can tell which laws an edit affects, select their
--- tests by name and by tag, and knows which tests not to expect.
+-- tests by name and by tag, and knows which tests not to expect. BEAM also
+-- registers each model, scenario and supervision check in the same native
+-- test file, with a distinct evidence identity and dependency key.
 module LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
 
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, stripPrefix)
 import qualified Data.Set as S
 import LawSpec.Core
-import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences)
-import LawSpec.TestNames (unitTestNames, lawWords)
+import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences, unitReferences)
+import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
 import qualified LawSpec.BeamCode as Beam
+import qualified LawSpec.BeamModelChecks as ModelChecks
 
 -- | Each generated test is keyed by the law it checks and the digest of what the
 -- law reaches, so lawspec test runs only the tests an edit can affect.
@@ -44,7 +47,18 @@ testManifest target testDir program =
   , let unit = idText (unitId u)
         names = if target `elem` ["javascript", "typescript"] then [unit ++ "::" ++ propertyName p | p <- unitProperties u]
           else unitTestNames target (map propertyName (unitProperties u))
-  , (index, p, testName) <- zip3 [0 ..] (unitProperties u) names ]
+  , (index, p, testName) <- zip3 [0 ..] (unitProperties u) names ] ++
+  [ TestEntry (ModelChecks.checkIdentity check) unit (ModelChecks.checkLabel check) index
+      (relocated (unitTestPath target unit))
+      (keyOf graph (show (programMachineBits program, ModelChecks.checkAction check,
+        programDataDeclarations program, concatMap unitSessions (programUnits program),
+        unitMailboxes u, unitSupervisors u)) (unitReferences graph u))
+      (ModelChecks.checkAction check /= ModelChecks.Supervision)
+      (ModelChecks.checkName check) [] Nothing Nothing
+      (maybe False harnessParallel (unitHarnessSettings u))
+  | target `elem` ["erlang", "elixir", "gleam"], u <- programUnits program
+  , let unit = idText (unitId u)
+  , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ]
   where
     graph = dependencyGraph (programDataDeclarations program) (programUnits program)
     native h = case h of
@@ -65,18 +79,22 @@ data BenchmarkEntry = BenchmarkEntry
 
 benchmarkManifest :: String -> Maybe String -> Program -> [BenchmarkEntry]
 benchmarkManifest target testDir program =
-  [ BenchmarkEntry unit n (relocated testDir target (unitTestPath target unit)) (testOf n)
+  [ BenchmarkEntry unit n (relocated testDir target (unitTestPath target unit)) (testOf n nativeName)
   | u <- programUnits program, Just settings <- [unitHarnessSettings u]
-  , let unit = idText (unitId u), (n, _) <- harnessBenchmarks settings ]
+  , let unit = idText (unitId u)
+  , ((n, _), nativeName) <- zip (harnessBenchmarks settings) (unitBenchmarkNames (map fst (harnessBenchmarks settings))) ]
   where
     words' = lawWords
     capital (c : rest) = toUpper c : rest
     capital [] = []
-    testOf n = case target of
+    testOf n nativeName = case target of
       "python" -> "test_benchmark__" ++ intercalate "_" (words' n)
       "go" -> "TestBenchmark" ++ concatMap capital (words' n)
       "java" -> "benchmark" ++ concatMap capital (words' n)
       "rust" -> "benchmark_" ++ intercalate "_" (words' n)
+      "erlang" -> nativeName
+      "elixir" -> nativeName
+      "gleam" -> nativeName
       _ -> "benchmark " ++ n
 
 relocated :: Maybe String -> String -> FilePath -> FilePath

@@ -1,0 +1,6 @@
+@@ lib/warehouse/native.ex
+<<<<<<<
+:atomics.add(shelf, 1, amount)
+=======
+:atomics.add(shelf, 1, amount + 1)
+>>>>>>>

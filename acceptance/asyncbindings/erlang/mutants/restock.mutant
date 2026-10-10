@@ -1,0 +1,6 @@
+@@ src/warehouse_native.erl
+<<<<<<<
+atomics:add(Shelf, 1, Amount)
+=======
+atomics:add(Shelf, 1, Amount + 1)
+>>>>>>>

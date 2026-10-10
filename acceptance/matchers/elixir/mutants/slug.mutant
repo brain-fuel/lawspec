@@ -1,0 +1,7 @@
+expect: a slug is lowercase words joined by dashes
+@@ lib/example_matchers.ex
+<<<<<<<
+Enum.join("-")
+=======
+Enum.join("_")
+>>>>>>>

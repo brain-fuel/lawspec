@@ -1,4 +1,5 @@
 import {createCompiler} from '../api.mjs';
+import {targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -14,9 +15,9 @@ test("examples exports all bundled stubs/tests, preserves adapters, and protects
     exec(process.execPath, [cli, "examples", "--json", ...args], { cwd: root });
   try {
     const result = JSON.parse((await run()).stdout);
-    assert.equal(result.length, 8);
+    assert.deepEqual(result.map(project => project.target), targets);
     const compiler = await createCompiler();
-    const directory = new URL('../../examples/specs/', import.meta.url);
+    const directory = new URL('../examples/specs/', import.meta.url);
     const sources = await Promise.all((await readdir(directory)).filter(n => n.endsWith('.lawspec')).sort().map(async name => ({
       path: name, content: await readFile(new URL(name, directory), 'utf8'),
     })));

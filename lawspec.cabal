@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.21.0
+version:        0.22.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -56,6 +56,7 @@ extra-source-files:
     runtime/lawspec_beam_actors.erl
     runtime/lawspec_beam_attempts.erl
     runtime/lawspec_beam_channel_protocol.erl
+    runtime/lawspec_beam_coverage.erl
     runtime/lawspec_beam_crypto.erl
     runtime/lawspec_beam_crypto_native.erl
     runtime/lawspec_beam_defaults.erl
@@ -64,36 +65,56 @@ extra-source-files:
     runtime/lawspec_beam_generators.erl
     runtime/lawspec_beam_gleam.erl
     runtime/lawspec_beam_handler.erl
+    runtime/lawspec_beam_harness.erl
     runtime/lawspec_beam_history.erl
     runtime/lawspec_beam_index.erl
     runtime/lawspec_beam_mailbox.erl
     runtime/lawspec_beam_memory_network.erl
     runtime/lawspec_beam_model.erl
     runtime/lawspec_beam_model_parallel.erl
+    runtime/lawspec_beam_network.erl
+    runtime/lawspec_beam_network_config.erl
+    runtime/lawspec_beam_network_crypto.erl
     runtime/lawspec_beam_node.erl
     runtime/lawspec_beam_policy.erl
     runtime/lawspec_beam_proper.erl
     runtime/lawspec_beam_qcheck.erl
     runtime/lawspec_beam_random.erl
+    runtime/lawspec_beam_recorded.erl
     runtime/lawspec_beam_regex.erl
+    runtime/lawspec_beam_remote.erl
+    runtime/lawspec_beam_report.erl
+    runtime/lawspec_beam_resource.erl
+    runtime/lawspec_beam_resources.erl
     runtime/lawspec_beam_runtime.erl
     runtime/lawspec_beam_scalar.erl
     runtime/lawspec_beam_scenario.erl
     runtime/lawspec_beam_scenario_io.erl
     runtime/lawspec_beam_scenario_network.erl
+    runtime/lawspec_beam_schedule.erl
     runtime/lawspec_beam_schema.erl
+    runtime/lawspec_beam_search.erl
     runtime/lawspec_beam_session.erl
+    runtime/lawspec_beam_session_network.erl
     runtime/lawspec_beam_session_ownership.erl
     runtime/lawspec_beam_session_task.erl
+    runtime/lawspec_beam_socket_protocol.erl
+    runtime/lawspec_beam_socket_transport.erl
     runtime/lawspec_beam_supervision.erl
     runtime/lawspec_beam_tasks.erl
+    runtime/lawspec_beam_test_run.erl
+    runtime/lawspec_beam_transport.erl
     runtime/lawspec_beam_values.erl
     runtime/lawspec_beam_waits.erl
     runtime/lawspec_beam_wire.erl
     runtime/lawspec_beam_workflow.erl
     runtime/lawspec_beam_workflow_state.erl
+    runtime/lawspec_network.erl
     runtime/lawspec_crypto_native.c
     runtime/lawspec_crypto_build.escript
+    runtime/lawspec_beam_exunit_formatter.ex
+    runtime/lawspec_beam_exunit_schedule.ex
+    runtime/lawspec_beam_network.ex
     runtime/lawspec_beam_sessions.ex
     runtime/lawspec_beam_stream_data.ex
     runtime/lawspec_beam_workflow.ex
@@ -236,15 +257,22 @@ extra-source-files:
     test/fixtures/native_empty_domains.lawspec
     test/fixtures/native_shapes.lawspec
     test/fixtures/python_constructor_fields.lawspec
+    test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/recorded-values.json
+    test/fixtures/recorded-web.mjs
+    test/fixtures/recorded_python.py
     test/fixtures/beam/lawspec_beam_actors_tests.erl
     test/fixtures/beam/lawspec_beam_attempts_tests.erl
+    test/fixtures/beam/lawspec_beam_benchmark_tests.erl
     test/fixtures/beam/lawspec_beam_channel_protocol_tests.erl
     test/fixtures/beam/lawspec_beam_crypto_tests.erl
     test/fixtures/beam/lawspec_beam_defaults_tests.erl
     test/fixtures/beam/lawspec_beam_effects_tests.erl
     test/fixtures/beam/lawspec_beam_endpoint_tests.erl
+    test/fixtures/beam/lawspec_beam_failure_inputs_tests.erl
     test/fixtures/beam/lawspec_beam_gleam_tests.erl
+    test/fixtures/beam/lawspec_beam_harness_tests.erl
     test/fixtures/beam/lawspec_beam_history_tests.erl
     test/fixtures/beam/lawspec_beam_index_tests.erl
     test/fixtures/beam/lawspec_beam_mailbox_tests.erl
@@ -252,17 +280,31 @@ extra-source-files:
     test/fixtures/beam/lawspec_beam_model_parallel_tests.erl
     test/fixtures/beam/lawspec_beam_model_tests.erl
     test/fixtures/beam/lawspec_beam_native_generator_tests.erl
+    test/fixtures/beam/lawspec_beam_network_api_tests.erl
+    test/fixtures/beam/lawspec_beam_network_peer.erl
+    test/fixtures/beam/lawspec_beam_network_tests.erl
     test/fixtures/beam/lawspec_beam_node_tests.erl
+    test/fixtures/beam/lawspec_beam_owner_tests.erl
     test/fixtures/beam/lawspec_beam_policy_tests.erl
     test/fixtures/beam/lawspec_beam_proper_tests.erl
     test/fixtures/beam/lawspec_beam_qcheck_tests.erl
+    test/fixtures/beam/lawspec_beam_recorded_tests.erl
+    test/fixtures/beam/lawspec_beam_remote_tests.erl
+    test/fixtures/beam/lawspec_beam_report_tests.erl
+    test/fixtures/beam/lawspec_beam_resources_tests.erl
     test/fixtures/beam/lawspec_beam_runtime_tests.erl
     test/fixtures/beam/lawspec_beam_scalar_tests.erl
     test/fixtures/beam/lawspec_beam_scenario_io_tests.erl
     test/fixtures/beam/lawspec_beam_scenario_network_tests.erl
     test/fixtures/beam/lawspec_beam_scenario_tests.erl
+    test/fixtures/beam/lawspec_beam_schedule_tests.erl
     test/fixtures/beam/lawspec_beam_schema_tests.erl
+    test/fixtures/beam/lawspec_beam_search_tests.erl
+    test/fixtures/beam/lawspec_beam_session_network_tests.erl
     test/fixtures/beam/lawspec_beam_session_tests.erl
+    test/fixtures/beam/lawspec_beam_socket_protocol_tests.erl
+    test/fixtures/beam/lawspec_beam_socket_tests.erl
+    test/fixtures/beam/lawspec_beam_strategy_tests.erl
     test/fixtures/beam/lawspec_beam_supervision_tests.erl
     test/fixtures/beam/lawspec_beam_tasks_tests.erl
     test/fixtures/beam/lawspec_beam_values_tests.erl
@@ -384,10 +426,14 @@ library
       LawSpec.BeamEffects
       LawSpec.BeamEmit
       LawSpec.BeamExpr
+      LawSpec.BeamGenerators
       LawSpec.BeamMailboxes
+      LawSpec.BeamModelChecks
       LawSpec.BeamModels
       LawSpec.BeamNativeBinding
       LawSpec.BeamPolicy
+      LawSpec.BeamProperties
+      LawSpec.BeamRemote
       LawSpec.BeamSessions
       LawSpec.Bounds
       LawSpec.BuiltinDefaults

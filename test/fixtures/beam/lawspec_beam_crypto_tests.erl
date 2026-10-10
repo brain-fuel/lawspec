@@ -14,6 +14,18 @@ vectors(Kind) ->
 hex(<<"-">>) -> <<>>;
 hex(Text) -> binary:decode_hex(Text).
 
+native_bridge_survives_coverage_reload_test() ->
+    %% Both entering coverage and restoring original code reload the NIF.
+    %% Check real outputs after each transition, in the same live VM.
+    Seed = binary:copy(<<7>>, 32),
+    Expected = lawspec_beam_crypto_native:expand(mldsa65, Seed),
+    {ok, _} = cover:start(),
+    try
+        ?assertEqual({ok, lawspec_beam_crypto_native}, cover:compile_beam(lawspec_beam_crypto_native)),
+        ?assertEqual(Expected, lawspec_beam_crypto_native:expand(mldsa65, Seed))
+    after cover:stop() end,
+    ?assertEqual(Expected, lawspec_beam_crypto_native:expand(mldsa65, Seed)).
+
 sha3_nist_vectors_test() ->
     lists:foreach(fun([Message, Expected]) ->
         ?assertEqual(hex(Expected), lawspec_beam_crypto:sha3_256(hex(Message)))

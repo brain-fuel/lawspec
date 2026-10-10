@@ -1,0 +1,7 @@
+expect: transient failure
+@@ src/beam_repetition_support.erl
+<<<<<<<
+    Succeeds = get({?MODULE, <<"transient">>}) =/= undefined,
+=======
+    Succeeds = false,
+>>>>>>>

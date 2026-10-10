@@ -1,0 +1,6 @@
+@@ lib/shop_orders.ex
+<<<<<<<
+value - rem(value, 100)
+=======
+value - 1
+>>>>>>>

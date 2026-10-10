@@ -1,0 +1,6 @@
+@@ src/example/ordering.gleam
+<<<<<<<
+quantity < 1 ||
+=======
+quantity < 0 ||
+>>>>>>>

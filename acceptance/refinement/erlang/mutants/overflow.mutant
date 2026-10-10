@@ -1,0 +1,6 @@
+@@ src/example_refinements.erl
+<<<<<<<
+add(A, B) -> A + B.
+=======
+add(A, B) -> ((A + B + 128) band 255) - 128.
+>>>>>>>

@@ -12,12 +12,16 @@ type Counter is Counter value :: Int64 end
 async openCounter :: Unit -> Counter
 async add :: Counter -> UInt8 -> Pair Int64 Counter uses Factor
 total :: Counter -> Pair Int64 Counter
+clear :: Counter -> Counter
+echo :: Counter -> Maybe (List Int32) -> Pair (Maybe (List Int32)) Counter
 reopen :: Counter -> Counter uses Restore
 
 definition modelAdd (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) :: Pair Int64 Int64 is
   Pair (n + 2 * amount) (n + 2 * amount)
 end
 definition modelTotal (n :: Int64) :: Pair Int64 Int64 is Pair n n end
+definition modelClear (n :: Int64) :: Int64 is 0 end
+definition modelEcho (value :: Maybe (List Int32)) (n :: Int64) :: Pair (Maybe (List Int32)) Int64 is Pair value n end
 definition modelReopen (n :: Int64 where n >= 0 && n <= 1000000) :: Int64 is n + 10 end
 
 actor counter :: Counter by Int64 is
@@ -25,6 +29,8 @@ actor counter :: Counter by Int64 is
   restart from reopen by modelReopen
   on add by modelAdd
   on total by modelTotal
+  on clear by modelClear
+  on echo by modelEcho
 end
 
 supervisor bank is
@@ -39,4 +45,9 @@ end
 nativeProbe :: Unit -> Bool
 law `typed actors keep their ability choices through native async and restarts` is
   definition is nativeProbe unitValue end
+end
+
+remoteProbe :: Unit -> Bool
+law `remote actors retain server abilities and stable handles across restarts` is
+  definition is remoteProbe unitValue end
 end

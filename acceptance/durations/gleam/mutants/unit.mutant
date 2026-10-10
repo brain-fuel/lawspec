@@ -1,0 +1,7 @@
+expect: spending everything leaves nothing
+@@ src/example/durations.gleam
+<<<<<<<
+int.max(budget.value - spent.value, 0)
+=======
+int.max(budget.value - spent.value, 0) + case spent.value > 0 { True -> 1 False -> 0 }
+>>>>>>>

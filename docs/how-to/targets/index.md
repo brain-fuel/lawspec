@@ -18,6 +18,9 @@ where generated files go, and how LawSpec types appear in your code.
 | [`haskell`](haskell.md) | Stack, GHC 9.10, LTS 24.58 | Hspec 2.11, Hedgehog 1.5, hspec-hedgehog 0.3 | `stack test` |
 | [`kotlin`](kotlin.md) | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
 | [`rust`](rust.md) | Rust 1.85+, edition 2024, Cargo | Proptest 1.11.0 | `cargo test` |
+| [`erlang`](erlang.md) | OTP 29, Rebar3 3.27.1 | PropEr 1.5.0, EUnit | `rebar3 eunit` |
+| [`elixir`](elixir.md) | OTP 29, Elixir 1.20.x, Mix | StreamData 1.4.0, ExUnit | `mix test` |
+| [`gleam`](gleam.md) | OTP 29, Gleam 1.18 or 1.19, Erlang target | qcheck 1.0.5, gleeunit 1.11.0 | `gleam test` |
 
 Exact version bounds are in [compatibility](../../reference/compatibility.md).
 

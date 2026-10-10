@@ -1,0 +1,8 @@
+expect: test_cleanup_failed
+@@ src/beam_owner_support.erl
+<<<<<<<
+    true = ets:delete(Table),
+=======
+    true = ets:delete(Table),
+    error(owner_cleanup_failed),
+>>>>>>>

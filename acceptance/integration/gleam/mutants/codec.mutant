@@ -1,0 +1,6 @@
+@@ src/example/atoi_codec.gleam
+<<<<<<<
+let assert Ok(number) = int.parse(value) number
+=======
+let assert Ok(_number) = int.parse(value) 0
+>>>>>>>

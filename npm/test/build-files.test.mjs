@@ -14,7 +14,7 @@ import {templates, targets} from '../templates.mjs';
 const compiler = await createCompiler();
 const sources = await Promise.all(['atoi_codec', 'algebra', 'currying', 'slug'].map(async name => ({
   path: `${name}.lawspec`,
-  content: await readFile(new URL(`../../examples/specs/${name}.lawspec`, import.meta.url), 'utf8'),
+  content: await readFile(new URL(`../examples/specs/${name}.lawspec`, import.meta.url), 'utf8'),
 })));
 
 for (const target of targets) {

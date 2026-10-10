@@ -45,9 +45,26 @@ unknown, prerelease, missing and out-of-range versions.
 | | num-rational | 0.4.2 |
 | | num-complex | 0.4.6 |
 | | num-traits | 0.2.19 |
+| Erlang | OTP | 29 |
+| | Rebar3 | 3.27.1 and later 3.27.x |
+| | PropEr | 1.5.0 |
+| Elixir | OTP | 29 |
+| | Elixir | 1.20.x |
+| | StreamData | 1.4.0 |
+| Gleam | OTP | 29 |
+| | Gleam | 1.18, 1.19 |
+| | gleam_stdlib | 1.0.5 |
+| | gleeunit | 1.11.0 |
+| | qcheck | 1.0.5 |
 
 Java 25 and Python 3.13 are minimum baselines. New JVM releases are admitted
 after testing; the current profile certifies Java 25.
+
+BEAM crypto projects additionally require a Unix C toolchain and OpenSSL
+3.5 or later development files with the same major version as OTP's OpenSSL.
+The bridge builder supports macOS and Linux; Windows uses WSL. Native Windows
+builds are not currently supported. Doctor compiles and loads the bridge to
+check this combination; non-crypto BEAM projects do not need a C compiler.
 
 ## Versions pinned by `init`
 
@@ -63,6 +80,9 @@ When `init` creates a scaffold, it pins:
 | Haskell | `lts-24.58`; hspec, hedgehog, hspec-hedgehog, hspec-discover, containers, mtl |
 | Kotlin | Kotlin plugin 2.3.21, `jvmToolchain(25)`, Kotest 5.9.1 |
 | Rust | edition 2024, `rust-version = "1.85"`, proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, num-traits 0.2.19 |
+| Erlang | OTP 29 profile, PropEr 1.5.0, LawSpec EUnit reporter |
+| Elixir | Elixir `~> 1.20`, StreamData 1.4.0, LawSpec ExUnit formatter |
+| Gleam | Gleam 1.18+, Erlang target, gleam_stdlib 1.0.5, gleeunit 1.11.0, qcheck 1.0.5, local `lawspec_test_support` |
 
 ## What the checks inspect
 

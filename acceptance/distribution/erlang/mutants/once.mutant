@@ -1,0 +1,5 @@
+@@ src/example_distribution.erl
+<<<<<<<
+            _ = lawspec_actor_example_distribution_tally_remote:add(Tally, Value),
+=======
+>>>>>>>

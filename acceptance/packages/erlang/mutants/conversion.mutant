@@ -1,0 +1,6 @@
+@@ src/shop_domain.erl
+<<<<<<<
+convert(Currency, {money, _, Cents}) -> {money, Currency, Cents}.
+=======
+convert(_Currency, Money) -> Money.
+>>>>>>>

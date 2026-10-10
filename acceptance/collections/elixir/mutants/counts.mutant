@@ -1,0 +1,6 @@
+@@ lib/example_collections.ex
+<<<<<<<
+Enum.frequencies()
+=======
+Enum.map(fn word -> {word, 1} end) |> Map.new()
+>>>>>>>

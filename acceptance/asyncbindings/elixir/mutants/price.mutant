@@ -1,0 +1,6 @@
+@@ lib/warehouse/native.ex
+<<<<<<<
+quote_of(sku)
+=======
+quote_of(sku) + 1
+>>>>>>>

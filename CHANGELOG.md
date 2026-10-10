@@ -6,6 +6,69 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-10
+
+### Added
+
+- Erlang, Elixir and Gleam targets share a BEAM runtime and generate native
+  data types, adapters and checked definitions. Tests use PropEr with EUnit,
+  StreamData with ExUnit, and qcheck with gleeunit, including each framework's
+  own generation and shrinking.
+- BEAM ability handlers, typed failures, asynchronous tasks, workflow policies
+  and built-in abilities, with native type, function, handler and generator
+  bindings. Native payment examples demonstrate adopting and removing
+  generated tests in an existing application.
+- BEAM stateful models, collection models, opaque handles, consistency
+  models, scenarios, typed sessions and mailboxes, and actors with OTP
+  supervision. Stateful checks have individual identities for CLI selection,
+  reports, caching and replay.
+- Secure BEAM distribution uses the shared wire format and cryptographic
+  seed keys. Projects importing `lawspec.crypto` or `lawspec.network` build a
+  small C/OpenSSL NIF before compilation. The bridge requires OTP 29,
+  OpenSSL 3.5 or later matching OTP's OpenSSL major version, and a Unix C
+  toolchain on macOS, Linux or WSL. Projects without those imports have no
+  native crypto build step.
+- BEAM setup guides, toolchain checks, offline dependencies, JUnit reporting,
+  coverage, and failure replay from the exact shrunk inputs.
+- BEAM harness strategies, generated-case coverage and labels, targeted
+  search, repeats and flaky retries, skips and known failures, random law
+  order, parallel execution and benchmarks in the native test frameworks.
+- BEAM matcher, table and description examples, with recorded values read
+  from the shared project folder and updated by `lawspec test --update-recorded`.
+- BEAM per-case and shared resources use dedicated owner processes for
+  acquisition, reset and release. Harness timeouts cancel test workers and
+  join their asynchronous children; cleanup has a separate bounded allowance.
+  Cleanup failures fail the run, including under retries and known failures.
+
+### Fixed
+
+- Recorded values use one typed format across targets, including exact
+  numbers, floats, bytes, raw text, presence and nested data. Identity labels
+  are local to each recording. Existing extended scalar recordings may need
+  updating with `lawspec test --update-recorded`.
+- Generated TypeScript, Python, Go and Kotlin product types retain their type
+  parameters when their sole constructor fixes a parameter's type.
+- Generated Haskell constructors and codecs apply fixed type parameters to
+  their fields, including nested data.
+- Erlang EUnit output retains deeper failure diagnostics, including native
+  generator identities used by acceptance checks.
+- CI logs include exit statuses, and acceptance logs retain completed stages
+  when a runner exits unexpectedly.
+- Failure databases and reports keep separate project roots apart, including
+  projects using the same target. Replaying or repairing one project's
+  failure cannot clear another project's counterexample.
+- CLI JUnit output retains cases from flat Node reports and nested native
+  suites.
+- BEAM JUnit output includes intentionally skipped laws and their reasons;
+  skips remain separate from evidence that a test executed. Scheduled cases
+  keep their declaring unit, so identical test names in different units
+  remain distinct.
+- BEAM generators follow scalar and constructor-field refinements, including
+  named symbol identities, minimum lengths and bounds depending on earlier
+  fields. Native shrinking preserves these constraints.
+- Generated BEAM sets and maps keep their portable order and distinct keys;
+  native values with unsorted or duplicate entries fail validation.
+
 ## [0.21.0] - 2026-10-07
 
 ### Added
@@ -1217,7 +1280,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/brain-fuel/lawspec/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/brain-fuel/lawspec/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/brain-fuel/lawspec/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/brain-fuel/lawspec/compare/v0.19.1...v0.20.0

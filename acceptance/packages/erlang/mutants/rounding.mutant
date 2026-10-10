@@ -1,0 +1,6 @@
+@@ src/shop_orders.erl
+<<<<<<<
+Value - Value rem 100
+=======
+Value - 1
+>>>>>>>

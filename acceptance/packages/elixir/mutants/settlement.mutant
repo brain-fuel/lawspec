@@ -1,0 +1,6 @@
+@@ lib/shop_orders.ex
+<<<<<<<
+%D.ShopDomainTypeCurrencyEur{}
+=======
+%D.ShopDomainTypeCurrencyUsd{}
+>>>>>>>

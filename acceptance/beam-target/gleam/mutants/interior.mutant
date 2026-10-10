@@ -1,0 +1,8 @@
+expect-any: target_failed | TargetFailed
+@@ src/example/target.gleam
+<<<<<<<
+  record("number", n)
+=======
+  let _ = record("number", n)
+  case n { 137 -> 0 _ -> n }
+>>>>>>>

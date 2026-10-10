@@ -12,6 +12,12 @@ indexed_and_existential_generation_test_() ->
 
 native_factories_keep_checked_shrinks_test() -> lawspec_beam_native_generator_tests:run(lawspec_beam_proper).
 
+strategy_draws_test_() -> lawspec_beam_strategy_tests:tests(lawspec_beam_proper).
+
+harness_adequacy_test_() -> lawspec_beam_harness_tests:tests(lawspec_beam_proper).
+
+failure_inputs_test_() -> lawspec_beam_failure_inputs_tests:tests(lawspec_beam_proper).
+
 %% ref:DEC-shrink-within-domain
 bounded_shrinking_test() ->
     Property = proper:forall(integer(5, 1000), fun(N) -> N < 5 end),
@@ -98,6 +104,31 @@ symbols_do_not_alias_literals_test() ->
     end), [quiet, {numtests, 1000}])).
 
 %% ref:DEC-never-pass-vacuously
+%% PropEr initializes random state before setup. Merely asking it to initialize
+%% an absent state leaves its timestamp seed in use, despite the reported seed.
+%% ref:DEC-portable-seeded-generation
+same_seed_replays_native_generation_test() ->
+    Previous = os:getenv("LAWSPEC_SEED"),
+    try
+        First = replay_samples(42),
+        _ = rand:seed(exsplus, {91, 82, 73}),
+        ?assertEqual(First, replay_samples(42)),
+        ?assertNotEqual(First, replay_samples(43)),
+        ?assertEqual(First, replay_samples(42))
+    after
+        case Previous of false -> os:unsetenv("LAWSPEC_SEED"); _ -> os:putenv("LAWSPEC_SEED", Previous) end,
+        erase(resource_replay_values)
+    end.
+
+replay_samples(Seed) ->
+    os:putenv("LAWSPEC_SEED", integer_to_list(Seed)),
+    put(resource_replay_values, []),
+    Property = lawspec_beam_proper:forall(lawspec_beam_proper:integer(-1000000, 1000000), fun(Value) ->
+        put(resource_replay_values, [Value | get(resource_replay_values)]), true
+    end),
+    ok = lawspec_beam_proper:check(<<"replay">>, Property, [quiet, {numtests, 30}]),
+    lists:reverse(get(resource_replay_values)).
+
 reported_failures_retain_replay_seed_test() ->
     Previous = os:getenv("LAWSPEC_SEED"),
     true = os:putenv("LAWSPEC_SEED", "2026"),

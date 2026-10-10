@@ -1,0 +1,6 @@
+@@ lib/example_refinements.ex
+<<<<<<<
+def count(text), do: length(String.to_charlist(text))
+=======
+def count(_text), do: 0
+>>>>>>>

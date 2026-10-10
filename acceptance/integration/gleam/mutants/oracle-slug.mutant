@@ -1,0 +1,7 @@
+@@ src/example/slug.gleam
+<<<<<<<
+*
+=======
+pub fn normalize(value: String) -> String { value }
+pub fn reference_normalize(value: String) -> String { value }
+>>>>>>>

@@ -1,0 +1,10 @@
+expect: generated observations
+@@ src/example/adequacy.gleam
+<<<<<<<
+pub fn number(n: Int) -> Int { record("number", n) }
+=======
+pub fn number(n: Int) -> Int {
+  let _ = record("number", n)
+  case n { 9 -> 0 _ -> n }
+}
+>>>>>>>

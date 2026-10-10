@@ -1,0 +1,6 @@
+@@ src/example_refinements.erl
+<<<<<<<
+preserve(Value) -> Value.
+=======
+preserve(Value) -> float(Value).
+>>>>>>>

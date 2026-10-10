@@ -1,0 +1,7 @@
+expect: benchmark_failed
+@@ src/beam_benchmark_support.erl
+<<<<<<<
+    Value.
+=======
+    case Name of <<"async">> -> error(benchmark_failed); _ -> Value end.
+>>>>>>>

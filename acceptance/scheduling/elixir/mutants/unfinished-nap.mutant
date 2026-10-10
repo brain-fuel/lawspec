@@ -1,0 +1,7 @@
+expect: equation_failed
+@@ src/beam_schedule_support.erl
+<<<<<<<
+    record(start, N), timer:sleep(Millis), record('end', N), true.
+=======
+    record(start, N), timer:sleep(Millis), record('end', N), N =/= 102.
+>>>>>>>

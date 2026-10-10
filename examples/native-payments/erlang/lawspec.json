@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "sources": [
+    "laws"
+  ],
+  "machineBits": 64,
+  "targets": [
+    {
+      "language": "erlang",
+      "root": ".",
+      "nativeBindings": {
+        "types": [
+          {
+            "type": "example.payments::type::Currency",
+            "native": [
+              "payments_domain",
+              "currency_code"
+            ],
+            "constructors": [
+              {
+                "constructor": "USD",
+                "native": [
+                  "dollars"
+                ],
+                "style": "unit",
+                "fields": []
+              },
+              {
+                "constructor": "EUR",
+                "native": [
+                  "euros"
+                ],
+                "style": "unit",
+                "fields": []
+              },
+              {
+                "constructor": "GBP",
+                "native": [
+                  "pounds"
+                ],
+                "style": "unit",
+                "fields": []
+              }
+            ]
+          },
+          {
+            "type": "example.payments::type::Money",
+            "native": [
+              "payments_domain",
+              "price"
+            ],
+            "constructors": [
+              {
+                "constructor": "Money",
+                "native": [
+                  "price"
+                ],
+                "style": "record",
+                "fields": [
+                  {
+                    "field": "amount",
+                    "native": "major"
+                  },
+                  {
+                    "field": "currency",
+                    "native": "unit"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "example.payments::type::Payment",
+            "native": [
+              "payments_domain",
+              "payment_status"
+            ],
+            "constructors": [
+              {
+                "constructor": "Paid",
+                "native": [
+                  "settled"
+                ],
+                "style": "variant",
+                "fields": [
+                  {
+                    "field": "value",
+                    "native": "price"
+                  }
+                ]
+              },
+              {
+                "constructor": "Declined",
+                "native": [
+                  "rejected"
+                ],
+                "style": "variant",
+                "fields": [
+                  {
+                    "field": "reason",
+                    "native": "explanation"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "functions": [
+          {
+            "declaration": "example.payments::addFee",
+            "native": [
+              "payments_domain",
+              "apply_fee"
+            ]
+          },
+          {
+            "declaration": "example.payments::roundTrip",
+            "native": [
+              "payments_domain",
+              "restore"
+            ]
+          },
+          {
+            "declaration": "example.payments::archive",
+            "native": [
+              "payments_domain",
+              "store"
+            ]
+          }
+        ],
+        "generators": [
+          {
+            "type": "example.payments::type::Money",
+            "factory": [
+              "payment_generators",
+              "prices"
+            ]
+          }
+        ],
+        "erlangIncludes": [
+          {
+            "path": "payments_domain.hrl"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+expect: zero absorbs multiplication
+@@ src/example_algebra.erl
+<<<<<<<
+multiply(A, B) -> A * B.
+=======
+multiply(A, B) -> A + B.
+>>>>>>>

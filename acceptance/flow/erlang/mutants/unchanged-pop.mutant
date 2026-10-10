@@ -1,0 +1,6 @@
+@@ src/example_flow.erl
+<<<<<<<
+pop({stack_push, Top, Rest}) -> {pop_flow, Top, Rest}.
+=======
+pop({stack_push, Top, _Rest} = Stack) -> {pop_flow, Top, Stack}.
+>>>>>>>

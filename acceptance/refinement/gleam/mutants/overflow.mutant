@@ -1,0 +1,6 @@
+@@ src/example/refinements.gleam
+<<<<<<<
+pub fn add(a: Int, b: Int) -> Int { a + b }
+=======
+pub fn add(a: Int, b: Int) -> Int { case a + b > 127 { True -> a + b - 256 False -> a + b } }
+>>>>>>>

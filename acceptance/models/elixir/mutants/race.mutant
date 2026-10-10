@@ -1,4 +1,4 @@
-expect-any: model_inconsistent|ModelInconsistent
+expect-any: model_inconsistent | ModelInconsistent
 @@ src/beam_model_counter.erl
 <<<<<<<
 increment(Id) -> ets:update_counter(?MODULE, Id, {2, 1}).

@@ -97,6 +97,11 @@ renderExpressionWithContext width reference key initialSchema symbols outer exte
             tb <- key (C.expressionType b)
             pure (E.remote "lawspec_beam_scalar" "binary" [E.binary (C.binaryName op),left,right,ta,tb])
           C.Helper C.Concurrently [arg] -> render arg
+          C.Helper C.Recorded [keyValue,value] -> do
+            name <- render keyValue
+            argument <- render value
+            ref <- reference (C.expressionType value)
+            pure (E.remote "lawspec_beam_runtime" "recorded" [name,argument,ref,schema])
           C.Helper builtin args -> do
             values <- mapM render args
             types <- mapM (key . C.expressionType) args

@@ -1,0 +1,7 @@
+expect: discount
+@@ lib/example_harness.ex
+<<<<<<<
+div(total, 10)
+=======
+total + 1
+>>>>>>>

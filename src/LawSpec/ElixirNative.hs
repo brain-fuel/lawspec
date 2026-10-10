@@ -96,15 +96,35 @@ occurs identity ty = case ty of
   C.Constructor _ args -> any (\a -> case a of C.TypeArgument t -> occurs identity t; _ -> False) args
   C.Arrow a b -> occurs identity a || occurs identity b
 
-unitTests :: D.Layout -> C.Unit -> [String] -> Artifact
+unitTests :: D.Layout -> C.Unit -> [(String,Integer)] -> Artifact
 unitTests layout unit names = Artifact ("test/" ++ E.moduleName (C.unitId unit) ++ "_lawspec_test.exs")
   (D.render layout (X.moduleDoc (drop (length "Elixir.") (E.nativeModule "elixir" unit) ++ ".LawSpecTest") False
-    (D.text "use ExUnit.Case, async: false" : map law names))) "generated" "test"
+    (D.text "use ExUnit.Case, async: false" : setup ++ map law (zip [0::Int ..] names)))) "generated" "test"
   where
+    settings = C.unitHarnessSettings unit
+    random = maybe False C.harnessOrderRandom settings
+    parallel = maybe False C.harnessParallel settings
+    scheduled = random || parallel
+    setup = [D.text "setup_all context do" <> D.nest 2 (D.hardline <>
+      X.remote "LawSpec.Beam.ExUnitSchedule" "setup" [D.text "context", X.string (C.idText (C.unitId unit)),
+        D.text (if random then "true" else "false"), D.text (if parallel then "true" else "false")]) <>
+      D.hardline <> D.text "end" | scheduled]
     cases name = X.remote (":" ++ E.moduleName (C.unitId unit) ++ "_lawspec_cases") (name ++ "_test_") []
-    law name = D.text "for {{label, _}, index} <- Enum.with_index(" <> cases name <> D.text ") do" <>
+    law (ordinal,(name,allowance)) = D.text "for {{label, action}, index} <- Enum.with_index(" <> cases name <> D.text ") do" <>
       D.nest 2 (D.hardline <> D.text "@tag lawspec: " <> X.string name <>
+        D.hardline <> D.text "@tag lawspec_identity: " <> X.string (C.idText (C.unitId unit) ++ "::" ++ name) <>
         D.hardline <> D.text "@tag lawspec_label: List.to_string(label)" <>
-        D.hardline <> D.text "test " <> X.string (name ++ "__case_") <> D.text " <> Integer.to_string(index) do" <>
-        D.nest 2 (D.hardline <> D.text "{_, run} = Enum.at(" <> cases name <> D.text ", unquote(index))" <>
-          D.hardline <> D.text "run.()") <> D.hardline <> D.text "end") <> D.hardline <> D.text "end"
+        D.hardline <> D.text ("@tag lawspec_timeout: " ++ show allowance) <>
+        (if scheduled then D.hardline <> D.text ("@tag lawspec_order: {" ++ show ordinal ++ ", index}") <>
+          D.hardline <> D.text ("@tag lawspec_case: {:" ++ E.moduleName (C.unitId unit) ++ "_lawspec_cases, :" ++ name ++ "_test_, index}") <>
+          D.hardline <> D.text "@tag timeout: :infinity" else D.hardline <> D.text ("@tag timeout: " ++ show allowance)) <>
+        D.hardline <> D.text "case action do" <>
+        D.nest 2 (D.hardline <> D.text "{:skip, law, reason} -> @tag skip: reason, lawspec_skip: {law, reason}" <>
+          D.hardline <> D.text "_ -> :ok") <> D.hardline <> D.text "end" <>
+        D.hardline <> D.text "test " <> X.string (name ++ "__case_") <> D.text " <> Integer.to_string(index)" <>
+        (if scheduled then D.text ", context do" <>
+          D.nest 2 (D.hardline <> X.remote "LawSpec.Beam.ExUnitSchedule" "await"
+            [D.text "context.lawspec_schedule", D.text "context.test"])
+        else D.text " do" <>
+          D.nest 2 (D.hardline <> D.text "{_, run} = Enum.at(" <> cases name <> D.text ", unquote(index))" <>
+            D.hardline <> D.text "run.()")) <> D.hardline <> D.text "end") <> D.hardline <> D.text "end"

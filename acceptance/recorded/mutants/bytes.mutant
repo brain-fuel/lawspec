@@ -1,0 +1,7 @@
+expect: recorded/example.recorded/bytes differs
+@@ test/fixtures/recorded.lawspec
+<<<<<<<
+definition value25 (ignored :: Unit) :: Bytes is bytes([0, 34, 92, 255]) end
+=======
+definition value25 (ignored :: Unit) :: Bytes is bytes([0, 34, 92, 254]) end
+>>>>>>>

@@ -1,0 +1,71 @@
+unit example.status
+
+ordinary :: Bool -> Bool
+skipped :: Int32 -> Int32
+propertyBug :: Int32 -> Int32
+exampleBug :: Int32 -> Int32
+finiteBug :: Bool -> Bool
+scoredBug :: Int32 -> Int32
+
+handle Guard
+openGuard :: Unit -> Guard
+closeGuard :: Guard -> Unit
+guardLive :: Guard -> Bool
+resource Guard is
+  acquire is openGuard unitValue end
+  release guard is closeGuard guard end
+end
+
+law `ordinary checks` is
+  definition is `for all` (flag :: Bool) . ordinary flag = flag end
+end
+
+law `skipped completely` for guard :: Guard is
+  definition is `for all` (n :: Int32) . guardLive guard and skipped n = n end
+  example `also skipped` is n = 9 expect skipped n = 9 end
+end
+
+law `known property failure` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 1000) . propertyBug n = n end
+  example `passes first` is n = 1 expect n = 1 end
+end
+
+law `known example failure` is
+  definition is `for all` (n :: Int32) . exampleBug n = n end
+  example `fails first` is n = 9 expect n = 9 end
+end
+
+law `known finite failure` is
+  definition is `for all` (flag :: Bool) . finiteBug flag = flag end
+end
+
+law `known scored failure` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 1000) . scoredBug n = n end
+end
+
+harness example.status.testing for example.status is
+  strategy zero :: Int32 is one of 0 end
+  strategy seven :: Int32 is one of 7 end
+
+  for law `skipped completely`
+    skip "not implemented; issue 雪-1"
+    repeat 3
+    cover 100% "never generated" when n > 0
+
+  for law `known property failure`
+    use seven for n
+    known failing "issue 2"
+    cover 100% "seven" when n == 7
+
+  for law `known example failure`
+    known failing "issue 3"
+
+  for law `known finite failure`
+    known failing "issue 4"
+
+  for law `known scored failure`
+    use seven for n
+    known failing "issue 5"
+    cover 100% "ordinary roots" when n == 7
+    target maximize (0 - (n - 137) * (n - 137))
+end

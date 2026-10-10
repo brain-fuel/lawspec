@@ -1,0 +1,1 @@
+{ "specs": ["acceptance/beam-shared-resources/types.lawspec", "acceptance/beam-shared-resources/resources.lawspec", "acceptance/beam-shared-resources/peer.lawspec"] }

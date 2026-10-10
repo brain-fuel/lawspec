@@ -1,0 +1,7 @@
+expect: recorded/example.recorded/negative zero differs
+@@ test/fixtures/recorded.lawspec
+<<<<<<<
+definition value16 (ignored :: Unit) :: Float64 is float64Bits("8000000000000000") end
+=======
+definition value16 (ignored :: Unit) :: Float64 is float64Bits("0000000000000000") end
+>>>>>>>

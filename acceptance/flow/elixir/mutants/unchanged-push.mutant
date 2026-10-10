@@ -1,0 +1,6 @@
+@@ lib/example_flow.ex
+<<<<<<<
+%PushFlow{state: %StackPush{top: value, rest: stack}}
+=======
+%PushFlow{state: stack}
+>>>>>>>

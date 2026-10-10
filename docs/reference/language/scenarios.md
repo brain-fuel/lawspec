@@ -244,6 +244,9 @@ For `protocol Serve is receive Int32 . receive Int32 . send Int64 end`:
 | Java, Kotlin | `var ends = Serve.open()`; `var got = ends.first().receive()` gives `got.value()` and `got.next()` |
 | Rust | `let (first, second) = lawspec_sessions::serve::open()`; `let (x, next) = first.receive()` |
 | Haskell | `(first, second) <- openServe`; `(x, next) <- receive first` |
+| Erlang | `{First, Second} = serve:open()`; `{X, Next} = serve:first_receive_0(First)` |
+| Elixir | `{first, second} = Serve.open()`; `{x, next} = Serve.first_receive_0(first)` |
+| Gleam | `let #(first, second) = serve.open()`; `let #(x, next) = serve.first_receive_0(first)` |
 
 - The first end follows the protocol, and the second end follows the reverse.
 - A step whose type is another protocol sends that protocol's first end,
@@ -266,3 +269,42 @@ An end sent to another node keeps working there (see
 The [sessions example](../../../examples/specs/sessions.lawspec) adds two
 numbers through a server process, and through a worker that is handed the
 server's end.
+
+### BEAM native session APIs
+
+For `Serve` in `example.sessions`, the modules abbreviated above are:
+
+| Target | Module |
+| --- | --- |
+| Erlang | `lawspec_session_example_sessions_serve` |
+| Elixir | `LawSpec.Sessions.Example.Sessions.Serve` |
+| Gleam | `lawspec/sessions/example/sessions/serve` |
+
+Steps start at zero. This protocol exposes `first_receive_0`,
+`first_receive_1` and `first_send_2`; its second end exposes
+`second_send_0`, `second_send_1` and `second_receive_2`. Every operation
+returns the next opaque step type. Erlang and Elixir specifications name
+these types `first_0()`, `first_1()` and so on; Gleam uses `First0`,
+`First1`, and so on. A receive returns the native value and next end as a
+tuple. Reusing a copied end fails at runtime.
+
+`with_pair(body)` supplies both ends and closes the original ends when
+the body returns or raises. An end handed to another owner retains that
+owner's lifetime. Each unfinished step also has an abandonment function,
+such as `first_abandon_0(first)`.
+
+`spawn_first(first, body)` and `spawn_second(second, body)` move an end
+into an owned task before calling `body(end)`. Join the task with
+`lawspec_beam_session_task:join(task)` in Erlang,
+`LawSpec.Sessions.join(task)` in Elixir, or `lawspec/sessions.join(task)`
+in Gleam. Joining returns its result or raises its original failure, after
+its workers have finished cleanup. `cancel(task)` cancels and joins those
+workers. A failed task abandons the ends it owns, including ends it received
+while running; ends it has delegated remain with their new owners.
+
+Wire-encodable protocols also expose `listen(node, name)`,
+`address(first)` and `dial(node, address)`. Nested delegated protocols must
+also have wire-encodable payloads. Local-only values such as `Symbol`
+retain their identity on local channels. Network ends move using the shared
+handoff protocol, and local ends use a relay owned by the sending node.
+Closing a node joins its session services and relay workers.

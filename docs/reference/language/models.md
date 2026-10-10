@@ -106,6 +106,10 @@ ExUnit and Gleeunit. Generated test names include the model's name and
 whether the run is sequential or parallel. A failure reports the seed,
 case and reduced command sequence.
 
+`lawspec test` includes these checks alongside the unit's laws. Sequential,
+parallel and scenario checks have separate identities, cached results and
+failed seeds. Normal native test discovery runs each check once.
+
 Adapters use the production handlers for their declared abilities. Each
 replay, including a shrink attempt, gets a fresh handler scope and workflow
 test context. Async adapters return ordinary native values to the checker.

@@ -1,0 +1,6 @@
+@@ src/example/canonical_url.gleam
+<<<<<<<
+canonicalize(string.drop_end(value, 1))
+=======
+string.drop_end(value, 1)
+>>>>>>>

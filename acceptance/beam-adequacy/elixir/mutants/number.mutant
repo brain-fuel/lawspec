@@ -1,0 +1,10 @@
+expect: generated observations
+@@ lib/example_adequacy.ex
+<<<<<<<
+  def number(n), do: :beam_adequacy_support.record("number", n)
+=======
+  def number(n) do
+    :beam_adequacy_support.record("number", n)
+    if n == 9, do: 0, else: n
+  end
+>>>>>>>

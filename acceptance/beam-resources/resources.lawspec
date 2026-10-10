@@ -1,0 +1,56 @@
+unit example.beamResources
+
+handle Store
+openStore :: Unit -> Store
+closeStore :: Store -> Unit
+size :: Store -> Int32
+write :: Store -> Int32 -> Bool
+isOpen :: Store -> Bool
+
+resource Store is
+  acquire is openStore unitValue end
+  release store is closeStore store end
+end
+
+law `fresh stores` for first :: Store, second :: Store is
+  definition is
+    `for all` (n :: Int32) .
+      size first = 0 and size second = 0 and write second n
+  end
+  example `expectations run before release` is
+    n = 12
+    expect isOpen first
+    expect isOpen second
+    expect size second = 1
+  end
+end
+
+directoryEmpty :: Text -> Bool
+writeNote :: Text -> Int32 -> Bool
+noteMatches :: Text -> Int32 -> Bool
+fileEmpty :: Text -> Bool
+
+law `a directory belongs to its case` for dir :: TemporaryDirectory is
+  definition is
+    `for all` (n :: Int32) .
+      directoryEmpty (directoryPath dir) and writeNote (directoryPath dir) n and noteMatches (directoryPath dir) n
+  end
+end
+
+law `a temporary file starts empty` for file :: TemporaryFile is
+  definition is fileEmpty (filePath file) end
+end
+
+setGreeting :: Int32 -> Bool
+greetingMatches :: Int32 -> Bool
+greetingAbsent :: Unit -> Bool
+
+law `the environment is fresh` for saved :: SavedEnvironment is
+  definition is
+    `for all` (n :: Int32) . greetingAbsent unitValue and setGreeting n and greetingMatches n
+  end
+end
+
+law `the environment is restored` for saved :: SavedEnvironment is
+  definition is greetingAbsent unitValue end
+end

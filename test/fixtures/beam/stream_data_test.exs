@@ -13,6 +13,18 @@ defmodule LawSpecStreamDataTest do
     assert :ok == :lawspec_beam_native_generator_tests.run(G)
   end
 
+  test "strategy budgets, dependent native shrinking and input refinements" do
+    assert :ok == :lawspec_beam_strategy_tests.run(G)
+  end
+
+  test "coverage counts native roots, isolates laws and reports unmet requirements" do
+    assert :ok == :lawspec_beam_harness_tests.run(G)
+  end
+
+  test "saved failures retain the native shrink and replay the exact wire inputs" do
+    assert :ok == :lawspec_beam_failure_inputs_tests.run(G)
+  end
+
   defp schema, do: :lawspec_beam_schema.new([], ["Int8", "Text", "Symbol"], 64)
   defp int(lo, hi), do: G.generator({"Int8", []}, schema(), make_ref(), [{">=", lo}, {"<=", hi}], [])
   defp check(generator, predicate, options \\ []) do

@@ -593,7 +593,8 @@ export function helper(n, args, types, bits = 64) {
   if (n === 'endsWith') return args[0].endsWith(args[1]);
   if (n === 'textContains') return args[0].includes(args[1]);
   if (n === 'regexMatches') return regexMatches(args[0], args[1]);
-  if (n === 'recorded') return recorded(args[0], args[1]);
+  if (n === 'recorded') return recorded(args[0], args[1],
+    types.length > 1 ? value => recordedText(value, types[1]) : render);
   if (n === 'acquireResource') return acquireResource(args[0]);
   if (n === 'releaseResource') return releaseResource(args[0], args[1]);
   if (n === 'freePort') return freePort();
@@ -2282,10 +2283,10 @@ export function recordedRoot() {
   }
 }
 
-export function recorded(key, value) {
+export function recorded(key, value, renderValue = render) {
   const fs = nodeModule('node:fs');
   const path = nodeModule('node:path');
-  const text = render(value);
+  const text = renderValue(value);
   const file = path.join(recordedRoot(), ...key.split('/'));
   if (globalThis.process.env.LAWSPEC_UPDATE_RECORDED === '1') {
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -2299,6 +2300,79 @@ export function recorded(key, value) {
   if (stored !== text)
     throw new Error(`recorded/${key} differs: expected ${stored}, actual ${text} (lawspec test --update-recorded records the new value)`);
   return true;
+}
+
+/** Typed rendering for recorded values. A schema supplies instantiated field
+ * types for data; no adapter, predicate or native codec is called again.
+ * ref:REQ-law-primitives ref:DEC-portable-exact-arithmetic */
+export function recordedText(value, type, fieldTypes = null) {
+  const identities = new Map();
+  const quote = text => '"' + text.replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '"';
+  const identity = (kind, v) => {
+    if (!identities.has(kind)) identities.set(kind, new Map());
+    const known = identities.get(kind);
+    if (!known.has(v)) known.set(v, known.size + 1);
+    return known.get(v);
+  };
+  const reference = (t) => {
+    if (typeof t !== 'string') return t;
+    const match = /^(List|Maybe|Nullable|Optional)\s+(.+)$/.exec(t);
+    if (match) return {name: match[1], args: [reference(unwrap(match[2]))]};
+    if (t.startsWith('Either ')) return {name: 'Either', args: eitherArguments(t).map(reference)};
+    return {name: t, args: []};
+  };
+  const unwrap = (t) => t.startsWith('(') && t.endsWith(')') ? t.slice(1, -1) : t;
+  const float = (v, width) => {
+    const name = `float${width}`;
+    if (Number.isNaN(v)) return `${name}NaN`;
+    const buffer = new ArrayBuffer(width / 8), view = new DataView(buffer);
+    if (width === 32) view.setFloat32(0, v); else view.setFloat64(0, v);
+    const hex = Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, '0')).join('');
+    return `${name}Bits("${hex}")`;
+  };
+  const units = (name, values) => `${name}([${[...values].join(', ')}])`;
+  const visit = (v, inputType) => {
+    const t = reference(inputType), name = t.name;
+    if (name === 'List') return '[' + v.map(x => visit(x, t.args[0])).join(', ') + ']';
+    if (name === 'Nullable' || name === 'Optional')
+      return v.present ? `${name.toLowerCase()}(${visit(v.value, t.args[0])})` : name === 'Nullable' ? 'null' : 'undefined';
+    if (v instanceof DataValue) {
+      let types;
+      if (name === 'Maybe') types = v.fields.length ? [t.args[0]] : [];
+      else if (name === 'Either') types = [t.args[v.tag === 'Either::Left' ? 0 : 1]];
+      else {
+        if (fieldTypes === null) throw new TypeError('recording data requires its schema');
+        types = fieldTypes(t, v);
+      }
+      const parts = v.fields.map((item, i) => visit(item, types[i]));
+      const tag = v.tag.split('::').pop();
+      return parts.length ? `${tag}(${parts.join(', ')})` : tag;
+    }
+    if (name === 'Symbol') return `symbol(${identity('symbol', v)}, ${quote(v.description ?? '')})`;
+    if (name === 'Unit') return '()';
+    if (name === 'Null') return 'null';
+    if (name === 'Undefined') return 'undefined';
+    if (name === 'Text' || name === 'Char') return quote(v);
+    if (name === 'Bytes') return units('bytes', v);
+    if (name === 'CodePointText' || name === 'Utf16Text')
+      return units(name === 'CodePointText' ? 'codePoints' : 'utf16', v.units);
+    if (name === 'Decimal') {
+      let c = v.coefficient, e = v.exponent;
+      if (c === 0n) return '0e0';
+      while (c % 10n === 0n) { c /= 10n; e += 1n; }
+      return `${c}e${e}`;
+    }
+    if (name === 'Rational') return `rational(${v.n}, ${v.d})`;
+    if (name === 'Float32' || name === 'Float64') return float(v, name === 'Float32' ? 32 : 64);
+    if (name === 'Complex64' || name === 'Complex128') {
+      const width = name === 'Complex64' ? 32 : 64;
+      return `${name}(${float(v.real, width)}, ${float(v.imaginary, width)})`;
+    }
+    if (name === 'Bool' || name === 'CodePoint' || name === 'CodeUnit16' || integerType(name)) return String(v);
+    if (isHandle(v)) return `${name.split('::').pop()}#${identity('handle:' + name, v)}`;
+    throw new TypeError(`unsupported recorded type: ${name}`);
+  };
+  return visit(value, type);
 }
 
 // Built-in resources (see LawSpec.Resources): a law acquires them before

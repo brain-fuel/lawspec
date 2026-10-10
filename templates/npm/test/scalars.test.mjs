@@ -1,4 +1,5 @@
 import {propertyFiles} from './artifacts.mjs';
+import {targets} from '../templates.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -31,12 +32,12 @@ test('machine profile and request schema have explicit diagnostics',async()=>{
  assert.match((await compiler.check({sources:[],schemaVersion:2})).diagnostics[0].message,/schemaVersion 3/);
 });
 test('all targets expose generated runtime source placement independently of ownership',async()=>{
- for(const target of ['java','kotlin','python','javascript','typescript','go','haskell','rust']){
+ for(const target of targets){
   const result=await compiler.planGeneration({sources:source(catalog),target});
   assert.deepEqual(result.diagnostics,[]);
   const runtimes=result.files.filter(f=>f.placement==='source'&&f.ownership==='generated');
   assert.ok(runtimes.length > 0, target);
-  const runtimeNames = {java:'LawSpecRuntime.java',kotlin:'LawSpecRuntime.java',python:'lawspec_runtime.py',javascript:'lawspec_runtime.mjs',typescript:'lawspec_runtime.ts',go:'lawspec_runtime.go',haskell:'LawSpecRuntime.hs',rust:'lawspec_runtime.rs'};
+  const runtimeNames = {java:'LawSpecRuntime.java',kotlin:'LawSpecRuntime.java',python:'lawspec_runtime.py',javascript:'lawspec_runtime.mjs',typescript:'lawspec_runtime.ts',go:'lawspec_runtime.go',haskell:'LawSpecRuntime.hs',rust:'lawspec_runtime.rs',erlang:'lawspec_beam_runtime.erl',elixir:'lawspec_beam_runtime.erl',gleam:'lawspec_beam_runtime.erl'};
   assert.ok(runtimes.some(f => f.path.endsWith(runtimeNames[target])), target);
   assert.equal(propertyFiles(result.files).length,1);
  }
@@ -48,7 +49,7 @@ test('arithmetic capabilities resolve at specialization and retain safe lexical 
   assert.equal((await compiler.check({sources:source(content)})).diagnostics.length===0,valid);
  }
  const content='unit lexical\nx :: Int8 -> BigInt\ng :: Int8 -> BigInt\nlaw `law` is definition is `equivalent` x g end example `one` is x = 1 expect g x = 2 end end';
- for(const target of ['python','javascript','java','haskell'])assert.deepEqual((await compiler.planGeneration({sources:source(content),target})).diagnostics,[]);
+ for(const target of targets)assert.deepEqual((await compiler.planGeneration({sources:source(content),target})).diagnostics,[],target);
 });
 test('raw literal validation rejects host integer wraparound',async()=>{
  const content='unit bad\nlaw `law` is definition is `for all` (x :: CodePoint) . x = x end example `bad` is x = codePoint(18446744073709551616) expect x = codePoint(0) end end';

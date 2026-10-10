@@ -2,7 +2,7 @@
 %% invalid shrink candidates; the lazy cap limits qcheck's own shrink traversal.
 %% ref:DEC-native-property-frameworks ref:DEC-shrink-within-domain
 -module(lawspec_beam_qcheck).
--export([generator/5, generator/6, map/2, bind/2, constrain/2, refine_input/2, complete/1, check/3,
+-export([generator/5, generator/6, map/2, bind/2, constrain/2, such_that/4, refine_input/2, complete/1, check/3,
     exactly/1, sized/1, frequency/1, oneof/1, integer/2, list/1, vector/2,
     fixed_list/1, binary/0, forall/2]).
 
@@ -43,15 +43,25 @@ refine_input(Type, Predicate) -> bind(Type, fun(Value) ->
     case Predicate(Value) of true -> Value; false -> '$lawspec_empty_domain' end
 end).
 
-filter(Type, Predicate) -> {generator, fun(Seed) ->
-    filtered(Type, Predicate, setting(attempts, 100), Seed)
+%% Keep every native shrink that satisfies the strategy, with an independent
+%% budget for each root draw, including nested filters.
+%% ref:REQ-harness-units ref:DEC-native-property-frameworks
+such_that(Type, Predicate, Limit, Strategy) -> {generator, fun(Seed) ->
+    filtered(Type, fun
+        ('$lawspec_empty_domain') -> true;
+        (Value) -> Predicate(Value)
+    end, Limit + 1, Seed, {strategy_discards, Strategy, Limit})
 end}.
-filtered(_, _, 0, _) -> erlang:error({lawspec, exhausted_generator_attempts});
-filtered(Type, Predicate, Attempts, Seed) ->
+
+filter(Type, Predicate) -> {generator, fun(Seed) ->
+    filtered(Type, Predicate, setting(attempts, 100), Seed, exhausted_generator_attempts)
+end}.
+filtered(_, _, 0, _, Failure) -> lawspec_beam_harness:abort(Failure);
+filtered(Type, Predicate, Attempts, Seed, Failure) ->
     {{tree, Value, _} = Tree, Next} = qcheck:generate_tree(Type, Seed),
     case Predicate(Value) of
         true -> {prune(Tree, Predicate), Next};
-        false -> filtered(Type, Predicate, Attempts - 1, Next)
+        false -> filtered(Type, Predicate, Attempts - 1, Next, Failure)
     end.
 prune({tree, Value, Children}, Predicate) ->
     Valid = 'gleam@yielder':filter(Children, fun({tree, V, _}) -> Predicate(V) end),
@@ -131,8 +141,9 @@ check(Label, {Type, Predicate}, Options) ->
             ok
         end)
     catch Kind:Reason:Stack ->
-        erlang:raise(error, {lawspec, {property_failed, Label, {seed, Seed},
-            {Kind, Reason}, setting(failure, none)}}, Stack)
+        Failure = {lawspec, {property_failed, Label, {seed, Seed}, {Kind, Reason}, setting(failure, none)}},
+        case setting(failure, none) of none -> lawspec_beam_harness:mark_harness_failure(Failure); _ -> ok end,
+        erlang:raise(error, Failure, Stack)
     after
         lists:foreach(fun({K, undefined}) -> erase({?MODULE, K});
             ({K, V}) -> put({?MODULE, K}, V) end, Previous)

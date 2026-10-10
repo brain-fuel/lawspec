@@ -63,9 +63,17 @@ planOutputs = do
   partials <- forM (filter ("templates/partials/" `isPrefixOf`) templates) $ \file -> do
     source <- readFile' file
     pure ("partial-" ++ takeWhile (/= '.') (drop (length "templates/partials/") file), Block (lines source))
+  -- Read the runtime files just as embedRuntimes does below. Using the
+  -- executable's compiled RuntimeSources here would retain the previous
+  -- runtime revision until a second build and generation pass.
+  beamDoctorRuntime <- forM
+    [("formatter", "lawspec_beam_exunit_formatter.ex"), ("native", "lawspec_beam_crypto_native.erl"),
+     ("c", "lawspec_crypto_native.c"), ("build", "lawspec_crypto_build.escript")] $ \(key, file) -> do
+      source <- readFile' ("runtime" </> file)
+      pure (key, String source)
   -- The site is built by lawspec-dev docs; partials are only included.
   let site = filter (\t -> any (`isPrefixOf` t) ["templates/site/", "templates/partials/"]) templates
-      fills = factFills version ++ partials
+      fills = factFills version ++ [("beam-doctor-runtime", Inline (json (Object beamDoctorRuntime)))] ++ partials
   rendered <- forM (templates \\ site) $ \template -> do
     source <- readFile' template
     executable <- executableFile template

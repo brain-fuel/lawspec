@@ -1,0 +1,7 @@
+expect: addition is commutative
+@@ src/example_algebra.erl
+<<<<<<<
+add(A, B) -> A + B.
+=======
+add(A, B) -> case A + B > 2147483647 of true -> A + B - 4294967296; false -> A + B end.
+>>>>>>>

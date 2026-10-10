@@ -1,4 +1,4 @@
-expect-any: model_failed|ModelFailed
+expect-any: model_failed | ModelFailed
 @@ lib/example_actor_abilities.ex
 <<<<<<<
   def factor_handler(), do: %Factor{adjust: fn n -> 2 * n end}

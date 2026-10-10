@@ -1,0 +1,6 @@
+@@ src/example_ordering.erl
+<<<<<<<
+Quantity * 25
+=======
+Quantity * 250
+>>>>>>>

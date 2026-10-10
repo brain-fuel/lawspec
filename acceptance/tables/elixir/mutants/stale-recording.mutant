@@ -1,0 +1,8 @@
+expect: recorded/example.tables/first label differs
+@@ lib/example_tables.ex
+<<<<<<<
+  def label(parcel)
+=======
+  def label(1), do: "parcel one"
+  def label(parcel)
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: the class adapter doubles
+@@ src/example_keywords.erl
+<<<<<<<
+Value * 2
+=======
+Value * 3
+>>>>>>>

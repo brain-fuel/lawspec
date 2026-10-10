@@ -1,0 +1,7 @@
+expect: addition is commutative
+@@ lib/example_algebra.ex
+<<<<<<<
+def add(a, b), do: a + b
+=======
+def add(a, b), do: if(a + b > 2147483647, do: a + b - 4294967296, else: a + b)
+>>>>>>>

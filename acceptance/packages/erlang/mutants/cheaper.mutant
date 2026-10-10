@@ -1,0 +1,6 @@
+@@ src/shop_orders.erl
+<<<<<<<
+cheaper(A, B) -> min(A, B).
+=======
+cheaper(A, _B) -> A.
+>>>>>>>

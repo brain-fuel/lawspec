@@ -1,0 +1,127 @@
+unit example.recorded
+
+-- Typed recording conformance. ref:REQ-law-primitives
+
+definition value0 (ignored :: Unit) :: Integer is 123456789012345678901234567890 end
+law `integer` is definition is value0 unitValue = recorded "integer" end end
+
+definition value1 (ignored :: Unit) :: Bool is true end
+law `true` is definition is value1 unitValue = recorded "true" end end
+
+definition value2 (ignored :: Unit) :: Bool is false end
+law `false` is definition is value2 unitValue = recorded "false" end end
+
+definition value3 (ignored :: Unit) :: Text is "雪\"\\\n" end
+law `text` is definition is value3 unitValue = recorded "text" end end
+
+definition value4 (ignored :: Unit) :: Text is "" end
+law `empty text` is definition is value4 unitValue = recorded "empty text" end end
+
+definition value5 (ignored :: Unit) :: Unit is unitValue end
+law `unit` is definition is value5 unitValue = recorded "unit" end end
+
+definition value6 (ignored :: Unit) :: Null is null end
+law `null` is definition is value6 unitValue = recorded "null" end end
+
+definition value7 (ignored :: Unit) :: Undefined is undefined end
+law `undefined` is definition is value7 unitValue = recorded "undefined" end end
+
+definition value8 (ignored :: Unit) :: Rational is rational(4, -6) end
+law `rational` is definition is value8 unitValue = recorded "rational" end end
+
+definition value9 (ignored :: Unit) :: Rational is rational(4, 2) end
+law `whole rational` is definition is value9 unitValue = recorded "whole rational" end end
+
+definition value10 (ignored :: Unit) :: Decimal is 125e-2 end
+law `decimal` is definition is value10 unitValue = recorded "decimal" end end
+
+definition value11 (ignored :: Unit) :: Decimal is 12500e-4 end
+law `decimal scale` is definition is value11 unitValue = recorded "decimal scale" end end
+
+definition value12 (ignored :: Unit) :: Decimal is -12500e-4 end
+law `negative decimal` is definition is value12 unitValue = recorded "negative decimal" end end
+
+definition value13 (ignored :: Unit) :: Decimal is 0e999999 end
+law `decimal zero` is definition is value13 unitValue = recorded "decimal zero" end end
+
+definition value14 (ignored :: Unit) :: Float32 is float32Bits("3fa00000") end
+law `float32` is definition is value14 unitValue = recorded "float32" end end
+
+definition value15 (ignored :: Unit) :: Float64 is float64Bits("3ff4000000000000") end
+law `float64` is definition is value15 unitValue = recorded "float64" end end
+
+definition value16 (ignored :: Unit) :: Float64 is float64Bits("8000000000000000") end
+law `negative zero` is definition is value16 unitValue = recorded "negative zero" end end
+
+definition value17 (ignored :: Unit) :: Float32 is float32Bits("00000000") end
+law `positive zero` is definition is value17 unitValue = recorded "positive zero" end end
+
+definition value18 (ignored :: Unit) :: Float32 is float32Bits("00000001") end
+law `subnormal` is definition is value18 unitValue = recorded "subnormal" end end
+
+definition value19 (ignored :: Unit) :: Float64 is float64Bits("7ff0000000000000") end
+law `infinity` is definition is value19 unitValue = recorded "infinity" end end
+
+definition value20 (ignored :: Unit) :: Float32 is float32Bits("ff800000") end
+law `negative infinity` is definition is value20 unitValue = recorded "negative infinity" end end
+
+definition value21 (ignored :: Unit) :: Float32 is float32Bits("ffc00001") end
+law `negative NaN` is definition is value21 unitValue = recorded "negative NaN" end end
+
+definition value22 (ignored :: Unit) :: Float64 is float64Bits("7ff0000000000001") end
+law `signaling NaN` is definition is value22 unitValue = recorded "signaling NaN" end end
+
+definition value23 (ignored :: Unit) :: Complex64 is complex64(float32Bits("3f800000"), float32Bits("40000000")) end
+law `complex64` is definition is value23 unitValue = recorded "complex64" end end
+
+definition value24 (ignored :: Unit) :: Complex128 is complex128(float64Bits("3ff0000000000000"), float64Bits("7ff8000000000001")) end
+law `complex128` is definition is value24 unitValue = recorded "complex128" end end
+
+definition value25 (ignored :: Unit) :: Bytes is bytes([0, 34, 92, 255]) end
+law `bytes` is definition is value25 unitValue = recorded "bytes" end end
+
+definition value26 (ignored :: Unit) :: Bytes is bytes([]) end
+law `empty bytes` is definition is value26 unitValue = recorded "empty bytes" end end
+
+definition value27 (ignored :: Unit) :: CodePointText is codePoints([65, 55296, 1114111]) end
+law `raw code points` is definition is value27 unitValue = recorded "raw code points" end end
+
+definition value28 (ignored :: Unit) :: Utf16Text is utf16([65, 55296]) end
+law `raw UTF16` is definition is value28 unitValue = recorded "raw UTF16" end end
+
+definition value29 (ignored :: Unit) :: Char is char(38634) end
+law `char` is definition is value29 unitValue = recorded "char" end end
+
+definition value30 (ignored :: Unit) :: CodePoint is codePoint(55296) end
+law `code point` is definition is value30 unitValue = recorded "code point" end end
+
+definition value31 (ignored :: Unit) :: CodeUnit16 is codeUnit16(65535) end
+law `code unit` is definition is value31 unitValue = recorded "code unit" end end
+
+definition value32 (ignored :: Unit) :: Symbol is symbol("fixture", "snow") end
+law `symbol` is definition is value32 unitValue = recorded "symbol" end end
+
+definition value33 (ignored :: Unit) :: Optional Integer is undefined end
+law `optional none` is definition is value33 unitValue = recorded "optional none" end end
+
+definition value34 (ignored :: Unit) :: Nullable Integer is nullable(42) end
+law `nullable some` is definition is value34 unitValue = recorded "nullable some" end end
+
+definition value35 (ignored :: Unit) :: Optional Nullable Bytes is optional(nullable(bytes([255]))) end
+law `nested presence` is definition is value35 unitValue = recorded "nested presence" end end
+
+type Pair (a :: Type) (b :: Type) is | Pair first :: a second :: b end
+
+definition pair (ignored :: Unit) :: Pair Bytes Char is Pair bytes([0, 255]) char(38634) end
+law `nested data` is definition is pair unitValue = recorded "nested data" end end
+
+definition aliases (ignored :: Unit) :: List Symbol is [symbol("a", "same"), symbol("b", "same"), symbol("a", "same")] end
+law `symbol aliases` is definition is aliases unitValue = recorded "symbol aliases" end end
+
+type Shown is | Shown value :: a end
+definition shown (ignored :: Unit) :: Shown is Shown bytes([255]) end
+law `existential witness` is definition is shown unitValue = recorded "existential witness" end end
+
+type Fixed (a :: Type) is | Fixed value :: a where a = Bytes end
+definition fixed (ignored :: Unit) :: Fixed Bytes is Fixed bytes([255]) end
+law `refined data` is definition is fixed unitValue = recorded "refined data" end end

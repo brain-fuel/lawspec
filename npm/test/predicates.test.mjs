@@ -12,7 +12,7 @@ const check = (content) =>
 
 test("port predicates, reusable guards and Bool literals survive the public API", async () => {
   const content = await readFile(
-    new URL("../../examples/specs/parse_port.lawspec", import.meta.url),
+    new URL("../examples/specs/parse_port.lawspec", import.meta.url),
     "utf8",
   );
   const result = await check(content);

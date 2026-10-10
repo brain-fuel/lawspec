@@ -1,0 +1,8 @@
+expect: empty_store
+@@ src/beam_example_resources.erl
+<<<<<<<
+    erlang:put(example_store, Table), self().
+=======
+    true = ets:insert(Table, {99, 99}),
+    erlang:put(example_store, Table), self().
+>>>>>>>

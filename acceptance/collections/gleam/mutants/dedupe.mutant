@@ -1,0 +1,6 @@
+@@ src/example/collections.gleam
+<<<<<<<
+list.unique(values)
+=======
+list.unique(list.drop(values, 1))
+>>>>>>>

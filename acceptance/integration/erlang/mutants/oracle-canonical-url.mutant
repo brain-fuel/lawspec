@@ -1,0 +1,8 @@
+@@ src/example_canonical_url.erl
+<<<<<<<
+*
+=======
+-module(example_canonical_url).
+-export([canonicalize/1]).
+canonicalize(_Value) -> <<>>.
+>>>>>>>

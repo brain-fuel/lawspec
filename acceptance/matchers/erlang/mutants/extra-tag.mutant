@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ src/example_matchers.erl
+<<<<<<<
+lists:uniq(Tags)
+=======
+lists:uniq(Tags) ++ [<<"extra">>]
+>>>>>>>

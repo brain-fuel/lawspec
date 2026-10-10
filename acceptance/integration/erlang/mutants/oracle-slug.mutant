@@ -1,0 +1,9 @@
+@@ src/example_slug.erl
+<<<<<<<
+*
+=======
+-module(example_slug).
+-export([normalize/1, reference_normalize/1]).
+normalize(V) -> V.
+reference_normalize(V) -> V.
+>>>>>>>

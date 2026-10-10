@@ -15,7 +15,8 @@ import qualified LawSpec.BeamAbilities as Abilities
 import LawSpec.Actors.Types
 import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 import LawSpec.Common (Artifact(..))
-import Control.Monad (forM, unless)
+import LawSpec.MachineSpec (describe)
+import Control.Monad (foldM, forM, unless)
 import Data.List (nub)
 
 data NativeType = NativeType D.Doc D.Doc D.Doc [D.Doc]
@@ -126,7 +127,53 @@ emit target layout bits declarations units = do
       pure [Function name (("handle",own):arguments) replyType (prefix ++ [call "call"]),
         Function (E.nativeName target ("tell_" ++ E.snake (handlerName h))) (("handle",own):arguments) resultType
           (prefix ++ [call "tell",unitValue])])
-    let functions = apiFunctions moduleName own "with_actor" allParams spec ++ methods ++
+    (remoteLocal, remoteArtifacts) <- case actorWires bits declarations a of
+      Left _ -> pure ([], [])
+      Right (forms, handlers) -> do
+        text <- native (C.Constructor "Text" [])
+        milliseconds <- native (C.Constructor "Integer" [])
+        let remoteOwn = ownType (publicType ++ "Remote")
+            descriptor d = E.binary (unwords (map snd (reverse forms) ++ [d]))
+            wire ds r = E.record [(E.atom "arguments",E.array (map descriptor ds)),(E.atom "result",descriptor r)]
+            signatures' = E.record [(E.binary (handlerName h),wire ds r) | (h,ds,r) <- handlers]
+            fresh = [D.text "_LsSymbols = make_ref()",
+              D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [D.text "_LsSymbols"]]
+            remoteModule = moduleName ++ "_remote"
+            connect = Function "connect" [("node",nodeType),("address",text)] remoteOwn
+              [E.call "connect_with_timeout" [variable "node",variable "address",D.text "5000"]]
+            timeout = Function "connect_with_timeout" [("node",nodeType),("address",text),("timeout_milliseconds",milliseconds)] remoteOwn
+              [E.remote "lawspec_beam_remote" "connect"
+                [variable "node",variable "address",E.binary "call",signatures',variable "timeout_milliseconds"]]
+        parts <- forM handlers $ \(h,ds,r) -> do
+          let name = E.nativeName target (E.snake (handlerName h))
+              types = map snd (handlerArguments h)
+              argumentNames = ["argument" ++ show i | (i,_) <- zip [0::Int ..] types]
+              args = map variable argumentNames
+          parameters' <- sequence [ (,) n <$> native t | (n,t) <- zip argumentNames types]
+          replyType <- maybe (pure resultType) native (handlerReply h)
+          nativeArgs <- sequence [bridge "to_native" t v | (t,v) <- zip types args]
+          logicalArgs <- sequence [bridge "from_native" t v | (t,v) <- zip types args]
+          let invoke = E.remote moduleName name (variable "handle":nativeArgs)
+              remoteCall = E.remote "lawspec_beam_remote" "call"
+                [variable "remote",E.binary (handlerName h),E.array logicalArgs]
+          serverResult <- maybe (pure (E.sequenceDoc [invoke,E.atom "ls_unit"]))
+            (\t -> bridge "from_native" t invoke) (handlerReply h)
+          clientResult <- maybe (pure (E.sequenceDoc [remoteCall,unitValue]))
+            (\t -> bridge "to_native" t remoteCall) (handlerReply h)
+          pure ((E.binary (handlerName h),E.remote "maps" "put"
+              [E.atom "invoke",E.lambda [E.array args] (E.sequenceDoc (fresh ++ [serverResult])),wire ds r]),
+            Function name (("remote",remoteOwn):parameters') replyType (fresh ++ [clientResult]))
+        let remoteFunctions = [connect,timeout] ++ map snd parts
+            serve = Function "serve" [("handle",own),("node",nodeType),("name",text)] text
+              [metadataPattern moduleName (D.text "_") <> D.text " = " <>
+                 E.remote "lawspec_beam_actors" "metadata" [variable "handle"],
+               E.remote "lawspec_beam_remote" "serve" [variable "node",variable "name",E.binary "call",E.record (map fst parts)]]
+        validateMethods ("remote actor " ++ actorName a) [n | Function n _ _ _ <- remoteFunctions]
+        unless (all (\(Function _ ps _ _) -> length ps <= 253) remoteFunctions)
+          (Left "BEAM remote actor function arity exceeds the Erlang limit")
+        pure ([serve],render target layout remoteModule (actorPath a ++ "_remote") (actorElixir a ++ ".Remote")
+          (publicType ++ "Remote") rawRemoteType Nothing remoteFunctions)
+    let functions = apiFunctions moduleName own "with_actor" allParams spec ++ methods ++ remoteLocal ++
           [Function "crash" [("handle",own)] resultType
             [E.remote "lawspec_beam_actors" "crash" [variable "handle"],unitValue],
            Function "handle" [("actor",own)] rawActorType [variable "actor"],
@@ -134,7 +181,7 @@ emit target layout bits declarations units = do
             [E.remote "lawspec_beam_actors" "link" [variable "handle",variable "other"],unitValue]]
     validateMethods ("actor " ++ actorName a) ([n | Function n _ _ _ <- functions] ++ ["child_spec"])
     unless (all (\(Function _ ps _ _) -> length ps <= 253) functions) (Left "BEAM actor function arity exceeds the Erlang limit")
-    pure (render target layout moduleName (actorPath a) (actorElixir a) publicType rawActorType (Just handleTy) functions))
+    pure (render target layout moduleName (actorPath a) (actorElixir a) publicType rawActorType (Just handleTy) functions ++ remoteArtifacts))
   supervisorArtifacts <- concat <$> forM supervisors (\s -> do
     actorsHere <- beneath s
     parameters <- handlerParams actorsHere
@@ -174,6 +221,16 @@ emit target layout bits declarations units = do
 
 actorDeclarations :: Actor -> [C.Declaration]
 actorDeclarations a = actorStart a : map handlerDeclaration (actorHandlers a) ++ maybe [] pure (actorRestart a)
+
+-- Match the other targets: all of an actor's messages must have wire types.
+actorWires :: Int -> [C.DataDeclaration] -> Actor -> Either String ([(String,String)],[(Handler,[String],String)])
+actorWires bits declarations actor = foldM add ([],[]) (actorHandlers actor)
+  where
+    add (table,handlers) h = do
+      (args,next) <- foldM (\(xs,t) (_,ty) -> (\(x,t') -> (xs ++ [x],t')) <$> describe bits declarations t ty)
+        ([],table) (handlerArguments h)
+      (reply,final) <- describe bits declarations next (maybe (C.Constructor "Unit" []) id (handlerReply h))
+      pure (final,handlers ++ [(h,args,reply)])
 
 isUnit :: C.Type -> Bool
 isUnit ty = ty == C.Constructor "Unit" []
@@ -222,6 +279,10 @@ actorType a = NativeType (E.remote (actorModule a) "t" []) (X.remote (actorElixi
   where alias = "actor_" ++ E.moduleName (C.unitId (actorUnit a)) ++ "_" ++ E.snake (actorName a)
 unitType :: String -> NativeType
 unitType target = NativeType (E.atom (if target == "gleam" then "nil" else "ok")) (X.atom "ok") (D.text "Nil") []
+nodeType, rawRemoteType :: NativeType
+nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "LawSpec.Network" "node_handle" []) (D.text "network.Node") [D.text "import lawspec/network"]
+rawRemoteType = NativeType (E.remote "lawspec_beam_remote" "remote" [])
+  (X.remote ":lawspec_beam_remote" "remote" []) mempty []
 genericType :: NativeType
 genericType = NativeType (E.call "term" []) (X.call "term" []) (D.text "result") []
 callbackType :: NativeType -> NativeType
@@ -252,18 +313,19 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
     _ -> []
   where
     public = [f | f@(Function n _ _ _) <- functions, n /= "spec"]
+    lifecycle = any (\(Function n _ _ _) -> n == "start") functions
     startParameters = case [ps | Function "start" ps _ _ <- functions] of ps:_ -> ps; [] -> []
     args ps = [D.text ("_Ls" ++ E.pascal n) | (n,_) <- ps]
     erlType (NativeType e _ _ _) = e
     exType (NativeType _ x _ _) = x
     gleamType (NativeType _ _ g _) = g
     imports (NativeType _ _ _ i) = i
-    erlang = E.moduleDoc moduleName ([(n,length ps) | Function n ps _ _ <- functions] ++ [("child_spec",1)])
+    erlang = E.moduleDoc moduleName ([(n,length ps) | Function n ps _ _ <- functions] ++ [("child_spec",1) | lifecycle])
       ([D.text "-export_type([t/0]).",D.text "-opaque t() :: " <>
         maybe (erlType rawType) erlType handleTy <> D.text "."] ++
        concat [ [D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType result <> D.text ".",
           E.function n (args ps) body] | Function n ps result body <- functions] ++
-       [E.function "child_spec" [E.array (args startParameters)] [E.call "otp_child_spec" (args startParameters)]])
+       [E.function "child_spec" [E.array (args startParameters)] [E.call "otp_child_spec" (args startParameters)] | lifecycle])
     elixir = X.moduleDoc elixirModule False
       ([D.text "@opaque t :: " <> maybe (exType rawType) exType handleTy] ++
        concat [ [D.text "@spec " <> X.call n (map (exType . snd) ps) <> D.text " :: " <> exType result,
@@ -271,7 +333,7 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
            [X.remote (":" ++ moduleName) n (map (D.text . fst) ps)]]
          | Function n ps result _ <- public, n /= "otp_child_spec"] ++
        [X.function "child_spec" [X.array (map (D.text . fst) startParameters)]
-         [X.remote (":" ++ moduleName) "otp_child_spec" (map (D.text . fst) startParameters)]])
+         [X.remote (":" ++ moduleName) "otp_child_spec" (map (D.text . fst) startParameters)] | lifecycle])
     gleam = G.fileDoc False
       (nub (concat [concatMap (imports . snd) ps ++ imports result | Function _ ps result _ <- public] ++
         maybe [] imports handleTy) ++

@@ -1,0 +1,7 @@
+expect: a_note_reads_back
+@@ src/beam_example_resources.erl
+<<<<<<<
+integer_to_binary(Value)).
+=======
+integer_to_binary(Value + 1)).
+>>>>>>>

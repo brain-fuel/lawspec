@@ -46,6 +46,29 @@ defmodule LawSpec.Beam.StreamData do
     filter(type, fn value -> value == @empty or predicate.(value) end)
   end
 
+  # StreamData supplies the filter and its native lazy shrink tree. Isolate a
+  # source generator's own filter error so it cannot be reported as exhaustion
+  # of this strategy's budget. Nested strategies retain their own named error.
+  # ref:REQ-harness-units ref:DEC-native-property-frameworks
+  def such_that(%SD{} = type, predicate, limit, strategy) do
+    source = %SD{type | generator: fn seed, size ->
+      try do
+        type.generator.(seed, size)
+      rescue
+        error in SD.FilterTooNarrowError ->
+          :erlang.error({:lawspec, {:generator_filter_failed, error}})
+      end
+    end}
+    %SD{} = filtered = SD.filter(source, fn value -> value == @empty or predicate.(value) end, limit + 1)
+    %SD{filtered | generator: fn seed, size ->
+      try do
+        filtered.generator.(seed, size)
+      rescue
+        _ in SD.FilterTooNarrowError -> :lawspec_beam_harness.abort({:strategy_discards, strategy, limit})
+      end
+    end}
+  end
+
   def refine_input(type, predicate) do
     bind(type, fn value -> if predicate.(value), do: value, else: @empty end)
   end
@@ -93,7 +116,9 @@ defmodule LawSpec.Beam.StreamData do
     catch
       :error, {:lawspec, {:property_failed, _, _, _}} = failure -> :erlang.error(failure)
       kind, reason ->
-        :erlang.raise(:error, {:lawspec, {:property_failed, label, {:seed, seed}, {kind, reason}}}, __STACKTRACE__)
+        failure = {:lawspec, {:property_failed, label, {:seed, seed}, {kind, reason}}}
+        :lawspec_beam_harness.mark_harness_failure(failure)
+        :erlang.raise(:error, failure, __STACKTRACE__)
     after
       if previous == nil do
         Process.delete({__MODULE__, :attempts})

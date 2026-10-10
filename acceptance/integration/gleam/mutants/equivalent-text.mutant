@@ -1,0 +1,6 @@
+@@ src/example/alternatives.gleam
+<<<<<<<
+pub fn reference_render(value: Int) -> String { int.to_string(value) }
+=======
+pub fn reference_render(_value: Int) -> String { "broken" }
+>>>>>>>

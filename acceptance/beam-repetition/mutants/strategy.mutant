@@ -1,0 +1,7 @@
+expect-any: strategy_outside_refinement | StrategyOutsideRefinement
+@@ acceptance/beam-repetition/repetition.lawspec
+<<<<<<<
+  strategy zero :: Int32 is one of 0 end
+=======
+  strategy zero :: Int32 is one of -1 end
+>>>>>>>

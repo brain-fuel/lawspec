@@ -1,0 +1,7 @@
+expect: a_pool_starts_each_case_empty
+@@ src/beam_example_resources.erl
+<<<<<<<
+drain_pool(Owner) -> Owner = self(), erlang:put(example_level, 0), ok.
+=======
+drain_pool(Owner) -> Owner = self(), ok.
+>>>>>>>

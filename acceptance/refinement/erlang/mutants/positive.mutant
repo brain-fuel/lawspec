@@ -1,0 +1,6 @@
+@@ src/example_refinements.erl
+<<<<<<<
+positive(Value) -> Value.
+=======
+positive(_Value) -> 0.
+>>>>>>>

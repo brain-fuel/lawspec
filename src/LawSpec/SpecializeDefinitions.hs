@@ -201,8 +201,9 @@ specializeDefinitions declarations bits satisfies units properties = do
             (contractPostconditions original)
           pure original{contractPreconditions=pre,contractPostconditions=post}
         property expanded = do
-          let local = Set.fromList (map inputId (inputs expanded))
-              scope = M.union (monoEnvironment [(inputId i,inputType i) | i <- inputs expanded]) environment
+          let bindings = [(inputId i,inputType i) | i <- inputs expanded] ++ lawResources (original expanded)
+              local = Set.fromList (map fst bindings)
+              scope = M.union (monoEnvironment bindings) environment
               walk (AssertEqual a b) = uncurry AssertEqual <$> equation scope local a b
               walk (AssertImplies guard body) = AssertImplies <$> rewrite scope local guard <*> walk body
               walk (AssertAll bodies) = AssertAll <$> mapM walk bodies
@@ -223,7 +224,7 @@ specializeDefinitions declarations bits satisfies units properties = do
             original=(original expanded){examples=examples'}, generationPlan=map
               (planDomain [(inputId i,inputType i) | i <- inputs']) inputs'}
         refresh result expanded = do
-          let scope = functions result ++ [(inputId i,inputType i) | i <- inputs expanded]
+          let scope = functions result ++ [(inputId i,inputType i) | i <- inputs expanded] ++ lawResources (original expanded)
               examplesScope = scope ++ [(inputName i,inputType i) | i <- inputs expanded]
           trees <- lift $ (++) <$> mapM (typedExpressionWithData declarations bits scope)
             (concatMap inputRefinements (inputs expanded) ++ assertionExpressions (assertion expanded)) <*>

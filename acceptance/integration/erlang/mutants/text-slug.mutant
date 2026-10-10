@@ -1,0 +1,6 @@
+@@ src/example_slug.erl
+<<<<<<<
+reference_normalize(Value) -> iolist_to_binary(lists:join(<<"-">>, binary:split(Value, <<" ">>, [global]))).
+=======
+reference_normalize(Value) -> Value.
+>>>>>>>

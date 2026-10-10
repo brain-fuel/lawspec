@@ -1,0 +1,42 @@
+{
+  "types": [
+    {
+      "type": "example.warehouse::type::Shelf",
+      "native": [
+        "warehouse_native",
+        "shelf"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "example.warehouse::priceOf",
+      "native": [
+        "warehouse_native",
+        "price_of"
+      ]
+    },
+    {
+      "declaration": "example.warehouse::quoteOf",
+      "native": [
+        "warehouse_native",
+        "quote_of"
+      ]
+    },
+    {
+      "declaration": "example.warehouse::newShelf",
+      "constructor": [
+        "warehouse_native",
+        "new"
+      ]
+    },
+    {
+      "declaration": "example.warehouse::restock",
+      "method": "restock"
+    },
+    {
+      "declaration": "example.warehouse::count",
+      "method": "count"
+    }
+  ]
+}

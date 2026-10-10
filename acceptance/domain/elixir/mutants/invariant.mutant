@@ -1,0 +1,6 @@
+@@ lib/example_ordering.ex
+<<<<<<<
+quantity < 1 or
+=======
+quantity < 0 or
+>>>>>>>

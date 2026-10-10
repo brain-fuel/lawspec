@@ -1,0 +1,13 @@
+expect-any: model_failed | ModelFailed
+@@ src/beam_collections.erl
+<<<<<<<
+{reply,Previous,State#{value:=maps:put(Key,Item,Value)}};
+=======
+{reply,{just,Item},State#{value:=maps:put(Key,Item,Value)}};
+>>>>>>>
+@@ src/beam_collections.erl
+<<<<<<<
+    Previous=map_option(maps:find(Key,Value)),
+=======
+    _Previous=map_option(maps:find(Key,Value)),
+>>>>>>>

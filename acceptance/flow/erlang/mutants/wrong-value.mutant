@@ -1,0 +1,6 @@
+@@ src/example_flow.erl
+<<<<<<<
+{pop_flow, Top, Rest}
+=======
+{pop_flow, 0, Rest}
+>>>>>>>

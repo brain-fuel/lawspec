@@ -1,0 +1,6 @@
+@@ src/example/alternatives.gleam
+<<<<<<<
+case value >= 0 { True -> value False -> 0 }
+=======
+case value >= 0 { True -> value False -> -1 }
+>>>>>>>

@@ -149,7 +149,9 @@ emitWebDataWithProfile ts bits layout declarations = do
             free = freeExistentials declaration constructor
             scope = parameters ++ [(e, if e `elem` free then "unknown" else v) | (e, v) <- existentials]
             open = [v | (p, v) <- parameters, p `notElem` map fst equations] ++ [v | (e, v) <- existentials, e `notElem` free]
-            classArgs = if ts && not (null equations) then open else args
+            -- A product class is also the public type, so it must retain the
+            -- declaration's parameters even when its constructor fixes one.
+            classArgs = if ts && not (null equations) && not (isProduct declaration) then open else args
         fields <- forM (C.constructorFields constructor) $ \field -> do
           identifier False (C.binderName field)
           unless (C.binderName field /= "_lawspecBrand") (Left "reserved TypeScript data field: _lawspecBrand")

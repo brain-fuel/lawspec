@@ -1,0 +1,6 @@
+@@ src/example/collections.gleam
+<<<<<<<
+data.Queue(values)
+=======
+data.Queue(list.reverse(values))
+>>>>>>>

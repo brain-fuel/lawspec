@@ -5,7 +5,8 @@
 -module(lawspec_beam_session).
 -behaviour(gen_server).
 -export([open/1, with_pair/2, with_owned/2, claim/1, send/2, receive_value/1,
-    send_end/2, receive_end/1, abandon/1, specification/1, transfer_to_task/2]).
+    send_end/2, receive_end/1, abandon/1, specification/1, transfer_to_task/2,
+    listen/3, dial/3, address/1, network_start/6, network_endpoint/1, network_offer/2, transfer_to_relay/3]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 -export_type([session/0]).
 
@@ -59,6 +60,30 @@ receive_end(End) ->
 abandon(End) -> request(End, abandon).
 specification(End) -> request(End, specification).
 transfer_to_task(End, Worker) when is_pid(Worker) -> request(End, {transfer_to_task, Worker}).
+listen(Node, Name, Spec) -> network_start(Spec, Node, Name, 0, none, none).
+dial(Node, Address, Spec) ->
+    network_start(Spec, Node, lawspec_beam_session_network:fresh_name(), 1, Address, none).
+address(End) -> request(End, address).
+network_endpoint(End) -> request(End, network_endpoint).
+network_offer(End, Expected) -> request(End, {network_offer, Expected}).
+transfer_to_relay(End, Expected, Worker) -> request(End, {transfer_to_relay, Expected, Worker}).
+network_start(Spec, Node, Name, Side, Connection, Custodian) ->
+    ok = lawspec_beam_session_network:validate(Spec),
+    case gen_server:start(?MODULE, {network, Spec, Node, Name, Side, Custodian}, []) of
+        {ok, Channel} ->
+            End = element(Side + 1, call(Channel, open)),
+            try
+                case Connection of none -> ok; _ -> lawspec_beam_endpoint:connect(network_endpoint(End), Connection) end,
+                case {Custodian, get({?MODULE, owned})} of
+                    {none, Owned} when Owned =/= undefined -> claim(End); _ -> ok
+                end,
+                End
+            catch Class:Reason:Stack ->
+                try lawspec_beam_endpoint:stop(network_endpoint(End)) catch _:_ -> ok end,
+                discard(End, any), erlang:raise(Class, Reason, Stack)
+            end;
+        {error, Reason} -> fail({network_start, Reason})
+    end.
 request(End = {lawspec_session, Pid, _, _, _}, Operation) -> call(Pid, {Operation, End});
 request(_, _) -> fail(invalid_end).
 call(Pid, Request) ->
@@ -70,6 +95,27 @@ discard({lawspec_session, Pid, _, _, _} = End, Owner) -> gen_server:cast(Pid, {d
 barrier({lawspec_session, Pid, _, _, _}) ->
     try _ = call(Pid, barrier) catch error:{lawspec, {session, closed}} -> ok end.
 
+init({network, Spec, Node, Name, Side, Custodian}) ->
+    {ok, State} = init({Spec, none}),
+    try
+        ok = lawspec_beam_node:adopt_service(Node, self()),
+        Deadline = maps:get(deadline, Spec, 5000),
+        Ends = maps:get(ends, State), Peer = maps:get(1 - Side, Ends),
+        Own = case Custodian of
+            none -> maps:get(Side, Ends);
+            _ -> ok = lawspec_beam_session_ownership:move(maps:get(graph, State), self(), Custodian),
+                own(maps:get(Side, Ends), Custodian, custody)
+        end,
+        {ok, Endpoint} = lawspec_beam_endpoint:start(Node, Name, #{deadline => Deadline, owner => self()}),
+        Net = #{node => Node, endpoint => Endpoint, side => Side, deadline => Deadline,
+            node_monitor => monitor(process, Node), endpoint_monitor => monitor(process, Endpoint),
+            ticket => none, detached => false},
+        {ok, State#{network := Net, ends := Ends#{Side := Own,
+            (1 - Side) := Peer#{step := length(maps:get(steps, State))}}}}
+    catch Class:Reason ->
+        lawspec_beam_session_ownership:unregister(maps:get(graph, State), self()),
+        {stop, {Class, Reason}}
+    end;
 init({Spec = #{id := Id, protocols := Protocols}, Owner}) ->
     Steps = maps:get(Id, Protocols),
     true = is_list(Steps),
@@ -80,32 +126,38 @@ init({Spec = #{id := Id, protocols := Protocols}, Owner}) ->
         maps:map(fun(_, E) -> maps:get(generation, E) end, Ends)} end,
     Graph = lawspec_beam_session_ownership:register(self()),
     {ok, #{spec => Spec, steps => Steps, ends => Ends, resource => Resource, scope => none, jobs => #{},
-        graph => Graph, graph_monitor => monitor(process, Graph)}}.
+        graph => Graph, graph_monitor => monitor(process, Graph), network => none}}.
 handle_call(open, _, State) ->
     finish({ok, {handle(0, State), handle(1, State)}}, State);
 handle_call(barrier, _, State) -> finish({ok, ok}, State);
 handle_call({Operation, End}, From, State) ->
     try local(Operation, End, From, State) catch
-        throw:{invalid, Reason} -> {reply, {error, Reason}, State}
+        throw:{invalid, Reason} -> {reply, {error, Reason}, State};
+        error:{lawspec, Reason} -> {reply, {error, Reason}, State}
     end;
 handle_call(_, _, State) -> {reply, {error, invalid_operation}, State}.
 handle_cast({discard, End, Owner}, State) ->
     finish(discard_owned(End, Owner, State));
 handle_cast(_, State) -> {noreply, State}.
 handle_info({'DOWN', Ref, process, _, _}, State = #{graph_monitor := Ref}) -> {stop, normal, State};
+handle_info({'DOWN', Ref, process, _, _}, State = #{network := #{node_monitor := N, endpoint_monitor := E}})
+        when Ref =:= N; Ref =:= E -> {stop, normal, State};
+handle_info({lawspec_channel, Endpoint, Ticket, Result}, State = #{network := #{endpoint := Endpoint, ticket := {Ticket, Part}} = Net}) ->
+    finish(network_received(Part, Result, State#{network := Net#{ticket := none}}));
 handle_info({'DOWN', Ref, process, _, _}, State = #{resource := {Ref, Generations}}) ->
     finish(maps:fold(fun(Side, Generation, Acc) ->
         discard_owned({lawspec_session, self(), Side, Generation, 0}, any, Acc)
     end, State#{resource := none}, Generations));
 handle_info({'DOWN', Ref, process, _, Reason}, State = #{jobs := Jobs}) ->
     case maps:take(Ref, Jobs) of
-        {#{side := Side}, Rest} ->
+        {#{side := Side, kind := Kind}, Rest} ->
             Result = case Reason of {delegated, Outcome} -> Outcome; _ -> {error, {transfer_failed, Reason}} end,
-            finish(delegated(Side, Result, State#{jobs := Rest}));
+            finish(job_result(Kind, Side, Result, State#{jobs := Rest}));
         error -> finish(owner_down(Ref, Reason, State))
     end;
 handle_info(_, State) -> {noreply, State}.
 terminate(_, State) ->
+    network_close(maps:get(network, State)),
     maps:foreach(fun(_, E) ->
         close_owner(E), reply_waiters(E, {error, closed}), discard_contents(E)
     end, maps:get(ends, State)),
@@ -143,6 +195,12 @@ release_custody(_, _, _) -> ok.
 
 local(specification, End, _, State) ->
     _ = get_end(End, State), {reply, {ok, maps:get(spec, State)}, State};
+local(network_endpoint, End, _, State = #{network := Net}) ->
+    _ = get_end(End, State), require(Net =/= none, local_end),
+    {reply, {ok, maps:get(endpoint, Net)}, State};
+local(address, End, From, State = #{network := Net}) ->
+    _ = local(network_endpoint, End, From, State),
+    {reply, {ok, lawspec_beam_endpoint:address(maps:get(endpoint, Net))}, State};
 local(claim, End, {Caller, _}, State) ->
     {Side, E} = get_end(End, State),
     release_custody(Side, E, State),
@@ -156,6 +214,19 @@ local({transfer_to_task, Worker}, End, _, State) ->
     release_custody(Side, E, State),
     Next = put_end(Side, (own(E, Worker, process))#{generation := make_ref()}, State),
     {reply, {ok, handle(Side, Next)}, Next};
+local({transfer_to_relay, Expected, Worker}, End, From, State) ->
+    unused_first(End, Expected, State), local({transfer_to_task, Worker}, End, From, State);
+local({network_offer, Expected}, End, _, State = #{network := Net}) ->
+    unused_first(End, Expected, State),
+    case Net of
+        none -> {reply, {ok, {local, maps:get(spec, State)}}, State};
+        _ ->
+            Address = lawspec_beam_endpoint:offer(maps:get(endpoint, Net)),
+            {Side, E} = get_end(End, State), release_custody(Side, E, State), close_owner(E),
+            Next = put_end(Side, E#{generation := make_ref(), closed := true, owner := none},
+                State#{network := Net#{detached := true}}),
+            finish({ok, {address, Address}}, Next)
+    end;
 local({transfer, Expected, Custodian}, End, _, State = #{spec := #{id := Id}}) ->
     {Side, E} = get_end(End, State),
     require(Side =:= 0 andalso maps:get(step, E) =:= 0, not_an_unused_first_end),
@@ -166,8 +237,12 @@ local({transfer, Expected, Custodian}, End, _, State = #{spec := #{id := Id}}) -
     {reply, {ok, handle(Side, Next)}, Next};
 local({send, Value}, End, {Caller, _}, State) ->
     {Side, E} = get_end(End, State),
-    require(element(1, part(Side, E, send, State)) =:= value, expected_delegation),
-    Next = enqueue(1 - Side, {value, Value}, advance(Side, E, Caller, State)),
+    Part = part(Side, E, send, State),
+    require(element(1, Part) =:= value, expected_delegation),
+    %% Validate wire bytes before advancing the affine handle.
+    network_send(Part, Value, State),
+    S1 = advance(Side, E, Caller, State),
+    Next = case maps:get(network, State) of none -> enqueue(1 - Side, {value, Value}, S1); _ -> S1 end,
     finish({ok, handle(Side, Next)}, wake(1 - Side, Next));
 local({send_end, Other}, End, From = {Caller, _}, State) ->
     {Side, E} = get_end(End, State),
@@ -176,18 +251,13 @@ local({send_end, Other}, End, From = {Caller, _}, State) ->
     OtherPid = case Other of {lawspec_session, P, 0, _, 0} -> P; _ -> throw({invalid, not_an_unused_first_end}) end,
     require(OtherPid =/= self(), cyclic_delegation),
     S1 = advance(Side, E, Caller, State),
-    Scope = case maps:get(scope, S1) of none -> lawspec_beam_tasks:open(); Given -> Given end,
     Parent = self(),
-    {Worker, Monitor} = spawn_monitor(fun() ->
-        receive go -> ok end,
-        Result = try {ok, request(Other, {transfer, Expected, Parent})}
-            catch error:{lawspec, {session, Reason}} -> {error, Reason} end,
-        exit({delegated, Result})
-    end),
-    ok = lawspec_beam_tasks:adopt(Scope, Worker), Worker ! go,
-    Jobs = maps:get(jobs, S1),
+    Work = case maps:get(network, State) of
+        none -> fun() -> request(Other, {transfer, Expected, Parent}) end;
+        #{node := Node} -> fun() -> lawspec_beam_session_network:offer(Node, Other, Expected) end
+    end,
     E1 = maps:get(Side, maps:get(ends, S1)),
-    {noreply, put_end(Side, E1#{sending := From}, S1#{scope := Scope, jobs := Jobs#{Monitor => #{side => Side}}})};
+    {noreply, start_job(Side, send, Work, put_end(Side, E1#{sending := From}, S1))};
 local(Operation, End, From = {Caller, _}, State) when Operation =:= receive_value; Operation =:= receive_end ->
     {Side, E} = get_end(End, State),
     Part = part(Side, E, 'receive', State),
@@ -195,22 +265,75 @@ local(Operation, End, From = {Caller, _}, State) when Operation =:= receive_valu
         (Operation =:= receive_end andalso element(1, Part) =:= session), wrong_receive_kind),
     Next = advance(Side, E, Caller, State),
     E1 = maps:get(Side, maps:get(ends, Next)),
-    finish(wake(Side, put_end(Side, E1#{reader := From}, Next)));
+    Waiting = put_end(Side, E1#{reader := From}, Next),
+    case maps:get(network, State) of
+        none -> finish(wake(Side, Waiting));
+        #{endpoint := Endpoint, deadline := Deadline} = Net ->
+            Ticket = lawspec_beam_endpoint:receive_async(Endpoint, Deadline),
+            {noreply, Waiting#{network := Net#{ticket := {Ticket, Part}}}}
+    end;
 local({received, Ticket}, End, {Caller, _}, State) ->
     {Side, E} = get_end(End, State),
     require(case maps:get(delivery, E) of {Ticket, Caller, _} -> true; _ -> false end, invalid_receipt),
     finish({ok, ok}, put_end(Side, E#{delivery := none}, State)).
 
-delegated(Side, Result, State = #{ends := Ends}) ->
+unused_first(End, Expected, State = #{spec := #{id := Id}}) ->
+    {Side, E} = get_end(End, State),
+    require(Side =:= 0 andalso maps:get(step, E) =:= 0, not_an_unused_first_end),
+    require(Id =:= Expected, different_protocol).
+start_job(Side, Kind, Work, State = #{jobs := Jobs}) ->
+    Scope = case maps:get(scope, State) of none -> lawspec_beam_tasks:open(); Given -> Given end,
+    Parent = self(),
+    {Worker, Monitor} = spawn_monitor(fun() ->
+        Ready = monitor(process, Parent),
+        receive go -> demonitor(Ready, [flush]); {'DOWN', Ready, process, Parent, _} -> exit(normal) end,
+        Result = try {ok, Work()} catch
+            error:{lawspec, {session, Reason}} -> {error, Reason};
+            Class:Reason -> {error, {transfer_failed, Class, Reason}}
+        end,
+        exit({delegated, Result})
+    end),
+    ok = lawspec_beam_tasks:adopt(Scope, Worker), Worker ! go,
+    State#{scope := Scope, jobs := Jobs#{Monitor => #{side => Side, kind => Kind}}}.
+job_result('receive', Side, {ok, Other}, State) -> wake(Side, enqueue(Side, {session, Other}, State));
+job_result('receive', Side, {error, Reason}, State) -> network_failed(Side, Reason, State);
+job_result(send, Side, Result, State = #{ends := Ends}) ->
     E = maps:get(Side, Ends), From = maps:get(sending, E),
     S1 = put_end(Side, E#{sending := none}, State),
     case Result of
         {ok, Other} ->
-            S2 = enqueue(1 - Side, {session, Other}, S1),
-            gen_server:reply(From, {ok, handle(Side, S2)}), wake(1 - Side, S2);
+            try
+                S2 = case maps:get(network, S1) of
+                    none -> enqueue(1 - Side, {session, Other}, S1);
+                    _ -> network_send({session, none}, Other, S1), S1
+                end,
+                gen_server:reply(From, {ok, handle(Side, S2)}), wake(1 - Side, S2)
+            catch Class:Reason ->
+                gen_server:reply(From, {error, {transfer_failed, Class, Reason}}), close_end(Side, S1)
+            end;
         {error, Reason} ->
             gen_server:reply(From, {error, Reason}), close_end(Side, S1)
     end.
+network_send(_, _, #{network := none}) -> ok;
+network_send(Part, Value, #{network := #{endpoint := Endpoint}}) ->
+    lawspec_beam_endpoint:send(Endpoint, lawspec_beam_session_network:encode(Part, Value)).
+network_received(_, {error, Reason}, State = #{network := #{side := Side}}) -> network_failed(Side, Reason, State);
+network_received(Part, {value, Bytes}, State = #{network := #{side := Side, node := Node}}) ->
+    try lawspec_beam_session_network:decode(Part, Bytes) of
+        Value -> case Part of
+            {value, _} -> wake(Side, enqueue(Side, {value, Value}, State));
+            {session, Id} ->
+                Spec = (maps:get(spec, State))#{id := Id}, Parent = self(),
+                start_job(Side, 'receive', fun() -> lawspec_beam_session_network:take(Node, Value, Spec, Parent) end, State)
+        end
+    catch Class:Reason -> network_failed(Side, {invalid_payload, Class, Reason}, State) end.
+network_failed(Side, Reason, State = #{ends := Ends}) ->
+    E = maps:get(Side, Ends), reply_reader(E, {error, {peer_failed, Reason}}),
+    close_end(Side, put_end(Side, E#{reader := none}, State)).
+network_close(none) -> ok;
+network_close(#{detached := true}) -> ok;
+network_close(#{endpoint := Endpoint}) ->
+    try lawspec_beam_endpoint:abandon(Endpoint) catch _:_ -> ok end.
 enqueue(Side, Item, State = #{ends := Ends}) ->
     E = maps:get(Side, Ends),
     case maps:get(closed, E) of
@@ -243,8 +366,15 @@ close_end(Side, State = #{ends := Ends}) ->
     E = maps:get(Side, Ends),
     release_custody(Side, E, State),
     close_owner(E), reply_reader(E, {error, abandoned_end}), discard_contents(E),
-    Next = put_end(Side, E#{closed := true, owner := none, reader := none,
+    Next0 = put_end(Side, E#{closed := true, owner := none, reader := none,
         delivery := none, queue := queue:new()}, State),
+    Next = case maps:get(network, State) of
+        #{side := Side} = Net ->
+            network_close(Net),
+            Peer = maps:get(1 - Side, maps:get(ends, Next0)),
+            put_end(1 - Side, Peer#{closed := true}, Next0);
+        _ -> Next0
+    end,
     wake(1 - Side, Next).
 reply_reader(#{reader := none}, _) -> ok;
 reply_reader(#{reader := From}, Result) -> gen_server:reply(From, Result).

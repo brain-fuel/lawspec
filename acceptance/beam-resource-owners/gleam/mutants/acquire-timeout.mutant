@@ -1,0 +1,8 @@
+expect: TestCleanupFailed
+@@ src/beam_owner_support.erl
+<<<<<<<
+    Table = ets:new(owner_store, [private]),
+=======
+    receive never -> ok end,
+    Table = ets:new(owner_store, [private]),
+>>>>>>>

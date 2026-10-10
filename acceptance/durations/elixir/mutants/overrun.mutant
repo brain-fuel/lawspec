@@ -1,0 +1,7 @@
+expect: what remains of a budget
+@@ lib/example_durations.ex
+<<<<<<<
+max(budget - spent, 0)
+=======
+abs(budget - spent)
+>>>>>>>

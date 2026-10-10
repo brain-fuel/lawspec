@@ -1,0 +1,9 @@
+expect: example 2: row 3: 2, 10, 30
+expect: {actual,35}
+expect: {expected,30}
+@@ src/example_tables.erl
+<<<<<<<
+Kilograms * Kilometres + 5 * Kilograms
+=======
+Kilograms * Kilometres + 5 * Kilograms + case Kilograms of 2 -> 5; _ -> 0 end
+>>>>>>>

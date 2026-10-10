@@ -1,0 +1,6 @@
+@@ lib/example_ordering.ex
+<<<<<<<
+hd(values)
+=======
+List.last(values)
+>>>>>>>

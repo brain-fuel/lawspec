@@ -1,4 +1,4 @@
-expect-any: produced | outside the input's refinement
+expect-any: produced | outside the input's refinement | strategy_outside_refinement | StrategyOutsideRefinement
 @@ examples/specs/harness_testing.lawspec
 <<<<<<<
     bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order items (items * 100)

@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/example/tables.gleam
+<<<<<<<
+"parcel " <> int.to_string(parcel)
+=======
+case parcel { 1 -> "parcel one" _ -> "parcel " <> int.to_string(parcel) }
+>>>>>>>

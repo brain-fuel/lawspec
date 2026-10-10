@@ -1,0 +1,6 @@
+@@ lib/example_refinements.ex
+<<<<<<<
+def positive(value), do: value
+=======
+def positive(_value), do: 0
+>>>>>>>

@@ -12,6 +12,12 @@ import LawSpec.Common
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..))
 import LawSpec.Scalar (textScalar, Scalar(..))
+import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.WebData as Web
+import qualified LawSpec.PythonData as Python
+import qualified LawSpec.GoData as Go
+import qualified LawSpec.HaskellData as Haskell
+import qualified LawSpec.KotlinData as Kotlin
 
 expressions :: String
 expressions = unlines
@@ -59,6 +65,51 @@ declaration compiled name = case [d | d <- C.programDataDeclarations compiled, C
 -- ref:DEC-gadts-and-index-arithmetic ref:REQ-gadts
 test_gadtMatchesRefineTypesLocally :: Spec
 test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
+  describe "native products" $ do
+    mapM_ (\layout -> it ("refines Haskell constructor fields and codecs in " ++ show layout) $ do
+      compiled <- either (fail . show) pure (program
+        ["type Fixed (a :: Type) is | Fixed value :: a values :: List a where a = Bytes end"])
+      let declarations = C.programDataDeclarations compiled
+      text <- either fail pure (Haskell.emitHaskellData layout declarations)
+      codec <- either fail pure (Haskell.emitHaskellCodecs layout declarations)
+      text `shouldSatisfy` isInfixOf "fixedValue :: B.ByteString"
+      text `shouldSatisfy` isInfixOf "fixedValues :: [B.ByteString]"
+      codec `shouldSatisfy` isInfixOf "EmptyCase, GADTs, ScopedTypeVariables"
+      codec `shouldSatisfy` isInfixOf "Codec.decode (Codec.bytesCodec schema bits) value0"
+      codec `shouldSatisfy` isInfixOf "Codec.encode (Codec.bytesCodec schema bits) value0")
+      [D.Pretty 80, D.Compact]
+    it "keeps a fixed parameter in the Go product and codec" $ do
+      compiled <- either (fail . show) pure (program
+        ["type Fixed (a :: Type) is | Fixed value :: a where a = Bytes end"])
+      let declarations = C.programDataDeclarations compiled
+      text <- either fail pure (Go.emitGoData (D.Pretty 80) "example" declarations)
+      codec <- either fail pure (Go.emitGoCodecs (D.Pretty 80) "example" declarations)
+      text `shouldSatisfy` isInfixOf "type Fixed[T0 any] struct"
+      codec `shouldSatisfy` isInfixOf "Fixed[T0]{"
+    it "keeps a fixed parameter in the TypeScript product class" $ do
+      compiled <- either (fail . show) pure (program
+        ["type Fixed (a :: Type) is | Fixed value :: a where a = Bytes end"])
+      artifacts <- either fail pure (Web.emitWebData True (D.Pretty 80) (C.programDataDeclarations compiled))
+      let text = concatMap artifactContent artifacts
+      text `shouldSatisfy` isInfixOf "export class Fixed<T0>"
+      text `shouldSatisfy` isInfixOf "readonly value: T0;"
+    it "keeps a fixed parameter in the Python product class" $ do
+      compiled <- either (fail . show) pure (program
+        ["type Fixed (a :: Type) is | Fixed value :: a where a = Bytes end"])
+      artifacts <- either fail pure (Python.emitPythonData (D.Pretty 80) (C.programDataDeclarations compiled))
+      let text = concatMap artifactContent artifacts
+      text `shouldSatisfy` isInfixOf "class Fixed[_T0]:"
+      text `shouldSatisfy` isInfixOf "value: _T0"
+    mapM_ (\layout -> it ("keeps a fixed parameter in Kotlin products and codecs in " ++ show layout) $ do
+      compiled <- either (fail . show) pure (program
+        ["type Fixed (a :: Type) is | Fixed value :: a values :: List a where a = Bytes end"])
+      artifacts <- either fail pure (Kotlin.emitKotlinData layout (C.programDataDeclarations compiled))
+      let text = concatMap artifactContent artifacts
+      text `shouldSatisfy` isInfixOf "data class Fixed<T0>"
+      text `shouldSatisfy` isInfixOf "val value: T0"
+      text `shouldSatisfy` isInfixOf "val values: kotlin.collections.List<T0>"
+      text `shouldSatisfy` isInfixOf "Codec<lawspec.data.Fixed<T0>>")
+      [D.Pretty 80, D.Compact]
   describe "local type refinement" $ do
     it "refines a rigid type variable in each branch" $
       program (eval ++ ["law `two` is definition is `for all` (x :: BigInt) . eval (Number 2) = 2 end end"])

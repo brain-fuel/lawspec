@@ -1,0 +1,6 @@
+@@ src/warehouse_native_ffi.erl
+<<<<<<<
+price_of(Sku) -> erlang:yield(), quote_of(Sku).
+=======
+price_of(Sku) -> erlang:yield(), quote_of(Sku) + 1.
+>>>>>>>

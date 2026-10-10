@@ -1,0 +1,7 @@
+expect: subtraction has right division
+@@ src/example/algebra.gleam
+<<<<<<<
+pub fn divide_right(a: Int, b: Int) -> Int { a + b }
+=======
+pub fn divide_right(a: Int, b: Int) -> Int { a - b }
+>>>>>>>

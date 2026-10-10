@@ -1,0 +1,7 @@
+expect: the class adapter doubles
+@@ src/example/keywords.gleam
+<<<<<<<
+value * 2
+=======
+value * 3
+>>>>>>>

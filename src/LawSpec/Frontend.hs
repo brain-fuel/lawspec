@@ -62,10 +62,11 @@ elaborate bits units properties = do
             (,) <$> abilityReference u ability <*> pure (handlerRef u choice)
           -- A resource's operations (a built-in resource's lawspec.host
           -- ones) run under the production handler of their ability.
-          let resourceAbilities = nub [C.operationAbility op | r <- C.propertyResources p
+          let handledProperty = mapProperty (performOperations operations) p
+              resourceAbilities = nub [C.operationAbility op | r <- C.propertyResources handledProperty
                 , e <- [C.resourceAcquire r, C.resourceRelease r] ++ maybe [] pure (C.resourceReset r), op <- performedIn e]
               withResources = assignment ++ [(a, C.ProductionHandler) | a <- resourceAbilities, a `notElem` map fst assignment]
-          pure (shared settings (mapProperty (performOperations operations) p)) { C.propertyHandlers = withResources }
+          pure (shared settings handledProperty) { C.propertyHandlers = withResources }
         -- A benchmark's operations are Perform, like a law's.
         let settings' = fmap (\h -> h { C.harnessBenchmarks = [(n, performOperations operations b) | (n, b) <- C.harnessBenchmarks h] }) settings
         pure closed{C.unitContracts=cs,C.unitProperties=handled,C.unitHarnessSettings=settings'}
@@ -219,31 +220,50 @@ elaborate bits units properties = do
     -- quantifier carries the refinement, whose bounds direct generation.
     -- The such that around it still checks every drawn value.
     elaborateDraw dataDeclarations closed u pid strategy input declared refinement gen = do
-      aim <- forM refinement $ \p -> do
-        core <- coreType declared
-        let binder = C.Binder (local (-1) "it") "it" core
-        predicate <- term [("it", (C.binderId binder, declared))] (S.Named "Bool") p
-        pure (C.Quantifier binder [predicate] [])
-      go aim (0 :: Int) [] declared gen
+      aim <- refinedAim (-1) declared refinement
+      go declared aim (0 :: Int) [] declared gen
       where
         functionIds = [declarationId u n | (n,_) <- S.functions u]
+        strategies = [(S.strategyName s, s) | Just h <- [S.unitHarness u], S.HarnessStrategy s <- S.harnessItems h]
+        local :: Int -> String -> C.Id
         local k n = C.Id (C.idText pid ++ "::input::" ++ input ++ "_" ++ n ++ show k)
+        refinedAim k ty refined = forM refined $ \p -> do
+          core <- coreType ty
+          let binder = C.Binder (local k "it_aim") "it" core
+          predicate <- term [("it", (C.binderId binder, ty))] (S.Named "Bool") p
+          pure (C.Quantifier binder [predicate] [])
         term locals ty e = do
           t <- elaborateResolvedWithData dataDeclarations functionIds bits pid
             (\n -> maybe (declarationId u n) fst (lookup n locals))
             ([(n, t') | (n, (_, t')) <- locals] ++ S.functions u) (S.Annotate e ty)
           checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) ("the strategy " ++ strategy) t
-        go aim k locals ty g = case g of
-          S.GenAny Nothing -> anyOf aim ty
+        go own aim k locals ty g = case g of
+          S.GenAny Nothing -> anyOf own aim ty
           S.GenAny (Just other) -> do
             unless (S.baseType other == S.baseType ty || coreType other == coreType ty)
               (Left ("the strategy " ++ strategy ++ " draws any " ++ S.prettyType other ++ " where it needs " ++ S.prettyType ty))
-            anyOf aim ty
-          S.GenNamed n -> Left ("the strategy " ++ n ++ " is not known here")
+            anyOf own aim ty
+          -- A reference keeps its declared type and refinement. Inlining the
+          -- surface body earlier lost both, and could capture a caller's bind.
+          -- Harness has already checked that this reference graph is acyclic.
+          S.GenNamed n -> case lookup n strategies of
+            Nothing -> Left ("the strategy " ++ n ++ " is not known here")
+            Just named -> do
+              let (plain, refined) = case S.strategyType named of
+                    S.Refined x t (Just p) -> (t, Just (S.replaceExprVars [(x, S.Var "it")] p))
+                    t -> (t, Nothing)
+                  body = maybe (S.strategyBody named) (\p -> S.GenSuchThat (S.strategyBody named) p 100) refined
+              actual <- coreType plain
+              expected <- coreType ty
+              unless (actual == expected) (Left ("the strategy " ++ n ++ " produces values of " ++
+                S.prettyType (S.strategyType named) ++ ", but this draw expects " ++ S.prettyType ty ++
+                "; a strategy may only produce values of its type"))
+              namedAim <- refinedAim k plain refined
+              go plain namedAim (k + 1) [] plain body
           S.GenOneOf values -> C.DrawOneOf <$> coreType ty <*> mapM (term locals ty) values
-          S.GenFrequency alternatives -> C.DrawFrequency <$> mapM (\(w, a) -> (,) w <$> go aim k locals ty a) alternatives
+          S.GenFrequency alternatives -> C.DrawFrequency <$> mapM (\(w, a) -> (,) w <$> go own aim k locals ty a) alternatives
           S.GenSuchThat inner p limit -> do
-            inner' <- go aim (k + 1) locals ty inner
+            inner' <- go own aim (k + 1) locals ty inner
             core <- coreType ty
             let binder = C.Binder (local k "it") "it" core
             predicate <- term (("it", (C.binderId binder, ty)) : locals) (S.Named "Bool") p
@@ -251,11 +271,11 @@ elaborate bits units properties = do
           S.GenBind x xty from body -> do
             core <- coreType xty
             let binder = C.Binder (local k x) x core
-            from' <- go Nothing (k + 1) locals xty from
-            body' <- go aim (k + 1) ((x, (C.binderId binder, xty)) : locals) ty body
+            from' <- go own Nothing (k + 1) locals xty from
+            body' <- go own aim (k + 1) ((x, (C.binderId binder, xty)) : locals) ty body
             pure (C.DrawBind binder from' body')
         -- Only a draw of the strategy's own type aims at its refinement.
-        anyOf aim ty = C.DrawAny <$> coreType ty <*> pure (if ty == declared then aim else Nothing)
+        anyOf own aim ty = C.DrawAny <$> coreType ty <*> pure (if ty == own then aim else Nothing)
     -- Benchmarks, sharing and order: the harness settings beyond laws.
     unitHarnessSettings dataDeclarations _ u = case S.unitHarness u of
       Nothing -> pure Nothing

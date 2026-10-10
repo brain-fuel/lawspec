@@ -1,0 +1,6 @@
+@@ src/example_collections.erl
+<<<<<<<
+Rest ++ [Head]
+=======
+Rest ++ [Head, Head]
+>>>>>>>

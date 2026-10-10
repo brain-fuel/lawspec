@@ -1,0 +1,7 @@
+expect-any: model_failed | ModelFailed
+@@ src/beam_views.erl
+<<<<<<<
+total(Id) -> lists:sum([Count || {{Owner,_},Count} <- ets:tab2list(?MODULE),Owner=:=Id]).
+=======
+total(Id) -> max(0,lists:sum([Count || {{Owner,_},Count} <- ets:tab2list(?MODULE),Owner=:=Id])-1).
+>>>>>>>

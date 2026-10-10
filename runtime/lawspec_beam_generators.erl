@@ -3,7 +3,17 @@
 %% custom shrinker replaces PropEr, StreamData or qcheck.
 %% ref:DEC-native-property-frameworks ref:DEC-structural-size-budget
 -module(lawspec_beam_generators).
--export([generator/6, generator/7, with_cache/1, with_native/3]).
+-export([generator/6, generator/7, with_cache/1, with_native/3, check_drawn/4]).
+
+%% A chosen strategy cannot widen the law's input domain. Apply this to each
+%% generated value and shrink, before any later input can discard the tuple.
+%% ref:REQ-harness-units ref:DEC-never-pass-vacuously
+check_drawn(_, _, _, '$lawspec_empty_domain') -> '$lawspec_empty_domain';
+check_drawn(Strategy, Input, Predicate, Value) ->
+    case Predicate(Value) of
+        true -> Value;
+        false -> lawspec_beam_harness:abort({strategy_outside_refinement, Strategy, Input, Value})
+    end.
 
 %% Factories live exclusively in test code. The canonical schema still owns
 %% every logical contract; the native schema only converts representations.
@@ -45,10 +55,7 @@ automatic(F, T, Schema, Symbols, Size, Bounds, Witnesses, Index) ->
                         end end);
                     none ->
                         Native = build(F, T, Schema, Symbols, Budget, Bounds),
-                        case Witnesses of
-                            [] -> Native;
-                            _ -> F:frequency([{1, F:oneof([F:exactly(V) || V <- Witnesses])}, {9, Native}])
-                        end
+                        with_witnesses(F, Native, Witnesses)
                 end
         end.
 
@@ -77,7 +84,12 @@ custom(F, {Name, Args} = T, S, Symbols, Budget, Bounds, Index, Factory) ->
     case {Bounds, Index} of
         {[], none} -> Checked;
         _ -> F:refine_input(Checked, fun(V) ->
-            lists:all(fun({Op, Bound}) -> lawspec_beam_scalar:binary(Op, V, Bound, Name, Name) end, Bounds)
+            lists:all(fun
+                ({length, Op, Bound}) -> lawspec_beam_scalar:binary(Op,
+                    lawspec_beam_scalar:helper(<<"length">>, [V], [Name], <<"Integer">>), Bound,
+                    <<"Integer">>, <<"Integer">>);
+                ({Op, Bound}) -> lawspec_beam_scalar:binary(Op, V, Bound, Name, Name)
+            end, Bounds)
                 andalso case Index of
                     none -> true;
                     {Target, _} when Target < 0 -> true;
@@ -97,12 +109,14 @@ build(F, T, S, Symbols, Budget, Bounds) ->
         error -> build_native(F, T, S, Symbols, Budget, Bounds)
     end.
 
-build_native(F, {<<"List">>, [T]}, S, Symbols, Budget, _) ->
-    case minimum(T, S, Budget - 1) of
-        none -> F:exactly([]);
-        Cost -> F:bind(F:integer(0, (Budget - 1) div Cost), fun
+build_native(F, {<<"List">>, [T]}, S, Symbols, Budget, Bounds) ->
+    Lengths = lengths(Bounds),
+    Limit = case Lengths of [] -> Budget - 1; _ -> max(64, Budget - 1) end,
+    case minimum(T, S, Limit) of
+        none -> F:refine_input(F:exactly([]), fun(_) -> length_allowed(0, Lengths) end);
+        Cost -> F:bind(length_generator(F, Lengths, (Budget - 1) div Cost), fun
             (0) -> F:exactly([]);
-            (Count) -> F:vector(Count, build(F, T, S, Symbols, (Budget - 1) div Count, []))
+            (Count) -> F:vector(Count, build(F, T, S, Symbols, max(Cost, (Budget - 1) div Count), []))
         end)
     end;
 build_native(F, {Name, [T]}, S, Symbols, Budget, _) when Name =:= <<"Optional">>; Name =:= <<"Nullable">> ->
@@ -120,13 +134,40 @@ build_native(F, T, S, Symbols, Budget, Bounds) ->
                 C <- lawspec_beam_schema:witness_instances(Raw),
                 Allocation <- [allocation(maps:get(fields, C), S, Budget - 1 - length(maps:get(witness_values, C)))],
                 Allocation =/= none],
-            F:constrain(F:oneof(Choices), fun(V) -> accepted(V, T, S) end)
+            Canonical = F:map(F:oneof(Choices), fun(V) -> canonical(T, V) end),
+            F:constrain(Canonical, fun(V) -> accepted(V, T, S) end)
     end.
 
 constructor(F, C, Allocation, S, Symbols) ->
     Fields = maps:get(fields, C),
-    Types = [build(F, T, S, Symbols, Budget, []) || {{_, T}, Budget} <- lists:zip(Fields, Allocation)],
-    F:bind(F:fixed_list(Types), fun(Values) -> {ls_data, maps:get(tag, C), Values ++ maps:get(witness_values, C)} end).
+    constructor_fields(F, C, lists:zip(Fields, Allocation), S, Symbols, []).
+constructor_fields(F, C, [], _, _, Values) ->
+    F:exactly({ls_data, maps:get(tag, C), Values ++ maps:get(witness_values, C)});
+constructor_fields(F, C, [{{_, T}, Budget} | Rest], S, Symbols, Values) ->
+    {Bounds, Witnesses} = case maps:find(length(Values) + 1, maps:get(generators, C, #{})) of
+        error -> {[], []};
+        {ok, Constraints} -> Constraints(S, maps:get(arguments, C, []), Values)
+    end,
+    Native = build(F, T, S, Symbols, Budget, Bounds),
+    Generator = case factory(T, S) of
+        {ok, _} -> Native;
+        error -> with_witnesses(F, Native, Witnesses)
+    end,
+    F:bind(Generator, fun(V) -> constructor_fields(F, C, Rest, S, Symbols, Values ++ [V]) end).
+
+with_witnesses(_, Native, []) -> Native;
+with_witnesses(F, Native, Witnesses) ->
+    F:frequency([{1, F:oneof([F:exactly(V) || V <- Witnesses])}, {9, Native}]).
+
+%% Sorting and deduplication map the native tree, so every shrink remains a
+%% canonical collection. A custom native factory is validated without repair.
+%% ref:DEC-native-property-frameworks ref:DEC-shrink-within-domain
+canonical({<<"lawspec.collections::type::Set">>, _}, {ls_data, Tag, [Items]}) ->
+    {ls_data, Tag, [lists:usort(fun(A, B) -> lawspec_beam_scalar:compare(A, B) =< 0 end, Items)]};
+canonical({<<"lawspec.collections::type::KeyVal">>, _}, {ls_data, Tag, [Entries]}) ->
+    {ls_data, Tag, [lists:usort(fun({ls_data, _, [A, _]}, {ls_data, _, [B, _]}) ->
+        lawspec_beam_scalar:compare(A, B) =< 0 end, Entries)]};
+canonical(_, Value) -> Value.
 
 accepted(V, T, S) ->
     try lawspec_beam_schema:validate(V, T, S), true catch
@@ -202,11 +243,16 @@ scalar(F, {Name, []}, _, _, _) when Name =:= <<"Complex64">>; Name =:= <<"Comple
 scalar(F, {<<"Char">>, []}, _, _, _) -> unicode_scalar(F);
 scalar(F, {<<"CodePoint">>, []}, _, _, _) -> F:integer(0, 16#10ffff);
 scalar(F, {<<"CodeUnit16">>, []}, _, _, _) -> F:integer(0, 16#ffff);
-scalar(F, {<<"Text">>, []}, _, _, _) -> F:bind(F:list(unicode_scalar(F)), fun unicode:characters_to_binary/1);
-scalar(F, {<<"Bytes">>, []}, _, _, _) -> F:binary();
-scalar(F, {Name, []}, _, _, _) when Name =:= <<"CodePointText">>; Name =:= <<"Utf16Text">> ->
+scalar(F, {<<"Text">>, []}, _, _, Bounds) ->
+    F:bind(sequence(F, unicode_scalar(F), Bounds), fun unicode:characters_to_binary/1);
+scalar(F, {<<"Bytes">>, []}, _, _, Bounds) ->
+    case lengths(Bounds) of
+        [] -> F:binary();
+        _ -> F:bind(sequence(F, F:integer(0, 255), Bounds), fun list_to_binary/1)
+    end;
+scalar(F, {Name, []}, _, _, Bounds) when Name =:= <<"CodePointText">>; Name =:= <<"Utf16Text">> ->
     Max = case Name of <<"CodePointText">> -> 16#10ffff; _ -> 16#ffff end,
-    F:bind(F:list(F:integer(0, Max)), fun(Units) -> {ls_raw, Name, Units} end);
+    F:bind(sequence(F, F:integer(0, Max), Bounds), fun(Units) -> {ls_raw, Name, Units} end);
 scalar(F, {<<"Symbol">>, []}, _, Symbols, _) ->
     F:bind(F:integer(0, none), fun(N) ->
         Key = integer_to_binary(N), {ls_symbol, {{Symbols, generated}, Key}, Key}
@@ -221,6 +267,28 @@ scalar(F, {Name, []}, Bits, _, Bounds) ->
 ieee(F, Width) -> F:bind(F:integer(0, (1 bsl Width) - 1),
     fun(Bits) -> lawspec_beam_scalar:float_bits(Width, Bits) end).
 unicode_scalar(F) -> F:oneof([F:integer(0, 16#d7ff), F:integer(16#e000, 16#10ffff)]).
+
+%% Native length draws and vectors preserve both element and length shrinking.
+%% A required minimum raises the size floor, while an empty interval retries
+%% the whole dependent tuple. Hints never replace a supplied native factory.
+%% ref:DEC-shrink-within-domain ref:DEC-native-property-frameworks
+lengths(Bounds) -> [{Op, V} || {length, Op, V} <- Bounds].
+sequence(F, Element, Bounds) ->
+    case lengths(Bounds) of
+        [] -> F:list(Element);
+        Lengths -> F:sized(fun(Size) ->
+            F:bind(length_generator(F, Lengths, Size), fun(Count) -> F:vector(Count, Element) end)
+        end)
+    end.
+length_generator(F, Bounds, Size) ->
+    {Lo, Hi} = lists:foldl(fun limit/2, {0, none}, Bounds),
+    case Hi =/= none andalso Lo > Hi of
+        true -> F:exactly('$lawspec_empty_domain');
+        false -> F:integer(Lo, upper(Hi, max(Lo, Size)))
+    end.
+length_allowed(N, Bounds) ->
+    {Lo, Hi} = lists:foldl(fun limit/2, {0, none}, Bounds),
+    N >= Lo andalso (Hi =:= none orelse N =< Hi).
 
 limit({Op, V}, {Lo, Hi}) ->
     {N, D} = lawspec_beam_scalar:exact(V),

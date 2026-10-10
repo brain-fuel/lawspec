@@ -1,0 +1,7 @@
+expect: remove
+@@ src/example/harness.gleam
+<<<<<<<
+{ cents + 4 } / 10 * 10
+=======
+{ cents + 9 } / 10 * 10
+>>>>>>>

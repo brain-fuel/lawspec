@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createCompiler} from '../api.mjs';
 import {planWrites,applyWrites} from '../files.mjs';
+import {targets} from '../templates.mjs';
 const exec=promisify(execFile);
 const cli=new URL('../bin/lawspec.mjs',import.meta.url).pathname;
 
@@ -16,7 +17,7 @@ test('native payment exports cover all targets and preserve application and gene
   const run=(args=[])=>exec(process.execPath,[cli,'examples','--example','payments','--json',...args],{cwd:root});
   try {
     const projects=JSON.parse((await run(['--machine-bits','32'])).stdout);
-    assert.equal(projects.length,8);
+    assert.deepEqual(projects.map(project=>project.target),targets);
     const compiler=await createCompiler();
     for(const project of projects) {
       assert.ok(project.files.every(file=>file.ownership==='user'));

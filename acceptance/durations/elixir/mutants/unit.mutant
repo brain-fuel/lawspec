@@ -1,0 +1,7 @@
+expect: spending everything leaves nothing
+@@ lib/example_durations.ex
+<<<<<<<
+max(budget - spent, 0)
+=======
+max(budget - spent, 0) + if(spent > 0, do: 1, else: 0)
+>>>>>>>

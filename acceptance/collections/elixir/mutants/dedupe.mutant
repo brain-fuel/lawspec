@@ -1,0 +1,6 @@
+@@ lib/example_collections.ex
+<<<<<<<
+Enum.sort(Enum.uniq(values))
+=======
+Enum.sort(Enum.uniq(Enum.drop(values, 1)))
+>>>>>>>

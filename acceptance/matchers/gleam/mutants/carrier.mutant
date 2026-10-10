@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/example/matchers.gleam
+<<<<<<<
+data.OrderShipped(id, "post")
+=======
+data.OrderShipped(id, "")
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/shop/orders.gleam
+<<<<<<<
+data.ShopDomainTypeCurrencyEur
+=======
+data.ShopDomainTypeCurrencyUsd
+>>>>>>>

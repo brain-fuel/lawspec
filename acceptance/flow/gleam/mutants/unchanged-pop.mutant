@@ -1,0 +1,6 @@
+@@ src/example/flow.gleam
+<<<<<<<
+data.PopFlow(top, rest)
+=======
+data.PopFlow(top, stack)
+>>>>>>>

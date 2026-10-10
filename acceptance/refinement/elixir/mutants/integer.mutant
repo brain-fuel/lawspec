@@ -1,0 +1,6 @@
+@@ lib/example_refinements.ex
+<<<<<<<
+def preserve(value), do: value
+=======
+def preserve(value), do: value * 1.0
+>>>>>>>

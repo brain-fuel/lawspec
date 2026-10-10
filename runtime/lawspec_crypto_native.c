@@ -233,10 +233,18 @@ static int load(ErlNifEnv *env, void **private_data, ERL_NIF_TERM info) {
         || OPENSSL_version_major() != expected || OpenSSL_version_num() < 0x30500000L;
 }
 
+/* Cover restores the original Erlang module after instrumentation. The
+ * bridge holds no private state or resource types across calls, so each
+ * module instance can use the same library after the ordinary ABI check. */
+static int upgrade(ErlNifEnv *env, void **private_data, void **old_private_data, ERL_NIF_TERM info) {
+    (void)old_private_data;
+    return load(env, private_data, info);
+}
+
 static ErlNifFunc functions[] = {
     {"expand", 2, expand, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     {"encapsulate_test", 2, encapsulate_test, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     {"sign_context", 5, sign_context, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     {"verify_context", 5, verify_context, ERL_NIF_DIRTY_JOB_CPU_BOUND}
 };
-ERL_NIF_INIT(lawspec_beam_crypto_native, functions, load, NULL, NULL, NULL)
+ERL_NIF_INIT(lawspec_beam_crypto_native, functions, load, NULL, upgrade, NULL)

@@ -1,0 +1,7 @@
+expect: remove `known failing`
+@@ src/beam_status_support.erl
+<<<<<<<
+property_bug(N) -> record(<<"property">>, N), case N of 7 -> 0; _ -> N end.
+=======
+property_bug(N) -> record(<<"property">>, N).
+>>>>>>>

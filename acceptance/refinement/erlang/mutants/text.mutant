@@ -1,0 +1,6 @@
+@@ src/example_refinements.erl
+<<<<<<<
+count(Text) -> length(unicode:characters_to_list(Text)).
+=======
+count(_Text) -> 0.
+>>>>>>>

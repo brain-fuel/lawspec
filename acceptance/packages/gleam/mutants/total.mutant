@@ -1,0 +1,6 @@
+@@ src/shop/orders.gleam
+<<<<<<<
+line.price.cents * line.quantity.value
+=======
+line.price.cents * line.quantity.value + 1
+>>>>>>>

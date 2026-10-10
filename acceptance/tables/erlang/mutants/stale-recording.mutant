@@ -1,0 +1,8 @@
+expect: recorded/example.tables/first label differs
+@@ src/example_tables.erl
+<<<<<<<
+label(Parcel) ->
+=======
+label(1) -> <<"parcel one">>;
+label(Parcel) ->
+>>>>>>>

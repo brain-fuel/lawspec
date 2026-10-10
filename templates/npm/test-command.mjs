@@ -8,19 +8,23 @@
 // a law that calls adapters, every file in the target project that LawSpec
 // did not generate. A passing run records each law's key and seed; a law runs
 // again when its key changes or with --fresh.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 // Folders that hold dependencies, build output or caches, not code under test.
 const skipped = new Set([".git", ".lawspec", "node_modules", "dist", "build", "target", "out", ".gradle",
-  ".stack-work", "__pycache__", ".hypothesis", ".pytest_cache", ".venv", "venv", ".idea", ".vscode"]);
+  ".stack-work", "_build", "deps", ".elixir_ls", "__pycache__", ".hypothesis", ".pytest_cache", ".venv", "venv", ".idea", ".vscode"]);
 // Build and lock files, which choose the toolchain and dependencies.
 const environmentFiles = ["package.json", "package-lock.json", "tsconfig.json", "pyproject.toml", "go.mod",
   "go.sum", "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
-  "Cargo.toml", "Cargo.lock", "stack.yaml", "stack.yaml.lock", "package.yaml"];
+  "Cargo.toml", "Cargo.lock", "stack.yaml", "stack.yaml.lock", "package.yaml",
+  "rebar.config", "rebar.config.script", "rebar.lock", "mix.exs", "mix.lock", "gleam.toml", "manifest.toml"];
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
+// The crypto builder owns these outputs. Inputs and other priv/ assets still
+// contribute to the adapter digest; rebuilding the NIF cannot invalidate a pass.
+const cryptoBuildOutput = (file) => /^priv\/lawspec_crypto_native\.(?:so|dll)(?:\.build|\.\d+\.tmp)?$/.test(file);
 
 // Every file in a project that LawSpec did not generate, by content.
 export async function projectDigest(root, generated) {
@@ -32,7 +36,7 @@ export async function projectDigest(root, generated) {
       const relative = folder ? `${folder}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (!skipped.has(entry.name) && !relative.endsWith("testdata/rapid")) await walk(relative);
-      } else if (entry.isFile() && !generated.has(relative)) {
+      } else if (entry.isFile() && !generated.has(relative) && !cryptoBuildOutput(relative)) {
         hash.update(relative + "\0").update(await readFile(path.join(root, relative))).update("\0");
       }
     }
@@ -42,7 +46,10 @@ export async function projectDigest(root, generated) {
 }
 
 export async function environmentDigest(root, report) {
-  const parts = [JSON.stringify(report ?? null)];
+  // Coverage locations describe build output; native tools can discover more
+  // output directories after the first run. Build configuration is hashed below.
+  const {coverage: _coverage, ...toolchain} = report ?? {};
+  const parts = [JSON.stringify(report ? toolchain : null)];
   const names = (await readdir(root)).filter((name) => environmentFiles.includes(name) || name.endsWith(".cabal")).sort();
   for (const name of names) parts.push(name, await readFile(path.join(root, name), "utf8"));
   return digest(JSON.stringify(parts));
@@ -85,6 +92,14 @@ const groupBy = (entries, key) => {
   return [...groups.entries()];
 };
 
+// Rebar and Mix run their configured compile hooks. Gleam has no corresponding
+// hook, so build its generated crypto bridge before starting a native test VM.
+export function preparationInvocations(target, files) {
+  return target.language === "gleam" && files.some((file) => file.path === "priv/lawspec_crypto_native.c")
+    ? [{command: "escript", args: ["lawspec_crypto_build.escript"]}]
+    : [];
+}
+
 // The native invocations that run the harness's benchmarks (lawspec test
 // --benchmarks): each target's test command, selecting the tests that
 // measure them by the names the manifest gives (entry.name). Benchmarks are
@@ -99,6 +114,18 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
     return file.startsWith(directory + "/") ? file.slice(directory.length + 1) : file;
   };
   const className = (file, defaultDir, extension) => without(relativeTo(file, defaultDir), extension).replaceAll("/", ".");
+  if (language === "erlang")
+    return entries.map((entry) => ({ command: "rebar3", args: ["eunit", "--generator",
+      `${path.posix.basename(entry.file, ".erl")}:${entry.name}_cases`] }));
+  if (language === "elixir")
+    return groupBy(entries, (entry) => entry.file).map(([file, marks]) => ({ command: "mix",
+      args: ["test", file, ...marks.flatMap((entry) => ["--only", `lawspec:${entry.name}`])] }));
+  if (language === "gleam")
+    return [{ command: "gleam", args: ["test", "--target", "erlang"], env: {
+      LAWSPEC_BEAM_BENCHMARKS: JSON.stringify(entries.map((entry) => ({
+        module: path.posix.basename(entry.file, ".gleam"), function: `${entry.name}__case_0_test`
+      })))
+    } }];
   if (language === "python")
     return groupBy(entries, (e) => e.file).map(([file, marks]) => ({ command: target.python || "python3",
       args: ["-m", "pytest", "-q", "-s", file, "-k", marks.map((e) => e.name).join(" or ")] }));
@@ -142,7 +169,9 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
 // LawSpec.TestNames), then a kind after a separator no name contains, so one
 // law's name never selects another's. `scratch` is a folder for reports;
 // `coverage` asks each runner to measure coverage too (see coverageSetup).
-export function invocations(target, entries, { offline = false, scratch = ".", coverage = null, xdist = false } = {}) {
+export function invocations(target, entries, { offline = false, scratch = ".", coverage = null, xdist = false,
+  root = process.cwd(), coverageConfig } = {}) {
+  if (!entries.length) return [];
   const language = target.language;
   const testDir = target.testDir;
   const relativeTo = (file, defaultDir) => {
@@ -151,6 +180,42 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
   };
   const named = (entry) => new RegExp(`^${regex(entry.name)}_`);
   const className = (file, defaultDir, extension) => without(relativeTo(file, defaultDir), extension).replaceAll("/", ".");
+  if (["erlang", "elixir", "gleam"].includes(language)) {
+    const run = randomUUID();
+    const file = path.join(scratch, `beam-${run}.jsonl`);
+    const identity = (entry) => `${entry.unit}::${entry.name}`;
+    const env = { LAWSPEC_BEAM_REPORT: file, LAWSPEC_BEAM_RUN: run };
+    const measured = coverage ? {run, file: path.resolve(coverage, "runs", `${run}.coverdata`),
+      ...(language === "elixir" ? {beamDirectory: coverageConfig?.compilePath} : {}),
+      ...(language === "erlang" ? {tool: "rebar3"} : {}),
+      ...(language === "gleam" ? {metadata: path.resolve(coverage, "runs", `${run}.json`)} : {})} : null;
+    let command, args;
+    if (language === "elixir") {
+      command = "mix";
+      args = ["test", ...new Set(entries.map((entry) => entry.file)),
+        ...entries.flatMap((entry) => ["--only", `lawspec_identity:${identity(entry)}`])];
+      if (measured) {
+        if (coverageConfig?.tool !== "Mix.Tasks.Test.Coverage" || !coverageConfig.output || !coverageConfig.compilePath)
+          throw new Error("BEAM coverage requires Mix.Tasks.Test.Coverage and its effective output directory from lawspec doctor");
+        args.push("--cover", "--export-coverage",
+          path.relative(path.resolve(root, coverageConfig.output), without(measured.file, ".coverdata")));
+      }
+      if (offline) env.HEX_OFFLINE = "1";
+    } else {
+      env.LAWSPEC_BEAM_LAWS = JSON.stringify(entries.map(({unit, name}) => ({unit, name})));
+      if (language === "erlang") {
+        command = "rebar3";
+        args = ["eunit", "--generator", "lawspec_generated_tests:lawspec_test_"];
+        if (measured) args.push("--cover", "--cover_export_name", without(measured.file, ".coverdata"));
+      } else {
+        command = "gleam";
+        args = ["test", "--target", "erlang"];
+        if (measured) env.LAWSPEC_BEAM_COVERAGE = JSON.stringify(measured);
+      }
+    }
+    return [{ laws: entries, command, args, env, ...(measured ? {coverage: measured} : {}), report: {kind: "beam-events", file, run},
+      ran: (test) => test.status === "passed" ? entries.filter((entry) => test.identity === identity(entry)) : [] }];
+  }
   if (language === "python")
     return groupBy(entries, (e) => e.file).map(([file, laws], n) => {
       const report = path.join(scratch, `pytest-${n}.xml`);
@@ -231,6 +296,9 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
 
 // What --coverage needs on each target, and how to say it is missing.
 export const coverageTools = {
+  erlang: { tool: "OTP cover", install: "install Erlang/OTP with the tools application" },
+  elixir: { tool: "OTP cover", install: "install Erlang/OTP with the tools application" },
+  gleam: { tool: "OTP cover", install: "install Erlang/OTP with the tools application" },
   python: { tool: "coverage.py", check: ["-c", "import coverage"], install: "python -m pip install coverage" },
   javascript: { tool: "c8", install: "npm install --save-dev c8" },
   typescript: { tool: "c8", install: "npm install --save-dev c8" },
@@ -247,18 +315,73 @@ export function selectByTags(entries, include = [], exclude = []) {
     !exclude.some((t) => (e.tags ?? []).includes(t)));
 }
 
+// A recorded failure takes precedence over any older passing cache entry,
+// including when an adapter is repaired by restoring its previous contents.
+export function testsToRun(entries, keys, previous, failures, {fresh = false, coverage = false, updateRecorded = false} = {}) {
+  return entries.filter((entry) => fresh || coverage || updateRecorded || failures[entry.law] ||
+    previous[entry.law]?.key !== keys.get(entry.law));
+}
+
+// Read complete outer elements, preserving nested suites and native payloads.
+// Comments and CDATA can contain apparent XML tags; they are never elements.
+function junitElements(xml, names) {
+  const elements = [];
+  let current;
+  const tags = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(\/?)([A-Za-z_][\w:.-]*)(?:[^"'<>]|"[^"]*"|'[^']*')*>/g;
+  for (const tag of xml.matchAll(tags)) {
+    const [, closing, name] = tag;
+    if (!name || !names.includes(name)) continue;
+    const empty = /\/\s*>$/.test(tag[0]);
+    if (!current) {
+      if (closing) continue;
+      current = {name, start: tag.index, opening: tag[0], depth: 0};
+    }
+    if (name !== current.name) continue;
+    current.depth += closing ? -1 : empty ? 0 : 1;
+    if (current.depth === 0) {
+      elements.push({...current, xml: xml.slice(current.start, tag.index + tag[0].length)});
+      current = undefined;
+    }
+  }
+  return elements;
+}
+
+function junitCounts(cases) {
+  const statuses = cases.map(test => new Set(junitElements(test.xml, ["failure", "error", "skipped"]).map(e => e.name)));
+  return {tests: cases.length, ...Object.fromEntries(["failure", "error", "skipped"].map(name =>
+    [name === "skipped" ? name : `${name}s`, statuses.filter(status => status.has(name)).length]))};
+}
+
 // One JUnit report from every target's: each target's suites, renamed with
 // the target, in one <testsuites>.
 export function mergeJunit(reports) {
   const suites = [];
+  const totals = {tests: 0, failures: 0, errors: 0, skipped: 0};
   for (const { target, xml } of reports) {
-    const found = [...xml.matchAll(/<testsuite\b[\s\S]*?<\/testsuite>|<testsuite\b[^>]*\/>/g)].map((m) => m[0]);
-    for (const suite of found)
-      suites.push(suite.replace(/<testsuite\b([^>]*?)\bname="([^"]*)"/, (whole, before, name) => `<testsuite${before}name="${escapeXml(target)}: ${name}"`)
-        .replace(/^<testsuite\b(?![^>]*\bname=)/, `<testsuite name="${escapeXml(target)}"`));
+    const elements = junitElements(xml, ["testsuite", "testcase"]);
+    const found = elements.filter(e => e.name === "testsuite");
+    // Node's native JUnit reporter puts top-level tests directly in testsuites.
+    // Keep those cases (and their native failure payloads) instead of silently
+    // dropping them because they have no intervening testsuite element.
+    const loose = elements.filter(e => e.name === "testcase");
+    if (loose.length) {
+      const opening = `<testsuite name="native" ${Object.entries(junitCounts(loose)).map(([key, value]) => `${key}="${value}"`).join(" ")}>`;
+      found.push({opening, xml: opening + "\n" + loose.map(e => e.xml).join("\n") + "\n</testsuite>"});
+    }
+    for (const suite of found) {
+      const attributes = [...suite.opening.matchAll(/\s([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)];
+      const values = Object.fromEntries(attributes.map(match => [match[1], match[2] ?? match[3]]));
+      const counts = junitCounts(junitElements(suite.xml, ["testcase"]));
+      for (const key of Object.keys(totals))
+        totals[key] += /^\d+$/.test(values[key] ?? "") ? Number(values[key]) : counts[key];
+      const name = attributes.find(match => match[1] === "name");
+      const opening = name
+        ? suite.opening.slice(0, name.index) + ` name="${escapeXml(target)}: ${values.name.replaceAll('"', '&quot;')}"` + suite.opening.slice(name.index + name[0].length)
+        : suite.opening.replace(/^<testsuite\b/, `<testsuite name="${escapeXml(target)}"`);
+      suites.push(opening + suite.xml.slice(suite.opening.length));
+    }
   }
-  const count = (attribute) => suites.reduce((n, suite) => n + Number(suite.match(new RegExp(`\\b${attribute}="(\\d+)"`))?.[1] ?? 0), 0);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites tests="${count("tests")}" failures="${count("failures")}" errors="${count("errors")}" skipped="${count("skipped")}">\n` +
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites tests="${totals.tests}" failures="${totals.failures}" errors="${totals.errors}" skipped="${totals.skipped}">\n` +
     suites.join("\n") + "\n</testsuites>\n";
 }
 
@@ -277,6 +400,20 @@ export async function harnessStatistics(directory) {
 // The tests a run executed, as {name, classname}, from the runner's report or
 // output. Skipped tests are not counted.
 export async function executedTests(report, output, root, since) {
+  if (report?.kind === "beam-events") {
+    // A native listener seals the invocation after its final event. Missing,
+    // stale, malformed or interrupted reports are not execution evidence.
+    const raw = await readFile(path.resolve(root, report.file), "utf8").catch(() => "");
+    let rows;
+    try { rows = raw.trim().split("\n").map((line) => JSON.parse(line)); } catch { return []; }
+    if (rows.length < 2 || rows[0]?.event !== "start" || rows.at(-1)?.event !== "end" ||
+      rows.some((row) => row?.run !== report.run)) return [];
+    const tests = rows.slice(1, -1);
+    if (tests.some((row) => row.event !== "test" || !["passed", "failed"].includes(row.status) ||
+      typeof row.name !== "string" || typeof row.classname !== "string" || typeof row.identity !== "string" ||
+      !Number.isFinite(row.time) || row.time < 0)) return [];
+    return tests;
+  }
   if (report?.kind === "junit") {
     const files = report.files ?? await reportFiles(path.join(root, report.directory), since);
     const tests = [];
@@ -320,9 +457,18 @@ export async function executedTests(report, output, root, since) {
 // JUnit XML for a runner that writes none, from the tests it printed.
 export function junitFromTests(tests) {
   const failures = tests.filter((t) => t.status === "failed").length;
-  return `<testsuite name="lawspec" tests="${tests.length}" failures="${failures}">\n` +
-    tests.map((t) => `  <testcase classname="${escapeXml(t.classname ?? "")}" name="${escapeXml(t.name)}"` +
-      (t.status === "failed" ? `><failure message="failed"/></testcase>` : "/>")).join("\n") + "\n</testsuite>";
+  const skipped = tests.filter((t) => t.status === "skipped").length;
+  // A BEAM scheduler wraps native functions from several units. Its module
+  // is not the declaring class: retain the unit from the validated identity.
+  const classname = (test) => {
+    const separator = typeof test.identity === "string" ? test.identity.lastIndexOf("::") : -1;
+    return separator > 0 ? test.identity.slice(0, separator) : test.classname ?? "";
+  };
+  return `<testsuite name="lawspec" tests="${tests.length}" failures="${failures}"${skipped ? ` skipped="${skipped}"` : ""}>\n` +
+    tests.map((t) => `  <testcase classname="${escapeXml(classname(t))}" name="${escapeXml(t.name)}"` +
+      (Number.isFinite(t.time) ? ` time="${t.time}"` : "") +
+      (t.status === "failed" ? `><failure message="${escapeXml(t.failure ?? "failed")}"/></testcase>` :
+        t.status === "skipped" ? `><skipped message="${escapeXml(t.reason ?? "skipped")}"/></testcase>` : "/>")).join("\n") + "\n</testsuite>";
 }
 
 async function reportFiles(directory, since) {

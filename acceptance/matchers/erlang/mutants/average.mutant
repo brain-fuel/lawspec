@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/example_matchers.erl
+<<<<<<<
+(A + B) / 2
+=======
+(A + B) / 2 + 1
+>>>>>>>

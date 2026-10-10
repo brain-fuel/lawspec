@@ -34,10 +34,22 @@ Every target needs Node 22 or later. Beyond that:
 | `go` | Go 1.22+ and Rapid v1.2.0, resolved without a local replacement. |
 | `haskell` | Stack resolves a GHC and a test plan with Hspec 2.11, Hedgehog 1.5, hspec-hedgehog 0.3 and hspec-discover. The test directory has a `Spec.hs` that uses hspec-discover. The one Cabal package directly depends on `text` and `bytestring` in the component that compiles generated source, and has a test suite that depends on Hspec and Hedgehog. |
 | `rust` | Rust 1.85+, a Cargo package with edition 2024, direct dependencies on proptest, num-bigint, num-rational, num-complex and num-traits, and the standard test harness. With a custom layout, the library path matches `sourceDir` and every generated test file is registered. |
+| `erlang` | OTP 29, Rebar3 3.27.1, compiled PropEr 1.5.0 from Hex, the effective test profile's source directories, unfiltered EUnit discovery, and the `lawspec_beam_report` event listener. A checkout replacement or a compiled dependency that no longer matches its declaration fails. |
+| `elixir` | OTP 29, Elixir 1.20.x, compiled StreamData 1.4.0 from Hex, both Erlang and Elixir compilers, source and test support directories, and unfiltered ExUnit configuration with `LawSpec.Beam.ExUnitFormatter`. The helper is evaluated with ExUnit autorun disabled; the suite is not run. |
+| `gleam` | OTP 29, Gleam 1.18 or 1.19, the Erlang target, `src`/`test` directories, compiled gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5, the local development support package, and the LawSpec native test entry point. Compiled versions must match the resolved dependencies and declarations. |
 
 Finally, every version found is compared with the ranges in
 [compatibility](../reference/compatibility.md). An unknown, prerelease, missing
 or incompatible version fails the check.
+
+When generation plans a BEAM crypto bridge, its preflight also
+builds and loads the actual C/OpenSSL bridge in a temporary directory. A
+standalone `doctor` performs this check when the generated bridge source
+already exists in `priv`. This
+checks the compiler, OTP headers, OpenSSL headers and libraries, algorithm
+availability and shared-library ABI. It leaves the project's `priv` directory
+untouched. Rebar and Mix must configure the bridge's build hook. See the
+[native crypto setup](targets/erlang.md#native-crypto-bridge).
 
 ## Fix common failures
 
@@ -54,6 +66,14 @@ or incompatible version fails the check.
   separate project root.
 - **Haskell reports a missing Cabal file.** Run `stack build --test
   --no-run-tests` once so that Hpack generates it.
+- **BEAM dependencies are declared but not compiled.** Prepare them with
+  `rebar3 as test compile`, `mix deps.get` followed by
+  `MIX_ENV=test mix deps.compile`, or `gleam build`. Doctor does not do this
+  installation or application build for you.
+- **A BEAM execution reporter is missing.** Follow the
+  [Erlang](targets/erlang.md), [Elixir](targets/elixir.md) or
+  [Gleam](targets/gleam.md) adoption instructions. Native completion events let
+  the CLI distinguish tests that ran from tests that were filtered out.
 
 Build tools may populate their normal caches while `doctor` resolves
 dependencies. LawSpec never runs a dependency installer.

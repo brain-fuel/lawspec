@@ -1,0 +1,6 @@
+@@ src/example_alternatives.erl
+<<<<<<<
+reference_clamp(Value) -> case Value < 0 of true -> 0; false -> Value end.
+=======
+reference_clamp(_Value) -> -1.
+>>>>>>>

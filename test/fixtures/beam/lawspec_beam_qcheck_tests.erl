@@ -8,6 +8,12 @@ indexed_and_existential_generation_test_() ->
 
 native_factories_keep_checked_shrinks_test() -> lawspec_beam_native_generator_tests:run(lawspec_beam_qcheck).
 
+strategy_draws_test_() -> lawspec_beam_strategy_tests:tests(lawspec_beam_qcheck).
+
+harness_adequacy_test_() -> lawspec_beam_harness_tests:tests(lawspec_beam_qcheck).
+
+failure_inputs_test_() -> lawspec_beam_failure_inputs_tests:tests(lawspec_beam_qcheck).
+
 bounded_shrinking_test() ->
     Failure = failure(lawspec_beam_qcheck:integer(5, 1000), fun(_) -> false end, 1000),
     ?assertMatch({counterexample, 5, error, _}, Failure).

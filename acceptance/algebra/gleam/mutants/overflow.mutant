@@ -1,0 +1,7 @@
+expect: addition is commutative
+@@ src/example/algebra.gleam
+<<<<<<<
+pub fn add(a: Int, b: Int) -> Int { a + b }
+=======
+pub fn add(a: Int, b: Int) -> Int { case a + b > 2147483647 { True -> a + b - 4294967296 False -> a + b } }
+>>>>>>>

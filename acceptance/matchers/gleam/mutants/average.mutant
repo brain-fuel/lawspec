@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/example/matchers.gleam
+<<<<<<<
+int.to_float(a + b) /. 2.0
+=======
+int.to_float(a + b) /. 2.0 +. 1.0
+>>>>>>>

@@ -1,0 +1,8 @@
+expect: TestCleanupFailed
+@@ src/beam_owner_support.erl
+<<<<<<<
+    true = ets:delete(Table),
+=======
+    receive never -> ok end,
+    true = ets:delete(Table),
+>>>>>>>

@@ -1,0 +1,8 @@
+expect-any: target_failed | TargetFailed
+@@ lib/example_target.ex
+<<<<<<<
+    :beam_target_support.record("number", n)
+=======
+    :beam_target_support.record("number", n)
+    if n == 137, do: 0, else: n
+>>>>>>>

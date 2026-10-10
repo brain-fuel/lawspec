@@ -225,6 +225,32 @@ end
   `lawspec test` sets. Run by hand, they look for `recorded/` in the nearest
   folder, from the working one up, that holds `lawspec.json` or `recorded/`.
 
+Recordings use the declared types, including fields inside data constructors.
+Extended scalars have explicit forms:
+
+| Value | Recorded form |
+| --- | --- |
+| Decimal | `125e-2` (trailing coefficient zeros removed; zero is `0e0`) |
+| Rational | `rational(1, 2)` (reduced, with a positive denominator) |
+| Float | `float32Bits("3fa00000")` or `float64Bits("8000000000000000")` |
+| NaN | `float32NaN` or `float64NaN`, independent of payload and sign |
+| Complex | `Complex64(float32Bits("3f800000"), float32Bits("40000000"))` |
+| Bytes or raw text | `bytes([0, 255])`, `codePoints([55296])`, `utf16([55296])` |
+| Character | `"雪"`; code points and UTF-16 code units use integers |
+| Absence or presence | `()`, `null`, `undefined`, `nullable(42)`, `optional(42)` |
+| Symbol | `symbol(1, "description")` |
+| Handle | `Store#1` |
+
+Float bit strings retain signed zero, infinities and finite values exactly.
+Symbol identities are numbered in traversal order within each recorded value;
+handles are numbered separately for each handle type. Repeated references keep
+the same number. Numbering starts again for the next recording.
+
+Before v0.22, some extended scalars used target-specific renderings. Update
+those recordings once with `lawspec test --update-recorded` and review the
+changed files. Text, integer, Boolean, unit, list and constructor syntax remains
+the same; fields containing extended scalars use the forms above.
+
 ## Descriptions, rationales and references
 
 ```lawspec fragment

@@ -7,9 +7,11 @@ import { targets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
+import { beamCoverageRequirement, collectBeamCoverage } from "../beam-coverage.mjs";
+import { failureDatabase, projectKey } from "../failure-database.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { benchmarkInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
-  harnessStatistics, coverageTools, junitFromTests } from "../test-command.mjs";
+import { benchmarkInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
+  harnessStatistics, coverageTools, junitFromTests, testsToRun } from "../test-command.mjs";
 import {
   readOptional,
   planWrites,
@@ -374,19 +376,18 @@ async function runTests(compiler, input, selected, roots, config) {
       environment: await environmentDigest(root, report_) + (await recordedDigest(recordedFolder)),
       project: await projectDigest(root, generated),
     });
-    const resultsFile = path.join(configRoot, ".lawspec", "results",
-      `${target.language}-${createHash("sha256").update(root).digest("hex").slice(0, 12)}.json`);
+    const identity = projectKey(root);
+    const resultsFile = path.join(configRoot, ".lawspec", "results", `${target.language}-${identity}.json`);
     const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
+    const {directory: failures, file: databaseFile, database} = await failureDatabase(configRoot, target.language, root);
     // Recording again runs every law, so each records what it sees now.
     const chosen = selectByTags(planned.tests, options.tag ?? [], options["exclude-tag"] ?? []);
-    const stale = chosen.filter((entry) => options.fresh || options.coverage || options["update-recorded"] || previous.laws[entry.law]?.key !== keys.get(entry.law));
+    const stale = testsToRun(chosen, keys, previous.laws, database,
+      {fresh: options.fresh, coverage: options.coverage, updateRecorded: options["update-recorded"]});
     // The failure database: each law whose last run failed, with the seed
     // that exposed it. Those laws run first, with that seed, so the failing
     // inputs are generated again; the runtimes keep their own counterexample
     // databases beside it (Hypothesis, proptest).
-    const failures = path.join(configRoot, ".lawspec", "failures", target.language);
-    const databaseFile = path.join(failures, "laws.json");
-    const database = JSON.parse((await readOptional(databaseFile)) ?? "{}");
     const replayed = options.seed === undefined ? stale.filter((entry) => database[entry.law]) : [];
     const batches = [
       ...[...new Set(replayed.map((entry) => database[entry.law].seed))].map((s) =>
@@ -396,19 +397,24 @@ async function runTests(compiler, input, selected, roots, config) {
     const passed = [];
     const unrun = [];
     let failed = false;
-    const scratch = path.join(configRoot, ".lawspec", "reports", target.language);
+    const scratch = path.join(configRoot, ".lawspec", "reports", target.language, identity);
     const stats = path.join(scratch, "statistics");
-    const coverage = options.coverage ? path.join(configRoot, ".lawspec", "coverage", target.language) : null;
+    const beam = ["erlang", "elixir", "gleam"].includes(target.language);
+    const coverage = options.coverage ? path.join(configRoot, ".lawspec", "coverage", target.language, identity) : null;
+    const coverageRuns = [];
+    let coverageWritten = false, coverageError;
     await rm(scratch, { recursive: true, force: true });
     await mkdir(stats, { recursive: true });
     await mkdir(failures, { recursive: true });
-    await writeFile(path.join(path.dirname(scratch), ".gitignore"), "*\n");
-    if (coverage) {
-      await mkdir(coverage, { recursive: true });
-      const missing = await coverageMissing(target, root);
-      if (missing) console.error(`${target.language}: --coverage needs ${missing.tool}, which is not available; ${missing.install}. Running without coverage.`);
+    await writeFile(path.join(configRoot, ".lawspec", "reports", ".gitignore"), "*\n");
+    const missingCoverage = coverage ? await coverageMissing(target, root, report_) : null;
+    const useCoverage = coverage && !missingCoverage;
+    if (missingCoverage)
+      console.error(`${target.language}: --coverage needs ${missingCoverage.tool}, which is not available; ${missingCoverage.install}. Running without coverage.`);
+    if (useCoverage) {
+      if (beam) await rm(coverage, {recursive: true, force: true});
+      await mkdir(beam ? path.join(coverage, "runs") : coverage, { recursive: true });
     }
-    const useCoverage = coverage && !(await coverageMissing(target, root));
     // parallel on Python needs pytest-xdist; without it the tests run one
     // after another, and lawspec test says so.
     let xdist = false;
@@ -416,21 +422,30 @@ async function runTests(compiler, input, selected, roots, config) {
       xdist = spawnSync(target.python || "python3", ["-c", "import xdist"], { cwd: root, stdio: "ignore" }).status === 0;
       if (!xdist) console.error("python: `parallel` runs tests at the same time only with pytest-xdist (pip install pytest-xdist); without it they run one after another.");
     }
-    // A skipped law runs nothing, and a known-failing law's one test is
-    // expected to fail, so neither is required to show as run.
-    const expected = (entry) => !entry.skip && !entry.knownFailing;
+    // A skipped law runs nothing. BEAM known-failing checks finish as native
+    // passing tests, so their completion must appear in the native report.
+    const expected = (entry) => !entry.skip && (!entry.knownFailing || ["erlang", "elixir", "gleam"].includes(target.language));
+    const benchmarking = options.benchmarks ? (planned.benchmarks ?? []) : [];
+    if (batches.length || benchmarking.length) {
+      for (const preparation of preparationInvocations(target, planned.files)) {
+        const {ok} = await spawned(preparation.command, preparation.args, root, process.env);
+        if (!ok) throw new Error(`${target.language}: native test preparation failed`);
+      }
+    }
     const seedOf = new Map();
     batches: for (const batch of batches) {
-      for (const run of invocations(target, batch.entries, { offline, scratch, coverage: useCoverage ? coverage : null, xdist })) {
+      for (const run of invocations(target, batch.entries, { offline, scratch, coverage: useCoverage ? coverage : null,
+        xdist, root, coverageConfig: report_.coverage })) {
         const since = Date.now() - 1000;
         const { ok, output } = await spawned(run.command, run.args, root,
           { ...process.env, ...run.env, LAWSPEC_SEED: batch.seed, HSPEC_SEED: batch.seed,
             LAWSPEC_STATS: stats, LAWSPEC_FAILURES: failures, LAWSPEC_RECORDED: recordedFolder,
             ...(options["update-recorded"] ? { LAWSPEC_UPDATE_RECORDED: "1" } : {}) }, run.report?.kind === "go-json");
+        if (run.coverage) coverageRuns.push(run.coverage);
         const executed = await executedTests(run.report, output, root, since);
         for (const law of run.laws) seedOf.set(law.law, batch.seed);
-        if (report) junit.push({ target: target.language, xml: await junitOf(run, executed, root, since) });
-        if (!ok) { failed = true; break batches; }
+        if (report) junit.push({ target: `${target.language} (${target.root})`, xml: await junitOf(run, executed, root, since) });
+        if (!ok || executed.some((test) => test.status === "failed")) { failed = true; break batches; }
         // A runner whose filter matched nothing reports success, so a law
         // counts as passed only if the runner's report shows its tests ran.
         const ran = new Set(executed.flatMap(run.ran ?? (() => [])));
@@ -439,9 +454,16 @@ async function runTests(compiler, input, selected, roots, config) {
       }
     }
     if (unrun.length) failed = true;
+    if (useCoverage && beam) {
+      try {
+        coverageWritten = !!(await collectBeamCoverage({root, directory: coverage, runs: coverageRuns}));
+      } catch (error) {
+        failed = true;
+        coverageError = error.message;
+      }
+    }
     // --benchmarks: the harness's benchmarks run after the laws, every time;
     // they are measured, never asserted, and never cached.
-    const benchmarking = options.benchmarks ? (planned.benchmarks ?? []) : [];
     if (!failed) for (const run of benchmarkInvocations(target, benchmarking, { offline })) {
       const { ok } = await spawned(run.command, run.args, root,
         { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed, LAWSPEC_STATS: stats, LAWSPEC_RECORDED: recordedFolder }, false);
@@ -460,9 +482,12 @@ async function runTests(compiler, input, selected, roots, config) {
     // A law that failed is recorded with its seed; one that passed leaves.
     for (const entry of stale) {
       if (passed.includes(entry)) delete database[entry.law];
-      else if (seedOf.has(entry.law)) database[entry.law] = { seed: Number(seedOf.get(entry.law)), failed: new Date().toISOString() };
+      else if (seedOf.has(entry.law)) {
+        delete laws[entry.law];
+        database[entry.law] = { seed: Number(seedOf.get(entry.law)), failed: new Date().toISOString() };
+      }
     }
-    await writeFile(path.join(path.dirname(failures), ".gitignore"), "*\n");
+    await writeFile(path.join(configRoot, ".lawspec", "failures", ".gitignore"), "*\n");
     await writeFile(databaseFile, JSON.stringify(database, null, 2) + "\n");
     await mkdir(path.dirname(resultsFile), { recursive: true });
     await writeFile(path.join(path.dirname(resultsFile), ".gitignore"), "*\n");
@@ -472,7 +497,7 @@ async function runTests(compiler, input, selected, roots, config) {
     const benchmarks = statistics.filter((s) => s.benchmark);
     // How each parallel unit's tests actually ran at the same time.
     const parallelism = statistics.filter((s) => s.parallel).map(({ parallel, mode, workers }) => ({ unit: parallel, mode, workers }));
-    summaries.push({ target: target.language, seed: Number(seed), ran: stale.map((e) => e.law),
+    summaries.push({ target: target.language, root: target.root, seed: Number(seed), ran: stale.map((e) => e.law),
       unchanged: chosen.length - stale.length, ok: !failed,
       ...(chosen.length !== planned.tests.length ? { deselected: planned.tests.length - chosen.length } : {}),
       ...(unrun.length ? { unrun: unrun.map((e) => e.law) } : {}),
@@ -480,14 +505,15 @@ async function runTests(compiler, input, selected, roots, config) {
       ...(unmet.length ? { unmetCover: unmet } : {}),
       ...(benchmarks.length ? { benchmarks } : {}),
       ...(parallelism.length ? { parallelism } : {}),
-      ...(useCoverage ? { coverage: path.relative(process.cwd(), coverage) || "." } : {}) });
+      ...(coverageError ? {coverageError} : {}),
+      ...(useCoverage && (!beam || coverageWritten) ? { coverage: path.relative(process.cwd(), coverage) || "." } : {}) });
   }
   if (report) {
     await mkdir(path.dirname(path.resolve(report.path)), { recursive: true });
     await writeFile(path.resolve(report.path), mergeJunit(junit));
   }
   output(options.json ? summaries : summaries.map((s) =>
-    `${s.target}: ${s.ran.length ? `ran ${s.ran.length} law(s) with seed ${s.seed}` : "nothing to run"}` +
+    `${s.target}${summaries.filter(other => other.target === s.target).length > 1 ? ` (${s.root})` : ""}: ${s.ran.length ? `ran ${s.ran.length} law(s) with seed ${s.seed}` : "nothing to run"}` +
     `, ${s.unchanged} unchanged since their last passing run.${s.ok ? "" : " FAILED"}` +
     (s.deselected ? `\n${s.deselected} law(s) not selected by --tag or --exclude-tag.` : "") +
     (s.unrun ? `\nNo tests ran for ${s.unrun.join(", ")}; the runner matched none of their tests.` : "") +
@@ -495,6 +521,7 @@ async function runTests(compiler, input, selected, roots, config) {
     (s.unmetCover ? `\nCover not met: ${s.unmetCover.join("; ")}` : "") +
     (s.parallelism ? "\n" + s.parallelism.map((p) => `parallel ${p.unit}: ${p.mode}, ${p.workers} worker(s)`).join("\n") : "") +
     (s.benchmarks ? "\n" + s.benchmarks.map((b) => `benchmark ${b.benchmark}: mean ${(b.mean_ns / 1000).toFixed(2)} us over ${b.iterations} iteration(s)`).join("\n") : "") +
+    (s.coverageError ? `\nCoverage failed: ${s.coverageError}` : "") +
     (s.coverage ? `\nCoverage written to ${s.coverage}.` : "")).join("\n"));
   if (summaries.some((s) => !s.ok)) process.exitCode = 1;
 }
@@ -517,10 +544,14 @@ async function junitOf(run, executed, root, since) {
     }
     return xml.join("\n");
   }
-  return junitFromTests(executed);
+  // BEAM reports only executed cases. Intentional harness skips remain
+  // reportable obligations; they are never evidence that a test passed.
+  const skipped = run.report?.kind === "beam-events" ? run.laws.filter((entry) => entry.skip)
+    .map((entry) => ({name: entry.label, classname: entry.unit, status: "skipped", reason: entry.skip})) : [];
+  return junitFromTests([...executed, ...skipped]);
 }
 // The tool --coverage needs, if it is missing.
-async function coverageMissing(target, root) {
+async function coverageMissing(target, root, report) {
   const tool = coverageTools[target.language];
   if (!tool) return { tool: "a coverage tool", install: "no coverage tool is known for this target" };
   const probe = (command, args) => new Promise((resolve) => {
@@ -528,6 +559,12 @@ async function coverageMissing(target, root) {
     child.on("error", () => resolve(false));
     child.on("close", (code) => resolve(code === 0));
   });
+  if (["erlang", "elixir", "gleam"].includes(target.language)) {
+    const requirement = beamCoverageRequirement(target, report);
+    if (requirement) return requirement;
+    return (await probe("erl", ["-noshell", "-eval",
+      'case code:ensure_loaded(cover) of {module,cover} -> halt(0); _ -> halt(1) end.'])) ? null : tool;
+  }
   if (target.language === "python") return (await probe(target.python || "python3", tool.check)) ? null : tool;
   if (["javascript", "typescript"].includes(target.language)) return (await probe("npx", ["--no-install", "c8", "--version"])) ? null : tool;
   if (target.language === "rust") return (await probe("cargo", ["llvm-cov", "--version"])) ? null : tool;

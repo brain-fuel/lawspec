@@ -1,0 +1,6 @@
+@@ lib/shop_domain.ex
+<<<<<<<
+def convert(currency, %D.Money{cents: cents}), do: %D.Money{currency: currency, cents: cents}
+=======
+def convert(_currency, %D.Money{} = money), do: money
+>>>>>>>

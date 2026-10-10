@@ -1,0 +1,10 @@
+expect-any: unmet_cover | UnmetCover
+@@ acceptance/beam-adequacy/adequacy.lawspec
+<<<<<<<
+  for law `finite observations`
+    classify flag as "true flag"
+=======
+  for law `finite observations`
+    cover 0% "no generated cases" when flag
+    classify flag as "true flag"
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: discount
+@@ src/example/harness.gleam
+<<<<<<<
+total / 10
+=======
+total + 1
+>>>>>>>

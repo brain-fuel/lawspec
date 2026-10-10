@@ -11,15 +11,20 @@ escript runtime/lawspec_crypto_build.escript "$beam_artifacts"
 python3 tools/beam-crypto-build.py
 stack --no-terminal run lawspec-dev -- beam-vectors "$beam_artifacts/scalars.json"
 python3 tools/beam-values-reference.py "$beam_artifacts/values.json"
+node tools/beam-search-reference.mjs "$beam_artifacts/search.json"
 python3 tools/beam-model-reference.py "$beam_artifacts/models.json" "$beam_artifacts/model-parallel.json" "$beam_artifacts/model-histories.json"
 python3 tools/beam-history-reference.py "$beam_artifacts/scenario-histories.json"
 python3 tools/beam-scenario-reference.py "$beam_artifacts/scenario-schedules.json"
 python3 tools/beam-network-reference.py "$beam_artifacts/network-frames.json" "$beam_artifacts/network-faults.json"
 python3 tools/beam-channel-reference.py "$beam_artifacts/channel-states.json"
-erlc -Werror -o "$beam_artifacts" runtime/lawspec_beam_*.erl test/fixtures/beam/*.erl
+erlc +debug_info -Werror -o "$beam_artifacts" runtime/lawspec_beam_*.erl runtime/lawspec_network.erl test/fixtures/beam/*.erl
+node tools/beam-coverage-check.mjs
+"${LAWSPEC_PYTHON:-.integration/python/.venv/bin/python}" tools/beam-secure-interoperability.py
 erl -noshell -pa "$beam_artifacts" -eval '
     lawspec_beam_scalar_tests:vectors(".artifacts/beam-runtime/scalars.json"),
     lawspec_beam_values_tests:vectors(".artifacts/beam-runtime/values.json"),
+    lawspec_beam_recorded_tests:vectors("test/fixtures/recorded-values.json"),
+    lawspec_beam_search_tests:vectors(".artifacts/beam-runtime/search.json"),
     lawspec_beam_model_tests:vectors(".artifacts/beam-runtime/models.json"),
     lawspec_beam_model_parallel_tests:vectors(".artifacts/beam-runtime/model-parallel.json"),
     lawspec_beam_model_parallel_tests:histories(".artifacts/beam-runtime/model-histories.json"),
@@ -29,7 +34,8 @@ erl -noshell -pa "$beam_artifacts" -eval '
     lawspec_beam_memory_network_tests:vectors(".artifacts/beam-runtime/network-faults.json"),
     lawspec_beam_channel_protocol_tests:vectors(".artifacts/beam-runtime/channel-states.json"),
     case eunit:test([lawspec_beam_scalar_tests, lawspec_beam_schema_tests,
-            lawspec_beam_values_tests, lawspec_beam_runtime_tests, lawspec_beam_effects_tests,
+            lawspec_beam_values_tests, lawspec_beam_search_tests, lawspec_beam_schedule_tests, lawspec_beam_benchmark_tests, lawspec_beam_report_tests,
+            lawspec_beam_runtime_tests, lawspec_beam_recorded_tests, lawspec_beam_effects_tests, lawspec_beam_resources_tests, lawspec_beam_owner_tests,
             lawspec_beam_defaults_tests, lawspec_beam_crypto_tests, lawspec_beam_waits_tests,
             lawspec_beam_policy_tests, lawspec_beam_tasks_tests, lawspec_beam_attempts_tests,
             lawspec_beam_workflow_state_tests, lawspec_beam_workflow_tests,
@@ -38,7 +44,8 @@ erl -noshell -pa "$beam_artifacts" -eval '
             lawspec_beam_wire_tests, lawspec_beam_memory_network_tests,
             lawspec_beam_channel_protocol_tests, lawspec_beam_node_tests,
             lawspec_beam_endpoint_tests, lawspec_beam_scenario_network_tests, lawspec_beam_mailbox_tests,
-            lawspec_beam_session_tests,
+            lawspec_beam_session_tests, lawspec_beam_session_network_tests, lawspec_beam_remote_tests, lawspec_beam_network_tests,
+            lawspec_beam_socket_protocol_tests, lawspec_beam_network_api_tests, lawspec_beam_socket_tests,
             lawspec_beam_gleam_tests], [verbose]) of
         ok -> halt(0);
         _ -> halt(1)

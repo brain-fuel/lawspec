@@ -1,0 +1,6 @@
+@@ src/example_boolean_flags.erl
+<<<<<<<
+not Value
+=======
+Value
+>>>>>>>

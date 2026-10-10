@@ -1,0 +1,7 @@
+expect: generated observations
+@@ src/example_adequacy.erl
+<<<<<<<
+number(N) -> beam_adequacy_support:record(<<"number">>, N).
+=======
+number(N) -> beam_adequacy_support:record(<<"number">>, N), case N of 9 -> 0; _ -> N end.
+>>>>>>>

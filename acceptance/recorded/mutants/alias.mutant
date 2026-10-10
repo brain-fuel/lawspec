@@ -1,0 +1,7 @@
+expect: recorded/example.recorded/symbol aliases differs
+@@ test/fixtures/recorded.lawspec
+<<<<<<<
+definition aliases (ignored :: Unit) :: List Symbol is [symbol("a", "same"), symbol("b", "same"), symbol("a", "same")] end
+=======
+definition aliases (ignored :: Unit) :: List Symbol is [symbol("a", "same"), symbol("b", "same"), symbol("c", "same")] end
+>>>>>>>

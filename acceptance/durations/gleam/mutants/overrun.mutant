@@ -1,0 +1,7 @@
+expect: what remains of a budget
+@@ src/example/durations.gleam
+<<<<<<<
+int.max(budget.value - spent.value, 0)
+=======
+int.absolute_value(budget.value - spent.value)
+>>>>>>>

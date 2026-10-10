@@ -24,7 +24,9 @@ emit target layout bits declarations units = do
   names <- E.dataNames declarations
   let boxes = [(u,b) | u <- units, b <- C.unitMailboxes u]
       modules = [moduleName u b | (u,b) <- boxes]
-  unless (length modules == length (nub modules) && all (\n -> not (null n) && length n <= 230) modules)
+      paths = [modulePath u b | (u,b) <- boxes]
+  unless (length modules == length (nub modules) && all (\n -> not (null n) && length n <= 230) modules &&
+    (target == "erlang" || length paths == length (nub paths)))
     (Left "BEAM mailbox module names collide after snake_case conversion or exceed the Erlang limit")
   concat <$> forM boxes (\(unit,box) -> do
     let ty = C.mailboxType box
@@ -86,8 +88,11 @@ emit target layout bits declarations units = do
 
 moduleName :: C.Unit -> C.Mailbox -> String
 moduleName unit box = "lawspec_mailbox_" ++ E.moduleName (C.unitId unit) ++ "_" ++ E.snake (C.mailboxName box)
+
+modulePath :: C.Unit -> C.Mailbox -> String
+modulePath unit box = "lawspec/mailboxes/" ++ E.gleamPath (C.unitId unit) ++ "/" ++ E.gleamName (E.snake (C.mailboxName box))
 nodeType :: NativeType
-nodeType = NativeType (E.call "pid" []) (X.call "pid" []) (D.text "network.Node")
+nodeType = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "LawSpec.Network" "node_handle" []) (D.text "network.Node")
   [D.text "import lawspec/network"]
 
 render :: String -> D.Layout -> C.Unit -> C.Mailbox -> String -> Bool -> [Function] -> [Artifact]
@@ -98,7 +103,7 @@ render target layout unit box typeName wired functions =
     _ -> []
   where
     name = moduleName unit box
-    path = "lawspec/mailboxes/" ++ E.gleamPath (C.unitId unit) ++ "/" ++ E.snake (C.mailboxName box)
+    path = modulePath unit box
     exModule = "LawSpec.Mailboxes." ++ drop 7 (E.nativeModule "elixir" unit) ++ "." ++ typeName
     erlType (NativeType e _ _ _) = e
     exType (NativeType _ x _ _) = x

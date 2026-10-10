@@ -1,0 +1,6 @@
+@@ lib/shop_orders.ex
+<<<<<<<
+def cheaper(a, b), do: min(a, b)
+=======
+def cheaper(a, _b), do: a
+>>>>>>>

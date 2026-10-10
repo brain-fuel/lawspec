@@ -211,5 +211,12 @@ detached_node_survives_creator_and_scoped_node_follows_owner_test() ->
 
 ordinary_transports_cannot_downgrade_to_cleartext_test() ->
     lawspec_beam_memory_network:with_network(#{}, fun(Net) ->
-        ?assertEqual({error, secure_network_not_available}, lawspec_beam_node:start(lawspec_beam_memory_network:transport(Net, <<"secure">>)))
+        {ok, Secure} = lawspec_beam_node:start(lawspec_beam_memory_network:transport(Net, <<"secure">>)),
+        Plain = node_at(Net, <<"plain">>), Count = atomics:new(1, []),
+        try
+            Address = lawspec_beam_node:register_handler(Secure, <<"only-sealed">>, fun(_) -> atomics:add(Count, 1, 1), {0, <<>>} end),
+            ?assertException(error, {lawspec, {network, {unreachable, _}}},
+                lawspec_beam_node:request(Plain, Address, <<"call">>, <<>>, 50)),
+            ?assertEqual(0, atomics:get(Count, 1))
+        after lawspec_beam_node:stop(Plain), lawspec_beam_node:stop(Secure) end
     end).

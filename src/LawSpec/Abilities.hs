@@ -273,12 +273,21 @@ elaborateUnit u = do
               concatMap opInstances (countedOperations l))
             invoked = [i | n <- invokedNames (definition l), n `notElem` seen, Just i <- [M.lookup n lawTable]]
         in canonical (own ++ concatMap (lawRow (lawName l : seen)) invoked)
-      bound' l = map fst (parameters l) ++ quantifiedNames (definition l)
+      bound' l = map fst (parameters l) ++ map fst (lawResources l) ++ quantifiedNames (definition l)
       expressionRowNames bound e =
         let (outer, regions) = splitHandled e
         in concatMap nameRow (nub [x | x <- exprVars outer, x `notElem` bound, M.member x known]) ++ concat
              [ [a | a <- expressionRowNames bound inner, Just a /= handlerInstance h] ++ concatMap nameRow (handlerClauseNames h)
              | (h, inner) <- regions ]
+      -- Resource callbacks normally use production handlers (Frontend). A
+      -- law can explicitly select a handler they need, even if its assertion
+      -- never calls that ability. Local release/reset binders can shadow an
+      -- operation name and must not create a spurious ability requirement.
+      resourceRow l = canonical $ concat
+        [ expressionRowNames [] (resourceAcquire r) ++
+          concat [expressionRowNames [binder] body
+            | (binder, body) <- resourceRelease r : maybe [] pure (resourceReset r)]
+        | (_, ty) <- lawResources l, r <- resourceDeclarations u, resourceType r == ty ]
       handlerAbilities = M.fromList [(handlerName h, handlerAbility h) | h <- handlerDeclarations u]
       -- What `using` asks for, by ability name.
       request where' use = case use of
@@ -296,24 +305,27 @@ elaborateUnit u = do
           pure (n, either (Left . ChooseRecording) (const (Right True)) r)
       choicesFor l = do
         let where' = Just (location l)
-            row = lawRow [] l
+            assertionRow = lawRow [] l
+            resources = resourceRow l
+            available = canonical (assertionRow ++ resources)
         requested <- mapM (request where') (maybe [] id (lookup (lawName l) (lawHandlers u)))
         -- A spec handler names one instance; an ability's name, all of them.
         let matches (wanted, _) inst = case wanted of
               Named n | n == abilityTypeName inst -> True
               _ -> wanted == inst
+            row = available
         forM_ requested $ \r@(n, _) -> do
-          when (abilityTypeName n == randomAbility && Named secureRandomAbility `elem` row && Named randomAbility `notElem` row)
+          when (abilityTypeName n == randomAbility && Named secureRandomAbility `elem` available && Named randomAbility `notElem` available)
             (Left (where', seededForSecure ("the law `" ++ lawName l ++ "`")))
           when (length (filter (\(m, _) -> m == n) requested) > 1)
             (Left (where', "the law " ++ lawName l ++ " names two handlers for " ++ prettyType n))
-          unless (any (matches r) row)
+          unless (any (matches r) available)
             (Left (where', "the law " ++ lawName l ++ " names a handler for " ++ prettyType n ++ ", but nothing it calls uses " ++ prettyType n))
         budgetClock where' l requested
         let candidates inst = measuredOn l inst $ case [r | (_, r) <- filter (`matches` inst) requested] of
               Left c : _ -> [c]
               Right recorded : _ -> (if recorded then map ChooseRecording else id) (defaults inst)
-              [] -> defaults inst
+              [] -> if inst `elem` assertionRow then defaults inst else [ChooseProduction]
         forM_ (countedOperations l) $ \op -> case M.lookup op operationAbility of
           Nothing -> Left (where', "calls of " ++ op ++ ": " ++ op ++ " is not an ability operation")
           Just a -> forM_ (instancesOf a) $ \inst -> unless (all recording (candidates inst))

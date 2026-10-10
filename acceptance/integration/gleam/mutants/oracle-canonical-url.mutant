@@ -1,0 +1,6 @@
+@@ src/example/canonical_url.gleam
+<<<<<<<
+False -> value
+=======
+False -> string.slice(value, 0, 0)
+>>>>>>>

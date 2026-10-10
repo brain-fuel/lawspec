@@ -11,8 +11,10 @@ import LawSpec.Common
 import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import LawSpec.Discharge (dischargeEvidence)
 import LawSpec.Frontend (compileCore)
+import LawSpec.CoreEmit (emitPlanWithFormat)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Regex (parseRegex, regexMatchesText)
+import LawSpec.Testing (planTesting)
 
 program :: String -> Either [Diagnostic] C.Program
 program source = compileCore 64 defaultGeneration [Source "laws.lawspec" ("unit example.laws\n" ++ source)]
@@ -114,6 +116,17 @@ test_lawPrimitivesCheckWhatTheyReadAs = describe "law primitives" $ do
         "description is \"Adding.\n```example\na = 1\nb = 2\nexpect add a b = 3\n```\n```example `zero`\na = 0\nb = 0\n```\" end\nend\n")
         `shouldBe` Right [("adds", ["description example 1", "description: zero"])]
   describe "recorded values" $ do
+    mapM_ (\(target, call) -> mapM_ (\compact ->
+      it (target ++ " records nested fields with a schema" ++ if compact then " (compact)" else "") $ do
+        input <- readFile "test/fixtures/recorded.lawspec"
+        artifacts <- either (fail . show) pure
+          (compileCore (if compact then 32 else 64) defaultGeneration [Source "recorded.lawspec" input]
+            >>= planTesting >>= emitPlanWithFormat compact target)
+        concatMap artifactContent artifacts `shouldSatisfy` isInfixOf call
+      ) [False, True])
+      [("javascript", "_lawspec_schema.recorded("), ("typescript", "_lawspec_schema.recorded("),
+       ("python", "_lawspec_schema.recorded("), ("erlang", "lawspec_beam_runtime:recorded("),
+       ("elixir", "lawspec_beam_runtime:recorded("), ("gleam", "lawspec_beam_runtime:recorded(")]
     it "key a recording by unit and name" $ do
       compiled <- either (fail . show) pure (program "label :: Int32 -> Text\nlaw `first` is definition is label 1 = recorded \"first label\" end end\n")
       show compiled `shouldSatisfy` (show (map ord "example.laws/first label") `isInfixOf`)
@@ -132,6 +145,9 @@ test_lawPrimitivesCheckWhatTheyReadAs = describe "law primitives" $ do
     it "need a declared resource" $
       program (store ++ "law `empty` for store :: Store is definition is size store = 0 end end\n")
         `shouldSatisfy` failsWith "no resource is declared"
+    it "keeps resource binders in specialization scopes" $ do
+      input <- readFile "acceptance/beam-resource-owners/owners.lawspec"
+      compileCore 64 defaultGeneration [Source "owners.lawspec" input] `shouldSatisfy` isRight
     it "reject a law that releases its own resource" $
       program (declared ++ "law `closes` for store :: Store is definition is closeStore store = unitValue and size store = 0 end end\n")
         `shouldSatisfy` failsWith "could use store after its release"

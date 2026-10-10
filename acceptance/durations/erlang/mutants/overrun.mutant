@@ -1,0 +1,7 @@
+expect: what remains of a budget
+@@ src/example_durations.erl
+<<<<<<<
+max(Budget - Spent, 0)
+=======
+abs(Budget - Spent)
+>>>>>>>

@@ -159,6 +159,21 @@ anything, so a selected law with no executed test fails the run instead.
 Results are kept in `.lawspec/results`, and runner reports in
 `.lawspec/reports`; neither is committed.
 
+On Erlang, Elixir and Gleam, a selection keeps the selected units in one
+native test run, preserving shared resource lifetimes. Law identities include
+their unit, so identical labels in different units remain independently
+selectable. EUnit and ExUnit completion events supply the execution report;
+an incomplete report or a report from an earlier invocation cannot count as
+evidence. Skipped laws run no checks. A known-failing BEAM law must complete
+its native test to count as checked.
+
+BEAM selections also include each model's sequential check, its parallel
+check when shared, each scenario and the unit's supervision check. These
+checks have separate cache entries and appear in native and JUnit reports.
+A failed model or scenario retains its seed for the next run, just as a
+failed law does. They have no harness tags, so a `--tag` selection excludes
+them.
+
 - `--fresh`: run every law's tests.
 - `--update-recorded`: run every law's tests, and record each value a law
   compares with `recorded "name"` again, under `recorded/<unit>/<name>` beside
@@ -172,13 +187,26 @@ Results are kept in `.lawspec/results`, and runner reports in
   [harness](language/harness.md) gives them one of the `--tag` tags, and none of
   the `--exclude-tag` ones. Each may be repeated or list several: `--tag a,b`.
 - `--report junit=<path>`: write one JUnit XML report for every target's run,
-  each target's suites named after it. Runners without a JUnit report of their
-  own (Go, Rust, Haskell) contribute their tests, passed or failed.
+  each suite identified by its target language and project root. Runners without a JUnit report of their
+  own (Go, Rust, Haskell, Erlang, Elixir and Gleam) contribute their tests,
+  passed or failed. BEAM reports retain native failure details and durations.
 - `--coverage`: measure code coverage with each target's tool, into
-  `.lawspec/coverage/<target>`: coverage.py (Python), c8 (JavaScript and
+  `.lawspec/coverage/<target>/<project-hash>`: coverage.py (Python), c8 (JavaScript and
   TypeScript), `go test -cover`, JaCoCo (Java, through Maven), Kover (Kotlin, if
   the build applies its plugin), cargo-llvm-cov (Rust) and hpc
-  (`stack test --coverage`). A missing tool is reported, with how to install
+  (`stack test --coverage`), and OTP `cover` (Erlang, Elixir and Gleam).
+  BEAM reports use `.lawspec/coverage/<target>/<project-hash>/index.html`
+  and `coverage.json`, with native exports retained under `runs/`. Each report
+  combines this invocation's replay batches and includes suite cleanup;
+  separate project roots have separate reports. Gleam source coverage requires
+  Gleam 1.19, whose counters map to the original `.gleam` and foreign Erlang
+  source lines; with 1.18 the CLI reports the upgrade needed and runs without
+  coverage. Elixir uses the default
+  `Mix.Tasks.Test.Coverage` tool and respects `test_coverage[:output]`.
+  Benchmarks run after collection and do not contribute to BEAM law coverage.
+  A failed test can still produce coverage; a missing export or failed report
+  collection makes the command fail with `coverageError` in the JSON summary.
+  With no selected laws, BEAM writes no report. A missing tool is reported, with how to install
   it, and the run goes on without coverage. Coverage runs every selected law.
 - `--benchmarks`: after the laws, run the harness's
   [benchmarks](language/harness.md#benchmarks) with each target's test runner,
@@ -197,21 +225,38 @@ results, and `lawspec evidence` shows them.
 
 ### The failure database
 
-A law whose run fails is recorded in `.lawspec/failures/<target>/laws.json`
+A law whose run fails is recorded in
+`.lawspec/failures/<target>/<project-hash>/laws.json`
 with the seed that exposed it. The next `lawspec test` runs those laws first,
 each with its failing seed, so the same inputs are generated again; a law
 leaves the database when it passes. `--seed` overrides it. The Python and Rust
 runtimes also keep their libraries' counterexamples there (Hypothesis's
 example database and proptest's regressions), which they replay first.
 
+The project hash identifies its resolved root directory, as it does for cached
+results and reports. Projects using the same target language have independent
+failures; a passing project cannot clear another project's failures. Removing
+and re-adding a target keeps its project identity.
+JSON test summaries include each target's `root`, and text summaries distinguish
+the roots when more than one project uses the same language.
+
+Older databases without a project hash are preserved. Their seeds and saved
+inputs are copied once into each project's initial database; subsequent runs
+update only that project's copy.
+
 Every target also keeps a failing case's inputs, not only its seed: in
-`.lawspec/failures/<target>/inputs/<law>.json`, each input in LawSpec's
+`.lawspec/failures/<target>/<project-hash>/inputs/<law-id>.json`, each input in LawSpec's
 [wire encoding](language/distribution.md#the-wire-encoding), the last (and
 so, after shrinking, the smallest) failing case. The law's tests replay them
-before any new case, with the message "replaying the failing inputs kept in
+before new generated cases, with the message "replaying the failing inputs kept in
 .lawspec/failures", and drop them once the law holds for them. A law whose
 inputs the wire encoding cannot describe (a float, a handle, a generic data
 type) is kept by its seed only.
+
+On BEAM targets, the file name hashes the full law name so labels differing only
+in punctuation remain separate. Its JSON record contains the readable law name
+and wire inputs. Replays check the current refinements before calling an adapter
+or acquiring a resource; incompatible inputs from an older law are discarded.
 
 Generated property tests read the seed from `LAWSPEC_SEED`, so a failure can
 be repeated with the same seed outside LawSpec. Haskell tests also read hspec's

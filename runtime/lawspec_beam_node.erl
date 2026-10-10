@@ -4,8 +4,8 @@
 %% ref:DEC-distribution-canonical-wire ref:DEC-async-native-tasks
 -module(lawspec_beam_node).
 -behaviour(gen_server).
--export([start/1, start/2, start_owned/2, with_node/3, stop/1, address/1,
-    register_handler/3, register_receiver/3, register_service/2, unregister/2, send/4, forward/2,
+-export([start/1, start/2, start_owned/2, with_node/3, stop/1, address/1, identity/1,
+    register_handler/3, register_receiver/3, register_service/2, adopt_service/2, unregister/2, send/4, forward/2,
     request/5, request_async/5, cancel/2, reply/5]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -15,11 +15,15 @@ start_owned(Transport, Options) -> start_as(self(), Transport, Options).
 with_node(Transport, Options, Body) ->
     {ok, Node} = start_owned(Transport, Options), try Body(Node) after stop(Node) end.
 start_as(Owner, Transport, Options) ->
-    %% Ordinary transports must acquire the secure layer before they can
-    %% carry frames. Until that layer is connected, only the explicit test
-    %% memory transport is usable; there is no cleartext fallback.
-    case Transport of
-        #{module := lawspec_beam_memory_network, insecure_for_tests := true} ->
+    %% Only the memory transport has an explicit cleartext testing mode.
+    %% The optional security module is emitted by import lawspec.network.
+    Security = case Transport of
+        #{module := lawspec_beam_memory_network, insecure_for_tests := true} -> test;
+        _ -> code:ensure_loaded(lawspec_beam_network)
+    end,
+    case Security of
+        Missing when Missing =/= test, Missing =/= {module, lawspec_beam_network} -> {error, secure_network_not_available};
+        _ ->
             %% A replacement client may reuse its address while a peer still
             %% caches old replies. Its request stream must not restart at 1.
             <<Random:64/unsigned>> = crypto:strong_rand_bytes(8),
@@ -27,13 +31,13 @@ start_as(Owner, Transport, Options) ->
             case is_integer(First) andalso First > 0 andalso First =< 16#ffffffffffffffff of
                 true -> gen_server:start(?MODULE, {Owner, Transport, Options#{first_id => First}}, []);
                 false -> {error, invalid_request_identity}
-            end;
-        _ -> {error, secure_network_not_available}
+            end
     end.
 stop(Node) ->
     try gen_server:stop(Node, normal, infinity)
     catch exit:noproc -> ok; exit:{noproc, _} -> ok end.
 address(Node) -> call(Node, address).
+identity(Node) -> call(Node, identity).
 register_handler(Node, Name, Handler) when is_function(Handler, 1) ->
     Context = lists:keydelete({lawspec_beam_tasks, scopes}, 1, lawspec_beam_runtime:worker_context()),
     call(Node, {register, Name, {handler, Handler, Context}}).
@@ -41,6 +45,8 @@ register_receiver(Node, Name, Receiver) when is_pid(Receiver) -> call(Node, {reg
 %% Internal endpoint services belong to the node's cancellation scope.
 %% Ordinary receivers remain owned by their application.
 register_service(Node, Name) -> call(Node, {register, Name, {service, self()}}).
+%% Session coordinators and relay workers have no wire address of their own.
+adopt_service(Node, Service) when is_pid(Service) -> call(Node, {adopt_service, Service}).
 unregister(Node, Name) -> call(Node, {unregister, Name}).
 send(Node, Address, Kind, Payload) -> call(Node, {send, #{to => Address, kind => Kind, payload => Payload}}).
 forward(Node, Frame) -> call(Node, {send, Frame}).
@@ -59,12 +65,19 @@ call(Node, Request) ->
         {error, Reason} -> error({lawspec, {network, Reason}})
     end.
 
-init({Owner, Transport = #{network := Network, address := Address}, Options}) ->
-    case lawspec_beam_memory_network:register(Network, Address, self()) of
+init({Owner, Transport, Options}) ->
+    Open = case Transport of
+        #{module := lawspec_beam_memory_network, insecure_for_tests := true} -> lawspec_beam_transport:open(Transport, self());
+        _ -> case lawspec_beam_network:start(self(), Transport, Options) of
+            {ok, Layer} -> {ok, #{module => lawspec_beam_network, pid => Layer, address => lawspec_beam_network:address(Layer)}};
+            Error -> Error
+        end
+    end,
+    case Open of
         {error, Reason} -> {stop, {transport_registration, Reason}};
-        ok ->
+        {ok, Connection = #{pid := Network, address := Address}} ->
             Scope = lawspec_beam_tasks:open(),
-            {ok, #{transport => Transport, address => Address, options => Options,
+            {ok, #{connection => Connection, address => Address,
                 owner => case Owner of none -> none; _ -> monitor(process, Owner) end,
                 network_monitor => monitor(process, Network), scope => Scope, scope_monitor => monitor(process, Scope),
                 entities => #{}, entity_monitors => #{}, pending => #{}, pending_monitors => #{},
@@ -75,11 +88,10 @@ handle_call(Request, From, State) ->
         throw:{invalid, Reason} -> {reply, {error, Reason}, State}
     end.
 handle_cast(_, State) -> {noreply, State}.
-handle_info({lawspec_network, Network, _, Bytes}, State = #{transport := #{network := Network}}) ->
-    case lawspec_beam_wire:read_frame(Bytes) of
-        {ok, Frame} -> {noreply, arrive(Frame, State)};
-        {error, _} -> {noreply, State}
-    end;
+handle_info({lawspec_network, Network, _, Bytes}, State = #{connection := #{module := lawspec_beam_memory_network, pid := Network}}) ->
+    receive_frame(Bytes, State);
+handle_info({lawspec_secure, Layer, _, Bytes}, State = #{connection := #{module := lawspec_beam_network, pid := Layer}}) ->
+    receive_frame(Bytes, State);
 handle_info({retry, Identity, Ticket}, State = #{pending := Pending}) ->
     case maps:find(Identity, Pending) of
         {ok, P = #{ticket := Ticket, deadline := Deadline}} ->
@@ -114,11 +126,22 @@ terminate(_, State) ->
     %% The scope also performs this cleanup if this server is killed before
     %% terminate/2 can run. close/1 joins every registered descendant.
     lawspec_beam_tasks:close(maps:get(scope, State)),
-    #{network := Network, address := Address} = maps:get(transport, State),
-    try lawspec_beam_memory_network:unregister(Network, Address) catch exit:_ -> ok end,
+    lawspec_beam_transport:close(maps:get(connection, State)),
     ok.
 
+receive_frame(Bytes, State) ->
+    case lawspec_beam_wire:read_frame(Bytes) of
+        {ok, Frame} -> {noreply, arrive(Frame, State)};
+        {error, _} -> {noreply, State}
+    end.
+
 local(address, _, State) -> {reply, {ok, maps:get(address, State)}, State};
+local(identity, _, State = #{connection := #{module := lawspec_beam_network, pid := Layer}}) ->
+    {reply, {ok, lawspec_beam_network:identity(Layer)}, State};
+local(identity, _, State) -> {reply, {error, insecure_node}, State};
+local({adopt_service, Service}, _, State) ->
+    ok = lawspec_beam_tasks:adopt(maps:get(scope, State), Service),
+    {reply, {ok, ok}, State};
 local({register, Name, Entity}, _, Previous) ->
     require(is_binary(Name) andalso byte_size(Name) > 0 andalso binary:match(Name, <<"/">>) =:= nomatch, invalid_entity_name),
     %% A replacement may arrive before the receiver's DOWN notification.
@@ -173,12 +196,11 @@ validate_frame(Frame) ->
         _ = lawspec_beam_wire:frame(maps:get(kind, Frame), <<>>, maps:get(source, Frame, <<>>),
             maps:get(id, Frame, 0), maps:get(payload, Frame)), ok
     catch _:_ -> throw({invalid, invalid_frame}) end.
-transmit(Frame, State = #{transport := #{network := Network, address := Address}}) ->
+transmit(Frame, State = #{connection := Connection}) ->
     {Peer, Name} = lawspec_beam_wire:split_address(maps:get(to, Frame)),
     Bytes = lawspec_beam_wire:frame(maps:get(kind, Frame), Name, maps:get(source, Frame, maps:get(address, State)),
         maps:get(id, Frame, 0), maps:get(payload, Frame)),
-    try lawspec_beam_memory_network:send(Network, Address, Peer, Bytes)
-    catch exit:_ -> {error, transport_closed} end.
+    lawspec_beam_transport:send(Connection, Peer, Bytes).
 
 arrive(#{kind := <<"reply">>, id := Identity, source := Source, payload := <<Status, Body/binary>>}, State = #{pending := Pending}) ->
     case maps:find(Identity, Pending) of

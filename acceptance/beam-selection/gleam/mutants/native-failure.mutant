@@ -1,0 +1,7 @@
+expect: SelectionFailed
+@@ src/beam_selection_support.erl
+<<<<<<<
+    N.
+=======
+    case N of 1 -> error(selection_failed); _ -> N end.
+>>>>>>>

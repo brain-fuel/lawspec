@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ lib/example_tables.ex
+<<<<<<<
+kilograms * kilometres + 5 * kilograms
+=======
+kilograms * kilometres + 5 * kilograms + if(kilograms == 2, do: 5, else: 0)
+>>>>>>>

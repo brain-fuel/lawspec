@@ -123,13 +123,15 @@ stepInputs name = case name of
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
   "rust-runtime-debug" -> Just rustRuntime
   "rust-runtime-release" -> Just rustRuntime
-  "beam-runtime" -> Just (Inputs ["runtime/lawspec_beam_", "runtime/lawspec_crypto_", "runtime/defaults/vectors.txt",
-    "test/fixtures/beam/", "dev/BeamVectors.hs", "tools/beam-crypto-build.py",
-    "tools/beam-runtime.sh", "tools/beam-values-reference.py", "runtime/lawspec_runtime.py",
+  "beam-runtime" -> Just (Inputs ["runtime/lawspec_beam_", "runtime/lawspec_network.erl", "runtime/lawspec_crypto_", "runtime/defaults/vectors.txt",
+    "test/fixtures/beam/", "test/fixtures/recorded-values.json", "dev/BeamVectors.hs", "tools/beam-crypto-build.py",
+    "tools/beam-runtime.sh", "tools/beam-values-reference.py", "tools/beam-secure-interoperability.py",
+    "tools/beam-coverage-check.mjs", "npm/beam-coverage.mjs",
+    "runtime/lawspec_runtime.py", "runtime/lawspec_network.py", "test/locks/python.txt", "examples/specs/distribution.lawspec",
     "src/LawSpec/Core/", "src/LawSpec/Core.hs", "src/LawSpec/Scalar.hs", "src/LawSpec/Regex.hs"] []
     [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
      ["erl", "-noshell", "-eval", "io:format(\"~tp~n\", [crypto:info_lib()]), halt()."],
-     ["cc", "--version"], ["stack", "--version"], ["python3", "--version"]])
+     ["cc", "--version"], ["stack", "--version"], ["python3", "--version"], ["node", "--version"]])
   "beam-proper" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-proper.sh",
     "test/locks/erlang/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
     [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
@@ -143,7 +145,7 @@ stepInputs name = case name of
   _ -> Nothing
   where
     unread = ["docs/", "acceptance/", "editors/"]
-    rustRuntime = Inputs ["runtime/rust/"] [] [["rustc", "-Vv"], ["cargo", "-V"]]
+    rustRuntime = Inputs ["runtime/rust/", "runtime/lawspec_runtime.rs"] [] [["rustc", "-Vv"], ["cargo", "-V"]]
 
 -- | Every file git would commit: tracked or untracked, and not ignored.
 repositoryFiles :: IO [FilePath]
@@ -205,6 +207,12 @@ stepKey repository (Step name env command) (Inputs keep drop' probes) = do
 targetSteps :: String -> [Step]
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
+  [ step (target ++ "-recorded-runtime") ["node", "test/fixtures/recorded-web.mjs"]
+  | target `elem` ["javascript", "typescript"] ] ++
+  [ step "python-recorded-runtime" [".integration/python/.venv/bin/python", "-B", "test/fixtures/recorded_python.py"]
+  | target == "python" ] ++
+  [ Step (target ++ "-recorded" ++ suffix) env (acceptance ["recorded", target])
+  | (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
   | suite <- ["integration", "definitions", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "consistency", "distribution", "packages", "refinement", "scalar"] ] ++
   -- The tutorial lessons have Java, Python and JavaScript tracks; the site
@@ -217,12 +225,27 @@ targetSteps target =
   [ Step (target ++ "-" ++ suite ++ suffix) env (acceptance [suite, target])
   | target `elem` Targets.beamTargets,
     suite <- ["beam-native-shapes", "beam-native-codecs", "beam-native-calls",
-      "beam-failures", "beam-bound-failures", "beam-mapped-failures", "beam-handler-context", "beam-builtin-context", "beam-crypto-context", "beam-async-workflows", "beam-policy-context"],
+      "beam-failures", "beam-bound-failures", "beam-mapped-failures", "beam-handler-context", "beam-builtin-context", "beam-crypto-context", "beam-async-workflows", "beam-policy-context", "beam-remote-api", "beam-network-api", "beam-actor-api", "beam-session-api", "beam-mailbox-api",
+      "beam-strategies", "beam-adequacy", "beam-target", "beam-repetition", "beam-selection", "beam-benchmarks",
+      "beam-resources", "beam-shared-resources", "beam-resource-owners"],
     (suffix,env) <- [("", []), ("-32-compact", compact)] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32-compact") compact (acceptance [suite, target])
-  | target `elem` Targets.beamTargets, suite <- ["abilities", "handlerbindings", "builtins", "crypto", "async", "failures", "workflows", "resilience"] ] ++
+  | target `elem` Targets.beamTargets, suite <- ["abilities", "handlerbindings", "builtins", "crypto", "async", "failures", "workflows", "resilience",
+      "models", "concurrent", "handles", "consistency", "actors", "sessions", "distribution", "scheduling", "matchers", "tables", "keywords", "durations", "flow",
+      "integration", "collections", "railway", "generation", "asyncbindings", "refinement"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
+  [ Step (target ++ "-crypto-cli" ++ suffix) env ["node", "tools/beam-crypto-integration.mjs", target]
+  | target `elem` Targets.beamTargets, (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
+  [ Step (target ++ "-model-cli" ++ suffix) env ["node", "tools/beam-model-integration.mjs", target]
+  | target `elem` Targets.beamTargets, (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
+  [ Step (target ++ "-harness-cli" ++ suffix) env ["node", "tools/beam-harness-integration.mjs", target]
+  | target `elem` Targets.beamTargets, (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
+  [ step "javascript-multi-project-replay" ["node", "tools/multi-project-replay.mjs"] | target == "javascript" ] ++
+  [ Step (target ++ "-multi-project-replay" ++ suffix)
+      (env ++ [("LAWSPEC_EXUNIT_MAX_FAILURES", "1") | target == "elixir"])
+      ["node", "tools/multi-project-replay.mjs", target]
+  | target `elem` Targets.beamTargets, (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ step "rust-layout" ["node", "tools/rust-layout-integration.mjs"] | target == "rust" ]
   where
     acceptance rest = ["stack", "--no-terminal", "exec", "lawspec-acceptance", "--"] ++ rest
@@ -260,10 +283,17 @@ runStep (Step name env command) = do
     program : arguments -> readCreateProcessWithExitCode (proc program arguments) { env = Just environment } ""
     [] -> pure (ExitFailure 1, "", "empty command")
   finished <- getCurrentTime
-  writeFile (logs </> map safeName name ++ ".log") (unwords command ++ "\n\n" ++ out ++ err)
+  let outcome = case code of
+        ExitSuccess -> "Exit status: 0"
+        ExitFailure status -> "Exit status: " ++ show status ++
+          (if status < 0 then " (terminated by signal " ++ show (negate status) ++ ")" else "")
+  writeFile (logs </> map safeName name ++ ".log")
+    (unwords command ++ "\n\n" ++ out ++ err ++ "\n" ++ outcome ++ "\n")
   let seconds = realToFrac (diffUTCTime finished started) :: Double
   printf "%s  %6.1fs\n" (if code == ExitSuccess then "ok  " else "FAIL" :: String) seconds
-  when (code /= ExitSuccess) (putStrLn ("  " ++ lastLine (out ++ err)))
+  when (code /= ExitSuccess) $ do
+    putStrLn ("  " ++ outcome)
+    unless (null (out ++ err)) (putStrLn ("  " ++ lastLine (out ++ err)))
   pure (code == ExitSuccess)
   where
     lastLine text = case reverse (filter (not . null) (lines text)) of

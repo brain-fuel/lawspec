@@ -1,0 +1,6 @@
+@@ lib/example_ordering.ex
+<<<<<<<
+quantity.value * 25
+=======
+quantity.value * 250
+>>>>>>>

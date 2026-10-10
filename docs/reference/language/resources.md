@@ -8,7 +8,7 @@ title: Resources
 A resource is something a law needs that lives outside the program: a store,
 a directory, a port. A law takes resources as inputs. Each case of the law
 acquires them first and releases them after, even when the case fails, so
-every case starts afresh and nothing leaks.
+every case starts afresh. Cleanup failures fail the run.
 
 ```lawspec
 unit guide.resources
@@ -34,6 +34,35 @@ law `every case gets an empty store` for store :: Store is
   end
 end
 ```
+
+## BEAM ownership and cancellation
+
+On Erlang, Elixir and Gleam, each resource has a dedicated owner process.
+That process runs `acquire`, `reset` (for shared resources) and `release`.
+The test worker borrows the returned handle. A resource owner survives the
+test worker, so a test timeout can stop the test and still attempt cleanup.
+Nested resources are released in reverse acquisition order.
+
+An adapter using process-private state must route operations to its owner.
+For example, an Erlang adapter can save a private ETS table in the owner's
+process dictionary and return `self()` as its handle. Operations use
+`lawspec_beam_resource:call(Owner, fun() -> ... end)` to access the saved
+table. `release` runs in the original owner and can delete the table
+directly. Native LawSpec handles must be identity values (a PID, reference
+or port). A handle that already supports use from another process needs no
+such bridge.
+
+Cleanup has a separate five-second allowance per resource for draining
+borrowers and another five seconds for release. A callback that exceeds its
+cleanup allowance is terminated and the run reports a cleanup failure.
+Other resources still get their cleanup attempt. A failed or timed-out
+cleanup cannot be accepted by `known failing` or retried into a passing run.
+The native runner waits for surviving owners before finishing the suite.
+
+An acquisition that never returns has not supplied a value to `release`.
+Its adapter must handle any partially acquired external state. Forced
+termination also cannot guarantee that an arbitrary release callback
+finishes; the failure is reported explicitly.
 
 ## Declaring a resource
 

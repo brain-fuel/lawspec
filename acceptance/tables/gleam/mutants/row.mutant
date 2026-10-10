@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ src/example/tables.gleam
+<<<<<<<
+kilograms * kilometres + 5 * kilograms
+=======
+kilograms * kilometres + 5 * kilograms + case kilograms { 2 -> 5 _ -> 0 }
+>>>>>>>

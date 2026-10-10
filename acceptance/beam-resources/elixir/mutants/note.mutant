@@ -1,0 +1,7 @@
+expect: a directory belongs to its case
+@@ src/beam_resource_support.erl
+<<<<<<<
+{ok, integer_to_binary(Number)}.
+=======
+{ok, integer_to_binary(Number + 1)}.
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: seed 42
+@@ src/beam_generation_support.erl
+<<<<<<<
+State = lawspec_beam_random:seed(Seed),
+=======
+State = lawspec_beam_random:seed(Seed + 1),
+>>>>>>>

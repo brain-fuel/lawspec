@@ -1,0 +1,7 @@
+expect: four-argument function
+@@ src/example_currying.erl
+<<<<<<<
+A + B + C + D
+=======
+A + B + C - D
+>>>>>>>

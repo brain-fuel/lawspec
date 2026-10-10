@@ -1,0 +1,6 @@
+@@ src/example_collections.erl
+<<<<<<<
+lists:usort(Values)
+=======
+lists:usort(lists:nthtail(min(1, length(Values)), Values))
+>>>>>>>

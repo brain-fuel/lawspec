@@ -2,7 +2,7 @@
 %% input rebuilds dependent generators and reapplies every domain predicate.
 %% ref:DEC-native-property-frameworks ref:DEC-shrink-within-domain
 -module(lawspec_beam_proper).
--export([generator/5, generator/6, map/2, bind/2, constrain/2, refine_input/2, complete/1, check/3, exactly/1, sized/1,
+-export([generator/5, generator/6, map/2, bind/2, constrain/2, such_that/4, refine_input/2, complete/1, check/3, exactly/1, sized/1,
     frequency/1, oneof/1, integer/2, list/1, vector/2, fixed_list/1, binary/0, forall/2]).
 
 %% An empty dependent range retries the whole tuple, including earlier inputs.
@@ -21,6 +21,32 @@ constrain(Type, Predicate) -> proper_types:add_constraint(Type, fun
     (Value) -> Predicate(Value)
 end, true).
 complete(Type) -> proper_types:add_constraint(Type, fun(V) -> V =/= '$lawspec_empty_domain' end, true).
+
+%% A strategy has its own discard budget. Changing PropEr's global constraint
+%% limit would also change nested strategies. Keep the immediate native value
+%% (including bind's parts), and delegate shrinking to the original constrained
+%% type. These are the pinned PropEr 1.5 generator/shrinker interfaces.
+%% ref:REQ-harness-units ref:DEC-native-property-frameworks
+such_that(Type, Predicate, Limit, Strategy) ->
+    Keep = fun
+        ('$lawspec_empty_domain') -> true;
+        (Value) -> Predicate(Value)
+    end,
+    Checked = constrain(Type, Predicate),
+    proper_types:new_type([
+        {constraints, []},
+        {generator, fun() -> draw_until(Type, Keep, Limit + 1, Strategy, Limit) end},
+        {is_instance, fun(Value) -> proper_types:is_instance(Value, Checked) end},
+        {shrinkers, [fun(Value, _Wrapper, State) -> proper_shrink:shrink(Value, Checked, State) end]}
+    ], basic).
+
+draw_until(_, _, 0, Strategy, Limit) -> lawspec_beam_harness:abort({strategy_discards, Strategy, Limit});
+draw_until(Type, Predicate, Attempts, Strategy, Limit) ->
+    Immediate = proper_gen:generate(Type),
+    case Predicate(proper_gen:clean_instance(Immediate)) of
+        true -> Immediate;
+        false -> draw_until(Type, Predicate, Attempts - 1, Strategy, Limit)
+    end.
 
 %% A quantifier's predicate may depend on previous inputs. Reject at the
 %% tuple's root so that an impossible prefix is redrawn and can also shrink.
@@ -60,12 +86,22 @@ check(Label, Property, Options) ->
         Text -> list_to_integer(Text)
     end,
     Configured = proper:setup(fun() ->
-        proper_arith:rand_restart({Seed band 16#ffffffff, (Seed bsr 32) band 16#ffffffff, 1}),
+        %% quickcheck initializes its timestamp seed before invoking setup.
+        %% rand_restart only seeds an absent state; rand_start replaces it.
+        proper_arith:rand_start({Seed band 16#ffffffff, (Seed bsr 32) band 16#ffffffff, 1}),
         fun() -> ok end
     end, Property),
-    lawspec_beam_generators:with_cache(fun() ->
+    try lawspec_beam_generators:with_cache(fun() ->
         case proper:quickcheck(Configured, Options) of
             true -> ok;
-            Result -> erlang:error({lawspec, {property_failed, Label, {seed, Seed}, Result}})
+            false -> erlang:error({lawspec, {property_failed, Label, {seed, Seed}, false}});
+            Result -> lawspec_beam_harness:abort({property_failed, Label, {seed, Seed}, Result})
         end
-    end).
+    end)
+    catch
+        error:{lawspec, {property_failed, _, _, _}} = Failure -> erlang:error(Failure);
+        Kind:Reason:Stack ->
+            Failure = {lawspec, {property_failed, Label, {seed, Seed}, {Kind, Reason}}},
+            lawspec_beam_harness:mark_harness_failure(Failure),
+            erlang:raise(error, Failure, Stack)
+    end.

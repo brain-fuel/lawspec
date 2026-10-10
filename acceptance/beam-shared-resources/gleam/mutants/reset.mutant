@@ -1,0 +1,7 @@
+expect: unit sharing keeps its acquisition handler
+@@ src/beam_shared_resource_support.erl
+<<<<<<<
+    true = ets:insert(Store, [{used, false}, {value, 0}]),
+=======
+    true = ets:insert(Store, [{value, 0}]),
+>>>>>>>

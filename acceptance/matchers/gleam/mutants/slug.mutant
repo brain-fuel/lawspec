@@ -1,0 +1,7 @@
+expect: a slug is lowercase words joined by dashes
+@@ src/example/matchers.gleam
+<<<<<<<
+string.join("-")
+=======
+string.join("_")
+>>>>>>>

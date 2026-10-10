@@ -1,0 +1,11 @@
+expect: repeated random cases
+@@ acceptance/beam-repetition/repetition.lawspec
+<<<<<<<
+    repeat 3
+    retry flaky 2
+    cover 100% "ordinary roots" when n == 0
+=======
+    repeat 3
+    retry flaky 2
+    cover 100% "ordinary roots" when n > 0
+>>>>>>>

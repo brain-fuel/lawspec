@@ -1,0 +1,6 @@
+@@ src/shop/domain.gleam
+<<<<<<<
+data.Money(currency, money.cents)
+=======
+case currency { _ -> money }
+>>>>>>>

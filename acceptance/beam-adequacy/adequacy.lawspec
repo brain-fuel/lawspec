@@ -1,0 +1,51 @@
+unit example.adequacy
+
+number :: Int32 -> Int32
+dependent :: Int32 -> Int32 -> Int32
+finite :: Bool -> Bool
+
+definition bucket (n :: Int32) :: Text is
+  if n < 5 then "small" else "large"
+end
+
+law `generated observations` is
+  definition is `for all` (n :: Int32 where n > 0) . number n = n end
+  example `examples do not count` is n = 101 expect n = 101 end
+end
+
+law `dependent observations` is
+  definition is
+    `for all` (x :: Int32) (y :: Int32 where y > x && y <= x + 10) . dependent x y = y
+  end
+end
+
+law `finite observations` is
+  definition is `for all` (flag :: Bool) . finite flag = flag end
+  example `finite example` is flag = true expect flag = true end
+end
+
+harness example.adequacy.testing for example.adequacy is
+  strategy digits :: Int32 is one of 1, 9 end
+  strategy starts :: Int32 is one of 3, 7 end
+
+  for law `generated observations`
+    use digits for n
+    cover 100% "positive" when n > 0
+    cover 0% "positive" when n < 0
+    classify n > 0 as "positive"
+    classify n > 0 as "positive"
+    classify n < 0 as "never"
+    label bucket n
+    label "雪/é"
+    label "雪/é"
+
+  for law `dependent observations`
+    use starts for x
+    cover 100% "above its prefix" when y > x
+    classify y <= x + 10 as "bounded"
+    label "dependent"
+
+  for law `finite observations`
+    classify flag as "true flag"
+    label "finite"
+end

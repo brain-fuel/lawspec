@@ -26,7 +26,7 @@ import Control.Monad (foldM, forM, forM_, replicateM)
 import Data.Unique (Unique, newUnique, hashUnique)
 import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
 import Data.Typeable (Typeable, typeRep, Proxy(..), cast)
-import Data.Char (ord, chr, isDigit)
+import Data.Char (ord, chr, isDigit, toLower)
 import Data.Int
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -1205,7 +1205,7 @@ recordedRoot = do
 
 recorded :: String -> Scalar -> IO Scalar
 recorded key value = do
-  let text = renderValue value
+  let text = renderRecorded value
   root <- recordedRoot
   let path = root ++ "/" ++ key
   update <- lookupEnv "LAWSPEC_UPDATE_RECORDED"
@@ -2062,6 +2062,63 @@ renderValue value = case value of
         commas xs = foldr1' (map renderValue xs)
         foldr1' [] = ""
         foldr1' parts = foldr1 (\a b -> a ++ ", " ++ b) parts
+
+-- | Typed snapshot text; identity numbering starts again for each recording.
+-- Keep the established text/list/constructor forms, with explicit extended
+-- scalars instead of the host's derived Show representation.
+-- ref:REQ-law-primitives ref:DEC-portable-exact-arithmetic
+renderRecorded :: Scalar -> String
+renderRecorded value = fst (go value [])
+  where
+    quote s = renderValue (SSequence "Text" (map ord s))
+    short = T.unpack . last . T.splitOn (T.pack "::") . T.pack
+    decimalText 0 _ = "0e0"
+    decimalText c e | c `rem` 10 == 0 = decimalText (c `quot` 10) (e + 1)
+                    | otherwise = show c ++ "e" ++ show e
+    floating s@(SFloat t bits)
+      | isNaN (floatValue s) = prefix ++ "NaN"
+      | otherwise = prefix ++ "Bits(\"" ++ map toLower bits ++ "\")"
+      where prefix = if t == "Float32" then "float32" else "float64"
+    floating _ = error "invalid recorded float"
+    numbered kind v ids =
+      let known = maybe [] id (lookup kind ids)
+      in case [number | (number, other) <- zip [1 :: Int ..] known, equal v other] of
+        number : _ -> (number, ids)
+        [] -> (length known + 1, (kind, known ++ [v]) : filter ((/= kind) . fst) ids)
+    parts [] ids = ([], ids)
+    parts (v : vs) ids =
+      let (part, next) = go v ids; (rest, final) = parts vs next
+      in (part : rest, final)
+    wrapped before after vs ids =
+      let (shown, next) = parts vs ids
+      in (before ++ intercalate ", " shown ++ after, next)
+    symbol v description ids =
+      let (number, next) = numbered "symbol" v ids
+      in ("symbol(" ++ show number ++ ", " ++ quote description ++ ")", next)
+    go v ids = case v of
+      SBool b -> (if b then "true" else "false", ids)
+      SInteger _ n -> (show n, ids)
+      SDecimal c e -> (decimalText c e, ids)
+      SRational n d -> let r = n % d in
+        ("rational(" ++ show (numerator r) ++ ", " ++ show (denominator r) ++ ")", ids)
+      SFloat _ _ -> (floating v, ids)
+      SComplex t r i -> (t ++ "(" ++ floating r ++ ", " ++ floating i ++ ")", ids)
+      SSequence "Text" xs -> (quote (map chr xs), ids)
+      SSequence t xs ->
+        let name = case t of "Bytes" -> "bytes"; "Utf16Text" -> "utf16"; _ -> "codePoints"
+        in (name ++ "([" ++ intercalate ", " (map show xs) ++ "])", ids)
+      SCharacter "Char" c -> (quote [chr c], ids)
+      SCharacter _ c -> (show c, ids)
+      SSymbol _ description -> symbol v description ids
+      SScopedSymbol _ _ description -> symbol v description ids
+      SAbsent t -> (case t of "Unit" -> "()"; "Null" -> "null"; _ -> "undefined", ids)
+      SPresent t Nothing -> (if t == "Nullable" then "null" else "undefined", ids)
+      SPresent t (Just inner) -> wrapped (if t == "Nullable" then "nullable(" else "optional(") ")" [inner] ids
+      SList xs -> wrapped "[" "]" xs ids
+      SData tag [] -> (short tag, ids)
+      SData tag xs -> wrapped (short tag ++ "(") ")" xs ids
+      SHandle t _ -> let (number, next) = numbered ("handle:" ++ t) v ids
+        in (short t ++ "#" ++ show number, next)
 
 -- | A descriptor text's data types and its last form, the one generated.
 valuesFrom :: String -> (DataTable, Descriptor)

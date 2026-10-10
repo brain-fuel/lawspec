@@ -1,0 +1,6 @@
+@@ src/example_ordering.erl
+<<<<<<<
+hd(Values)
+=======
+lists:last(Values)
+>>>>>>>

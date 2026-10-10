@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/example/matchers.gleam
+<<<<<<<
+list.sort(items, int.compare)
+=======
+list.sort(list.unique(items), int.compare)
+>>>>>>>

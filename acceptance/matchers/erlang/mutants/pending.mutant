@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ src/example_matchers.erl
+<<<<<<<
+{order_shipped, Id, <<"post">>}
+=======
+{order_pending, Id}
+>>>>>>>

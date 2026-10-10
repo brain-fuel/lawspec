@@ -1,0 +1,8 @@
+expect: description example 1
+@@ src/example_tables.erl
+<<<<<<<
+label(Parcel) ->
+=======
+label(7) -> <<"parcel seven">>;
+label(Parcel) ->
+>>>>>>>

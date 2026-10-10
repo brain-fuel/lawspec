@@ -1,0 +1,7 @@
+expect: remove
+@@ lib/example_harness.ex
+<<<<<<<
+div(cents + 4, 10) * 10
+=======
+div(cents + 9, 10) * 10
+>>>>>>>

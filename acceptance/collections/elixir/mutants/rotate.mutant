@@ -1,0 +1,6 @@
+@@ lib/example_collections.ex
+<<<<<<<
+rest ++ [head]
+=======
+rest ++ [head, head]
+>>>>>>>

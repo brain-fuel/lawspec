@@ -1,0 +1,6 @@
+@@ lib/example_boolean_flags.ex
+<<<<<<<
+not value
+=======
+value
+>>>>>>>

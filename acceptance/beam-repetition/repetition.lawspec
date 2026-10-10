@@ -1,0 +1,47 @@
+unit example.repetition
+
+number :: Int32 -> Int32
+finite :: Bool -> Bool
+transient :: Unit -> Bool
+peak :: Int32 -> Int32
+
+law `repeated random cases` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 1000) . number n = n end
+  example `repeated example` is n = 500 expect n = 500 end
+end
+
+law `repeated finite cases` is
+  definition is `for all` (flag :: Bool) . finite flag = flag end
+  example `finite example` is flag = true expect flag = true end
+end
+
+law `transient failure` is
+  definition is transient unitValue end
+end
+
+law `repeated search` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 1000) . peak n = n end
+end
+
+harness example.repetition.testing for example.repetition is
+  strategy zero :: Int32 is one of 0 end
+
+  for law `repeated random cases`
+    use zero for n
+    repeat 3
+    retry flaky 2
+    cover 100% "ordinary roots" when n == 0
+
+  for law `repeated finite cases`
+    repeat 3
+
+  for law `transient failure`
+    repeat 2
+    retry flaky 1
+
+  for law `repeated search`
+    use zero for n
+    repeat 2
+    cover 100% "ordinary roots" when n == 0
+    target maximize (0 - (n - 137) * (n - 137))
+end

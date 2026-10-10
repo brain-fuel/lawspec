@@ -1,0 +1,10 @@
+unit example.selectionA
+observed :: Int32 -> Int32
+law `check` is definition is observed 1 = 1 end end
+law `check extra` is definition is observed 10 = 10 end end
+law `雪` is definition is observed 20 = 20 end end
+law `雲` is definition is observed 21 = 21 end end
+harness example.selectionA.testing for example.selectionA is
+  order random
+  parallel
+end

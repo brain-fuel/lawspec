@@ -1,0 +1,7 @@
+expect: law_owners_release_after_each_test
+@@ src/beam_owner_support.erl
+<<<<<<<
+    true = Owner =/= self(),
+=======
+    true = Owner =:= self(),
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: resource_not_released
+@@ src/beam_resource_support.erl
+<<<<<<<
+    true = ets:delete(Store),
+=======
+    true = is_reference(Store),
+>>>>>>>

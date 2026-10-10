@@ -4,7 +4,7 @@
 %% ref:DEC-domain-modeling-primitives ref:DEC-portable-seeded-generation
 -module(lawspec_beam_workflow_state).
 -behaviour(gen_server).
--export([start/1, default/0, stop/1, call/2]).
+-export([start/1, default/0, stop/1, call/2, retain/2, release/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 start(Options) -> gen_server:start(?MODULE, {self(), Options}, []).
@@ -14,8 +14,20 @@ default() ->
         {error, {already_started, Pid}} -> Pid
     end.
 stop(Pid) ->
-    try gen_server:stop(Pid, normal, infinity)
-    catch exit:noproc -> ok; exit:{noproc, _} -> ok end.
+    lifecycle(Pid, close).
+retain(Pid, Holder) -> {Pid, gen_server:call(Pid, {retain, Holder}, infinity)}.
+release({Pid, Lease}) -> lifecycle(Pid, {release, Lease}).
+
+%% Shared resources retain the policy runtime that acquired them. Ordinary
+%% scopes still stop synchronously; holders are monitored for cancellation.
+%% ref:REQ-harness-units
+lifecycle(Pid, Request) ->
+    Monitor = monitor(process, Pid),
+    try gen_server:call(Pid, Request, infinity) of
+        closed -> receive {'DOWN', Monitor, process, Pid, _} -> ok end;
+        retained -> ok
+    catch exit:{noproc, _} -> ok; exit:{normal, _} -> ok
+    after demonitor(Monitor, [flush]) end.
 call(Pid, Request) ->
     case gen_server:call(Pid, Request, infinity) of
         {ok, Value} -> Value;
@@ -24,10 +36,17 @@ call(Pid, Request) ->
 
 init({Owner, Options}) ->
     Monitor = case Owner of none -> none; _ -> monitor(process, Owner) end,
-    {ok, #{owner => Monitor, options => Options,
+    {ok, #{owner => Monitor, options => Options, leases => #{}, closing => false,
         time => maps:get(time, Options, 0), random => lawspec_beam_random:seed(maps:get(seed, Options, 0)),
         trace => [], states => #{}, cache => #{}, frames => #{}, stages => #{}, monitors => #{}}}.
 
+handle_call({retain, Holder}, _, State = #{leases := Leases}) ->
+    Lease = monitor(process, Holder),
+    {reply, Lease, State#{leases := Leases#{Lease => Holder}}};
+handle_call({release, Lease}, _, State = #{leases := Leases}) ->
+    demonitor(Lease, [flush]),
+    finish_call(State#{leases := maps:remove(Lease, Leases)});
+handle_call(close, _, State) -> finish_call(State#{closing := true});
 handle_call(Request, {Caller, _}, State) ->
     try
         Current = case Request of
@@ -39,7 +58,9 @@ handle_call(Request, {Caller, _}, State) ->
         {Value, Updated} -> {reply, {ok, Value}, Updated}
     catch Class:Reason:Stack -> {reply, {exception, Class, Reason, Stack}, State} end.
 handle_cast(_, State) -> {noreply, State}.
-handle_info({'DOWN', Monitor, process, _, _}, State = #{owner := Monitor}) -> {stop, normal, State};
+handle_info({'DOWN', Monitor, process, _, _}, State = #{owner := Monitor}) -> finish_info(State#{closing := true});
+handle_info({'DOWN', Monitor, process, _, _}, State = #{leases := Leases}) when is_map_key(Monitor, Leases) ->
+    finish_info(State#{leases := maps:remove(Monitor, Leases)});
 handle_info({'DOWN', Monitor, process, _, _}, State = #{monitors := Monitors}) ->
     case maps:find(Monitor, Monitors) of
         {ok, {frame, Ref}} -> {_, Updated} = request({take_frame, Ref}, self(), State), {noreply, Updated};
@@ -51,6 +72,13 @@ handle_info({'DOWN', Monitor, process, _, _}, State = #{monitors := Monitors}) -
         error -> {noreply, State}
     end;
 handle_info(_, State) -> {noreply, State}.
+
+finish_call(#{closing := true, leases := Leases} = State) when map_size(Leases) =:= 0 ->
+    {stop, normal, closed, State};
+finish_call(State) -> {reply, retained, State}.
+finish_info(#{closing := true, leases := Leases} = State) when map_size(Leases) =:= 0 ->
+    {stop, normal, State};
+finish_info(State) -> {noreply, State}.
 
 request(options, _, State) -> {maps:get(options, State), State};
 request(now, _, State) -> {maps:get(time, State), State};

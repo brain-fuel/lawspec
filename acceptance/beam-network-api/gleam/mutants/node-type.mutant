@@ -1,0 +1,8 @@
+expect-any: Type mismatch
+rejected-at: compile
+@@ src/example/remote.gleam
+<<<<<<<
+let assert 47 = client.shifted(a, "mem://b", 7)
+=======
+let assert 47 = client.shifted(net, "mem://b", 7)
+>>>>>>>

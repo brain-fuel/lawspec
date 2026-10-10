@@ -1,0 +1,7 @@
+expect: the class adapter doubles
+@@ lib/example_keywords.ex
+<<<<<<<
+value * 2
+=======
+value * 3
+>>>>>>>

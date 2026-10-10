@@ -148,3 +148,116 @@ async_exception_class_and_original_stack_are_preserved_test() ->
     end.
 
 async_error() -> error(async_error).
+
+%% ref:REQ-law-primitives
+recording_reads_portable_values_test() -> with_recording_folder(fun(Folder) ->
+    Key = <<"example.tables/structured">>,
+    Value = {ls_data, <<"example.tables::Order::Shipped">>, [7, <<"雪\"\\\n"/utf8>>]},
+    Text = <<"Shipped(7, \"雪\\\"\\\\\n\")"/utf8>>,
+    Path = filename:join(Folder, binary_to_list(Key)),
+    ok = filelib:ensure_dir(Path),
+    ok = file:write_file(Path, <<Text/binary, "\n">>),
+    ?assertEqual(true, recording(Key, Value)),
+    ?assertEqual({ok, <<Text/binary, "\n">>}, file:read_file(Path)),
+    ok = file:write_file(Path, Text),
+    ?assertEqual(true, recording(Key, Value))
+end).
+
+recording_missing_and_mismatched_values_fail_test() -> with_recording_folder(fun(Folder) ->
+    Key = <<"example.tables/first label">>,
+    Path = filename:join(Folder, binary_to_list(Key)),
+    ?assertError({lawspec, <<"no recording recorded/example.tables/first label; run lawspec test --update-recorded to record \"parcel 1\"">>},
+        recording(Key, <<"parcel 1">>)),
+    ?assertNot(filelib:is_file(Path)),
+    ok = filelib:ensure_dir(Path),
+    ok = file:write_file(Path, <<"\"old\"\n">>),
+    ?assertError({lawspec, <<"recorded/example.tables/first label differs: expected \"old\", actual \"parcel 1\" (lawspec test --update-recorded records the new value)">>},
+        recording(Key, <<"parcel 1">>)),
+    ?assertEqual({ok, <<"\"old\"\n">>}, file:read_file(Path))
+end).
+
+recording_update_writes_utf8_and_one_newline_test() -> with_recording_folder(fun(Folder) ->
+    Key = <<"example.tables/雪"/utf8>>,
+    Path = filename:join(unicode:characters_to_binary(Folder), Key),
+    os:putenv("LAWSPEC_UPDATE_RECORDED", "1"),
+    ?assertEqual(true, recording(Key, [<<"λ"/utf8>>, 42, true, ls_unit])),
+    ?assertEqual({ok, <<"[\"λ\", 42, true, ()]\n"/utf8>>}, file:read_file(Path)),
+    ?assertEqual(true, recording(Key, false)),
+    ?assertEqual({ok, <<"false\n">>}, file:read_file(Path)),
+    os:putenv("LAWSPEC_UPDATE_RECORDED", "0"),
+    ?assertEqual(true, recording(Key, false)),
+    ?assertException(error, {lawspec, _}, recording(Key, true))
+end).
+
+recording_preserves_additional_trailing_newlines_test() -> with_recording_folder(fun(Folder) ->
+    Path = filename:join(Folder, "example.tables/value"),
+    ok = filelib:ensure_dir(Path),
+    ok = file:write_file(Path, <<"42\n\n">>),
+    ?assertException(error, {lawspec, _}, recording(<<"example.tables/value">>, 42)),
+    ok = file:write_file(Path, <<"42\r\n">>),
+    ?assertException(error, {lawspec, _}, recording(<<"example.tables/value">>, 42))
+end).
+
+recording_io_errors_are_failures_test() -> with_recording_folder(fun(Folder) ->
+    Path = filename:join(Folder, "example.tables/value"),
+    ok = filelib:ensure_dir(filename:join(Path, "inside")),
+    ?assertException(error, {lawspec, _}, recording(<<"example.tables/value">>, 42)),
+    os:putenv("LAWSPEC_UPDATE_RECORDED", "1"),
+    ?assertException(error, {lawspec, _}, recording(<<"example.tables/value">>, 42))
+end).
+
+recording_finds_nearest_project_and_honors_override_test() -> with_recording_folder(fun(Folder) ->
+    {ok, PreviousCwd} = file:get_cwd(),
+    Child = filename:join([Folder, "application", "subdirectory"]),
+    ok = filelib:ensure_dir(filename:join(Child, "unused")),
+    ok = file:write_file(filename:join(Folder, "lawspec.json"), <<"{}">>),
+    os:unsetenv("LAWSPEC_RECORDED"),
+    os:putenv("LAWSPEC_UPDATE_RECORDED", "1"),
+    try
+        ok = file:set_cwd(Child),
+        ?assertEqual(true, recording(<<"example.tables/value">>, 1)),
+        ?assertEqual({ok, <<"1\n">>}, file:read_file(filename:join([Folder, "recorded", "example.tables", "value"]))),
+        ok = file:make_dir(filename:join(Child, "recorded")),
+        ?assertEqual(true, recording(<<"example.tables/value">>, 2)),
+        ?assertEqual({ok, <<"2\n">>}, file:read_file("recorded/example.tables/value")),
+        os:putenv("LAWSPEC_RECORDED", filename:join(Folder, "override")),
+        ?assertEqual(true, recording(<<"example.tables/value">>, 3)),
+        ?assertEqual({ok, <<"3\n">>}, file:read_file(filename:join([Folder, "override", "example.tables", "value"])))
+    after ok = file:set_cwd(PreviousCwd) end
+end).
+
+recording(Key, Value) -> lawspec_beam_runtime:helper(<<"recorded">>, [Key, Value], [], 64).
+
+%% The generated helper carries type information even when a value has the
+%% same native representation as Text or Integer. ref:REQ-law-primitives
+typed_recording_vectors_read_update_and_reject_changes_test() -> with_recording_folder(fun(Folder) ->
+    {ok, Bytes} = file:read_file("test/fixtures/recorded-values.json"),
+    lists:foreach(fun(#{<<"name">> := Name, <<"scalar">> := Scalar, <<"text">> := Expected} = Row) ->
+        Key = <<"vectors/", Name/binary>>,
+        Path = filename:join(unicode:characters_to_binary(Folder), Key),
+        Value = lawspec_beam_scalar:literal(Scalar),
+        Type = maps:get(<<"type">>, Row, maps:get(<<"type">>, Scalar)),
+        Run = fun() -> lawspec_beam_runtime:helper(<<"recorded">>, [Key, Value], [<<"Text">>, Type], 64) end,
+        os:putenv("LAWSPEC_UPDATE_RECORDED", "1"),
+        ?assertEqual(true, Run()),
+        ?assertEqual({ok, <<Expected/binary, "\n">>}, file:read_file(Path)),
+        os:unsetenv("LAWSPEC_UPDATE_RECORDED"),
+        ?assertEqual(true, Run()),
+        ok = file:write_file(Path, <<"stale\n">>),
+        ?assertException(error, {lawspec, _}, Run()),
+        ?assertEqual({ok, <<"stale\n">>}, file:read_file(Path))
+    end, json:decode(Bytes))
+end).
+
+with_recording_folder(Body) ->
+    Folder = filename:absname(filename:join(".artifacts", "beam recorded 雪 " ++
+        integer_to_list(erlang:unique_integer([positive, monotonic])))),
+    ok = filelib:ensure_dir(filename:join(Folder, "unused")),
+    Keys = ["LAWSPEC_RECORDED", "LAWSPEC_UPDATE_RECORDED"],
+    Previous = [{Key, os:getenv(Key)} || Key <- Keys],
+    os:putenv("LAWSPEC_RECORDED", Folder),
+    os:unsetenv("LAWSPEC_UPDATE_RECORDED"),
+    try Body(Folder) after
+        lists:foreach(fun({Key, false}) -> os:unsetenv(Key); ({Key, Value}) -> os:putenv(Key, Value) end, Previous),
+        ok = file:del_dir_r(Folder)
+    end.

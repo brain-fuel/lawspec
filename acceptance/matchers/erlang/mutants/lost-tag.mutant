@@ -1,0 +1,7 @@
+expect: unique tags keep each tag
+@@ src/example_matchers.erl
+<<<<<<<
+lists:uniq(Tags)
+=======
+case lists:uniq(Tags) of [] -> []; [_ | Rest] -> Rest end
+>>>>>>>

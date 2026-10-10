@@ -1,0 +1,6 @@
+@@ src/shop/orders.gleam
+<<<<<<<
+case a < b { True -> a False -> b }
+=======
+case a < b { True -> a False -> a + 0 * b }
+>>>>>>>

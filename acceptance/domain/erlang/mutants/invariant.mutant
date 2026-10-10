@@ -1,0 +1,6 @@
+@@ src/example_ordering.erl
+<<<<<<<
+Quantity < 1;
+=======
+Quantity < 0;
+>>>>>>>

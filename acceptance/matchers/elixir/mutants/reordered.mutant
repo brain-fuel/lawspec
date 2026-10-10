@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ lib/example_matchers.ex
+<<<<<<<
+Enum.sort(items)
+=======
+Enum.sort(items, :desc)
+>>>>>>>

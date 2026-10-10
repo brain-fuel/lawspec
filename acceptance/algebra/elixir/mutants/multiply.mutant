@@ -1,0 +1,7 @@
+expect: zero absorbs multiplication
+@@ lib/example_algebra.ex
+<<<<<<<
+def multiply(a, b), do: a * b
+=======
+def multiply(a, b), do: a + b
+>>>>>>>

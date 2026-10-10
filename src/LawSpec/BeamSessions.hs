@@ -21,16 +21,26 @@ emit target layout bits declarations units = do
   names <- E.dataNames declarations
   let protocols = [(u,s) | u <- units, s <- C.unitSessions u]
       modules = [moduleName u s | (u,s) <- protocols]
+      paths = [modulePath u s | (u,s) <- protocols]
       typeNames = [globalType u s side i | (u,s) <- protocols, side <- ["first","second"], i <- [0..length (C.sessionSteps s)]]
       lookupProtocol ty = case ty of
         C.Constructor key [] -> lookup (C.Id key) [(C.sessionId s,(u,s)) | (u,s) <- protocols]
         _ -> Nothing
+      directWire ty = case lookupProtocol ty of
+        Just _ -> True
+        Nothing -> case describe bits declarations [] ty of Right _ -> True; Left _ -> False
+      candidates = [C.sessionId s | (_,s) <- protocols, not (null (C.sessionSteps s)), all (directWire . snd) (C.sessionSteps s)]
+      settleWire allowed = let next = [C.sessionId s | (_,s) <- protocols, C.sessionId s `elem` allowed,
+                                all (\(_,ty) -> maybe True ((`elem` allowed) . C.sessionId . snd) (lookupProtocol ty)) (C.sessionSteps s)]
+                           in if next == allowed then allowed else settleWire next
+      wired = settleWire candidates
       part ty = case lookupProtocol ty of
         Just (_,s) -> pure (E.tuple [E.atom "session", E.binary (C.idText (C.sessionId s))])
         Nothing -> pure (E.tuple [E.atom "value",case describe bits declarations [] ty of
           Left _ -> E.atom "none"
           Right (descriptor,table) -> E.binary (unwords (map snd (reverse table) ++ [descriptor]))])
-  unless (length modules == length (nub modules) && all ((<= 230) . length) modules && length typeNames == length (nub typeNames))
+  unless (length modules == length (nub modules) && all ((<= 230) . length) modules &&
+    (target == "erlang" || length paths == length (nub paths)) && length typeNames == length (nub typeNames))
     (Left "BEAM session module names collide after snake_case conversion or exceed the Erlang limit")
   catalogue <- forM protocols $ \(_,s) -> do
     steps <- forM (C.sessionSteps s) $ \(sends,ty) -> do
@@ -66,6 +76,14 @@ emit target layout bits declarations units = do
              [runtime "with_pair" [E.call "spec" [],variable "body"]]] ++
           [Function ("spawn_" ++ side) [("channel_end",start side),("body",callbackType [start side] generic)] task
             [E.remote "lawspec_beam_session_task" "start" [variable "channel_end",variable "body"]] | side <- ["first","second"], not (null steps)]
+    text <- native (C.Constructor "Text" [])
+    let node = NativeType (E.remote "lawspec_network" "node_handle" []) (X.remote "LawSpec.Network" "node_handle" []) (D.text "network.Node") [D.text "import lawspec/network"]
+        network = if C.sessionId session `notElem` wired then [] else
+          [Function "listen" [("node",node),("name",text)] (start "first")
+            [runtime "listen" [variable "node",variable "name",E.call "spec" []]],
+           Function "dial" [("node",node),("address",text)] (start "second")
+            [runtime "dial" [variable "node",variable "address",E.call "spec" []]],
+           Function "address" [("channel_end",start "first")] text [runtime "address" [variable "channel_end"]]]
     methods <- concat <$> forM ["first","second"] (\side -> concat <$> forM (zip [0::Int ..] steps) (\(i,(firstSends,ty)) -> do
       let sending = if side == "first" then firstSends else not firstSends
           action = if sending then "send" else "receive"
@@ -89,7 +107,7 @@ emit target layout bits declarations units = do
         Function (side ++ "_abandon_" ++ show i) [("channel_end",before)] result
           [runtime "abandon" [endVar],E.atom (if target == "gleam" then "nil" else "ok")]]))
     let types = [stepName side i | side <- ["first","second"], i <- [0..length steps]]
-        functions = helpers ++ methods
+        functions = helpers ++ network ++ methods
         erlang = E.moduleDoc name (("spec",0) : [(n,length ps) | Function n ps _ _ <- functions])
           ([D.text "-export_type(" <> E.array [D.text (t ++ "/0") | t <- types] <> D.text ")."] ++
            [D.text ("-opaque " ++ t ++ "() :: lawspec_beam_session:session().") | t <- types] ++
@@ -118,7 +136,7 @@ emit target layout bits declarations units = do
 moduleName :: C.Unit -> C.Session -> String
 moduleName u s = "lawspec_session_" ++ E.moduleName (C.unitId u) ++ "_" ++ E.snake (C.sessionName s)
 modulePath :: C.Unit -> C.Session -> String
-modulePath u s = "lawspec/sessions/" ++ E.gleamPath (C.unitId u) ++ "/" ++ E.snake (C.sessionName s)
+modulePath u s = "lawspec/sessions/" ++ E.gleamPath (C.unitId u) ++ "/" ++ E.gleamName (E.snake (C.sessionName s))
 elixirModule :: C.Unit -> C.Session -> String
 elixirModule u s = "LawSpec.Sessions." ++ drop 7 (E.nativeModule "elixir" u) ++ "." ++ E.pascal (C.sessionName s)
 stepName :: String -> Int -> String

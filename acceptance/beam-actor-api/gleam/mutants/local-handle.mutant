@@ -1,0 +1,8 @@
+expect-any: Type mismatch
+rejected-at: compile
+@@ src/example/actor_abilities.gleam
+<<<<<<<
+let assert 21 = counter_remote.add(remote, 7)
+=======
+let assert 21 = counter_remote.add(actor, 7)
+>>>>>>>

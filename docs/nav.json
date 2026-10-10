@@ -168,6 +168,15 @@
           },
           {
             "path": "how-to/targets/rust.md"
+          },
+          {
+            "path": "how-to/targets/erlang.md"
+          },
+          {
+            "path": "how-to/targets/elixir.md"
+          },
+          {
+            "path": "how-to/targets/gleam.md"
           }
         ]
       }

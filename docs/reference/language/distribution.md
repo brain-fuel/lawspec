@@ -47,6 +47,60 @@ process. Each frame may be lost or duplicated, and is delayed by up to
 groups of nodes off from each other until `heal()`. The faults come from the
 seed, so they repeat.
 
+### BEAM node APIs
+
+Erlang uses `lawspec_network`, Elixir uses `LawSpec.Network`, and Gleam
+imports `lawspec/network`. Add `import lawspec.network` to the LawSpec
+source to include the secure transport and its C/OpenSSL seed bridge.
+
+| Operation | Erlang / Elixir | Gleam |
+| --- | --- | --- |
+| TCP or HTTP transport | `tcp(host, port)`, `http(host, port)` | Same |
+| Open a node | `open(transport, options)` | `open_with_options(transport, options)` |
+| Scoped node | `with_node(transport, options, body)` | `with_node_options(transport, options, body)` |
+| Use configured defaults | `open(transport)`, `with_node(transport, body)` | Same |
+| Node address or fingerprint | `address(node)`, `node_fingerprint(node)` | Same |
+| Close a node | `close(node)` | Same |
+
+Port `0` chooses an available port. Use an unbracketed IPv6 host such as
+`"::1"`; the returned address includes brackets. `advertise(transport,
+host)` sets the hostname that peers use when the listening host is a
+wildcard address. Nodes belong to their creating process. Scoped
+constructors close and join their transport workers when the body returns
+or raises; `open` keeps the node until `close` or its creator exits.
+
+For example, in Elixir:
+
+```elixir
+alias LawSpec.Network
+
+Network.with_node(Network.tcp("127.0.0.1", 7000), fn node ->
+  IO.puts(Network.address(node))
+  # Serve actors, definitions, mailboxes or channels here.
+end)
+```
+
+Build options with `options()`, `with_identity(options, identity)` and
+`with_trusted(options, fingerprints)`. `identity_from_seed(bytes)` accepts
+the shared 32-byte seed; `new_identity()` creates one. `fingerprint(identity)`
+and `public_key(identity)` return its hexadecimal fingerprint and public
+key. Unspecified options use the shared configuration described below.
+An empty trusted list rejects every peer. `trust_on_first_use(options)`
+explicitly selects the default address-pinning behavior.
+
+For memory transports, use `with_memory(options, body)` and
+`memory_transport(network, name)`. Erlang accepts an options map and Elixir
+accepts a map or keyword list (`seed`, `loss`, `duplicate`, `delay`,
+`record`). Gleam provides `memory_options()` and the `MemoryOptions` record,
+whose delay field is `delay_seconds`. `partition`, `heal`, and `recorded`
+operate on that network. `insecure_memory_transport_for_tests(network,
+name)` is the explicit test transport that also works without the import.
+
+The BEAM TCP/HTTP transports accept records up to 64 MiB. Their I/O runs in
+owned workers with bounded queues and five-second connection/read/write
+timeouts. HTTP uses one `POST /lawspec` per connection and responds with
+`204`; the peer's reply arrives through its own node listener.
+
 ## What a node can offer
 
 | Offer | Here | From another node |
@@ -78,6 +132,33 @@ seed, so they repeat.
 - **Mailboxes.** A send to a mailbox on another node waits until the
   mailbox has the message. A lost send is sent again, and the mailbox takes
   it once.
+
+### BEAM definition APIs
+
+Erlang, Elixir and Gleam generate typed remote functions for checked
+definitions whose arguments and results have wire encodings. For a
+definition `shifted` in `example.remote`, the client modules are:
+
+| Target | Module |
+| --- | --- |
+| Erlang | `lawspec_remote_example_remote` |
+| Elixir | `LawSpec.Remote.Example.Remote` |
+| Gleam | `lawspec/remote/example/remote` |
+
+Call `shifted(node, address, value)`, or
+`shifted_with_timeout(node, address, timeout_milliseconds, value)`. The
+default timeout is 5000 milliseconds. Arguments and results use the
+target's native types, including its representation of `Unit` and data
+constructors. `address` is the node address, such as `tcp://host:7000`;
+the client appends `/definitions`.
+
+The root module (`lawspec_remote`, `LawSpec.Remote`, or `lawspec/remote`)
+provides `serve(node, handlers...)` and `digest(qualified_name)`. The
+generated `serve` signature lists the native ability interfaces required
+by the definitions. Each request invokes the checked definition using
+those server interfaces. The client supplies only the definition's value
+arguments. A request for an unknown content hash is rejected before a
+definition runs.
 
 ## Moving a channel end
 
@@ -166,15 +247,15 @@ A program that makes nodes imports `lawspec.network`:
 import lawspec.network
 ```
 
-The import brings the **secure network handler**, the target's
-`lawspec_network` module (`LawSpecNetwork` in Java, Kotlin and Haskell),
-written beside the runtime, with the crypto libraries it needs (see
+The import brings the **secure network handler**, written beside the
+runtime, with the crypto libraries it needs (see
 [built-in abilities](builtins.md#dependencies-of-generated-projects)). A
 program without it does without those libraries, and can make a node only
 on the in-memory transport made for tests; its scenarios' network runs use
 that transport. Making any other node fails, saying to add the import.
 Python, JavaScript, TypeScript, Java, Kotlin and Go find the module when a
-node is made; in Rust and Haskell, call `lawspec_network::install()` or
+node is made; BEAM nodes do this automatically too. In Rust and Haskell,
+call `lawspec_network::install()` or
 `LawSpecNetwork.install` once before making nodes (the generated tests do).
 
 The network is then secure on every transport and every target, and nodes on

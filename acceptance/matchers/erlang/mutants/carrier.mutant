@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/example_matchers.erl
+<<<<<<<
+{order_shipped, Id, <<"post">>}
+=======
+{order_shipped, Id, <<>>}
+>>>>>>>

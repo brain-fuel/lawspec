@@ -79,6 +79,9 @@ What the segments mean depends on the target:
 | Kotlin | A fully qualified class, object or function name | `["domain", "PaymentsDomain", "Price"]` |
 | Go | One package-local identifier, or an import alias and an exported identifier | `["Price"]`, `["domain", "Price"]` |
 | Haskell | Module components, then the type, constructor or function | `["PaymentsDomain", "Price"]` |
+| Erlang | Module and type or function; a constructor uses one atom or record name | `["payments_domain", "apply_fee"]`, `["price"]` |
+| Elixir | Module components, then the function when calling one | `["PaymentsDomain", "Price"]`, `["PaymentsDomain", "apply_fee"]` |
+| Gleam | Module path segments, then the type, constructor or function | `["payments_domain", "Price"]` |
 
 JavaScript and TypeScript source references resolve from the source directory,
 and generator references from the test directory.
@@ -174,8 +177,13 @@ representation.
 ```
 
 A unit with function bindings must currently map every adapter it declares.
-Its adapter file becomes a compiler-generated bridge: it validates the inputs,
-converts them, calls your function, converts the result and validates it.
+The compiler-generated bridge validates the inputs, converts them, calls your
+function, converts the result and validates it.
+
+| Targets | Bridge location |
+| --- | --- |
+| Erlang, Elixir, Gleam | `lawspec_native_bindings.erl` in the source directory |
+| Rust, Python, JavaScript, TypeScript, Java, Kotlin, Go, Haskell | The unit's adapter file |
 
 ## Rust: name the application crate
 
@@ -226,9 +234,23 @@ cross it through checked conversions, and each native function as
 
 ## Adopt bindings in an existing project
 
-When a unit gains function bindings, its adapter file becomes a generated
-bridge. LawSpec refuses to overwrite your existing adapter, even if it is still
-the untouched stub. To adopt bindings:
+### Erlang, Elixir and Gleam
+
+Implement the mapped functions in your application modules, add the bindings,
+and run `lawspec generate`. LawSpec creates a separate native bridge and keeps
+existing user adapters. Application types, generator factories and build files
+remain yours. Generation refuses to overwrite an unowned file at the bridge's
+path or an edited generated bridge.
+
+Removing the bindings removes the unedited native bridge and any unused binding
+helpers. LawSpec creates missing adapter stubs and preserves existing adapters.
+Implement the adapters for the specification's types before running the tests.
+An edited generated bridge must be reviewed before generation can remove it.
+
+### Targets that use the adapter file as the bridge
+
+When a unit gains function bindings, LawSpec refuses to overwrite your existing
+adapter, even if it is still the untouched stub. To adopt bindings:
 
 1. Move the implementation into the application module the bindings name.
 2. Move the old adapter file out of the way, outside the bridge's path.
@@ -240,7 +262,9 @@ If you later remove the bindings, LawSpec keeps the former bridge as a
 user-owned adapter and reports the adapter signature you now need to
 implement. Review it and implement the adapter before running the tests.
 
-Changing `sourceDir` or `testDir` moves generated files. Your application
-models, hooks and factories stay where they are.
+For targets supporting custom roots, changing `sourceDir` or `testDir` moves
+generated files. Your application models, hooks and factories stay where they
+are. Gleam uses `src` and `test`, with generated Erlang test helpers in
+`test-support/src`.
 
 See [ownership and regeneration](../explanation/ownership-and-regeneration.md).

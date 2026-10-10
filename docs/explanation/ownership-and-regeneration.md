@@ -66,9 +66,15 @@ compact output therefore never produces a false update report. ref:DEC-adapter-o
 
 ## Native bindings
 
-Binding an adapter to an existing function turns its file into a generated
-bridge. This is where ownership matters most: your adapter is at exactly the
-path the bridge needs. ref:DEC-native-bindings-typed-identity
+Erlang, Elixir and Gleam emit native function bindings in a separate generated
+`lawspec_native_bindings.erl` module. Existing user adapters remain yours.
+Removing the bindings removes the unedited bridge and creates any missing
+adapter stubs; existing adapters need to implement the specification's types.
+An edited generated bridge is protected from removal.
+
+The other targets use the unit's adapter file as the generated bridge. Your
+adapter is at exactly the path the bridge needs.
+ref:DEC-native-bindings-typed-identity
 
 LawSpec will not overwrite it, even if it is still the untouched stub. Move the
 implementation into your application module, move the old adapter out of the
@@ -80,8 +86,9 @@ a user-owned file, rather than silently replacing it with a stub, and reports
 the adapter signature you now need. Generated binding helpers that are no longer
 needed can be removed.
 
-Changing the layout relocates generated files. Application files stay where
-they are until you move them.
+For targets supporting custom source and test roots, changing the layout
+relocates generated files. Application files stay where they are until you move
+them. Gleam requires its native `src`, `test` and `test-support` layout.
 
 ## Example exports
 

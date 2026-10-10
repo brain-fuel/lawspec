@@ -1,0 +1,7 @@
+expect: discount
+@@ src/example_harness.erl
+<<<<<<<
+Total div 10
+=======
+Total + 1
+>>>>>>>

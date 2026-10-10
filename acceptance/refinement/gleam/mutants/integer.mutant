@@ -1,0 +1,6 @@
+@@ src/beam_refinement_support.erl
+<<<<<<<
+preserve(Value) -> Value.
+=======
+preserve(Value) -> float(Value).
+>>>>>>>

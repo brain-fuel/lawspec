@@ -172,6 +172,11 @@ renderWith asynchronous ts declarations width reference key local external = ren
           rightKey <- key (expressionType b)
           pure (runtime "binary" [quoted (binaryName op),left,right,leftKey,rightKey])
       Helper Concurrently [value] -> render value
+      Helper Recorded [keyValue,value] | structural (expressionType value) -> do
+        name <- render keyValue
+        argument <- render value
+        ref <- reference (expressionType value)
+        pure (schema "recorded" [ref,name,argument,width])
       Helper builtin args -> do
         values <- mapM render args
         keys <- mapM (key . expressionType) args

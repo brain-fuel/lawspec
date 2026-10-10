@@ -1,0 +1,87 @@
+unit example.sharedResources
+
+import example.sharedTypes (SharedPool)
+
+openPool :: Unit -> SharedPool
+resetPool :: SharedPool -> Unit
+closePool :: SharedPool -> Unit
+usePool :: SharedPool -> Bool
+
+ability Audit is
+  tick :: Unit -> Integer
+end
+
+handler trackedAudit for Audit with state total :: Integer start 0 is
+  tick ignored is ~total := total + 1; total end
+end
+
+handle Store
+openStore :: Integer -> Store
+resetStore :: Store -> Integer -> Unit
+closeStore :: Store -> Integer -> Unit
+useStore :: Store -> Int32 -> Bool
+storeValue :: Store -> Int32
+
+resource Store is
+  acquire is openStore (tick unitValue) end
+  release store is closeStore store (tick unitValue) end
+  reset store is resetStore store (tick unitValue) end
+end
+
+law `unit sharing keeps its acquisition handler` using trackedAudit for store :: Store is
+  definition is
+    `for all` (n :: Int32) . useStore store n
+  end
+  example `expectations use the current lease` is
+    n = 12
+    expect storeValue store = 12
+  end
+end
+
+law `another law gets a reset store` using trackedAudit for store :: Store is
+  definition is
+    `for all` (n :: Int32) . useStore store n
+  end
+end
+
+handle GroupStore
+openGroup :: Unit -> GroupStore
+resetGroup :: GroupStore -> Unit
+closeGroup :: GroupStore -> Unit
+useGroup :: GroupStore -> Bool
+
+resource GroupStore is
+  acquire is openGroup unitValue end
+  release store is closeGroup store end
+  reset store is resetGroup store end
+end
+
+law `first grouped use` for store :: GroupStore is
+  definition is useGroup store end
+end
+
+law `second grouped use` for store :: GroupStore is
+  definition is useGroup store end
+end
+
+law `an ungrouped law has another resource` for store :: GroupStore is
+  definition is useGroup store end
+end
+
+resource SharedPool is
+  acquire is openPool unitValue end
+  release pool is closePool pool end
+  reset pool is resetPool pool end
+end
+
+law `run sharing starts here` for pool :: SharedPool is
+  definition is usePool pool end
+end
+
+harness example.sharedResources.testing for example.sharedResources is
+  share Store per unit
+  share GroupStore per group
+  share SharedPool per run
+  for laws `first grouped use`, `second grouped use`
+    tags grouped
+end

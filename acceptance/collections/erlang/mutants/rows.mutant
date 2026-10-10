@@ -1,0 +1,6 @@
+@@ src/example_collections.erl
+<<<<<<<
+lists:usort(Rows)
+=======
+lists:usort([Row || Row <- Rows, Row =/= []])
+>>>>>>>

@@ -434,6 +434,22 @@ export class Schema {
     return found;
   }
 
+  // Values already crossed their checked boundary. Reading a snapshot must
+  // not rerun constructor predicates or native application codecs.
+  // ref:REQ-law-primitives ref:DEC-typed-core-boundary
+  recordedText(type, value) {
+    return ls.recordedText(value, type, (reference, item) => {
+      const constructor = this.constructors(reference)?.find(candidate => candidate.tag === item.tag);
+      if (!constructor || constructor.fields.length !== item.fields.length)
+        throw new TypeError('invalid recorded constructor');
+      return witnessed(constructor, item.fields);
+    });
+  }
+
+  recorded(type, key, value) {
+    return ls.recorded(key, value, item => this.recordedText(type, item));
+  }
+
   withNativeBindings(bindings, codecs = new Map()) {
     const remaining = new Map(bindings);
     const hooks = new Map([...this.#nativeCodecs, ...codecs]);

@@ -1,0 +1,81 @@
+unit example.strategies
+
+type Parcel is Parcel base :: Int32 upper :: Int32 end
+
+numbers :: Int32 -> Int32
+parcels :: Parcel -> Parcel
+dependent :: Int32 -> Int32 -> Int32
+defaults :: Int32 -> Int32
+wide :: Integer -> Integer
+finite :: Bool -> Bool
+shadowed :: Int32 -> Int32
+
+law `weighted refined numbers` is
+  definition is `for all` (n :: Int32 where n > 0) . numbers n = n end
+  example `examples are outside the strategy` is n = 101 expect n = 101 end
+end
+
+law `bound record fields` is
+  definition is `for all` (p :: Parcel) . parcels p = p end
+  example `explicit record example` is p = Parcel 0 0 expect p = Parcel 0 0 end
+end
+
+law `dependent input bounds` is
+  definition is
+    `for all` (x :: Int32) (y :: Int32 where y > x && y <= x + 10) . dependent x y = y
+  end
+end
+
+law `default any respects the input` is
+  definition is `for all` (n :: Int32 where n >= 100 && n <= 110) . defaults n = n end
+end
+
+law `wide strategy bounds` is
+  definition is `for all` (n :: Integer where n > 0) . wide n = n end
+end
+
+law `finite domains remain exhaustive` is
+  definition is `for all` (flag :: Bool) . finite flag = flag end
+  example `explicit finite example` is flag = true expect flag = true end
+end
+
+law `strategy binders shadow locally` is
+  definition is `for all` (n :: Int32) . shadowed n = n end
+end
+
+harness example.strategies.testing for example.strategies is
+  strategy digits :: (n :: Int32 where n >= 1 && n <= 9) is
+    any such that prelude.rem it 2 == 1 at most 50 discards
+  end
+  strategy spikes :: Int32 is one of 1, 9 end
+  strategy numbers :: Int32 is frequency 3 digits, 1 spikes end
+  strategy records :: Parcel is
+    bind base :: Int32 from (one of 1, 2, 3) in one of Parcel base (base + 1), Parcel base (base + 2)
+  end
+  strategy starts :: Int32 is one of 5, 7 end
+  strategy automatic :: Int32 is any end
+  strategy wideNumbers :: (n :: Integer where
+    n >= 340282366920938463463374607431768211456 &&
+    n <= 340282366920938463463374607431768211465) is any end
+  strategy neverDrawn :: Bool is any such that false at most 1 discards end
+  strategy shadowing :: Int32 is
+    bind value :: Int32 from (one of 2) in
+      bind value :: Int32 from (one of value + 1) in one of value * 2
+  end
+
+  for law `weighted refined numbers`
+    use numbers for n
+  for law `bound record fields`
+    use records for p
+  for law `dependent input bounds`
+    use starts for x
+    use automatic for y
+  for law `default any respects the input`
+    use automatic for n
+  for law `wide strategy bounds`
+    use wideNumbers for n
+  for law `finite domains remain exhaustive`
+    use neverDrawn for flag
+  for law `strategy binders shadow locally`
+    use shadowing for n
+end

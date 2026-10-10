@@ -6,6 +6,7 @@
 -module(lawspec_beam_effects).
 -behaviour(gen_server).
 -export([with_scope/3, install/2, handler/2, stateless/1, stateful/3,
+    retain/2, release/1,
     recording/2, perform/4, invoke/4, count_calls/4,
     fail/1, raise_failure/2, attempt/4, native_failures/4, match_exception/3,
     native_origin/0, origin/5, recover_handler/5, with_native_context/3,
@@ -47,7 +48,7 @@ with_native_context(Origins, SchemaFactory, Body) ->
 %% any state already allocated by earlier factories.
 with_scope(Schema, Factories, Body) ->
     {ok, Scope} = gen_server:start(?MODULE, self(), []),
-    Base = Schema#{lawspec_scope => Scope},
+    Base = Schema#{lawspec_scope => Scope, lawspec_scopes => [Scope | scopes(Schema)]},
     Previous = put({?MODULE, scope}, Scope),
     try
         Handlers = maps:map(fun(_, Make) -> Make(Base) end, Factories),
@@ -57,9 +58,40 @@ with_scope(Schema, Factories, Body) ->
             undefined -> erase({?MODULE, scope});
             _ -> put({?MODULE, scope}, Previous)
         end,
-        try gen_server:stop(Scope, normal, infinity)
-        catch exit:noproc -> ok end
+        scope_call(Scope, close)
     end.
+
+%% A shared resource keeps the handlers that acquired it until its final
+%% release. Retain all lexical ancestors too: an inherited handler can belong
+%% to an outer scope. Each lease is tied to a monitored holder, so a failed
+%% resource owner cannot leave a scope and its state cells running forever.
+%% ref:REQ-law-primitives ref:REQ-harness-units
+retain(Schema, Holder) when is_pid(Holder) -> retain_scopes(scopes(Schema), Holder).
+
+scopes(Schema) -> maps:get(lawspec_scopes, Schema,
+    case maps:find(lawspec_scope, Schema) of {ok, Scope} -> [Scope]; error -> [] end).
+
+retain_scopes([], _) -> [];
+retain_scopes([Scope | Rest], Holder) ->
+    Lease = gen_server:call(Scope, {retain, Holder}, infinity),
+    try [{Scope, Lease} | retain_scopes(Rest, Holder)]
+    catch Class:Reason:Stack ->
+        release([{Scope, Lease}]), erlang:raise(Class, Reason, Stack)
+    end.
+
+release(Leases) -> lists:foreach(fun({Scope, Lease}) -> scope_call(Scope, {release, Lease}) end, Leases).
+
+%% Joining an unretained scope preserves with_scope's synchronous cleanup.
+%% A retained scope closes when the last holder releases it or dies.
+scope_call(Scope, Request) ->
+    Monitor = monitor(process, Scope),
+    try gen_server:call(Scope, Request, infinity) of
+        closed -> receive {'DOWN', Monitor, process, Scope, _} -> ok end;
+        retained -> ok
+    catch
+        exit:{noproc, _} -> ok;
+        exit:{normal, _} -> ok
+    after demonitor(Monitor, [flush]) end.
 
 %% Native production factories may allocate scoped state without receiving a
 %% hidden argument. Only allocation uses this process-local scope; the cell
@@ -175,20 +207,37 @@ match_exception({tag, Tag}, error, Reason) when is_tuple(Reason), tuple_size(Rea
     {ok, Message};
 match_exception(_, _, _) -> no_match.
 
-init(Owner) -> {ok, #{owner => monitor(process, Owner), cells => #{}}}.
+init(Owner) -> {ok, #{owner => monitor(process, Owner), cells => #{}, leases => #{}, closing => false}}.
 
 handle_call({cell, Initial}, _, State = #{cells := Cells}) ->
     {ok, Cell} = lawspec_beam_handler:start(self(), Initial),
     Monitor = monitor(process, Cell),
-    {reply, Cell, State#{cells := Cells#{Monitor => Cell}}}.
+    {reply, Cell, State#{cells := Cells#{Monitor => Cell}}};
+handle_call({retain, Holder}, _, State = #{leases := Leases}) ->
+    Lease = monitor(process, Holder),
+    {reply, Lease, State#{leases := Leases#{Lease => Holder}}};
+handle_call({release, Lease}, _, State = #{leases := Leases}) ->
+    demonitor(Lease, [flush]),
+    finish_call(State#{leases := maps:remove(Lease, Leases)});
+handle_call(close, _, State) -> finish_call(State#{closing := true}).
+
+finish_call(#{closing := true, leases := Leases} = State) when map_size(Leases) =:= 0 ->
+    {stop, normal, closed, State};
+finish_call(State) -> {reply, retained, State}.
 
 handle_cast(_, State) -> {noreply, State}.
 
 handle_info({'DOWN', Owner, process, _, _}, State = #{owner := Owner}) ->
-    {stop, normal, State};
+    finish_info(State#{closing := true});
+handle_info({'DOWN', Lease, process, _, _}, State = #{leases := Leases}) when is_map_key(Lease, Leases) ->
+    finish_info(State#{leases := maps:remove(Lease, Leases)});
 handle_info({'DOWN', Monitor, process, _, _}, State = #{cells := Cells}) ->
     {noreply, State#{cells := maps:remove(Monitor, Cells)}};
 handle_info(_, State) -> {noreply, State}.
+
+finish_info(#{closing := true, leases := Leases} = State) when map_size(Leases) =:= 0 ->
+    {stop, normal, State};
+finish_info(State) -> {noreply, State}.
 
 terminate(_, #{cells := Cells}) ->
     maps:foreach(fun(_, Cell) -> lawspec_beam_handler:stop(Cell) end, Cells).

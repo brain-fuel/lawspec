@@ -1,0 +1,7 @@
+@@ src/example/distribution.gleam
+<<<<<<<
+  remote_tally.add(handle, value)
+  remote_tally.add(handle, value)
+=======
+  remote_tally.add(handle, value)
+>>>>>>>

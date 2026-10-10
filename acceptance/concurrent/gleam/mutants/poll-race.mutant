@@ -1,0 +1,7 @@
+expect-any: model_inconsistent | ModelInconsistent
+@@ src/beam_collections.erl
+<<<<<<<
+poll(Id) -> request(Id,poll).
+=======
+poll(Id) -> Result=request(Id,peek), timer:sleep(1), _=request(Id,poll), Result.
+>>>>>>>

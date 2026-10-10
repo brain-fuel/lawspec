@@ -1,0 +1,6 @@
+@@ lib/example_flow.ex
+<<<<<<<
+def pop(%StackPush{top: top, rest: rest}), do: %PopFlow{result: top, state: rest}
+=======
+def pop(%StackPush{top: top} = stack), do: %PopFlow{result: top, state: stack}
+>>>>>>>

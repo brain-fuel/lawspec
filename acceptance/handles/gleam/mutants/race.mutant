@@ -1,0 +1,7 @@
+expect-any: model_inconsistent | ModelInconsistent
+@@ src/beam_jobs.erl
+<<<<<<<
+take(Pid) -> gen_server:call(Pid,take).
+=======
+take(Pid) -> Result=gen_server:call(Pid,peek), timer:sleep(1), _=gen_server:call(Pid,take), Result.
+>>>>>>>

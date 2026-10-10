@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ lib/example_matchers.ex
+<<<<<<<
+Enum.uniq(tags)
+=======
+Enum.uniq(tags) ++ ["extra"]
+>>>>>>>

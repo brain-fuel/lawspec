@@ -8,8 +8,15 @@ protocol Symbols is send Symbol end
 protocol Empty is end
 protocol LoopA is send LoopB end
 protocol LoopB is send LoopA end
+protocol Answer is receive Int32 send Int64 end
+protocol Passing is send Answer end
 
 nativeProbe :: Unit -> Bool
 law `native session payloads retain their types and identity` is
   definition is nativeProbe unitValue end
+end
+
+networkProbe :: Unit -> Bool
+law `native sessions move twice and relay local ends with canonical values` is
+  definition is networkProbe unitValue end
 end

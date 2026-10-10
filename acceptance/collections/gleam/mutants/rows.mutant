@@ -1,0 +1,6 @@
+@@ src/example/collections.gleam
+<<<<<<<
+list.unique(rows)
+=======
+list.unique(list.filter(rows, fn(row) { row != [] }))
+>>>>>>>

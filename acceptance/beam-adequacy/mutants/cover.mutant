@@ -1,0 +1,7 @@
+expect-any: unmet_cover | UnmetCover
+@@ acceptance/beam-adequacy/adequacy.lawspec
+<<<<<<<
+    cover 0% "positive" when n < 0
+=======
+    cover 1% "positive" when n < 0
+>>>>>>>

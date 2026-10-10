@@ -1,0 +1,7 @@
+expect: unique tags keep each tag
+@@ lib/example_matchers.ex
+<<<<<<<
+Enum.uniq(tags)
+=======
+Enum.drop(Enum.uniq(tags), 1)
+>>>>>>>

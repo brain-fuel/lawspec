@@ -1,0 +1,6 @@
+@@ lib/shop_orders.ex
+<<<<<<<
+min(price.cents * quantity.value, 100000000)
+=======
+min(price.cents * quantity.value + 1, 100000000)
+>>>>>>>

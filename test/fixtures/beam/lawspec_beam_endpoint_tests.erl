@@ -34,6 +34,7 @@ handoff_keeps_inflight_values_after_old_node_stops_test_() ->
     {timeout, 10, fun() -> with_ends(faults(), #{}, fun(_, [Old | _], A, B, C) ->
         lists:foreach(fun(I) -> ok = lawspec_beam_endpoint:send(B, <<I>>) end, lists:seq(1, 15)),
         Address = lawspec_beam_endpoint:offer(A),
+        [_, Token] = binary:split(Address, <<"?take=">>), ?assertEqual(32, byte_size(binary:decode_hex(Token))),
         ?assertEqual(Address, lawspec_beam_endpoint:offer(A)),
         ok = lawspec_beam_endpoint:take(C, Address),
         ok = lawspec_beam_node:stop(Old), ?assertNot(is_process_alive(A)),

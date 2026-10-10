@@ -8,6 +8,8 @@ import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
+import qualified LawSpec.BeamGenerators as Generators
+import LawSpec.Testing (GeneratorRequirement(..), domainHints)
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Scalar (primitives, primitiveName)
@@ -27,10 +29,13 @@ emitData target layout bits declarations = do
       tag <- named names (C.Id (S.constructorTag c))
       predicates <- sequence [predicate contract expression | contract <- contracts,
         S.contractTag contract == S.constructorTag c, expression <- S.contractPredicates contract]
+      generators <- fmap concat $ mapM fieldGenerators
+        [contract | contract <- contracts, S.contractTag contract == S.constructorTag c]
       native <- nativeShape tag (S.constructorTag c)
       pure (E.record ([(E.atom "tag",E.binary (S.constructorTag c)),
         (E.atom "fields",E.array [E.tuple [E.binary (S.fieldName f),E.reference (S.fieldType f)] | f <- S.fields c])] ++ native ++
         [(E.atom "predicates",E.array predicates) | not (null predicates)] ++
+        [(E.atom "generators",E.record generators) | not (null generators)] ++
         [(E.atom "indices",E.array (map E.binary (S.constructorIndex c))) | not (null (S.constructorIndex c))] ++
         [(E.atom "refinements",E.array [E.tuple [D.text (show i),E.reference t] | (i,t) <- S.constructorRefinements c]) | not (null (S.constructorRefinements c))] ++
         [(E.atom "existentials",D.text (show (S.constructorExistentials c))) | S.constructorExistentials c > 0] ++
@@ -80,16 +85,41 @@ emitData target layout bits declarations = do
             else if null cases then [E.call "none" []] else cases
       pure (D.group (D.text "-type " <> E.call name (map (D.text . snd) parameters) <>
         D.text " ::" <> D.nest 4 (D.softline <> D.joinWith (D.softline <> D.text "| ") variants) <> D.text "."))
-    predicate contract expression = do
+    -- Safe constructor-field bounds may depend on fields already drawn.
+    -- The full predicate remains authoritative for every sample and shrink.
+    -- ref:DEC-shrink-within-domain
+    fieldGenerators contract = fmap concat $ forM (zip [0::Int ..] (S.contractFields contract)) $ \(i,binder) -> do
+      let predicates = S.contractPredicates contract
+          q = C.Quantifier binder predicates []
+          requirement = GeneratorRequirement binder predicates [] [] (domainHints q) Nothing
+          earlier = map C.binderId (take i (S.contractFields contract))
+          available expression = all (`elem` earlier) (C.freeBinders expression)
+          bounds = filter (available . snd) (Generators.directBounds requirement)
+          lengths = filter (available . snd) (Generators.lengthBounds requirement)
+          hints = [hint | hint <- domainHints q, C.expressionType hint == C.binderType binder, available hint]
+      if null bounds && null lengths && null hints then pure [] else do
+        body <- contractCode contract $ \render -> do
+          bs <- mapM (\(op,e) -> do
+            value <- render e
+            pure (E.tuple [E.binary (C.binaryName op),value])) bounds
+          ls <- mapM (\(op,e) -> do
+            value <- render e
+            pure (E.tuple [E.atom "length",E.binary (C.binaryName op),value])) lengths
+          hs <- mapM render hints
+          pure (E.tuple [E.array (bs ++ ls),E.array hs])
+        pure [(D.text (show (i + 1)),body)]
+    predicate contract expression = contractCode contract (\render -> render expression)
+    contractCode contract build = do
       let local identity = maybe (error "unbound BEAM constructor field") id
             (lookup identity [(C.binderId b,"lists:nth(" ++ show i ++ ", _LsFields)") | (i,b) <- zip [1::Int ..] (S.contractFields contract)])
           ref ty = do
             raw <- E.reference <$> S.typeReference (S.contractParameters contract) ty
             pure (E.remote "lawspec_beam_schema" "substitute" [raw,D.text "_LsKnown"])
           key ty = E.remote "lawspec_beam_schema" "type_key" . pure <$> ref ty
-      body <- Expr.renderExpressionWithContext (D.text (show bits)) ref key
-        (D.text "_LsSchema") (D.text "_LsSymbols") local
-        (\_ _ _ -> Left "external call in a BEAM constructor predicate") expression
+          render = Expr.renderExpressionWithContext (D.text (show bits)) ref key
+            (D.text "_LsSchema") (D.text "_LsSymbols") local
+            (\_ _ _ -> Left "external call in a BEAM constructor predicate")
+      body <- build render
       pure (E.lambda (map D.text ["_LsSchema","_LsTypes","_LsFields"])
         (E.sequenceDoc [D.text "_LsKnown = " <> E.remote "maps" "from_list"
           [E.remote "lists" "zip" [E.remote "lists" "seq"

@@ -1,4 +1,4 @@
-expect-any: model_failed|ModelFailed
+expect-any: model_failed | ModelFailed
 @@ lib/example_models.ex
 <<<<<<<
   def pop(%StackPush{top: n, rest: s}), do: %PopFlow{result: n, state: s}

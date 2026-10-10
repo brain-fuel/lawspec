@@ -1,0 +1,7 @@
+expect-any: Pattern match failed
+@@ src/example/remote.gleam
+<<<<<<<
+let assert "mem://b/definitions" = remote.serve(b, abilities.offset(fn(n) { n + 40 }))
+=======
+let assert "mem://b/definitions" = remote.serve(b, abilities.offset(fn(n) { n + 41 }))
+>>>>>>>

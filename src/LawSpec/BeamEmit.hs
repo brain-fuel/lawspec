@@ -9,26 +9,30 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.ElixirCode as X
 import qualified LawSpec.GleamCode as G
-import qualified LawSpec.BeamExpr as Expr
+import qualified LawSpec.BeamProperties as Properties
 import qualified LawSpec.BeamData as Data
 import qualified LawSpec.BeamDefinitions as Definitions
 import qualified LawSpec.BeamEffects as Effects
 import qualified LawSpec.BeamAbilities as Abilities
 import qualified LawSpec.BeamActors as Actors
 import qualified LawSpec.BeamModels as Models
+import qualified LawSpec.BeamModelChecks as ModelChecks
 import qualified LawSpec.BeamMailboxes as Mailboxes
 import qualified LawSpec.BeamSessions as Sessions
+import qualified LawSpec.BeamRemote as Remote
+import qualified LawSpec.Network as Network
+import qualified LawSpec.Resources as Resources
+import qualified LawSpec.Matchers as Matchers
+import qualified LawSpec.Collections as Collections
+import qualified LawSpec.Resilience as Resilience
 import qualified LawSpec.BeamNativeBinding as Native
 import qualified LawSpec.ElixirNative as Elixir
 import qualified LawSpec.GleamNative as Gleam
-import LawSpec.Common (Artifact(..), Diagnostic(..), Generation(..))
+import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.Testing
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.DefaultSources (defaultSource)
-import LawSpec.Scaffold (gleamTestPackage)
 import LawSpec.NativeRequest (BindingPlan, emptyBindingPlan, hasBindings)
-import LawSpec.TestNames (unitTestNames)
-import LawSpec.Backend (metadataDocument)
 import Control.Monad (unless, forM)
 import Data.List (nub, isPrefixOf)
 
@@ -53,48 +57,66 @@ emitBeamWithBindings target minify bindings plan = do
       actors <- Actors.emit target layout bits declarations units
       mailboxes <- Mailboxes.emit target layout bits declarations units
       sessions <- Sessions.emit target layout bits declarations units
+      remotes <- Remote.emit target layout plan
       adapters <- mapM (adapter names) [u | u <- units, target == "erlang", not (boundUnit u),
         not (null (adapterDeclarations u) && null (Abilities.productionAbilities u))]
       native <- case target of
         "elixir" -> Elixir.emitNative layout bits declarations units
         "gleam" -> Gleam.emitNative layout declarations units
         _ -> pure []
-      tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
+      tests <- Properties.emit target layout bindings plan
       models <- Models.emit target layout bits declarations units
-      pure (schemaFile : definitions ++ abilities ++ actors ++ mailboxes ++ sessions ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++
-        tests ++ models ++ runtimes ++ modelRuntimes ++ cryptoAssets ++ generators (tests ++ models))
+      pure (schemaFile : definitions ++ abilities ++ actors ++ mailboxes ++ sessions ++ remotes ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++
+        tests ++ models ++ runtimes ++ modelRuntimes ++ testRuntimes ++ cryptoAssets ++ generators (tests ++ models))
+    testRuntimes = [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl")
+      (runtimeSource ("beam-" ++ name)) "generated" "test"
+      | name <- ["report"] ++ ["coverage" | target == "gleam"] ++ ["test_run" | target == "gleam" || target == "erlang" && any (\u -> not (null (plannedProperties u)) || not (null (ModelChecks.checks (plannedUnit u))) ||
+          maybe False (not . null . C.harnessBenchmarks) (C.unitHarnessSettings (plannedUnit u))) (plannedUnits plan)] ++
+          (if hasCaseSupervision then ["resource", "resources"] else [])]
+    hasCaseSupervision = any (\p -> not (null (C.propertyResources (plannedProperty p))) ||
+      C.harnessTimeout (C.propertyHarness (plannedProperty p)) /= Nothing)
+      (concatMap plannedProperties (plannedUnits plan))
     modelRuntimes = [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl")
       (runtimeSource ("beam-" ++ name)) "generated" "test"
       | any (not . null . C.unitMachines) units,
         name <- ["model","model_parallel","values"] ++ ["random" | not hasPolicies] ++
           ["tasks" | not hasPolicies && not hasActors] ++
           (if any (not . null . machineScenarios) (concatMap C.unitMachines units)
-            then ["history","scenario","scenario_io","scenario_network","wire","memory_network","channel_protocol","node","endpoint"] else []),
+            then ["history","scenario","scenario_io","scenario_network","wire","memory_network","channel_protocol","node","transport","endpoint"] else []),
         name `notElem` runtimeNames] ++
       [Artifact (testSupport ++ "lawspec_beam_supervision.erl") (runtimeSource "beam-supervision") "generated" "test"
         | any (not . null . C.unitSupervisors) units]
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- runtimeNames] ++
+        [Artifact "src/lawspec_network.erl" (runtimeSource "beam-network-api") "generated" "source" | hasNodes] ++
+        [Artifact "lib/lawspec/network.ex" (runtimeSource "beam-elixir-network") "generated" "source"
+          | target == "elixir", hasNodes] ++
         [Artifact "lib/lawspec/workflow.ex" (runtimeSource "beam-elixir-workflow") "generated" "source"
           | target == "elixir", hasPolicies] ++
         [Artifact "lib/lawspec/sessions.ex" (runtimeSource "beam-elixir-sessions") "generated" "source"
           | target == "elixir", hasSessions] ++
         [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
           | name <- ["types","scalar"] ++ ["failures" | usesEffects] ++ ["effects" | hasAbilities] ++
-              ["workflow" | hasPolicies] ++ ["actors" | hasActors] ++ ["network" | hasMailboxes] ++
+              ["workflow" | hasPolicies] ++ ["actors" | hasActors] ++ ["network" | hasNodes] ++
               ["sessions" | hasSessions], target == "gleam"]
-    runtimeNames = nub (["scalar","schema","regex","runtime"] ++
+    runtimeNames = nub (["scalar","schema","regex","runtime","values","recorded"] ++
             (if usesEffects then ["effects","handler","waits"] else []) ++
             ["defaults" | hasPolicies || any Abilities.hasDefault (Effects.abilities units)] ++
-            ["tasks" | hasPolicies || hasActors || hasMailboxes || hasSessions] ++
+            ["tasks" | hasPolicies || hasActors || hasMailboxes || hasSessions || hasRemotes || usesNetwork] ++
+            ["transport" | hasActors || hasMailboxes || hasSessions || hasRemotes || usesNetwork] ++
             (if hasPolicies then ["random","policy","attempts","workflow_state","workflow"] else []) ++
             (if hasActors then ["actors","actor","actor_sup","actor_tree"] else []) ++
             (if hasMailboxes then ["mailbox","values","wire","random","memory_network","node"] else []) ++
-            (if hasSessions then ["session","session_task","session_ownership"] else []) ++
+            (if hasSessions then ["session","session_task","session_ownership","session_network",
+              "values","wire","random","memory_network","node","endpoint","channel_protocol"] else []) ++
+            (if hasRemotes || hasActors then ["remote","values","wire","random","memory_network","node"] else []) ++
+            (if usesNetwork then ["network","network_crypto","network_config","socket_transport","socket_protocol",
+              "values","wire","random","memory_network","node"] else []) ++
             (if usesCrypto then ["crypto","crypto_native"] else []) ++
             ["gleam" | target == "gleam"])
-    usesCrypto = any ((== "lawspec.crypto") . C.idText . C.unitId) units
+    usesNetwork = Network.usesNetworkUnits units
+    usesCrypto = usesNetwork || any ((== "lawspec.crypto") . C.idText . C.unitId) units
     cryptoAssets = if not usesCrypto then [] else
       [Artifact "priv/lawspec_crypto_native.c" (runtimeSource "beam-crypto-native-c") "generated" "source",
        Artifact "lawspec_crypto_build.escript" (runtimeSource "beam-crypto-build") "generated" "source",
@@ -123,30 +145,37 @@ emitBeamWithBindings target minify bindings plan = do
     hasActors = any (any machineActor . C.unitMachines) units || any (not . null . C.unitSupervisors) units
     hasMailboxes = any (not . null . C.unitMailboxes) units
     hasSessions = any (not . null . C.unitSessions) units
+    hasRemotes = Remote.available plan
+    hasNodes = hasActors || hasMailboxes || hasSessions || hasRemotes || usesNetwork
     usesEffects = any (not . null . C.unitAbilities) units ||
       any (not . null . C.declarationUses) (concatMap C.unitDeclarations units)
     generators tests = if null tests then [] else
         [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") (runtimeSource ("beam-" ++ name)) "generated" "test"
-          | name <- ["generators", "index"]] ++
+          | name <- ["generators", "index", "harness", "schedule"]] ++
         [Artifact "test/lawspec_beam_proper.erl" (runtimeSource "beam-proper") "generated" "test" | target == "erlang"] ++
         [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"] ++
+        [Artifact "test/support/lawspec_beam_exunit_formatter.ex" (runtimeSource "beam-exunit-formatter") "generated" "test" | target == "elixir"] ++
+        [Artifact "test/support/lawspec_beam_exunit_schedule.ex" (runtimeSource "beam-exunit-schedule") "generated" "test" | target == "elixir"] ++
+        [Artifact (testSupport ++ "lawspec_beam_tasks.erl") (runtimeSource "beam-tasks") "generated" "test"
+          | target == "elixir" || hasCaseSupervision, "tasks" `notElem` runtimeNames,
+            (testSupport ++ "lawspec_beam_tasks.erl") `notElem` map artifactPath modelRuntimes] ++
         [Artifact "test-support/src/lawspec_beam_qcheck.erl" (runtimeSource "beam-qcheck") "generated" "test" | target == "gleam"] ++
-        [Artifact "test-support/gleam.toml" gleamTestPackage "generated" "test" | target == "gleam"]
+        [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") (runtimeSource ("beam-" ++ name)) "generated" "test"
+          | any ((/= Nothing) . Properties.searchDescriptors plan)
+              (concatMap plannedProperties (plannedUnits plan)),
+            name <- ["search","values","random"], name `notElem` runtimeNames,
+            (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") `notElem` map artifactPath modelRuntimes]
     declarations = planDataDeclarations plan
     bits = planMachineBits plan
     units = map plannedUnit (plannedUnits plan)
     boundUnit u = any ((`elem` map fst (Native.boundEntries bindings)) . C.declarationId) (C.unitDeclarations u)
-    boundPaths = [case target of
+    boundPaths = [boundPath u | u <- units, boundUnit u]
+    boundPath u = case target of
       "elixir" -> "lib/" ++ E.moduleName (C.unitId u) ++ ".ex"
       "gleam" -> "src/" ++ E.gleamPath (C.unitId u) ++ ".gleam"
-      _ -> "src/" ++ E.moduleName (C.unitId u) ++ ".erl" | u <- units, boundUnit u]
+      _ -> "src/" ++ E.moduleName (C.unitId u) ++ ".erl"
     layout = D.selectLayout minify (D.Pretty 100)
     testSupport = case target of "elixir" -> "test/support/"; "gleam" -> "test-support/src/"; _ -> "test/"
-    framework = case target of "erlang" -> "lawspec_beam_proper"; "gleam" -> "lawspec_beam_qcheck"; _ -> "Elixir.LawSpec.Beam.StreamData"
-    schema = D.text "_LsSchema"
-    symbols = D.text "_LsSymbols"
-    context = [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> wrap (E.remote "lawspec_data" "schema" [symbols])]
-      where wrap doc = if Native.hasGenerators bindings then E.remote "lawspec_native_generators" "schema" [doc] else doc
     adapterDeclarations u = [d | d <- C.unitDeclarations u,
       C.declarationId d `notElem` map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)]
     adapter names unit = do
@@ -165,125 +194,6 @@ emitBeamWithBindings target minify bindings plan = do
       pure (if Abilities.defaultUnit unit then Artifact ("src/" ++ name ++ ".erl") (D.render layout body) "generated" "source"
         else AdapterArtifact ("src/" ++ name ++ ".erl") (D.render layout body)
           "user" "source" (D.render (D.Pretty 100) body))
-    unitTests planned = do
-      let unit = plannedUnit planned
-          properties = plannedProperties planned
-          names = unitTestNames target (map (C.propertyName . plannedProperty) properties)
-          name = Definitions.adapterModule unit ++ (if target == "erlang" then "_lawspec_tests" else "_lawspec_cases")
-          counts = [(n, length (C.propertyExamples (plannedProperty p)) +
-            length (maybe (boundaryCases p) id (finiteCases p)) + (if finiteCases p == Nothing then 1 else 0))
-            | (n,p) <- zip names properties]
-          gleamCases = [(n,i) | (n,count) <- counts, i <- [0..count-1], target == "gleam"]
-          caseEntry n i = n ++ "_case_" ++ show i
-          bridges = [E.function (caseEntry n i) [] [E.remote "lawspec_beam_gleam" "run_case"
-            [E.call (n ++ "_test_") [],D.text (show i)]] | (n,i) <- gleamCases]
-          exports = if target == "gleam" then [(caseEntry n i,0) | (n,i) <- gleamCases] else [(n ++ "_test_",0) | n <- names]
-      bodies <- concat <$> sequence [lawTests unit n p | (n,p) <- zip names properties]
-      pure (Artifact (testSupport ++ name ++ ".erl")
-        (D.render layout (E.moduleDoc name exports (bodies ++ bridges))) "generated" "test" :
-        [Elixir.unitTests layout unit names | target == "elixir"] ++
-        [Gleam.unitTests layout unit counts | target == "gleam"])
-    lawTests unit name planned = do
-      let law = plannedProperty planned
-          parameters = map (C.quantifiedBinder) (C.propertyInputs law)
-          aliases = zip (map C.binderId parameters) ["_LsInput" ++ show i | i <- [0::Int ..]]
-          local identity = maybe (error ("unbound BEAM law binder: " ++ C.idText identity)) id (lookup identity aliases)
-          renderWith active = Expr.renderExpression bits active symbols local (Definitions.external units symbols)
-          render = renderWith schema
-          label = C.idText (C.unitId unit) ++ "::" ++ C.propertyName law
-          check result = E.remote "lawspec_beam_runtime" "require" [result,E.binary label]
-          caseName = name ++ "_case"
-          rawName = name ++ "_body"
-          invoke values = E.call caseName [schema,symbols,values]
-          workflowScope body = if hasPolicies then E.remote "lawspec_beam_workflow" "with_test_runtime" [E.lambda [] body] else body
-          test kind statements = E.tuple [E.string (label ++ " " ++ kind), E.lambda [] (E.sequenceDoc (context ++ statements))]
-      body <- Expr.assertion label render (C.propertyBody law)
-      choices <- Effects.factories units symbols (C.propertyHandlers law)
-      let scoped outer active statements = if all (C.isFail . fst) (C.propertyHandlers law)
-            then E.apply (E.lambda [active] statements) [outer]
-            else E.remote "lawspec_beam_effects" "with_scope" [outer,choices,E.lambda [active] statements]
-      examples <- forM (zip [0::Int ..] (C.propertyExamples law)) $ \(i,example) -> do
-        let exampleSchema = D.text "_LsExampleSchema"
-            exampleRender = renderWith exampleSchema
-        arguments <- forM parameters $ \parameter -> case lookup (C.binderId parameter) (C.exampleBindings example) of
-          Nothing -> Left "missing BEAM example input"
-          Just expression -> exampleRender expression
-        expectations <- mapM (Expr.assertion (label ++ " example " ++ C.exampleName example) exampleRender) (C.exampleExpectations example)
-        let names = map (D.text . snd) aliases
-            assertion = E.apply (E.lambda [E.array names] (E.sequenceDoc
-              (map check (E.call rawName [exampleSchema,symbols,E.array names] : expectations)))) [E.array arguments]
-        pure (test ("example " ++ show i ++ ": " ++ C.exampleName example) [workflowScope (scoped schema exampleSchema assertion)])
-      let boundaryTests = [test ("boundary " ++ show i) [check (invoke (E.array (map (E.value symbols) values)))]
-            | (i,values) <- zip [0::Int ..] (maybe (boundaryCases planned) id (finiteCases planned))]
-      randomTests <- case finiteCases planned of
-        Just _ -> pure []
-        Nothing -> do
-          generator <- draws render aliases [] (generatorRequirements planned)
-          let settings = C.propertyGeneration law
-              options = E.array [E.tuple [E.atom k,D.text (show v)] | (k,v) <-
-                [("numtests",cases settings),("constraint_tries",maxAttempts settings),("max_shrinks",maxShrinks settings)]]
-          let propertyTest = test "property" [E.remote framework "check" [E.binary label,
-                E.remote framework "forall" [E.remote framework "complete" [generator],
-                  E.lambda [D.text "_LsValues"] (invoke (D.text "_LsValues"))],options]]
-          -- EUnit's five-second default covers a single test. A property runs
-          -- every sample plus shrinks; match ExUnit's one-minute allowance.
-          pure [if target == "erlang" then E.tuple [E.atom "timeout",D.text "60",propertyTest] else propertyTest]
-      pure [metadataDocument 100 "%%" planned <>
-        E.function rawName [schema,symbols,E.array (map (D.text . snd) aliases)] [body],
-        E.function caseName [D.text "_LsBaseSchema",symbols,D.text "_LsValues"]
-          [workflowScope (scoped (D.text "_LsBaseSchema") schema (E.call rawName [schema,symbols,D.text "_LsValues"]))],
-        E.function (name ++ "_test_") [] [E.array (examples ++ boundaryTests ++ randomTests)]]
-    draws _ _ previous [] = pure (E.remote framework "exactly" [E.array previous])
-    draws render aliases previous (requirement:rest) = do
-      let binder = generatorBinder requirement
-      name <- maybe (Left "missing BEAM generator binder") Right (lookup (C.binderId binder) aliases)
-      ref <- E.typeReference (C.binderType binder)
-      bounds <- mapM (\(op,expression) -> E.tuple . (E.binary (C.binaryName op) :) . pure <$> render expression)
-        (nub (generatorBounds requirement ++ directBounds requirement))
-      predicates <- mapM render (generatorPredicates requirement)
-      index <- case generatorIndex requirement of
-        Nothing -> pure (E.atom "none")
-        Just directed -> do
-          indexTarget <- render (indexedTarget directed)
-          pure (E.tuple [indexTarget,E.record [(E.binary (C.idText tag),E.array (map E.binary terms))
-            | (tag,terms) <- indexedEquations directed]])
-      let raw = E.remote framework "generator" [ref,schema,symbols,E.array bounds,
-            E.array (map (E.value symbols) (generatorBoundaries requirement)),index]
-          predicate = foldr (\a b -> D.text "(" <> a <> D.text " andalso " <> b <> D.text ")") (E.atom "true") predicates
-          constrained = if null predicates then raw else E.remote framework "refine_input" [raw,E.lambda [D.text name] predicate]
-      remaining <- draws render aliases (previous ++ [D.text name]) rest
-      pure (E.remote framework "bind" [constrained,E.lambda [D.text name] remaining])
-
--- | Conjunctive comparisons can narrow a native integer generator even when
--- their bounds depend on previous inputs. Only safe operands are evaluated
--- here: a guarded partial expression remains inside its predicate.
--- ref:DEC-shrink-within-domain
-directBounds :: GeneratorRequirement -> [(C.BinaryOp,C.Expr)]
-directBounds requirement = concatMap walk (generatorPredicates requirement)
-  where
-    current = C.binderId (generatorBinder requirement)
-    walk term = case C.expressionNode term of
-      C.ShortCircuit C.And a b -> walk a ++ walk b
-      C.Binary op _ a b | op `elem` [C.Equal,C.Less,C.LessEqual,C.Greater,C.GreaterEqual] ->
-        [(direction,rhs) | (lhs,rhs,direction) <- [(a,b,op),(b,a,flipped op)], local lhs,
-          current `notElem` C.freeBinders rhs, safe rhs]
-      _ -> []
-    local term = case C.expressionNode term of
-      C.Local identity -> identity == current
-      C.Convert C.CheckedArgument _ inner -> local inner
-      _ -> False
-    safe term = case C.expressionNode term of
-      C.Constant _ -> True
-      C.Local _ -> True
-      C.Unary C.Negate inner -> safe inner
-      C.Binary op _ a b | op `elem` [C.Add,C.Subtract,C.Multiply] -> safe a && safe b
-      _ -> False
-    flipped op = case op of
-      C.Less -> C.Greater
-      C.LessEqual -> C.GreaterEqual
-      C.Greater -> C.Less
-      C.GreaterEqual -> C.LessEqual
-      other -> other
 
 -- | Until each execution plane is connected, compilation diagnoses it. No
 -- law, policy, recording or resource may silently disappear from a release.
@@ -292,7 +202,6 @@ validatePlan :: String -> Plan -> Either String ()
 validatePlan target plan = do
   let units = map plannedUnit (plannedUnits plan)
       declarations = concatMap C.unitDeclarations units
-      laws = concatMap plannedProperties (plannedUnits plan)
       moduleNames = map (Definitions.adapterModule) units
       generated = ["lawspec_data","lawspec_definitions","lawspec_abilities","lawspec_native_bindings","lawspec_native_generators"] ++
         [Definitions.adapterModule u ++ suffix | u <- units, suffix <-
@@ -312,7 +221,8 @@ validatePlan target plan = do
     (Left "Elixir module names collide after normalization or with the LawSpec namespace")
   unless (target /= "gleam" || all (\n -> (not ("lawspec@" `isPrefixOf` n) ||
     n `elem` [E.nativeModule target u | u <- units,
-      Abilities.defaultUnit u || C.idText (C.unitId u) == "lawspec.resilience"]) &&
+      Abilities.defaultUnit u || C.idText (C.unitId u) `elem`
+        [Resilience.resilienceUnit,Resources.resourcesUnit,Matchers.matchersUnit,Collections.collectionsUnit]]) &&
     n `notElem` [E.nativeModule target u ++ "@definitions" | u <- units]) natives)
     (Left "Gleam module names collide with generated modules or the lawspec namespace")
   unless (all ((<= 230) . length) (moduleNames ++ generated ++ natives) &&
@@ -321,9 +231,3 @@ validatePlan target plan = do
   unless (all (\d -> let n = E.nativeFunction target d in not (null n) && length n <= 255) declarations)
     (Left "BEAM function name is empty or exceeds the Erlang atom limit")
   unless (not (any functionClashes units)) (Left "BEAM function names collide after snake_case conversion")
-  unless (all (null . C.unitMachines) units && all (null . C.unitSessions) units &&
-    all (null . C.unitSupervisors) units && all (null . C.unitMailboxes) units)
-    (Left "BEAM models, sessions, actors and mailboxes are not implemented yet")
-  unless (all (null . C.propertyResources . plannedProperty) laws && all ((== Nothing) . C.unitHarnessSettings) units &&
-    all ((== C.noHarness) . C.propertyHarness . plannedProperty) laws)
-    (Left "BEAM resources and harness settings are not implemented yet")

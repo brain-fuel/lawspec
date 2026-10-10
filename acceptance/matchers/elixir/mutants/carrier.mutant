@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ lib/example_matchers.ex
+<<<<<<<
+%LawSpec.Data.OrderShipped{id: id, carrier: "post"}
+=======
+%LawSpec.Data.OrderShipped{id: id, carrier: ""}
+>>>>>>>

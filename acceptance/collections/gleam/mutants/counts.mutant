@@ -1,0 +1,6 @@
+@@ src/example/collections.gleam
+<<<<<<<
+Ok(n) -> n + 1
+=======
+Ok(_n) -> 1
+>>>>>>>

@@ -23,9 +23,9 @@
 --     one law would observe what another left behind.
 --
 -- The result is one HarnessPlan per law, by the law's final name (after
--- LawSpec.Abilities names its handler variants), with strategies inlined.
--- Its expressions are elaborated, and checked to call only checked
--- definitions, by LawSpec.Frontend.
+-- LawSpec.Abilities names its handler variants). Strategy references retain
+-- their declarations until LawSpec.Frontend checks their types, refinements
+-- and lexical scopes, then elaborates them into closed Core draws.
 module LawSpec.Harness
   ( elaborateHarness, emptyPlan, lawBaseMatches, genReferences
   ) where
@@ -87,12 +87,6 @@ elaborateHarness u = case unitHarness u of
           Just s -> any (\r -> r `elem` seen || cyclic (r : seen) r) (genReferences (strategyBody s))
     forM_ strategies $ \s -> when (cyclic [strategyName s] (strategyName s))
       (Left (at (strategySpan s), "the strategy " ++ strategyName s ++ " uses itself; strategies may not be recursive"))
-    let inline g = case g of
-          GenNamed n -> maybe g (inline . strategyBody) (M.lookup n strategyTable)
-          GenFrequency alternatives -> GenFrequency [(w, inline a) | (w, a) <- alternatives]
-          GenSuchThat inner p n -> GenSuchThat (inline inner) p n
-          GenBind x t from body -> GenBind x t (inline from) (inline body)
-          _ -> g
     -- Laws: every name refers to a law of the served unit.
     let matching base = [n | n <- finalNames, lawBaseMatches abilityNames base n]
         ownLaw base = [l | l <- laws u ++ concatMap abilityLaws (abilities u), lawName l == base] ++
@@ -149,7 +143,7 @@ elaborateHarness u = case unitHarness u of
           groupName = case [names | (names, _) <- blocks final, length names > 1] of
             names : _ -> Just (intercalate ", " names)
             [] -> Nothing
-      plan <- foldlM (apply (strategyTable, inline)) (emptyPlan (harnessName h)) { planGroup = groupName } applicable
+      plan <- foldlM (apply strategyTable) (emptyPlan (harnessName h)) { planGroup = groupName } applicable
       let skipped = case [ns | (TestWith ns, _) <- applicable] of
             [] -> Nothing
             lists -> let allowed = last lists in excluded allowed (pinned final) (maybe [] id (lookup final (lawAssignments u)))
@@ -177,12 +171,12 @@ elaborateHarness u = case unitHarness u of
     foldlM f z xs = case xs of
       [] -> pure z
       x : rest -> f z x >>= \z' -> foldlM f z' rest
-    apply (table, inline) plan (setting, range) = case setting of
+    apply table plan (setting, range) = case setting of
       UseStrategy s input -> case M.lookup s table of
         Just declaration
           | input `elem` [i | (i, _, _, _) <- planDraws plan] ->
               Left (Just (spanStart range), "two strategies are given for the input " ++ input)
-          | otherwise -> pure plan { planDraws = planDraws plan ++ [(input, s, strategyType declaration, inline (strategyBody declaration))] }
+          | otherwise -> pure plan { planDraws = planDraws plan ++ [(input, s, strategyType declaration, strategyBody declaration)] }
         Nothing -> pure plan
       TestWith _ -> pure plan
       CoverSetting p label e -> pure plan { planCover = planCover plan ++ [(p, label, e)] }

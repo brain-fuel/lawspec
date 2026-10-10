@@ -1,0 +1,7 @@
+expect: expectations use the current lease
+@@ src/beam_shared_resource_support.erl
+<<<<<<<
+store_value(Store) -> ets:lookup_element(Store, value, 2).
+=======
+store_value(Store) -> ets:lookup_element(Store, value, 2) + 1.
+>>>>>>>

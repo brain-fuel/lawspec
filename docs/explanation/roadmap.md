@@ -20,6 +20,9 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.17 | Portable collections and asynchronous functions | Size-indexed queues and stacks; native bindings for asynchronous adapters |
 | 0.18 | Railway-oriented workflows and resilience policies | — |
 | 0.19 | Stateful models, protocols, actors, supervision and distribution | Deadlock freedom beyond tree-shaped connections; channel ends move between nodes by relay, not migration |
+| 0.20 | Concurrent workflows, channel migration, indexed collections, flow typing and package re-exports | Scenarios with mailboxes or `or else` keep the tree rule |
+| 0.21 | Abilities and handlers, built-ins, secure distribution and the test harness | — |
+| 0.22 | Erlang, Elixir and Gleam targets, with native tests and OTP processes | Canonical vetting is revisited in 0.23.0 |
 
 0.16 in detail:
 
@@ -69,17 +72,7 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
   (in memory, TCP, HTTP), a canonical wire encoding, and remote evaluation by
   content hash.
 
-## Planned
-
-### 0.19.1: fixes
-
-- A bound handle's Kotlin type is its native class, not `Any`.
-- A method bound on a Haskell handle with no type binding is a clear
-  compile error.
-- JavaScript and TypeScript session adapters await receives instead of
-  using the synchronous shortcut.
-
-### 0.20: concurrency and language completeness
+0.20 in detail:
 
 - `if c then a else b` in checked definitions, with each branch's
   condition known to the totality audit.
@@ -97,13 +90,7 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 - Re-exports of imported names, and several versions of one package in one
   build.
 
-### 0.20.1: canonical format
-
-The repository moves to the canon
-rules: one canonical home for every decision, reference and document;
-documentation pages in the Folio; Keep a Changelog; and less duplication.
-
-### 0.21: test harness
+0.21 in detail:
 
 What real test suites need, on every target and in each target's own test
 framework:
@@ -126,12 +113,17 @@ framework:
   parallelism per unit;
 - JUnit XML reports and coverage, doctests and benchmarks.
 
-### 0.22: BEAM targets
+0.22 in detail:
 
 Canonical vetting remains pending and is revisited in 0.23.0.
 
 Erlang, Elixir and Gleam join the targets, with actors on real processes
 and OTP supervisors.
+
+The [changelog](../../CHANGELOG.md) records patch releases and the complete
+changes for each milestone.
+
+## Planned
 
 ### 0.23: JVM and .NET targets
 

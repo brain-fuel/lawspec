@@ -1,0 +1,6 @@
+@@ lib/example_flow.ex
+<<<<<<<
+%PopFlow{result: top, state: rest}
+=======
+%PopFlow{result: 0, state: rest}
+>>>>>>>

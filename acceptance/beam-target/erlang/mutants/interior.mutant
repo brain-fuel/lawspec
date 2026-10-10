@@ -1,0 +1,7 @@
+expect-any: target_failed | TargetFailed
+@@ src/example_target.erl
+<<<<<<<
+number(N) -> true = N >= 0 andalso N =< 1000, beam_target_support:record(<<"number">>, N).
+=======
+number(N) -> true = N >= 0 andalso N =< 1000, beam_target_support:record(<<"number">>, N), case N of 137 -> 0; _ -> N end.
+>>>>>>>

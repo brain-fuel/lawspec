@@ -149,12 +149,16 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
               (< sum (map (length . artifactContent) readable))
             emitPlanWithOptions False target (Just "sources") (Just "sources") plan
               `shouldBe` emitPlanWithLayout target (Just "sources") (Just "sources") plan
-            case emitPlanWithOptions True target (Just "sources") (Just "sources") plan of
-              Left diagnostics -> expectationFailure (show diagnostics)
-              Right moved -> do
-                length moved `shouldBe` length compact
-                map ownership moved `shouldBe` map ownership compact
-                all (\file -> take 8 (artifactPath file) == "sources/") moved `shouldBe` True
+            if target == "gleam" then do
+              emitPlanWithOptions True target (Just "src") (Just "test") plan `shouldBe` Right compact
+              emitPlanWithOptions True target (Just "sources") (Just "sources") plan `shouldBe`
+                Left [Diagnostic "layout" "Gleam uses src and test directories because paths determine module identities; choose the project output root instead" Nothing]
+              else case emitPlanWithOptions True target (Just "sources") (Just "sources") plan of
+                Left diagnostics -> expectationFailure (show diagnostics)
+                Right moved -> do
+                  length moved `shouldBe` length compact
+                  map ownership moved `shouldBe` map ownership compact
+                  all (\file -> take 8 (artifactPath file) == "sources/") moved `shouldBe` True
           other -> expectationFailure (show other)
 
   forM_ [True, False] $ \py -> forM_ [32,64] $ \bits ->

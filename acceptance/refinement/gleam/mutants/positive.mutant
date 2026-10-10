@@ -1,0 +1,6 @@
+@@ src/example/refinements.gleam
+<<<<<<<
+pub fn positive(value: Int) -> Int { value }
+=======
+pub fn positive(_value: Int) -> Int { 0 }
+>>>>>>>

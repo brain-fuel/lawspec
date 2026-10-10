@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ lib/example_matchers.ex
+<<<<<<<
+%LawSpec.Data.OrderShipped{id: id, carrier: "post"}
+=======
+%LawSpec.Data.OrderPending{id: id}
+>>>>>>>

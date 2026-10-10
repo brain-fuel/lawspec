@@ -179,6 +179,24 @@ to `link`.
 methods. A call that gets no reply within the timeout fails with
 `Unreachable`. See [distribution](distribution.md).
 
+On BEAM targets, the local actor module exposes
+`serve(handle, node, name)`. A separate remote module provides
+`connect(node, address)` and
+`connect_with_timeout(node, address, timeout_milliseconds)`, followed by
+the same typed handler methods with the remote handle first:
+
+| Target | Remote module for `example.actors`' account |
+| --- | --- |
+| Erlang | `lawspec_actor_example_actors_account_remote` |
+| Elixir | `LawSpec.Actors.Example.Actors.AccountActor.Remote` |
+| Gleam | `lawspec/actors/example/actors/account_actor_remote` |
+
+Every message's arguments and reply must have wire encodings for these
+methods to be generated. Replyless messages return native `Unit` after
+the handler completes. Serving keeps the actor's chosen ability handlers
+and stable handle, including across supervisor restarts. Closing the node
+joins its request workers; the application's actor keeps its own lifetime.
+
 ### Mailboxes
 
 A mailbox is a typed queue with many senders and one receiver:

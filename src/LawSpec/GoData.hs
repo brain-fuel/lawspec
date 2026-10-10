@@ -156,7 +156,7 @@ emitGoData layout packageName declarations = do
             -- Go cannot construct a variant at existential types inside a
             -- generic codec, so such a variant keeps every parameter and holds
             -- existential fields as checked dynamic values.
-            own = if null equations || not (null existentials) then args else open
+            own = if isProduct declaration || null equations || not (null existentials) then args else open
         markerArguments <- if not (null existentials) then pure args else
           forM parameters $ \(p, v) -> maybe (pure v) (typeText names scope) (lookup p equations)
         fields <- forM (C.constructorFields variant) $ \field -> do
@@ -377,7 +377,7 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
       variants <- forM (C.dataConstructors declaration) $ \variant -> do
         variantName <- lookupName (nativeNamesFor names mappings) (C.constructorId variant)
         let existential = mentionsAny (C.constructorExistentials variant)
-            refinedOnly = not (null (C.constructorEquations variant)) && null (C.constructorExistentials variant)
+            refinedOnly = not (isProduct declaration) && not (null (C.constructorEquations variant)) && null (C.constructorExistentials variant)
             openArguments = [v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations variant)]
         let free = length (freeExistentials declaration variant)
         declaredFields <- forM (zip [0 :: Int ..] (C.constructorFields variant)) $ \(position, field) -> do

@@ -1,0 +1,7 @@
+expect: subtraction has right division
+@@ lib/example_algebra.ex
+<<<<<<<
+def divide_right(a, b), do: a + b
+=======
+def divide_right(a, b), do: a - b
+>>>>>>>

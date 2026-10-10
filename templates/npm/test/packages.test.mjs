@@ -10,7 +10,7 @@ import {promisify} from 'node:util';
 
 const run = promisify(execFile);
 const cli = new URL('../bin/lawspec.mjs', import.meta.url).pathname;
-const example = new URL('../../examples/packages/', import.meta.url).pathname;
+const example = new URL('../examples/packages/', import.meta.url).pathname;
 
 async function copyExample(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-packages-'));

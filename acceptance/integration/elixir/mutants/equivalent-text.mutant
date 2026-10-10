@@ -1,0 +1,6 @@
+@@ lib/example_alternatives.ex
+<<<<<<<
+def reference_render(value), do: to_string(value)
+=======
+def reference_render(_value), do: "broken"
+>>>>>>>

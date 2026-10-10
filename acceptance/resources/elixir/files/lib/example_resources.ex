@@ -1,0 +1,20 @@
+# ref:REQ-law-primitives ref:REQ-harness-units
+defmodule Example.Resources do
+  def open_store(a0), do: :beam_example_resources.open_store(a0)
+  def close_store(a0), do: :beam_example_resources.close_store(a0)
+  def clear_store(a0), do: :beam_example_resources.clear_store(a0)
+  def put(a0, a1, a2), do: :beam_example_resources.put(a0, a1, a2)
+  def get(a0, a1), do: :beam_example_resources.get(a0, a1)
+  def is_open(a0), do: :beam_example_resources.is_open(a0)
+  def size(a0), do: :beam_example_resources.size(a0)
+  def write_note(a0, a1), do: :beam_example_resources.write_note(a0, a1)
+  def read_note(a0), do: :beam_example_resources.read_note(a0)
+  def can_listen(a0), do: :beam_example_resources.can_listen(a0)
+  def set_greeting(a0), do: :beam_example_resources.set_greeting(a0)
+  def greeting(a0), do: :beam_example_resources.greeting(a0)
+  def open_pool(a0), do: :beam_example_resources.open_pool(a0)
+  def drain_pool(a0), do: :beam_example_resources.drain_pool(a0)
+  def close_pool(a0), do: :beam_example_resources.close_pool(a0)
+  def fill(a0, a1), do: :beam_example_resources.fill(a0, a1)
+  def level(a0), do: :beam_example_resources.level(a0)
+end

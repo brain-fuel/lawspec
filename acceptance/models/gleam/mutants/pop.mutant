@@ -1,4 +1,4 @@
-expect-any: model_failed|ModelFailed
+expect-any: model_failed | ModelFailed
 @@ src/example/models.gleam
 <<<<<<<
   let assert data.StackPush(n, rest) = s

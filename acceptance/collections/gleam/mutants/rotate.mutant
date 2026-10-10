@@ -1,0 +1,6 @@
+@@ src/example/collections.gleam
+<<<<<<<
+list.append(rest, [head])
+=======
+list.append(rest, [head, head])
+>>>>>>>

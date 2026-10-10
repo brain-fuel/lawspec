@@ -1,0 +1,42 @@
+unit example.target
+
+number :: Int32 -> Int32
+dependent :: Int32 -> Int32 -> Int32
+wide :: Integer -> Integer
+
+law `interior maximum` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 1000) . number n = n end
+  example `explicit example` is n = 500 expect n = 500 end
+end
+
+law `dependent maximum` is
+  definition is
+    `for all` (x :: Int32 where x >= 0 && x < 1000)
+      (y :: Int32 where y >= 1 && y <= 1000 && y > x) . dependent x y = y
+  end
+end
+
+law `wide maximum` is
+  definition is `for all` (n :: Integer where
+    n >= 340282366920938463463374607431768211456 &&
+    n <= 340282366920938463463374607431768212456) . wide n = n end
+end
+
+harness example.target.testing for example.target is
+  strategy zero :: Int32 is one of 0 end
+  strategy one :: Int32 is one of 1 end
+  strategy low :: Integer is one of 340282366920938463463374607431768211456 end
+  for law `interior maximum`
+    use zero for n
+    cover 100% "ordinary draws" when n == 0
+    classify n == 137 as "peak"
+    target maximize (0 - (n - 137) * (n - 137))
+  for law `dependent maximum`
+    use zero for x
+    use one for y
+    cover 100% "ordinary pairs" when x == 0 && y == 1
+    target maximize y - x
+  for law `wide maximum`
+    use low for n
+    target maximize n
+end

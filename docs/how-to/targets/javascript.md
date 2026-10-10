@@ -14,8 +14,8 @@ title: Set up JavaScript
 ## Create the project
 
 ```sh
-npm exec --package=lawspec@0.21.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.21.0
+npm exec --package=lawspec@0.22.0 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.22.0
 npx lawspec doctor
 npx lawspec generate
 npm test

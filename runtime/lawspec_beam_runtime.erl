@@ -3,13 +3,14 @@
 %% ref:DEC-typed-core-boundary
 -module(lawspec_beam_runtime).
 -export([require/2, assert_equal/3, contextual/2, helper/4, concurrently/1, async_call/1,
-    worker_context/0, with_worker_context/2]).
+    worker_context/0, with_worker_context/2, recorded/4]).
 
 %% LawSpec's allocator, active handler operation, cancellation scopes and
 %% workflow runtime/frame cross workers. Application entries stay process-local.
 worker_context() -> [{Key, get(Key)} || Key <-
     [{lawspec_beam_effects, scope}, {lawspec_beam_handler, context}, {lawspec_beam_tasks, scopes},
-     {lawspec_beam_workflow, runtime}, {lawspec_beam_workflow, frame}]].
+     {lawspec_beam_workflow, runtime}, {lawspec_beam_workflow, frame}, {lawspec_beam_resources, run},
+     {lawspec_beam_resources, case_run}]].
 
 with_worker_context(Context, Body) ->
     Previous = [{Key, put(Key, Value)} || {Key, Value} <- Context],
@@ -40,7 +41,75 @@ contextual(Identity, Body) ->
     end.
 
 helper(<<"unreachable">>, _, _, _) -> erlang:error({lawspec, unreachable});
+helper(<<"recorded">>, [Key, Value], [_, Type], _) -> recorded(Key, Value, Type, none);
+helper(<<"recorded">>, [Key, Value], [], _) -> recorded_text(Key, lawspec_beam_values:render(Value));
 helper(Name, Values, Types, Bits) -> lawspec_beam_scalar:helper(Name, Values, Types, Bits).
+
+%% Recorded values use typed portable rendering and the same folder
+%% selection as the other targets. Read-only runs never create a recording;
+%% only an explicit --update-recorded invocation supplies the update flag.
+%% ref:REQ-law-primitives
+recorded(Key, Value, Type, Schema) ->
+    recorded_text(Key, lawspec_beam_recorded:text(Value, Type, Schema)).
+
+recorded_text(Key, Text) ->
+    Path = filename:join([recorded_root() | binary:split(Key, <<"/">>, [global])]),
+    case os:getenv("LAWSPEC_UPDATE_RECORDED") of
+        "1" ->
+            case filelib:ensure_dir(Path) of
+                ok -> case file:write_file(Path, <<Text/binary, "\n">>) of
+                    ok -> true;
+                    {error, Reason} -> recording_io_error(Key, Reason)
+                end;
+                {error, Reason} -> recording_io_error(Key, Reason)
+            end;
+        _ -> case file:read_file(Path) of
+            {ok, Bytes} ->
+                Stored = trim_recording_newline(Bytes),
+                case Stored =:= Text of
+                    true -> true;
+                    false -> error({lawspec, <<"recorded/", Key/binary,
+                        " differs: expected ", Stored/binary, ", actual ", Text/binary,
+                        " (lawspec test --update-recorded records the new value)">>})
+                end;
+            {error, enoent} -> error({lawspec, <<"no recording recorded/", Key/binary,
+                "; run lawspec test --update-recorded to record ", Text/binary>>});
+            {error, Reason} -> recording_io_error(Key, Reason)
+        end
+    end.
+
+trim_recording_newline(<<>>) -> <<>>;
+trim_recording_newline(Bytes) ->
+    case binary:last(Bytes) of
+        $\n -> binary:part(Bytes, 0, byte_size(Bytes) - 1);
+        _ -> Bytes
+    end.
+
+recording_io_error(Key, Reason) ->
+    error({lawspec, <<"cannot access recording recorded/", Key/binary, ": ",
+        (atom_to_binary(Reason, utf8))/binary>>}).
+
+recorded_root() ->
+    case os:getenv("LAWSPEC_RECORDED") of
+        false -> find_recorded_root();
+        "" -> find_recorded_root();
+        Given -> unicode:characters_to_binary(Given)
+    end.
+
+find_recorded_root() ->
+    {ok, Current} = file:get_cwd(),
+    Start = unicode:characters_to_binary(Current),
+    find_recorded_root(Start, Start).
+
+find_recorded_root(Folder, Start) ->
+    case filelib:is_regular(filename:join(Folder, <<"lawspec.json">>)) orelse
+         filelib:is_dir(filename:join(Folder, <<"recorded">>)) of
+        true -> filename:join(Folder, <<"recorded">>);
+        false -> case filename:dirname(Folder) of
+            Folder -> filename:join(Start, <<"recorded">>);
+            Parent -> find_recorded_root(Parent, Start)
+        end
+    end.
 
 %% BEAM adapters return ordinary native values. An async declaration runs the
 %% call in its own process, awaiting its value or original exception. Reuse

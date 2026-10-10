@@ -63,25 +63,30 @@ make generate-check integrity
 core with `wasm32-wasi-ghc`, stages the shipped files into `npm/`, and records
 their fingerprints in `npm/build.json`.
 
-## 4. Verify
+## 4. Commit the candidate and verify
 
 ```sh
+git add -A
+git commit -m "Release LawSpec 0.22.0"
 make ci-fresh
 make docs-check
 ```
+
+Canon reads versioned sources from `HEAD`, so commit the candidate before
+running CI. If a check requires changes, commit those changes and rerun CI.
 
 `make ci-fresh` ignores recorded results, so every step runs against the
 release commit.
 
 Every CI step must pass: compiler and npm tests, native/WASM parity, the
 package smoke test, the editor grammar, and every acceptance suite for all
-eight targets in both machine profiles. Logs are in `.artifacts/ci/`.
+eleven targets in both machine profiles. Logs are in `.artifacts/ci/`.
 
 ## 5. Pack and inspect
 
 ```sh
 make package
-tar -tzf .artifacts/0.21.0/lawspec-0.21.0.tgz
+tar -tzf .artifacts/0.22.0/lawspec-0.22.0.tgz
 ```
 
 The archive holds the CLI and library code, `core.wasm` and its JavaScript glue,
@@ -91,13 +96,11 @@ the package's `prepack` script copies them into `npm/`, where git ignores them.
 The smoke test in `make ci` already installed and exercised a
 packed copy.
 
-## 6. Commit, tag and push
+## 6. Tag and push
 
 ```sh
-git add -A
-git commit -m "Release LawSpec 0.21.0"
-git tag -a v0.21.0 -m "LawSpec 0.21.0"
-git push --atomic origin main v0.21.0
+git tag -a v0.22.0 -m "LawSpec 0.22.0"
+git push --atomic origin main v0.22.0
 ```
 
 Push the branch and the annotated tag together, so the tag always names a
@@ -106,7 +109,7 @@ commit that is on `main`.
 ## 7. Publish
 
 ```sh
-npm publish .artifacts/0.21.0/lawspec-0.21.0.tgz --access public --tag latest --registry https://registry.npmjs.org
+npm publish .artifacts/0.22.0/lawspec-0.22.0.tgz --access public --tag latest --registry https://registry.npmjs.org
 ```
 
 Publish the archive you inspected, not the directory. npm asks for approval in
@@ -116,9 +119,9 @@ the browser; complete it there. If npm reports that you are not logged in, run
 ## 8. Verify the registry
 
 ```sh
-npm view lawspec@0.21.0 version dist.integrity
+npm view lawspec@0.22.0 version dist.integrity
 npm view lawspec dist-tags
-shasum -a 512 .artifacts/0.21.0/lawspec-0.21.0.tgz | awk '{print $1}' | xxd -r -p | base64
+shasum -a 512 .artifacts/0.22.0/lawspec-0.22.0.tgz | awk '{print $1}' | xxd -r -p | base64
 ```
 
 `dist.integrity` must be `sha512-` followed by the local archive's digest, and

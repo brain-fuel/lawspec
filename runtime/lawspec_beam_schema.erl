@@ -5,7 +5,8 @@
 -module(lawspec_beam_schema).
 -export([new/3, validate/3, construct/4, match/2, constructors/2, witness_instances/1,
     to_native/3, from_native/3, all_payloads/4, substitute/2, index/4,
-    check_type/2, handle/2, with_codecs/2, with_bindings/3, constructor_shape/2, type_key/1]).
+    check_type/2, handle/2, with_codecs/2, with_bindings/3, constructor_shape/2, type_key/1,
+    field_types/3]).
 -export_type([schema/0, value/0, type_ref/0]).
 
 -type type_ref() :: {binary(), [type_ref()]} | {parameter, non_neg_integer()}.
@@ -48,7 +49,9 @@ audit_definition(#{parameters := Count, constructors := Cs}, S) ->
             require(is_integer(I) andalso I >= Count andalso I < Scope, invalid_witness)
         end, Witnesses),
         lists:foreach(fun(P) -> require(is_function(P, 3), invalid_predicate) end,
-            maps:get(predicates, C, []))
+            maps:get(predicates, C, [])),
+        maps:foreach(fun(I, G) -> require(is_integer(I) andalso I >= 1 andalso I =< length(Fields)
+            andalso is_function(G, 3), invalid_field_generator) end, maps:get(generators, C, #{}))
     end, Cs).
 
 check_type(T, S) -> check_type(T, 0, S).
@@ -87,7 +90,7 @@ instantiate(C, Args) ->
     end, Known, maps:get(refinements, C, [])),
     case Bound of
         mismatch -> false;
-        _ -> {true, C#{fields => [{N, substitute(T, Bound)} || {N, T} <- maps:get(fields, C)]}}
+        _ -> {true, C#{arguments => Args, fields => [{N, substitute(T, Bound)} || {N, T} <- maps:get(fields, C)]}}
     end.
 
 unify({parameter, I}, Actual, Known) ->
@@ -260,7 +263,7 @@ walk_shape(Value, {Name, _} = T, #{definitions := Ds, bits := Bits} = S, Mode) -
         end
     end.
 
-walk_data(Value, {_, Args}, Cs, S, Mode) ->
+walk_data(Value, {Name, Args}, Cs, S, Mode) ->
     {C, Fields} = case {Mode, Value} of
         {decode, _} -> native_fields(Value, Cs);
         {_, {ls_data, ValueTag, Fs}} -> {find_constructor(ValueTag, Cs), Fs};
@@ -280,8 +283,20 @@ walk_data(Value, {_, Args}, Cs, S, Mode) ->
         _ ->
             check_predicates(C, Args, Converted, S),
             check_indices(C#{fields => Typed}, Converted, S),
+            check_collection(Name, Converted),
             {ls_data, Tag, Converted}
     end.
+
+%% Core collections have one canonical order. Reject malformed native values
+%% instead of accepting duplicate set items or duplicate map keys.
+%% ref:DEC-typed-core-boundary
+check_collection(<<"lawspec.collections::type::Set">> = Name, [Items]) ->
+    require(strict_order(Items), {refinement_violation, Name});
+check_collection(<<"lawspec.collections::type::KeyVal">> = Name, [Entries]) ->
+    require(strict_order([Key || {ls_data, _, [Key, _]} <- Entries]), {refinement_violation, Name});
+check_collection(_, _) -> ok.
+strict_order([A, B | Rest]) -> lawspec_beam_scalar:compare(A, B) =:= -1 andalso strict_order([B | Rest]);
+strict_order(_) -> true.
 
 find_constructor(Tag, Cs) ->
     case [C || C <- Cs, maps:get(tag, C) =:= Tag] of
@@ -295,6 +310,17 @@ witnessed(C, Values, S) ->
     Known = maps:from_list([{I, lawspec_beam_scalar:type(Text)} || {I, Text} <- lists:zip(Witnesses, Texts)]),
     maps:foreach(fun(_, T) -> check_type(T, S) end, Known),
     [{N, substitute(T, Known)} || {N, T} <- maps:get(fields, C)].
+
+%% A recording needs the logical field types to distinguish Text from Bytes
+%% and Char from integers. Inspect checked values without rerunning predicates
+%% or crossing an application's native codec a second time.
+%% ref:REQ-law-primitives ref:DEC-typed-core-boundary
+field_types(Value, T, S) when is_binary(T) ->
+    field_types(Value, lawspec_beam_scalar:type(T), S);
+field_types({ls_data, Tag, Values}, T, S) ->
+    C = find_constructor(Tag, constructors(T, S)),
+    require(length(Values) =:= length(maps:get(fields, C)), {wrong_field_count, Tag}),
+    [FieldType || {_, FieldType} <- witnessed(C, Values, S)].
 
 %% Generated free existentials use Core's finite Bool/Int32 witness pool.
 %% GADT-bound existentials were already substituted by instantiate/2.

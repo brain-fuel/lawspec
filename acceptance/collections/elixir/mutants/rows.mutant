@@ -1,0 +1,6 @@
+@@ lib/example_collections.ex
+<<<<<<<
+Enum.sort(Enum.uniq(rows))
+=======
+Enum.sort(Enum.uniq(Enum.reject(rows, &(&1 == []))))
+>>>>>>>

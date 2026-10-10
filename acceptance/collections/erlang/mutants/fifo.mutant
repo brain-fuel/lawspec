@@ -1,0 +1,6 @@
+@@ src/example_collections.erl
+<<<<<<<
+{queue, Values}
+=======
+{queue, lists:reverse(Values)}
+>>>>>>>

@@ -1,0 +1,22 @@
+unit example.sharedPeer
+
+import example.sharedTypes (SharedPool)
+
+openPool :: Unit -> SharedPool
+resetPool :: SharedPool -> Unit
+closePool :: SharedPool -> Unit
+usePool :: SharedPool -> Bool
+
+resource SharedPool is
+  acquire is openPool unitValue end
+  release pool is closePool pool end
+  reset pool is resetPool pool end
+end
+
+law `another unit shares the run resource` for pool :: SharedPool is
+  definition is usePool pool end
+end
+
+harness example.sharedPeer.testing for example.sharedPeer is
+  share SharedPool per run
+end

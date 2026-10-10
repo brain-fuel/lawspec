@@ -1,0 +1,8 @@
+expect: TestTimeout
+@@ src/beam_owner_support.erl
+<<<<<<<
+touch(Owner) ->
+    lawspec_beam_resource:call(Owner, fun() -> ets:insert(get(owner_store), {note, 1}) end).
+=======
+touch(_Owner) -> receive never -> true end.
+>>>>>>>

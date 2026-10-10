@@ -1,0 +1,21 @@
+unit example.resourceOwners
+
+handle Store
+openStore :: Unit -> Store
+closeStore :: Store -> Unit
+empty :: Store -> Bool
+touch :: Store -> Bool
+
+resource Store is
+  acquire is openStore unitValue end
+  release store is closeStore store end
+end
+
+law `owners release after each test` for first :: Store, second :: Store is
+  definition is empty first and empty second and touch second and empty first end
+end
+
+harness example.resourceOwners.testing for example.resourceOwners is
+  for law `owners release after each test`
+    timeout 500 ms
+end

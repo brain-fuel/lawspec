@@ -1,0 +1,7 @@
+expect: weighted_refined_numbers
+@@ src/example/strategies.gleam
+<<<<<<<
+pub fn numbers(n: Int) -> Int { record("numbers", n) }
+=======
+pub fn numbers(n: Int) -> Int { record("numbers", n) + 1 }
+>>>>>>>

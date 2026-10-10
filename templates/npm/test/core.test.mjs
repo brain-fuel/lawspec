@@ -1,4 +1,5 @@
-import {propertyFiles} from './artifacts.mjs';
+import {propertyFiles, propertyContent} from './artifacts.mjs';
+import {targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -18,17 +19,8 @@ test("WASM expands the scratch law and preserves inherited example inputs", asyn
     "for all (x :: Int32) . atoi (itoa (x)) = x",
   );
 });
-test("all eight backends return deterministic owned artifact plans", async () => {
-  for (const target of [
-    "java",
-    "python",
-    "javascript",
-    "typescript",
-    "go",
-    "haskell",
-    "kotlin",
-    "rust",
-  ]) {
+test("all targets return deterministic owned artifact plans", async () => {
+  for (const target of targets) {
     const request = { ...input, target };
     const [a, b] = await Promise.all([
       compiler.planGeneration(request),
@@ -40,7 +32,7 @@ test("all eight backends return deterministic owned artifact plans", async () =>
       a.files.filter(f => f.ownership === "user").map(f => f.placement),
       ["source"],
     );
-    assert.match(a.files.find(f => f.placement === "test").content, /2147483647/);
+    assert.match(propertyContent(a.files), /2147483647/, target);
   }
 });
 test("Unicode metadata survives repeated JSON/JSFFI calls", async () => {
@@ -81,7 +73,7 @@ test("invalid examples, types and source syntax return structured diagnostics", 
 
 test("equivalent specializes both result types on every backend", async () => {
   const content = await readFile(
-    new URL("../../examples/specs/equivalent.lawspec", import.meta.url),
+    new URL("../examples/specs/equivalent.lawspec", import.meta.url),
     "utf8",
   );
   const request = { sources: [{ path: "equivalent.lawspec", content }] };
@@ -91,24 +83,15 @@ test("equivalent specializes both result types on every backend", async () => {
     "for all (x :: Int32) . render (x) = referenceRender (x)",
     "for all (x :: Int32) . clamp (x) = referenceClamp (x)",
   ]);
-  for (const target of [
-    "java",
-    "python",
-    "javascript",
-    "typescript",
-    "go",
-    "haskell",
-    "kotlin",
-    "rust",
-  ]) {
+  for (const target of targets) {
     const result = await compiler.planGeneration({ ...request, target });
     assert.deepEqual(result.diagnostics, []);
     assert.deepEqual(
       result.files.filter(f => f.ownership === "user").map(f => f.placement),
       ["source"],
     );
-    assert.match(result.files.find(f => f.placement === "test").content, /decimal renderers agree/);
-    assert.match(result.files.find(f => f.placement === "test").content, /nonnegative clamps agree/);
+    assert.match(propertyContent(result.files), /decimal renderers agree/, target);
+    assert.match(propertyContent(result.files), /nonnegative clamps agree/, target);
   }
 });
 
@@ -117,7 +100,7 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
     ["slug", "canonical_url", "mixed_inputs"].map(async (name) => ({
       path: `${name}.lawspec`,
       content: await readFile(
-        new URL(`../../examples/specs/${name}.lawspec`, import.meta.url),
+        new URL(`../examples/specs/${name}.lawspec`, import.meta.url),
         "utf8",
       ),
     })),
@@ -138,7 +121,7 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
     result.laws[0].examples[0].bindings[0].value,
     {type:"Text",units:[..."Hello, World!"].map(c=>c.codePointAt(0))},
   );
-  for (const target of ['java','python','javascript','typescript','go','haskell','kotlin','rust']) {
+  for (const target of targets) {
     const plan = await compiler.planGeneration({ sources, target });
     assert.deepEqual(plan.diagnostics, []);
     assert.equal(plan.files.filter(f => f.ownership === 'user').length, 3);
@@ -200,22 +183,13 @@ end`;
     assert.ok(r.diagnostics.length);
     assert.match(JSON.stringify(r.diagnostics), message);
   }
-  for (const target of [
-    "java",
-    "python",
-    "javascript",
-    "typescript",
-    "go",
-    "haskell",
-    "kotlin",
-    "rust",
-  ]) {
+  for (const target of targets) {
     const r = await compiler.planGeneration({
       sources: [{ path: "expect.lawspec", content: source }],
       target,
     });
     assert.deepEqual(r.diagnostics, []);
-    assert.ok(r.files.find(f => f.placement === "test").content.includes("negative rendering"));
-    assert.ok(r.files.find(f => f.placement === "test").content.includes("expect actual"));
+    assert.ok(propertyContent(r.files).includes("negative rendering"), target);
+    assert.ok(propertyContent(r.files).includes("expect actual"), target);
   }
 });

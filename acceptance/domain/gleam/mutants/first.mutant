@@ -1,0 +1,6 @@
+@@ src/example/ordering.gleam
+<<<<<<<
+list.first(value.value)
+=======
+list.last(value.value)
+>>>>>>>

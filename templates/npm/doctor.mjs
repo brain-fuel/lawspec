@@ -13,6 +13,7 @@ import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { setup } from "./templates.mjs";
+import { beamDoctor } from "./beam-doctor.mjs";
 const exec = promisify(execFile);
 const profiles = JSON.parse(
   await readFile(new URL("./compatibility.json", import.meta.url), "utf8"),
@@ -80,6 +81,7 @@ export async function doctor(target, root, plannedArtifacts = []) {
   try {
     requireThat(major(process.versions.node) >= 22, "Node 22+ is required");
     const versions = {};
+    let coverage;
     if (["javascript", "typescript"].includes(name)) {
       const pkg = JSON.parse(
         await readFile(path.join(root, "package.json"), "utf8"),
@@ -460,13 +462,17 @@ export async function doctor(target, root, plannedArtifacts = []) {
       } finally {
         await rm(tmp, { recursive: true, force: true });
       }
+    } else if (["erlang", "elixir", "gleam"].includes(name)) {
+      const beam = await beamDoctor(target, root, plannedArtifacts, run);
+      Object.assign(versions, beam.versions);
+      coverage = beam.coverage;
     } else throw new Error(`Unsupported target ${name}`);
     for (const dependency of Object.keys(profiles[name] || {}))
       requireThat(
         supported(name, dependency, versions[dependency]),
         `${dependency} ${versions[dependency] || "(unknown)"} is outside the verified ${name} profile [${profiles[name][dependency].join(", ")})`,
       );
-    return { target: name, ok: true, versions };
+    return { target: name, ok: true, versions, ...(coverage ? {coverage} : {}) };
   } catch (error) {
     return {
       target: name,

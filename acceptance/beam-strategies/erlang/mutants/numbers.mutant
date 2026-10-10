@@ -1,0 +1,7 @@
+expect: weighted refined numbers
+@@ src/example_strategies.erl
+<<<<<<<
+numbers(N) -> beam_strategy_support:record(numbers, N).
+=======
+numbers(N) -> beam_strategy_support:record(numbers, N) + 1.
+>>>>>>>

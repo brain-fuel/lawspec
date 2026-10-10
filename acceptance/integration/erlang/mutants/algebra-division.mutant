@@ -1,0 +1,7 @@
+expect: subtraction has right division
+@@ src/example_algebra.erl
+<<<<<<<
+divide_right(A, B) -> A + B.
+=======
+divide_right(A, B) -> A - B.
+>>>>>>>

@@ -84,9 +84,9 @@ export const setup = {
                        "haskell": "Use Stack with lts-24.58, directory and time as dependencies (and, for a program that imports lawspec.crypto, lawspec.network or lawspec.randomness, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 as dependencies too), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.",
                        "kotlin": "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(); a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.",
                        "rust": "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6 and num-traits 0.2.19; a program that imports lawspec.crypto, lawspec.network or lawspec.randomness also needs sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.",
-                       "erlang": "Use Erlang/OTP 29+, Rebar3 3.27.1 and PropEr 1.5.0. Run rebar3 eunit. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
-                       "elixir": "Use Erlang/OTP 29+, Elixir 1.20+ and StreamData 1.4.0. Run mix deps.get and mix test. Compile the shared Erlang runtime from src alongside Elixir modules in lib. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
-                       "gleam": "Use Erlang/OTP 29+, Gleam 1.18+, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select the erlang target in gleam.toml and run gleam test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application."
+                       "erlang": "Use Erlang/OTP 29, Rebar3 3.27.1 and PropEr 1.5.0 as a Hex dependency in the test profile. Configure {eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}. Run rebar3 as test compile to prepare dependencies, then rebar3 eunit. Custom test directories must be in extra_src_dirs. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
+                       "elixir": "Use Erlang/OTP 29, Elixir 1.20.x and StreamData 1.4.0 as a direct Hex test dependency. Run mix deps.get and MIX_ENV=test mix deps.compile. In MIX_ENV=test include src and test/support in erlc_paths, and lib and test/support in elixirc_paths. Add LawSpec.Beam.ExUnitFormatter to ExUnit's formatters in test/test_helper.exs and use unfiltered discovery. Run mix test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
+                       "gleam": "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application."
                      };
 
 // Each target's build files in the readable and the compact (minified) layout.
@@ -167,22 +167,22 @@ const scaffolds = {
                     },
                     "erlang": {
                       "readable": {
-                        "rebar.config": "{erl_opts, [debug_info]}.\n{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}.\n",
+                        "rebar.config": "{erl_opts, [debug_info]}.\n{eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}.\n{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}.\n",
                         "src/lawspec_example.app.src": "{application, lawspec_example, [\n    {description, \"LawSpec example\"},\n    {vsn, \"0.1.0\"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n"
                       },
                       "compact": {
-                        "rebar.config": "{erl_opts, [debug_info]}.\n{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}.\n",
+                        "rebar.config": "{erl_opts, [debug_info]}.\n{eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}.\n{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}.\n",
                         "src/lawspec_example.app.src": "{application, lawspec_example, [\n    {description, \"LawSpec example\"},\n    {vsn, \"0.1.0\"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n"
                       }
                     },
                     "elixir": {
                       "readable": {
                         "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths(),\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  defp test_paths, do: if(Mix.env() == :test, do: [\"test/support\"], else: [])\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
-                        "test/test_helper.exs": "ExUnit.start()\n"
+                        "test/test_helper.exs": "case System.get_env(\"LAWSPEC_SEED\") do\n  nil -> ExUnit.start()\n  seed -> ExUnit.start(seed: String.to_integer(seed))\nend\nif Code.ensure_loaded?(LawSpec.Beam.ExUnitFormatter) do\n  ExUnit.configure(formatters: Enum.uniq(ExUnit.configuration()[:formatters] ++ [LawSpec.Beam.ExUnitFormatter]))\nend\nif Code.ensure_loaded?(:lawspec_beam_resources) do\n  :lawspec_beam_resources.configure_suite(Process.whereis(ExUnit.Server))\n  ExUnit.after_suite(fn _ -> :lawspec_beam_resources.stop_suite() end)\nend\n"
                       },
                       "compact": {
                         "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths(),\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  defp test_paths, do: if(Mix.env() == :test, do: [\"test/support\"], else: [])\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
-                        "test/test_helper.exs": "ExUnit.start()\n"
+                        "test/test_helper.exs": "case System.get_env(\"LAWSPEC_SEED\") do\n  nil -> ExUnit.start()\n  seed -> ExUnit.start(seed: String.to_integer(seed))\nend\nif Code.ensure_loaded?(LawSpec.Beam.ExUnitFormatter) do\n  ExUnit.configure(formatters: Enum.uniq(ExUnit.configuration()[:formatters] ++ [LawSpec.Beam.ExUnitFormatter]))\nend\nif Code.ensure_loaded?(:lawspec_beam_resources) do\n  :lawspec_beam_resources.configure_suite(Process.whereis(ExUnit.Server))\n  ExUnit.after_suite(fn _ -> :lawspec_beam_resources.stop_suite() end)\nend\n"
                       }
                     },
                     "gleam": {
@@ -190,13 +190,13 @@ const scaffolds = {
                         "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\nlawspec_test_support = { path = \"./test-support\" }\n",
                         "test-support/gleam.toml": "# Generated test helpers are a development-only dependency.\nname = \"lawspec_test_support\"\nversion = \"0.1.0\"\ntarget = \"erlang\"\n\n[dependencies]\nqcheck = \"== 1.0.5\"\n",
                         "test-support/src/.gitkeep": "",
-                        "test/lawspec_example_test.gleam": "import gleeunit\n\npub fn main() {\n  gleeunit.main()\n}\n"
+                        "test/lawspec_example_test.gleam": "@external(erlang, \"lawspec_beam_test_run\", \"gleam_main\")\npub fn main() -> Nil\n"
                       },
                       "compact": {
                         "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\nlawspec_test_support = { path = \"./test-support\" }\n",
                         "test-support/gleam.toml": "# Generated test helpers are a development-only dependency.\nname = \"lawspec_test_support\"\nversion = \"0.1.0\"\ntarget = \"erlang\"\n\n[dependencies]\nqcheck = \"== 1.0.5\"\n",
                         "test-support/src/.gitkeep": "",
-                        "test/lawspec_example_test.gleam": "import gleeunit\n\npub fn main() {\n  gleeunit.main()\n}\n"
+                        "test/lawspec_example_test.gleam": "@external(erlang, \"lawspec_beam_test_run\", \"gleam_main\")\npub fn main() -> Nil\n"
                       }
                     }
                   };

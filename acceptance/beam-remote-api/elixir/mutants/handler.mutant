@@ -1,0 +1,7 @@
+expect-any: MatchError
+@@ lib/example_remote.ex
+<<<<<<<
+"mem://b/definitions" = LawSpec.Remote.serve(b, %Offset{shift: fn n -> n + 40 end})
+=======
+"mem://b/definitions" = LawSpec.Remote.serve(b, %Offset{shift: fn n -> n + 41 end})
+>>>>>>>

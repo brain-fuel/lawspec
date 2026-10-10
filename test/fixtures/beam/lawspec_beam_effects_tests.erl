@@ -13,6 +13,79 @@ perform(Schema, Op, Args) -> lawspec_beam_effects:perform(Schema, counter, Op, A
 cell({lawspec_stateful, Pid, _}) -> Pid;
 cell({lawspec_recording, Pid, _}) -> Pid.
 
+%% ref:REQ-harness-units ref:REQ-law-primitives
+retained_scope_keeps_state_until_explicit_release_test() ->
+    {S, Leases, Pid} = scope(fun(Current) ->
+        ?assertEqual(7, perform(Current, add, [7])),
+        {Current, lawspec_beam_effects:retain(Current, self()), cell(lawspec_beam_effects:handler(Current, counter))}
+    end),
+    try
+        ?assert(is_process_alive(Pid)),
+        ?assertEqual(7, perform(S, read, [])),
+        ?assertEqual(10, perform(S, add, [3]))
+    after lawspec_beam_effects:release(Leases) end,
+    ?assertNot(is_process_alive(Pid)),
+    ?assertNot(is_process_alive(maps:get(lawspec_scope, S))),
+    %% Releasing a disposed lease is harmless.
+    lawspec_beam_effects:release(Leases).
+
+retaining_nested_context_keeps_its_inherited_handlers_test() ->
+    {S, Leases, Pid} = scope(fun(Outer) ->
+        lawspec_beam_effects:with_scope(Outer, #{}, fun(Inner) ->
+            {Inner, lawspec_beam_effects:retain(Inner, self()), cell(lawspec_beam_effects:handler(Inner, counter))}
+        end)
+    end),
+    ?assertEqual(2, length(Leases)),
+    try ?assertEqual(4, perform(S, add, [4]))
+    after lawspec_beam_effects:release(Leases) end,
+    ?assertNot(is_process_alive(Pid)),
+    lists:foreach(fun({Scope, _}) -> ?assertNot(is_process_alive(Scope)) end, Leases).
+
+releasing_a_lease_inside_open_scope_preserves_the_owner_test() ->
+    scope(fun(S) ->
+        Leases = lawspec_beam_effects:retain(S, self()),
+        lawspec_beam_effects:release(Leases),
+        ?assertEqual(1, perform(S, add, [1]))
+    end).
+
+last_of_several_holders_closes_the_scope_test() ->
+    {S, One, Two} = scope(fun(Current) ->
+        {Current, lawspec_beam_effects:retain(Current, self()), lawspec_beam_effects:retain(Current, self())}
+    end),
+    try
+        lawspec_beam_effects:release(One),
+        ?assertEqual(2, perform(S, add, [2]))
+    after lawspec_beam_effects:release(Two) end,
+    ?assertNot(is_process_alive(maps:get(lawspec_scope, S))).
+
+holder_death_disposes_retained_scope_test() ->
+    Holder = spawn(fun() -> receive done -> ok end end),
+    {Scope, Cell} = scope(fun(S) ->
+        _ = lawspec_beam_effects:retain(S, Holder),
+        {maps:get(lawspec_scope, S), cell(lawspec_beam_effects:handler(S, counter))}
+    end),
+    Monitors = [{P, monitor(process, P)} || P <- [Scope, Cell]],
+    exit(Holder, kill),
+    lists:foreach(fun({P, M}) -> receive {'DOWN', M, process, P, _} -> ok
+        after 1000 -> error({retained_process_leaked, P}) end end, Monitors).
+
+retained_scope_survives_its_original_owner_test() ->
+    Test = self(),
+    Owner = spawn(fun() -> scope(fun(S) ->
+        Leases = lawspec_beam_effects:retain(S, Test),
+        Test ! {retained, S, Leases},
+        receive never -> ok end
+    end) end),
+    OwnerMonitor = monitor(process, Owner),
+    {S, Leases} = receive {retained, Current, CurrentLeases} -> {Current, CurrentLeases}
+        after 1000 -> error(no_retained_scope) end,
+    try
+        exit(Owner, kill),
+        receive {'DOWN', OwnerMonitor, process, Owner, killed} -> ok after 1000 -> error(owner_still_alive) end,
+        ?assertEqual(5, perform(S, add, [5]))
+    after exit(Owner, kill), lawspec_beam_effects:release(Leases) end,
+    ?assertNot(is_process_alive(maps:get(lawspec_scope, S))).
+
 native_cells_follow_scope_lifetime_test() ->
     ?assertError({lawspec, missing_handler_scope}, lawspec_beam_effects:native_cell(0)),
     {Outer, Inner} = lawspec_beam_effects:with_scope(#{}, #{}, fun(_) ->

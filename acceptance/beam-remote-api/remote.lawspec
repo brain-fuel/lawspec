@@ -1,0 +1,16 @@
+unit example.remote
+
+ability Offset is
+  shift :: Int32 -> Int32
+end
+
+type Parcel is Parcel count :: Int32 note :: Maybe Text end
+
+definition shifted (n :: Int32) :: Int32 uses Offset is shift n end
+definition parcel (p :: Parcel) :: Parcel is p end
+definition nothing (u :: Unit) :: Unit is u end
+
+nativeProbe :: Unit -> Bool
+law `remote definitions preserve native values and the server ability choice` is
+  definition is nativeProbe unitValue end
+end

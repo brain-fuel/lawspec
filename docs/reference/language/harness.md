@@ -125,7 +125,7 @@ A strategy draws values of its type. Its forms:
 | `one of e1, e2, …` | One of these values, each as likely. |
 | `frequency w1 g1, w2 g2, …` | `g1` with weight `w1`, and so on. |
 | `g such that p` | A value of `g` for which `p` holds; `p` names the value `it`. |
-| `g such that p at most n discards` | The same, failing the run after `n` values that do not satisfy `p` (default 100). |
+| `g such that p at most n discards` | The same, allowing at most `n` rejected values before failing the run (default 100). |
 | `bind x :: S from g in g'` | `x` from `g`, then a value of `g'`, which may use `x`. |
 | `name` | Another strategy of the harness. |
 | `( gen )` | Grouping. |
@@ -154,7 +154,10 @@ for law `a discount is never more than the total`
 ```
 
 The compiler checks that the strategy's type is the input's type, and that
-strategies are not recursive. When the tests run, every value a strategy draws
+strategies are not recursive. A reference to another strategy retains that
+strategy's declared type and refinement, including inside `frequency` and
+`bind`. A referenced strategy has its own local bindings; it does not capture
+the caller's bound variables. When the tests run, every value a strategy draws
 is checked against the input's refinements (`where …`): a value outside them is
 a failure of the harness ("the strategy orders produced … for order, which is
 outside the input's refinement"), never a reason to skip the case. A strategy
@@ -194,6 +197,14 @@ These expressions are over the law's inputs, and may call checked definitions
 only: calling native code or an ability could change what the law observes.
 They count only generated cases, not examples or boundary cases.
 
+On Erlang, Elixir and Gleam, each accepted initial draw counts once. Rejected
+tuples, shrinking and failure rechecks do not increase the count. Repeated
+classifications or labels with the same text count a case once; separate
+`cover` clauses have independent counters, even when their labels match.
+An exhaustive law has zero generated cases, so it cannot satisfy a `cover`
+clause, including one requiring zero percent. Coverage is decided from exact
+counts; rounded display percentages cannot turn a shortfall into a pass.
+
 `target maximize` steers generation on every target. On Python, Hypothesis
 searches for higher scores itself. The other targets' libraries have no
 targeted search, so LawSpec climbs after the property test: it generates
@@ -203,6 +214,11 @@ score rises, drawing afresh when it does not. Every case it tries is checked
 against the law, at most 400 of them, and the best score is printed. A law
 whose inputs have no [wire descriptor](../cli.md#the-failure-database) (a
 float, a handle, a generic data type) is not climbed.
+
+The BEAM targets keep integer, decimal and rational scores exact, including
+integers beyond the precision of a native float. A floating-point NaN cannot
+be a best score. Targeted search checks the input refinements before running
+the law, reports its trials separately, and does not change property coverage.
 
 Each property test prints its statistics, and `lawspec test` keeps them:
 
@@ -230,6 +246,38 @@ example.harness::a discount is never more than the total: 100 generated case(s)
 `known failing` cannot be put on a law the compiler proves or evaluates
 itself: such a law is either true or a compile error.
 
+On Erlang, Elixir and Gleam, `repeat` applies separately to each example,
+exhaustive or boundary case, native property check, and targeted search.
+A retry restarts that test's repeat sequence. Every
+repetition has fresh coverage counters and must meet its own coverage
+requirements; counts from different repetitions cannot hide a shortfall.
+Statistics keep the final run's counts and a `runs` list with the outcome
+and observations of each attempt and repetition. A successful retry has
+the outcome `flaky`. Invalid strategy values and exhausted strategy discard
+limits fail without retrying.
+
+On these three targets, `timeout` bounds one such repetition, including its
+native generation and shrinking. It stops the test worker and joins its
+LawSpec asynchronous children. Resource owners then finish cleanup within
+their separate [cleanup allowance](resources.md#beam-ownership-and-cancellation).
+A timeout or cleanup failure is a harness failure: it cannot be retried or
+accepted by `known failing`. Native runner timeouts include extra room for
+the configured repetitions and cleanup.
+
+On BEAM, a known-failing law runs its checks until the first law failure.
+Its report includes the checks it attempted and the original failure.
+Generator errors and unmet coverage requirements remain harness failures;
+they cannot satisfy a known-failing annotation. If all checks pass, including
+after configured retries, the run fails and asks you to remove the annotation.
+The shared search policy excludes known-failing laws from extra targeted
+searches; their native property cases still report target scores.
+
+Elixir reports skipped laws with ExUnit's native skip tag. Erlang and Gleam
+use EUnit, which has no public intentional-skip descriptor: LawSpec prints
+`SKIPPED` with the reason and writes a skipped statistics record, while
+returning an empty test group. These laws do not increase the native pass
+count. No skipped example, generator, adapter or resource acquisition runs.
+
 LawSpec owns how a unit's tests are scheduled: each runtime has a small
 harness driver, and the target's test framework only hosts and reports the
 tests. `order random` is seeded by the run's seed (`--seed`, which
@@ -246,6 +294,16 @@ seed gives the same order:
 | Kotlin | the tests are registered in the seeded order | Kotest concurrency, a thread per processor |
 | Rust | each test waits for its seeded turn (stable libtest cannot shuffle) | libtest's test threads; with `order random` too, tests start in order, then overlap |
 | Haskell | each law's tests in one block, the blocks in the seeded order | hspec's `parallel`, on the threaded runtime (`-with-rtsopts=-N`) |
+| Erlang, Gleam | law blocks in seeded order through native EUnit descriptors | EUnit runs individual cases in separate BEAM processes |
+| Elixir | selected law blocks in seeded order through the LawSpec driver | a bounded BEAM process pool; each named ExUnit test receives its original result |
+
+The BEAM drivers apply native selection before scheduling. Examples,
+boundaries and properties keep their native test names, and each executing
+case has its own handler and property-framework state, and borrows resources
+from their dedicated owners. The recorded
+worker count is the peak number of live case processes. With `order random`
+and `parallel` together, the seed controls dispatch order; overlapping
+operations can still finish in a different order.
 
 Each runtime records the parallelism it achieved, and `lawspec test` prints
 it ("parallel example.shop: threads …, 8 worker(s)"). The genuine platform
@@ -316,6 +374,15 @@ use abilities: it runs under each ability's production handler (the one
 bound in `lawspec.json`, the native one, or the runtime's default), installed
 around it. Benchmarks run with the target's own test command, and with
 `lawspec test --benchmarks`.
+
+On Erlang, Elixir and Gleam, the measurement uses BEAM's monotonic
+nanosecond timer, takes at least three samples, and stops after about
+200 ms or 100,000 iterations. The time budget is checked between complete
+iterations. A returned `false` is still a measured value; an exception
+fails the native benchmark and produces no completed timing record.
+The statistics include the unit as well as the original benchmark label.
+Benchmarks also work in a unit with no laws, and labels that normalize to
+the same native identifier receive distinct names for selection.
 
 ## Test names
 

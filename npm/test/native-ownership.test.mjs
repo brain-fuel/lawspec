@@ -11,7 +11,7 @@ import {planWrites, applyWrites} from '../files.mjs';
 const compiler = await createCompiler();
 const fixture = new URL('../../test/fixtures/native-payments/', import.meta.url);
 const sources = [{path:'payments.lawspec',content:await readFile(
-  new URL('../../examples/specs/payments.lawspec',import.meta.url),'utf8')}];
+  new URL('../examples/specs/payments.lawspec',import.meta.url),'utf8')}];
 const configurations = [
   ['rust','bindings.json',['lawspec_generators','prices'],'support/lawspec_generators.rs'],
   ['python','bindings-python.json',['lawspec_generators','prices'],'lawspec_generators.py'],
@@ -111,6 +111,86 @@ for (const [target, fixtureName, factory, generatorFile] of configurations) {
       for(const file of reverting) assert.equal(await get(file.path),moved.find(old=>old.path===file.path).content);
     } finally {
       await rm(directory,{recursive:true,force:true});
+    }
+  });
+}
+
+for (const [target, sourceRoot, generator] of [
+  ['erlang', 'src', 'payment_generators.erl'],
+  ['elixir', 'lib', 'support/payment_generators.ex'],
+  ['gleam', 'src', 'payment_generators.gleam'],
+]) {
+  test(`${target}: adopting and removing native bindings preserves application files`, async () => {
+    const example = new URL(`../examples/native-payments/${target}/`, import.meta.url);
+    const nativeBindings = JSON.parse(await readFile(new URL('lawspec.json', example), 'utf8')).targets[0].nativeBindings;
+    const directory = await mkdtemp(path.join(os.tmpdir(), `lawspec-${target}-ownership-`));
+    const sourceDir = target === 'gleam' ? 'src' : 'library/native';
+    const testDir = target === 'gleam' ? 'test' : 'checks/native';
+    const base = {sources, target, sourceDir, testDir, machineBits: 32, minify: false};
+    const get = relative => readFile(path.join(directory, relative), 'utf8');
+    async function put(relative, content) {
+      const file = path.join(directory, relative);
+      await mkdir(path.dirname(file), {recursive: true});
+      await writeFile(file, content);
+    }
+    async function generate(options) {
+      const result = await compiler.planGeneration(options);
+      assert.deepEqual(result.diagnostics, []);
+      return result.files;
+    }
+    try {
+      const ordinary = await generate(base);
+      const bound = await generate({...base, nativeBindings});
+      const extension = {erlang: 'erl', elixir: 'ex', gleam: 'gleam'}[target];
+      const application = new Map([
+        [`${sourceDir}/payments_domain.${extension}`, await readFile(new URL(`${sourceRoot}/payments_domain.${extension}`, example), 'utf8')],
+        [`${testDir}/${generator}`, await readFile(new URL(`test/${generator}`, example), 'utf8')],
+      ]);
+      if (target === 'erlang')
+        application.set('include/payments_domain.hrl', await readFile(new URL('include/payments_domain.hrl', example), 'utf8'));
+      for (const [relative, content] of application) await put(relative, content);
+      await applyWrites([await planWrites(directory, ordinary)]);
+      for (const adapter of ordinary.filter(file => file.ownership === 'user')) {
+        const content = adapter.content + '\n' + (target === 'erlang' ? '%' : target === 'elixir' ? '#' : '//') + ' application implementation\n';
+        application.set(adapter.path, content);
+        await put(adapter.path, content);
+      }
+      const bridge = bound.find(file => file.path.endsWith('/lawspec_native_bindings.erl'));
+      assert.ok(bridge, 'Bindings must emit a real native bridge');
+      const before = await get('.lawspec/generated.json');
+      await put(bridge.path, 'application-owned module at the prospective bridge path\n');
+      await assert.rejects(planWrites(directory, bound), /Refusing to overwrite unowned or edited/);
+      assert.equal(await get('.lawspec/generated.json'), before);
+      await rm(path.join(directory, bridge.path));
+      await applyWrites([await planWrites(directory, bound)]);
+      const owned = JSON.parse(await get('.lawspec/generated.json')).files;
+      assert.ok(owned[bridge.path]);
+      for (const [relative, content] of application) {
+        assert.equal(await get(relative), content);
+        assert.ok(!owned[relative], `${relative} must remain application-owned`);
+      }
+      assert.deepEqual((await planWrites(directory, bound)).changes, []);
+      const changed = await generate({...base, nativeBindings, machineBits: 64, minify: true});
+      const pending = await planWrites(directory, changed);
+      const update = pending.changes.find(change => change.action === 'update' && change.relative !== '.lawspec/generated.json');
+      assert.ok(update);
+      await put(update.relative, update.expected + '\nconcurrent application edit\n');
+      const beforeRace = await get('.lawspec/generated.json');
+      await assert.rejects(applyWrites([pending]), /File changed during generation/);
+      assert.equal(await get('.lawspec/generated.json'), beforeRace);
+      await put(update.relative, update.expected);
+      await applyWrites([pending]);
+      const unbound = await generate({...base, machineBits: 64, minify: true});
+      const currentBridge = changed.find(file => file.path === bridge.path);
+      await put(bridge.path, currentBridge.content + '\n% edited bridge\n');
+      await assert.rejects(planWrites(directory, unbound), /Refusing to remove edited generated file/);
+      await put(bridge.path, currentBridge.content);
+      await applyWrites([await planWrites(directory, unbound)]);
+      await assert.rejects(get(bridge.path), {code: 'ENOENT'});
+      assert.deepEqual((await planWrites(directory, unbound)).changes, []);
+      for (const [relative, content] of application) assert.equal(await get(relative), content);
+    } finally {
+      await rm(directory, {recursive: true, force: true});
     }
   });
 }

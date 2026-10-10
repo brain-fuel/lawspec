@@ -1,0 +1,6 @@
+@@ src/shop_orders.erl
+<<<<<<<
+min(Cents * Count, 100000000)
+=======
+min(Cents * Count + 1, 100000000)
+>>>>>>>

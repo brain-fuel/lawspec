@@ -60,7 +60,7 @@ import System.Directory
 import System.Environment (getArgs, getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), die, exitFailure)
 import System.FilePath ((</>), takeDirectory)
-import System.IO (hPutStrLn, readFile', stderr)
+import System.IO (BufferMode(LineBuffering), hPutStrLn, hSetBuffering, readFile', stderr, stdout)
 import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import LawSpec.Api (dispatch)
 import LawSpec.Scaffold (scaffoldFilesWith, scaffoldTargets)
@@ -80,6 +80,8 @@ data Mutant = Mutant
 
 main :: IO ()
 main = do
+  -- Preserve completed stages in CI logs even if a later process is killed.
+  hSetBuffering stdout LineBuffering
   args <- getArgs
   (suite, flags, selected) <- case args of
     suite : rest -> pure (suite, filter ("--" `isPrefixOf`) rest, filter (not . ("--" `isPrefixOf`)) rest)
@@ -189,6 +191,8 @@ loadPackage directory = do
 -- lawspec.network (or, in Haskell and Rust, lawspec.randomness, whose secure
 -- generator comes from them), as lawspec init and the setup advice say.
 usesCrypto :: String -> [Generated] -> Bool
+usesCrypto target | target `elem` ["erlang", "elixir", "gleam"] =
+  any ((== "priv/lawspec_crypto_native.c") . generatedPath)
 usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.crypto"
   || (target `elem` ["haskell", "rust"] && generatedPath g == adapterPath target "lawspec.randomness")
   || any (`isInfixOf` generatedPath g) ["lawspec_network.", "LawSpecNetwork.", "src/lawspec/network.rs"])
@@ -399,7 +403,12 @@ runToolWith :: [(String, String)] -> Toolchain -> [String] -> FilePath -> IO (Ex
 runToolWith extra tool args project = do
   prepare tool
   environment <- getEnvironment
-  let settings = if null extra then Nothing else Just (extra ++ [kv | kv@(k, _) <- environment, k `notElem` map fst extra])
+  -- Test runners such as Go execute from a package directory. The harness
+  -- knows the project root, so a package named recorded must not shadow the
+  -- suite's recordings when the runtime searches parent directories.
+  recordings <- makeAbsolute (project </> "recorded")
+  let overrides = extra ++ [("LAWSPEC_RECORDED", recordings) | "LAWSPEC_RECORDED" `notElem` map fst extra]
+      settings = Just (overrides ++ [kv | kv@(k, _) <- environment, k `notElem` map fst overrides])
   (code, out, err) <- readCreateProcessWithExitCode (proc (command tool) args) { cwd = Just project, env = settings } ""
   extra' <- report tool
   pure (code, out ++ err ++ extra')

@@ -1,0 +1,7 @@
+expect: four-argument function
+@@ lib/example_currying.ex
+<<<<<<<
+a + b + c + d
+=======
+a + b + c - d
+>>>>>>>

@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "sources": [
+    "laws"
+  ],
+  "machineBits": 64,
+  "targets": [
+    {
+      "language": "elixir",
+      "root": ".",
+      "nativeBindings": {
+        "types": [
+          {
+            "type": "example.payments::type::Currency",
+            "native": [
+              "PaymentsDomain",
+              "CurrencyCode"
+            ],
+            "constructors": [
+              {
+                "constructor": "USD",
+                "native": [
+                  "PaymentsDomain",
+                  "Dollars"
+                ],
+                "style": "unit",
+                "fields": []
+              },
+              {
+                "constructor": "EUR",
+                "native": [
+                  "PaymentsDomain",
+                  "Euros"
+                ],
+                "style": "unit",
+                "fields": []
+              },
+              {
+                "constructor": "GBP",
+                "native": [
+                  "PaymentsDomain",
+                  "Pounds"
+                ],
+                "style": "unit",
+                "fields": []
+              }
+            ]
+          },
+          {
+            "type": "example.payments::type::Money",
+            "native": [
+              "PaymentsDomain",
+              "Price"
+            ],
+            "constructors": [
+              {
+                "constructor": "Money",
+                "native": [
+                  "PaymentsDomain",
+                  "Price"
+                ],
+                "style": "record",
+                "fields": [
+                  {
+                    "field": "amount",
+                    "native": "major"
+                  },
+                  {
+                    "field": "currency",
+                    "native": "unit"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "example.payments::type::Payment",
+            "native": [
+              "PaymentsDomain",
+              "PaymentStatus"
+            ],
+            "constructors": [
+              {
+                "constructor": "Paid",
+                "native": [
+                  "PaymentsDomain",
+                  "Settled"
+                ],
+                "style": "variant",
+                "fields": [
+                  {
+                    "field": "value",
+                    "native": "price"
+                  }
+                ]
+              },
+              {
+                "constructor": "Declined",
+                "native": [
+                  "PaymentsDomain",
+                  "Rejected"
+                ],
+                "style": "variant",
+                "fields": [
+                  {
+                    "field": "reason",
+                    "native": "explanation"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "functions": [
+          {
+            "declaration": "example.payments::addFee",
+            "native": [
+              "PaymentsDomain",
+              "apply_fee"
+            ]
+          },
+          {
+            "declaration": "example.payments::roundTrip",
+            "native": [
+              "PaymentsDomain",
+              "restore"
+            ]
+          },
+          {
+            "declaration": "example.payments::archive",
+            "native": [
+              "PaymentsDomain",
+              "store"
+            ]
+          }
+        ],
+        "generators": [
+          {
+            "type": "example.payments::type::Money",
+            "factory": [
+              "PaymentGenerators",
+              "prices"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

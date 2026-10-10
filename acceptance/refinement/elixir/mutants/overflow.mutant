@@ -1,0 +1,6 @@
+@@ lib/example_refinements.ex
+<<<<<<<
+def add(a, b), do: a + b
+=======
+def add(a, b), do: Integer.mod(a + b + 128, 256) - 128
+>>>>>>>

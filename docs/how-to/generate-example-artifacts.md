@@ -18,7 +18,7 @@ npx lawspec examples --target java --output example_artifacts
 
 `examples` compiles every bundled specification and writes its tests and
 user-owned adapter stubs to `example_artifacts/<language>/`, in each target's
-normal source and test layout. By default it exports all eight targets. Use
+normal source and test layout. By default it exports all eleven targets. Use
 `--target` for one, `--output` for another directory, `--machine-bits 32` for
 the 32-bit profile, `--minify` for compact output, and `--json` for a file
 inventory.
@@ -45,7 +45,7 @@ npx lawspec generate
 cargo test
 ```
 
-Omit `--target` to export all eight targets. The default output directory is
+Omit `--target` to export all eleven targets. The default output directory is
 `native_payments`.
 
 Each project contains:
@@ -66,3 +66,14 @@ Re-exporting preserves your edits and reports changed bundled files for review.
 The export uses its own manifest, `.lawspec/example.json`, separate from the
 compiler's `.lawspec/generated.json`, so exporting never removes or overwrites
 generated code. Export does not install dependencies or run tests.
+
+The Erlang, Elixir and Gleam projects use PropEr, StreamData and qcheck,
+respectively, with exact decimal arithmetic from the shared BEAM runtime.
+Their generators retain each framework's shrinking. Erlang binds atoms,
+records and tagged tuples; Elixir binds structs; Gleam binds custom types.
+
+For the Gleam project, run `node prepare.mjs` before `lawspec generate`.
+It compiles dependencies using the project's configuration in a temporary
+directory, then copies the dependencies back. Application files stay in place;
+their generated runtime imports become available after generation. Run
+`gleam test` after generation.

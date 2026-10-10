@@ -1,0 +1,7 @@
+expect: remove
+@@ src/example_harness.erl
+<<<<<<<
+((Cents + 4) div 10) * 10
+=======
+((Cents + 9) div 10) * 10
+>>>>>>>

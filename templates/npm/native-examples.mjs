@@ -32,6 +32,9 @@ export async function exportNativePayments(options, selected) {
     const config = JSON.parse(files['lawspec.json']);
     config.machineBits = options.machineBits ?? 64;
     files['lawspec.json'] = JSON.stringify(config, null, options.minify ? undefined : 2) + '\n';
+    const instructions = target === 'gleam' ? setup[target].replace(
+      'Prepare dependencies with gleam build, then run gleam test.',
+      'Prepare dependencies with node prepare.mjs before generation, then run gleam test.') : setup[target];
     files['README.md'] = `# Native payments: ${target}
 
 This project checks application-owned payment types against the shared LawSpec
@@ -44,11 +47,13 @@ Install LawSpec and the native dependencies described below, then run:
 
 \`\`\`sh
 lawspec check
-lawspec generate
+${target === 'gleam' ? 'node prepare.mjs\n' : ''}lawspec generate
 ${commands[target]}
 \`\`\`
 
-${setup[target]}
+${instructions}
+
+${target === 'gleam' ? 'The preparation command compiles dependencies in a temporary project using\nyour dependency requirements and lock file. It leaves application sources in\nplace, so their imports can be resolved after LawSpec generates the runtime.\n' : ''}
 
 JavaScript and TypeScript projects require \`npm install\` before testing.
 The specification includes exact decimal arithmetic and explicit USD/GBP examples.
