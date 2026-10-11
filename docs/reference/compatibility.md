@@ -56,6 +56,12 @@ unknown, prerelease, missing and out-of-range versions.
 | | gleam_stdlib | 1.0.5 |
 | | gleeunit | 1.11.0 |
 | | qcheck | 1.0.5 |
+| F# | .NET SDK | 10 |
+| | xunit.v3 | 4.0.2 |
+| | BouncyCastle.Cryptography | 2.7.0 |
+| C# | .NET SDK | 10 |
+| | xunit.v3 | 4.0.2 |
+| | BouncyCastle.Cryptography | 2.7.0 |
 
 Java 25 and Python 3.13 are minimum baselines. New JVM releases are admitted
 after testing; the current profile certifies Java 25.
@@ -65,6 +71,28 @@ BEAM crypto projects additionally require a Unix C toolchain and OpenSSL
 The bridge builder supports macOS and Linux; Windows uses WSL. Native Windows
 builds are not currently supported. Doctor compiles and loads the bridge to
 check this combination; non-crypto BEAM projects do not need a C compiler.
+
+.NET crypto projects reference BouncyCastle.Cryptography for the
+post-quantum algorithms .NET does not provide on the host.
+
+## C# over F#
+
+The C# target compiles the program's model (data types, codecs, ability
+interfaces and bridges, schema, actors, sessions and mailboxes) as a
+generated F# project, `lawspec/LawSpec.Model`, and C# calls it and the F#
+runtime directly. Every public runtime function has a PascalCase compiled
+name. The namespace `LawSpec.CSharp` is the compatibility layer:
+
+- `Fn.F0` to `Fn.F6` make curried F# functions from delegates, and
+  `Fn.Invoke` applies one.
+- `Fn.List`, `Fn.ListOf`, `Fn.Tuple`, `Fn.Some` and `Fn.None` make F# lists,
+  tuples and options; `Fn.Run` gives a block's value.
+- `V` has a method per portable `Value` case.
+- `Maybe` gives `IsSome`, `IsNone`, `GetOrElse` and `Match` on F# options,
+  and `Outcome.Ok` and `Outcome.Error` make F# results.
+
+F#'s unit value is `default(Unit)`. A C# adapter takes no `Unit` argument and
+returns `void` for `Unit`. See [Set up C#](../how-to/targets/csharp.md).
 
 ## Versions pinned by `init`
 
@@ -83,6 +111,8 @@ When `init` creates a scaffold, it pins:
 | Erlang | OTP 29 profile, PropEr 1.5.0, LawSpec EUnit reporter |
 | Elixir | Elixir `~> 1.20`, StreamData 1.4.0, LawSpec ExUnit formatter |
 | Gleam | Gleam 1.18+, Erlang target, gleam_stdlib 1.0.5, gleeunit 1.11.0, qcheck 1.0.5, local `lawspec_test_support` |
+| F# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2 |
+| C# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, the generated F# model project |
 
 ## What the checks inspect
 

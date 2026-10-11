@@ -34,18 +34,18 @@ data Expr
   | UnitLit
   | Raw String String
   | Call Fn [Expr]
-  -- | A constructor or method applied to a tuple of arguments, as both
+  -- A constructor or method applied to a tuple of arguments, as both
   -- languages write it: Value.Data(tag, fields).
   | Ctor Fn [Expr]
-  -- | Apply an F# function value.
+  -- Apply an F# function value.
   | Invoke Expr [Expr]
   | ListOf Ty [Expr]
   | TupleOf [Expr]
   | Lambda [(String, Ty)] Ty Expr
   | Let String Ty Expr Expr
-  -- | A .NET bool condition, the type of the result and its two branches.
+  -- A .NET bool condition, the type of the result and its two branches.
   | If Expr Ty Expr Expr
-  -- | Unit-valued effects, then a value.
+  -- Unit-valued effects, then a value.
   | Do [Expr] Expr
   deriving (Eq, Show)
 

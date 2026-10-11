@@ -8,7 +8,7 @@
 -- (ReceiveInt32, SendInt64; the step number is appended when a name repeats)
 -- and Done. Send returns the next end; Receive returns the value and the next
 -- end, as a tuple. Each end is single use: the runtime refuses a spent one.
--- ref:DEC-session-types ref:DEC-fsharp-runtime-from-scratch
+-- ref:DEC-sessions-by-construction ref:DEC-fsharp-runtime-from-scratch
 module LawSpec.DotNet.Sessions (emitSessions) where
 
 import qualified LawSpec.Core as C

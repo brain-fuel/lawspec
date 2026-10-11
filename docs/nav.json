@@ -183,6 +183,12 @@
           },
           {
             "path": "how-to/targets/gleam.md"
+          },
+          {
+            "path": "how-to/targets/fsharp.md"
+          },
+          {
+            "path": "how-to/targets/csharp.md"
           }
         ]
       }

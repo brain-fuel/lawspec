@@ -19,6 +19,7 @@ import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences, unitReferenc
 import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
 import qualified LawSpec.BeamCode as Beam
 import qualified LawSpec.BeamModelChecks as ModelChecks
+import qualified LawSpec.DotNet.Names as DotNet
 
 -- | Each generated test is keyed by the law it checks and the digest of what the
 -- law reaches, so lawspec test runs only the tests an edit can affect.
@@ -58,6 +59,20 @@ testManifest target testDir program =
       (maybe False harnessParallel (unitHarnessSettings u))
   | target `elem` ["erlang", "elixir", "gleam"], u <- programUnits program
   , let unit = idText (unitId u)
+  , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ] ++
+  -- .NET writes a unit's model, scenario and supervision checks to a test
+  -- file of their own, named after the check (PascalCase in C#).
+  [ TestEntry (ModelChecks.checkIdentity check) unit (ModelChecks.checkLabel check) index
+      (relocated (dotnetModelsPath target unit))
+      (keyOf graph (show (programMachineBits program, ModelChecks.checkAction check,
+        programDataDeclarations program, concatMap unitSessions (programUnits program),
+        unitMailboxes u, unitSupervisors u)) (unitReferences graph u))
+      (ModelChecks.checkAction check /= ModelChecks.Supervision)
+      (if target == "csharp" then pascalCase (ModelChecks.checkName check) else ModelChecks.checkName check) [] Nothing Nothing
+      (maybe False harnessParallel (unitHarnessSettings u))
+  | target `elem` ["fsharp", "csharp"], u <- programUnits program
+  , not (null (unitMachines u) && null (unitSupervisors u))
+  , let unit = idText (unitId u)
   , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ]
   where
     graph = dependencyGraph (programDataDeclarations program) (programUnits program)
@@ -95,6 +110,8 @@ benchmarkManifest target testDir program =
       "erlang" -> nativeName
       "elixir" -> nativeName
       "gleam" -> nativeName
+      "fsharp" -> DotNet.camel nativeName
+      "csharp" -> DotNet.pascal nativeName
       _ -> "benchmark " ++ n
 
 relocated :: Maybe String -> String -> FilePath -> FilePath
@@ -104,6 +121,8 @@ relocated testDir target path = case testDir of
 
 defaultTestDirectory :: String -> String
 defaultTestDirectory target = case target of
+  "fsharp" -> "tests"
+  "csharp" -> "tests"
   "java" -> "src/test/java"
   "kotlin" -> "src/test/kotlin"
   "python" -> "tests"
@@ -123,6 +142,8 @@ unitTestPath target unit = case target of
   "erlang" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_tests.erl"
   "elixir" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_test.exs"
   "gleam" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_test.gleam"
+  "fsharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".fs"
+  "csharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".cs"
   jvm -> "src/test/" ++ jvm ++ "/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpecTest" ++
     (if jvm == "kotlin" then ".kt" else ".java")
   where
@@ -133,6 +154,17 @@ unitTestPath target unit = case target of
     splitOn c s = case break (== c) s of
       (a, []) -> [a]
       (a, _ : b) -> a : splitOn c b
+
+-- | A unit's .NET test class: each dotted part in PascalCase.
+dotnetName :: String -> String
+dotnetName = concatMap DotNet.pascal . DotNet.splitDots
+
+pascalCase :: String -> String
+pascalCase = DotNet.pascal
+
+-- | The test file of a unit's .NET model checks.
+dotnetModelsPath :: String -> String -> FilePath
+dotnetModelsPath target unit = "tests/LawSpec/" ++ dotnetName unit ++ "Models" ++ (if target == "csharp" then ".cs" else ".fs")
 
 -- | The declarations a law calls directly; definitions cannot call adapters.
 callees :: Expr -> [Id]

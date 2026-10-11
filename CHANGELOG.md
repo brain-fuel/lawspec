@@ -8,6 +8,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- F# and C# targets (`--target fsharp`, `--target csharp`) on .NET 10, with
+  xunit.v3 on Microsoft.Testing.Platform and `dotnet test`. F# gets a runtime
+  written for it: records and unions in LawSpec's order, exact integers,
+  persistent collections, `Result` for typed failures, abilities as
+  interfaces, `Task` for async, typed actors and supervisors, single-use
+  session ends, mailboxes, a virtual clock, remote evaluation and the secure
+  network on the shared wire format, and post-quantum crypto from .NET with
+  BouncyCastle where .NET lacks it. Tests run on LawSpec's own engine: seeded
+  SplitMix64 generation and shrinking, models, linearizability, scenarios and
+  the whole harness. C# runs over it: the program's model is a generated F#
+  project, and adapters, entries, the embedding API and tests are C#, with
+  `LawSpec.CSharp` as the compatibility layer. Every acceptance suite passes
+  on both, with its mutants rejected. See the F# and C# setup guides.
 - `lawspec evidence` says which tested laws ran against stand-ins. It reads
   an environment attestation, a versioned JSON document any tool may write
   for one run: the environment, the run's id and times, and for each

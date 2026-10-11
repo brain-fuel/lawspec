@@ -13,13 +13,14 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 // Folders that hold dependencies, build output or caches, not code under test.
-const skipped = new Set([".git", ".lawspec", "node_modules", "dist", "build", "target", "out", ".gradle",
+const skipped = new Set([".git", ".lawspec", "node_modules", "dist", "build", "target", "out", ".gradle", "bin", "obj", "TestResults",
   ".stack-work", "_build", "deps", ".elixir_ls", "__pycache__", ".hypothesis", ".pytest_cache", ".venv", "venv", ".idea", ".vscode"]);
 // Build and lock files, which choose the toolchain and dependencies.
 const environmentFiles = ["package.json", "package-lock.json", "tsconfig.json", "pyproject.toml", "go.mod",
   "go.sum", "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
   "Cargo.toml", "Cargo.lock", "stack.yaml", "stack.yaml.lock", "package.yaml",
-  "rebar.config", "rebar.config.script", "rebar.lock", "mix.exs", "mix.lock", "gleam.toml", "manifest.toml"];
+  "rebar.config", "rebar.config.script", "rebar.lock", "mix.exs", "mix.lock", "gleam.toml", "manifest.toml",
+  "global.json", "Directory.Build.props", "Directory.Packages.props", "NuGet.config"];
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // The crypto builder owns these outputs. Inputs and other priv/ assets still
@@ -157,6 +158,8 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
   if (language === "rust")
     return groupBy(entries, (e) => e.file).map(([file, marks]) => ({ command: "cargo",
       args: ["test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--", "--exact", "--nocapture", ...marks.map((e) => e.name)] }));
+  if (language === "fsharp" || language === "csharp")
+    return [{ command: "dotnet", args: ["test", ...entries.flatMap((e) => ["--filter-query", `/*/*/*/${e.name}`])] }];
   if (language === "haskell") {
     const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
     // hspec matches by substring, and a benchmark's name has spaces, so each
@@ -287,6 +290,22 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
         ...laws.map((e) => e.name)],
       report: { kind: "lines", pattern: /^test (\S+) \.\.\. (ok|FAILED|ignored)/ },
       ran: (test) => laws.filter((e) => test.name === e.name) }));
+  // xUnit v3 on Microsoft.Testing.Platform selects test methods with its
+  // query filter (assembly/namespace/class/method, one per law, OR'd), and
+  // reports each test by its display name: the law's label, then its kind.
+  if (language === "fsharp" || language === "csharp") {
+    const report = "lawspec-junit.xml";
+    const results = path.resolve(scratch, "dotnet-results");
+    const kinds = "example \\d+: .*|boundary|statistics|property|search|replay|skipped|known failing";
+    const pattern = (e) => new RegExp(`^${regex(e.label)}( (${kinds}))?$`);
+    const measured = coverage ? path.resolve(coverage, "dotnet.cobertura.xml") : null;
+    return [{ laws: entries, command: "dotnet",
+      args: ["test", ...entries.flatMap((e) => ["--filter-query", `/*/*/*/${e.name}_*`, "--filter-query", `/*/*/*/${e.name}`]),
+        "--report-xunit-junit", "--report-xunit-junit-filename", report, "--results-directory", results,
+        ...(measured ? ["--coverage", "--coverage-output-format", "cobertura", "--coverage-output", measured] : [])],
+      report: { kind: "junit", files: [path.join(results, report)] },
+      ran: (test) => entries.filter((e) => pattern(e).test(test.name)) }];
+  }
   if (language === "haskell") {
     const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
     const matches = entries.map((e) => `${module(e)}/${e.name}_`);
@@ -311,6 +330,8 @@ export const coverageTools = {
   kotlin: { tool: "Kover", install: "add id(\"org.jetbrains.kotlinx.kover\") to the plugins of build.gradle.kts" },
   rust: { tool: "cargo-llvm-cov", install: "cargo install cargo-llvm-cov" },
   haskell: { tool: "hpc", install: "(built into GHC; stack test --coverage)" },
+  fsharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },
+  csharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },
 };
 
 // Laws selected by tag: every --tag, and none of --exclude-tag.

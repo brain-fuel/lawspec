@@ -48,6 +48,7 @@ import qualified TemporalSpec
 import qualified DistributionSpec
 import qualified UnificationSpec
 import qualified BeamSpec
+import qualified DotNetSpec
 import qualified LanguageGapsSpec
 import LawSpec.Compile
 import LawSpec.Model
@@ -67,6 +68,7 @@ main :: IO ()
 main = hspec $ do
   BeamSpec.test_beamCodeUsesCheckedCoreAndNativeFrameworks
   BeamSpec.test_beamRunsTheLanguageGaps
+  DotNetSpec.test_dotnetTargetsShareOneRuntime
   NativeBindingSpec.test_nativeBindingsResolveToOneUnambiguousIdentity
   NativeRequestSpec.test_nativeBindingRequestsAreValidatedAtTheirBoundary
   CoreSpec.test_typedCoreIsValidatedIndependentlyOfInference

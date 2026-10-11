@@ -3,7 +3,7 @@
 -- and the harness's controls. The law's body is the same IR in both
 -- languages. ref:DEC-typed-core-boundary ref:DEC-portable-seeded-generation
 -- ref:REQ-harness-units
-module LawSpec.DotNet.Properties (emitTests, testNames) where
+module LawSpec.DotNet.Properties (emitTests, testNames, emitNativeGenerators) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -18,6 +18,7 @@ import qualified LawSpec.DotNet.Expr as X
 import qualified LawSpec.DotNet.Effects as Effects
 import qualified LawSpec.DotNet.Policy as Policy
 import qualified LawSpec.DotNet.Definitions as Definitions
+import qualified LawSpec.DotNet.Data as Data
 import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.BeamGenerators as BeamGenerators
 import qualified LawSpec.BeamProperties as BeamProperties
@@ -28,13 +29,13 @@ import Data.List (nub, intercalate)
 
 testNames :: Lang -> [String] -> [String]
 testNames FSharp labels = unitTestNames "fsharp" labels
-testNames CSharp labels = map capital (unitTestNames "csharp" labels)
+testNames CSharp labels = unitTestNames "csharp" labels
   where capital (c : cs) = toUpper c : cs
         capital [] = []
 
 -- | A test file for each unit with laws.
-emitTests :: Lang -> D.Layout -> Plan -> Either String [Artifact]
-emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned ->
+emitTests :: Lang -> D.Layout -> Bool -> Plan -> Either String [Artifact]
+emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) $ \planned ->
   if null (plannedProperties planned) then pure [] else do
     let unit = plannedUnit planned
         properties = plannedProperties planned
@@ -91,7 +92,7 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
         handled <- Effects.withHandlers units X.schemaVar X.symbolsVar [] (const body)
         let measure = call "Harness" "benchmark" [Str (C.idText (C.unitId unit)), Str benchmarkLabel,
               Lambda [] tUnit (Do [call "Runtime" "ignore" [handled]] UnitLit)]
-        pure (declareTest (camel n) ("benchmark " ++ benchmarkLabel) (setup measure))
+        pure (declareTest (if lang == FSharp then camel n else pascal n) ("benchmark " ++ benchmarkLabel) (setup measure))
     lawTests unit name planned = do
       let law = plannedProperty planned
           parameters = map C.quantifiedBinder (C.propertyInputs law)
@@ -198,7 +199,10 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
                            Lambda [("values", tValues)] (tOption tValue) (boundInputs (inDomain (call "Runtime" "some" [invoke (Var "values")])))]
                        | Just ds <- [descriptors] ]
               check = Let "generation" (Ty "Generators.Context" "Generators.Context")
-                (call "Property" "generation" [X.schemaVar, X.symbolsVar, IntLit (toInteger attempts)])
+                (if nativeGenerators
+                  then call "Property" "generationWith" [X.schemaVar, X.symbolsVar, IntLit (toInteger attempts),
+                    Raw "LawSpec.Tests.NativeGenerators.factories" "LawSpec.Tests.NativeGenerators.Factories"]
+                  else call "Property" "generation" [X.schemaVar, X.symbolsVar, IntLit (toInteger attempts)])
                 (Let "generator" (Ty "Gen<Value list>" "Gen<FSharpList<Value>>") generator
                   (Do replay (call "Property" "check" [Str label, config, Var "generator", property])))
           searches <- case (C.harnessTarget harness, descriptors) of
@@ -343,3 +347,34 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
       let name = "choice" ++ path
       in call "Gen" "bind" [selector, Lambda [(name, tInt)] genTy
            (Invoke (call "Runtime" "nth" [Var name, ListOf (tFun [] genTy) branches]) [])]
+
+-- | The application's generators bound in lawspec.json, by type: each
+-- factory gives native values, which its type's codec makes portable. They
+-- compile before the tests, after the test project's Native/ code.
+-- ref:DEC-native-bindings-typed-identity
+emitNativeGenerators :: Lang -> D.Layout -> Int -> [C.DataDeclaration] -> [(C.Id, [String], Int)] -> Either String [Artifact]
+emitNativeGenerators _ _ _ _ [] = pure []
+emitNativeGenerators lang layout bits declarations bound = do
+  names <- dataNames declarations
+  entries <- forM bound $ \(identity, factory, parameters) -> do
+    if parameters > 0 then Left (".NET binds generators of types without parameters: " ++ C.idText identity) else pure ()
+    codec <- Data.codec lang bits names [] (C.Constructor (C.idText identity) [])
+    let ref = intercalate "." factory
+    pure $ case lang of
+      FSharp -> "(" ++ stringLiteral FSharp (C.idText identity) ++ ", (fun (_: Gen<Value> list) -> Gen.map " ++ codec ++ ".FromNative (" ++ ref ++ " ())))"
+      CSharp -> "Fn.Tuple(" ++ stringLiteral CSharp (C.idText identity) ++ ", Fn.F1((FSharpList<Gen<Value>> _) => Gen.Map(" ++ codec ++ ".FromNative, " ++ ref ++ "())))"
+  let doc = case lang of
+        FSharp -> D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
+          D.text "/// The application's generators, bound in lawspec.json." <> D.hardline <>
+          D.text "module LawSpec.Tests.NativeGenerators" <> D.hardline <> D.hardline <>
+          D.text "open LawSpec.Runtime" <> D.hardline <> D.text "open LawSpec.Testing" <> D.hardline <> D.hardline <>
+          D.text "let factories : (string * Generators.Factory) list =" <> D.nest 4 (D.hardline <>
+            D.text "[ " <> D.joinWith (D.hardline <> D.text "  ") (map D.text entries) <> D.text " ]") <> D.hardline
+        CSharp -> D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
+          D.text "namespace LawSpec.Tests;" <> D.hardline <> D.hardline <>
+          D.joinWith D.hardline (map D.text (Definitions.csUsingLines ++ ["using LawSpec.Testing;"])) <> D.hardline <> D.hardline <>
+          D.text "/// <summary>The application's generators, bound in lawspec.json.</summary>" <> D.hardline <>
+          D.text "public static class NativeGenerators" <> D.hardline <>
+          D.block 4 (D.text "public static FSharpList<Tuple<string, FSharpFunc<FSharpList<Gen<Value>>, Gen<Value>>>> Factories =>" <> D.nest 4 (D.hardline <>
+            D.text "Fn.List(" <> D.joinWith (D.text "," <> D.hardline <> D.text "    ") (map D.text entries) <> D.text ");")) <> D.hardline
+  pure [Artifact ("tests/LawSpec/NativeGenerators" ++ extension lang) (D.render layout doc) "generated" "test"]

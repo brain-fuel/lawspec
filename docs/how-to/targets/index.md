@@ -21,6 +21,8 @@ where generated files go, and how LawSpec types appear in your code.
 | [`erlang`](erlang.md) | OTP 29, Rebar3 3.27.1 | PropEr 1.5.0, EUnit | `rebar3 eunit` |
 | [`elixir`](elixir.md) | OTP 29, Elixir 1.20.x, Mix | StreamData 1.4.0, ExUnit | `mix test` |
 | [`gleam`](gleam.md) | OTP 29, Gleam 1.18 or 1.19, Erlang target | qcheck 1.0.5, gleeunit 1.11.0 | `gleam test` |
+| [`fsharp`](fsharp.md) | .NET SDK 10, MSBuild | xunit.v3 4.0.2 on Microsoft.Testing.Platform | `dotnet test` |
+| [`csharp`](csharp.md) | .NET SDK 10, MSBuild, over the F# runtime | xunit.v3 4.0.2 on Microsoft.Testing.Platform | `dotnet test` |
 
 Exact version bounds are in [compatibility](../../reference/compatibility.md).
 

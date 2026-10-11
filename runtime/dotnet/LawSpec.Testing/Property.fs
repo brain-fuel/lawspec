@@ -94,6 +94,12 @@ let settings (cases: int) (attempts: int) (shrinks: int) = { Cases = cases; MaxA
 let generation (schema: Schema.Schema) (symbols: Scalar.SymbolContext) (attempts: int) : Generators.Context =
     { Schema = schema; Symbols = symbols; Factories = Map.empty; Attempts = attempts }
 
+/// As generation, with the application's generators (bound in lawspec.json)
+/// in place of the built-in ones for their types.
+[<CompiledName("GenerationWith")>]
+let generationWith (schema: Schema.Schema) (symbols: Scalar.SymbolContext) (attempts: int) (factories: (string * Generators.Factory) list) : Generators.Context =
+    { Schema = schema; Symbols = symbols; Factories = Map.ofList factories; Attempts = attempts }
+
 /// Each boundary case, in order; the first that fails names its position.
 [<CompiledName("Boundaries")>]
 let boundaries (label: string) (cases: Value list list) (law: Value list -> Value) =
