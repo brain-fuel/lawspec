@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.cs
+<<<<<<<
+new Account("waitlist", 18, 0)
+=======
+new Account("waitlist", 18, 1)
+>>>>>>>

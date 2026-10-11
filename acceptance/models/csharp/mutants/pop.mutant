@@ -1,0 +1,6 @@
+@@ src/Example/Models.cs
+<<<<<<<
+        Stack.Push cell => new PopFlow(cell.top, cell.rest),
+=======
+        Stack.Push cell => new PopFlow(cell.top, stack),
+>>>>>>>

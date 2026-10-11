@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.cs
+<<<<<<<
+public static string EchoRaw(string value) => value;
+=======
+public static string EchoRaw(string value) => "�";
+>>>>>>>

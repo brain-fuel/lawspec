@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.cs
+<<<<<<<
+public static BigInteger Count(string text) => text.EnumerateRunes().Count();
+=======
+public static BigInteger Count(string text) => BigInteger.Zero;
+>>>>>>>

@@ -1,0 +1,14 @@
+expect: every case gets an empty store
+@@ src/Example/Resources.cs
+<<<<<<<
+        public Dictionary<int, int> Items { get; } = new();
+=======
+        public Dictionary<int, int> Items { get; } = sharedItems;
+>>>>>>>
+@@ src/Example/Resources.cs
+<<<<<<<
+    private static int openCount;
+=======
+    private static int openCount;
+    private static readonly Dictionary<int, int> sharedItems = new();
+>>>>>>>

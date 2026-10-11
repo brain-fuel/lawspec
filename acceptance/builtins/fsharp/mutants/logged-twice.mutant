@@ -1,0 +1,8 @@
+expect: a charge is logged once
+@@ src/Example/Builtins.fs
+<<<<<<<
+        log.LogMessage(Info, sprintf "charged %d" cents)
+=======
+        log.LogMessage(Info, sprintf "charged %d" cents)
+        log.LogMessage(Info, sprintf "charged again %d" cents)
+>>>>>>>

@@ -76,7 +76,7 @@ export async function doctor(target, root, plannedArtifacts = []) {
       ? ["src/main/java", "src/test/java"]
       : name === "kotlin"
         ? ["src/main/kotlin", "src/test/kotlin"]
-        : ["src", ["python", "rust"].includes(name) ? "tests" : "test"];
+        : ["src", ["python", "rust", "fsharp", "csharp"].includes(name) ? "tests" : "test"];
   const sourceDir = target.sourceDir ?? defaults[0];
   const testDir = target.testDir ?? defaults[1];
   try {
@@ -463,6 +463,27 @@ export async function doctor(target, root, plannedArtifacts = []) {
       } finally {
         await rm(tmp, { recursive: true, force: true });
       }
+    } else if (name === "fsharp" || name === "csharp") {
+      // .NET: the SDK, xUnit v3 on Microsoft.Testing.Platform (selected in
+      // global.json), and projects that import the generated props.
+      const extension = name === "fsharp" ? ".fsproj" : ".csproj";
+      versions.dotnet = (await run(target.dotnet || "dotnet", ["--version"], root)).trim();
+      requireThat(major(versions.dotnet) >= 10, ".NET SDK 10+ is required");
+      const global = JSON.parse(await readFile(path.join(root, "global.json"), "utf8").catch(() => "{}"));
+      requireThat(global?.test?.runner === "Microsoft.Testing.Platform",
+        "global.json must select the Microsoft.Testing.Platform test runner: { \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }");
+      const projects = async (folder) =>
+        (await readdir(path.join(root, folder)).catch(() => [])).filter((file) => file.endsWith(extension));
+      const sources = await projects(sourceDir);
+      const tests = await projects(testDir);
+      requireThat(sources.length === 1, `Expected one ${extension} project in ${sourceDir}`);
+      requireThat(tests.length === 1, `Expected one ${extension} project in ${testDir}`);
+      const source = await readFile(path.join(root, sourceDir, sources[0]), "utf8");
+      const test = await readFile(path.join(root, testDir, tests[0]), "utf8");
+      requireThat(source.includes("LawSpec.Sources.props"), `${sourceDir}/${sources[0]} must import LawSpec.Sources.props`);
+      requireThat(test.includes("LawSpec.Tests.props"), `${testDir}/${tests[0]} must import LawSpec.Tests.props`);
+      versions["xunit.v3"] = test.match(/<PackageReference\s+Include="xunit\.v3"\s+Version="([^"]+)"/)?.[1];
+      requireThat(versions["xunit.v3"], `${testDir}/${tests[0]} must reference the xunit.v3 package`);
     } else if (["erlang", "elixir", "gleam"].includes(name)) {
       const beam = await beamDoctor(target, root, plannedArtifacts, run);
       Object.assign(versions, beam.versions);

@@ -1,0 +1,7 @@
+@@ src/Example/Distribution.cs
+<<<<<<<
+                tally.Add(n);
+                return tally.Add(n);
+=======
+                return tally.Add(n);
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.cs
+<<<<<<<
+public static sbyte Positive(sbyte a) => a;
+=======
+public static sbyte Positive(sbyte a) => 0;
+>>>>>>>

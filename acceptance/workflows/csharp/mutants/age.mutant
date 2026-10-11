@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.cs
+<<<<<<<
+        signup.Age < 18 ?
+=======
+        signup.Age < 17 ?
+>>>>>>>

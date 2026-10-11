@@ -217,8 +217,8 @@ targetSteps target =
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
   | suite <- ["integration", "definitions", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "consistency", "distribution", "packages", "refinement", "scalar", "records", "sequences", "composition", "contracts"] ] ++
   -- The tutorial lessons have Java, Python and JavaScript tracks; the site
-  -- also runs their TypeScript implementations.
-  [ step (target ++ "-lessons") (acceptance ["lessons", target]) | target `elem` ["java", "python", "javascript", "typescript"] ] ++
+  -- also runs their TypeScript, F# and C# implementations.
+  [ step (target ++ "-lessons") (acceptance ["lessons", target]) | target `elem` ["java", "python", "javascript", "typescript", "fsharp", "csharp"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32-compact") compact (acceptance [suite, target])
   | suite <- ["indexed", "domain", "packages", "algebra", "definitions"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32") [("LAWSPEC_MACHINE_BITS", "32")] (acceptance [suite, "--no-mutants", target])

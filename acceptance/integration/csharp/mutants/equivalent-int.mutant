@@ -1,0 +1,6 @@
+@@ src/Example/Alternatives.cs
+<<<<<<<
+x < 0 ? 0 : x;
+=======
+-1;
+>>>>>>>

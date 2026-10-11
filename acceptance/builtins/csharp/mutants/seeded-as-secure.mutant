@@ -1,0 +1,12 @@
+rejected-at: compile
+expect: ISecureRandom
+@@ src/Example/Builtins.cs
+<<<<<<<
+    public static byte[] Token(ISecureRandom secureRandom, int count) => secureRandom.SecureBytes(count);
+=======
+    public static byte[] Token(ISecureRandom secureRandom, int count)
+    {
+        ISecureRandom seeded = LawSpec.DefaultHandlers.Random();
+        return seeded.SecureBytes(count);
+    }
+>>>>>>>

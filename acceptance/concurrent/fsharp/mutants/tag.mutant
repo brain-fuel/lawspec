@@ -1,0 +1,6 @@
+@@ src/Example/Concurrent.fs
+<<<<<<<
+    Task.Run(fun () -> (set value0).TryAdd(value1, ()))
+=======
+    Task.Run(fun () -> (set value0).TryAdd(value1, ()) |> ignore; true)
+>>>>>>>

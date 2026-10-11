@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/Example/Matchers.fs
+<<<<<<<
+let average (a: int) (b: int) : float = (float a + float b) / 2.0
+=======
+let average (a: int) (b: int) : float = (float a + float b) / 2.0 + 1.0
+>>>>>>>

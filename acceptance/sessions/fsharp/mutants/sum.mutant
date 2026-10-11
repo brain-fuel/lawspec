@@ -1,0 +1,6 @@
+@@ src/Example/Sessions.fs
+<<<<<<<
+    afterB.Send(int64 a + int64 b) |> ignore
+=======
+    afterB.Send(int64 a + int64 b + 1L) |> ignore
+>>>>>>>

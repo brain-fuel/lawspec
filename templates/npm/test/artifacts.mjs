@@ -1,7 +1,9 @@
 // Property suites are separate from reusable framework strategy helpers.
 export function propertyFiles(files) {
   return files.filter(file => file.placement === 'test' &&
-    /(?:LawSpecTest\.(?:java|kt)|Spec\.hs|lawspec_test\.go|_lawspec\.(?:py|rs)|\.lawspec\.test\.(?:mjs|ts)|_lawspec_tests\.erl|_lawspec_test\.(?:exs|gleam))$/.test(file.path));
+    (/(?:LawSpecTest\.(?:java|kt)|Spec\.hs|lawspec_test\.go|_lawspec\.(?:py|rs)|\.lawspec\.test\.(?:mjs|ts)|_lawspec_tests\.erl|_lawspec_test\.(?:exs|gleam))$/.test(file.path) ||
+      // .NET: one file of laws per unit; models, crypto vectors and native generators apart.
+      /^tests\/LawSpec\/(?!CryptoVectors\.|NativeGenerators\.)[A-Za-z0-9]+(?<!Models)\.(?:fs|cs)$/.test(file.path)));
 }
 
 // Elixir and Gleam suites delegate their assertions and example metadata to

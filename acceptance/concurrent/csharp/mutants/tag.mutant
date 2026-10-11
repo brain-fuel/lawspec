@@ -1,0 +1,6 @@
+@@ src/Example/Concurrent.cs
+<<<<<<<
+    public static Task<bool> Tag(Tags tags, int tag) => Task.Run(() => Set(tags).TryAdd(tag, true));
+=======
+    public static Task<bool> Tag(Tags tags, int tag) => Task.Run(() => { Set(tags).TryAdd(tag, true); return true; });
+>>>>>>>

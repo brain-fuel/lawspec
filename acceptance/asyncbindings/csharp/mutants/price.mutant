@@ -1,0 +1,6 @@
+@@ src/Native/Stock.cs
+<<<<<<<
+    public static Task<int> PriceOf(string sku) => Task.Run(() => Price(sku));
+=======
+    public static Task<int> PriceOf(string sku) => Task.Run(() => Price(sku) + 1);
+>>>>>>>

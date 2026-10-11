@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.fs
+<<<<<<<
+{ Front = value0; Back = value0 }
+=======
+{ Front = value0; Back = Cell(0y, value0) }
+>>>>>>>

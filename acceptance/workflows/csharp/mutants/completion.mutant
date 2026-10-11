@@ -1,0 +1,12 @@
+@@ src/Example/Approvals.cs
+<<<<<<<
+        if (result is Either<ApproveError, Order>.Left { left: ApproveError.ApproveFailures { error: var failures } })
+        {
+=======
+        if (result is Either<ApproveError, Order>.Left { left: ApproveError.ApproveFailures { error: var some } } && !some.IsEmpty)
+        {
+            return Fn.ListOf(Workflows.Finished);
+        }
+        if (result is Either<ApproveError, Order>.Left { left: ApproveError.ApproveFailures { error: var failures } })
+        {
+>>>>>>>

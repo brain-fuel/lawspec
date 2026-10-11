@@ -1,0 +1,12 @@
+expect-any: Hello | https://example.com/path
+@@ src/Example/CanonicalUrl.cs
+<<<<<<<
+*
+=======
+namespace Example;
+
+public static class CanonicalUrl
+{
+    public static string Canonicalize(string x) => x.Substring(0, 0);
+}
+>>>>>>>

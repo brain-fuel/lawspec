@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.cs
+<<<<<<<
+    public static long Cheaper(long a, long b) => Math.Min(a, b);
+=======
+    public static long Cheaper(long a, long b) => a;
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.fs
+<<<<<<<
+    value0 + value1
+=======
+    { value0 with Exponent = max value0.Exponent value1.Exponent }
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ src/Example/Composition.fs
+<<<<<<<
+            | false, _ -> Error UnknownLog
+=======
+            | false, _ -> Error EmptyRecord
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Indexed.fs
+<<<<<<<
+    | VCons(_, tail0), VCons(head1, tail1) -> VCons(head1, zip tail0 tail1)
+=======
+    | VCons(_, tail0), VCons(_, tail1) -> zip tail0 tail1
+>>>>>>>

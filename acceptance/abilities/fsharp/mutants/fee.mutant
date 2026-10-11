@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ src/Example/Abilities.fs
+<<<<<<<
+        member _.Fee() = 25 }
+=======
+        member _.Fee() = -25 }
+>>>>>>>

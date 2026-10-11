@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/Example/Matchers.cs
+<<<<<<<
+Order.NewShipped(id, "post");
+=======
+Order.NewShipped(id, "");
+>>>>>>>

@@ -1,0 +1,8 @@
+@@ src/Example/BooleanFlags.fs
+<<<<<<<
+*
+=======
+module Example.BooleanFlags
+
+let flipFlag (x: bool) : bool = x
+>>>>>>>

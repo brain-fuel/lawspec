@@ -1,0 +1,6 @@
+@@ src/Example/Algebra.fs
+<<<<<<<
+let add (x: bigint) (y: bigint) : bigint = x + y
+=======
+let add (x: bigint) (y: bigint) : bigint = bigint (int (System.Numerics.BigInteger.Remainder(x + y, 2147483648I)))
+>>>>>>>

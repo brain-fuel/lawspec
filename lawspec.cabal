@@ -488,6 +488,24 @@ library
       LawSpec.Discharge
       LawSpec.Domain
       LawSpec.DomainModel
+      LawSpec.DotNet.Abilities
+      LawSpec.DotNet.Actors
+      LawSpec.DotNet.Code
+      LawSpec.DotNet.Data
+      LawSpec.DotNet.Definitions
+      LawSpec.DotNet.Effects
+      LawSpec.DotNet.Emit
+      LawSpec.DotNet.Entries
+      LawSpec.DotNet.Expr
+      LawSpec.DotNet.Handlers
+      LawSpec.DotNet.Mailboxes
+      LawSpec.DotNet.Models
+      LawSpec.DotNet.Names
+      LawSpec.DotNet.Policy
+      LawSpec.DotNet.Properties
+      LawSpec.DotNet.Remote
+      LawSpec.DotNet.Sessions
+      LawSpec.DotNetSources
       LawSpec.Elaboration
       LawSpec.ElixirCode
       LawSpec.ElixirNative
@@ -585,6 +603,7 @@ library
       LawSpec.TestManifest
       LawSpec.TestNames
       LawSpec.Time
+      LawSpec.Typed.FSharp
       LawSpec.Typed.Go
       LawSpec.Typed.Haskell
       LawSpec.Typed.Jvm
@@ -748,6 +767,7 @@ test-suite lawspec-test
       DistributionSpec
       DocumentSpec
       DomainModelSpec
+      DotNetSpec
       FlowSpec
       GadtSpec
       GenericDefinitionSpec

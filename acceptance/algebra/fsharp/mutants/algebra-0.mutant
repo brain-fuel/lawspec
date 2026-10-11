@@ -1,0 +1,6 @@
+@@ src/Example/Algebra.fs
+<<<<<<<
+let multiply (x: bigint) (y: bigint) : bigint = x * y
+=======
+let multiply (x: bigint) (y: bigint) : bigint = x + y
+>>>>>>>

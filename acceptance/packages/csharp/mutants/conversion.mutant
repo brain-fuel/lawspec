@@ -1,0 +1,6 @@
+@@ src/Shop/Domain.cs
+<<<<<<<
+=> new Money(currency, money.Cents);
+=======
+=> money;
+>>>>>>>

@@ -1,5 +1,5 @@
 version: 0.22.0
-canon: 0.2.1
+canon: 0.2.2
 registry: canonical_refs.yaml
 decisions: canonical_decisions.yaml
 exemptions: canonical_exemptions.yaml
@@ -20,6 +20,9 @@ ignore:
   - tools/*.mjs
   - editors/vscode/test/grammar.test.mjs
   - src/LawSpec/RuntimeSources.hs
+  - src/LawSpec/DotNetSources.hs
+  - runtime/dotnet/*/bin/
+  - runtime/dotnet/*/obj/
   - runtime/defaults/
 languages:
   folio:
@@ -67,6 +70,16 @@ languages:
     lexer: .canon/grammars/kotlin/canonically_commented/KotlinLexer.g4
     parser: .canon/grammars/kotlin/canonically_commented/KotlinParser.g4
     start: kotlinFile
+  fsharp:
+    extensions: [.fs, .fsi, .fsx]
+    lexer: .canon/grammars/fsharp/canonically_commented/FSharpLexer.g4
+    parser: .canon/grammars/fsharp/canonically_commented/FSharpParser.g4
+    start: file
+  csharp:
+    extensions: [.cs]
+    lexer: .canon/grammars/csharp/canonically_commented/CSharpLexer.g4
+    parser: .canon/grammars/csharp/canonically_commented/CSharpParser.g4
+    start: compilation_unit
   rust:
     extensions: [.rs]
     lexer: .canon/grammars/rust/RustLexer.g4

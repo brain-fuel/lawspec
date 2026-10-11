@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.fs
+<<<<<<<
+let fold (value0: Expr<bigint>) : Expr<bigint> = Number(evalNumber value0)
+=======
+let fold (value0: Expr<bigint>) : Expr<bigint> = Number 0I
+>>>>>>>

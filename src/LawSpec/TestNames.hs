@@ -57,6 +57,7 @@ testIdentifier target ws = case target of
   "elixir" -> "law_" ++ intercalate "_" ws
   "gleam" -> "law_" ++ intercalate "_" ws
   "go" -> "Test" ++ concatMap capital ws
+  "csharp" -> "Law" ++ concatMap capital ws
   _ -> "law" ++ concatMap capital ws
   where capital (c : cs) = toUpper c : cs
         capital [] = []
@@ -67,6 +68,7 @@ kindSuffix :: String -> String -> String
 kindSuffix target kind = case target of
   "python" -> "__" ++ snake kind
   "go" -> "_" ++ capital kind
+  "csharp" -> "_" ++ capital kind
   "rust" -> ""
   _ -> "_" ++ kind
   where capital (c : cs) = toUpper c : cs

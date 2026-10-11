@@ -1,0 +1,10 @@
+expect-any: Hello | https://example.com/path
+@@ src/Example/Slug.fs
+<<<<<<<
+*
+=======
+module Example.Slug
+
+let normalize (x: string) : string = x
+let referenceNormalize (x: string) : string = x
+>>>>>>>

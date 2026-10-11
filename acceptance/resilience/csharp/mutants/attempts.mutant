@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.cs
+<<<<<<<
+    public static FSharpList<BigInteger> RetriedWaits(int attempts) => Waits(attempts, true);
+=======
+    public static FSharpList<BigInteger> RetriedWaits(int attempts) => Waits(attempts + 1, true);
+>>>>>>>

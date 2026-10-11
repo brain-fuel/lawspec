@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.cs
+<<<<<<<
+public static Optional<Nullable<sbyte>> EchoPresence(Optional<Nullable<sbyte>> value) => value;
+=======
+public static Optional<Nullable<sbyte>> EchoPresence(Optional<Nullable<sbyte>> value) => Optional<Nullable<sbyte>>.Undefined;
+>>>>>>>

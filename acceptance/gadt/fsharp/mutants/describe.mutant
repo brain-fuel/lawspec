@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.fs
+<<<<<<<
+    | Shown.Shown(_, witness) -> witness
+=======
+    | Shown.Shown(_, _) -> "Int32"
+>>>>>>>

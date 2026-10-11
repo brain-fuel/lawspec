@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.fs
+<<<<<<<
+    | Negate operand -> not (evalTruth operand)
+=======
+    | Negate operand -> evalTruth operand
+>>>>>>>

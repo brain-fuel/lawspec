@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.fs
+<<<<<<<
+{ Rest.Items = value0 }
+=======
+{ Rest.Items = (match value0 with Cell(_, tail) -> tail | End -> value0) }
+>>>>>>>

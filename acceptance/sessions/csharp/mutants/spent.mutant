@@ -1,0 +1,8 @@
+expect: this end was already used
+@@ src/Example/Sessions.cs
+<<<<<<<
+        var afterB = afterA.Send(b);
+=======
+        afterA.Send(b);
+        var afterB = afterA.Send(b);
+>>>>>>>

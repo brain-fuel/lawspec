@@ -1,0 +1,11 @@
+@@ src/Example/Models.fs
+<<<<<<<
+    Task.Run(fun () -> Interlocked.Increment(&counters[value0.Id].contents))
+=======
+    Task.Run(fun () ->
+        let count = counters[value0.Id]
+        let seen = count.Value
+        Thread.Sleep 1
+        count.Value <- seen + 1L
+        seen + 1L)
+>>>>>>>

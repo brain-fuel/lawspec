@@ -18,6 +18,7 @@ import LawSpec.Witness (witnessPlan)
 import LawSpec.Collections (isCollectionsType)
 import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
 import qualified LawSpec.BeamEmit as Beam
+import qualified LawSpec.DotNet.Emit as DotNet
 import qualified LawSpec.NativeBinding as Binding
 import qualified LawSpec.NativeRequest as NB
 import qualified LawSpec.CoreScalarEmit as Scalar
@@ -81,6 +82,8 @@ emitPlan = emitPlanWithFormat False
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target original | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
+  (wirePlan (witnessPlan (ownedAbilityPlan original)))
+emitPlanWithFormat minify target original | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
   (wirePlan (witnessPlan (ownedAbilityPlan original)))
 emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
@@ -490,7 +493,7 @@ emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> N
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
       bindings = escapeBindings target unescaped
-  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell","erlang","elixir","gleam"] || not (any Binding.resolvedGeneratorStub
+  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell","erlang","elixir","gleam","fsharp","csharp"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
     (Left [Diagnostic "native-binding" ("generator scaffolds are not implemented for " ++ target) Nothing])
   prepared <- if target == "go" && NB.hasBindings bindings
@@ -498,7 +501,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
   let plan = wrappedHandlers target bindings (boundHandlers bindings (if target == "kotlin" then nativeHandles bindings prepared else prepared))
-  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go","erlang","elixir","gleam"] || all ((== Nothing) . Binding.resolvedCodec)
+  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go","erlang","elixir","gleam","fsharp","csharp"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
   unless (target == "go" || null (NB.bindingGoImports bindings))
@@ -508,6 +511,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
   emitted <- if not (NB.hasBindings bindings) then emitPlanWithFormat minify target plan
     else if target `elem` ["erlang","elixir","gleam"] then
       Beam.emitBeamWithBindings target minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
+    else if target `elem` DotNet.dotnetTargets then
+      DotNet.emitDotNetWithBindings target minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     -- Rust emits bound units itself, so it adds the companion code here.
     else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindings minify bindings plan
       <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan))))
@@ -538,6 +543,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
     else Left [Diagnostic "native-binding" ("native binding emission is not implemented for " ++ target) Nothing]
   canonical <- if NB.hasBindings bindings && minify && target `elem` ["erlang","elixir","gleam"]
     then Beam.emitBeamWithBindings target False bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
+    else if NB.hasBindings bindings && minify && target `elem` DotNet.dotnetTargets
+    then DotNet.emitDotNetWithBindings target False bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if NB.hasBindings bindings && minify && target == "rust"
     then emitRustWithBindings False bindings plan
     else if NB.hasBindings bindings && minify && target == "python" then do
@@ -576,6 +583,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
         "python" -> ("src", "tests")
         "rust" -> ("src", "tests")
         "elixir" -> ("lib", "test")
+        "fsharp" -> ("src", "tests")
+        "csharp" -> ("src", "tests")
         "go" -> ("", "")
         _ -> ("src", "test")
       src = maybe (fst defaults) id sourceDir
@@ -609,6 +618,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
         { artifactPath = if target `elem` ["erlang","elixir","gleam"] &&
               artifactPath a `elem` ["lawspec_crypto_build.escript", "priv/lawspec_crypto_native.c"]
             then artifactPath a -- Native build assets belong to the application root, beside ebin's priv.
+            -- The .NET runtime projects stay beside the solution, whatever the layout.
+            else if target `elem` DotNet.dotnetTargets && "lawspec/" `isPrefixOf` artifactPath a then artifactPath a
             else if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a)
             -- Test resources (JUnit's configuration) stay where the build finds them.
             else if "src/test/resources/" `isPrefixOf` artifactPath a then artifactPath a

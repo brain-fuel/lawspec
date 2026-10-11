@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.fs
+<<<<<<<
+    if signup.Name = "" then Either.Left MissingName else Either.Right signup
+=======
+    if signup.Name = "" && false then Either.Left MissingName else Either.Right signup
+>>>>>>>

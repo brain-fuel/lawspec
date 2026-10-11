@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/Example/Matchers.cs
+<<<<<<<
+((double)a + b) / 2.0;
+=======
+((double)a + b) / 2.0 + 1.0;
+>>>>>>>

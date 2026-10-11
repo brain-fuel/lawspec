@@ -1,0 +1,6 @@
+@@ src/Example/Collections.fs
+<<<<<<<
+List.map (fun (word, count) -> word, bigint count)
+=======
+List.map (fun (word, _) -> word, 1I)
+>>>>>>>

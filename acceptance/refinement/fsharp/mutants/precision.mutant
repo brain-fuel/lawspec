@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.fs
+<<<<<<<
+let preserve (a: uint64) : bigint = bigint a
+=======
+let preserve (a: uint64) : bigint = bigint (float a)
+>>>>>>>

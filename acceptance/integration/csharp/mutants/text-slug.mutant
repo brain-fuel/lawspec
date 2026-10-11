@@ -1,0 +1,6 @@
+@@ src/Example/Slug.cs
+<<<<<<<
+    public static string ReferenceNormalize(string x) => x.Replace(' ', '-');
+=======
+    public static string ReferenceNormalize(string x) => x;
+>>>>>>>

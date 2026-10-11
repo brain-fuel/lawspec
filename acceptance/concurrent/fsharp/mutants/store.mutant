@@ -1,0 +1,8 @@
+@@ src/Example/Concurrent.fs
+<<<<<<<
+        (map value0).AddOrUpdate(value1, (fun _ -> old <- None; value2), (fun _ v -> old <- Some v; value2)) |> ignore
+        old)
+=======
+        (map value0)[value1] <- value2
+        Some value2)
+>>>>>>>

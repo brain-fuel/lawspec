@@ -1,0 +1,6 @@
+@@ src/Example/Slug.fs
+<<<<<<<
+let referenceNormalize (x: string) : string = x.Replace(' ', '-')
+=======
+let referenceNormalize (x: string) : string = x
+>>>>>>>

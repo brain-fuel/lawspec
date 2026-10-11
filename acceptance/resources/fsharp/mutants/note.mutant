@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/Example/Resources.fs
+<<<<<<<
+let writeNote (folder: string) (note: int) : unit = File.WriteAllText(Path.Combine(folder, "note.txt"), string note)
+=======
+let writeNote (folder: string) (note: int) : unit = File.WriteAllText(Path.Combine(folder, "note.txt"), string (note + 1))
+>>>>>>>

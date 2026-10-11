@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.cs
+<<<<<<<
+public static BigInteger Add(sbyte a, sbyte b) => new BigInteger(a) + b;
+=======
+public static BigInteger Add(sbyte a, sbyte b) => unchecked((sbyte)(a + b));
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/Example/Composition.fs
+<<<<<<<
+                Ok(int64 (records.Count - 1)) }
+=======
+                Ok(int64 records.Count) }
+>>>>>>>

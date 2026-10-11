@@ -1,0 +1,6 @@
+@@ src/Example/Actors.cs
+<<<<<<<
+    public static Account Reopen(Account account) => new(account.Balance);
+=======
+    public static Account Reopen(Account account) => new(0L);
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Algebra.cs
+<<<<<<<
+public static BigInteger Multiply(BigInteger x, BigInteger y) => x * y;
+=======
+public static BigInteger Multiply(BigInteger x, BigInteger y) => x + y;
+>>>>>>>

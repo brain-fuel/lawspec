@@ -1,0 +1,13 @@
+expect-any: Hello | https://example.com/path
+@@ src/Example/Slug.cs
+<<<<<<<
+*
+=======
+namespace Example;
+
+public static class Slug
+{
+    public static string Normalize(string x) => x;
+    public static string ReferenceNormalize(string x) => x;
+}
+>>>>>>>

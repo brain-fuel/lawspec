@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.cs
+<<<<<<<
+                EvalTruth(Retype(Codec.Bool, b.second))),
+=======
+                !EvalTruth(Retype(Codec.Bool, b.second))),
+>>>>>>>

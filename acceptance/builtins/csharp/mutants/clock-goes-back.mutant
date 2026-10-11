@@ -1,0 +1,9 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ src/Native/Clocks.cs
+<<<<<<<
+        readings++;
+        return inner.Now();
+=======
+        readings++;
+        return new Instant(inner.Now().Value - 1000L * readings);
+>>>>>>>

@@ -1,0 +1,16 @@
+@@ src/Example/ParsePort.cs
+<<<<<<<
+*
+=======
+namespace Example;
+
+using System;
+using System.Globalization;
+
+public static class ParsePort
+{
+    public static bool ValidPort(int x) => false;
+    public static string Render(int x) => ValidPort(x) ? x.ToString(CultureInfo.InvariantCulture) : throw new ArgumentException("invalid port");
+    public static int Parse(string x) => int.Parse(x, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+}
+>>>>>>>

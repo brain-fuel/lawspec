@@ -1,0 +1,13 @@
+@@ src/Example/ParsePort.fs
+<<<<<<<
+*
+=======
+module Example.ParsePort
+
+open System
+open System.Globalization
+
+let validPort (x: int) : bool = true
+let render (x: int) : string = if validPort x then string x else invalidArg "x" "invalid port"
+let parse (x: string) : int = Int32.Parse(x, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture)
+>>>>>>>

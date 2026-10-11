@@ -76,3 +76,5 @@ htmlcov/
 /.canon
 .canon-cache/
 .stack-work-prof/
+runtime/dotnet/**/bin/
+runtime/dotnet/**/obj/

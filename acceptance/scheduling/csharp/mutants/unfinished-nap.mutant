@@ -1,0 +1,6 @@
+@@ src/Example/Overlap.cs
+<<<<<<<
+        return true;
+=======
+        return n != 102;
+>>>>>>>

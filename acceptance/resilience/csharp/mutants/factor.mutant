@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.cs
+<<<<<<<
+        Policy.RetryDelay(Policy.Exponential((long)delay, (long)factor, Fn.None<long>()), (long)attempt);
+=======
+        Policy.RetryDelay(Policy.Exponential((long)delay, (long)factor + 1L, Fn.None<long>()), (long)attempt);
+>>>>>>>

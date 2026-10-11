@@ -1,0 +1,6 @@
+@@ src/Example/Generation.fs
+<<<<<<<
+    Descriptors.generated text (bigint seed) size count
+=======
+    Descriptors.generated text (bigint seed + 1I) size count
+>>>>>>>

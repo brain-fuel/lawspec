@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ src/Native/Counting.cs
+<<<<<<<
+        inner.Verify(key, message, signature);
+=======
+        inner.Verify(key, message, signature) || message.Length > 0;
+>>>>>>>

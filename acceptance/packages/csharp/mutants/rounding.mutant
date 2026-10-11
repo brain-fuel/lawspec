@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.cs
+<<<<<<<
+    public static long RoundDown(long cents) => cents - cents % 100L;
+=======
+    public static long RoundDown(long cents) => cents > 0L ? cents - 1L : cents;
+>>>>>>>

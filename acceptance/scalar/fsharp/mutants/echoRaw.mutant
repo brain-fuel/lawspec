@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.fs
+<<<<<<<
+let echoRaw (value0: string) : string = value0
+=======
+let echoRaw (value0: string) : string = string (char 65533)
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ src/Example/Matchers.cs
+<<<<<<<
+Fn.ListOf(tags.Distinct());
+=======
+Fn.ListOf(tags.Distinct().Append("extra"));
+>>>>>>>

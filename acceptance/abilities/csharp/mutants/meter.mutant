@@ -1,0 +1,7 @@
+expect: Meter: reading gives what its type says [native]
+@@ src/Example/Shop.cs
+<<<<<<<
+        public int Reading() => 3;
+=======
+        public int Reading() => -1;
+>>>>>>>

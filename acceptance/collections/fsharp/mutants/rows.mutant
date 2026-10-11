@@ -1,0 +1,6 @@
+@@ src/Example/Collections.fs
+<<<<<<<
+let distinctRows (value0: sbyte list list) : Set<sbyte list> = Set.ofList value0
+=======
+let distinctRows (value0: sbyte list list) : Set<sbyte list> = Set.ofList (List.filter (List.isEmpty >> not) value0)
+>>>>>>>

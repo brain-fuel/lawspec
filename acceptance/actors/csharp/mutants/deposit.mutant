@@ -1,0 +1,6 @@
+@@ src/Example/Actors.cs
+<<<<<<<
+        var after = account.Balance + amount;
+=======
+        var after = account.Balance + amount + (amount == 7 ? 1 : 0);
+>>>>>>>

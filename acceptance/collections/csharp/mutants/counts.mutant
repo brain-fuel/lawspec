@@ -1,0 +1,6 @@
+@@ src/Example/Collections.cs
+<<<<<<<
+new BigInteger(group.Count())
+=======
+BigInteger.One
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: discount
+@@ src/Example/Harness.cs
+<<<<<<<
+order.Total / 10
+=======
+order.Total + 1
+>>>>>>>

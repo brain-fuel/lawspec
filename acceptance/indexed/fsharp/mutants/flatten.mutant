@@ -1,0 +1,6 @@
+@@ src/Example/Indexed.fs
+<<<<<<<
+        let right = VCons(value, flatten right)
+=======
+        let right = VCons(value, VNil)
+>>>>>>>

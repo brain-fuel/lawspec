@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/Example/Failures.cs
+<<<<<<<
+            cents < 0 ? Decision.Block
+=======
+            cents < 0 ? Decision.NewDecline("negative")
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/Example/Builtins.fs
+<<<<<<<
+    TimeSpan.FromTicks((clock.Now().Value - start) * 10L)
+=======
+    TimeSpan.FromTicks((start - clock.Now().Value - 1L) * 10L)
+>>>>>>>

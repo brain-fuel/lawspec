@@ -28,7 +28,9 @@ testCommand target = lookup target
   , ("kotlin", "gradle test")
   , ("erlang", "rebar3 eunit")
   , ("elixir", "mix test")
-  , ("gleam", "gleam test") ]
+  , ("gleam", "gleam test")
+  , ("fsharp", "dotnet test")
+  , ("csharp", "dotnet test") ]
 
 -- | The pinned toolchain each target is verified against, stated once so doctor,
 -- the CLI and the docs give the same advice.
@@ -44,6 +46,8 @@ setupAdvice target = lookup target
   , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(); a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.")
   , ("erlang", "Use Erlang/OTP 29, Rebar3 3.27.1 and PropEr 1.5.0 as a Hex dependency in the test profile. Configure {eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}. Run rebar3 as test compile to prepare dependencies, then rebar3 eunit. Custom test directories must be in extra_src_dirs." ++ beamCryptoSetup)
   , ("elixir", "Use Erlang/OTP 29, Elixir 1.20.x and StreamData 1.4.0 as a direct Hex test dependency. Run mix deps.get and MIX_ENV=test mix deps.compile. In MIX_ENV=test include src and test/support in erlc_paths, and lib and test/support in elixirc_paths. Add LawSpec.Beam.ExUnitFormatter to ExUnit's formatters in test/test_helper.exs and use unfiltered discovery. Run mix test." ++ beamCryptoSetup)
+  , ("fsharp", "Use the .NET 10 SDK (10.0.100 or later) with F# 10. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; the generated runtime projects under lawspec/ use FSharp.Core from the SDK and, for a program that imports lawspec.crypto or lawspec.network, BouncyCastle.Cryptography 2.7.0. Import src/LawSpec.Sources.props and tests/LawSpec.Tests.props in the project files, as lawspec init does. Run dotnet build.")
+  , ("csharp", "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build.")
   , ("gleam", "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test." ++ beamCryptoSetup) ]
 
 beamCryptoSetup :: String
@@ -192,6 +196,7 @@ scaffoldFilesWith crypto minify target = case target of
              , "testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-property:5.9.1\")" ])
         , kotlinBlock "tasks.test" ["useJUnitPlatform()"] ] ++ "\n") ]
+  _ | target `elem` ["fsharp", "csharp"] -> Right (dotnetScaffold minify target)
   _ -> Left ("Unknown target: " ++ target)
   where
     noble = [("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")]) | crypto]
@@ -200,6 +205,53 @@ scaffoldFilesWith crypto minify target = case target of
       | minify = name ++ " { " ++ intercalate "; " statements ++ " }"
       | otherwise = name ++ " {\n" ++ intercalate "\n" (map ("    " ++) statements) ++ "\n}"
     json value = renderJson minify 0 value ++ "\n"
+
+-- | A .NET solution: the source project and its tests, over the LawSpec
+-- runtime projects the compiler writes to lawspec/. F# lists its files in
+-- order, so its projects import the generated props. dotnet test runs the
+-- tests on Microsoft.Testing.Platform. ref:DEC-fsharp-runtime-from-scratch
+dotnetScaffold :: Bool -> String -> [(FilePath, String)]
+dotnetScaffold minify target =
+  [ ("global.json", "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n")
+  , ("Example.slnx", lines' $
+      [ "<Solution>"
+      , "  <Project Path=\"src/Example." ++ ext ++ "\" />"
+      , "  <Project Path=\"tests/Example.Tests." ++ ext ++ "\" />"
+      , "  <Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />"
+      , "  <Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />" ] ++
+      [ "  <Project Path=\"lawspec/LawSpec.Model/LawSpec.Model.fsproj\" />" | target == "csharp" ] ++
+      [ "</Solution>" ])
+  , ("src/Example." ++ ext, lines'
+      ([ "<Project Sdk=\"Microsoft.NET.Sdk\">"
+       , "  <PropertyGroup>"
+       , "    <TargetFramework>net10.0</TargetFramework>"
+       , "    <RootNamespace>Example</RootNamespace>" ] ++
+       [ "    <Nullable>disable</Nullable>" | target == "csharp" ] ++
+       [ "  </PropertyGroup>"
+       , "  <Import Project=\"LawSpec.Sources.props\" />"
+       , "  <ItemGroup>"
+       , "    <ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />"
+       , "  </ItemGroup>"
+       , "</Project>" ]))
+  , ("tests/Example.Tests." ++ ext, lines'
+      ([ "<Project Sdk=\"Microsoft.NET.Sdk\">"
+       , "  <PropertyGroup>"
+       , "    <TargetFramework>net10.0</TargetFramework>"
+       , "    <OutputType>Exe</OutputType>"
+       , "    <IsPackable>false</IsPackable>"
+       , "    <IsTestProject>true</IsTestProject>" ] ++
+       [ "    <Nullable>disable</Nullable>" | target == "csharp" ] ++
+       [ "  </PropertyGroup>"
+       , "  <Import Project=\"LawSpec.Tests.props\" />"
+       , "  <ItemGroup>"
+       , "    <ProjectReference Include=\"../src/Example." ++ ext ++ "\" />"
+       , "    <ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />"
+       , "    <PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />"
+       , "  </ItemGroup>"
+       , "</Project>" ])) ]
+  where
+    ext = if target == "fsharp" then "fsproj" else "csproj"
+    lines' = if minify then unlines . map (dropWhile (== ' ')) else unlines
 
 -- | The JSON subset these files need, laid out as JSON.stringify(value, null, 2)
 -- (or without indentation when minified), keeping field order.

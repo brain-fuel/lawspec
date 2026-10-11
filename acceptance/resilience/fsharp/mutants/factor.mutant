@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.fs
+<<<<<<<
+    bigint (Policy.retryDelay (Policy.exponential (int64 delay) (int64 factor) None) (int64 attempt))
+=======
+    bigint (Policy.retryDelay (Policy.exponential (int64 delay) (int64 factor + 1L) None) (int64 attempt))
+>>>>>>>

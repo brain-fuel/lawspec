@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.cs
+<<<<<<<
+        signup.Name == "" ?
+=======
+        signup.Name == "" && false ?
+>>>>>>>

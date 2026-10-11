@@ -1,0 +1,13 @@
+@@ src/Example/Concurrent.fs
+<<<<<<<
+        match q.TryDequeue() with
+        | true, front -> Some front
+        | _ -> None)
+=======
+        match q.TryPeek() with
+        | true, front ->
+            Thread.Sleep 1
+            q.TryDequeue() |> ignore
+            Some front
+        | _ -> None)
+>>>>>>>

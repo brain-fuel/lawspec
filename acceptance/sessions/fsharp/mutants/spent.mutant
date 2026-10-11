@@ -1,0 +1,8 @@
+expect: this end was already used
+@@ src/Example/Sessions.fs
+<<<<<<<
+    let afterB = afterA.Send b
+=======
+    afterA.Send b |> ignore
+    let afterB = afterA.Send b
+>>>>>>>

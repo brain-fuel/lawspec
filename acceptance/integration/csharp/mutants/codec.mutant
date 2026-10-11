@@ -1,0 +1,6 @@
+@@ src/Example/AtoiCodec.cs
+<<<<<<<
+    public static int Atoi(string value) => int.Parse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+=======
+    public static int Atoi(string value) => 0;
+>>>>>>>

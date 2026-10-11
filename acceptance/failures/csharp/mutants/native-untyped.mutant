@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/Example/Failures.cs
+<<<<<<<
+            ? Outcome.Error<int, PaymentError>(PaymentError.NewTooLarge(5000))
+=======
+            ? throw new System.InvalidOperationException("too large")
+>>>>>>>

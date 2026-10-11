@@ -1,0 +1,6 @@
+@@ src/Example/Alternatives.fs
+<<<<<<<
+let referenceRender (x: int) : string = string x
+=======
+let referenceRender (x: int) : string = "broken"
+>>>>>>>

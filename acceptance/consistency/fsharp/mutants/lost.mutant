@@ -1,0 +1,18 @@
+@@ src/Example/Consistency.fs
+<<<<<<<
+let hit (value0: Views) : int64 =
+    lock gate (fun () ->
+        let mine = replicas[value0.Id]
+        let me = Environment.CurrentManagedThreadId
+        let count = (match mine.TryGetValue me with | true, n -> n | _ -> 0L) + 1L
+        mine[me] <- count
+        count)
+=======
+let hit (value0: Views) : int64 =
+    let mine, seen = lock gate (fun () -> let m = replicas[value0.Id] in m, Seq.sum m.Values)
+    Threading.Thread.Sleep 1
+    lock gate (fun () ->
+        mine.Clear()
+        mine[0] <- seen + 1L
+        seen + 1L)
+>>>>>>>

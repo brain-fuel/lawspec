@@ -12,7 +12,9 @@ export const targets = [
                          "rust",
                          "erlang",
                          "elixir",
-                         "gleam"
+                         "gleam",
+                         "fsharp",
+                         "csharp"
                        ];
 export const targetLabels = [
                               [
@@ -58,6 +60,14 @@ export const targetLabels = [
                               [
                                 "gleam",
                                 "Gleam"
+                              ],
+                              [
+                                "fsharp",
+                                "F#"
+                              ],
+                              [
+                                "csharp",
+                                "C#"
                               ]
                             ];
 
@@ -72,7 +82,9 @@ export const commands = {
                           "rust": "cargo test",
                           "erlang": "rebar3 eunit",
                           "elixir": "mix test",
-                          "gleam": "gleam test"
+                          "gleam": "gleam test",
+                          "fsharp": "dotnet test",
+                          "csharp": "dotnet test"
                         };
 
 export const setup = {
@@ -86,7 +98,9 @@ export const setup = {
                        "rust": "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6 and num-traits 0.2.19; a program that imports lawspec.crypto, lawspec.network or lawspec.randomness also needs sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.",
                        "erlang": "Use Erlang/OTP 29, Rebar3 3.27.1 and PropEr 1.5.0 as a Hex dependency in the test profile. Configure {eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}. Run rebar3 as test compile to prepare dependencies, then rebar3 eunit. Custom test directories must be in extra_src_dirs. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
                        "elixir": "Use Erlang/OTP 29, Elixir 1.20.x and StreamData 1.4.0 as a direct Hex test dependency. Run mix deps.get and MIX_ENV=test mix deps.compile. In MIX_ENV=test include src and test/support in erlc_paths, and lib and test/support in elixirc_paths. Add LawSpec.Beam.ExUnitFormatter to ExUnit's formatters in test/test_helper.exs and use unfiltered discovery. Run mix test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
-                       "gleam": "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application."
+                       "gleam": "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
+                       "fsharp": "Use the .NET 10 SDK (10.0.100 or later) with F# 10. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; the generated runtime projects under lawspec/ use FSharp.Core from the SDK and, for a program that imports lawspec.crypto or lawspec.network, BouncyCastle.Cryptography 2.7.0. Import src/LawSpec.Sources.props and tests/LawSpec.Tests.props in the project files, as lawspec init does. Run dotnet build.",
+                       "csharp": "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build."
                      };
 
 // Each target's build files in the readable and the compact (minified) layout.
@@ -197,6 +211,34 @@ const scaffolds = {
                         "test-support/gleam.toml": "# Generated test helpers are a development-only dependency.\nname = \"lawspec_test_support\"\nversion = \"0.1.0\"\ntarget = \"erlang\"\n\n[dependencies]\nqcheck = \"== 1.0.5\"\n",
                         "test-support/src/.gitkeep": "",
                         "test/lawspec_example_test.gleam": "@external(erlang, \"lawspec_beam_test_run\", \"gleam_main\")\npub fn main() -> Nil\n"
+                      }
+                    },
+                    "fsharp": {
+                      "readable": {
+                        "global.json": "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n",
+                        "Example.slnx": "<Solution>\n  <Project Path=\"src/Example.fsproj\" />\n  <Project Path=\"tests/Example.Tests.fsproj\" />\n  <Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n  <Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n</Solution>\n",
+                        "src/Example.fsproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <RootNamespace>Example</RootNamespace>\n  </PropertyGroup>\n  <Import Project=\"LawSpec.Sources.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n  </ItemGroup>\n</Project>\n",
+                        "tests/Example.Tests.fsproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <OutputType>Exe</OutputType>\n    <IsPackable>false</IsPackable>\n    <IsTestProject>true</IsTestProject>\n  </PropertyGroup>\n  <Import Project=\"LawSpec.Tests.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"../src/Example.fsproj\" />\n    <ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n    <PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n  </ItemGroup>\n</Project>\n"
+                      },
+                      "compact": {
+                        "global.json": "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n",
+                        "Example.slnx": "<Solution>\n<Project Path=\"src/Example.fsproj\" />\n<Project Path=\"tests/Example.Tests.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n</Solution>\n",
+                        "src/Example.fsproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<RootNamespace>Example</RootNamespace>\n</PropertyGroup>\n<Import Project=\"LawSpec.Sources.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n</ItemGroup>\n</Project>\n",
+                        "tests/Example.Tests.fsproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<OutputType>Exe</OutputType>\n<IsPackable>false</IsPackable>\n<IsTestProject>true</IsTestProject>\n</PropertyGroup>\n<Import Project=\"LawSpec.Tests.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../src/Example.fsproj\" />\n<ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n<PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n</ItemGroup>\n</Project>\n"
+                      }
+                    },
+                    "csharp": {
+                      "readable": {
+                        "global.json": "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n",
+                        "Example.slnx": "<Solution>\n  <Project Path=\"src/Example.csproj\" />\n  <Project Path=\"tests/Example.Tests.csproj\" />\n  <Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n  <Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n  <Project Path=\"lawspec/LawSpec.Model/LawSpec.Model.fsproj\" />\n</Solution>\n",
+                        "src/Example.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <RootNamespace>Example</RootNamespace>\n    <Nullable>disable</Nullable>\n  </PropertyGroup>\n  <Import Project=\"LawSpec.Sources.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n  </ItemGroup>\n</Project>\n",
+                        "tests/Example.Tests.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <OutputType>Exe</OutputType>\n    <IsPackable>false</IsPackable>\n    <IsTestProject>true</IsTestProject>\n    <Nullable>disable</Nullable>\n  </PropertyGroup>\n  <Import Project=\"LawSpec.Tests.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"../src/Example.csproj\" />\n    <ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n    <PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n  </ItemGroup>\n</Project>\n"
+                      },
+                      "compact": {
+                        "global.json": "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n",
+                        "Example.slnx": "<Solution>\n<Project Path=\"src/Example.csproj\" />\n<Project Path=\"tests/Example.Tests.csproj\" />\n<Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Model/LawSpec.Model.fsproj\" />\n</Solution>\n",
+                        "src/Example.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<RootNamespace>Example</RootNamespace>\n<Nullable>disable</Nullable>\n</PropertyGroup>\n<Import Project=\"LawSpec.Sources.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n</ItemGroup>\n</Project>\n",
+                        "tests/Example.Tests.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<OutputType>Exe</OutputType>\n<IsPackable>false</IsPackable>\n<IsTestProject>true</IsTestProject>\n<Nullable>disable</Nullable>\n</PropertyGroup>\n<Import Project=\"LawSpec.Tests.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../src/Example.csproj\" />\n<ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n<PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n</ItemGroup>\n</Project>\n"
                       }
                     }
                   };

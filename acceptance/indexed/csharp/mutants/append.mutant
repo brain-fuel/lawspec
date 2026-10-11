@@ -1,0 +1,6 @@
+@@ src/Example/Indexed.cs
+<<<<<<<
+Vec<sbyte>.VCons cons => Vec<sbyte>.NewVCons(cons.head, Append(cons.tail, back)),
+=======
+Vec<sbyte>.VCons cons => Append(cons.tail, back),
+>>>>>>>

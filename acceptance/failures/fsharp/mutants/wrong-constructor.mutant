@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/Example/Failures.fs
+<<<<<<<
+            if value0 < 0 then Block
+=======
+            if value0 < 0 then Decline "negative"
+>>>>>>>

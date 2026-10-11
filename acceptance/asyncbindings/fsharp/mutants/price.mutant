@@ -1,0 +1,6 @@
+@@ src/Native/Stock.fs
+<<<<<<<
+let priceOf (sku: string) : Task<int> = Task.Run<int>(fun () -> price sku)
+=======
+let priceOf (sku: string) : Task<int> = Task.Run<int>(fun () -> price sku + 1)
+>>>>>>>

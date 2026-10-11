@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/Example/Failures.cs
+<<<<<<<
+            : cents % 2 == 1 ? 
+=======
+            : cents % 2 == 1 && cents > 50000 ? 
+>>>>>>>

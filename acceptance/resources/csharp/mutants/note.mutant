@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/Example/Resources.cs
+<<<<<<<
+Path.Combine(folder, "note.txt"), note.ToString());
+=======
+Path.Combine(folder, "note.txt"), (note + 1).ToString());
+>>>>>>>

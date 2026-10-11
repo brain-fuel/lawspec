@@ -24,7 +24,7 @@ import System.FilePath ((</>), takeDirectory, takeExtension)
 import System.IO (readFile')
 import System.Process (readProcessWithExitCode)
 import Gen.Api (apiSources)
-import Gen.Embed (embedRuntimes, embedDefaults)
+import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet)
 import Gen.Json
 import Gen.Template
 import LawSpec.Code.Doc (Layout(..))
@@ -88,7 +88,9 @@ planOutputs = do
   unless (null wide) (die ("Generated API lines exceed 80 columns in: " ++ unwords wide))
   runtimes <- embedRuntimes
   defaults <- embedDefaults
-  let whole = [ Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False ] ++
+  dotnet <- embedDotNet
+  let whole = [ Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
+              , Output "src/LawSpec/DotNetSources.hs" dotnet False ] ++
         [ Output ("npm" </> name) content False | (name, content) <- api ]
   pure (sortOn outputPath (whole ++ map fst rendered))
 

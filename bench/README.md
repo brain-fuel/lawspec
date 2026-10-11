@@ -3,7 +3,7 @@ Benchmarks of LawSpec's generated code, run with `lawspec-dev bench <name>`
 
 `kafka/` drives LawTwin's Kafka reference model (`contract/`, from LawTwin
 under its MIT licence) through the generated `cluster` spec handler of its
-`Broker` ability, on Rust, Go, Java and Kotlin. `bench.json` names the
+`Broker` ability, on Rust, Go, Java, Kotlin, F# and C#. `bench.json` names the
 spec and package to generate; `kafka/<target>/` holds each target's driver,
 copied over the generated project. Every driver runs the same workload,
 scaled by its argument N (1,000,000 by default):

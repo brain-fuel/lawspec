@@ -1,0 +1,13 @@
+@@ src/Example/Models.cs
+<<<<<<<
+        Task.Run(() => Interlocked.Increment(ref counters[counter.Id].Value));
+=======
+        Task.Run(() =>
+        {
+            var cell = counters[counter.Id];
+            var seen = cell.Value;
+            Thread.Sleep(1);
+            cell.Value = seen + 1;
+            return seen + 1;
+        });
+>>>>>>>

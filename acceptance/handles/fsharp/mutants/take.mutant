@@ -1,0 +1,6 @@
+@@ src/Native/Types/Jobs.fs
+<<<<<<<
+        match queue.TryDequeue() with
+=======
+        match queue.TryPeek() with
+>>>>>>>

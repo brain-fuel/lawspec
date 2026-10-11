@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.fs
+<<<<<<<
+let add (a: sbyte) (b: sbyte) : bigint = bigint a + bigint b
+=======
+let add (a: sbyte) (b: sbyte) : bigint = bigint (a + b)
+>>>>>>>

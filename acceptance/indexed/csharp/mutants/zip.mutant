@@ -1,0 +1,6 @@
+@@ src/Example/Indexed.cs
+<<<<<<<
+=> Vec<bool>.NewVCons(r.head, Zip(l.tail, r.tail)),
+=======
+=> Zip(l.tail, r.tail),
+>>>>>>>

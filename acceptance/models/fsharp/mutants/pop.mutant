@@ -1,0 +1,6 @@
+@@ src/Example/Models.fs
+<<<<<<<
+    | Push(top, rest) -> { Result = top; State = rest }
+=======
+    | Push(top, _) -> { Result = top; State = value0 }
+>>>>>>>

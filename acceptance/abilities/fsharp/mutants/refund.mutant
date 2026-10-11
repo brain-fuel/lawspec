@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/Example/Shop.fs
+<<<<<<<
+    if value0 > 100000 then Error TooLarge else Ok (gateway.Capture value0).Cents
+=======
+    if value0 > 100000 then Error Refused else Ok (gateway.Capture value0).Cents
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.fs
+<<<<<<<
+let roundDown (cents: int64) : int64 = cents - cents % 100L
+=======
+let roundDown (cents: int64) : int64 = if cents > 0L then cents - 1L else cents
+>>>>>>>

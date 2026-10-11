@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.cs
+<<<<<<<
+new Halves(row, row);
+=======
+new Halves(row, Row.NewCell(0, row));
+>>>>>>>

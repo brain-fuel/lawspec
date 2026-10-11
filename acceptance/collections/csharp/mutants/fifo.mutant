@@ -1,0 +1,6 @@
+@@ src/Example/Collections.cs
+<<<<<<<
+new Queue<sbyte>(items);
+=======
+new Queue<sbyte>(ListModule.Reverse(items));
+>>>>>>>

@@ -1,0 +1,32 @@
+@@ src/Example/Consistency.cs
+<<<<<<<
+    public static long Hit(Views views)
+    {
+        lock (gate)
+        {
+            var mine = replicas[views.Id];
+            var me = Environment.CurrentManagedThreadId;
+            var count = mine.GetValueOrDefault(me) + 1;
+            mine[me] = count;
+            return count;
+        }
+    }
+=======
+    public static long Hit(Views views)
+    {
+        Dictionary<int, long> mine;
+        long seen;
+        lock (gate)
+        {
+            mine = replicas[views.Id];
+            seen = mine.Values.Sum();
+        }
+        System.Threading.Thread.Sleep(1);
+        lock (gate)
+        {
+            mine.Clear();
+            mine[0] = seen + 1;
+            return seen + 1;
+        }
+    }
+>>>>>>>

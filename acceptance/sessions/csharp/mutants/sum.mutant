@@ -1,0 +1,6 @@
+@@ src/Example/Sessions.cs
+<<<<<<<
+        afterB.Send((long)a + b);
+=======
+        afterB.Send((long)a + b + 1);
+>>>>>>>

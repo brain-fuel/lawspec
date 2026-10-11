@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.cs
+<<<<<<<
+        new Money(line.Price.Currency, Math.Min(
+=======
+        new Money(ShopDomainCurrency.Eur, Math.Min(
+>>>>>>>

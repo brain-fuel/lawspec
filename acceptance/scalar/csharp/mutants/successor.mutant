@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.cs
+<<<<<<<
+public static BigInteger Successor(sbyte value) => new BigInteger(value) + 1;
+=======
+public static BigInteger Successor(sbyte value) => new BigInteger(unchecked((sbyte)(value + 1)));
+>>>>>>>

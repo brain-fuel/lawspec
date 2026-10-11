@@ -1,0 +1,7 @@
+expect: charge captures once
+@@ src/Example/Abilities.fs
+<<<<<<<
+    | Approved cents -> gateway.Capture(cents).Cents = value0
+=======
+    | Approved cents -> gateway.Capture(cents) |> ignore; gateway.Capture(cents).Cents = value0
+>>>>>>>

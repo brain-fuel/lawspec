@@ -416,3 +416,20 @@ test("an attested law's key follows how its dependencies were wired; others keep
   assert.notEqual(standIn.get("example.unit::law::law 0"), real.get("example.unit::law::law 0"));
   assert.equal(standIn.get("example.unit::law::law 1"), plain.get("example.unit::law::law 1"));
 });
+
+test("selects .NET laws with xUnit query filters and reads them back by display name", async () => {
+  const fsharp = [law(1, "tests/LawSpec/ExampleUnit.fs", undefined, "fsharp"), law(10, "tests/LawSpec/ExampleUnit.fs", undefined, "fsharp")];
+  const [run] = invocations({ language: "fsharp" }, fsharp, { scratch: "s" });
+  assert.equal(run.command, "dotnet");
+  assert.deepEqual(run.args.slice(0, 5), ["test", "--filter-query", "/*/*/*/lawLaw1_*", "--filter-query", "/*/*/*/lawLaw1"]);
+  assert.ok(run.args.includes("--report-xunit-junit"));
+  assert.deepEqual(await ranLaws({ language: "fsharp" }, fsharp,
+    '<testsuites><testsuite><testcase name="example.unit::law 1 property" classname="LawSpec.Tests.ExampleUnit"/>' +
+    '<testcase name="example.unit::law 10 example 0: first" classname="LawSpec.Tests.ExampleUnit"/></testsuite></testsuites>'), [1, 10]);
+  assert.deepEqual(await ranLaws({ language: "csharp" }, [law(1, "tests/LawSpec/ExampleUnit.cs", undefined, "csharp")],
+    '<testsuites><testsuite><testcase name="example.unit::law 10 property" classname="LawSpec.Tests.ExampleUnit"/></testsuite></testsuites>'), []);
+  const coverage = invocations({ language: "csharp" }, [law(1, "tests/LawSpec/ExampleUnit.cs")], { coverage: "c" });
+  assert.ok(coverage[0].args.includes("--coverage"));
+  const bench = benchmarkInvocations({ language: "fsharp" }, [{ unit: "example.unit", benchmark: "a booking", file: "tests/LawSpec/ExampleUnit.fs", name: "benchmarkABooking" }]);
+  assert.deepEqual(bench[0].args, ["test", "--filter-query", "/*/*/*/benchmarkABooking"]);
+});

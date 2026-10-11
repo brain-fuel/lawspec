@@ -1,0 +1,6 @@
+@@ src/Example/Generation.cs
+<<<<<<<
+Descriptors.Generated(text, new BigInteger(seed), size, count);
+=======
+Descriptors.Generated(text, new BigInteger(seed) + 1, size, count);
+>>>>>>>
