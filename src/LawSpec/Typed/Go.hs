@@ -859,7 +859,7 @@ equality env ty = case ty of
   where
     substitute table t = case t of
       TypeVariable v -> fromMaybe t (lookup v table)
-      Constructor n as -> Constructor n [(case a of TypeArgument x -> TypeArgument (substitute table x); o -> o) | a <- as]
+      Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substitute table x); o -> o | a <- as]
       other -> other
 
 ordering :: Env -> Type -> M [D.Doc]
@@ -911,7 +911,7 @@ ordering env ty = case ty of
   where
     substitute table t = case t of
       TypeVariable v -> fromMaybe t (lookup v table)
-      Constructor n as -> Constructor n [(case a of TypeArgument x -> TypeArgument (substitute table x); o -> o) | a <- as]
+      Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substitute table x); o -> o | a <- as]
       other -> other
 
 toValue :: Env -> String -> Type -> M [D.Doc]
@@ -977,7 +977,7 @@ toValue env key ty = case ty of
   where
     substitute table t = case t of
       TypeVariable v -> fromMaybe t (lookup v table)
-      Constructor n as -> Constructor n [(case a of TypeArgument x -> TypeArgument (substitute table x); o -> o) | a <- as]
+      Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substitute table x); o -> o | a <- as]
       other -> other
 
 fromValue :: Env -> Type -> M [D.Doc]
@@ -1045,7 +1045,7 @@ fromValue env ty = case ty of
   where
     substitute table t = case t of
       TypeVariable v -> fromMaybe t (lookup v table)
-      Constructor n as -> Constructor n [(case a of TypeArgument x -> TypeArgument (substitute table x); o -> o) | a <- as]
+      Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substitute table x); o -> o | a <- as]
       other -> other
 
 -- | Whether a type converts to and from its native Go type directly: no
@@ -1065,7 +1065,7 @@ nativeDirect env seen ty = case ty of
   where
     substitute table t = case t of
       TypeVariable v -> fromMaybe t (lookup v table)
-      Constructor n as -> Constructor n [(case a of TypeArgument x -> TypeArgument (substitute table x); o -> o) | a <- as]
+      Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substitute table x); o -> o | a <- as]
       other -> other
 
 nativeArguments :: Env -> Type -> M String
@@ -1194,5 +1194,5 @@ fromNative env ty = case ty of
 substituteIn :: [(Id, Type)] -> Type -> Type
 substituteIn table t = case t of
   TypeVariable v -> fromMaybe t (lookup v table)
-  Constructor n as -> Constructor n [(case a of TypeArgument x -> TypeArgument (substituteIn table x); o -> o) | a <- as]
+  Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substituteIn table x); o -> o | a <- as]
   other -> other

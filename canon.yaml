@@ -16,6 +16,15 @@ ignore:
   - templates/site/playground.mjs
   - templates/tools/package-smoke.mjs
   - bench/kafka/kotlin/build.gradle.kts
+  # Temporary: canon's Haskell grammar cannot parse a case inside a list
+  # comprehension (DEC-canon-haskell-comprehension-case).
+  - src/LawSpec/Core.hs
+  - src/LawSpec/Core/Total.hs
+  - src/LawSpec/Typed/Go.hs
+  - src/LawSpec/Typed/Haskell.hs
+  - src/LawSpec/Typed/Jvm.hs
+  - src/LawSpec/Typed/Python.hs
+  - src/LawSpec/Typed/Web.hs
   - npm/
   - tools/*.mjs
   - editors/vscode/test/grammar.test.mjs

@@ -103,6 +103,15 @@ DEC-tests-cite-requirements:
   decided: 0.20.1
   refs: [hspec]
 
+DEC-canon-haskell-comprehension-case:
+  status: open
+  question: canon's Haskell grammar cannot parse a case expression inside a list comprehension ([case a of ...; o -> o | a <- as]), which the LawTwin work uses in Core and the typed emitters. How does canon check stay green without reshaping valid code?
+  answer: |
+    The code stays as written. canon.yaml ignores exactly the modules canon fails to parse (src/LawSpec/Core.hs, src/LawSpec/Core/Total.hs and src/LawSpec/Typed/Go.hs, Haskell.hs, Jvm.hs, Python.hs and Web.hs), as a temporary entry for a canon bug. Their vetting rows, all pending, leave canonical_vetting with them, since canon reports a verdict on material it no longer reads; nothing signed is lost. When canon's Haskell grammar parses a case in a comprehension, the entry is removed, canon ingest records the modules' rows as pending again, and they are checked again.
+  opened: 0.22.0
+  revisit: 0.23.0
+  refs: [canon]
+
 DEC-haskell-grammar-workarounds:
   status: decided
   question: canon's Haskell grammar could not read nine of LawSpec's modules, where a case sits in a list comprehension, a let in a guard is followed by a comma, a do block is a case scrutinee, a guard follows a do block, or a let uses explicit braces. What changes?
