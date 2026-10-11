@@ -13,6 +13,7 @@ using LawSpec.CSharp;
 using LawSpec.Data;
 using LawSpec.Handlers.LawtwinKafka;
 
+/// <summary>The Kafka reference model's workload through the generated cluster handler.</summary>
 public static class KafkaBench
 {
     const int Partitions = 100;
@@ -41,6 +42,7 @@ public static class KafkaBench
         Console.WriteLine($"memory {label} {GC.GetTotalMemory(true)}");
     }
 
+    /// <summary>Runs the workload on a thread with a deep stack.</summary>
     public static void Main(string[] args)
     {
         var scale = args.Length > 0 ? long.Parse(args[0]) : 1_000_000L;

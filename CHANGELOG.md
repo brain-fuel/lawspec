@@ -19,8 +19,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   SplitMix64 generation and shrinking, models, linearizability, scenarios and
   the whole harness. C# runs over it: the program's model is a generated F#
   project, and adapters, entries, the embedding API and tests are C#, with
-  `LawSpec.CSharp` as the compatibility layer. Every acceptance suite passes
-  on both, with its mutants rejected. See the F# and C# setup guides.
+  `LawSpec.CSharp` as the compatibility layer. Definitions whose values all
+  have native types run typed, over the program's own F# types with checked
+  .NET integers, and each spec handler is a native class with `Result`
+  try-forms and its state to read or restore (typed handlers keep it native).
+  Native bindings, `lawspec test`, `lawspec doctor`, the native payments
+  example and `lawspec-dev bench kafka` cover both targets. Every acceptance
+  suite passes on both, with its mutants rejected. See the F# and C# setup
+  guides.
 - `lawspec evidence` says which tested laws ran against stand-ins. It reads
   an environment attestation, a versioned JSON document any tool may write
   for one run: the environment, the run's id and times, and for each

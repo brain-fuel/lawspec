@@ -108,6 +108,24 @@ var next = LawSpec.Definitions.ExampleTotal.Increment(5);
 A definition that uses abilities takes their interfaces first; one that can
 fail returns an `FSharpResult`, and an `async` one a `Task`.
 
+A definition whose values all have native types runs typed, in the model's
+`LawSpec.TypedProgram`, over the same F# types: its entry converts only its
+arguments and result, as on F#.
+
+## Spec handlers
+
+Each spec handler is a class you can use outside any law:
+`LawSpec.Handlers.<Unit>.<Handler>` implements the interface of every ability
+it answers, an operation that can fail returns an `FSharpResult`, and a
+stateful handler's `State` property reads or replaces its state:
+
+```csharp
+var broker = new LawSpec.Handlers.LawtwinKafka.Cluster();
+var snapshot = broker.State;
+broker.ProduceRequest(partition, Maybe.Nothing<ProducerTag>(), Fn.List(record));
+broker.State = snapshot;
+```
+
 ## Native bindings
 
 `lawspec.json` can bind functions, constructors, methods, handlers and
@@ -133,3 +151,9 @@ The tests are C# xUnit facts over the same engine as F#: seeded SplitMix64
 generation and shrinking, the model runner, and the harness's order, parallel
 units, cover, retries, timeouts, known failures and benchmarks. `LAWSPEC_SEED`
 replays a run.
+
+`npx lawspec test` runs only the laws an edit can affect, selecting their
+tests with xUnit's query filter; `npx lawspec doctor` checks the SDK, the test
+runner and the generated props, as on F#. A generator binding names a static
+method of no arguments returning a `LawSpec.Testing.Gen<T>` of the generated
+type, in `tests/Native`.

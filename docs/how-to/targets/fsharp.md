@@ -118,6 +118,35 @@ and a unit nested in it never collide.
 A definition that uses abilities takes their interfaces first. One that can
 fail returns a `Result`; an `async` one returns a `Task`.
 
+### Typed definitions
+
+A definition whose values all have native types runs typed: it is a function
+in `LawSpec.TypedProgram` over the same records, unions, lists, options,
+`Map` and `Set` you use, so nothing is converted inside it, and its entry
+converts only its arguments and result. Bounded integers are .NET's own,
+checked as LawSpec checks them; `Integer` is `bigint`; `Text` is a `string`
+measured in code points. A self-recursive call in tail position becomes a
+loop. Each function is named for its definition and a digest of its
+identity, so its name survives unrelated edits. `lawspec-dev bench kafka
+--typed` lists the definitions that stay dynamic, and why.
+
+## Spec handlers
+
+Each spec handler is a class you can use outside any law:
+`LawSpec.Handlers.<Unit>.<Handler>` implements the interface of every ability
+it answers. An operation that can fail returns a `Result`, its failure as a
+value. A stateful handler has a `State` property: read it for a snapshot,
+assign it to force, reset or restore the state. When every clause is typed,
+the class keeps its state native and runs the typed clauses, so a snapshot is
+shared, never copied:
+
+```fsharp
+let broker = LawSpec.Handlers.LawtwinKafka.Cluster()
+let snapshot = broker.State
+broker.ProduceRequest(partition, None, [ record ]) |> ignore
+broker.State <- snapshot
+```
+
 ## Native bindings
 
 `lawspec.json` can bind types, functions, methods, constructors, handlers and
@@ -130,6 +159,9 @@ failures to application code:
   method of the handle argument; a constructor binding makes the handle.
 - A failure binding turns an exception of the named type into a failure
   constructor, given the exception's message.
+- A generator binding names a function of no arguments that returns a
+  `LawSpec.Testing.Gen` of the native type; put it in `tests/Native`, which
+  compiles before the tests. It replaces the built-in generation of that type.
 
 ## Actors, sessions and mailboxes
 
@@ -164,3 +196,9 @@ and cases by the run's seed, and a `parallel` unit puts each law in a class of
 its own, so xUnit runs them at once; other units run one at a time. Cover,
 classify, labels, targeted search, retries, timeouts, known failures and
 benchmarks follow the harness, and their statistics go to `LAWSPEC_STATS`.
+
+`npx lawspec test` runs only the laws an edit can affect: it selects their
+xUnit tests by method with the query filter, and reads which ran from the
+JUnit report. `npx lawspec doctor` checks the SDK version, that `global.json`
+selects Microsoft.Testing.Platform, and that both projects import the
+generated props.

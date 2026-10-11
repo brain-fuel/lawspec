@@ -9,28 +9,37 @@ open System.Diagnostics
 open LawSpec.Data
 open LawSpec.Handlers.LawtwinKafka
 
+/// The topic's partitions, the group's members and records per fetch.
 let partitions = 100
+/// The consumer group's members.
 let members = 10
+/// Records per fetch.
 let fetchSize = 500
 
+/// A request's value; a refusal ends the run.
 let ok (result: Result<'T, KafkaError>) =
     match result with
     | Ok value -> value
     | Error error -> failwithf "refused: %A" error
 
+/// The benchmark topic's partition p.
 let tp (p: int) : TopicPartition = { Topic = "bench"; Partition = p }
 
+/// A record with an 8-byte key and a 64-byte value.
 let record (i: int64) : Record =
     let key = BitConverter.GetBytes(i) |> Array.rev
     { Key = Some key; Value = Some(Array.create 64 (byte 'x')); Headers = [] }
 
+/// Prints a phase's operations and seconds.
 let phase (name: string) (ops: int64) (start: int64) =
     printfn "phase %s %d %.6f" name ops (float (Stopwatch.GetTimestamp() - start) / float Stopwatch.Frequency)
 
+/// Prints the live heap after collecting.
 let memory (label: string) =
     for _ in 1..3 do GC.Collect()
     printfn "memory %s %d" label (GC.GetTotalMemory true)
 
+/// The workload, at a scale.
 let run (scale: int64) =
     let broker = Cluster()
     let all = Stopwatch.GetTimestamp()
@@ -112,6 +121,7 @@ let run (scale: int64) =
     let after = ok (broker.FetchRequest(tp 0, 0L, 10, ReadCommitted))
     printfn "check restored %b" (after.HighWatermark = r.HighWatermark)
 
+/// Runs the workload on a thread with a deep stack.
 [<EntryPoint>]
 let main argv =
     let scale = if argv.Length > 0 then int64 argv.[0] else 1_000_000L
