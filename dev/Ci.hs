@@ -51,7 +51,8 @@ import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist,
 import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitFailure, exitWith)
 import System.FilePath ((</>))
-import System.IO (hClose, hFlush, hGetContents, hIsTerminalDevice, stdout)
+import GHC.IO.Handle.Lock (LockMode(..), hLock, hTryLock)
+import System.IO (Handle, IOMode(..), hClose, hFlush, hGetContents, hIsTerminalDevice, openFile, stdout)
 import System.Posix.Signals (Handler(..), installHandler, signalProcessGroup, sigKILL, sigTERM)
 import System.Posix.Types (ProcessGroupID)
 import System.Process (CreateProcess(..), StdStream(..), createProcess, getPid, proc, readCreateProcessWithExitCode, waitForProcess)
@@ -77,6 +78,7 @@ ci args = do
   options <- either (\message -> putStrLn message >> exitFailure) pure (parse args)
   workers <- maybe defaultJobs pure (jobs options)
   createDirectoryIfMissing True logs
+  environments <- if coreOnly options then pure Nothing else Just <$> lockEnvironments
   repository <- repositoryFiles
   editor <- doesDirectoryExist "editors/vscode/node_modules"
   let groups = stepGroups options editor
@@ -94,6 +96,8 @@ ci args = do
       (\t -> modifyIORef' (running console) (++ [taskName t]))
       (\t _ -> modifyIORef' (running console) (filter (/= taskName t)))
   mapM_ killThread ticker
+  -- Released here, so the handle (and its lock) lives through every step.
+  mapM_ hClose environments
   -- Failures are named in the order of the steps, however they finished.
   let failedNames = S.fromList [name | (name, False) <- results]
       failed = [stepName s | s <- ordered, stepName s `S.member` failedNames]
@@ -104,6 +108,21 @@ ci args = do
       say console ("Failed: " ++ intercalate ", " failed)
       say console ("Logs: " ++ logs)
       exitWith (ExitFailure 1)
+
+-- | Worktrees may share .integration through a link, and two runs must not
+-- bootstrap or test in the same environments at once: a run holds an
+-- exclusive lock on a file inside it (wherever the link resolves) until it
+-- exits, and another waits.
+lockEnvironments :: IO Handle
+lockEnvironments = do
+  createDirectoryIfMissing True ".integration"
+  h <- openFile (".integration" </> ".lawspec-ci.lock") ReadWriteMode
+  free <- hTryLock h ExclusiveLock
+  unless free $ do
+    putStrLn "Waiting for another lawspec-dev ci that uses .integration..."
+    hFlush stdout
+    hLock h ExclusiveLock
+  pure h
 
 -- | Half the processors: many steps run compilers that use several cores.
 defaultJobs :: IO Int
@@ -189,6 +208,7 @@ plan workers groups = map task (repositorySteps ++ interleaved)
             ++ [f | (f, ft) <- zip beamFrameworks ["erlang", "elixir", "gleam"], ft == t]
             ++ [warmUp t | t `elem` warmTargets, name /= warmUp t]
     claims name env command target =
+      [if name `elem` aloneSteps then Exclusive "machine" else Shared "machine"] ++
       [Exclusive "stack-build" | buildsStack command] ++
       [Exclusive "stack-work" | name `elem` stackBuilders] ++
       [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
@@ -212,6 +232,12 @@ plan workers groups = map task (repositorySteps ++ interleaved)
     timing name command = name == "beam-runtime" ||
       maybe False ((`elem` timingSuites) . fst) (acceptanceSuite command)
     isJust' = maybe False (const True)
+
+-- | Steps that run alone: package-smoke exports every bundled example under
+-- a hang guard, single-threaded for minutes, and a loaded machine slows it
+-- past any fixed guard.
+aloneSteps :: [String]
+aloneSteps = ["package-smoke"]
 
 -- | The BEAM steps that exercise a native property framework, bootstrapping
 -- its target when the framework is missing.

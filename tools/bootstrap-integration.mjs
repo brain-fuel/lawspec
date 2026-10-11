@@ -61,6 +61,16 @@ async function setup(target) {
       )
     ) {
       await copyFile(lock, path.join(root, "package-lock.json"));
+      // The environment serves every suite, including those that import
+      // lawspec.crypto or lawspec.network, so it declares the lock's packages,
+      // which a project scaffolded without crypto leaves out; npm ci would
+      // otherwise skip them.
+      const declared = JSON.parse(await readFile(lock, "utf8")).packages[""];
+      const manifestPath = path.join(root, "package.json");
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      for (const field of ["dependencies", "devDependencies"])
+        if (declared[field]) manifest[field] = { ...manifest[field], ...declared[field] };
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
       await run(
         "npm",
         ["ci", "--ignore-scripts", "--no-audit", "--no-fund"],
@@ -97,6 +107,8 @@ async function setup(target) {
         path.join(repo, "test/locks/python.txt"),
         "-e",
         ".[test]",
+        // For the suites that import lawspec.crypto or lawspec.network.
+        "cryptography",
       ],
       root,
     );

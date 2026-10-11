@@ -28,8 +28,10 @@ async function run(cmd, args, cwd = root) {
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
       // Guards against hangs, not slow machines: exporting every bundled example
-      // takes over a minute locally and roughly twice that on CI runners.
-      timeout: 600000,
+      // takes about eight minutes alone, single-threaded, and much longer on a
+      // loaded machine, so the guard is half an hour (lawspec-dev ci also runs
+      // this step alone).
+      timeout: 1800000,
     });
   } catch (e) {
     throw new Error(`${cmd}: ${e.stdout}\n${e.stderr}`);
