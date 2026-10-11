@@ -1,0 +1,10 @@
+@@ src/Example/Models.cs
+<<<<<<<
+        Task.Run(() => Interlocked.Decrement(ref counters[counter.Id].Value));
+=======
+        Task.Run(() =>
+        {
+            var cell = counters[counter.Id];
+            return cell.Value >= 3 ? Interlocked.Add(ref cell.Value, -2) : Interlocked.Decrement(ref cell.Value);
+        });
+>>>>>>>

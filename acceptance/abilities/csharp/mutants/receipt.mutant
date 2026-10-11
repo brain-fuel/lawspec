@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ src/Example/Abilities.cs
+<<<<<<<
+        public Receipt Capture(int cents) => new Receipt(cents);
+=======
+        public Receipt Capture(int cents) => new Receipt(cents < 1000 ? cents : cents - 1);
+>>>>>>>

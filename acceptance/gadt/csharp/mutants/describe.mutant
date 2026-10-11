@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.cs
+<<<<<<<
+public static string Describe(Shown shown) => shown.witness;
+=======
+public static string Describe(Shown shown) => "Int32";
+>>>>>>>

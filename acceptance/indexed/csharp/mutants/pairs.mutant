@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.cs
+<<<<<<<
+new Pairs(row);
+=======
+new Pairs(Row.NewCell(0, row));
+>>>>>>>

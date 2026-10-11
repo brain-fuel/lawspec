@@ -1,0 +1,7 @@
+expect: remove
+@@ src/Example/Harness.cs
+<<<<<<<
+(cents + 4) / 10 * 10;
+=======
+(cents + 9) / 10 * 10;
+>>>>>>>

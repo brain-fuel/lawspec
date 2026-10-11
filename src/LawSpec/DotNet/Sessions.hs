@@ -95,15 +95,15 @@ emitSessions layout bits datas units
         D.text "[<RequireQualifiedAccess>]" <> D.hardline <>
         D.text ("module " ++ name ++ " =") <> D.nest 4 (D.hardline <> D.joinWith (D.hardline <> D.hardline)
           [ D.text "/// The protocol, as the runtime runs it." <> D.hardline <>
-            D.text ("let spec : SessionSpec = Protocols.spec " ++ identity)
+            D.text "[<CompiledName(\"Spec\")>]" <> D.hardline <> D.text ("let spec : SessionSpec = Protocols.spec " ++ identity)
           , D.text "/// A new channel's two ends, in this process." <> D.hardline <>
-            D.text ("let channel () : " ++ firstStart ++ " * " ++ secondStart ++ " =") <> D.nest 4 (D.hardline <>
+            D.text "[<CompiledName(\"Channel\")>]" <> D.hardline <> D.text ("let channel () : " ++ firstStart ++ " * " ++ secondStart ++ " =") <> D.nest 4 (D.hardline <>
               D.text "let first, second = Sessions.openPair spec" <> D.hardline <>
               D.text (firstStart ++ "(first), " ++ secondStart ++ "(second)"))
           , D.text "/// The first end, listening at name on a node; its address is Address." <> D.hardline <>
-            D.text ("let listen (node: Node) (name: string) : " ++ firstStart ++ " = " ++ firstStart ++ "(Sessions.listen node name spec)")
+            D.text "[<CompiledName(\"Listen\")>]" <> D.hardline <> D.text ("let listen (node: Node) (name: string) : " ++ firstStart ++ " = " ++ firstStart ++ "(Sessions.listen node name spec)")
           , D.text "/// The second end, dialling a listening first end's address." <> D.hardline <>
-            D.text ("let dial (node: Node) (address: string) : " ++ secondStart ++ " = " ++ secondStart ++ "(Sessions.dial node address spec)")
+            D.text "[<CompiledName(\"Dial\")>]" <> D.hardline <> D.text ("let dial (node: Node) (address: string) : " ++ secondStart ++ " = " ++ secondStart ++ "(Sessions.dial node address spec)")
           , first, second ]))
     endModule native codec s isFirst = do
       let ends = endSteps isFirst s

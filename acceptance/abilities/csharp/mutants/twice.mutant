@@ -1,0 +1,7 @@
+expect: charge captures once
+@@ src/Example/Abilities.cs
+<<<<<<<
+            && gateway.Capture(approved.cents).Cents == cents;
+=======
+            && gateway.Capture(approved.cents) != null && gateway.Capture(approved.cents).Cents == cents;
+>>>>>>>

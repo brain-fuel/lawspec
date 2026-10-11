@@ -1,0 +1,6 @@
+@@ src/Example/Keywords.cs
+<<<<<<<
+public static BigInteger Class(BigInteger value) => value << 1;
+=======
+public static BigInteger Class(BigInteger value) => value << 2;
+>>>>>>>

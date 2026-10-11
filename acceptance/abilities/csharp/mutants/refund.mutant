@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/Example/Shop.cs
+<<<<<<<
+            ? Outcome.Error<int, PaymentError>(PaymentError.TooLarge)
+=======
+            ? Outcome.Error<int, PaymentError>(PaymentError.Refused)
+>>>>>>>

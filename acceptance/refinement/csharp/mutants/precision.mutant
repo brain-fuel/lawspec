@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.cs
+<<<<<<<
+public static BigInteger Preserve(ulong a) => new BigInteger(a);
+=======
+public static BigInteger Preserve(ulong a) => new BigInteger((double)a);
+>>>>>>>

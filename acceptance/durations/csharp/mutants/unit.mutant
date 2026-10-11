@@ -1,0 +1,6 @@
+@@ src/Example/Durations.cs
+<<<<<<<
+        spent >= budget ? TimeSpan.Zero : budget - spent;
+=======
+        spent >= budget ? TimeSpan.Zero : budget - spent + TimeSpan.FromTicks(1);
+>>>>>>>

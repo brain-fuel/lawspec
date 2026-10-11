@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.cs
+<<<<<<<
+order.Quantity < 1 ||
+=======
+order.Quantity < 0 ||
+>>>>>>>

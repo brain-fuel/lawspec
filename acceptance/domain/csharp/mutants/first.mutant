@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.cs
+<<<<<<<
+ListModule.Head(lines.Value)
+=======
+ListModule.Last(lines.Value)
+>>>>>>>

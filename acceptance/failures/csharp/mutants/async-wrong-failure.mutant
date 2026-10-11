@@ -1,0 +1,7 @@
+expect: settling nothing is declined, and says why
+@@ src/Example/Failures.cs
+<<<<<<<
+        if (cents == 0) return Outcome.Error<int, PaymentError>(PaymentError.NewDeclined("there is nothing to settle"));
+=======
+        if (cents == 0) return Outcome.Error<int, PaymentError>(PaymentError.Blocked);
+>>>>>>>

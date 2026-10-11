@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/Example/Matchers.cs
+<<<<<<<
+Fn.ListOf(items.Order());
+=======
+Fn.ListOf(items.Distinct().Order());
+>>>>>>>

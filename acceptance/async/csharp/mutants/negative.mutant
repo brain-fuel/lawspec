@@ -1,0 +1,6 @@
+@@ src/Example/Orders.cs
+<<<<<<<
+        sku == "free" ? 0 : sku.EnumerateRunes().Count() % 100;
+=======
+        -1;
+>>>>>>>

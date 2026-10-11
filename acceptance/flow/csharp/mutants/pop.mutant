@@ -1,0 +1,6 @@
+@@ src/Example/Flow.cs
+<<<<<<<
+            ? new PopFlow(cell.top, cell.rest)
+=======
+            ? new PopFlow(0, cell.rest)
+>>>>>>>

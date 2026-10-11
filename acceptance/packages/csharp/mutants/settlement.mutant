@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.cs
+<<<<<<<
+        currency.IsUsd ? ShopDomainCurrency.Usd : ShopDomainCurrency.Eur;
+=======
+        ShopDomainCurrency.Usd;
+>>>>>>>

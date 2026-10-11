@@ -1,0 +1,6 @@
+@@ src/Example/Collections.cs
+<<<<<<<
+=> SetModule.OfSeq(rows);
+=======
+=> SetModule.OfSeq(rows.Where(row => !row.IsEmpty));
+>>>>>>>

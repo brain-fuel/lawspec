@@ -1,0 +1,9 @@
+@@ src/Example/Concurrent.cs
+<<<<<<<
+            return Found(q.TryDequeue(out var front), front);
+=======
+            if (!q.TryPeek(out var front)) return Maybe.Nothing<int>();
+            Thread.Sleep(1);
+            q.TryDequeue(out _);
+            return Maybe.Of(front);
+>>>>>>>

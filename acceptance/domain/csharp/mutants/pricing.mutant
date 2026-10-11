@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.cs
+<<<<<<<
+order.Quantity.Value * 25L
+=======
+order.Quantity.Value * 250L
+>>>>>>>

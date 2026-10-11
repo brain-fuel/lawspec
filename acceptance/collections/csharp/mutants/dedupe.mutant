@@ -1,0 +1,6 @@
+@@ src/Example/Collections.cs
+<<<<<<<
+public static FSharpSet<int> Dedupe(FSharpList<int> items) => SetModule.OfSeq(items);
+=======
+public static FSharpSet<int> Dedupe(FSharpList<int> items) => SetModule.OfSeq(items.Skip(1));
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.cs
+<<<<<<<
+Expr<BigInteger>.NewNumber(EvalNumber(expr));
+=======
+Expr<BigInteger>.NewNumber(BigInteger.Zero);
+>>>>>>>

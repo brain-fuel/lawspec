@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/Example/Tables.cs
+<<<<<<<
+    public static string Label(int parcel) => $"parcel {parcel}";
+=======
+    public static string Label(int parcel) => parcel == 1 ? "parcel one" : $"parcel {parcel}";
+>>>>>>>

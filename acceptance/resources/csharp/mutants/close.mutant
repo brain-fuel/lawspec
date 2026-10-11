@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/Example/Resources.cs
+<<<<<<<
+                Open = false;
+                openCount--;
+=======
+                Open = false;
+>>>>>>>

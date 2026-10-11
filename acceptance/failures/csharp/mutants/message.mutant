@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/Example/Failures.cs
+<<<<<<<
+"an odd amount"
+=======
+"an uneven amount"
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Collections.cs
+<<<<<<<
+new Deque<sbyte>(ListModule.Append(deque.Items.Tail, Fn.List(deque.Items.Head)));
+=======
+new Deque<sbyte>(deque.Items.Tail);
+>>>>>>>

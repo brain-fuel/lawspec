@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.cs
+<<<<<<<
+Perfect.NewNode(Mirror(node.right), Mirror(node.left)),
+=======
+Perfect.NewNode(Mirror(node.right), Perfect.NewLeaf(0)),
+>>>>>>>

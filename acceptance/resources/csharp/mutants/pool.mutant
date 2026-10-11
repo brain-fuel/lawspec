@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/Example/Resources.cs
+<<<<<<<
+    public static void DrainPool(object pool) => Pool(pool).Amount = 0;
+=======
+    public static void DrainPool(object pool) { }
+>>>>>>>
