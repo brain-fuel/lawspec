@@ -223,7 +223,11 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
               (call "Harness" "knownFailing" [Str label, Str (label ++ " known failing"), Str reason,
                 ListOf (tFun [] tUnit) [Lambda [] tUnit (wrapHarness label d o harness b) | (_, d, o, b) <- ordinary]])]
             _ -> map (\(n, d, o, b) -> declareTest n d (wrapHarness label d o harness b)) ordinary
-      pure (bodyDoc : caseDoc : tests)
+      -- The law's description, expansion and expectations, as every target
+      -- writes them beside its tests.
+      let (bodyText, bodyTest, bodyName) = bodyDoc
+          described = (metadataDocument 100 "//" planned <> bodyText, bodyTest, bodyName)
+      pure (described : caseDoc : tests)
     suffix kind = case lang of
       FSharp -> "_" ++ kind
       CSharp -> "_" ++ capital kind
