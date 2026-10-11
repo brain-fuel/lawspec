@@ -44,6 +44,7 @@ let private ordinal = StringComparer.Ordinal
 
 /// Fail the harness itself (not the law): a strategy outside its input's
 /// refinement, a discard budget spent, a broken cover clause.
+[<CompiledName("Abort")>]
 let abort (code: string) (detail: string) : 'a =
     let failure = LawSpecException(code, detail)
     match current.Value with
@@ -52,6 +53,7 @@ let abort (code: string) (detail: string) : 'a =
     raise failure
 
 /// Mark a failure as the harness's, keeping the failure itself.
+[<CompiledName("MarkHarnessFailure")>]
 let markHarnessFailure (failure: exn) =
     match current.Value with
     | Some state when state.Aborted.IsNone -> state.Aborted <- Some failure
@@ -63,6 +65,7 @@ let private boolean (value: Value) =
     | _ -> abort "InvalidHarnessPredicate" (sprintf "%A" value)
 
 /// Whether a score beats the best so far; a NaN never does.
+[<CompiledName("Higher")>]
 let higher (score: Value) (best: Value option) =
     match score with
     | Float _ when Scalar.floatClass score = "nan" -> false
@@ -77,6 +80,7 @@ let higher (score: Value) (best: Value option) =
     | _ -> abort "InvalidTargetScore" (sprintf "%A" score)
 
 /// A score as the reports print it.
+[<CompiledName("ScoreText")>]
 let scoreText (score: Value) =
     match score with
     | Int n -> n.ToString()
@@ -107,10 +111,12 @@ let private observe (state: State) (o: Observation) =
         if higher score state.Best then state.Best <- Some score
 
 /// What a case observed.
+[<CompiledName("Observation")>]
 let observation covers classes labels score = { Covers = covers; Classes = classes; Labels = labels; Score = score }
 
 /// One generated case: count it, record what it observed, then run it. After
 /// the first failure only the law runs (shrinking does not count cases).
+[<CompiledName("Sample")>]
 let sample (observation: unit -> Observation) (test: unit -> Value) : Value =
     match current.Value with
     | None -> Fail.raiseWith "HarnessObservationOutsideRun" ""
@@ -241,9 +247,11 @@ type Options =
       Resources: bool
       Observed: bool }
 
+[<CompiledName("Defaults")>]
 let defaults = { Repeat = 1; Retries = 0; Timeout = None; Resources = false; Observed = true }
 
 /// A controlled run's options.
+[<CompiledName("Options")>]
 let options (repeat: int) (retries: int) (timeout: int option) (resources: bool) (observed: bool) =
     { Repeat = repeat; Retries = retries; Timeout = timeout; Resources = resources; Observed = observed }
 
@@ -273,6 +281,7 @@ let private execute (law: string) (options: Options) (test: unit -> unit) : exn 
 /// Run a test under the harness: each repeat is a complete check with its
 /// own counters, and a retry starts the repeats again. Coverage is never
 /// pooled across runs.
+[<CompiledName("Run")>]
 let run (law: string) (name: string) (covers: (int * string) list) (options: Options) (test: unit -> unit) =
     let previous = current.Value
     try
@@ -340,18 +349,21 @@ let run (law: string) (name: string) (covers: (int * string) list) (options: Opt
         current.Value <- previous
 
 /// Record extra fields (a search's report) in the running test's record.
+[<CompiledName("Record")>]
 let record (fields: (string * JsonNode) list) =
     match current.Value with
     | Some state -> for k, v in fields do state.Extra.[k] <- v
     | None -> ()
 
 /// A skipped law, recorded and reported.
+[<CompiledName("Skip")>]
 let skip (law: string) (reason: string) =
     eprintfn "SKIPPED %s: %s" law reason
     commit (objectOf [ "law", box law; "test", box (law + " skipped"); "outcome", box "skipped"; "reason", box reason ])
 
 /// A law known to fail: its checks must fail, and a law that passes fails
 /// the run so the mark is removed.
+[<CompiledName("KnownFailing")>]
 let knownFailing (law: string) (name: string) (reason: string) (checks: (unit -> unit) list) =
     let previous = expected.Value
     let context = { ExpectedLaw = law; Checks = ResizeArray(); ExpectedAborted = None }
@@ -386,6 +398,7 @@ let knownFailing (law: string) (name: string) (reason: string) (checks: (unit ->
         raise cause
 
 /// Measure a body: at least three iterations, about 200 ms, at most 100,000.
+[<CompiledName("Benchmark")>]
 let benchmark (unitName: string) (name: string) (body: unit -> unit) =
     let started = Stopwatch.GetTimestamp()
     let ticks = Stopwatch.Frequency
@@ -409,5 +422,6 @@ let benchmark (unitName: string) (name: string) (body: unit -> unit) =
     printfn "benchmark %s: %d iteration(s), mean %.2f us, fastest %.2f us" name count (float mean / 1000.0) (float fastest / 1000.0)
 
 /// Record that a parallel unit ran.
+[<CompiledName("RecordParallel")>]
 let recordParallel (unitName: string) (fields: (string * obj) list) =
     writeRecord ("parallel\u0000" + unitName) (objectOf (("parallel", box unitName) :: fields))

@@ -217,10 +217,10 @@ body lang ty sink e = do
     Lambda ps r b -> do
       l <- lambda lang ps r b
       pure (finish lang sink l)
-    UnitLit | unitSink == UnitReturn -> pure (D.text "return Fn.Unit;")
+    UnitLit | unitSink == UnitReturn -> pure (D.text "return default(Unit);")
     UnitLit | unitSink == Dropped -> pure mempty
     UnitLit | lang == FSharp && sinkDiscards sink && not (null docs) -> pure mempty
-    _ | unitSink == UnitReturn -> (\d -> d <> D.text ";" <> D.hardline <> D.text "return Fn.Unit;") <$> inline lang result
+    _ | unitSink == UnitReturn -> (\d -> d <> D.text ";" <> D.hardline <> D.text "return default(Unit);") <$> inline lang result
     _ | unitSink == Dropped -> (<> D.text ";") <$> inline lang result
     _ -> finish lang sink <$> inline lang result
   pure (D.joinWith D.hardline (docs ++ [final | final /= mempty]))
@@ -258,7 +258,8 @@ statement lang s = case s of
     d <- inline lang e
     pure $ case lang of
       FSharp -> D.text ("let " ++ name ++ " = ") <> d
-      CSharp -> D.text (tyText CSharp t ++ " " ++ name ++ " = ") <> d <> D.text ";"
+      -- C# infers the local's type, as F# does.
+      CSharp -> D.text ("var " ++ name ++ " = ") <> d <> D.text ";" <> mempty' t
   where mempty' _ = mempty
 
 conditional :: Lang -> Ty -> Sink -> Expr -> Expr -> Expr -> Fresh D.Doc
@@ -296,7 +297,7 @@ inline lang e = case e of
   IntLit n -> pure (D.text (show n))
   BigLit n -> pure (D.text (bigLiteral lang n))
   BoolLit b -> pure (D.text (if b then "true" else "false"))
-  UnitLit -> pure (D.text (if lang == FSharp then "()" else "Fn.Unit"))
+  UnitLit -> pure (D.text (if lang == FSharp then "()" else "default(Unit)"))
   Raw f c -> pure (D.text (if lang == FSharp then f else c))
   Call (Fn f c) args -> do
     ds <- mapM (inline lang) args

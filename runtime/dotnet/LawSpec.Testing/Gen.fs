@@ -16,17 +16,21 @@ type Tree<'a> =
       Children: seq<Tree<'a>> }
 
 module Tree =
+    [<CompiledName("Leaf")>]
     let leaf value = { Value = value; Children = Seq.empty }
 
+    [<CompiledName("Map")>]
     let rec map (f: 'a -> 'b) (tree: Tree<'a>) =
         { Value = f tree.Value
           Children = tree.Children |> Seq.map (map f) }
 
     /// Keep only the candidates a predicate accepts, with their own candidates.
+    [<CompiledName("Filter")>]
     let rec filter (keep: 'a -> bool) (tree: Tree<'a>) =
         { tree with Children = tree.Children |> Seq.filter (fun t -> keep t.Value) |> Seq.map (filter keep) }
 
     /// Candidates from a function of a value, unfolded.
+    [<CompiledName("Unfold")>]
     let rec unfold (shrink: 'a -> seq<'a>) (value: 'a) =
         { Value = value
           Children = shrink value |> Seq.map (unfold shrink) }
@@ -36,13 +40,17 @@ module Tree =
 type Gen<'a> = Gen of (Seed -> int -> Tree<'a> option)
 
 module Gen =
+    [<CompiledName("Run")>]
     let run (Gen g) seed size = g seed size
 
+    [<CompiledName("Constant")>]
     let constant value = Gen(fun _ _ -> Some(Tree.leaf value))
 
     /// An empty domain: the case is discarded and redrawn.
+    [<CompiledName("Empty")>]
     let empty<'a> : Gen<'a> = Gen(fun _ _ -> None)
 
+    [<CompiledName("Map")>]
     let map f (Gen g) = Gen(fun seed size -> g seed size |> Option.map (Tree.map f))
 
     let rec private bindTree (tree: Tree<'a>) (k: 'a -> Tree<'b> option) : Tree<'b> option =
@@ -56,13 +64,16 @@ module Gen =
 
     /// A generator that depends on another's value. Shrinking the first value
     /// regenerates the second from the same seed.
+    [<CompiledName("Bind")>]
     let bind (Gen g) (k: 'a -> Gen<'b>) =
         Gen(fun seed size ->
             let s1, s2 = split seed
             g s1 size |> Option.bind (fun tree -> bindTree tree (fun a -> run (k a) s2 size)))
 
+    [<CompiledName("Sized")>]
     let sized (f: int -> Gen<'a>) = Gen(fun seed size -> run (f size) seed size)
 
+    [<CompiledName("Resize")>]
     let resize size (Gen g) = Gen(fun seed _ -> g seed size)
 
     let private towards (origin: BigInteger) (value: BigInteger) =
@@ -82,6 +93,7 @@ module Gen =
     /// An integer in an inclusive range, shrinking towards the value nearest
     /// zero. An open end is limited by the size, exponentially, so large
     /// magnitudes appear as the size grows.
+    [<CompiledName("Integer")>]
     let integer (lo: BigInteger option) (hi: BigInteger option) =
         Gen(fun seed size ->
             let reach = BigInteger.Pow(BigInteger 2, min 64 (2 + size / 2))
@@ -100,9 +112,11 @@ module Gen =
                 let origin = BigInteger.Min(BigInteger.Max(BigInteger.Zero, lo'), hi')
                 Some(Tree.unfold (towards origin) value))
 
+    [<CompiledName("Range")>]
     let range (lo: int) (hi: int) = integer (Some(BigInteger lo)) (Some(BigInteger hi)) |> map int
 
     /// One of several generators, shrinking towards the earlier ones.
+    [<CompiledName("Oneof")>]
     let oneof (gens: Gen<'a> list) =
         match gens with
         | [] -> empty
@@ -111,6 +125,7 @@ module Gen =
             bind (range 0 (arr.Length - 1)) (fun i -> arr.[i])
 
     /// A weighted choice, shrinking towards the earlier ones.
+    [<CompiledName("Frequency")>]
     let frequency (choices: (int * Gen<'a>) list) =
         let total = choices |> List.sumBy fst
         if total <= 0 then empty
@@ -165,14 +180,17 @@ module Gen =
         go gens seed []
 
     /// A fixed number of values, each shrinking in place.
+    [<CompiledName("Vector")>]
     let vector count (g: Gen<'a>) =
         Gen(fun seed size -> draws (List.replicate count g) seed size |> Option.map productTrees)
 
     /// Values of several generators, in order.
+    [<CompiledName("Tuple")>]
     let tuple (gens: Gen<'a> list) = Gen(fun seed size -> draws gens seed size |> Option.map productTrees)
 
     /// A list of a length the size limits, shrinking by removing items and by
     /// shrinking them.
+    [<CompiledName("List")>]
     let list (g: Gen<'a>) =
         Gen(fun seed size ->
             let s1, s2 = split seed
@@ -181,6 +199,7 @@ module Gen =
 
     /// Keep values a predicate accepts, redrawing up to a limit; candidates
     /// are filtered too.
+    [<CompiledName("Constrain")>]
     let constrain (limit: int) (predicate: 'a -> bool) (Gen g) =
         Gen(fun seed size ->
             let rec attempt seed n =
@@ -194,10 +213,12 @@ module Gen =
 
     /// A dependent input's domain: an impossible value discards the tuple, so
     /// an earlier input is redrawn rather than retried in vain.
+    [<CompiledName("Refine")>]
     let refine (predicate: 'a -> bool) (g: Gen<'a>) =
         bind g (fun value -> if predicate value then constant value else empty)
 
     /// Draw until a predicate holds, failing the harness after a limit.
+    [<CompiledName("SuchThat")>]
     let suchThat (predicate: 'a -> bool) (limit: int) (onExhausted: unit -> unit) (Gen g) =
         Gen(fun seed size ->
             let rec attempt seed n =
@@ -212,9 +233,11 @@ module Gen =
             attempt seed (limit + 1))
 
     /// A weighted mix of fixed values and a generator.
+    [<CompiledName("WithExamples")>]
     let withExamples (examples: 'a list) (g: Gen<'a>) =
         match examples with
         | [] -> g
         | _ -> frequency [ 1, oneof (examples |> List.map constant); 9, g ]
 
+    [<CompiledName("Apply")>]
     let apply (f: Gen<'a -> 'b>) (x: Gen<'a>) = bind f (fun f -> map f x)

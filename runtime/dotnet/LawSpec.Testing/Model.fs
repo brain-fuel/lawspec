@@ -255,8 +255,10 @@ let shifted (step: Step) (indices: BigInteger list) =
 let withCase (model: Model) (startArgs: Value list) (body: Context -> 'a) : 'a =
     model.Context(fun value -> box (body { Value = value; Start = startArgs; Model = model })) |> unbox<'a>
 
+[<CompiledName("Callback")>]
 let callback (f: Callback) (context: Context) (arguments: Value list) = f context.Value arguments
 
+[<CompiledName("Initial")>]
 let initial (model: Model) (context: Context) = callback model.StartModel context context.Start
 
 /// The reference's step: the next model state and the reply, or None when
@@ -427,6 +429,7 @@ let checkState (model: Model) (context: Context) (system: obj) (expected: Value)
         | other -> raise (ModelFailure(sprintf "invariant on the %s gave %s" kind (render other)))
 
 /// A model without its abstraction (for the checks of each order).
+[<CompiledName("WithoutAbstraction")>]
 let withoutAbstraction (model: Model) = { model with Abstract = None }
 
 let private raised (e: exn) =
@@ -530,6 +533,7 @@ type Options =
       MaxShrinks: int
       Seed: BigInteger option }
 
+[<CompiledName("Defaults")>]
 let defaults = { Cases = 100; MaxLength = 20; MaxShrinks = 2000; Seed = None }
 
 let private seedValue (Random.Seed s) = s

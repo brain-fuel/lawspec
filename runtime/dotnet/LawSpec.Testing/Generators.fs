@@ -120,6 +120,7 @@ let private scalar (context: Context) (t: TypeRef) (bounds: Bound list) : Gen<Va
     | _ -> Fail.raiseWith "NoGenerator" (Scalar.typeKey t)
 
 /// Whether a value is a member of its type, contracts included.
+[<CompiledName("Accepted")>]
 let accepted (value: Value) (t: TypeRef) (schema: Schema) =
     try
         validate value t schema |> ignore
@@ -169,7 +170,7 @@ let rec private inhabited (context: Context) (t: TypeRef) budget =
                 |> List.exists (fun (c: Constructor) -> Option.isSome (allocation context c.Fields (budget - 1 - List.length c.WitnessValues)))
 
 /// The least structural cost of a type, if it is at most the limit.
-and minimum (context: Context) (t: TypeRef) (limit: int) : int option =
+and [<CompiledName("Minimum")>] minimum (context: Context) (t: TypeRef) (limit: int) : int option =
     if limit < 1 then None
     else
         let cache = minimums.GetValue(context.Schema, fun _ -> Dictionary())
@@ -190,7 +191,7 @@ and private costs (context: Context) (fields: (string * TypeRef) list) (budget: 
         |> Option.bind (fun cost -> costs context rest (budget - cost) |> Option.map (fun more -> cost :: more))
 
 /// Each field's budget: its minimum, plus an even share of what is left.
-and allocation (context: Context) (fields: (string * TypeRef) list) (budget: int) =
+and [<CompiledName("Allocation")>] allocation (context: Context) (fields: (string * TypeRef) list) (budget: int) =
     costs context fields budget
     |> Option.map (fun minimums ->
         match minimums with
@@ -349,6 +350,7 @@ let private holds (relation, a, b) assigned =
 
 /// An indexed family's value whose index is the target (or, for a negative
 /// target, any of its smallest reachable indices).
+[<CompiledName("Indexed")>]
 let indexed (context: Context) (t: TypeRef) (target: BigInteger) (equations: Map<string, string list>) (budget: int) : Gen<Value> =
     let parsed = equations |> Map.map (fun _ texts -> equation texts)
     let positions (c: Constructor) = parsed.[c.Tag].Positions
@@ -449,15 +451,19 @@ let indexed (context: Context) (t: TypeRef) (target: BigInteger) (equations: Map
     | _ -> Gen.bind (Gen.oneof (levels |> List.map Gen.constant)) (fun k -> generate t k (max budget costs.[(t, k)]))
 
 /// A bound on an input.
+[<CompiledName("CompareBound")>]
 let compareBound (op: string) (value: Value) = Compare(op, value)
 
 /// A bound on an input's length.
+[<CompiledName("LengthBound")>]
 let lengthBound (op: string) (value: Value) = Length(op, value)
 
 /// No index to aim at.
+[<CompiledName("NoIndex")>]
 let noIndex () : (BigInteger * Map<string, string list>) option = None
 
 /// An indexed family's target index and each constructor's index terms.
+[<CompiledName("Index")>]
 let index (target: Value) (tags: string list) (terms: string list list) =
     match target with
     | Int n -> Some(n, Map.ofList (List.zip tags terms))
@@ -465,6 +471,7 @@ let index (target: Value) (tags: string list) (terms: string list list) =
 
 /// The generator of an input of a type: native factories first, then the
 /// type's structure within a budget that grows with the size.
+[<CompiledName("Generator")>]
 let generator (context: Context) (t: TypeRef) (bounds: Bound list) (witnesses: Value list) (index: (BigInteger * Map<string, string list>) option) =
     Gen.sized (fun size ->
         match factory context t with

@@ -325,6 +325,7 @@ type Options =
       BranchLength: int
       Seed: BigInteger option }
 
+[<CompiledName("Defaults")>]
 let defaults = { Cases = 50; Repeats = 10; MaxShrinks = 300; Threads = 3; BranchLength = 5; Seed = None }
 
 let private seedValue (Random.Seed s) = s

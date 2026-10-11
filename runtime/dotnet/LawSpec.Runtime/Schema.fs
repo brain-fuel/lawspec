@@ -49,6 +49,7 @@ and Schema =
       EffectPath: obj list }
 
 /// A constructor with only a tag and fields; the generated schema adds the rest.
+[<CompiledName("Constructor")>]
 let constructor tag fields =
     { Tag = tag
       Fields = fields
@@ -62,6 +63,7 @@ let constructor tag fields =
       WitnessValues = [] }
 
 /// The type parameters' types, by position.
+[<CompiledName("Substitute")>]
 let rec substitute (t: TypeRef) (known: Map<int, TypeRef>) =
     match t with
     | Parameter i -> defaultArg (known.TryFind i) t
@@ -76,11 +78,13 @@ let rec private checkScope (t: TypeRef) scope (schema: Schema) =
         | _ -> fail "UnknownTypeOrArity" name
 
 /// Check that a closed type is known, with the right number of arguments.
+[<CompiledName("CheckType")>]
 let checkType (t: TypeRef) (schema: Schema) = checkScope t 0 schema
 
 let private builtins = [ "List", 1; "Maybe", 1; "Either", 2; "Nullable", 1; "Optional", 1 ]
 
 /// A program's schema, from its data definitions and the scalar names.
+[<CompiledName("Create")>]
 let create (definitions: DataDefinition list) (primitives: string list) (bits: int) =
     if bits <> 32 && bits <> 64 then fail "InvalidMachineBits" (string bits)
     let names = (definitions |> List.map (fun d -> d.Name)) @ primitives @ (builtins |> List.map fst)
@@ -137,6 +141,7 @@ let private builtinConstructors name (args: TypeRef list) =
 
 /// The constructors of a data type at its arguments, or None for a scalar or
 /// a list. A GADT constructor whose equations the arguments refute is absent.
+[<CompiledName("Constructors")>]
 let constructors (t: TypeRef) (schema: Schema) : Constructor list option =
     checkType t schema
     match t with
@@ -148,6 +153,7 @@ let constructors (t: TypeRef) (schema: Schema) : Constructor list option =
 
 /// Each instance of a constructor's free existentials over Core's finite
 /// witness pool (Bool and Int32).
+[<CompiledName("WitnessInstances")>]
 let witnessInstances (c: Constructor) =
     let pool = [ Named("Bool", []); Named("Int32", []) ]
     let assignments =
@@ -216,7 +222,7 @@ let rec private evalIndex terms (c: Constructor) (values: Value list) schema =
     | [] -> fail "InvalidIndexTerm" ""
 
 /// The index at a position of an indexed family's value.
-and index (value: Value) (t: TypeRef) (position: int) (schema: Schema) : BigInteger =
+and [<CompiledName("Index")>] index (value: Value) (t: TypeRef) (position: int) (schema: Schema) : BigInteger =
     match value, constructors t schema with
     | Data(tag, values), Some cs ->
         let c0 = findConstructor tag cs
@@ -264,6 +270,7 @@ let private checkPredicates (c: Constructor) args values schema =
 
 /// Check a value against a type: shape, field contracts, index guards and the
 /// canonical order of collections. Returns the value.
+[<CompiledName("Validate")>]
 let rec validate (value: Value) (t: TypeRef) (schema: Schema) : Value =
     checkType t schema
     walk value t schema true
@@ -301,6 +308,7 @@ and private walkData value t cs schema deep =
 
 /// Build a value from checked fields: the fields are not walked again, but
 /// the constructor's contracts are checked.
+[<CompiledName("Construct")>]
 let construct (tag: string) (fields: Value list) (t: TypeRef) (schema: Schema) : Value =
     match tag, fields with
     | "List::Nil", [] -> List []
@@ -312,6 +320,7 @@ let construct (tag: string) (fields: Value list) (t: TypeRef) (schema: Schema) :
         | None -> fail "ExpectedData" (Scalar.typeKey t)
 
 /// Branch on a value's constructor.
+[<CompiledName("MatchValue")>]
 let matchValue (value: Value) (branches: Map<string, Value list -> 'a>) : 'a =
     match value with
     | List [] -> branches.["List::Nil"] []
@@ -324,6 +333,7 @@ let matchValue (value: Value) (branches: Map<string, Value list -> 'a>) : 'a =
 
 /// The field types of a checked data value (a recording uses them to tell Text
 /// from Bytes and Char from an integer).
+[<CompiledName("FieldTypes")>]
 let fieldTypes (value: Value) (t: TypeRef) (schema: Schema) =
     match value, constructors t schema with
     | Data(tag, values), Some cs ->
@@ -365,6 +375,7 @@ let rec private payload (r: Recipe) (value: Value) (schema: Schema) =
 
 /// Whether every payload of a container (each value at a type parameter)
 /// satisfies that parameter's predicate.
+[<CompiledName("AllPayloads")>]
 let allPayloads (value: Value) (t: TypeRef) (predicates: (Value -> bool) list) (schema: Schema) =
     match t with
     | Named(name, args) ->
@@ -377,30 +388,41 @@ let allPayloads (value: Value) (t: TypeRef) (predicates: (Value -> bool) list) (
 // Builders, as the generated schema module writes a program's data
 
 /// A field's name and type (by key).
+[<CompiledName("Field")>]
 let field (name: string) (key: string) = name, Scalar.typeOf key
 
 /// A data definition.
+[<CompiledName("Definition")>]
 let definition (name: string) (parameters: int) (constructors: Constructor list) (handle: bool) =
     { Name = name; Parameters = parameters; Constructors = constructors; Handle = handle }
 
+[<CompiledName("WithPredicates")>]
 let withPredicates predicates (c: Constructor) = { c with Predicates = predicates }
 
+[<CompiledName("WithGenerators")>]
 let withGenerators (generators: (int * (Schema -> TypeRef list -> Value list -> FieldHints)) list) (c: Constructor) =
     { c with Generators = Map.ofList generators }
 
+[<CompiledName("WithIndices")>]
 let withIndices indices (c: Constructor) = { c with Indices = indices }
 
+[<CompiledName("WithRefinements")>]
 let withRefinements refinements (c: Constructor) = { c with Refinements = refinements }
 
+[<CompiledName("WithExistentials")>]
 let withExistentials count (c: Constructor) = { c with Existentials = count }
 
+[<CompiledName("WithWitnesses")>]
 let withWitnesses witnesses (c: Constructor) = { c with Witnesses = witnesses }
 
 /// A refinement of a parameter, by position, to a type (by key).
+[<CompiledName("Refinement")>]
 let refinement (index: int) (key: string) = index, Scalar.typeOf key
 
 /// A constructor contract's known parameter types, by position.
+[<CompiledName("Known")>]
 let known (types: TypeRef list) = types |> List.mapi (fun i t -> i, t) |> Map.ofList
 
 /// A field's generation hints.
+[<CompiledName("Hints")>]
 let hints bounds lengths values = { Bounds = bounds; Lengths = lengths; Hints = values }

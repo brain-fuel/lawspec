@@ -20,6 +20,7 @@ type Frame =
       Payload: byte[] }
 
 /// A frame to send: the source and identity are filled in by the node.
+[<CompiledName("FrameTo")>]
 let frameTo (address: string) (kind: string) (payload: byte[]) =
     { Kind = kind; To = address; Source = ""; Id = 0UL; Payload = payload }
 

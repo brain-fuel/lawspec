@@ -39,6 +39,7 @@
     <Compile Include="Mailbox.fs" />
     <Compile Include="Sessions.fs" />
     <Compile Include="NetworkApi.fs" />
+    <Compile Include="CSharp.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />

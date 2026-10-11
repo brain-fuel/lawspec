@@ -24,15 +24,18 @@ module SocketProtocol =
     let private hostPattern = Regex("^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$")
 
     /// Whether text is an IP address or a host name.
+    [<CompiledName("Host")>]
     let host (h: string) =
         not (String.IsNullOrEmpty h) && h.Length <= 253 && (fst (IPAddress.TryParse h) || hostPattern.IsMatch h)
 
     /// A listener's address: tcp://host:port, with IPv6 hosts in brackets.
+    [<CompiledName("Address")>]
     let address (kind: SocketKind) (h: string) (port: int) =
         let name = if h.Contains ':' then "[" + h + "]" else h
         kind.Scheme + "://" + name + ":" + string port
 
     /// The host and port of a peer's address of the right kind.
+    [<CompiledName("Endpoint")>]
     let endpoint (kind: SocketKind) (peer: string) : Result<string * int, string> =
         try
             let uri = Uri(peer)
@@ -44,6 +47,7 @@ module SocketProtocol =
                 if host h then Ok(h, uri.Port) else Error "invalid_peer_address"
         with _ -> Error "invalid_peer_address"
 
+    [<CompiledName("Request")>]
     let request (peer: string) (bytes: byte[]) =
         let authority = peer.Substring("http://".Length)
         let head =
@@ -51,6 +55,7 @@ module SocketProtocol =
             + string bytes.Length + "\r\nConnection: close\r\n\r\n"
         Array.append (Encoding.ASCII.GetBytes head) bytes
 
+    [<CompiledName("Response")>]
     let response (code: int) =
         let reason =
             match code with
@@ -93,6 +98,7 @@ module SocketProtocol =
         if ok then Some fields else None
 
     /// A request's head: the body size and the bytes after the head.
+    [<CompiledName("Header")>]
     let header (bytes: byte[]) (maximum: int) : Head =
         match headEnd bytes with
         | -1 when bytes.Length < 16384 -> More
@@ -120,6 +126,7 @@ module SocketProtocol =
                         | Some _ -> Failed 400
 
     /// Whether a reply head is a 204.
+    [<CompiledName("Reply")>]
     let reply (bytes: byte[]) : Result<bool, string> =
         match headEnd bytes with
         | -1 when bytes.Length < 16384 -> Ok false
@@ -140,6 +147,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
     do
         if port < 0 || port > 65535 || not (SocketProtocol.host host) || not (SocketProtocol.host advertise) then
             Fail.raiseWith "InvalidTransportOptions" ""
+    [<CompiledName("Ip")>]
     let ip =
         match IPAddress.TryParse host with
         | true, a -> a
@@ -148,17 +156,26 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             match addresses |> Array.tryFind (fun a -> a.AddressFamily = AddressFamily.InterNetwork) with
             | Some a -> a
             | None -> addresses.[0]
+    [<CompiledName("Listener")>]
     let listener = new TcpListener(ip, port)
     do listener.Start()
+    [<CompiledName("Actual")>]
     let actual = (listener.LocalEndpoint :?> IPEndPoint).Port
+    [<CompiledName("Address")>]
     let address = SocketProtocol.address kind advertise actual
+    [<CompiledName("Cancel")>]
     let cancel = new CancellationTokenSource()
+    [<CompiledName("Gate")>]
     let gate = obj ()
+    [<CompiledName("Writers")>]
     let writers = Collections.Generic.Dictionary<string, Channels.Channel<byte[]>>()
+    [<CompiledName("Workers")>]
     let workers = Collections.Concurrent.ConcurrentBag<Task>()
 
+    [<CompiledName("Safely")>]
     let safely (action: unit -> unit) = try action () with _ -> ()
 
+    [<CompiledName("ReadExactly")>]
     let readExactly (stream: Stream) (count: int) (token: CancellationToken) =
         task {
             let buffer = Array.zeroCreate<byte> count
@@ -170,6 +187,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             return if ok then Some buffer else None
         }
 
+    [<CompiledName("ServeTcp")>]
     let serveTcp (client: TcpClient) =
         task {
             use client = client
@@ -190,6 +208,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
         }
         :> Task
 
+    [<CompiledName("ReadHead")>]
     let readHead (stream: Stream) (parse: byte[] -> 'r option) (token: CancellationToken) =
         task {
             let buffer = Array.zeroCreate<byte> 4096
@@ -207,6 +226,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             return result, acc
         }
 
+    [<CompiledName("ServeHttp")>]
     let serveHttp (client: TcpClient) =
         task {
             use client = client
@@ -234,6 +254,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
         }
         :> Task
 
+    [<CompiledName("Accept")>]
     let accept =
         task {
             try
@@ -244,6 +265,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             with _ -> ()
         }
 
+    [<CompiledName("Connect")>]
     let connect (h: string) (p: int) (token: CancellationToken) =
         task {
             let client = new TcpClient(AddressFamily.InterNetworkV6)
@@ -255,6 +277,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             return client
         }
 
+    [<CompiledName("WriteTcp")>]
     let writeTcp (peer: string) (h: string) (p: int) (queue: Channels.Channel<byte[]>) =
         task {
             let mutable client: TcpClient = null
@@ -289,6 +312,7 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
         }
         :> Task
 
+    [<CompiledName("WriteHttp")>]
     let writeHttp (peer: string) (h: string) (p: int) (queue: Channels.Channel<byte[]>) =
         task {
             try

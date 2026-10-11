@@ -47,10 +47,13 @@ type Received =
 
 let private unavailable () : 'a = Fail.raiseWith "ChannelEndUnavailable" ""
 let private check condition = if not condition then Fail.raiseWith "InvalidChannelOperation" ""
+[<CompiledName("EofReason")>]
 let eofReason = "the other end gave up the conversation"
+[<CompiledName("TakeFailure")>]
 let takeFailure = "the node the end came from did not hand it over in time (unreachable)"
 
 /// A new end at an address; the deadline is in microseconds.
+[<CompiledName("Create")>]
 let create (address: string) (deadline: int64) =
     splitAddress address |> ignore
     check (deadline > 0L)
@@ -77,6 +80,7 @@ let private transmit (state: ChannelState) (sequence: int64) (body: byte[]) (now
     next, (match state.Peer with None -> [] | Some _ -> [ channelFrame state sequence body ])
 
 /// Greet a peer end.
+[<CompiledName("Connect")>]
 let connect (state: ChannelState) (peer: string) (now: int64) =
     usable state
     check state.Peer.IsNone
@@ -84,11 +88,13 @@ let connect (state: ChannelState) (peer: string) (now: int64) =
     transmit { state with Peer = Some peer } -1L ("hello"B) now
 
 /// Send a value's bytes.
+[<CompiledName("Send")>]
 let send (state: ChannelState) (bytes: byte[]) (now: int64) =
     usable state
     transmit { state with Out = state.Out + 1L; Used = true } state.Out (Array.append [| 0uy |] bytes) now
 
 /// Give up the conversation: an ordered end-of-file frame.
+[<CompiledName("Abandon")>]
 let abandon (state: ChannelState) (now: int64) =
     if state.Closed || state.Moved.IsSome then state, []
     else
@@ -97,6 +103,7 @@ let abandon (state: ChannelState) (now: int64) =
         | Some _ -> { state with Closed = true }, []
 
 /// The next value for a reader, if there is one.
+[<CompiledName("ReceiveBody")>]
 let receiveBody (state: ChannelState) : Received * ChannelState =
     if state.Token.IsSome || state.Moved.IsSome then Failed "the channel end has been offered or moved", state
     else
@@ -172,7 +179,7 @@ and private announce (state: ChannelState) (now: int64) =
     | _ -> state, []
 
 /// Retransmit what is due, fail what is overdue, and keep a take going.
-and tick (state: ChannelState) (now: int64) : ChannelState * Frame list =
+and [<CompiledName("Tick")>] tick (state: ChannelState) (now: int64) : ChannelState * Frame list =
     if state.Moved.IsSome || state.Failure.IsSome then state, []
     else
         match state.Taking with
@@ -278,16 +285,19 @@ let private arriving (state: ChannelState) (frame: Frame) (now: int64) =
     | _ -> state, []
 
 /// A frame for this end. Invalid frames change nothing.
+[<CompiledName("Accept")>]
 let accept (state: ChannelState) (frame: Frame) (now: int64) =
     try arriving state frame now with _ -> state, []
 
 /// Offer an unused end to another node: the address that takes it.
+[<CompiledName("Offer")>]
 let offer (state: ChannelState) (token: string) =
     check (token <> "" && not state.Used && not state.Closed && state.Moved.IsNone && (state.Taking.IsNone || state.Taken))
     let chosen = defaultArg state.Token token
     state.Address + "?take=" + chosen, { state with Token = Some chosen }
 
 /// Take an offered end, by the address its offer gave.
+[<CompiledName("Take")>]
 let take (state: ChannelState) (address: string) (now: int64) =
     usable state
     check (not state.Used)
@@ -300,6 +310,7 @@ let take (state: ChannelState) (address: string) (now: int64) =
         tick { state with Taking = Some { From = old; Token = token; First = now; Last = now - retry - 1L } } now
 
 /// Whether a take has finished.
+[<CompiledName("TakeStatus")>]
 let takeStatus (state: ChannelState) (now: int64) : Result<bool, string> =
     match state.Taking with
     | None -> Ok true

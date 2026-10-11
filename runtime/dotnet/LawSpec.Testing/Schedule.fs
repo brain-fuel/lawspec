@@ -14,6 +14,7 @@ module Schedule =
     let private chosen = lazy (BigInteger(RandomNumberGenerator.GetBytes 8 |> Array.append [| 0uy |] |> Array.rev))
 
     /// The run's seed for ordering: LAWSPEC_SEED, or one chosen once per run.
+    [<CompiledName("Seed")>]
     let seed () =
         match Environment.GetEnvironmentVariable "LAWSPEC_SEED" with
         | null | "" -> chosen.Value
@@ -21,6 +22,7 @@ module Schedule =
 
     /// Items in the order a seed chooses for a unit: by the hash of the seed,
     /// the unit and each item's position.
+    [<CompiledName("Order")>]
     let order (unitName: string) (items: 'a list) =
         let s = seed ()
         eprintfn "order random seed %O (%s): LAWSPEC_SEED=%O replays this order" s unitName s

@@ -213,13 +213,14 @@ scaffoldFilesWith crypto minify target = case target of
 dotnetScaffold :: Bool -> String -> [(FilePath, String)]
 dotnetScaffold minify target =
   [ ("global.json", "{ \"test\": { \"runner\": \"Microsoft.Testing.Platform\" } }\n")
-  , ("Example.slnx", lines'
+  , ("Example.slnx", lines' $
       [ "<Solution>"
       , "  <Project Path=\"src/Example." ++ ext ++ "\" />"
       , "  <Project Path=\"tests/Example.Tests." ++ ext ++ "\" />"
       , "  <Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />"
-      , "  <Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />"
-      , "</Solution>" ])
+      , "  <Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />" ] ++
+      [ "  <Project Path=\"lawspec/LawSpec.Model/LawSpec.Model.fsproj\" />" | target == "csharp" ] ++
+      [ "</Solution>" ])
   , ("src/Example." ++ ext, lines'
       ([ "<Project Sdk=\"Microsoft.NET.Sdk\">"
        , "  <PropertyGroup>"

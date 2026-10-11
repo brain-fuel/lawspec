@@ -18,6 +18,7 @@ type Settings =
 let private random = System.Random.Shared
 
 /// The run's seed: LAWSPEC_SEED, or a fresh one.
+[<CompiledName("RunSeed")>]
 let runSeed () =
     match Environment.GetEnvironmentVariable "LAWSPEC_SEED" with
     | null | "" -> BigInteger(random.NextInt64())
@@ -37,6 +38,7 @@ let private failureOf (property: Value list -> Value) (values: Value list) : exn
     | e -> Some e
 
 /// Check a property over a generator of its inputs.
+[<CompiledName("Check")>]
 let check (label: string) (settings: Settings) (gen: Gen<Value list>) (property: Value list -> Value) =
     let seed = runSeed ()
     let mutable state = Random.seed seed
@@ -84,13 +86,16 @@ let check (label: string) (settings: Settings) (gen: Gen<Value list>) (property:
         raise (LawSpecException("PropertyFailed", message, [], bestError))
 
 /// A law's generation settings.
+[<CompiledName("Settings")>]
 let settings (cases: int) (attempts: int) (shrinks: int) = { Cases = cases; MaxAttempts = attempts; MaxShrinks = shrinks }
 
 /// What generation reads: the schema, the case's symbols and the discard budget.
+[<CompiledName("Generation")>]
 let generation (schema: Schema.Schema) (symbols: Scalar.SymbolContext) (attempts: int) : Generators.Context =
     { Schema = schema; Symbols = symbols; Factories = Map.empty; Attempts = attempts }
 
 /// Each boundary case, in order; the first that fails names its position.
+[<CompiledName("Boundaries")>]
 let boundaries (label: string) (cases: Value list list) (law: Value list -> Value) =
     cases
     |> List.iteri (fun i values ->
@@ -103,10 +108,12 @@ let boundaries (label: string) (cases: Value list list) (law: Value list -> Valu
             raise (LawSpecException("BoundaryFailed", sprintf "%s boundary %d %s: %s" label i (render values) e.Message, [], e)))
 
 /// A strategy's value must lie inside the input's refinement.
+[<CompiledName("CheckDrawn")>]
 let checkDrawn (strategy: string) (input: string) (value: Value) (holds: bool) =
     if holds then value
     else Harness.abort "StrategyOutsideRefinement" (sprintf "strategy %s produced %s for %s, outside the input's refinement" strategy (Recorded.renderPlain value) input)
 
 /// A strategy's draw that keeps only values a predicate accepts.
+[<CompiledName("SuchThat")>]
 let suchThat (strategy: string) (predicate: Value -> bool) (limit: int) (gen: Gen<Value>) =
     Gen.suchThat predicate limit (fun () -> Harness.abort "StrategyDiscards" (sprintf "strategy %s discarded %d values" strategy limit)) gen

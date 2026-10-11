@@ -131,6 +131,7 @@ and private group cs =
 let private cache = ConcurrentDictionary<string, Node>()
 
 /// Compile a pattern once; compiled patterns are shared.
+[<CompiledName("Compile")>]
 let compile (pattern: string) =
     cache.GetOrAdd(pattern, fun pattern ->
         if not (Scalar.isWellFormed pattern) then Fail.raiseWith "InvalidUnicode" ""
@@ -167,6 +168,7 @@ let rec private reach node (text: int[]) (positions: Set<int>) : Set<int> =
         seen
 
 /// Whether a compiled pattern matches the whole text.
+[<CompiledName("Run")>]
 let run (node: Node) (text: string) =
     let points = Scalar.codePoints text |> Array.ofList
     reach node points (Set.singleton 0) |> Set.contains points.Length

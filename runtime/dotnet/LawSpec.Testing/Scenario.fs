@@ -45,6 +45,7 @@ type Options =
       Faults: MemoryOptions -> MemoryOptions
       Deadline: int }
 
+[<CompiledName("Defaults")>]
 let defaults =
     { Cases = 30; Seed = None; ReceiveTimeout = 5000; Network = false; Crash = false; Victim = None
       Faults = id; Deadline = 5000 }

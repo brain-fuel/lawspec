@@ -74,8 +74,10 @@ type RaisedFailure(ability: string, failure: Value) =
 /// Helpers for raising LawSpec's failures.
 module Fail =
     /// Raise a LawSpec failure with a code and detail.
+    [<CompiledName("RaiseWith")>]
     let inline raiseWith code detail : 'a = raise (LawSpecException(code, detail))
 
     /// Fail unless the condition holds.
+    [<CompiledName("Require")>]
     let inline require condition code detail =
         if not condition then raiseWith code detail

@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.cs
+<<<<<<<
+public static ExactDecimal AddDecimal(ExactDecimal left, ExactDecimal right) => left + right;
+=======
+public static ExactDecimal AddDecimal(ExactDecimal left, ExactDecimal right) => new ExactDecimal(left.Coefficient, System.Math.Max(left.Exponent, right.Exponent));
+>>>>>>>

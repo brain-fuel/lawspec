@@ -41,14 +41,14 @@ nativeType lang bits names parameters ty = case ty of
   C.Constructor n args -> do
     ts <- mapM argument args
     case (n, ts) of
-      ("List", [t]) -> pure (generic "list" "IReadOnlyList" [t])
-      ("Maybe", [t]) -> pure (generic "option" "LawSpec.CSharp.Maybe" [t])
+      ("List", [t]) -> pure (generic "list" "FSharpList" [t])
+      ("Maybe", [t]) -> pure (generic "option" "FSharpOption" [t])
       ("Either", [a, b]) -> pure (applied "LawSpec.Either" [a, b])
       ("Nullable", [t]) -> pure (applied "LawSpec.Nullable" [t])
       ("Optional", [t]) -> pure (applied "LawSpec.Optional" [t])
       ("lawspec.time::type::Duration", []) -> pure "System.TimeSpan"
-      ("lawspec.collections::type::Set", [t]) -> pure (generic' "Set" "IReadOnlySet" [t])
-      ("lawspec.collections::type::KeyVal", [k, v]) -> pure (generic' "Map" "IReadOnlyDictionary" [k, v])
+      ("lawspec.collections::type::Set", [t]) -> pure (generic' "Set" "FSharpSet" [t])
+      ("lawspec.collections::type::KeyVal", [k, v]) -> pure (generic' "Map" "FSharpMap" [k, v])
       (_, []) | Just _ <- primitive n -> scalarType n
       _ -> case lookup (C.Id n) names of
         Just name -> pure (applied ("LawSpec.Data." ++ name) ts)
@@ -91,7 +91,7 @@ nativeType lang bits names parameters ty = case ty of
       (FSharp, "UIntPtr") -> if bits == 32 then "uint32" else "uint64"
       (CSharp, "UIntPtr") -> if bits == 32 then "uint" else "ulong"
       (FSharp, "Unit") -> "unit"
-      (CSharp, "Unit") -> "System.ValueTuple"
+      (CSharp, "Unit") -> "Unit"
       (_, "Null") -> "LawSpec.Null"
       (_, "Undefined") -> "LawSpec.Undefined"
       (FSharp, "Text") -> "string"
@@ -104,7 +104,7 @@ nativeType lang bits names parameters ty = case ty of
       (FSharp, "CodeUnit16") -> "char"
       (CSharp, "CodeUnit16") -> "char"
       (FSharp, "CodePointText") -> "int list"
-      (CSharp, "CodePointText") -> "IReadOnlyList<int>"
+      (CSharp, "CodePointText") -> "FSharpList<int>"
       (FSharp, "Utf16Text") -> "string"
       (CSharp, "Utf16Text") -> "string"
       (FSharp, "Float32") -> "float32"
@@ -257,7 +257,7 @@ emitData FSharp layout bits bound declarations
         name <- maybe (Left "unnamed handle") Right (lookup (C.dataId d) names)
         let ps = [("t" ++ show i) | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
             native = maybe "obj" (const (name ++ typeParams d)) (boundOf d)
-        pure (D.text ("let " ++ escapeFSharp (camel name) ++ typeParams d ++ " " ++ (if null ps then "()" else unwords ["(_" ++ p ++ ": Codec<'T" ++ drop 1 p ++ ">)" | p <- ps]) ++
+        pure (D.text ("[<CompiledName(\"" ++ name ++ "\")>]") <> D.hardline <> D.text ("let " ++ escapeFSharp (camel name) ++ typeParams d ++ " " ++ (if null ps then "()" else unwords ["(_" ++ p ++ ": Codec<'T" ++ drop 1 p ++ ">)" | p <- ps]) ++
           " : Codec<" ++ native ++ "> = Codec.handle<" ++ native ++ "> " ++ stringLiteral FSharp (C.idText (C.dataId d))))
       aliases <- forM [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))] $ \b -> do
         let d = resolvedDeclaration b
@@ -313,7 +313,7 @@ emitData FSharp layout bits bound declarations
                 listText [cd ++ ".FromNative " ++ v | (cd, v) <- zip fieldCodecs vars] ++ ")" )
       let ps = [("t" ++ show i, typeParameter FSharp i) | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
           self = name ++ typeParams d
-          header = escapeFSharp (camel name) ++ typeParams d ++ " " ++ (if null ps then "()" else unwords ["(" ++ n ++ ": Codec<" ++ p ++ ">)" | (n, p) <- ps]) ++ " : Codec<" ++ self ++ "> ="
+          header = "[<CompiledName(\"" ++ name ++ "\")>] " ++ escapeFSharp (camel name) ++ typeParams d ++ " " ++ (if null ps then "()" else unwords ["(" ++ n ++ ": Codec<" ++ p ++ ">)" | (n, p) <- ps]) ++ " : Codec<" ++ self ++ "> ="
       pure (D.text header <> D.nest 4 (D.hardline <>
         D.text "{ ToNative =" <> D.nest 4 (D.hardline <> D.text "fun value ->" <> D.nest 4 (D.hardline <> D.text "match value with" <> D.hardline <>
           D.joinWith D.hardline (map (D.text . fst) cases) <> D.hardline <> D.text ("| _ -> Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp name))) <> D.hardline <>
@@ -395,7 +395,7 @@ emitData FSharp layout bits bound declarations
           constraint = case [p | (i, (_, p)) <- zip [0 :: Int ..] params, i `elem` compared] of
             [] -> ""
             cs -> " when " ++ intercalate " and " [c ++ ": comparison" | c <- cs]
-          header = escapeFSharp (camel (shapeName s)) ++ (if null params then "" else "<" ++ intercalate ", " (map snd params) ++ constraint ++ ">") ++ " " ++ (if null params then "()" else unwords ["(" ++ n ++ ": Codec<" ++ p ++ ">)" | (n, p) <- params]) ++ " : Codec<" ++ self ++ "> ="
+          header = "[<CompiledName(\"" ++ shapeName s ++ "\")>] " ++ escapeFSharp (camel (shapeName s)) ++ (if null params then "" else "<" ++ intercalate ", " (map snd params) ++ constraint ++ ">") ++ " " ++ (if null params then "()" else unwords ["(" ++ n ++ ": Codec<" ++ p ++ ">)" | (n, p) <- params]) ++ " : Codec<" ++ self ++ "> ="
       pure (D.text header <> D.nest 4 (D.hardline <>
         D.text "{ ToNative =" <> D.nest 4 (D.hardline <> D.text "fun value ->" <> D.nest 4 (D.hardline <> D.text "match value with" <> D.hardline <>
           D.joinWith D.hardline (map fst cases) <> D.hardline <> D.text ("| _ -> Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp (shapeName s)))) <> D.hardline <>
@@ -461,7 +461,7 @@ emitSchema lang layout bits crypto declarations = do
           (if crypto then D.text "// lawspec.crypto's default handlers answer through the runtime's Defaults." <> D.hardline <>
             D.text "Crypto.install ()" <> D.hardline <> D.hardline else mempty) <>
           D.text "/// Every data type of the program, its constructors and their contracts." <> D.hardline <>
-          D.text "let schema: Schema.Schema =" <> D.nest 4 (D.hardline <> body) <> D.hardline
+          D.text "[<CompiledName(\"Schema\")>]" <> D.hardline <> D.text "let schema: Schema.Schema =" <> D.nest 4 (D.hardline <> body) <> D.hardline
         CSharp -> D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
           D.text "using LawSpec.Runtime;" <> D.hardline <> D.text "using LawSpec.CSharp;" <> D.hardline <>
           D.text "using Microsoft.FSharp.Core;" <> D.hardline <> D.text "using Microsoft.FSharp.Collections;" <> D.hardline <>

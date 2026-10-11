@@ -33,7 +33,7 @@ failureOf a op = case lookup op (C.abilityFailures a) of
 nativeResult :: Lang -> String -> Maybe String -> String
 nativeResult _ r Nothing = r
 nativeResult FSharp r (Just e) = "Result<" ++ r ++ ", " ++ e ++ ">"
-nativeResult CSharp r (Just e) = "LawSpec.CSharp.Result<" ++ r ++ ", " ++ e ++ ">"
+nativeResult CSharp r (Just e) = "FSharpResult<" ++ r ++ ", " ++ e ++ ">"
 
 operationSignature :: Lang -> Int -> Data.Names -> C.Ability -> (String, C.Type) -> Either String ([String], String)
 operationSignature lang bits names a (op, ty) = do
@@ -134,14 +134,17 @@ emitBridges FSharp layout bits declarations units
                 [ "member _.Ability = " ++ stringLiteral FSharp key, "member _.Symbols = symbols"
                 , "member _.Handler = handler", "member _.Schema = schema" ])))
           toNative = D.text ("/// " ++ N.displayName a ++ "'s native interface over a logical handler.") <> D.hardline <>
+            D.text ("[<CompiledName(\"" ++ pascal (Effects.bridgeName a "ToNative") ++ "\")>]") <> D.hardline <>
             D.text ("let " ++ Effects.bridgeName a "ToNative" ++ " (schema: Schema.Schema) (symbols: Scalar.SymbolContext) (handler: Effects.Handler) : " ++ interface ++ " =") <>
             D.nest 4 (D.hardline <> D.text (className ++ "(schema, symbols, handler) :> " ++ interface))
           fromNative = D.text ("/// The logical handler of a native " ++ N.displayName a ++ ".") <> D.hardline <>
+            D.text ("[<CompiledName(\"" ++ pascal (Effects.bridgeName a "FromNative") ++ "\")>]") <> D.hardline <>
             D.text ("let " ++ Effects.bridgeName a "FromNative" ++ " (_schema: Schema.Schema) (symbols: Scalar.SymbolContext) (native: " ++ interface ++ ") : Effects.Handler =") <>
             D.nest 4 (D.hardline <> D.text ("Effects.recover native " ++ stringLiteral FSharp key ++ " symbols (fun () ->") <>
               D.nest 4 (D.hardline <> D.text "Effects.stateless" <> D.nest 4 (D.hardline <> D.text "[ " <>
                 D.joinWith (D.hardline <> D.text "  ") clauses <> D.text " ]")) <> D.text ")")
           recording = D.text ("/// A recording of a native " ++ N.displayName a ++ ".") <> D.hardline <>
+            D.text ("[<CompiledName(\"" ++ pascal (Effects.bridgeName a "Recording") ++ "\")>]") <> D.hardline <>
             D.text ("let " ++ Effects.bridgeName a "Recording" ++ " (schema: Schema.Schema) (symbols: Scalar.SymbolContext) (native: " ++ interface ++ ") : " ++ interface ++ " =") <>
             D.nest 4 (D.hardline <> D.text (Effects.bridgeName a "ToNative" ++ " schema symbols (Effects.recording (" ++
               Effects.bridgeName a "FromNative" ++ " schema symbols native))"))

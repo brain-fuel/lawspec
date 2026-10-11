@@ -258,6 +258,7 @@ module Sessions =
 
     /// A channel end on a node over the network, connected to a peer's
     /// address if given.
+    [<CompiledName("NetworkStart")>]
     let rec networkStart (spec: SessionSpec) (node: Node) (name: string) (side: int) (connection: string option) : SessionEnd =
         validate spec
         let endpoint = new Endpoint(node, name, spec.Deadline)
@@ -358,6 +359,7 @@ module Sessions =
 
     /// The address a delegated end is reached at from another node: a network
     /// end moves (its offer); a local end stays, and this node relays it.
+    [<CompiledName("Offer")>]
     let rec offer (node: Node) (e: SessionEnd) (expected: string) : string =
         unusedFirst e expected
         match e.Channel.Network with
@@ -409,7 +411,7 @@ module Sessions =
         addressOfRemote
 
     /// The end a delegation's address names, taken on this node.
-    and take (node: Node) (address: string) (spec: SessionSpec) : SessionEnd =
+    and [<CompiledName("Take")>] take (node: Node) (address: string) (spec: SessionSpec) : SessionEnd =
         let moving = address.Contains "?take="
         let e = networkStart spec node (freshName ()) 0 (if moving then None else Some address)
         try

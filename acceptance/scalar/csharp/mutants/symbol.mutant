@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.cs
+<<<<<<<
+public static bool SameSymbol(Symbol left, Symbol right) => left.Equals(right);
+=======
+public static bool SameSymbol(Symbol left, Symbol right) => left.Description == right.Description;
+>>>>>>>

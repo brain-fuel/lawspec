@@ -41,27 +41,35 @@ type INetworkCrypto =
 module NetworkRecords =
     let private bytesType = Descriptors.Forms [ Descriptors.Atom "bytes" ]
 
+    [<CompiledName("Fields")>]
     let fields (values: byte[] list) = Wire.fields (values |> List.map (fun _ -> bytesType)) (values |> List.map Bytes)
 
+    [<CompiledName("ReadFields")>]
     let readFields (count: int) (bytes: byte[]) (start: int) =
         let values, next = Wire.readFields (List.replicate count bytesType) bytes start
         values |> List.map (function Bytes b -> b | _ -> Fail.raiseWith "InvalidSecureRecord" ""), next
 
+    [<CompiledName("Identity")>]
     let identity (crypto: INetworkCrypto) (seed: byte[]) =
         if isNull seed || seed.Length <> 32 then Fail.raiseWith "InvalidNodeIdentity" ""
         { Seed = Array.copy seed; PublicKey = crypto.MlDsaPublic seed }
 
+    [<CompiledName("Fingerprint")>]
     let fingerprint (crypto: INetworkCrypto) (identity: NodeIdentity) = Wire.hex (crypto.Sha3_256 identity.PublicKey)
 
+    [<CompiledName("Hello")>]
     let hello (session: byte[]) (address: string) (publicKey: byte[]) (kem: byte[]) =
         fields [ session; Encoding.UTF8.GetBytes address; publicKey; kem ]
 
+    [<CompiledName("Welcome")>]
     let welcome (crypto: INetworkCrypto) (session: byte[]) (address: string) (publicKey: byte[]) (ciphertext: byte[]) (helloBody: byte[]) =
         fields [ session; Encoding.UTF8.GetBytes address; publicKey; ciphertext; crypto.Sha3_256 helloBody ]
 
+    [<CompiledName("Key")>]
     let key (crypto: INetworkCrypto) (shared: byte[]) (helloBody: byte[]) (welcomeBody: byte[]) =
         crypto.Shake256(Array.concat [ shared; Encoding.ASCII.GetBytes "lawspec-session-v1"; crypto.Sha3_256 helloBody; crypto.Sha3_256 welcomeBody ], 32)
 
+    [<CompiledName("Record")>]
     let record (kind: byte) (body: byte[]) (signature: byte[]) =
         Array.concat [ [| byte 'L'; byte 'S'; 1uy; kind |]; body; fields [ signature ] ]
 
@@ -70,6 +78,7 @@ module NetworkRecords =
         | Handshake of kind: int * values: byte[] list * body: byte[] * signature: byte[]
         | Sealed of session: byte[] * direction: int * sealedBytes: byte[]
 
+    [<CompiledName("Read")>]
     let read (bytes: byte[]) : Record =
         if bytes.Length < 4 || bytes.[0] <> byte 'L' || bytes.[1] <> byte 'S' || bytes.[2] <> 1uy then
             Fail.raiseWith "InvalidSecureRecord" ""
@@ -94,12 +103,15 @@ module NetworkRecords =
         Array.concat [ Encoding.ASCII.GetBytes "lawspec-frame-v1"; session; [| byte direction |] ]
 
     /// A frame sealed under a session key with a given nonce.
+    [<CompiledName("SealWith")>]
     let sealWith (crypto: INetworkCrypto) (key: byte[]) (session: byte[]) (direction: int) (frame: byte[]) (nonce: byte[]) =
         let sealedBytes = Array.append nonce (crypto.AesGcmEncrypt(key, nonce, frame, associated session direction))
         Array.concat [ [| byte 'L'; byte 'S'; 1uy; 3uy |]; fields [ session ]; [| byte direction |]; fields [ sealedBytes ] ]
 
+    [<CompiledName("Seal")>]
     let seal crypto key session direction frame = sealWith crypto key session direction frame (RandomNumberGenerator.GetBytes 12)
 
+    [<CompiledName("OpenSealed")>]
     let openSealed (crypto: INetworkCrypto) (key: byte[]) (session: byte[]) (direction: int) (sealedBytes: byte[]) =
         if sealedBytes.Length < 12 + 16 then None
         else crypto.AesGcmDecrypt(key, sealedBytes.[.. 11], sealedBytes.[12 ..], associated session direction)
@@ -119,6 +131,7 @@ type NetworkOptions =
 /// `trusted` line names a file of fingerprints.
 /// ref:DEC-distribution-canonical-wire
 module NetworkConfig =
+    [<CompiledName("Empty")>]
     let empty = { Identity = None; IdentitySeed = None; Trusted = None; TrustGiven = false; FirstId = None }
 
     let private locate () =
@@ -134,6 +147,7 @@ module NetworkConfig =
             up (Directory.GetCurrentDirectory())
         | file -> Some(Path.GetFullPath file)
 
+    [<CompiledName("Configured")>]
     let configured () : byte[] option * string list option =
         match locate () with
         | None -> None, None
@@ -152,12 +166,14 @@ module NetworkConfig =
                         else trusted <- Some(text.Split([| ' '; '\t'; '\r'; '\n' |], StringSplitOptions.RemoveEmptyEntries) |> List.ofArray)
             identity, trusted
 
+    [<CompiledName("Fingerprint")>]
     let fingerprint (value: string) =
         if isNull value || value.Length <> 64 then Fail.raiseWith "InvalidTrustedFingerprint" ""
         Convert.FromHexString value |> ignore
         value.ToLowerInvariant()
 
     /// The identity and the trusted set to use.
+    [<CompiledName("Resolve")>]
     let resolve (crypto: INetworkCrypto) (options: NetworkOptions) : NodeIdentity * Set<string> option =
         let fileIdentity, fileTrusted =
             if (options.Identity.IsSome || options.IdentitySeed.IsSome) && options.TrustGiven then None, None else configured ()
@@ -176,17 +192,26 @@ module NetworkConfig =
 /// ref:DEC-distribution-canonical-wire ref:DEC-async-native-tasks
 [<Sealed>]
 type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkOptions, deliver: string -> byte[] -> unit) =
+    [<CompiledName("Identity")>]
     let identity, trusted = NetworkConfig.resolve crypto options
+    [<CompiledName("Gate")>]
     let gate = obj ()
+    [<CompiledName("Known")>]
     let known = Collections.Generic.Dictionary<string, string>()
+    [<CompiledName("Sessions")>]
     let sessions = Collections.Generic.Dictionary<string, string * byte[] * int>()
+    [<CompiledName("Outbound")>]
     let outbound = Collections.Generic.Dictionary<string, byte[]>()
+    [<CompiledName("Pending")>]
     let pending = Collections.Generic.Dictionary<string, PendingHandshake>()
+    [<CompiledName("Welcomes")>]
     let welcomes = Collections.Generic.Dictionary<string, byte[] * byte[] * string>()
     let mutable connection: IPacketTransport = Unchecked.defaultof<_>
     let mutable closed = false
+    [<CompiledName("Key")>]
     let key (session: byte[]) = Convert.ToHexString session
 
+    [<CompiledName("Accept")>]
     let accept (peer: string) (publicKey: byte[]) =
         let fingerprint = Wire.hex (crypto.Sha3_256 publicKey)
         match trusted with
@@ -196,10 +221,12 @@ type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkO
         | true, existing when existing <> fingerprint -> Fail.raiseWith "PeerIdentityChanged" peer
         | _ -> known.[peer] <- fingerprint
 
+    [<CompiledName("ValidPeer")>]
     let validPeer (peer: string) =
         let node, name = Wire.splitAddress (peer + "/")
         if node <> peer || name <> "" then Fail.raiseWith "InvalidPeer" peer
 
+    [<CompiledName("Signed")>]
     let signed (kind: byte) (prefix: string) (body: byte[]) =
         NetworkRecords.record kind body (crypto.MlDsaSign(identity.Seed, Array.append (Encoding.ASCII.GetBytes prefix) body))
 
