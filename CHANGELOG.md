@@ -196,8 +196,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The npm package's `prepack` replaces `README.md` and `CHANGELOG.md` in
   `npm/` by rename, and leaves identical copies alone, so concurrent packs
   never read a half-written copy.
+- `package-smoke` allows half an hour for exporting the examples, and
+  `lawspec-dev ci` runs it alone.
 
 ### Fixed
+
+- `tools/bootstrap-integration.mjs` installs the crypto packages the crypto
+  and distribution suites need (`@noble/post-quantum` from the JavaScript and
+  TypeScript locks, `cryptography` for Python), so a new `.integration`
+  passes them.
 
 - The acceptance harness strips ANSI escape sequences before it decides
   whether a mutant failed to compile, so a coloured toolchain (Gleam under
