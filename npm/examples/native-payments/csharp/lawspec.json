@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "sources": [
+    "laws"
+  ],
+  "machineBits": 64,
+  "targets": [
+    {
+      "language": "csharp",
+      "root": ".",
+      "nativeBindings": {
+        "functions": [
+          {
+            "declaration": "example.payments::addFee",
+            "native": [
+              "Domain",
+              "Payments",
+              "ApplyFee"
+            ]
+          },
+          {
+            "declaration": "example.payments::roundTrip",
+            "native": [
+              "Domain",
+              "Payments",
+              "Restore"
+            ]
+          },
+          {
+            "declaration": "example.payments::archive",
+            "native": [
+              "Domain",
+              "Payments",
+              "Store"
+            ]
+          }
+        ],
+        "generators": [
+          {
+            "type": "example.payments::type::Money",
+            "factory": [
+              "Domain",
+              "PaymentGenerators",
+              "Prices"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
