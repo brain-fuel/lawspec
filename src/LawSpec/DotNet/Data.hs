@@ -506,7 +506,7 @@ emitSchema lang layout bits crypto declarations = do
           earlier = map C.binderId (take i (S.contractFields contract))
           available expression = all (`elem` earlier) (C.freeBinders expression)
           bounds = filter (available . snd) (BeamGenerators.directBounds requirement)
-          lengths = filter (available . snd) (BeamGenerators.lengthBounds requirement)
+          lengths = filter (available . snd) (BeamGenerators.lengthBounds requirement ++ BeamGenerators.nonEmptyBounds requirement)
           hints = [hint | hint <- domainHints q ++ regexHints binder predicates, C.expressionType hint == C.binderType binder, available hint]
       if null bounds && null lengths && null hints then pure [] else do
         context <- contractRender contract

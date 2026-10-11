@@ -1,7 +1,7 @@
 -- | Native generator composition from checked inputs and harness strategies.
 -- Every choice and bind retains its framework's own shrink tree.
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks ref:REQ-harness-units
-module LawSpec.BeamGenerators (inputs, directBounds, lengthBounds) where
+module LawSpec.BeamGenerators (inputs, directBounds, lengthBounds, nonEmptyBounds) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -9,6 +9,7 @@ import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamDefinitions as Definitions
 import LawSpec.Core.Types (makeRegistry)
+import LawSpec.Scalar (Scalar(..))
 import LawSpec.Testing
 import Data.List (nub)
 
@@ -116,6 +117,28 @@ lengthBounds :: GeneratorRequirement -> [(C.BinaryOp,C.Expr)]
 lengthBounds = comparisonBounds (\local term -> case C.expressionNode term of
   C.Helper C.Length [inner] -> local inner
   _ -> False)
+
+-- | A required `x != ""` or `x != []` asks for a non-empty sequence, so it is
+-- drawn as a minimum length of one rather than filtered from short draws.
+-- ref:DEC-shrink-within-domain
+nonEmptyBounds :: GeneratorRequirement -> [(C.BinaryOp,C.Expr)]
+nonEmptyBounds requirement = nub (concatMap walk (generatorPredicates requirement))
+  where
+    current = C.binderId (generatorBinder requirement)
+    walk term = case C.expressionNode term of
+      C.ShortCircuit C.And a b -> walk a ++ walk b
+      C.Binary C.NotEqual _ a b
+        | local a && empty b || local b && empty a -> [(C.Greater, zero term)]
+      _ -> []
+    local term = case C.expressionNode term of
+      C.Local identity -> identity == current
+      C.Convert C.CheckedArgument _ inner -> local inner
+      _ -> False
+    empty term = case C.expressionNode term of
+      C.Constant (SSequence _ []) -> True
+      C.Construct (C.Id "List::Nil") [] -> True
+      _ -> False
+    zero term = C.Expr (C.scalarType "Integer") (C.Constant (SInteger "Integer" 0)) (C.expressionOrigin term)
 
 comparisonBounds :: ((C.Expr -> Bool) -> C.Expr -> Bool) -> GeneratorRequirement -> [(C.BinaryOp,C.Expr)]
 comparisonBounds select requirement = concatMap walk (generatorPredicates requirement)

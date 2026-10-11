@@ -300,7 +300,7 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
       bounds <- mapM (\(op, expression) -> (\v -> call "Generators" "compareBound" [Str (C.binaryName op), v]) <$> renderWith names expression)
         (nub (generatorBounds requirement ++ BeamGenerators.directBounds requirement))
       lengths <- mapM (\(op, expression) -> (\v -> call "Generators" "lengthBound" [Str (C.binaryName op), v]) <$> renderWith names expression)
-        (BeamGenerators.lengthBounds requirement)
+        (BeamGenerators.lengthBounds requirement ++ BeamGenerators.nonEmptyBounds requirement)
       hints <- mapM (renderWith names) [hint | hint <- generatorHints requirement,
         C.expressionType hint == C.binderType (generatorBinder requirement)]
       index <- case generatorIndex requirement of

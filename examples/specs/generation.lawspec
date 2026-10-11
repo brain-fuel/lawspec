@@ -162,3 +162,14 @@ law `a share is at most the total` is
     expect share t n = 2
   end
 end
+
+-- A text refined to be non-empty is drawn from its refinement, at every
+-- size: four of them, one also unlike another, are met at the first case,
+-- not filtered out of draws that are mostly empty while the size is small.
+law `several non-empty texts are drawn` is
+  definition is
+    `for all` (a :: Text where a != "") (b :: Text where b != "") (c :: Text where c != "")
+      (d :: Text where d != "" && d != c) .
+      prelude.length a + prelude.length b + prelude.length c + prelude.length d >= 4
+  end
+end
