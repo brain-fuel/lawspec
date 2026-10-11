@@ -155,6 +155,9 @@ resources exclusively:
   BEAM network, remote, session and mailbox APIs, scheduling, resilience,
   consistency, concurrency) are a timing class: at most a third of the jobs
   run them at once.
+- `package-smoke` runs first and alone: it exports every bundled example,
+  single-threaded, under a half-hour hang guard that a loaded machine could
+  otherwise exceed.
 
 Ctrl-C stops every running step and everything it started. To add a step,
 declare what it follows and holds in `plan` in `dev/Ci.hs`.
