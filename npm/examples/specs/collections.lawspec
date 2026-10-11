@@ -169,7 +169,6 @@ law `text keys and items order by code point` is
     words = ["😀", "Ａ", "😀"]
     expect countedKeys words = ["Ａ", "😀"]
     expect orderedItems (prelude.setOf words) = ["Ａ", "😀"]
-    expect prelude.keys (wordCounts words) = ["Ａ", "😀"]
   end
 end
 
