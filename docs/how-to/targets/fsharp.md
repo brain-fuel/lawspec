@@ -74,7 +74,7 @@ type is `LawSpec.Data.Tree<'T0>` with cases `Leaf of value: 'T0` and
 | --- | --- |
 | `Int8`…`Int64`, `UInt8`…`UInt64` | `sbyte`…`int64`, `byte`…`uint64` |
 | `Integer`, `BigInt`, `BigUInt` | `bigint` |
-| `IntSize` | `int64`, or `int` in the 32-bit profile |
+| `IntSize`, `UIntSize`, `UIntPtr` | `int64`, `uint64`, `uint64` on both profiles, checked against `machineBits` |
 | `Float32`, `Float64` | `float32`, `float` |
 | `Decimal`, `Rational` | `LawSpec.ExactDecimal`, `LawSpec.Rational` |
 | `Complex64`, `Complex128` | `LawSpec.Complex64`, `System.Numerics.Complex` |
