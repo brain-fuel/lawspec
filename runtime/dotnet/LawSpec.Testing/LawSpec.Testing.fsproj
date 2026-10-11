@@ -25,6 +25,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../LawSpec.Runtime/LawSpec.Runtime.fsproj" />
+    <PackageReference Include="FsCheck" Version="3.4.0" />
     <PackageReference Include="xunit.v3.extensibility.core" Version="4.0.2" />
   </ItemGroup>
 </Project>

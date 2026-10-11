@@ -2,13 +2,13 @@
 namespace Domain;
 
 using System.Numerics;
+using FsCheck;
+using FsCheck.Fluent;
 using LawSpec;
-using LawSpec.CSharp;
 using LawSpec.Data;
-using LawSpec.Testing;
 
 public static class PaymentGenerators
 {
-    public static Gen<Money> Prices() =>
-        Gen.Map(Fn.F1((int cents) => new Money(new ExactDecimal(new BigInteger(cents), -2), Currency.EUR)), Gen.Range(100, 200));
+    public static Arbitrary<Money> Prices() =>
+        Arb.From(Gen.Choose(100, 200).Select(cents => new Money(new ExactDecimal(new BigInteger(cents), -2), Currency.EUR)));
 }
