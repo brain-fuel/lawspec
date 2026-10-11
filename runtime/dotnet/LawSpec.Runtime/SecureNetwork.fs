@@ -192,26 +192,17 @@ module NetworkConfig =
 /// ref:DEC-distribution-canonical-wire ref:DEC-async-native-tasks
 [<Sealed>]
 type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkOptions, deliver: string -> byte[] -> unit) =
-    [<CompiledName("Identity")>]
     let identity, trusted = NetworkConfig.resolve crypto options
-    [<CompiledName("Gate")>]
     let gate = obj ()
-    [<CompiledName("Known")>]
     let known = Collections.Generic.Dictionary<string, string>()
-    [<CompiledName("Sessions")>]
     let sessions = Collections.Generic.Dictionary<string, string * byte[] * int>()
-    [<CompiledName("Outbound")>]
     let outbound = Collections.Generic.Dictionary<string, byte[]>()
-    [<CompiledName("Pending")>]
     let pending = Collections.Generic.Dictionary<string, PendingHandshake>()
-    [<CompiledName("Welcomes")>]
     let welcomes = Collections.Generic.Dictionary<string, byte[] * byte[] * string>()
     let mutable connection: IPacketTransport = Unchecked.defaultof<_>
     let mutable closed = false
-    [<CompiledName("Key")>]
     let key (session: byte[]) = Convert.ToHexString session
 
-    [<CompiledName("Accept")>]
     let accept (peer: string) (publicKey: byte[]) =
         let fingerprint = Wire.hex (crypto.Sha3_256 publicKey)
         match trusted with
@@ -221,12 +212,10 @@ type SecureLayer(crypto: INetworkCrypto, transport: Transport, options: NetworkO
         | true, existing when existing <> fingerprint -> Fail.raiseWith "PeerIdentityChanged" peer
         | _ -> known.[peer] <- fingerprint
 
-    [<CompiledName("ValidPeer")>]
     let validPeer (peer: string) =
         let node, name = Wire.splitAddress (peer + "/")
         if node <> peer || name <> "" then Fail.raiseWith "InvalidPeer" peer
 
-    [<CompiledName("Signed")>]
     let signed (kind: byte) (prefix: string) (body: byte[]) =
         NetworkRecords.record kind body (crypto.MlDsaSign(identity.Seed, Array.append (Encoding.ASCII.GetBytes prefix) body))
 

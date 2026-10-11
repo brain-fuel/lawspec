@@ -147,7 +147,6 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
     do
         if port < 0 || port > 65535 || not (SocketProtocol.host host) || not (SocketProtocol.host advertise) then
             Fail.raiseWith "InvalidTransportOptions" ""
-    [<CompiledName("Ip")>]
     let ip =
         match IPAddress.TryParse host with
         | true, a -> a
@@ -156,26 +155,17 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             match addresses |> Array.tryFind (fun a -> a.AddressFamily = AddressFamily.InterNetwork) with
             | Some a -> a
             | None -> addresses.[0]
-    [<CompiledName("Listener")>]
     let listener = new TcpListener(ip, port)
     do listener.Start()
-    [<CompiledName("Actual")>]
     let actual = (listener.LocalEndpoint :?> IPEndPoint).Port
-    [<CompiledName("Address")>]
     let address = SocketProtocol.address kind advertise actual
-    [<CompiledName("Cancel")>]
     let cancel = new CancellationTokenSource()
-    [<CompiledName("Gate")>]
     let gate = obj ()
-    [<CompiledName("Writers")>]
     let writers = Collections.Generic.Dictionary<string, Channels.Channel<byte[]>>()
-    [<CompiledName("Workers")>]
     let workers = Collections.Concurrent.ConcurrentBag<Task>()
 
-    [<CompiledName("Safely")>]
     let safely (action: unit -> unit) = try action () with _ -> ()
 
-    [<CompiledName("ReadExactly")>]
     let readExactly (stream: Stream) (count: int) (token: CancellationToken) =
         task {
             let buffer = Array.zeroCreate<byte> count
@@ -187,7 +177,6 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             return if ok then Some buffer else None
         }
 
-    [<CompiledName("ServeTcp")>]
     let serveTcp (client: TcpClient) =
         task {
             use client = client
@@ -208,7 +197,6 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
         }
         :> Task
 
-    [<CompiledName("ReadHead")>]
     let readHead (stream: Stream) (parse: byte[] -> 'r option) (token: CancellationToken) =
         task {
             let buffer = Array.zeroCreate<byte> 4096
@@ -226,7 +214,6 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             return result, acc
         }
 
-    [<CompiledName("ServeHttp")>]
     let serveHttp (client: TcpClient) =
         task {
             use client = client
@@ -254,7 +241,6 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
         }
         :> Task
 
-    [<CompiledName("Accept")>]
     let accept =
         task {
             try
@@ -265,7 +251,6 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             with _ -> ()
         }
 
-    [<CompiledName("Connect")>]
     let connect (h: string) (p: int) (token: CancellationToken) =
         task {
             let client = new TcpClient(AddressFamily.InterNetworkV6)
@@ -277,7 +262,6 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
             return client
         }
 
-    [<CompiledName("WriteTcp")>]
     let writeTcp (peer: string) (h: string) (p: int) (queue: Channels.Channel<byte[]>) =
         task {
             let mutable client: TcpClient = null
@@ -312,7 +296,6 @@ type SocketTransport(kind: SocketKind, host: string, port: int, advertise: strin
         }
         :> Task
 
-    [<CompiledName("WriteHttp")>]
     let writeHttp (peer: string) (h: string) (p: int) (queue: Channels.Channel<byte[]>) =
         task {
             try

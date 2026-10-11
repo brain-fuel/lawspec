@@ -6,7 +6,7 @@
 module LawSpec.DotNet.Names
   ( langOf, extension, pascal, camel, unitNamespace, unitModule, unitQualified, generatedModule
   , adapterPath, functionName, parameterName, dataNames, fsharpKeywords, csharpKeywords, escapeFSharp
-  , splitDots, testModule
+  , splitDots, testModule, handleKey
   ) where
 
 import qualified LawSpec.Core as C
@@ -118,6 +118,12 @@ dataNames declarations = do
       breakOn text = go "" text
         where go acc rest@(c : cs) = if take 2 rest == "::" then (reverse acc, drop 2 rest) else go (c : acc) cs
               go acc [] = (reverse acc, "")
+  -- Handles are also listed under a marker key: C# sees a handle's F# type
+  -- abbreviation as the object it abbreviates.
   if length names /= length (nub names)
     then Left ("colliding .NET data names: " ++ show [n | n <- nub names, length (filter (== n) names) > 1])
-    else pure types
+    else pure (types ++ [(handleKey (C.dataId d), n) | d <- declarations, C.dataHandle d, Just n <- [lookup (C.dataId d) types]])
+
+-- | The marker key under which dataNames lists a handle.
+handleKey :: C.Id -> C.Id
+handleKey identity = C.Id ("handle#" ++ C.idText identity)

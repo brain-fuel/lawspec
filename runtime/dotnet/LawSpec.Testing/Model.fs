@@ -225,10 +225,12 @@ let withActors (host: IActorHost) (model: Model) = { model with Actors = Some ho
 /// handler factories installed in a scope of their own around each body.
 [<CompiledName("Context")>]
 let context (schema: Schema.Schema) (factories: (string * (Schema.Schema -> Effects.Handler)) list) : ContextFactory =
-    fun body ->
+    // Bound first, so the function compiles with two arguments for C#.
+    let factory body =
         let symbols = Scalar.SymbolContext()
         if List.isEmpty factories then body (schema, symbols)
         else Effects.withScope schema factories (fun scoped -> body (scoped, symbols))
+    factory
 
 /// The step at an index (commands, then the injected crash).
 [<CompiledName("Command")>]
@@ -566,8 +568,9 @@ let check (model: Model) = checkWith defaults model
 /// symbols, as generated code builds them.
 [<CompiledName("ContextWith")>]
 let contextWith (schema: Schema.Schema) (factories: Scalar.SymbolContext -> (string * (Schema.Schema -> Effects.Handler)) list) : ContextFactory =
-    fun body ->
+    let factory body =
         let symbols = Scalar.SymbolContext()
         match factories symbols with
         | [] -> body (schema, symbols)
         | made -> Effects.withScope schema made (fun scoped -> body (scoped, symbols))
+    factory

@@ -154,7 +154,9 @@ flatten ty e = case e of
   where
     hoisted = do
       name <- fresh
-      pure ([Bind name ty e], Var name)
+      -- A conditional's local has the conditional's own type.
+      let t = case e of If _ ct _ _ -> ct; _ -> ty
+      pure ([Bind name t e], Var name)
     effect x = do
       (ss, x') <- flatten tUnit x
       pure (ss ++ [Effect x'])

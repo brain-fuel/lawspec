@@ -50,6 +50,7 @@ nativeType lang bits names parameters ty = case ty of
       ("lawspec.collections::type::Set", [t]) -> pure (generic' "Set" "FSharpSet" [t])
       ("lawspec.collections::type::KeyVal", [k, v]) -> pure (generic' "Map" "FSharpMap" [k, v])
       (_, []) | Just _ <- primitive n -> scalarType n
+      _ | lang == CSharp, Just _ <- lookup (handleKey (C.Id n)) names -> pure "object"
       _ -> case lookup (C.Id n) names of
         Just name -> pure (applied ("LawSpec.Data." ++ name) ts)
         Nothing -> Left ("no .NET native type for " ++ n)
