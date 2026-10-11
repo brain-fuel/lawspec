@@ -53,6 +53,7 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Typed.Plan (typedPlanPerforming, scalarTypes, typedFallbacks, isTypedHandler)
 import LawSpec.Typed.Jvm (jvmScalars)
+import LawSpec.Typed.FSharp (dotnetTypedDeclarations)
 
 benchCommand :: [String] -> IO ()
 benchCommand arguments = case arguments of
@@ -157,7 +158,8 @@ deterministic name targets = do
     nubSorted = S.toList . S.fromList
 
 -- | Which of the benchmark's definitions and spec handlers stay on the
--- dynamic path, and why: on the JVM (no UInt64), and on every other target.
+-- dynamic path, and why: on the JVM (no UInt64), on .NET (Duration is a
+-- TimeSpan), and on every other target.
 typedReport :: String -> IO ()
 typedReport name = do
   let base = "bench" </> name
@@ -170,7 +172,8 @@ typedReport name = do
       units = C.programUnits program
       definitions = length (concatMap C.unitDefinitions units)
   forM_ [ ("rust, go, python, javascript, typescript, haskell", typedPlanPerforming scalarTypes declarations units)
-        , ("java, kotlin", typedPlanPerforming jvmScalars declarations units) ] $ \(label, plan) -> do
+        , ("java, kotlin", typedPlanPerforming jvmScalars declarations units)
+        , ("fsharp, csharp", typedPlanPerforming scalarTypes (dotnetTypedDeclarations [] declarations) units) ] $ \(label, plan) -> do
     let fallbacks = typedFallbacks plan
         handlers = [(C.handlerName h, isTypedHandler plan h) | u <- units, h <- C.unitHandlers u]
     putStrLn (label ++ ": " ++ show (definitions - length fallbacks) ++ " of " ++ show definitions ++ " definitions typed")
