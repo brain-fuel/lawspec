@@ -23,6 +23,7 @@
     <Compile Include="Crypto.fs" />
     <Compile Include="NetworkCrypto.fs" />
     <Compile Include="Runtime.fs" />
+    <Compile Include="Typed.fs" />
     <Compile Include="Policy.fs" />
     <Compile Include="Tasks.fs" />
     <Compile Include="Workflow.fs" />

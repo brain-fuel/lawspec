@@ -497,6 +497,7 @@ library
       LawSpec.DotNet.Emit
       LawSpec.DotNet.Entries
       LawSpec.DotNet.Expr
+      LawSpec.DotNet.Handlers
       LawSpec.DotNet.Mailboxes
       LawSpec.DotNet.Models
       LawSpec.DotNet.Names
@@ -602,6 +603,7 @@ library
       LawSpec.TestManifest
       LawSpec.TestNames
       LawSpec.Time
+      LawSpec.Typed.FSharp
       LawSpec.Typed.Go
       LawSpec.Typed.Haskell
       LawSpec.Typed.Jvm
@@ -765,6 +767,7 @@ test-suite lawspec-test
       DistributionSpec
       DocumentSpec
       DomainModelSpec
+      DotNetSpec
       FlowSpec
       GadtSpec
       GenericDefinitionSpec

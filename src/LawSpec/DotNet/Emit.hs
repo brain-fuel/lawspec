@@ -12,7 +12,7 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Diagnostic(..), artifactPath)
 import LawSpec.Testing
 import LawSpec.NativeRequest (BindingPlan(..), NativeCall(..), emptyBindingPlan)
-import LawSpec.NativeBinding (ResolvedBindings(..), ResolvedGeneratorBinding(..), NativeRef(..))
+import LawSpec.NativeBinding (ResolvedBindings(..), ResolvedGeneratorBinding(..), ResolvedTypeBinding(..), NativeRef(..))
 import LawSpec.DotNetSources (dotnetSource, dotnetFiles)
 import LawSpec.DotNet.Code (Lang(..))
 import LawSpec.DotNet.Names
@@ -26,6 +26,7 @@ import qualified LawSpec.DotNet.Sessions as Sessions
 import qualified LawSpec.DotNet.Mailboxes as Mailboxes
 import qualified LawSpec.DotNet.Remote as Remote
 import qualified LawSpec.DotNet.Handlers as Handlers
+import LawSpec.Typed.FSharp (FSharpTyped(..), emitFSharpTyped)
 import Control.Monad (unless, when)
 import Data.List (isPrefixOf, isSuffixOf, isInfixOf, nub)
 import LawSpec.DefaultSources (defaultSource)
@@ -64,7 +65,10 @@ emitDotNetWithBindings target minify bindings plan = do
       bridges <- Abilities.emitBridges lang layout bits declarations units
       defaults <- Abilities.emitDefaults lang layout units
       schema <- Data.emitSchema lang layout bits usesCrypto declarations
-      entries <- Definitions.emitEntries lang layout bits calls declarations units
+      typed <- emitFSharpTyped bits (map (C.dataId . resolvedDeclaration) boundTypes) declarations units
+      let typedFile = [Artifact "src/LawSpec/Typed.fs" source "generated" "source" | Just source <- [fsTypedSource typed]]
+          typedCall i = (\f -> (f, maybe f id (fsTypedCsFunction typed i), fsTypedContextual typed i)) <$> fsTypedFunction typed i
+      entries <- Definitions.emitEntries lang layout bits calls typedCall declarations units
       adapters <- Definitions.emitAdapters lang layout bits calls declarations units
       api <- Definitions.emitApi lang layout bits declarations units
       laws <- Properties.emitTests lang layout (not (null generators)) plan
@@ -77,10 +81,10 @@ emitDotNetWithBindings target minify bindings plan = do
       mailboxFiles <- if lang == FSharp then Mailboxes.emitMailboxes layout bits declarations units else pure []
       let (remoteEarly, remoteLate) = if lang == FSharp && usesNetwork then Remote.emitRemote FSharp layout units plan else ([], [])
           actorClasses = sessionFiles ++ mailboxFiles ++ remoteEarly ++ actorClasses'
-      handlerClasses <- Handlers.emitHandlers lang layout bits declarations units
-      let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ actorClasses) adapters entries api ++
+      handlerClasses <- Handlers.emitHandlers lang layout bits (Just typed) declarations units
+      let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ typedFile ++ actorClasses) adapters entries api ++
             [drop (4 :: Int) (artifactPath a) | a <- handlerClasses ++ actorHandlers ++ remoteLate]
-          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ actorClasses ++ entries ++ adapters ++ api ++ handlerClasses ++ actorHandlers ++ remoteLate
+          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ typedFile ++ actorClasses ++ entries ++ adapters ++ api ++ handlerClasses ++ actorHandlers ++ remoteLate
       pure (runtimeArtifacts ++ sources ++ tests ++ vectors ++
         [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order; application types bound in lawspec.json go in Native/Types/, before the data types; other application code goes in Native/, after the ability interfaces." ordered
         , props "tests/LawSpec.Tests.props" "test" "The generated tests; application generators bound in lawspec.json go in Native/, before them."
@@ -105,8 +109,11 @@ emitDotNetWithBindings target minify bindings plan = do
       mailboxFiles <- Mailboxes.emitMailboxes layout bits declarations units
       (actorClasses, _) <- Actors.emitActors layout bits declarations units
       actorHandlers <- Actors.emitActorHandlersCs layout bits declarations units
+      typed <- emitFSharpTyped bits [] declarations units
+      let typedFile = [Artifact "src/LawSpec/Typed.fs" source "generated" "source" | Just source <- [fsTypedSource typed]]
+          typedCall i = (\f -> (f, maybe f id (fsTypedCsFunction typed i), fsTypedContextual typed i)) <$> fsTypedFunction typed i
       let (remoteEarly, remoteLate) = if usesNetwork then Remote.emitRemote CSharp layout units plan else ([], [])
-          modelFiles = map relocate (dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ sessionFiles ++ mailboxFiles ++ remoteEarly ++ actorClasses)
+          modelFiles = map relocate (dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ typedFile ++ sessionFiles ++ mailboxFiles ++ remoteEarly ++ actorClasses)
           relocate (Artifact path content ownership _) = Artifact ("lawspec/LawSpec.Model/" ++ drop (length ("src/LawSpec/" :: String)) path) content ownership "source"
           relocate other = other
           modelProject = Artifact "lawspec/LawSpec.Model/LawSpec.Model.fsproj" (unlines (
@@ -125,10 +132,10 @@ emitDotNetWithBindings target minify bindings plan = do
             , "    <ProjectReference Include=\"../LawSpec.Runtime/LawSpec.Runtime.fsproj\" />"
             , "  </ItemGroup>"
             , "</Project>" ])) "generated" "source"
-      entries <- Definitions.emitEntries CSharp layout bits calls declarations units
+      entries <- Definitions.emitEntries CSharp layout bits calls typedCall declarations units
       adapters <- Definitions.emitAdapters CSharp layout bits calls declarations units
       api <- Definitions.emitApi CSharp layout bits declarations units
-      handlerClasses <- Handlers.emitHandlers CSharp layout bits declarations units
+      handlerClasses <- Handlers.emitHandlers CSharp layout bits Nothing declarations units
       laws <- Properties.emitTests CSharp layout (not (null generators)) plan
       nativeGenerators <- Properties.emitNativeGenerators CSharp layout bits declarations generators
       models <- Models.emitModels CSharp layout bits declarations units

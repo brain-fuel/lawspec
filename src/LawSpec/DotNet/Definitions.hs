@@ -5,7 +5,7 @@
 -- ref:DEC-total-definitions ref:DEC-native-bindings-typed-identity
 module LawSpec.DotNet.Definitions
   ( Entry(..), entries, entryCall, orderedUnits, emitEntries, emitAdapters, adapterDeclarations
-  , nativeSignature, emitApi, apiModule, csUsingLines
+  , nativeSignature, emitApi, apiModule, csUsingLines, TypedCall
   ) where
 
 import qualified LawSpec.Core as C
@@ -77,8 +77,12 @@ hasModule u = not (null (C.unitDeclarations u) && null (C.unitHandlers u) &&
   null [a | a <- N.ownAbilities u, not (C.isFail (C.abilityInstance a))])
 
 -- | One generated module per unit, holding its entries.
-emitEntries :: Lang -> D.Layout -> Int -> Calls -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emitEntries lang layout bits calls declarations units = do
+-- | A typed definition's function (F# and C# names) and whether it takes the
+-- handler context.
+type TypedCall = C.Id -> Maybe (String, String, Bool)
+
+emitEntries :: Lang -> D.Layout -> Int -> Calls -> TypedCall -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
+emitEntries lang layout bits calls typedCall declarations units = do
   verified <- checkedDefinitionContracts bits declarations units
   names <- dataNames declarations
   forM [u | u <- orderedUnits units, hasModule u] $ \u -> do
@@ -110,6 +114,15 @@ emitEntries lang layout bits calls declarations units = do
           context table = X.Context bits X.schemaVar X.symbolsVar (resolve table) (Effects.external units) X.typeRef X.typeKeyOf
           render table = X.render (context table)
       body <- case definition of
+        -- A typed definition runs typed: its arguments to native values, and
+        -- its result back.
+        Just _ | Just (fsName, csName, contextual) <- typedCall identity -> do
+          parameterCodecs <- mapM (Data.codec lang bits names []) parameterTypes
+          resultCodec <- Data.codec lang bits names [] resultType
+          let natives = [codecCall c "ToNative" [Var a] | (c, a) <- zip parameterCodecs arguments]
+              handlerContext = if contextual then [X.schemaVar, X.symbolsVar] else []
+              invocation = Call (Fn fsName csName) (handlerContext ++ (if null natives && not contextual && lang == FSharp then [UnitLit] else natives))
+          pure (codecCall resultCodec "FromNative" [invocation])
         Just d -> render locals (C.definitionBody d) >>= Policy.wrapDefinition units X.schemaVar X.symbolsVar (map Var arguments) d
         Nothing -> do
           parameterCodecs <- mapM (Data.codec lang bits names []) parameterTypes
