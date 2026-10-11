@@ -480,7 +480,7 @@ construct env ty tag values = case (idText tag, values) of
         then D.text "({ " <> D.joinWith (D.text "; ") [D.text (pascal (binderName b) ++ " = ") <> v | (b, v) <- zip (constructorFields c) values] <>
           D.text (" } : " ++ typeText ++ ")")
         else if null values then D.text (typeRef ++ "." ++ pascal (constructorName c))
-        else D.text (typeRef ++ "." ++ pascal (constructorName c) ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
+        else D.text ("(" ++ typeRef ++ "." ++ pascal (constructorName c) ++ "(") <> D.joinWith (D.text ", ") values <> D.text "))"
     Nothing -> lift' (Left ("typed F#: unknown constructor " ++ idText tag))
 
 dataNameOf :: Env -> DataDeclaration -> String
