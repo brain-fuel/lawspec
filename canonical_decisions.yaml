@@ -504,10 +504,11 @@ DEC-csharp-over-fsharp:
   decided: 0.23.0
 
 DEC-canon-constructor-haddock:
-  status: open
+  status: decided
   question: canon's Haskell grammar reports a Haddock comment written before a constructor alternative of a data type (`-- | ...` above `| Ctor Field ...`) as "doc comment is not attached to any unit", an OrphanDocComment that no exemption covers. The code is valid Haskell and the comment is where Haddock expects it. What does LawSpec do until canon is fixed?
   answer: |
-    The code stays as written. canon.yaml ignores src/LawSpec/DotNet/Code.hs, the one file this affects (the constructors of its Expr type), as a temporary entry that names this decision. The canon bug: the canonically commented Haskell grammar attaches a doc comment only to a top-level unit, so `-- |` before a `| Constructor` alternative of a `data` declaration is orphaned instead of attaching to that constructor (or to its data type). When canon attaches it, the ignore entry is removed and this decision closed.
+    The code stays as written. Until canon attached such a comment, canon.yaml ignored src/LawSpec/DotNet/Code.hs, the one file this affected (the constructors of its Expr type), as a temporary entry naming this decision. canon 0.2.2 fixes it (canon's DEC-haskell-constructor-haddock): the Haskell dialect binds a Haddock comment before a constructor's bar or equals sign to that constructor. The ignore entry is removed, and canon check reads Code.hs again.
   opened: 0.23.0
-  revisit: 0.24.0
+  decided: 0.23.0
+  refs: [canon]
 
