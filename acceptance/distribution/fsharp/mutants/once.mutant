@@ -1,0 +1,7 @@
+@@ src/Example/Distribution.fs
+<<<<<<<
+            tally.Add n |> ignore
+            tally.Add n
+=======
+            tally.Add n
+>>>>>>>

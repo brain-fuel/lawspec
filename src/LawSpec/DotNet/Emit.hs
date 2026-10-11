@@ -23,6 +23,8 @@ import qualified LawSpec.DotNet.Abilities as Abilities
 import qualified LawSpec.DotNet.Models as Models
 import qualified LawSpec.DotNet.Actors as Actors
 import qualified LawSpec.DotNet.Sessions as Sessions
+import qualified LawSpec.DotNet.Mailboxes as Mailboxes
+import qualified LawSpec.DotNet.Remote as Remote
 import Control.Monad (unless, when)
 import Data.List (isPrefixOf, isSuffixOf, isInfixOf, nub)
 import LawSpec.DefaultSources (defaultSource)
@@ -70,10 +72,12 @@ emitDotNetWithBindings target minify bindings plan = do
       vectors <- cryptoVectorTests
       (actorClasses', actorHandlers) <- if lang == FSharp then Actors.emitActors layout bits declarations units else pure ([], [])
       sessionFiles <- if lang == FSharp then Sessions.emitSessions layout bits declarations units else pure []
-      let actorClasses = sessionFiles ++ actorClasses'
+      mailboxFiles <- if lang == FSharp then Mailboxes.emitMailboxes layout bits declarations units else pure []
+      let (remoteEarly, remoteLate) = if lang == FSharp && usesNetwork then Remote.emitRemote layout units plan else ([], [])
+          actorClasses = sessionFiles ++ mailboxFiles ++ remoteEarly ++ actorClasses'
       let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ actorClasses) adapters entries api ++
-            [drop (4 :: Int) (artifactPath a) | a <- actorHandlers]
-          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ actorClasses ++ entries ++ adapters ++ api ++ actorHandlers
+            [drop (4 :: Int) (artifactPath a) | a <- actorHandlers ++ remoteLate]
+          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ actorClasses ++ entries ++ adapters ++ api ++ actorHandlers ++ remoteLate
       pure (runtimeArtifacts ++ sources ++ tests ++ vectors ++
         [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order; application types bound in lawspec.json go in Native/Types/, before the data types; other application code goes in Native/, after the ability interfaces." ordered
         , props "tests/LawSpec.Tests.props" "test" "The generated tests." [drop (6 :: Int) (artifactPath t) | t <- tests ++ vectors] ])

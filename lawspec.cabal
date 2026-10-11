@@ -497,10 +497,12 @@ library
       LawSpec.DotNet.Emit
       LawSpec.DotNet.Entries
       LawSpec.DotNet.Expr
+      LawSpec.DotNet.Mailboxes
       LawSpec.DotNet.Models
       LawSpec.DotNet.Names
       LawSpec.DotNet.Policy
       LawSpec.DotNet.Properties
+      LawSpec.DotNet.Remote
       LawSpec.DotNet.Sessions
       LawSpec.DotNetSources
       LawSpec.Elaboration
