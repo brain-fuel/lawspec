@@ -725,7 +725,7 @@ executable lawspec-dev
       DeriveGeneric
       LambdaCase
       RecordWildCards
-  ghc-options: -Wall
+  ghc-options: -Wall -threaded
   build-depends:
       aeson
     , base >=4.18 && <5

@@ -18,6 +18,9 @@ executables:
     main: Main.hs
     source-dirs: [dev, dev/scheduler]
     dependencies: [lawspec, cryptohash-sha256, process, time, commonmark, commonmark-extensions, vector, unix]
+    # The threaded runtime counts the processors (for ci --jobs) and lets a
+    # step wait for its process without stopping the others.
+    ghc-options: [-threaded]
   lawspec-acceptance:
     main: Main.hs
     source-dirs: acceptance
