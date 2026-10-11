@@ -1,0 +1,6 @@
+@@ src/Example/Actors.fs
+<<<<<<<
+    let after = account.Balance + int64 amount
+=======
+    let after = account.Balance + int64 amount + (if amount = 7uy then 1L else 0L)
+>>>>>>>

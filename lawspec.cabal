@@ -489,6 +489,7 @@ library
       LawSpec.Domain
       LawSpec.DomainModel
       LawSpec.DotNet.Abilities
+      LawSpec.DotNet.Actors
       LawSpec.DotNet.Code
       LawSpec.DotNet.Data
       LawSpec.DotNet.Definitions
@@ -500,6 +501,7 @@ library
       LawSpec.DotNet.Names
       LawSpec.DotNet.Policy
       LawSpec.DotNet.Properties
+      LawSpec.DotNet.Sessions
       LawSpec.DotNetSources
       LawSpec.Elaboration
       LawSpec.ElixirCode

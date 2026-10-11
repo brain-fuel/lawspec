@@ -1,0 +1,6 @@
+@@ src/Example/Actors.fs
+<<<<<<<
+let reopen (account: Account) : Account = { Balance = account.Balance }
+=======
+let reopen (account: Account) : Account = { Balance = 0L }
+>>>>>>>

@@ -69,7 +69,7 @@ and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, net
     member internal this.Check(e: SessionEnd) =
         if not (obj.ReferenceEquals(e.Channel, this)) then SessionChannel.Fail "invalid_end"
         let s = sides.[e.Side]
-        if s.Generation <> e.Generation || s.Step <> e.Step then SessionChannel.Fail "spent_end"
+        if s.Generation <> e.Generation || s.Step <> e.Step then SessionChannel.Fail "spent_end: this end was already used"
         if s.Closed then SessionChannel.Fail "abandoned_end"
         s
 
