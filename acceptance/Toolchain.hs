@@ -86,7 +86,9 @@ mutantArguments "python" args = args ++ ["-x"]
 mutantArguments _ args = args
 
 -- | A mutant must fail its laws, not the build. These markers identify build and
--- type-checking failures in each toolchain's output.
+-- type-checking failures in each toolchain's output. ANSI escape sequences are
+-- stripped first, since a toolchain that colours its errors (Gleam under
+-- FORCE_COLOR) would otherwise split a marker such as "error: Type mismatch".
 compileFailure :: String -> Bool
 compileFailure output = any rebarFailure (lines lowered) || any ((`isInfixOf` lowered) . map toLower)
   [ "error[E", "could not compile", "COMPILATION ERROR", "compileKotlin FAILED"
@@ -96,5 +98,13 @@ compileFailure output = any rebarFailure (lines lowered) || any ((`isInfixOf` lo
   , "error: Type mismatch", "error: Unknown variable", "error: Unknown type"
   , "error: Unknown module", "error: Unknown value", ": error FS", ": error CS" ]
   where
-    lowered = map toLower output
+    lowered = map toLower (stripAnsi output)
     rebarFailure line = all (`isInfixOf` line) ["===>", "compiling ", " failed"]
+
+-- | Drop ANSI escape sequences: control sequences (ESC, a bracket, parameters
+-- and a final byte from 0x40 to 0x7E) and two-byte escapes (ESC and one more).
+stripAnsi :: String -> String
+stripAnsi ('\ESC' : '[' : rest) = stripAnsi (drop 1 (dropWhile (\c -> c < '@' || c > '~') rest))
+stripAnsi ('\ESC' : _ : rest) = stripAnsi rest
+stripAnsi (c : rest) = c : stripAnsi rest
+stripAnsi [] = []

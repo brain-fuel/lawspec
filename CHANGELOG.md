@@ -185,6 +185,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The acceptance harness strips ANSI escape sequences before it decides
+  whether a mutant failed to compile, so a coloured toolchain (Gleam under
+  `FORCE_COLOR`) no longer hides a compile failure behind its colour codes.
 - Generation is deterministic: the on-disk cache is keyed by the build of
   the compiler that wrote it (its executable's path, size and time) as well
   as its version, so a rebuilt compiler no longer reads another build's
