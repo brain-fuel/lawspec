@@ -85,6 +85,8 @@ ci args = do
       ordered = concatMap snd groups
       tasks = if workers == 1 then [Task (stepName s) [] [] s | s <- ordered] else plan workers groups
   console <- newConsole (workers == 1)
+  when (parallel console) $
+    say console (show (length tasks) ++ " steps, at most " ++ show workers ++ " at once (--jobs).")
   children <- newIORef M.empty
   main' <- myThreadId
   -- SIGTERM stops the run as Ctrl-C does: every running step is stopped.
