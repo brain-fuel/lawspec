@@ -90,6 +90,10 @@ rapid-go:
   kind: package
   title: Rapid, property-based testing for Go
   locator: https://github.com/flyingmutant/rapid
+fscheck:
+  kind: package
+  title: FsCheck, random testing for .NET
+  locator: https://fscheck.github.io/FsCheck/
 kotest:
   kind: package
   title: Kotest property testing for Kotlin

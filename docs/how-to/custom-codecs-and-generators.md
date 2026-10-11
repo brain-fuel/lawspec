@@ -89,6 +89,7 @@ factory for a type with parameters receives one generator per type argument.
 | Erlang | A PropEr generator | One native generator per type argument | `test/application_generators.erl` |
 | Elixir | `StreamData.t(a)` | One `StreamData.t(a)` per type argument | `test/support/application_generators.ex` |
 | Gleam | `qcheck.Generator(a)` | One `qcheck.Generator(a)` per type argument | `test/application_generators.gleam` |
+| F#, C# | An FsCheck `Arbitrary<T>` from a function or static method of no arguments | None: types with parameters are not bound | `tests/Native/PaymentGenerators.fs`, `tests/Native/PaymentGenerators.cs` |
 
 Factories are test code: they belong in the test directory and are yours.
 

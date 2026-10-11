@@ -9,6 +9,7 @@ title: Set up F#
 
 - The .NET SDK 10.
 - xunit.v3 4.0.2, run on Microsoft.Testing.Platform.
+- FsCheck 3.4.0, which the generated `LawSpec.Testing` project references.
 - BouncyCastle.Cryptography 2.7.0, only for programs that import
   `lawspec.crypto` or `lawspec.network`. The runtime uses the platform's
   ML-KEM, ML-DSA and SLH-DSA where .NET provides them, and BouncyCastle where
@@ -167,9 +168,17 @@ failures to application code:
   method of the handle argument; a constructor binding makes the handle.
 - A failure binding turns an exception of the named type into a failure
   constructor, given the exception's message.
-- A generator binding names a function of no arguments that returns a
-  `LawSpec.Testing.Gen` of the native type; put it in `tests/Native`, which
-  compiles before the tests. It replaces the built-in generation of that type.
+- A generator binding names a function of no arguments that returns an
+  FsCheck `Arbitrary` of the native type; put it in `tests/Native`, which
+  compiles before the tests. It replaces the built-in generation of that type,
+  and its own shrinker shrinks the values.
+
+```fsharp
+let prices () : Arbitrary<Price> =
+    Gen.choose (100, 200)
+    |> Gen.map (fun cents -> { major = { Coefficient = bigint cents; Exponent = -2 }; unit = Euros })
+    |> Arb.fromGen
+```
 
 ## Actors, sessions and mailboxes
 
@@ -195,11 +204,16 @@ node by content hash and evaluates one on another node.
 ## Tests
 
 Tests are xUnit facts. Each example, boundary case and property is a fact,
-with LawSpec's own generators: seeded SplitMix64, refinement- and
-pattern-directed generation, and integrated shrinking. Models, linearizability
-and scenarios run on the runtime's model runner.
+and a property runs on FsCheck. LawSpec builds the generators (refinement- and
+pattern-directed, and the harness's strategies) as FsCheck generators, each
+value with the tree of smaller values it may shrink to, so a shrink never
+leaves an input's refinement; FsCheck draws the cases, grows their size from
+0 to 100 over the run, counts discards against `maxAttempts` and shrinks a
+failure by walking the tree, at most `maxShrinks` steps. Models,
+linearizability and scenarios run on the runtime's model runner.
 
-`LAWSPEC_SEED` replays a run. A unit with `order random` orders its methods
+`LAWSPEC_SEED` replays a run: it seeds FsCheck's `Replay`, and a failure
+prints the seed. A unit with `order random` orders its methods
 and cases by the run's seed, and a `parallel` unit puts each law in a class of
 its own, so xUnit runs them at once; other units run one at a time. Cover,
 classify, labels, targeted search, retries, timeouts, known failures and

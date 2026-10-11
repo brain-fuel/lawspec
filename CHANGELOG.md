@@ -15,9 +15,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   interfaces, `Task` for async, typed actors and supervisors, single-use
   session ends, mailboxes, a virtual clock, remote evaluation and the secure
   network on the shared wire format, and post-quantum crypto from .NET with
-  BouncyCastle where .NET lacks it. Tests run on LawSpec's own engine: seeded
-  SplitMix64 generation and shrinking, models, linearizability, scenarios and
-  the whole harness. C# runs over it: the program's model is a generated F#
+  BouncyCastle where .NET lacks it. Properties run on FsCheck 3.4.0, driven
+  from the xUnit facts: LawSpec's refinement-directed generators are FsCheck
+  generators of shrink trees, so shrinks stay inside refinements, and FsCheck
+  runs, sizes, shrinks and replays (`LAWSPEC_SEED`) the cases; generator
+  bindings return FsCheck Arbitraries. Models, linearizability, scenarios and
+  the whole harness run around it. C# runs over it: the program's model is a generated F#
   project, and adapters, entries, the embedding API and tests are C#, with
   `LawSpec.CSharp` as the compatibility layer. Definitions whose values all
   have native types run typed, over the program's own F# types with checked

@@ -58,9 +58,11 @@ unknown, prerelease, missing and out-of-range versions.
 | | qcheck | 1.0.5 |
 | F# | .NET SDK | 10 |
 | | xunit.v3 | 4.0.2 |
+| | FsCheck | 3.4.0 |
 | | BouncyCastle.Cryptography | 2.7.0 |
 | C# | .NET SDK | 10 |
 | | xunit.v3 | 4.0.2 |
+| | FsCheck | 3.4.0 |
 | | BouncyCastle.Cryptography | 2.7.0 |
 
 Java 25 and Python 3.13 are minimum baselines. New JVM releases are admitted
@@ -111,8 +113,8 @@ When `init` creates a scaffold, it pins:
 | Erlang | OTP 29 profile, PropEr 1.5.0, LawSpec EUnit reporter |
 | Elixir | Elixir `~> 1.20`, StreamData 1.4.0, LawSpec ExUnit formatter |
 | Gleam | Gleam 1.18+, Erlang target, gleam_stdlib 1.0.5, gleeunit 1.11.0, qcheck 1.0.5, local `lawspec_test_support` |
-| F# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2 |
-| C# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, the generated F# model project |
+| F# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, FsCheck 3.4.0 |
+| C# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, FsCheck 3.4.0, the generated F# model project |
 
 ## What the checks inspect
 

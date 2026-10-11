@@ -15,6 +15,7 @@ covers what F# makes awkward from C#.
 
 - The .NET SDK 10.
 - xunit.v3 4.0.2, run on Microsoft.Testing.Platform.
+- FsCheck 3.4.0, which the generated `LawSpec.Testing` project references.
 - BouncyCastle.Cryptography 2.7.0, only for programs that import
   `lawspec.crypto` or `lawspec.network`.
 
@@ -149,13 +150,18 @@ value and the next end the same way. `TallyActor.Connect` and
 
 ## Tests
 
-The tests are C# xUnit facts over the same engine as F#: seeded SplitMix64
-generation and shrinking, the model runner, and the harness's order, parallel
+The tests are C# xUnit facts over the same runner as F#: LawSpec's generators
+on FsCheck, which runs, sizes, shrinks and replays the cases, the model runner, and the harness's order, parallel
 units, cover, retries, timeouts, known failures and benchmarks. `LAWSPEC_SEED`
 replays a run.
 
 `npx lawspec test` runs only the laws an edit can affect, selecting their
 tests with xUnit's query filter; `npx lawspec doctor` checks the SDK, the test
 runner and the generated props, as on F#. A generator binding names a static
-method of no arguments returning a `LawSpec.Testing.Gen<T>` of the generated
-type, in `tests/Native`.
+method of no arguments returning an FsCheck `Arbitrary<T>` of the generated
+type, in `tests/Native`, made with FsCheck's C# API:
+
+```csharp
+public static Arbitrary<Money> Prices() =>
+    Arb.From(Gen.Choose(100, 200).Select(cents => new Money(new ExactDecimal(new BigInteger(cents), -2), Currency.EUR)));
+```

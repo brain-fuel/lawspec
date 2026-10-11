@@ -35,8 +35,9 @@ end
 
 The same law becomes a JetCheck property in Java, a Hypothesis test in Python,
 a fast-check property in JavaScript and TypeScript, a Rapid test in Go, a
-Hedgehog property in Haskell, a Kotest property in Kotlin and a Proptest in
-Rust. The implementation language changes. The law does not. ref:DEC-native-property-frameworks
+Hedgehog property in Haskell, a Kotest property in Kotlin, a Proptest in
+Rust, a PropEr, StreamData or qcheck property on the BEAM and an FsCheck
+property in F# and C#. The implementation language changes. The law does not. ref:DEC-native-property-frameworks
 
 ## The implementation is not the specification
 

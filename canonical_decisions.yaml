@@ -511,9 +511,18 @@ DEC-fsharp-runtime-from-scratch:
   status: decided
   question: How does LawSpec reach .NET, as a port of the Java runtime or as a runtime written for F#?
   answer: |
-    A runtime written for F#, not a port. Portable values are an F# union, failures are Result and typed exceptions, abilities are interfaces with bridges to logical handlers, async is Task, and actors, sessions and mailboxes are F# types over the shared wire format, so generated code and adapters read as F# written by hand. The emitter shares one intermediate form for F# and C#, binding block constructs to fresh locals so F#'s offside rule never meets an expression. Tests run LawSpec's own engine (seeded SplitMix64, structural size budget, integrated shrinking) on xunit.v3, the same on every target. Decided by the owner for 0.23.0.
+    A runtime written for F#, not a port. Portable values are an F# union, failures are Result and typed exceptions, abilities are interfaces with bridges to logical handlers, async is Task, and actors, sessions and mailboxes are F# types over the shared wire format, so generated code and adapters read as F# written by hand. The emitter shares one intermediate form for F# and C#, binding block constructs to fresh locals so F#'s offside rule never meets an expression. Tests run on xunit.v3; properties run on FsCheck (DEC-dotnet-fscheck), and models, linearizability and scenarios on the runtime's own model runner. Decided by the owner for 0.23.0.
   opened: 0.23.0
   decided: 0.23.0
+
+DEC-dotnet-fscheck:
+  status: decided
+  question: The .NET targets ran properties on LawSpec's own engine (seeded SplitMix64, size schedule, integrated shrinking) while every other target uses its ecosystem's property library. Which library runs .NET properties, and how do LawSpec's generators and harness sit on it?
+  answer: |
+    FsCheck 3.4.0, driven programmatically from the generated xUnit v3 facts (Check.One with a Config and a runner that keeps the TestResult), so xUnit v3 stays the test framework and FsCheck.Xunit's attributes are not used. LawSpec.Testing's Gen is an FsCheck generator of a shrink tree: FsCheck draws every random choice and gives the size, and LawSpec builds, for each value, the tree of smaller values it may shrink to, so a bound input's shrink regenerates its dependants from the same random state and size and every candidate stays inside the refinement, as on the other targets. Property.check makes it an Arbitrary whose shrinker walks the tree, limited to maxShrinks steps; cases map to MaxTest, maxAttempts to MaxRejected (as Hedgehog's withDiscards), sizes grow from 0 to 100 over the run (and with each discard, capped at 100), and LAWSPEC_SEED seeds FsCheck's Replay. Strategies, cover, classify and labels (LawSpec's own counters, as everywhere), targeted search, the failure database in the wire encoding, repeats, retries, timeouts, order and parallel units and benchmarks stay in the harness around it. A harness failure (a strategy outside its refinement or out of discards) ends the run without being shrunk. Generator bindings return an FsCheck Arbitrary, keeping its shrinker. Decided by the owner for 0.23.0.
+  opened: 0.23.0
+  decided: 0.23.0
+  refs: [fscheck]
 
 DEC-csharp-over-fsharp:
   status: decided
