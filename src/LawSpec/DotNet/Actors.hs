@@ -141,9 +141,11 @@ emitActors layout bits datas units
                 D.text "member this.Serve(node: Node, name: string) : string =" <> D.nest 4 (D.hardline <>
                   D.text "Remote.serve node name \"call\"" <> D.nest 4 (D.hardline <> D.text "[ " <> D.joinWith (D.hardline <> D.text "  ") [s | (s, _, _) <- entries] <> D.text " ]"))
               connect = D.text ("/// The actor served at address on another node; each call waits up to timeout ms.") <> D.hardline <>
-                D.text ("static member Connect(node: Node, address: string, ?timeout: int) : " ++ cls ++ "Remote =") <> D.nest 4 (D.hardline <>
+                D.text ("static member Connect(node: Node, address: string, timeout: System.TimeSpan) : " ++ cls ++ "Remote =") <> D.nest 4 (D.hardline <>
                   D.text (cls ++ "Remote(Remote.connect node address \"call\"") <> D.nest 4 (D.hardline <> D.text "[ " <>
-                    D.joinWith (D.hardline <> D.text "  ") [s | (_, s, _) <- entries] <> D.text " ]" <> D.hardline <> D.text "(defaultArg timeout 5000))"))
+                    D.joinWith (D.hardline <> D.text "  ") [s | (_, s, _) <- entries] <> D.text " ]" <> D.hardline <> D.text "(int timeout.TotalMilliseconds))")) <> D.hardline <> D.hardline <>
+                D.text "/// The actor served at address on another node; each call waits up to 5 seconds." <> D.hardline <>
+                D.text ("static member Connect(node: Node, address: string) : " ++ cls ++ "Remote = " ++ cls ++ ".Connect(node, address, System.TimeSpan.FromSeconds 5.0)")
               client = ("/// Actor " ++ actorName a ++ " on another node: each method sends its message and waits for the reply.",
                 D.text ("[<Sealed>] " ++ cls ++ "Remote(client: RemoteClient) =") <> D.nest 4 (D.hardline <>
                   D.joinWith (D.hardline <> D.hardline) clientMethods))

@@ -1,0 +1,13 @@
+expect-any: decapsulating gives the encapsulated secret [native] | a handshake carries the message
+@@ src/Native/Counting.cs
+<<<<<<<
+    public SharedSecret Decapsulate(ExchangeSecretKey key, Ciphertext ciphertext) =>
+        inner.Decapsulate(key, ciphertext);
+=======
+    public SharedSecret Decapsulate(ExchangeSecretKey key, Ciphertext ciphertext)
+    {
+        var secret = (byte[])inner.Decapsulate(key, ciphertext).Value.Clone();
+        secret[0] ^= 1;
+        return new SharedSecret(secret);
+    }
+>>>>>>>

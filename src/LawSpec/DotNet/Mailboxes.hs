@@ -36,10 +36,11 @@ emitMailboxes layout bits datas units
                 [ member "The mailbox's wire form." ("static member Descriptor = " ++ stringLiteral FSharp w)
                 , member "A mailbox served at name on a node: other nodes send to its Address."
                     ("static member Serve(node: Node, name: string) : " ++ cls ++ " = new " ++ cls ++ "(Mailbox.Serve(node, name, " ++ cls ++ ".Descriptor))")
-                , member "Sends to the mailbox at address on another node; each send waits up to timeout (5s by default) for it to arrive."
-                    ("static member Connect(node: Node, address: string, ?timeout: TimeSpan) : " ++ cls ++ "Sender =") <> D.nest 4 (D.hardline <>
-                      D.text ("let milliseconds = match timeout with Some t -> int t.TotalMilliseconds | None -> 5000") <> D.hardline <>
-                      D.text (cls ++ "Sender(MailboxSender(node, address, " ++ cls ++ ".Descriptor, milliseconds))"))
+                , member "Sends to the mailbox at address on another node; each send waits up to timeout for it to arrive."
+                    ("static member Connect(node: Node, address: string, timeout: TimeSpan) : " ++ cls ++ "Sender =") <> D.nest 4 (D.hardline <>
+                      D.text (cls ++ "Sender(MailboxSender(node, address, " ++ cls ++ ".Descriptor, int timeout.TotalMilliseconds))"))
+                , member "Sends to the mailbox at address on another node, waiting up to 5 seconds for each send to arrive."
+                    ("static member Connect(node: Node, address: string) : " ++ cls ++ "Sender = " ++ cls ++ ".Connect(node, address, TimeSpan.FromSeconds 5.0)")
                 , member "The served mailbox's address." "member _.Address : string = mailbox.Address" ]
             sender = case wire of
               Nothing -> []

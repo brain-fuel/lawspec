@@ -1,0 +1,11 @@
+@@ src/Example/Resilience.cs
+<<<<<<<
+                Workflow.SetTime(runtime, (long)time);
+                return LawSpec.Definitions.ExampleLimits.Limited(new Ticket(0L)).IsRight;
+=======
+                return Workflow.WithVirtual(BigInteger.Zero, Fn.F1((Workflow.Runtime fresh) =>
+                {
+                    Workflow.SetTime(fresh, (long)time);
+                    return LawSpec.Definitions.ExampleLimits.Limited(new Ticket(0L)).IsRight;
+                }));
+>>>>>>>

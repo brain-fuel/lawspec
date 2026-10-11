@@ -1,0 +1,8 @@
+expect: a charge is logged once
+@@ src/Example/Builtins.cs
+<<<<<<<
+        log.LogMessage(LogLevel.Info, $"charged {cents}");
+=======
+        log.LogMessage(LogLevel.Info, $"charged {cents}");
+        log.LogMessage(LogLevel.Info, $"charged again {cents}");
+>>>>>>>

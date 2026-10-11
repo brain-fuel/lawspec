@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/Example/Crypto.cs
+<<<<<<<
+hash.Sha3(bytes).Value[..8];
+=======
+hash.Sha3(bytes).Value[..7];
+>>>>>>>

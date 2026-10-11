@@ -262,11 +262,13 @@ emitDefaults FSharp layout units
   | otherwise = do
       let functions =
             [ D.text ("/// The default handler of " ++ N.displayName a ++ ".") <> D.hardline <>
+              D.text ("[<CompiledName(\"" ++ pascal (N.interfaceName a) ++ "\")>]") <> D.hardline <>
               D.text ("let " ++ escapeFSharp (camel (N.interfaceName a)) ++ " () : " ++ Effects.interfaceType a ++ " =") <>
               D.nest 4 (D.hardline <> D.text ("LawSpec.Generated.Abilities." ++ Effects.bridgeName a "ToNative" ++
                 " LawSpec.Generated.Program.schema (Scalar.SymbolContext()) (Defaults.handler " ++ stringLiteral FSharp (C.abilityKey (C.abilityInstance a)) ++ ")"))
             | a <- defaults ] ++
             [ D.text "/// The SLH-DSA (FIPS 205) signature handler." <> D.hardline <>
+              D.text "[<CompiledName(\"SlhDsaSignature\")>]" <> D.hardline <>
               D.text ("let slhDsaSignature () : " ++ Effects.interfaceType a ++ " =") <>
               D.nest 4 (D.hardline <> D.text ("LawSpec.Generated.Abilities." ++ Effects.bridgeName a "ToNative" ++
                 " LawSpec.Generated.Program.schema (Scalar.SymbolContext()) (Crypto.slhDsaSignatureHandler ())"))

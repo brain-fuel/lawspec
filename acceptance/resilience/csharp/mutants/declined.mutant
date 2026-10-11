@@ -1,0 +1,6 @@
+@@ src/Example/Limits.cs
+<<<<<<<
+        ticket.Number < 0L ? Either<string, Ticket>.NewLeft("declined") : Admitted(ticket);
+=======
+        Admitted(ticket);
+>>>>>>>
