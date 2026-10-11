@@ -63,9 +63,9 @@ emitHandlers lang layout bits typed declarations units = do
           first = head answered
           summary = "The spec handler " ++ C.handlerName h ++ " for " ++ intercalate ", " (map N.displayName answered) ++ "."
       typedOperations <- case typed of
-        Just t | lang == FSharp && isTypedHandler (fsTypedPlan t) h -> fmap (Just . concat) $ forM answered $ \a -> forM (C.abilityOperations a) $ \(op, ty) -> do
+        Just t | isTypedHandler (fsTypedPlan t) h -> fmap (Just . concat) $ forM answered $ \a -> forM (C.abilityOperations a) $ \(op, ty) -> do
           clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
-          function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (fsTypedFunction t clause)
+          function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right ((if lang == FSharp then fsTypedFunction t else fsTypedCsFunction t) clause)
           failure <- case lookup op (C.abilityFailures a) of
             Just failing@(C.AbilityRef _ [failureType]) -> (\c -> Just (C.abilityKey failing, c)) <$> Data.codec lang bits names [] failureType
             _ -> pure Nothing
@@ -116,6 +116,49 @@ emitHandlers lang layout bits typed declarations units = do
                 | a <- answered ]
           in header <> D.nest 4 (D.hardline <> D.joinWith D.hardline lets <> D.hardline <> D.hardline <>
                D.joinWith (D.hardline <> D.hardline) members)
+        CSharp | Just ops <- typedOperations ->
+          let stateful = C.handlerState h /= Nothing
+              start = case typed of
+                Just t | Just f <- fsTypedCsStart t (C.handlerId h) -> f ++ "(schema, symbols)"
+                _ -> "default"
+              csResult r = if r == "Unit" then "void" else r
+              operation (_, m, ps, r, _) = case [o | o@(op, _, _, _, _) <- ops, Effects.operationMember op == m] of
+                (_, function, contextual, failure, noArgs) : _ ->
+                  let values = [v | (v, t) <- ps, t /= "Unit"]
+                      arguments = concat [["schema", "symbols"] | contextual] ++ ["state" | stateful] ++ (if noArgs && not stateful then [] else values)
+                      invoke = function ++ "(" ++ intercalate ", " arguments ++ ")"
+                      okValue x = case failure of
+                        Just _ -> "return " ++ r ++ ".NewOk(" ++ x ++ ");"
+                        Nothing -> if r == "Unit" then "" else "return " ++ x ++ ";"
+                      computed = if stateful
+                        then [ "var pair = " ++ invoke ++ ";", "state = pair.Second;", okValue "pair.First" ]
+                        else if r == "Unit" && failure == Nothing then [invoke ++ ";"] else [okValue invoke]
+                      body = case failure of
+                        Just (key, codec) ->
+                          [ D.text "try" <> D.hardline <> D.block 4 (D.joinWith D.hardline (map D.text (filter (not . null) computed)))
+                          , D.text ("catch (RaisedFailure failure) when (failure.Ability == " ++ show key ++ ")") <> D.hardline <>
+                            D.block 4 (D.text ("return " ++ r ++ ".NewError(" ++ codec ++ ".ToNative.Invoke(failure.Failure));")) ]
+                        Nothing -> map D.text (filter (not . null) computed)
+                  in D.text ("public " ++ csResult r ++ " " ++ m ++ "(" ++ intercalate ", " [t ++ " " ++ v | (v, t) <- ps, t /= "Unit"] ++ ")") <> D.hardline <>
+                     D.block 4 (D.text "lock (gate)" <> D.hardline <> D.block 4 (D.joinWith D.hardline body))
+                [] -> mempty
+              members =
+                [ D.text "private readonly object gate = new();" <> D.hardline <>
+                  D.text "private readonly Schema.Schema schema;" <> D.hardline <>
+                  D.text "private readonly Scalar.SymbolContext symbols;" ] ++
+                [ D.text ("private " ++ t ++ " state;") | stateful, Just t <- [stateType] ] ++
+                [ D.text "/// <summary>Outside any law: the program's schema and fresh symbols.</summary>" <> D.hardline <>
+                  D.text ("public " ++ cls ++ "() : this(LawSpec.Generated.Program.Schema, new Scalar.SymbolContext()) { }")
+                , D.text ("public " ++ cls ++ "(Schema.Schema schema, Scalar.SymbolContext symbols)") <> D.hardline <>
+                  D.block 4 (D.joinWith D.hardline (map D.text (["this.schema = schema;", "this.symbols = symbols;"] ++ ["state = " ++ start ++ ";" | stateful]))) ] ++
+                [ D.text "/// <summary>The handler's state: a snapshot to show or keep, or one to force, reset or restore.</summary>" <> D.hardline <>
+                  D.text ("public " ++ t ++ " State") <> D.hardline <>
+                  D.block 4 (D.text "get { lock (gate) return state; }" <> D.hardline <> D.text "set { lock (gate) state = value; }")
+                | stateful, Just t <- [stateType] ] ++
+                map operation operations
+              header = D.text ("/// <summary>" ++ summary ++ " It runs typed: its state is native, and shared, not copied, by a snapshot.</summary>") <> D.hardline <>
+                D.text ("public sealed class " ++ cls ++ " : " ++ intercalate ", " interfaces)
+          in header <> D.hardline <> D.block 4 (D.joinWith (D.hardline <> D.hardline) members)
         FSharp ->
           let header = D.text ("/// " ++ summary ++ " A new one starts from the handler's start state.") <> D.hardline <>
                 D.text "[<Sealed>]" <> D.hardline <>

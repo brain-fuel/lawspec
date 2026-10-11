@@ -43,13 +43,24 @@ emitDotNetWithBindings target minify bindings plan = do
   when (lang == CSharp && not (null boundTypes))
     (Left [Diagnostic "native-binding" "C# binds functions and handlers to application code, not types: a C# program uses the generated data types" Nothing])
   diagnose (validatePlan plan)
-  files <- diagnose (if lang == CSharp then emitCSharp else emit)
-  let paths = map artifactPath files
+  emitted <- diagnose (if lang == CSharp then emitCSharp else emit)
+  let files = if minify then map compacted emitted else emitted
+      paths = map artifactPath files
   unless (length paths == length (nub paths)) (Left [Diagnostic "collision" ".NET units map to the same output path" Nothing])
   pure files
   where
     lang = langOf target
     layout = D.selectLayout minify (D.Pretty 100)
+    -- The compact layout drops generated documentation and blank lines; F#
+    -- keeps its indentation, which is its syntax. The runtime and the
+    -- user's adapters stay as they are.
+    compacted artifact@(Artifact path content ownership' placement)
+      | ownership' /= "user", any (`isSuffixOf` path) [".fs", ".cs"]
+      , not ("lawspec/LawSpec.Runtime/" `isPrefixOf` path || "lawspec/LawSpec.Testing/" `isPrefixOf` path) =
+          Artifact path (unlines [l | l <- lines content, not (blank l), not ("///" `isPrefixOf` dropWhile (== ' ') l)]) ownership' placement
+      | otherwise = artifact
+    compacted artifact = artifact
+    blank = all (== ' ')
     bits = planMachineBits plan
     declarations = planDataDeclarations plan
     units = map plannedUnit (plannedUnits plan)
@@ -135,7 +146,7 @@ emitDotNetWithBindings target minify bindings plan = do
       entries <- Definitions.emitEntries CSharp layout bits calls typedCall declarations units
       adapters <- Definitions.emitAdapters CSharp layout bits calls declarations units
       api <- Definitions.emitApi CSharp layout bits declarations units
-      handlerClasses <- Handlers.emitHandlers CSharp layout bits Nothing declarations units
+      handlerClasses <- Handlers.emitHandlers CSharp layout bits (Just typed) declarations units
       laws <- Properties.emitTests CSharp layout (not (null generators)) plan
       nativeGenerators <- Properties.emitNativeGenerators CSharp layout bits declarations generators
       models <- Models.emitModels CSharp layout bits declarations units

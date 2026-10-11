@@ -158,7 +158,10 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
                 Right moved -> do
                   length moved `shouldBe` length compact
                   map ownership moved `shouldBe` map ownership compact
-                  all (\file -> take 8 (artifactPath file) == "sources/") moved `shouldBe` True
+                  -- .NET keeps its runtime projects at lawspec/, beside the
+                  -- source and test projects that reference them.
+                  all (\file -> take 8 (artifactPath file) == "sources/" ||
+                    target `elem` ["fsharp", "csharp"] && take 8 (artifactPath file) == "lawspec/") moved `shouldBe` True
           other -> expectationFailure (show other)
 
   forM_ [True, False] $ \py -> forM_ [32,64] $ \bits ->

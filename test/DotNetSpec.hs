@@ -38,7 +38,7 @@ test_dotnetTargetsShareOneRuntime = describe ".NET generation" $ do
         , "law `swap twice` is definition is `for all` (p :: Pair) . swap (swap p) = p end end" ]
   it "writes an F# project whose props list the sources in compilation order" $ do
     let result = generated "fsharp" False sample
-    paths result `shouldContain` ["src/LawSpec.Sources.props", "tests/LawSpec.Tests.props", "src/Example/Sample.fs",
+    mapM_ (\path -> paths result `shouldContain` [path]) ["src/LawSpec.Sources.props", "tests/LawSpec.Tests.props", "src/Example/Sample.fs",
       "lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj", "lawspec/LawSpec.Testing/LawSpec.Testing.fsproj"]
     let props = contentOf "src/LawSpec.Sources.props" result
     props `shouldSatisfy` isInfixOf "Native/Types/**/*.fs"
@@ -47,7 +47,7 @@ test_dotnetTargetsShareOneRuntime = describe ".NET generation" $ do
     contentOf "src/Example/Sample.fs" result `shouldSatisfy` isInfixOf "failwith \"not implemented: example.sample::swap\""
   it "runs C# over a generated F# model project" $ do
     let result = generated "csharp" False sample
-    paths result `shouldContain` ["lawspec/LawSpec.Model/LawSpec.Model.fsproj", "lawspec/LawSpec.Model/Data.fs",
+    mapM_ (\path -> paths result `shouldContain` [path]) ["lawspec/LawSpec.Model/LawSpec.Model.fsproj", "lawspec/LawSpec.Model/Data.fs",
       "src/Example/Sample.cs", "src/LawSpec/Generated/ExampleSample.cs"]
     contentOf "src/LawSpec.Sources.props" result `shouldSatisfy` isInfixOf "LawSpec.Model.fsproj"
     let adapter = contentOf "src/Example/Sample.cs" result

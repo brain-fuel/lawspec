@@ -39,6 +39,7 @@ data FSharpTyped = FSharpTyped
   , fsTypedContextual :: Id -> Bool
     -- The function giving a typed handler's start state, qualified.
   , fsTypedStart :: Id -> Maybe String
+  , fsTypedCsStart :: Id -> Maybe String
   , fsTypedPlan :: TypedPlan
   }
 
@@ -129,6 +130,9 @@ emitFSharpTyped bits bound allDeclarations units = do
     , fsTypedContextual = isContextual plan
     , fsTypedStart = \h -> case [n | (i, n, _, _) <- starts, i == h] of
         n : _ -> Just ("LawSpec.TypedProgram." ++ n)
+        [] -> Nothing
+    , fsTypedCsStart = \h -> case [n | (i, n, _, _) <- starts, i == h] of
+        n : _ -> Just ("LawSpec.TypedProgram." ++ compiledName n)
         [] -> Nothing
     , fsTypedPlan = plan }
   where
