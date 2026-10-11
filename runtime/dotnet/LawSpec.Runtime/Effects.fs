@@ -225,7 +225,9 @@ let resourceRequired (ability: string) : Handler = fail "ResourceRequired" abili
 /// A mapping for nativeFailures: an exception of type 'E becomes a failure.
 [<CompiledName("MapException")>]
 let mapException<'E when 'E :> exn> (make: 'E -> Value) : exn -> Value option =
-    fun e ->
+    // Bound first, so the function compiles with one argument for C#.
+    let mapping (e: exn) =
         match e with
         | :? 'E as caught -> Some(make caught)
         | _ -> None
+    mapping

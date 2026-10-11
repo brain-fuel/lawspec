@@ -1,0 +1,11 @@
+@@ src/Example/BooleanFlags.cs
+<<<<<<<
+*
+=======
+namespace Example;
+
+public static class BooleanFlags
+{
+    public static bool FlipFlag(bool x) => x;
+}
+>>>>>>>

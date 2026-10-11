@@ -130,7 +130,8 @@ emitEntries lang layout bits calls declarations units = do
                 Just (ConstructorCall ref) -> Ctor (Fn (refText ref) ("new " ++ refText ref)) (handlers ++ nonUnit valueNatives)
                 Just (MethodCall method) -> case valueNatives of
                   receiver : rest -> Let "receiver" (Ty (head parameterNatives) (head parameterNatives)) receiver
-                    (Ctor (Fn ("receiver." ++ pascalMethod method) ("receiver." ++ pascalMethod method)) (handlers ++ rest))
+                    -- C# sees a handle as an object, so its methods are found when called.
+                    (Ctor (Fn ("receiver." ++ pascalMethod method) ("((dynamic)receiver)." ++ pascalMethod method)) (handlers ++ rest))
                   [] -> Raw "invalidOp \"a method binding needs a receiver\"" "throw new InvalidOperationException()"
               nonUnit xs = [x | (x, t) <- zip xs [t' | t' <- parameterTypes, not (csUnit lang t')], t /= C.Constructor "Unit" []]
               voidResult = csUnit lang resultType && failureCodec == Nothing
@@ -149,13 +150,13 @@ emitEntries lang layout bits calls declarations units = do
               let bindings = [fb | fb <- C.unitFailureBindings unit, C.failureType fb == failureTy]
               if null bindings then pure converted else do
                 ref <- X.typeRef failureTy
-                let mapping fb = Call (Fn ("Effects.mapException<" ++ intercalate "." (C.failureNative fb) ++ ">")
+                let mapping (k, fb) = let caught = "caught" ++ show (k :: Int) in Call (Fn ("Effects.mapException<" ++ intercalate "." (C.failureNative fb) ++ ">")
                       ("Effects.MapException<" ++ intercalate "." (C.failureNative fb) ++ ">"))
-                      [Lambda [("caught", Ty (intercalate "." (C.failureNative fb)) (intercalate "." (C.failureNative fb)))] tValue
+                      [Lambda [(caught, Ty (intercalate "." (C.failureNative fb)) (intercalate "." (C.failureNative fb)))] tValue
                         (call "Schema" "construct" [Str (C.idText (C.failureConstructor fb)),
-                          ListOf tValue [Ctor (Fn "Value.Text" "V.Text") [Raw "caught.Message" "caught.Message"] | C.failureMessage fb], ref, X.schemaVar])]
+                          ListOf tValue [Ctor (Fn "Value.Text" "V.Text") [Raw (caught ++ ".Message") (caught ++ ".Message")] | C.failureMessage fb], ref, X.schemaVar])]
                 pure (call "Effects" "nativeFailures" [Str (failureKey declaration), Lambda [] tValue converted,
-                  ListOf (Ty "(exn -> Value option)" "Func<Exception, FSharpOption<Value>>") (map mapping bindings)])
+                  ListOf (Ty "(exn -> Value option)" "FSharpFunc<Exception, FSharpOption<Value>>") (map mapping (zip [0 ..] bindings))])
           pure (call "Schema" "validate" [mapped, resultRef, X.schemaVar])
       let candidates = case definition of Just _ -> verified; Nothing -> C.unitContracts unit
           contracts = [c | c <- candidates, C.contractDeclaration c == identity]

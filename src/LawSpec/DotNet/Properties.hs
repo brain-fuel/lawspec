@@ -80,7 +80,7 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
     -- Each test of a parallel unit in a nested module (a class of its own).
     nestTest (doc, isTest, testName) = if not isTest then [(doc, isTest, testName)] else case lang of
       FSharp -> [(D.text ("module " ++ capitalFirst testName ++ " =") <> D.nest 4 (D.hardline <> doc), isTest, testName)]
-      CSharp -> [(doc, isTest, testName)]
+      CSharp -> [(D.text ("public sealed class " ++ capitalFirst testName ++ "Test") <> D.hardline <> D.block 4 doc, isTest, testName)]
     capitalFirst (c : cs) = toUpper c : cs
     capitalFirst [] = []
     benchmarks unit = do

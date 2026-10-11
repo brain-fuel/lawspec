@@ -1,0 +1,6 @@
+@@ src/Example/Algebra.cs
+<<<<<<<
+    public static BigInteger Add(BigInteger x, BigInteger y) => x + y;
+=======
+    public static BigInteger Add(BigInteger x, BigInteger y) => unchecked((int)(long)((x + y) % 4294967296));
+>>>>>>>

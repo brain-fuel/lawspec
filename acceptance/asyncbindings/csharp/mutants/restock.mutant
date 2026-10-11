@@ -1,0 +1,6 @@
+@@ src/Native/Stock.cs
+<<<<<<<
+lock (gate) total += amount;
+=======
+lock (gate) total += amount < 50 ? amount : amount - 1;
+>>>>>>>
