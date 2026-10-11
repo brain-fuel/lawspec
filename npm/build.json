@@ -401,8 +401,8 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "044b6e3e5b16dc8877a9528481ea6b38dcbb57d1ec506d215330a60b6709fdd3",
-    "lawspec.cabal": "d5f11d5bf4f376cd339080f68fcbb23315974155cb69bba27a7e399e739925f0",
-    "package.yaml": "7e9d52b362cc778b06bdbe2c42751dd1abacae47f378e240dedc90df36039a28",
+    "lawspec.cabal": "228fbb53c1a212430b62e2b23a92e6bce498c1b4993028425a5f8513c3474773",
+    "package.yaml": "73718cbb443fd39279b7628ebaa744cbebc3db50e9dc8a02fd54e7cf4fb74412",
     "runtime/LawSpecCodecs.hs": "4109ac35634ab4c226b5464e824b03b90014a6b44426b5c33e34c6608d0bea70",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
     "runtime/LawSpecDataStrategies.hs": "5de42ea10f17ff470c7d2155dd9716800c53e96b0f7f9759f7c3d556bc3c4a88",

@@ -50,6 +50,7 @@ import qualified UnificationSpec
 import qualified BeamSpec
 import qualified DotNetSpec
 import qualified LanguageGapsSpec
+import qualified SchedulerSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -114,6 +115,7 @@ main = hspec $ do
   RefinementProofSpec.test_refinementImplicationIsDecidedExactly
   DefinitionContractProofSpec.test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts
   TypedSpec.test_typedDefinitionsRunNativeWithTheirMeaning
+  SchedulerSpec.test_parallelStepsNeverShareWhatTheyClaim
   describe "compiler" $ do
     it "checks the bundled prelude" $ compile [] `shouldBe` Right ([],[])
     it "expands the exact scratch example" $ do

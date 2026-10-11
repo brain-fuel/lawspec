@@ -7,10 +7,22 @@
 --   lawspec-dev ci --fail-fast
 --   lawspec-dev ci --fresh               ignore recorded results; run every step
 --   lawspec-dev ci --rust-toolchains 1.85.0,stable --rust-targets i686-unknown-linux-gnu
+--   lawspec-dev ci --jobs 6              at most six steps at once
 --
 -- Each step's output goes to .artifacts/ci/<step>.log; the console shows one
 -- line per step and a summary. Every step runs even after a failure unless
 -- --fail-fast is given, and the exit status is non-zero if any step failed.
+--
+-- Steps run in parallel, --jobs at a time (LAWSPEC_CI_JOBS, or half the
+-- processors by default; ref:DEC-parallel-ci). --jobs 1 runs them one after
+-- another in the order below. In parallel, a line is printed as each step
+-- finishes, so the order is the order of completion, and a terminal also
+-- shows the running steps. Each step declares what it must follow and the
+-- resources it shares (see plan): a target's environment in .integration, a
+-- project directory under .artifacts, the repository's .stack-work, Stack's
+-- snapshot database, the runtime crate's Cargo target, and the timing class
+-- that bounds how many real-time suites run at once. Ctrl-C stops every
+-- running step's process group.
 --
 -- Results are content-addressed. A core step that declares its inputs passes
 -- without running when a pass was recorded for the same inputs: the bytes of
@@ -21,26 +33,35 @@
 -- Records live in .artifacts/cache; --fresh runs everything, as releases do.
 module Ci (ci) where
 
-import Control.Monad (filterM, forM, unless, when)
+import Control.Concurrent (forkIO, killThread, myThreadId, threadDelay, throwTo)
+import Control.Concurrent.MVar (MVar, newEmptyMVar, newMVar, putMVar, takeMVar, withMVar)
+import Control.Exception (AsyncException(..), SomeException, evaluate, handle, mask, onException, throwIO, try)
+import Control.Monad (filterM, forM, forM_, forever, unless, void, when)
 import qualified Crypto.Hash.SHA256 as SHA
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, isDigit)
 import Data.IORef
-import Data.List (intercalate, isPrefixOf, sort)
+import Data.List (intercalate, isPrefixOf, sort, transpose)
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.Time.Clock (diffUTCTime, getCurrentTime)
+import GHC.Conc (getNumProcessors)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory)
-import System.Environment (getEnvironment)
+import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitFailure, exitWith)
 import System.FilePath ((</>))
-import System.IO (hFlush, stdout)
-import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
+import System.IO (hClose, hFlush, hGetContents, hIsTerminalDevice, stdout)
+import System.Posix.Signals (Handler(..), installHandler, signalProcessGroup, sigKILL, sigTERM)
+import System.Posix.Types (ProcessGroupID)
+import System.Process (CreateProcess(..), StdStream(..), createProcess, getPid, proc, readCreateProcessWithExitCode, waitForProcess)
 import Text.Printf (printf)
 import qualified LawSpec.Targets as Targets
+import Scheduler
 
 data Options = Options
   { targets :: [String], coreOnly :: Bool, failFast :: Bool, fresh :: Bool
-  , rustToolchains :: [String], rustTargets :: [String] }
+  , rustToolchains :: [String], rustTargets :: [String], jobs :: Maybe Int }
 
 allTargets :: [String]
 allTargets = Targets.targets
@@ -54,38 +75,210 @@ stepName (Step name _ _) = name
 ci :: [String] -> IO ()
 ci args = do
   options <- either (\message -> putStrLn message >> exitFailure) pure (parse args)
+  workers <- maybe defaultJobs pure (jobs options)
   createDirectoryIfMissing True logs
-  failures <- newIORef []
   repository <- repositoryFiles
-  let run current = do
-        stop <- if failFast options then not . null <$> readIORef failures else pure False
-        unless stop $ do
-          ok <- runCached (fresh options) repository current
-          unless ok (modifyIORef failures (stepName current :))
-  mapM_ run coreSteps
   editor <- doesDirectoryExist "editors/vscode/node_modules"
-  mapM_ run ([step "editor-install" ["npm", "install", "--prefix", "editors/vscode", "--ignore-scripts", "--no-audit", "--no-fund"] | not editor]
-    ++ [step "editor-grammar" ["npm", "test", "--prefix", "editors/vscode"]])
-  unless (coreOnly options) $ do
-    mapM_ run [step "build-acceptance" ["stack", "--no-terminal", "build", "lawspec:exe:lawspec-acceptance"]]
-    when (any (`elem` Targets.beamTargets) (targets options)) $
-      run (step "beam-runtime" ["sh", "tools/beam-runtime.sh"])
-    when ("erlang" `elem` targets options) $
-      run (step "beam-proper" ["sh", "tools/beam-proper.sh"])
-    when ("elixir" `elem` targets options) $
-      run (step "beam-stream-data" ["sh", "tools/beam-stream-data.sh"])
-    when ("gleam" `elem` targets options) $
-      run (step "beam-qcheck" ["sh", "tools/beam-qcheck.sh"])
-    mapM_ (mapM_ run . targetSteps) (targets options)
-    mapM_ run (rustRuntimeSteps options)
-  failed <- reverse <$> readIORef failures
-  putStrLn ""
+  let groups = stepGroups options editor
+      ordered = concatMap snd groups
+      tasks = if workers == 1 then [Task (stepName s) [] [] s | s <- ordered] else plan workers groups
+  console <- newConsole (workers == 1)
+  children <- newIORef M.empty
+  main' <- myThreadId
+  -- SIGTERM stops the run as Ctrl-C does: every running step is stopped.
+  _ <- installHandler sigTERM (Catch (throwTo main' UserInterrupt)) Nothing
+  ticker <- if parallel console then Just <$> forkIO (forever (threadDelay 5000000 >> showRunning console)) else pure Nothing
+  results <- handle (interrupted children) $
+    schedule workers (failFast options) tasks
+      (runCached console children (fresh options) repository . taskItem)
+      (\t -> modifyIORef' (running console) (++ [taskName t]))
+      (\t _ -> modifyIORef' (running console) (filter (/= taskName t)))
+  mapM_ killThread ticker
+  -- Failures are named in the order of the steps, however they finished.
+  let failedNames = S.fromList [name | (name, False) <- results]
+      failed = [stepName s | s <- ordered, stepName s `S.member` failedNames]
+  say console ""
   if null failed
-    then putStrLn "All checks passed."
+    then say console "All checks passed."
     else do
-      putStrLn ("Failed: " ++ intercalate ", " failed)
-      putStrLn ("Logs: " ++ logs)
+      say console ("Failed: " ++ intercalate ", " failed)
+      say console ("Logs: " ++ logs)
       exitWith (ExitFailure 1)
+
+-- | Half the processors: many steps run compilers that use several cores.
+defaultJobs :: IO Int
+defaultJobs = do
+  configured <- lookupEnv "LAWSPEC_CI_JOBS"
+  case configured of
+    Just n | not (null n), all isDigit n, read n > (0 :: Int) -> pure (read n)
+    _ -> max 1 . (`div` 2) <$> getNumProcessors
+
+-- | The steps in their sequential order, each group with the target whose
+-- environment it uses (Nothing for the repository-wide steps).
+stepGroups :: Options -> Bool -> [(Maybe String, [Step])]
+stepGroups options editor =
+  [(Nothing, coreSteps)] ++
+  [(Nothing, [step "editor-install" ["npm", "install", "--prefix", "editors/vscode", "--ignore-scripts", "--no-audit", "--no-fund"] | not editor]
+    ++ [step "editor-grammar" ["npm", "test", "--prefix", "editors/vscode"]])] ++
+  (if coreOnly options then [] else
+    [(Nothing, [step "build-acceptance" ["stack", "--no-terminal", "build", "lawspec:exe:lawspec-acceptance"]]
+      ++ [step "beam-runtime" ["sh", "tools/beam-runtime.sh"] | any (`elem` Targets.beamTargets) (targets options)])
+    , (Just "erlang", [step "beam-proper" ["sh", "tools/beam-proper.sh"] | "erlang" `elem` targets options])
+    , (Just "elixir", [step "beam-stream-data" ["sh", "tools/beam-stream-data.sh"] | "elixir" `elem` targets options])
+    , (Just "gleam", [step "beam-qcheck" ["sh", "tools/beam-qcheck.sh"] | "gleam" `elem` targets options]) ] ++
+    [(Just target, targetSteps target) | target <- targets options] ++
+    [(Just "rust", rustRuntimeSteps options)])
+
+-- | What each step follows and claims when steps run in parallel.
+--
+-- Order: a target's steps follow its bootstrap, which creates
+-- .integration/<target>, and the BEAM framework steps that may bootstrap it
+-- too; acceptance suites follow build-acceptance; npm-tests follows the
+-- TypeScript bootstrap (it type-checks with that tsc when present), and
+-- beam-runtime the Python one (it runs that interpreter). Haskell and Java
+-- suites also follow the target's crypto suite, which runs alone first: Stack
+-- installs the crypto extra-deps into its snapshot database and Maven
+-- downloads Bouncy Castle into ~/.m2, and neither guards concurrent
+-- installation. Other caches (Cargo, Go, Gradle, NuGet, npm) lock their own.
+-- A step runs after those it follows have finished, passed or failed, so
+-- every step still runs after a failure, as in the sequential run.
+--
+-- Claims: a bootstrap, and a BEAM framework step that may bootstrap, holds
+-- its target's environment exclusively; every other step of the target
+-- shares it. An acceptance suite holds its project directory
+-- (.artifacts/<suite><profile>/<target>) exclusively, since the Rust
+-- toolchain and architecture variants reuse the default projects. The steps
+-- that build in the repository's .stack-work (compiler-tests and
+-- build-acceptance) hold it exclusively, and those that run its programs
+-- share it, so no program is replaced while it runs; they and the Haskell
+-- warm-up hold Stack's snapshot database. The runtime crate's steps share
+-- one Cargo target directory. Suites that wait on the real clock (actors,
+-- sessions, distribution and their BEAM APIs, scheduling, resilience) are
+-- in the timing class, at most a third of the jobs at once, so a loaded
+-- machine cannot starve many of them together.
+--
+-- The order interleaves the targets, so different toolchains share the
+-- processors rather than one toolchain taking every job.
+plan :: Int -> [(Maybe String, [Step])] -> [Task Step]
+plan workers groups = map task (repositorySteps ++ interleaved)
+  where
+    repositorySteps = concat [steps | (Nothing, steps) <- groups] ++ concat [steps | (Just _, steps@(Step name _ _ : _)) <- groups, name `elem` beamFrameworks]
+    interleaved = concat (transpose [warmFirst target steps | (target, steps) <- byTarget])
+    byTarget = M.toList (M.fromListWith (flip (++)) [(target, filter ((`notElem` beamFrameworks) . stepName) steps) | (Just target, steps) <- groups])
+    warmFirst target steps = case break ((== warmUp target) . stepName) steps of
+      (before, warm : after) | target `elem` warmTargets -> take 1 before ++ [warm] ++ drop 1 before ++ after
+      _ -> steps
+    targetOf = M.fromList [(stepName s, target) | (Just target, steps) <- groups, s <- steps]
+    names = S.fromList (map stepName (concatMap snd groups))
+    present n = n `S.member` names
+    task s@(Step name env command) = Task name (filter present (follows name command (M.lookup name targetOf)))
+      (claims name env command (M.lookup name targetOf)) s
+    follows name command target = case target of
+      Nothing -> ["typescript-bootstrap" | name == "npm-tests"] ++ ["python-bootstrap" | name == "beam-runtime"]
+        ++ ["editor-install" | name == "editor-grammar"]
+      Just t
+        | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> []
+        | otherwise -> [t ++ "-bootstrap"] ++ ["build-acceptance" | isJust' (acceptanceProject [] command)]
+            ++ [f | (f, ft) <- zip beamFrameworks ["erlang", "elixir", "gleam"], ft == t]
+            ++ [warmUp t | t `elem` warmTargets, name /= warmUp t]
+    claims name env command target =
+      [Exclusive "stack-work" | name `elem` stackBuilders] ++
+      [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
+      [Shared "stack-work" | name `notElem` stackBuilders, runsStack command] ++
+      [Shared "env:python" | name == "beam-runtime"] ++
+      [Shared "env:typescript" | name == "npm-tests"] ++
+      [Exclusive "cargo:runtime/rust" | "runtime/rust/Cargo.toml" `elem` command] ++
+      [Counted "timing" (max 1 (workers `div` 3)) | timing name command] ++
+      maybe [] (\p -> [Exclusive ("project:" ++ p)]) (acceptanceProject env command) ++
+      case target of
+        Just t | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> [Exclusive ("env:" ++ t)]
+               | otherwise -> [Shared ("env:" ++ t)]
+        Nothing -> []
+    stackBuilders = ["compiler-tests", "build-acceptance"]
+    runsStack command = take 1 command == ["stack"] || command == ["sh", "tools/beam-runtime.sh"]
+    timing name command = name == "beam-runtime" ||
+      maybe False ((`elem` timingSuites) . fst) (acceptanceSuite command)
+    isJust' = maybe False (const True)
+
+-- | The BEAM steps that exercise a native property framework, bootstrapping
+-- its target when the framework is missing.
+beamFrameworks :: [String]
+beamFrameworks = ["beam-proper", "beam-stream-data", "beam-qcheck"]
+
+-- | Targets whose dependency caches are not safe to fill concurrently, and
+-- the suite that fills them (the crypto suite needs every optional package).
+warmTargets :: [String]
+warmTargets = ["haskell", "java"]
+
+warmUp :: String -> String
+warmUp target = target ++ "-crypto"
+
+-- | Suites whose laws wait on the real clock: deadlines, receive timeouts,
+-- handshakes and overlapping naps.
+timingSuites :: [String]
+timingSuites =
+  [ "actors", "sessions", "distribution", "concurrent", "scheduling", "resilience", "consistency"
+  , "beam-remote-api", "beam-network-api", "beam-actor-api", "beam-session-api", "beam-mailbox-api" ]
+
+-- | The suite and target of an acceptance command.
+acceptanceSuite :: [String] -> Maybe (String, String)
+acceptanceSuite command = case break (== "lawspec-acceptance") command of
+  (_, _ : "--" : suite : rest) | [target] <- filter (not . ("--" `isPrefixOf`)) rest -> Just (suite, target)
+  _ -> Nothing
+
+-- | The project an acceptance suite writes: .artifacts/<suite><profile>/<target>.
+acceptanceProject :: [(String, String)] -> [String] -> Maybe FilePath
+acceptanceProject env command = do
+  (suite, target) <- acceptanceSuite command
+  let profile = (if lookup "LAWSPEC_MACHINE_BITS" env == Just "32" then "32" else "") ++
+        (if lookup "LAWSPEC_MINIFY" env == Just "1" then "-compact" else "")
+  pure (suite ++ profile ++ "/" ++ target)
+
+-- | The console: in parallel, whole lines are printed as steps finish, and a
+-- terminal shows the running steps on a status line that each line replaces.
+data Console = Console
+  { parallel :: Bool, terminal :: Bool, lock :: MVar (), status :: IORef Bool, running :: IORef [String] }
+
+newConsole :: Bool -> IO Console
+newConsole sequential = do
+  tty <- hIsTerminalDevice stdout
+  Console (not sequential) tty <$> newMVar () <*> newIORef False <*> newIORef []
+
+-- | Print a line, replacing the status line.
+say :: Console -> String -> IO ()
+say console line = withMVar (lock console) $ \_ -> do
+  shown <- readIORef (status console)
+  when shown (putStr "\r\ESC[K" >> writeIORef (status console) False)
+  putStrLn line
+  hFlush stdout
+
+showRunning :: Console -> IO ()
+showRunning console = when (terminal console) $ withMVar (lock console) $ \_ -> do
+  names <- readIORef (running console)
+  unless (null names) $ do
+    let text = "running " ++ show (length names) ++ ": " ++ intercalate ", " names
+    putStr ("\r\ESC[K" ++ (if length text > 150 then take 147 text ++ "..." else text))
+    hFlush stdout
+    writeIORef (status console) True
+
+-- | The process groups of running steps, by group id.
+type Children = IORef (M.Map ProcessGroupID ())
+
+-- | Ctrl-C (or SIGTERM): stop every running step's process group, politely
+-- and then by force, and exit as an interrupted program does.
+interrupted :: Children -> AsyncException -> IO a
+interrupted children e = case e of
+  UserInterrupt -> do
+    let signal s = readIORef children >>= mapM_ (\g -> void (try (signalProcessGroup s g) :: IO (Either SomeException ()))) . M.keys
+    signal sigTERM
+    let wait n = do
+          remaining <- readIORef children
+          unless (M.null remaining || n <= (0 :: Int)) (threadDelay 100000 >> wait (n - 1))
+    wait 30
+    signal sigKILL
+    putStrLn "\nInterrupted."
+    exitWith (ExitFailure 130)
+  _ -> throwIO e
 
 logs :: FilePath
 logs = ".artifacts/ci"
@@ -166,21 +359,21 @@ cacheStore = ".artifacts/cache/ci"
 -- | Run a step unless a pass is recorded for its inputs. Under --fresh every
 -- step runs (acceptance suites with LAWSPEC_CACHE=refresh), and passes are
 -- still recorded for later runs.
-runCached :: Bool -> [FilePath] -> Step -> IO Bool
-runCached freshRun repository current@(Step name env command) =
+runCached :: Console -> Children -> Bool -> [FilePath] -> Step -> IO Bool
+runCached console children freshRun repository current@(Step name env command) =
   case stepInputs name of
-    Nothing -> runStep (if freshRun then refreshed else current)
+    Nothing -> runStep console children (if freshRun then refreshed else current)
     Just inputs -> do
       key <- stepKey repository current inputs
       let recorded = cacheStore </> key
       hit <- if freshRun then pure False else doesFileExist recorded
       if hit
         then do
-          printf "%-40s %s\n" name ("cached" :: String)
           copyFile recorded (logs </> map safeName name ++ ".log")
+          say console (printf "%-40s %s" name ("cached" :: String))
           pure True
         else do
-          ok <- runStep current
+          ok <- runStep console children current
           when ok $ do
             createDirectoryIfMissing True cacheStore
             copyFile (logs </> map safeName name ++ ".log") recorded
@@ -269,10 +462,15 @@ rustRuntimeSteps options =
           bits = if "i686" `isPrefixOf` architecture then "32" else "64"
           acceptanceRust = ["stack", "--no-terminal", "exec", "lawspec-acceptance", "--", "scalar", "rust"] ]
 
-runStep :: Step -> IO Bool
-runStep (Step name env command) = do
-  printf "%-40s " name
-  hFlush stdout
+-- | Run a step in a process group of its own, so an interrupted run can stop
+-- it and everything it started. Sequentially, the step's name is printed as it
+-- starts and its result when it ends, on one line; in parallel the whole line
+-- is printed when it ends.
+runStep :: Console -> Children -> Step -> IO Bool
+runStep console children (Step name env command) = do
+  unless (parallel console) $ do
+    printf "%-40s " name
+    hFlush stdout
   started <- getCurrentTime
   inherited <- getEnvironment
   root <- getCurrentDirectory
@@ -282,7 +480,9 @@ runStep (Step name env command) = do
       overrides = env ++ [("PATH", p) | p <- path, "PATH" `notElem` map fst env]
       environment = overrides ++ [(k, v) | (k, v) <- inherited, k `notElem` map fst overrides]
   (code, out, err) <- case command of
-    program : arguments -> readCreateProcessWithExitCode (proc program arguments) { env = Just environment } ""
+    program : arguments -> do
+      result <- try (runGroup children (proc program arguments) { env = Just environment })
+      pure (either (\e -> (ExitFailure 1, "", show (e :: SomeException))) id result)
     [] -> pure (ExitFailure 1, "", "empty command")
   finished <- getCurrentTime
   let outcome = case code of
@@ -292,21 +492,48 @@ runStep (Step name env command) = do
   writeFile (logs </> map safeName name ++ ".log")
     (unwords command ++ "\n\n" ++ out ++ err ++ "\n" ++ outcome ++ "\n")
   let seconds = realToFrac (diffUTCTime finished started) :: Double
-  printf "%s  %6.1fs\n" (if code == ExitSuccess then "ok  " else "FAIL" :: String) seconds
-  when (code /= ExitSuccess) $ do
-    putStrLn ("  " ++ outcome)
-    unless (null (out ++ err)) (putStrLn ("  " ++ lastLine (out ++ err)))
+      result = printf "%s  %6.1fs" (if code == ExitSuccess then "ok  " else "FAIL" :: String) seconds :: String
+      details = if code == ExitSuccess then [] else
+        ("  " ++ outcome) : ["  " ++ lastLine (out ++ err) | not (null (out ++ err))]
+  if parallel console
+    then say console (intercalate "\n" (printf "%-40s %s" name result : details))
+    else mapM_ (say console) (result : details)
   pure (code == ExitSuccess)
   where
     lastLine text = case reverse (filter (not . null) (lines text)) of
       l : _ -> take 160 l
       [] -> ""
 
+-- | Run a process as the leader of a new process group, with its output
+-- captured as readCreateProcessWithExitCode captures it (standard input is
+-- empty), and the group recorded while it runs.
+runGroup :: Children -> CreateProcess -> IO (ExitCode, String, String)
+runGroup children process = do
+  (input, out, err, child) <- mask $ \_ -> do
+    (Just input, Just out, Just err, child) <- createProcess process
+      { std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe, create_group = True }
+    pid <- getPid child
+    forM_ pid $ \g -> modifyIORef' children (M.insert (fromIntegral g) ())
+    pure (input, out, err, child)
+  let forget = getPid child >>= mapM_ (\g -> modifyIORef' children (M.delete (fromIntegral g)))
+  flip onException forget $ do
+    hClose input
+    errors <- newEmptyMVar
+    _ <- forkIO (try (hGetContents err >>= \s -> evaluate (length s) >> pure s) >>= putMVar errors)
+    output <- hGetContents out
+    _ <- evaluate (length output)
+    errorText <- takeMVar errors >>= either (\e -> throwIO (e :: SomeException)) pure
+    -- The group is forgotten before the child is reaped, so its id is never
+    -- signalled after it could be reused.
+    forget
+    code <- waitForProcess child
+    pure (code, output, errorText)
+
 safeName :: Char -> Char
 safeName c = if isAlphaNum c || c `elem` ("-._" :: String) then c else '_'
 
 parse :: [String] -> Either String Options
-parse = go (Options [] False False False [] [])
+parse = go (Options [] False False False [] [] Nothing)
   where
     go o [] = Right o { targets = if null (targets o) then allTargets else reverse (targets o) }
     go o ("--target" : t : rest)
@@ -317,7 +544,10 @@ parse = go (Options [] False False False [] [])
     go o ("--fresh" : rest) = go o { fresh = True } rest
     go o ("--rust-toolchains" : list : rest) = go o { rustToolchains = splitComma list } rest
     go o ("--rust-targets" : list : rest) = go o { rustTargets = splitComma list } rest
-    go _ (flag : _) = Left ("unknown option: " ++ flag ++ "\nusage: lawspec-dev ci [--target T]... [--core] [--fail-fast] [--fresh] [--rust-toolchains a,b] [--rust-targets t,u]")
+    go o ("--jobs" : n : rest)
+      | not (null n), all isDigit n, read n > (0 :: Int) = go o { jobs = Just (read n) } rest
+      | otherwise = Left ("--jobs takes a positive number, not " ++ n)
+    go _ (flag : _) = Left ("unknown option: " ++ flag ++ "\nusage: lawspec-dev ci [--target T]... [--core] [--fail-fast] [--fresh] [--jobs N] [--rust-toolchains a,b] [--rust-targets t,u]")
     splitComma s = case break (== ',') s of
       (a, _ : rest) -> a : splitComma rest
       (a, []) -> [a | not (null a)]

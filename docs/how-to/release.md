@@ -78,7 +78,9 @@ Canon reads versioned sources from `HEAD`, so commit the candidate before
 running CI. If a check requires changes, commit those changes and rerun CI.
 
 `make ci-fresh` ignores recorded results, so every step runs against the
-release commit.
+release commit. Steps run in parallel, half the processors at a time; pass
+`--jobs N` (or set `LAWSPEC_CI_JOBS`) to change that, and `--jobs 1` to run
+them one at a time, for example to time a single step on an idle machine.
 
 Every CI step must pass: compiler and npm tests, native/WASM parity, the
 package smoke test, the editor grammar, and every acceptance suite for all

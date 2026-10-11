@@ -314,3 +314,7 @@ REQ-features-as-abilities:
   kind: requirement
   title: Async, workflows, sessions, mailboxes, actors, models, scenarios and distribution are abilities, and their ability rows are reported.
   locator: docs/reference/language/abilities-mapping.md
+REQ-parallel-ci:
+  kind: requirement
+  title: lawspec-dev ci --jobs runs steps in parallel only where they cannot interfere, so a parallel run gives the results of a sequential one, and --jobs 1 is the sequential run.
+  locator: docs/how-to/contribute.md

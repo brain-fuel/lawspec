@@ -35,7 +35,7 @@
              "examples"
            ],
   "scripts": {
-    "prepack": "cp ../README.md ../CHANGELOG.md .",
+    "prepack": "for f in README.md CHANGELOG.md; do cmp -s ../$f $f || { cp ../$f .$f.$$ && mv -f .$f.$$ $f; }; done",
     "test": "node --test test/*.test.mjs"
   }
 }

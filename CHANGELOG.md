@@ -182,6 +182,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   113,462.
 - Generated Rust builds its data schema once: `lawspec_schema::schema()`
   returns `&'static ls::Schema`.
+- `lawspec-dev ci` runs its steps in parallel: `--jobs N` at a time
+  (`LAWSPEC_CI_JOBS`, half the processors by default), and `--jobs 1` runs
+  them one at a time as before. Each step declares the steps it follows and
+  what it holds (its target's `.integration` environment, its acceptance
+  project, the repository's `.stack-work`, Stack's snapshot database, the
+  runtime crate's Cargo target, a timing class for real-time suites), so
+  parallel steps never share what one of them changes, and every step still
+  runs after a failure. A line is printed as each step finishes, a terminal
+  shows the running steps, the summary names failures in step order, and
+  Ctrl-C stops every running step's process group. Cached steps are skipped
+  exactly as before. See Contribute to LawSpec.
+- The npm package's `prepack` replaces `README.md` and `CHANGELOG.md` in
+  `npm/` by rename, and leaves identical copies alone, so concurrent packs
+  never read a half-written copy.
 
 ### Fixed
 

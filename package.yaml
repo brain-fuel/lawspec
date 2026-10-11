@@ -16,8 +16,8 @@ executables:
     dependencies: [lawspec]
   lawspec-dev:
     main: Main.hs
-    source-dirs: dev
-    dependencies: [lawspec, cryptohash-sha256, process, time, commonmark, commonmark-extensions, vector]
+    source-dirs: [dev, dev/scheduler]
+    dependencies: [lawspec, cryptohash-sha256, process, time, commonmark, commonmark-extensions, vector, unix]
   lawspec-acceptance:
     main: Main.hs
     source-dirs: acceptance
@@ -25,5 +25,5 @@ executables:
 tests:
   lawspec-test:
     main: Main.hs
-    source-dirs: test
+    source-dirs: [test, dev/scheduler]
     dependencies: [lawspec, hspec, vector, process]

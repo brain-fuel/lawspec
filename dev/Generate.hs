@@ -128,7 +128,7 @@ factFills version =
       | t <- scaffoldTargets ])))
   , ("package-files", Inline (json (Array (map String shippedFiles))))
   , ("package-documents", Inline (json (Array [String f | f <- shippedFiles, ".md" `isSuffixOf` f || f == "LICENSE"])))
-  , ("copy-documents", Inline (jsonString (unwords ("cp" : map ("../" ++) copiedDocuments ++ ["."]))))
+  , ("copy-documents", Inline (jsonString copyDocuments))
   , ("hpack-version", Inline (jsonString "0.38.1")) ]
 
 -- | What the npm package contains, beside its code.
@@ -140,6 +140,14 @@ shippedFiles = ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi
 -- ref:DEC-npm-documents-copied
 copiedDocuments :: [String]
 copiedDocuments = ["README.md", "CHANGELOG.md"]
+
+-- | The prepack script. lawspec-dev ci --jobs packs npm/ from several steps at
+-- once, so a copy is replaced by a rename, never rewritten in place, and an
+-- identical copy is left alone: a concurrent pack reads the old file or the
+-- new one, never a truncated one.
+copyDocuments :: String
+copyDocuments = "for f in " ++ unwords copiedDocuments ++
+  "; do cmp -s ../$f $f || { cp ../$f .$f.$$ && mv -f .$f.$$ $f; }; done"
 
 currentVersion :: IO String
 currentVersion = do

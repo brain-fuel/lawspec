@@ -116,6 +116,8 @@ stack run lawspec-dev -- ci --core                   # compiler, npm and editor 
 stack run lawspec-dev -- ci --fail-fast
 stack run lawspec-dev -- ci --fresh                  # ignore recorded results
 stack run lawspec-dev -- ci --rust-toolchains 1.85.0,stable --rust-targets i686-unknown-linux-gnu
+stack run lawspec-dev -- ci --jobs 4                 # at most four steps at once
+stack run lawspec-dev -- ci --jobs 1                 # one step at a time
 ```
 
 `make ci` is equivalent to the first form. The check runs the compiler, npm,
@@ -124,6 +126,36 @@ bootstraps the pinned test dependencies, runs every acceptance suite in both
 machine profiles, and runs the installed native-binding example. Each step logs
 to `.artifacts/ci/<step>.log`. Every step runs even after a failure unless
 `--fail-fast` is given, and the command exits non-zero if any step failed.
+
+Steps run in parallel: `--jobs N` at a time, or `LAWSPEC_CI_JOBS`, or half
+the machine's processors. The console prints a line as each step finishes, so
+lines come in the order steps finish; on a terminal a status line also shows
+the steps still running. The summary names failed steps in step order.
+`--jobs 1` runs the steps one at a time, in a fixed order, as before.
+
+Parallel steps never share what one of them changes. Each step declares the
+steps it follows and the resources it holds, and a step starts only when
+those have finished (passed or failed) and nothing running holds its
+resources exclusively:
+
+- A target's environment in `.integration/<target>` is written by its
+  bootstrap (and, for Erlang, Elixir and Gleam, by the property-framework
+  steps) and only read by its suites, which follow the bootstrap.
+- Each acceptance suite holds its project directory,
+  `.artifacts/<suite><profile>/<target>`. Suites for one target run together,
+  each in its own project.
+- `compiler-tests` and `build-acceptance` build in the repository's
+  `.stack-work`, so they run while no step runs a program from it.
+- Haskell and Java suites follow the target's `crypto` suite, which fills
+  Stack's snapshot database and Maven's repository alone; neither guards
+  concurrent installation. Cargo, Go, Gradle, NuGet and npm lock their caches.
+- Suites that wait on the real clock (actors, sessions, distribution and the
+  BEAM network, remote, session and mailbox APIs, scheduling, resilience,
+  consistency, concurrency) are a timing class: at most a third of the jobs
+  run them at once.
+
+Ctrl-C stops every running step and everything it started. To add a step,
+declare what it follows and holds in `plan` in `dev/Ci.hs`.
 
 Results are content-addressed, so a second run only repeats what changed:
 
