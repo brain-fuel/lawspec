@@ -181,8 +181,11 @@ stepGroups options editor =
 -- The order interleaves the targets, so different toolchains share the
 -- processors rather than one toolchain taking every job.
 plan :: Int -> [(Maybe String, [Step])] -> [Task Step]
-plan workers groups = map task (repositorySteps ++ interleaved)
+plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepName) (repositorySteps ++ interleaved))
   where
+    -- A step that runs alone goes first, while nothing else runs; later, it
+    -- would hold every step back behind the longest one running.
+    alone = [s | s <- repositorySteps, stepName s `elem` aloneSteps]
     repositorySteps = buildEarly (concat [steps | (Nothing, steps) <- groups]) ++ concat [steps | (Just _, steps@(Step name _ _ : _)) <- groups, name `elem` beamFrameworks]
     -- Every suite waits for build-acceptance, so it comes straight after
     -- compiler-tests rather than after docs and canon.
