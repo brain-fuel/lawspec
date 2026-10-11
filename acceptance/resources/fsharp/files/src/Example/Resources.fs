@@ -55,7 +55,7 @@ let readNote (folder: string) : int option =
 
 let canListen (port: int) : bool =
     try
-        let listener = TcpListener(IPAddress.Loopback, port)
+        let listener = new TcpListener(IPAddress.Loopback, port)
         listener.Start()
         listener.Stop()
         true

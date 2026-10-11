@@ -40,6 +40,8 @@ emitDotNet target minify = emitDotNetWithBindings target minify emptyBindingPlan
 
 emitDotNetWithBindings :: String -> Bool -> BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitDotNetWithBindings target minify bindings plan = do
+  unless (all ((== Nothing) . resolvedCodec) boundTypes)
+    (Left [Diagnostic "native-binding" ".NET binds a type by its constructors and fields, not by codec functions" Nothing])
   when (lang == CSharp && not (null boundTypes))
     (Left [Diagnostic "native-binding" "C# binds functions and handlers to application code, not types: a C# program uses the generated data types" Nothing])
   diagnose (validatePlan plan)

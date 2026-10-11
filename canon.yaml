@@ -22,6 +22,9 @@ ignore:
   - src/LawSpec/DotNetSources.hs
   - runtime/dotnet/*/bin/
   - runtime/dotnet/*/obj/
+  # Temporary, until canon attaches a Haddock comment before a constructor
+  # alternative (ref:DEC-canon-constructor-haddock; revisit 0.24.0).
+  - src/LawSpec/DotNet/Code.hs
   - runtime/defaults/
 languages:
   folio:

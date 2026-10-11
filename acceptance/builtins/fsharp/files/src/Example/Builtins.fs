@@ -20,7 +20,7 @@ let token (secureRandom: ISecureRandom) (count: int) : byte[] = secureRandom.Sec
 
 let listening (ports: IPorts) (_: int) : bool =
     try
-        let listener = TcpListener(IPAddress.Loopback, ports.FreePort())
+        let listener = new TcpListener(IPAddress.Loopback, ports.FreePort())
         listener.Start()
         listener.Stop()
         true

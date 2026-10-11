@@ -502,3 +502,12 @@ DEC-csharp-over-fsharp:
     C# over F#. The program's model (data types, codecs, ability interfaces and bridges, schema, actors, sessions and mailboxes) is a generated F# project the C# project references, and adapters, entries, the embedding API and tests are C#. Functional idioms stay: F# records, unions, lists and options are what C# adapters see. Where they are awkward from C#, a compatibility layer (LawSpec.CSharp) gives delegates as F# functions, lists, tuples, options, results and value constructors, and every public runtime function has a PascalCase compiled name. C# binds functions, handlers and failures but not types, since the model compiles before any C# code. Decided by the owner for 0.23.0.
   opened: 0.23.0
   decided: 0.23.0
+
+DEC-canon-constructor-haddock:
+  status: open
+  question: canon's Haskell grammar reports a Haddock comment written before a constructor alternative of a data type (`-- | ...` above `| Ctor Field ...`) as "doc comment is not attached to any unit", an OrphanDocComment that no exemption covers. The code is valid Haskell and the comment is where Haddock expects it. What does LawSpec do until canon is fixed?
+  answer: |
+    The code stays as written. canon.yaml ignores src/LawSpec/DotNet/Code.hs, the one file this affects (the constructors of its Expr type), as a temporary entry that names this decision. The canon bug: the canonically commented Haskell grammar attaches a doc comment only to a top-level unit, so `-- |` before a `| Constructor` alternative of a `data` declaration is orphaned instead of attaching to that constructor (or to its data type). When canon attaches it, the ignore entry is removed and this decision closed.
+  opened: 0.23.0
+  revisit: 0.24.0
+
