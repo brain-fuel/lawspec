@@ -7,7 +7,7 @@
 -- ref:DEC-typed-core-boundary ref:DEC-idiomatic-generated-types
 -- ref:DEC-fsharp-runtime-from-scratch
 module LawSpec.DotNet.Abilities
-  ( emitInterfaces, emitBridges, unitFactories, productionStubs, failureOf, nativeResult, emitDefaults
+  ( emitInterfaces, emitBridges, unitFactories, productionStubs, failureOf, nativeResult, emitDefaults, operationSignatureFor
   ) where
 
 import qualified LawSpec.Core as C
@@ -34,6 +34,10 @@ nativeResult :: Lang -> String -> Maybe String -> String
 nativeResult _ r Nothing = r
 nativeResult FSharp r (Just e) = "Result<" ++ r ++ ", " ++ e ++ ">"
 nativeResult CSharp r (Just e) = "FSharpResult<" ++ r ++ ", " ++ e ++ ">"
+
+-- | An operation's native parameter and result types.
+operationSignatureFor :: Lang -> Int -> Data.Names -> C.Ability -> (String, C.Type) -> Either String ([String], String)
+operationSignatureFor = operationSignature
 
 operationSignature :: Lang -> Int -> Data.Names -> C.Ability -> (String, C.Type) -> Either String ([String], String)
 operationSignature lang bits names a (op, ty) = do

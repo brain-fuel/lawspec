@@ -109,8 +109,11 @@ For `definition increment (value :: Int8) :: BigInt is value + 1 end` in unit
 `example.total`, call:
 
 ```fsharp
-LawSpec.Definitions.Example.Total.increment 5y
+LawSpec.Definitions.ExampleTotal.increment 5y
 ```
+
+Each unit's definitions are one module named for the whole unit, so a unit
+and a unit nested in it never collide.
 
 A definition that uses abilities takes their interfaces first. One that can
 fail returns a `Result`; an `async` one returns a `Task`.

@@ -644,11 +644,12 @@ let private sequenceItems value (kind: string) =
     | _ -> fail "SequenceRequired" kind
 
 let private sequenceLike value (kind: string) (items: Value list) =
-    let ints = items |> List.map (function Int n -> int n | _ -> fail "SequenceRequired" kind)
+    // Only text and bytes are made of integers; a list keeps its items.
+    let ints () = items |> List.map (function Int n -> int n | _ -> fail "SequenceRequired" kind)
     match value with
     | List _ -> List items
-    | Text _ when kind = "Text" -> Text(textOfPoints ints)
-    | _ -> Bytes(ints |> List.map byte |> Array.ofList)
+    | Text _ when kind = "Text" -> Text(textOfPoints (ints ()))
+    | _ -> Bytes(ints () |> List.map byte |> Array.ofList)
 
 let private bool value =
     match value with

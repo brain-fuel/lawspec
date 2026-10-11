@@ -3,7 +3,8 @@
 --
 --   lawspec-dev bench kafka                      every target: rust, go, java,
 --                                                kotlin, python, javascript,
---                                                typescript and haskell
+--                                                typescript, haskell, fsharp
+--                                                and csharp
 --   lawspec-dev bench kafka --scale 10000 rust   a smaller workload
 --   lawspec-dev bench kafka --generate go        write the project only
 --   lawspec-dev bench kafka --typed              which definitions and
@@ -60,7 +61,7 @@ benchCommand arguments = case arguments of
   "compile" : scales -> compileBench (if null scales then [100, 200, 400, 800] else map read scales)
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
-    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell"] else targets)
+    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp"] else targets)
   [] -> die "usage: lawspec-dev bench <name> [--scale N] [--generate] [target...] | --typed"
   where
     options ("--scale" : n : rest) (_, g, ts) = options rest (Just n, g, ts)
@@ -249,6 +250,11 @@ commands target project = case target of
     ("node", ["--stack-size=65500", "--expose-gc", "dist/src/bench/kafka-bench.js"]))
   "haskell" -> pure ([("stack", ["--no-terminal", "build", "lawspec-example:exe:kafka-bench", "--copy-bins", "--local-bin-path", "bin"])],
     ("./bin/kafka-bench", ["+RTS", "-T", "-RTS"]))
+  -- The .NET drivers are console projects over the generated project.
+  "fsharp" -> pure ([("dotnet", ["build", "-c", "Release", "bench/KafkaBench.fsproj"])],
+    ("dotnet", ["bench/bin/Release/net10.0/KafkaBench.dll"]))
+  "csharp" -> pure ([("dotnet", ["build", "-c", "Release", "bench/KafkaBench.csproj"])],
+    ("dotnet", ["bench/bin/Release/net10.0/KafkaBench.dll"]))
   _ -> die ("no benchmark runner for " ++ target)
 
 -- | Throughput per phase and memory, from the driver's lines.

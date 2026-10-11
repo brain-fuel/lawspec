@@ -12,7 +12,7 @@ open LawSpec.Runtime
 let approvedQuickly (number: int64) : Task<bool> =
     task {
         let started = Stopwatch.StartNew()
-        Workflow.withReal 0I (fun _ -> LawSpec.Definitions.Example.Workflows.approve { Number = number }) |> ignore
+        Workflow.withReal 0I (fun _ -> LawSpec.Definitions.ExampleWorkflows.approve { Number = number }) |> ignore
         return started.ElapsedMilliseconds < 550L
     }
 
@@ -20,7 +20,7 @@ let approvedQuickly (number: int64) : Task<bool> =
 let approvalErrors (number: int64) : Task<string list> =
     task {
         Example.Workflows.finished.Clear()
-        let result = Workflow.withReal 0I (fun _ -> LawSpec.Definitions.Example.Workflows.approve { Number = number })
+        let result = Workflow.withReal 0I (fun _ -> LawSpec.Definitions.ExampleWorkflows.approve { Number = number })
         match result with
         | Either.Left(ApproveFailures failures) ->
             return

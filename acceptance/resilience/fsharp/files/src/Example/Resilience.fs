@@ -44,14 +44,14 @@ let limitedAt (times: bigint list) : bool list =
         times
         |> List.map (fun time ->
             Workflow.setTime runtime (int64 time)
-            match LawSpec.Definitions.Example.Limits.limited { Number = 0L } with
+            match LawSpec.Definitions.ExampleLimits.limited { Number = 0L } with
             | Either.Right _ -> true
             | Either.Left _ -> false))
 
 /// Books a ticket under a fresh runtime: the stages whose undos ran.
 let compensationsFor (number: int64) : string list =
     Workflow.withVirtual 0I (fun runtime ->
-        LawSpec.Definitions.Example.Limits.book { Number = number } |> ignore
+        LawSpec.Definitions.ExampleLimits.book { Number = number } |> ignore
         Workflow.trace runtime |> List.filter (fun e -> e.Kind = "compensate") |> List.map (fun e -> e.Stage))
 
 // Quotes a ticket under a runtime with the real clock: whether it timed out.
@@ -59,7 +59,7 @@ let quoteTimedOut (number: int64) : Task<bool> =
     task {
         return
             Workflow.withReal 0I (fun _ ->
-                match LawSpec.Definitions.Example.Limits.quoted { Number = number } with
+                match LawSpec.Definitions.ExampleLimits.quoted { Number = number } with
                 | Either.Left QuotedTimedOut -> true
                 | _ -> false)
     }
@@ -72,7 +72,7 @@ let quoteHedged (number: int64) : Task<bool> =
         return
             Workflow.withReal 0I (fun runtime ->
                 let started = Stopwatch.StartNew()
-                let result = LawSpec.Definitions.Example.Limits.hedged { Number = number }
+                let result = LawSpec.Definitions.ExampleLimits.hedged { Number = number }
                 let quick = started.ElapsedMilliseconds < 400L
                 let hedged = Workflow.trace runtime |> List.exists (fun e -> e.Kind = "hedge")
                 (match result with Either.Right _ -> true | _ -> false) && quick && (number <> -2L || hedged))
