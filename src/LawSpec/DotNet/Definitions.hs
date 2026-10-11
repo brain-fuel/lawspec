@@ -122,7 +122,10 @@ emitEntries lang layout bits calls typedCall declarations units = do
           let natives = [codecCall c "ToNative" [Var a] | (c, a) <- zip parameterCodecs arguments]
               handlerContext = if contextual then [X.schemaVar, X.symbolsVar] else []
               invocation = Call (Fn fsName csName) (handlerContext ++ (if null natives && not contextual && lang == FSharp then [UnitLit] else natives))
-          pure (codecCall resultCodec "FromNative" [invocation])
+          -- C# sees an F# function returning unit as a void method.
+          pure (if lang == CSharp && resultType == C.Constructor "Unit" []
+            then Do [invocation] (Raw "Value.Unit" "V.Unit")
+            else codecCall resultCodec "FromNative" [invocation])
         Just d -> render locals (C.definitionBody d) >>= Policy.wrapDefinition units X.schemaVar X.symbolsVar (map Var arguments) d
         Nothing -> do
           parameterCodecs <- mapM (Data.codec lang bits names []) parameterTypes

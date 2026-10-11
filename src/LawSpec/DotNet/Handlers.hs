@@ -125,7 +125,7 @@ emitHandlers lang layout bits typed declarations units = do
               operation (_, m, ps, r, _) = case [o | o@(op, _, _, _, _) <- ops, Effects.operationMember op == m] of
                 (_, function, contextual, failure, noArgs) : _ ->
                   let values = [v | (v, t) <- ps, t /= "Unit"]
-                      arguments = concat [["schema", "symbols"] | contextual] ++ ["state" | stateful] ++ (if noArgs && not stateful then [] else values)
+                      arguments = concat [["schema", "symbols"] | contextual] ++ ["state" | stateful] ++ (if noArgs && not stateful then ["default(Unit)"] else values)
                       invoke = function ++ "(" ++ intercalate ", " arguments ++ ")"
                       okValue x = case failure of
                         Just _ -> "return " ++ r ++ ".NewOk(" ++ x ++ ");"
