@@ -93,6 +93,14 @@ type is `LawSpec.Data.Tree<'T0>` with cases `Leaf of value: 'T0` and
 An adapter that `fails with E` returns `Result<T, E>`. An `async` adapter
 returns `Task<T>`.
 
+LawSpec orders text by code point; F# orders a `string` by UTF-16 unit, so
+the two disagree when a character outside the Basic Multilingual Plane, such
+as an emoji, meets one from U+E000 to U+FFFF. LawSpec never observes F#'s
+order: the codecs, typed definitions and comparisons put a `Set`'s items and
+a `Map`'s keys in code point order. Your own code that walks a `Set<string>`
+or `Map<string, _>` in order should sort with `LawSpec.Runtime.Portable.textOrder`
+(an `IComparer<string>`) or `Portable.compare`.
+
 ## Abilities
 
 Each ability is an interface `I<Name>` in `LawSpec.Abilities.<Unit>`, with a

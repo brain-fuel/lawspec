@@ -1,0 +1,6 @@
+@@ src/Lessons/Pricing.fs
+<<<<<<<
+if value0 >= 10 then
+=======
+if value0 > 10 then
+>>>>>>>

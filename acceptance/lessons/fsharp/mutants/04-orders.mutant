@@ -1,0 +1,6 @@
+@@ src/Lessons/Orders.fs
+<<<<<<<
+int64 value0.Shots * 60L
+=======
+int64 value0.Shots * 50L
+>>>>>>>

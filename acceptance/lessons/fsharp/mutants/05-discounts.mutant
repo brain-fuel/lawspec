@@ -1,0 +1,6 @@
+@@ src/Lessons/Discounts.fs
+<<<<<<<
+= value0 * int64 (100 - value1) / 100L
+=======
+= value0 * int64 (100 - value1) / 100L + (if value1 = 100 then 1L else 0L)
+>>>>>>>

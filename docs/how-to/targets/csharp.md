@@ -61,6 +61,8 @@ Adapters use the model's F# types as C# sees them:
 - `List a`, `Maybe a`, `Set a` and `KeyVal k v` are `FSharpList<T>`,
   `FSharpOption<T>`, `FSharpSet<T>` and `FSharpMap<K, V>`. F#'s `ListModule`,
   `SetModule` and `MapModule` build and read them, as do the helpers below.
+  They walk text keys by UTF-16 unit, not LawSpec's code point order; sort
+  with `LawSpec.Runtime.Portable.TextOrder` where the order matters.
 - Integers, text, bytes and the other scalars are the types the
   [F# guide](fsharp.md#native-representations) lists, spelled in C#:
   `BigInteger`, `string`, `byte[]`, `System.Text.Rune`, `LawSpec.ExactDecimal`.

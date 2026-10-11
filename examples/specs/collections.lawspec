@@ -144,3 +144,48 @@ law `a sized queue keeps arrival order` is
     `for all` (x :: Int8) (y :: Int8) . prelude.sizedFront (prelude.sizedEnqueue y (prelude.sizedEnqueue x SizedQueueEmpty)) = x
   end
 end
+
+-- Text keys and items order by code point on every target. U+1F600 follows
+-- U+FF21 by code point, though in UTF-16 its first surrogate (U+D83D)
+-- precedes U+FF21, so a target ordering text by UTF-16 unit fails here.
+
+-- The items of a set of words, in the set's order.
+definition orderedItems (s :: Set Text) :: List Text is
+  match s with
+  | SetItems xs -> xs
+  end
+end
+
+-- The distinct words, in the order of the keys that count them.
+definition countedKeys (words :: List Text) :: List Text is
+  prelude.keys (countWords words (prelude.keyValOf []))
+end
+
+law `text keys and items order by code point` is
+  definition is
+    `for all` (words :: List Text) . countedKeys words = orderedItems (prelude.setOf words)
+  end
+  example `a fullwidth letter precedes an emoji` is
+    words = ["😀", "Ａ", "😀"]
+    expect countedKeys words = ["Ａ", "😀"]
+    expect orderedItems (prelude.setOf words) = ["Ａ", "😀"]
+    expect prelude.keys (wordCounts words) = ["Ａ", "😀"]
+  end
+end
+
+-- How one set of words orders against another.
+definition compareSets (s :: Set Text) (t :: Set Text) :: Ordering is
+  prelude.compare s t
+end
+
+law `sets of text order as their items do` is
+  definition is
+    `for all` (xs :: List Text) (ys :: List Text) .
+      compareSets (prelude.setOf xs) (prelude.setOf ys) = prelude.compare (orderedItems (prelude.setOf xs)) (orderedItems (prelude.setOf ys))
+  end
+  example `a set led by a fullwidth letter precedes one led by a later letter` is
+    xs = ["😀", "Ａ"]
+    ys = ["Ｂ"]
+    expect compareSets (prelude.setOf xs) (prelude.setOf ys) = Less
+  end
+end

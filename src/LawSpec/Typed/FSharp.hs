@@ -77,7 +77,7 @@ sanitize :: String -> String
 sanitize name = case [c | c <- name, isAlphaNum c && isAscii c] of
   [] -> "v"
   cleaned@(c : _) | isLower c -> cleaned
-  cleaned@(c : cs) | isUpper c -> toLower c : cs
+  c : cs | isUpper c -> toLower c : cs
   cleaned -> "v" ++ cleaned
 
 -- | A literal text or byte array, made once.
@@ -565,7 +565,7 @@ matchStatements env scope value cases = do
           entry <- if kind == "KeyVal" then Just <$> entryType env else pure Nothing
           let items = case entry of
                 Just e -> "(Typed.entries (fun k v -> ({ Key = k; Value = v } : " ++ e ++ ")) subject)"
-                Nothing -> "(Set.toList subject)"
+                Nothing -> "(Typed.items subject)"
               binding = case bound of
                 [(_, n')] | n' /= "_" -> [D.text ("let " ++ n' ++ " = " ++ items)]
                 _ -> []

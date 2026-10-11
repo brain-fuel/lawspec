@@ -25,8 +25,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   try-forms and its state to read or restore (typed handlers keep it native).
   Native bindings, `lawspec test`, `lawspec doctor`, the native payments
   example and `lawspec-dev bench kafka` cover both targets. Every acceptance
-  suite passes on both, with its mutants rejected. See the F# and C# setup
-  guides.
+  suite passes on both, with its mutants rejected, and the tutorial lessons
+  have F# and C# implementations. Text in a Set or a KeyVal orders by code
+  point on .NET as everywhere: F#'s own string order (by UTF-16 unit) is
+  never observed, as items, keys, entries or a comparison. See the F# and C#
+  setup guides.
+- The collections suite checks that text keys and items order by code point,
+  with a character outside the Basic Multilingual Plane beside a fullwidth
+  letter, on every target.
 - `lawspec evidence` says which tested laws ran against stand-ins. It reads
   an environment attestation, a versioned JSON document any tool may write
   for one run: the environment, the run's id and times, and for each

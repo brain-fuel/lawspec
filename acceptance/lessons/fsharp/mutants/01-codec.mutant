@@ -1,0 +1,6 @@
+@@ src/Lessons/Codec.fs
+<<<<<<<
+value0.ToString(CultureInfo.InvariantCulture)
+=======
+(abs value0).ToString(CultureInfo.InvariantCulture)
+>>>>>>>

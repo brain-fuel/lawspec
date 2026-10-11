@@ -56,6 +56,36 @@ let private unionParts (t: Type) =
             |> Array.map (fun c -> Reflection.FSharpValue.PreComputeUnionReader(c))
         tag, (fun v -> readers.[tag v] v))
 
+/// Text by code point, for a .NET collection that takes a comparer
+/// (StringComparer.Ordinal orders by UTF-16 unit, which differs for
+/// characters outside the Basic Multilingual Plane).
+[<CompiledName("TextOrder")>]
+let textOrder: Collections.Generic.IComparer<string> =
+    { new Collections.Generic.IComparer<string> with
+        member _.Compare(a, b) = Scalar.compareText a b }
+
+let private orderCache = Collections.Concurrent.ConcurrentDictionary<Type, bool>()
+
+/// Whether F#'s own comparison of a type can disagree with the portable
+/// order: it holds text somewhere F# compares (ordinally, by UTF-16 unit)
+/// rather than a generated type, which compares portably.
+[<CompiledName("Reorders")>]
+let rec reorders (t: Type) : bool =
+    match orderCache.TryGetValue t with
+    | true, known -> known
+    | _ ->
+        let result =
+            if t = typeof<string> then true
+            elif typeof<IPortable>.IsAssignableFrom t then false
+            elif t.IsArray then reorders (t.GetElementType())
+            elif t.IsGenericType then t.GetGenericArguments() |> Array.exists reorders
+            else false
+        orderCache.[t] <- result
+        result
+
+let private setType = typedefof<Set<int>>
+let private mapType = typedefof<Map<int, int>>
+
 /// The portable order of two native values of one type.
 [<CompiledName("Compare")>]
 let rec compare (a: obj) (b: obj) : int =
@@ -64,6 +94,10 @@ let rec compare (a: obj) (b: obj) : int =
     | null, _ -> -1
     | _, null -> 1
     | (:? string as x), (:? string as y) -> Scalar.compareText x y
+    | _ when a.GetType().IsGenericType && a.GetType().GetGenericTypeDefinition() = setType ->
+        compareSequence (portableItems a) (portableItems b)
+    | _ when a.GetType().IsGenericType && a.GetType().GetGenericTypeDefinition() = mapType ->
+        compareSequence (portableEntries a) (portableEntries b)
     | (:? (byte[]) as x), (:? (byte[]) as y) -> Scalar.compareBytes x y
     | (:? bool as x), (:? bool as y) -> Operators.compare x y
     | (:? BigInteger as x), (:? BigInteger as y) -> sign (BigInteger.Compare(x, y))
@@ -81,6 +115,22 @@ let rec compare (a: obj) (b: obj) : int =
     | (:? IEnumerable as xs), (:? IEnumerable as ys) -> compareSequence xs ys
     | (:? IComparable as x), _ -> sign (x.CompareTo b)
     | _ -> noOrder a
+
+/// A Set's items in the portable order.
+and private portableItems (s: obj) : IEnumerable =
+    let items = (s :?> IEnumerable) |> Seq.cast<obj> |> Array.ofSeq
+    items |> Array.sortWith compare :> IEnumerable
+
+/// A Map's entries, each key then its value, in the portable order of the keys.
+and private portableEntries (m: obj) : IEnumerable =
+    let entries =
+        (m :?> IEnumerable) |> Seq.cast<obj>
+        |> Seq.map (fun e ->
+            let t = e.GetType()
+            t.GetProperty("Key").GetValue e, t.GetProperty("Value").GetValue e)
+        |> Array.ofSeq
+        |> Array.sortWith (fun (k, _) (l, _) -> compare k l)
+    entries |> Seq.collect (fun (k, v) -> [ k; v ]) |> Seq.toArray :> IEnumerable
 
 and private compareSequence (xs: IEnumerable) (ys: IEnumerable) =
     let ys = ys.GetEnumerator()

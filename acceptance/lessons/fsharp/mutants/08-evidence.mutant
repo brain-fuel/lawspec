@@ -1,0 +1,6 @@
+@@ src/Lessons/Evidence.fs
+<<<<<<<
+value0 = 0y || value0 = 6y
+=======
+value0 = 0y || value0 = 5y
+>>>>>>>

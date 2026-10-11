@@ -1,0 +1,6 @@
+@@ src/Lessons/Orders.cs
+<<<<<<<
+value0.Shots * 60L
+=======
+value0.Shots * 50L
+>>>>>>>

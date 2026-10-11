@@ -166,14 +166,30 @@ let contains (text: string) (part: string) = part = "" || text.Contains(part, St
 let keyValOf (key: 'e -> 'k) (value: 'e -> 'v) (entries: 'e list) : Map<'k, 'v> =
     entries |> List.fold (fun m e -> Map.add (key e) (value e) m) Map.empty
 
+// F#'s Map and Set order their keys by F#'s comparison, which for text is
+// by UTF-16 unit; LawSpec orders text by code point. The two differ only for
+// text (characters outside the Basic Multilingual Plane sort after U+E000 to
+// U+FFFF by code point, before them by UTF-16 unit), so a key type holding
+// text is re-sorted whenever its order is observed.
+
+/// A Set's items in the portable order.
+[<CompiledName("Items")>]
+let items (s: Set<'a>) : 'a list =
+    let xs = Set.toList s
+    if Portable.reorders typeof<'a> then List.sortWith compare xs else xs
+
+let private ordered (m: Map<'k, 'v>) : ('k * 'v) list =
+    let xs = Map.toList m
+    if Portable.reorders typeof<'k> then List.sortWith (fun (a, _) (b, _) -> compare a b) xs else xs
+
 [<CompiledName("Keys")>]
-let keys (m: Map<'k, 'v>) : 'k list = m |> Map.toList |> List.map fst
+let keys (m: Map<'k, 'v>) : 'k list = ordered m |> List.map fst
 
 [<CompiledName("Values")>]
-let values (m: Map<'k, 'v>) : 'v list = m |> Map.toList |> List.map snd
+let values (m: Map<'k, 'v>) : 'v list = ordered m |> List.map snd
 
 [<CompiledName("Entries")>]
-let entries (entry: 'k -> 'v -> 'e) (m: Map<'k, 'v>) : 'e list = m |> Map.toList |> List.map (fun (k, v) -> entry k v)
+let entries (entry: 'k -> 'v -> 'e) (m: Map<'k, 'v>) : 'e list = ordered m |> List.map (fun (k, v) -> entry k v)
 
 // Failures across the typed boundary.
 

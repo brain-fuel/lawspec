@@ -1,0 +1,6 @@
+@@ src/Lessons/Codec.cs
+<<<<<<<
+=> value0.ToString(CultureInfo.InvariantCulture);
+=======
+=> System.Math.Abs((long)value0).ToString(CultureInfo.InvariantCulture);
+>>>>>>>

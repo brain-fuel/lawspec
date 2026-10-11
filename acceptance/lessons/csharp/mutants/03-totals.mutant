@@ -1,0 +1,6 @@
+@@ src/Lessons/Totals.cs
+<<<<<<<
+=> System.Math.Max(value0, value1);
+=======
+=> value0;
+>>>>>>>

@@ -175,7 +175,7 @@ let handler (key: string) : Effects.Handler =
                       | value -> just (Text value))
               "environmentSnapshot",
               (fun _ _ ->
-                  let all = Collections.Generic.SortedDictionary<string, string>(StringComparer.Ordinal)
+                  let all = Collections.Generic.SortedDictionary<string, string>(Portable.textOrder)
                   for entry in Environment.GetEnvironmentVariables() |> Seq.cast<Collections.DictionaryEntry> do
                       all.[string entry.Key] <- string entry.Value
                   Text(JsonSerializer.Serialize all))
