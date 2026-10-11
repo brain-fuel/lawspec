@@ -46,7 +46,8 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
         -- A parallel unit's tests each get their own class, so xUnit runs
         -- them at once; the other units share one collection and run in turn.
         bodies = if parallel then concatMap nestTest (lawBodies ++ benchmarkBodies) else lawBodies ++ benchmarkBodies
-        unitAttributes = [attributeText ("Xunit.TestCaseOrderer(typeof" ++ (if lang == FSharp then "<LawSpec.Testing.SeededOrder>" else "(LawSpec.Testing.SeededOrder)") ++ ")") | random] ++
+        orderer kind cls = attributeText ("Xunit." ++ kind ++ "(typeof" ++ (if lang == FSharp then "<LawSpec.Testing." ++ cls ++ ">" else "(LawSpec.Testing." ++ cls ++ ")") ++ ")")
+        unitAttributes = concat [[orderer "TestMethodOrderer" "SeededMethodOrder", orderer "TestCaseOrderer" "SeededOrder"] | random] ++
           [attributeText "Xunit.Collection(\"LawSpec\")" | not parallel]
         moduleName = testModule (C.unitId unit)
         doc = case lang of

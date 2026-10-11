@@ -47,3 +47,17 @@ type SeededOrder() =
             let declared =
                 cases |> List.sortBy (fun c -> (if c.TestMethodMetadataToken.HasValue then c.TestMethodMetadataToken.Value else 0), c.TestCaseDisplayName)
             ResizeArray(Schedule.order unitName declared) :> Collections.Generic.IReadOnlyCollection<'T>
+
+/// xUnit v3 orders a class's test methods before each method's cases, so a
+/// unit with `order random` orders its methods by the run's seed too: by
+/// name, then shuffled.
+type SeededMethodOrder() =
+    interface ITestMethodOrderer with
+        member _.OrderTestMethods<'T when 'T :> Xunit.Sdk.ITestMethod>(testMethods: Collections.Generic.IReadOnlyCollection<'T>) =
+            let methods = List.ofSeq testMethods
+            let unitName =
+                match methods with
+                | m :: _ -> m.TestClass.TestClassName
+                | [] -> ""
+            let declared = methods |> List.sortBy (fun m -> m.MethodName)
+            ResizeArray(Schedule.order unitName declared) :> Collections.Generic.IReadOnlyCollection<'T>

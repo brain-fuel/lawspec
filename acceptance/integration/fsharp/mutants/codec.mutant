@@ -1,0 +1,6 @@
+@@ src/Example/AtoiCodec.fs
+<<<<<<<
+let atoi (value: string) : int = Int32.Parse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture)
+=======
+let atoi (value: string) : int = 0
+>>>>>>>

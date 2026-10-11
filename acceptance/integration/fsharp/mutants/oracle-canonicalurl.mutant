@@ -1,0 +1,9 @@
+expect-any: Hello | https://example.com/path
+@@ src/Example/CanonicalUrl.fs
+<<<<<<<
+*
+=======
+module Example.CanonicalUrl
+
+let canonicalize (x: string) : string = x.Substring(0, 0)
+>>>>>>>
