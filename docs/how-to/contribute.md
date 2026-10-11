@@ -144,8 +144,10 @@ resources exclusively:
 - Each acceptance suite holds its project directory,
   `.artifacts/<suite><profile>/<target>`. Suites for one target run together,
   each in its own project.
-- `compiler-tests` and `build-acceptance` build in the repository's
-  `.stack-work`, so they run while no step runs a program from it.
+- Steps that call `stack run`, `stack build` or `stack test` in the
+  repository run one at a time, since each may reconfigure and rebuild the
+  package. `compiler-tests` and `build-acceptance` also reinstall
+  `lawspec-acceptance`, so no suite runs beside them.
 - Haskell and Java suites follow the target's `crypto` suite, which fills
   Stack's snapshot database and Maven's repository alone; neither guards
   concurrent installation. Cargo, Go, Gradle, NuGet and npm lock their caches.

@@ -147,22 +147,29 @@ stepGroups options editor =
 -- its target's environment exclusively; every other step of the target
 -- shares it. An acceptance suite holds its project directory
 -- (.artifacts/<suite><profile>/<target>) exclusively, since the Rust
--- toolchain and architecture variants reuse the default projects. The steps
--- that build in the repository's .stack-work (compiler-tests and
--- build-acceptance) hold it exclusively, and those that run its programs
--- share it, so no program is replaced while it runs; they and the Haskell
--- warm-up hold Stack's snapshot database. The runtime crate's steps share
--- one Cargo target directory. Suites that wait on the real clock (actors,
--- sessions, distribution and their BEAM APIs, scheduling, resilience) are
--- in the timing class, at most a third of the jobs at once, so a loaded
--- machine cannot starve many of them together.
+-- toolchain and architecture variants reuse the default projects. In the
+-- repository's .stack-work, every stack run, build or test may reconfigure
+-- and rebuild the package, so those steps run one at a time (stack-build);
+-- compiler-tests and build-acceptance also reinstall lawspec-acceptance, so
+-- they hold .stack-work exclusively while the suites that run it share it.
+-- Those two and the Haskell bootstrap and warm-up hold Stack's snapshot
+-- database. The runtime crate's steps share one Cargo target directory.
+-- Suites that wait on the real clock (actors, sessions, distribution and
+-- their BEAM APIs, scheduling, resilience) are in the timing class, at most a
+-- third of the jobs at once, so a loaded machine cannot starve many of them
+-- together.
 --
 -- The order interleaves the targets, so different toolchains share the
 -- processors rather than one toolchain taking every job.
 plan :: Int -> [(Maybe String, [Step])] -> [Task Step]
 plan workers groups = map task (repositorySteps ++ interleaved)
   where
-    repositorySteps = concat [steps | (Nothing, steps) <- groups] ++ concat [steps | (Just _, steps@(Step name _ _ : _)) <- groups, name `elem` beamFrameworks]
+    repositorySteps = buildEarly (concat [steps | (Nothing, steps) <- groups]) ++ concat [steps | (Just _, steps@(Step name _ _ : _)) <- groups, name `elem` beamFrameworks]
+    -- Every suite waits for build-acceptance, so it comes straight after
+    -- compiler-tests rather than after docs and canon.
+    buildEarly steps = case break ((== "build-acceptance") . stepName) steps of
+      (before, build : after) -> concat [s : [build | stepName s == "compiler-tests"] | s <- before] ++ after
+      _ -> steps
     interleaved = concat (transpose [warmFirst target steps | (target, steps) <- byTarget])
     byTarget = M.toList (M.fromListWith (flip (++)) [(target, filter ((`notElem` beamFrameworks) . stepName) steps) | (Just target, steps) <- groups])
     warmFirst target steps = case break ((== warmUp target) . stepName) steps of
@@ -182,9 +189,10 @@ plan workers groups = map task (repositorySteps ++ interleaved)
             ++ [f | (f, ft) <- zip beamFrameworks ["erlang", "elixir", "gleam"], ft == t]
             ++ [warmUp t | t `elem` warmTargets, name /= warmUp t]
     claims name env command target =
+      [Exclusive "stack-build" | buildsStack command] ++
       [Exclusive "stack-work" | name `elem` stackBuilders] ++
       [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
-      [Shared "stack-work" | name `notElem` stackBuilders, runsStack command] ++
+      [Shared "stack-work" | name `notElem` stackBuilders, take 1 command == ["stack"]] ++
       [Shared "env:python" | name == "beam-runtime"] ++
       [Shared "env:typescript" | name == "npm-tests"] ++
       [Exclusive "cargo:runtime/rust" | "runtime/rust/Cargo.toml" `elem` command] ++
@@ -195,7 +203,12 @@ plan workers groups = map task (repositorySteps ++ interleaved)
                | otherwise -> [Shared ("env:" ++ t)]
         Nothing -> []
     stackBuilders = ["compiler-tests", "build-acceptance"]
-    runsStack command = take 1 command == ["stack"] || command == ["sh", "tools/beam-runtime.sh"]
+    -- stack run, build and test may configure and build the repository's
+    -- package (stack test enables the test suite, the others disable it, so
+    -- each switch rebuilds the library); beam-runtime.sh calls stack run.
+    buildsStack command = case command of
+      "stack" : "--no-terminal" : verb : _ -> verb `elem` ["run", "build", "test"]
+      _ -> command == ["sh", "tools/beam-runtime.sh"]
     timing name command = name == "beam-runtime" ||
       maybe False ((`elem` timingSuites) . fst) (acceptanceSuite command)
     isJust' = maybe False (const True)
