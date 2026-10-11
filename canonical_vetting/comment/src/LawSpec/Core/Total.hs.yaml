@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total:
+  digest: sha256:23a8094a1ca4b30a
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/constructorProofContracts:
+  digest: sha256:391a37035bd74a6d
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/deferNonlinearPostconditions:
+  digest: sha256:f339dde188604797
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/deferProgramPostconditions:
+  digest: sha256:663cdddbe83e3b4f
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/safeConversionTypes:
+  digest: sha256:73caacbfe12933d4
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/validateDefinitionContracts:
+  digest: sha256:f62eb307774eacbb
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Total.hs/module/LawSpec.Core.Total/function/validateDefinitions:
+  digest: sha256:8b4d3a27149a216d
+  verdict: pending

@@ -259,7 +259,7 @@ eraseType table ty = case familyReference table ty of
     Qualified cs a -> Qualified cs (eraseType table a)
     CheckedType ps a -> CheckedType ps (eraseType table a)
     RefinementApp n args -> RefinementApp n
-      [(case a of TypeArgument t -> TypeArgument (eraseType table t); _ -> a) | a <- args]
+      [case a of TypeArgument t -> TypeArgument (eraseType table t); _ -> a | a <- args]
     _ -> ty
 
 erasedDeclaration :: M.Map String IndexedFamily -> IndexedFamily -> Either String DataTypeDeclaration
@@ -421,8 +421,8 @@ substituteIndices :: [(String, Expr)] -> Type -> Type
 substituteIndices [] ty = ty
 substituteIndices substitution ty = case ty of
   RefinementApp n args -> RefinementApp n
-    [(case a of ValueArgument e -> ValueArgument (replaceExprVars substitution e)
-                TypeArgument t -> TypeArgument (substituteIndices substitution t)) | a <- args]
+    [case a of ValueArgument e -> ValueArgument (replaceExprVars substitution e)
+               TypeArgument t -> TypeArgument (substituteIndices substitution t) | a <- args]
   Refined n t p -> Refined n (substituteIndices substitution t)
     (replaceExprVars (filter ((/= n) . fst) substitution) <$> p)
   Applied n a -> Applied n (substituteIndices substitution a)

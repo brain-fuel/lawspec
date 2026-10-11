@@ -83,10 +83,9 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
       items <- go value >>= listItems
       let every _ [] = Right (ScalarValue (SBool True))
           every index (item:rest) = do
-            let element = do
-                  checked <- validateValueWithContracts registry bits (binderType binder) item
-                  run (M.insert (binderId binder) checked env) predicate >>= valueBoolean
-            accepted <- case element of
+            accepted <- case do
+              checked <- validateValueWithContracts registry bits (binderType binder) item
+              run (M.insert (binderId binder) checked env) predicate >>= valueBoolean of
                 Left message -> Left ("List element " ++ show index ++ ": " ++ message)
                 Right result -> Right result
             if accepted then every (index + 1) rest else Right (ScalarValue (SBool False))

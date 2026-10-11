@@ -311,7 +311,7 @@ substitute env ty = case ty of
   TypeVariable n -> M.findWithDefault ty n env
   Arrow a b -> Arrow (substitute env a) (substitute env b)
   Constructor n args -> Constructor n
-    [(case arg of TypeArgument t -> TypeArgument (substitute env t); _ -> arg) | arg <- args]
+    [case arg of TypeArgument t -> TypeArgument (substitute env t); _ -> arg | arg <- args]
 
 -- | Recursive data must be strictly positive. Follow parameter use through other
 -- declarations too: putting a recursive value in Box a is unsafe when Box

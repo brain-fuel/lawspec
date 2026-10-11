@@ -143,7 +143,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `canon.yaml` names the canon version its vetting files were written with,
-  0.2.0, which both `make canon` and Rice's Tax require.
+  0.2.1, which both `make canon` and Rice's Tax require. Code reshaped in
+  0.20.1 for canon's Haskell grammar has its original forms back, since canon
+  0.2.1 reads them.
 - Definitions that are the same up to their names, such as an import's
   copies, share one generated body: Rust aliases the copies' functions, and
   Java and Go delegate to it. Go packages hold only the bodies they reach,

@@ -125,11 +125,10 @@ emitRustSchema bits layout declarations = do
     let reference ty = do
           ref <- typeReference <$> Schema.typeReference (Schema.contractParameters contract) ty
           pure (if variable ty then ref <> Doc.text ".instantiate(_types)?" else ref)
-        key ty
-          | not (variable ty) = pure (Doc.text (q (Expression.typeName ty)))
-          | otherwise = do
-              ref <- typeReference <$> Schema.typeReference (Schema.contractParameters contract) ty
-              pure (Doc.text "&" <> ref <> Doc.text ".instantiate(_types)?.expression_key()?")
+        key ty | variable ty = do
+          ref <- typeReference <$> Schema.typeReference (Schema.contractParameters contract) ty
+          pure (Doc.text "&" <> ref <> Doc.text ".instantiate(_types)?.expression_key()?")
+               | otherwise = pure (Doc.text (q (Expression.typeName ty)))
         names = zip (map binderId (Schema.contractFields contract))
           ["_fields[" ++ show i ++ "]" | i <- [0 :: Int ..]]
     body <- Expression.renderExpressionWithContext declarations (Doc.text "bits") (Doc.text "_schema") reference key [] names predicate

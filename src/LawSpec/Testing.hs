@@ -210,7 +210,7 @@ finiteScalars bits limit name
   | Just (lo,hi) <- integerBounds bits name, hi-lo+1 <= fromIntegral limit =
       Just [ScalarValue (SInteger name x) | x <- [lo..hi]]
   | name `elem` ["Bool", "Unit", "Null", "Undefined"],
-      values <- map ScalarValue (scalarBoundaries bits name), length values <= limit = Just values
+      let values = map ScalarValue (scalarBoundaries bits name), length values <= limit = Just values
   | otherwise = Nothing
 
 -- | Fixed cases for each primitive, chosen to be identical on every target.

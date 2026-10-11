@@ -337,7 +337,7 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
               (a, r) <- located (unary f)
               unless (a == state) (located (Left (context ++ ": step " ++ f ++ " expects " ++ prettyType a ++ " but receives " ++ prettyType state)))
               pure (f, r)
-            let outputs = [(case r of Application "Either" [_, n] -> n; _ -> r) | (_, r) <- infos]
+            let outputs = [case r of Application "Either" [_, n] -> n; _ -> r | (_, r) <- infos]
             combineType <- located (typeOf combineName)
             let (combineArguments, combined) = arguments combineType
             unless (combineArguments == outputs)

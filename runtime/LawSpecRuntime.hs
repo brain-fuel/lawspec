@@ -597,9 +597,10 @@ helper n args bits = case (n,args) of
     SBool (not (isNaN (floatValue a) || isInfinite (floatValue a)))
   ("isNegativeZero",[a]) -> SBool (isNegativeZero (floatValue a))
   ("round",[a,b]) ->
-    let x = either error id (exactValue a)
-        scale = either error numerator (exactValue (convert "Int32" b bits))
-        factor = if scale >= 0 then 10^scale % 1 else 1 % 10^(-scale)
+    let { x = either error id (exactValue a)
+        ; scale = either error numerator (exactValue (convert "Int32" b bits))
+        ; factor = if scale >= 0 then 10^scale % 1 else 1 % 10^(-scale)
+        }
     in either error id (decimal (fromInteger (round (x*factor)) / factor))
   (_,[a]) -> convert n a bits
   _ -> error "unknown helper or wrong arity"
@@ -610,11 +611,12 @@ sample t seed bits
       SPresent (take 8 t) (if even seed then Nothing
         else Just (sample (drop 9 t) (seed `div` 2) bits))
   | isInteger t =
-      let bounds = integerBounds bits t
-          n = case bounds of
-            Just (lo,hi) -> lo + randomN `mod` (hi-lo+1)
-            Nothing -> if t == "BigUInt" then randomN
-              else randomN - 2^(255::Int)
+      let { bounds = integerBounds bits t
+          ; n = case bounds of
+              Just (lo,hi) -> lo + randomN `mod` (hi-lo+1)
+              Nothing -> if t == "BigUInt" then randomN
+                else randomN - 2^(255::Int)
+          }
       in SInteger t n
   | t == "Bool" = SBool (even seed)
   | t == "Decimal" =
@@ -932,10 +934,11 @@ domainCandidates t seed bits restrictions hints = rotate values where
   values | isInteger t = case limits of
              (Just lo,Just hi) | lo > hi -> []
              (lo,hi) ->
-               let lower = maybe (min 0 (maybe 0 id hi) - 2^(256::Int)) id lo
-                   upper = maybe (max 0 (maybe 0 id lo) + 2^(256::Int)) id hi
-                   ns = [lower,upper,0,1,-1,lower+1,upper-1] ++
-                     [lower + random j `mod` (upper-lower+1) | j <- [0..7]]
+               let { lower = maybe (min 0 (maybe 0 id hi) - 2^(256::Int)) id lo
+                   ; upper = maybe (max 0 (maybe 0 id lo) + 2^(256::Int)) id hi
+                   ; ns = [lower,upper,0,1,-1,lower+1,upper-1] ++
+                       [lower + random j `mod` (upper-lower+1) | j <- [0..7]]
+                   }
                in [SInteger t n | SInteger _ n <- hints ++ map (SInteger t) ns,
                                    n >= lower, n <= upper]
          | otherwise =
@@ -946,9 +949,10 @@ domainCandidates t seed bits restrictions hints = rotate values where
     Nothing -> (if t == "BigUInt" then Just 0 else Nothing,Nothing)
   limits = foldl restrict initial restrictions
   restrict (lo,hi) (op,v) =
-    let r = either error id (exactValue v)
-        lower = if op == ">" then floor r + 1 else ceiling r
-        upper = if op == "<" then ceiling r - 1 else floor r
+    let { r = either error id (exactValue v)
+        ; lower = if op == ">" then floor r + 1 else ceiling r
+        ; upper = if op == "<" then ceiling r - 1 else floor r
+        }
     in (if op `elem` [">",">=","=="]
           then Just (maybe lower (max lower) lo) else lo,
         if op `elem` ["<","<=","=="]
@@ -998,12 +1002,13 @@ refinedCase domains seed attempts shrinks check context = do
     capture f xs = (f xs >> pure Nothing) `catch`
       (\e -> pure (Just (displayException (e :: SomeException))))
     shrinkAt state@(best,_) i =
-      let Domain candidates _ = domains !! i
-          additional = case best !! i of
-            SInteger t n -> map (SInteger t)
-              (0:signum n:takeWhile ((>1) . abs)
-                (drop 1 (iterate (`quot` 2) n)))
-            _ -> []
+      let { Domain candidates _ = domains !! i
+          ; additional = case best !! i of
+              SInteger t n -> map (SInteger t)
+                (0:signum n:takeWhile ((>1) . abs)
+                  (drop 1 (iterate (`quot` 2) n)))
+              _ -> []
+          }
       in foldM (tryCandidate i) state
         (additional ++ candidates (take i best) 0)
     tryCandidate i state@(best,budget) candidate

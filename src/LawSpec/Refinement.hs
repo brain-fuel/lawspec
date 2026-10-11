@@ -164,7 +164,7 @@ substituteType ts vs = go where
   go (Application n args) = Application n (map go args)
   go (CheckedType ps a) = CheckedType (map (mapExprTypes go . replaceExprVars (M.toList vs)) ps) (go a)
   go (Qualified cs a) = Qualified [Capability n (go t) | Capability n t <- cs] (go a)
-  go (RefinementApp n args) = RefinementApp n [(case a of TypeArgument t -> TypeArgument (go t); ValueArgument e -> ValueArgument (mapExprTypes go (replaceExprVars (M.toList vs) e))) | a <- args]
+  go (RefinementApp n args) = RefinementApp n [case a of TypeArgument t -> TypeArgument (go t); ValueArgument e -> ValueArgument (mapExprTypes go (replaceExprVars (M.toList vs) e)) | a <- args]
 
 -- | Synthetic predicate binders are not user-declared dependent argument names.
 -- '$' is unavailable in source identifiers, so it cannot capture a source binder.
@@ -220,7 +220,7 @@ typeNames (Application _ ts) = concatMap typeNames ts
 typeNames (Refined _ t p) = typeNames t ++ maybe [] exprVars p
 typeNames (Qualified _ t) = typeNames t
 typeNames (CheckedType ps t) = concatMap exprVars ps ++ typeNames t
-typeNames (RefinementApp _ args) = concat [(case a of TypeArgument t -> typeNames t; ValueArgument e -> exprVars e) | a <- args]
+typeNames (RefinementApp _ args) = concat [case a of TypeArgument t -> typeNames t; ValueArgument e -> exprVars e | a <- args]
 
 -- | Isolate affine occurrences of the current integer input. All other terms may
 -- be arbitrary pure expressions over the preceding inputs.

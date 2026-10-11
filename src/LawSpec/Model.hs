@@ -478,7 +478,7 @@ mapType f g = walk where
   walk (Refined n t p) = f (Refined n (walk t) (g <$> p))
   walk (CheckedType ps t) = f (CheckedType (map g ps) (walk t))
   walk (Qualified cs t) = f (Qualified [Capability n (walk a) | Capability n a <- cs] (walk t))
-  walk (RefinementApp n args) = f (RefinementApp n [(case a of TypeArgument t -> TypeArgument (walk t); ValueArgument e -> ValueArgument (g e)) | a <- args])
+  walk (RefinementApp n args) = f (RefinementApp n [case a of TypeArgument t -> TypeArgument (walk t); ValueArgument e -> ValueArgument (g e) | a <- args])
   walk t = f t
 
 mapExprTypes :: (Type -> Type) -> Expr -> Expr

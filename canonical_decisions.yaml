@@ -20,7 +20,7 @@ DEC-vet-with-rices-tax:
   status: decided
   question: canon records 3,243 comments, pages, decisions and references as pending, and the owner signs each at 1.0. Editing canonical_vetting/ by hand means reading each comment beside its code in another window and typing its key. How does the owner vet them, and how do the tool and the check agree on what is pending?
   answer: |
-    On Rice's Tax's review page (ref rices-tax): make assess records every pending row, make tax serves the page, which shows each row with the code or page it explains, what it cites, and canon's finding on it, and writes a verdict into the vetting file in the working tree; the owner reviews git diff and commits, so blame names the signer; make audit and make canon report what is left. Rice's Tax reads the repository through canon's library, so the two must be one canon version: canon.yaml names it under canon (0.2.0), Rice's Tax refuses any other, and lawspec-dev tax refuses a CANON_HOME of another version than Rice's Tax's. RICESTAX_HOME names the Rice's Tax checkout as CANON_HOME names canon's. The directory exemptions of 0.20.1 stay until the owner lifts them, one subject at a time from the page or whole; rows under them can be decided before. Rice's Tax's What queue, a verdict on each name and signature, is raised by assess and exempted for the kind name until 1.0.0, with the rest of the vetting deferred to 1.0.
+    On Rice's Tax's review page (ref rices-tax): make assess records every pending row, make tax serves the page, which shows each row with the code or page it explains, what it cites, and canon's finding on it, and writes a verdict into the vetting file in the working tree; the owner reviews git diff and commits, so blame names the signer; make audit and make canon report what is left. Rice's Tax reads the repository through canon's library, so the two must be one canon version: canon.yaml names it under canon (0.2.1, any 0.2 patch being compatible), Rice's Tax refuses any other, and lawspec-dev tax refuses a CANON_HOME of another version than Rice's Tax's. RICESTAX_HOME names the Rice's Tax checkout as CANON_HOME names canon's. The directory exemptions of 0.20.1 stay until the owner lifts them, one subject at a time from the page or whole; rows under them can be decided before. Rice's Tax's What queue, a verdict on each name and signature, is raised by assess and exempted for the kind name until 1.0.0, with the rest of the vetting deferred to 1.0.
   opened: 0.20.1
   decided: 0.20.1
   refs: [rices-tax, canon]
@@ -104,16 +104,27 @@ DEC-tests-cite-requirements:
   refs: [hspec]
 
 DEC-canon-haskell-comprehension-case:
-  status: open
+  status: superseded
+  by: DEC-canon-reads-original-haskell
   question: canon's Haskell grammar cannot parse a case expression inside a list comprehension ([case a of ...; o -> o | a <- as]), which the LawTwin work uses in Core and the typed emitters. How does canon check stay green without reshaping valid code?
   answer: |
     The code stays as written. canon.yaml ignores exactly the modules canon fails to parse (src/LawSpec/Core.hs, src/LawSpec/Core/Total.hs and src/LawSpec/Typed/Go.hs, Haskell.hs, Jvm.hs, Python.hs and Web.hs), as a temporary entry for a canon bug. Their vetting rows, all pending, leave canonical_vetting with them, since canon reports a verdict on material it no longer reads; nothing signed is lost. When canon's Haskell grammar parses a case in a comprehension, the entry is removed, canon ingest records the modules' rows as pending again, and they are checked again.
   opened: 0.22.0
-  revisit: 0.23.0
+  decided: 0.22.0
+  refs: [canon]
+
+DEC-canon-reads-original-haskell:
+  status: decided
+  question: canon 0.2.1's Haskell grammar parses a case inside a list comprehension, a let in a guard followed by a comma, a do block as a case's scrutinee, a guard after a do block and a let with explicit braces (canon's DEC-layout-bars-commas-and-of). What becomes of the reshaped code and the temporary ignore entries?
+  answer: |
+    The code is written as Haskell allows, never reshaped for a checker. The modules reshaped in 0.20.1 (DEC-haskell-grammar-workarounds) have their original forms back, the modules canon.yaml ignored for the LawTwin work (DEC-canon-haskell-comprehension-case) are checked again with their vetting rows, and canon.yaml names canon 0.2.1.
+  opened: 0.22.0
+  decided: 0.22.0
   refs: [canon]
 
 DEC-haskell-grammar-workarounds:
-  status: decided
+  status: superseded
+  by: DEC-canon-reads-original-haskell
   question: canon's Haskell grammar could not read nine of LawSpec's modules, where a case sits in a list comprehension, a let in a guard is followed by a comma, a do block is a case scrutinee, a guard follows a do block, or a let uses explicit braces. What changes?
   answer: |
     The code, without changing its meaning: such a case is parenthesised, the guard binds with a pattern guard, the do block is named in a let, the guards are reordered, and the lets use layout. canon is not changed; the grammar's gaps are canon's to close, after which the parentheses may go.
