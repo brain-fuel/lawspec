@@ -177,9 +177,16 @@ unitFactories lang bits declarations units unit = do
           Just c -> " (" ++ c ++ ".ToNative resource)"
           Nothing -> " ()"
         params = "(schema: Schema.Schema) (symbols: Scalar.SymbolContext)" ++ maybe "" (const " (resource: Value)") resourceCodec
-    pure (D.text ("/// The production handler of " ++ N.displayName a ++ ", from the adapter.") <> D.hardline <>
-      D.text ("let " ++ name ++ " " ++ params ++ " : Effects.Handler =") <>
-      D.nest 4 (D.hardline <> D.text ("LawSpec.Generated.Abilities." ++ Effects.bridgeName a "FromNative" ++ " schema symbols (" ++ made ++ arguments ++ ")")))
+        csMade = case C.abilityNative a of
+          Just ref -> "new " ++ intercalate "." ref ++ "()"
+          Nothing -> made ++ "(" ++ maybe "" (\c -> c ++ ".ToNative.Invoke(resource)") resourceCodec ++ ")"
+    pure $ case lang of
+      FSharp -> D.text ("/// The production handler of " ++ N.displayName a ++ ", from the adapter.") <> D.hardline <>
+        D.text ("let " ++ name ++ " " ++ params ++ " : Effects.Handler =") <>
+        D.nest 4 (D.hardline <> D.text ("LawSpec.Generated.Abilities." ++ Effects.bridgeName a "FromNative" ++ " schema symbols (" ++ made ++ arguments ++ ")"))
+      CSharp -> D.text ("/// <summary>The production handler of " ++ N.displayName a ++ ", from the adapter.</summary>") <> D.hardline <>
+        D.text ("public static Effects.Handler " ++ pascal name ++ "(Schema.Schema schema, Scalar.SymbolContext symbols" ++ maybe "" (const ", Value resource") resourceCodec ++ ") =>") <>
+        D.nest 4 (D.hardline <> D.text ("LawSpec.Generated.Abilities." ++ pascal (Effects.bridgeName a "FromNative") ++ "(schema, symbols, " ++ csMade ++ ");"))
   specs <- forM (C.unitHandlers unit) $ \h -> do
     answered <- forM (C.handlerAbilities h) $ \ref -> maybe (Left "unknown .NET spec handler ability") Right (N.abilityOf units ref)
     let stateful = C.handlerState h /= Nothing
@@ -196,19 +203,40 @@ unitFactories lang bits declarations units unit = do
       Nothing -> pure Nothing
       Just (_, initial) -> Just <$> X.render (X.Context bits X.schemaVar X.symbolsVar
         (\i -> error ("unbound .NET handler state: " ++ C.idText i)) (Effects.external units) X.typeRef X.typeKeyOf) initial
-    let clauseTy = if stateful then Ty "string * Effects.StatefulClause" "Tuple<string, Effects.StatefulClause>"
-          else Ty "string * Effects.Clause" "Tuple<string, Effects.Clause>"
+    let clauseTy = if stateful then Ty "string * Effects.StatefulClause" "Tuple<string, FSharpFunc<Schema.Schema, FSharpFunc<FSharpList<Value>, FSharpFunc<Value, Value>>>>"
+          else Ty "string * Effects.Clause" "Tuple<string, FSharpFunc<Schema.Schema, FSharpFunc<FSharpList<Value>, Value>>>"
         made = case start of
           Nothing -> call "Effects" "stateless" [ListOf clauseTy clauses]
           Just v -> call "Effects" "stateful" [v, ListOf clauseTy clauses]
         (_, name) = Effects.specFunction units h
-    pure (D.text ("/// The spec handler " ++ C.handlerName h ++ ".") <> D.hardline <>
-      D.text ("let " ++ name ++ " (schema: Schema.Schema) (symbols: Scalar.SymbolContext) : Effects.Handler =") <>
-      D.nest 4 (D.hardline <> renderBody lang (Ty "Effects.Handler" "Effects.Handler") made))
+    pure $ case lang of
+      FSharp -> D.text ("/// The spec handler " ++ C.handlerName h ++ ".") <> D.hardline <>
+        D.text ("let " ++ name ++ " (schema: Schema.Schema) (symbols: Scalar.SymbolContext) : Effects.Handler =") <>
+        D.nest 4 (D.hardline <> renderBody lang (Ty "Effects.Handler" "Effects.Handler") made)
+      CSharp -> D.text ("/// <summary>The spec handler " ++ C.handlerName h ++ ".</summary>") <> D.hardline <>
+        D.text ("public static Effects.Handler " ++ pascal name ++ "(Schema.Schema schema, Scalar.SymbolContext symbols)") <> D.hardline <>
+        D.block 4 (renderBody lang (Ty "Effects.Handler" "Effects.Handler") made)
   pure (productions ++ specs)
 
 -- | The native handler factories a unit's adapter implements.
 productionStubs :: Lang -> Int -> [C.DataDeclaration] -> C.Unit -> Either String [D.Doc]
+productionStubs CSharp bits declarations unit = do
+  names <- dataNames declarations
+  fmap concat $ forM [a | a <- N.ownAbilities unit, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)] $ \a -> do
+    members <- forM (C.abilityOperations a) $ \(op, ty) -> do
+      (ps, r) <- operationSignature CSharp bits names a (op, ty)
+      let params = [p ++ " value" ++ show i | (i, p) <- zip [0 :: Int ..] ps, p /= "Unit"]
+          message = "not implemented: " ++ C.abilityKey (C.abilityInstance a) ++ "." ++ op
+      pure (D.text ("public " ++ (if r == "Unit" then "void" else r) ++ " " ++ Effects.operationMember op ++ "(" ++ intercalate ", " params ++ ") =>") <>
+        D.nest 4 (D.hardline <> D.text ("throw new NotImplementedException(" ++ stringLiteral CSharp message ++ ");")))
+    resource <- traverse (Data.nativeType CSharp bits names []) (C.abilityResource a)
+    let interface = Effects.interfaceType a
+        cls = "Native" ++ pascal (N.interfaceName a)
+        name = pascal (N.productionName a)
+    pure [ D.text ("/// <summary>The native handler of " ++ N.displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".</summary>") <> D.hardline <>
+           D.text ("public static " ++ interface ++ " " ++ name ++ "(" ++ maybe "" (++ " resource") resource ++ ") => new " ++ cls ++ "();")
+         , D.text ("private sealed class " ++ cls ++ " : " ++ interface) <> D.hardline <>
+           D.block 4 (D.joinWith (D.hardline <> D.hardline) members) ]
 productionStubs lang bits declarations unit = do
   names <- dataNames declarations
   forM [a | a <- N.ownAbilities unit, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)] $ \a -> do

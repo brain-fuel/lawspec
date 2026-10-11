@@ -12,6 +12,8 @@ module LawSpec.DotNet.Code
 
 import qualified LawSpec.Code.Doc as D
 import Control.Monad.State.Strict (State, evalState, get, put)
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.Char (ord, isAscii, isPrint)
 import Numeric (showHex)
 
@@ -62,10 +64,9 @@ tType = Ty "TypeRef" "TypeRef"
 
 tFun :: [Ty] -> Ty -> Ty
 tFun args (Ty fr cr) = Ty (unwords [fa ++ " ->" | Ty fa _ <- argsOrUnit] ++ " " ++ fr)
-  ("FSharpFunc<" ++ csArgs ++ ">")
+  (foldr (\(Ty _ ca) rest -> "FSharpFunc<" ++ ca ++ ", " ++ rest ++ ">") cr argsOrUnit)
   where
     argsOrUnit = if null args then [tUnit] else args
-    csArgs = foldr (\(Ty _ ca) rest -> ca ++ ", " ++ rest) cr argsOrUnit
 
 tList :: Ty -> Ty
 tList (Ty f c) = Ty (paren f ++ " list") ("FSharpList<" ++ c ++ ">")
@@ -193,15 +194,49 @@ bindTo name t value = case value of
 
 -- | A function body: its statements and its result.
 renderBody :: Lang -> Ty -> Expr -> D.Doc
-renderBody lang ty e = evalState (body lang ty Return e) 0
+renderBody lang ty e = evalState (body lang ty Return (distinct lang e)) 0
 
 -- | A body run for its effects (a C# void method, an F# unit function).
 renderStatements :: Lang -> Expr -> D.Doc
-renderStatements lang e = evalState (body lang tUnit Discard e) 0
+renderStatements lang e = evalState (body lang tUnit Discard (distinct lang e)) 0
 
 -- | An expression that is already inline.
 renderExpr :: Lang -> Expr -> D.Doc
-renderExpr lang e = evalState (inline lang e) 0
+renderExpr lang e = evalState (inline lang (distinct lang e)) 0
+
+-- | C# refuses a local that another local in scope already names, where F#
+-- shadows it; so for C# each binder that reuses a name bound earlier in the
+-- body is renamed (the first keeps its name, which raw text may mention).
+distinct :: Lang -> Expr -> Expr
+distinct FSharp e = e
+distinct CSharp e = evalState (go M.empty e) S.empty
+  where
+    go :: M.Map String String -> Expr -> State (S.Set String) Expr
+    go env x = case x of
+      Var v -> pure (Var (M.findWithDefault v v env))
+      Call f args -> Call f <$> mapM (go env) args
+      Ctor f args -> Ctor f <$> mapM (go env) args
+      Invoke f args -> Invoke <$> go env f <*> mapM (go env) args
+      ListOf t xs -> ListOf t <$> mapM (go env) xs
+      TupleOf xs -> TupleOf <$> mapM (go env) xs
+      Lambda ps r b -> do
+        names <- mapM (binder . fst) ps
+        b' <- go (foldr (uncurry M.insert) env (zip (map fst ps) names)) b
+        pure (Lambda (zip names (map snd ps)) r b')
+      Let n t v b -> do
+        v' <- go env v
+        n' <- binder n
+        b' <- go (M.insert n n' env) b
+        pure (Let n' t v' b')
+      If c t a b -> If <$> go env c <*> pure t <*> go env a <*> go env b
+      Do xs v -> Do <$> mapM (go env) xs <*> go env v
+      _ -> pure x
+    binder :: String -> State (S.Set String) String
+    binder n = do
+      used <- get
+      let n' = head [c | c <- n : [n ++ "_" ++ show k | k <- [1 :: Int ..]], not (S.member c used)]
+      put (S.insert n' used)
+      pure n'
 
 -- | Where a C# block's result goes: returned, assigned to a local, or
 -- dropped (a void body).
@@ -320,7 +355,7 @@ inline lang e = case e of
       CSharp -> D.text ("Fn.List<" ++ tyText CSharp t ++ ">(") <> D.joinWith (D.text ", ") ds <> D.text ")"
   TupleOf xs -> do
     ds <- mapM (inline lang) xs
-    pure (D.text "(" <> D.joinWith (D.text ", ") ds <> D.text ")")
+    pure (D.text (if lang == FSharp then "(" else "Fn.Tuple(") <> D.joinWith (D.text ", ") ds <> D.text ")")
   _ -> do
     -- A block in an inline position: bind it in a function of no arguments.
     inner <- body lang tValue Return e
