@@ -126,7 +126,7 @@ public enum Descriptors {
         }
     }
 
-    static func generationBounds(_ lo: BigInt?, _ hi: BigInt?) -> (BigInt, BigInt) {
+    public static func generationBounds(_ lo: BigInt?, _ hi: BigInt?) -> (BigInt, BigInt) {
         let million = BigInt(1_000_000)
         switch (lo, hi) {
         case (nil, nil): return (-million, million)

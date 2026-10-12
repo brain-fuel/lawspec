@@ -246,7 +246,7 @@ public enum Defaults {
     }
 
     /// A JSON string literal.
-    static func jsonString(_ s: String) -> String {
+    public static func jsonString(_ s: String) -> String {
         var out = "\""
         for scalar in s.unicodeScalars {
             switch scalar {
