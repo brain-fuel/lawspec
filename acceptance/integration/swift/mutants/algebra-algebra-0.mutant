@@ -1,0 +1,6 @@
+@@ src/Example/Algebra.swift
+<<<<<<<
+    static func multiply(_ x: BigInt, _ y: BigInt) -> BigInt { x * y }
+=======
+    static func multiply(_ x: BigInt, _ y: BigInt) -> BigInt { x + y }
+>>>>>>>

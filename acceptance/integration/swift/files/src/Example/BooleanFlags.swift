@@ -1,0 +1,7 @@
+// User-owned LawSpec adapter.
+import Foundation
+import LawSpecRuntime
+
+extension Example.BooleanFlags {
+    static func flipFlag(_ x: Bool) -> Bool { !x }
+}

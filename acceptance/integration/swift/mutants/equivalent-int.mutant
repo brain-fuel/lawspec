@@ -1,0 +1,6 @@
+@@ src/Example/Alternatives.swift
+<<<<<<<
+x < 0 ? 0 : x
+=======
+-1
+>>>>>>>

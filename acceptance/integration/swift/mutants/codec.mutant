@@ -1,0 +1,6 @@
+@@ src/Example/AtoiCodec.swift
+<<<<<<<
+    static func atoi(_ value: String) -> Int32 { Int32(value) ?? 0 }
+=======
+    static func atoi(_ value: String) -> Int32 { 0 }
+>>>>>>>
