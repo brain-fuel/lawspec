@@ -64,6 +64,11 @@ unknown, prerelease, missing and out-of-range versions.
 | | xunit.v3 | 4.0.2 |
 | | FsCheck | 3.4.0 |
 | | BouncyCastle.Cryptography | 2.7.0 |
+| Groovy | Java | 25 |
+| | Gradle | 9.1–9.3 |
+| | Groovy | 5.0.x |
+| | Spock | 2.5 (for Groovy 5.0) |
+| | JetCheck | 0.3.0 |
 
 Java 25 and Python 3.13 are minimum baselines. New JVM releases are admitted
 after testing; the current profile certifies Java 25.
@@ -96,6 +101,15 @@ name. The namespace `LawSpec.CSharp` is the compatibility layer:
 F#'s unit value is `default(Unit)`. A C# adapter takes no `Unit` argument and
 returns `void` for `Unit`. See [Set up C#](../how-to/targets/csharp.md).
 
+## Groovy over Java
+
+The Groovy target uses the Java target's model (data types, codecs, ability
+interfaces, checked definitions, schema, actors, sessions, mailboxes and the
+network), which Gradle compiles jointly with the Groovy sources. Adapters are
+Groovy classes checked with `@CompileStatic`, and the laws are Spock
+specifications whose properties run on JetCheck. See
+[Set up Groovy](../how-to/targets/groovy.md).
+
 ## Versions pinned by `init`
 
 When `init` creates a scaffold, it pins:
@@ -115,6 +129,7 @@ When `init` creates a scaffold, it pins:
 | Gleam | Gleam 1.18+, Erlang target, gleam_stdlib 1.0.5, gleeunit 1.11.0, qcheck 1.0.5, local `lawspec_test_support` |
 | F# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, FsCheck 3.4.0 |
 | C# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, FsCheck 3.4.0, the generated F# model project |
+| Groovy | Groovy 5.0.8, a Java 25 toolchain, Spock 2.5-groovy-5.0, JetCheck 0.3.0, JUnit Jupiter API 5.14.0, joint Java and Groovy source sets |
 
 ## What the checks inspect
 

@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Gadt.groovy
+<<<<<<<
+    return value0.witness()
+=======
+    return 'Int32'
+>>>>>>>

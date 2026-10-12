@@ -1,0 +1,10 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/main/groovy/example/CanonicalUrl.groovy
+<<<<<<<
+*
+=======
+package example; public class CanonicalUrl {
+static String canonicalize(String x) { return x.substring(0, 0); }
+}
+>>>>>>>

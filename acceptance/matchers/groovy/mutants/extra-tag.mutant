@@ -1,0 +1,8 @@
+expect: unique tags come from the input
+@@ src/main/groovy/example/Matchers.groovy
+<<<<<<<
+    return tags
+=======
+    tags.add('extra')
+    return tags
+>>>>>>>

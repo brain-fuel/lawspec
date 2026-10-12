@@ -1,0 +1,8 @@
+@@ src/main/groovy/example/Collections.groovy
+<<<<<<<
+    return new LinkedHashSet<>(value0)
+=======
+    var rows = new LinkedHashSet<>(value0)
+    rows.remove(List.of())
+    return rows
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Gadt.groovy
+<<<<<<<
+    if (value0 instanceof Expr.Negate negate) return !evalTruth(negate.operand())
+=======
+    if (value0 instanceof Expr.Negate negate) return evalTruth(negate.operand())
+>>>>>>>

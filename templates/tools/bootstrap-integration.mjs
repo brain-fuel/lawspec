@@ -126,7 +126,7 @@ async function setup(target) {
       ["--no-terminal", "build", "--test", "--no-run-tests"],
       root,
     );
-  } else if (target === "kotlin") {
+  } else if (target === "kotlin" || target === "groovy") {
     config.targets[0].gradle =
       process.env.LAWSPEC_GRADLE || config.targets[0].gradle || "gradle";
     await run(

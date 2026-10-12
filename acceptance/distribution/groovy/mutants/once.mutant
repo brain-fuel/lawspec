@@ -1,0 +1,7 @@
+@@ src/main/groovy/example/Distribution.groovy
+<<<<<<<
+      tally.add(value0)
+      return tally.add(value0)
+=======
+      return tally.add(value0)
+>>>>>>>

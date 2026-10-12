@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/AtoiCodec.groovy
+<<<<<<<
+Integer.parseInt(value)
+=======
+0
+>>>>>>>

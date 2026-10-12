@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Algebra.groovy
+<<<<<<<
+add(BigInteger x,BigInteger y){return x.add(y);}
+=======
+add(BigInteger x,BigInteger y){return x.add(y).intValue();}
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: expect 
+@@ src/main/groovy/example/BooleanFlags.groovy
+<<<<<<<
+*
+=======
+package example; public class BooleanFlags { public static boolean flipFlag(boolean x) { return x; } }
+>>>>>>>

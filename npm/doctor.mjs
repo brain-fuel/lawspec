@@ -76,6 +76,8 @@ export async function doctor(target, root, plannedArtifacts = []) {
       ? ["src/main/java", "src/test/java"]
       : name === "kotlin"
         ? ["src/main/kotlin", "src/test/kotlin"]
+        : name === "groovy"
+        ? ["src/main/groovy", "src/test/groovy"]
         : ["src", ["python", "rust", "fsharp", "csharp"].includes(name) ? "tests" : "test"];
   const sourceDir = target.sourceDir ?? defaults[0];
   const testDir = target.testDir ?? defaults[1];
@@ -460,6 +462,46 @@ export async function doctor(target, root, plannedArtifacts = []) {
           data.kotlin,
           "Cannot determine the Kotlin Gradle plugin version",
         );
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    } else if (name === "groovy") {
+      // Groovy over the Java model: Gradle's groovy plugin compiles both
+      // jointly, Spock runs the specifications and JetCheck the properties.
+      const command =
+        target.gradle ||
+        (await access(path.join(root, "gradlew")).then(
+          () => path.join(root, "gradlew"),
+          () => "gradle",
+        ));
+      const tmp = await mkdtemp(path.join(os.tmpdir(), "lawspec-gradle-"));
+      try {
+        const report = path.join(tmp, "report.json");
+        const init = path.join(tmp, "inspect.gradle");
+        await writeFile(
+          init,
+          `import groovy.json.JsonOutput\ngradle.projectsEvaluated {\n def p = gradle.rootProject\n p.tasks.register('lawspecEnvironmentReport') { doLast {\n def j = p.tasks.findByName('test')\n def deps = p.configurations.testRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.collect { [name: it.moduleVersion.id.group + ':' + it.name, version: it.moduleVersion.id.version] }\n new File(System.getenv('LAWSPEC_REPORT')).text = JsonOutput.toJson([gradle: gradle.gradleVersion, java: System.getProperty('java.version'), testJava: j?.javaLauncher?.get()?.metadata?.languageVersion?.asInt(), runner: j?.options?.class?.name, enabled: j.enabled, includes: j.filter.includePatterns, excludes: j.filter.excludePatterns, sourceDirs: p.sourceSets.main.groovy.srcDirs.collect { it.canonicalPath }, testDirs: p.sourceSets.test.groovy.srcDirs.collect { it.canonicalPath }, dependencies: deps])\n } }\n}\n`,
+        );
+        await run(command, ["--no-daemon", "--console=plain", "-I", init, "lawspecEnvironmentReport"], root,
+          { env: { ...process.env, LAWSPEC_REPORT: report } });
+        const data = JSON.parse(await readFile(report, "utf8"));
+        requireThat(/^9\.[1-3]\./.test(data.gradle) && major(data.java) >= 25 && data.testJava >= 25,
+          "Groovy requires Gradle 9.1–9.3 and a Java 25+ toolchain");
+        requireThat(data.runner?.includes("JUnitPlatform") && data.enabled && !data.includes.length && !data.excludes.length,
+          "Gradle test must enable unfiltered JUnit Platform execution");
+        // The Java model compiles jointly with the Groovy sources.
+        requireThat(
+          [sourceDir, "src/main/java"].every((d) => data.sourceDirs.includes(path.join(root, d))) &&
+            [testDir, "src/test/java"].every((d) => data.testDirs.includes(path.join(root, d))),
+          `Gradle's Groovy source sets must include ${sourceDir} and src/main/java, and ${testDir} and src/test/java`,
+        );
+        const version = (dep) => data.dependencies.find((d) => d.name === dep)?.version;
+        versions.groovy = version("org.apache.groovy:groovy");
+        versions.spock = version("org.spockframework:spock-core")?.replace(/-groovy-.*/, "");
+        requireThat(versions.groovy, "Missing org.apache.groovy:groovy");
+        requireThat(versions.spock, "Missing org.spockframework:spock-core");
+        requireThat(version("org.jetbrains:jetCheck") === "0.3.0", "Missing org.jetbrains:jetCheck:0.3.0");
+        Object.assign(versions, { gradle: data.gradle, java: data.java });
       } finally {
         await rm(tmp, { recursive: true, force: true });
       }

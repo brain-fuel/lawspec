@@ -156,6 +156,11 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
         args: [...(offline ? ["--offline"] : []), "--console=plain", "test", "--rerun", "--tests", className(file, "src/test/kotlin", ".kt")],
         env: { "kotest.filter.tests": filter, kotest_filter_tests: filter } };
     });
+  // Spock names each feature in words; Gradle's filters select it by name.
+  if (language === "groovy")
+    return [{ command: target.gradle || "gradle",
+      args: [...(offline ? ["--offline"] : []), "--console=plain", "test", "--rerun",
+        ...entries.flatMap((e) => ["--tests", `${className(e.file, "src/test/groovy", ".groovy")}.${e.name}`])] }];
   if (language === "rust")
     return groupBy(entries, (e) => e.file).map(([file, marks]) => ({ command: "cargo",
       args: ["test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--", "--exact", "--nocapture", ...marks.map((e) => e.name)] }));
@@ -284,6 +289,16 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
         report: { kind: "junit", directory: "build/test-results/test" },
         ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
     });
+  // A Spock feature is the law's words, a colon and the kind of test
+  // (LawSpec.TestNames), so "name: *" selects one law's features only.
+  if (language === "groovy") {
+    const name = (e) => className(e.file, "src/test/groovy", ".groovy");
+    return [{ laws: entries, command: target.gradle || "gradle",
+      args: [...(offline ? ["--offline"] : []), "--console=plain", "test", ...(coverage ? ["jacocoTestReport"] : []), "--rerun",
+        ...entries.flatMap((e) => ["--tests", `${name(e)}.${e.name}: *`])],
+      report: { kind: "junit", directory: "build/test-results/test" },
+      ran: (test) => entries.filter((e) => test.classname === name(e) && test.name.startsWith(`${e.name}: `)) }];
+  }
   if (language === "rust")
     return groupBy(entries, (e) => e.file).map(([file, laws]) => ({
       laws, command: "cargo",
@@ -329,6 +344,7 @@ export const coverageTools = {
   go: { tool: "go test -cover", install: "(built in)" },
   java: { tool: "JaCoCo", install: "(resolved by Maven as org.jacoco:jacoco-maven-plugin)" },
   kotlin: { tool: "Kover", install: "add id(\"org.jetbrains.kotlinx.kover\") to the plugins of build.gradle.kts" },
+  groovy: { tool: "JaCoCo", install: "add id 'jacoco' to the plugins of build.gradle" },
   rust: { tool: "cargo-llvm-cov", install: "cargo install cargo-llvm-cov" },
   haskell: { tool: "hpc", install: "(built into GHC; stack test --coverage)" },
   fsharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },

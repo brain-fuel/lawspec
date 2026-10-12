@@ -1,0 +1,6 @@
+@@ src/main/groovy/warehouse/Stock.groovy
+<<<<<<<
+    return CompletableFuture.supplyAsync(() -> price(sku))
+=======
+    return CompletableFuture.supplyAsync(() -> price(sku) + 1)
+>>>>>>>

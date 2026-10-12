@@ -20,8 +20,9 @@ const mutations = {
   gleam: ['src/payments_domain.gleam', 'decimal(2, -1)', 'decimal(3, -1)'],
   fsharp: ['src/Native/Types/PaymentsDomain.fs', 'Coefficient = 2I', 'Coefficient = 3I'],
   csharp: ['src/Domain/Payments.cs', 'new(2, -1)', 'new(3, -1)'],
+  groovy: ['src/main/groovy/domain/PaymentsDomain.groovy', "BigDecimal('0.2')", "BigDecimal('0.3')"],
 };
-assert.ok(Object.hasOwn(mutations, target), 'Pass one of the thirteen target names');
+assert.ok(Object.hasOwn(mutations, target), 'Pass one of the target names');
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64);
 assert.ok(bits === 32 || bits === 64);
 const minify = process.env.LAWSPEC_MINIFY === '1';
@@ -81,7 +82,7 @@ if (target === 'python') {
   await run('go', ['mod', 'download', 'pgregory.net/rapid'], directory);
 } else if (target === 'haskell') {
   await run('stack', ['--no-terminal', 'build', '--test', '--only-dependencies'], directory);
-} else if (target === 'kotlin' && process.env.LAWSPEC_GRADLE) {
+} else if (['kotlin', 'groovy'].includes(target) && process.env.LAWSPEC_GRADLE) {
   config.targets[0].gradle = process.env.LAWSPEC_GRADLE;
 } else if (['erlang', 'elixir', 'gleam'].includes(target)) {
   const lock = {erlang: 'rebar.lock', elixir: 'mix.lock', gleam: 'manifest.toml'}[target];
@@ -120,6 +121,8 @@ const commands = {
   javascript: ['npm', ['test']], typescript: ['npm', ['test']],
   java: ['mvn', ['-B', ...(offline ? ['-o'] : []), 'test']],
   kotlin: [config.targets[0].gradle || 'gradle', ['--no-daemon', '--console=plain',
+    ...(offline ? ['--offline'] : []), 'test', '--rerun-tasks']],
+  groovy: [config.targets[0].gradle || 'gradle', ['--no-daemon', '--console=plain',
     ...(offline ? ['--offline'] : []), 'test', '--rerun-tasks']],
   go: ['go', ['test', './...']],
   haskell: ['stack', ['--no-terminal', 'test']],
@@ -180,7 +183,7 @@ try {
   await editDomain(original.replace(before, after));
   const failed = await lawspecTest(['--seed', '7340271'], false);
   assert.match(failed, /fees[ _]preserve[ _]currency|decimal[ _]tenths/i, 'lawspec test reports the failing law');
-  if (['javascript', 'typescript', 'go', 'kotlin', 'haskell'].includes(target))
+  if (['javascript', 'typescript', 'go', 'kotlin', 'groovy', 'haskell'].includes(target))
     assert.match(failed, /7340271/, 'The seed reaches the property tests');
   // A failing law cannot be cached as passing, so it runs again.
   assert.match(await lawspecTest([], false), /fees[ _]preserve[ _]currency|decimal[ _]tenths/i);

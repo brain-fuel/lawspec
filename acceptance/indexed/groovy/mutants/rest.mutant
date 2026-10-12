@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Arithmetic.groovy
+<<<<<<<
+return new Rest(value0)
+=======
+return new Rest(value0 instanceof Row.Cell ? value0.tail() : value0)
+>>>>>>>

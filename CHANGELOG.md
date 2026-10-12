@@ -6,6 +6,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Groovy target (`--target groovy`) on Groovy 5.0, Gradle and Spock 2.5. Groovy
+  runs over the Java model: the data types (records and sealed interfaces),
+  codecs, ability interfaces, checked definitions, actors, sessions, mailboxes,
+  the network and the secure handler are the Java target's, compiled jointly
+  with the Groovy sources. Adapters and bound application code are Groovy
+  classes checked with `@CompileStatic`, and each unit's laws are a Spock
+  specification with a feature per test, named in words. Properties run on
+  JetCheck with LawSpec's generators, so shrinks stay inside refinements, and
+  `LAWSPEC_SEED` replays a run; `order random` and `parallel` become a seeded
+  feature order and Spock's concurrent execution. The surveys behind the
+  property libraries are DEC-groovy-property-library and
+  DEC-clojure-property-library.
+
 ## [0.23.0] - 2026-10-12
 
 ### Added

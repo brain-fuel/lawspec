@@ -1,0 +1,6 @@
+@@ src/main/groovy/shop/Orders.groovy
+<<<<<<<
+case ShopOrdersCurrency.Gbp -> new ShopDomainCurrency.Eur()
+=======
+case ShopOrdersCurrency.Gbp -> new ShopDomainCurrency.Usd()
+>>>>>>>

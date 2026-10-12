@@ -1,0 +1,7 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/main/groovy/example/Composition.groovy
+<<<<<<<
+      return (long) (records.size() - 1)
+=======
+      return (long) records.size()
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Refinements.groovy
+<<<<<<<
+positive(byte a) { a }
+=======
+positive(byte a) { 0 }
+>>>>>>>

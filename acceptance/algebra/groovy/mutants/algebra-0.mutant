@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Algebra.groovy
+<<<<<<<
+return x.multiply(y)
+=======
+return x.add(y)
+>>>>>>>

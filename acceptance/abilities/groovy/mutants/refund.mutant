@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/main/groovy/example/Shop.groovy
+<<<<<<<
+    if (value0 > 100000) throw new LawSpecRuntime.Fail(new lawspec.data.PaymentError.TooLarge())
+=======
+    if (value0 > 100000) throw new LawSpecRuntime.Fail(new lawspec.data.PaymentError.Refused())
+>>>>>>>

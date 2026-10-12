@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Sessions.groovy
+<<<<<<<
+    b.next().send((long) a.value() + b.value())
+=======
+    b.next().send((long) a.value() + b.value() + 1)
+>>>>>>>

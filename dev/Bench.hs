@@ -3,8 +3,8 @@
 --
 --   lawspec-dev bench kafka                      every target: rust, go, java,
 --                                                kotlin, python, javascript,
---                                                typescript, haskell, fsharp
---                                                and csharp
+--                                                typescript, haskell, fsharp,
+--                                                csharp and groovy
 --   lawspec-dev bench kafka --scale 10000 rust   a smaller workload
 --   lawspec-dev bench kafka --generate go        write the project only
 --   lawspec-dev bench kafka --typed              which definitions and
@@ -62,7 +62,7 @@ benchCommand arguments = case arguments of
   "compile" : scales -> compileBench (if null scales then [100, 200, 400, 800] else map read scales)
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
-    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp"] else targets)
+    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp", "groovy"] else targets)
   [] -> die "usage: lawspec-dev bench <name> [--scale N] [--generate] [target...] | --typed"
   where
     options ("--scale" : n : rest) (_, g, ts) = options rest (Just n, g, ts)
@@ -172,7 +172,7 @@ typedReport name = do
       units = C.programUnits program
       definitions = length (concatMap C.unitDefinitions units)
   forM_ [ ("rust, go, python, javascript, typescript, haskell", typedPlanPerforming scalarTypes declarations units)
-        , ("java, kotlin", typedPlanPerforming jvmScalars declarations units)
+        , ("java, kotlin, groovy", typedPlanPerforming jvmScalars declarations units)
         , ("fsharp, csharp", typedPlanPerforming scalarTypes (dotnetTypedDeclarations [] declarations) units) ] $ \(label, plan) -> do
     let fallbacks = typedFallbacks plan
         handlers = [(C.handlerName h, isTypedHandler plan h) | u <- units, h <- C.unitHandlers u]
@@ -236,14 +236,15 @@ commands target project = case target of
   "go" -> pure ([("go", ["build", "-o", "kafka-bench.bin", "./cmd/kafkabench"])], ("./kafka-bench.bin", []))
   "java" -> pure ([("mvn", ["-q", "compile"])],
     ("java", ["-Xmx8g", "-cp", "target/classes", "bench.KafkaBench"]))
-  "kotlin" -> do
+  -- Kotlin and Groovy print the driver's classpath from their Gradle build.
+  _ | target `elem` ["kotlin", "groovy"] -> do
     root <- getCurrentDirectory
     local <- doesFileExist (root </> ".tools/gradle-9.3.0/bin/gradle")
     let gradle = if local then root </> ".tools/gradle-9.3.0/bin/gradle" else "gradle"
     (code, out, err) <- readCreateProcessWithExitCode (proc gradle ["-q", "--console=plain", "classes", "benchClasspath"]) { cwd = Just project } ""
-    when (code /= ExitSuccess) (die ("kotlin: gradle failed\n" ++ out ++ err))
+    when (code /= ExitSuccess) (die (target ++ ": gradle failed\n" ++ out ++ err))
     let classpath = last ("" : [l | l <- lines out, not (null l)])
-    pure ([], ("java", ["-Xmx8g", "-cp", classpath, "bench.KafkaBenchKt"]))
+    pure ([], ("java", ["-Xmx8g", "-cp", classpath, if target == "kotlin" then "bench.KafkaBenchKt" else "bench.KafkaBench"]))
   "python" -> do
     root <- getCurrentDirectory
     python <- maybe (root </> ".integration/python/.venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
