@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Arithmetic.scala
+<<<<<<<
+      case Perfect.Node(left, right) => Perfect.Node(mirror(right), mirror(left))
+=======
+      case Perfect.Node(left, right) => Perfect.Node(mirror(right), Perfect.Leaf(0))
+>>>>>>>

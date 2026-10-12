@@ -145,7 +145,7 @@ object Crypto {
       verifier.verifySignature(message, signature)
     } catch { case _: RuntimeException => false }
 
-  // AES-256-GCM: a sealed message is the 12-byte nonce, the ciphertext and the 16-byte tag.
+  // AES-256-GCM: a boxed message is the 12-byte nonce, the ciphertext and the 16-byte tag.
   def aes256GcmEncrypt(key: Array[Byte], nonce: Array[Byte], plaintext: Array[Byte], associated: Array[Byte]): Array[Byte] = {
     val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec(key, "AES"), javax.crypto.spec.GCMParameterSpec(128, nonce))
@@ -154,14 +154,14 @@ object Crypto {
   }
 
   /** The plaintext, or None when the key, nonce, tag or associated data do not match. */
-  def aes256GcmDecrypt(key: Array[Byte], nonce: Array[Byte], sealed: Array[Byte], associated: Array[Byte]): Option[Array[Byte]] =
-    if (key.length != 32 || nonce.length != 12 || sealed.length < 16) None
+  def aes256GcmDecrypt(key: Array[Byte], nonce: Array[Byte], boxed: Array[Byte], associated: Array[Byte]): Option[Array[Byte]] =
+    if (key.length != 32 || nonce.length != 12 || boxed.length < 16) None
     else
       try {
         val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(javax.crypto.Cipher.DECRYPT_MODE, javax.crypto.spec.SecretKeySpec(key, "AES"), javax.crypto.spec.GCMParameterSpec(128, nonce))
         cipher.updateAAD(associated)
-        Some(cipher.doFinal(sealed))
+        Some(cipher.doFinal(boxed))
       } catch { case _: java.security.GeneralSecurityException => None }
 
   /** SHA3-256 and SHAKE256. */
@@ -232,9 +232,9 @@ object Crypto {
     }
 
     override def unseal(value0: @@AeadKey@@, value1: @@Sealed@@, value2: scala.IArray[scala.Byte]): scala.Option[scala.IArray[scala.Byte]] = {
-      val sealed = value1.value.toArray
-      if (sealed.length < 12) None
-      else aes256GcmDecrypt(value0.value.toArray, sealed.take(12), sealed.drop(12), value2.toArray).map(immutable)
+      val boxed = value1.value.toArray
+      if (boxed.length < 12) None
+      else aes256GcmDecrypt(value0.value.toArray, boxed.take(12), boxed.drop(12), value2.toArray).map(immutable)
     }
   }
 }

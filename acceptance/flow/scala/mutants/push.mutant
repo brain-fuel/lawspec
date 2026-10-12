@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Flow.scala
+<<<<<<<
+    PushFlow(Stack.Push(value0, value1))
+=======
+    PushFlow(value1)
+>>>>>>>

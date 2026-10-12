@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Generation.scala
+<<<<<<<
+    LawSpecRuntime.generated(value0, value1.toLong, value2.toLong, value3.toLong).asScala.toList
+=======
+    LawSpecRuntime.generated(value0, value1.toLong + 1, value2.toLong, value3.toLong).asScala.toList
+>>>>>>>

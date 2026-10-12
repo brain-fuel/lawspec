@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Gadt.scala
+<<<<<<<
+    Expr.Number(evalNumber(value0))
+=======
+    Expr.Number(BigInt(0))
+>>>>>>>

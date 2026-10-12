@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Refinements.scala
+<<<<<<<
+    value0.codePointCount(0, value0.length)
+=======
+    0
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/main/scala/example/Crypto.scala
+<<<<<<<
+  ): scala.IArray[scala.Byte] = hash.sha3(value0).value.take(8)
+=======
+  ): scala.IArray[scala.Byte] = hash.sha3(value0).value.take(7)
+>>>>>>>

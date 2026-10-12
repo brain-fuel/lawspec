@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Flow.scala
+<<<<<<<
+    PopFlow(cell.top, cell.rest)
+=======
+    PopFlow(0, cell.rest)
+>>>>>>>

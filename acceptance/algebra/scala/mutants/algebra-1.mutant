@@ -1,0 +1,14 @@
+@@ src/main/scala/example/Algebra.scala
+<<<<<<<
+  def divideRight(
+    value0: scala.math.BigInt,
+    value1: scala.math.BigInt,
+  ): scala.Int | scala.Long | scala.math.BigInt =
+    value0 + value1
+=======
+  def divideRight(
+    value0: scala.math.BigInt,
+    value1: scala.math.BigInt,
+  ): scala.Int | scala.Long | scala.math.BigInt =
+    value0 - value1
+>>>>>>>

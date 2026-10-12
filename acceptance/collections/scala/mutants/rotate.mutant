@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Collections.scala
+<<<<<<<
+    if (value0.isEmpty) value0 else value0.tail :+ value0.head
+=======
+    if (value0.isEmpty) value0 else value0.tail
+>>>>>>>

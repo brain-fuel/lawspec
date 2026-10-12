@@ -40,10 +40,10 @@ class CryptoVectorsTest extends AnyFunSuite {
 
   test("AES-256-GCM") {
     for (v <- vectors("aes-256-gcm")) {
-      val sealed = Crypto.aes256GcmEncrypt(unhex(v(0)), unhex(v(1)), unhex(v(2)), unhex(v(3)))
-      expect(hex(sealed) == v(4) + v(5), "AES-256-GCM encryption")
-      expect(Crypto.aes256GcmDecrypt(unhex(v(0)), unhex(v(1)), sealed, unhex(v(3))).map(hex).contains(v(2)), "AES-256-GCM decryption")
-      expect(Crypto.aes256GcmDecrypt(unhex(v(0)), unhex(v(1)), flipped(sealed), unhex(v(3))).isEmpty, "AES-256-GCM tampering")
+      val boxed = Crypto.aes256GcmEncrypt(unhex(v(0)), unhex(v(1)), unhex(v(2)), unhex(v(3)))
+      expect(hex(boxed) == v(4) + v(5), "AES-256-GCM encryption")
+      expect(Crypto.aes256GcmDecrypt(unhex(v(0)), unhex(v(1)), boxed, unhex(v(3))).map(hex).contains(v(2)), "AES-256-GCM decryption")
+      expect(Crypto.aes256GcmDecrypt(unhex(v(0)), unhex(v(1)), flipped(boxed), unhex(v(3))).isEmpty, "AES-256-GCM tampering")
     }
   }
 

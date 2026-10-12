@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Arithmetic.scala
+<<<<<<<
+    Pairs(value0)
+=======
+    Pairs(Row.Cell(0, value0))
+>>>>>>>

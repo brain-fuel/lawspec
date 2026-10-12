@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Refinements.scala
+<<<<<<<
+  def positive(value0: scala.Byte): scala.Byte = value0
+=======
+  def positive(value0: scala.Byte): scala.Byte = 0
+>>>>>>>

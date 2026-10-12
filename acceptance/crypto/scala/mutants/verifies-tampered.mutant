@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ src/main/scala/example/Counting.scala
+<<<<<<<
+    inner.verify(value0, value1, value2)
+=======
+    inner.verify(value0, value1, value2) || value1.nonEmpty
+>>>>>>>

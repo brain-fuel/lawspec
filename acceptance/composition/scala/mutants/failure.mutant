@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ src/main/scala/example/Composition.scala
+<<<<<<<
+        case None => Left(lawspec.data.Problem.UnknownLog)
+=======
+        case None => Left(lawspec.data.Problem.EmptyRecord)
+>>>>>>>

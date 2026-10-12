@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Arithmetic.scala
+<<<<<<<
+    Rest(value0)
+=======
+    Rest(value0 match { case Row.Cell(_, tail) => tail; case Row.End => value0 })
+>>>>>>>
