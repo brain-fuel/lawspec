@@ -1,0 +1,6 @@
+@@ src/example/ordering.clj
+<<<<<<<
+    (not (<= 1 quantity 1000)) [:left :order-error/invalid-quantity]
+=======
+    (not (<= 0 quantity 1000)) [:left :order-error/invalid-quantity]
+>>>>>>>

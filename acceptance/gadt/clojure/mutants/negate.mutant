@@ -1,0 +1,6 @@
+@@ src/example/gadt.clj
+<<<<<<<
+(defmethod evaluate :expr/negate [{:keys [operand]}] (not (evaluate operand)))
+=======
+(defmethod evaluate :expr/negate [{:keys [operand]}] (evaluate operand))
+>>>>>>>

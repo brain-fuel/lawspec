@@ -1,0 +1,6 @@
+@@ src/example/gadt.clj
+<<<<<<<
+(defn fold [expr] {:lawspec/tag :expr/number :value (evaluate expr)})
+=======
+(defn fold [expr] {:lawspec/tag :expr/number :value 0})
+>>>>>>>
