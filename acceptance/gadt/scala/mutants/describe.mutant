@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Gadt.scala
+<<<<<<<
+  def describe(value0: lawspec.data.Shown): java.lang.String = value0.witness
+=======
+  def describe(value0: lawspec.data.Shown): java.lang.String = "Int32"
+>>>>>>>

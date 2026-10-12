@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Ordering.scala
+<<<<<<<
+    value0.value.head
+=======
+    value0.value.last
+>>>>>>>

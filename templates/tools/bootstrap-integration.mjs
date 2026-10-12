@@ -134,6 +134,10 @@ async function setup(target) {
       ["--no-daemon", "--console=plain", "testClasses"],
       root,
     );
+  } else if (target === "scala") {
+    config.targets[0].scala = process.env.LAWSPEC_SCALA || config.targets[0].scala || "scala";
+    // Fetches Scala, ScalaCheck and ScalaTest, and starts the build server.
+    await run(config.targets[0].scala, ["compile", "--test", "."], root);
   } else if (["erlang", "elixir", "gleam"].includes(target)) {
     const lockName = {erlang: "rebar.lock", elixir: "mix.lock", gleam: "manifest.toml"}[target];
     await copyFile(path.join(repo, "test/locks", target, lockName), path.join(root, lockName));

@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Slug.scala
+<<<<<<<
+x.replace(' ', '-')
+=======
+x
+>>>>>>>

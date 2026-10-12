@@ -14,6 +14,7 @@ import qualified LawSpec.AbilityEmit.Web as Web
 import qualified LawSpec.AbilityEmit.Go as Go
 import qualified LawSpec.AbilityEmit.Java as Java
 import qualified LawSpec.AbilityEmit.Kotlin as Kotlin
+import qualified LawSpec.AbilityEmit.Scala as Scala
 import qualified LawSpec.AbilityEmit.Haskell as Haskell
 
 abilityArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
@@ -31,6 +32,7 @@ abilityArtifacts minify target plan
       "go" -> Go.emit minify bits datas units
       "java" -> Java.emit minify bits datas units
       "kotlin" -> Kotlin.emit minify bits datas units
+      "scala" -> Scala.emit minify bits datas units
       "haskell" -> Haskell.emit minify bits datas units
       -- Rust's are part of its crate's modules (LawSpec.RustEmit).
       "rust" -> Right []

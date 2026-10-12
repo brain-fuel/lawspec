@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Indexed.scala
+<<<<<<<
+      case Vec.VCons(head, tail) => Vec.VCons(head, append(tail, value1))
+=======
+      case Vec.VCons(head, tail) => append(tail, value1)
+>>>>>>>

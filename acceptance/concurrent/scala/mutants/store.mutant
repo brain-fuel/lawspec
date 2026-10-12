@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Concurrent.scala
+<<<<<<<
+    Future.successful(Option(map(value0).put(value1, value2)).map(_.longValue))
+=======
+    Future.successful { map(value0).put(value1, value2); Some(value2) }
+>>>>>>>

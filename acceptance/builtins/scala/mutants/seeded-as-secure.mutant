@@ -1,0 +1,11 @@
+rejected-at: compile
+expect: Found:    lawspec.Randomness.RandomHandler
+@@ src/main/scala/example/Builtins.scala
+<<<<<<<
+  ): scala.IArray[scala.Byte] = secureRandom.secureBytes(value0)
+=======
+  ): scala.IArray[scala.Byte] = {
+    val seeded: lawspec.abilities.lawspec.Randomness.SecureRandom = lawspec.Randomness.RandomHandler()
+    seeded.secureBytes(value0)
+  }
+>>>>>>>

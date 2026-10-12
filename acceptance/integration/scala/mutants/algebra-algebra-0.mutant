@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Algebra.scala
+<<<<<<<
+  def multiply(x: BigInt, y: BigInt): Integer = x * y
+=======
+  def multiply(x: BigInt, y: BigInt): Integer = x + y
+>>>>>>>

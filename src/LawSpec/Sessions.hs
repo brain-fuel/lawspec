@@ -35,5 +35,6 @@ sessionArtifacts minify target plan
       "go" -> Go.emit t
       "java" -> Jvm.emit t
       "kotlin" -> Jvm.emit t
+      "scala" -> Jvm.emit t
       "rust" -> Rust.emit t
       _ -> Haskell.emit t

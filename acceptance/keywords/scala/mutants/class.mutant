@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Keywords.scala
+<<<<<<<
+  def _class(value0: scala.math.BigInt): scala.math.BigInt = value0 << 1
+=======
+  def _class(value0: scala.math.BigInt): scala.math.BigInt = value0 << 2
+>>>>>>>

@@ -1,0 +1,8 @@
+@@ src/main/scala/example/Collections.scala
+<<<<<<<
+  ): scala.collection.immutable.Set[scala.Int] =
+    value0.toSet
+=======
+  ): scala.collection.immutable.Set[scala.Int] =
+    value0.drop(1).toSet
+>>>>>>>

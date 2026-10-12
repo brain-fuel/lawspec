@@ -125,6 +125,7 @@ defaultTestDirectory target = case target of
   "csharp" -> "tests"
   "java" -> "src/test/java"
   "kotlin" -> "src/test/kotlin"
+  "scala" -> "src/test/scala"
   "python" -> "tests"
   "rust" -> "tests"
   "go" -> ""
@@ -145,7 +146,7 @@ unitTestPath target unit = case target of
   "fsharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".fs"
   "csharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".cs"
   jvm -> "src/test/" ++ jvm ++ "/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpecTest" ++
-    (if jvm == "kotlin" then ".kt" else ".java")
+    (if jvm == "kotlin" then ".kt" else if jvm == "scala" then ".scala" else ".java")
   where
     parts = splitOn '.' unit
     capitalWords = concatMap capital . splitOn '_'

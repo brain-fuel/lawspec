@@ -1,0 +1,8 @@
+@@ src/main/scala/example/ScalarAdapters.scala
+<<<<<<<
+  ): lawspec.runtime.LawSpecScala.Optional[lawspec.runtime.LawSpecScala.Nullable[scala.Byte]] =
+    value0
+=======
+  ): lawspec.runtime.LawSpecScala.Optional[lawspec.runtime.LawSpecScala.Nullable[scala.Byte]] =
+    lawspec.runtime.LawSpecScala.Optional.Undefined
+>>>>>>>

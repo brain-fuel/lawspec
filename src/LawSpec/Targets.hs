@@ -1,11 +1,16 @@
 -- | Target names have one order across the compiler, scaffolds, API and local
 -- CI, so a new backend cannot disappear from one of those entry points.
 -- ref:DEC-generated-javascript
-module LawSpec.Targets (targets, beamTargets, dotnetTargets, targetLabel) where
+module LawSpec.Targets (targets, beamTargets, dotnetTargets, scalaTargets, targetLabel) where
 
 targets :: [String]
 targets = ["java", "python", "javascript", "typescript", "go", "haskell",
-  "kotlin", "rust"] ++ beamTargets ++ dotnetTargets
+  "kotlin", "rust"] ++ beamTargets ++ dotnetTargets ++ scalaTargets
+
+-- | Scala runs over the shared JVM runtime, as Kotlin does.
+-- ref:DEC-scala-on-the-jvm-runtime
+scalaTargets :: [String]
+scalaTargets = ["scala"]
 
 -- | The BEAM languages share the Erlang runtime and OTP process semantics.
 -- ref:DEC-actors-otp-supervision
@@ -23,4 +28,5 @@ targetLabel target = maybe target id (lookup target
   [("java", "Java"), ("python", "Python"), ("javascript", "JavaScript"),
    ("typescript", "TypeScript"), ("go", "Go"), ("haskell", "Haskell"),
    ("kotlin", "Kotlin"), ("rust", "Rust"), ("erlang", "Erlang"),
-   ("elixir", "Elixir"), ("gleam", "Gleam"), ("fsharp", "F#"), ("csharp", "C#")])
+   ("elixir", "Elixir"), ("gleam", "Gleam"), ("fsharp", "F#"), ("csharp", "C#"),
+   ("scala", "Scala")])

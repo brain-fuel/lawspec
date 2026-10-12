@@ -1,0 +1,21 @@
+@@ src/main/scala/example/Consistency.scala
+<<<<<<<
+  def hit(value0: lawspec.data.Views): scala.Long = synchronized {
+    val mine = replicas(value0.id)
+    val me = Thread.currentThread().threadId()
+    val next = mine.getOrElse(me, 0L) + 1
+    mine(me) = next
+    next
+  }
+=======
+  def hit(value0: lawspec.data.Views): scala.Long = {
+    val mine = synchronized { replicas(value0.id) }
+    val seen = synchronized { mine.values.sum }
+    Thread.sleep(1)
+    synchronized {
+      mine.clear()
+      mine(0L) = seen + 1
+      seen + 1
+    }
+  }
+>>>>>>>

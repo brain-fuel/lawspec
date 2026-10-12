@@ -472,7 +472,7 @@ assets out = do
   where copyTo from to = createDirectoryIfMissing True (takeDirectory to) >> copyFile from to
 
 highlightLanguages :: [String]
-highlightLanguages = ["bash", "go", "haskell", "java", "javascript", "json", "kotlin", "plaintext", "python", "rust", "typescript"]
+highlightLanguages = ["bash", "go", "haskell", "java", "javascript", "json", "kotlin", "plaintext", "python", "rust", "scala", "typescript"]
 
 vendor :: Value -> String -> IO FilePath
 vendor (Object lock) name = do

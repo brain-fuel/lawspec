@@ -1,0 +1,10 @@
+expect: a charge is logged once
+@@ src/main/scala/example/Builtins.scala
+<<<<<<<
+      log.logMessage(lawspec.data.LogLevel.Info, s"charged $value0")
+      true
+=======
+      log.logMessage(lawspec.data.LogLevel.Info, s"charged $value0")
+      log.logMessage(lawspec.data.LogLevel.Info, s"charged again $value0")
+      true
+>>>>>>>

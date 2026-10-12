@@ -23,6 +23,7 @@ import LawSpec.WebTypes (webDataType)
 import LawSpec.GoData (goDataType)
 import LawSpec.JavaData (javaDataType)
 import LawSpec.KotlinData (kotlinDataType)
+import LawSpec.ScalaData (scalaDataType)
 import LawSpec.HaskellData (haskellDataType)
 import LawSpec.RustData (rustDataType)
 
@@ -87,6 +88,7 @@ extension target = case target of
   "go" -> ".go"
   "java" -> ".java"
   "kotlin" -> ".kt"
+  "scala" -> ".scala"
   "haskell" -> ".hs"
   "rust" -> ".rs"
   _ -> ""
@@ -100,6 +102,7 @@ adapterPath target unit = case target of
   "go" -> "lawspec/" ++ short ++ "/adapter.go"
   "java" -> "src/main/java/lawspec/" ++ capital short ++ ".java"
   "kotlin" -> "src/main/kotlin/lawspec/" ++ capital short ++ ".kt"
+  "scala" -> "src/main/scala/lawspec/" ++ capital short ++ ".scala"
   "haskell" -> "src/Lawspec/" ++ capital short ++ ".hs"
   "rust" -> "src/lawspec/" ++ short ++ ".rs"
   "erlang" -> "src/lawspec_" ++ short ++ ".erl"
@@ -134,6 +137,7 @@ vectorTestPath target = case target of
   "go" -> Just "lawspec/crypto/vectors_test.go"
   "java" -> Just "src/test/java/lawspec/CryptoVectorsTest.java"
   "kotlin" -> Just "src/test/kotlin/lawspec/CryptoVectorsTest.kt"
+  "scala" -> Just "src/test/scala/lawspec/CryptoVectorsTest.scala"
   "haskell" -> Just "test/Lawspec/CryptoVectorsSpec.hs"
   "rust" -> Just "tests/lawspec_crypto_vectors.rs"
   _ -> Nothing
@@ -172,7 +176,7 @@ resolve target datas = go
       (typeName, '/' : constructor) -> do
         native <- typeNamed typeName
         pure (case target of
-          _ | target `elem` ["java", "kotlin"] -> native ++ "." ++ constructor
+          _ | target `elem` ["java", "kotlin", "scala"] -> native ++ "." ++ constructor
             | target == "rust" -> native ++ "::" ++ constructor
             | otherwise -> native ++ constructor)
       (typeName, _) -> typeNamed typeName
@@ -188,6 +192,7 @@ resolve target datas = go
       "go" -> goDataType datas t
       "java" -> javaDataType datas t
       "kotlin" -> kotlinDataType datas t
+      "scala" -> scalaDataType datas t
       "haskell" -> haskellDataType datas t
       "rust" -> rustDataType datas t
       _ -> Left ("no default handlers for " ++ target)

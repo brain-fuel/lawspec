@@ -1,0 +1,6 @@
+@@ src/main/scala/example/ScalarAdapters.scala
+<<<<<<<
+    value0 + value1
+=======
+    value0.apply(java.math.MathContext(3)) + value1.apply(java.math.MathContext(3))
+>>>>>>>

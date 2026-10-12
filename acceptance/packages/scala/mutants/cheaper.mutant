@@ -1,0 +1,6 @@
+@@ src/main/scala/shop/Orders.scala
+<<<<<<<
+= math.min(value0, value1)
+=======
+= value0
+>>>>>>>

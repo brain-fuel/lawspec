@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Collections.scala
+<<<<<<<
+    Queue.from(value0)
+=======
+    Queue.from(value0.reverse)
+>>>>>>>

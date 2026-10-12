@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Refinements.scala
+<<<<<<<
+    value0.toInt + value1.toInt
+=======
+    (value0.toInt + value1.toInt).toByte.toInt
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Ordering.scala
+<<<<<<<
+    else if (value0.quantity < 1 || value0.quantity > 1000) Left(OrderError.InvalidQuantity)
+=======
+    else if (value0.quantity < 0 || value0.quantity > 1000) Left(OrderError.InvalidQuantity)
+>>>>>>>

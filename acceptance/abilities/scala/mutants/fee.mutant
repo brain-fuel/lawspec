@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ src/main/scala/example/Abilities.scala
+<<<<<<<
+    override def fee(): scala.Int = 25
+=======
+    override def fee(): scala.Int = -25
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/scala/example/ScalarAdapters.scala
+<<<<<<<
+  def echoRaw(value0: java.lang.String): java.lang.String = value0
+=======
+  def echoRaw(value0: java.lang.String): java.lang.String = 65533.toChar.toString
+>>>>>>>

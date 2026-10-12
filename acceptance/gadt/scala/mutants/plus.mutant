@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Gadt.scala
+<<<<<<<
+      case Expr.Plus(left, right) => evalNumber(left) + evalNumber(right)
+=======
+      case Expr.Plus(left, right) => evalNumber(left) - evalNumber(right)
+>>>>>>>

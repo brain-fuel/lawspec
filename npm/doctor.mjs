@@ -76,6 +76,8 @@ export async function doctor(target, root, plannedArtifacts = []) {
       ? ["src/main/java", "src/test/java"]
       : name === "kotlin"
         ? ["src/main/kotlin", "src/test/kotlin"]
+        : name === "scala"
+        ? ["src/main/scala", "src/test/scala"]
         : ["src", ["python", "rust", "fsharp", "csharp"].includes(name) ? "tests" : "test"];
   const sourceDir = target.sourceDir ?? defaults[0];
   const testDir = target.testDir ?? defaults[1];
@@ -463,6 +465,28 @@ export async function doctor(target, root, plannedArtifacts = []) {
       } finally {
         await rm(tmp, { recursive: true, force: true });
       }
+    } else if (name === "scala") {
+      // Scala CLI reads the build from project.scala's directives; the
+      // sources keep sbt's layout, which Scala CLI compiles as main and test.
+      const command = target.scala || "scala";
+      const reported = await run(command, ["version"], root);
+      versions["scala-cli"] = reported.match(/Scala code runner version:\s*(\S+)/)?.[1] ?? reported.match(/Scala CLI version:\s*(\S+)/)?.[1];
+      // java --version prints to standard output (-version prints to standard error).
+      const java = await run("java", ["--version"], root).catch((error) => String(error.message));
+      versions.java = java.match(/^(?:openjdk|java)\s+(\S+)/m)?.[1];
+      requireThat(major(versions.java ?? "0") >= 25, "Scala requires JDK 25+");
+      const project = await readFile(path.join(root, "project.scala"), "utf8").catch(() => "");
+      const directive = (pattern) => project.match(pattern)?.[1];
+      versions.scala = directive(/\/\/>\s*using\s+scala\s+"?([0-9][^\s"]*)/);
+      versions.scalacheck = directive(/\/\/>\s*using\s+test\.deps?\s+"?org\.scalacheck::scalacheck:([^\s"]+)/);
+      versions.scalatest = directive(/\/\/>\s*using\s+test\.deps?\s+"?org\.scalatest::scalatest-funsuite:([^\s"]+)/);
+      requireThat(versions.scala, "project.scala must name Scala 3 (//> using scala 3.9.0)");
+      requireThat(versions.scalacheck, "project.scala must add ScalaCheck (//> using test.dep org.scalacheck::scalacheck:1.20.0)");
+      requireThat(versions.scalatest, "project.scala must add ScalaTest (//> using test.dep org.scalatest::scalatest-funsuite:3.2.20)");
+      requireThat(sourceDir.split("/").includes("main") || !sourceDir.split("/").includes("test"),
+        "The Scala source directory must not be under a directory named test, which Scala CLI compiles as tests");
+      requireThat(testDir.split("/").includes("test"),
+        "The Scala test directory must be under a directory named test, which Scala CLI compiles as tests");
     } else if (name === "fsharp" || name === "csharp") {
       // .NET: the SDK, xUnit v3 on Microsoft.Testing.Platform (selected in
       // global.json), and projects that import the generated props.

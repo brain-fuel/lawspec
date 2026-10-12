@@ -185,6 +185,13 @@ extra-source-files:
     runtime/defaults/rust/logging.rs
     runtime/defaults/rust/randomness.rs
     runtime/defaults/rust/time.rs
+    runtime/defaults/scala/concurrent.scala
+    runtime/defaults/scala/crypto.scala
+    runtime/defaults/scala/crypto_vectors.scala
+    runtime/defaults/scala/host.scala
+    runtime/defaults/scala/logging.scala
+    runtime/defaults/scala/randomness.scala
+    runtime/defaults/scala/time.scala
     runtime/defaults/typescript/concurrent.ts
     runtime/defaults/typescript/crypto.ts
     runtime/defaults/typescript/crypto_vectors.ts
@@ -416,6 +423,7 @@ library
       LawSpec.AbilityEmit.Kotlin
       LawSpec.AbilityEmit.Python
       LawSpec.AbilityEmit.Rust
+      LawSpec.AbilityEmit.Scala
       LawSpec.AbilityEmit.Web
       LawSpec.AbilityNames
       LawSpec.Actors
@@ -424,6 +432,7 @@ library
       LawSpec.Actors.Jvm
       LawSpec.Actors.Python
       LawSpec.Actors.Rust
+      LawSpec.Actors.Scala
       LawSpec.Actors.Types
       LawSpec.Actors.Web
       LawSpec.Api
@@ -583,7 +592,14 @@ library
       LawSpec.RustNativeBinding
       LawSpec.RustNativeGenerators
       LawSpec.Scaffold
+      LawSpec.ScalaData
+      LawSpec.ScalaDefinitions
+      LawSpec.ScalaExpr
+      LawSpec.ScalaNativeBinding
+      LawSpec.ScalaProperties
       LawSpec.Scalar
+      LawSpec.ScalaTestHelpers
+      LawSpec.ScalaUnitEmit
       LawSpec.Scenario
       LawSpec.Search
       LawSpec.Sessions

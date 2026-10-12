@@ -1,0 +1,12 @@
+@@ src/main/scala/example/Models.scala
+<<<<<<<
+    Future.successful(counters.get(value0.id).incrementAndGet())
+=======
+    Future.successful {
+      val count = counters.get(value0.id)
+      val seen = count.get()
+      Thread.sleep(1)
+      count.set(seen + 1)
+      seen + 1
+    }
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Gadt.scala
+<<<<<<<
+      case Expr.Negate(operand) => !evalTruth(operand)
+=======
+      case Expr.Negate(operand) => evalTruth(operand)
+>>>>>>>

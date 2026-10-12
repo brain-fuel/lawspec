@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/main/scala/example/Builtins.scala
+<<<<<<<
+    scala.concurrent.duration.FiniteDuration(clock.now().value - start, java.util.concurrent.TimeUnit.MICROSECONDS)
+=======
+    scala.concurrent.duration.FiniteDuration(start - clock.now().value - 1, java.util.concurrent.TimeUnit.MICROSECONDS)
+>>>>>>>

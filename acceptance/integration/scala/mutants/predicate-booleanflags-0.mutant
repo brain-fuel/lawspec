@@ -1,0 +1,12 @@
+expect: expect 
+@@ src/main/scala/example/BooleanFlags.scala
+<<<<<<<
+*
+=======
+package example
+
+object BooleanFlags {
+  def flipFlag(x: Boolean): Boolean = x
+}
+
+>>>>>>>

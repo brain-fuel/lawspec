@@ -80,6 +80,11 @@ languages:
     lexer: .canon/grammars/csharp/canonically_commented/CSharpLexer.g4
     parser: .canon/grammars/csharp/canonically_commented/CSharpParser.g4
     start: compilation_unit
+  scala:
+    extensions: [.scala]
+    lexer: .canon/grammars/scala/canonically_commented/ScalaLexer.g4
+    parser: .canon/grammars/scala/canonically_commented/ScalaParser.g4
+    start: compilationUnit
   rust:
     extensions: [.rs]
     lexer: .canon/grammars/rust/RustLexer.g4

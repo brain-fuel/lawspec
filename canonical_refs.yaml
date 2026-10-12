@@ -98,6 +98,26 @@ kotest:
   kind: package
   title: Kotest property testing for Kotlin
   locator: https://kotest.io/docs/proptest/property-based-testing.html
+scalacheck:
+  kind: package
+  title: ScalaCheck, property-based testing for Scala
+  locator: https://scalacheck.org/
+scala-hedgehog:
+  kind: package
+  title: Hedgehog for Scala, property testing with integrated shrinking
+  locator: https://github.com/hedgehogqa/scala-hedgehog
+zio-test:
+  kind: package
+  title: ZIO Test, with property testing on Gen and Sample
+  locator: https://zio.dev/reference/test/property-testing/shrinking/
+scalatest:
+  kind: package
+  title: ScalaTest, the Scala testing toolkit
+  locator: https://www.scalatest.org/
+scala-cli:
+  kind: package
+  title: Scala CLI, the scala command
+  locator: https://scala-cli.virtuslab.org/
 proptest:
   kind: package
   title: Proptest, property testing for Rust

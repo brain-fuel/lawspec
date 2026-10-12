@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/main/scala/example/Tables.scala
+<<<<<<<
+= s"parcel $value0"
+=======
+= if (value0 == 1) "parcel one" else s"parcel $value0"
+>>>>>>>

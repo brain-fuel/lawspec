@@ -1,0 +1,8 @@
+@@ src/main/scala/example/Refinements.scala
+<<<<<<<
+  def preserve(value0: scala.math.BigInt): scala.Int | scala.Long | scala.math.BigInt =
+    value0
+=======
+  def preserve(value0: scala.math.BigInt): scala.Int | scala.Long | scala.math.BigInt =
+    BigDecimal(value0.toDouble).toBigInt
+>>>>>>>

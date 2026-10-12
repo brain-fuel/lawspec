@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/main/scala/example/Matchers.scala
+<<<<<<<
+(value0.toDouble + value1.toDouble) / 2
+=======
+(value0.toDouble + value1.toDouble) / 2 + 1
+>>>>>>>

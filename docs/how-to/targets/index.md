@@ -23,6 +23,7 @@ where generated files go, and how LawSpec types appear in your code.
 | [`gleam`](gleam.md) | OTP 29, Gleam 1.18 or 1.19, Erlang target | qcheck 1.0.5, gleeunit 1.11.0 | `gleam test` |
 | [`fsharp`](fsharp.md) | .NET SDK 10, MSBuild | xunit.v3 4.0.2 on Microsoft.Testing.Platform, FsCheck 3.4.0 | `dotnet test` |
 | [`csharp`](csharp.md) | .NET SDK 10, MSBuild, over the F# runtime | xunit.v3 4.0.2 on Microsoft.Testing.Platform, FsCheck 3.4.0 | `dotnet test` |
+| [`scala`](scala.md) | JDK 25, Scala CLI 1.16, Scala 3.9.0, over the JVM runtime | ScalaTest 3.2.20, ScalaCheck 1.20.0 | `scala test .` |
 
 Exact version bounds are in [compatibility](../../reference/compatibility.md).
 

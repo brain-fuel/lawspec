@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Orders.scala
+<<<<<<<
+    Future.successful(priceOf(value0))
+=======
+    Future.successful(priceOf(value0) + 1)
+>>>>>>>

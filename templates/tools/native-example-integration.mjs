@@ -20,8 +20,9 @@ const mutations = {
   gleam: ['src/payments_domain.gleam', 'decimal(2, -1)', 'decimal(3, -1)'],
   fsharp: ['src/Native/Types/PaymentsDomain.fs', 'Coefficient = 2I', 'Coefficient = 3I'],
   csharp: ['src/Domain/Payments.cs', 'new(2, -1)', 'new(3, -1)'],
+  scala: ['src/main/scala/domain/PaymentsDomain.scala', 'BigDecimal("0.2")', 'BigDecimal("0.3")'],
 };
-assert.ok(Object.hasOwn(mutations, target), 'Pass one of the thirteen target names');
+assert.ok(Object.hasOwn(mutations, target), 'Pass one of the target names');
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64);
 assert.ok(bits === 32 || bits === 64);
 const minify = process.env.LAWSPEC_MINIFY === '1';
@@ -83,6 +84,8 @@ if (target === 'python') {
   await run('stack', ['--no-terminal', 'build', '--test', '--only-dependencies'], directory);
 } else if (target === 'kotlin' && process.env.LAWSPEC_GRADLE) {
   config.targets[0].gradle = process.env.LAWSPEC_GRADLE;
+} else if (target === 'scala' && process.env.LAWSPEC_SCALA) {
+  config.targets[0].scala = process.env.LAWSPEC_SCALA;
 } else if (['erlang', 'elixir', 'gleam'].includes(target)) {
   const lock = {erlang: 'rebar.lock', elixir: 'mix.lock', gleam: 'manifest.toml'}[target];
   await cp(path.join(root, 'test/locks', target, lock), path.join(directory, lock));
@@ -128,6 +131,7 @@ const commands = {
   gleam: ['gleam', ['test']],
   fsharp: ['dotnet', ['test']],
   csharp: ['dotnet', ['test']],
+  scala: [config.targets[0].scala || 'scala', ['test', '.', ...(offline ? ['--offline'] : [])]],
 };
 const [command, args] = commands[target];
 await run(command, args, directory);
@@ -180,7 +184,7 @@ try {
   await editDomain(original.replace(before, after));
   const failed = await lawspecTest(['--seed', '7340271'], false);
   assert.match(failed, /fees[ _]preserve[ _]currency|decimal[ _]tenths/i, 'lawspec test reports the failing law');
-  if (['javascript', 'typescript', 'go', 'kotlin', 'haskell'].includes(target))
+  if (['javascript', 'typescript', 'go', 'kotlin', 'haskell', 'scala'].includes(target))
     assert.match(failed, /7340271/, 'The seed reaches the property tests');
   // A failing law cannot be cached as passing, so it runs again.
   assert.match(await lawspecTest([], false), /fees[ _]preserve[ _]currency|decimal[ _]tenths/i);

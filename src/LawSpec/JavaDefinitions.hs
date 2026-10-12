@@ -1,5 +1,5 @@
 -- | Native entry points and checked implementation helpers for total definitions.
-module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, kotlinHandlerBridge, performedOperations, scopedHandlers) where
+module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, emitScalaDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, kotlinHandlerBridge, performedOperations, scopedHandlers) where
 
 import LawSpec.Core.Stages (stageFailures)
 import LawSpec.Core.Policy
@@ -76,18 +76,22 @@ definitionCalls units = [(declarationId (definitionDeclaration d),
 -- | Checked definitions are emitted as ordinary Java code, so adapters and tests call
 -- the same proved implementation. ref:DEC-total-definitions
 emitJavaDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
-emitJavaDefinitions = emitDefinitions True
+emitJavaDefinitions = emitDefinitions JavaStyle
 
 -- | Kotlin reuses the Java bodies of checked definitions, so the two JVM targets
 -- run one implementation.
 emitJvmDefinitionBodies :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
-emitJvmDefinitionBodies = emitDefinitions False
+emitJvmDefinitionBodies = emitDefinitions KotlinStyle
 
-emitDefinitions :: Bool -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
+-- | Scala reuses them too, with its own adapter bridge.
+emitScalaDefinitionBodies :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
+emitScalaDefinitionBodies = emitDefinitions ScalaStyle
+
+emitDefinitions :: JvmStyle -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitDefinitions _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
-emitDefinitions withNative layout bits declarations units = do
+emitDefinitions style layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
-  typed <- emitJvmTyped (if withNative then JavaStyle else KotlinStyle) declarations units
+  typed <- emitJvmTyped style declarations units
   -- Definitions that are the same up to their names (an import's copies)
   -- share one body; the others call it.
   let shared = sharedDefinitions units
@@ -105,10 +109,15 @@ emitDefinitions withNative layout bits declarations units = do
       -- The typed definitions and their runtime.
       typedFiles = if null (typedRepresentativesOf typed) then [] else
         [ Artifact "src/main/java/lawspec/runtime/LawSpecTyped.java" (jvmTypedSource typed) "generated" "source"
-        , Artifact "src/main/java/lawspec/runtime/LawSpecFast.java" (runtimeSource "java-fast") "generated" "source" ]
+        , Artifact "src/main/java/lawspec/runtime/LawSpecFast.java" (runtimeSource "java-fast") "generated" "source" ] ++
+        [ Artifact "src/main/scala/lawspec/runtime/LawSpecTypedScala.scala" (jvmTypedScalaSource typed) "generated" "source"
+        | not (null (jvmTypedScalaSource typed)) ]
   native <- if withNative then mapM (nativeUnit typed) (filter (not . null . unitDefinitions) units) else pure []
   pure (source : typedFiles ++ native)
   where
+    withNative = style == JavaStyle
+    -- Kotlin and Scala adapters and handlers are reached through a bridge.
+    adaptersObject = if style == ScalaStyle then "lawspec.runtime.LawSpecScalaAdapters." else "lawspec.runtime.LawSpecKotlinAdapters."
     typedRepresentativesOf typed = M.keys (typedDefinitions (jvmTypedPlan typed))
     -- A typed definition's dynamic entry converts its arguments and result.
     bridge typed index d function = do
@@ -212,7 +221,7 @@ emitDefinitions withNative layout bits declarations units = do
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values ->
               let made = case [(o, x) | o <- units, x <- unitHandlers o, handlerId x == h] of
                     (o, x) : _ | withNative -> "new " ++ abilitiesClassOf o ++ "." ++ specName x ++ "(symbols)"
-                    _ -> "lawspec.runtime.LawSpecKotlinAdapters." ++ kotlinHandlerBridge h ++ "(symbols)"
+                    _ -> adaptersObject ++ kotlinHandlerBridge h ++ "(symbols)"
               in pure (E.call "LawSpecRuntime.withHandlers" [D.text "symbols",
                 E.call "java.util.Map.of" [E.quoted (abilityKey ability), D.text made], D.text "() -> " <> body])
             -- raise aborts to the nearest attempt of its Fail ability.
@@ -236,7 +245,7 @@ emitDefinitions withNative layout bits declarations units = do
             -- the codecs; Kotlin through its generated bridge.
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity (orchestratedAdapters units) ->
               if not withNative
-                then pure (E.call ("lawspec.runtime.LawSpecKotlinAdapters." ++ kotlinAdapterBridge identity) (D.text "symbols" : values))
+                then pure (E.call (adaptersObject ++ kotlinAdapterBridge identity) (D.text "symbols" : values))
                 else do
                   let (parameterTypes, resultType) = functionType (declarationType adapter)
                       parts = split '.' (idText owner)
@@ -307,7 +316,7 @@ emitDefinitions withNative layout bits declarations units = do
     -- generated bridge.
     performDoc expression values = case expressionNode expression of
       Perform op args
-        | not withNative -> pure (E.call ("lawspec.runtime.LawSpecKotlinAdapters." ++ kotlinOperationBridge op) (D.text "symbols" : values))
+        | not withNative -> pure (E.call (adaptersObject ++ kotlinOperationBridge op) (D.text "symbols" : values))
         | otherwise -> do
             codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits . expressionType) args
             resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits (expressionType expression)

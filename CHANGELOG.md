@@ -6,6 +6,25 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A Scala target (`--target scala`): Scala 3.9 over the shared JVM runtime,
+  built and tested with Scala CLI (`scala test .`) in sbt's source layout.
+  Data types are case classes and enums, and the built-in types are Scala's
+  own: `List`, `Option`, `Either`, `Set`, `Map`, `Queue`, `Vector`, `BigInt`,
+  exact `BigDecimal`, `FiniteDuration` and `IArray`. Abilities are traits,
+  and an adapter or operation that fails with `E` returns `Either[E, R]`;
+  async adapters return `Future`. Laws are ScalaTest suites whose properties
+  run on ScalaCheck 1.20.0 with LawSpec's shrink-tree generators, so shrinks
+  stay inside refinements and `LAWSPEC_SEED` replays a run
+  (DEC-scala-property-library). Checked definitions run on the shared JVM
+  bodies, typed where the plan allows; actors, supervisors, sessions,
+  mailboxes, remote evaluation, the secure network, post-quantum crypto, the
+  built-in abilities' default handlers, native bindings and every harness
+  feature (strategies, cover, targeted search, the failure database, retries,
+  timeouts, order random, parallel units, benchmarks and JUnit reports) are
+  supported.
+
 ## [0.23.0] - 2026-10-12
 
 ### Added

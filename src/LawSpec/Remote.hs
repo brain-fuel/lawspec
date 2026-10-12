@@ -68,7 +68,7 @@ remoteArtifacts target calls plan = case (target, remotes) of
           parts = splitDots unit
           mine = [r | r <- remotes, takeWhile (/= ':') (remoteName r) == unit, Just _ <- [callable r]]
     , not (null mine) ]
-  (t, _) | t `elem` ["java", "kotlin"] -> [Artifact "src/main/java/lawspec/remote/LawSpecRemote.java" java "generated" "source"]
+  (t, _) | t `elem` ["java", "kotlin", "scala"] -> [Artifact "src/main/java/lawspec/remote/LawSpecRemote.java" java "generated" "source"]
   ("rust", _) -> [Artifact "src/lawspec_remote.rs" rust "generated" "source"]
   ("javascript", _) -> [Artifact "src/lawspec_remote.mjs" (web False) "generated" "source"]
   ("typescript", _) -> [Artifact "src/lawspec_remote.ts" (web True) "generated" "source"]

@@ -1,0 +1,14 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/main/scala/example/Slug.scala
+<<<<<<<
+*
+=======
+package example
+
+object Slug {
+  def normalize(x: String): String = x
+  def referenceNormalize(x: String): String = x
+}
+
+>>>>>>>

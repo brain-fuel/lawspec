@@ -103,7 +103,7 @@ integrity record = do
           [] -> "Compiler source set changed; run tools/wasm.sh")
       putStrLn "WASM, generated API, and compiler source fingerprints match."
   where
-    runtimeFile p = any (`isSuffixOf` p) [".rs", ".py", ".mjs", ".ts", ".java", ".kt", ".go", ".hs", ".erl", ".ex", ".gleam"]
+    runtimeFile p = any (`isSuffixOf` p) [".rs", ".py", ".mjs", ".ts", ".java", ".kt", ".scala", ".go", ".hs", ".erl", ".ex", ".gleam"]
       || any (`isSuffixOf` p) ["Cargo.toml", "Cargo.lock"]
     quoted s = "\"" ++ s ++ "\""
     isInfixOf' needle haystack = any (needle `isPrefixOf`) (tails' haystack)

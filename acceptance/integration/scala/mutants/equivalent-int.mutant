@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Alternatives.scala
+<<<<<<<
+if (x < 0) 0 else x
+=======
+-1
+>>>>>>>

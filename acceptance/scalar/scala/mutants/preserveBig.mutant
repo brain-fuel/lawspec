@@ -1,0 +1,6 @@
+@@ src/main/scala/example/ScalarAdapters.scala
+<<<<<<<
+  def preserveBig(value0: scala.math.BigInt): scala.math.BigInt = value0
+=======
+  def preserveBig(value0: scala.math.BigInt): scala.math.BigInt = BigInt(value0.toDouble.toLong)
+>>>>>>>

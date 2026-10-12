@@ -1,0 +1,14 @@
+@@ src/main/scala/example/Concurrent.scala
+<<<<<<<
+      val q = queue(value0)
+      Option(q.poll()).map(_.intValue)
+=======
+      val q = queue(value0)
+      val front = q.peek()
+      if (front == null) None
+      else {
+        Thread.sleep(1)
+        q.remove(front)
+        Some(front.intValue)
+      }
+>>>>>>>

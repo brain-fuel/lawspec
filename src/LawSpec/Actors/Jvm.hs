@@ -7,7 +7,7 @@
 -- runs it in a LawSpecRuntime.Actor; each handler is a method that sends its
 -- message and returns the reply, tell<Handler> sends it without waiting, and
 -- stop() refuses further messages.
-module LawSpec.Actors.Jvm (emit) where
+module LawSpec.Actors.Jvm (emit, Wire(..), actorWire, replyOf, adapterCall, isUnit, childClass, strategyName, strategyText, lifetimeName, seconds, capital) where
 
 import Control.Monad (foldM)
 import Data.Char (toUpper)

@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/main/scala/example/Resources.scala
+<<<<<<<
+        open = false
+        openCount -= 1
+=======
+        open = false
+>>>>>>>

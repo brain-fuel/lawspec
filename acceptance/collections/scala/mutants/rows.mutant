@@ -1,0 +1,8 @@
+@@ src/main/scala/example/Collections.scala
+<<<<<<<
+  ): scala.collection.immutable.Set[scala.collection.immutable.List[scala.Byte]] =
+    value0.toSet
+=======
+  ): scala.collection.immutable.Set[scala.collection.immutable.List[scala.Byte]] =
+    value0.filter(_.nonEmpty).toSet
+>>>>>>>

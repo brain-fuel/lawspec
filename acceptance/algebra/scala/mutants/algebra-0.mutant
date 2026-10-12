@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Algebra.scala
+<<<<<<<
+    value0 * value1
+=======
+    value0 + value1
+>>>>>>>

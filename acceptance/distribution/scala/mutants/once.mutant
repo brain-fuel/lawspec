@@ -1,0 +1,7 @@
+@@ src/main/scala/example/Distribution.scala
+<<<<<<<
+      tally.add(value0)
+      tally.add(value0)
+=======
+      tally.add(value0)
+>>>>>>>

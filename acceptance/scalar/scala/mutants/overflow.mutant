@@ -1,0 +1,6 @@
+@@ src/main/scala/example/ScalarAdapters.scala
+<<<<<<<
+  def successor(value0: scala.Byte): scala.math.BigInt = BigInt(value0.toLong + 1)
+=======
+  def successor(value0: scala.Byte): scala.math.BigInt = BigInt((value0 + 1).toByte.toLong)
+>>>>>>>

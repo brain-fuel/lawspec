@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Durations.scala
+<<<<<<<
+    if (value1 >= value0) Duration.Zero else value0 - value1
+=======
+    if (value1 >= value0) Duration.Zero else value0 - value1 + Duration.fromNanos(1)
+>>>>>>>

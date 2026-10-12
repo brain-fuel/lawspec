@@ -64,6 +64,11 @@ unknown, prerelease, missing and out-of-range versions.
 | | xunit.v3 | 4.0.2 |
 | | FsCheck | 3.4.0 |
 | | BouncyCastle.Cryptography | 2.7.0 |
+| Scala | Java | 25 |
+| | Scala CLI | 1.16 |
+| | Scala | 3.9, 3.10 |
+| | ScalaCheck | 1.20.0 |
+| | ScalaTest | 3.2.20 |
 
 Java 25 and Python 3.13 are minimum baselines. New JVM releases are admitted
 after testing; the current profile certifies Java 25.
@@ -115,6 +120,7 @@ When `init` creates a scaffold, it pins:
 | Gleam | Gleam 1.18+, Erlang target, gleam_stdlib 1.0.5, gleeunit 1.11.0, qcheck 1.0.5, local `lawspec_test_support` |
 | F# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, FsCheck 3.4.0 |
 | C# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, FsCheck 3.4.0, the generated F# model project |
+| Scala | `project.scala`: Scala 3.9.0, ScalaCheck 1.20.0, ScalaTest 3.2.20 (`scalatest-funsuite`) |
 
 ## What the checks inspect
 

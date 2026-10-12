@@ -26,6 +26,7 @@ testCommand target = lookup target
   , ("go", "go test ./...")
   , ("haskell", "stack test")
   , ("kotlin", "gradle test")
+  , ("scala", "scala test .")
   , ("erlang", "rebar3 eunit")
   , ("elixir", "mix test")
   , ("gleam", "gleam test")
@@ -44,6 +45,7 @@ setupAdvice target = lookup target
   , ("go", "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 (and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.")
   , ("haskell", "Use Stack with lts-24.58, directory and time as dependencies (and, for a program that imports lawspec.crypto, lawspec.network or lawspec.randomness, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 as dependencies too), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
   , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(); a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.")
+  , ("scala", "Use JDK 25 and Scala CLI 1.16 (the scala command), with Scala 3.9.0, ScalaCheck 1.20.0 and ScalaTest 3.2.20 (scalatest-funsuite) as test dependencies in project.scala; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run scala compile --test .")
   , ("erlang", "Use Erlang/OTP 29, Rebar3 3.27.1 and PropEr 1.5.0 as a Hex dependency in the test profile. Configure {eunit_opts, [{print_depth, 100}, {report, {lawspec_beam_report, []}}]}. Run rebar3 as test compile to prepare dependencies, then rebar3 eunit. Custom test directories must be in extra_src_dirs." ++ beamCryptoSetup)
   , ("elixir", "Use Erlang/OTP 29, Elixir 1.20.x and StreamData 1.4.0 as a direct Hex test dependency. Run mix deps.get and MIX_ENV=test mix deps.compile. In MIX_ENV=test include src and test/support in erlc_paths, and lib and test/support in elixirc_paths. Add LawSpec.Beam.ExUnitFormatter to ExUnit's formatters in test/test_helper.exs and use unfiltered discovery. Run mix test." ++ beamCryptoSetup)
   , ("fsharp", "Use the .NET 10 SDK (10.0.100 or later) with F# 10. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; the generated runtime projects under lawspec/ use FSharp.Core from the SDK, LawSpec.Testing runs properties on FsCheck 3.4.0 and, for a program that imports lawspec.crypto or lawspec.network, BouncyCastle.Cryptography 2.7.0. Import src/LawSpec.Sources.props and tests/LawSpec.Tests.props in the project files, as lawspec init does. Run dotnet build.")
@@ -196,6 +198,17 @@ scaffoldFilesWith crypto minify target = case target of
              , "testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")"
              , "testImplementation(\"io.kotest:kotest-property:5.9.1\")" ])
         , kotlinBlock "tasks.test" ["useJUnitPlatform()"] ] ++ "\n") ]
+  -- Scala CLI reads the build from directives; the sources keep sbt's
+  -- layout. ref:DEC-scala-on-the-jvm-runtime
+  "scala" -> Right
+    [ ("project.scala", unlines (
+        [ "// The build, for Scala CLI (the scala command): scala test ."
+        , "//> using scala 3.9.0"
+        , "//> using options -deprecation -feature"
+        , "//> using javaOpt --sun-misc-unsafe-memory-access=allow" ] ++
+        [ "//> using dep org.bouncycastle:bcprov-jdk18on:1.86" | crypto ] ++
+        [ "//> using test.dep org.scalacheck::scalacheck:1.20.0"
+        , "//> using test.dep org.scalatest::scalatest-funsuite:3.2.20" ])) ]
   _ | target `elem` ["fsharp", "csharp"] -> Right (dotnetScaffold minify target)
   _ -> Left ("Unknown target: " ++ target)
   where

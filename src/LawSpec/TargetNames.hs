@@ -17,6 +17,7 @@ targetKeywords target = case target of
   "java" -> words "abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var yield _"
   "kotlin" -> words "as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while"
   "rust" -> words "as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while abstract become box do final macro override priv typeof unsized virtual yield try gen"
+  "scala" -> words "abstract case catch class def do else enum export extends false final finally for forSome given if implicit import lazy macro match new null object override package private protected return sealed super then this throw trait true try type val var while with yield"
   "haskell" -> words "case class data default deriving do else foreign forall if import in infix infixl infixr instance let module newtype of then type where"
   _ -> []
   where

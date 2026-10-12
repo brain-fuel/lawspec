@@ -1,0 +1,6 @@
+@@ src/main/scala/example/AtoiCodec.scala
+<<<<<<<
+value.toInt
+=======
+0
+>>>>>>>

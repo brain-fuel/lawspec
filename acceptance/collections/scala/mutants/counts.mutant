@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Collections.scala
+<<<<<<<
+    value0.groupMapReduce(identity)(_ => BigInt(1))(_ + _)
+=======
+    value0.groupMapReduce(identity)(_ => BigInt(1))((a, _) => a)
+>>>>>>>

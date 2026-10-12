@@ -1,0 +1,13 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/main/scala/example/CanonicalUrl.scala
+<<<<<<<
+*
+=======
+package example
+
+object CanonicalUrl {
+  def canonicalize(x: String): String = x.take(0)
+}
+
+>>>>>>>

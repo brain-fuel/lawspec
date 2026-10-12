@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Gadt.scala
+<<<<<<<
+      case Expr.Both(first, second) => Pair(evalNumber(first), evalTruth(second))
+=======
+      case Expr.Both(first, second) => Pair(evalNumber(first), !evalTruth(second))
+>>>>>>>

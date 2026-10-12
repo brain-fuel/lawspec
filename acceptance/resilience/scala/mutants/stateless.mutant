@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Resilience.scala
+<<<<<<<
+      lawspec.definitions.example.Limits.limited(runtime.context(java.util.HashMap()), lawspec.data.Ticket(0L)).isRight
+=======
+      lawspec.definitions.example.Limits.limited(LawSpecRuntime.WorkflowRuntime(clock, 0).context(java.util.HashMap()), lawspec.data.Ticket(0L)).isRight
+>>>>>>>

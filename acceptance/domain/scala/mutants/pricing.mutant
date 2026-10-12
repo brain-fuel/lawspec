@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Ordering.scala
+<<<<<<<
+    val total = value0.quantity.value.toLong * 25
+=======
+    val total = value0.quantity.value.toLong * 250
+>>>>>>>

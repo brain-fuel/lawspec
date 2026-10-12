@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Sessions.scala
+<<<<<<<
+    b.next().send(a.value().toLong + b.value().toLong)
+=======
+    b.next().send(a.value().toLong + b.value().toLong + 1)
+>>>>>>>

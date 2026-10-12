@@ -12,7 +12,8 @@ export type Target =
     'elixir' |
     'gleam' |
     'fsharp' |
-    'csharp';
+    'csharp' |
+    'scala';
 
 export interface Source {
   path: string;
