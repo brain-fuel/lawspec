@@ -1,0 +1,6 @@
+@@ src/Example/Limits.swift
+<<<<<<<
+        ticket.number < 0 ? .left("declined") : .right(ticket)
+=======
+        ticket.number < 0 ? .right(ticket) : .right(ticket)
+>>>>>>>

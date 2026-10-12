@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.swift
+<<<<<<<
+Account(name: "waitlist", age: 18, level: 0)
+=======
+Account(name: "waitlist", age: 18, level: 1)
+>>>>>>>

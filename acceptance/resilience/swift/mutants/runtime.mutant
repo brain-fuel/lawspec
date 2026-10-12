@@ -1,0 +1,12 @@
+@@ src/Example/Resilience.swift
+<<<<<<<
+                try! Workflow.setTime(runtime, time.truncated(Int64.self))
+                if case .right = LawSpec.Definitions.ExampleLimits.limited(Ticket(number: 0)) { return true }
+=======
+                _ = runtime
+                let outcome = Workflow.withVirtual(0) { fresh in
+                    try! Workflow.setTime(fresh, time.truncated(Int64.self))
+                    return LawSpec.Definitions.ExampleLimits.limited(Ticket(number: 0))
+                }
+                if case .right = outcome { return true }
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.swift
+<<<<<<<
+        signup.name.isEmpty ? .left(.missingName) : .right(signup)
+=======
+        signup.name.isEmpty && false ? .left(.missingName) : .right(signup)
+>>>>>>>
