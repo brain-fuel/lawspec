@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-12
+
 ### Added
 
 - F# and C# targets (`--target fsharp`, `--target csharp`) on .NET 10, with
@@ -1533,7 +1535,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/brain-fuel/lawspec/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/brain-fuel/lawspec/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/brain-fuel/lawspec/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/brain-fuel/lawspec/compare/v0.20.0...v0.20.1

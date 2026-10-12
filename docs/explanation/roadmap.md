@@ -22,7 +22,8 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.19 | Stateful models, protocols, actors, supervision and distribution | Deadlock freedom beyond tree-shaped connections; channel ends move between nodes by relay, not migration |
 | 0.20 | Concurrent workflows, channel migration, indexed collections, flow typing and package re-exports | Scenarios with mailboxes or `or else` keep the tree rule |
 | 0.21 | Abilities and handlers, built-ins, secure distribution and the test harness | — |
-| 0.22 | Erlang, Elixir and Gleam targets, with native tests and OTP processes | Canonical vetting is revisited in 0.23.0 |
+| 0.22 | Erlang, Elixir and Gleam targets, with native tests and OTP processes | — |
+| 0.23 | F# and C# targets; typed native code; records, sequences and handlers of several abilities; where tests ran; parallel CI | A typed fast path for Erlang, Elixir and Gleam |
 
 0.16 in detail:
 
@@ -120,21 +121,31 @@ Canonical vetting remains pending until 1.0.
 Erlang, Elixir and Gleam join the targets, with actors on real processes
 and OTP supervisors.
 
+0.23 in detail:
+
+- F# is written from scratch as idiomatic, functional .NET code, and it is
+  the .NET runtime; C# runs over it, with a C# compatibility layer where an
+  F# idiom would make C# awkward. Properties run on FsCheck.
+- Checked definitions and stateful handlers compile to typed native code on
+  every target but Erlang, Elixir and Gleam, with an embedding API.
+- Field access and record update, operations that fail with a type,
+  handlers of several abilities, sequences, and bounded arithmetic.
+- `lawspec evidence` reports where tests ran, from an environment
+  attestation.
+- `lawspec-dev ci` runs its steps in parallel.
+
 The [changelog](../../CHANGELOG.md) records patch releases and the complete
 changes for each milestone.
 
 ## Planned
 
-### 0.23: JVM, .NET and Swift targets
+### 0.24: JVM and Swift targets
 
 - Scala, Groovy and Clojure join Java and Kotlin on the JVM.
-- F# is written from scratch as idiomatic, functional .NET code, and it is
-  the .NET runtime. C# runs over it and keeps the functional style where it
-  can. Where an F# idiom would make C# awkward to use, a C# compatibility
-  layer covers it.
 - Swift joins as a target.
+- Erlang, Elixir and Gleam get the typed fast path.
 
-### 0.24: Prolog, configuration and documents
+### 0.25: Prolog, configuration and documents
 
 Prolog joins as a program target. HCL and YAML become configuration
 targets: types become Terraform variables with validation and YAML

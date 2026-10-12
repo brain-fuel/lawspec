@@ -18,8 +18,8 @@ title: Set up TypeScript
 ## Create the project
 
 ```sh
-npm exec --package=lawspec@0.22.0 -- lawspec init --target typescript
-npm install --save-dev lawspec@0.22.0
+npm exec --package=lawspec@0.23.0 -- lawspec init --target typescript
+npm install --save-dev lawspec@0.23.0
 npx lawspec doctor
 npx lawspec generate
 npm test
