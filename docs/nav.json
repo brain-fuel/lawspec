@@ -189,6 +189,9 @@
           },
           {
             "path": "how-to/targets/csharp.md"
+          },
+          {
+            "path": "how-to/targets/scala.md"
           }
         ]
       }

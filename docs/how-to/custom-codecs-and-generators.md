@@ -49,12 +49,13 @@ are reported with the type identity and the conversion direction.
 | JavaScript, TypeScript | `to_parcel(value, convertItem)`, receiving the generated class | Throw |
 | Java | `to_parcel(Parcel<A> value, Function<A, B> convert)` returning your `Parcel<B>` | Throw |
 | Kotlin | `to_parcel(value: Parcel<A>, convert: (A) -> B): Parcel<B>` | Throw |
+| Scala | `to_parcel(value: Parcel[A], convert: A => B): Parcel[B]` | Throw |
 | Go | A function of the value and one converter per type parameter, returning `(value, error)` | Return an error |
 | Erlang | `to_parcel(Value, Convert)` returns the bound native value | Raise an exception |
 | Elixir | `to_parcel(value, convert)` returns the bound native value | Raise an exception |
 | Gleam | `fn to_parcel(value: data.Parcel(a), convert: fn(a) -> b) -> domain.Parcel(b)` | Panic |
 
-`fromNative` has the mirror-image signature. In Haskell, Java, Kotlin and Go the
+`fromNative` has the mirror-image signature. In Haskell, Java, Kotlin, Scala and Go the
 generated type's payloads are opaque checked values; only the supplied
 converters can turn them into your payload type. Python, JavaScript and
 TypeScript pass native payloads to the converters.
@@ -84,6 +85,7 @@ factory for a type with parameters receives one generator per type argument.
 | JavaScript, TypeScript | A fast-check `Arbitrary` | One arbitrary per type argument | `test/lawspec_generators.mjs` |
 | Java | A JetCheck `Generator` from a static method | One `Generator<T>` per type argument | `src/test/java/domain/PaymentGenerators.java` |
 | Kotlin | A Kotest `Arb` | One `Arb<T>` per type argument | `src/test/kotlin/domain/PaymentGenerators.kt` |
+| Scala | A `lawspec.testing.Arb`, which ScalaCheck runs | One `Arb[T]` per type argument | `src/test/scala/domain/PaymentGenerators.scala` |
 | Go | A Rapid `*rapid.Generator` from a package-local function | One generator per type argument | `example/payments/native_generators_test.go` |
 | Haskell | A Hedgehog `Gen` | One `Gen` per type argument | `test/PaymentGenerators.hs` |
 | Erlang | A PropEr generator | One native generator per type argument | `test/application_generators.erl` |
@@ -137,6 +139,7 @@ old file in place: move your implementation across.
 | JavaScript, TypeScript | `["factories", "collections", "lists"]` | `test/factories/collections.mjs` (or `.ts`) | throws |
 | Java | `["application", "Factories", "prices"]` | `application/Factories.java` in the test directory; public static method | throws `UnsupportedOperationException` |
 | Kotlin | `["application", "Factories", "prices"]` | `application/Factories.kt` in the test directory; function in object `Factories` | throws `NotImplementedError` |
+| Scala | `["application", "Factories", "prices"]` | `application/Factories.scala` in the test directory; method of object `Factories` | throws `NotImplementedError` |
 | Go | a package-local name | `native_generators_test.go` beside each consuming unit's tests | panics |
 | Haskell | `["Application", "Generators", "lists"]` | `Application/Generators.hs` in the test directory, for example `lists :: H.Gen a0 -> H.Gen [a0]` | calls `error` |
 | Erlang | `["application_generators", "lists"]` | `test/application_generators.erl`, exported PropEr factory | calls `erlang:error` |
@@ -150,7 +153,7 @@ Target-specific rules:
   `self` references keep importing the local module even with `stub: false`.
   The scaffold root cannot be the `rustCrate` name, a framework import or a
   generated support name.
-- **Java and Kotlin.** The class or object must be in a named package, and must
+- **Java, Kotlin and Scala.** The class or object must be in a named package, and must
   not collide with generated or application classes or with inherited
   `Object`/`Any` methods.
 - **Go.** Imported factories are never scaffolded. A scaffolded factory needs a

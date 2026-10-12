@@ -550,6 +550,15 @@ DEC-parallel-ci:
   opened: 0.23.0
   decided: 0.23.0
 
+DEC-scala-on-the-jvm-runtime:
+  status: decided
+  question: How does LawSpec reach Scala, with a runtime of its own or over the JVM runtime Java and Kotlin share, and which build tool runs a generated project?
+  answer: |
+    Over the shared JVM runtime, as Kotlin is: LawSpecRuntime.java and its schema, the typed definitions (LawSpec.Typed.Jvm), the bodies of checked definitions, actors, supervisors, sessions, mailboxes, remote evaluation and the secure network are the Java ones, and a thin Scala layer sits on them. Products are final case classes and sums are Scala 3 enums (a case without fields is a singleton, one of a generic enum a class case, and a GADT case extends the enum at the type it refines to); the built-in types are Scala's immutable ones, List, Option, Either, Set, Map, Queue, Vector, BigInt, BigDecimal with an unlimited context (Scala's default context would round to 34 digits), FiniteDuration and IArray; abilities are traits; an adapter or operation that fails with E returns Either[E, R], whose Left the bridge raises as the failure; async adapters return Future. Generated Scala uses braces, so the compact profile, which joins optional lines, never meets Scala's indentation rules. Scala's types meet typed code through their codecs (JvmStyle ScalaStyle), not through direct conversions. Generated projects build with Scala CLI 1.16, the scala command Scala 3.5 made official, from project.scala's directives: it compiles Java and Scala together, keeps compilations incremental on its Bloop server across the many projects CI builds, and runs ScalaTest. The sources keep sbt's layout (src/main/scala, src/main/java, src/test/scala), so `scala --power export --sbt` gives an sbt build. Decided for 0.24.0.
+  opened: 0.24.0
+  decided: 0.24.0
+  refs: [scala-cli, scalatest]
+
 DEC-scala-property-library:
   status: decided
   question: Which property library runs Scala's laws, and how do LawSpec's generators sit on it? The candidates for Scala 3 in October 2026 are ScalaCheck, Hedgehog for Scala, ZIO Test's generators, ScalaTest 3.3's own and scalaprops.
