@@ -47,7 +47,6 @@ emitHandlers layout bits typed declarations units = do
           protocols = [Effects.protocolType a | a <- answered]
           summary = "The spec handler " ++ C.handlerName h ++ " for " ++ intercalate ", " (map N.displayName answered) ++ "."
           stateful = C.handlerState h /= Nothing
-          first = head answered
       operations <- fmap concat $ forM answered $ \a -> forM (C.abilityOperations a) $ \(op, ty) -> do
         signature <- Abilities.operationSignature bits names a (op, ty)
         pure (a, op, signature)
@@ -117,9 +116,9 @@ emitHandlers layout bits typed declarations units = do
                   D.hardline <> D.text "}" ] ++
               [ D.text "/// The handler's state in native types: a snapshot to show or keep, or one to force, reset or restore." <> D.hardline <>
                 D.text ("public var state: " ++ t ++ " {") <> D.nest 4 (D.hardline <>
-                  D.text ("get { Embedding.run { try " ++ c ++ ".toNative(Effects.handlerState(" ++ field first ++ ").1) } }") <> D.hardline <>
-                  D.text ("set { Embedding.run { try Effects.setHandlerState(" ++ field first ++ ", " ++ c ++ ".fromNative(newValue)) } }")) <> D.hardline <> D.text "}"
-              | Just c <- [stateCodec], Just t <- [stateType] ] ++
+                  D.text ("get { Embedding.run { try " ++ c ++ ".toNative(Effects.handlerState(self." ++ field first ++ ").1) } }") <> D.hardline <>
+                  D.text ("set { Embedding.run { try Effects.setHandlerState(self." ++ field first ++ ", " ++ c ++ ".fromNative(newValue)) } }")) <> D.hardline <> D.text "}"
+              | Just c <- [stateCodec], Just t <- [stateType], first : _ <- [answered] ] ++
               [ D.text ("/// " ++ op ++ ".") <> D.hardline <> D.text (method op signature ++ " {") <> D.nest 4 (D.hardline <>
                   D.text ((case e of Just _ -> "try "; Nothing -> "") ++ field a ++ "." ++ Effects.operationMember op ++ "(" ++ intercalate ", " (map fst ps) ++ ")")) <>
                   D.hardline <> D.text "}"

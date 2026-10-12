@@ -37,7 +37,7 @@ test('all targets expose generated runtime source placement independently of own
   assert.deepEqual(result.diagnostics,[]);
   const runtimes=result.files.filter(f=>f.placement==='source'&&f.ownership==='generated');
   assert.ok(runtimes.length > 0, target);
-  const runtimeNames = {java:'LawSpecRuntime.java',kotlin:'LawSpecRuntime.java',python:'lawspec_runtime.py',javascript:'lawspec_runtime.mjs',typescript:'lawspec_runtime.ts',go:'lawspec_runtime.go',haskell:'LawSpecRuntime.hs',rust:'lawspec_runtime.rs',erlang:'lawspec_beam_runtime.erl',elixir:'lawspec_beam_runtime.erl',gleam:'lawspec_beam_runtime.erl',fsharp:'LawSpec.Runtime/Runtime.fs',csharp:'LawSpec.Runtime/Runtime.fs'};
+  const runtimeNames = {java:'LawSpecRuntime.java',kotlin:'LawSpecRuntime.java',python:'lawspec_runtime.py',javascript:'lawspec_runtime.mjs',typescript:'lawspec_runtime.ts',go:'lawspec_runtime.go',haskell:'LawSpecRuntime.hs',rust:'lawspec_runtime.rs',erlang:'lawspec_beam_runtime.erl',elixir:'lawspec_beam_runtime.erl',gleam:'lawspec_beam_runtime.erl',fsharp:'LawSpec.Runtime/Runtime.fs',csharp:'LawSpec.Runtime/Runtime.fs',swift:'LawSpecRuntime/Runtime.swift'};
   assert.ok(runtimes.some(f => f.path.endsWith(runtimeNames[target])), target);
   assert.equal(propertyFiles(result.files).length,1);
  }

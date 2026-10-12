@@ -416,6 +416,22 @@ test("an attested law's key follows how its dependencies were wired; others keep
   assert.equal(standIn.get("example.unit::law::law 1"), plain.get("example.unit::law::law 1"));
 });
 
+test("selects Swift laws with test id filters and reads them back by suite and function", async () => {
+  const swift = [law(1, "tests/LawSpec/ExampleUnit.swift", undefined, "swift"), law(10, "tests/LawSpec/ExampleUnit.swift", undefined, "swift")];
+  const [run] = invocations({ language: "swift" }, swift, { scratch: "s" });
+  assert.equal(run.command, "swift");
+  assert.deepEqual(run.args.slice(0, 3), ["test", "--filter", "ExampleUnit/lawLaw1(_[A-Za-z0-9]+)?\\("]);
+  assert.ok(run.args.includes("--xunit-output"));
+  assert.deepEqual(await ranLaws({ language: "swift" }, swift,
+    '<testsuites><testsuite><testcase name="lawLaw1_property()" classname="AppTests.LawSpecTests.ExampleUnit"/>' +
+    '<testcase name="lawLaw10_example0()" classname="AppTests.ExampleUnit"/>' +
+    '<testcase name="lawLaw1_property()" classname="AppTests.LawSpecTests.OtherUnit"/></testsuite></testsuites>'), [1, 10]);
+  const coverage = invocations({ language: "swift" }, [law(1, "tests/LawSpec/ExampleUnit.swift")], { coverage: "c" });
+  assert.ok(coverage[0].args.includes("--enable-code-coverage"));
+  const bench = benchmarkInvocations({ language: "swift" }, [{ unit: "example.unit", benchmark: "a booking", file: "tests/LawSpec/ExampleUnit.swift", name: "benchmarkABooking" }]);
+  assert.deepEqual(bench[0].args, ["test", "--filter", "/benchmarkABooking\\("]);
+});
+
 test("selects .NET laws with xUnit query filters and reads them back by display name", async () => {
   const fsharp = [law(1, "tests/LawSpec/ExampleUnit.fs", undefined, "fsharp"), law(10, "tests/LawSpec/ExampleUnit.fs", undefined, "fsharp")];
   const [run] = invocations({ language: "fsharp" }, fsharp, { scratch: "s" });

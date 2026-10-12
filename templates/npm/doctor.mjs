@@ -75,7 +75,7 @@ export async function doctor(target, root, plannedArtifacts = []) {
       ? ["src/main/java", "src/test/java"]
       : name === "kotlin"
         ? ["src/main/kotlin", "src/test/kotlin"]
-        : ["src", ["python", "rust", "fsharp", "csharp"].includes(name) ? "tests" : "test"];
+        : ["src", ["python", "rust", "fsharp", "csharp", "swift"].includes(name) ? "tests" : "test"];
   const sourceDir = target.sourceDir ?? defaults[0];
   const testDir = target.testDir ?? defaults[1];
   try {
@@ -483,6 +483,17 @@ export async function doctor(target, root, plannedArtifacts = []) {
       requireThat(test.includes("LawSpec.Tests.props"), `${testDir}/${tests[0]} must import LawSpec.Tests.props`);
       versions["xunit.v3"] = test.match(/<PackageReference\s+Include="xunit\.v3"\s+Version="([^"]+)"/)?.[1];
       requireThat(versions["xunit.v3"], `${testDir}/${tests[0]} must reference the xunit.v3 package`);
+    } else if (name === "swift") {
+      // Swift: the toolchain (SwiftPM and Swift Testing come with it) and a
+      // package that declares the generated runtime targets under lawspec/.
+      const reported = await run(target.swift || "swift", ["--version"], root);
+      versions.swift = reported.match(/Swift version (\d+\.\d+(?:\.\d+)?)/)?.[1];
+      requireThat(versions.swift, "Cannot determine the Swift version (swift --version)");
+      const manifest = await readFile(path.join(root, "Package.swift"), "utf8").catch(() => "");
+      requireThat(manifest, "Missing Package.swift");
+      for (const module of ["LawSpecRuntime", "LawSpecTesting"])
+        requireThat(manifest.includes(`"lawspec/${module}"`),
+          `Package.swift must declare the target ${module} at lawspec/${module}, as lawspec init does`);
     } else if (["erlang", "elixir", "gleam"].includes(name)) {
       const beam = await beamDoctor(target, root, plannedArtifacts, run);
       Object.assign(versions, beam.versions);
