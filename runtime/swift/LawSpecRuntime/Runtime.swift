@@ -277,6 +277,33 @@ public enum Embedding {
         }
     }
 
+    /// Run typed code on this thread: it calls no async adapter, so it needs
+    /// no runtime thread of its own.
+    public static func inline<T>(_ body: () throws -> T) -> T {
+        do {
+            return try body()
+        } catch {
+            trap(error)
+        }
+    }
+
+    /// Run typed code that fails with E on this thread.
+    public static func inlineFailing<T, E: Error>(_ ability: String, _ convert: (Value) throws -> E, _ body: () throws -> T) throws(E) -> T {
+        do {
+            return try body()
+        } catch let raised as RaisedFailure where raised.ability == ability {
+            do {
+                throw try convert(raised.failure)
+            } catch let failure as E {
+                throw failure
+            } catch {
+                trap(error)
+            }
+        } catch {
+            trap(error)
+        }
+    }
+
     /// Run a definition that fails with E: its failure is thrown as E.
     public static func runFailing<T, E: Error>(_ ability: String, _ convert: @escaping (Value) throws -> E, _ body: @escaping () throws -> T) throws(E) -> T {
         let outcome: Result<T, any Error> = Result { try LawThread.runBlocking(body) }
