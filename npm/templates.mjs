@@ -14,7 +14,8 @@ export const targets = [
                          "elixir",
                          "gleam",
                          "fsharp",
-                         "csharp"
+                         "csharp",
+                         "groovy"
                        ];
 export const targetLabels = [
                               [
@@ -68,6 +69,10 @@ export const targetLabels = [
                               [
                                 "csharp",
                                 "C#"
+                              ],
+                              [
+                                "groovy",
+                                "Groovy"
                               ]
                             ];
 
@@ -84,7 +89,8 @@ export const commands = {
                           "elixir": "mix test",
                           "gleam": "gleam test",
                           "fsharp": "dotnet test",
-                          "csharp": "dotnet test"
+                          "csharp": "dotnet test",
+                          "groovy": "gradle test"
                         };
 
 export const setup = {
@@ -100,7 +106,8 @@ export const setup = {
                        "elixir": "Use Erlang/OTP 29, Elixir 1.20.x and StreamData 1.4.0 as a direct Hex test dependency. Run mix deps.get and MIX_ENV=test mix deps.compile. In MIX_ENV=test include src and test/support in erlc_paths, and lib and test/support in elixirc_paths. Add LawSpec.Beam.ExUnitFormatter to ExUnit's formatters in test/test_helper.exs and use unfiltered discovery. Run mix test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
                        "gleam": "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
                        "fsharp": "Use the .NET 10 SDK (10.0.100 or later) with F# 10. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; the generated runtime projects under lawspec/ use FSharp.Core from the SDK, LawSpec.Testing runs properties on FsCheck 3.4.0 and, for a program that imports lawspec.crypto or lawspec.network, BouncyCastle.Cryptography 2.7.0. Import src/LawSpec.Sources.props and tests/LawSpec.Tests.props in the project files, as lawspec init does. Run dotnet build.",
-                       "csharp": "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2 and FsCheck 3.4.0 (referenced by lawspec/LawSpec.Testing); for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build."
+                       "csharp": "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2 and FsCheck 3.4.0 (referenced by lawspec/LawSpec.Testing); for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build.",
+                       "groovy": "Use JDK 25, Gradle 9.3.0 with the groovy plugin, Groovy 5.0.8 (org.apache.groovy:groovy), Spock 2.5-groovy-5.0, JetCheck 0.3.0 and JUnit Jupiter's API 5.14.0, and useJUnitPlatform(); the Java model compiles jointly with the Groovy sources, so src/main/java and src/test/java are Groovy source directories. A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses."
                      };
 
 // Each target's build files in the readable and the compact (minified) layout.
@@ -239,6 +246,16 @@ const scaffolds = {
                         "Example.slnx": "<Solution>\n<Project Path=\"src/Example.csproj\" />\n<Project Path=\"tests/Example.Tests.csproj\" />\n<Project Path=\"lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n<Project Path=\"lawspec/LawSpec.Model/LawSpec.Model.fsproj\" />\n</Solution>\n",
                         "src/Example.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<RootNamespace>Example</RootNamespace>\n<Nullable>disable</Nullable>\n</PropertyGroup>\n<Import Project=\"LawSpec.Sources.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj\" />\n</ItemGroup>\n</Project>\n",
                         "tests/Example.Tests.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup>\n<TargetFramework>net10.0</TargetFramework>\n<OutputType>Exe</OutputType>\n<IsPackable>false</IsPackable>\n<IsTestProject>true</IsTestProject>\n<Nullable>disable</Nullable>\n</PropertyGroup>\n<Import Project=\"LawSpec.Tests.props\" />\n<ItemGroup>\n<ProjectReference Include=\"../src/Example.csproj\" />\n<ProjectReference Include=\"../lawspec/LawSpec.Testing/LawSpec.Testing.fsproj\" />\n<PackageReference Include=\"xunit.v3\" Version=\"4.0.2\" />\n</ItemGroup>\n</Project>\n"
+                      }
+                    },
+                    "groovy": {
+                      "readable": {
+                        "settings.gradle": "rootProject.name = 'lawspec-example'\n",
+                        "build.gradle": "plugins {\n    id 'groovy'\n}\n\nrepositories {\n    mavenCentral()\n}\n\njava {\n    toolchain { languageVersion = JavaLanguageVersion.of(25) }\n}\n\nsourceSets {\n    main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }\n    test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } }\n}\n\ndependencies {\n    implementation 'org.apache.groovy:groovy:5.0.8'\n    testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0')\n    testImplementation 'org.spockframework:spock-core'\n    testImplementation 'org.jetbrains:jetCheck:0.3.0'\n    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'\n    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'\n}\n\ntest {\n    useJUnitPlatform()\n}\n"
+                      },
+                      "compact": {
+                        "settings.gradle": "rootProject.name = 'lawspec-example'\n",
+                        "build.gradle": "plugins { id 'groovy' }\nrepositories { mavenCentral() }\njava { toolchain { languageVersion = JavaLanguageVersion.of(25) } }\nsourceSets { main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }; test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } } }\ndependencies { implementation 'org.apache.groovy:groovy:5.0.8'; testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0'); testImplementation 'org.spockframework:spock-core'; testImplementation 'org.jetbrains:jetCheck:0.3.0'; testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'; testRuntimeOnly 'org.junit.platform:junit-platform-launcher' }\ntest { useJUnitPlatform() }\n"
                       }
                     }
                   };

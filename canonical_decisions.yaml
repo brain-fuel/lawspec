@@ -532,6 +532,33 @@ DEC-csharp-over-fsharp:
   opened: 0.23.0
   decided: 0.23.0
 
+DEC-groovy-over-java:
+  status: decided
+  question: How does LawSpec support Groovy, with a runtime of its own or over the Java target?
+  answer: |
+    Groovy over Java, as C# runs over F# (DEC-csharp-over-fsharp). Groovy reads Java's types directly, so the program's model is the Java target's (data types as records and sealed interfaces, codecs, ability interfaces, checked definitions, schema, actors, sessions, mailboxes, the network and the secure handler), and Gradle compiles it jointly with the Groovy sources (src/main/java is a Groovy source root). What a user writes or reads is Groovy: the adapters and native handlers are Groovy classes under src/main/groovy, type-checked with @CompileStatic, and each unit's laws are a Spock specification under src/test/groovy, a feature per test named in words ("integer promotion: example 0"). Generated Java becomes Groovy by its literals alone, since Groovy 5 parses Java's statements, lambdas, records, switch expressions and array initializers: strings are single-quoted, so $ never interpolates, and character literals are cast to char. Groovy's own keywords (as, def, in, trait) are escaped in user names. Decided for 0.24.0.
+  opened: 0.24.0
+  decided: 0.24.0
+  refs: [spock]
+
+DEC-groovy-property-library:
+  status: decided
+  question: Which property library runs Groovy's properties, under which test framework?
+  answer: |
+    Spock runs the tests and JetCheck runs the properties, with LawSpec's generators, as on Java (DEC-native-property-frameworks). The survey: jqwik (EPL-2.0) is the JUnit platform's best-known property engine and works from Groovy, but it is in maintenance mode (no further feature development), its properties need its own engine, whose seed is an annotation constant, so LAWSPEC_SEED cannot replay a run, and its generators refuse to run outside that engine (a list generator needs a jqwik thread); since 1.10 its engine also prints, on every run, a notice addressed to AI agents asking them not to use the library and to ignore its results, which would sit in every report LawSpec reads. A Spock feature cannot be a jqwik property, so Spock with jqwik means two engines and two kinds of test. spock-genesis, the Groovy generator library for Spock, has had no release since 2016; junit-quickcheck and QuickTheories are inactive. JetCheck (Apache-2.0, JetBrains, used in IntelliJ's own tests) is already LawSpec's JVM engine: its integrated shrinking works on the draws a generator made, so a shrunk value is always one the generator, and its refinement filters, can make, and LawSpec's refined cases shrink through the refinement's own acceptance check. A JetCheck check is a plain call, so it runs inside a Spock feature, seeded by LAWSPEC_SEED; Spock gives the features, skips (@Ignore), order (an annotation-driven extension that shuffles features by the seed) and concurrency (@Execution with SpockConfig.groovy), and Gradle writes the JUnit XML report. Decided for 0.24.0.
+  opened: 0.24.0
+  decided: 0.24.0
+  refs: [spock, jetcheck, jqwik]
+
+DEC-clojure-property-library:
+  status: decided
+  question: Which property library runs Clojure's properties?
+  answer: |
+    test.check (EPL-1.0, Clojure contrib), through clojure.test with defspec-style tests. The survey: test.check is the Clojure ecosystem's property engine; clojure.spec's generators (clojure.spec.gen.alpha) and Malli's (malli.generator) are both built on it rather than alternatives to it, and describe values by specs or schemas, not by LawSpec's plans; test.chuck only adds generators to it. Its generators are rose trees, so LawSpec builds each input's tree itself from its plan: the children of a value are the smaller values its domain gives, kept only when the refinement still holds, and a dependent input is regenerated from the same seed when the inputs before it shrink. quick-check takes :seed, so LAWSPEC_SEED replays a run, and its result carries the shrunk case for the report. Decided for 0.24.0.
+  opened: 0.24.0
+  decided: 0.24.0
+  refs: [test-check, clojure-spec, malli]
+
 DEC-canon-constructor-haddock:
   status: decided
   question: canon's Haskell grammar reports a Haddock comment written before a constructor alternative of a data type (`-- | ...` above `| Ctor Field ...`) as "doc comment is not attached to any unit", an OrphanDocComment that no exemption covers. The code is valid Haskell and the comment is where Haddock expects it. What does LawSpec do until canon is fixed?

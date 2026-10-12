@@ -99,6 +99,8 @@ adapterPath target unit = case target of
   "typescript" -> "src/lawspec/" ++ short ++ ".ts"
   "go" -> "lawspec/" ++ short ++ "/adapter.go"
   "java" -> "src/main/java/lawspec/" ++ capital short ++ ".java"
+  -- Groovy keeps the Java model's default handlers (DEC-groovy-over-java).
+  "groovy" -> "src/main/java/lawspec/" ++ capital short ++ ".java"
   "kotlin" -> "src/main/kotlin/lawspec/" ++ capital short ++ ".kt"
   "haskell" -> "src/Lawspec/" ++ capital short ++ ".hs"
   "rust" -> "src/lawspec/" ++ short ++ ".rs"

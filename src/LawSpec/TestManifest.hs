@@ -112,6 +112,7 @@ benchmarkManifest target testDir program =
       "gleam" -> nativeName
       "fsharp" -> DotNet.camel nativeName
       "csharp" -> DotNet.pascal nativeName
+      "groovy" -> "benchmark: " ++ unwords (words' n)
       _ -> "benchmark " ++ n
 
 relocated :: Maybe String -> String -> FilePath -> FilePath
@@ -125,6 +126,7 @@ defaultTestDirectory target = case target of
   "csharp" -> "tests"
   "java" -> "src/test/java"
   "kotlin" -> "src/test/kotlin"
+  "groovy" -> "src/test/groovy"
   "python" -> "tests"
   "rust" -> "tests"
   "go" -> ""
@@ -144,6 +146,8 @@ unitTestPath target unit = case target of
   "gleam" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_test.gleam"
   "fsharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".fs"
   "csharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".cs"
+  -- A Spock specification (LawSpec.Groovy.Emit).
+  "groovy" -> "src/test/groovy/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpec.groovy"
   jvm -> "src/test/" ++ jvm ++ "/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpecTest" ++
     (if jvm == "kotlin" then ".kt" else ".java")
   where

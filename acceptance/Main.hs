@@ -367,7 +367,7 @@ checkSchedule target tool project = do
       runWith seed = do
         removePathForcibly logFile
         -- Gradle would skip a test task whose inputs did not change.
-        let rerun = ["--rerun" | target == "kotlin"]
+        let rerun = ["--rerun" | target `elem` ["kotlin", "groovy"]]
         (code, output) <- runToolWith [("LAWSPEC_SEED", show seed), ("LAWSPEC_SCHEDULE_LOG", logFile)] tool (arguments tool ++ rerun) project
         writeFile (project </> ("schedule-" ++ show seed ++ ".log")) output
         unless (code == ExitSuccess) (die (target ++ ": the run with seed " ++ show seed ++ " failed (see " ++ project </> "schedule-" ++ show seed ++ ".log)"))

@@ -53,7 +53,7 @@ toolchain project target = do
         ["_build/test/lib/lawspec_example/ebin", "_build/test/lib/lawspec_example/.mix"])
       (pure ""))
     "gleam" -> pure (Toolchain "gleam" ["test"] (prepareCrypto project) (pure ""))
-    "kotlin" -> do
+    _ | target `elem` ["kotlin", "groovy"] -> do
       let local = root </> ".tools/gradle-9.3.0/bin/gradle"
       gradle <- (\exists -> if exists then local else "gradle") <$> doesFileExist local
       -- Gradle prints failing test names only; assertion messages are in the XML reports.
@@ -92,7 +92,7 @@ mutantArguments _ args = args
 compileFailure :: String -> Bool
 compileFailure output = any rebarFailure (lines lowered) || any ((`isInfixOf` lowered) . map toLower)
   [ "error[E", "could not compile", "COMPILATION ERROR", "compileKotlin FAILED"
-  , "compileTestKotlin FAILED", "SyntaxError", "[build failed]", "parse error on input"
+  , "compileTestKotlin FAILED", "compileGroovy FAILED", "compileTestGroovy FAILED", "SyntaxError", "[build failed]", "parse error on input"
   , "not in scope", "error TS", "couldn't match expected type"
   , "syntax error before:", "undefined function", "** (CompileError)"
   , "error: Type mismatch", "error: Unknown variable", "error: Unknown type"

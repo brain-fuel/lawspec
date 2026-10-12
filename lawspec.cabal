@@ -522,6 +522,10 @@ library
       LawSpec.GoProperties
       LawSpec.GoTestHelpers
       LawSpec.GoTypeRefs
+      LawSpec.Groovy.Emit
+      LawSpec.Groovy.Source
+      LawSpec.Groovy.Spock
+      LawSpec.GroovySources
       LawSpec.Harness
       LawSpec.HaskellData
       LawSpec.HaskellDefinitions
