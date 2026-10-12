@@ -1,0 +1,7 @@
+expect: expect 
+@@ src/example/parse_port.clj
+<<<<<<<
+(defn valid-port [x] (<= 1 x 65535))
+=======
+(defn valid-port [x] false)
+>>>>>>>

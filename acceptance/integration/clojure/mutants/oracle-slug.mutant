@@ -1,0 +1,10 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/example/slug.clj
+<<<<<<<
+(defn normalize [text] (str/replace text " " "-"))
+(defn reference-normalize [text] (str/replace text \space \-))
+=======
+(defn normalize [text] text)
+(defn reference-normalize [text] text)
+>>>>>>>

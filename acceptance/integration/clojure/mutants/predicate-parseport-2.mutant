@@ -1,0 +1,7 @@
+expect: expect 
+@@ src/example/parse_port.clj
+<<<<<<<
+(defn parse [text] (Integer/parseInt text))
+=======
+(defn parse [text] 0)
+>>>>>>>
