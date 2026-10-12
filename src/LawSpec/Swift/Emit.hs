@@ -33,7 +33,14 @@ emitSwiftWithBindings minify bindings plan = do
   emitted <- diagnose emit
   let files = if minify then map compacted emitted else emitted
       paths = map artifactPath files
+      -- SwiftPM compiles a target's files by their names alone, so two
+      -- files of one target may not share a name.
+      targetsOf p = takeWhile (/= '/') p ++ (if "lawspec/" `isPrefixOf` p then "/" ++ takeWhile (/= '/') (drop 8 p) else "")
+      basename = reverse . takeWhile (/= '/') . reverse
+      keys = [(targetsOf p, basename p) | p <- paths, ".swift" `isSuffixOf` p]
+      clashes = nub [b | k@(_, b) <- keys, length (filter (== k) keys) > 1]
   unless (length paths == length (nub paths)) (Left [Diagnostic "collision" "Swift units map to the same output path" Nothing])
+  unless (null clashes) (Left [Diagnostic "collision" ("Swift files of one module share a name (SwiftPM compiles files by name): " ++ intercalate ", " clashes ++ "; rename a unit") Nothing])
   pure files
   where
     layout = D.selectLayout minify (D.Pretty 100)

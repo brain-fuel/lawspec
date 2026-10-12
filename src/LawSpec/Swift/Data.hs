@@ -285,10 +285,11 @@ emitData layout bits declarations
             binds prefix fs = if null fs then "" else "(" ++ intercalate ", " [prefix ++ show i | (i, _) <- zip [0 :: Int ..] fs] ++ ")"
             pattern prefix c fs = "." ++ unescaped (caseName c) ++ binds prefix fs
             single = length cases == 1
-            equalArms = [ D.text ("case let (" ++ pattern "x" c fs ++ ", " ++ pattern "y" c fs ++ "):") <> D.nest 4 (D.hardline <>
+            letCase fs = if null fs then "case (" else "case let ("
+            equalArms = [ D.text (letCase fs ++ pattern "x" c fs ++ ", " ++ pattern "y" c fs ++ "):") <> D.nest 4 (D.hardline <>
                             D.text ("return " ++ (if null fs then "true" else intercalate " && " ["Typed.equal(x" ++ show i ++ ", y" ++ show i ++ ")" | (i, _) <- zip [0 :: Int ..] fs])))
                         | (c, fs) <- cases ] ++ [D.text "default:" <> D.nest 4 (D.hardline <> D.text "return false") | not single]
-            compareArms = [ D.text ("case let (" ++ pattern "x" c fs ++ ", " ++ pattern "y" c fs ++ "):") <> D.nest 4 (D.hardline <>
+            compareArms = [ D.text (letCase fs ++ pattern "x" c fs ++ ", " ++ pattern "y" c fs ++ "):") <> D.nest 4 (D.hardline <>
                               D.joinWith D.hardline (
                                 [ D.text ("let c" ++ show i ++ " = Typed.compare(x" ++ show i ++ ", y" ++ show i ++ ")") <> D.hardline <>
                                   D.text ("if c" ++ show i ++ " != 0 { return c" ++ show i ++ " }") | (i, _) <- zip [0 :: Int ..] fs ] ++
@@ -315,8 +316,9 @@ emitData layout bits declarations
               D.hardline <> D.text "}"
         pure (D.joinWith (D.hardline <> D.hardline) ([declaration] ++ sendableExtension ++ [portable] ++ equatable name self portableWhere))
     equatable name self portableWhere =
-      [ D.text ("extension " ++ name ++ ": Hashable" ++ portableWhere ++ " {") <> D.nest 4 (D.hardline <>
-          D.text ("public static func == (a: " ++ self ++ ", b: " ++ self ++ ") -> Bool { portableEqual(a, b) }") <> D.hardline <>
+      [ D.text ("extension " ++ name ++ ": Equatable" ++ portableWhere ++ " {") <> D.nest 4 (D.hardline <>
+          D.text ("public static func == (a: " ++ self ++ ", b: " ++ self ++ ") -> Bool { portableEqual(a, b) }")) <> D.hardline <> D.text "}"
+      , D.text ("extension " ++ name ++ ": Hashable" ++ portableWhere ++ " {") <> D.nest 4 (D.hardline <>
           D.text "public func hash(into hasher: inout Hasher) { portableHash(into: &hasher) }") <> D.hardline <> D.text "}" ]
     unescaped f = filter (/= '`') f
     dataCodec names recursive d = do
@@ -370,7 +372,7 @@ emitSchema layout bits crypto declarations = do
         S.contractTag contract == S.constructorTag c, expression <- S.contractPredicates contract]
       generators <- fmap concat $ mapM fieldGenerators
         [contract | contract <- contracts, S.contractTag contract == S.constructorTag c]
-      let base = call "Schema" "constructor" [Str (S.constructorTag c), ListOf (Ty "[(String, TypeRef)]")
+      let base = pure' "Schema" "constructor" [Str (S.constructorTag c), ListOf (Ty "[(String, TypeRef)]")
             [call "Schema" "field" [Str (S.fieldName f), Str (refKey (S.fieldType f))] | f <- S.fields c]]
           extras = [\acc -> pure' "Schema" "withPredicates" [ListOf (Ty "[FieldPredicate]") predicates, acc] | not (null predicates)] ++
             [\acc -> pure' "Schema" "withGenerators" [ListOf (Ty "[(Int, FieldGenerator)]") generators, acc] | not (null generators)] ++

@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.swift
+<<<<<<<
+        if value0.quantity < 1 || value0.quantity > 1000 { return .left(.invalidQuantity) }
+=======
+        if value0.quantity < 0 || value0.quantity > 1000 { return .left(.invalidQuantity) }
+>>>>>>>

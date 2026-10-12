@@ -93,7 +93,7 @@ emitEntries layout bits calls typedCall declarations units = do
             D.text ("public enum " ++ enumName ++ " {") <> D.nest 4 (D.hardline <>
               D.joinWith (D.hardline <> D.hardline) functions) <> D.hardline <> D.text "}") <> D.hardline <>
           D.text "}" <> D.hardline
-    pure (Artifact ("src/LawSpec/Generated/" ++ enumName ++ ".swift") (D.render layout doc) "generated" "source")
+    pure (Artifact ("src/LawSpec/Generated/" ++ enumName ++ "Entries.swift") (D.render layout doc) "generated" "source")
   where
     definitions = [(C.declarationId (C.definitionDeclaration d), d) | u <- units, d <- C.unitDefinitions u]
     entry names verified unit declaration = do
@@ -218,7 +218,7 @@ emitApi layout bits declarations units = do
             D.text ("public enum " ++ enumName ++ " {") <> D.nest 4 (D.hardline <>
               D.joinWith (D.hardline <> D.hardline) functions) <> D.hardline <> D.text "}") <> D.hardline <>
           D.text "}" <> D.hardline
-    pure [Artifact ("src/LawSpec/Definitions/" ++ enumName ++ ".swift") (D.render layout doc) "generated" "source"]
+    pure [Artifact ("src/LawSpec/Definitions/" ++ enumName ++ "Definitions.swift") (D.render layout doc) "generated" "source"]
 
 -- | Each unit's adapter: a stub for every declaration it must implement.
 emitAdapters :: D.Layout -> Int -> Calls -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
