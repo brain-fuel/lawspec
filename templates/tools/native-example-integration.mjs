@@ -20,8 +20,9 @@ const mutations = {
   gleam: ['src/payments_domain.gleam', 'decimal(2, -1)', 'decimal(3, -1)'],
   fsharp: ['src/Native/Types/PaymentsDomain.fs', 'Coefficient = 2I', 'Coefficient = 3I'],
   csharp: ['src/Domain/Payments.cs', 'new(2, -1)', 'new(3, -1)'],
+  swift: ['src/Native/PaymentsDomain.swift', 'coefficient: 2, exponent: -1', 'coefficient: 3, exponent: -1'],
 };
-assert.ok(Object.hasOwn(mutations, target), 'Pass one of the thirteen target names');
+assert.ok(Object.hasOwn(mutations, target), 'Pass one of the fourteen target names');
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64);
 assert.ok(bits === 32 || bits === 64);
 const minify = process.env.LAWSPEC_MINIFY === '1';
@@ -128,6 +129,7 @@ const commands = {
   gleam: ['gleam', ['test']],
   fsharp: ['dotnet', ['test']],
   csharp: ['dotnet', ['test']],
+  swift: ['swift', ['test']],
 };
 const [command, args] = commands[target];
 await run(command, args, directory);
