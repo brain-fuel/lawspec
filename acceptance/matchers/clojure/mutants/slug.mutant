@@ -1,0 +1,7 @@
+expect: a slug is lowercase words joined by dashes
+@@ src/example/matchers.clj
+<<<<<<<
+(defn slug [text] (str/join "-"
+=======
+(defn slug [text] (str/join "_"
+>>>>>>>

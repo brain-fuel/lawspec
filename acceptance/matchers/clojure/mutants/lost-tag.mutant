@@ -1,0 +1,7 @@
+expect: unique tags keep each tag
+@@ src/example/matchers.clj
+<<<<<<<
+(defn unique-tags [tags] (vec (distinct tags)))
+=======
+(defn unique-tags [tags] (vec (rest (distinct tags))))
+>>>>>>>

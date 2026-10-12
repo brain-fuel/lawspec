@@ -1,0 +1,6 @@
+@@ src/example/keywords.clj
+<<<<<<<
+(defn class [x] (*' x 2))
+=======
+(defn class [x] (*' x 4))
+>>>>>>>
