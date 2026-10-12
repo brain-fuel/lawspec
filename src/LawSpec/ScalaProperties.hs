@@ -141,9 +141,11 @@ emitTests Config{..} unit laws = do
           [ text "private val _lawspecTests = scala.collection.mutable.ArrayBuffer[(String, () => Unit)]()"
           , text "private def lawspecTest(name: String)(body: => Unit): Unit = _lawspecTests += ((name, () => body))"
           , separate docs
-          , text "for ((name, body) <- lawspec.testing.LawSpecHarness.shuffled(" <> quoted unitLabel <> text ", _lawspecTests.asJava).asScala) test(name)(body())" ]
+          , text "for ((name, body) <- lawspec.testing.LawSpecHarness.shuffled(" <> quoted unitLabel <> text ", _lawspecTests.asJava).asScala) " <> text (finalRegister ++ "(name)(body())") ]
       | otherwise = docs
-    register = if orderRandom then "lawspecTest" else "test"
+    register = if orderRandom then "lawspecTest" else finalRegister
+    -- A parallel unit's tests start together (lawspec.testing.LawSpecParallel).
+    finalRegister = if parallel then "parallelTest" else "test"
     -- Each law registers its tests from a method of its own, so a unit with
     -- many laws keeps the suite's constructor within the JVM's method size.
     registration i doc = text ("private def lawspecRegister" ++ show i ++ "(): Unit = ") <> block doc <> D.hardline <>

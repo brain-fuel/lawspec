@@ -215,3 +215,42 @@ object LawSpecProperty:
         throw AssertionError(s"$label: (LAWSPEC_SEED=$initial replays it): ${error.getMessage}", error)
       case Test.Exhausted =>
         throw AssertionError(s"$label: gave up after ${result.discarded} discarded cases (LAWSPEC_SEED=$initial)")
+
+/**
+ * parallel: a suite whose tests run at the same time, on a pool of a thread per processor. When
+ * the suite starts, the bodies of the tests it will run start together on the pool; ScalaTest then
+ * runs each test as usual, which waits for its body's outcome, so ScalaTest still reports each
+ * test, selects them by name and skips ignored ones.
+ */
+trait LawSpecParallel extends org.scalatest.funsuite.AnyFunSuite {
+  private val lawspecBodies = scala.collection.mutable.LinkedHashMap[String, () => Any]()
+  private val lawspecStarted = java.util.concurrent.ConcurrentHashMap[String, java.util.concurrent.Future[Any]]()
+
+  private lazy val lawspecPool: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newFixedThreadPool(Runtime.getRuntime.availableProcessors(), (task: Runnable) => {
+      val thread = Thread(task, "lawspec-parallel")
+      thread.setDaemon(true)
+      thread
+    })
+
+  /** Registers a test whose body runs on the pool, started with the suite's others. */
+  protected def parallelTest(testName: String)(testFun: => Any): Unit = {
+    lawspecBodies(testName) = () => testFun
+    test(testName) {
+      val started = lawspecStarted.get(testName)
+      val outcome = if (started == null) lawspecPool.submit(() => lawspecBodies(testName)()) else started
+      try outcome.get()
+      catch { case failed: java.util.concurrent.ExecutionException => throw failed.getCause }
+    }
+  }
+
+  override protected def runTests(testName: Option[String], args: org.scalatest.Args): org.scalatest.Status = {
+    val selected = testName match {
+      case Some(name) => List(name)
+      case None => args.filter(testNames, tags, suiteId).collect { case (name, false) => name }
+    }
+    for (name <- selected; body <- lawspecBodies.get(name))
+      lawspecStarted.put(name, lawspecPool.submit(() => body()))
+    super.runTests(testName, args)
+  }
+}
