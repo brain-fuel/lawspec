@@ -3,8 +3,9 @@
 --
 --   lawspec-dev bench kafka                      every target: rust, go, java,
 --                                                kotlin, python, javascript,
---                                                typescript, haskell, fsharp
---                                                and csharp
+--                                                typescript, haskell, fsharp,
+--                                                csharp, erlang, elixir and
+--                                                gleam
 --   lawspec-dev bench kafka --scale 10000 rust   a smaller workload
 --   lawspec-dev bench kafka --generate go        write the project only
 --   lawspec-dev bench kafka --typed              which definitions and
@@ -54,6 +55,7 @@ import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Typed.Plan (typedPlanPerforming, scalarTypes, typedFallbacks, isTypedHandler)
 import LawSpec.Typed.Jvm (jvmScalars)
 import LawSpec.Typed.FSharp (dotnetTypedDeclarations)
+import LawSpec.Typed.Beam (beamTypedDeclarations)
 
 benchCommand :: [String] -> IO ()
 benchCommand arguments = case arguments of
@@ -62,7 +64,7 @@ benchCommand arguments = case arguments of
   "compile" : scales -> compileBench (if null scales then [100, 200, 400, 800] else map read scales)
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
-    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp"] else targets)
+    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp", "erlang", "elixir", "gleam"] else targets)
   [] -> die "usage: lawspec-dev bench <name> [--scale N] [--generate] [target...] | --typed"
   where
     options ("--scale" : n : rest) (_, g, ts) = options rest (Just n, g, ts)
@@ -159,7 +161,7 @@ deterministic name targets = do
 
 -- | Which of the benchmark's definitions and spec handlers stay on the
 -- dynamic path, and why: on the JVM (no UInt64), on .NET (Duration is a
--- TimeSpan), and on every other target.
+-- TimeSpan), on the BEAM, and on every other target.
 typedReport :: String -> IO ()
 typedReport name = do
   let base = "bench" </> name
@@ -173,7 +175,8 @@ typedReport name = do
       definitions = length (concatMap C.unitDefinitions units)
   forM_ [ ("rust, go, python, javascript, typescript, haskell", typedPlanPerforming scalarTypes declarations units)
         , ("java, kotlin", typedPlanPerforming jvmScalars declarations units)
-        , ("fsharp, csharp", typedPlanPerforming scalarTypes (dotnetTypedDeclarations [] declarations) units) ] $ \(label, plan) -> do
+        , ("fsharp, csharp", typedPlanPerforming scalarTypes (dotnetTypedDeclarations [] declarations) units)
+        , ("erlang, elixir, gleam", typedPlanPerforming scalarTypes (beamTypedDeclarations [] declarations) units) ] $ \(label, plan) -> do
     let fallbacks = typedFallbacks plan
         handlers = [(C.handlerName h, isTypedHandler plan h) | u <- units, h <- C.unitHandlers u]
     putStrLn (label ++ ": " ++ show (definitions - length fallbacks) ++ " of " ++ show definitions ++ " definitions typed")
@@ -261,6 +264,10 @@ commands target project = case target of
   -- The BEAM drivers are modules of the generated project, run by erl.
   "erlang" -> pure ([("rebar3", ["compile"])],
     ("erl", ["+sbwt", "none", "-noshell", "-pa", "_build/default/lib/lawspec_example/ebin", "-run", "kafka_bench", "main"]))
+  "elixir" -> pure ([("mix", ["compile"])], ("mix", ["run", "-e", "KafkaBench.main(System.argv())", "--"]))
+  "gleam" -> pure ([("gleam", ["build"])],
+    ("erl", ["+sbwt", "none", "-noshell", "-pa", "build/dev/erlang/lawspec_example/ebin", "-pa", "build/dev/erlang/gleam_stdlib/ebin",
+      "-eval", "kafka_bench:main(), halt().", "-extra"]))
   _ -> die ("no benchmark runner for " ++ target)
 
 -- | Throughput per phase and memory, from the driver's lines.
