@@ -524,6 +524,15 @@ DEC-dotnet-fscheck:
   decided: 0.23.0
   refs: [fscheck]
 
+DEC-beam-property-libraries:
+  status: decided
+  question: Which property library runs laws on each BEAM language, and is it still the best choice now that checked definitions and handlers run typed there?
+  answer: |
+    The ones 0.22 adopted, unchanged: PropEr 1.5.0 for Erlang, StreamData 1.4.0 for Elixir and qcheck 1.0.5 for Gleam, each driven through LawSpec's generator plan and harness (lawspec_beam_proper, lawspec_beam_stream_data, lawspec_beam_qcheck), seeded by LAWSPEC_SEED and shrinking inside refinements. The typed path in 0.24 changes what a law calls, not how its inputs are drawn or shrunk, so no generator moves. The alternatives were reviewed for 0.24. Erlang - Quviq QuickCheck is commercial and its free QuickCheck Mini is closed and limited, so it cannot be a generated project's dependency; triq is open but sees little maintenance and has fewer shrinking and stateful features than PropEr; PropEr is maintained, has integrated shrinking, stateful and targeted testing, and is a test-only dependency. Elixir - PropCheck wraps PropEr, which would give Elixir PropEr's model and a second wrapper, while StreamData is the ecosystem's standard (ExUnitProperties), maintained alongside Elixir itself and written in Elixir. Gleam - qcheck is the maintained, documented property library with integrated shrink trees; the other Gleam packages are small or dormant. Each choice stays the best-maintained option for its language; revisit when one of them stops being maintained.
+  opened: 0.24.0
+  decided: 0.24.0
+  refs: [proper, stream-data, qcheck]
+
 DEC-csharp-over-fsharp:
   status: decided
   question: How does LawSpec support C#, with a second runtime or over the F# one?

@@ -60,6 +60,8 @@ scaffoldFiles = scaffoldFilesWith False
 
 -- | Erlang test FFI is a local development dependency so Gleam production
 -- exports omit it along with qcheck. Gleam otherwise ships foreign test files.
+-- PropEr, StreamData and qcheck are the BEAM property libraries.
+-- ref:DEC-beam-property-libraries
 gleamTestPackage :: String
 gleamTestPackage = unlines
   [ "# Generated test helpers are a development-only dependency."
