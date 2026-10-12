@@ -94,7 +94,7 @@ Values cross the boundary as Clojure data:
 | Text, bytes, durations | `String`, `byte[]`, `java.time.Duration` |
 
 A tag's namespace is the type's name and its name the constructor's, both in
-kebab case. The names are the Java model's, so when two units declare a type
+kebab case, an acronym one word: `:currency/usd`. The names are the Java model's, so when two units declare a type
 of one name, their tags carry the units' names: `:shop-orders-currency/gbp`.
 Fields are kebab-case keys. A multimethod on `lawspec.clojure/tag` matches a
 sum:
@@ -128,9 +128,10 @@ underscores for hyphens: `["till", "payments", "native_till"]` is
   ability's production handler.
 - A bound failure names an ex-info's `:type`: `["till", "card_declined"]`
   turns `(ex-info "declined" {:type :till/card-declined})` into the failure.
+- A bound generator is a function of no arguments returning a test.check
+  generator of the type's tagged values.
 
-Clojure binds no types and no generators: a Clojure program uses the model's
-data.
+Clojure binds no types: a Clojure program uses the model's data.
 
 ## Checked definitions and the model
 
