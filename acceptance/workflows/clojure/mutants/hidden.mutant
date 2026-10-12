@@ -1,0 +1,6 @@
+@@ src/example/workflows.clj
+<<<<<<<
+  (if (empty? name) [:left :signup-error/missing-name] [:right signup]))
+=======
+  (if (and (empty? name) false) [:left :signup-error/missing-name] [:right signup]))
+>>>>>>>

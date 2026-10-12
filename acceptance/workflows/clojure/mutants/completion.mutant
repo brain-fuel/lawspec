@@ -1,0 +1,8 @@
+@@ src/example/approvals.clj
+<<<<<<<
+        (vec (keep :error (:error error)))
+        []))))
+=======
+        @workflows/finished
+        @workflows/finished))))
+>>>>>>>
