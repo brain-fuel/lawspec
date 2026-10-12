@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.clj
+<<<<<<<
+(defn successor [n] (inc' n))
+=======
+(defn successor [n] (unchecked-byte (inc n)))
+>>>>>>>

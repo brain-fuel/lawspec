@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.clj
+<<<<<<<
+(defn same-symbol [a b] (LawSpecRuntime/equal a b))
+=======
+(defn same-symbol [a b] (= (.description (.data a)) (.description (.data b))))
+>>>>>>>
