@@ -74,7 +74,7 @@ emitProtocols layout bits declarations units
             D.text "import LawSpecRuntime" <> D.hardline <> D.hardline <>
             D.text "extension LawSpec.Abilities {" <> D.nest 4 (D.hardline <> D.joinWith (D.hardline <> D.hardline) groups) <> D.hardline <>
             D.text "}" <> D.hardline
-      pure [Artifact "src/LawSpec/Abilities.swift" (D.render layout doc) "generated" "source"]
+      pure [Artifact "src/LawSpec/LawSpecAbilities.swift" (D.render layout doc) "generated" "source"]
   where
     own u = [a | a <- N.ownAbilities u, not (C.isFail (C.abilityInstance a))]
 
@@ -92,7 +92,7 @@ emitBridges layout bits declarations units
               D.text "public enum AbilityBridges {" <> D.nest 4 (D.hardline <> D.joinWith (D.hardline <> D.hardline) bodies) <>
               D.hardline <> D.text "}") <> D.hardline <>
             D.text "}" <> D.hardline
-      pure [Artifact "src/LawSpec/AbilityBridges.swift" (D.render layout doc) "generated" "source"]
+      pure [Artifact "src/LawSpec/LawSpecAbilityBridges.swift" (D.render layout doc) "generated" "source"]
   where
     bridge names a = do
       let key = C.abilityKey (C.abilityInstance a)
@@ -108,7 +108,7 @@ emitBridges layout bits declarations units
                       | isUnit t = "Value.unit" : go cs ts ns
                       | (n : rest) <- ns = ("try " ++ c ++ ".fromNative(" ++ n ++ ")") : go cs ts rest
                     go _ _ _ = []
-            logical = "try Effects.invoke(originHandler, originSchema, " ++ stringLiteral op ++ ", [" ++ intercalate ", " values ++ "])"
+            logical = "try Effects.invoke(self.originHandler, self.originSchema, " ++ stringLiteral op ++ ", [" ++ intercalate ", " values ++ "])"
             converted = if r == "Void" then "_ = " ++ logical else "return try " ++ out ++ ".toNative(" ++ logical ++ ")"
             resultTy = r
             closure = "{ () throws -> " ++ resultTy ++ " in " ++ converted ++ " }"
@@ -250,5 +250,5 @@ emitDefaults layout units
               D.text "public enum DefaultHandlers {" <> D.nest 4 (D.hardline <> D.joinWith (D.hardline <> D.hardline) functions) <>
               D.hardline <> D.text "}") <> D.hardline <>
             D.text "}" <> D.hardline
-      pure [Artifact "src/LawSpec/DefaultHandlers.swift" (D.render layout doc) "generated" "source"]
+      pure [Artifact "src/LawSpec/LawSpecDefaultHandlers.swift" (D.render layout doc) "generated" "source"]
   where defaults = [a | a <- Effects.abilities units, Effects.hasDefault a]

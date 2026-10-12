@@ -14,6 +14,9 @@ public enum Typed {
     /// A branch the checker proved unreachable.
     public static func unreachable<T>() throws -> T { throw Fail.with("Unreachable", "unreachable branch reached") }
 
+    /// The failure a branch the checker proved unreachable raises.
+    public static func unreachableFailure() -> LawSpecError { Fail.with("Unreachable", "unreachable branch reached") }
+
     /// A failure the typed code raises: the same error the dynamic code raises.
     public static func raiseFailure<T>(_ ability: String, _ failure: Value) throws -> T {
         throw RaisedFailure(ability, failure)

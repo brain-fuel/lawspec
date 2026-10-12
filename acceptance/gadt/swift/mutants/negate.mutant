@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.swift
+<<<<<<<
+        case .negate(let operand): return !evalTruth(operand)
+=======
+        case .negate(let operand): return evalTruth(operand)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.swift
+<<<<<<<
+        case .shown(_, let witness): return witness
+=======
+        case .shown(_, _): return "Int32"
+>>>>>>>

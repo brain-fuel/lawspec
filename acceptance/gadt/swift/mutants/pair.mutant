@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.swift
+<<<<<<<
+            return Pair(first: evalNumber(retype(Codecs.bigInt, first)), second: evalTruth(retype(Codecs.bool, second)))
+=======
+            return Pair(first: evalNumber(retype(Codecs.bigInt, first)), second: !evalTruth(retype(Codecs.bool, second)))
+>>>>>>>

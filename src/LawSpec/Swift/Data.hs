@@ -218,8 +218,8 @@ emitData layout bits declarations
               D.text "public enum DataCodecs {" <> D.nest 4 (D.hardline <>
                 D.joinWith (D.hardline <> D.hardline) (handleCodecs ++ codecs)) <> D.hardline <> D.text "}") <> D.hardline <>
             D.text "}" <> D.hardline
-      pure [ Artifact "src/LawSpec/Data.swift" (D.render layout typesDoc) "generated" "source"
-           , Artifact "src/LawSpec/DataCodecs.swift" (D.render layout codecsDoc) "generated" "source" ]
+      pure [ Artifact "src/LawSpec/LawSpecData.swift" (D.render layout typesDoc) "generated" "source"
+           , Artifact "src/LawSpec/LawSpecDataCodecs.swift" (D.render layout codecsDoc) "generated" "source" ]
   where
     named names d = maybe (Left ("unnamed data " ++ C.idText (C.dataId d))) Right (lookup (C.dataId d) names)
     typeParams d = if null (C.dataParameters d) then "" else "<" ++ intercalate ", " [typeParameter i | (i, _) <- zip [0 ..] (C.dataParameters d)] ++ ">"
@@ -242,8 +242,10 @@ emitData layout bits declarations
       self <- selfType names d
       let header = "/// " ++ C.idText (C.dataId d)
           portableWhere = if null (C.dataParameters d) then "" else " where " ++ whereClause d
-          sendableExtension = if null (C.dataParameters d) then [] else
-            [D.text ("extension " ++ name ++ ": Sendable where " ++ intercalate ", " [typeParameter i ++ ": Sendable" | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)] ++ " {}")]
+          sendableWhere = intercalate ", " [typeParameter i ++ ": Sendable" | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
+          -- Any data type may be a failure (fails with E), thrown as E.
+          sendableExtension = if null (C.dataParameters d) then [D.text ("extension " ++ name ++ ": Error {}")] else
+            [ D.text ("extension " ++ name ++ ": Sendable where " ++ sendableWhere ++ " {}") ]
       if isStruct recursive d then do
         let c = head (C.dataConstructors d)
         fields <- forM (C.constructorFields c) $ \b -> do
@@ -404,7 +406,7 @@ emitSchema layout bits crypto declarations = do
             D.text "private static func build() throws -> Schema {" <> D.nest 4 (D.hardline <> body) <> D.hardline <> D.text "}") <>
             D.hardline <> D.text "}") <> D.hardline <>
         D.text "}" <> D.hardline
-  pure (Artifact "src/LawSpec/Program.swift" (D.render layout doc) "generated" "source")
+  pure (Artifact "src/LawSpec/LawSpecProgram.swift" (D.render layout doc) "generated" "source")
   where
     refKey (S.Parameter i) = "$" ++ show i
     refKey (S.Named n []) = n
