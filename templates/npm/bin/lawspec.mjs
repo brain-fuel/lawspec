@@ -57,6 +57,8 @@ function testCommand(target, root) {
     command = `${shellQuote(target.maven || "mvn")} test`;
   if (target.language === "kotlin")
     command = `${shellQuote(target.gradle || "gradle")} test`;
+  if (target.language === "scala")
+    command = `${shellQuote(target.scala || "scala")} test .`;
   if (target.language === "javascript")
     command = `node --test ${shellQuote(testDir)}/*.test.mjs`;
   if (target.language === "typescript")
@@ -617,6 +619,7 @@ async function coverageMissing(target, root, report) {
     const build = await readFile(path.join(root, "build.gradle.kts"), "utf8").catch(() => "");
     return build.includes("kover") ? null : tool;
   }
+  if (target.language === "scala") return tool;
   return null;
 }
 // Run a native test command, showing its output (on stderr with --json) and

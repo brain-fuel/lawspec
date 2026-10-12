@@ -161,6 +161,10 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
       args: ["test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--", "--exact", "--nocapture", ...marks.map((e) => e.name)] }));
   if (language === "fsharp" || language === "csharp")
     return [{ command: "dotnet", args: ["test", ...entries.flatMap((e) => ["--filter-query", `/*/*/*/${e.name}`])] }];
+  if (language === "scala")
+    return groupBy(entries, (e) => e.file).map(([file, marks]) => ({ command: target.scala || "scala",
+      args: ["test", ".", ...(offline ? ["--offline"] : []), "--test-only", className(file, "src/test/scala", ".scala"), "--",
+        ...marks.flatMap((e) => ["-z", e.name])] }));
   if (language === "haskell") {
     const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
     // hspec matches by substring, and a benchmark's name has spaces, so each
@@ -284,6 +288,19 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
         report: { kind: "junit", directory: "build/test-results/test" },
         ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
     });
+  // ScalaTest selects tests by substring (-z): each law's tests are named
+  // after it, then a kind after a separator no name contains. Its JUnit
+  // reporter writes one file per suite (-u).
+  if (language === "scala")
+    return groupBy(entries, (e) => e.file).map(([file, laws], n) => {
+      const name = className(file, "src/test/scala", ".scala");
+      const directory = path.join(scratch, `scalatest-${n}`);
+      return { laws, command: target.scala || "scala",
+        args: ["test", ".", ...(offline ? ["--offline"] : []), "--test-only", name, "--",
+          ...laws.flatMap((e) => ["-z", `${e.name}_`]), "-u", directory],
+        report: { kind: "junit", directory: path.relative(root, directory) || "." },
+        ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
+    });
   if (language === "rust")
     return groupBy(entries, (e) => e.file).map(([file, laws]) => ({
       laws, command: "cargo",
@@ -333,6 +350,7 @@ export const coverageTools = {
   haskell: { tool: "hpc", install: "(built into GHC; stack test --coverage)" },
   fsharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },
   csharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },
+  scala: { tool: "scoverage", install: "Scala CLI has no coverage; export the build (scala --power export --sbt) and add sbt-scoverage" },
 };
 
 // Laws selected by tag: every --tag, and none of --exclude-tag.
