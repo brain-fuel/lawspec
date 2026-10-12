@@ -66,16 +66,22 @@ public final class LawSpecClojure {
 
   // Names ----------------------------------------------------------------
 
-  /** A Java name in Clojure's words: ProducerEpoch is producer-epoch. */
+  /**
+   * A Java name in Clojure's words: ProducerEpoch is producer-epoch, an
+   * acronym one word (USD is usd, HTTPServer http-server).
+   */
   public static String kebab(String name) {
     var out = new StringBuilder();
     for (int i = 0; i < name.length(); i++) {
       char c = name.charAt(i);
-      if (Character.isUpperCase(c)) {
-        if (i > 0) out.append('-');
-        out.append(Character.toLowerCase(c));
-      } else if (c == '_') {
+      if (c == '_') {
         out.append('-');
+      } else if (Character.isUpperCase(c)) {
+        boolean afterLower = i > 0 && !Character.isUpperCase(name.charAt(i - 1)) && name.charAt(i - 1) != '_';
+        boolean endsAcronym = i > 0 && Character.isUpperCase(name.charAt(i - 1))
+            && i + 1 < name.length() && Character.isLowerCase(name.charAt(i + 1));
+        if (afterLower || endsAcronym) out.append('-');
+        out.append(Character.toLowerCase(c));
       } else {
         out.append(c);
       }
@@ -106,19 +112,18 @@ public final class LawSpecClojure {
     return Keyword.intern(kebab(type.getSimpleName()), kebab(type.getSimpleName()));
   }
 
-  /** The data class a tag names, in lawspec.data. */
+  /** The data class a tag names, in lawspec.data: the type, then its case by its words. */
   public static Class<?> classOfTag(Keyword tag) {
-    String owner = camel(tag.getNamespace(), true);
-    String name = camel(tag.getName(), true);
-    for (String candidate : owner.equals(name)
-        ? List.of("lawspec.data." + name)
-        : List.of("lawspec.data." + owner + "$" + name, "lawspec.data." + owner + "$" + name + "Case")) {
-      try {
-        return Class.forName(candidate);
-      } catch (ClassNotFoundException e) {
-        // try the next spelling
-      }
+    Class<?> owner;
+    try {
+      owner = Class.forName("lawspec.data." + camel(tag.getNamespace(), true));
+    } catch (ClassNotFoundException e) {
+      throw new IllegalArgumentException("no LawSpec data type for tag " + tag);
     }
+    if (owner.isRecord() && kebab(owner.getSimpleName()).equals(tag.getName())) return owner;
+    if (owner.isSealed())
+      for (Class<?> c : owner.getPermittedSubclasses())
+        if (kebab(c.getSimpleName()).equals(tag.getName()) || kebab(c.getSimpleName()).equals(tag.getName() + "-case")) return c;
     throw new IllegalArgumentException("no LawSpec data type for tag " + tag);
   }
 

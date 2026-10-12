@@ -3,8 +3,9 @@
 -- adapter's; a bound handler is a Clojure function returning a map of the
 -- ability's operations, which a generated Java class presents as the
 -- ability's interface; a bound failure is an ex-info whose :type is a
--- keyword, which becomes a failure constructor. Clojure binds no types and
--- no generators: a Clojure program uses the model's data.
+-- keyword, which becomes a failure constructor; a bound generator is a
+-- function returning a test.check generator of the type's tagged values.
+-- Clojure binds no types: a Clojure program uses the model's data.
 -- ref:DEC-clojure-over-java
 module LawSpec.Clojure.Bindings (ClojureBindings(..), noClojureBindings, splitBindings) where
 
@@ -13,7 +14,7 @@ import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Diagnostic(..))
 import qualified LawSpec.NativeRequest as NB
-import LawSpec.NativeBinding (NativeRef(..), ResolvedBindings(..))
+import LawSpec.NativeBinding (NativeRef(..), ResolvedBindings(..), ResolvedGeneratorBinding(..))
 import LawSpec.TargetNames (nativeName)
 import LawSpec.Clojure.Bridge (kebab)
 
@@ -24,19 +25,25 @@ data ClojureBindings = ClojureBindings
   , boundHandlers :: [(String, String, (String, String))]
   -- The ex-info's :type, the failure constructor, and whether it takes the
   -- ex-info's message.
-  , boundFailures :: [(String, String, Bool)] }
+  , boundFailures :: [(String, String, Bool)]
+  -- The generated factory method, and (namespace, function).
+  , boundGenerators :: [(String, (String, String))] }
 
 noClojureBindings :: ClojureBindings
-noClojureBindings = ClojureBindings [] [] []
+noClojureBindings = ClojureBindings [] [] [] []
 
 -- | The bindings the Java model keeps (handlers, as generated classes), and
 -- those the Clojure bridges take.
 splitBindings :: NB.BindingPlan -> Either [Diagnostic] (NB.BindingPlan, ClojureBindings)
 splitBindings plan = do
   let representations = NB.bindingRepresentations plan
-  case (resolvedTypes representations, resolvedGenerators representations) of
-    ([], []) -> pure ()
-    _ -> Left [Diagnostic "native-binding" "Clojure binds functions, handlers and failures, not types or generators: a Clojure program uses the model's data" Nothing]
+  case resolvedTypes representations of
+    [] -> pure ()
+    _ -> Left [Diagnostic "native-binding" "Clojure binds functions, handlers, failures and generators, not types: a Clojure program uses the model's data" Nothing]
+  let generators = resolvedGenerators representations
+  case [g | g <- generators, generatorParameterCount g /= 0 || resolvedGeneratorStub g] of
+    [] -> pure ()
+    _ -> Left [Diagnostic "native-binding" "a Clojure generator binding names an existing function of no arguments" Nothing]
   let unitOf d = takeWhile (/= ':') (C.idText (C.declarationId d))
       javaName d = nativeName "java" (nativeName "clojure" (C.declarationName d))
       -- lawspec.json's names are identifiers: an underscore is Clojure's hyphen.
@@ -53,10 +60,13 @@ splitBindings plan = do
       handlers = [(C.idText key, className (C.idText key), target r) | (key, r) <- NB.bindingHandlers plan]
       failures = [ (intercalate "." (map hyphens (init (C.failureNative f))) ++ "/" ++ hyphens (last (C.failureNative f)), C.idText (C.failureConstructor f), C.failureMessage f)
                  | f <- NB.bindingFailures plan, not (null (C.failureNative f)) ]
-      java = plan { NB.bindingRepresentations = ResolvedBindings [] [], NB.bindingFunctions = [], NB.bindingCalls = []
+      factories = [ (g, "factory" ++ show i, target (resolvedGeneratorFactory g)) | (i, g) <- zip [0 :: Int ..] generators ]
+      java = plan { NB.bindingRepresentations = ResolvedBindings []
+                      [g { resolvedGeneratorFactory = NativeRef ["lawspec", "clojure", "bound", "Generators", m] } | (g, m, _) <- factories]
+                  , NB.bindingFunctions = [], NB.bindingCalls = []
                   , NB.bindingFailures = []
                   , NB.bindingHandlers = [(key, NativeRef ["lawspec", "clojure", "bound", className (C.idText key)]) | (key, _) <- NB.bindingHandlers plan] }
-  pure (java, ClojureBindings functions handlers failures)
+  pure (java, ClojureBindings functions handlers failures [(m, t) | (_, m, t) <- factories])
   where
     hyphens = map (\c -> if c == '_' then '-' else c)
     -- example.till::ability::Drawer is ExampleTillDrawer.
