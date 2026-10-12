@@ -204,6 +204,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The predicates npm test makes its scratch project under `.artifacts`, so a
+  `generate --check` running beside it in parallel CI no longer sees it.
 - `tools/bootstrap-integration.mjs` installs the crypto packages the crypto
   and distribution suites need (`@noble/post-quantum` from the JavaScript and
   TypeScript locks, `cryptography` for Python), so a new `.integration`

@@ -74,7 +74,10 @@ test("Bool equality, predicate laws, nested conditions and generic wrappers type
 });
 
 test("generated implications short-circuit in order, evaluate once, and keep expectations unconditional", async () => {
-  const root = await mkdtemp(path.join(process.cwd(), ".lawspec-predicates-"));
+  // Under .artifacts, not the repository root, so a generate --check running alongside never sees it;
+  // module resolution still walks up to the repository's node_modules.
+  await mkdir(path.join(process.cwd(), ".artifacts"), { recursive: true });
+  const root = await mkdtemp(path.join(process.cwd(), ".artifacts", "lawspec-predicates-"));
   const exec = promisify(execFile);
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
