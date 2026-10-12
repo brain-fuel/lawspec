@@ -20,6 +20,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   feature order and Spock's concurrent execution. The surveys behind the
   property libraries are DEC-groovy-property-library and
   DEC-clojure-property-library.
+- Clojure target (`--target clojure`) on Clojure 1.12 with deps.edn,
+  `clojure.test` and test.check. Clojure runs over the Java model too, which
+  `lawspec.build` compiles with the JDK's compiler. Each unit's adapters are
+  functions of a namespace, called through a generated Java bridge, and
+  values cross as Clojure data: tagged maps (`{:lawspec/tag
+  :payment/approved, :cents 500}`) or a tag alone for a constructor without
+  fields, vectors, sets, maps, nil for Maybe's nothing, `[:left e]` and
+  `[:right a]`, and failures as ex-info. Native handlers are maps of
+  operations. `lawspec.json` binds functions, handle constructors and
+  methods, handlers and failures (an ex-info's `:type`) to Clojure.
+  Properties run on test.check: LawSpec's generators make rose trees whose
+  shrinks stay inside refinements, and `LAWSPEC_SEED` replays a run; a
+  namespace's `test-ns-hook` gives `order random` and `parallel`.
 
 ## [0.23.0] - 2026-10-12
 
