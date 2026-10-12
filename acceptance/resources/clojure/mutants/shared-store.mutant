@@ -1,0 +1,11 @@
+expect: every case gets an empty store
+@@ src/example/resources.clj
+<<<<<<<
+(defn put [store k v] (open! store) (swap! store assoc-in [:items k] v) nil)
+
+(defn get [store k] (open! store) (clojure.core/get-in @store [:items k]))
+=======
+(defn put [store k v] (open! store) (swap! shared-items assoc k v) nil)
+
+(defn get [store k] (open! store) (clojure.core/get @shared-items k))
+>>>>>>>

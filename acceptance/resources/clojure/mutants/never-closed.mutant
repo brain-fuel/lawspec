@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/example/resources.clj
+<<<<<<<
+    (swap! store assoc :open false)
+    (swap! open-stores dec))
+=======
+    (swap! store assoc :open false))
+>>>>>>>

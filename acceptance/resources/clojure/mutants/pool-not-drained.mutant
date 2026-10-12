@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/example/resources.clj
+<<<<<<<
+(defn drain-pool [pool] (swap! pool assoc :amount 0) nil)
+=======
+(defn drain-pool [pool] nil)
+>>>>>>>
