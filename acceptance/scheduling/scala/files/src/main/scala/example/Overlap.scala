@@ -17,5 +17,5 @@ object Overlap {
       Thread.sleep(300)
       note("end", value0)
       true
-    }(scala.concurrent.ExecutionContext.global)
+    }(using scala.concurrent.ExecutionContext.global)
 }

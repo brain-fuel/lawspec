@@ -104,7 +104,7 @@ emitBindings minify plan testing files = do
         resultBody <- case ref of
           StaticCall r -> do
             let application = E.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
-            pure $ if async then application <> D.text ".map(result => " <> returned <> D.text ")(scala.concurrent.ExecutionContext.parasitic)"
+            pure $ if async then application <> D.text ".map(result => " <> returned <> D.text ")(using scala.concurrent.ExecutionContext.parasitic)"
               else if result == C.scalarType "Unit" then application <> D.hardline <> D.text "()" else
               D.text "val result = " <> application <> D.hardline <> returned
           _ -> do
@@ -122,7 +122,7 @@ emitBindings minify plan testing files = do
                 pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
             pure $ if async then application <> D.text ".map(result => " <>
                 (if result == C.scalarType "Unit" then D.text "()" else returnedOf (D.text ("result.asInstanceOf[" ++ D.render D.Compact nativeResultType ++ "]"))) <>
-                D.text ")(scala.concurrent.ExecutionContext.parasitic)"
+                D.text ")(using scala.concurrent.ExecutionContext.parasitic)"
               else if result == C.scalarType "Unit" then application <> D.hardline <> D.text "()"
               -- A method's null is None; anything else is Some.
               else case maybeElement of

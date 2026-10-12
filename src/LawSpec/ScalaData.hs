@@ -408,7 +408,7 @@ emitCodecs mappings owner layout declarations = do
           encoder = D.text ("(value: " ++ nativeText ++ ") => {") <> D.nest 2 (D.hardline <>
             (if null encodeArms then failure else
               if directProduct then D.joinWith D.hardline [body | (_,body) <- encodeArms] else
-              D.text "value match " <>
+              D.text "(value: Any) match " <>
               D.block 2 (D.joinWith D.hardline
                 ([D.text ("case " ++ condition ++ " => ") <> D.block 2 body | (condition,body) <- encodeArms] ++ [D.text "case _ => " <> failure])))) <>
             D.hardline <> D.text "}"

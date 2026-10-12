@@ -24,6 +24,8 @@ object Crypto {
   }
 
   private def immutable(bytes: Array[Byte]): IArray[Byte] = IArray.unsafeFromArray(bytes)
+  private def bytes(value: IArray[Byte]): Array[Byte] = IArray.genericWrapArray(value).toArray
+
 
   /** A source of randomness that gives these bytes, in order: how the JDK makes a key from its seed. */
   class Seeded(seed: Array[Byte]) extends java.security.SecureRandom {
@@ -166,9 +168,9 @@ object Crypto {
 
   /** SHA3-256 and SHAKE256. */
   class HashHandler extends lawspec.abilities.lawspec.Crypto.Hash {
-    override def sha3(value0: scala.IArray[scala.Byte]): @@Digest@@ = @@Digest@@(immutable(sha3_256(value0.toArray)))
+    override def sha3(value0: scala.IArray[scala.Byte]): @@Digest@@ = @@Digest@@(immutable(sha3_256(bytes(value0))))
 
-    override def shake(value0: scala.IArray[scala.Byte], value1: scala.Int): scala.IArray[scala.Byte] = immutable(shake256(value0.toArray, value1))
+    override def shake(value0: scala.IArray[scala.Byte], value1: scala.Int): scala.IArray[scala.Byte] = immutable(shake256(bytes(value0), value1))
   }
 
   /** ML-KEM-768. */
@@ -179,12 +181,12 @@ object Crypto {
     }
 
     override def encapsulate(value0: @@ExchangePublicKey@@): @@Encapsulated@@ = {
-      val (ciphertext, secret) = mlKem768Encapsulate(value0.value.toArray, secure)
+      val (ciphertext, secret) = mlKem768Encapsulate(bytes(value0.value), secure)
       @@Encapsulated@@(@@Ciphertext@@(immutable(ciphertext)), @@SharedSecret@@(immutable(secret)))
     }
 
     override def decapsulate(value0: @@ExchangeSecretKey@@, value1: @@Ciphertext@@): @@SharedSecret@@ =
-      @@SharedSecret@@(immutable(mlKem768Decapsulate(value0.value.toArray, value1.value.toArray)))
+      @@SharedSecret@@(immutable(mlKem768Decapsulate(bytes(value0.value), bytes(value1.value))))
   }
 
   /** ML-DSA-65, hedged. */
@@ -195,10 +197,10 @@ object Crypto {
     }
 
     override def sign(value0: @@SigningKey@@, value1: scala.IArray[scala.Byte]): @@SignatureBytes@@ =
-      @@SignatureBytes@@(immutable(mlDsa65Sign(value0.value.toArray, value1.toArray, false)))
+      @@SignatureBytes@@(immutable(mlDsa65Sign(bytes(value0.value), bytes(value1), false)))
 
     override def verify(value0: @@VerifyingKey@@, value1: scala.IArray[scala.Byte], value2: @@SignatureBytes@@): scala.Boolean =
-      mlDsa65Verify(value0.value.toArray, value1.toArray, value2.value.toArray)
+      mlDsa65Verify(bytes(value0.value), bytes(value1), bytes(value2.value))
   }
 
   /**
@@ -213,10 +215,10 @@ object Crypto {
     }
 
     override def sign(value0: @@SigningKey@@, value1: scala.IArray[scala.Byte]): @@SignatureBytes@@ =
-      @@SignatureBytes@@(immutable(slhDsaSign(value0.value.toArray, value1.toArray, new Array[Byte](0))))
+      @@SignatureBytes@@(immutable(slhDsaSign(bytes(value0.value), bytes(value1), new Array[Byte](0))))
 
     override def verify(value0: @@VerifyingKey@@, value1: scala.IArray[scala.Byte], value2: @@SignatureBytes@@): scala.Boolean =
-      slhDsaVerify(value0.value.toArray, value1.toArray, value2.value.toArray, new Array[Byte](0))
+      slhDsaVerify(bytes(value0.value), bytes(value1), bytes(value2.value), new Array[Byte](0))
   }
 
   /** AES-256-GCM, a fresh random nonce per message. */
@@ -224,17 +226,17 @@ object Crypto {
     override def aeadKey(): @@AeadKey@@ = @@AeadKey@@(immutable(randomBytes(32)))
 
     override def deriveAeadKey(value0: @@SharedSecret@@, value1: scala.IArray[scala.Byte]): @@AeadKey@@ =
-      @@AeadKey@@(immutable(shake256(value0.value.toArray ++ value1.toArray, 32)))
+      @@AeadKey@@(immutable(shake256(bytes(value0.value) ++ bytes(value1), 32)))
 
     override def seal(value0: @@AeadKey@@, value1: scala.IArray[scala.Byte], value2: scala.IArray[scala.Byte]): @@Sealed@@ = {
       val nonce = randomBytes(12)
-      @@Sealed@@(immutable(nonce ++ aes256GcmEncrypt(value0.value.toArray, nonce, value1.toArray, value2.toArray)))
+      @@Sealed@@(immutable(nonce ++ aes256GcmEncrypt(bytes(value0.value), nonce, bytes(value1), bytes(value2))))
     }
 
     override def unseal(value0: @@AeadKey@@, value1: @@Sealed@@, value2: scala.IArray[scala.Byte]): scala.Option[scala.IArray[scala.Byte]] = {
-      val boxed = value1.value.toArray
+      val boxed = bytes(value1.value)
       if (boxed.length < 12) None
-      else aes256GcmDecrypt(value0.value.toArray, boxed.take(12), boxed.drop(12), value2.toArray).map(immutable)
+      else aes256GcmDecrypt(bytes(value0.value), boxed.take(12), boxed.drop(12), bytes(value2)).map(immutable)
     }
   }
 }

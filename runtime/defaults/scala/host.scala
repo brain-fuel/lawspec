@@ -5,6 +5,8 @@ import lawspec.runtime.LawSpecRuntime
 
 /** The default handlers of lawspec.host: the process's file system, environment and free ports. */
 object Host {
+  private def bytes(value: IArray[Byte]): Array[Byte] = IArray.genericWrapArray(value).toArray
+
   /** Files by path; a relative path is from the working directory. */
   class FileSystemHandler extends lawspec.abilities.lawspec.Host.FileSystem {
     override def readBytes(value0: java.lang.String): scala.Option[scala.IArray[scala.Byte]] =
@@ -15,7 +17,7 @@ object Host {
       }
 
     override def writeBytes(value0: java.lang.String, value1: scala.IArray[scala.Byte]): scala.Unit = {
-      java.nio.file.Files.write(java.nio.file.Path.of(value0), value1.toArray)
+      java.nio.file.Files.write(java.nio.file.Path.of(value0), bytes(value1))
       ()
     }
 
