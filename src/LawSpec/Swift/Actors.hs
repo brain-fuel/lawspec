@@ -2,8 +2,9 @@
 -- actor becomes a class named for its handle type in LawSpec.Actors, and
 -- the functions it runs (its start, handlers and restart) a struct of
 -- functions, usually the unit's adapters (its adapters property). Each
--- handler is a method that sends its message and waits for the reply, with
--- a tell form that does not wait; an actor whose messages have wire
+-- handler is a method that sends its message and waits for the reply, an
+-- async overload of it that awaits the reply on a runtime thread, and a
+-- tell form that does not wait; an actor whose messages have wire
 -- descriptors can be served to and called from other nodes. Supervisors
 -- start their children under the runtime's supervision tree; their children
 -- are properties. ref:DEC-actors-otp-supervision ref:DEC-swift-runtime-from-scratch
@@ -112,6 +113,12 @@ emitActors bits datas units
             Just r -> [ "    return try " ++ runtime ++ ".call(handle) { state in" ] ++ inner ++ ["    } as! " ++ r]
             Nothing -> [ "    _ = try " ++ runtime ++ ".call(handle) { state in" ] ++ inner ++ ["    }"]) ++
           [ "}"
+          , ""
+          , "/// Sends " ++ handlerName h ++ " and awaits the reply, waiting on a runtime thread, not Swift's cooperative pool." ] ++
+          [ "@discardableResult" | reply /= Nothing ] ++
+          [ "public func " ++ name ++ "(" ++ params ++ ") async throws" ++ maybe "" (" -> " ++) reply ++ " {"
+          , "    try await LawThread.run { try self." ++ name ++ "(" ++ intercalate ", " (map fst args) ++ ") }"
+          , "}"
           , ""
           , "/// Sends " ++ handlerName h ++ " without waiting."
           , "public func tell" ++ pascal (handlerName h) ++ "(" ++ params ++ ") throws {"

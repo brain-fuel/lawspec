@@ -528,7 +528,7 @@ DEC-swift-runtime-from-scratch:
   status: decided
   question: How does LawSpec reach Swift, as a port of another runtime or as a runtime written for Swift?
   answer: |
-    A runtime written for Swift 6, with no package dependencies. Portable values are a Swift enum with indirect cases and LawSpec's own BigInt; data types are structs and enums with associated values (indirect where recursive) that compare by LawSpec's order through the Portable protocol, since Swift compares a String by canonical equivalence and LawSpec by code point; Set and KeyVal are the runtime's persistent SortedSet and SortedMap. A failure an adapter, operation or definition declares is a typed throw, throws(E), and the runtime raises LawSpecError and RaisedFailure. Abilities are protocols with bridges to logical handlers; async adapters are async functions that the synchronous runtime awaits on its own large-stack threads, never on the cooperative pool. Actors are Swift actors with supervision in the runtime, sessions, mailboxes and the secure network speak the shared wire format, and lawspec.crypto uses CryptoKit, with pure Swift fallbacks only where CryptoKit lacks an operation. Projects are SwiftPM packages tested with Swift Testing; properties run on the runtime's engine (DEC-swift-property-library). Decided by the owner for 0.24.0.
+    A runtime written for Swift 6, with no package dependencies. Portable values are a Swift enum with indirect cases and LawSpec's own BigInt; data types are structs and enums with associated values (indirect where recursive) that compare by LawSpec's order through the Portable protocol, since Swift compares a String by canonical equivalence and LawSpec by code point; List, Set and KeyVal are the runtime's persistent PersistentList, SortedSet and SortedMap (DEC-swift-persistent-list). A failure an adapter, operation or definition declares is a typed throw, throws(E), and the runtime raises LawSpecError and RaisedFailure. Abilities are protocols with bridges to logical handlers; async adapters are async functions that the synchronous runtime awaits on its own large-stack threads, never on the cooperative pool. Actors are the runtime's supervised mailboxes on runtime threads, with async overloads for Swift callers (DEC-swift-actors-on-runtime-threads); sessions, mailboxes and the secure network speak the shared wire format, and lawspec.crypto uses CryptoKit, with pure Swift fallbacks only where CryptoKit lacks an operation. Projects are SwiftPM packages tested with Swift Testing; properties run on the runtime's engine (DEC-swift-property-library). Decided by the owner for 0.24.0.
   opened: 0.24.0
   decided: 0.24.0
 
@@ -540,6 +540,14 @@ DEC-swift-property-library:
   opened: 0.24.0
   decided: 0.24.0
   refs: [swift-testing]
+
+DEC-swift-actors-on-runtime-threads:
+  status: decided
+  question: Are LawSpec's Swift actors Swift actor types, which run on the cooperative pool, or the runtime's supervised mailboxes on threads of their own?
+  answer: |
+    The runtime's supervised mailboxes, each draining on a runtime thread, with the supervision tree, restart budgets, links and monitors of DEC-actors-otp-supervision. A handler runs LawSpec code, which is synchronous and may block (an async adapter is awaited by the runtime, an actor may call another actor), and blocking inside a Swift actor starves Swift's cooperative pool. So the generated actor classes are Sendable classes rather than Swift actor types; each message has a blocking method for synchronous code and an async overload of the same name that awaits the reply on a runtime thread, so async Swift code writes try await account.deposit(5) as it would with a Swift actor. This departs from the plan's Swift actors; revisit if the runtime gains an async evaluator.
+  opened: 0.24.0
+  decided: 0.24.0
 
 DEC-swift-persistent-list:
   status: decided

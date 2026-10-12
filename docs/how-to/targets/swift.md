@@ -169,6 +169,29 @@ failures to application code:
   `Gen` of the native type; put it in `tests/Native`. It replaces the built-in
   generation of that type, and its own shrink tree shrinks the values.
 
+## Actors, sessions and mailboxes
+
+An actor becomes a class in `LawSpec.Actors`, such as `AccountActor`. It runs
+a struct of functions, `AccountActorHandlers`, usually the unit's adapters.
+Each message is a method that waits for the reply, an `async` overload of the
+same name, and a `tell` form that does not wait. The overload awaits the
+reply on a runtime thread, so async code writes
+`try await account.deposit(5)`. Actors are the runtime's supervised mailboxes,
+not Swift `actor` types: a handler runs LawSpec code, which may block, and
+blocking inside a Swift actor would starve Swift's cooperative pool. `serve`
+and `connect` call an actor from another node. A supervisor class starts its
+children and exposes them as properties.
+
+A protocol `P` becomes an enum `LawSpec.Sessions.P`. `P.channel()` gives its
+two ends; `P.listen` and `P.dial` give them across nodes. Each end is a class
+named for its next step: `send` returns the next end, and `receive` returns
+the value and the next end as a tuple. An end can be used once.
+
+A mailbox `ledger` becomes `LawSpec.Mailboxes.LedgerMailbox`. `send` never
+waits, and one receiver takes messages in order; `serve` and `connect` reach
+it from another node. `LawSpec.RemoteDefinitions` serves the checked
+definitions on a node by content hash and evaluates one on another node.
+
 ## Tests
 
 Tests are Swift Testing functions. Each example, boundary case and property is
