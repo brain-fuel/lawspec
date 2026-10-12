@@ -50,6 +50,7 @@ import lawspec.runtime.LawSpecRuntime;
  * Coming back, the Java type the model expects directs each conversion.
  * ref:DEC-clojure-over-java
  */
+@SuppressWarnings("unchecked")
 public final class LawSpecClojure {
   private LawSpecClojure() {}
 
@@ -144,6 +145,11 @@ public final class LawSpecClojure {
       for (Object item : set) items.add(toClojure(item));
       return PersistentHashSet.create(items);
     }
+    if (value instanceof Collection<?> collection && !(value instanceof clojure.lang.IPersistentCollection)) {
+      var items = new ArrayList<Object>(collection.size());
+      for (Object item : collection) items.add(toClojure(item));
+      return PersistentVector.create(items);
+    }
     if (value instanceof Map<?, ?> map && !(value instanceof IPersistentMap)) {
       var items = new HashMap<Object, Object>();
       for (var entry : map.entrySet()) items.put(toClojure(entry.getKey()), toClojure(entry.getValue()));
@@ -191,6 +197,8 @@ public final class LawSpecClojure {
     Class<?> raw = raw(type, bound);
     Type[] arguments = type instanceof ParameterizedType p ? p.getActualTypeArguments() : new Type[0];
     if (raw == void.class || raw == Void.class) return null;
+    // Unit, where the model keeps it as a portable value, is nil in Clojure.
+    if (raw == LawSpecRuntime.Value.class && value == null) return LawSpecRuntime.absent("Unit");
     if (CompletableFuture.class.isAssignableFrom(raw)) {
       Type result = arguments.length > 0 ? arguments[0] : Object.class;
       if (value instanceof CompletableFuture<?> future) return future.thenApply(x -> toJava(x, result, bound));
@@ -213,6 +221,8 @@ public final class LawSpecClojure {
     if (raw == Boolean.class || raw == boolean.class) return (Boolean) value;
     if (raw == Character.class || raw == char.class) return value instanceof String s && s.length() == 1 ? s.charAt(0) : (Character) value;
     if (raw.isPrimitive() || Number.class.isAssignableFrom(raw) && raw != Number.class) return number(value, raw);
+    // The abstract Integer: any integral number, a bigint as a BigInteger.
+    if (raw == Number.class) return value instanceof BigInt big ? big.toBigInteger() : value;
     if (raw == String.class || raw == byte[].class) return value;
     if (List.class.isAssignableFrom(raw)) {
       Type element = arguments.length > 0 ? arguments[0] : Object.class;
@@ -223,6 +233,18 @@ public final class LawSpecClojure {
     if (Set.class.isAssignableFrom(raw)) {
       Type element = arguments.length > 0 ? arguments[0] : Object.class;
       var out = new LinkedHashSet<Object>();
+      for (Object item : items(value)) out.add(toJava(item, element, bound));
+      return out;
+    }
+    // Queues and stacks: ArrayDeque, from the front.
+    if (java.util.Queue.class.isAssignableFrom(raw)) {
+      Type element = arguments.length > 0 ? arguments[0] : Object.class;
+      java.util.Collection<Object> out;
+      try {
+        out = raw.isInterface() ? new java.util.ArrayDeque<>() : (java.util.Collection<Object>) raw.getDeclaredConstructor().newInstance();
+      } catch (ReflectiveOperationException e) {
+        throw new IllegalArgumentException("cannot make a " + raw.getName(), e);
+      }
       for (Object item : items(value)) out.add(toJava(item, element, bound));
       return out;
     }
@@ -346,12 +368,14 @@ public final class LawSpecClojure {
 
   private static Object deref(Object value) {
     try {
-      return value instanceof IDeref d ? d.deref() : ((Future<?>) value).get();
+      return value instanceof Future<?> f ? f.get() : ((IDeref) value).deref();
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
-    } catch (java.util.concurrent.ExecutionException e) {
-      throw rethrow(e.getCause());
+    } catch (Exception e) {
+      Throwable cause = e instanceof java.util.concurrent.ExecutionException ? e.getCause() : e;
+      if (cause instanceof ExceptionInfo info) throw failure(info);
+      throw rethrow(cause);
     }
   }
 

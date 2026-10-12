@@ -1,0 +1,6 @@
+@@ src/example/collections.clj
+<<<<<<<
+(defn word-counts [words] (frequencies words))
+=======
+(defn word-counts [words] (zipmap words (repeat 1)))
+>>>>>>>

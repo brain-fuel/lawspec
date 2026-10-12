@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/example/failures.clj
+<<<<<<<
+               (neg? amount) :decision/block
+=======
+               (neg? amount) {:lawspec/tag :decision/decline :reason "negative"}
+>>>>>>>

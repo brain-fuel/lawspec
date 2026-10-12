@@ -1,0 +1,7 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/example/composition.clj
+<<<<<<<
+               (count records)))})
+=======
+               (inc (count records))))})
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/collections.clj
+<<<<<<<
+(defn fifo [items] (vec items))
+=======
+(defn fifo [items] (vec (reverse items)))
+>>>>>>>

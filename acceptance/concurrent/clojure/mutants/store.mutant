@@ -1,0 +1,6 @@
+@@ src/example/concurrent.clj
+<<<<<<<
+  (future (let [[before] (swap-vals! (cache handle) assoc k v)] (get before k))))
+=======
+  (future (swap! (cache handle) assoc k v) v))
+>>>>>>>

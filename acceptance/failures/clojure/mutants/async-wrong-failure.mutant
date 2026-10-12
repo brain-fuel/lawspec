@@ -1,0 +1,7 @@
+expect: settling nothing is declined, and says why
+@@ src/example/failures.clj
+<<<<<<<
+    (when (zero? amount) (ls/fail {:lawspec/tag :payment-error/declined :message "there is nothing to settle"}))
+=======
+    (when (zero? amount) (ls/fail :payment-error/blocked))
+>>>>>>>

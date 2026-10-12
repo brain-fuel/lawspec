@@ -1,0 +1,6 @@
+@@ src/example/flow.clj
+<<<<<<<
+  {:lawspec/tag :pop-flow/pop-flow :result top :state rest})
+=======
+  {:lawspec/tag :pop-flow/pop-flow :result 0 :state rest})
+>>>>>>>

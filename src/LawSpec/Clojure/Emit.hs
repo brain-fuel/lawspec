@@ -59,7 +59,8 @@ clojureFromJava plan javaFiles = do
                , Artifact ("test/" ++ clojurePath ns) (testNamespace ns unitTest casesClass title cases) "generated" "test" ]
       | Just rest <- stripPrefix "src/test/java/" path =
           pure [a { artifactPath = "java/test/" ++ rest
-                  , artifactContent = replaceAll "org.jetbrains.jetCheck." "lawspec.testing.check." (artifactContent a) }]
+                  , artifactContent = replaceAll "org.junit.jupiter.api.Assertions" "lawspec.testing.check.Assertions"
+                      (replaceAll "org.jetbrains.jetCheck." "lawspec.testing.check." (artifactContent a)) }]
       | otherwise = pure [a]
       where path = artifactPath a
     -- A class no unit names: its package and kebab name.

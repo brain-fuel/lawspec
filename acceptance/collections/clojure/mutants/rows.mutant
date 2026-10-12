@@ -1,0 +1,6 @@
+@@ src/example/collections.clj
+<<<<<<<
+(defn distinct-rows [rows] (set rows))
+=======
+(defn distinct-rows [rows] (disj (set rows) []))
+>>>>>>>

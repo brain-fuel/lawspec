@@ -1,0 +1,6 @@
+@@ src/example/orders.clj
+<<<<<<<
+(defn price [sku] (future (price-of sku)))
+=======
+(defn price [sku] (future (inc (price-of sku))))
+>>>>>>>

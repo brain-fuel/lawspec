@@ -1,0 +1,6 @@
+@@ src/example/algebra.clj
+<<<<<<<
+(defn add [x y] (+' x y))
+=======
+(defn add [x y] (unchecked-int (+' x y)))
+>>>>>>>

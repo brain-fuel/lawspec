@@ -1,0 +1,6 @@
+@@ src/example/collections.clj
+<<<<<<<
+  (if (seq queue) (conj (vec (rest queue)) (first queue)) queue))
+=======
+  (vec (rest queue)))
+>>>>>>>

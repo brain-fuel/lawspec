@@ -1,0 +1,12 @@
+@@ src/example/concurrent.clj
+<<<<<<<
+    (let [q (queue handle)
+          [before] (swap-vals! q pop)]
+      (peek before))))
+=======
+    (let [q (queue handle)]
+      (when-some [front (peek @q)]
+        (Thread/sleep 1)
+        (swap! q pop)
+        front))))
+>>>>>>>

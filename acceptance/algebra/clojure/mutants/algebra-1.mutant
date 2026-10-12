@@ -1,0 +1,6 @@
+@@ src/example/algebra.clj
+<<<<<<<
+(defn divide-right [x y] (+' x y))
+=======
+(defn divide-right [x y] (-' x y))
+>>>>>>>
