@@ -1,0 +1,6 @@
+@@ src/Example/Concurrent.swift
+<<<<<<<
+        return set(value0).with { $0.insert(value1).inserted }
+=======
+        return set(value0).with { _ = $0.insert(value1); return true }
+>>>>>>>

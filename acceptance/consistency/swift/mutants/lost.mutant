@@ -1,0 +1,22 @@
+@@ src/Example/Consistency.swift
+<<<<<<<
+    static func hit(_ value0: Views) -> Int64 {
+        state.gate.lock()
+        defer { state.gate.unlock() }
+        let me = me()
+        let count = (state.replicas[value0.id]?[me] ?? 0) + 1
+        state.replicas[value0.id]?[me] = count
+        return count
+    }
+=======
+    static func hit(_ value0: Views) -> Int64 {
+        state.gate.lock()
+        let seen = (state.replicas[value0.id] ?? [:]).values.reduce(0, +)
+        state.gate.unlock()
+        Thread.sleep(forTimeInterval: 0.001)
+        state.gate.lock()
+        defer { state.gate.unlock() }
+        state.replicas[value0.id] = [0: seen + 1]
+        return seen + 1
+    }
+>>>>>>>
