@@ -22,6 +22,8 @@ import qualified LawSpec.Swift.Abilities as Abilities
 import qualified LawSpec.Swift.Handlers as Handlers
 import qualified LawSpec.Swift.Sessions as Sessions
 import qualified LawSpec.Swift.Actors as Actors
+import qualified LawSpec.Swift.Mailboxes as Mailboxes
+import qualified LawSpec.Swift.Remote as Remote
 import LawSpec.Typed.Swift (SwiftTyped(..), emitSwiftTyped)
 import Control.Monad (unless)
 import Data.List (isPrefixOf, isSuffixOf, nub, sort, intercalate)
@@ -80,10 +82,12 @@ emitSwiftWithBindings minify bindings plan = do
       handlerClasses <- Handlers.emitHandlers layout bits typed declarations units
       sessions <- Sessions.emitSessions bits declarations units
       actors <- Actors.emitActors bits declarations units
+      mailboxes <- Mailboxes.emitMailboxes bits declarations units
+      let remote = Remote.emitRemote plan
       laws <- Properties.emitTests layout (not (null generators)) plan
       nativeGenerators <- Properties.emitNativeGenerators layout bits declarations generators
       vectors <- cryptoVectorTests
-      pure (runtimeArtifacts ++ [namespaces] ++ dataFiles ++ protocols ++ bridges ++ [schema] ++ defaults ++ typedFile ++ entries ++ adapters ++ api ++ handlerClasses ++ sessions ++ actors ++
+      pure (runtimeArtifacts ++ [namespaces] ++ dataFiles ++ protocols ++ bridges ++ [schema] ++ defaults ++ typedFile ++ entries ++ adapters ++ api ++ handlerClasses ++ sessions ++ actors ++ mailboxes ++ remote ++
         [Properties.emitRootSuites] ++ nativeGenerators ++ laws ++ vectors)
     -- The enums every generated name lives in: LawSpec's, and each unit's
     -- namespace, which its adapter extends.
