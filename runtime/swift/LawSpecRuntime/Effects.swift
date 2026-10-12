@@ -276,3 +276,24 @@ public enum Effects {
     /// A production handler made with a resource, asked for where no case has one.
     public static func resourceRequired(_ ability: String) throws -> Handler { throw fail("ResourceRequired", ability) }
 }
+
+// Calls of application code bound in lawspec.json. A bound function may or
+// may not throw, and may or may not be async: passed as a value it converts
+// to a throwing (or async throwing) function, so the generated call is the
+// same either way.
+extension Effects {
+    public static func bound<R>(_ f: () throws -> R) throws -> R { try f() }
+    public static func boundAsync<R>(_ f: () async throws -> R) async throws -> R { try await f() }
+    public static func bound<A0, R>(_ f: (A0) throws -> R, _ a0: A0) throws -> R { try f(a0) }
+    public static func boundAsync<A0, R>(_ f: (A0) async throws -> R, _ a0: A0) async throws -> R { try await f(a0) }
+    public static func bound<A0, A1, R>(_ f: (A0, A1) throws -> R, _ a0: A0, _ a1: A1) throws -> R { try f(a0, a1) }
+    public static func boundAsync<A0, A1, R>(_ f: (A0, A1) async throws -> R, _ a0: A0, _ a1: A1) async throws -> R { try await f(a0, a1) }
+    public static func bound<A0, A1, A2, R>(_ f: (A0, A1, A2) throws -> R, _ a0: A0, _ a1: A1, _ a2: A2) throws -> R { try f(a0, a1, a2) }
+    public static func boundAsync<A0, A1, A2, R>(_ f: (A0, A1, A2) async throws -> R, _ a0: A0, _ a1: A1, _ a2: A2) async throws -> R { try await f(a0, a1, a2) }
+    public static func bound<A0, A1, A2, A3, R>(_ f: (A0, A1, A2, A3) throws -> R, _ a0: A0, _ a1: A1, _ a2: A2, _ a3: A3) throws -> R { try f(a0, a1, a2, a3) }
+    public static func boundAsync<A0, A1, A2, A3, R>(_ f: (A0, A1, A2, A3) async throws -> R, _ a0: A0, _ a1: A1, _ a2: A2, _ a3: A3) async throws -> R { try await f(a0, a1, a2, a3) }
+    public static func bound<A0, A1, A2, A3, A4, R>(_ f: (A0, A1, A2, A3, A4) throws -> R, _ a0: A0, _ a1: A1, _ a2: A2, _ a3: A3, _ a4: A4) throws -> R { try f(a0, a1, a2, a3, a4) }
+    public static func boundAsync<A0, A1, A2, A3, A4, R>(_ f: (A0, A1, A2, A3, A4) async throws -> R, _ a0: A0, _ a1: A1, _ a2: A2, _ a3: A3, _ a4: A4) async throws -> R { try await f(a0, a1, a2, a3, a4) }
+    public static func bound<A0, A1, A2, A3, A4, A5, R>(_ f: (A0, A1, A2, A3, A4, A5) throws -> R, _ a0: A0, _ a1: A1, _ a2: A2, _ a3: A3, _ a4: A4, _ a5: A5) throws -> R { try f(a0, a1, a2, a3, a4, a5) }
+    public static func boundAsync<A0, A1, A2, A3, A4, A5, R>(_ f: (A0, A1, A2, A3, A4, A5) async throws -> R, _ a0: A0, _ a1: A1, _ a2: A2, _ a3: A3, _ a4: A4, _ a5: A5) async throws -> R { try await f(a0, a1, a2, a3, a4, a5) }
+}

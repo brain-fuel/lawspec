@@ -70,7 +70,7 @@ testManifest target testDir program =
       (ModelChecks.checkAction check /= ModelChecks.Supervision)
       (if target == "csharp" then pascalCase (ModelChecks.checkName check) else ModelChecks.checkName check) [] Nothing Nothing
       (maybe False harnessParallel (unitHarnessSettings u))
-  | target `elem` ["fsharp", "csharp"], u <- programUnits program
+  | target `elem` ["fsharp", "csharp", "swift"], u <- programUnits program
   , not (null (unitMachines u) && null (unitSupervisors u))
   , let unit = idText (unitId u)
   , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ]
@@ -167,7 +167,10 @@ pascalCase = DotNet.pascal
 
 -- | The test file of a unit's .NET model checks.
 dotnetModelsPath :: String -> String -> FilePath
-dotnetModelsPath target unit = "tests/LawSpec/" ++ dotnetName unit ++ "Models" ++ (if target == "csharp" then ".cs" else ".fs")
+dotnetModelsPath target unit = "tests/LawSpec/" ++ dotnetName unit ++ "Models" ++ (case target of
+  "csharp" -> ".cs"
+  "swift" -> ".swift"
+  _ -> ".fs")
 
 -- | The declarations a law calls directly; definitions cannot call adapters.
 callees :: Expr -> [Id]
