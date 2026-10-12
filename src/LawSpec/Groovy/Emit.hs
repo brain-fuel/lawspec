@@ -29,6 +29,8 @@ groovyFromJava plan javaFiles = do
       ordered = any ((== "src/test/java/lawspec/testing/LawSpecOrder.java") . artifactPath) javaFiles
       parallel = any ((== "src/test/resources/junit-platform.properties") . artifactPath) javaFiles
   pure (converted ++
+    [ Artifact "src/test/groovy/lawspec/testing/LawSpecGroovy.groovy" (groovySource "LawSpecGroovy.groovy") "generated" "test"
+    | any (("lawspec.testing.LawSpecGroovy." `isInfixOf`) . artifactContent) converted ] ++
     [ Artifact "src/test/groovy/lawspec/testing/LawSpecRandomOrder.groovy" (groovySource "LawSpecRandomOrder.groovy") "generated" "test" | ordered ] ++
     [ Artifact "src/test/resources/SpockConfig.groovy" (groovySource "SpockConfig.groovy") "generated" "test" | parallel ])
   where

@@ -6,6 +6,7 @@
 module LawSpec.Groovy.Spock (spockSpecification, specClassName) where
 
 import Data.Char (isAlphaNum)
+import Control.Monad (msum)
 import Data.List (isSuffixOf, stripPrefix)
 
 -- | A test class's name as a specification's: FooLawSpecTest is
@@ -20,17 +21,21 @@ specClassName name
 -- title names each test method's feature.
 spockSpecification :: String -> (String -> String) -> String -> String
 spockSpecification className title source =
-  unlines (go (lines (castLambdas (renamed source))))
+  unlines (go (lines (typedLists (castLambdas (renamed source)))))
   where
     renamed = replaceWord className (specClassName className)
     go ls = case ls of
       [] -> []
       l : rest
         | Just indent <- annotationLine "@Test" l, next : rest' <- rest, Just (name, empty) <- testHeader next ->
-            feature indent name empty ++ go rest'
+            header indent name empty rest'
         | Just (indent, after) <- inlineTest l, Just (name, empty) <- testHeader (indent ++ after) ->
-            feature indent name empty ++ go rest
+            header indent name empty rest
         | otherwise -> rewrite l : go rest
+    -- A method whose body is empty closes on the next line.
+    header indent name empty rest = case dropWhile (all (== ' ')) rest of
+      closing : rest' | not empty, dropWhile (== ' ') closing == "}" -> feature indent name True ++ go rest'
+      _ -> feature indent name empty ++ go rest
     feature indent name empty =
       [indent ++ "def " ++ show' (title name) ++ "() {"] ++
       (if empty then [indent ++ "  expect: true", indent ++ "}"] else [indent ++ "  setup:"])
@@ -43,13 +48,21 @@ spockSpecification className title source =
       rest <- stripPrefix "void " (dropWhile (== ' ') l)
       let (name, after) = span (\c -> isAlphaNum c || c == '_') rest
       body <- stripPrefix "()" after
-      case dropWhile (== ' ') (maybe body id (stripPrefix " throws Throwable" body)) of
+      let unthrown = case stripPrefix " throws " body of
+            Just thrown -> dropWhile (\c -> isAlphaNum c || c `elem` (".," :: String)) (dropWhile (== ' ') thrown)
+            Nothing -> body
+      case dropWhile (== ' ') unthrown of
         "{" -> Just (name, False)
         "{}" -> Just (name, True)
         _ -> Nothing
     rewrite l
-      | Just rest <- stripPrefix "public final class " (dropWhile (== ' ') l) =
-          takeWhile (== ' ') l ++ "class " ++ takeWhile (/= ' ') rest ++ " extends Specification" ++ dropWhile (/= ' ') rest
+      | Just rest <- msum (map (`stripPrefix` l) ["public final class ", "public class ", "final class ", "class "])
+      , takeWhile (/= ' ') rest == specClassName className =
+          "class " ++ takeWhile (/= ' ') rest ++ " extends spock.lang.Specification" ++ dropWhile (/= ' ') rest
+      -- Groovy has no bare array initializer: T[] x = { ... } is new T[] { ... }.
+      | "= {" `isSuffixOf` l, (declared, _) <- break (== '=') (dropWhile (== ' ') l)
+      , [arrayType, _] <- lastTwo (words declared), "[]" `isSuffixOf` arrayType =
+          take (length l - 1) l ++ "new " ++ arrayType ++ " {"
       | l == "import org.junit.jupiter.api.Test;" = "import spock.lang.Specification;"
       -- A nested record is static in Java; Groovy would make a closure pass
       -- the specification to its constructor.
@@ -93,6 +106,28 @@ castLambdas = go
         let depth' = if c == '(' then depth + 1 else if c == ')' then depth - 1 else depth
             (i, closing) = enclosed depth' rest
         in (c : i, closing)
+
+-- | java.util.List.<T>of(x, y) as LawSpecGroovy.listOf(T, x, y), which
+-- coerces each closure to T: a list's elements are not.
+typedLists :: String -> String
+typedLists s = case s of
+  [] -> []
+  _ | Just rest <- stripPrefix "java.util.List.<" s, (witness, '>' : 'o' : 'f' : '(' : after) <- bracketed 0 rest ->
+        "lawspec.testing.LawSpecGroovy.listOf(" ++ takeWhile (/= '<') witness ++ (if take 1 after == ")" then "" else ", ") ++ typedLists after
+  c : rest -> c : typedLists rest
+  where
+    -- The type argument, up to its closing angle bracket.
+    bracketed :: Int -> String -> (String, String)
+    bracketed depth t = case t of
+      '>' : _ | depth == 0 -> ([], t)
+      c : rest ->
+        let depth' = if c == '<' then depth + 1 else if c == '>' then depth - 1 else depth
+            (inside, after) = bracketed depth' rest
+        in (c : inside, after)
+      [] -> ([], [])
+
+lastTwo :: [a] -> [a]
+lastTwo xs = drop (length xs - 2) xs
 
 replaceAll :: String -> String -> String -> String
 replaceAll old new = go

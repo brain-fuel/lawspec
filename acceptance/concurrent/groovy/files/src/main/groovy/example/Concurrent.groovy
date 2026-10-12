@@ -53,7 +53,7 @@ final class Concurrent {
   }
 
   static CompletableFuture<lawspec.runtime.LawSpecRuntime.Maybe<Integer>> poll(WorkQueue value0) {
-    return CompletableFuture.supplyAsync(
+    return CompletableFuture.<lawspec.runtime.LawSpecRuntime.Maybe<Integer>>supplyAsync(
         () -> {
           var q = queue(value0)
           return maybe(q.poll())
