@@ -253,7 +253,7 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
     renderWith names = X.render (X.Context bits X.schemaVar X.symbolsVar names external X.typeRef X.typeKeyOf)
     genTy = Ty "Gen<Value>"
     listGen = Ty "Gen<[Value]>"
-    bind generator name body resultTy = call "Gens" "bind" [generator, Lambda [(name, tValue)] resultTy body]
+    bind generator name body resultTy = pure' "Gens" "bind" [generator, Lambda [(name, tValue)] resultTy body]
     bindName binder name outer identity = if C.binderId binder == identity then name else outer identity
     conjunction ps = foldr (\a b -> If (X.truth a) tBool b (BoolLit False)) (BoolLit True) ps
     walk previous [] = pure (pure' "Gens" "constant" [ListOf tValues (map Var previous)])
@@ -329,7 +329,7 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
         pure (bind generator name remaining genTy)
     choose path selector branches =
       let name = "choice" ++ path
-      in call "Gens" "bind" [selector, Lambda [(name, tInt)] genTy
+      in pure' "Gens" "bind" [selector, Lambda [(name, tInt)] genTy
            (Invoke (pure' "Gens" "nth" [Var name, ListOf (Ty "[() throws -> Gen<Value>]") branches]) [])]
 
 -- | The application's generators bound in lawspec.json, by type: each

@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/Example/Failures.swift
+<<<<<<<
+            if value0 < 0 { return .block }
+=======
+            if value0 < 0 { return .decline(reason: "negative") }
+>>>>>>>

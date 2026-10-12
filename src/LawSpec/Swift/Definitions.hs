@@ -197,7 +197,7 @@ emitApi layout bits declarations units = do
                      Effects.bridgeName a "FromNative" ++ "(s, symbols, " ++ n ++ ") }),"
                  | (a, (n, _)) <- zip handlers params ] ++
             [ "]) { (scope: Schema) throws -> " ++ (if r == "Void" then "Void" else r) ++ " in" ] ++
-            map ("    " ++) (if r == "Void" then [entryText] else ["try " ++ out ++ ".toNative(" ++ entryText ++ ")"]) ++ [ "}" ]
+            map ("    " ++) (if r == "Void" then ["_ = " ++ entryText] else ["try " ++ out ++ ".toNative(" ++ entryText ++ ")"]) ++ [ "}" ]
           bodyLines = ["let schema = LawSpec.Program.schema", "let symbols = SymbolContext()"] ++ scoped
           resultTy = if r == "Void" then "Void" else r
           closure = "{ () throws -> " ++ resultTy ++ " in\n" ++ unlines (map ("    " ++) bodyLines) ++ "}"

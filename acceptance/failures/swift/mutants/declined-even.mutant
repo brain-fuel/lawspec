@@ -1,0 +1,8 @@
+expect: even amounts go through
+@@ src/Example/Failures.swift
+<<<<<<<
+            return .approve
+=======
+            if value0 > 50000 { return .decline(reason: "even") }
+            return .approve
+>>>>>>>

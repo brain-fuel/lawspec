@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ src/Example/Abilities.swift
+<<<<<<<
+        func fee() -> Int32 { 25 }
+=======
+        func fee() -> Int32 { -25 }
+>>>>>>>
