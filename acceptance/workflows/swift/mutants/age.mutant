@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.swift
+<<<<<<<
+        signup.age < 18 ? .left("too young") : .right(signup)
+=======
+        signup.age < 17 ? .left("too young") : .right(signup)
+>>>>>>>

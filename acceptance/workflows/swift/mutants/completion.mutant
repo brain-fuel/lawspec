@@ -1,0 +1,10 @@
+@@ src/Example/Approvals.swift
+<<<<<<<
+        case .left(.approveFailures(let failures)):
+            return failures.compactMap
+=======
+        case .left(.approveFailures(let failures)) where !failures.isEmpty:
+            return Finished.shared.all
+        case .left(.approveFailures(let failures)):
+            return failures.compactMap
+>>>>>>>
