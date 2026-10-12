@@ -109,7 +109,9 @@ emitDefinitions style layout bits declarations units = do
       -- The typed definitions and their runtime.
       typedFiles = if null (typedRepresentativesOf typed) then [] else
         [ Artifact "src/main/java/lawspec/runtime/LawSpecTyped.java" (jvmTypedSource typed) "generated" "source"
-        , Artifact "src/main/java/lawspec/runtime/LawSpecFast.java" (runtimeSource "java-fast") "generated" "source" ]
+        , Artifact "src/main/java/lawspec/runtime/LawSpecFast.java" (runtimeSource "java-fast") "generated" "source" ] ++
+        [ Artifact "src/main/scala/lawspec/runtime/LawSpecTypedScala.scala" (jvmTypedScalaSource typed) "generated" "source"
+        | not (null (jvmTypedScalaSource typed)) ]
   native <- if withNative then mapM (nativeUnit typed) (filter (not . null . unitDefinitions) units) else pure []
   pure (source : typedFiles ++ native)
   where

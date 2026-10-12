@@ -12,6 +12,8 @@ import qualified LawSpec.ScalaExpr as E
 import qualified LawSpec.JavaDefinitions as Jvm
 import LawSpec.AbilityNames (interfaceName, specName, ownerName)
 import qualified LawSpec.Code.Doc as D
+import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
+import LawSpec.Typed.Plan (isContextual)
 
 -- | An adapter's native result: Either[E, R] when it fails with E, in a
 -- Future when it is async.
@@ -113,7 +115,26 @@ emitScalaDefinitions layout bits declarations units = do
     callees = Jvm.definitionCalls units
     call name values = D.text name <> D.delimitTrailing 2 "(" ")" values
     assign name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 2 (D.softline <> value))
-    definition d = do
+    typedJvm = emitJvmTyped ScalaStyle declarations units
+    -- A typed definition whose types all convert directly calls its typed
+    -- method (in the shared JVM code) between the conversions.
+    definition d
+      | Right typed <- typedJvm
+      , Just function <- jvmTypedFunction typed (declarationId (definitionDeclaration d))
+      , not (isContextual (jvmTypedPlan typed) (declarationId (definitionDeclaration d)))
+      , let (args, result) = functionType (declarationType (definitionDeclaration d))
+      , result /= scalarType "Unit"
+      , Just conversions <- mapM (jvmTypedNative typed) args
+      , Just (_, toNative) <- jvmTypedNative typed result = do
+          types <- mapM (Native.scalaDataTypeDoc declarations) args
+          resultType <- Native.scalaDataTypeDoc declarations result
+          let declaration = definitionDeclaration d
+              parameters = D.text ("symbols: " ++ Native.symbolsType) : [D.text ("value" ++ show i ++ ": ") <> ty | (i, ty) <- zip [0::Int ..] types]
+          pure (D.text ("def " ++ Native.escaped (declarationName declaration)) <> D.delimitTrailing 2 "(" ")" parameters <> D.text ": " <> resultType <>
+            D.text (" = " ++ toNative ++ "(" ++ function ++ "(" ++
+              intercalate ", " [fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions] ++ "))"))
+      | otherwise = definitionDynamic d
+    definitionDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
       types <- mapM (Native.scalaDataTypeDoc declarations) args
