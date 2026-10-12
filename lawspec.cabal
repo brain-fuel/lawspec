@@ -450,6 +450,7 @@ library
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
       LawSpec.Capabilities
+      LawSpec.Clojure.Bindings
       LawSpec.Clojure.Bridge
       LawSpec.Clojure.Emit
       LawSpec.Clojure.Tests

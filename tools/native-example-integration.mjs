@@ -22,6 +22,7 @@ const mutations = {
   fsharp: ['src/Native/Types/PaymentsDomain.fs', 'Coefficient = 2I', 'Coefficient = 3I'],
   csharp: ['src/Domain/Payments.cs', 'new(2, -1)', 'new(3, -1)'],
   groovy: ['src/main/groovy/domain/PaymentsDomain.groovy', "BigDecimal('0.2')", "BigDecimal('0.3')"],
+  clojure: ['src/domain/payments.clj', '0.2M', '0.3M'],
 };
 assert.ok(Object.hasOwn(mutations, target), 'Pass one of the target names');
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64);
@@ -123,6 +124,7 @@ const commands = {
   java: ['mvn', ['-B', ...(offline ? ['-o'] : []), 'test']],
   kotlin: [config.targets[0].gradle || 'gradle', ['--no-daemon', '--console=plain',
     ...(offline ? ['--offline'] : []), 'test', '--rerun-tasks']],
+  clojure: [config.targets[0].clojure || 'clojure', ['-M:test']],
   groovy: [config.targets[0].gradle || 'gradle', ['--no-daemon', '--console=plain',
     ...(offline ? ['--offline'] : []), 'test', '--rerun-tasks']],
   go: ['go', ['test', './...']],
@@ -173,7 +175,7 @@ const lawspecTest = async (flags = [], pass = true) => {
 const first = await lawspecTest();
 assert.ok(first.ok && first.ran.length > 0 && first.unchanged === 0, JSON.stringify(first));
 assert.deepEqual((await lawspecTest()).ran, [], 'An unchanged project runs no tests');
-const comment = {python: '#', haskell: '--', erlang: '%', elixir: '#'}[target] ?? '//';
+const comment = {python: '#', haskell: '--', erlang: '%', elixir: '#', clojure: ';;'}[target] ?? '//';
 await editDomain(original + `\n${comment} edited\n`);
 const edited = await lawspecTest();
 assert.deepEqual(edited.ran, first.ran.filter((law) => !law.endsWith('::integers equal themselves')),
@@ -184,7 +186,7 @@ try {
   await editDomain(original.replace(before, after));
   const failed = await lawspecTest(['--seed', '7340271'], false);
   assert.match(failed, /fees[ _]preserve[ _]currency|decimal[ _]tenths/i, 'lawspec test reports the failing law');
-  if (['javascript', 'typescript', 'go', 'kotlin', 'groovy', 'haskell'].includes(target))
+  if (['javascript', 'typescript', 'go', 'kotlin', 'groovy', 'clojure', 'haskell'].includes(target))
     assert.match(failed, /7340271/, 'The seed reaches the property tests');
   // A failing law cannot be cached as passing, so it runs again.
   assert.match(await lawspecTest([], false), /fees[ _]preserve[ _]currency|decimal[ _]tenths/i);

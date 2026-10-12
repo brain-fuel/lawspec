@@ -77,6 +77,8 @@ export async function doctor(target, root, plannedArtifacts = []) {
         ? ["src/main/kotlin", "src/test/kotlin"]
         : name === "groovy"
         ? ["src/main/groovy", "src/test/groovy"]
+        : name === "clojure"
+        ? ["src", "test"]
         : ["src", ["python", "rust", "fsharp", "csharp"].includes(name) ? "tests" : "test"];
   const sourceDir = target.sourceDir ?? defaults[0];
   const testDir = target.testDir ?? defaults[1];
@@ -464,6 +466,21 @@ export async function doctor(target, root, plannedArtifacts = []) {
       } finally {
         await rm(tmp, { recursive: true, force: true });
       }
+    } else if (name === "clojure") {
+      // Clojure over the Java model: deps.edn's :test alias runs LawSpec's
+      // runner, which compiles java/ into target/classes first.
+      const deps = await readFile(path.join(root, "deps.edn"), "utf8");
+      requireThat(deps.includes("\"target/classes\"") && deps.includes("\"target/test-classes\""),
+        "deps.edn must put target/classes on :paths and target/test-classes on the :test alias's :extra-paths");
+      requireThat(deps.includes("lawspec.test-runner"), "deps.edn's :test alias must run lawspec.test-runner (:main-opts [\"-m\" \"lawspec.test-runner\"])");
+      const command = target.clojure || "clojure";
+      const classpath = await run(command, ["-Spath", "-M:test"], root);
+      versions.clojure = classpath.match(/clojure-(\d+\.\d+\.\d+)\.jar/)?.[1];
+      versions["test.check"] = classpath.match(/test\.check-(\d+\.\d+\.\d+)\.jar/)?.[1];
+      requireThat(versions.clojure, "Missing org.clojure/clojure in deps.edn");
+      requireThat(versions["test.check"], "Missing org.clojure/test.check in deps.edn's :test alias");
+      versions.java = (await run("java", ["--version"], root)).match(/\b(\d+)(\.\d+)*/)?.[0];
+      requireThat(major(versions.java) >= 25, "Clojure needs a JDK 25+ (its compiler builds the Java model)");
     } else if (name === "groovy") {
       // Groovy over the Java model: Gradle's groovy plugin compiles both
       // jointly, Spock runs the specifications and JetCheck the properties.

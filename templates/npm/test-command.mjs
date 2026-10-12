@@ -155,6 +155,12 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
         args: [...(offline ? ["--offline"] : []), "--console=plain", "test", "--rerun", "--tests", className(file, "src/test/kotlin", ".kt")],
         env: { "kotest.filter.tests": filter, kotest_filter_tests: filter } };
     });
+  // The Clojure runner selects tests by namespace and name prefix.
+  if (language === "clojure") {
+    const ns = (file) => without(relativeTo(file, "test"), ".clj").replaceAll("/", ".").replaceAll("_", "-");
+    return [{ command: target.clojure || "clojure",
+      args: ["-M:test", ...entries.flatMap((e) => ["--select", `${ns(e.file)}/${e.name}`])] }];
+  }
   // Spock names each feature in words; Gradle's filters select it by name.
   if (language === "groovy")
     return [{ command: target.gradle || "gradle",
@@ -288,6 +294,15 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
         report: { kind: "junit", directory: "build/test-results/test" },
         ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
     });
+  // A Clojure test is the law's words, a double dash and the kind of test
+  // (LawSpec.TestNames); the runner selects tests by namespace and prefix.
+  if (language === "clojure") {
+    const ns = (e) => without(relativeTo(e.file, "test"), ".clj").replaceAll("/", ".").replaceAll("_", "-");
+    return [{ laws: entries, command: target.clojure || "clojure",
+      args: ["-M:test", ...entries.flatMap((e) => ["--select", `${ns(e)}/${e.name}--`])],
+      report: { kind: "junit", directory: "target/test-results" },
+      ran: (test) => entries.filter((e) => test.classname === ns(e) && test.name.startsWith(`${e.name}--`)) }];
+  }
   // A Spock feature is the law's words, a colon and the kind of test
   // (LawSpec.TestNames), so "name: *" selects one law's features only.
   if (language === "groovy") {
@@ -343,6 +358,7 @@ export const coverageTools = {
   go: { tool: "go test -cover", install: "(built in)" },
   java: { tool: "JaCoCo", install: "(resolved by Maven as org.jacoco:jacoco-maven-plugin)" },
   kotlin: { tool: "Kover", install: "add id(\"org.jetbrains.kotlinx.kover\") to the plugins of build.gradle.kts" },
+  clojure: { tool: "cloverage", install: "add cloverage to a :coverage alias in deps.edn" },
   groovy: { tool: "JaCoCo", install: "add id 'jacoco' to the plugins of build.gradle" },
   rust: { tool: "cargo-llvm-cov", install: "cargo install cargo-llvm-cov" },
   haskell: { tool: "hpc", install: "(built into GHC; stack test --coverage)" },
