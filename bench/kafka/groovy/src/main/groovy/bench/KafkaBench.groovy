@@ -46,12 +46,12 @@ final class KafkaBench {
 
   static void main(String[] args) throws Exception {
     long scale = args.length > 0 ? Long.parseLong(args[0]) : 1_000_000L
-    Thread worker = new Thread(null, () -> run(scale), 'bench', 1L << 30)
+    Thread worker = new Thread(null, () -> workload(scale), 'bench', 1L << 30)
     worker.start()
     worker.join()
   }
 
-  static void run(long scale) {
+  static void workload(long scale) {
     var broker = new Kafka.Cluster()
     long all = System.nanoTime()
     long total = 0
@@ -92,7 +92,7 @@ final class KafkaBench {
           while (true) {
             FetchResult r = broker.fetchRequest(p, position, FETCH, new IsolationLevel.ReadUncommitted())
             ops++
-            long end = round == 0 ? r.highWatermark() / 2 : r.highWatermark()
+            long end = round == 0 ? r.highWatermark().intdiv(2) : r.highWatermark()
             if (r.records().isEmpty() || position >= end) break
             read += r.records().size()
             position = r.nextOffset()
@@ -108,7 +108,7 @@ final class KafkaBench {
 
     start = System.nanoTime()
     ops = 0
-    long txns = Math.max(1, scale / 100)
+    long txns = Math.max(1L, scale.intdiv(100))
     ProducerIdAndEpoch id = broker.initProducerIdRequest(new LawSpecRuntime.Just<>('tx'))
     ops++
     int[] sequences = new int[PARTITIONS]

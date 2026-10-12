@@ -4,7 +4,7 @@
 --   lawspec-dev bench kafka                      every target: rust, go, java,
 --                                                kotlin, python, javascript,
 --                                                typescript, haskell, fsharp,
---                                                csharp and groovy
+--                                                csharp, groovy and clojure
 --   lawspec-dev bench kafka --scale 10000 rust   a smaller workload
 --   lawspec-dev bench kafka --generate go        write the project only
 --   lawspec-dev bench kafka --typed              which definitions and
@@ -62,7 +62,7 @@ benchCommand arguments = case arguments of
   "compile" : scales -> compileBench (if null scales then [100, 200, 400, 800] else map read scales)
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
-    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp", "groovy"] else targets)
+    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp", "groovy", "clojure"] else targets)
   [] -> die "usage: lawspec-dev bench <name> [--scale N] [--generate] [target...] | --typed"
   where
     options ("--scale" : n : rest) (_, g, ts) = options rest (Just n, g, ts)
@@ -172,7 +172,7 @@ typedReport name = do
       units = C.programUnits program
       definitions = length (concatMap C.unitDefinitions units)
   forM_ [ ("rust, go, python, javascript, typescript, haskell", typedPlanPerforming scalarTypes declarations units)
-        , ("java, kotlin, groovy", typedPlanPerforming jvmScalars declarations units)
+        , ("java, kotlin, groovy, clojure", typedPlanPerforming jvmScalars declarations units)
         , ("fsharp, csharp", typedPlanPerforming scalarTypes (dotnetTypedDeclarations [] declarations) units) ] $ \(label, plan) -> do
     let fallbacks = typedFallbacks plan
         handlers = [(C.handlerName h, isTypedHandler plan h) | u <- units, h <- C.unitHandlers u]
@@ -236,6 +236,8 @@ commands target project = case target of
   "go" -> pure ([("go", ["build", "-o", "kafka-bench.bin", "./cmd/kafkabench"])], ("./kafka-bench.bin", []))
   "java" -> pure ([("mvn", ["-q", "compile"])],
     ("java", ["-Xmx8g", "-cp", "target/classes", "bench.KafkaBench"]))
+  -- Clojure compiles the Java model, then runs the driver with its alias.
+  "clojure" -> pure ([("clojure", ["-M:build"])], ("clojure", ["-M:bench"]))
   -- Kotlin and Groovy print the driver's classpath from their Gradle build.
   _ | target `elem` ["kotlin", "groovy"] -> do
     root <- getCurrentDirectory
