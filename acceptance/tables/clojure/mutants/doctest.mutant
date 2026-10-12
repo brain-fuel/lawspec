@@ -1,0 +1,7 @@
+expect: description example 1
+@@ src/example/tables.clj
+<<<<<<<
+(defn label [n] (str "parcel " n))
+=======
+(defn label [n] (if (= n 7) "parcel seven" (str "parcel " n)))
+>>>>>>>

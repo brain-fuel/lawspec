@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/example/tables.clj
+<<<<<<<
+(defn label [n] (str "parcel " n))
+=======
+(defn label [n] (if (= n 1) "parcel one" (str "parcel " n)))
+>>>>>>>
