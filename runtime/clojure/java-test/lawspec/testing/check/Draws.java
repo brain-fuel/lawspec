@@ -82,6 +82,8 @@ public final class Draws implements GenerationEnvironment {
 
     /** A fresh case from a seed and a size. */
     public static <T> Case<T> generate(Generator<T> generator, long seed, int size) {
+      // Collections may grow from the start: test.check's first sizes are 0.
+      size = size + 10;
       var draws = new Draws(new Random(seed), size, List.of());
       T value = generator.generateValue(draws);
       return new Case<>(generator, size, draws.trace, value);
