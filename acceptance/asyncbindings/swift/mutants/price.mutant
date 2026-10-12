@@ -1,0 +1,6 @@
+@@ src/Native/Warehouse.swift
+<<<<<<<
+            return price(sku)
+=======
+            return price(sku) + 1
+>>>>>>>
