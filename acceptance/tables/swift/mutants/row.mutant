@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ src/Example/Tables.swift
+<<<<<<<
+    static func shippingCost(_ weight: Int32, _ distance: Int32) -> Int32 { weight * distance + 5 * weight }
+=======
+    static func shippingCost(_ weight: Int32, _ distance: Int32) -> Int32 { weight * distance + 5 * weight + (weight == 2 ? 5 : 0) }
+>>>>>>>

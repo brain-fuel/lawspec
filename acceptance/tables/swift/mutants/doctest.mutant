@@ -1,0 +1,7 @@
+expect: description example 1
+@@ src/Example/Tables.swift
+<<<<<<<
+    static func label(_ parcel: Int32) -> String { "parcel \(parcel)" }
+=======
+    static func label(_ parcel: Int32) -> String { parcel == 7 ? "parcel seven" : "parcel \(parcel)" }
+>>>>>>>

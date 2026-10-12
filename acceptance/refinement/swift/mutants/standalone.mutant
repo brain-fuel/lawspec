@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.swift
+<<<<<<<
+    static func count(_ text: String) -> BigInt { BigInt(text.unicodeScalars.count) }
+=======
+    static func count(_ text: String) -> BigInt { 0 }
+>>>>>>>

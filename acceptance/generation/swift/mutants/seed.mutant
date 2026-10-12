@@ -1,0 +1,6 @@
+@@ src/Example/Generation.swift
+<<<<<<<
+        try! Descriptors.generated(text, BigInt(seed), Int(size), Int(count))
+=======
+        try! Descriptors.generated(text, BigInt(seed) + 1, Int(size), Int(count))
+>>>>>>>

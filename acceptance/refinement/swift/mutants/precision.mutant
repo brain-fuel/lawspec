@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.swift
+<<<<<<<
+    static func preserve(_ a: UInt64) -> BigInt { BigInt(a) }
+=======
+    static func preserve(_ a: UInt64) -> BigInt { BigInt(UInt64(exactly: Double(a)) ?? UInt64.max) }
+>>>>>>>
