@@ -109,12 +109,17 @@ public enum Defaults {
         throw Fail.with("UnknownDefaultHandler", key)
     })
 
+    /// The clause name that marks the default (real) Clock handler.
+    public static let realClockMarker = "lawspec.realClock"
+
     /// The default handler of a built-in ability, by its key.
     public static func handler(_ key: String) throws -> Effects.Handler {
         if key.hasPrefix("lawspec.crypto::ability::") { return try cryptoHandler.with { $0 }(key) }
         switch key {
         case "lawspec.time::ability::Clock":
             return Effects.stateless([
+                // Marks the real clock, so a workflow knows its time is real.
+                (realClockMarker, { @Sendable _, _ in .unit }),
                 ("now", { _, _ in .data("lawspec.time::type::Instant::Instant", [.int(BigInt(nowMicros()))]) }),
                 ("sleep", { _, args in
                     guard case .data(_, let f)? = args.first, case .int(let micros)? = f.first, let n = micros.exactly(Int64.self) else {

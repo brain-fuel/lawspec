@@ -221,7 +221,12 @@ public enum LawThread {
 
     /// Start a body on a new thread.
     public static func start(_ body: @escaping @Sendable () -> Void) {
-        let thread = Thread { body() }
+        // The new thread sees this one's ambient context (Ambient).
+        let context = UncheckedBox(Ambient.capture())
+        let thread = Thread {
+            Ambient.restore(context.value)
+            body()
+        }
         thread.stackSize = stackSize
         thread.start()
     }
