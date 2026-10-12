@@ -1,0 +1,7 @@
+@@ src/work/jobs.clj
+<<<<<<<
+  (let [[before] (swap-vals! jobs pop)]
+    (peek before)))
+=======
+  (peek @jobs))
+>>>>>>>
