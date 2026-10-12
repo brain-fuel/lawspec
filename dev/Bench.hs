@@ -258,6 +258,9 @@ commands target project = case target of
     ("dotnet", ["bench/bin/Release/net10.0/KafkaBench.dll"]))
   "csharp" -> pure ([("dotnet", ["build", "-c", "Release", "bench/KafkaBench.csproj"])],
     ("dotnet", ["bench/bin/Release/net10.0/KafkaBench.dll"]))
+  -- The BEAM drivers are modules of the generated project, run by erl.
+  "erlang" -> pure ([("rebar3", ["compile"])],
+    ("erl", ["+sbwt", "none", "-noshell", "-pa", "_build/default/lib/lawspec_example/ebin", "-run", "kafka_bench", "main"]))
   _ -> die ("no benchmark runner for " ++ target)
 
 -- | Throughput per phase and memory, from the driver's lines.
