@@ -1,0 +1,6 @@
+@@ src/main/scala/shop/Domain.scala
+<<<<<<<
+Money(value0, value1.cents)
+=======
+value1
+>>>>>>>

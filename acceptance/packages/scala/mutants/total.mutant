@@ -1,0 +1,6 @@
+@@ src/main/scala/shop/Orders.scala
+<<<<<<<
+Money(value0.price.currency,
+=======
+Money(ShopDomainCurrency.Eur,
+>>>>>>>

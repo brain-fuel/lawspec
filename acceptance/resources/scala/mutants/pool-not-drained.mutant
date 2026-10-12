@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/main/scala/example/Resources.scala
+<<<<<<<
+    value0.asInstanceOf[Pool].amount = 0
+=======
+    value0.hashCode()
+>>>>>>>

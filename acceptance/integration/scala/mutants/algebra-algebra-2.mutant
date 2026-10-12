@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Algebra.scala
+<<<<<<<
+  def add(x: BigInt, y: BigInt): Integer = x + y
+=======
+  def add(x: BigInt, y: BigInt): Integer = (x + y).toInt
+>>>>>>>

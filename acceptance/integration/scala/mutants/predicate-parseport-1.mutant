@@ -1,0 +1,14 @@
+expect: expect 
+@@ src/main/scala/example/ParsePort.scala
+<<<<<<<
+*
+=======
+package example
+
+object ParsePort {
+  def validPort(x: Int): Boolean = true
+  def render(x: Int): String = { require(validPort(x)); x.toString }
+  def parse(x: String): Int = x.toInt
+}
+
+>>>>>>>

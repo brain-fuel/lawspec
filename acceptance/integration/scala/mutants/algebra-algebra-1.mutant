@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Algebra.scala
+<<<<<<<
+  def divideRight(x: BigInt, y: BigInt): Integer = x + y
+=======
+  def divideRight(x: BigInt, y: BigInt): Integer = x - y
+>>>>>>>

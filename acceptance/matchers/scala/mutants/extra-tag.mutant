@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ src/main/scala/example/Matchers.scala
+<<<<<<<
+    value0.distinct
+=======
+    value0.distinct :+ "extra"
+>>>>>>>

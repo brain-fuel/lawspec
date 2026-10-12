@@ -1,0 +1,6 @@
+@@ src/main/scala/shop/Orders.scala
+<<<<<<<
+case ShopOrdersCurrency.Gbp => ShopDomainCurrency.Eur
+=======
+case ShopOrdersCurrency.Gbp => ShopDomainCurrency.Usd
+>>>>>>>

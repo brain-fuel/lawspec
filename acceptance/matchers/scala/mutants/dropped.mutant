@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/main/scala/example/Matchers.scala
+<<<<<<<
+    value0.sorted
+=======
+    value0.distinct.sorted
+>>>>>>>

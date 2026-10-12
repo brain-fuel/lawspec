@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Workflows.scala
+<<<<<<<
+    if (value0.age < 18) return Left("too young")
+=======
+    if (value0.age < 17) return Left("too young")
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Currying.scala
+<<<<<<<
+a + b + c + d
+=======
+a + b + c - d
+>>>>>>>

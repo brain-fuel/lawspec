@@ -1,0 +1,6 @@
+@@ src/main/scala/shop/Orders.scala
+<<<<<<<
+= value0 - value0 % 100
+=======
+= if (value0 > 0) value0 - 1 else value0
+>>>>>>>

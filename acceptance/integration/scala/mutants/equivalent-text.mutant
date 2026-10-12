@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Alternatives.scala
+<<<<<<<
+java.lang.Integer.toString(x)
+=======
+"broken"
+>>>>>>>

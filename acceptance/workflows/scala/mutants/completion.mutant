@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Approvals.scala
+<<<<<<<
+      failures.flatMap {
+=======
+      if (failures.nonEmpty) Workflows.finished.asScala.toList else failures.flatMap {
+>>>>>>>

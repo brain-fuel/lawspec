@@ -1,0 +1,14 @@
+expect: every case gets an empty store
+@@ src/main/scala/example/Resources.scala
+<<<<<<<
+    val items = mutable.Map[Int, Int]()
+=======
+    val items = shared
+>>>>>>>
+@@ src/main/scala/example/Resources.scala
+<<<<<<<
+  private var openCount = 0
+=======
+  private var openCount = 0
+  private val shared = mutable.Map[Int, Int]()
+>>>>>>>

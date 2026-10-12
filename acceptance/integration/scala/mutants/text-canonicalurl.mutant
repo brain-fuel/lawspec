@@ -1,0 +1,6 @@
+@@ src/main/scala/example/CanonicalUrl.scala
+<<<<<<<
+x.reverse.dropWhile(_ == '/').reverse
+=======
+x.stripSuffix("/")
+>>>>>>>
