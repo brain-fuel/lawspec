@@ -1,0 +1,6 @@
+@@ src/Example/Sessions.swift
+<<<<<<<
+        try afterB.send(Int64(a) + Int64(b))
+=======
+        try afterB.send(Int64(a) + Int64(b) + 1)
+>>>>>>>

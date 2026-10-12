@@ -597,6 +597,7 @@ library
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
       LawSpec.Swift.Abilities
+      LawSpec.Swift.Actors
       LawSpec.Swift.Code
       LawSpec.Swift.Data
       LawSpec.Swift.Definitions
@@ -605,10 +606,13 @@ library
       LawSpec.Swift.Entries
       LawSpec.Swift.Expr
       LawSpec.Swift.Handlers
+      LawSpec.Swift.Mailboxes
       LawSpec.Swift.Models
       LawSpec.Swift.Names
       LawSpec.Swift.Policy
       LawSpec.Swift.Properties
+      LawSpec.Swift.Remote
+      LawSpec.Swift.Sessions
       LawSpec.SwiftSources
       LawSpec.TargetNames
       LawSpec.Targets
