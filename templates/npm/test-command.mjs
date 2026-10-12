@@ -14,13 +14,14 @@ import path from "node:path";
 
 // Folders that hold dependencies, build output or caches, not code under test.
 const skipped = new Set([".git", ".lawspec", "node_modules", "dist", "build", "target", "out", ".gradle", "bin", "obj", "TestResults",
-  ".stack-work", "_build", "deps", ".elixir_ls", "__pycache__", ".hypothesis", ".pytest_cache", ".venv", "venv", ".idea", ".vscode"]);
+  ".stack-work", "_build", "deps", ".elixir_ls", "__pycache__", ".hypothesis", ".pytest_cache", ".venv", "venv", ".idea", ".vscode",
+  ".scala-build", ".bsp", ".bloop", ".metals"]);
 // Build and lock files, which choose the toolchain and dependencies.
 const environmentFiles = ["package.json", "package-lock.json", "tsconfig.json", "pyproject.toml", "go.mod",
   "go.sum", "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
   "Cargo.toml", "Cargo.lock", "stack.yaml", "stack.yaml.lock", "package.yaml",
   "rebar.config", "rebar.config.script", "rebar.lock", "mix.exs", "mix.lock", "gleam.toml", "manifest.toml",
-  "global.json", "Directory.Build.props", "Directory.Packages.props", "NuGet.config"];
+  "global.json", "Directory.Build.props", "Directory.Packages.props", "NuGet.config", "project.scala"];
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // The crypto builder owns these outputs. Inputs and other priv/ assets still

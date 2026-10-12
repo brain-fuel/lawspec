@@ -470,8 +470,9 @@ export async function doctor(target, root, plannedArtifacts = []) {
       const command = target.scala || "scala";
       const reported = await run(command, ["version"], root);
       versions["scala-cli"] = reported.match(/Scala code runner version:\s*(\S+)/)?.[1] ?? reported.match(/Scala CLI version:\s*(\S+)/)?.[1];
-      const java = await run("java", ["-version"], root).catch((error) => String(error.message));
-      versions.java = java.match(/version "([^"]+)"/)?.[1];
+      // java --version prints to standard output (-version prints to standard error).
+      const java = await run("java", ["--version"], root).catch((error) => String(error.message));
+      versions.java = java.match(/^(?:openjdk|java)\s+(\S+)/m)?.[1];
       requireThat(major(versions.java ?? "0") >= 25, "Scala requires JDK 25+");
       const project = await readFile(path.join(root, "project.scala"), "utf8").catch(() => "");
       const directive = (pattern) => project.match(pattern)?.[1];

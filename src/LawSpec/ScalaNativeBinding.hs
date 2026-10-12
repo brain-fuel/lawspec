@@ -130,12 +130,25 @@ emitBindings minify plan testing files = do
                   D.text "val result: " <> nativeResultType <> D.text " = if (found == null) None else " <>
                     D.text "Some(found.asInstanceOf[" <> element <> D.text "])" <> D.hardline <> returned
                 Nothing -> D.text "val result = " <> application <> D.text ".asInstanceOf[" <> nativeResultType <> D.text "]" <> D.hardline <> returned
+        -- An adapter that fails with E answers Either: the exceptions
+        -- lawspec.json maps become its failures, as Lefts.
+        failureCases <- case [failure | C.AbilityRef _ [failure] <- filter C.isFail (C.declarationUses d)] of
+          failure : _ | not async -> do
+            failureCodec <- S.scalaCodecDocWithContext (D.text "symbols") declarations failure
+            ref <- E.reference failure
+            pure (Just [ D.text ("case error: " ++ intercalate "." (C.failureNative b) ++ " => scala.util.Left(") <> failureCodec <> D.text ".decode(" <>
+                           E.call "LawSpecScalaCodecs.construct" [D.text "schema", ref, E.quoted (C.idText (C.failureConstructor b)),
+                             E.call "List" [E.call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(error.getMessage, \"\")", D.text (show bits)] | C.failureMessage b],
+                             D.text (show bits), D.text "symbols"] <> D.text "))"
+                       | b <- bindingFailures plan, C.failureType b == failure ])
+          _ -> pure Nothing
+        let body = maybe resultBody (const (D.text "scala.util.Right(" <> D.block 2 resultBody <> D.text ")")) failureCases
         pure (D.text "def " <> E.call (S.escaped (C.declarationName d))
             ([v <> D.text ": " <> t | (t,v) <- handlerParams] ++ [v <> D.text ": " <> t | (t,v) <- zip argTypes values]) <>
           D.text ": " <> resultType <> D.text " = " <> D.block 2
           (D.text "val symbols = LawSpecScala.symbols()" <> D.hardline <>
-           D.text "try " <> D.block 2 resultBody <> D.text " catch " <>
-           D.block 2 (D.text "case error @ (_: IllegalArgumentException | _: IllegalStateException | _: ClassCastException | _: ArithmeticException) =>" <>
+           D.text "try " <> D.block 2 body <> D.text " catch " <>
+           D.block 2 (D.joinWith D.hardline (maybe [] id failureCases) <> (if maybe True null failureCases then mempty else D.hardline) <> D.text "case error @ (_: IllegalArgumentException | _: IllegalStateException | _: ClassCastException | _: ArithmeticException) =>" <>
              D.nest 2 (D.hardline <> D.text "throw " <> E.call "IllegalArgumentException"
              [E.quoted ("native binding " ++ C.idText (C.declarationId d) ++ ": ") <> D.text " + error.getMessage",D.text "error"]))))
       -- Each bound production handler, wrapped in the generated trait: its
@@ -198,7 +211,7 @@ emitBindings minify plan testing files = do
         D.text ": Arb[LawSpecRuntime.Value] = " <> D.block 2 (D.joinWith D.hardline (branches ++
           [D.text "throw IllegalArgumentException(\"unplanned native generator instantiation: \" + tpe)"])))
     let entries = [E.quoted (C.idText (resolvedGeneratorType generator)) <>
-          D.text (" -> ((schema, tpe, bits, symbols, arguments) => factory" ++ show i ++ "(schema, tpe, bits, symbols, arguments)): LawSpecScalaStrategies.NativeFactory") |
+          D.text (" -> (((schema, tpe, bits, symbols, arguments) => factory" ++ show i ++ "(schema, tpe, bits, symbols, arguments)): LawSpecScalaStrategies.NativeFactory)") |
             (i,generator) <- zip [0::Int ..] generators]
         registry = D.text "def factories(): Map[String, LawSpecScalaStrategies.NativeFactory] = " <>
           E.call "Map" entries
