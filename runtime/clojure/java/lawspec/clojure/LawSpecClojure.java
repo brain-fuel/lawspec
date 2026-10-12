@@ -452,7 +452,38 @@ public final class LawSpecClojure {
   public static RuntimeException failure(ExceptionInfo info) {
     var data = info.getData();
     if (data != null && data.containsKey(FAILURE)) return new LawSpecRuntime.Fail(untyped(data.valAt(FAILURE)));
+    // A failure lawspec.json binds: an ex-info whose :type it names.
+    if (data != null && data.valAt(TYPE) instanceof Keyword kind) {
+      String[] bound = boundFailures().get(kind.toString().substring(1));
+      if (bound != null) {
+        Class<?> type = classOfTag((Keyword) Clojure.read(":" + bound[0]));
+        try {
+          RecordComponent[] components = type.getRecordComponents();
+          Object made = components.length == 0 ? type.getDeclaredConstructor().newInstance()
+              : type.getDeclaredConstructor(components[0].getType()).newInstance(Boolean.parseBoolean(bound[1]) ? info.getMessage() : null);
+          return new LawSpecRuntime.Fail(made);
+        } catch (ReflectiveOperationException e) {
+          throw new IllegalStateException("cannot make the failure " + bound[0], e);
+        }
+      }
+    }
     return info;
+  }
+
+  static final Keyword TYPE = Keyword.intern("type");
+  private static Map<String, String[]> bound;
+
+  @SuppressWarnings("unchecked")
+  private static synchronized Map<String, String[]> boundFailures() {
+    if (bound == null) {
+      try {
+        bound = (Map<String, String[]>) Class.forName("lawspec.clojure.LawSpecClojureFailures", true,
+            LawSpecClojure.class.getClassLoader()).getField("FAILURES").get(null);
+      } catch (ReflectiveOperationException e) {
+        bound = Map.of();
+      }
+    }
+    return bound;
   }
 
   /** An operation of an ability handler, called from Clojure with Clojure data. */
