@@ -210,7 +210,7 @@ validatePlan target plan = do
   let units = map plannedUnit (plannedUnits plan)
       declarations = concatMap C.unitDeclarations units
       moduleNames = map (Definitions.adapterModule) units
-      generated = ["lawspec_data","lawspec_definitions","lawspec_abilities","lawspec_native_bindings","lawspec_native_generators"] ++
+      generated = ["lawspec_data","lawspec_definitions","lawspec_abilities","lawspec_native_bindings","lawspec_native_generators","lawspec_typed"] ++
         [Definitions.adapterModule u ++ suffix | u <- units, suffix <-
           ["_definitions","_definitions_ffi","_lawspec_tests","_lawspec_cases","_lawspec_models","_lawspec_models_test"]] ++
         ["lawspec_abilities_" ++ Definitions.adapterModule u | u <- units]
