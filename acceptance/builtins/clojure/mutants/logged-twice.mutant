@@ -1,0 +1,8 @@
+expect: a charge is logged once
+@@ src/example/builtins.clj
+<<<<<<<
+    (ls/op log :log-message :log-level/info (str "charged " n))
+=======
+    (ls/op log :log-message :log-level/info (str "charged " n))
+    (ls/op log :log-message :log-level/info (str "charged again " n))
+>>>>>>>

@@ -221,7 +221,8 @@ public final class LawSpecClojure {
       if (side.equals(RIGHT)) return new LawSpecRuntime.Right<>(toJava(pair.get(1), arguments.length > 1 ? arguments[1] : Object.class, bound));
       throw new IllegalArgumentException("an Either is [:left x] or [:right x], not " + RT.printString(value));
     }
-    if (raw == Boolean.class || raw == boolean.class) return (Boolean) value;
+    // Clojure's truth: nil and false are false.
+    if (raw == Boolean.class || raw == boolean.class) return RT.booleanCast(value);
     if (raw == Character.class || raw == char.class) return value instanceof String s && s.length() == 1 ? s.charAt(0) : (Character) value;
     if (raw.isPrimitive() || Number.class.isAssignableFrom(raw) && raw != Number.class) return number(value, raw);
     // The abstract Integer: any integral number, a bigint as a BigInteger.
