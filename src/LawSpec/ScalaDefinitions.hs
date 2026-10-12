@@ -45,7 +45,7 @@ emitScalaDefinitions layout bits declarations units = do
             ([D.text "private val schema: LawSpecSchema = LawSpecDataSchema.create()",
               D.text ("private val bits = " ++ show bits)] ++ methods)) <> D.hardline
     pure (Artifact ("src/main/scala/" ++ map (\c -> if c == '.' then '/' else c) package ++ "/" ++ name ++ ".scala")
-      (D.render layout content) "generated" "source")
+      (Native.rootQualified (D.render layout content)) "generated" "source")
   bridge <- adapterBridge
   pure (bodies ++ native ++ bridge)
   where

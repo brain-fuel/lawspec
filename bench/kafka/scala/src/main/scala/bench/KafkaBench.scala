@@ -75,7 +75,7 @@ object KafkaBench {
         val assigned = ok(broker.syncGroupRequest("g", m, generation))
         ops += 2
         for (p <- assigned) {
-          var position = ok(broker.offsetFetchRequest("g", p)).getOrElse(0L)
+          var position = broker.offsetFetchRequest("g", p).getOrElse(0L)
           ops += 1
           var reading = true
           while (reading) {
@@ -126,7 +126,7 @@ object KafkaBench {
 
     // The embedding API: a refusal as a value, and the state kept and put back.
     val refused = broker.produceRequest(TopicPartition("missing", 0), None, List(record(0)))
-    println(s"check refused ${refused.left.toOption.map(_.getClass.getSimpleName).getOrElse("nothing")}")
+    println(s"check refused ${refused.left.toOption.map(_.productPrefix).getOrElse("nothing")}")
     val snapshot = broker.typedState
     ok(broker.produceRequest(tp(0), None, List(record(0))))
     broker.setTypedState(snapshot)

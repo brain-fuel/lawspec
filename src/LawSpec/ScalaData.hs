@@ -2,7 +2,7 @@
 -- Products are case classes, sums are enums, and the built-in types are
 -- Scala's own immutable ones: List, Option, Either, Set, Map and BigInt.
 -- ref:DEC-scala-on-the-jvm-runtime
-module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecDocWithContext, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType) where
+module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecDocWithContext, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType, rootQualified) where
 
 import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Scalar (primitives, primitiveName)
@@ -35,6 +35,25 @@ escaped :: String -> String
 escaped name
   | name `elem` scalaKeywords = "`" ++ name ++ "`"
   | otherwise = name
+
+-- | Fully qualified names from the root: inside lawspec.definitions or
+-- lawspec.abilities, a sibling package named lawspec (the built-in units')
+-- would otherwise take lawspec.runtime for its own. String literals and the
+-- package clause are left alone.
+rootQualified :: String -> String
+rootQualified = unlines . map line . lines
+  where
+    line l | take 8 l == "package " = l
+           | otherwise = go ' ' l
+    go _ [] = []
+    go _ ('"' : rest) = '"' : literal rest
+    go previous text@(c : rest)
+      | take 8 text == "lawspec." && not (isAlphaNum previous || previous `elem` ("._`" :: String)) = "_root_." ++ c : go c rest
+      | otherwise = c : go c rest
+    literal ('\\' : c : rest) = '\\' : c : literal rest
+    literal ('"' : rest) = '"' : go '"' rest
+    literal (c : rest) = c : literal rest
+    literal [] = []
 
 -- | The type of the symbols map generated code passes along.
 symbolsType :: String

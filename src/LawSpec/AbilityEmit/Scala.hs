@@ -91,7 +91,7 @@ emit minify bits datas units = do
                 line "private val _schema: LawSpecSchema = schema",
                 line ("private val bits = " ++ show bits)] ++
                interfaces ++ handlers ++ recordings)) <> D.hardline
-      pure (Artifact ("src/main/scala/" ++ intercalate "/" qualified ++ ".scala") (D.render layout source) "generated" "source")
+      pure (Artifact ("src/main/scala/" ++ intercalate "/" qualified ++ ".scala") (Native.rootQualified (D.render layout source)) "generated" "source")
     signature a op ty = do
       let (args, result) = C.functionType ty
       types <- mapM (Native.scalaDataTypeDoc datas) args
