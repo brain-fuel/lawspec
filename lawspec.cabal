@@ -432,6 +432,7 @@ library
       LawSpec.Actors.Jvm
       LawSpec.Actors.Python
       LawSpec.Actors.Rust
+      LawSpec.Actors.Scala
       LawSpec.Actors.Types
       LawSpec.Actors.Web
       LawSpec.Api
