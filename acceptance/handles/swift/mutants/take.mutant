@@ -1,0 +1,6 @@
+@@ src/Native/Jobs.swift
+<<<<<<<
+            return queue.isEmpty ? nil : queue.removeFirst()
+=======
+            return queue.first
+>>>>>>>

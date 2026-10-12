@@ -42,10 +42,11 @@ data SwiftTyped = SwiftTyped
   }
 
 -- | The declarations whose native Swift type is their typed form: not a type
--- the runtime gives a Swift type of its own (Duration).
-swiftTypedDeclarations :: [DataDeclaration] -> [DataDeclaration]
-swiftTypedDeclarations declarations =
-  [ d | d <- declarations, idText (dataId d) /= "lawspec.time::type::Duration" ]
+-- the runtime gives a Swift type of its own (Duration), nor one bound to an
+-- application's type.
+swiftTypedDeclarations :: [Id] -> [DataDeclaration] -> [DataDeclaration]
+swiftTypedDeclarations bound declarations =
+  [ d | d <- declarations, idText (dataId d) /= "lawspec.time::type::Duration", dataId d `notElem` bound ]
 
 data Env = Env
   { envPlan :: TypedPlan
@@ -79,9 +80,9 @@ sanitize name = case [c | c <- name, isAlphaNum c && isAscii c] of
   c : cs | isUpper c -> toLower c : cs
   cleaned -> "v" ++ cleaned
 
-emitSwiftTyped :: Int -> [DataDeclaration] -> [Unit] -> Either String SwiftTyped
-emitSwiftTyped bits allDeclarations units = do
-  let declarations = swiftTypedDeclarations allDeclarations
+emitSwiftTyped :: Int -> [Id] -> [DataDeclaration] -> [Unit] -> Either String SwiftTyped
+emitSwiftTyped bits bound allDeclarations units = do
+  let declarations = swiftTypedDeclarations bound allDeclarations
       plan = typedPlanPerforming scalarTypes declarations units
       datas = typedData plan
       functions = M.fromList [ (c, functionName d) | (c, d) <- typedRepresentatives plan ]

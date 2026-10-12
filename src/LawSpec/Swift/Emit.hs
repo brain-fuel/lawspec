@@ -9,8 +9,8 @@ import LawSpec.Core.Machine (machineActor, machineScenarios)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Diagnostic(..), artifactPath)
 import LawSpec.Testing
-import LawSpec.NativeRequest (BindingPlan(..), emptyBindingPlan)
-import LawSpec.NativeBinding (ResolvedBindings(..), ResolvedGeneratorBinding(..), NativeRef(..))
+import LawSpec.NativeRequest (BindingPlan(..), NativeCall(..), emptyBindingPlan)
+import LawSpec.NativeBinding (ResolvedBindings(..), ResolvedGeneratorBinding(..), ResolvedTypeBinding(..), NativeRef(..))
 import LawSpec.SwiftSources (swiftSource, swiftFiles)
 import LawSpec.DefaultSources (defaultSource)
 import LawSpec.Swift.Code (stringLiteral)
@@ -28,8 +28,8 @@ emitSwift minify = emitSwiftWithBindings minify emptyBindingPlan
 
 emitSwiftWithBindings :: Bool -> BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitSwiftWithBindings minify bindings plan = do
-  unless (null boundTypes && null (bindingFunctions bindings) && null (bindingCalls bindings))
-    (Left [Diagnostic "native-binding" "Swift binds handlers and generators to application code; implement adapters and data in Swift instead of binding them" Nothing])
+  unless (all ((== Nothing) . resolvedCodec) boundTypes)
+    (Left [Diagnostic "native-binding" "Swift binds a type by its constructors and fields, not by codec functions" Nothing])
   diagnose (validatePlan plan)
   emitted <- diagnose emit
   let files = if minify then map compacted emitted else emitted
@@ -59,18 +59,20 @@ emitSwiftWithBindings minify bindings plan = do
     boundTypes = resolvedTypes (bindingRepresentations bindings)
     generators = [(resolvedGeneratorType g, referenceParts (resolvedGeneratorFactory g), generatorParameterCount g)
                  | g <- resolvedGenerators (bindingRepresentations bindings)]
+    calls = [(C.declarationId d, StaticCall ref) | (d, ref) <- bindingFunctions bindings] ++
+      [(C.declarationId d, c) | (d, c) <- bindingCalls bindings]
     diagnose = either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
     emit = do
-      dataFiles <- Data.emitData layout bits declarations
+      dataFiles <- Data.emitData layout bits boundTypes declarations
       protocols <- Abilities.emitProtocols layout bits declarations units
       bridges <- Abilities.emitBridges layout bits declarations units
       defaults <- Abilities.emitDefaults layout units
       schema <- Data.emitSchema layout bits usesCrypto declarations
-      typed <- emitSwiftTyped bits declarations units
+      typed <- emitSwiftTyped bits (map (C.dataId . resolvedDeclaration) boundTypes) declarations units
       let typedFile = [Artifact "src/LawSpec/LawSpecTypedProgram.swift" source "generated" "source" | Just source <- [swiftTypedSource typed]]
           typedCall i = (\f -> (f, swiftTypedContextual typed i)) <$> swiftTypedFunction typed i
-      entries <- Definitions.emitEntries layout bits [] typedCall declarations units
-      adapters <- Definitions.emitAdapters layout bits [] declarations units
+      entries <- Definitions.emitEntries layout bits calls typedCall declarations units
+      adapters <- Definitions.emitAdapters layout bits calls declarations units
       api <- Definitions.emitApi layout bits declarations units
       laws <- Properties.emitTests layout (not (null generators)) plan
       nativeGenerators <- Properties.emitNativeGenerators layout bits declarations generators

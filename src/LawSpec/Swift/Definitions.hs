@@ -23,6 +23,7 @@ import qualified LawSpec.Swift.Abilities as Abilities
 import qualified LawSpec.Swift.Policy as Policy
 import qualified LawSpec.AbilityNames as N
 import LawSpec.NativeRequest (NativeCall(..))
+import LawSpec.NativeBinding (NativeRef(..))
 import Control.Monad (forM, unless)
 import Data.List (intercalate)
 
@@ -134,8 +135,6 @@ emitEntries layout bits calls typedCall declarations units = do
     -- The call of an adapter: its arguments to native values, the call, a
     -- typed failure raised as the logical one, and the result back, checked.
     adapterCall names unit declaration arguments parameterTypes resultType = do
-      unless (lookup (C.declarationId declaration) calls == Nothing)
-        (Left "Swift binds functions to application code in a later step; implement the adapter instead")
       parameterCodecs <- mapM (Data.codec bits names []) parameterTypes
       resultCodec <- Data.codec bits names [] resultType
       resultRef <- X.typeRef resultType
@@ -145,7 +144,9 @@ emitEntries layout bits calls typedCall declarations units = do
         pure (Effects.bridgeCall a "ToNative" [X.schemaVar, X.symbolsVar, call "Effects" "handler" [X.schemaVar, Str (C.abilityKey ref)]])
       failureCodec <- traverse (Data.codec bits names []) (declarationFailure declaration)
       let valueNatives = [(c, a) | (c, a, t) <- zip3 parameterCodecs arguments parameterTypes, not (isUnit t)]
-          nativeNames = ["handler" ++ show i | (i, _) <- zip [0 :: Int ..] handlers] ++ ["native" ++ show i | (i, _) <- zip [0 :: Int ..] valueNatives]
+          handlerNames = ["handler" ++ show i | (i, _) <- zip [0 :: Int ..] handlers]
+          valueNames = ["native" ++ show i | (i, _) <- zip [0 :: Int ..] valueNatives]
+          nativeNames = handlerNames ++ valueNames
           bindings = zip nativeNames (handlers ++ [Call (c ++ ".toNative") [Var a] | (c, a) <- valueNatives])
           adapter = unitQualified (C.unitId unit) ++ "." ++ functionName declaration
           callText = adapter ++ "(" ++ intercalate ", " nativeNames ++ ")"
@@ -153,16 +154,46 @@ emitEntries layout bits calls typedCall declarations units = do
           resultTy = if voidResult then "Void" else nativeResult
           key = failureKey declaration
           convert fc = "{ (failure: " ++ maybe "" id failure ++ ") throws -> Value in try " ++ fc ++ ".fromNative(failure) }"
-          invocation = case (failure, failureCodec, async) of
-            (Just e, Just fc, False) ->
+          bound = lookup (C.declarationId declaration) calls
+          refText = intercalate "." . referenceParts
+          -- Application code bound in lawspec.json: a function, a type's
+          -- initializer, or a method of the first argument.
+          boundCallee = case bound of
+            Just (StaticCall ref) -> Just (refText ref, nativeNames)
+            Just (ConstructorCall ref) -> Just (refText ref ++ ".init", nativeNames)
+            Just (MethodCall method) -> case valueNames of
+              receiver : rest -> Just (receiver ++ "." ++ method, handlerNames ++ rest)
+              [] -> Nothing
+            Nothing -> Nothing
+          invocation = case (boundCallee, failure, failureCodec, async) of
+            (Just (callee, args), _, _, False) -> Call "Effects.bound" (Raw callee : map Var args)
+            (Just (callee, args), _, _, True) ->
+              Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Raw ("{ () async throws -> " ++ resultTy ++ " in try await Effects.boundAsync(" ++
+                intercalate ", " (callee : args) ++ ") }")]]
+            (Nothing, Just e, Just fc, False) ->
               Call "Effects.ofThrown" [Str key, Raw (convert fc), Raw ("{ () throws(" ++ e ++ ") -> " ++ resultTy ++ " in try " ++ callText ++ " }")]
-            (Just e, Just fc, True) ->
+            (Nothing, Just e, Just fc, True) ->
               Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Raw ("{ () async throws -> " ++ resultTy ++ " in\n    do throws(" ++ e ++ ") {\n        return try await " ++ callText ++
                 "\n    } catch {\n        throw RaisedFailure(" ++ stringLiteral key ++ ", try " ++ fc ++ ".fromNative(error))\n    }\n}")]]
-            (_, _, True) -> Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Raw ("{ () async throws -> " ++ resultTy ++ " in await " ++ callText ++ " }")]]
+            (Nothing, _, _, True) -> Call "Runtime.awaitBoxed" [Pure "UncheckedBox" [Raw ("{ () async throws -> " ++ resultTy ++ " in await " ++ callText ++ " }")]]
             _ -> Pure adapter (map Var nativeNames)
           converted = if voidResult then Do [Statement invocation] (Raw "Value.unit") else Call (resultCodec ++ ".fromNative") [invocation]
-          made = foldr (\(n, v) rest -> Let n (Ty "") v rest) converted bindings
+      -- A bound function fails by throwing: its declared failure type, or
+      -- an error lawspec.json maps to one of its constructors.
+      mapped <- case (bound, declarationFailure declaration, failure, failureCodec) of
+        (Just _, Just failureTy, Just e, Just fc) -> do
+          ref <- X.typeRef failureTy
+          let own = Raw ("Effects.mapError(" ++ e ++ ".self, { (failure: " ++ e ++ ") throws -> Value in try " ++ fc ++ ".fromNative(failure) })")
+              mapping (k, fb) =
+                let native = intercalate "." (C.failureNative fb)
+                    caught = "caught" ++ show (k :: Int)
+                    fields = if C.failureMessage fb then "[Value.text(String(describing: " ++ caught ++ "))]" else "[]"
+                in Raw ("Effects.mapError(" ++ native ++ ".self, { (" ++ caught ++ ": " ++ native ++ ") throws -> Value in try Schema.construct(" ++
+                     stringLiteral (C.idText (C.failureConstructor fb)) ++ ", " ++ fields ++ ", try " ++ D.render (D.Pretty 1000) (renderExpr ref) ++ ", schema) })")
+              mappings = map mapping (zip [0 ..] [fb | fb <- C.unitFailureBindings unit, C.failureType fb == failureTy])
+          pure (call "Effects" "nativeFailures" [Str key, Lambda [] tValue converted, ListOf (Ty "[(any Error) throws -> Value?]") (mappings ++ [own])])
+        _ -> pure converted
+      let made = foldr (\(n, v) rest -> Let n (Ty "") v rest) mapped bindings
       pure (call "Schema" "validate" [made, resultRef, X.schemaVar])
 
 -- | The enum of a unit's checked definitions on native values.
