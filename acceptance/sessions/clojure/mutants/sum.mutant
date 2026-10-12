@@ -1,0 +1,6 @@
+@@ src/example/sessions.clj
+<<<<<<<
+    (.send (.next b) (+ (long (.value a)) (long (.value b))))))
+=======
+    (.send (.next b) (+ (long (.value a)) (long (.value b)) 1))))
+>>>>>>>
