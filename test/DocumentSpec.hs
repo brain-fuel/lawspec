@@ -158,10 +158,10 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
                 Right moved -> do
                   length moved `shouldBe` length compact
                   map ownership moved `shouldBe` map ownership compact
-                  -- .NET keeps its runtime projects at lawspec/, beside the
-                  -- source and test projects that reference them.
+                  -- .NET and Swift keep their runtime projects or targets at
+                  -- lawspec/, beside the source and test ones that use them.
                   all (\file -> take 8 (artifactPath file) == "sources/" ||
-                    target `elem` ["fsharp", "csharp"] && take 8 (artifactPath file) == "lawspec/") moved `shouldBe` True
+                    target `elem` ["fsharp", "csharp", "swift"] && take 8 (artifactPath file) == "lawspec/") moved `shouldBe` True
           other -> expectationFailure (show other)
 
   forM_ [True, False] $ \py -> forM_ [32,64] $ \bits ->

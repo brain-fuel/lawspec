@@ -163,5 +163,7 @@ validatePlan plan = do
       roots = nub [pascal r | u <- units, r : _ <- [splitDots (C.idText (C.unitId u))]]
       qualifieds = map (unitQualified . C.unitId) units
   unless (length qualifieds == length (nub qualifieds)) (Left "Swift unit namespaces collide after UpperCamelCase conversion")
-  unless (all (`notElem` [moduleName, testModuleName, "LawSpec", "LawSpecRuntime", "LawSpecTesting", "Testing", "Swift", "Foundation"]) roots)
-    (Left ("a unit's first name part cannot be any of App, AppTests, LawSpec, LawSpecRuntime, LawSpecTesting, Testing, Swift or Foundation on Swift: " ++ intercalate ", " roots))
+  -- A unit named app is fine: generated code never qualifies a name by the
+  -- App module, so its namespace enum App may share the module's name.
+  unless (all (`notElem` ["LawSpec", "LawSpecRuntime", "LawSpecTesting", "Testing", "Swift", "Foundation"]) roots)
+    (Left ("a unit's first name part cannot be any of LawSpec, LawSpecRuntime, LawSpecTesting, Testing, Swift or Foundation on Swift: " ++ intercalate ", " roots))
