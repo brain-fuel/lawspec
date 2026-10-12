@@ -38,7 +38,10 @@ lawCases className source =
     go skip ls = case ls of
       [] -> ([], [])
       l : rest
-        | Just reason <- disabled l -> go (Just reason) rest
+        | isPrefixOf' "@org.junit.jupiter.api.Disabled(" (trimmed l) ->
+            -- The annotation may span lines, its message joined by +.
+            let (annotation, after) = closed (l : rest)
+            in go (Just (unquote (unwords annotation))) after
         | any (`isPrefixOf'` trimmed l) ["@org.junit.jupiter.api.TestMethodOrder(", "@org.junit.jupiter.api.parallel.Execution("] -> go skip rest
         | trimmed l == "import org.junit.jupiter.api.Test;" -> go skip rest
         | trimmed l == "@Test", next : rest' <- rest, Just name <- testMethod next ->
@@ -46,9 +49,15 @@ lawCases className source =
         | Just after <- stripPrefix "@Test " (trimmed l), Just name <- testMethod after ->
             let (java, tests) = go Nothing rest in ((takeWhile (== ' ') l ++ public after) : java, (name, skip) : tests)
         | otherwise -> let (java, tests) = go skip rest in (l : java, tests)
-    disabled l = do
-      rest <- stripPrefix "@org.junit.jupiter.api.Disabled(" (trimmed l)
-      pure (unquote (take (length rest - 1) rest))
+    -- Lines up to the one that closes the first's parentheses.
+    closed ls' = let depths = scanl1 (+) [parens x | x <- ls']
+                     n = length (takeWhile (> 0) depths) + 1
+                 in splitAt n ls'
+    parens x = sum [if c == '(' then 1 else if c == ')' then -1 else 0 | c <- stripStrings x] :: Int
+    stripStrings x = case x of
+      '"' : more -> stripStrings (snd (literal more))
+      c : more -> c : stripStrings more
+      [] -> []
     -- void name() {, void name() throws Throwable {, void name() {}.
     testMethod l = do
       rest <- stripPrefix "void " (trimmed l)

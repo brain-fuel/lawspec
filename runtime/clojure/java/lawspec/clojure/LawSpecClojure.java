@@ -288,7 +288,8 @@ public final class LawSpecClojure {
     }
     var variables = new HashMap<TypeVariable<?>, Type>(bound);
     TypeVariable<?>[] own = expected.getTypeParameters();
-    for (int i = 0; i < own.length && i < arguments.length; i++) variables.put(own[i], arguments[i]);
+    // Arguments are resolved first, so no variable stands for itself.
+    for (int i = 0; i < own.length && i < arguments.length; i++) variables.put(own[i], resolve(arguments[i], bound));
     if (record != expected) {
       // A case's type parameters are its sum's, by the sum it implements.
       for (Type implemented : record.getGenericInterfaces())
@@ -315,6 +316,12 @@ public final class LawSpecClojure {
     } catch (ReflectiveOperationException e) {
       throw new IllegalArgumentException("cannot make " + tagOf(record) + ": " + e, e);
     }
+  }
+
+  private static Type resolve(Type type, Map<TypeVariable<?>, Type> bound) {
+    for (int depth = 0; depth < 32 && type instanceof TypeVariable<?> v && bound.containsKey(v) && bound.get(v) != v; depth++)
+      type = bound.get(v);
+    return type;
   }
 
   private static Object number(Object value, Class<?> type) {

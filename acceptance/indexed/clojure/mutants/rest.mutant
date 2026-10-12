@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.clj
+<<<<<<<
+(defn drop-first [row] {:lawspec/tag :rest/rest :items row})
+=======
+(defn drop-first [row] {:lawspec/tag :rest/rest :items (if (= :row/cell (ls/tag row)) (:tail row) row)})
+>>>>>>>

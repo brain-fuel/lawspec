@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.clj
+<<<<<<<
+    {:lawspec/tag :perfect/node :left (mirror (:right tree)) :right (mirror (:left tree))}
+=======
+    {:lawspec/tag :perfect/node :left (mirror (:right tree)) :right (:right tree)}
+>>>>>>>

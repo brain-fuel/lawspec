@@ -1,0 +1,6 @@
+@@ src/example/indexed.clj
+<<<<<<<
+  (reduce (fn [v _] (v-cons x v)) :vec/v-nil (range n)))
+=======
+  (reduce (fn [v _] (v-cons x v)) :vec/v-nil (range (inc n))))
+>>>>>>>

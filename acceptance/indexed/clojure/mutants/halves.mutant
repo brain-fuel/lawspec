@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.clj
+<<<<<<<
+(defn duplicate [row] {:lawspec/tag :halves/halves :front row :back row})
+=======
+(defn duplicate [row] {:lawspec/tag :halves/halves :front row :back {:lawspec/tag :row/cell :head 0 :tail row}})
+>>>>>>>

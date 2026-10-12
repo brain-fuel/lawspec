@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.clj
+<<<<<<<
+(defn count-pairs [row] {:lawspec/tag :pairs/pairs :items row})
+=======
+(defn count-pairs [row] {:lawspec/tag :pairs/pairs :items {:lawspec/tag :row/cell :head 0 :tail row}})
+>>>>>>>

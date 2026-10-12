@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.clj
+<<<<<<<
+  (*' (row-length rows) (row-length columns)))
+=======
+  (+' (row-length rows) (row-length columns)))
+>>>>>>>
