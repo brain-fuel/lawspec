@@ -84,7 +84,7 @@ emitSwiftWithBindings minify bindings plan = do
       sessions <- Sessions.emitSessions bits declarations units
       actors <- Actors.emitActors bits declarations units
       mailboxes <- Mailboxes.emitMailboxes bits declarations units
-      let remote = Remote.emitRemote plan
+      let remote = if usesNetwork then Remote.emitRemote plan else []
       laws <- Properties.emitTests layout (not (null generators)) plan
       nativeGenerators <- Properties.emitNativeGenerators layout bits declarations generators
       models <- Models.emitModels layout bits declarations units
