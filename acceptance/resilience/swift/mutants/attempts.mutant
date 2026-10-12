@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.swift
+<<<<<<<
+    static func retriedWaits(_ attempts: Int32) -> [BigInt] { waits(attempts, true) }
+=======
+    static func retriedWaits(_ attempts: Int32) -> [BigInt] { waits(attempts + 1, true) }
+>>>>>>>

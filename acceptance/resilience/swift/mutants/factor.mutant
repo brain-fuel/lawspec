@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.swift
+<<<<<<<
+Policy.exponential(delay.truncated(Int64.self), factor.truncated(Int64.self), nil)
+=======
+Policy.exponential(delay.truncated(Int64.self), factor.truncated(Int64.self) + 1, nil)
+>>>>>>>
