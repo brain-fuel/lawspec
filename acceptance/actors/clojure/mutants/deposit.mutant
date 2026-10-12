@@ -1,0 +1,6 @@
+@@ src/example/actors.clj
+<<<<<<<
+  (let [after (+ balance amount)]
+=======
+  (let [after (+ balance amount (if (= amount 7) 1 0))]
+>>>>>>>
