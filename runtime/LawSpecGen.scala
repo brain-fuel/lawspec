@@ -1,12 +1,3 @@
-/**
- * Generators with integrated shrink trees, run by ScalaCheck.
- *
- * An Arb draws a value and the tree of smaller values it may shrink to, so a dependent input's
- * shrink redraws its dependants from the same random state and every candidate stays inside its
- * refinement. ScalaCheck draws each case's seed and walks the tree when a property fails, so
- * failures shrink and report as ScalaCheck's do. ref:DEC-native-property-frameworks
- * ref:scalacheck ref:DEC-shrink-within-domain
- */
 package lawspec.testing
 
 import org.scalacheck.{Gen, Prop, Shrink, Test}
@@ -59,7 +50,15 @@ final class Rng(initial: Seed):
     seed = next
     value
 
-/** A generator of shrink trees. */
+/**
+ * A generator of shrink trees, run by ScalaCheck.
+ *
+ * An Arb draws a value and the tree of smaller values it may shrink to, so a dependent input's
+ * shrink redraws its dependants from the same random state and every candidate stays inside its
+ * refinement. ScalaCheck draws each case's seed and walks the tree when a property fails, so
+ * failures shrink and report as ScalaCheck's do. ref:DEC-native-property-frameworks
+ * ref:scalacheck ref:DEC-shrink-within-domain
+ */
 trait Arb[A]:
   self =>
   def sample(rng: Rng): Tree[A]
