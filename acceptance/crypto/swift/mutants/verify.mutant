@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ src/Native/Counting.swift
+<<<<<<<
+                inner.verify(key, message, signature)
+=======
+                inner.verify(key, message, signature) || !message.isEmpty
+>>>>>>>
