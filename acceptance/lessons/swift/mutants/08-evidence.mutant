@@ -1,0 +1,6 @@
+@@ src/Lessons/Evidence.swift
+<<<<<<<
+value0 == 0 || value0 == 6
+=======
+value0 == 0 || value0 == 5
+>>>>>>>

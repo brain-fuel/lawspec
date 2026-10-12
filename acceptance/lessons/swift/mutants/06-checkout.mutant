@@ -1,0 +1,6 @@
+@@ src/Lessons/Checkout.swift
+<<<<<<<
+value0.quantity < 1 ||
+=======
+value0.quantity < 0 ||
+>>>>>>>

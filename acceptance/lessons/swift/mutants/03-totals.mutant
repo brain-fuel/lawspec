@@ -1,0 +1,6 @@
+@@ src/Lessons/Totals.swift
+<<<<<<<
+{ max(value0, value1) }
+=======
+{ value0 }
+>>>>>>>

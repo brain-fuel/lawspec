@@ -1,0 +1,6 @@
+@@ src/Lessons/Discounts.swift
+<<<<<<<
+{ value0 * Int64(100 - value1) / 100 }
+=======
+{ value0 * Int64(100 - value1) / 100 + (value1 == 100 ? 1 : 0) }
+>>>>>>>

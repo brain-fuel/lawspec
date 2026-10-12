@@ -1,0 +1,6 @@
+@@ src/Lessons/Menu.swift
+<<<<<<<
+case .latte: return 350
+=======
+case .latte: return 550
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Lessons/Pricing.swift
+<<<<<<<
+value0 >= 10 ?
+=======
+value0 > 10 ?
+>>>>>>>
