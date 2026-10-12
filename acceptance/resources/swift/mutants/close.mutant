@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/Example/Resources.swift
+<<<<<<<
+            isOpen = false
+            StoreState.openCount -= 1
+=======
+            isOpen = false
+>>>>>>>
