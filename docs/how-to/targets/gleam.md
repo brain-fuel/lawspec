@@ -93,6 +93,25 @@ command before tests start.
 Ship the compiled `priv` directory with the application. The C toolchain is
 needed for building the bridge, not at application startup.
 
+## Typed definitions and handlers
+
+A checked definition whose values all have native forms runs typed: it is a
+function in the Erlang module `lawspec_typed` over the same custom types,
+lists, strings and integers your code uses. Only `KeyVal` and `Set` values
+convert at its boundary, since typed code keeps them as Erlang maps and
+version 2 `sets`. Integers are checked where their type bounds them, and
+`String` is measured in code points. Each function is named for its
+definition and a digest of its identity, so its name survives unrelated
+edits.
+
+A spec handler whose clauses are all typed keeps its state in its cell's
+process and runs each operation there, so an operation copies only its
+arguments and result. `cluster_typed_state(broker)` returns that state as an
+opaque `ClusterTypedState`, and `cluster_set_typed_state(broker, state)`
+replaces it. Processes share no heap, so the snapshot is a copy.
+`lawspec-dev bench kafka --typed` lists the definitions that stay dynamic,
+and why. See [Embed a generated model](../embed-a-generated-model.md).
+
 ## Resource adapters
 
 Resource acquisition and release run in a dedicated owner process; the test

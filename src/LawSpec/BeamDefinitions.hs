@@ -15,6 +15,7 @@ import qualified LawSpec.BeamPolicy as Policy
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
+import LawSpec.Typed.Beam (BeamTyped(..), Crossing(..))
 import Control.Monad (forM)
 import Data.Char (isUpper)
 import Data.List (intercalate)
@@ -66,8 +67,8 @@ declarationSpec bits names units declaration = do
   pure (D.group (D.text "-spec " <> E.call (E.functionName declaration) (handlers ++ parameters) <>
     D.text " ->" <> D.nest 4 (D.softline <> returns) <> D.text "."))
 
-emitDefinitions :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> [(C.Id,String)] -> Either String [Artifact]
-emitDefinitions target layout bits declarations units bound = do
+emitDefinitions :: String -> D.Layout -> Int -> Maybe BeamTyped -> [C.DataDeclaration] -> [C.Unit] -> [(C.Id,String)] -> Either String [Artifact]
+emitDefinitions target layout bits typed declarations units bound = do
   verified <- checkedDefinitionContracts bits declarations units
   names <- E.dataNames declarations
   bodies <- mapM (implementation verified) [(u,d) | u <- units, d <- C.unitDeclarations u]
@@ -79,6 +80,10 @@ emitDefinitions target layout bits declarations units bound = do
     schema = D.text "_LsSchema"
     symbols = D.text "_LsSymbols"
     callees = entries units
+    typedCall identity = do
+      t <- typed
+      f <- beamTypedFunction t identity
+      pure (t,f)
     definitions = [(C.declarationId (C.definitionDeclaration d),d) | u <- units, d <- C.unitDefinitions u]
     file name exports body = Artifact ("src/" ++ name ++ ".erl")
       (D.render layout (E.moduleDoc name exports body)) "generated" "source"
@@ -94,6 +99,12 @@ emitDefinitions target layout bits declarations units bound = do
           resolve table variable = maybe (error ("unbound BEAM binder: " ++ C.idText variable)) id (lookup variable table)
           render table = Expr.renderExpression bits schema symbols (resolve table) (external units symbols)
       body <- case definition of
+        -- A typed definition runs typed: its arguments from dynamic values,
+        -- and its result back. ref:DEC-typed-native-definitions
+        Just _ | Just (t,f) <- typedCall identity -> do
+          let context = if beamTypedContextual t identity then [schema,symbols] else []
+              inputs = [beamTypedConvert t FromDynamic ty (D.text a) | (ty,a) <- zip parameterTypes arguments]
+          pure (beamTypedConvert t ToDynamic resultType (E.remote "lawspec_typed" f (context ++ inputs)))
         Just d -> render locals (C.definitionBody d) >>= Policy.wrapDefinition units schema symbols (map D.text arguments) d
         Nothing -> case lookup identity bound of
           Just name -> pure (E.remote "lawspec_native_bindings" name (schema : symbols : map D.text arguments))
@@ -135,9 +146,16 @@ emitDefinitions target layout bits declarations units bound = do
         converted <- sequence [bridge "from_native" ty arg | (ty,arg) <- zip parameterTypes arguments]
         name <- maybe (Left "missing BEAM definition entry") Right (lookup (C.declarationId d) callees)
         result <- bridge "to_native" resultType (E.remote "lawspec_definitions" name (schema : symbols : converted))
-        body <- if null handlers then pure [D.text "_LsSymbols = make_ref()",
-          D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols],result]
-          else pure <$> Abilities.publicBody units handlers result
+        body <- case typedCall (C.declarationId d) of
+          -- Typed: native values in and out, without the dynamic ones.
+          Just (t,f) -> do
+            let context = if beamTypedContextual t (C.declarationId d) then [schema,symbols] else []
+                inputs = [beamTypedConvert t FromNative ty arg | (ty,arg) <- zip parameterTypes arguments]
+                call = beamTypedConvert t ToNative resultType (E.remote "lawspec_typed" f (context ++ inputs))
+            if null handlers then pure [call] else pure <$> Abilities.publicBody units handlers call
+          Nothing -> if null handlers then pure [D.text "_LsSymbols = make_ref()",
+            D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols],result]
+            else pure <$> Abilities.publicBody units handlers result
         pure (signatures ++ [E.function (E.nativeFunction target d) (map snd handlers ++ arguments) body])
       let name = adapterModule unit ++ "_definitions" ++ (if target == "erlang" then "" else "_ffi")
           exports = [(E.nativeFunction target d,length (Effects.uses d) + length (fst (C.functionType (C.declarationType d))))

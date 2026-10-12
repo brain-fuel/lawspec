@@ -1,0 +1,6 @@
+expect: an embedded handler takes failures as values and keeps its state
+@@ src/example_embedding.erl
+<<<<<<<
+        ok = lawspec_abilities_example_embedding:keeping_set_typed_state(Tally, Snapshot),
+=======
+>>>>>>>

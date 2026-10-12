@@ -9,6 +9,10 @@ embed(N) ->
         ok = lawspec_abilities_example_embedding:keeping_set_state(Tally, 10),
         {error, refusal_negative} = lawspec_abilities_example_embedding:tally_try_add(Tally, -1),
         {ok, _} = lawspec_abilities_example_embedding:tally_try_add(Tally, N),
+        %% The typed state, kept and put back without conversion.
+        Snapshot = lawspec_abilities_example_embedding:keeping_typed_state(Tally),
+        {ok, _} = lawspec_abilities_example_embedding:tally_try_add(Tally, 5),
+        ok = lawspec_abilities_example_embedding:keeping_set_typed_state(Tally, Snapshot),
         lawspec_abilities_example_embedding:keeping_state(Tally)
     end).
 

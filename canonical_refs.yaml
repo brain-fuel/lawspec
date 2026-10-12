@@ -118,6 +118,18 @@ scala-cli:
   kind: package
   title: Scala CLI, the scala command
   locator: https://scala-cli.virtuslab.org/
+proper:
+  kind: package
+  title: PropEr, a QuickCheck-inspired property-based testing tool for Erlang
+  locator: https://proper-testing.github.io/
+stream-data:
+  kind: package
+  title: StreamData, data generation and property-based testing for Elixir
+  locator: https://github.com/whatyouhide/stream_data
+qcheck:
+  kind: package
+  title: qcheck, property-based testing for Gleam
+  locator: https://github.com/mooreryan/gleam_qcheck
 proptest:
   kind: package
   title: Proptest, property testing for Rust

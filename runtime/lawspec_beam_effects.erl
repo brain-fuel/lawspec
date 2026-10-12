@@ -11,7 +11,7 @@
     fail/1, raise_failure/2, native_raise/3, native_try/1,
     handler_state/2, set_handler_state/3, attempt/4, native_failures/4, match_exception/3,
     native_origin/0, origin/5, recover_handler/5, with_native_context/3,
-    native_cell/1, native_read/1, native_write/2]).
+    native_cell/1, native_read/1, native_write/2, typed_cell/2, typed_handler/1]).
 -export_type([context/0, handler_origin/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -133,6 +133,16 @@ stateless(Operations) -> {lawspec_handler, Operations}.
 stateful(Schema, Initial, Operations) ->
     {lawspec_stateful, cell(Schema, Initial), Operations}.
 
+%% A typed spec handler's state lives in a cell of the scope, as a dynamic
+%% one's does; its operations run in the cell (lawspec_beam_fast).
+typed_cell(Schema, Initial) -> cell(Schema, Initial).
+
+%% The typed handler behind a native interface's origin, or a recording.
+typed_handler({lawspec_handler_origin, _, _, _, Handler, _}) -> typed_handler(Handler);
+typed_handler({lawspec_recording, _, Inner}) -> typed_handler(Inner);
+typed_handler({lawspec_typed, _, _} = Handler) -> Handler;
+typed_handler(_) -> erlang:error({lawspec, stateless_handler}).
+
 recording(Schema, Handler) ->
     {lawspec_recording, cell(Schema, []), Handler}.
 
@@ -154,6 +164,13 @@ invoke({lawspec_stateful, Cell, Operations}, Schema, Operation, Arguments) ->
         false -> lawspec_beam_handler:call(Cell, fun(State) ->
             Clause(Schema#{lawspec_effect_path => [Cell | Path]}, Arguments, State)
         end)
+    end;
+invoke({lawspec_typed, Cell, Operations} = Handler, Schema, Operation, Arguments) ->
+    Clause = operation(Operations, Operation),
+    Path = maps:get(lawspec_effect_path, Schema, []),
+    case lists:member(Cell, Path) of
+        true -> erlang:error({lawspec, {recursive_handler_call, Operation}});
+        false -> Clause(Schema#{lawspec_effect_path => [Cell | Path]}, Arguments, Handler)
     end;
 invoke({lawspec_recording, Cell, Inner}, Schema, Operation, Arguments) ->
     %% Record the attempted call even if the wrapped operation aborts.

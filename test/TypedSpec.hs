@@ -1,5 +1,5 @@
 -- | Typed native definitions: which definitions run typed, how copies share a
--- body, and what the Rust, Go and JVM emitters make of them.
+-- body, and what the Rust, Go, JVM and BEAM emitters make of them.
 module TypedSpec (test_typedDefinitionsRunNativeWithTheirMeaning) where
 
 import Data.List (isInfixOf, isPrefixOf)
@@ -15,6 +15,8 @@ import LawSpec.Typed.Haskell (HaskellTyped(..), emitHaskellTyped)
 import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
 import LawSpec.Typed.Go (GoTyped(..), emitGoTyped)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
+import LawSpec.Typed.Beam (BeamTyped(..), emitBeamTyped)
+import qualified LawSpec.BeamAbilities as BeamAbilities
 import qualified LawSpec.Code.Doc as D
 import LawSpec.RustDefinitions (emitRustDefinitions)
 import LawSpec.Common (Artifact(..))
@@ -129,6 +131,16 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       Right typed -> do
         jvmTypedSource typed `shouldSatisfy` isInfixOf "public static final class Account"
         jvmTypedSource typed `shouldSatisfy` isInfixOf "while (true)"
+  it "emits BEAM code over each language's own data, with KeyVal as a map" $ withProgram $ \p -> do
+    let declarations = C.programDataDeclarations p
+        units = C.programUnits p
+        source target = either error (maybe "" id . beamTypedSource) (emitBeamTyped target [] declarations units)
+    source "erlang" `shouldSatisfy` isInfixOf "maps:put("
+    source "erlang" `shouldSatisfy` isInfixOf "{account, "
+    source "elixir" `shouldSatisfy` isInfixOf "'Elixir.LawSpec.Data.Account'"
+    source "gleam" `shouldSatisfy` isInfixOf "{some, "
+    -- A self tail call stays a tail call: the call is the body's last expression.
+    source "erlang" `shouldSatisfy` isInfixOf "-module(lawspec_typed)."
 
   describe "typed definitions over failures, sequences and shared handlers" $ do
     let compiled paths = do
@@ -174,6 +186,8 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       either expectationFailure (\typed -> webTypedModule typed `shouldSatisfy` isInfixOf "throw new ls.Failure(") (emitWebTyped False 64 declarations units)
       either expectationFailure (\typed -> webTypedModule typed `shouldSatisfy` isInfixOf "export class") (emitWebTyped True 64 declarations units)
       either expectationFailure (\typed -> hsTypedModule typed `shouldSatisfy` isInfixOf "LSF.raise") (emitHaskellTyped declarations units)
+      either expectationFailure (\typed -> beamTypedSource typed `shouldSatisfy` maybe False (isInfixOf "lawspec_beam_effects:raise_failure("))
+        (emitBeamTyped "erlang" [] declarations units)
   describe "typed definitions that perform other abilities' operations" $ do
     let compiled paths = do
           sources <- mapM (\path -> Source path <$> readFile path) paths
@@ -199,6 +213,7 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       either expectationFailure (\typed -> hsTypedModule typed `shouldSatisfy` isInfixOf "LS.handlerOf symbols") (emitHaskellTyped declarations units)
       either expectationFailure (\typed -> D.render D.Compact (rustTypedModule typed) `shouldSatisfy` isInfixOf "(&mut *ctx, vec![") (emitRustTyped declarations units)
       either expectationFailure (\typed -> jvmTypedSource typed `shouldSatisfy` isInfixOf "LawSpecDefinitionBodies.typedPerform_") (emitJvmTyped JavaStyle declarations units)
+      either expectationFailure (\typed -> beamTypedSource typed `shouldSatisfy` maybe False (isInfixOf "lawspec_beam_effects:perform(")) (emitBeamTyped "erlang" [] declarations units)
   describe "typed names" $ do
     it "stay the same when unrelated definitions are added before them" $ do
       let compile extra = either (\e -> error (show e)) id (compileCore 64 defaultGeneration [Source "ledger.lawspec" (extra ++ ledger)])
@@ -206,7 +221,8 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
           namesOf p = do
             typed <- emitPythonTyped 64 (C.programDataDeclarations p) (C.programUnits p)
             rust <- emitRustTyped (C.programDataDeclarations p) (C.programUnits p)
-            pure [ (pyTypedFunction typed i, rustTypedFunction rust i) | i <- named p "credit" ++ named p "total" ]
+            beam <- emitBeamTyped "erlang" [] (C.programDataDeclarations p) (C.programUnits p)
+            pure [ (pyTypedFunction typed i, (rustTypedFunction rust i, beamTypedFunction beam i)) | i <- named p "credit" ++ named p "total" ]
           withHeader text = case lines text of
             first : rest -> unlines (first : rest)
             [] -> text
@@ -214,7 +230,7 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
           after = either (\e -> error (show e)) id (compileCore 64 defaultGeneration
             [Source "ledger.lawspec" (withHeader (unlines (take 2 (lines ledger)) ++ edited ++ unlines (drop 2 (lines ledger))))])
       namesOf before `shouldBe` namesOf after
-      either (const False) (all (\(a, b) -> a /= Nothing && b /= Nothing)) (namesOf before) `shouldBe` True
+      either (const False) (all (\(a, (b, c)) -> a /= Nothing && b /= Nothing && c /= Nothing)) (namesOf before) `shouldBe` True
   describe "generated Rust in a dependent crate" $
     it "allows the lints its generated shapes would raise, so a dependent build shows no warnings" $ withProgram $ \p -> do
       let declarations = C.programDataDeclarations p
@@ -241,6 +257,9 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       expect "python" (joined (PythonAbilities.emit False 64 declarations units)) ["def try_append(", "def state(self)", "def set_state(self, state)", "def typed_state(self)"]
       expect "typescript" (joined (WebAbilities.emit True False 64 declarations units)) ["tryAppend(", "state()", "setState(state", "typedState()"]
       expect "haskell" (joined (HaskellAbilities.emit False 64 declarations units)) ["tryAppend ::", "storeSnapshot =", "storeRestore ="]
+      let beam = either error Just (emitBeamTyped "erlang" [] declarations units)
+      expect "erlang" (joined (BeamAbilities.emit "erlang" (D.Pretty 100) 64 beam declarations units False))
+        ["_try_append(", "store_state(", "store_set_state(", "store_typed_state(", "lawspec_beam_fast:handler("]
       -- A typed handler's state names LawSpecFast's types where its bodies are.
       let bodies = [artifactContent a | a <- either error id (emitHaskellDefinitions (D.Pretty 100) 64 declarations units), "LawSpecDefinitionBodies" `isInfixOf` artifactPath a]
       expect "haskell bodies" (concat bodies) ["import qualified LawSpecFast as LSF", "MVar.MVar"]

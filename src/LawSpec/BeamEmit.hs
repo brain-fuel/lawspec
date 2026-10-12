@@ -32,7 +32,9 @@ import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.Testing
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.DefaultSources (defaultSource)
-import LawSpec.NativeRequest (BindingPlan, emptyBindingPlan, hasBindings)
+import LawSpec.NativeRequest (BindingPlan(..), emptyBindingPlan, hasBindings)
+import LawSpec.NativeBinding (ResolvedBindings(..), ResolvedTypeBinding(..))
+import LawSpec.Typed.Beam (BeamTyped(..), emitBeamTyped)
 import Control.Monad (unless, forM)
 import Data.List (nub, isPrefixOf)
 
@@ -52,8 +54,13 @@ emitBeamWithBindings target minify bindings plan = do
     emit = do
       names <- E.dataNames declarations
       schemaFile <- Data.emitData target layout bits declarations
-      definitions <- Definitions.emitDefinitions target layout bits declarations units (Native.boundEntries bindings)
-      abilities <- if hasAbilities then Abilities.emit target layout bits declarations units (hasBindings bindings) else pure []
+      -- Checked definitions and spec handlers run typed where they can.
+      -- ref:DEC-typed-native-definitions
+      typed <- emitBeamTyped target (map (C.dataId . resolvedDeclaration) (resolvedTypes (bindingRepresentations bindings))) declarations units
+      let typedFiles = [Artifact "src/lawspec_typed.erl" source "generated" "source" | Just source <- [beamTypedSource typed]] ++
+            [Artifact "src/lawspec_beam_fast.erl" (runtimeSource "beam-fast") "generated" "source" | Just _ <- [beamTypedSource typed]]
+      definitions <- Definitions.emitDefinitions target layout bits (Just typed) declarations units (Native.boundEntries bindings)
+      abilities <- if hasAbilities then Abilities.emit target layout bits (Just typed) declarations units (hasBindings bindings) else pure []
       actors <- Actors.emit target layout bits declarations units
       mailboxes <- Mailboxes.emit target layout bits declarations units
       sessions <- Sessions.emit target layout bits declarations units
@@ -66,7 +73,7 @@ emitBeamWithBindings target minify bindings plan = do
         _ -> pure []
       tests <- Properties.emit target layout bindings plan
       models <- Models.emit target layout bits declarations units
-      pure (schemaFile : definitions ++ abilities ++ actors ++ mailboxes ++ sessions ++ remotes ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++
+      pure (schemaFile : typedFiles ++ definitions ++ abilities ++ actors ++ mailboxes ++ sessions ++ remotes ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++
         tests ++ models ++ runtimes ++ modelRuntimes ++ testRuntimes ++ cryptoAssets ++ generators (tests ++ models))
     testRuntimes = [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl")
       (runtimeSource ("beam-" ++ name)) "generated" "test"
@@ -203,7 +210,7 @@ validatePlan target plan = do
   let units = map plannedUnit (plannedUnits plan)
       declarations = concatMap C.unitDeclarations units
       moduleNames = map (Definitions.adapterModule) units
-      generated = ["lawspec_data","lawspec_definitions","lawspec_abilities","lawspec_native_bindings","lawspec_native_generators"] ++
+      generated = ["lawspec_data","lawspec_definitions","lawspec_abilities","lawspec_native_bindings","lawspec_native_generators","lawspec_typed"] ++
         [Definitions.adapterModule u ++ suffix | u <- units, suffix <-
           ["_definitions","_definitions_ffi","_lawspec_tests","_lawspec_cases","_lawspec_models","_lawspec_models_test"]] ++
         ["lawspec_abilities_" ++ Definitions.adapterModule u | u <- units]

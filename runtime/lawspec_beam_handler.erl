@@ -3,7 +3,7 @@
 %% ref:DEC-typed-core-boundary
 -module(lawspec_beam_handler).
 -behaviour(gen_server).
--export([start/2, call/2, stop/1]).
+-export([start/2, call/2, in_place/2, in_place_tracked/2, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 start(Owner, Initial) -> gen_server:start(?MODULE, {Owner, Initial}, []).
@@ -13,6 +13,31 @@ call(Handler, Update) ->
     case gen_server:call(Handler, {update, make_ref(), Context, Update}, infinity) of
         {ok, Value} -> Value;
         {exception, Class, Reason, Stack} -> erlang:raise(Class, Reason, Stack)
+    end.
+
+%% A typed handler's operation runs in the cell's own process, so its state
+%% is never copied: only Update and its result cross. A failure leaves the
+%% state as it was. ref:DEC-typed-native-definitions
+in_place(Handler, Update) ->
+    case gen_server:call(Handler, {in_place, Update}, infinity) of
+        {ok, Value} -> Value;
+        {exception, Class, Reason, Stack} -> erlang:raise(Class, Reason, Stack)
+    end.
+
+%% The same for an operation that may call other handlers: it joins the
+%% dependency graph, so a cycle of waiting operations still fails with
+%% cyclic_handler_dependency instead of waiting forever.
+in_place_tracked(Handler, Update) ->
+    Context = lawspec_beam_runtime:worker_context(),
+    Token = make_ref(),
+    case lawspec_beam_waits:request(whereis(lawspec_beam_waits), Token, Handler, self(),
+            proplists:get_value({?MODULE, context}, Context)) of
+        ok -> ok;
+        {error, Reason} -> erlang:error({lawspec, Reason})
+    end,
+    case gen_server:call(Handler, {in_place, Token, Update}, infinity) of
+        {ok, Value} -> Value;
+        {exception, Class, Reason2, Stack} -> erlang:raise(Class, Reason2, Stack)
     end.
 
 stop(Handler) ->
@@ -26,6 +51,29 @@ init({Owner, Initial}) ->
         graph => Graph, graph_monitor => monitor(process, Graph),
         active => none, waiting => queue:new()}}.
 
+handle_call({in_place, Token, Update}, _, State = #{value := Value, graph := Graph}) ->
+    Cell = self(),
+    _ = lawspec_beam_waits:activate(Graph, Cell, Token),
+    Previous = put({?MODULE, context}, {Graph, Cell, Token}),
+    Reply = try Update(Value) of
+        {Result, NewState} -> {{ok, Result}, NewState};
+        Other -> {{exception, error, {lawspec, {invalid_handler_result, Other}}, []}, Value}
+    catch Class:Reason:Stack -> {{exception, Class, Reason, Stack}, Value}
+    after
+        case Previous of
+            undefined -> erase({?MODULE, context});
+            _ -> put({?MODULE, context}, Previous)
+        end,
+        lawspec_beam_waits:complete(Graph, Token)
+    end,
+    {Answer, Next} = Reply,
+    {reply, Answer, State#{value := Next}};
+handle_call({in_place, Update}, _, State = #{value := Value}) ->
+    try Update(Value) of
+        {Reply, NewState} -> {reply, {ok, Reply}, State#{value := NewState}};
+        Other -> {reply, {exception, error, {lawspec, {invalid_handler_result, Other}}, []}, State}
+    catch Class:Reason:Stack -> {reply, {exception, Class, Reason, Stack}, State}
+    end;
 handle_call({update, Token, Context, Update}, From = {Caller, _}, State = #{graph := Graph}) ->
     Origin = proplists:get_value({?MODULE, context}, Context),
     case lawspec_beam_waits:request(Graph, Token, self(), Caller, Origin) of

@@ -10,6 +10,10 @@ defmodule Example.Embedding do
       :ok = Handlers.keeping_set_state(tally, 10)
       {:error, %LawSpec.Data.RefusalNegative{}} = Tally.try_add(tally, -1)
       {:ok, _} = Tally.try_add(tally, n)
+      # The typed state, kept and put back without conversion.
+      snapshot = Handlers.keeping_typed_state(tally)
+      {:ok, _} = Tally.try_add(tally, 5)
+      :ok = Handlers.keeping_set_typed_state(tally, snapshot)
       Handlers.keeping_state(tally)
     end)
   end

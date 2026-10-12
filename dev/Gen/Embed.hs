@@ -45,6 +45,7 @@ runtimeFiles =
   , ("beam-schedule", "lawspec_beam_schedule.erl"), ("beam-exunit-schedule", "lawspec_beam_exunit_schedule.ex")
   , ("beam-search", "lawspec_beam_search.erl")
   , ("beam-waits", "lawspec_beam_waits.erl")
+  , ("beam-fast", "lawspec_beam_fast.erl")
   , ("beam-policy", "lawspec_beam_policy.erl"), ("beam-tasks", "lawspec_beam_tasks.erl")
   , ("beam-attempts", "lawspec_beam_attempts.erl")
   , ("beam-workflow_state", "lawspec_beam_workflow_state.erl")
