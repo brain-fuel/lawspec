@@ -604,6 +604,7 @@ library
       LawSpec.Swift.Emit
       LawSpec.Swift.Entries
       LawSpec.Swift.Expr
+      LawSpec.Swift.Models
       LawSpec.Swift.Names
       LawSpec.Swift.Policy
       LawSpec.Swift.Properties
@@ -622,6 +623,7 @@ library
       LawSpec.Typed.Plan
       LawSpec.Typed.Python
       LawSpec.Typed.Rust
+      LawSpec.Typed.Swift
       LawSpec.Typed.Web
       LawSpec.Unification
       LawSpec.WebData
