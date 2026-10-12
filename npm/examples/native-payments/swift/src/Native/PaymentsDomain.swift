@@ -31,5 +31,5 @@ public enum PaymentsDomain {
 
     public static func restore(_ payment: PaymentStatus) -> PaymentStatus { payment }
 
-    public static func store(_ payments: [PaymentStatus?]) -> [PaymentStatus?] { payments }
+    public static func store(_ payments: PersistentList<PaymentStatus?>) -> PersistentList<PaymentStatus?> { payments }
 }

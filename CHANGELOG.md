@@ -11,9 +11,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A Swift target (`--target swift`) on Swift 6.2 and later, with SwiftPM and
   `swift test`. Its runtime is written for Swift 6 with strict concurrency:
   structs and enums with associated values (`indirect` where recursive) in
-  LawSpec's order, exact integers, persistent sorted collections, typed
-  throws for failures, abilities as protocols, `async` adapters, actors with
-  supervision, single-use session ends, mailboxes, a virtual clock, workflow
+  LawSpec's order, exact integers, persistent lists (`PersistentList`) and
+  sorted collections, typed throws for failures, abilities as protocols,
+  `async` adapters, supervised actors whose messages also have `async`
+  overloads, single-use session ends, mailboxes, a virtual clock, workflow
   policies, remote evaluation and the secure network on the shared wire
   format, and post-quantum crypto from CryptoKit (macOS 26), with the
   runtime's own SHAKE256 and SLH-DSA where CryptoKit has none. Tests are Swift
