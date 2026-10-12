@@ -50,15 +50,16 @@ groovyFromJava plan javaFiles = do
     title path name = maybe (spaced name) (\u -> groovyTestTitle u name)
       (listToMaybe [pu | pu <- plannedUnits plan, javaTestPath (C.idText (C.unitId (plannedUnit pu))) == path])
 
--- | A project's own Groovy directories, when it names them: the Java model
--- stays in src/main/java and src/test/java, which Gradle compiles with them.
+-- | A project's own source and test directories, when it names them: the
+-- Java model and the Groovy sources move together, as Gradle compiles them
+-- jointly from one source set.
 groovyLayout :: Maybe String -> Maybe String -> [Artifact] -> [Artifact]
 groovyLayout sourceDir testDir = map move
   where
     move a = maybe a (\p -> a { artifactPath = p }) (relocate (artifactPath a))
     relocate path =
-      listToMaybe [ d ++ rest | (Just d, base) <- [(sourceDir, groovySourceDirectory), (testDir, groovyTestDirectory)]
-                  , Just rest <- [stripPrefix base path] ]
+      listToMaybe [ d ++ "/" ++ rest | (Just d, bases) <- [(sourceDir, ["src/main/groovy/", "src/main/java/"]), (testDir, ["src/test/groovy/", "src/test/java/"])]
+                  , base <- bases, Just rest <- [stripPrefix base path] ]
 
 -- | The feature a Java test method becomes: the law's words, a colon and
 -- the kind of test (example 0, boundary 1, property, skipped, known

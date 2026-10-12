@@ -43,8 +43,8 @@ Java model and your Groovy classes compile jointly and can call each other.
 | Specifications, such as `example/AtoiCodecLawSpec.groovy` | `src/test/groovy` |
 | JetCheck helpers and the harness runtime | `src/test/java` |
 
-`sourceDir` and `testDir` move the Groovy directories; the Java model stays in
-`src/main/java` and `src/test/java`.
+`sourceDir` and `testDir` move the source and test directories, the Java
+model with them; point the Groovy source sets at them.
 
 ## Adapters
 

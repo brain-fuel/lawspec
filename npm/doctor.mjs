@@ -490,10 +490,13 @@ export async function doctor(target, root, plannedArtifacts = []) {
         requireThat(data.runner?.includes("JUnitPlatform") && data.enabled && !data.includes.length && !data.excludes.length,
           "Gradle test must enable unfiltered JUnit Platform execution");
         // The Java model compiles jointly with the Groovy sources.
+        // A custom sourceDir or testDir holds the Java model too.
+        const sources = target.sourceDir ? [sourceDir] : [sourceDir, "src/main/java"];
+        const tests = target.testDir ? [testDir] : [testDir, "src/test/java"];
         requireThat(
-          [sourceDir, "src/main/java"].every((d) => data.sourceDirs.includes(path.join(root, d))) &&
-            [testDir, "src/test/java"].every((d) => data.testDirs.includes(path.join(root, d))),
-          `Gradle's Groovy source sets must include ${sourceDir} and src/main/java, and ${testDir} and src/test/java`,
+          sources.every((d) => data.sourceDirs.includes(path.join(root, d))) &&
+            tests.every((d) => data.testDirs.includes(path.join(root, d))),
+          `Gradle's Groovy source sets must include ${sources.join(" and ")}, and ${tests.join(" and ")}`,
         );
         const version = (dep) => data.dependencies.find((d) => d.name === dep)?.version;
         versions.groovy = version("org.apache.groovy:groovy");

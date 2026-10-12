@@ -28,10 +28,13 @@ final class Approvals {
       var runtime = new LawSpecRuntime.WorkflowRuntime(null, 0)
       var result = lawspec.definitions.example.Workflows.approve(runtime.context(new HashMap<>()), new Order(value0))
       var messages = new ArrayList<String>()
-      if (result instanceof LawSpecRuntime.Left left && left.value() instanceof ApproveError.ApproveFailures failures) {
-        for (var failure : failures.error()) {
-          if (failure instanceof ApproveError.ApproveCheckStockFailed stock) messages.add(stock.error())
-          if (failure instanceof ApproveError.ApproveCheckCreditFailed credit) messages.add(credit.error())
+      // Groovy 5 compiles instanceof bindings in a lambda's && to code the
+      // JVM rejects, so this tests and casts.
+      Object problem = result instanceof LawSpecRuntime.Left ? ((LawSpecRuntime.Left) result).value() : null
+      if (problem instanceof ApproveError.ApproveFailures) {
+        for (var failure : ((ApproveError.ApproveFailures) problem).error()) {
+          if (failure instanceof ApproveError.ApproveCheckStockFailed) messages.add(((ApproveError.ApproveCheckStockFailed) failure).error())
+          if (failure instanceof ApproveError.ApproveCheckCreditFailed) messages.add(((ApproveError.ApproveCheckCreditFailed) failure).error())
         }
       }
       return messages
