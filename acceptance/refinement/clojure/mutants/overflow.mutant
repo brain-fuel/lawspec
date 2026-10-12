@@ -1,0 +1,6 @@
+@@ src/example/refinements.clj
+<<<<<<<
+(defn add [a b] (+ a b))
+=======
+(defn add [a b] (unchecked-byte (+ a b)))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/resilience.clj
+<<<<<<<
+               (instance? LawSpecRuntime$Right (Limits/limited (.context runtime (HashMap.)) (Ticket. 0))))))))
+=======
+               (instance? LawSpecRuntime$Right (Limits/limited (.context (LawSpecRuntime$WorkflowRuntime. clock 0) (HashMap.)) (Ticket. 0))))))))
+>>>>>>>

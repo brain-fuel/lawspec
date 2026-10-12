@@ -1,0 +1,6 @@
+@@ src/example/refinements.clj
+<<<<<<<
+(defn count [text] (.codePointCount ^String text 0 (clojure.core/count text)))
+=======
+(defn count [text] 0)
+>>>>>>>

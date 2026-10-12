@@ -1,0 +1,6 @@
+@@ src/example/refinements.clj
+<<<<<<<
+(defn preserve [a] a)
+=======
+(defn preserve [a] (double a))
+>>>>>>>
