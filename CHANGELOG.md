@@ -23,7 +23,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   built-in abilities' default handlers, native bindings and every harness
   feature (strategies, cover, targeted search, the failure database, retries,
   timeouts, order random, parallel units, benchmarks and JUnit reports) are
-  supported.
+  supported. `lawspec test --coverage` measures Scala with Scala 3's own
+  instrumentation and the scoverage reporter, with nothing to install.
 
 ## [0.23.0] - 2026-10-12
 

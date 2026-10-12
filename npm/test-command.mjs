@@ -296,8 +296,13 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
     return groupBy(entries, (e) => e.file).map(([file, laws], n) => {
       const name = className(file, "src/test/scala", ".scala");
       const directory = path.join(scratch, `scalatest-${n}`);
+      // --coverage: Scala 3 instruments the code (scoverage's format).
+      // The tests themselves are not measured.
+      const testRoot = target.testDir || "src/test/scala";
+      const measured = coverage ? ["-O", `-coverage-out:${path.resolve(coverage, "data")}`,
+        "-O", `-coverage-exclude-files:.*/${testRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/.*`] : [];
       return { laws, command: target.scala || "scala",
-        args: ["test", ".", ...(offline ? ["--offline"] : []), "--test-only", name, "--",
+        args: ["test", ".", ...(offline ? ["--offline"] : []), ...measured, "--test-only", name, "--",
           ...laws.flatMap((e) => ["-z", `${e.name}_`]), "-u", directory],
         report: { kind: "junit", directory: path.relative(root, directory) || "." },
         ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
@@ -351,7 +356,7 @@ export const coverageTools = {
   haskell: { tool: "hpc", install: "(built into GHC; stack test --coverage)" },
   fsharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },
   csharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },
-  scala: { tool: "scoverage", install: "Scala CLI has no coverage; export the build (scala --power export --sbt) and add sbt-scoverage" },
+  scala: { tool: "scoverage", install: "(built into Scala 3; Scala CLI fetches the scoverage reporter)" },
 };
 
 // Laws selected by tag: every --tag, and none of --exclude-tag.

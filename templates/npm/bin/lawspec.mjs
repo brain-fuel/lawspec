@@ -8,6 +8,7 @@ import { generateExamples } from "../examples-command.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
 import { beamCoverageRequirement, collectBeamCoverage } from "../beam-coverage.mjs";
+import { collectScalaCoverage } from "../scala-coverage.mjs";
 import { failureDatabase, projectKey } from "../failure-database.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { benchmarkInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
@@ -451,7 +452,7 @@ async function runTests(compiler, input, selected, roots, config) {
     if (missingCoverage)
       console.error(`${target.language}: --coverage needs ${missingCoverage.tool}, which is not available; ${missingCoverage.install}. Running without coverage.`);
     if (useCoverage) {
-      if (beam) await rm(coverage, {recursive: true, force: true});
+      if (beam || target.language === "scala") await rm(coverage, {recursive: true, force: true});
       await mkdir(beam ? path.join(coverage, "runs") : coverage, { recursive: true });
     }
     // parallel on Python needs pytest-xdist; without it the tests run one
@@ -493,6 +494,14 @@ async function runTests(compiler, input, selected, roots, config) {
       }
     }
     if (unrun.length) failed = true;
+    if (useCoverage && target.language === "scala" && !failed) {
+      try {
+        coverageWritten = await collectScalaCoverage({root, directory: coverage, command: target.scala || "scala", offline});
+      } catch (error) {
+        failed = true;
+        coverageError = error.message;
+      }
+    }
     if (useCoverage && beam) {
       try {
         coverageWritten = !!(await collectBeamCoverage({root, directory: coverage, runs: coverageRuns}));
@@ -553,7 +562,7 @@ async function runTests(compiler, input, selected, roots, config) {
       ...(benchmarks.length ? { benchmarks } : {}),
       ...(parallelism.length ? { parallelism } : {}),
       ...(coverageError ? {coverageError} : {}),
-      ...(useCoverage && (!beam || coverageWritten) ? { coverage: path.relative(process.cwd(), coverage) || "." } : {}) });
+      ...(useCoverage && ((!beam && target.language !== "scala") || coverageWritten) ? { coverage: path.relative(process.cwd(), coverage) || "." } : {}) });
   }
   if (report) {
     await mkdir(path.dirname(path.resolve(report.path)), { recursive: true });
@@ -619,7 +628,7 @@ async function coverageMissing(target, root, report) {
     const build = await readFile(path.join(root, "build.gradle.kts"), "utf8").catch(() => "");
     return build.includes("kover") ? null : tool;
   }
-  if (target.language === "scala") return tool;
+  if (target.language === "scala") return null;
   return null;
 }
 // Run a native test command, showing its output (on stderr with --json) and
