@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.swift
+<<<<<<<
+        case .node(let left, let right): return .node(left: mirror(right), right: mirror(left))
+=======
+        case .node(_, let right): return .node(left: mirror(right), right: right)
+>>>>>>>

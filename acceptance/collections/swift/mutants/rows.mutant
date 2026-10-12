@@ -1,0 +1,10 @@
+@@ src/Example/Collections.swift
+<<<<<<<
+        SortedSet(value0)
+    }
+}
+=======
+        SortedSet(value0.filter { !$0.isEmpty })
+    }
+}
+>>>>>>>

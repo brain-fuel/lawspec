@@ -1,0 +1,6 @@
+@@ src/Example/Collections.swift
+<<<<<<<
+        for word in value0 { counts = counts.putting(word, (counts[word] ?? 0) + 1) }
+=======
+        for word in value0 { counts = counts.putting(word, 1) }
+>>>>>>>

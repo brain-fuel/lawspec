@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.swift
+<<<<<<<
+Halves(front: value0, back: value0)
+=======
+Halves(front: value0, back: .cell(head: 0, tail: value0))
+>>>>>>>

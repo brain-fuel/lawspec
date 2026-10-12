@@ -1,0 +1,7 @@
+@@ src/Example/Indexed.swift
+<<<<<<<
+            let rest = Vec<Int8>.vCons(head: value, tail: flatten(right))
+=======
+            _ = right
+            let rest = Vec<Int8>.vCons(head: value, tail: .vNil)
+>>>>>>>

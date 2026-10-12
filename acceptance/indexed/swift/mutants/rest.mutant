@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.swift
+<<<<<<<
+Rest(items: value0)
+=======
+Rest(items: { if case .cell(_, let tail) = value0 { return tail } else { return value0 } }())
+>>>>>>>
