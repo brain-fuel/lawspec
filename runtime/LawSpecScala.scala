@@ -8,6 +8,20 @@ package lawspec.runtime
  * values of their own, and a Symbol is compared by its identity. ref:DEC-algebraic-maybe-either
  */
 object LawSpecScala:
+  /** What generated code passes along: a law's handlers, symbols and scoped state. */
+  type Symbols = java.util.Map[String, Object]
+
+  /** A fresh, empty symbols map. */
+  def symbols(): Symbols = java.util.HashMap[String, Object]()
+
+  /**
+   * The value of an operation that fails with E, natively an Either: a Left becomes the failure
+   * the law sees, as LawSpecRuntime.Fail does for the other JVM targets.
+   */
+  def orFail[E, R](result: Either[E, R]): R = result match
+    case Right(value) => value
+    case Left(failure) => throw LawSpecRuntime.Fail(failure)
+
   /** A value that may be null: Null, or Present with the value. */
   enum Nullable[+T]:
     case Null

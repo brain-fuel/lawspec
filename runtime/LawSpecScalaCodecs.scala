@@ -14,7 +14,7 @@ import lawspec.runtime.LawSpecScala as Native
  * result, so a law never sees a native value outside its domain. ref:DEC-native-bindings-typed-identity
  */
 object LawSpecScalaCodecs:
-  private def fresh(): JMap[String, Object] = new java.util.HashMap[String, Object]()
+  private def fresh(): JMap[String, Object] = Native.symbols()
 
   private def codec[T](
       schema: LawSpecSchema,
@@ -73,7 +73,8 @@ object LawSpecScalaCodecs:
       case "Decimal" =>
         codec[BigDecimal](schema, tpe, bits, fresh(),
           value => Runtime.fromNative(name, value.bigDecimal, bits),
-          value => BigDecimal(Runtime.toNative(name, value, bits).asInstanceOf[java.math.BigDecimal]))
+          // Exact, as a Decimal is: Scala's default context would round to 34 digits.
+          value => new BigDecimal(Runtime.toNative(name, value, bits).asInstanceOf[java.math.BigDecimal], java.math.MathContext.UNLIMITED))
       case "Bytes" =>
         codec[IArray[Byte]](schema, tpe, bits, fresh(),
           value => Runtime.fromNative(name, IArray.genericWrapArray(value).toArray, bits),

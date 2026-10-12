@@ -33,6 +33,8 @@ import qualified LawSpec.HaskellData as HaskellData
 import qualified LawSpec.HaskellDefinitions as HaskellDefinitions
 import qualified LawSpec.KotlinData as KotlinData
 import qualified LawSpec.KotlinDefinitions as KotlinDefinitions
+import qualified LawSpec.ScalaData as ScalaData
+import qualified LawSpec.ScalaDefinitions as ScalaDefinitions
 import qualified LawSpec.GoDefinitions as GoDefinitions
 import qualified LawSpec.PythonData as PythonData
 import qualified LawSpec.PythonNativeBinding as PythonNativeBinding
@@ -159,7 +161,7 @@ ownedAbilityPlan plan = plan { plannedUnits = [u { plannedUnit = owned } | (u, o
 -- handler schema instead.
 wrappedHandlers :: String -> NB.BindingPlan -> Plan -> Plan
 wrappedHandlers target bindings plan
-  | not (NB.hasBindings bindings) || target `notElem` ["java", "kotlin", "go", "haskell", "rust"] = plan
+  | not (NB.hasBindings bindings) || target `notElem` ["java", "kotlin","scala", "go", "haskell", "rust"] = plan
   | otherwise = plan { plannedUnits = [u { plannedUnit = wrap (plannedUnit u) } | u <- plannedUnits plan] }
   where
     units = map plannedUnit (plannedUnits plan)
@@ -226,7 +228,7 @@ escapeBindings target b = b { NB.bindingFunctions = [(escapeDeclaration target d
 
 emitPlanFormatted :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanFormatted _ target plan
-  | target `notElem` ["python","javascript","typescript","rust","java","kotlin","go","haskell"], any (not . null . C.constructorPredicates) (concatMap C.dataConstructors (planDataDeclarations plan)) =
+  | target `notElem` ["python","javascript","typescript","rust","java","kotlin","scala","go","haskell"], any (not . null . C.constructorPredicates) (concatMap C.dataConstructors (planDataDeclarations plan)) =
       Left [Diagnostic "target" "constructor field contracts require native runtime enforcement" Nothing]
 emitPlanFormatted _ target plan | target /= "rust", any containsMatch expressions =
   Left [Diagnostic "target" ("no match expression emitter for " ++ target) Nothing]
@@ -240,8 +242,8 @@ emitPlanFormatted _ target plan | target /= "rust", any containsMatch expression
           || any containsMatch (scrutinee : map C.caseBody branches)
       _ -> any containsMatch (C.children expression)
     supportedMatch (C.Constructor name _) =
-      target `elem` ["java","python","javascript","typescript","go","haskell","kotlin"] && any ((== C.Id name) . C.dataId) (planDataDeclarations plan) ||
-      target `elem` ["python","javascript","typescript","haskell","java","kotlin","go"] && name `elem` ["List","Maybe","Either"] ||
+      target `elem` ["java","python","javascript","typescript","go","haskell","kotlin","scala"] && any ((== C.Id name) . C.dataId) (planDataDeclarations plan) ||
+      target `elem` ["python","javascript","typescript","haskell","java","kotlin","scala","go"] && name `elem` ["List","Maybe","Either"] ||
       target `elem` ["go"] && name == "List"
     supportedMatch _ = False
 emitPlanFormatted _ target plan | target /= "rust", any containsConstruction expressions =
@@ -252,12 +254,12 @@ emitPlanFormatted _ target plan | target /= "rust", any containsConstruction exp
        concatMap (C.propertyExpressions . plannedProperty) (plannedProperties u) | u <- plannedUnits plan]
     containsConstruction expression = case C.expressionNode expression of
       C.Construct tag fields -> not
-        (target `elem` ["java","python","javascript","typescript","go","haskell","kotlin"] && any ((== tag) . C.constructorId) (concatMap C.dataConstructors (planDataDeclarations plan)) ||
-         target `elem` ["python","javascript","typescript","haskell","java","kotlin","go"] &&
+        (target `elem` ["java","python","javascript","typescript","go","haskell","kotlin","scala"] && any ((== tag) . C.constructorId) (concatMap C.dataConstructors (planDataDeclarations plan)) ||
+         target `elem` ["python","javascript","typescript","haskell","java","kotlin","scala","go"] &&
          C.idText tag `elem` ["List::Nil","List::Cons","Maybe::Nothing","Maybe::Just","Either::Left","Either::Right"] ||
          target `elem` ["go"] && C.idText tag `elem` ["List::Nil","List::Cons"]) || any containsConstruction fields
       _ -> any containsConstruction (C.children expression)
-emitPlanFormatted _ target Plan{planDataDeclarations=(_: _)} | target `notElem` ["rust", "java", "python", "javascript", "typescript", "go", "haskell", "kotlin"] =
+emitPlanFormatted _ target Plan{planDataDeclarations=(_: _)} | target `notElem` ["rust", "java", "python", "javascript", "typescript", "go", "haskell", "kotlin","scala"] =
   Left [Diagnostic "target" ("no data declaration emitter for " ++ target) Nothing]
 emitPlanFormatted _ target plan | target /= "rust", any (not . supportedRepresentationWithData target (planDataDeclarations plan) . C.declarationType)
   [d | u <- plannedUnits plan, d <- C.unitDeclarations (plannedUnit u)] =
@@ -284,6 +286,10 @@ emitPlanFormatted minify target Plan{..} = do
     (Left [Diagnostic "collision" "Kotlin adapter shadows a generated JVM runtime class" Nothing])
   unless (target /= "kotlin" || all ((/= "kotlin") . head . split '.' . unitName) units)
     (Left [Diagnostic "identifier" "Kotlin's kotlin package is reserved" Nothing])
+  unless (target /= "scala" || all (\u -> jvmName u `notElem` (kotlinRuntimeNames ++ map ("lawspec.runtime." ++) ["LawSpecScala", "LawSpecScalaCodecs", "LawSpecScalaAdapters"])) units)
+    (Left [Diagnostic "collision" "Scala adapter shadows a generated JVM runtime class" Nothing])
+  unless (target /= "scala" || all ((`notElem` ["scala", "java"]) . head . split '.' . unitName) units)
+    (Left [Diagnostic "identifier" "Scala's scala and java packages are reserved" Nothing])
   emitted <- mapM (emitUnit laws) (filter (\u -> not (null (functions u)) || any ((== unitName u) . owner) laws) units)
   dataFiles <- if target == "java" && (not (null planDataDeclarations) || not (null definitionCalls) || hasPayload)
     then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
@@ -314,6 +320,9 @@ emitPlanFormatted minify target Plan{..} = do
         else if target == "kotlin" then
           either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
             (KotlinData.emitKotlinDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)
+        else if target == "scala" then
+          either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
+            (ScalaData.emitScalaDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)
         else Right []
   definitionFiles <- if target == "java"
     then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
@@ -321,6 +330,9 @@ emitPlanFormatted minify target Plan{..} = do
     else if target == "kotlin"
       then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
         (KotlinDefinitions.emitKotlinDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
+    else if target == "scala"
+      then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
+        (ScalaDefinitions.emitScalaDefinitions (layout (Doc.Pretty 100)) planMachineBits planDataDeclarations units)
       else if target == "python"
         then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
           (PythonDefinitions.emitPythonDefinitions (layout (Doc.Pretty 79)) planMachineBits planDataDeclarations units)
@@ -340,6 +352,7 @@ emitPlanFormatted minify target Plan{..} = do
         "python" -> Artifact "src/lawspec_runtime.py" (runtimeSource "python") "generated" "source"
         "java" -> Artifact "src/main/java/lawspec/runtime/LawSpecRuntime.java" (runtimeSource "java") "generated" "source"
         "kotlin" -> Artifact "src/main/java/lawspec/runtime/LawSpecRuntime.java" (runtimeSource "java") "generated" "source"
+        "scala" -> Artifact "src/main/java/lawspec/runtime/LawSpecRuntime.java" (runtimeSource "java") "generated" "source"
         "typescript" -> Artifact "src/lawspec_runtime.ts" ("// @ts-nocheck\n" ++ runtimeSource "javascript") "generated" "source"
         "haskell" -> Artifact "src/LawSpecRuntime.hs" (runtimeSource "haskell") "generated" "source"
         _ -> Artifact "src/lawspec_runtime.mjs" (runtimeSource "javascript") "generated" "source"
@@ -361,6 +374,13 @@ emitPlanFormatted minify target Plan{..} = do
         -- Gradle compiles Java beside Kotlin only in src/main/java, as it
         -- does LawSpecRuntime.java.
         [Artifact "src/main/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "source" | target == "kotlin" && usesHarness] ++
+        -- Scala: the harness's Java runtime, beside the shared runtime, and
+        -- the shrink-tree generators the tests draw from.
+        [Artifact "src/main/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "source" | target == "scala" && usesHarness] ++
+        [Artifact "src/test/scala/lawspec/testing/LawSpecGen.scala" (runtimeSource "scala-strategies") "generated" "test" | needsRuntime && target == "scala"] ++
+        [Artifact "src/test/scala/lawspec/testing/LawSpecScalaStrategies.scala" (runtimeSource "scala-data-strategies") "generated" "test" | needsRuntime && target == "scala"] ++
+        [Artifact "src/main/scala/lawspec/runtime/LawSpecScala.scala" (runtimeSource "scala-native") "generated" "source" | needsRuntime && target == "scala" && null dataFiles] ++
+        [Artifact "src/main/scala/lawspec/runtime/LawSpecScalaCodecs.scala" (runtimeSource "scala-codecs") "generated" "source" | needsRuntime && target == "scala" && null dataFiles] ++
         [Artifact "test/LawSpecHarness.hs" (runtimeSource "haskell-harness") "generated" "test" | target == "haskell" && usesHarness] ++
         [Artifact ("test/lawspec_harness." ++ if target == "typescript" then "ts" else "mjs")
           ((if target == "typescript" then "// @ts-nocheck\n" else "") ++ runtimeSource "web-harness") "generated" "test"
@@ -441,7 +461,7 @@ emitPlanFormatted minify target Plan{..} = do
     graph = D.dependencyGraph planDataDeclarations (map plannedUnit plannedUnits)
     dataDigest = digestHex (digestString (show planDataDeclarations))
     calls
-      | target `elem` ["java","kotlin"] = definitionCalls
+      | target `elem` ["java","kotlin","scala"] = definitionCalls
       | target == "go" = GoDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "haskell" = HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "python" = PythonDefinitions.definitionCalls (map plannedUnit plannedUnits)
@@ -453,13 +473,13 @@ emitPlanFormatted minify target Plan{..} = do
              u { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
            (fmap (map store) (emitUnitWith laws u))
     emitUnitWith laws u
-      | target `elem` ["java","kotlin","go","haskell"] =
+      | target `elem` ["java","kotlin","scala","go","haskell"] =
           Native.nativeScalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
       | otherwise = Scalar.scalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool
 supportedRepresentationWithData target declarations ty = case ty of
-  C.Constructor name args | target `elem` ["java","python","javascript","typescript","go","haskell","kotlin"], any ((== C.Id name) . C.dataId) declarations ->
+  C.Constructor name args | target `elem` ["java","python","javascript","typescript","go","haskell","kotlin","scala"], any ((== C.Id name) . C.dataId) declarations ->
     all (\arg -> case arg of C.TypeArgument t -> supportedRepresentationWithData target declarations t; _ -> False) args
   C.Constructor name args | name `elem` ["List", "Maybe", "Either", "Nullable", "Optional"] ->
     all (\arg -> case arg of C.TypeArgument t -> supportedRepresentationWithData target declarations t; _ -> False) args
@@ -469,9 +489,9 @@ supportedRepresentationWithData target declarations ty = case ty of
 supportedRepresentation :: String -> C.Type -> Bool
 supportedRepresentation _ (C.Constructor name []) = maybe False (const True) (primitive name)
 supportedRepresentation target (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) =
-  target `elem` ["python","javascript","typescript","haskell","java","kotlin","go"] && all (supportedRepresentation target) [a,b]
+  target `elem` ["python","javascript","typescript","haskell","java","kotlin","scala","go"] && all (supportedRepresentation target) [a,b]
 supportedRepresentation target (C.Constructor name [C.TypeArgument argument]) =
-  (name `elem` ["Nullable","Optional"] || name `elem` ["List","Maybe"] && target `elem` ["python","javascript","typescript","haskell","java","kotlin","go"] || name == "List" && target `elem` ["go"])
+  (name `elem` ["Nullable","Optional"] || name `elem` ["List","Maybe"] && target `elem` ["python","javascript","typescript","haskell","java","kotlin","scala","go"] || name == "List" && target `elem` ["go"])
     && supportedRepresentation target argument
 supportedRepresentation target (C.Arrow a b) = supportedRepresentation target a && supportedRepresentation target b
 supportedRepresentation _ _ = False
@@ -493,7 +513,7 @@ emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> N
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
       bindings = escapeBindings target unescaped
-  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell","erlang","elixir","gleam","fsharp","csharp"] || not (any Binding.resolvedGeneratorStub
+  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","scala","go","haskell","erlang","elixir","gleam","fsharp","csharp"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
     (Left [Diagnostic "native-binding" ("generator scaffolds are not implemented for " ++ target) Nothing])
   prepared <- if target == "go" && NB.hasBindings bindings
@@ -501,7 +521,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
   let plan = wrappedHandlers target bindings (boundHandlers bindings (if target == "kotlin" then nativeHandles bindings prepared else prepared))
-  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go","erlang","elixir","gleam","fsharp","csharp"] || all ((== Nothing) . Binding.resolvedCodec)
+  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","scala","go","erlang","elixir","gleam","fsharp","csharp"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
   unless (target == "go" || null (NB.bindingGoImports bindings))
@@ -580,6 +600,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
   let defaults = case target of
         "java" -> ("src/main/java", "src/test/java")
         "kotlin" -> ("src/main/kotlin", "src/test/kotlin")
+        "scala" -> ("src/main/scala", "src/test/scala")
         "python" -> ("src", "tests")
         "rust" -> ("src", "tests")
         "elixir" -> ("lib", "test")
@@ -607,11 +628,11 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
         | c:rest <- text = c:replace old new rest
         | otherwise = []
       sourceBase a
-        | target == "kotlin" && ".java" `isSuffixOf` artifactPath a = "src/main/java"
+        | target `elem` ["kotlin","scala"] && ".java" `isSuffixOf` artifactPath a = "src/main/java"
         | target == "elixir" && ".erl" `isSuffixOf` artifactPath a = "src"
         | otherwise = fst defaults
       sourceRoot a
-        | target == "kotlin" && ".java" `isSuffixOf` artifactPath a = maybe "src/main/java" id sourceDir
+        | target `elem` ["kotlin","scala"] && ".java" `isSuffixOf` artifactPath a = maybe "src/main/java" id sourceDir
         | target == "elixir" && ".erl" `isSuffixOf` artifactPath a = maybe "src" id sourceDir
         | otherwise = src
       adjust a = (mapArtifactContent (adjustContent a) a)
@@ -672,7 +693,7 @@ remoteCalls :: String -> Plan -> [(C.Id, String)]
 remoteCalls target plan = case target of
   "python" -> PythonDefinitions.definitionCalls units
   "go" -> GoDefinitions.definitionCalls units
-  t | t `elem` ["java", "kotlin"] -> JavaDefinitions.definitionCalls units
+  t | t `elem` ["java", "kotlin","scala"] -> JavaDefinitions.definitionCalls units
   "rust" -> [(i, "crate::lawspec_definitions::" ++ n) | (i, n) <- RustDefinitions.definitionNames units]
   "javascript" -> WebDefinitions.definitionCalls units
   "typescript" -> WebDefinitions.definitionCalls units

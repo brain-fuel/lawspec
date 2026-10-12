@@ -416,6 +416,7 @@ library
       LawSpec.AbilityEmit.Kotlin
       LawSpec.AbilityEmit.Python
       LawSpec.AbilityEmit.Rust
+      LawSpec.AbilityEmit.Scala
       LawSpec.AbilityEmit.Web
       LawSpec.AbilityNames
       LawSpec.Actors
@@ -583,7 +584,13 @@ library
       LawSpec.RustNativeBinding
       LawSpec.RustNativeGenerators
       LawSpec.Scaffold
+      LawSpec.ScalaData
+      LawSpec.ScalaDefinitions
+      LawSpec.ScalaExpr
+      LawSpec.ScalaProperties
       LawSpec.Scalar
+      LawSpec.ScalaTestHelpers
+      LawSpec.ScalaUnitEmit
       LawSpec.Scenario
       LawSpec.Search
       LawSpec.Sessions

@@ -27,6 +27,7 @@ import qualified LawSpec.KotlinData as KotlinData
 import qualified LawSpec.KotlinExpr as KotlinExpr
 import qualified LawSpec.KotlinProperties as KotlinProperties
 import qualified LawSpec.KotlinTestHelpers as KotlinTestHelpers
+import LawSpec.ScalaUnitEmit (emitScalaUnit)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
@@ -70,6 +71,9 @@ nativeScalarEmitWithNativeGenerators = nativeScalarEmitWithAdapterBindings []
 -- | Generated Go names share one package with the user's code, so collisions
 -- with bound adapters are refused before any file is written.
 nativeScalarEmitWithAdapterBindings :: [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+-- Scala's units have an emitter of their own (LawSpec.ScalaUnitEmit).
+nativeScalarEmitWithAdapterBindings _ nativeGenerators minify dataDeclarations definitions bits "scala" u allLaws =
+  emitScalaUnit (dataBudget allLaws) nativeGenerators minify dataDeclarations definitions bits u allLaws
 nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
   if go then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
     (GoData.validateGoBindings dataDeclarations (map (cap . fst) adapterFunctions)) else pure ()

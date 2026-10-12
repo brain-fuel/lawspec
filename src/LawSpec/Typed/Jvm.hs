@@ -43,8 +43,9 @@ data JvmTyped = JvmTyped
   }
 
 -- | Whose native types the typed code converts to: Java's records or
--- Kotlin's data classes.
-data JvmStyle = JavaStyle | KotlinStyle deriving (Eq)
+-- Kotlin's data classes. Scala's case classes and enums meet typed code
+-- through their codecs, so ScalaStyle has no direct conversions.
+data JvmStyle = JavaStyle | KotlinStyle | ScalaStyle deriving (Eq)
 
 -- | The scalars with a typed JVM form: UInt64 has no long.
 jvmScalars :: [String]
@@ -141,7 +142,7 @@ emitJvmTyped style declarations units = do
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
   ((functionDocs, natives, nativeDocs), _) <- flip runStateT initial $ do
     fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
-    direct <- forM [t | t <- nub (handlerTypes ++ signatureTypes), nativeDirect env S.empty t] $ \t -> do
+    direct <- forM [t | style /= ScalaStyle, t <- nub (handlerTypes ++ signatureTypes), nativeDirect env S.empty t] $ \t -> do
       f <- helper "fromNative" t
       g <- helper "toNative" t
       pure (show t, (typedClassName ++ "." ++ f, typedClassName ++ "." ++ g))
@@ -901,6 +902,7 @@ substituteIn table t = case t of
 nativeType :: Env -> Type -> Either String String
 nativeType env ty = case envStyle env of
   JavaStyle -> JavaData.javaDataType (envDeclarations env) ty
+  ScalaStyle -> Left "Scala's native types convert through their codecs"
   KotlinStyle -> case ty of
     Constructor n [] | Just t <- lookup n kotlinScalars -> pure t
     Constructor "List" [TypeArgument a] -> (\x -> "java.util.List<" ++ x ++ ">") <$> nativeType env a
@@ -932,6 +934,7 @@ nativeBase env ty = case ty of
     full <- case envStyle env of
       JavaStyle -> JavaData.javaDataType (envDeclarations env) (Constructor n unitArgs)
       KotlinStyle -> KotlinData.kotlinDataType (envDeclarations env) (Constructor n unitArgs)
+      ScalaStyle -> Left "Scala's native types convert through their codecs"
     pure (takeWhile (/= '<') full)
   _ -> Left "no native class"
 
@@ -1099,6 +1102,7 @@ fromNative env ty = case ty of
         accessor f = case envStyle env of
           JavaStyle -> binderName f ++ "()"
           KotlinStyle -> kotlinGetter (binderName f) ++ "()"
+          ScalaStyle -> binderName f ++ "()"
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = typedName ++ "." ++ variantName c

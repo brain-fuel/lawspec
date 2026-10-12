@@ -61,6 +61,8 @@ toolchain project target = do
     -- dotnet test builds the solution incrementally (MSBuild compares file
     -- contents' timestamps at full resolution) and runs it on
     -- Microsoft.Testing.Platform, as global.json selects.
+    -- Scala CLI compiles incrementally on its Bloop server.
+    "scala" -> pure (plain "scala" (["test", "."] ++ flag "--offline"))
     _ | target `elem` ["fsharp", "csharp"] ->
         pure (plain "dotnet" ("test" : ["--no-restore" | offline]))
     _ -> ioError (userError ("unknown target: " ++ target))
@@ -96,7 +98,8 @@ compileFailure output = any rebarFailure (lines lowered) || any ((`isInfixOf` lo
   , "not in scope", "error TS", "couldn't match expected type"
   , "syntax error before:", "undefined function", "** (CompileError)"
   , "error: Type mismatch", "error: Unknown variable", "error: Unknown type"
-  , "error: Unknown module", "error: Unknown value", ": error FS", ": error CS" ]
+  , "error: Unknown module", "error: Unknown value", ": error FS", ": error CS"
+  , "error compiling project" ]
   where
     lowered = map toLower (stripAnsi output)
     rebarFailure line = all (`isInfixOf` line) ["===>", "compiling ", " failed"]
