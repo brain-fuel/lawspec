@@ -33,3 +33,30 @@ public enum ActorHost {
     /// The actor's current state.
     public static func state(_ actor: Actors.Handle) throws -> Value { try Actors.state(actor) as! Value }
 }
+
+extension ActorHost {
+    /// An actor handle as the model runner holds it.
+    final class Boxed {
+        let handle: Actors.Handle
+        init(_ handle: Actors.Handle) { self.handle = handle }
+    }
+
+    /// The actor runtime as an actor model's system.
+    struct Host: ModelActorHost {
+        func withActor<R>(_ restarts: Int, _ start: @escaping () throws -> Value, _ restart: @escaping (Value) throws -> Value,
+                          _ body: (AnyObject) throws -> R) throws -> R {
+            try ActorHost.withActor(restarts, start, restart) { handle in try body(Boxed(handle)) }
+        }
+
+        func call(_ actor: AnyObject, _ update: @escaping (Value) throws -> (Value, Value)) throws -> Value {
+            try ActorHost.call((actor as! Boxed).handle, update)
+        }
+
+        func crash(_ actor: AnyObject) throws { try ActorHost.crash((actor as! Boxed).handle) }
+
+        func state(_ actor: AnyObject) throws -> Value { try ActorHost.state((actor as! Boxed).handle) }
+    }
+
+    /// The host actor models run on.
+    public static var host: any ModelActorHost { Host() }
+}
