@@ -235,5 +235,5 @@ public final class Endpoint: NodeService, @unchecked Sendable {
         node.unregister(name)
     }
 
-    public func close() { stop() }
+    public func release() { stop() }
 }

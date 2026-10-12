@@ -21,6 +21,7 @@ import qualified LawSpec.Swift.Properties as Properties
 import qualified LawSpec.Swift.Abilities as Abilities
 import qualified LawSpec.Swift.Handlers as Handlers
 import qualified LawSpec.Swift.Sessions as Sessions
+import qualified LawSpec.Swift.Actors as Actors
 import LawSpec.Typed.Swift (SwiftTyped(..), emitSwiftTyped)
 import Control.Monad (unless)
 import Data.List (isPrefixOf, isSuffixOf, nub, sort, intercalate)
@@ -78,10 +79,11 @@ emitSwiftWithBindings minify bindings plan = do
       api <- Definitions.emitApi layout bits declarations units
       handlerClasses <- Handlers.emitHandlers layout bits typed declarations units
       sessions <- Sessions.emitSessions bits declarations units
+      actors <- Actors.emitActors bits declarations units
       laws <- Properties.emitTests layout (not (null generators)) plan
       nativeGenerators <- Properties.emitNativeGenerators layout bits declarations generators
       vectors <- cryptoVectorTests
-      pure (runtimeArtifacts ++ [namespaces] ++ dataFiles ++ protocols ++ bridges ++ [schema] ++ defaults ++ typedFile ++ entries ++ adapters ++ api ++ handlerClasses ++ sessions ++
+      pure (runtimeArtifacts ++ [namespaces] ++ dataFiles ++ protocols ++ bridges ++ [schema] ++ defaults ++ typedFile ++ entries ++ adapters ++ api ++ handlerClasses ++ sessions ++ actors ++
         [Properties.emitRootSuites] ++ nativeGenerators ++ laws ++ vectors)
     -- The enums every generated name lives in: LawSpec's, and each unit's
     -- namespace, which its adapter extends.
@@ -116,7 +118,7 @@ emitSwiftWithBindings minify bindings plan = do
     usesCrypto = usesNetwork || any ((== "lawspec.crypto") . C.idText . C.unitId) units
     cryptoFiles = ["Keccak.swift", "MLKEM.swift", "MLDSA.swift", "SLHDSA.swift", "CryptoPrimitives.swift", "Crypto.swift", "NetworkCrypto.swift", "CryptoVectors.swift"]
     networkFiles = ["Wire.swift", "MemoryNetwork.swift", "SocketTransport.swift", "Transport.swift", "SecureNetwork.swift", "Node.swift",
-      "ChannelProtocol.swift", "Endpoint.swift", "Remote.swift", "Mailbox.swift", "Sessions.swift", "NetworkApi.swift",
+      "ChannelProtocol.swift", "Endpoint.swift", "Remote.swift", "Mailbox.swift", "Sessions.swift", "NetworkApi.swift", "Actors.swift", "Supervision.swift", "ActorHost.swift",
       "ScenarioNetwork.swift", "ScenarioIo.swift", "Scenario.swift"]
     excluded = [f | not usesCrypto, f <- cryptoFiles] ++ [f | not usesNetwork, f <- networkFiles]
     runtimeArtifacts =

@@ -1,0 +1,6 @@
+@@ src/Example/Actors.swift
+<<<<<<<
+        let after = account.balance + Int64(amount)
+=======
+        let after = account.balance + Int64(amount) + (amount == 7 ? 1 : 0)
+>>>>>>>

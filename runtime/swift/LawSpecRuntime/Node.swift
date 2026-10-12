@@ -25,7 +25,8 @@ public struct NodeFailure: Error, Sendable {
 
 /// Something a node closes when it closes.
 public protocol NodeService: AnyObject, Sendable {
-    func close()
+    /// Stop the service: its node is closing.
+    func release()
 }
 
 public final class Node: @unchecked Sendable {
@@ -320,7 +321,7 @@ public final class Node: @unchecked Sendable {
             s.services.removeAll()
             return (all, services)
         }
-        for service in services { service.close() }
+        for service in services { service.release() }
         for p in waiting {
             p.timer?.cancel()
             p.respond(.failure(NodeFailure("node_closed")))

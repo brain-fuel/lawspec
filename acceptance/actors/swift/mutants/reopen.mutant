@@ -1,0 +1,6 @@
+@@ src/Example/Actors.swift
+<<<<<<<
+    static func reopen(_ account: Account) -> Account { Account(balance: account.balance) }
+=======
+    static func reopen(_ account: Account) -> Account { Account(balance: 0) }
+>>>>>>>
