@@ -156,11 +156,11 @@ stepGroups options editor =
 -- .integration/<target>, and the BEAM framework steps that may bootstrap it
 -- too; acceptance suites follow build-acceptance; npm-tests follows the
 -- TypeScript bootstrap (it type-checks with that tsc when present), and
--- beam-runtime the Python one (it runs that interpreter). Haskell and Java
--- suites also follow the target's crypto suite, which runs alone first: Stack
--- installs the crypto extra-deps into its snapshot database and Maven
--- downloads Bouncy Castle into ~/.m2, and neither guards concurrent
--- installation. Other caches (Cargo, Go, Gradle, NuGet, npm) lock their own.
+-- beam-runtime the Python one (it runs that interpreter). Haskell, Java and
+-- Clojure suites also follow the target's crypto suite, which runs alone
+-- first: Stack installs the crypto extra-deps into its snapshot database and
+-- Maven and the Clojure CLI download Bouncy Castle into ~/.m2, and none
+-- guards concurrent installation. Other caches (Cargo, Go, Gradle, NuGet, npm) lock their own.
 -- A step runs after those it follows have finished, passed or failed, so
 -- every step still runs after a failure, as in the sequential run.
 --
@@ -252,7 +252,7 @@ beamFrameworks = ["beam-proper", "beam-stream-data", "beam-qcheck"]
 -- | Targets whose dependency caches are not safe to fill concurrently, and
 -- the suite that fills them (the crypto suite needs every optional package).
 warmTargets :: [String]
-warmTargets = ["haskell", "java"]
+warmTargets = ["haskell", "java", "clojure"]
 
 warmUp :: String -> String
 warmUp target = target ++ "-crypto"
