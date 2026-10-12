@@ -292,7 +292,11 @@ returns `{ok, Total}` or `{error, Refusal}` in Erlang,
 `counter_try_add(counter, n)` a `Result(Int, data.Refusal)` in Gleam. A
 spec handler with state reads and replaces it in its native types through
 the interface of its first ability: `keeping_state(Tally)` and
-`keeping_set_state(Tally, 10)`, beside its constructor.
+`keeping_set_state(Tally, 10)`, beside its constructor. When every clause is
+typed, the handler runs typed code and keeps its state in its cell's process;
+`keeping_typed_state(Tally)` and `keeping_set_typed_state(Tally, State)` read
+and replace that state as typed code holds it (maps for `KeyVal`, sets for
+`Set`), without conversion.
 `recording_gateway(context, handler)` wraps an interface in the same scope.
 Generated tests make fresh production, spec and recording handlers for
 each example, boundary case and property trial. An example's additional

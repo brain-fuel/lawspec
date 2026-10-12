@@ -9,6 +9,10 @@ pub fn embed(n: Int) -> Int {
     abilities.keeping_set_state(tally, 10)
     let assert Error(data.RefusalNegative) = abilities.tally_try_add(tally, -1)
     let assert Ok(_) = abilities.tally_try_add(tally, n)
+    // The typed state, kept and put back without conversion.
+    let snapshot = abilities.keeping_typed_state(tally)
+    let assert Ok(_) = abilities.tally_try_add(tally, 5)
+    abilities.keeping_set_typed_state(tally, snapshot)
     abilities.keeping_state(tally)
   })
 }
