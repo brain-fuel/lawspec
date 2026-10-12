@@ -94,6 +94,10 @@ fscheck:
   kind: package
   title: FsCheck, random testing for .NET
   locator: https://fscheck.github.io/FsCheck/
+swift-testing:
+  kind: package
+  title: Swift Testing, the Swift toolchain's test library
+  locator: https://github.com/swiftlang/swift-testing
 kotest:
   kind: package
   title: Kotest property testing for Kotlin
