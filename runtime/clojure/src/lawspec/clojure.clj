@@ -3,7 +3,7 @@
   "Clojure's side of the Java model. Values cross as Clojure data: a data
   type's value is a map whose :lawspec/tag names its constructor, as
   {:lawspec/tag :payment/approved, :cents 500}, and whose other keys name
-  its fields; a constructor without fields may be its tag alone,
+  its fields; a constructor without fields is its tag alone,
   :payment/declined. Lists are vectors, sets and key-value maps are
   Clojure's, integers are longs or bigints, Maybe is nil or the value, and
   Either is [:left x] or [:right x]. An adapter fails with (fail ...): an

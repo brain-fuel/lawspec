@@ -1,0 +1,6 @@
+@@ src/shop/domain.clj
+<<<<<<<
+(defn convert [currency money] (assoc money :currency currency))
+=======
+(defn convert [currency money] money)
+>>>>>>>

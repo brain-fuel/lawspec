@@ -1,0 +1,6 @@
+@@ src/shop/orders.clj
+<<<<<<<
+(defn round-down [cents] (- cents (rem cents 100)))
+=======
+(defn round-down [cents] (if (pos? cents) (dec cents) cents))
+>>>>>>>

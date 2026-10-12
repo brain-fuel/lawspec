@@ -44,6 +44,7 @@ import lawspec.runtime.LawSpecRuntime;
  * The boundary between the Java model and Clojure code. A value crosses as
  * Clojure data: a data type's value is a map whose :lawspec/tag names its
  * constructor (:payment/approved) and whose keys name its fields (:cents),
+ * a constructor without fields is its tag alone (:payment/declined),
  * lists are vectors, sets and key-value maps are Clojure's, integers are
  * longs or bigints, Maybe is nil or the value, and Either is [:left x] or
  * [:right x]. A failure is an ex-info whose data holds :lawspec/failure.
@@ -158,6 +159,8 @@ public final class LawSpecClojure {
     if (value instanceof Enum<?> e) return Keyword.intern(kebab(e.getDeclaringClass().getSimpleName()), kebab(e.name()));
     Class<?> type = value.getClass();
     if (type.isRecord() && type.getName().startsWith("lawspec.data.")) {
+      // A constructor without fields is its tag alone.
+      if (type.getRecordComponents().length == 0) return tagOf(type);
       var entries = new ArrayList<Object>();
       entries.add(TAG);
       entries.add(tagOf(type));

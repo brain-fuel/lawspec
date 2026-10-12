@@ -1,0 +1,6 @@
+@@ src/shop/orders.clj
+<<<<<<<
+    :shop-orders-currency/gbp :shop-domain-currency/eur))
+=======
+    :shop-orders-currency/gbp :shop-domain-currency/usd))
+>>>>>>>
