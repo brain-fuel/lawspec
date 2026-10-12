@@ -1,0 +1,7 @@
+expect: withdrawals within the balance go through
+@@ src/main/scala/vault/Vault.scala
+<<<<<<<
+    else balance - cents
+=======
+    else balance - cents - 1
+>>>>>>>

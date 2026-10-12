@@ -1,0 +1,7 @@
+expect: overdrafts fail and say why
+@@ src/main/scala/vault/Vault.scala
+<<<<<<<
+    else if (cents > balance) throw Overdraft(s"over the balance by ${cents - balance}")
+=======
+    else if (cents > balance) throw Overdraft(s"short by ${cents - balance}")
+>>>>>>>

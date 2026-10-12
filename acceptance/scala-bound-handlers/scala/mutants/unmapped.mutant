@@ -1,0 +1,7 @@
+expect: negative withdrawals freeze the vault
+@@ src/main/scala/vault/Vault.scala
+<<<<<<<
+    if (cents < 0) throw FrozenVault()
+=======
+    if (cents < 0) throw IllegalStateException("frozen")
+>>>>>>>
