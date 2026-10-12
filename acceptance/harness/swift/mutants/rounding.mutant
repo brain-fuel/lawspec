@@ -1,0 +1,7 @@
+expect: remove
+@@ src/Example/Harness.swift
+<<<<<<<
+    static func roundCents(_ cents: Int32) -> Int32 { (cents + 4) / 10 * 10 }
+=======
+    static func roundCents(_ cents: Int32) -> Int32 { (cents + 9) / 10 * 10 }
+>>>>>>>
