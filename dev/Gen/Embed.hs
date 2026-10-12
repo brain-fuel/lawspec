@@ -78,6 +78,9 @@ runtimeFiles =
   , ("rust-strategies", "lawspec_strategies.rs"), ("kotlin-strategies", "LawSpecStrategies.kt")
   , ("kotlin-native", "LawSpecKotlin.kt"), ("kotlin-codecs", "LawSpecKotlinCodecs.kt")
   , ("kotlin-data-strategies", "LawSpecKotlinStrategies.kt")
+  -- Scala, over the shared JVM runtime.
+  , ("scala-native", "LawSpecScala.scala"), ("scala-codecs", "LawSpecScalaCodecs.scala")
+  , ("scala-strategies", "LawSpecGen.scala"), ("scala-data-strategies", "LawSpecScalaStrategies.scala")
   , ("python-harness", "lawspec_harness.py"), ("web-harness", "lawspec_harness.mjs")
   , ("go-harness", "lawspec_harness.go"), ("java-harness", "LawSpecHarness.java")
   , ("haskell-harness", "LawSpecHarness.hs"), ("rust-harness", "lawspec_harness.rs")
@@ -118,7 +121,7 @@ embedDefaults = do
         isDirectory <- doesDirectoryExist path
         -- Sources only: no caches or editor files.
         if isDirectory then (if take 2 entry == "__" || take 1 entry == "." then pure [] else walk path)
-        else pure [path | take 1 entry /= ".", any (`isSuffixOf` entry) [".py", ".mjs", ".ts", ".go", ".java", ".kt", ".hs", ".rs", ".txt", ".erl", ".ex", ".gleam"]]) entries
+        else pure [path | take 1 entry /= ".", any (`isSuffixOf` entry) [".py", ".mjs", ".ts", ".go", ".java", ".kt", ".scala", ".hs", ".rs", ".txt", ".erl", ".ex", ".gleam"]]) entries
 
 -- | The .NET runtime projects (F#, with the C# compatibility layer), by
 -- their path under runtime/dotnet, in their own module: each generated
