@@ -280,7 +280,7 @@ cexpr env scope e = case expressionNode e of
         ia = exact ta xa
         ib = exact tb xb
         compare' symbol = pure (sa ++ sb, if same then paren (xa <> D.text symbol <> xb) else paren (ia <> D.text symbol <> ib))
-        native f = pure (sa ++ sb, D.text ("(try Typed." ++ f ++ "(" ++ stringLiteral (typeName ta) ++ ", ") <> xa <> D.text ", " <> xb <> D.text "))")
+        native f = bindAtom (sa ++ sb) (D.text ("try Typed." ++ f ++ "(" ++ stringLiteral (typeName ta) ++ ", ") <> xa <> D.text ", " <> xb <> D.text ")")
         arithmetic r = narrow te (sa ++ sb, r)
         sameNative = same && te == ta && bounded
     case op of
@@ -290,9 +290,9 @@ cexpr env scope e = case expressionNode e of
                | otherwise -> arithmetic (paren (ia <> D.text " - " <> ib))
       Multiply | sameNative -> native "multiply"
                | otherwise -> arithmetic (paren (ia <> D.text " * " <> ib))
-      Quotient -> arithmetic (D.text "(try Typed.quotient(" <> ia <> D.text ", " <> ib <> D.text "))")
-      Remainder -> arithmetic (D.text "(try Typed.remainder(" <> ia <> D.text ", " <> ib <> D.text "))")
-      Power -> arithmetic (D.text "(try Typed.power(" <> ia <> D.text ", " <> ib <> D.text "))")
+      Quotient -> bindAtom (sa ++ sb) (D.text "try Typed.quotient(" <> ia <> D.text ", " <> ib <> D.text ")") >>= narrow te
+      Remainder -> bindAtom (sa ++ sb) (D.text "try Typed.remainder(" <> ia <> D.text ", " <> ib <> D.text ")") >>= narrow te
+      Power -> bindAtom (sa ++ sb) (D.text "try Typed.power(" <> ia <> D.text ", " <> ib <> D.text ")") >>= narrow te
       Equal -> compare' " == "
       NotEqual -> compare' " != "
       Less -> compare' " < "
@@ -317,12 +317,14 @@ cexpr env scope e = case expressionNode e of
       _ -> D.text "BigInt(" <> v <> D.text ".count)")
   Helper Unreachable _ -> do
     t <- lift' (nativeType env (expressionType e))
-    pure ([], D.text ("(try Typed.unreachable() as " ++ t ++ ")"))
+    bindAtom [] (D.text ("try Typed.unreachable() as " ++ t))
   Helper Checked _ -> pure ([], D.text "true")
   Helper StartsWith [a, b] -> call2 "Typed.startsWith" a b
   Helper EndsWith [a, b] -> call2 "Typed.endsWith" a b
   Helper TextContains [a, b] -> call2 "Typed.contains" a b
-  Helper RegexMatches [a, b] -> call2 "try Regex.matches" a b
+  Helper RegexMatches [a, b] -> do
+    (s, x) <- call2 "try Regex.matches" a b
+    bindAtom s x
   AllElements value binder predicate -> do
     (sx, xs) <- cexpr env scope value
     item <- fresh (binderName binder)
@@ -335,7 +337,7 @@ cexpr env scope e = case expressionNode e of
     (s, v) <- cexpr env scope x
     c <- lift' (codecOf env (expressionType x))
     result <- lift' (nativeType env (expressionType e))
-    pure (s, D.text ("(try Typed.raiseFailure(" ++ stringLiteral (abilityKey ref) ++ ", try " ++ c ++ ".fromNative(") <> v <> D.text (")) as " ++ result ++ ")"))
+    bindAtom s (D.text ("try Typed.raiseFailure(" ++ stringLiteral (abilityKey ref) ++ ", " ++ c ++ ".fromNative(") <> v <> D.text (")) as " ++ result))
   Perform op args -> do
     parts <- mapM (cexpr env scope) args
     a <- lift' (maybe (Left ("typed Swift: unknown ability " ++ abilityKey (operationAbility op))) Right (N.abilityOf (envUnits env) (operationAbility op)))
@@ -431,10 +433,14 @@ typeName _ = ""
 exact :: Type -> D.Doc -> D.Doc
 exact ty x = if ty == Constructor "Integer" [] then x else D.text "BigInt(" <> x <> D.text ")"
 
--- | A BigInt result into the expression's type, checked.
+-- | A BigInt result into the expression's type, checked. A call that may
+-- throw is bound to a constant of its own, so try is always a statement's
+-- first word, as Swift requires beside an operator.
 narrow :: Type -> ([D.Doc], D.Doc) -> M ([D.Doc], D.Doc)
 narrow ty (s, x) = case ty of
-  Constructor t [] | t `elem` boundedTypes -> pure (s, D.text ("(try Typed.narrow(" ++ stringLiteral t ++ ", ") <> x <> D.text (", " ++ t ++ ".self))"))
+  Constructor t [] | t `elem` boundedTypes -> do
+    n <- fresh "narrowed"
+    pure (s ++ [D.text ("let " ++ n ++ " = try Typed.narrow(" ++ stringLiteral t ++ ", ") <> x <> D.text (", " ++ t ++ ".self)")], D.text n)
   _ -> pure (s, x)
 
 boundsOf :: String -> Maybe (Integer, Integer)
