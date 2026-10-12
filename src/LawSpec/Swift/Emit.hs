@@ -122,8 +122,8 @@ emitSwiftWithBindings minify bindings plan = do
         any (\m -> machineActor m || not (null (machineScenarios m))) (C.unitMachines u) ||
         C.idText (C.unitId u) == "lawspec.network") units
     usesCrypto = usesNetwork || any ((== "lawspec.crypto") . C.idText . C.unitId) units
-    cryptoFiles = ["Keccak.swift", "MLKEM.swift", "MLDSA.swift", "SLHDSA.swift", "CryptoPrimitives.swift", "Crypto.swift", "NetworkCrypto.swift", "CryptoVectors.swift"]
-    networkFiles = ["Wire.swift", "MemoryNetwork.swift", "SocketTransport.swift", "Transport.swift", "SecureNetwork.swift", "Node.swift",
+    cryptoFiles = ["Keccak.swift", "MLKEM.swift", "MLDSA.swift", "SLHDSA.swift", "CryptoPrimitives.swift", "Crypto.swift", "CryptoVectors.swift"]
+    networkFiles = ["NetworkCrypto.swift", "Wire.swift", "MemoryNetwork.swift", "SocketTransport.swift", "Transport.swift", "SecureNetwork.swift", "Node.swift",
       "ChannelProtocol.swift", "Endpoint.swift", "Remote.swift", "Mailbox.swift", "Sessions.swift", "NetworkApi.swift", "Actors.swift", "Supervision.swift", "ActorHost.swift",
       "ScenarioNetwork.swift", "ScenarioIo.swift", "Scenario.swift"]
     excluded = [f | not usesCrypto, f <- cryptoFiles] ++ [f | not usesNetwork, f <- networkFiles]
