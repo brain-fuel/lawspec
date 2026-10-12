@@ -40,12 +40,12 @@ fn tp(p: Int) -> data.TopicPartition {
   data.TopicPartition(topic: "bench", partition: p)
 }
 
+// A fresh 64-byte value per record, as every driver makes it.
+@external(erlang, "kafka_bench_ffi", "value")
+fn value() -> BitArray
+
 fn record(i: Int) -> data.Record {
-  data.Record(
-    key: Some(<<i:size(64)>>),
-    value: Some(<<string.repeat("x", 64):utf8>>),
-    headers: [],
-  )
+  data.Record(key: Some(<<i:size(64)>>), value: Some(value()), headers: [])
 }
 
 fn phase(name: String, ops: Int, start: Int) -> Nil {

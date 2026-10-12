@@ -7,8 +7,8 @@ title: Embed a generated model
 
 A spec handler with state is a reference model: each operation runs a checked
 definition over the handler's state and keeps the next state. On every target
-(Rust, Go, Java, Kotlin, Python, JavaScript, TypeScript and Haskell) the
-generated code is fast enough to serve as a runtime, so an application (a test
+(Rust, Go, Java, Kotlin, Python, JavaScript, TypeScript, Haskell, Erlang,
+Elixir and Gleam) the generated code is fast enough to serve as a runtime, so an application (a test
 double, a simulator, a digital twin) can construct the handler itself and call
 its operations directly, outside any law.
 
@@ -41,17 +41,31 @@ contract or workflow policy. The typed forms are:
 | `KeyVal k v`, `Set a` | a persistent AVL tree of tuples | a persistent AVL tree | `Data.Map.Strict`, `Data.Set` |
 | data | a tuple, after the constructor's rank when there are several | a class per constructor, typed in TypeScript | a strict data type, constructors in the portable order |
 
+| LawSpec | Erlang | Elixir | Gleam |
+| --- | --- | --- | --- |
+| `Bool`, `Unit` | `boolean()`, `ok` | `boolean()`, `:ok` | `Bool`, `Nil` |
+| integers | `integer()`, checked where bounded | the same | `Int`, the same |
+| `Text`, `Bytes` | UTF-8 `binary()`, `binary()` | the same | `String`, `BitArray` |
+| `Maybe`, `Either` | `nothing` or `{just, X}`, `{left, L}` or `{right, R}` | the same | `Option`, `Result` |
+| `List a` | a list | a list | a `List` |
+| `KeyVal k v`, `Set a` | a map, a version 2 `sets` set | the same | the same |
+| data | the native tuple | the native struct | the native custom type |
+
 In Python, Python's own tuple equality and order are LawSpec's, so maps of
 such keys compare keys with `==` and `<` directly; in Haskell, the derived
 `Eq` and `Ord` of the typed data types are. Typed Haskell definitions run in
 `IO`, every binding strict, so each value is evaluated where it is written.
+On the BEAM, typed code is one Erlang module, `lawspec_typed`, over each
+language's own data, so only `KeyVal` and `Set` values convert at its
+boundary; their entries and items come out in the portable order (Erlang's
+term order where it is the same, a generated comparison where it is not).
 
 Anything else runs as before, on the dynamic values every target shares. Both
 paths give the same results; the acceptance suites run every target's laws and
 mutants over them.
 
-On Python, JavaScript, TypeScript and Haskell, typed code carries the handler
-context: a definition that performs another ability's operation (a client
+On Python, JavaScript, TypeScript, Haskell, Erlang, Elixir and Gleam, typed
+code carries the handler context: a definition that performs another ability's operation (a client
 handler's clause that calls the broker, say) takes the law's symbols, finds
 the operation's handler there, and calls it with native values, exactly as
 the dynamic code does. Such a definition, and a handler whose clauses are
@@ -61,7 +75,8 @@ that performs an operation other than `raise` stays dynamic.
 Because a list shares its tail and a map update copies only the path to its
 key, an operation costs what it changes, not the size of the state: appending
 a record to a log of a million records allocates the record and one cell. A
-handler's state is never copied between operations, and memory grows with
+handler's state is never copied between operations (on the BEAM it stays in
+the handler's cell process, and each operation runs there), and memory grows with
 what the state retains. Imported definitions that are the same up to their
 names share one function (on Go, one in each package that holds them), so a
 package's model is generated once, however many units import it.
@@ -97,7 +112,7 @@ state, apart from any law:
 | Python | `lawspec_abilities.example.tallies.Tally()` |
 | JavaScript, TypeScript | `new Tally()` from `lawspec_abilities/example/tallies` |
 | Haskell | `LawSpecHandlers.Example.Tallies.tally symbols`, with `symbols <- LawSpecRuntime.newSymbolContext` |
-| Erlang, Elixir, Gleam | `tally(Context)` inside `with_context` (see [handlers](../reference/language/handlers.md#erlang-elixir-and-gleam)); these run on the dynamic values |
+| Erlang, Elixir, Gleam | `tally(Context)` inside `with_context` (see [handlers](../reference/language/handlers.md#erlang-elixir-and-gleam)) |
 
 The handler implements the ability's interface (the trait in Rust), so the
 application calls its operations with its own native types:
@@ -148,7 +163,7 @@ Arguments and results convert directly between the native types and the
 typed forms, without the dynamic values the laws use (when `lawspec.json`
 binds native types, they cross through the handler schema instead). The
 handler is safe to share between threads on Rust, Go, Java, Kotlin, Python and
-Haskell: its operations apply one at a time, each to the state the previous
+Haskell, and between processes on the BEAM: its operations apply one at a time, each to the state the previous
 one left, and on Haskell an operation that fails leaves the state as it was.
 
 A handler whose clauses perform another ability's operations finds that
@@ -192,10 +207,12 @@ earlier snapshot:
 | Python | `state()` | `set_state(s)` | `typed_state()`, `set_typed_state(s)` |
 | JavaScript, TypeScript | `state()` | `setState(s)` | `typedState()`, `setTypedState(s)` |
 | Haskell | `clusterSnapshot state` | `clusterRestore state s` | `readMVar state`, `swapMVar state s` |
-| Erlang, Elixir, Gleam | `cluster_state(Broker)` | `cluster_set_state(Broker, S)` | (none: BEAM handlers run on the dynamic values) |
+| Erlang, Elixir, Gleam | `cluster_state(Broker)` | `cluster_set_state(Broker, S)` | `cluster_typed_state(Broker)`, `cluster_set_typed_state(Broker, S)` |
 
 The native forms convert the whole state, so they cost what it holds; the
-typed ones cost nothing, since a typed state is never changed in place. The
+typed ones cost nothing, since a typed state is never changed in place. On
+the BEAM the typed ones convert nothing but copy the state, since processes
+share no heap; in Gleam the typed state is the opaque `ClusterTypedState`. The
 typed state's type is the generated one (Go's is unexported, so an
 application keeps it without naming it).
 
@@ -207,8 +224,8 @@ not rename them. Generation depends only on the program: the compiler's cache
 is kept per compiler build, so a compiler rebuilt in place never reuses what
 another build made (`lawspec-dev bench kafka --deterministic` generates the
 model in process, with a cold and a warm cache, without one, and by the
-native compiler, and requires the same bytes). The generated Rust crate and
-Haskell package build without warnings, so a project that depends on them
+native compiler, and requires the same bytes). The generated Rust crate,
+Haskell package and `lawspec_typed` module build without warnings, so a project that depends on them
 sees none.
 
 ## Laws and applications share the handler

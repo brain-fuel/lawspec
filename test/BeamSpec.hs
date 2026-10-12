@@ -599,7 +599,8 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
       Left errors -> expectationFailure (show errors)
       Right artifacts -> do
         map artifactPath artifacts `shouldContain` ["src/lawspec_beam_effects.erl"]
-        let definitions = concat [artifactContent a | a <- artifacts, artifactPath a == "src/lawspec_definitions.erl"]
+        -- A typed definition raises from typed code, as the dynamic code does.
+        let definitions = concat [artifactContent a | a <- artifacts, artifactPath a `elem` ["src/lawspec_definitions.erl", "src/lawspec_typed.erl"]]
             tests = concat [artifactContent a | a <- artifacts, artifactPlacement a == "test"]
         definitions `shouldSatisfy` isInfixOf "lawspec_beam_effects:raise_failure"
         definitions `shouldSatisfy` isInfixOf "lawspec_beam_effects:native_failures"

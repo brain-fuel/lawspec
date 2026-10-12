@@ -43,6 +43,24 @@ Doctor evaluates `rebar.config` and `rebar.config.script` through Rebar's own
 configuration reader, checks the compiled PropEr application, and rejects a
 local checkout replacement or stale compiled version. It does not run EUnit.
 
+## Typed definitions and handlers
+
+A checked definition whose values all have native forms runs typed: it is a
+function in `lawspec_typed` over the same tuples, lists, binaries and
+integers your code uses. Only `KeyVal` and `Set` values convert at its
+boundary, since typed code keeps them as maps and version 2 `sets`.
+Integers are checked where their type bounds them, and `Text` is UTF-8
+measured in code points. Each function is named for its definition and a
+digest of its identity, so its name survives unrelated edits.
+
+A spec handler whose clauses are all typed keeps its state in its cell's
+process and runs each operation there, so an operation copies only its
+arguments and result. `cluster_typed_state(Broker)` returns that state as
+typed code holds it, and `cluster_set_typed_state(Broker, State)` replaces
+it. Processes share no heap, so the snapshot is a copy. `lawspec-dev bench
+kafka --typed` lists the definitions that stay dynamic, and why. See
+[Embed a generated model](../embed-a-generated-model.md).
+
 ## Resource adapters
 
 Resource acquisition and release run in a dedicated owner process; the test
