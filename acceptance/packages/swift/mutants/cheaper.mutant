@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.swift
+<<<<<<<
+    static func cheaper(_ a: Int64, _ b: Int64) -> Int64 { min(a, b) }
+=======
+    static func cheaper(_ a: Int64, _ b: Int64) -> Int64 { a }
+>>>>>>>

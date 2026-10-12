@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.swift
+<<<<<<<
+    static func roundDown(_ cents: Int64) -> Int64 { cents - cents % 100 }
+=======
+    static func roundDown(_ cents: Int64) -> Int64 { cents > 0 ? cents - 1 : cents }
+>>>>>>>

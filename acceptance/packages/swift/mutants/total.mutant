@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.swift
+<<<<<<<
+        return Money(currency: line.price.currency, cents
+=======
+        return Money(currency: .eur, cents
+>>>>>>>
