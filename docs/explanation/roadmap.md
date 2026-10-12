@@ -156,6 +156,8 @@ a target.
 
 ### Later: C and C++
 
+C and C++ targets are optional and are not required for the 1.0 release.
+
 C and C++ wait until the cost of generating code for every type they are
 used at (monomorphisation) has been measured.
 
