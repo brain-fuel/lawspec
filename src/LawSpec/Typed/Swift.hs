@@ -62,15 +62,17 @@ data Env = Env
   , envSelf :: Maybe (Int, [String])
   }
 
-type M = StateT Int (Either String)
+-- | The next fresh name's number, and the parameters a self tail call has
+-- reassigned in the function being emitted (they become vars).
+type M = StateT (Int, [String]) (Either String)
 
 lift' :: Either String a -> M a
 lift' = lift
 
 fresh :: String -> M String
 fresh base = do
-  n <- get
-  put (n + 1)
+  (n, assigned) <- get
+  put (n + 1, assigned)
   pure (sanitize base ++ "_" ++ show n)
 
 sanitize :: String -> String
@@ -91,7 +93,7 @@ emitSwiftTyped bits bound allDeclarations units = do
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions units allDeclarations Nothing
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       starts = [ (handlerId h, "start_" ++ stableSuffix (handlerId h), ty, start) | h <- typedHandlers, Just (ty, start) <- [handlerState h] ]
-  docs <- flip evalStateT 0 $ do
+  docs <- flip evalStateT (0, []) $ do
     fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, ty, start) -> do
       t <- lift' (nativeType env ty)
@@ -155,13 +157,15 @@ functionDoc env c d = do
   resultType <- lift' (nativeType env result)
   let self = Just (c, map snd params)
       selfEnv = env { envSelf = self }
+  modify (\(n, _) -> (n, []))
   body <- case M.lookup (declarationId declaration) (typedIntrinsics (envPlan env)) of
     Just intrinsic -> do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l), b) <- zip params (definitionArguments d)]
       pure [D.text "return " <> x]
     Nothing -> statements selfEnv params (Just resultType) Return (definitionBody d)
+  assigned <- gets snd
   let looped = loops body
-      reassigned = [l | (_, l) <- params, any (mentionsAssignment l) (map (D.render (D.Pretty 10000)) body)]
+      reassigned = [l | (_, l) <- params, l `elem` assigned]
       parameters = ["_ schema: Schema, _ symbols: SymbolContext" | contextual] ++
         ["_ " ++ l ++ ": " ++ t | ((_, l), t) <- zip params types]
       bodyDoc = if looped
@@ -173,10 +177,6 @@ functionDoc env c d = do
     block bodyDoc <> D.hardline <> D.text "}")
   where
     loops docs = any (\doc -> "continue" `elem` words (D.render (D.Pretty 10000) doc)) docs
-    mentionsAssignment l text = any (\line -> (l ++ " = ") `isPrefixOf` dropWhile (== ' ') line || ("(" ++ l ++ ",") `isPrefixOf` dropWhile (== ' ') line || (", " ++ l ++ ")") `isInfix` line) (lines text)
-    isInfix needle hay = any (needle `isPrefixOf`) (tails' hay)
-    tails' [] = [[]]
-    tails' xs@(_ : rest) = xs : tails' rest
 
 -- | Lines that compute an expression into a sink.
 statements :: Env -> Scope -> Maybe String -> Sink -> Expr -> M [D.Doc]
@@ -208,6 +208,7 @@ statements env scope resultType sink e = case expressionNode e of
               [] -> []
               [(p, x)] -> [D.text (p ++ " = ") <> x]
               _ -> [D.text ("(" ++ intercalate ", " (map fst changed) ++ ") = (") <> D.joinWith (D.text ", ") (map snd changed) <> D.text ")"]
+        modify (\(n, assigned) -> (n, map fst changed ++ assigned))
         pure (concatMap fst parts ++ assignment ++ [D.text "continue"])
   _ -> do
     (s, x) <- cexpr env scope e
@@ -618,7 +619,7 @@ matchStatements env scope resultType sink value cases = do
             let ctor = snd (envConstructors env M.! caseConstructor c)
                 names = map snd bs
                 caseText = "." ++ filter (/= '`') (Data.caseName ctor) ++
-                  (if null names then "" else "(" ++ letPattern names ++ intercalate ", " names ++ ")")
+                  (if null names then "" else "(" ++ intercalate ", " [if v == "_" then v else "let " ++ v | v <- names] ++ ")")
             body <- armBody c bs
             pure (D.text ("case " ++ caseText ++ ":") <> block body)
           pure [D.text "switch " <> subject <> D.text " {" <> D.hardline <>

@@ -152,7 +152,7 @@ data Namespace = Namespace String [Namespace]
 validatePlan :: Plan -> Either String ()
 validatePlan plan = do
   let units = map plannedUnit (plannedUnits plan)
-      roots = nub [pascal (head (splitDots (C.idText (C.unitId u)))) | u <- units]
+      roots = nub [pascal r | u <- units, r : _ <- [splitDots (C.idText (C.unitId u))]]
       qualifieds = map (unitQualified . C.unitId) units
   unless (length qualifieds == length (nub qualifieds)) (Left "Swift unit namespaces collide after UpperCamelCase conversion")
   unless (all (`notElem` [moduleName, testModuleName, "LawSpec", "LawSpecRuntime", "LawSpecTesting", "Testing", "Swift", "Foundation"]) roots)

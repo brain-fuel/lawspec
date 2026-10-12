@@ -21,6 +21,7 @@ ignore:
   - editors/vscode/test/grammar.test.mjs
   - src/LawSpec/RuntimeSources.hs
   - src/LawSpec/DotNetSources.hs
+  - src/LawSpec/SwiftSources.hs
   - runtime/dotnet/*/bin/
   - runtime/dotnet/*/obj/
   - runtime/defaults/
@@ -80,6 +81,11 @@ languages:
     lexer: .canon/grammars/csharp/canonically_commented/CSharpLexer.g4
     parser: .canon/grammars/csharp/canonically_commented/CSharpParser.g4
     start: compilation_unit
+  swift:
+    extensions: [.swift]
+    lexer: .canon/grammars/swift/canonically_commented/SwiftLexer.g4
+    parser: .canon/grammars/swift/canonically_commented/SwiftParser.g4
+    start: topLevel
   rust:
     extensions: [.rs]
     lexer: .canon/grammars/rust/RustLexer.g4

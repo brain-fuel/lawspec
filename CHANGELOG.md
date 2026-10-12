@@ -6,6 +6,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A Swift target (`--target swift`) on Swift 6.2 and later, with SwiftPM and
+  `swift test`. Its runtime is written for Swift 6 with strict concurrency:
+  structs and enums with associated values (`indirect` where recursive) in
+  LawSpec's order, exact integers, persistent sorted collections, typed
+  throws for failures, abilities as protocols, `async` adapters, actors with
+  supervision, single-use session ends, mailboxes, a virtual clock, workflow
+  policies, remote evaluation and the secure network on the shared wire
+  format, and post-quantum crypto from CryptoKit (macOS 26), with the
+  runtime's own SHAKE256 and SLH-DSA where CryptoKit has none. Tests are Swift
+  Testing functions; no maintained Swift property library shrinks inside
+  refinements and replays from a seed, so properties run on a small
+  shrink-tree engine in `LawSpecTesting`, with `LAWSPEC_SEED` replay. Models,
+  linearizability, scenarios and the whole harness run around it.
+  Definitions whose values all have native types run typed, with self tail
+  calls as loops, and each spec handler is a native class with its state to
+  read or restore. `lawspec test`, `lawspec doctor` and `lawspec examples`
+  support it. See [Set up Swift](docs/how-to/targets/swift.md).
+
 ## [0.23.0] - 2026-10-12
 
 ### Added
