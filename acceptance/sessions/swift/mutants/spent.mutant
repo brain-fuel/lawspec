@@ -1,0 +1,8 @@
+expect: this end was already used
+@@ src/Example/Sessions.swift
+<<<<<<<
+        let afterB = try afterA.send(b)
+=======
+        try afterA.send(b)
+        let afterB = try afterA.send(b)
+>>>>>>>
