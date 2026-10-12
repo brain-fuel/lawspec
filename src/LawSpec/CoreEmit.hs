@@ -20,6 +20,7 @@ import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
 import qualified LawSpec.BeamEmit as Beam
 import qualified LawSpec.DotNet.Emit as DotNet
 import qualified LawSpec.Groovy.Emit as Groovy
+import qualified LawSpec.Clojure.Emit as Clojure
 import qualified LawSpec.NativeBinding as Binding
 import qualified LawSpec.NativeRequest as NB
 import qualified LawSpec.CoreScalarEmit as Scalar
@@ -89,6 +90,9 @@ emitPlanWithFormat minify target original | target `elem` DotNet.dotnetTargets =
 -- Groovy runs over the Java target's files (DEC-groovy-over-java).
 emitPlanWithFormat minify "groovy" original =
   Groovy.groovyFromJava original =<< emitPlanWithFormat minify "java" (escapePlan "groovy" original)
+-- Clojure runs over them too (DEC-clojure-over-java).
+emitPlanWithFormat minify "clojure" original =
+  Clojure.clojureFromJava original =<< emitPlanWithFormat minify "java" (escapePlan "clojure" original)
 emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
   emittedFiles <- emitPlanFormatted minify target plan
@@ -497,6 +501,9 @@ emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> N
 emitPlanWithNativeOptions minify "groovy" sourceDir testDir unescaped unwitnessed =
   Groovy.groovyLayout sourceDir testDir <$> (Groovy.groovyFromJava unwitnessed =<<
     emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "groovy" unescaped) (escapePlan "groovy" unwitnessed))
+emitPlanWithNativeOptions minify "clojure" sourceDir testDir unescaped unwitnessed =
+  Clojure.clojureLayout sourceDir testDir <$> (Clojure.clojureFromJava unwitnessed =<<
+    emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "clojure" unescaped) (escapePlan "clojure" unwitnessed))
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
       bindings = escapeBindings target unescaped

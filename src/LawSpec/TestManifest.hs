@@ -113,6 +113,7 @@ benchmarkManifest target testDir program =
       "fsharp" -> DotNet.camel nativeName
       "csharp" -> DotNet.pascal nativeName
       "groovy" -> "benchmark: " ++ unwords (words' n)
+      "clojure" -> "benchmark--" ++ intercalate "-" (words' n)
       _ -> "benchmark " ++ n
 
 relocated :: Maybe String -> String -> FilePath -> FilePath
@@ -146,6 +147,8 @@ unitTestPath target unit = case target of
   "gleam" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_test.gleam"
   "fsharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".fs"
   "csharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".cs"
+  -- A clojure.test namespace (LawSpec.Clojure.Emit).
+  "clojure" -> "test/" ++ intercalate "/" parts ++ "_lawspec_test.clj"
   -- A Spock specification (LawSpec.Groovy.Emit).
   "groovy" -> "src/test/groovy/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpec.groovy"
   jvm -> "src/test/" ++ jvm ++ "/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpecTest" ++

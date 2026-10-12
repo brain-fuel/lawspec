@@ -18,9 +18,9 @@ dotnetTargets :: [String]
 dotnetTargets = ["fsharp", "csharp"]
 
 -- | JVM languages over the Java target's model and runtime.
--- ref:DEC-groovy-over-java
+-- ref:DEC-groovy-over-java ref:DEC-clojure-over-java
 overJavaTargets :: [String]
-overJavaTargets = ["groovy"]
+overJavaTargets = ["groovy", "clojure"]
 
 -- | Display names are independent of the lowercase names in requests.
 targetLabel :: String -> String

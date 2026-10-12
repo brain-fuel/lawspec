@@ -13,7 +13,8 @@ export type Target =
     'gleam' |
     'fsharp' |
     'csharp' |
-    'groovy';
+    'groovy' |
+    'clojure';
 
 export interface Source {
   path: string;

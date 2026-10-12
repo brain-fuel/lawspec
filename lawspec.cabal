@@ -450,6 +450,10 @@ library
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
       LawSpec.Capabilities
+      LawSpec.Clojure.Bridge
+      LawSpec.Clojure.Emit
+      LawSpec.Clojure.Tests
+      LawSpec.ClojureSources
       LawSpec.Code.Doc
       LawSpec.Code.JavaScript
       LawSpec.Collections

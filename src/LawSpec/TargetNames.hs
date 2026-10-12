@@ -17,6 +17,8 @@ targetKeywords target = case target of
   "java" -> words "abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var yield _"
   -- Groovy reserves Java's words and its own.
   "groovy" -> targetKeywords "java" ++ words "as def in trait"
+  -- Clojure's special forms cannot name a function; Java's model needs Java's.
+  "clojure" -> targetKeywords "java" ++ words "def if do let quote var fn loop recur throw try catch finally new letfn case"
   "kotlin" -> words "as break class continue do else false for fun if in interface is null object package return super this throw true try typealias typeof val var when while"
   "rust" -> words "as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while abstract become box do final macro override priv typeof unsized virtual yield try gen"
   "haskell" -> words "case class data default deriving do else foreign forall if import in infix infixl infixr instance let module newtype of then type where"

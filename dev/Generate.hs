@@ -90,9 +90,11 @@ planOutputs = do
   defaults <- embedDefaults
   dotnet <- embedDotNet
   groovy <- embedJvmLanguage "groovy" "GroovySources"
+  clojure <- embedJvmLanguage "clojure" "ClojureSources"
   let whole = [ Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
               , Output "src/LawSpec/DotNetSources.hs" dotnet False
-              , Output "src/LawSpec/GroovySources.hs" groovy False ] ++
+              , Output "src/LawSpec/GroovySources.hs" groovy False
+              , Output "src/LawSpec/ClojureSources.hs" clojure False ] ++
         [ Output ("npm" </> name) content False | (name, content) <- api ]
   pure (sortOn outputPath (whole ++ map fst rendered))
 

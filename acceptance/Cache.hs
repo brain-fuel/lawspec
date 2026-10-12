@@ -75,6 +75,7 @@ toolFingerprint target = do
     "typescript" -> [("node", ["--version"])]
     "go" -> [("go", ["version"])]
     "haskell" -> [("stack", ["--version"])]
+    "clojure" -> [("java", ["-version"]), ("clojure", ["--version"])]
     _ -> []
   where
     version (program, arguments) = do

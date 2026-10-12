@@ -31,7 +31,8 @@ testCommand target = lookup target
   , ("gleam", "gleam test")
   , ("fsharp", "dotnet test")
   , ("csharp", "dotnet test")
-  , ("groovy", "gradle test") ]
+  , ("groovy", "gradle test")
+  , ("clojure", "clojure -M:test") ]
 
 -- | The pinned toolchain each target is verified against, stated once so doctor,
 -- the CLI and the docs give the same advice.
@@ -50,6 +51,7 @@ setupAdvice target = lookup target
   , ("fsharp", "Use the .NET 10 SDK (10.0.100 or later) with F# 10. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; the generated runtime projects under lawspec/ use FSharp.Core from the SDK, LawSpec.Testing runs properties on FsCheck 3.4.0 and, for a program that imports lawspec.crypto or lawspec.network, BouncyCastle.Cryptography 2.7.0. Import src/LawSpec.Sources.props and tests/LawSpec.Tests.props in the project files, as lawspec init does. Run dotnet build.")
   , ("csharp", "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2 and FsCheck 3.4.0 (referenced by lawspec/LawSpec.Testing); for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build.")
   , ("groovy", "Use JDK 25, Gradle 9.3.0 with the groovy plugin, Groovy 5.0.8 (org.apache.groovy:groovy), Spock 2.5-groovy-5.0, JetCheck 0.3.0 and JUnit Jupiter's API 5.14.0, and useJUnitPlatform(); the Java model compiles jointly with the Groovy sources, so src/main/java and src/test/java are Groovy source directories. A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.")
+  , ("clojure", "Use JDK 25 and the Clojure CLI 1.12 with Clojure 1.12.5 and, for tests, test.check 1.1.3 (the :test alias). The Java model in java/src compiles with the JDK's compiler into target/classes, which lawspec.build does before the tests run (clojure -M:build compiles it alone). A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run clojure -M:test.")
   , ("gleam", "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test." ++ beamCryptoSetup) ]
 
 beamCryptoSetup :: String
@@ -217,6 +219,18 @@ scaffoldFilesWith crypto minify target = case target of
              , "testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'"
              , "testRuntimeOnly 'org.junit.platform:junit-platform-launcher'" ])
         , kotlinBlock "test" ["useJUnitPlatform()"] ] ++ "\n") ]
+  -- Clojure over the Java model: deps.edn, with the compiled model on the
+  -- classpath (DEC-clojure-over-java).
+  "clojure" -> Right
+    [ ("deps.edn", unlines $
+        [ "{:paths [\"src\" \"target/classes\"]"
+        , " :deps {org.clojure/clojure {:mvn/version \"1.12.5\"}" ++
+            (if crypto then "\n        org.bouncycastle/bcprov-jdk18on {:mvn/version \"1.86\"}}" else "}")
+        , " :aliases"
+        , " {:test {:extra-paths [\"test\" \"target/test-classes\"]"
+        , "         :extra-deps {org.clojure/test.check {:mvn/version \"1.1.3\"}}"
+        , "         :main-opts [\"-m\" \"lawspec.test-runner\"]}"
+        , "  :build {:main-opts [\"-m\" \"lawspec.build\"]}}}" ]) ]
   _ | target `elem` ["fsharp", "csharp"] -> Right (dotnetScaffold minify target)
   _ -> Left ("Unknown target: " ++ target)
   where

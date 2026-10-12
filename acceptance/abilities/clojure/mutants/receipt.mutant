@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ src/example/abilities.clj
+<<<<<<<
+   :capture (fn [cents] {:lawspec/tag :receipt/receipt :cents cents})
+=======
+   :capture (fn [cents] {:lawspec/tag :receipt/receipt :cents (if (< cents 1000) cents (dec cents))})
+>>>>>>>

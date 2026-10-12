@@ -60,6 +60,8 @@ testIdentifier target ws = case target of
   "csharp" -> "Law" ++ concatMap capital ws
   -- A Spock feature is named in words.
   "groovy" -> unwords ws
+  -- A Clojure test is named in kebab case.
+  "clojure" -> intercalate "-" ws
   _ -> "law" ++ concatMap capital ws
   where capital (c : cs) = toUpper c : cs
         capital [] = []
@@ -72,6 +74,7 @@ kindSuffix target kind = case target of
   "go" -> "_" ++ capital kind
   "csharp" -> "_" ++ capital kind
   "groovy" -> ": " ++ spaced kind
+  "clojure" -> "--" ++ map (\c -> if c == ' ' then '-' else c) (spaced kind)
   "rust" -> ""
   _ -> "_" ++ kind
   where capital (c : cs) = toUpper c : cs
