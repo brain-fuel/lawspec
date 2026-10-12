@@ -1,0 +1,8 @@
+expect: even amounts go through
+@@ src/main/scala/example/Failures.scala
+<<<<<<<
+      else Decision.Approve
+=======
+      else if (value0 > 50000) Decision.Decline("even")
+      else Decision.Approve
+>>>>>>>

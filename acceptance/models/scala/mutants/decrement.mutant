@@ -1,0 +1,9 @@
+@@ src/main/scala/example/Models.scala
+<<<<<<<
+    Future.successful(counters.get(value0.id).decrementAndGet())
+=======
+    Future.successful {
+      val count = counters.get(value0.id)
+      if (count.get() >= 3) count.addAndGet(-2) else count.decrementAndGet()
+    }
+>>>>>>>

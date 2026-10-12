@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/main/scala/example/Failures.scala
+<<<<<<<
+    if (value0 > 5000) Left(PaymentError.TooLarge(5000))
+=======
+    if (value0 > 5000) throw IllegalStateException("too large")
+>>>>>>>

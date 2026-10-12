@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Concurrent.scala
+<<<<<<<
+    Future.successful(set(value0).add(value1))
+=======
+    Future.successful { set(value0).add(value1); true }
+>>>>>>>

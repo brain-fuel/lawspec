@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/main/scala/example/Failures.scala
+<<<<<<<
+      if (value0 < 0) Decision.Block
+=======
+      if (value0 < 0) Decision.Decline("negative")
+>>>>>>>

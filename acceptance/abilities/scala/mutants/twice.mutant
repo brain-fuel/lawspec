@@ -1,0 +1,9 @@
+expect: charge captures once
+@@ src/main/scala/example/Abilities.scala
+<<<<<<<
+      case lawspec.data.Payment.Approved(cents) => gateway.capture(cents).cents == value0
+=======
+      case lawspec.data.Payment.Approved(cents) =>
+        gateway.capture(cents)
+        gateway.capture(cents).cents == value0
+>>>>>>>

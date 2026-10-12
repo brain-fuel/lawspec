@@ -1,0 +1,6 @@
+@@ src/main/scala/example/Actors.scala
+<<<<<<<
+  def reopen(value0: lawspec.data.Account): lawspec.data.Account = Account(value0.balance)
+=======
+  def reopen(value0: lawspec.data.Account): lawspec.data.Account = Account(0)
+>>>>>>>
