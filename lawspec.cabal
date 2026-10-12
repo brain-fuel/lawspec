@@ -605,6 +605,7 @@ library
       LawSpec.Swift.Entries
       LawSpec.Swift.Expr
       LawSpec.Swift.Handlers
+      LawSpec.Swift.Models
       LawSpec.Swift.Names
       LawSpec.Swift.Policy
       LawSpec.Swift.Properties

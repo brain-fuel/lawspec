@@ -1,0 +1,6 @@
+@@ src/Example/Models.swift
+<<<<<<<
+        case .push(let top, let rest): return PopFlow(result: top, state: rest)
+=======
+        case .push(let top, _): return PopFlow(result: top, state: value0)
+>>>>>>>

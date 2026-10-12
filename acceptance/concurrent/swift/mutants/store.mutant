@@ -1,0 +1,9 @@
+@@ src/Example/Concurrent.swift
+<<<<<<<
+            let old = m[value1]
+            m[value1] = value2
+            return old
+=======
+            m[value1] = value2
+            return value2
+>>>>>>>

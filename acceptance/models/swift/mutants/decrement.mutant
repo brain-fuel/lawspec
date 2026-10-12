@@ -1,0 +1,6 @@
+@@ src/Example/Models.swift
+<<<<<<<
+        return counters.update(value0.id) { $0 - 1 }
+=======
+        return counters.update(value0.id) { $0 >= 3 ? $0 - 2 : $0 - 1 }
+>>>>>>>
