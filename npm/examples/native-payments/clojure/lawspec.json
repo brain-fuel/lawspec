@@ -34,6 +34,16 @@
               "store"
             ]
           }
+        ],
+        "generators": [
+          {
+            "type": "example.payments::type::Money",
+            "factory": [
+              "domain",
+              "payment_generators",
+              "prices"
+            ]
+          }
         ]
       }
     }
