@@ -1,0 +1,8 @@
+@@ src/main/scala/warehouse/Stock.scala
+<<<<<<<
+    price(sku)
+  }
+=======
+    price(sku) + 1
+  }
+>>>>>>>

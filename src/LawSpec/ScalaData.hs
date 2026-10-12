@@ -408,7 +408,7 @@ emitCodecs mappings owner layout declarations = do
           encoder = D.text ("(value: " ++ nativeText ++ ") => {") <> D.nest 2 (D.hardline <>
             (if null encodeArms then failure else
               if directProduct then D.joinWith D.hardline [body | (_,body) <- encodeArms] else
-              D.text "(value: Any) match " <>
+              D.text "value match " <>
               D.block 2 (D.joinWith D.hardline
                 ([D.text ("case " ++ condition ++ " => ") <> D.block 2 body | (condition,body) <- encodeArms] ++ [D.text "case _ => " <> failure])))) <>
             D.hardline <> D.text "}"
@@ -468,11 +468,17 @@ emitCodecs mappings owner layout declarations = do
       bindings <- fields names parameters (nativeKeys variant) variant
       let n = length (C.constructorFields variant)
           payload = [call "LawSpecSchema.encodeField"
-            [D.text local, D.text ("value." ++ (if i < n then fieldName variant field else field)), quoted (C.idText (C.constructorId variant) ++ "." ++ field)]
+            [D.text (fieldCodec local), D.text ("value." ++ (if i < n then fieldName variant field else field)), quoted (C.idText (C.constructorId variant) ++ "." ++ field)]
             | (i,(local,field,_)) <- zip [0 :: Int ..] bindings]
-          typeArguments = if ownCount variant > 0 then "[" ++ intercalate ", " (replicate (ownCount variant) "?") ++ "]" else ""
+          -- A case of a generic type matches at the codec's own parameters;
+          -- a GADT case at unknown ones, its fields going through Any.
+          typeArguments
+            | gadtVariant variant = if ownCount variant > 0 then "[" ++ intercalate ", " (replicate (ownCount variant) "?") ++ "]" else ""
+            | null parameters = ""
+            | otherwise = "[" ++ intercalate ", " [t | (_,(t,_)) <- parameters] ++ "]"
           condition = if unitConstructor variant then constructorName dataOwner variant
-            else "value: " ++ constructorName dataOwner variant ++ typeArguments
+            else "value: " ++ constructorName dataOwner variant ++ typeArguments ++ (if null parameters || gadtVariant variant then "" else " @unchecked")
+          fieldCodec local = if gadtVariant variant then local ++ ".asInstanceOf[Codec[Any]]" else local
           identityCheck = [call "require"
             [D.text ("value.getClass == classOf[" ++ constructorName dataOwner variant ++ typeArguments ++ "]"), quoted "invalid native constructor"] |
               owner /= "LawSpecDataCodecs", not (unitConstructor variant)]

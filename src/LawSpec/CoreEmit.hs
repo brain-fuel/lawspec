@@ -26,6 +26,7 @@ import qualified LawSpec.CoreNativeScalarEmit as Native
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.JavaNativeBinding as JavaNativeBinding
 import qualified LawSpec.KotlinNativeBinding as KotlinNativeBinding
+import qualified LawSpec.ScalaNativeBinding as ScalaNativeBinding
 import qualified LawSpec.GoNativeBinding as GoNativeBinding
 import qualified LawSpec.JavaDefinitions as JavaDefinitions
 import qualified LawSpec.HaskellNativeBinding as HaskellNativeBinding
@@ -288,7 +289,7 @@ emitPlanFormatted minify target Plan{..} = do
     (Left [Diagnostic "identifier" "Kotlin's kotlin package is reserved" Nothing])
   unless (target /= "scala" || all (\u -> jvmName u `notElem` (kotlinRuntimeNames ++ map ("lawspec.runtime." ++) ["LawSpecScala", "LawSpecScalaCodecs", "LawSpecScalaAdapters"])) units)
     (Left [Diagnostic "collision" "Scala adapter shadows a generated JVM runtime class" Nothing])
-  unless (target /= "scala" || all ((`notElem` ["scala", "java"]) . head . split '.' . unitName) units)
+  unless (target /= "scala" || all ((`notElem` [["scala"], ["java"]]) . take 1 . split '.' . unitName) units)
     (Left [Diagnostic "identifier" "Scala's scala and java packages are reserved" Nothing])
   emitted <- mapM (emitUnit laws) (filter (\u -> not (null (functions u)) || any ((== unitName u) . owner) laws) units)
   dataFiles <- if target == "java" && (not (null planDataDeclarations) || not (null definitionCalls) || hasPayload)
@@ -520,7 +521,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
     then either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
-  let plan = wrappedHandlers target bindings (boundHandlers bindings (if target == "kotlin" then nativeHandles bindings prepared else prepared))
+  let plan = wrappedHandlers target bindings (boundHandlers bindings (if target `elem` ["kotlin", "scala"] then nativeHandles target bindings prepared else prepared))
   unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","scala","go","erlang","elixir","gleam","fsharp","csharp"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
@@ -552,6 +553,10 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       ordinary <- emitPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (KotlinNativeBinding.emitBindings minify bindings plan ordinary)
+    else if target == "scala" then do
+      ordinary <- emitPlanWithFormat minify target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (ScalaNativeBinding.emitBindings minify bindings plan ordinary)
     else if target == "haskell" then do
       ordinary <- emitPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
@@ -583,6 +588,10 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       ordinary <- emitPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (KotlinNativeBinding.emitBindings False bindings plan ordinary)
+    else if NB.hasBindings bindings && minify && target == "scala" then do
+      ordinary <- emitPlanWithFormat False target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (ScalaNativeBinding.emitBindings False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target == "haskell" then do
       ordinary <- emitPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
@@ -705,11 +714,12 @@ remoteCalls target plan = case target of
 -- type on its declaration, so generated Kotlin names it in full everywhere
 -- (adapters, actors, sessions) instead of Any. Java keeps Object, which its
 -- native calls already cast.
-nativeHandles :: NB.BindingPlan -> Plan -> Plan
-nativeHandles bindings plan = plan { planDataDeclarations = map typed (planDataDeclarations plan) }
+nativeHandles :: String -> NB.BindingPlan -> Plan -> Plan
+nativeHandles target bindings plan = plan { planDataDeclarations = map typed (planDataDeclarations plan) }
   where
     typed d = case [b | b <- Binding.resolvedTypes (NB.bindingRepresentations bindings), C.dataId (Binding.resolvedDeclaration b) == C.dataId d] of
       b : _ | C.dataHandle d, Just arguments <- Binding.resolvedArguments b ->
         d { C.dataNative = Just (intercalate "." (Binding.referenceParts (Binding.resolvedNativeType b)) ++
-              (if null arguments then "" else "<" ++ intercalate ", " arguments ++ ">")) }
+              (if null arguments then "" else opening ++ intercalate ", " arguments ++ closing)) }
       _ -> d
+    (opening, closing) = if target == "scala" then ("[", "]") else ("<", ">")

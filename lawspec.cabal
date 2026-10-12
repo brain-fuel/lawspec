@@ -185,6 +185,13 @@ extra-source-files:
     runtime/defaults/rust/logging.rs
     runtime/defaults/rust/randomness.rs
     runtime/defaults/rust/time.rs
+    runtime/defaults/scala/concurrent.scala
+    runtime/defaults/scala/crypto.scala
+    runtime/defaults/scala/crypto_vectors.scala
+    runtime/defaults/scala/host.scala
+    runtime/defaults/scala/logging.scala
+    runtime/defaults/scala/randomness.scala
+    runtime/defaults/scala/time.scala
     runtime/defaults/typescript/concurrent.ts
     runtime/defaults/typescript/crypto.ts
     runtime/defaults/typescript/crypto_vectors.ts
@@ -587,6 +594,7 @@ library
       LawSpec.ScalaData
       LawSpec.ScalaDefinitions
       LawSpec.ScalaExpr
+      LawSpec.ScalaNativeBinding
       LawSpec.ScalaProperties
       LawSpec.Scalar
       LawSpec.ScalaTestHelpers

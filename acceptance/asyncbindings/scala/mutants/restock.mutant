@@ -1,0 +1,6 @@
+@@ src/main/scala/warehouse/Stock.scala
+<<<<<<<
+        total += amount
+=======
+        total += (if (amount < 50) amount else amount - 1)
+>>>>>>>

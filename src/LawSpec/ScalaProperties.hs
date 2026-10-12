@@ -398,7 +398,7 @@ emitTests Config{..} unit laws = do
       let inp = domainInput plan
           prior = take index (inputs e)
           valuesOf = text "val _values = _javaValues.asScala.toList"
-          bounds = E.array [call "LawSpecRuntime.Bound" [quoted op,expr v] | (op,v) <- domainBounds plan]
+          bounds = call "Array[LawSpecRuntime.Bound]" [call "LawSpecRuntime.Bound" [quoted op,expr v] | (op,v) <- domainBounds plan]
           candidates = runtime "domainCandidates" [quoted (typeKey (inputType inp)),text "_seed",number machineBits,
             bounds,E.array (seeds ++ map expr (generatorHints plan))]
           seedFn = text "(_javaValues: java.util.List[LawSpecRuntime.Value], _seed: Integer) => " <>
