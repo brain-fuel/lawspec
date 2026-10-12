@@ -792,7 +792,7 @@
     "src/LawSpec/ScalaData.hs": "4212fdf3faab79973d68f5b6e2de5a230793b1b63596aa86d3b4325250bf5709",
     "src/LawSpec/ScalaDefinitions.hs": "787d6b968562a412674c93e5d0b50ac1cd3fe148cdc058ae3308b682b41216e8",
     "src/LawSpec/ScalaExpr.hs": "e1ed8fee1c7b72d8fd919a788528a40c5941ef8c45f9f10a4dbedf7a3b10e60e",
-    "src/LawSpec/ScalaNativeBinding.hs": "a531466250b03ab339678f18be9e86aa838b050ad760576018744a3c51459f62",
+    "src/LawSpec/ScalaNativeBinding.hs": "cdfb1eff85d8c926ca27478d571019977e1c3916c16d79e682ffa465bc3a164b",
     "src/LawSpec/ScalaProperties.hs": "1e8c79997872bbd7ef5e722de97f1e99c45691cf53f3fd6225c212b403c2bbba",
     "src/LawSpec/ScalaTestHelpers.hs": "bb0ce44722cd4deb7dec02eb74d1cc214cd2c7d014b1a837299a6b7ed9844110",
     "src/LawSpec/ScalaUnitEmit.hs": "2270fb49d44f1661537b8460eccc67670803b424f89ce2b88a2115d550a11305",
@@ -837,7 +837,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "722ae5cfc5369c664e796e0d525f3d9f5fbc2b8d18c147e5b95f96828209c859",
-    "npm/core.wasm": "918d8db4c63f3aa1dba038969cb414c6117fabf214cd856e73322af10d42667f",
+    "npm/core.wasm": "83988dc82994170ad4375cb12f7ebafaa0ff78ae00c043213291c0bdf1661687",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "19e1624f91258c1397f3212faf65b407c62671b0fc5b118520e6a91f7ad7c6ba",
     "npm/index.d.ts": "dbff1ab33e03833bc7c5651d9f5321a7ce95a1a6cb58b43bd801a088fc713ac0"
