@@ -3,7 +3,8 @@ Benchmarks of LawSpec's generated code, run with `lawspec-dev bench <name>`
 
 `kafka/` drives LawTwin's Kafka reference model (`contract/`, from LawTwin
 under its MIT licence) through the generated `cluster` spec handler of its
-`Broker` ability, on Rust, Go, Java, Kotlin, F# and C#. `bench.json` names the
+`Broker` ability, on Rust, Go, Java, Kotlin, F#, C#, Erlang, Elixir and
+Gleam. `bench.json` names the
 spec and package to generate; `kafka/<target>/` holds each target's driver,
 copied over the generated project. Every driver runs the same workload,
 scaled by its argument N (1,000,000 by default):
@@ -19,7 +20,8 @@ scaled by its argument N (1,000,000 by default):
    committing.
 
 A driver prints `phase <name> <operations> <seconds>` per phase,
-`memory <label> <bytes>` (live heap on Go and the JVM, resident set on Rust)
+`memory <label> <bytes>` (live heap on Go and the JVM, resident set on Rust, process and binary
+memory after a collection on the BEAM)
 after the produce phase and at the end, and `check` lines the harness echoes:
 the records read and the committed high watermark of partition 0, which are
 the same on every target. `lawspec-dev bench kafka --typed` lists the

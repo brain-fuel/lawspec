@@ -6,6 +6,25 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Typed BEAM code: on Erlang, Elixir and Gleam, a checked definition whose
+  values all have native forms, and a spec handler whose clauses are all
+  typed, run as native Erlang in `lawspec_typed`, over each language's own
+  tuples, structs or custom types, with `KeyVal` as maps and `Set` as
+  version 2 `sets` whose entries and items come out in the portable order.
+  Integers are checked where their type bounds them, raise and attempt fail
+  as the dynamic code does, and definitions that perform other abilities'
+  operations take the handler context. A typed handler keeps its state in
+  its cell's process and runs each operation there, so an operation copies
+  only its arguments and result; `cluster_typed_state` and
+  `cluster_set_typed_state` read and replace that state without
+  conversion. `lawspec-dev bench kafka` has Erlang, Elixir and Gleam
+  drivers: at 10,000 produces the workload took 34 to 36 seconds on the
+  dynamic path and 0.02 to 0.03 seconds typed, and a million produces now
+  run at 400,000 to 770,000 operations a second. `--typed` reports the BEAM
+  plan too.
+
 ## [0.23.0] - 2026-10-12
 
 ### Added
