@@ -1,0 +1,6 @@
+{
+  "handlers": [
+    {"ability": "lawspec.crypto::Signature", "native": ["example", "counting", "counting_signer"]},
+    {"ability": "lawspec.crypto::KeyExchange", "native": ["example", "counting", "counting_exchange"]}
+  ]
+}

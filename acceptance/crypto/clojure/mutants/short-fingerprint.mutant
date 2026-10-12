@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/example/crypto.clj
+<<<<<<<
+  (Arrays/copyOf ^bytes (:value (ls/op hash :sha3 message)) 8))
+=======
+  (Arrays/copyOf ^bytes (:value (ls/op hash :sha3 message)) 7))
+>>>>>>>

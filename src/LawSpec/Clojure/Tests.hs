@@ -44,6 +44,9 @@ lawCases className source =
             in go (Just (unquote (unwords annotation))) after
         | any (`isPrefixOf'` trimmed l) ["@org.junit.jupiter.api.TestMethodOrder(", "@org.junit.jupiter.api.parallel.Execution("] -> go skip rest
         | trimmed l == "import org.junit.jupiter.api.Test;" -> go skip rest
+        -- The cases are made by reflection, so their class is public.
+        | Just rest' <- stripPrefix ("class " ++ casesClassName className ++ " ") l ->
+            let (java, tests) = go skip rest in (("public class " ++ casesClassName className ++ " " ++ rest') : java, tests)
         | trimmed l == "@Test", next : rest' <- rest, Just name <- testMethod next ->
             let (java, tests) = go Nothing rest' in (public next : java, (name, skip) : tests)
         | Just after <- stripPrefix "@Test " (trimmed l), Just name <- testMethod after ->

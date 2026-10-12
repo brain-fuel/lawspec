@@ -303,9 +303,13 @@ clojureStub unit ns bound (Stub _ _ _ allItems) = unlines $
 interfaceMethods :: String -> String -> [Operation]
 interfaceMethods interface source =
   case dropWhile ((/= ("public interface " ++ interface ++ " {")) . dropWhile isSpace) (lines source) of
-    _ : rest -> [ op | l <- takeWhile ((/= "}") . dropWhile isSpace) rest, Just op <- [declaration (dropWhile isSpace l)] ]
+    _ : rest -> [ op | l <- statements (map (dropWhile isSpace) (takeWhile ((/= "}") . dropWhile isSpace) rest)), Just op <- [declaration l] ]
     [] -> []
   where
+    -- A declaration may wrap: lines join up to its semicolon.
+    statements ls = case break (isSuffixOf ";") ls of
+      (start, end : more) -> unwords (start ++ [end]) : statements more
+      _ -> []
     declaration l
       | ";" `isSuffixOf` l, '(' `elem` l, not ("default " `isPrefixOf` l) =
           let (before, after) = break (== '(') (init l)
