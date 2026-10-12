@@ -56,7 +56,7 @@ extension Unicode.Scalar: Portable {
 
 extension String: Portable {
     /// Equal code point by code point: Swift's own == treats canonically
-    /// equivalent texts (e + U+0301 and é) as equal; LawSpec does not.
+    /// equivalent texts (e + U+0301 and U+00E9) as equal; LawSpec does not.
     public static func portableEqual(_ a: String, _ b: String) -> Bool {
         a.unicodeScalars.elementsEqual(b.unicodeScalars)
     }
@@ -270,4 +270,15 @@ public enum PortableData {
         for c in fields() where c != 0 { return c }
         return 0
     }
+}
+
+extension Value: Portable {
+    /// Values compare as LawSpec does; a value with no portable order (a
+    /// float, a symbol) orders natively by its debug text.
+    public static func portableEqual(_ a: Value, _ b: Value) -> Bool { Recorded.identical(a, b) }
+    public static func portableCompare(_ a: Value, _ b: Value) -> Int {
+        if let c = try? Scalar.compareValues(a, b) { return c }
+        return Scalar.compareText(Recorded.debug(a), Recorded.debug(b))
+    }
+    public func portableHash(into hasher: inout Hasher) { hasher.combine(Recorded.debug(self)) }
 }

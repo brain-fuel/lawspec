@@ -5,7 +5,7 @@ module LawSpec.Targets (targets, beamTargets, dotnetTargets, targetLabel) where
 
 targets :: [String]
 targets = ["java", "python", "javascript", "typescript", "go", "haskell",
-  "kotlin", "rust"] ++ beamTargets ++ dotnetTargets
+  "kotlin", "rust"] ++ beamTargets ++ dotnetTargets ++ ["swift"]
 
 -- | The BEAM languages share the Erlang runtime and OTP process semantics.
 -- ref:DEC-actors-otp-supervision
@@ -23,4 +23,4 @@ targetLabel target = maybe target id (lookup target
   [("java", "Java"), ("python", "Python"), ("javascript", "JavaScript"),
    ("typescript", "TypeScript"), ("go", "Go"), ("haskell", "Haskell"),
    ("kotlin", "Kotlin"), ("rust", "Rust"), ("erlang", "Erlang"),
-   ("elixir", "Elixir"), ("gleam", "Gleam"), ("fsharp", "F#"), ("csharp", "C#")])
+   ("elixir", "Elixir"), ("gleam", "Gleam"), ("fsharp", "F#"), ("csharp", "C#"), ("swift", "Swift")])

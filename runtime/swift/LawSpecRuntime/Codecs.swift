@@ -15,6 +15,9 @@ public struct Codec<Native>: Sendable {
 }
 
 public enum Codecs {
+    /// A value that is not of a native type's shape.
+    public static func invalid(_ expected: String, _ value: Value) -> LawSpecError { wrong(expected, value) }
+
     static func wrong(_ expected: String, _ value: Value) -> LawSpecError {
         Fail.with("InvalidNativeValue", "expected \(expected), got \(Recorded.debug(value))")
     }

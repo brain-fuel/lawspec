@@ -596,6 +596,18 @@ library
       LawSpec.Sha3
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
+      LawSpec.Swift.Abilities
+      LawSpec.Swift.Code
+      LawSpec.Swift.Data
+      LawSpec.Swift.Definitions
+      LawSpec.Swift.Effects
+      LawSpec.Swift.Emit
+      LawSpec.Swift.Entries
+      LawSpec.Swift.Expr
+      LawSpec.Swift.Names
+      LawSpec.Swift.Policy
+      LawSpec.Swift.Properties
+      LawSpec.SwiftSources
       LawSpec.TargetNames
       LawSpec.Targets
       LawSpec.Temporal

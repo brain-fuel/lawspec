@@ -313,6 +313,11 @@ public enum Scalar {
         return try floatFromRatio(width, n, d, 0)
     }
 
+    /// A complex literal of two floats of a width.
+    public static func complexOf(_ width: Int, _ real: Value, _ imaginary: Value) -> Value {
+        .complex(width: width, real: real, imaginary: imaginary)
+    }
+
     public static func floatFromSingle(_ value: Float) -> Value { .float(width: 32, bits: UInt64(value.bitPattern)) }
     public static func floatFromDouble(_ value: Double) -> Value { .float(width: 64, bits: value.bitPattern) }
 

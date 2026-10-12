@@ -286,3 +286,19 @@ public enum Gens {
         return frequency([(1, oneOf(examples.map { Gen.constant($0) })), (9, g)])
     }
 }
+
+extension Gens {
+    /// A generator of one value.
+    public static func constant<A>(_ value: A) -> Gen<A> { .constant(value) }
+
+    /// A generator that depends on another's value.
+    public static func bind<A, B>(_ g: Gen<A>, _ k: @escaping (A) throws -> Gen<B>) -> Gen<B> { g.bind(k) }
+
+    public static func map<A, B>(_ f: @escaping (A) throws -> B, _ g: Gen<A>) -> Gen<B> { g.map(f) }
+
+    /// A dependent input's domain: values outside it discard the tuple.
+    public static func refine<A>(_ predicate: @escaping (A) throws -> Bool, _ g: Gen<A>) -> Gen<A> { g.refine(predicate) }
+
+    /// The item of a list at a position.
+    public static func nth<A>(_ index: Int, _ items: [A]) -> A { items[index] }
+}

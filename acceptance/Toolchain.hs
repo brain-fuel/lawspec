@@ -63,6 +63,9 @@ toolchain project target = do
     -- Microsoft.Testing.Platform, as global.json selects.
     _ | target `elem` ["fsharp", "csharp"] ->
         pure (plain "dotnet" ("test" : ["--no-restore" | offline]))
+    -- swift test builds incrementally (SwiftPM compares file contents'
+    -- timestamps at full resolution) and runs the Swift Testing tests.
+    "swift" -> pure (plain "swift" ["test"])
     _ -> ioError (userError ("unknown target: " ++ target))
   where plain c a = Toolchain c a (pure ()) (pure "")
 
@@ -97,9 +100,12 @@ compileFailure output = any rebarFailure (lines lowered) || any ((`isInfixOf` lo
   , "syntax error before:", "undefined function", "** (CompileError)"
   , "error: Type mismatch", "error: Unknown variable", "error: Unknown type"
   , "error: Unknown module", "error: Unknown value", ": error FS", ": error CS" ]
+    || any swiftFailure (lines lowered)
   where
     lowered = map toLower (stripAnsi output)
     rebarFailure line = all (`isInfixOf` line) ["===>", "compiling ", " failed"]
+    -- Swift's compiler: path.swift:line:column: error: ...
+    swiftFailure line = ".swift:" `isInfixOf` line && ": error: " `isInfixOf` line
 
 -- | Drop ANSI escape sequences: control sequences (ESC, a bracket, parameters
 -- and a final byte from 0x40 to 0x7E) and two-byte escapes (ESC and one more).

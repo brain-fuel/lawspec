@@ -1,0 +1,11 @@
+@@ src/Example/ScalarAdapters.swift
+<<<<<<<
+    static func echoPresence(_ value0: Undefinable<Nullable<Int8>>) -> Undefinable<Nullable<Int8>> {
+        value0
+    }
+=======
+    static func echoPresence(_ value0: Undefinable<Nullable<Int8>>) -> Undefinable<Nullable<Int8>> {
+        if case .undefined = value0 { return .present(.null) }
+        return value0
+    }
+>>>>>>>

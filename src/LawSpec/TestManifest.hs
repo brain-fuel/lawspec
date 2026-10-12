@@ -112,6 +112,7 @@ benchmarkManifest target testDir program =
       "gleam" -> nativeName
       "fsharp" -> DotNet.camel nativeName
       "csharp" -> DotNet.pascal nativeName
+      "swift" -> DotNet.camel nativeName
       _ -> "benchmark " ++ n
 
 relocated :: Maybe String -> String -> FilePath -> FilePath
@@ -123,6 +124,7 @@ defaultTestDirectory :: String -> String
 defaultTestDirectory target = case target of
   "fsharp" -> "tests"
   "csharp" -> "tests"
+  "swift" -> "tests"
   "java" -> "src/test/java"
   "kotlin" -> "src/test/kotlin"
   "python" -> "tests"
@@ -144,6 +146,7 @@ unitTestPath target unit = case target of
   "gleam" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_test.gleam"
   "fsharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".fs"
   "csharp" -> "tests/LawSpec/" ++ dotnetName unit ++ ".cs"
+  "swift" -> "tests/LawSpec/" ++ dotnetName unit ++ ".swift"
   jvm -> "src/test/" ++ jvm ++ "/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpecTest" ++
     (if jvm == "kotlin" then ".kt" else ".java")
   where

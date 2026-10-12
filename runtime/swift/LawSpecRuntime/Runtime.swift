@@ -250,3 +250,82 @@ public enum LawThread {
         return try result.with { $0 }!.get()
     }
 }
+
+extension Runtime {
+    /// Wait, on this thread, for an async adapter called by a boxed closure
+    /// (its captures need not be Sendable: only this call uses them).
+    public static func awaitBoxed<T>(_ body: UncheckedBox<() async throws -> T>) throws -> T {
+        try Runtime.await { try await body.value() }
+    }
+}
+
+/// How the embedding API runs the runtime for native callers: a LawSpec
+/// failure inside is a broken contract, a programmer error, so it traps, as
+/// Swift's own checked arithmetic does; a definition's declared failure is
+/// its typed throw.
+public enum Embedding {
+    private static func trap(_ error: any Error) -> Never {
+        fatalError("LawSpec: \(error)")
+    }
+
+    /// Run a definition with no failure.
+    public static func run<T>(_ body: @escaping () throws -> T) -> T {
+        do {
+            return try LawThread.runBlocking(body)
+        } catch {
+            trap(error)
+        }
+    }
+
+    /// Run a definition that fails with E: its failure is thrown as E.
+    public static func runFailing<T, E: Error>(_ ability: String, _ convert: @escaping (Value) throws -> E, _ body: @escaping () throws -> T) throws(E) -> T {
+        let outcome: Result<T, any Error> = Result { try LawThread.runBlocking(body) }
+        switch outcome {
+        case .success(let value):
+            return value
+        case .failure(let raised as RaisedFailure) where raised.ability == ability:
+            do {
+                throw try convert(raised.failure)
+            } catch let failure as E {
+                throw failure
+            } catch {
+                trap(error)
+            }
+        case .failure(let error):
+            trap(error)
+        }
+    }
+
+    /// Run an async definition with no failure, on a runtime thread.
+    public static func runAsync<T>(_ body: UncheckedBox<() throws -> T>) async -> T {
+        do {
+            return try await LawThread.run { UncheckedBox(try body.value()) }.value
+        } catch {
+            trap(error)
+        }
+    }
+
+    /// Run an async definition that fails with E.
+    public static func runFailingAsync<T, E: Error>(_ ability: String, _ convert: @escaping (Value) throws -> E, _ body: UncheckedBox<() throws -> T>) async throws(E) -> T {
+        let outcome: Result<UncheckedBox<T>, any Error>
+        do {
+            outcome = .success(try await LawThread.run { UncheckedBox(try body.value()) })
+        } catch {
+            outcome = .failure(error)
+        }
+        switch outcome {
+        case .success(let value):
+            return value.value
+        case .failure(let raised as RaisedFailure) where raised.ability == ability:
+            do {
+                throw try convert(raised.failure)
+            } catch let failure as E {
+                throw failure
+            } catch {
+                trap(error)
+            }
+        case .failure(let error):
+            trap(error)
+        }
+    }
+}

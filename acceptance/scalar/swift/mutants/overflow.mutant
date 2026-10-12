@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.swift
+<<<<<<<
+        BigInt(value0) + 1
+=======
+        BigInt(value0 &+ 1)
+>>>>>>>

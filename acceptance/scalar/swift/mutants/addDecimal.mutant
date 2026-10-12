@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.swift
+<<<<<<<
+        value0 + value1
+=======
+        ExactDecimal(coefficient: value0.coefficient, exponent: max(value0.exponent, value1.exponent))
+>>>>>>>

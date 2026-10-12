@@ -1,0 +1,10 @@
+@@ src/Example/ScalarAdapters.swift
+<<<<<<<
+    static func echoRaw(_ value0: [UInt16]) -> [UInt16] {
+        value0
+    }
+=======
+    static func echoRaw(_ value0: [UInt16]) -> [UInt16] {
+        [65533]
+    }
+>>>>>>>
