@@ -390,8 +390,9 @@ cexpr env scope e = case expressionNode e of
         back = case element of
           Constructor n [] | n `elem` boundedTypes -> ".map { $0.truncated(" ++ boundedNative n ++ ".self) }"
           _ -> ""
-    pure (sl ++ sh, D.text "Typed.range(" <> exact (expressionType lo) l <> D.text ", " <> exact (expressionType hi) h <> D.text (")" ++ back))
-  Helper Octets [b] -> one "Array" b
+        wrap d = if null back then d else D.text "PersistentList(" <> d <> D.text ")"
+    pure (sl ++ sh, wrap (D.text "Typed.range(" <> exact (expressionType lo) l <> D.text ", " <> exact (expressionType hi) h <> D.text (")" ++ back)))
+  Helper Octets [b] -> one "PersistentList" b
   Helper BytesOf [xs] -> one "[UInt8]" xs
   Helper Utf8 [t] -> one "Typed.utf8" t
   Helper TextOf [n] -> do
@@ -487,7 +488,7 @@ construct env ty tag values = do
   typeText <- lift' (nativeType env ty)
   case (idText tag, values) of
     ("List::Nil", []) -> pure (D.text (typeText ++ "()"))
-    ("List::Cons", [h, t]) -> pure (paren (D.text "[" <> h <> D.text "] + " <> t))
+    ("List::Cons", [h, t]) -> pure (paren t <> D.text ".prepending(" <> h <> D.text ")")
     ("Maybe::Nothing", []) -> pure (D.text ("(nil as " ++ typeText ++ ")"))
     ("Maybe::Just", [x]) -> pure (D.text ("(" ++ typeText ++ ".some(") <> x <> D.text "))")
     ("Either::Left", [x]) -> pure (D.text (typeText ++ ".left(") <> x <> D.text ")")
@@ -525,11 +526,11 @@ intrinsicCall env intrinsic args = case (intrinsic, args) of
   (KeyValLookup, [(k, _), (m, _)]) -> pure (m <> D.text "[" <> k <> D.text "]")
   (KeyValPut, [(k, _), (v, _), (m, _)]) -> pure (m <> D.text ".putting(" <> k <> D.text ", " <> v <> D.text ")")
   (KeyValDelete, [(k, _), (m, _)]) -> pure (m <> D.text ".removing(" <> k <> D.text ")")
-  (KeyValKeys, [(m, _)]) -> pure (m <> D.text ".keys")
-  (KeyValValues, [(m, _)]) -> pure (m <> D.text ".values")
+  (KeyValKeys, [(m, _)]) -> pure (D.text "PersistentList(" <> m <> D.text ".keys)")
+  (KeyValValues, [(m, _)]) -> pure (D.text "PersistentList(" <> m <> D.text ".values)")
   (KeyValEntries, [(m, _)]) -> do
     entry <- entryName env
-    pure (m <> D.text (".entries.map { " ++ entry ++ "(key: $0.key, value: $0.value) }"))
+    pure (D.text "PersistentList(" <> m <> D.text (".entries.map { " ++ entry ++ "(key: $0.key, value: $0.value) })"))
   (SetOf, [(xs, _)]) -> pure (D.text "SortedSet(" <> xs <> D.text ")")
   (SetMember, [(x, _), (s, _)]) -> pure (s <> D.text ".contains(" <> x <> D.text ")")
   (SetInsert, [(x, _), (s, _)]) -> pure (s <> D.text ".inserting(" <> x <> D.text ")")
@@ -570,10 +571,10 @@ matchStatements env scope resultType sink value cases = do
           bs <- binders c
           let names = map snd bs
               heads = case names of
-                (h : _) | h /= "_" -> [D.text ("let " ++ h ++ " = ") <> subject <> D.text "[0]"]
+                (h : _) | h /= "_" -> [D.text ("let " ++ h ++ " = ") <> subject <> D.text ".first!"]
                 _ -> []
               tails = case names of
-                (_ : t : _) | t /= "_" -> [D.text ("let " ++ t ++ " = Array(") <> subject <> D.text ".dropFirst())"]
+                (_ : t : _) | t /= "_" -> [D.text ("let " ++ t ++ " = ") <> subject <> D.text ".rest"]
                 _ -> []
           rest <- armBody c bs
           pure (heads ++ tails ++ rest)
@@ -599,7 +600,7 @@ matchStatements env scope resultType sink value cases = do
                 Just e -> D.text ".entries.map { " <> D.text (e ++ "(key: $0.key, value: $0.value) }")
                 Nothing -> D.text ".items"
               binding = case bs of
-                [(_, n')] | n' /= "_" -> [D.text ("let " ++ n' ++ " = ") <> subject <> items]
+                [(_, n')] | n' /= "_" -> [D.text ("let " ++ n' ++ " = PersistentList(") <> subject <> items <> D.text ")"]
                 _ -> []
           body <- armBody c bs
           pure (binding ++ body)

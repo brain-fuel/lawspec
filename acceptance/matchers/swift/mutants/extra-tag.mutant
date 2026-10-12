@@ -1,7 +1,7 @@
 expect: unique tags come from the input
 @@ src/Example/Matchers.swift
 <<<<<<<
-        return seen
+        return PersistentList(seen)
 =======
-        return seen + ["extra"]
+        return PersistentList(seen + ["extra"])
 >>>>>>>

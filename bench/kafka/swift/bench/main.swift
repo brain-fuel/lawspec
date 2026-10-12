@@ -121,7 +121,7 @@ func run(_ scale: Int64) {
     for t in 0..<txns {
         let parts = [Int((2 * t) % Int64(partitions)), Int((2 * t + 1) % Int64(partitions))]
         ok { () throws(KafkaError) in
-            try broker.addPartitionsToTxnRequest("tx", id.producerId, id.producerEpoch, parts.map(tp))
+            try broker.addPartitionsToTxnRequest("tx", id.producerId, id.producerEpoch, PersistentList(parts.map(tp)))
         }
         for p in parts {
             let tag = ProducerTag(producerId: id.producerId, producerEpoch: id.producerEpoch, baseSequence: sequences[p])

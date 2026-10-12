@@ -38,7 +38,7 @@ nativeType bits names parameters ty = case ty of
   C.Constructor n args -> do
     ts <- mapM argument [t | C.TypeArgument t <- args]
     case (n, ts) of
-      ("List", [t]) -> pure ("[" ++ t ++ "]")
+      ("List", [t]) -> pure ("PersistentList<" ++ t ++ ">")
       ("Maybe", [t]) -> pure (optional t)
       ("Either", [a, b]) -> pure ("Either<" ++ a ++ ", " ++ b ++ ">")
       ("Nullable", [t]) -> pure ("Nullable<" ++ t ++ ">")

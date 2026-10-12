@@ -3,11 +3,11 @@
 import LawSpecRuntime
 
 extension Example.Generation {
-    static func generated(_ text: String, _ seed: UInt64, _ size: Int32, _ count: Int32) -> [String] {
-        try! Descriptors.generated(text, BigInt(seed), Int(size), Int(count))
+    static func generated(_ text: String, _ seed: UInt64, _ size: Int32, _ count: Int32) -> PersistentList<String> {
+        PersistentList(try! Descriptors.generated(text, BigInt(seed), Int(size), Int(count)))
     }
 
-    static func shrunk(_ text: String, _ seed: UInt64, _ size: Int32) -> [String] {
-        try! Descriptors.shrunk(text, BigInt(seed), Int(size))
+    static func shrunk(_ text: String, _ seed: UInt64, _ size: Int32) -> PersistentList<String> {
+        PersistentList(try! Descriptors.shrunk(text, BigInt(seed), Int(size)))
     }
 }

@@ -57,7 +57,8 @@ A product is a `struct` with the constructor's field names. A sum is an
 names; a recursive one is `indirect`. Both conform to `Portable` and compare
 by LawSpec's order and equality. For a type with constructors
 `Leaf value :: a` and `Branch children :: List (Tree a)`, the type is
-`Tree<T0>` with cases `leaf(value: T0)` and `branch(children: [Tree<T0>])`.
+`Tree<T0>` with cases `leaf(value: T0)` and
+`branch(children: PersistentList<Tree<T0>>)`.
 
 | LawSpec | Swift |
 | --- | --- |
@@ -70,7 +71,7 @@ by LawSpec's order and equality. For a type with constructors
 | `Text`, `Utf16Text`, `Bytes` | `String`, `[UInt16]`, `[UInt8]` |
 | `Char`, `CodePoint`, `CodeUnit16` | `Unicode.Scalar`, `UInt32`, `UInt16` |
 | `CodePointText` | `[UInt32]` |
-| `List a`, `Maybe a` | `[A]`, `A?` |
+| `List a`, `Maybe a` | The runtime's persistent `PersistentList<A>`, `A?` |
 | `Either a b` | `Either<A, B>` |
 | `Nullable a`, `Optional a` | `Nullable<A>`, `Undefinable<A>` |
 | `Set a`, `KeyVal k v` | The runtime's persistent `SortedSet<A>` and `SortedMap<K, V>` |
@@ -80,6 +81,12 @@ by LawSpec's order and equality. For a type with constructors
 | A handle | `AnyHandle`, or the type bound in `lawspec.json` |
 
 The runtime's types are in the `LawSpecRuntime` module.
+
+`PersistentList` is a singly linked list that shares structure: prepending
+an item, the first item and the rest take constant time, as recursive
+definitions over a list need. A Swift `Array` would copy the whole list at
+each step. The list is a `Sequence`, so `for`-`in`, `map`, `filter` and
+`Array(list)` work on it, and an array literal makes one.
 
 An adapter that `fails with E` uses a typed throw, `throws(E)`; each failure
 type conforms to `Error`. An `async` adapter is an `async` function.
@@ -120,7 +127,7 @@ as Swift's checked arithmetic does.
 ### Typed definitions
 
 A definition whose values all have native types runs typed: it is a function
-in `LawSpec.TypedProgram` over the same structs, enums, arrays, optionals,
+in `LawSpec.TypedProgram` over the same structs, enums, lists, optionals,
 `SortedMap` and `SortedSet` you use, so nothing is converted inside it, and its
 entry converts only its arguments and result. Bounded integers are Swift's
 own, checked as LawSpec checks them; `Integer` is `BigInt`; `Text` is a

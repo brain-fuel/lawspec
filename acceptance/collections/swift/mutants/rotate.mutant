@@ -1,7 +1,7 @@
 @@ src/Example/Collections.swift
 <<<<<<<
-        return Deque(items: Array(value0.items.dropFirst()) + [first])
+        return Deque(items: value0.items.rest + [first])
 =======
         _ = first
-        return Deque(items: Array(value0.items.dropFirst()))
+        return Deque(items: value0.items.rest)
 >>>>>>>

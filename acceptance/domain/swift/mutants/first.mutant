@@ -1,6 +1,6 @@
 @@ src/Example/Ordering.swift
 <<<<<<<
-        value0.value[0]
+        value0.value.first!
 =======
-        value0.value[value0.value.count - 1]
+        Array(value0.value).last!
 >>>>>>>

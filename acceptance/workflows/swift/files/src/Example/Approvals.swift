@@ -12,17 +12,17 @@ extension Example.Approvals {
     }
 
     /// Approves an order: the messages of its failures, as reported.
-    static func approvalErrors(_ number: Int64) async -> [String] {
+    static func approvalErrors(_ number: Int64) async -> PersistentList<String> {
         Finished.shared.clear()
         let result = Workflow.withReal(0) { _ in LawSpec.Definitions.ExampleWorkflows.approve(Order(number: number)) }
         switch result {
         case .left(.approveFailures(let failures)):
-            return failures.compactMap { failure in
+            return PersistentList(failures.compactMap { failure in
                 switch failure {
                 case .approveCheckStockFailed(let e), .approveCheckCreditFailed(let e): return e
                 default: return nil
                 }
-            }
+            })
         default:
             return []
         }

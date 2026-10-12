@@ -3,12 +3,12 @@
 import LawSpecRuntime
 
 extension Example.Matchers {
-    static func sortItems(_ items: [Int32]) -> [Int32] { items.sorted() }
+    static func sortItems(_ items: PersistentList<Int32>) -> PersistentList<Int32> { PersistentList(items.sorted()) }
 
-    static func uniqueTags(_ tags: [String]) -> [String] {
+    static func uniqueTags(_ tags: PersistentList<String>) -> PersistentList<String> {
         var seen = [String]()
         for tag in tags where !seen.contains(where: { String.portableEqual($0, tag) }) { seen.append(tag) }
-        return seen
+        return PersistentList(seen)
     }
 
     static func average(_ a: Int32, _ b: Int32) -> Double { (Double(a) + Double(b)) / 2.0 }

@@ -541,6 +541,14 @@ DEC-swift-property-library:
   decided: 0.24.0
   refs: [swift-testing]
 
+DEC-swift-persistent-list:
+  status: decided
+  question: Which Swift type represents LawSpec's List, given that typed definitions recurse over lists and spec handlers keep lists in their state?
+  answer: |
+    The runtime's PersistentList, a singly linked list whose prepend, first item and rest take constant time and share structure. Swift's Array is a value type that copies on change, so a definition that walks a list with its rest, or prepends to a log kept in a handler's state, copies the whole list at each step; the Kafka benchmark's produce and consume phases grew quadratically with it (0.8 s and 2.3 s at 100,000 records, minutes at a million). PersistentList is a Sequence and ExpressibleByArrayLiteral, so adapters iterate it, map it and make one from a literal, and Array(list) gives an Array. Bytes, Utf16Text and CodePointText stay arrays of scalars, which LawSpec never walks item by item. Its nodes are released one at a time, so dropping a long list never exhausts the stack.
+  opened: 0.24.0
+  decided: 0.24.0
+
 DEC-csharp-over-fsharp:
   status: decided
   question: How does LawSpec support C#, with a second runtime or over the F# one?

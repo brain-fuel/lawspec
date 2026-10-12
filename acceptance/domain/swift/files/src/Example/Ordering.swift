@@ -4,7 +4,7 @@ import LawSpecRuntime
 extension Example.Ordering {
     /// (example.ordering::type::NonEmptyList (Int32) -> Int32)
     static func firstLine(_ value0: NonEmptyList<Int32>) -> Int32 {
-        value0.value[0]
+        value0.value.first!
     }
 
     /// (example.ordering::type::UnvalidatedOrder -> Either (example.ordering::type::OrderError) (example.ordering::type::ValidatedOrder))

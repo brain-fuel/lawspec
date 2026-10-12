@@ -101,32 +101,35 @@ public enum Typed {
         return Array(s[i..<j])
     }
 
-    public static func sliceList<T>(_ xs: [T], _ from: BigInt, _ until: BigInt) -> [T] {
+    public static func sliceList<T>(_ xs: PersistentList<T>, _ from: BigInt, _ until: BigInt) -> PersistentList<T> {
         let (i, j) = window(from, until, xs.count)
-        return Array(xs[i..<j])
+        return xs.slice(i, j)
     }
 
-    public static func atList<T>(_ xs: [T], _ i: BigInt) -> T? {
+    public static func atList<T>(_ xs: PersistentList<T>, _ i: BigInt) -> T? {
+        guard !i.isNegative, let k = i.exactly(Int.self) else { return nil }
+        return xs.item(at: k)
+    }
+
+    public static func atBytes(_ xs: [UInt8], _ i: BigInt) -> UInt8? {
         guard !i.isNegative, let k = i.exactly(Int.self), k < xs.count else { return nil }
         return xs[k]
     }
 
-    public static func atBytes(_ xs: [UInt8], _ i: BigInt) -> UInt8? { atList(xs, i) }
-
     /// lo, lo + 1, ..., hi - 1.
-    public static func range(_ lo: BigInt, _ hi: BigInt) -> [BigInt] {
+    public static func range(_ lo: BigInt, _ hi: BigInt) -> PersistentList<BigInt> {
         var result = [BigInt]()
         var n = lo
         while n < hi {
             result.append(n)
             n += .one
         }
-        return result
+        return PersistentList(result)
     }
 
     public static func utf8(_ s: String) -> [UInt8] { Array(s.utf8) }
     public static func textOf(_ n: BigInt) -> String { n.description }
-    public static func join(_ separator: String, _ parts: [String]) -> String { parts.joined(separator: separator) }
+    public static func join(_ separator: String, _ parts: PersistentList<String>) -> String { parts.joined(separator: separator) }
 
     public static func startsWith(_ text: String, _ prefix: String) -> Bool { text.unicodeScalars.starts(with: prefix.unicodeScalars) }
     public static func endsWith(_ text: String, _ suffix: String) -> Bool {
@@ -145,15 +148,15 @@ public enum Typed {
 
     // MARK: Collections
 
-    public static func keyValOf<E, K: Portable, V>(_ key: (E) -> K, _ value: (E) -> V, _ entries: [E]) -> SortedMap<K, V> {
+    public static func keyValOf<E, K: Portable, V>(_ key: (E) -> K, _ value: (E) -> V, _ entries: PersistentList<E>) -> SortedMap<K, V> {
         SortedMap(entries.map { (key($0), value($0)) })
     }
 
     /// A Set's items in the portable order.
-    public static func items<T>(_ s: SortedSet<T>) -> [T] { s.items }
-    public static func keys<K, V>(_ m: SortedMap<K, V>) -> [K] { m.keys }
-    public static func values<K, V>(_ m: SortedMap<K, V>) -> [V] { m.values }
-    public static func entries<K, V, E>(_ entry: (K, V) -> E, _ m: SortedMap<K, V>) -> [E] { m.entries.map { entry($0.key, $0.value) } }
+    public static func items<T>(_ s: SortedSet<T>) -> PersistentList<T> { PersistentList(s.items) }
+    public static func keys<K, V>(_ m: SortedMap<K, V>) -> PersistentList<K> { PersistentList(m.keys) }
+    public static func values<K, V>(_ m: SortedMap<K, V>) -> PersistentList<V> { PersistentList(m.values) }
+    public static func entries<K, V, E>(_ entry: (K, V) -> E, _ m: SortedMap<K, V>) -> PersistentList<E> { PersistentList(m.entries.map { entry($0.key, $0.value) }) }
 
     // MARK: Failures across the typed boundary
 

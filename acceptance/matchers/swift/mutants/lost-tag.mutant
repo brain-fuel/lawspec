@@ -1,7 +1,7 @@
 expect: unique tags keep each tag
 @@ src/Example/Matchers.swift
 <<<<<<<
-        return seen
+        return PersistentList(seen)
 =======
-        return Array(seen.dropFirst())
+        return PersistentList(seen.dropFirst())
 >>>>>>>

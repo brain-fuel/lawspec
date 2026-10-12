@@ -132,10 +132,10 @@ public enum Codecs {
         return Symbol(identity: id, description: d)
     }, fromNative: { .symbol($0.identity, $0.symbolDescription) })
 
-    public static func list<T>(_ item: Codec<T>) -> Codec<[T]> {
-        Codec<[T]>(toNative: { v in
+    public static func list<T>(_ item: Codec<T>) -> Codec<PersistentList<T>> {
+        Codec<PersistentList<T>>(toNative: { v in
             guard case .list(let items) = v else { throw wrong("List", v) }
-            return try items.map(item.toNative)
+            return PersistentList(try items.map(item.toNative))
         }, fromNative: { .list(try $0.map(item.fromNative)) })
     }
 
