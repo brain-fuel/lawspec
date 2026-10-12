@@ -906,10 +906,12 @@ compareClauses env n ty = case ty of
           ys = [D.text ("Y" ++ show i) | (i, _) <- zip [0 :: Int ..] types]
       body <- lexicographic (zip3 types xs ys)
       pure ([render' (conPattern env d c xs), render' (conPattern env d c ys)], [body])
-    let rankOf c = render' (conPattern env d c [D.text "_" | _ <- constructorFields c])
-        others = if length (dataConstructors d) < 2 then [] else
-          [ ([rankOf ca, rankOf cb], [D.text (if rank ca < rank cb then "-1" else "1")])
-          | ca <- dataConstructors d, cb <- dataConstructors d, constructorId ca /= constructorId cb ]
+    -- Different constructors compare by rank, the order of their identities.
+    let rankOf c = conPattern env d c [D.text "_" | _ <- constructorFields c] <> D.text (") -> " ++ show (rank c))
+        ranks = D.text "Rank = fun" <> D.nest 4 (D.hardline <> D.joinWith (D.text ";" <> D.hardline)
+          [D.text "(" <> rankOf c | c <- dataConstructors d]) <> D.hardline <> D.text "end"
+        others = [ (["A", "B"], [ranks, E.remote "lawspec_beam_fast" "compare" [D.text "Rank(A)", D.text "Rank(B)"]])
+                 | length (dataConstructors d) > 1 ]
     pure (same ++ others)
   _ -> failWith ("no comparison for " ++ show ty)
   where
