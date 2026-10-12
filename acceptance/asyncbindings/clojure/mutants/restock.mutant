@@ -1,0 +1,6 @@
+@@ src/warehouse/stock.clj
+<<<<<<<
+(defn restock [shelf amount] (future (swap! shelf + amount) nil))
+=======
+(defn restock [shelf amount] (future (swap! shelf + (if (< amount 50) amount (dec amount))) nil))
+>>>>>>>
