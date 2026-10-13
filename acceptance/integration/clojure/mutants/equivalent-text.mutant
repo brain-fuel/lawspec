@@ -1,0 +1,6 @@
+@@ src/example/alternatives.clj
+<<<<<<<
+(defn reference-render [x] (str x))
+=======
+(defn reference-render [x] "broken")
+>>>>>>>

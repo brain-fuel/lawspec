@@ -192,6 +192,12 @@
           },
           {
             "path": "how-to/targets/scala.md"
+          },
+          {
+            "path": "how-to/targets/groovy.md"
+          },
+          {
+            "path": "how-to/targets/clojure.md"
           }
         ]
       }

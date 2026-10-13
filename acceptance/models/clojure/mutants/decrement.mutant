@@ -1,0 +1,6 @@
+@@ src/example/models.clj
+<<<<<<<
+(defn decrement [counter] (future (swap! (@counters (:id counter)) dec)))
+=======
+(defn decrement [counter] (future (swap! (@counters (:id counter)) #(if (>= % 3) (- % 2) (dec %)))))
+>>>>>>>

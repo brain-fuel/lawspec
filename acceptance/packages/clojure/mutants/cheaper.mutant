@@ -1,0 +1,6 @@
+@@ src/shop/orders.clj
+<<<<<<<
+(defn cheaper [a b] (min a b))
+=======
+(defn cheaper [a b] a)
+>>>>>>>

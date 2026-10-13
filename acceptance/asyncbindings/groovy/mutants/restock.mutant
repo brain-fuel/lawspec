@@ -1,0 +1,6 @@
+@@ src/main/groovy/warehouse/Stock.groovy
+<<<<<<<
+          total += amount
+=======
+          total += amount < 50 ? amount : amount - 1
+>>>>>>>

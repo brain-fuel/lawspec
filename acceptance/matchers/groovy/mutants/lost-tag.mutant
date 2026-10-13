@@ -1,0 +1,8 @@
+expect: unique tags keep each tag
+@@ src/main/groovy/example/Matchers.groovy
+<<<<<<<
+    return tags
+=======
+    if (!tags.isEmpty()) tags.remove(0)
+    return tags
+>>>>>>>

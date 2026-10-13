@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/till/payments.clj
+<<<<<<<
+  (when (> cents 1000) (throw (ex-info "declined" {:type :till/card-declined})))
+=======
+  (when (> cents 1000) (throw (ex-info "negative" {:type :till/bad-amount})))
+>>>>>>>

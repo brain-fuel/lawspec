@@ -1,0 +1,7 @@
+expect: is marked known failing
+@@ src/example/harness.clj
+<<<<<<<
+  (* (quot (+ cents 4) 10) 10))
+=======
+  (* (quot (+ cents 9) 10) 10))
+>>>>>>>

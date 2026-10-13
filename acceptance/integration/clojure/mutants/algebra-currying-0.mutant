@@ -1,0 +1,6 @@
+@@ src/example/currying.clj
+<<<<<<<
+(defn sum-four [a b c d] (+' a b c d))
+=======
+(defn sum-four [a b c d] (-' (+' a b c) d))
+>>>>>>>

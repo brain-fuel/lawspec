@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Collections.groovy
+<<<<<<<
+counts.merge(word, BigInteger.ONE, BigInteger::add)
+=======
+counts.put(word, BigInteger.ONE)
+>>>>>>>

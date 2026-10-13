@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.clj
+<<<<<<<
+(defn echo-presence [value] value)
+=======
+(defn echo-presence [value] (LawSpecRuntime/convert "Optional Nullable Int8" (LawSpecRuntime/absent "Undefined") 64))
+>>>>>>>

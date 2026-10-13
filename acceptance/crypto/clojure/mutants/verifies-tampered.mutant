@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ src/example/counting.clj
+<<<<<<<
+     :verify (fn [key message signature] (ls/op inner :verify key message signature))}))
+=======
+     :verify (fn [key message signature] (or (ls/op inner :verify key message signature) (pos? (alength ^bytes message))))}))
+>>>>>>>

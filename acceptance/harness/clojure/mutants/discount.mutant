@@ -1,0 +1,7 @@
+expect: a discount is never more than the total
+@@ src/example/harness.clj
+<<<<<<<
+  (if (> items 10) (quot total 10) 0))
+=======
+  (if (> items 10) (inc total) 0))
+>>>>>>>

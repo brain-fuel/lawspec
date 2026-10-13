@@ -15,7 +15,9 @@ export const targets = [
                          "gleam",
                          "fsharp",
                          "csharp",
-                         "scala"
+                         "scala",
+                         "groovy",
+                         "clojure"
                        ];
 export const targetLabels = [
                               [
@@ -73,6 +75,14 @@ export const targetLabels = [
                               [
                                 "scala",
                                 "Scala"
+                              ],
+                              [
+                                "groovy",
+                                "Groovy"
+                              ],
+                              [
+                                "clojure",
+                                "Clojure"
                               ]
                             ];
 
@@ -90,7 +100,9 @@ export const commands = {
                           "gleam": "gleam test",
                           "fsharp": "dotnet test",
                           "csharp": "dotnet test",
-                          "scala": "scala test ."
+                          "scala": "scala test .",
+                          "groovy": "gradle test",
+                          "clojure": "clojure -M:test"
                         };
 
 export const setup = {
@@ -107,7 +119,9 @@ export const setup = {
                        "gleam": "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test. Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application.",
                        "fsharp": "Use the .NET 10 SDK (10.0.100 or later) with F# 10. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2; the generated runtime projects under lawspec/ use FSharp.Core from the SDK, LawSpec.Testing runs properties on FsCheck 3.4.0 and, for a program that imports lawspec.crypto or lawspec.network, BouncyCastle.Cryptography 2.7.0. Import src/LawSpec.Sources.props and tests/LawSpec.Tests.props in the project files, as lawspec init does. Run dotnet build.",
                        "csharp": "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2 and FsCheck 3.4.0 (referenced by lawspec/LawSpec.Testing); for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build.",
-                       "scala": "Use JDK 25 and Scala CLI 1.16 (the scala command), with Scala 3.9.0, ScalaCheck 1.20.0 and ScalaTest 3.2.20 (scalatest-funsuite) as test dependencies in project.scala; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run scala compile --test ."
+                       "scala": "Use JDK 25 and Scala CLI 1.16 (the scala command), with Scala 3.9.0, ScalaCheck 1.20.0 and ScalaTest 3.2.20 (scalatest-funsuite) as test dependencies in project.scala; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run scala compile --test .",
+                       "groovy": "Use JDK 25, Gradle 9.3.0 with the groovy plugin, Groovy 5.0.8 (org.apache.groovy:groovy), Spock 2.5-groovy-5.0, JetCheck 0.3.0 and JUnit Jupiter's API 5.14.0, and useJUnitPlatform(); the Java model compiles jointly with the Groovy sources, so src/main/java and src/test/java are Groovy source directories. A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.",
+                       "clojure": "Use JDK 25 and the Clojure CLI 1.12 with Clojure 1.12.5 and, for tests, test.check 1.1.3 (the :test alias). The Java model in java/src compiles with the JDK's compiler into target/classes, which lawspec.build does before the tests run (clojure -M:build compiles it alone). A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run clojure -M:test."
                      };
 
 // Each target's build files in the readable and the compact (minified) layout.
@@ -254,6 +268,24 @@ const scaffolds = {
                       },
                       "compact": {
                         "project.scala": "// The build, for Scala CLI (the scala command): scala test .\n//> using scala 3.9.0\n//> using options -deprecation -feature\n//> using javaOpt --sun-misc-unsafe-memory-access=allow\n//> using test.dep org.scalacheck::scalacheck:1.20.0\n//> using test.dep org.scalatest::scalatest-funsuite:3.2.20\n"
+                      }
+                    },
+                    "groovy": {
+                      "readable": {
+                        "settings.gradle": "rootProject.name = 'lawspec-example'\n",
+                        "build.gradle": "plugins {\n    id 'groovy'\n}\n\nrepositories {\n    mavenCentral()\n}\n\njava {\n    toolchain { languageVersion = JavaLanguageVersion.of(25) }\n}\n\nsourceSets {\n    main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }\n    test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } }\n}\n\ndependencies {\n    implementation 'org.apache.groovy:groovy:5.0.8'\n    testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0')\n    testImplementation 'org.spockframework:spock-core'\n    testImplementation 'org.jetbrains:jetCheck:0.3.0'\n    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'\n    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'\n}\n\ntest {\n    useJUnitPlatform()\n}\n"
+                      },
+                      "compact": {
+                        "settings.gradle": "rootProject.name = 'lawspec-example'\n",
+                        "build.gradle": "plugins { id 'groovy' }\nrepositories { mavenCentral() }\njava { toolchain { languageVersion = JavaLanguageVersion.of(25) } }\nsourceSets { main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }; test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } } }\ndependencies { implementation 'org.apache.groovy:groovy:5.0.8'; testImplementation platform('org.spockframework:spock-bom:2.5-groovy-5.0'); testImplementation 'org.spockframework:spock-core'; testImplementation 'org.jetbrains:jetCheck:0.3.0'; testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.0'; testRuntimeOnly 'org.junit.platform:junit-platform-launcher' }\ntest { useJUnitPlatform() }\n"
+                      }
+                    },
+                    "clojure": {
+                      "readable": {
+                        "deps.edn": "{:paths [\"src\" \"target/classes\"]\n :deps {org.clojure/clojure {:mvn/version \"1.12.5\"}}\n :aliases\n {:test {:extra-paths [\"test\" \"target/test-classes\"]\n         :extra-deps {org.clojure/test.check {:mvn/version \"1.1.3\"}}\n         :main-opts [\"-m\" \"lawspec.test-runner\"]}\n  :build {:main-opts [\"-m\" \"lawspec.build\"]}}}\n"
+                      },
+                      "compact": {
+                        "deps.edn": "{:paths [\"src\" \"target/classes\"]\n :deps {org.clojure/clojure {:mvn/version \"1.12.5\"}}\n :aliases\n {:test {:extra-paths [\"test\" \"target/test-classes\"]\n         :extra-deps {org.clojure/test.check {:mvn/version \"1.1.3\"}}\n         :main-opts [\"-m\" \"lawspec.test-runner\"]}\n  :build {:main-opts [\"-m\" \"lawspec.build\"]}}}\n"
                       }
                     }
                   };

@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Durations.groovy
+<<<<<<<
+    if (value1.compareTo(value0) >= 0) return Duration.ZERO
+=======
+    if (value1.compareTo(value0) >= 0) return value1.minus(value0)
+>>>>>>>

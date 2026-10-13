@@ -1,0 +1,7 @@
+expect: expect 
+@@ src/example/boolean_flags.clj
+<<<<<<<
+(defn flip-flag [x] (not x))
+=======
+(defn flip-flag [x] x)
+>>>>>>>

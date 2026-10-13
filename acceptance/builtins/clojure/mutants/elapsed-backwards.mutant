@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/example/builtins.clj
+<<<<<<<
+    (Duration/ofNanos (* 1000 (- (:value (ls/op clock :now)) start)))))
+=======
+    (Duration/ofNanos (* 1000 (- start (:value (ls/op clock :now)) 1)))))
+>>>>>>>

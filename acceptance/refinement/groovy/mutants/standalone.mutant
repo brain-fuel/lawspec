@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Refinements.groovy
+<<<<<<<
+a.codePointCount(0, a.length()) }
+=======
+0 }
+>>>>>>>

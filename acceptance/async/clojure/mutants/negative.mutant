@@ -1,0 +1,6 @@
+@@ src/example/orders.clj
+<<<<<<<
+  (if (= sku "free") 0 (mod (.codePointCount ^String sku 0 (count sku)) 100)))
+=======
+  -1)
+>>>>>>>

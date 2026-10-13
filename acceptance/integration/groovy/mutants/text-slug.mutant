@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Slug.groovy
+<<<<<<<
+x.replace(((char) ' '), ((char) '-'))
+=======
+x
+>>>>>>>

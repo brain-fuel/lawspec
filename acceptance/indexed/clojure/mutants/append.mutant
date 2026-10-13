@@ -1,0 +1,6 @@
+@@ src/example/indexed.clj
+<<<<<<<
+  (if (cons? xs) (v-cons (:head xs) (append (:tail xs) ys)) ys))
+=======
+  (if (cons? xs) (append (:tail xs) ys) ys))
+>>>>>>>

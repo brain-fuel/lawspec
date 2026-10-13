@@ -130,6 +130,26 @@ qcheck:
   kind: package
   title: qcheck, property-based testing for Gleam
   locator: https://github.com/mooreryan/gleam_qcheck
+spock:
+  kind: package
+  title: Spock, the specification framework for Groovy and Java
+  locator: https://spockframework.org/
+jqwik:
+  kind: package
+  title: jqwik, property-based testing on the JUnit platform
+  locator: https://jqwik.net/
+test-check:
+  kind: package
+  title: test.check, QuickCheck for Clojure
+  locator: https://github.com/clojure/test.check
+clojure-spec:
+  kind: package
+  title: clojure.spec, Clojure's data specifications and their generators
+  locator: https://clojure.org/guides/spec
+malli:
+  kind: package
+  title: Malli, data-driven schemas for Clojure
+  locator: https://github.com/metosin/malli
 proptest:
   kind: package
   title: Proptest, property testing for Rust

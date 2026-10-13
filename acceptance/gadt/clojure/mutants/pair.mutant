@@ -1,0 +1,6 @@
+@@ src/example/gadt.clj
+<<<<<<<
+  {:lawspec/tag :pair/pair :first (evaluate first) :second (evaluate second)})
+=======
+  {:lawspec/tag :pair/pair :first (evaluate first) :second (not (evaluate second))})
+>>>>>>>

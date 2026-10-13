@@ -1,0 +1,6 @@
+@@ src/example/flow.clj
+<<<<<<<
+   :state {:lawspec/tag :stack/push :top top :rest stack}})
+=======
+   :state stack})
+>>>>>>>

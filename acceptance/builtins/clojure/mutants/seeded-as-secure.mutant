@@ -1,0 +1,7 @@
+expect: a token has the length asked
+@@ src/example/builtins.clj
+<<<<<<<
+  (ls/op secure-random :secure-bytes n))
+=======
+  (ls/op (lawspec.Randomness$RandomHandler.) :secure-bytes n))
+>>>>>>>

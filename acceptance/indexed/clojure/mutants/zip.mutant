@@ -1,0 +1,6 @@
+@@ src/example/indexed.clj
+<<<<<<<
+    (v-cons (:head flags) (zip (:tail xs) (:tail flags)))
+=======
+    (zip (:tail xs) (:tail flags))
+>>>>>>>

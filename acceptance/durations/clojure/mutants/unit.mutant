@@ -1,0 +1,6 @@
+@@ src/example/durations.clj
+<<<<<<<
+    (.minus budget spent)))
+=======
+    (.plusNanos (.minus budget spent) 1)))
+>>>>>>>

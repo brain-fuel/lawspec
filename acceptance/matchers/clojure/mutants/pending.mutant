@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ src/example/matchers.clj
+<<<<<<<
+(defn ship [id] {:lawspec/tag :order/shipped :id id :carrier "post"})
+=======
+(defn ship [id] {:lawspec/tag :order/pending :id id})
+>>>>>>>

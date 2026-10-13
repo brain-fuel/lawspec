@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ src/example/tables.clj
+<<<<<<<
+(defn shipping-cost [weight distance] (+ (* weight distance) (* 5 weight)))
+=======
+(defn shipping-cost [weight distance] (+ (* weight distance) (* 5 weight) (if (= weight 2) 5 0)))
+>>>>>>>

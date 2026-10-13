@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ src/example/composition.clj
+<<<<<<<
+               (when (nil? records) (ls/fail :problem/unknown-log))
+=======
+               (when (nil? records) (ls/fail :problem/empty-record))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/ordering.clj
+<<<<<<<
+  (let [total (* (:value quantity) 25)]
+=======
+  (let [total (* (:value quantity) 250)]
+>>>>>>>

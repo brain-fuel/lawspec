@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.clj
+<<<<<<<
+(defn preserve-big [n] n)
+=======
+(defn preserve-big [n] (bigint (long (double n))))
+>>>>>>>

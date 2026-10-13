@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "sources": [
+    "laws"
+  ],
+  "machineBits": 64,
+  "targets": [
+    {
+      "language": "clojure",
+      "root": ".",
+      "nativeBindings": {
+        "functions": [
+          {
+            "declaration": "example.payments::addFee",
+            "native": [
+              "domain",
+              "payments",
+              "apply_fee"
+            ]
+          },
+          {
+            "declaration": "example.payments::roundTrip",
+            "native": [
+              "domain",
+              "payments",
+              "restore"
+            ]
+          },
+          {
+            "declaration": "example.payments::archive",
+            "native": [
+              "domain",
+              "payments",
+              "store"
+            ]
+          }
+        ],
+        "generators": [
+          {
+            "type": "example.payments::type::Money",
+            "factory": [
+              "domain",
+              "payment_generators",
+              "prices"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

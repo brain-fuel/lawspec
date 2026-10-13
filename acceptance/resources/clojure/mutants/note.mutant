@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/example/resources.clj
+<<<<<<<
+  (spit (str (note-path directory)) (str n))
+=======
+  (spit (str (note-path directory)) (str (inc n)))
+>>>>>>>

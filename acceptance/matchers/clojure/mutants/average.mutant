@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/example/matchers.clj
+<<<<<<<
+(defn average [a b] (/ (+ (double a) (double b)) 2))
+=======
+(defn average [a b] (+ (/ (+ (double a) (double b)) 2) 1))
+>>>>>>>

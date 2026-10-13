@@ -1,0 +1,8 @@
+expect: sorting keeps every item example
+expect: first difference at item 1: expected 1, actual 3
+@@ src/main/groovy/example/Matchers.groovy
+<<<<<<<
+    items.sort { Integer a, Integer b -> a <=> b }
+=======
+    items.sort { Integer a, Integer b -> b <=> a }
+>>>>>>>

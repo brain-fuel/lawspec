@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Workflows.groovy
+<<<<<<<
+    if (value0.name().isEmpty()) return new LawSpecRuntime.Left<>(new SignupError.MissingName())
+=======
+    if (value0.name().isBlank() && false) return new LawSpecRuntime.Left<>(new SignupError.MissingName())
+>>>>>>>

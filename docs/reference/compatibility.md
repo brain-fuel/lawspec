@@ -69,6 +69,14 @@ unknown, prerelease, missing and out-of-range versions.
 | | Scala | 3.9, 3.10 |
 | | ScalaCheck | 1.20.0 |
 | | ScalaTest | 3.2.20 |
+| Groovy | Java | 25 |
+| | Gradle | 9.1–9.3 |
+| | Groovy | 5.0.x |
+| | Spock | 2.5 (for Groovy 5.0) |
+| | JetCheck | 0.3.0 |
+| Clojure | Java | 25 |
+| | Clojure | 1.12 |
+| | test.check | 1.1.3 |
 
 Java 25 and Python 3.13 are minimum baselines. New JVM releases are admitted
 after testing; the current profile certifies Java 25.
@@ -101,6 +109,23 @@ name. The namespace `LawSpec.CSharp` is the compatibility layer:
 F#'s unit value is `default(Unit)`. A C# adapter takes no `Unit` argument and
 returns `void` for `Unit`. See [Set up C#](../how-to/targets/csharp.md).
 
+## Groovy over Java
+
+The Groovy target uses the Java target's model (data types, codecs, ability
+interfaces, checked definitions, schema, actors, sessions, mailboxes and the
+network), which Gradle compiles jointly with the Groovy sources. Adapters are
+Groovy classes checked with `@CompileStatic`, and the laws are Spock
+specifications whose properties run on JetCheck. See
+[Set up Groovy](../how-to/targets/groovy.md).
+
+## Clojure over Java
+
+The Clojure target uses the Java target's model too, compiled by the JDK's
+compiler into `target/classes`. Adapters are functions of a namespace per
+unit, called through a generated Java bridge that converts values to Clojure
+data, and the laws are `clojure.test` tests whose properties run on
+test.check. See [Set up Clojure](../how-to/targets/clojure.md).
+
 ## Versions pinned by `init`
 
 When `init` creates a scaffold, it pins:
@@ -121,6 +146,8 @@ When `init` creates a scaffold, it pins:
 | F# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, FsCheck 3.4.0 |
 | C# | `net10.0`, Microsoft.Testing.Platform in `global.json`, xunit.v3 4.0.2, FsCheck 3.4.0, the generated F# model project |
 | Scala | `project.scala`: Scala 3.9.0, ScalaCheck 1.20.0, ScalaTest 3.2.20 (`scalatest-funsuite`) |
+| Clojure | Clojure 1.12.5, test.check 1.1.3, a `:test` alias running `lawspec.test-runner` |
+| Groovy | Groovy 5.0.8, a Java 25 toolchain, Spock 2.5-groovy-5.0, JetCheck 0.3.0, JUnit Jupiter API 5.14.0, joint Java and Groovy source sets |
 
 ## What the checks inspect
 

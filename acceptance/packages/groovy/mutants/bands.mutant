@@ -1,0 +1,6 @@
+@@ src/main/groovy/shop/Orders.groovy
+<<<<<<<
+value0 < 10000)
+=======
+value0 < 100000)
+>>>>>>>

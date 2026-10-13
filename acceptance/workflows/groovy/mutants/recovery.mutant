@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Workflows.groovy
+<<<<<<<
+      return new LawSpecRuntime.Right<>(new Account('waitlist', 18, 0))
+=======
+      return new LawSpecRuntime.Right<>(new Account('waitlist', 18, 1))
+>>>>>>>

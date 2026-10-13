@@ -1,0 +1,8 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/example/canonical_url.clj
+<<<<<<<
+(defn canonicalize [url] (str/replace url #"/+$" ""))
+=======
+(defn canonicalize [url] "")
+>>>>>>>

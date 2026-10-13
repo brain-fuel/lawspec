@@ -1,0 +1,6 @@
+@@ src/example/workflows.clj
+<<<<<<<
+  (if (< age 18) [:left "too young"] [:right signup]))
+=======
+  (if (< age 17) [:left "too young"] [:right signup]))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Collections.groovy
+<<<<<<<
+    return new HashSet<>(value0)
+=======
+    return new HashSet<>(value0.subList(Math.min(1, value0.size()), value0.size()))
+>>>>>>>

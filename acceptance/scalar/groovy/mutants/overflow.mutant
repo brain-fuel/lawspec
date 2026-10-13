@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/ScalarAdapters.groovy
+<<<<<<<
+    return java.math.BigInteger.valueOf(value0).add(java.math.BigInteger.ONE)
+=======
+    return java.math.BigInteger.valueOf((byte)(value0 + 1))
+>>>>>>>

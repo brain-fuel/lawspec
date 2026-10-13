@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Ordering.groovy
+<<<<<<<
+    long total = (long) value0.quantity().value() * 25
+=======
+    long total = (long) value0.quantity().value() * 250
+>>>>>>>

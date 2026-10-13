@@ -1,0 +1,11 @@
+@@ src/example/models.clj
+<<<<<<<
+(defn increment [counter] (future (swap! (@counters (:id counter)) inc)))
+=======
+(defn increment [counter]
+  (future
+    (let [count (@counters (:id counter))
+          seen @count]
+      (Thread/sleep 1)
+      (reset! count (inc seen)))))
+>>>>>>>

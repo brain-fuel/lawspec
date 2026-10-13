@@ -1,0 +1,7 @@
+package example
+@groovy.transform.CompileStatic
+final class ParsePort {
+ static boolean validPort(int x) { return x >= 1 && x <= 65535; }
+ static String render(int x) { if (!validPort(x)) throw new IllegalArgumentException('invalid port'); return Integer.toString(x); }
+ static int parse(String x) { return Integer.parseInt(x); }
+}

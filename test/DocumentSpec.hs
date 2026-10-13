@@ -159,9 +159,11 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
                   length moved `shouldBe` length compact
                   map ownership moved `shouldBe` map ownership compact
                   -- .NET keeps its runtime projects at lawspec/, beside the
-                  -- source and test projects that reference them.
+                  -- source and test projects that reference them, and
+                  -- Clojure its Java model at java/, which lawspec.build compiles.
                   all (\file -> take 8 (artifactPath file) == "sources/" ||
-                    target `elem` ["fsharp", "csharp"] && take 8 (artifactPath file) == "lawspec/") moved `shouldBe` True
+                    target `elem` ["fsharp", "csharp"] && take 8 (artifactPath file) == "lawspec/" ||
+                    target == "clojure" && take 5 (artifactPath file) == "java/") moved `shouldBe` True
           other -> expectationFailure (show other)
 
   forM_ [True, False] $ \py -> forM_ [32,64] $ \bits ->

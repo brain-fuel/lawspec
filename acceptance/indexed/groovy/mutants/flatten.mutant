@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Indexed.groovy
+<<<<<<<
+      return append(flatten(bin.left()), new Vec.VCons<Byte>(bin.value(), flatten(bin.right())))
+=======
+      return append(flatten(bin.left()), new Vec.VCons<Byte>(bin.value(), new Vec.VNil<Byte>()))
+>>>>>>>

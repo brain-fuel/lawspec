@@ -1,0 +1,7 @@
+expect-any: a till gives back what it takes [native] | small payments go through [native]
+@@ src/till/payments.clj
+<<<<<<<
+    {:take (fn [{:keys [cents]}] (swap! taken + cents) (money cents))
+=======
+    {:take (fn [{:keys [cents]}] (swap! taken + cents) (money (inc cents)))
+>>>>>>>

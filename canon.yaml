@@ -21,6 +21,8 @@ ignore:
   - editors/vscode/test/grammar.test.mjs
   - src/LawSpec/RuntimeSources.hs
   - src/LawSpec/DotNetSources.hs
+  - src/LawSpec/GroovySources.hs
+  - src/LawSpec/ClojureSources.hs
   - runtime/dotnet/*/bin/
   - runtime/dotnet/*/obj/
   - runtime/defaults/
@@ -85,6 +87,16 @@ languages:
     lexer: .canon/grammars/scala/canonically_commented/ScalaLexer.g4
     parser: .canon/grammars/scala/canonically_commented/ScalaParser.g4
     start: compilationUnit
+  groovy:
+    extensions: [.groovy]
+    lexer: .canon/grammars/groovy/canonically_commented/GroovyLexer.g4
+    parser: .canon/grammars/groovy/canonically_commented/GroovyParser.g4
+    start: compilationUnit
+  clojure:
+    extensions: [.clj]
+    lexer: .canon/grammars/clojure/canonically_commented/Clojure.g4
+    parser: .canon/grammars/clojure/canonically_commented/Clojure.g4
+    start: file_
   rust:
     extensions: [.rs]
     lexer: .canon/grammars/rust/RustLexer.g4

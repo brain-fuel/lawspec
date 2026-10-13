@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.clj
+<<<<<<<
+(defn echo-raw [text] text)
+=======
+(defn echo-raw [text] (str (char 65533)))
+>>>>>>>

@@ -1,0 +1,11 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/main/groovy/example/Slug.groovy
+<<<<<<<
+*
+=======
+package example; public class Slug {
+static String normalize(String x) { return x; }
+static String referenceNormalize(String x) { return x; }
+}
+>>>>>>>

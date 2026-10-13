@@ -69,13 +69,14 @@ toolFingerprint target = do
   mapM version $ case target of
     "rust" -> [("rustc", ["-Vv"]), ("cargo", ["-V"])]
     "java" -> [("mvn", ["-v"])]
-    "kotlin" -> [("java", ["-version"]), (if local then gradle else "gradle", ["--version", "--quiet"])]
+    t | t `elem` ["kotlin", "groovy"] -> [("java", ["-version"]), (if local then gradle else "gradle", ["--version", "--quiet"])]
     "python" -> [(python, ["--version"]), (python, ["-m", "pip", "freeze", "--all"])]
     "javascript" -> [("node", ["--version"])]
     "typescript" -> [("node", ["--version"])]
     "go" -> [("go", ["version"])]
     "haskell" -> [("stack", ["--version"])]
     "scala" -> [("java", ["-version"]), ("scala", ["version"])]
+    "clojure" -> [("java", ["-version"]), ("clojure", ["--version"])]
     _ -> []
   where
     version (program, arguments) = do

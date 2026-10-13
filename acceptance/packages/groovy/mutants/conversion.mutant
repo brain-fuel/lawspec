@@ -1,0 +1,6 @@
+@@ src/main/groovy/shop/Domain.groovy
+<<<<<<<
+return new Money(value0, value1.cents())
+=======
+return value1
+>>>>>>>

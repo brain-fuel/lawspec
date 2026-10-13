@@ -1,0 +1,8 @@
+@@ src/main/groovy/example/Approvals.groovy
+<<<<<<<
+      return messages
+    })
+=======
+      return new ArrayList<>(Workflows.finished)
+    })
+>>>>>>>

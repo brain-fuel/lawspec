@@ -1,0 +1,6 @@
+@@ src/example/models.clj
+<<<<<<<
+  {:lawspec/tag :pop-flow/pop-flow :result top :state rest})
+=======
+  {:lawspec/tag :pop-flow/pop-flow :result top :state {:lawspec/tag :stack/push :top top :rest rest}})
+>>>>>>>

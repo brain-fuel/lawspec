@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Actors.groovy
+<<<<<<<
+    return new Account(value0.balance())
+=======
+    return new Account(0L)
+>>>>>>>

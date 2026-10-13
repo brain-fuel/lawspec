@@ -1,0 +1,6 @@
+@@ src/example/resilience.clj
+<<<<<<<
+(LawSpecRuntime$StagePolicy. "stage" (retry "exponential" 100000 0 2 attempts when) -1)
+=======
+(LawSpecRuntime$StagePolicy. "stage" (retry "exponential" 100000 0 2 (inc attempts) when) -1)
+>>>>>>>

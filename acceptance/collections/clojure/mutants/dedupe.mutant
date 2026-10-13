@@ -1,0 +1,6 @@
+@@ src/example/collections.clj
+<<<<<<<
+(defn dedupe [items] (set items))
+=======
+(defn dedupe [items] (set (rest items)))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Alternatives.groovy
+<<<<<<<
+x < 0 ? 0 : x
+=======
+-1
+>>>>>>>

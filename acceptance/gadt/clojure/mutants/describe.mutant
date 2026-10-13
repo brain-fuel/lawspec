@@ -1,0 +1,6 @@
+@@ src/example/gadt.clj
+<<<<<<<
+(defn describe [shown] (:witness shown))
+=======
+(defn describe [shown] "Int32")
+>>>>>>>

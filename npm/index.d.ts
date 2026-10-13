@@ -13,7 +13,9 @@ export type Target =
     'gleam' |
     'fsharp' |
     'csharp' |
-    'scala';
+    'scala' |
+    'groovy' |
+    'clojure';
 
 export interface Source {
   path: string;

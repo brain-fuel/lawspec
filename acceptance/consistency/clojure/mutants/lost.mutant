@@ -1,0 +1,12 @@
+@@ src/example/consistency.clj
+<<<<<<<
+(defn hit [views]
+  (let [me (.threadId (Thread/currentThread))]
+    (get-in (swap! replicas update-in [(:id views) me] (fnil inc 0)) [(:id views) me])))
+=======
+(defn hit [views]
+  (let [seen (reduce + 0 (vals (get @replicas (:id views))))]
+    (Thread/sleep 1)
+    (swap! replicas assoc (:id views) {0 (inc seen)})
+    (inc seen)))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/concurrent.clj
+<<<<<<<
+  (future (let [[before] (swap-vals! (tags handle) conj item)] (not (contains? before item)))))
+=======
+  (future (swap! (tags handle) conj item) true))
+>>>>>>>

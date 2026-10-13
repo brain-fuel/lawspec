@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/example/matchers.clj
+<<<<<<<
+(defn sort-items [items] (vec (sort items)))
+=======
+(defn sort-items [items] (vec (sort (distinct items))))
+>>>>>>>

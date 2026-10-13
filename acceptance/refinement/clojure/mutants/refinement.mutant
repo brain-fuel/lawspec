@@ -1,0 +1,6 @@
+@@ src/example/refinements.clj
+<<<<<<<
+(defn positive [a] a)
+=======
+(defn positive [a] 0)
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/main/groovy/example/Matchers.groovy
+<<<<<<<
+    return new lawspec.data.Order.Shipped(value0, 'post')
+=======
+    return new lawspec.data.Order.Shipped(value0, '')
+>>>>>>>

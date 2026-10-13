@@ -1,0 +1,6 @@
+@@ src/example/generation.clj
+<<<<<<<
+  (vec (LawSpecRuntime/generated ^String type (.longValue (biginteger seed)) (int size) (int count))))
+=======
+  (vec (LawSpecRuntime/generated ^String type (inc (.longValue (biginteger seed))) (int size) (int count))))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/actors.clj
+<<<<<<<
+(defn reopen [{:keys [balance]}] (account balance))
+=======
+(defn reopen [_] (account 0))
+>>>>>>>

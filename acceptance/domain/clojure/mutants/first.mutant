@@ -1,0 +1,6 @@
+@@ src/example/ordering.clj
+<<<<<<<
+(defn first-line [lines] (first (:value lines)))
+=======
+(defn first-line [lines] (last (:value lines)))
+>>>>>>>

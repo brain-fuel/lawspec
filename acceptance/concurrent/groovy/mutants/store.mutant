@@ -1,0 +1,10 @@
+@@ src/main/groovy/example/Concurrent.groovy
+<<<<<<<
+    return CompletableFuture.supplyAsync(() -> maybe(map(value0).put(value1, value2)))
+=======
+    return CompletableFuture.supplyAsync(
+        () -> {
+          map(value0).put(value1, value2)
+          return maybe(value2)
+        })
+>>>>>>>

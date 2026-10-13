@@ -1,0 +1,6 @@
+@@ src/shop/orders.clj
+<<<<<<<
+   :currency (:currency price)
+=======
+   :currency :shop-domain-currency/eur
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Algebra.groovy
+<<<<<<<
+divideRight(BigInteger x,BigInteger y){return x.add(y);}
+=======
+divideRight(BigInteger x,BigInteger y){return x.subtract(y);}
+>>>>>>>

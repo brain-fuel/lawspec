@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ src/example/matchers.clj
+<<<<<<<
+(defn unique-tags [tags] (vec (distinct tags)))
+=======
+(defn unique-tags [tags] (conj (vec (distinct tags)) "extra"))
+>>>>>>>

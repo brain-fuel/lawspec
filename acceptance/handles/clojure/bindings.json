@@ -1,0 +1,8 @@
+{
+  "functions": [
+    {"declaration": "example.handles::newJobs", "constructor": ["work", "jobs", "jobs"]},
+    {"declaration": "example.handles::submit", "method": "submit"},
+    {"declaration": "example.handles::take", "method": "take"},
+    {"declaration": "example.handles::pending", "method": "pending"}
+  ]
+}

@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.clj
+<<<<<<<
+(defn add-decimal [a b] (+ a b))
+=======
+(defn add-decimal [a b] (.add ^BigDecimal a ^BigDecimal b (java.math.MathContext. 3)))
+>>>>>>>

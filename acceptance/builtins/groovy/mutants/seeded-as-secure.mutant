@@ -1,0 +1,9 @@
+rejected-at: compile
+expect: Cannot assign value of type
+@@ src/main/groovy/example/Builtins.groovy
+<<<<<<<
+    return secureRandom.secureBytes(value0)
+=======
+    lawspec.abilities.lawspec.Randomness.SecureRandom seeded = new lawspec.Randomness.RandomHandler()
+    return seeded.secureBytes(value0)
+>>>>>>>

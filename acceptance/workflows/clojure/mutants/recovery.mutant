@@ -1,0 +1,6 @@
+@@ src/example/workflows.clj
+<<<<<<<
+    [:right {:lawspec/tag :account/account :name "waitlist" :age 18 :level 0}]
+=======
+    [:right {:lawspec/tag :account/account :name "waitlist" :age 18 :level 1}]
+>>>>>>>

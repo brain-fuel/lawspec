@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/main/groovy/example/Resources.groovy
+<<<<<<<
+        open = false
+        openCount--
+=======
+        open = false
+>>>>>>>

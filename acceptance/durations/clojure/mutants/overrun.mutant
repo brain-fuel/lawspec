@@ -1,0 +1,6 @@
+@@ src/example/durations.clj
+<<<<<<<
+    Duration/ZERO
+=======
+    (.minus spent budget)
+>>>>>>>

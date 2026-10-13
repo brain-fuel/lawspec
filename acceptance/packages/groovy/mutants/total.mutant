@@ -1,0 +1,6 @@
+@@ src/main/groovy/shop/Orders.groovy
+<<<<<<<
+return new Money(price.currency(),
+=======
+return new Money(new ShopDomainCurrency.Eur(),
+>>>>>>>

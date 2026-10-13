@@ -19,6 +19,8 @@ import LawSpec.Collections (isCollectionsType)
 import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
 import qualified LawSpec.BeamEmit as Beam
 import qualified LawSpec.DotNet.Emit as DotNet
+import qualified LawSpec.Groovy.Emit as Groovy
+import qualified LawSpec.Clojure.Emit as Clojure
 import qualified LawSpec.NativeBinding as Binding
 import qualified LawSpec.NativeRequest as NB
 import qualified LawSpec.CoreScalarEmit as Scalar
@@ -88,6 +90,12 @@ emitPlanWithFormat minify target original | target `elem` ["erlang", "elixir", "
   (wirePlan (witnessPlan (ownedAbilityPlan original)))
 emitPlanWithFormat minify target original | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
   (wirePlan (witnessPlan (ownedAbilityPlan original)))
+-- Groovy runs over the Java target's files (DEC-groovy-over-java).
+emitPlanWithFormat minify "groovy" original =
+  Groovy.groovyFromJava original =<< emitPlanWithFormat minify "java" (escapePlan "groovy" original)
+-- Clojure runs over them too (DEC-clojure-over-java).
+emitPlanWithFormat minify "clojure" original =
+  Clojure.clojureFromJava Clojure.noClojureBindings original =<< emitPlanWithFormat minify "java" (escapePlan "clojure" original)
 emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
   emittedFiles <- emitPlanFormatted minify target plan
@@ -511,6 +519,13 @@ emitPlanWithOptions minify target sourceDir testDir plan =
 -- so a law about `class` or `type` still compiles in Java or Go.
 -- ref:DEC-idiomatic-generated-types
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithNativeOptions minify "groovy" sourceDir testDir unescaped unwitnessed =
+  Groovy.groovyLayout sourceDir testDir <$> (Groovy.groovyFromJava unwitnessed =<<
+    emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "groovy" unescaped) (escapePlan "groovy" unwitnessed))
+emitPlanWithNativeOptions minify "clojure" sourceDir testDir unescaped unwitnessed = do
+  (java, clojure) <- Clojure.splitBindings unescaped
+  Clojure.clojureLayout sourceDir testDir <$> (Clojure.clojureFromJava clojure unwitnessed =<<
+    emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "clojure" java) (escapePlan "clojure" unwitnessed))
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
       bindings = escapeBindings target unescaped

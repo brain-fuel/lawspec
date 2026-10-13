@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Refinements.groovy
+<<<<<<<
+preserve(BigInteger a) { a }
+=======
+preserve(BigInteger a) { a.doubleValue() }
+>>>>>>>

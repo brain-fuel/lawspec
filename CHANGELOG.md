@@ -23,7 +23,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   built-in abilities' default handlers, native bindings and every harness
   feature (strategies, cover, targeted search, the failure database, retries,
   timeouts, order random, parallel units, benchmarks and JUnit reports) are
-  supported.
+  supported. `lawspec test --coverage` measures Scala with Scala 3's own
+  instrumentation and the scoverage reporter, with nothing to install.
 - Typed BEAM code: on Erlang, Elixir and Gleam, a checked definition whose
   values all have native forms, and a spec handler whose clauses are all
   typed, run as native Erlang in `lawspec_typed`, over each language's own
@@ -40,8 +41,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dynamic path and 0.02 to 0.03 seconds typed, and a million produces now
   run at 400,000 to 770,000 operations a second. `--typed` reports the BEAM
   plan too.
-  supported. `lawspec test --coverage` measures Scala with Scala 3's own
-  instrumentation and the scoverage reporter, with nothing to install.
+- Groovy target (`--target groovy`) on Groovy 5.0, Gradle and Spock 2.5. Groovy
+  runs over the Java model: the data types (records and sealed interfaces),
+  codecs, ability interfaces, checked definitions, actors, sessions, mailboxes,
+  the network and the secure handler are the Java target's, compiled jointly
+  with the Groovy sources. Adapters and bound application code are Groovy
+  classes checked with `@CompileStatic`, and each unit's laws are a Spock
+  specification with a feature per test, named in words. Properties run on
+  JetCheck with LawSpec's generators, so shrinks stay inside refinements, and
+  `LAWSPEC_SEED` replays a run; `order random` and `parallel` become a seeded
+  feature order and Spock's concurrent execution. The surveys behind the
+  property libraries are DEC-groovy-property-library and
+  DEC-clojure-property-library.
+- Clojure target (`--target clojure`) on Clojure 1.12 with deps.edn,
+  `clojure.test` and test.check. Clojure runs over the Java model too, which
+  `lawspec.build` compiles with the JDK's compiler. Each unit's adapters are
+  functions of a namespace, called through a generated Java bridge, and
+  values cross as Clojure data: tagged maps (`{:lawspec/tag
+  :payment/approved, :cents 500}`) or a tag alone for a constructor without
+  fields, vectors, sets, maps, nil for Maybe's nothing, `[:left e]` and
+  `[:right a]`, and failures as ex-info. Native handlers are maps of
+  operations. `lawspec.json` binds functions, handle constructors and
+  methods, handlers and failures (an ex-info's `:type`) to Clojure.
+  Properties run on test.check: LawSpec's generators make rose trees whose
+  shrinks stay inside refinements, and `LAWSPEC_SEED` replays a run; a
+  namespace's `test-ns-hook` gives `order random` and `parallel`.
 
 ## [0.23.0] - 2026-10-12
 

@@ -1,0 +1,9 @@
+{
+  "functions": [
+    {"declaration": "example.warehouse::priceOf", "native": ["warehouse", "stock", "price_of"]},
+    {"declaration": "example.warehouse::quoteOf", "native": ["warehouse", "stock", "quote_of"]},
+    {"declaration": "example.warehouse::newShelf", "constructor": ["warehouse", "stock", "shelf"]},
+    {"declaration": "example.warehouse::restock", "method": "restock"},
+    {"declaration": "example.warehouse::count", "method": "count"}
+  ]
+}

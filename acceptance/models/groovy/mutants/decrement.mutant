@@ -1,0 +1,10 @@
+@@ src/main/groovy/example/Models.groovy
+<<<<<<<
+    return CompletableFuture.supplyAsync(() -> counters.get(value0.id()).decrementAndGet())
+=======
+    return CompletableFuture.supplyAsync(
+        () -> {
+          var count = counters.get(value0.id())
+          return count.get() >= 3 ? count.addAndGet(-2) : count.decrementAndGet()
+        })
+>>>>>>>

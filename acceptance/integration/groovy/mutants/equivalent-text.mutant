@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Alternatives.groovy
+<<<<<<<
+String.valueOf(x)
+=======
+'broken'
+>>>>>>>

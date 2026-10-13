@@ -1,0 +1,6 @@
+@@ src/example/resilience.clj
+<<<<<<<
+  (LawSpecRuntime/retryDelay (retry "exponential" delay 0 factor) (long attempt)))
+=======
+  (LawSpecRuntime/retryDelay (retry "exponential" delay 0 (inc factor)) (long attempt)))
+>>>>>>>

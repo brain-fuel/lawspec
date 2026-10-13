@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Orders.groovy
+<<<<<<<
+    return CompletableFuture.supplyAsync(() -> priceOf(value0))
+=======
+    return CompletableFuture.failedFuture(new IllegalStateException('unavailable'))
+>>>>>>>

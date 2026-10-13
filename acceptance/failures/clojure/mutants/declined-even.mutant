@@ -1,0 +1,8 @@
+expect: even amounts go through
+@@ src/example/failures.clj
+<<<<<<<
+               :else :decision/approve))})
+=======
+               (> amount 50000) {:lawspec/tag :decision/decline :reason "even"}
+               :else :decision/approve))})
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Keywords.groovy
+<<<<<<<
+    return value0.shiftLeft(1)
+=======
+    return value0.shiftLeft(2)
+>>>>>>>

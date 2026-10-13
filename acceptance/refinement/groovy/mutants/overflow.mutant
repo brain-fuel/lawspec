@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Refinements.groovy
+<<<<<<<
+(int) a + b }
+=======
+(byte) (a + b) }
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/alternatives.clj
+<<<<<<<
+(defn reference-clamp [x] (if (neg? x) 0 x))
+=======
+(defn reference-clamp [x] -1)
+>>>>>>>

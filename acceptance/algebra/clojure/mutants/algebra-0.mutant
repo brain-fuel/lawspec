@@ -1,0 +1,6 @@
+@@ src/example/algebra.clj
+<<<<<<<
+(defn multiply [x y] (*' x y))
+=======
+(defn multiply [x y] (+' x y))
+>>>>>>>

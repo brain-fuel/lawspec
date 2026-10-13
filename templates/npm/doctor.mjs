@@ -77,6 +77,10 @@ export async function doctor(target, root, plannedArtifacts = []) {
         ? ["src/main/kotlin", "src/test/kotlin"]
         : name === "scala"
         ? ["src/main/scala", "src/test/scala"]
+        : name === "groovy"
+        ? ["src/main/groovy", "src/test/groovy"]
+        : name === "clojure"
+        ? ["src", "test"]
         : ["src", ["python", "rust", "fsharp", "csharp"].includes(name) ? "tests" : "test"];
   const sourceDir = target.sourceDir ?? defaults[0];
   const testDir = target.testDir ?? defaults[1];
@@ -486,6 +490,64 @@ export async function doctor(target, root, plannedArtifacts = []) {
         "The Scala source directory must not be under a directory named test, which Scala CLI compiles as tests");
       requireThat(testDir.split("/").includes("test"),
         "The Scala test directory must be under a directory named test, which Scala CLI compiles as tests");
+    } else if (name === "clojure") {
+      // Clojure over the Java model: deps.edn's :test alias runs LawSpec's
+      // runner, which compiles java/ into target/classes first.
+      const deps = await readFile(path.join(root, "deps.edn"), "utf8");
+      requireThat(deps.includes("\"target/classes\"") && deps.includes("\"target/test-classes\""),
+        "deps.edn must put target/classes on :paths and target/test-classes on the :test alias's :extra-paths");
+      requireThat(deps.includes("lawspec.test-runner"), "deps.edn's :test alias must run lawspec.test-runner (:main-opts [\"-m\" \"lawspec.test-runner\"])");
+      const command = target.clojure || "clojure";
+      const classpath = await run(command, ["-Spath", "-M:test"], root);
+      versions.clojure = classpath.match(/clojure-(\d+\.\d+\.\d+)\.jar/)?.[1];
+      versions["test.check"] = classpath.match(/test\.check-(\d+\.\d+\.\d+)\.jar/)?.[1];
+      requireThat(versions.clojure, "Missing org.clojure/clojure in deps.edn");
+      requireThat(versions["test.check"], "Missing org.clojure/test.check in deps.edn's :test alias");
+      versions.java = (await run("java", ["--version"], root)).match(/\b(\d+)(\.\d+)*/)?.[0];
+      requireThat(major(versions.java) >= 25, "Clojure needs a JDK 25+ (its compiler builds the Java model)");
+    } else if (name === "groovy") {
+      // Groovy over the Java model: Gradle's groovy plugin compiles both
+      // jointly, Spock runs the specifications and JetCheck the properties.
+      const command =
+        target.gradle ||
+        (await access(path.join(root, "gradlew")).then(
+          () => path.join(root, "gradlew"),
+          () => "gradle",
+        ));
+      const tmp = await mkdtemp(path.join(os.tmpdir(), "lawspec-gradle-"));
+      try {
+        const report = path.join(tmp, "report.json");
+        const init = path.join(tmp, "inspect.gradle");
+        await writeFile(
+          init,
+          `import groovy.json.JsonOutput\ngradle.projectsEvaluated {\n def p = gradle.rootProject\n p.tasks.register('lawspecEnvironmentReport') { doLast {\n def j = p.tasks.findByName('test')\n def deps = p.configurations.testRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.collect { [name: it.moduleVersion.id.group + ':' + it.name, version: it.moduleVersion.id.version] }\n new File(System.getenv('LAWSPEC_REPORT')).text = JsonOutput.toJson([gradle: gradle.gradleVersion, java: System.getProperty('java.version'), testJava: j?.javaLauncher?.get()?.metadata?.languageVersion?.asInt(), runner: j?.options?.class?.name, enabled: j.enabled, includes: j.filter.includePatterns, excludes: j.filter.excludePatterns, sourceDirs: p.sourceSets.main.groovy.srcDirs.collect { it.canonicalPath }, testDirs: p.sourceSets.test.groovy.srcDirs.collect { it.canonicalPath }, dependencies: deps])\n } }\n}\n`,
+        );
+        await run(command, ["--no-daemon", "--console=plain", "-I", init, "lawspecEnvironmentReport"], root,
+          { env: { ...process.env, LAWSPEC_REPORT: report } });
+        const data = JSON.parse(await readFile(report, "utf8"));
+        requireThat(/^9\.[1-3]\./.test(data.gradle) && major(data.java) >= 25 && data.testJava >= 25,
+          "Groovy requires Gradle 9.1–9.3 and a Java 25+ toolchain");
+        requireThat(data.runner?.includes("JUnitPlatform") && data.enabled && !data.includes.length && !data.excludes.length,
+          "Gradle test must enable unfiltered JUnit Platform execution");
+        // The Java model compiles jointly with the Groovy sources.
+        // A custom sourceDir or testDir holds the Java model too.
+        const sources = target.sourceDir ? [sourceDir] : [sourceDir, "src/main/java"];
+        const tests = target.testDir ? [testDir] : [testDir, "src/test/java"];
+        requireThat(
+          sources.every((d) => data.sourceDirs.includes(path.join(root, d))) &&
+            tests.every((d) => data.testDirs.includes(path.join(root, d))),
+          `Gradle's Groovy source sets must include ${sources.join(" and ")}, and ${tests.join(" and ")}`,
+        );
+        const version = (dep) => data.dependencies.find((d) => d.name === dep)?.version;
+        versions.groovy = version("org.apache.groovy:groovy");
+        versions.spock = version("org.spockframework:spock-core")?.replace(/-groovy-.*/, "");
+        requireThat(versions.groovy, "Missing org.apache.groovy:groovy");
+        requireThat(versions.spock, "Missing org.spockframework:spock-core");
+        requireThat(version("org.jetbrains:jetCheck") === "0.3.0", "Missing org.jetbrains:jetCheck:0.3.0");
+        Object.assign(versions, { gradle: data.gradle, java: data.java });
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
     } else if (name === "fsharp" || name === "csharp") {
       // .NET: the SDK, xUnit v3 on Microsoft.Testing.Platform (selected in
       // global.json), and projects that import the generated props.

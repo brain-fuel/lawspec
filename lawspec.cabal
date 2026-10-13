@@ -460,6 +460,11 @@ library
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
       LawSpec.Capabilities
+      LawSpec.Clojure.Bindings
+      LawSpec.Clojure.Bridge
+      LawSpec.Clojure.Emit
+      LawSpec.Clojure.Tests
+      LawSpec.ClojureSources
       LawSpec.Code.Doc
       LawSpec.Code.JavaScript
       LawSpec.Collections
@@ -532,6 +537,10 @@ library
       LawSpec.GoProperties
       LawSpec.GoTestHelpers
       LawSpec.GoTypeRefs
+      LawSpec.Groovy.Emit
+      LawSpec.Groovy.Source
+      LawSpec.Groovy.Spock
+      LawSpec.GroovySources
       LawSpec.Harness
       LawSpec.HaskellData
       LawSpec.HaskellDefinitions

@@ -1,0 +1,6 @@
+@@ src/example/atoi_codec.clj
+<<<<<<<
+(defn atoi [value] (Integer/parseInt value))
+=======
+(defn atoi [value] 0)
+>>>>>>>

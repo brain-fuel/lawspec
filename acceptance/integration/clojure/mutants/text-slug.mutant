@@ -1,0 +1,6 @@
+@@ src/example/slug.clj
+<<<<<<<
+(str/replace text \space \-)
+=======
+text
+>>>>>>>

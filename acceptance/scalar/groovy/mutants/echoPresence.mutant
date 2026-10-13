@@ -1,0 +1,10 @@
+@@ src/main/groovy/example/ScalarAdapters.groovy
+<<<<<<<
+  static Value echoPresence(Value value0) {
+    return value0
+  }
+=======
+  static Value echoPresence(Value value0) {
+    return LawSpecRuntime.convert('Optional Nullable Int8',LawSpecRuntime.absent('Undefined'),64)
+}
+>>>>>>>

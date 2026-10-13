@@ -1,0 +1,7 @@
+expect: is marked known failing
+@@ src/main/groovy/example/Harness.groovy
+<<<<<<<
+    return (value0 + 4).intdiv(10) * 10
+=======
+    return (value0 + 9).intdiv(10) * 10
+>>>>>>>

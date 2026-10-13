@@ -1,0 +1,6 @@
+@@ src/example/indexed.clj
+<<<<<<<
+    (append (flatten (:left tree)) (v-cons (:value tree) (flatten (:right tree))))
+=======
+    (append (flatten (:left tree)) (v-cons (:value tree) :vec/v-nil))
+>>>>>>>

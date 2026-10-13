@@ -1,0 +1,6 @@
+@@ src/main/groovy/example/Indexed.groovy
+<<<<<<<
+      return new Vec.VCons<Byte>(cons.head(), append(cons.tail(), value1))
+=======
+      return append(cons.tail(), value1)
+>>>>>>>
