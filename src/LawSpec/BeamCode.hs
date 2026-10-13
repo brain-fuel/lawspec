@@ -204,11 +204,16 @@ dataNames :: [C.DataDeclaration] -> Either String [(C.Id,String)]
 dataNames declarations = do
   let shorts = [(C.dataId d,snake (C.dataName d)) | d <- declarations]
       reservedTypes = words "any none no_return atom map pid port reference tuple integer int float number binary bitstring bit_array boolean bool char string nonempty_string list nonempty_list improper_list nonempty_improper_list maybe_improper_list nonempty_maybe_improper_list byte arity identifier iodata iolist mfa module node timeout fun function term nothing just left right some non_null null undefined ok nil true false result utf_codepoint charlist nonempty_charlist as_boolean"
-      types = [(identity, if length (filter ((== n) . snd) shorts) > 1 || n `elem` reservedTypes
+      -- Built-in types Erlang and Elixir let a module redefine, with a
+      -- warning: only the type's name moves, its constructors keep their tags.
+      builtinTypes = words "record dynamic neg_integer non_neg_integer pos_integer nonempty_binary nonempty_bitstring"
+      tagNames = [(identity, if length (filter ((== n) . snd) shorts) > 1 || n `elem` reservedTypes
         then snake (C.idText identity) else n) | (identity,n) <- shorts]
+      types = [(identity, if n `elem` builtinTypes then qualified identity n else n) | (identity,n) <- tagNames]
+      qualified identity n = if snake (C.idText identity) == n then n ++ "_type" else snake (C.idText identity)
       constructors = [(C.constructorId c, if length (C.dataConstructors d) == 1 then n
         else n ++ "_" ++ snake (C.constructorName c))
-        | d <- declarations, Just n <- [lookup (C.dataId d) types], c <- C.dataConstructors d]
+        | d <- declarations, Just n <- [lookup (C.dataId d) tagNames], c <- C.dataConstructors d]
       duplicates xs = [n | n <- nub (map snd xs), length (filter ((== n) . snd) xs) > 1]
       names = map snd types
       tags = map snd constructors
