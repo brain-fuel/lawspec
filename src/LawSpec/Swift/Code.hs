@@ -276,7 +276,7 @@ distinct e = evalState (go M.empty e) S.empty
     binder :: String -> State (S.Set String) String
     binder n = do
       used <- get
-      let n' = head [c | c <- n : [n ++ "_" ++ show k | k <- [1 :: Int ..]], not (S.member c used)]
+      let n' = case [c | c <- n : [n ++ "_" ++ show k | k <- [1 :: Int ..]], not (S.member c used)] of { c : _ -> c; [] -> n }
       put (S.insert n' used)
       pure n'
 

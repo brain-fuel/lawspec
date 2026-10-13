@@ -71,7 +71,7 @@ number :: Show a => a -> D.Doc
 number = text . show
 
 bind :: String -> D.Doc -> D.Doc
-bind name value = D.group (text ("val " ++ name ++ " =") <> D.nest 2 (D.softline <> value))
+bind named value = D.group (text ("val " ++ named ++ " =") <> D.nest 2 (D.softline <> value))
 
 -- | A braced function literal; with no parameters, a block.
 closure :: String -> D.Doc -> D.Doc
@@ -83,7 +83,7 @@ trailing :: D.Doc -> String -> D.Doc -> D.Doc
 trailing invocation parameters body = invocation <> text " " <> closure parameters body
 
 runtime :: String -> [D.Doc] -> D.Doc
-runtime name = call ("LawSpecRuntime." ++ name)
+runtime named = call ("LawSpecRuntime." ++ named)
 
 truth :: D.Doc -> D.Doc
 truth value = runtime "truth" [value]
@@ -150,9 +150,9 @@ emitTests Config{..} unit laws = do
     -- many laws keeps the suite's constructor within the JVM's method size.
     registration i doc = text ("private def lawspecRegister" ++ show i ++ "(): Unit = ") <> block doc <> D.hardline <>
       text ("lawspecRegister" ++ show i ++ "()")
-    testFunction name body = case stripPrefix "harness:" name of
-      Just rest -> text ("val lawspecHarness" ++ takeWhile (/= ':') rest ++ ": () => Unit = () => ") <> closure "" body
-      Nothing -> text (register ++ "(") <> quoted name <> text ") " <> block body
+    testFunction label run = case stripPrefix "harness:" label of
+      Just rest -> text ("val lawspecHarness" ++ takeWhile (/= ':') rest ++ ": () => Unit = () => ") <> closure "" run
+      Nothing -> text (register ++ "(") <> quoted label <> text ") " <> block run
     runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
     observed h = not (null (C.harnessCover h) && null (C.harnessClassify h) && null (C.harnessLabels h)) || C.harnessTarget h /= Nothing
     harness name' = call ("lawspec.testing.LawSpecHarness." ++ name')
@@ -189,9 +189,9 @@ emitTests Config{..} unit laws = do
           (strategy, d) : _ -> bind (inputId inp) <$> drawDoc inp strategy d
           [] -> pure (bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp) <> text ".sample(_random).value"))) (generationPlan e)
       let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
-          strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
+          strategyChecks = [harness "checkDrawn" [quoted named, quoted (inputName inp),
               conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
-            | inp <- inputs e, (strategy, _) : _ <- [strategyOf inp], not (null (inputRefinements inp))]
+            | inp <- inputs e, (named, _) : _ <- [strategyOf inp], not (null (inputRefinements inp))]
           base = trailing (text "Arb.from") "_random" (statements
             ([symbols] ++ draws ++ [text "(" <> call "List" [text (inputId inp) | inp <- inputs e] <> text ", symbols)"]))
           predicates = concatMap inputRefinements defaults
@@ -314,7 +314,7 @@ emitTests Config{..} unit laws = do
             ["_property" | not (null property)]
       pure $ metadataDocument 96 "//" e <> separate (searchBefore ++ harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter)
     contextualProperty fn label e check = do
-      let bindings xs = statements [text "val symbols = _inputs.symbols",
+      let valuesDoc xs = statements [text "val symbols = _inputs.symbols",
             text "val _values = _inputs.values",fromValues xs]
           state value = call "LawSpecScalaStrategies.Case"
             [value,text "symbols",text "_checked.error"]
@@ -346,12 +346,12 @@ emitTests Config{..} unit laws = do
                    text " else " <> block (state (text "_values :+ _checked.requireValue()")))
             pure $ trailing (text "Arb.flatMap" <> D.delimitTrailing 2 "(" ")" [prior]) "_inputs"
               (text "if (_inputs.error != null) " <> block (text "Arb.constant(_inputs)") <>
-               text " else " <> block (statements [bindings (take index (inputs e)),added]))
+               text " else " <> block (statements [valuesDoc (take index (inputs e)),added]))
       base <- foldM step (text "LawSpecScalaStrategies.cases()") (zip [0::Int ..] (generationPlan e))
       let predicates = concatMap inputRefinements (inputs e)
           strategy = if null predicates then base else trailing
             (call "LawSpecScalaStrategies.filterCases" [base,number (maxAttempts (generation e))]) "_inputs"
-            (statements [bindings (inputs e),conjunction (map (truth . expr) predicates)])
+            (statements [valuesDoc (inputs e),conjunction (map (truth . expr) predicates)])
           body' = statements ([text "val symbols = _inputs.symbols",
             text "val _values = _inputs.requireValues()",fromValues (inputs e)] ++ handlerInstalls e ++ [check])
       pure $ testFunction (fn ++ "_property: " ++ label) $ trailing

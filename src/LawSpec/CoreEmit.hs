@@ -87,20 +87,20 @@ emitPlan = emitPlanWithFormat False
 -- | Canonical adapter references are independent of the selected presentation.
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithFormat minify target original | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
-  (wirePlan (witnessPlan (ownedAbilityPlan original)))
-emitPlanWithFormat minify target original | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
-  (wirePlan (witnessPlan (ownedAbilityPlan original)))
+emitPlanWithFormat minify target given | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
+  (wirePlan (witnessPlan (ownedAbilityPlan given)))
+emitPlanWithFormat minify target given | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
+  (wirePlan (witnessPlan (ownedAbilityPlan given)))
 -- Groovy runs over the Java target's files (DEC-groovy-over-java).
-emitPlanWithFormat minify "groovy" original =
-  Groovy.groovyFromJava original =<< emitPlanWithFormat minify "java" (escapePlan "groovy" original)
+emitPlanWithFormat minify "groovy" given =
+  Groovy.groovyFromJava given =<< emitPlanWithFormat minify "java" (escapePlan "groovy" given)
 -- Clojure runs over them too (DEC-clojure-over-java).
-emitPlanWithFormat minify "clojure" original =
-  Clojure.clojureFromJava Clojure.noClojureBindings original =<< emitPlanWithFormat minify "java" (escapePlan "clojure" original)
-emitPlanWithFormat minify "swift" original = Swift.emitSwift minify
-  (wirePlan (witnessPlan (ownedAbilityPlan original)))
-emitPlanWithFormat minify target original = do
-  let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
+emitPlanWithFormat minify "clojure" given =
+  Clojure.clojureFromJava Clojure.noClojureBindings given =<< emitPlanWithFormat minify "java" (escapePlan "clojure" given)
+emitPlanWithFormat minify "swift" given = Swift.emitSwift minify
+  (wirePlan (witnessPlan (ownedAbilityPlan given)))
+emitPlanWithFormat minify target given = do
+  let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan given))))
   emittedFiles <- emitPlanFormatted minify target plan
   extras <- companionArtifacts minify target plan
   -- Built-in units' adapter modules hold their default handlers.
@@ -738,9 +738,9 @@ remoteCalls target plan = case target of
 -- (adapters, actors, sessions) instead of Any. Java keeps Object, which its
 -- native calls already cast.
 nativeHandles :: String -> NB.BindingPlan -> Plan -> Plan
-nativeHandles target bindings plan = plan { planDataDeclarations = map typed (planDataDeclarations plan) }
+nativeHandles target bound plan = plan { planDataDeclarations = map typed (planDataDeclarations plan) }
   where
-    typed d = case [b | b <- Binding.resolvedTypes (NB.bindingRepresentations bindings), C.dataId (Binding.resolvedDeclaration b) == C.dataId d] of
+    typed d = case [b | b <- Binding.resolvedTypes (NB.bindingRepresentations bound), C.dataId (Binding.resolvedDeclaration b) == C.dataId d] of
       b : _ | C.dataHandle d, Just arguments <- Binding.resolvedArguments b ->
         d { C.dataNative = Just (intercalate "." (Binding.referenceParts (Binding.resolvedNativeType b)) ++
               (if null arguments then "" else opening ++ intercalate ", " arguments ++ closing)) }

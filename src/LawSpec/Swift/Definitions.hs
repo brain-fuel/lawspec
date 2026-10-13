@@ -24,7 +24,7 @@ import qualified LawSpec.Swift.Policy as Policy
 import qualified LawSpec.AbilityNames as N
 import LawSpec.NativeRequest (NativeCall(..))
 import LawSpec.NativeBinding (NativeRef(..))
-import Control.Monad (forM, unless)
+import Control.Monad (forM)
 import Data.List (intercalate)
 
 -- | The adapters bound in lawspec.json to application code, by declaration.

@@ -317,7 +317,7 @@ emitData layout bits bound declarations
           sendableExtension = if null (C.dataParameters d) then [D.text ("extension " ++ name ++ ": Error {}")] else
             [ D.text ("extension " ++ name ++ ": Sendable where " ++ sendableWhere ++ " {}") ]
       if isStruct recursive d then do
-        let c = head (C.dataConstructors d)
+        c <- case C.dataConstructors d of { [one] -> Right one; _ -> Left "a Swift struct has one constructor" }
         fields <- forM (C.constructorFields c) $ \b -> do
           t <- nativeType bits names (scopeOf d c) (C.binderType b)
           pure (fieldName (C.binderName b), t)

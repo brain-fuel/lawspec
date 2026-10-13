@@ -908,9 +908,9 @@ compareClauses env n ty = case ty of
       pure ([render' (conPattern env d c xs), render' (conPattern env d c ys)], [body])
     -- Different constructors compare by rank, the order of their identities.
     let rankOf c = conPattern env d c [D.text "_" | _ <- constructorFields c] <> D.text (") -> " ++ show (rank c))
-        ranks = D.text "Rank = fun" <> D.nest 4 (D.hardline <> D.joinWith (D.text ";" <> D.hardline)
+        rankFun = D.text "Rank = fun" <> D.nest 4 (D.hardline <> D.joinWith (D.text ";" <> D.hardline)
           [D.text "(" <> rankOf c | c <- dataConstructors d]) <> D.hardline <> D.text "end"
-        others = [ (["A", "B"], [ranks, E.remote "lawspec_beam_fast" "compare" [D.text "Rank(A)", D.text "Rank(B)"]])
+        others = [ (["A", "B"], [rankFun, E.remote "lawspec_beam_fast" "compare" [D.text "Rank(A)", D.text "Rank(B)"]])
                  | length (dataConstructors d) > 1 ]
     pure (same ++ others)
   _ -> failWith ("no comparison for " ++ show ty)

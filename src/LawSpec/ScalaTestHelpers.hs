@@ -71,7 +71,7 @@ generatorDocBounded boundsOf bits budget structural reference key = gen
         (runtime "integer" [quoted name,text "_number.toString"])
       else let width = byteWidth hi in integerGen name width width (lo < 0)
     gen (C.Constructor name []) | name `elem` ["BigInt","BigUInt","Integer"] =
-      integerGen name 0 32 (name /= "BigUInt")
+      integerGen name (0 :: Int) (32 :: Int) (name /= "BigUInt")
     gen (C.Constructor "Bool" []) = mapped (text "Arb.boolean") "_value" (runtime "bool" [text "_value"])
     gen (C.Constructor name []) | name `elem` ["Char","CodePoint","CodeUnit16"] =
       mapped (unitGen name) "_point" (runtime "character" [quoted name,text "_point"])

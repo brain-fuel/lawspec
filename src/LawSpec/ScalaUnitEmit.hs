@@ -70,8 +70,8 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
         Doc.group (signature <> Doc.text " =" <>
           Doc.nest 2 (Doc.softline <> Doc.text ("throw NotImplementedError(" ++ quote n ++ ")"))))
     -- An async adapter's Future is awaited where it is called.
-    awaitFor name call
-      | name `notElem` asyncFunctions u = call
+    awaitFor adapter call
+      | adapter `notElem` asyncFunctions u = call
       | otherwise = Doc.text "scala.concurrent.Await.result(" <> call <> Doc.text ", scala.concurrent.duration.Duration.Inf)"
     render = java . ScalaExpr.renderExpression dataDeclarations bits localName scExternal
     scChecked ty = java . ScalaExpr.checked dataDeclarations bits ty
@@ -157,15 +157,15 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
         in Right (ScalaExpr.call "LawSpecRuntime.countCalls" [Doc.text ("LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey (C.operationAbility op)) ++ ")"),
           ScalaExpr.quoted (C.operationName op), matches])
       C.ExternalCall identity args ->
-        let name = declarationName identity
+        let callee = declarationName identity
             typed = zip (map expressionType args) values
-            failing = [a | a@(C.AbilityRef _ [_]) <- failuresOf name]
-        in Right $ if name `elem` map contractName (contracts u)
-          then ScalaExpr.call ("_lawspec_call_" ++ name)
+            failing = [a | a@(C.AbilityRef _ [_]) <- failuresOf callee]
+        in Right $ if callee `elem` map contractName (contracts u)
+          then ScalaExpr.call ("_lawspec_call_" ++ callee)
             (Doc.text "symbols" : [scChecked ty value | (ty,value) <- typed])
           else failingAs failing
             (scNativeResult (expressionType term) (orFail failing (awaitFor (adapterName u identity) (ScalaExpr.call (qualifiedCls ++ "." ++ ScalaData.escaped (adapterName u identity))
-            (map scHandler (usesOf name) ++ [scNativeArgument ty value | (ty,value) <- typed])))))
+            (map scHandler (usesOf callee) ++ [scNativeArgument ty value | (ty,value) <- typed])))))
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (ScalaExpr.call "LawSpecRuntime.withHandlers" [Doc.text "symbols",

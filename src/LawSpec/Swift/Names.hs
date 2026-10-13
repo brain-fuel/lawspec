@@ -107,7 +107,7 @@ testName identity = concatMap pascal (splitDots (C.idText identity))
 dataNames :: [C.DataDeclaration] -> Either String [(C.Id, String)]
 dataNames declarations = do
   let shorts = [(C.dataId d, pascal (C.dataName d)) | d <- declarations]
-      roots = nub [pascal (head (splitDots (owner (C.idText (C.dataId d))))) | d <- declarations]
+      roots = nub [pascal (takeWhile (/= '.') (owner (C.idText (C.dataId d)))) | d <- declarations]
       reserved = words "Value Schema Codec Codecs Unit Null Undefined Symbol Either Nullable Undefinable Rational ExactDecimal Complex64 Complex128 BigInt SortedSet SortedMap Effects Runtime Scalar Typed Fail Recorded Regex Random Descriptors Defaults Portable LawSpec App Optional Array Dictionary Set String Int Bool Character Result Error Never Duration Double Float Any Void Sendable Hashable Equatable Comparable Task Actor Gen Tree Property Harness Generators Handler"
       types = [ (identity, if length (filter ((== n) . snd) shorts) > 1 || n `elem` reserved || n `elem` roots
                              then concatMap pascal (splitDots (owner (C.idText identity))) ++ n else n)

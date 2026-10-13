@@ -70,7 +70,7 @@ productionFunction a = (generatedName (C.abilityOwner a), camel (N.interfaceName
 -- | The function making a spec handler, in its unit's generated enum.
 specFunction :: [C.Unit] -> C.Handler -> (String, String)
 specFunction units h = (generatedName owner, camel (C.handlerName h) ++ "Handler")
-  where owner = head ([C.unitId u | u <- units, any ((== C.handlerId h) . C.handlerId) (C.unitHandlers u)] ++ [C.Id ""])
+  where owner = case [C.unitId u | u <- units, any ((== C.handlerId h) . C.handlerId) (C.unitHandlers u)] of { o : _ -> o; [] -> C.Id "" }
 
 qualified :: (String, String) -> [Expr] -> Expr
 qualified (m, f) = Call (m ++ "." ++ f)

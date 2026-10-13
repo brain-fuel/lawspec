@@ -129,7 +129,7 @@ typeDocWithNative handles mappings names parameters ty = case ty of
   C.Constructor name [] | isDurationType name -> pure (D.text "scala.concurrent.duration.FiniteDuration")
   -- Built-in collections are Scala's immutable ones (LawSpecScalaCodecs).
   C.Constructor name arguments | Just short <- collectionContainer name -> do
-    args <- mapM argument arguments
+    args <- mapM typeArgument arguments
     pure $ case short of
       "Set" -> applied "scala.collection.immutable.Set" args
       "KeyVal" -> applied "scala.collection.immutable.Map" args
@@ -137,7 +137,7 @@ typeDocWithNative handles mappings names parameters ty = case ty of
       "Stack" -> applied "scala.collection.immutable.List" args
       _ -> applied "scala.collection.immutable.Vector" args
   C.Constructor name arguments -> do
-    args <- mapM argument arguments
+    args <- mapM typeArgument arguments
     let nativeNames = [(C.dataId (resolvedDeclaration mapping),intercalate "." (referenceParts (resolvedNativeType mapping))) | mapping <- mappings]
         canonicalNames = [(identity,"lawspec.data." ++ native) | (identity,native) <- names]
     case lookup (C.Id name) (nativeNames ++ canonicalNames) of
@@ -153,8 +153,8 @@ typeDocWithNative handles mappings names parameters ty = case ty of
         _ -> Left ("no Scala data representation for " ++ show ty)
   _ -> Left ("no Scala data representation for " ++ show ty)
   where
-    argument (C.TypeArgument value) = typeDocWithNative handles mappings names parameters value
-    argument _ = Left "indexed Scala data is not supported"
+    typeArgument (C.TypeArgument value) = typeDocWithNative handles mappings names parameters value
+    typeArgument _ = Left "indexed Scala data is not supported"
 
 -- | Type text for one-line uses, such as a stub's signature.
 scalaDataType :: [C.DataDeclaration] -> C.Type -> Either String String
@@ -363,7 +363,7 @@ emitCodecs mappings owner layout declarations = do
       dataCases <- mapM (\d -> caseFor (C.idText (C.dataId d))
         (C.Constructor (C.idText (C.dataId d)) [variable i | i <- [0 .. length (C.dataParameters d) - 1]])) declarations
       structural <- mapM (\(name, arity) -> caseFor name (C.Constructor name [variable i | i <- [0 .. arity - 1]]))
-        [("List", 1), ("Maybe", 1), ("Either", 2)]
+        [("List", 1 :: Int), ("Maybe", 1), ("Either", 2)]
       scalars <- mapM (\p -> caseFor (primitiveName p) (C.Constructor (primitiveName p) []))
         [p | p <- primitives, primitiveName p `elem` map fst scalaScalars]
       pure (D.text ("def dynamic(schema: LawSpecSchema, bits: Int, symbols: " ++ symbolsType ++ ", tpe: LawSpecSchema.Named): Codec[Any] = ") <>

@@ -91,7 +91,7 @@ clojureFromJava cb plan javaFiles = do
       , "  private LawSpecClojureFailures() {}"
       , ""
       , "  public static final java.util.Map<String, String[]> FAILURES = java.util.Map.ofEntries(" ] ++
-      [ intercalate ",\n" [ "      java.util.Map.entry(" ++ show kind ++ ", new String[] {" ++ show (failureTag constructor) ++ ", " ++ show (if message then "true" else "false") ++ "})"
+      [ intercalate ",\n" [ "      java.util.Map.entry(" ++ show kind ++ ", new String[] {" ++ show (failureTag constructor) ++ ", " ++ show (if message then "true" else "false" :: String) ++ "})"
                            | (kind, constructor, message) <- boundFailures cb ] ] ++
       [ "  );", "}" ]) "generated" "source"
     -- example.till::PayError::Declined is pay-error/declined.
