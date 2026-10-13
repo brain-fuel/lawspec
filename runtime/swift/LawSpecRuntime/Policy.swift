@@ -73,32 +73,41 @@ public enum Policy {
         public let hedge: (Int64, Int64)?
     }
 
-    private static func power(_ b: Int64, _ n: Int64) -> Int64 {
-        if n == 0 { return 1 }
-        if n % 2 == 0 { return power(b &* b, n / 2) }
-        return b &* power(b &* b, n / 2)
-    }
-
-    private static func fibonacci(_ n: Int64, _ a: Int64, _ b: Int64) -> Int64 {
-        var (n, a, b) = (n, a, b)
-        while n > 1 {
-            (a, b) = (b, a &+ b)
-            n -= 1
-        }
-        return a
+    /// A delay as an Int64 of microseconds, or RetryDelayOverflow: the
+    /// delays are exact, as on every target, never wrapped.
+    private static func exactDelay(_ value: BigInt) throws -> Int64 {
+        guard let delay = value.exactly(Int64.self) else { throw Fail.with("RetryDelayOverflow", value.description) }
+        return delay
     }
 
     /// The delay before an attempt (from the second) of a strategy.
     public static func retryDelay(_ strategy: Strategy, _ attempt: Int64) throws -> Int64 {
         if attempt < 2 { throw Fail.with("InvalidRetryAttempt", String(attempt)) }
+        let n = BigInt(attempt) - BigInt(2)
         switch strategy {
         case .immediate: return 0
         case .fixed(let delay): return delay
-        case .linear(let delay, let step): return delay &+ step &* (attempt - 2)
+        case .linear(let delay, let step): return try exactDelay(BigInt(delay) + BigInt(step) * n)
         case .exponential(let delay, let factor, let cap):
-            let value = delay &* power(factor, attempt - 2)
-            return cap.map { Swift.min(value, $0) } ?? value
-        case .fibonacci(let delay): return delay &* fibonacci(attempt - 1, 1, 1)
+            // Multiply up only until the cap, or past any Int64, is reached.
+            let limit = BigInt(cap ?? Int64.max)
+            var value = BigInt(delay)
+            var remaining = attempt - 2
+            while remaining > 0 && value.magnitude <= limit.magnitude {
+                value = value * BigInt(factor)
+                remaining -= 1
+            }
+            if let cap, value > BigInt(cap) { return cap }
+            return try exactDelay(value)
+        case .fibonacci(let delay):
+            var (a, b) = (BigInt(1), BigInt(1))
+            var remaining = attempt - 2
+            let limit = BigInt(Int64.max)
+            while remaining > 0 && a <= limit {
+                (a, b) = (b, a + b)
+                remaining -= 1
+            }
+            return try exactDelay(BigInt(delay) * a)
         case .custom: throw Fail.with("CustomRetryDelay", "a custom strategy decides its own delays")
         }
     }
