@@ -26,3 +26,13 @@ after the produce phase and at the end, and `check` lines the harness echoes:
 the records read and the committed high watermark of partition 0, which are
 the same on every target. `lawspec-dev bench kafka --typed` lists the
 definitions and spec handlers that stay on the dynamic path, and why.
+
+On the BEAM, peak resident memory is several times the live heap (about
+2.2 GiB against 305 MiB at a million records). The handler's state is one
+term in one process, and its heap is copied whole at each major collection,
+with the old and new heaps both resident until the copy ends. The heaps are
+sized ahead of the data. The driver's embedding API check copies the state out
+of the handler's process and back. The allocator also keeps freed carriers.
+Measured per process, the handler's heap peaks at roughly four times its live
+data. Collecting on every pass (`fullsweep_after` 0) lowers the peak by only
+about a tenth and makes produce slower, so the runtime keeps the VM's defaults.
