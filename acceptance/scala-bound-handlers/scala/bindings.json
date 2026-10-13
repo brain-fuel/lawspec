@@ -1,0 +1,12 @@
+{
+  "functions": [
+    {"declaration": "example.bank::balance", "native": ["vault", "Opening", "balance"]}
+  ],
+  "handlers": [
+    {"ability": "example.bank::Vault", "native": ["vault", "NativeVault"]}
+  ],
+  "failures": [
+    {"native": ["vault", "Overdraft"], "failure": "example.bank::VaultError::Overdrawn"},
+    {"native": ["vault", "FrozenVault"], "failure": "example.bank::VaultError::Frozen"}
+  ]
+}

@@ -40,6 +40,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dynamic path and 0.02 to 0.03 seconds typed, and a million produces now
   run at 400,000 to 770,000 operations a second. `--typed` reports the BEAM
   plan too.
+  supported. `lawspec test --coverage` measures Scala with Scala 3's own
+  instrumentation and the scoverage reporter, with nothing to install.
 
 ## [0.23.0] - 2026-10-12
 

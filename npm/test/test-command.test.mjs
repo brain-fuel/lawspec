@@ -162,6 +162,10 @@ test("asks each runner to measure coverage", () => {
   assert.ok(go[0].args.includes("-cover"));
   const haskell = invocations({ language: "haskell" }, [law(0, "test/A/BSpec.hs", undefined, "haskell")], { coverage: "c" });
   assert.ok(haskell[0].args.includes("--coverage"));
+  // Scala 3 instruments the sources, not the tests, into the coverage data.
+  const scala = invocations({ language: "scala" }, [law(0, "src/test/scala/a/BLawSpecTest.scala", undefined, "scala")], { coverage: "c" });
+  assert.ok(scala[0].args.includes(`-coverage-out:${path.resolve("c", "data")}`));
+  assert.ok(scala[0].args.some((arg) => arg.startsWith("-coverage-exclude-files:") && arg.includes("src/test/scala")));
 });
 
 test("runs each unit's laws separately where names repeat across units", () => {

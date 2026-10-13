@@ -472,6 +472,8 @@ targetSteps target =
       "models", "concurrent", "handles", "consistency", "actors", "sessions", "distribution", "scheduling", "matchers", "tables", "keywords", "durations", "flow",
       "integration", "collections", "railway", "generation", "asyncbindings", "refinement",
       "records", "sequences", "composition", "contracts"] ] ++
+  -- Scala's own suites: bound handlers whose operations fail answer Either.
+  [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "scala", suite <- ["scala-bound-handlers"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ Step (target ++ "-crypto-cli" ++ suffix) env ["node", "tools/beam-crypto-integration.mjs", target]

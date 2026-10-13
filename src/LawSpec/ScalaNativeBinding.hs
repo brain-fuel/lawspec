@@ -134,13 +134,7 @@ emitBindings minify plan testing files = do
         -- lawspec.json maps become its failures, as Lefts.
         failureCases <- case [failure | C.AbilityRef _ [failure] <- filter C.isFail (C.declarationUses d)] of
           failure : _ | not async -> do
-            failureCodec <- S.scalaCodecDocWithContext (D.text "symbols") declarations failure
-            ref <- E.reference failure
-            pure (Just [ D.text ("case error: " ++ intercalate "." (C.failureNative b) ++ " => scala.util.Left(") <> failureCodec <> D.text ".decode(" <>
-                           E.call "LawSpecScalaCodecs.construct" [D.text "schema", ref, E.quoted (C.idText (C.failureConstructor b)),
-                             E.call "List" [E.call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(error.getMessage, \"\")", D.text (show bits)] | C.failureMessage b],
-                             D.text (show bits), D.text "symbols"] <> D.text "))"
-                       | b <- bindingFailures plan, C.failureType b == failure ])
+            Just <$> mappedFailures failure
           _ -> pure Nothing
         let body = maybe resultBody (const (D.text "scala.util.Right(" <> D.block 2 resultBody <> D.text ")")) failureCases
         pure (D.text "def " <> E.call (S.escaped (C.declarationName d))
@@ -164,8 +158,16 @@ emitBindings minify plan testing files = do
           nativeResult <- S.scalaNativeCodecDoc declarations result
           let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
               invocation = E.call ("inner." ++ S.escaped op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
-              body = if result == C.scalarType "Unit" then invocation <> D.hardline <> D.text "()"
+              plain = if result == C.scalarType "Unit" then invocation <> D.hardline <> D.text "()"
                 else method canonicalResult "decode" [method nativeResult "encode" [invocation]]
+          -- An operation that fails with E answers Either: the exceptions
+          -- lawspec.json maps become its failures, as Lefts.
+          body <- case lookup op (C.abilityFailures a) of
+            Just (C.AbilityRef _ [failure]) -> do
+              cases <- mappedFailures failure
+              pure (D.text "try " <> D.block 2 (D.text "scala.util.Right(" <> D.block 2 plain <> D.text ")") <>
+                (if null cases then mempty else D.text " catch " <> D.block 2 (D.joinWith D.hardline cases)))
+            _ -> pure plain
           pure (D.text "override def " <> E.call (S.escaped op) [v <> D.text ": " <> t | (t,v) <- zip types values] <> D.text ": " <> resultType <> D.text " = " <>
             D.block 2 (D.text "val symbols = LawSpecScala.symbols()" <> D.hardline <> body))
         pure (D.text ("/** The bound production handler of " ++ C.abilityName a ++ ", " ++ intercalate "." (referenceParts r) ++ ", as the generated trait. */") <> D.hardline <>
@@ -250,6 +252,16 @@ emitBindings minify plan testing files = do
     split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
     cap [] = []; cap (a:rest) = toUpper a:rest
     method value name args = value <> D.text "." <> E.call name args
+    -- The exceptions lawspec.json maps to a failure of type failure, as cases
+    -- that answer Left with it.
+    mappedFailures failure = do
+      failureCodec <- S.scalaCodecDocWithContext (D.text "symbols") declarations failure
+      ref <- E.reference failure
+      pure [ D.text ("case error: " ++ intercalate "." (C.failureNative b) ++ " => scala.util.Left(") <> failureCodec <> D.text ".decode(" <>
+               E.call "LawSpecScalaCodecs.construct" [D.text "schema", ref, E.quoted (C.idText (C.failureConstructor b)),
+                 E.call "List" [E.call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(error.getMessage, \"\")", D.text (show bits)] | C.failureMessage b],
+                 D.text (show bits), D.text "symbols"] <> D.text "))"
+           | b <- bindingFailures plan, C.failureType b == failure ]
     handleDeclaration name = find (\d -> C.dataHandle d && C.dataId d == C.Id name) declarations
     isHandle (C.Constructor name []) = handleDeclaration name /= Nothing
     isHandle _ = False

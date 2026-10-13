@@ -210,7 +210,10 @@ them.
   `.lawspec/coverage/<target>/<project-hash>`: coverage.py (Python), c8 (JavaScript and
   TypeScript), `go test -cover`, JaCoCo (Java, through Maven), Kover (Kotlin, if
   the build applies its plugin), cargo-llvm-cov (Rust) and hpc
-  (`stack test --coverage`), and OTP `cover` (Erlang, Elixir and Gleam).
+  (`stack test --coverage`), OTP `cover` (Erlang, Elixir and Gleam), and
+  scoverage (Scala: Scala 3 instruments the sources, not the tests, and the
+  scoverage reporter, which Scala CLI fetches, writes Cobertura, scoverage XML
+  and HTML under `report/`).
   BEAM reports use `.lawspec/coverage/<target>/<project-hash>/index.html`
   and `coverage.json`, with native exports retained under `runs/`. Each report
   combines this invocation's replay batches and includes suite cleanup;

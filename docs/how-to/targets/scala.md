@@ -139,6 +139,15 @@ stays inside the input's refinement and a dependent input is redrawn from the
 same random state. `LAWSPEC_SEED` fixes the seed, and a failure prints the seed
 that replays it.
 
+## Coverage
+
+`lawspec test --coverage` needs nothing installed beyond Scala CLI. Scala 3
+instruments the sources (`-coverage-out`, in scoverage's format), the tests
+run, and the scoverage reporter, which Scala CLI fetches, writes
+`report/cobertura.xml`, `report/scoverage.xml` and `report/index.html` under
+`.lawspec/coverage/scala/<project-hash>`. The tests themselves are not
+measured.
+
 ## Formatting
 
 Output uses braces, two-space blocks and 100-column lines. See
