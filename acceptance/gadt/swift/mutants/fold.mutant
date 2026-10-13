@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.swift
+<<<<<<<
+        .number(value: evalNumber(value0))
+=======
+        .number(value: 0)
+>>>>>>>

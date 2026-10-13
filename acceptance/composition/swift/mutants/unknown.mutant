@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ src/Example/Composition.swift
+<<<<<<<
+            guard store.logs[log] != nil else { throw .unknownLog }
+=======
+            guard store.logs[log] != nil else { throw .emptyRecord }
+>>>>>>>

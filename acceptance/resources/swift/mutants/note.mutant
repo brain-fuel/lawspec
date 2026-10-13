@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/Example/Resources.swift
+<<<<<<<
+        try! String(note).write(
+=======
+        try! String(note + 1).write(
+>>>>>>>

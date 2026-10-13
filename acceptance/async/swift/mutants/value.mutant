@@ -1,0 +1,6 @@
+@@ src/Example/Orders.swift
+<<<<<<<
+        return priceOf(sku)
+=======
+        return priceOf(sku) + 1
+>>>>>>>

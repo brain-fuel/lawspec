@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.swift
+<<<<<<<
+        value0 == value1
+=======
+        value0.symbolDescription == value1.symbolDescription
+>>>>>>>

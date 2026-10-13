@@ -1,0 +1,6 @@
+@@ src/Lessons/Orders.swift
+<<<<<<<
+Int64(value0.shots) * 60
+=======
+Int64(value0.shots) * 50
+>>>>>>>

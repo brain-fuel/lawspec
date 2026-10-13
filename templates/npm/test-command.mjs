@@ -15,13 +15,13 @@ import path from "node:path";
 // Folders that hold dependencies, build output or caches, not code under test.
 const skipped = new Set([".git", ".lawspec", "node_modules", "dist", "build", "target", "out", ".gradle", "bin", "obj", "TestResults",
   ".stack-work", "_build", "deps", ".elixir_ls", "__pycache__", ".hypothesis", ".pytest_cache", ".venv", "venv", ".idea", ".vscode",
-  ".scala-build", ".bsp", ".bloop", ".metals"]);
+  ".scala-build", ".bsp", ".bloop", ".metals", ".build", ".swiftpm"]);
 // Build and lock files, which choose the toolchain and dependencies.
 const environmentFiles = ["package.json", "package-lock.json", "tsconfig.json", "pyproject.toml", "go.mod",
   "go.sum", "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
   "Cargo.toml", "Cargo.lock", "stack.yaml", "stack.yaml.lock", "package.yaml",
   "rebar.config", "rebar.config.script", "rebar.lock", "mix.exs", "mix.lock", "gleam.toml", "manifest.toml",
-  "global.json", "Directory.Build.props", "Directory.Packages.props", "NuGet.config", "project.scala"];
+  "global.json", "Directory.Build.props", "Directory.Packages.props", "NuGet.config", "project.scala", "Package.swift", "Package.resolved"];
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // The crypto builder owns these outputs. Inputs and other priv/ assets still
@@ -176,6 +176,10 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
     return groupBy(entries, (e) => e.file).map(([file, marks]) => ({ command: target.scala || "scala",
       args: ["test", ".", ...(offline ? ["--offline"] : []), "--test-only", className(file, "src/test/scala", ".scala"), "--",
         ...marks.flatMap((e) => ["-z", e.name])] }));
+  // Swift Testing selects tests by a regular expression over their ids
+  // (Module.Suite/function()), one --filter per benchmark, OR'd.
+  if (language === "swift")
+    return [{ command: target.swift || "swift", args: ["test", ...entries.flatMap((e) => ["--filter", `/${regex(e.name)}\\(`])] }];
   if (language === "haskell") {
     const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
     // hspec matches by substring, and a benchmark's name has spaces, so each
@@ -359,6 +363,21 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
       report: { kind: "junit", files: [path.join(results, report)] },
       ran: (test) => entries.filter((e) => pattern(e).test(test.name)) }];
   }
+  // Swift Testing selects tests by a regular expression over their ids
+  // (Module.Suite/function()), and writes its xUnit report next to the path
+  // given, with -swift-testing added. A law's tests are its unit's suite
+  // (named after the test file) and its name, then a kind (lawName_property).
+  if (language === "swift") {
+    const results = path.resolve(scratch);
+    const suite = (e) => path.posix.basename(e.file, ".swift");
+    const test = (e) => `${regex(suite(e))}/${regex(e.name)}(_[A-Za-z0-9]+)?\\(`;
+    return [{ laws: entries, command: target.swift || "swift",
+      args: ["test", ...(coverage ? ["--enable-code-coverage"] : []), ...entries.flatMap((e) => ["--filter", test(e)]),
+        "--xunit-output", path.join(results, "swift-lawspec.xml")],
+      report: { kind: "junit", files: [path.join(results, "swift-lawspec-swift-testing.xml")] },
+      ran: (result) => entries.filter((e) => result.classname?.split(".").pop() === suite(e) &&
+        new RegExp(`^${regex(e.name)}(_[A-Za-z0-9]+)?(\\(|$)`).test(result.name)) }];
+  }
   if (language === "haskell") {
     const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
     const matches = entries.map((e) => `${module(e)}/${e.name}_`);
@@ -388,6 +407,7 @@ export const coverageTools = {
   fsharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },
   csharp: { tool: "Microsoft code coverage", install: "add the Microsoft.Testing.Extensions.CodeCoverage package to the test project" },
   scala: { tool: "scoverage", install: "(built into Scala 3; Scala CLI fetches the scoverage reporter)" },
+  swift: { tool: "llvm-cov", install: "(built into the Swift toolchain; swift test --enable-code-coverage)" },
 };
 
 // Laws selected by tag: every --tag, and none of --exclude-tag.

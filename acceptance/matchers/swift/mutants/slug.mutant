@@ -1,0 +1,7 @@
+expect: a slug is lowercase words joined by dashes
+@@ src/Example/Matchers.swift
+<<<<<<<
+        return words.joined(separator: "-")
+=======
+        return words.joined(separator: "_")
+>>>>>>>

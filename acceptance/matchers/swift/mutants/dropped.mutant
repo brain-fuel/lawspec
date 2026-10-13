@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/Example/Matchers.swift
+<<<<<<<
+    static func sortItems(_ items: PersistentList<Int32>) -> PersistentList<Int32> { PersistentList(items.sorted()) }
+=======
+    static func sortItems(_ items: PersistentList<Int32>) -> PersistentList<Int32> { PersistentList(Set(items).sorted()) }
+>>>>>>>

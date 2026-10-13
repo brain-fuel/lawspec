@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ src/Example/Matchers.swift
+<<<<<<<
+    static func ship(_ id: Int32) -> Order { .shipped(id: id, carrier: "post") }
+=======
+    static func ship(_ id: Int32) -> Order { .pending(id: id) }
+>>>>>>>

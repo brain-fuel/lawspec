@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.swift
+<<<<<<<
+    static func positive(_ a: Int8) -> Int8 { a }
+=======
+    static func positive(_ a: Int8) -> Int8 { 0 }
+>>>>>>>

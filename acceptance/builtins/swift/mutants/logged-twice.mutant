@@ -1,0 +1,8 @@
+expect: a charge is logged once
+@@ src/Example/Builtins.swift
+<<<<<<<
+            log.logMessage(.info, "charged \(cents)")
+=======
+            log.logMessage(.info, "charged \(cents)")
+            log.logMessage(.info, "charged again \(cents)")
+>>>>>>>

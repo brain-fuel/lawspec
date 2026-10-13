@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/Example/Matchers.swift
+<<<<<<<
+    static func average(_ a: Int32, _ b: Int32) -> Double { (Double(a) + Double(b)) / 2.0 }
+=======
+    static func average(_ a: Int32, _ b: Int32) -> Double { (Double(a) + Double(b)) / 2.0 + 1.0 }
+>>>>>>>

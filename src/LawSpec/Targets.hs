@@ -5,7 +5,7 @@ module LawSpec.Targets (targets, beamTargets, dotnetTargets, scalaTargets, overJ
 
 targets :: [String]
 targets = ["java", "python", "javascript", "typescript", "go", "haskell",
-  "kotlin", "rust"] ++ beamTargets ++ dotnetTargets ++ scalaTargets ++ overJavaTargets
+  "kotlin", "rust"] ++ beamTargets ++ dotnetTargets ++ scalaTargets ++ overJavaTargets ++ ["swift"]
 
 -- | Scala runs over the shared JVM runtime, as Kotlin does.
 -- ref:DEC-scala-on-the-jvm-runtime
@@ -41,4 +41,4 @@ targetLabel target = maybe target id (lookup target
    ("typescript", "TypeScript"), ("go", "Go"), ("haskell", "Haskell"),
    ("kotlin", "Kotlin"), ("rust", "Rust"), ("erlang", "Erlang"),
    ("elixir", "Elixir"), ("gleam", "Gleam"), ("fsharp", "F#"), ("csharp", "C#"),
-   ("scala", "Scala"), ("groovy", "Groovy"), ("clojure", "Clojure")])
+   ("scala", "Scala"), ("groovy", "Groovy"), ("clojure", "Clojure"), ("swift", "Swift")])

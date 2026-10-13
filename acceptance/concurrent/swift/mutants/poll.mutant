@@ -1,0 +1,10 @@
+@@ src/Example/Concurrent.swift
+<<<<<<<
+        return queue(value0).with { q in q.isEmpty ? nil : q.removeFirst() }
+=======
+        let q = queue(value0)
+        guard let front = q.with({ $0.first }) else { return nil }
+        try? await Task.sleep(nanoseconds: 1_000_000)
+        q.with { if !$0.isEmpty { $0.removeFirst() } }
+        return front
+>>>>>>>

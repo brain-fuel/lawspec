@@ -1,0 +1,7 @@
+expect: Meter: reading gives what its type says [native]
+@@ src/Example/Shop.swift
+<<<<<<<
+        func reading() -> Int32 { 3 }
+=======
+        func reading() -> Int32 { -1 }
+>>>>>>>

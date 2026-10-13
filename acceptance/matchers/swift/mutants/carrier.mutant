@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/Example/Matchers.swift
+<<<<<<<
+    static func ship(_ id: Int32) -> Order { .shipped(id: id, carrier: "post") }
+=======
+    static func ship(_ id: Int32) -> Order { .shipped(id: id, carrier: "") }
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/Example/Builtins.swift
+<<<<<<<
+        return .microseconds(clock.now().value - start)
+=======
+        return .microseconds(start - clock.now().value - 1)
+>>>>>>>

@@ -33,7 +33,8 @@ testCommand target = lookup target
   , ("fsharp", "dotnet test")
   , ("csharp", "dotnet test")
   , ("groovy", "gradle test")
-  , ("clojure", "clojure -M:test") ]
+  , ("clojure", "clojure -M:test")
+  , ("swift", "swift test") ]
 
 -- | The pinned toolchain each target is verified against, stated once so doctor,
 -- the CLI and the docs give the same advice.
@@ -54,6 +55,7 @@ setupAdvice target = lookup target
   , ("csharp", "Use the .NET 10 SDK (10.0.100 or later); the LawSpec runtime is F# and builds with the SDK's F# compiler. dotnet test runs on Microsoft.Testing.Platform (global.json opts in) with xunit.v3 4.0.2 and FsCheck 3.4.0 (referenced by lawspec/LawSpec.Testing); for a program that imports lawspec.crypto or lawspec.network the runtime also uses BouncyCastle.Cryptography 2.7.0. Reference lawspec/LawSpec.Runtime from the source project and lawspec/LawSpec.Testing from the test project, as lawspec init does. Run dotnet build.")
   , ("groovy", "Use JDK 25, Gradle 9.3.0 with the groovy plugin, Groovy 5.0.8 (org.apache.groovy:groovy), Spock 2.5-groovy-5.0, JetCheck 0.3.0 and JUnit Jupiter's API 5.14.0, and useJUnitPlatform(); the Java model compiles jointly with the Groovy sources, so src/main/java and src/test/java are Groovy source directories. A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.")
   , ("clojure", "Use JDK 25 and the Clojure CLI 1.12 with Clojure 1.12.5 and, for tests, test.check 1.1.3 (the :test alias). The Java model in java/src compiles with the JDK's compiler into target/classes, which lawspec.build does before the tests run (clojure -M:build compiles it alone). A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run clojure -M:test.")
+  , ("swift", "Use Swift 6.2 or later (Xcode 26 on macOS 26, where CryptoKit has ML-KEM and ML-DSA) and SwiftPM. The generated runtime and test support are local targets under lawspec/ with no package dependencies; tests run on Swift Testing, from the toolchain, with LawSpec's own property engine. Package.swift declares the targets LawSpecRuntime, LawSpecTesting, App (src) and AppTests (tests), as lawspec init writes it. Run swift build --build-tests.")
   , ("gleam", "Use Erlang/OTP 29, Gleam 1.18 or 1.19, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select target=erlang, src/test directories, and the lawspec_test_support development dependency at ./test-support. In test/<package>_test.gleam use @external(erlang, \"lawspec_beam_test_run\", \"gleam_main\") pub fn main() -> Nil. Prepare dependencies with gleam build, then run gleam test." ++ beamCryptoSetup) ]
 
 beamCryptoSetup :: String
@@ -247,6 +249,7 @@ scaffoldFilesWith crypto minify target = case target of
         , "         :main-opts [\"-m\" \"lawspec.test-runner\"]}"
         , "  :build {:main-opts [\"-m\" \"lawspec.build\"]}}}" ]) ]
   _ | target `elem` ["fsharp", "csharp"] -> Right (dotnetScaffold minify target)
+  "swift" -> Right (swiftScaffold minify)
   _ -> Left ("Unknown target: " ++ target)
   where
     noble = [("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")]) | crypto]
@@ -302,6 +305,28 @@ dotnetScaffold minify target =
   where
     ext = if target == "fsharp" then "fsproj" else "csproj"
     lines' = if minify then unlines . map (dropWhile (== ' ')) else unlines
+
+-- | A SwiftPM package: the runtime and test support the compiler writes to
+-- lawspec/, the program's sources in src (the App module) and its tests in
+-- tests. macOS 26 is the first with CryptoKit's ML-KEM and ML-DSA.
+-- ref:DEC-swift-runtime-from-scratch
+swiftScaffold :: Bool -> [(FilePath, String)]
+swiftScaffold minify =
+  [ ("Package.swift", lines'
+      [ "// swift-tools-version: 6.2"
+      , "import PackageDescription"
+      , ""
+      , "let package = Package("
+      , "    name: \"Example\","
+      , "    platforms: [.macOS(.v26)],"
+      , "    targets: ["
+      , "        .target(name: \"LawSpecRuntime\", path: \"lawspec/LawSpecRuntime\"),"
+      , "        .target(name: \"LawSpecTesting\", dependencies: [\"LawSpecRuntime\"], path: \"lawspec/LawSpecTesting\"),"
+      , "        .target(name: \"App\", dependencies: [\"LawSpecRuntime\"], path: \"src\"),"
+      , "        .testTarget(name: \"AppTests\", dependencies: [\"App\", \"LawSpecRuntime\", \"LawSpecTesting\"], path: \"tests\"),"
+      , "    ]"
+      , ")" ]) ]
+  where lines' = if minify then unlines . filter (not . null) else unlines
 
 -- | The JSON subset these files need, laid out as JSON.stringify(value, null, 2)
 -- (or without indentation when minified), keeping field order.

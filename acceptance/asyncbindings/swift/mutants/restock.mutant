@@ -1,0 +1,6 @@
+@@ src/Native/Warehouse.swift
+<<<<<<<
+            total += Int64(amount)
+=======
+            total += Int64(amount < 50 ? amount : amount - 1)
+>>>>>>>

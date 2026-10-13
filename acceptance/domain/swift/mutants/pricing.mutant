@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.swift
+<<<<<<<
+        let total = Int64(value0.quantity.value) * 25
+=======
+        let total = Int64(value0.quantity.value) * 250
+>>>>>>>

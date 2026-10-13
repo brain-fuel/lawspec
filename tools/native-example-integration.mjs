@@ -24,6 +24,7 @@ const mutations = {
   scala: ['src/main/scala/domain/PaymentsDomain.scala', 'BigDecimal("0.2")', 'BigDecimal("0.3")'],
   groovy: ['src/main/groovy/domain/PaymentsDomain.groovy', "BigDecimal('0.2')", "BigDecimal('0.3')"],
   clojure: ['src/domain/payments.clj', '0.2M', '0.3M'],
+  swift: ['src/Native/PaymentsDomain.swift', 'coefficient: 2, exponent: -1', 'coefficient: 3, exponent: -1'],
 };
 assert.ok(Object.hasOwn(mutations, target), 'Pass one of the target names');
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64);
@@ -138,6 +139,7 @@ const commands = {
   fsharp: ['dotnet', ['test']],
   csharp: ['dotnet', ['test']],
   scala: [config.targets[0].scala || 'scala', ['test', '.', ...(offline ? ['--offline'] : [])]],
+  swift: ['swift', ['test']],
 };
 const [command, args] = commands[target];
 await run(command, args, directory);

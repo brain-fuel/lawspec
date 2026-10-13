@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/Example/Resources.swift
+<<<<<<<
+    static func drainPool(_ value0: Pool) { pool(value0).amount = 0 }
+=======
+    static func drainPool(_ value0: Pool) { _ = pool(value0) }
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/Example/Crypto.swift
+<<<<<<<
+        Array(hash.sha3(bytes).value[0..<8])
+=======
+        Array(hash.sha3(bytes).value[0..<7])
+>>>>>>>

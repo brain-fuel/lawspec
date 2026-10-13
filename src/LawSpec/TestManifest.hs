@@ -70,7 +70,7 @@ testManifest target testDir program =
       (ModelChecks.checkAction check /= ModelChecks.Supervision)
       (if target == "csharp" then pascalCase (ModelChecks.checkName check) else ModelChecks.checkName check) [] Nothing Nothing
       (maybe False harnessParallel (unitHarnessSettings u))
-  | target `elem` ["fsharp", "csharp"], u <- programUnits program
+  | target `elem` ["fsharp", "csharp", "swift"], u <- programUnits program
   , not (null (unitMachines u) && null (unitSupervisors u))
   , let unit = idText (unitId u)
   , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ]
@@ -114,6 +114,7 @@ benchmarkManifest target testDir program =
       "csharp" -> DotNet.pascal nativeName
       "groovy" -> "benchmark: " ++ unwords (words' n)
       "clojure" -> "benchmark--" ++ intercalate "-" (words' n)
+      "swift" -> DotNet.camel nativeName
       _ -> "benchmark " ++ n
 
 relocated :: Maybe String -> String -> FilePath -> FilePath
@@ -125,6 +126,7 @@ defaultTestDirectory :: String -> String
 defaultTestDirectory target = case target of
   "fsharp" -> "tests"
   "csharp" -> "tests"
+  "swift" -> "tests"
   "java" -> "src/test/java"
   "kotlin" -> "src/test/kotlin"
   "scala" -> "src/test/scala"
@@ -152,6 +154,7 @@ unitTestPath target unit = case target of
   "clojure" -> "test/" ++ intercalate "/" parts ++ "_lawspec_test.clj"
   -- A Spock specification (LawSpec.Groovy.Emit).
   "groovy" -> "src/test/groovy/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpec.groovy"
+  "swift" -> "tests/LawSpec/" ++ dotnetName unit ++ ".swift"
   jvm -> "src/test/" ++ jvm ++ "/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpecTest" ++
     (if jvm == "kotlin" then ".kt" else if jvm == "scala" then ".scala" else ".java")
   where
@@ -172,7 +175,10 @@ pascalCase = DotNet.pascal
 
 -- | The test file of a unit's .NET model checks.
 dotnetModelsPath :: String -> String -> FilePath
-dotnetModelsPath target unit = "tests/LawSpec/" ++ dotnetName unit ++ "Models" ++ (if target == "csharp" then ".cs" else ".fs")
+dotnetModelsPath target unit = "tests/LawSpec/" ++ dotnetName unit ++ "Models" ++ (case target of
+  "csharp" -> ".cs"
+  "swift" -> ".swift"
+  _ -> ".fs")
 
 -- | The declarations a law calls directly; definitions cannot call adapters.
 callees :: Expr -> [Id]

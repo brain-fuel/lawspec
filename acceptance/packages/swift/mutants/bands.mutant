@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.swift
+<<<<<<<
+        if cents < 10000 { return .low }
+=======
+        if cents < 100000 { return .low }
+>>>>>>>

@@ -26,6 +26,7 @@ where generated files go, and how LawSpec types appear in your code.
 | [`scala`](scala.md) | JDK 25, Scala CLI 1.16, Scala 3.9.0, over the JVM runtime | ScalaTest 3.2.20, ScalaCheck 1.20.0 | `scala test .` |
 | [`clojure`](clojure.md) | JDK 25, Clojure CLI 1.12, deps.edn, over the Java model | test.check 1.1.3, clojure.test | `clojure -M:test` |
 | [`groovy`](groovy.md) | JDK 25, Gradle 9.1–9.3, Groovy 5.0, over the Java model | Spock 2.5, JetCheck 0.3.0 | `gradle test` |
+| [`swift`](swift.md) | Swift 6.2+, SwiftPM, macOS 26 for crypto | Swift Testing, LawSpec's property engine | `swift test` |
 
 Exact version bounds are in [compatibility](../../reference/compatibility.md).
 

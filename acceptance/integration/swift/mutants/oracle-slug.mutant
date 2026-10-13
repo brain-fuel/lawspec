@@ -1,0 +1,14 @@
+expect-any: Hello | https://example.com/path
+@@ src/Example/Slug.swift
+<<<<<<<
+*
+=======
+// User-owned LawSpec adapter.
+import Foundation
+import LawSpecRuntime
+
+extension Example.Slug {
+    static func normalize(_ x: String) -> String { x }
+    static func referenceNormalize(_ x: String) -> String { x }
+}
+>>>>>>>

@@ -198,6 +198,9 @@
           },
           {
             "path": "how-to/targets/clojure.md"
+          },
+          {
+            "path": "how-to/targets/swift.md"
           }
         ]
       }

@@ -5,7 +5,7 @@
 --                                                kotlin, python, javascript,
 --                                                typescript, haskell, fsharp,
 --                                                csharp, scala, erlang, elixir,
---                                                gleam, groovy and clojure
+--                                                gleam, groovy, clojure and swift
 --   lawspec-dev bench kafka --scale 10000 rust   a smaller workload
 --   lawspec-dev bench kafka --generate go        write the project only
 --   lawspec-dev bench kafka --typed              which definitions and
@@ -64,7 +64,7 @@ benchCommand arguments = case arguments of
   "compile" : scales -> compileBench (if null scales then [100, 200, 400, 800] else map read scales)
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
-    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp", "scala", "erlang", "elixir", "gleam", "groovy", "clojure"] else targets)
+    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell", "fsharp", "csharp", "scala", "erlang", "elixir", "gleam", "groovy", "clojure", "swift"] else targets)
   [] -> die "usage: lawspec-dev bench <name> [--scale N] [--generate] [target...] | --typed"
   where
     options ("--scale" : n : rest) (_, g, ts) = options rest (Just n, g, ts)
@@ -173,7 +173,7 @@ typedReport name = do
   let declarations = C.programDataDeclarations program
       units = C.programUnits program
       definitions = length (concatMap C.unitDefinitions units)
-  forM_ [ ("rust, go, python, javascript, typescript, haskell", typedPlanPerforming scalarTypes declarations units)
+  forM_ [ ("rust, go, python, javascript, typescript, haskell, swift", typedPlanPerforming scalarTypes declarations units)
         , ("java, kotlin, scala, groovy, clojure", typedPlanPerforming jvmScalars declarations units)
         , ("fsharp, csharp", typedPlanPerforming scalarTypes (dotnetTypedDeclarations [] declarations) units)
         , ("erlang, elixir, gleam", typedPlanPerforming scalarTypes (beamTypedDeclarations [] declarations) units) ] $ \(label, plan) -> do
@@ -278,6 +278,9 @@ commands target project = case target of
   "gleam" -> pure ([("gleam", ["build"])],
     ("erl", ["+sbwt", "none", "-noshell", "-pa", "build/dev/erlang/lawspec_example/ebin", "-pa", "build/dev/erlang/gleam_stdlib/ebin",
       "-eval", "kafka_bench:main(), halt().", "-extra"]))
+  -- The Swift driver is an executable target its Package.swift adds.
+  "swift" -> pure ([("swift", ["build", "-c", "release", "--product", "KafkaBench"])],
+    (".build/release/KafkaBench", []))
   _ -> die ("no benchmark runner for " ++ target)
 
 -- | Throughput per phase and memory, from the driver's lines.

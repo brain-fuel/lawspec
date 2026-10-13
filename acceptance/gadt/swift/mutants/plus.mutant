@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.swift
+<<<<<<<
+        case .plus(let left, let right): return evalNumber(left) + evalNumber(right)
+=======
+        case .plus(let left, let right): return evalNumber(left) - evalNumber(right)
+>>>>>>>

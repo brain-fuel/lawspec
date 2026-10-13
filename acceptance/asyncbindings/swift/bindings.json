@@ -1,0 +1,12 @@
+{
+  "types": [
+    {"type": "example.warehouse::type::Shelf", "native": ["Warehouse", "Shelf"]}
+  ],
+  "functions": [
+    {"declaration": "example.warehouse::priceOf", "native": ["Warehouse", "Stock", "priceOf"]},
+    {"declaration": "example.warehouse::quoteOf", "native": ["Warehouse", "Stock", "quoteOf"]},
+    {"declaration": "example.warehouse::newShelf", "constructor": ["Warehouse", "Shelf"]},
+    {"declaration": "example.warehouse::restock", "method": "restock"},
+    {"declaration": "example.warehouse::count", "method": "count"}
+  ]
+}

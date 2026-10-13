@@ -1,0 +1,6 @@
+@@ src/Example/Keywords.swift
+<<<<<<<
+    static func `class`(_ value0: BigInt) -> BigInt { value0 << 1 }
+=======
+    static func `class`(_ value0: BigInt) -> BigInt { value0 << 2 }
+>>>>>>>

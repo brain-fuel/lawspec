@@ -1,0 +1,12 @@
+@@ src/Example/Collections.swift
+<<<<<<<
+        SortedSet(value0)
+    }
+
+    static func wordCounts
+=======
+        SortedSet(value0.dropFirst())
+    }
+
+    static func wordCounts
+>>>>>>>

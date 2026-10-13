@@ -1,0 +1,10 @@
+@@ src/Example/ScalarAdapters.swift
+<<<<<<<
+    static func preserveBig(_ value0: UInt64) -> UInt64 {
+        value0
+    }
+=======
+    static func preserveBig(_ value0: UInt64) -> UInt64 {
+        UInt64(exactly: Double(value0)) ?? UInt64.max
+    }
+>>>>>>>

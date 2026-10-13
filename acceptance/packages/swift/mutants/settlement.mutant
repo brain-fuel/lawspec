@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.swift
+<<<<<<<
+        case .gbp: return .eur
+=======
+        case .gbp: return .usd
+>>>>>>>

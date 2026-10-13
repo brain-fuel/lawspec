@@ -1,0 +1,7 @@
+@@ src/Example/Distribution.swift
+<<<<<<<
+            try tally.add(n)
+            return try tally.add(n)
+=======
+            return try tally.add(n)
+>>>>>>>

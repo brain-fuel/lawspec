@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.swift
+<<<<<<<
+    static func add(_ a: Int8, _ b: Int8) -> BigInt { BigInt(a) + BigInt(b) }
+=======
+    static func add(_ a: Int8, _ b: Int8) -> BigInt { BigInt(a &+ b) }
+>>>>>>>

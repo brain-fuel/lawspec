@@ -1,0 +1,9 @@
+expect: charge captures once
+@@ src/Example/Abilities.swift
+<<<<<<<
+        case .approved(let cents): return gateway.capture(cents).cents == value0
+=======
+        case .approved(let cents):
+            _ = gateway.capture(cents)
+            return gateway.capture(cents).cents == value0
+>>>>>>>

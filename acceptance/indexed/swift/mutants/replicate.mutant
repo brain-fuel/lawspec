@@ -1,0 +1,6 @@
+@@ src/Example/Indexed.swift
+<<<<<<<
+        while i < value0 {
+=======
+        while i <= value0 {
+>>>>>>>

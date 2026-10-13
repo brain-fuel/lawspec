@@ -24,7 +24,7 @@ import System.FilePath ((</>), takeDirectory, takeExtension)
 import System.IO (readFile')
 import System.Process (readProcessWithExitCode)
 import Gen.Api (apiSources)
-import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage)
+import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage, embedSwift)
 import Gen.Json
 import Gen.Template
 import LawSpec.Code.Doc (Layout(..))
@@ -89,12 +89,14 @@ planOutputs = do
   runtimes <- embedRuntimes
   defaults <- embedDefaults
   dotnet <- embedDotNet
+  swift <- embedSwift
   groovy <- embedJvmLanguage "groovy" "GroovySources"
   clojure <- embedJvmLanguage "clojure" "ClojureSources"
   let whole = [ Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
               , Output "src/LawSpec/DotNetSources.hs" dotnet False
               , Output "src/LawSpec/GroovySources.hs" groovy False
-              , Output "src/LawSpec/ClojureSources.hs" clojure False ] ++
+              , Output "src/LawSpec/ClojureSources.hs" clojure False
+              , Output "src/LawSpec/SwiftSources.hs" swift False ] ++
         [ Output ("npm" </> name) content False | (name, content) <- api ]
   pure (sortOn outputPath (whole ++ map fst rendered))
 

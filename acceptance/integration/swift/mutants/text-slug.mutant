@@ -1,0 +1,6 @@
+@@ src/Example/Slug.swift
+<<<<<<<
+    static func referenceNormalize(_ x: String) -> String { String(x.map { $0 == " " ? "-" : $0 }) }
+=======
+    static func referenceNormalize(_ x: String) -> String { x }
+>>>>>>>

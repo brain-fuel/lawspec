@@ -1,0 +1,17 @@
+expect: every case gets an empty store
+@@ src/Example/Resources.swift
+<<<<<<<
+    var items = [Int32: Int32]()
+    var isOpen = true
+
+    init() {
+=======
+    nonisolated(unsafe) static var sharedItems = [Int32: Int32]()
+    var items: [Int32: Int32] {
+        get { StoreState.sharedItems }
+        set { StoreState.sharedItems = newValue }
+    }
+    var isOpen = true
+
+    init() {
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Lessons/Codec.swift
+<<<<<<<
+{ String(value0) }
+=======
+{ String(abs(value0)) }
+>>>>>>>

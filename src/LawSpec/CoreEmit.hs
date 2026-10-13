@@ -21,6 +21,7 @@ import qualified LawSpec.BeamEmit as Beam
 import qualified LawSpec.DotNet.Emit as DotNet
 import qualified LawSpec.Groovy.Emit as Groovy
 import qualified LawSpec.Clojure.Emit as Clojure
+import qualified LawSpec.Swift.Emit as Swift
 import qualified LawSpec.NativeBinding as Binding
 import qualified LawSpec.NativeRequest as NB
 import qualified LawSpec.CoreScalarEmit as Scalar
@@ -96,6 +97,8 @@ emitPlanWithFormat minify "groovy" original =
 -- Clojure runs over them too (DEC-clojure-over-java).
 emitPlanWithFormat minify "clojure" original =
   Clojure.clojureFromJava Clojure.noClojureBindings original =<< emitPlanWithFormat minify "java" (escapePlan "clojure" original)
+emitPlanWithFormat minify "swift" original = Swift.emitSwift minify
+  (wirePlan (witnessPlan (ownedAbilityPlan original)))
 emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
   emittedFiles <- emitPlanFormatted minify target plan
@@ -529,7 +532,7 @@ emitPlanWithNativeOptions minify "clojure" sourceDir testDir unescaped unwitness
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
       bindings = escapeBindings target unescaped
-  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","scala","go","haskell","erlang","elixir","gleam","fsharp","csharp"] || not (any Binding.resolvedGeneratorStub
+  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","scala","go","haskell","erlang","elixir","gleam","fsharp","csharp","swift"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
     (Left [Diagnostic "native-binding" ("generator scaffolds are not implemented for " ++ target) Nothing])
   prepared <- if target == "go" && NB.hasBindings bindings
@@ -537,7 +540,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
   let plan = wrappedHandlers target bindings (boundHandlers bindings (if target `elem` ["kotlin", "scala"] then nativeHandles target bindings prepared else prepared))
-  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","scala","go","erlang","elixir","gleam","fsharp","csharp"] || all ((== Nothing) . Binding.resolvedCodec)
+  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","scala","go","erlang","elixir","gleam","fsharp","csharp","swift"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
   unless (target == "go" || null (NB.bindingGoImports bindings))
@@ -549,6 +552,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       Beam.emitBeamWithBindings target minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if target `elem` DotNet.dotnetTargets then
       DotNet.emitDotNetWithBindings target minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
+    else if target == "swift" then
+      Swift.emitSwiftWithBindings minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     -- Rust emits bound units itself, so it adds the companion code here.
     else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindings minify bindings plan
       <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan))))
@@ -585,6 +590,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
     then Beam.emitBeamWithBindings target False bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if NB.hasBindings bindings && minify && target `elem` DotNet.dotnetTargets
     then DotNet.emitDotNetWithBindings target False bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
+    else if NB.hasBindings bindings && minify && target == "swift"
+    then Swift.emitSwiftWithBindings False bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if NB.hasBindings bindings && minify && target == "rust"
     then emitRustWithBindings False bindings plan
     else if NB.hasBindings bindings && minify && target == "python" then do
@@ -630,6 +637,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
         "elixir" -> ("lib", "test")
         "fsharp" -> ("src", "tests")
         "csharp" -> ("src", "tests")
+        "swift" -> ("src", "tests")
         "go" -> ("", "")
         _ -> ("src", "test")
       src = maybe (fst defaults) id sourceDir
@@ -664,7 +672,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
               artifactPath a `elem` ["lawspec_crypto_build.escript", "priv/lawspec_crypto_native.c"]
             then artifactPath a -- Native build assets belong to the application root, beside ebin's priv.
             -- The .NET runtime projects stay beside the solution, whatever the layout.
-            else if target `elem` DotNet.dotnetTargets && "lawspec/" `isPrefixOf` artifactPath a then artifactPath a
+            else if (target `elem` DotNet.dotnetTargets || target == "swift") && "lawspec/" `isPrefixOf` artifactPath a then artifactPath a
             else if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a)
             -- Test resources (JUnit's configuration) stay where the build finds them.
             else if "src/test/resources/" `isPrefixOf` artifactPath a then artifactPath a

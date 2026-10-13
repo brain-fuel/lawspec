@@ -15,7 +15,8 @@ export type Target =
     'csharp' |
     'scala' |
     'groovy' |
-    'clojure';
+    'clojure' |
+    'swift';
 
 export interface Source {
   path: string;

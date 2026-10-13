@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/Example/Failures.swift
+<<<<<<<
+            if value0 % 2 != 0 { return .decline(reason: "an odd amount") }
+=======
+            if value0 % 2 != 0 && value0 > 50000 { return .decline(reason: "an odd amount") }
+>>>>>>>

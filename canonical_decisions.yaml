@@ -533,6 +533,39 @@ DEC-beam-property-libraries:
   decided: 0.24.0
   refs: [proper, stream-data, qcheck]
 
+DEC-swift-runtime-from-scratch:
+  status: decided
+  question: How does LawSpec reach Swift, as a port of another runtime or as a runtime written for Swift?
+  answer: |
+    A runtime written for Swift 6, with no package dependencies. Portable values are a Swift enum with indirect cases and LawSpec's own BigInt; data types are structs and enums with associated values (indirect where recursive) that compare by LawSpec's order through the Portable protocol, since Swift compares a String by canonical equivalence and LawSpec by code point; List, Set and KeyVal are the runtime's persistent PersistentList, SortedSet and SortedMap (DEC-swift-persistent-list). A failure an adapter, operation or definition declares is a typed throw, throws(E), and the runtime raises LawSpecError and RaisedFailure. Abilities are protocols with bridges to logical handlers; async adapters are async functions that the synchronous runtime awaits on its own large-stack threads, never on the cooperative pool. Actors are the runtime's supervised mailboxes on runtime threads, with async overloads for Swift callers (DEC-swift-actors-on-runtime-threads); sessions, mailboxes and the secure network speak the shared wire format, and lawspec.crypto uses CryptoKit, with pure Swift fallbacks only where CryptoKit lacks an operation. Projects are SwiftPM packages tested with Swift Testing; properties run on the runtime's engine (DEC-swift-property-library). Decided by the owner for 0.24.0.
+  opened: 0.24.0
+  decided: 0.24.0
+
+DEC-swift-property-library:
+  status: decided
+  question: Every target runs properties on its ecosystem's property library. Which library runs Swift properties, and how do LawSpec's generators and harness sit on it?
+  answer: |
+    No maintained Swift library fits, so the runtime has a small engine driven by Swift Testing, the one exception to running on a standard property library. The survey (October 2026): SwiftCheck has had no release since 2019 and no Swift 6 support; PropertyBased 2.0.1 (x-sheep/swift-property-based, MIT, no dependencies, Swift Testing integration) has no bind or size, so no dependent generation, seeds each case from the system generator so one seed cannot replay a run, runs a fixed seed for one case only, and shrinks per type without a step limit; Exhaust 1.5.8 (nesevis/exhaust) shrinks recorded choices inside filters and binds, but its next release already needs Swift 6.4, it releases several times a day, pulls in swift-syntax and macros and, on macOS, a binary framework downloaded from GitHub, and fingerprints generators by source location, which generators built at runtime from a schema share; swift-gen generates without shrinking or a runner; SwiftQC, swift-test-kit, hegel-swift, Premise and PropertyTestingKit are dormant, pin branches, clash with the toolchain's Testing, vendor a native engine or need a patched compiler; and Swift Testing itself has only fixed parameterized arguments. The engine is LawSpec.Testing's Gen, as on .NET before FsCheck: a generator draws from the portable SplitMix64 sequence at a size and builds each value's shrink tree, so a bound input's shrink regenerates its dependants from the same random state and every candidate stays inside the refinement. Property.check draws cases at sizes growing from 0 to 100 over the run and with each discard, discards up to maxAttempts, shrinks the first failure along its tree for at most maxShrinks steps, and prints the run's seed, which LAWSPEC_SEED replays. Strategies, cover, classify and labels, targeted search, the failure database, repeats, retries, timeouts, order, parallel units and benchmarks stay in the harness around it, as on every target. Revisit when a maintained library offers bind, sizes, seed replay of a whole run and shrinking inside filters without dependencies the generated packages cannot build offline. Decided by the owner for 0.24.0.
+  opened: 0.24.0
+  decided: 0.24.0
+  refs: [swift-testing]
+
+DEC-swift-actors-on-runtime-threads:
+  status: decided
+  question: Are LawSpec's Swift actors Swift actor types, which run on the cooperative pool, or the runtime's supervised mailboxes on threads of their own?
+  answer: |
+    The runtime's supervised mailboxes, each draining on a runtime thread, with the supervision tree, restart budgets, links and monitors of DEC-actors-otp-supervision. A handler runs LawSpec code, which is synchronous and may block (an async adapter is awaited by the runtime, an actor may call another actor), and blocking inside a Swift actor starves Swift's cooperative pool. So the generated actor classes are Sendable classes rather than Swift actor types; each message has a blocking method for synchronous code and an async overload of the same name that awaits the reply on a runtime thread, so async Swift code writes try await account.deposit(5) as it would with a Swift actor. This departs from the plan's Swift actors; revisit if the runtime gains an async evaluator.
+  opened: 0.24.0
+  decided: 0.24.0
+
+DEC-swift-persistent-list:
+  status: decided
+  question: Which Swift type represents LawSpec's List, given that typed definitions recurse over lists and spec handlers keep lists in their state?
+  answer: |
+    The runtime's PersistentList, a singly linked list whose prepend, first item and rest take constant time and share structure. Swift's Array is a value type that copies on change, so a definition that walks a list with its rest, or prepends to a log kept in a handler's state, copies the whole list at each step; the Kafka benchmark's produce and consume phases grew quadratically with it (0.8 s and 2.3 s at 100,000 records, minutes at a million). PersistentList is a Sequence and ExpressibleByArrayLiteral, so adapters iterate it, map it and make one from a literal, and Array(list) gives an Array. Bytes, Utf16Text and CodePointText stay arrays of scalars, which LawSpec never walks item by item. Its nodes are released one at a time, so dropping a long list never exhausts the stack.
+  opened: 0.24.0
+  decided: 0.24.0
+
 DEC-csharp-over-fsharp:
   status: decided
   question: How does LawSpec support C#, with a second runtime or over the F# one?

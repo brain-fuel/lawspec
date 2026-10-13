@@ -1,0 +1,13 @@
+expect-any: Hello | https://example.com/path
+@@ src/Example/CanonicalUrl.swift
+<<<<<<<
+*
+=======
+// User-owned LawSpec adapter.
+import Foundation
+import LawSpecRuntime
+
+extension Example.CanonicalUrl {
+    static func canonicalize(_ x: String) -> String { "" }
+}
+>>>>>>>

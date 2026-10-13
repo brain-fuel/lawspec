@@ -77,6 +77,8 @@ unknown, prerelease, missing and out-of-range versions.
 | Clojure | Java | 25 |
 | | Clojure | 1.12 |
 | | test.check | 1.1.3 |
+| Swift | Swift | 6.2, 6.3 |
+| | Swift Testing | from the toolchain |
 
 Java 25 and Python 3.13 are minimum baselines. New JVM releases are admitted
 after testing; the current profile certifies Java 25.
@@ -89,6 +91,10 @@ check this combination; non-crypto BEAM projects do not need a C compiler.
 
 .NET crypto projects reference BouncyCastle.Cryptography for the
 post-quantum algorithms .NET does not provide on the host.
+
+Swift crypto projects need macOS 26, whose CryptoKit provides ML-KEM-768 and
+ML-DSA-65. The runtime implements SHAKE256 and SLH-DSA itself, since CryptoKit
+lacks them.
 
 ## C# over F#
 
@@ -148,6 +154,7 @@ When `init` creates a scaffold, it pins:
 | Scala | `project.scala`: Scala 3.9.0, ScalaCheck 1.20.0, ScalaTest 3.2.20 (`scalatest-funsuite`) |
 | Clojure | Clojure 1.12.5, test.check 1.1.3, a `:test` alias running `lawspec.test-runner` |
 | Groovy | Groovy 5.0.8, a Java 25 toolchain, Spock 2.5-groovy-5.0, JetCheck 0.3.0, JUnit Jupiter API 5.14.0, joint Java and Groovy source sets |
+| Swift | `swift-tools-version: 6.2`, `.macOS(.v26)`, no package dependencies |
 
 ## What the checks inspect
 

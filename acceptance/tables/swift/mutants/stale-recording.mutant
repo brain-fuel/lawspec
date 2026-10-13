@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/Example/Tables.swift
+<<<<<<<
+    static func label(_ parcel: Int32) -> String { "parcel \(parcel)" }
+=======
+    static func label(_ parcel: Int32) -> String { parcel == 1 ? "parcel one" : "parcel \(parcel)" }
+>>>>>>>

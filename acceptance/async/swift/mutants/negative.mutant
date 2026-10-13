@@ -1,0 +1,6 @@
+@@ src/Example/Orders.swift
+<<<<<<<
+        sku == "free" ? 0 : Int32(sku.unicodeScalars.count % 100)
+=======
+        -1
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Alternatives.swift
+<<<<<<<
+    static func referenceRender(_ x: Int32) -> String { "\(x)" }
+=======
+    static func referenceRender(_ x: Int32) -> String { "broken" }
+>>>>>>>

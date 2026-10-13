@@ -1,0 +1,8 @@
+@@ src/Shop/Domain.swift
+<<<<<<<
+        converted.currency = currency
+        return converted
+=======
+        _ = currency
+        return converted
+>>>>>>>
