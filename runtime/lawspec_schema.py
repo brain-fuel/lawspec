@@ -86,9 +86,14 @@ class Constructor:
     # Existentials only a value determines (parameter numbers); their types
     # travel as the trailing Text witness fields.
     witnesses: tuple = ()
+    # Texts a refined field draws besides its native ones (field index,
+    # texts): samples of the regex its refinement matches it against.
+    hints: tuple = ()
 
     def __post_init__(self):
         object.__setattr__(self, "fields", tuple(self.fields))
+        object.__setattr__(self, "hints", tuple(
+            (index, tuple(texts)) for index, texts in self.hints))
         object.__setattr__(self, "predicates", tuple(self.predicates))
         object.__setattr__(self, "indices", tuple(self.indices))
         object.__setattr__(self, "refinements", tuple(

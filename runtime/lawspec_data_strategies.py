@@ -161,6 +161,12 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
                         continue
                     children = [build(field.type, cost)
                                 for field, cost in zip(fields, costs)]
+                    # A field a regex refines also draws the regex's
+                    # samples, so the refinement below rarely rejects.
+                    for index, texts in constructor.hints:
+                        if index < len(children) and texts:
+                            children[index] = st.one_of(
+                                children[index], st.sampled_from(texts))
                     values = st.tuples(*children).map(
                         lambda values, tag=constructor.tag, keys=keys:
                         ls.DataValue(tag, tuple(values) + keys))

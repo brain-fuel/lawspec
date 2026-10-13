@@ -118,10 +118,11 @@ planProperty registry programMachineBits invoke definitions p = do
         Just sets | product (map (toInteger . length) sets) <= toInteger (exhaustiveLimit settings) -> Just <$> filterM (validTupleWithDefinitions registry programMachineBits invoke qs) (sequence sets)
         _ -> Right Nothing
       unless (finite /= Just []) (Left "refined input domain has no valid tuples")
-      -- A text refined by a regex starts from texts the regex matches.
+      -- A text refined by a regex starts from texts the regex matches, and
+      -- a value whose field is, from values with such fields.
       bs <- sequence [case domain of
           Just values | hasValueContracts registry ty -> pure values
-          _ -> (patternValues definitions q ++) <$> boundariesWithRegistry registry programMachineBits ty
+          _ -> (\base -> patternValues definitions q ++ fieldPatternValues definitions q base ++ base) <$> boundariesWithRegistry registry programMachineBits ty
         | (q,ty,domain) <- zip3 qs types domains]
       unless (all (not . null) bs) (Left "uninhabited input domain")
       let tuples = if null bs then [[]] else [[xs !! (i `mod` length xs) | xs <- bs] | i <- [0..maximum (map length bs)-1]]
@@ -250,6 +251,62 @@ refinedPatterns definitions q =
         , [parameter] <- definitionArguments d ->
           patterns (depth - 1) (binderId parameter) (definitionBody d)
       _ -> []
+
+-- | Boundary values of a data input whose refinement matches one of its
+-- fields against a regex (validPet p, whose body says p.name matches regex
+-- ...): each boundary value with that field replaced by texts the regex
+-- matches, so generation starts from values the refinement accepts rather
+-- than filtering random ones. ref:DEC-shrink-within-domain
+fieldPatternValues :: [Definition] -> Quantifier -> [Value] -> [Value]
+fieldPatternValues definitions q values = nub
+  [ DataValue ty tag (take index fields ++ [ScalarValue (SSequence "Text" (map fromEnum sample))] ++ drop (index + 1) fields)
+  | (index, pattern) <- nub (concatMap (patterns (3 :: Int) (binderId (quantifiedBinder q))) (quantifiedPredicates q))
+  , Right regex <- [parseRegex pattern], sample <- regexSamples 4 regex
+  , DataValue ty tag fields <- values, index < length fields
+  , ScalarValue (SSequence "Text" _) <- [fields !! index] ]
+  where
+    patterns depth current e = case expressionNode e of
+      ShortCircuit And a b -> patterns depth current a ++ patterns depth current b
+      Let _ value body -> patterns depth current value ++ patterns depth current body
+      Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, subject]
+        | Just index <- field (unconverted subject) -> [(index, map toEnum pattern)]
+      -- A call on the input: the callee's body, about its parameter.
+      ExternalCall callee [argument] | local argument == Just current, depth > 0
+        , d : _ <- [d | d <- definitions, declarationId (definitionDeclaration d) == callee]
+        , [parameter] <- definitionArguments d ->
+          patterns (depth - 1) (binderId parameter) (definitionBody d)
+      _ -> []
+      where
+        -- p.name, or the match a backend's plan lowers it to.
+        field subject = case expressionNode subject of
+          Project _ index inner | local inner == Just current -> Just index
+          Match inner [MatchCase _ binders (Expr _ (Local chosen) _)] | local inner == Just current ->
+            lookup chosen (zip (map binderId binders) [0 ..])
+          _ -> Nothing
+    local e = case expressionNode (unconverted e) of
+      Local l -> Just l
+      _ -> Nothing
+
+-- | Texts a constructor's Text field draws besides its native ones: samples of
+-- each regex its refinement matches the field against, directly or through a
+-- definition the refinement inlines, so a narrow pattern is built rather than
+-- filtered. ref:DEC-shrink-within-domain
+fieldRegexSamples :: Binder -> [Expr] -> [String]
+fieldRegexSamples binder predicates =
+  [ sample | binderType binder == scalarType "Text"
+  , pattern <- nub (concatMap (patterns [binderId binder]) predicates)
+  , Right regex <- [parseRegex pattern], sample <- regexSamples 24 regex ]
+  where
+    patterns names e = case expressionNode e of
+      ShortCircuit And a b -> patterns names a ++ patterns names b
+      Let b value body | aliases names value -> patterns (binderId b : names) body
+      Let _ value body -> patterns names value ++ patterns names body
+      Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, subject] | aliases names subject -> [map toEnum pattern]
+      _ -> []
+    aliases names e = case expressionNode e of
+      Local l -> l `elem` names
+      Convert CheckedArgument _ inner -> aliases names inner
+      _ -> False
 
 -- | Safe comparison operands seed sparse domains without eagerly evaluating a
 -- partial expression that the predicate would otherwise guard.
