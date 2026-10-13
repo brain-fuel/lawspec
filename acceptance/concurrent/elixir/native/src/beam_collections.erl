@@ -15,7 +15,9 @@ new(Kind) ->
     {ok,Pid}=gen_server:start(?MODULE,{self(),Kind},[]),
     Id=ets:update_counter(?MODULE,next_id,{2,1},{next_id,0}),
     true=ets:insert(?MODULE,{Id,Pid}), Id.
-request(Id,Operation) -> gen_server:call(ets:lookup_element(?MODULE,Id,2),Operation).
+%% No call deadline: the law's own timeout catches a hang, and a starved
+%% caller is not a failed command.
+request(Id,Operation) -> gen_server:call(ets:lookup_element(?MODULE,Id,2),Operation,infinity).
 offer(Id,Value) -> request(Id,{offer,Value}).
 poll(Id) -> request(Id,poll).
 size(Id) -> request(Id,size).

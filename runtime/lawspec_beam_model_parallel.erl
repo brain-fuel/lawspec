@@ -119,10 +119,15 @@ perturb(Random) ->
     case Choice of
         0 -> ok;
         1 -> erlang:yield();
-        %% Native BEAM timers round the portable sub-millisecond sleeps up.
-        _ -> receive after 1 -> ok end
+        %% The portable sub-millisecond nap: a run of yields, since a BEAM
+        %% timer rounds it up to a millisecond, which a loaded machine
+        %% stretches many times over across a check's hundreds of runs.
+        _ -> nap(16)
     end,
     Next.
+
+nap(0) -> ok;
+nap(N) -> erlang:yield(), nap(N - 1).
 
 %% Search all orders consistent with process order and (for linearizability)
 %% real time. Memoization is on complete logical terms and branch positions,
