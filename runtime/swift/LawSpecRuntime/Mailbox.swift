@@ -139,8 +139,8 @@ public final class Mailbox: NodeService, @unchecked Sendable {
         return .data("Maybe::Nothing", [])
     }
 
-    /// The next value within a time (seconds), or nil.
-    public func receive(within seconds: Double) throws -> Value? { try wait(max(0, seconds)) }
+    /// The next value within a time, or nil.
+    public func receive(within timeout: Duration) throws -> Value? { try wait(max(0, Timeouts.seconds(timeout))) }
 
     private func settle(_ r: Waiter?) {
         if let r {
@@ -216,5 +216,20 @@ public enum Mailboxes {
 
     public static func connect(_ node: Node, _ address: String, _ descriptor: String, _ timeout: Int) throws -> MailboxSender {
         try MailboxSender(node, address, descriptor, timeout)
+    }
+}
+
+/// LawSpec Durations as the waits the network and mailboxes take.
+public enum Timeouts {
+    /// A duration in seconds.
+    public static func seconds(_ d: Duration) -> Double {
+        let (s, atto) = d.components
+        return Double(s) + Double(atto) / 1e18
+    }
+
+    /// A duration in whole milliseconds, at least 0.
+    public static func milliseconds(_ d: Duration) -> Int {
+        let (s, atto) = d.components
+        return max(0, Int(s) * 1000 + Int(atto / 1_000_000_000_000_000))
     }
 }

@@ -102,9 +102,9 @@ extension Example.Distribution {
             let sender = try LawSpec.Mailboxes.LedgerMailbox.connect(here, there.address + "/ledger")
             try sender.send(Int64(x))
             try sender.send(Int64(x))
-            let total = try ledger.receive(timeout: 5) + ledger.receive(timeout: 5)
+            let total = try ledger.receive(timeout: .seconds(5)) + ledger.receive(timeout: .seconds(5))
             // Nothing more comes, so receiving within a moment gives nothing.
-            return try ledger.receiveWithin(0.02) != nil ? -1 : total
+            return try ledger.receiveWithin(.milliseconds(20)) != nil ? -1 : total
         }
     }
 

@@ -160,11 +160,11 @@ emitActors bits datas units
                 [ "    ])"
                 , "}"
                 , ""
-                , "/// The actor served at address on another node; each call waits up to timeout seconds."
-                , "public static func connect(_ node: Node, _ address: String, timeout: Double = 5) throws -> " ++ cls ++ "Remote {"
+                , "/// The actor served at address on another node; each call waits up to timeout."
+                , "public static func connect(_ node: Node, _ address: String, timeout: Duration = .seconds(5)) throws -> " ++ cls ++ "Remote {"
                 , "    " ++ cls ++ "Remote(try Remote.connect(node, address, \"call\", ["
                 ] ++ map ("        " ++) [s ++ "," | (_, s, _) <- entries] ++
-                [ "    ], Int(timeout * 1000)))"
+                [ "    ], Timeouts.milliseconds(timeout)))"
                 , "}" ]
               client =
                 [ "/// Actor " ++ actorName a ++ " on another node: each method sends its message and waits for the reply."

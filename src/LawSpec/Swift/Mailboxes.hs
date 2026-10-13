@@ -36,9 +36,9 @@ emitMailboxes bits datas units
                   , "public static func serve(_ node: Node, _ name: String) throws -> " ++ cls ++ " {"
                   , "    " ++ cls ++ "(try Mailbox.serve(node, name, descriptor))"
                   , "}" ]
-                , [ "/// Sends to the mailbox at address on another node; each send waits up to timeout seconds for it to arrive."
-                  , "public static func connect(_ node: Node, _ address: String, timeout: Double = 5) throws -> " ++ cls ++ "Sender {"
-                  , "    " ++ cls ++ "Sender(try MailboxSender(node, address, descriptor, Int(timeout * 1000)))"
+                , [ "/// Sends to the mailbox at address on another node; each send waits up to timeout for it to arrive."
+                  , "public static func connect(_ node: Node, _ address: String, timeout: Duration = .seconds(5)) throws -> " ++ cls ++ "Sender {"
+                  , "    " ++ cls ++ "Sender(try MailboxSender(node, address, descriptor, Timeouts.milliseconds(timeout)))"
                   , "}" ]
                 , [ "/// The served mailbox's address."
                   , "public func address() throws -> String { try mailbox.address() }" ] ]
@@ -64,13 +64,13 @@ emitMailboxes bits datas units
                 , "public func send(_ value: " ++ native ++ ") throws { try mailbox.send(try " ++ codec ++ ".fromNative(value)) }" ]
               , [ "/// The next message, waiting for one; fails once closed and empty."
                 , "public func receive() throws -> " ++ native ++ " { try " ++ codec ++ ".toNative(try mailbox.receive()) }" ]
-              , [ "/// The next message within timeout seconds, if one comes."
-                , "public func receiveWithin(_ timeout: Double) throws -> " ++ optional native ++ " {"
+              , [ "/// The next message within timeout, if one comes."
+                , "public func receiveWithin(_ timeout: Duration) throws -> " ++ optional native ++ " {"
                 , "    guard let value = try mailbox.receive(within: timeout) else { return nil }"
                 , "    return try " ++ codec ++ ".toNative(value)"
                 , "}" ]
-              , [ "/// The next message within timeout seconds; fails when none comes."
-                , "public func receive(timeout: Double) throws -> " ++ native ++ " {"
+              , [ "/// The next message within timeout; fails when none comes."
+                , "public func receive(timeout: Duration) throws -> " ++ native ++ " {"
                 , "    guard let value = try mailbox.receive(within: timeout) else { throw Fail.with(\"Mailbox\", \"timeout\") }"
                 , "    return try " ++ codec ++ ".toNative(value)"
                 , "}" ]
