@@ -176,7 +176,7 @@ stepGroups options editor =
 -- Those two and the Haskell bootstrap and warm-up hold Stack's snapshot
 -- database. The runtime crate's steps share one Cargo target directory.
 -- Suites that wait on the real clock (actors, sessions, distribution and
--- their BEAM APIs, scheduling, resilience) are in the timing class, at most a
+-- their BEAM APIs, scheduling, resilience, workflows) are in the timing class, at most a
 -- third of the jobs at once, so a loaded machine cannot starve many of them
 -- together.
 --
@@ -259,10 +259,10 @@ warmUp :: String -> String
 warmUp target = target ++ "-crypto"
 
 -- | Suites whose laws wait on the real clock: deadlines, receive timeouts,
--- handshakes and overlapping naps.
+-- handshakes and overlapping naps (the workflows suite times an all group).
 timingSuites :: [String]
 timingSuites =
-  [ "actors", "sessions", "distribution", "concurrent", "scheduling", "resilience", "consistency"
+  [ "actors", "sessions", "distribution", "concurrent", "scheduling", "resilience", "consistency", "workflows"
   , "beam-remote-api", "beam-network-api", "beam-actor-api", "beam-session-api", "beam-mailbox-api" ]
 
 -- | The suite and target of an acceptance command.

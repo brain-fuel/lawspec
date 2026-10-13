@@ -7,8 +7,11 @@ import lawspec/workflow
 @external(erlang, "beam_policy_probe", "monotonic_millis")
 fn monotonic_millis() -> Int
 
+// A fast order first loads the workflow's modules, so loading code is not
+// timed with the checks.
 pub fn approved_quickly(n: Int) -> Bool {
   use _ <- workflow.with_real(0)
+  let _ = definitions.approve(data.Order(0))
   let started = monotonic_millis()
   let _ = definitions.approve(data.Order(n))
   monotonic_millis() - started < 550
