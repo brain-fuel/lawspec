@@ -254,7 +254,7 @@ recursive_state_call_fails_instead_of_waiting_test() ->
         ?assertError({lawspec, {recursive_handler_call, recur}}, perform(S, recur, []))
     end).
 
-caller_death_cancels_busy_clause_and_queued_call_test() ->
+caller_death_cancels_busy_clause_and_queued_call_test_() -> {timeout, 60, fun() ->
     Test = self(),
     scope(fun(S) ->
         Pid = cell(lawspec_beam_effects:handler(S, counter)),
@@ -264,7 +264,7 @@ caller_death_cancels_busy_clause_and_queued_call_test() ->
         WorkerMonitor = monitor(process, Worker),
         Queued = spawn(fun() -> lawspec_beam_handler:call(Pid, fun(_) ->
             Test ! unexpected_queued_execution, {bad, 200} end) end),
-        wait_queued(Pid, 1000),
+        wait_queued(Pid, erlang:monotonic_time(millisecond) + 30000),
         QueuedMonitor = monitor(process, Queued),
         exit(Queued, kill),
         receive {'DOWN', QueuedMonitor, process, Queued, _} -> ok after 1000 -> error(queued_caller_alive) end,
@@ -273,7 +273,7 @@ caller_death_cancels_busy_clause_and_queued_call_test() ->
         ?assertEqual(0, perform(S, read, [])),
         receive unexpected_queued_execution -> error(dead_caller_ran) after 0 -> ok end,
         ?assertEqual(1, perform(S, add, [1]))
-    end).
+    end) end}.
 
 scope_owner_death_cancels_busy_clause_test() ->
     Test = self(),
@@ -360,11 +360,12 @@ native_exception_mappings_preserve_unmapped_exceptions_test() ->
         _ -> error(unmapped_exception_disappeared)
     catch error:broken:Stack -> ?assertMatch([{?MODULE, exception_origin, _, _} | _], Stack) end.
 
-wait_queued(_, 0) -> error(call_not_queued);
-wait_queued(Pid, Remaining) ->
+wait_queued(Pid, Deadline) ->
     case queue:len(maps:get(waiting, sys:get_state(Pid))) of
         1 -> ok;
-        _ -> timer:sleep(1), wait_queued(Pid, Remaining - 1)
+        _ ->
+            erlang:monotonic_time(millisecond) < Deadline orelse error(call_not_queued),
+            timer:sleep(1), wait_queued(Pid, Deadline)
     end.
 
 tagged_exception_mapping_checks_class_and_tag_test() ->

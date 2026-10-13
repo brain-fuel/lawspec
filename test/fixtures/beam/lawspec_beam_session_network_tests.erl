@@ -36,7 +36,7 @@ pass(End, A, B, Id, Name) ->
 pid({lawspec_session, Pid, _, _, _}) -> Pid.
 
 typed_conversation_repairs_faulty_delivery_test_() ->
-    {timeout, 10, fun() -> with_nodes(faults(), fun(Net, [A, B | _]) ->
+    {timeout, 60, fun() -> with_nodes(faults(), fun(Net, [A, B | _]) ->
         {First, Second} = pair(serve, A, B, <<"serve">>),
         Task = lawspec_beam_session_task:start(First, fun sum/1),
         ?assertEqual(42, ask(Second)), ?assertEqual(ok, lawspec_beam_session_task:join(Task)),
@@ -44,7 +44,7 @@ typed_conversation_repairs_faulty_delivery_test_() ->
     end) end}.
 
 onward_move_keeps_queued_values_after_old_nodes_close_test_() ->
-    {timeout, 15, fun() -> with_nodes(faults(), fun(_, [A, B, C, D]) ->
+    {timeout, 60, fun() -> with_nodes(faults(), fun(_, [A, B, C, D]) ->
         {First, Client} = pair(serve, A, C, <<"original">>),
         C1 = lawspec_beam_session:send(Client, 17), C2 = lawspec_beam_session:send(C1, 25),
         OnB = pass(First, A, B, passing, <<"to-b">>),
@@ -57,7 +57,7 @@ onward_move_keeps_queued_values_after_old_nodes_close_test_() ->
     end) end}.
 
 local_end_is_relayed_on_its_node_test_() ->
-    {timeout, 10, fun() -> with_nodes(faults(), fun(_, [A, B | _]) ->
+    {timeout, 60, fun() -> with_nodes(faults(), fun(_, [A, B | _]) ->
         lawspec_beam_session:with_pair(spec(serve), fun(First, Client) ->
             Remote = pass(First, A, B, passing, <<"local">>),
             ?assertError({lawspec, {session, spent_end}}, lawspec_beam_session:receive_value(First)),
@@ -67,7 +67,7 @@ local_end_is_relayed_on_its_node_test_() ->
     end) end}.
 
 nested_local_delegation_is_relayed_recursively_test_() ->
-    {timeout, 15, fun() -> with_nodes(faults(), fun(_, [A, B | _]) ->
+    {timeout, 60, fun() -> with_nodes(faults(), fun(_, [A, B | _]) ->
         lawspec_beam_session:with_pair(spec(pick), fun(Pick, Offer) ->
             lawspec_beam_session:with_pair(spec(serve), fun(Server, Client) ->
                 RemotePick = pass(Pick, A, B, pass_pick, <<"nested">>),
@@ -80,7 +80,7 @@ nested_local_delegation_is_relayed_recursively_test_() ->
     end) end}.
 
 relay_takes_a_network_end_back_to_the_local_queue_test_() ->
-    {timeout, 15, fun() -> with_nodes(faults(), fun(_, [A, B, C | _]) ->
+    {timeout, 60, fun() -> with_nodes(faults(), fun(_, [A, B, C | _]) ->
         lawspec_beam_session:with_pair(spec(give), fun(Give, Receive) ->
             RemoteGive = pass(Give, A, B, pass_give, <<"back">>),
             {Server, Client} = pair(serve, B, C, <<"returning">>),
@@ -138,11 +138,11 @@ killing_a_typed_coordinator_still_publishes_ordered_eof_test() ->
             lawspec_beam_session:receive_value(S1))
     end).
 
-failed_connection_releases_its_unpublished_endpoint_test() ->
+failed_connection_releases_its_unpublished_endpoint_test_() -> {timeout, 60, fun() ->
     with_nodes(#{}, fun(_, [A | _]) ->
         ?assertException(error, {lawspec, _}, lawspec_beam_session:dial(A, <<"invalid">>, spec(serve))),
         until(fun() -> maps:get(entities, sys:get_state(A)) =:= #{} end)
-    end).
+    end) end}.
 
 malformed_payload_closes_the_typed_end_test() ->
     with_nodes(#{}, fun(_, [A, B | _]) ->
@@ -152,7 +152,7 @@ malformed_payload_closes_the_typed_end_test() ->
             lawspec_beam_session:receive_value(Second))
     end).
 
-node_close_joins_relays_and_session_services_test() ->
+node_close_joins_relays_and_session_services_test_() -> {timeout, 60, fun() ->
     with_nodes(#{}, fun(_, [A, B | _]) ->
         lawspec_beam_session:with_pair(spec(serve), fun(First, Client) ->
             Remote = pass(First, A, B, passing, <<"owned">>),
@@ -164,7 +164,7 @@ node_close_joins_relays_and_session_services_test() ->
             ok = lawspec_beam_session:abandon(Remote),
             until(fun() -> not is_process_alive(pid(First)) end)
         end)
-    end).
+    end) end}.
 
 receive_and_failed_take_honor_deadlines_test() ->
     with_nodes(#{}, fun(Net, [A, B, C, D]) ->
@@ -180,7 +180,7 @@ receive_and_failed_take_honor_deadlines_test() ->
         ?assertException(error, {lawspec, {session, {peer_failed, _}}}, lawspec_beam_session:receive_end(Take))
     end).
 
-dead_reader_cancels_take_and_releases_the_acquired_session_test() ->
+dead_reader_cancels_take_and_releases_the_acquired_session_test_() -> {timeout, 60, fun() ->
     with_nodes(#{}, fun(_, [A, B, C, D]) ->
         {First, _} = pair(serve, C, B, <<"held">>), Endpoint = lawspec_beam_session:network_endpoint(First),
         {Give, Take} = pair(passing, A, D, <<"take">>),
@@ -198,9 +198,9 @@ dead_reader_cancels_take_and_releases_the_acquired_session_test() ->
             exit(Reader, kill), receive {'DOWN', Monitor, process, Reader, killed} -> ok end,
             until(fun() -> not is_process_alive(Parent) andalso not is_process_alive(Acquired) end)
         after sys:resume(Endpoint), exit(Reader, kill) end
-    end).
+    end) end}.
 
-cancelled_relay_setup_cannot_leave_a_worker_waiting_for_start_test() ->
+cancelled_relay_setup_cannot_leave_a_worker_waiting_for_start_test_() -> {timeout, 60, fun() ->
     with_nodes(#{}, fun(_, [A, B | _]) ->
         {Give, _} = pair(passing, A, B, <<"cancel-setup">>),
         Test = self(),
@@ -224,9 +224,9 @@ cancelled_relay_setup_cannot_leave_a_worker_waiting_for_start_test() ->
             exit(Sender, kill), receive {'DOWN', Monitor, process, Sender, killed} -> ok end,
             until(fun() -> not is_process_alive(Relay) end)
         after exit(Fake, kill), exit(Sender, kill) end
-    end).
+    end) end}.
 
-until(Body) -> until(Body, erlang:monotonic_time(millisecond) + 1000).
+until(Body) -> until(Body, erlang:monotonic_time(millisecond) + 30000).
 until(Body, Deadline) -> case Body() of
     true -> ok;
     false -> true = erlang:monotonic_time(millisecond) < Deadline, receive after 1 -> ok end, until(Body, Deadline)

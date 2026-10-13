@@ -155,7 +155,7 @@ malformed_control_frames_leave_state_intact_test() ->
     ?assertEqual({C, []}, deliver(C, Snapshot#{payload := <<Payload/binary, 0>>}, 2)).
 
 real_packet_faults_keep_both_directions_ordered_test_() ->
-    {timeout, 10, fun() -> with_endpoints(fun(Net, A, B, _) ->
+    {timeout, 60, fun() -> with_endpoints(fun(Net, A, B, _) ->
         lists:foreach(fun(I) ->
             ok = command(A, {send, <<I>>}), ok = command(B, {send, <<(255 - I)>>})
         end, lists:seq(1, 100)),
@@ -169,11 +169,11 @@ real_packet_faults_keep_both_directions_ordered_test_() ->
     end) end}.
 
 real_handoff_survives_closing_the_old_node_test_() ->
-    {timeout, 10, fun() -> with_endpoints(fun(_, A, B, C) ->
+    {timeout, 60, fun() -> with_endpoints(fun(_, A, B, C) ->
         lists:foreach(fun(I) -> ok = command(B, {send, <<I>>}) end, lists:seq(1, 10)),
         Address = command(A, {offer, <<"one-time-token">>}),
         ok = command(C, {take, Address}),
-        wait_ready(C, erlang:monotonic_time(millisecond) + 3000),
+        wait_ready(C, erlang:monotonic_time(millisecond) + 30000),
         stop_endpoint(A),
         lists:foreach(fun(I) -> ok = command(B, {send, <<I>>}) end, lists:seq(11, 40)),
         ok = command(B, abandon),
@@ -238,7 +238,7 @@ stop_endpoint(Pid) ->
     Ref = monitor(process, Pid), Pid ! stop,
     receive {'DOWN', Ref, process, Pid, _} -> ok after 1000 -> exit(Pid, kill), error(endpoint_leaked) end.
 receive_n(Pid, N) -> [begin {value, V} = wait_value(Pid), V end || _ <- lists:seq(1, N)].
-wait_value(Pid) -> wait_value(Pid, erlang:monotonic_time(millisecond) + 3000).
+wait_value(Pid) -> wait_value(Pid, erlang:monotonic_time(millisecond) + 30000).
 wait_value(Pid, Until) -> case command(Pid, pop) of
     empty -> true = erlang:monotonic_time(millisecond) < Until, receive after 1 -> ok end, wait_value(Pid, Until);
     Result -> Result

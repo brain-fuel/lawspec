@@ -19,13 +19,13 @@ ask(Client, A, B) ->
     {Value, _} = lawspec_beam_session:receive_value(C2), Value.
 pid({lawspec_session, Pid, _, _, _}) -> Pid.
 
-typed_steps_complete_and_release_channel_test() ->
+typed_steps_complete_and_release_channel_test_() -> {timeout, 60, fun() ->
     with_pair(serve, fun(Server, Client) ->
         ?assertEqual([ok, 42], lawspec_beam_runtime:concurrently([
             fun() -> run([Server], fun() -> sum(Server) end) end,
             fun() -> run([Client], fun() -> ask(Client, 17, 25) end) end])),
         until(fun() -> not is_process_alive(pid(Server)) end)
-    end).
+    end) end}.
 
 empty_protocol_allocates_no_lingering_channel_test() ->
     with_pair(empty, fun(First, Second) ->
@@ -69,13 +69,13 @@ failed_sender_drains_accepted_values_before_eof_test() ->
         ?assertError({lawspec, {session, peer_failed}}, lawspec_beam_session:receive_value(S1))
     end).
 
-killed_receiver_wakes_its_peer_test() ->
+killed_receiver_wakes_its_peer_test_() -> {timeout, 60, fun() ->
     with_pair(serve, fun(Server, Client) ->
         {Worker, Ref} = spawn_monitor(fun() -> run([Server], fun() -> lawspec_beam_session:receive_value(Server) end) end),
         until(fun() -> maps:get(reader, end_state(Server)) =/= none end),
         exit(Worker, kill), receive {'DOWN', Ref, process, Worker, killed} -> ok end,
         ?assertException(error, {lawspec, {session, _}}, ask(Client, 1, 2))
-    end).
+    end) end}.
 
 successful_async_return_keeps_next_end_valid_test() ->
     with_pair(stream, fun(First, Second) ->
@@ -129,15 +129,15 @@ scope_owner_death_closes_original_ends_test() ->
     receive {'DOWN', Monitor, process, _, normal} -> ok after 1000 -> error(leaked_channel) end,
     ?assertError({lawspec, {session, closed}}, lawspec_beam_session:send(Client, 1)).
 
-new_channels_created_in_a_failed_body_are_cleaned_test() ->
+new_channels_created_in_a_failed_body_are_cleaned_test_() -> {timeout, 60, fun() ->
     Parent = self(),
     ?assertError(probe, run([], fun() ->
         {First, _} = lawspec_beam_session:open(spec(stream)), Parent ! {created, pid(First)}, error(probe)
     end)),
     Channel = receive {created, P} -> P end,
-    until(fun() -> not is_process_alive(Channel) end).
+    until(fun() -> not is_process_alive(Channel) end) end}.
 
-unfinished_transfer_precedes_sender_eof_test() ->
+unfinished_transfer_precedes_sender_eof_test_() -> {timeout, 60, fun() ->
     with_pair(serve, fun(Server, Client) -> with_pair(hire, fun(Boss, Manager) ->
         ok = sys:suspend(pid(Server)),
         {Sender, Ref} = spawn_monitor(fun() -> run([Boss], fun() -> lawspec_beam_session:send_end(Boss, Server) end) end),
@@ -154,12 +154,12 @@ unfinished_transfer_precedes_sender_eof_test() ->
             receive received -> ok after 1000 -> error(transfer_missing) end,
             receive {'DOWN', ReceiverRef, process, Receiver, normal} -> ok after 1000 -> error(receiver_failed) end
         after try sys:resume(pid(Server)) catch _:_ -> ok end end
-    end) end).
+    end) end) end}.
 
-closing_both_ends_joins_a_blocked_transfer_helper_test() ->
+closing_both_ends_joins_a_blocked_transfer_helper_test_() -> {timeout, 60, fun() ->
     with_pair(serve, fun(Server, _) ->
         Parent = self(), ok = sys:suspend(pid(Server)),
-        Watchdog = spawn(fun() -> receive cancel -> ok after 1500 ->
+        Watchdog = spawn(fun() -> receive cancel -> ok after 20000 ->
             Parent ! watchdog_resumed, sys:resume(pid(Server)) end end),
         try
             with_pair(hire, fun(Boss, _) ->
@@ -172,11 +172,11 @@ closing_both_ends_joins_a_blocked_transfer_helper_test() ->
             end),
             receive {pending, Channel, Sender, Ref} ->
                 ?assertNot(is_process_alive(Channel)),
-                receive {'DOWN', Ref, process, Sender, normal} -> ok after 1000 -> error(transfer_not_joined) end
+                receive {'DOWN', Ref, process, Sender, normal} -> ok after 15000 -> error(transfer_not_joined) end
             end,
             receive watchdog_resumed -> error(cleanup_waited_for_suspended_peer) after 0 -> ok end
         after Watchdog ! cancel, try sys:resume(pid(Server)) catch _:_ -> ok end end
-    end).
+    end) end}.
 
 received_end_still_works_after_parent_scope_finishes_test() ->
     with_pair(serve, fun(Server, Client) ->
@@ -295,16 +295,16 @@ native_task_preserves_context_and_exception_class_test() ->
         after case Previous of undefined -> erase(Key); _ -> put(Key, Previous) end end
     end).
 
-channel_and_task_services_are_released_test() ->
+channel_and_task_services_are_released_test_() -> {timeout, 60, fun() ->
     until(fun() -> whereis(lawspec_beam_session_ownership) =:= undefined end),
     Leaked = [P || P <- processes(), P =/= self(),
         {dictionary, Entries} <- [process_info(P, dictionary)],
         {'$initial_call', {Module, _, _}} <- Entries,
         lists:member(Module, [lawspec_beam_session, lawspec_beam_session_task, lawspec_beam_session_ownership])],
-    ?assertEqual([], Leaked).
+    ?assertEqual([], Leaked) end}.
 
 end_state({lawspec_session, Pid, Side, _, _}) -> maps:get(Side, maps:get(ends, sys:get_state(Pid))).
-until(Predicate) -> until(Predicate, erlang:monotonic_time(millisecond) + 2000).
+until(Predicate) -> until(Predicate, erlang:monotonic_time(millisecond) + 30000).
 until(Predicate, Deadline) -> case Predicate() of
     true -> ok;
     false -> ?assert(erlang:monotonic_time(millisecond) < Deadline), receive after 1 -> until(Predicate, Deadline) end

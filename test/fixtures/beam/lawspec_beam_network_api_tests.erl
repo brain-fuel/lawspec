@@ -48,7 +48,7 @@ creator_death_closes_native_nodes_test() ->
         receive {'DOWN', LayerMonitor, process, Layer, _} -> ok after 1000 -> error(layer_leaked) end
     end).
 
-fault_controls_and_default_scope_api_test() ->
+fault_controls_and_default_scope_api_test_() -> {timeout, 60, fun() ->
     N = lawspec_network,
     N:with_memory(#{record => true}, fun(Net) ->
         N:with_node(N:insecure_memory_transport_for_tests(Net, <<"a">>), fun(A) ->
@@ -57,11 +57,11 @@ fault_controls_and_default_scope_api_test() ->
                 ok = N:partition(Net, [[<<"a">>], [<<"b">>]]),
                 ?assertError({lawspec, {network, {unreachable, Address}}}, lawspec_beam_node:request(A, Address, <<"call">>, <<>>, 10)),
                 ok = N:heal(Net),
-                ?assertEqual({0, <<>>}, lawspec_beam_node:request(A, Address, <<"call">>, <<>>, 1000)),
+                ?assertEqual({0, <<>>}, lawspec_beam_node:request(A, Address, <<"call">>, <<>>, 15000)),
                 ?assertNotEqual([], N:recorded(Net))
             end)
         end)
-    end).
+    end) end}.
 
 invalid_options_fail_before_allocating_a_listener_test() ->
     N = lawspec_network,

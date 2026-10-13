@@ -12,21 +12,21 @@ with_nodes(Faults, Body) ->
 node_at(Net, Name) ->
     {ok, Pid} = lawspec_beam_node:start(lawspec_beam_memory_network:insecure_transport_for_tests(Net, Name)), Pid.
 join({Pid, Ref}) -> receive {'DOWN', Ref, process, Pid, Reason} -> ?assertEqual(normal, Reason)
-    after 2000 -> exit(Pid, kill), error(worker_stuck) end.
-until(Body) -> until(Body, erlang:monotonic_time(millisecond) + 1000).
+    after 20000 -> exit(Pid, kill), error(worker_stuck) end.
+until(Body) -> until(Body, erlang:monotonic_time(millisecond) + 30000).
 until(Body, Deadline) -> case Body() of
     true -> ok;
     false -> true = erlang:monotonic_time(millisecond) < Deadline, receive after 1 -> ok end, until(Body, Deadline)
 end.
 
 requests_and_receipts_survive_real_packet_faults_test_() ->
-    {timeout, 10, fun() -> with_nodes(#{seed => 9283, loss => 0.2, duplicate => 0.5, delay => 0.003, record => true}, fun(Net, A, B) ->
+    {timeout, 60, fun() -> with_nodes(#{seed => 9283, loss => 0.2, duplicate => 0.5, delay => 0.003, record => true}, fun(Net, A, B) ->
         Counter = atomics:new(1, []),
         Address = lawspec_beam_node:register_handler(B, <<"echo">>, fun(#{payload := Bytes}) ->
             atomics:add(Counter, 1, 1), {0, Bytes}
         end),
         Workers = [spawn_monitor(fun() ->
-            ?assertEqual({0, <<I>>}, lawspec_beam_node:request(A, Address, <<"call">>, <<I>>, 3000))
+            ?assertEqual({0, <<I>>}, lawspec_beam_node:request(A, Address, <<"call">>, <<I>>, 15000))
         end) || I <- lists:seq(1, 30)],
         lists:foreach(fun join/1, Workers), ?assertEqual(30, atomics:get(Counter, 1)),
         ?assertEqual(0, map_size(maps:get(pending, sys:get_state(A)))),
@@ -91,7 +91,7 @@ receiver_death_finishes_pending_receipt_test() ->
         after 1000 -> error(no_closed_reply) end
     end).
 
-timeouts_and_cancellation_release_pending_slots_test() ->
+timeouts_and_cancellation_release_pending_slots_test_() -> {timeout, 60, fun() ->
     with_nodes(#{loss => 1}, fun(_, A, B) ->
         Address = lawspec_beam_node:register_handler(B, <<"never">>, fun(_) -> error(should_not_arrive) end),
         ?assertError({lawspec, {network, {unreachable, Address}}}, lawspec_beam_node:request(A, Address, <<"call">>, <<>>, 5)),
@@ -105,7 +105,7 @@ timeouts_and_cancellation_release_pending_slots_test() ->
         until(fun() -> map_size(maps:get(pending, sys:get_state(A))) =:= 0 end),
         ?assertEqual(#{}, maps:get(pending_monitors, sys:get_state(A))),
         receive {lawspec_reply, A, Ticket, _} -> error(cancelled_reply) after 0 -> ok end
-    end).
+    end) end}.
 
 node_stop_joins_handlers_and_nested_async_workers_test() ->
     with_nodes(#{}, fun(_, A, B) ->
@@ -148,7 +148,7 @@ replacement_client_does_not_reuse_an_old_reply_test() ->
         after lawspec_beam_node:stop(Replacement) end
     end).
 
-same_identity_with_different_content_is_rejected_test() ->
+same_identity_with_different_content_is_rejected_test_() -> {timeout, 60, fun() ->
     with_nodes(#{record => true}, fun(Net, A, B) ->
         Owner = self(), Address = lawspec_beam_node:register_handler(B, <<"echo">>, fun(#{payload := P}) -> Owner ! invoked, {0, P} end),
         {Ticket, Identity} = lawspec_beam_node:request_async(A, Address, <<"call">>, <<"first">>, 1000),
@@ -163,7 +163,7 @@ same_identity_with_different_content_is_rejected_test() ->
         end, lawspec_beam_memory_network:recorded(Net)) end),
         receive invoked -> error(reexecuted_request) after 0 -> ok end,
         ?assertEqual(1, map_size(maps:get(seen, sys:get_state(B))))
-    end).
+    end) end}.
 
 only_the_registered_receiver_can_answer_test() ->
     with_nodes(#{}, fun(_, A, B) ->

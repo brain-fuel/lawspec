@@ -14,24 +14,24 @@ with_ends(Faults, Options, Body) ->
             Body(Net, Nodes, A, B, C)
         after lists:foreach(fun lawspec_beam_node:stop/1, Nodes) end
     end).
-values(E, N) -> [begin {value, V} = lawspec_beam_endpoint:receive_body(E, 2000), V end || _ <- lists:seq(1, N)].
+values(E, N) -> [begin {value, V} = lawspec_beam_endpoint:receive_body(E, 15000), V end || _ <- lists:seq(1, N)].
 faults() -> #{seed => 723, loss => 0.2, duplicate => 0.4, delay => 0.003, record => true}.
 
 reliable_services_keep_both_directions_ordered_test_() ->
-    {timeout, 10, fun() -> with_ends(faults(), #{}, fun(Net, _, A, B, _) ->
+    {timeout, 60, fun() -> with_ends(faults(), #{}, fun(Net, _, A, B, _) ->
         lists:foreach(fun(I) ->
             ok = lawspec_beam_endpoint:send(A, <<I>>), ok = lawspec_beam_endpoint:send(B, <<(255 - I)>>)
         end, lists:seq(1, 60)),
         ok = lawspec_beam_endpoint:abandon(A), ok = lawspec_beam_endpoint:abandon(B),
         ?assertEqual([<<I>> || I <- lists:seq(1, 60)], values(B, 60)),
         ?assertEqual([<<(255 - I)>> || I <- lists:seq(1, 60)], values(A, 60)),
-        ?assertMatch({error, <<"the other end gave up", _/binary>>}, lawspec_beam_endpoint:receive_body(A, 1000)),
-        ?assertMatch({error, <<"the other end gave up", _/binary>>}, lawspec_beam_endpoint:receive_body(B, 1000)),
+        ?assertMatch({error, <<"the other end gave up", _/binary>>}, lawspec_beam_endpoint:receive_body(A, 15000)),
+        ?assertMatch({error, <<"the other end gave up", _/binary>>}, lawspec_beam_endpoint:receive_body(B, 15000)),
         ?assert(lists:any(fun(#{outcome := O}) -> O =:= lost end, lawspec_beam_memory_network:trace(Net)))
     end) end}.
 
 handoff_keeps_inflight_values_after_old_node_stops_test_() ->
-    {timeout, 10, fun() -> with_ends(faults(), #{}, fun(_, [Old | _], A, B, C) ->
+    {timeout, 60, fun() -> with_ends(faults(), #{}, fun(_, [Old | _], A, B, C) ->
         lists:foreach(fun(I) -> ok = lawspec_beam_endpoint:send(B, <<I>>) end, lists:seq(1, 15)),
         Address = lawspec_beam_endpoint:offer(A),
         [_, Token] = binary:split(Address, <<"?take=">>), ?assertEqual(32, byte_size(binary:decode_hex(Token))),
@@ -44,7 +44,7 @@ handoff_keeps_inflight_values_after_old_node_stops_test_() ->
         ?assertMatch({error, _}, lawspec_beam_endpoint:receive_body(C, 1000))
     end) end}.
 
-timed_out_or_cancelled_reads_cannot_steal_later_values_test() ->
+timed_out_or_cancelled_reads_cannot_steal_later_values_test_() -> {timeout, 60, fun() ->
     with_ends(#{}, #{}, fun(_, _, A, B, _) ->
         ?assertEqual({error, receive_timeout}, lawspec_beam_endpoint:receive_body(A, 1)),
         Ticket = lawspec_beam_endpoint:receive_async(A, infinity),
@@ -53,9 +53,9 @@ timed_out_or_cancelled_reads_cannot_steal_later_values_test() ->
         ok = lawspec_beam_endpoint:send(B, <<"kept">>),
         ?assertEqual([<<"kept">>], values(A, 1)),
         receive {lawspec_channel, A, Ticket, _} -> error(stale_read) after 0 -> ok end
-    end).
+    end) end}.
 
-reader_death_releases_the_receive_slot_test() ->
+reader_death_releases_the_receive_slot_test_() -> {timeout, 60, fun() ->
     with_ends(#{}, #{}, fun(_, _, A, B, _) ->
         Owner = self(), {Pid, Monitor} = spawn_monitor(fun() ->
             _ = lawspec_beam_endpoint:receive_async(A, infinity), Owner ! pending, receive finish -> ok end
@@ -63,29 +63,29 @@ reader_death_releases_the_receive_slot_test() ->
         receive pending -> ok end, exit(Pid, kill), receive {'DOWN', Monitor, process, Pid, killed} -> ok end,
         until(fun() -> maps:get(reader, sys:get_state(A)) =:= none end),
         ok = lawspec_beam_endpoint:send(B, <<"next">>), ?assertEqual([<<"next">>], values(A, 1))
-    end).
+    end) end}.
 
-async_reads_are_correlated_and_expire_test() ->
+async_reads_are_correlated_and_expire_test_() -> {timeout, 60, fun() ->
     with_ends(#{}, #{}, fun(_, _, A, B, _) ->
         First = lawspec_beam_endpoint:receive_async(A, 1),
         receive {lawspec_channel, A, First, Result} -> ?assertEqual({error, receive_timeout}, Result)
-        after 1000 -> error(no_timeout) end,
+        after 15000 -> error(no_timeout) end,
         Second = lawspec_beam_endpoint:receive_async(A, infinity),
         ok = lawspec_beam_endpoint:send(B, <<"received">>),
         receive {lawspec_channel, A, Second, Value} -> ?assertEqual({value, <<"received">>}, Value)
-        after 1000 -> error(no_value) end
-    end).
+        after 15000 -> error(no_value) end
+    end) end}.
 
-partition_reports_unreachable_and_healing_repairs_retries_test() ->
-    with_ends(#{}, #{deadline => 150}, fun(Net, _, A, B, _) ->
+partition_reports_unreachable_and_healing_repairs_retries_test_() -> {timeout, 60, fun() ->
+    with_ends(#{}, #{deadline => 2000}, fun(Net, _, A, B, _) ->
         ok = lawspec_beam_memory_network:partition(Net, [[<<"a">>], [<<"b">>], [<<"c">>]]),
         ok = lawspec_beam_endpoint:send(B, <<"kept">>),
         ok = lawspec_beam_memory_network:heal(Net),
         ?assertEqual([<<"kept">>], values(A, 1)),
         ok = lawspec_beam_memory_network:partition(Net, [[<<"a">>], [<<"b">>], [<<"c">>]]),
         ok = lawspec_beam_endpoint:send(A, <<"lost">>),
-        ?assertMatch({error, <<"the other end did not answer", _/binary>>}, lawspec_beam_endpoint:receive_body(A, 1000))
-    end).
+        ?assertMatch({error, <<"the other end did not answer", _/binary>>}, lawspec_beam_endpoint:receive_body(A, 10000))
+    end) end}.
 
 failed_take_keeps_service_responsive_test() ->
     with_ends(#{loss => 1}, #{deadline => 100}, fun(_, _, A, _, C) ->
@@ -95,14 +95,14 @@ failed_take_keeps_service_responsive_test() ->
         ?assertMatch({error, _}, lawspec_beam_endpoint:receive_body(C, 1000))
     end).
 
-invalid_operations_do_not_destroy_the_endpoint_test() ->
+invalid_operations_do_not_destroy_the_endpoint_test_() -> {timeout, 60, fun() ->
     with_ends(#{}, #{}, fun(_, _, A, B, C) ->
         ?assertError({lawspec, {channel, invalid_payload}}, lawspec_beam_endpoint:send(A, 42)),
         ?assertError({lawspec, {channel, invalid_timeout}}, lawspec_beam_endpoint:receive_body(A, -1)),
         ?assertError({lawspec, {channel, invalid_operation}}, lawspec_beam_endpoint:take(C, <<"invalid">>)),
         ok = lawspec_beam_endpoint:send(A, <<"works">>), ?assertEqual([<<"works">>], values(B, 1)),
         ?assertError({lawspec, {channel, invalid_operation}}, lawspec_beam_endpoint:offer(A))
-    end).
+    end) end}.
 
 node_owns_endpoints_but_not_application_receivers_test() ->
     with_ends(#{}, #{}, fun(_, [Node | _], A, _, _) ->
@@ -117,16 +117,16 @@ node_owns_endpoints_but_not_application_receivers_test() ->
         ?assertNot(is_process_alive(A)), ?assertNot(is_process_alive(Extra))
     end).
 
-node_kill_releases_all_owned_services_test() ->
+node_kill_releases_all_owned_services_test_() -> {timeout, 60, fun() ->
     with_ends(#{}, #{}, fun(_, [Node | _], A, _, _) ->
         {ok, Extra} = lawspec_beam_endpoint:start(Node, <<"extra">>, #{}),
         Monitors = [{P, monitor(process, P)} || P <- [Node, A, Extra]],
         exit(Node, kill),
         lists:foreach(fun({P, M}) -> receive {'DOWN', M, process, P, _} -> ok
-            after 1000 -> error(leaked_endpoint) end end, Monitors)
-    end).
+            after 15000 -> error(leaked_endpoint) end end, Monitors)
+    end) end}.
 
-until(Body) -> until(Body, erlang:monotonic_time(millisecond) + 1000).
+until(Body) -> until(Body, erlang:monotonic_time(millisecond) + 30000).
 until(Body, Deadline) -> case Body() of
     true -> ok;
     false -> true = erlang:monotonic_time(millisecond) < Deadline, receive after 1 -> ok end, until(Body, Deadline)

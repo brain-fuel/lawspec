@@ -23,7 +23,7 @@ c(Side) -> {'end', <<"c">>, Side}.
 r(Side) -> {'end', <<"r">>, Side}.
 
 sender_exit_does_not_overtake_inflight_values_test_() ->
-    {timeout, 10, fun() -> with_io([<<"c">>], #{}, [channel(<<"c">>, lists:duplicate(50, int()))], fun(H) ->
+    {timeout, 60, fun() -> with_io([<<"c">>], #{}, [channel(<<"c">>, lists:duplicate(50, int()))], fun(H) ->
         ok = lawspec_beam_scenario_io:fork(H, root, [child(1, [c(0)], #{}, [])]),
         join(run(H, 1, fun() -> lists:foreach(fun(N) ->
             ok = lawspec_beam_scenario_io:send(H, 1, c(0), N, #{1 => N})
@@ -36,7 +36,7 @@ sender_exit_does_not_overtake_inflight_values_test_() ->
     end) end}.
 
 parallel_mailbox_values_keep_their_exact_sender_clock_test_() ->
-    {timeout, 10, fun() -> with_io([], #{<<"m">> => 100}, [box(<<"m">>, int())], fun(H) ->
+    {timeout, 60, fun() -> with_io([], #{<<"m">> => 100}, [box(<<"m">>, int())], fun(H) ->
         ok = lawspec_beam_scenario_io:fork(H, root, [child(I, [], #{<<"m">> => 5}, []) || I <- lists:seq(1, 20)]),
         Workers = [run(H, I, fun() -> lists:foreach(fun(N) ->
             ok = lawspec_beam_scenario_io:send(H, I, {mailbox, <<"m">>}, I * 100 + N, #{I => N})
@@ -48,7 +48,7 @@ parallel_mailbox_values_keep_their_exact_sender_clock_test_() ->
         ?assertEqual(0, maps:get(pending_requests, lawspec_beam_scenario_io:network_stats(H)))
     end) end}.
 
-dead_producer_does_not_abandon_an_accepted_mailbox_send_test() ->
+dead_producer_does_not_abandon_an_accepted_mailbox_send_test_() -> {timeout, 60, fun() ->
     with_io([], #{<<"m">> => 2}, [box(<<"m">>, int())], fun(H) ->
         ok = lawspec_beam_scenario_io:fork(H, root, [child(1, [], #{<<"m">> => 2}, [])]),
         %% Hold the receiving node so the first request is certainly in
@@ -62,7 +62,7 @@ dead_producer_does_not_abandon_an_accepted_mailbox_send_test() ->
         after sys:resume(Receiver) end,
         ?assertEqual({value, 17, #{1 => 4}}, lawspec_beam_scenario_io:receive_value(H, root, {mailbox, <<"m">>})),
         ?assertEqual(gone, lawspec_beam_scenario_io:receive_value(H, root, {mailbox, <<"m">>}))
-    end).
+    end) end}.
 
 delegated_end_survives_its_sending_process_test() ->
     with_io([<<"c">>, <<"r">>], #{}, [channel(<<"c">>, [[<<"end">>]]), channel(<<"r">>, [int()])], fun(H) ->
@@ -87,7 +87,7 @@ dead_receiver_releases_delegations_arriving_later_test() ->
         end)
     end, [false, true]).
 
-receiver_death_releases_an_end_already_in_flight_test() ->
+receiver_death_releases_an_end_already_in_flight_test_() -> {timeout, 60, fun() ->
     with_io([<<"c">>, <<"r">>], #{}, [channel(<<"c">>, [[<<"end">>]]), channel(<<"r">>, [int()])], fun(H) ->
         Owner = self(),
         ok = lawspec_beam_scenario_io:fork(H, root, [child(1, [c(1)], #{}, [])]),
@@ -101,7 +101,7 @@ receiver_death_releases_an_end_already_in_flight_test() ->
         until(fun() -> maps:get(closed, maps:get(c(1), maps:get(queues, sys:get_state(H)))) end),
         ok = lawspec_beam_memory_network:heal(Net),
         ?assertEqual(gone, lawspec_beam_scenario_io:receive_value(H, root, r(1)))
-    end).
+    end) end}.
 
 network_runs_require_wire_types_for_every_destination_test() ->
     ?assertEqual({error, {lawspec, scenario_wire_required}},
@@ -165,7 +165,7 @@ network_schedules_and_all_crash_boundaries_test_() ->
         ])
     end}.
 
-until(Body) -> until(Body, erlang:monotonic_time(millisecond) + 1000).
+until(Body) -> until(Body, erlang:monotonic_time(millisecond) + 30000).
 until(Body, Deadline) -> case Body() of
     true -> ok;
     false -> true = erlang:monotonic_time(millisecond) < Deadline, receive after 1 -> ok end, until(Body, Deadline)

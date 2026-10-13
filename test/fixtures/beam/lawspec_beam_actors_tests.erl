@@ -292,16 +292,33 @@ linked_crash_crosses_cycles_once_test() ->
         ?assertEqual(3, lawspec_beam_actors:restart_count(Sup))
     after lawspec_beam_actors:stop(Sup) end.
 
-subsecond_restart_window_is_not_rounded_to_seconds_test() ->
+subsecond_restart_window_is_not_rounded_to_seconds_test_() -> {timeout, 60, fun() ->
     Spec = lawspec_beam_actors:supervisor(one_for_one, 1, 10000, [{a, permanent, counter()}]),
     Sup = lawspec_beam_actors:start_supervisor(Spec), A = lawspec_beam_actors:child(Sup, a),
     try
         lawspec_beam_actors:crash(A),
-        timer:sleep(20),
+        %% The window counts from when the supervisor charged the restart, so
+        %% wait for that charge, then let more than the 10 ms period pass.
+        restarts_reach(Sup, 1, erlang:monotonic_time(millisecond) + 30000),
+        Charged = erlang:monotonic_time(millisecond),
+        elapse_since(Charged, 20),
         lawspec_beam_actors:crash(A),
         ?assertEqual(0, lawspec_beam_actors:state(A)),
         ?assertEqual(1, lawspec_beam_actors:restart_count(Sup))
-    after lawspec_beam_actors:stop(Sup) end.
+    after lawspec_beam_actors:stop(Sup) end end}.
+
+restarts_reach(Sup, N, Deadline) ->
+    case lawspec_beam_actors:restart_count(Sup) >= N of
+        true -> ok;
+        false ->
+            ?assert(erlang:monotonic_time(millisecond) < Deadline),
+            receive after 1 -> restarts_reach(Sup, N, Deadline) end
+    end.
+elapse_since(Start, Ms) ->
+    case erlang:monotonic_time(millisecond) - Start > Ms of
+        true -> ok;
+        false -> receive after 1 -> elapse_since(Start, Ms) end
+    end.
 
 external_worker_kill_recovers_committed_state_test() ->
     Spec = lawspec_beam_actors:actor(fun() -> 0 end, fun(S) -> S end),

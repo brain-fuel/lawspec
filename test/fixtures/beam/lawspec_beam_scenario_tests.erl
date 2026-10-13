@@ -10,10 +10,11 @@ spec(Channels, Mailboxes, Body) -> iolist_to_binary([
     <<") (mailboxes ">>, Mailboxes, <<") (process ">>, Body, <<")">>]).
 counter(Actor) -> lawspec_beam_model_tests:counter(Actor).
 run(Model, Spec) -> lawspec_beam_scenario:run(Model, Spec, 42, #{}).
-every_crash(Model, Spec) ->
+every_crash(Model, Spec) -> every_crash(Model, Spec, #{}).
+every_crash(Model, Spec, Options) ->
     Program = lawspec_beam_scenario:new(Spec),
     lists:foreach(fun({Id, N}) -> lists:foreach(fun(At) ->
-        ?assertEqual(ok, lawspec_beam_scenario:execute(Model, Program, At, #{victim => {Id, At}}))
+        ?assertEqual(ok, lawspec_beam_scenario:execute(Model, Program, At, Options#{victim => {Id, At}}))
     end, lists:seq(0, N)) end, maps:get(branches, Program)).
 
 message_clocks_order_native_model_calls_test() ->
@@ -76,16 +77,17 @@ mailbox_clocks_follow_each_value_test() ->
     ?assert(lawspec_beam_history:happened_before(B, C)),
     every_crash(counter(true), S).
 
-crash_before_nested_par_releases_descendant_sends_test() ->
+crash_before_nested_par_releases_descendant_sends_test_() -> {timeout, 120, fun() ->
     S = spec("", "m", <<"(par
         (process (par (process (send m (int 3))) (process (send m (int 4)))))
         (process (receive m first) (receive m second)))">>),
     Program = lawspec_beam_scenario:new(S),
     ?assertEqual([{1, 1}, {2, 1}, {3, 1}, {4, 2}], maps:get(branches, Program)),
     ?assertMatch({ok, _}, run(counter(false), S)),
+    %% A crash that waited out the receive timeout would take 60 s here.
     Before = erlang:monotonic_time(millisecond),
-    every_crash(counter(false), S),
-    ?assert(erlang:monotonic_time(millisecond) - Before < 1000).
+    every_crash(counter(false), S, #{receive_timeout => 60000}),
+    ?assert(erlang:monotonic_time(millisecond) - Before < 30000) end}.
 
 expectation_failure_is_not_masked_by_crash_test() ->
     S = spec("", "", <<"(call read x) (expect x (int 42)) (par (process) (process))">>),

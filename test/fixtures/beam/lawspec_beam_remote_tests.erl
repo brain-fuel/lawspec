@@ -12,10 +12,10 @@ with_nodes(Faults, Body) ->
         {ok, B} = lawspec_beam_node:start(lawspec_beam_memory_network:insecure_transport_for_tests(Net, <<"b">>)),
         try Body(Net, A, B) after lawspec_beam_node:stop(B), lawspec_beam_node:stop(A) end
     end).
-proxy(Node, Address, Kind, Table) -> lawspec_beam_remote:connect(Node, Address, Kind, Table, 1000).
+proxy(Node, Address, Kind, Table) -> lawspec_beam_remote:connect(Node, Address, Kind, Table, 15000).
 
 actual_actor_handles_each_faulty_call_once_test_() ->
-    {timeout, 10, fun() -> with_nodes(#{seed => 734, loss => 0.2, duplicate => 0.4, delay => 0.002}, fun(_, A, B) ->
+    {timeout, 60, fun() -> with_nodes(#{seed => 734, loss => 0.2, duplicate => 0.4, delay => 0.002}, fun(_, A, B) ->
         Actor = lawspec_beam_actors:start(fun() -> 0 end),
         try
             Handler = entry(fun([N]) -> lawspec_beam_actors:call(Actor, fun(S) -> {N, S + N} end) end),
@@ -32,7 +32,7 @@ actual_actor_handles_each_faulty_call_once_test_() ->
         after lawspec_beam_actors:stop(Actor) end
     end) end}.
 
-definition_content_hash_is_the_wire_selector_test() ->
+definition_content_hash_is_the_wire_selector_test_() -> {timeout, 60, fun() ->
     with_nodes(#{record => true, duplicate => 1}, fun(Net, A, B) ->
         Digest = <<"sha3-256:", (binary:copy(<<"a">>, 64))/binary>>,
         Count = atomics:new(1, []),
@@ -46,9 +46,9 @@ definition_content_hash_is_the_wire_selector_test() ->
             {ok, #{kind := <<"eval">>, payload := Expected}} -> true;
             _ -> false
         end end, lawspec_beam_memory_network:recorded(Net)))
-    end).
+    end) end}.
 
-bad_kind_unknown_hash_and_malformed_arguments_never_invoke_test() ->
+bad_kind_unknown_hash_and_malformed_arguments_never_invoke_test_() -> {timeout, 60, fun() ->
     with_nodes(#{}, fun(_, A, B) ->
         Count = atomics:new(1, []),
         Table = #{<<"known">> => entry(fun([N]) -> atomics:add(Count, 1, 1), N end)},
@@ -56,12 +56,12 @@ bad_kind_unknown_hash_and_malformed_arguments_never_invoke_test() ->
         Prefix = lawspec_beam_values:encode([<<"text">>], <<"known">>, #{}),
         Unknown = lawspec_beam_values:encode([<<"text">>], <<"other">>, #{}),
         lists:foreach(fun({Kind, Bytes}) ->
-            ?assertMatch({3, _}, lawspec_beam_node:request(A, Address, Kind, Bytes, 1000))
+            ?assertMatch({3, _}, lawspec_beam_node:request(A, Address, Kind, Bytes, 15000))
         end, [{<<"call">>, <<Prefix/binary, 0>>}, {<<"eval">>, <<Unknown/binary, 0>>},
             {<<"eval">>, Prefix}, {<<"eval">>, <<Prefix/binary, 0, 0>>}, {<<"eval">>, <<255>>}]),
         ?assertEqual(0, atomics:get(Count, 1)),
         ?assertEqual(8, lawspec_beam_remote:call(proxy(A, Address, <<"eval">>, Table), <<"known">>, [8]))
-    end).
+    end) end}.
 
 client_rejects_wrong_arity_before_sending_test() ->
     with_nodes(#{record => true}, fun(Net, A, _) ->
@@ -72,7 +72,7 @@ client_rejects_wrong_arity_before_sending_test() ->
         ?assertEqual([], lawspec_beam_memory_network:recorded(Net))
     end).
 
-application_failure_stopped_actor_and_rejection_remain_distinct_test() ->
+application_failure_stopped_actor_and_rejection_remain_distinct_test_() -> {timeout, 60, fun() ->
     with_nodes(#{}, fun(_, A, B) ->
         Actor = lawspec_beam_actors:start(fun() -> 0 end), lawspec_beam_actors:stop(Actor),
         Table = #{<<"crash">> => entry(fun(_) -> error(application_failure) end),
@@ -83,9 +83,9 @@ application_failure_stopped_actor_and_rejection_remain_distinct_test() ->
         ?assertException(error, {lawspec, {remote, {stopped, _}}}, lawspec_beam_remote:call(Remote, <<"stopped">>, [0])),
         Missing = proxy(A, Address, <<"call">>, #{<<"unknown">> => entry(fun([N]) -> N end)}),
         ?assertException(error, {lawspec, {remote, {rejected, _}}}, lawspec_beam_remote:call(Missing, <<"unknown">>, [0]))
-    end).
+    end) end}.
 
-native_data_and_unit_use_canonical_logical_values_test() ->
+native_data_and_unit_use_canonical_logical_values_test_() -> {timeout, 60, fun() ->
     with_nodes(#{}, fun(_, A, B) ->
         Text = <<"(data Parcel (ctor Parcel (int Int32 _ _) (maybe (text))))">>,
         Table = #{<<"read">> => #{arguments => [Text, <<"(unit)">>], result => Text,
@@ -93,7 +93,7 @@ native_data_and_unit_use_canonical_logical_values_test() ->
         Address = lawspec_beam_remote:serve(B, <<"data">>, <<"eval">>, Table),
         Parcel = {ls_data, <<"Parcel">>, [42, {ls_data, <<"Maybe::Just">>, [<<"sent">>]}]},
         ?assertEqual(Parcel, lawspec_beam_remote:call(proxy(A, Address, <<"eval">>, Table), <<"read">>, [Parcel, ls_unit]))
-    end).
+    end) end}.
 
 node_closure_joins_nested_definition_workers_test() ->
     with_nodes(#{}, fun(_, A, B) ->

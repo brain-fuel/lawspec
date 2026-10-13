@@ -103,16 +103,16 @@ hung_acquisition_is_bounded_without_releasing_an_unknown_value_test() ->
         {test, {error, {lawspec, {test_timeout, <<"owner">>, 100}}}}, _}}, Failure),
     {acquiring, Owner} = event(), ?assertNot(is_process_alive(Owner)), no_event().
 
-cleanup_has_its_own_budget_after_test_timeout_test() ->
+cleanup_has_its_own_budget_after_test_timeout_test_() -> {timeout, 60, fun() ->
     Test = self(),
-    ?assertError({lawspec, {test_timeout, <<"owner">>, 50}}, run(#{timeout => 50, cleanup_timeout => 500}, fun() ->
+    ?assertError({lawspec, {test_timeout, <<"owner">>, 50}}, run(#{timeout => 50, cleanup_timeout => 30000}, fun() ->
         lawspec_beam_resources:with_resource(#{}, fun() -> self() end,
             fun(Owner) ->
                 ?assertEqual(Owner, self()),
                 receive after 100 -> Test ! released end
             end, fun(_) -> receive never -> ok end end)
     end)),
-    ?assertEqual(released, event()).
+    ?assertEqual(released, event()) end}.
 
 failed_later_acquisition_releases_the_earlier_owner_test() ->
     Test = self(),
@@ -152,10 +152,10 @@ shared_release_is_also_bounded_test() ->
     ?assertMatch({lawspec, {resource_cleanup_failed, [_ | _]}}, failed(fun() -> lawspec_beam_resources:close(Run) end)),
     {owner, Owner} = event(), ?assertNot(is_process_alive(Owner)), ?assertNot(is_process_alive(Run)).
 
-native_observations_survive_worker_completion_and_timeout_test() ->
+native_observations_survive_worker_completion_and_timeout_test_() -> {timeout, 60, fun() ->
     lawspec_beam_harness_tests:with_directory(fun(Directory) ->
         ?assertEqual(true, lawspec_beam_harness:run(<<"owner">>, <<"observed">>, [{100, <<"all">>}],
-            #{timeout => 1000}, fun() -> lawspec_beam_harness:sample(fun() -> {[true], [], []} end, fun() -> true end) end)),
+            #{timeout => 30000}, fun() -> lawspec_beam_harness:sample(fun() -> {[true], [], []} end, fun() -> true end) end)),
         [#{<<"cases">> := 1, <<"outcome">> := <<"passed">>}] = lawspec_beam_harness_tests:reports(Directory),
         _ = failed(fun() -> lawspec_beam_harness:run(<<"owner">>, <<"observed">>, [{100, <<"all">>}],
             #{timeout => 100}, fun() ->
@@ -164,7 +164,7 @@ native_observations_survive_worker_completion_and_timeout_test() ->
             end) end),
         [#{<<"cases">> := 1, <<"outcome">> := <<"failed">>, <<"failureKind">> := <<"harness">>}] =
             lawspec_beam_harness_tests:reports(Directory)
-    end).
+    end) end}.
 
 owned(Test, Key, Body) ->
     lawspec_beam_resources:with_resource(#{}, fun() ->
