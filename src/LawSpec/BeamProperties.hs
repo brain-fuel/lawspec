@@ -58,7 +58,7 @@ emit target layout bindings plan = do
           models = ModelChecks.checks unit
           allNames = names ++ map ModelChecks.checkName models ++ benchmarkNames
           allowances = zip names (map runnerAllowance properties)
-          allowance n = maybe 60000 id (lookup n allowances)
+          allowance n = maybe runnerGuard id (lookup n allowances)
           groups = [(C.propertyName (plannedProperty p), n) | (p,n) <- zip properties names] ++
             [(ModelChecks.checkLabel c, ModelChecks.checkName c) | c <- models] ++
             [("benchmark " ++ label, n) | ((label,_),n) <- zip measured benchmarkNames]
@@ -119,7 +119,7 @@ emit target layout bindings plan = do
       let modelTests = [E.function (ModelChecks.checkName check ++ "_test_") [] [E.array
             [let test = E.tuple [E.string (ModelChecks.checkLabel check), E.lambda []
                    (E.remote (Definitions.adapterModule unit ++ "_lawspec_models") (ModelChecks.checkName check) [])]
-             in if target == "erlang" then E.tuple [E.atom "timeout",D.text "60",test] else test]]
+             in if target == "erlang" then E.tuple [E.atom "timeout",D.text (show (runnerGuard `div` 1000)),test] else test]]
             | check <- models]
       measurements <- sequence [benchmarkTest unit n label body | (n,(label,body)) <- zip benchmarkNames measured]
       pure (Artifact (testSupport ++ name ++ ".erl")
@@ -134,7 +134,7 @@ emit target layout bindings plan = do
             [E.binary (C.idText (C.unitId unit)),E.binary label,E.lambda [] body]
           test = E.tuple [E.string ("benchmark " ++ label),E.lambda [] (E.sequenceDoc (context ++ [measure]))]
       pure (E.function (name ++ "_test_") [] [E.array
-        [if target == "erlang" then E.tuple [E.atom "timeout",D.text "60",test] else test]])
+        [if target == "erlang" then E.tuple [E.atom "timeout",D.text (show (runnerGuard `div` 1000)),test] else test]])
     single h = C.harnessSkip h /= Nothing || C.harnessKnownFailing h /= Nothing
     lawTests unit name planned
       | Just reason <- C.harnessSkip (C.propertyHarness (plannedProperty planned)) =
@@ -286,10 +286,17 @@ searchDescriptors plan planned
       lawDescriptors (planMachineBits plan) (planDataDeclarations plan) (plannedProperty planned)
   | otherwise = Nothing
 
+-- | What EUnit and ExUnit allow a law, a model check or a benchmark beyond its
+-- own timeouts (ms): a guard against a hang, not a budget. A law's cases may
+-- wait on the real clock (retries over a lossy network), which a loaded
+-- machine stretches, and a law with no timeout states nothing about time.
+runnerGuard :: Integer
+runnerGuard = 600000
+
 -- The native runner must leave time for every configured repetition and for
 -- owner cleanup. LawSpec enforces the actual deadline inside this allowance.
 runnerAllowance :: PlannedProperty -> Integer
-runnerAllowance planned = 60000 + count * (attempts * timeout + cleanup)
+runnerAllowance planned = runnerGuard + count * (attempts * timeout + cleanup)
   where
     law = plannedProperty planned
     harness = C.propertyHarness law
