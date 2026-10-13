@@ -212,13 +212,14 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
         | otherwise -> [t ++ "-bootstrap"] ++ ["build-acceptance" | isJust' (acceptanceProject [] command)]
             ++ [f | (f, ft) <- zip beamFrameworks ["erlang", "elixir", "gleam"], ft == t]
             ++ [warmUp t | t `elem` warmTargets, name /= warmUp t]
+            ++ ["python-bootstrap" | name == "swift-network-interoperability"]
     claims name env command target =
       [if name `elem` aloneSteps then Exclusive "machine" else Shared "machine"] ++
       [Exclusive "stack-build" | buildsStack command] ++
       [Exclusive "stack-work" | name `elem` stackBuilders] ++
       [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
       [Shared "stack-work" | name `notElem` stackBuilders, take 1 command == ["stack"]] ++
-      [Shared "env:python" | name == "beam-runtime"] ++
+      [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability"]] ++
       [Shared "env:typescript" | name == "npm-tests"] ++
       [Exclusive "cargo:runtime/rust" | "runtime/rust/Cargo.toml" `elem` command] ++
       [Counted "timing" (max 1 (workers `div` 3)) | timing name command] ++
@@ -370,6 +371,9 @@ stepInputs name = case name of
     [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
      ["erl", "-noshell", "-eval", "io:format(\"~tp~n\", [crypto:info_lib()]), halt()."],
      ["cc", "--version"], ["stack", "--version"], ["python3", "--version"], ["node", "--version"]])
+  "swift-network-interoperability" -> Just (Inputs ["runtime/swift/LawSpecRuntime/", "runtime/lawspec_runtime.py", "runtime/lawspec_network.py",
+    "test/fixtures/swift/", "tools/swift-network-interoperability.py", "test/locks/python.txt"] []
+    [["swift", "--version"], [".integration/python/.venv/bin/python", "--version"]])
   "beam-proper" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-proper.sh",
     "test/locks/erlang/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
     [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
@@ -449,6 +453,10 @@ targetSteps target =
   | target `elem` ["javascript", "typescript"] ] ++
   [ step "python-recorded-runtime" [".integration/python/.venv/bin/python", "-B", "test/fixtures/recorded_python.py"]
   | target == "python" ] ++
+  -- A Swift node and a Python node exchange values live over TCP, each
+  -- through its own runtime's secure transport.
+  [ step "swift-network-interoperability" [".integration/python/.venv/bin/python", "-B", "tools/swift-network-interoperability.py"]
+  | target == "swift" ] ++
   [ Step (target ++ "-recorded" ++ suffix) env (acceptance ["recorded", target])
   | (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
