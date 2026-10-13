@@ -116,7 +116,8 @@ public final class LawSpecClojure {
   public static Class<?> classOfTag(Keyword tag) {
     Class<?> owner;
     try {
-      owner = Class.forName("lawspec.data." + camel(tag.getNamespace(), true));
+      String known = dataTypes().get(tag.getNamespace());
+      owner = Class.forName(known != null ? known : "lawspec.data." + camel(tag.getNamespace(), true));
     } catch (ClassNotFoundException e) {
       throw new IllegalArgumentException("no LawSpec data type for tag " + tag);
     }
@@ -477,6 +478,21 @@ public final class LawSpecClojure {
   }
 
   static final Keyword TYPE = Keyword.intern("type");
+  private static Map<String, String> types;
+
+  // The generated table of the model's data types (LawSpecClojureTypes).
+  @SuppressWarnings("unchecked")
+  private static synchronized Map<String, String> dataTypes() {
+    if (types == null) {
+      try {
+        types = (Map<String, String>) Class.forName("lawspec.clojure.LawSpecClojureTypes", true,
+            LawSpecClojure.class.getClassLoader()).getField("TYPES").get(null);
+      } catch (ReflectiveOperationException e) {
+        types = Map.of();
+      }
+    }
+    return types;
+  }
   private static Map<String, String[]> bound;
 
   @SuppressWarnings("unchecked")

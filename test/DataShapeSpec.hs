@@ -57,6 +57,9 @@ test_dataTypesBecomeEachTargetsIdiomaticShape = describe "native data shapes" $ 
   it "Java: rejects a record component that overrides an Object method" $
     generated "java" "type Bad is Bad hashCode :: Int32 end\ng :: Bad -> Int32"
       `shouldSatisfy` either (isInfixOf "java.lang.Object.hashCode()") (const False)
+  it "Clojure: a type named with an acronym is found again from its tags" $
+    generated "clojure" "type HTTPError is | NotFound | Gone end\ng :: HTTPError -> Int32"
+      `shouldSatisfy` either (const False) (isInfixOf "java.util.Map.entry(\"http-error\", \"lawspec.data.HTTPError\")")
   it "Kotlin: data classes and objects" $ do
     shows' "kotlin"
       [ "data class Drink(", "val shots: kotlin.Int"

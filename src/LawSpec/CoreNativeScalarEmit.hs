@@ -260,7 +260,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           params = [Doc.text (javaInterface ability ++ " " ++ handlerParameter ability) | ability <- usesOf n] ++
             [Doc.group (javaTypeDoc True False 8 a <> Doc.nest 4 (Doc.softline <> Doc.text ("value" ++ show i))) | (i,a) <- zip [0::Int ..] args]
           asyncStub = n `elem` asyncFunctions u
-          resultText = if asyncStub then "java.util.concurrent.CompletableFuture<" ++ boxed (native result) ++ ">" else native result
+          -- An asynchronous Unit adapter completes with nothing: a future of Void.
+          resultText
+            | asyncStub && result == Named "Unit" = "java.util.concurrent.CompletableFuture<Void>"
+            | asyncStub = "java.util.concurrent.CompletableFuture<" ++ boxed (native result) ++ ">"
+            | otherwise = native result
           flatHeader = "public static " ++ resultText ++ " " ++ n ++ "("
           signature = Doc.group $ if length flatHeader <= 98 || asyncStub
             then Doc.text flatHeader <> Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ") "

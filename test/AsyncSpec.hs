@@ -80,6 +80,9 @@ test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask = describe "async a
           [FunctionBinding (C.Id "example.orders::price") (StaticCall (NativeRef ["pricing", "price"])),
            FunctionBinding (C.Id "example.orders::quote") (StaticCall (NativeRef ["pricing", "quote"]))] }
     resolveNativeRequest compiled request `shouldSatisfy` isRight
+  it "scaffolds an asynchronous Unit adapter on Java as a future of Void" $ do
+    let source = unlines ["unit example.jobs", "post :: Int32 -> Unit uses Async"]
+    stub "java" source `shouldSatisfy` either (const False) (isInfixOf "CompletableFuture<Void> post(")
   describe "scaffolds each target's task" $
     forM_ [ ("python", "async def price"), ("javascript", "export async function price")
           , ("typescript", "export async function price"), ("java", "CompletableFuture<java.lang.Integer> price")

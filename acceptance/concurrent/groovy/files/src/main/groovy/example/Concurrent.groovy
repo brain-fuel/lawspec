@@ -44,12 +44,8 @@ final class Concurrent {
     return handle
   }
 
-  static CompletableFuture<lawspec.runtime.LawSpecRuntime.Value> offer(WorkQueue value0, int value1) {
-    return CompletableFuture.supplyAsync(
-        () -> {
-          queue(value0).offer(value1)
-          return LawSpecRuntime.absent('Unit')
-        })
+  static CompletableFuture<Void> offer(WorkQueue value0, int value1) {
+    CompletableFuture.runAsync(() -> { queue(value0).offer(value1) })
   }
 
   static CompletableFuture<lawspec.runtime.LawSpecRuntime.Maybe<Integer>> poll(WorkQueue value0) {

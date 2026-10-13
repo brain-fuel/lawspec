@@ -259,7 +259,10 @@ emitDefinitions style layout bits declarations units = do
                   -- Within its stage's timeout and hedge, when it has them.
                   pure $ if declarationAsync adapter
                     then E.call "LawSpecRuntime.awaitStep" [D.text "symbols", D.text "() -> " <> call,
-                      D.text "_native -> " <> resultCodec <> D.text ".encode(_native)"]
+                      -- A Unit adapter's future completes with nothing (Void).
+                      if resultType == scalarType "Unit"
+                        then D.text "_native -> lawspec.runtime.LawSpecRuntime.unit(() -> {})"
+                        else D.text "_native -> " <> resultCodec <> D.text ".encode(_native)"]
                     -- A Unit adapter is void natively.
                     else failing adapter (if resultType == scalarType "Unit"
                       then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
