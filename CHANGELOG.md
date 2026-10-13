@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-13
+
 ### Added
 
 - A Scala target (`--target scala`): Scala 3.9 over the shared JVM runtime,
@@ -84,6 +86,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   calls as loops, and each spec handler is a native class with its state to
   read or restore. `lawspec test`, `lawspec doctor` and `lawspec examples`
   support it. See [Set up Swift](docs/how-to/targets/swift.md).
+
+### Fixed
+
+- Erlang and Elixir: a data type named after a built-in type that a module
+  may redefine, such as `Record`, no longer makes `lawspec_data` warn. The
+  type takes its qualified name, and its constructors keep their tags.
+- Erlang and Elixir: EUnit and ExUnit now allow a law, model check or
+  benchmark ten minutes on top of its own timeouts. This is a guard against
+  hangs, not a budget. Before, the limit was 60 s, and a law that retries
+  over a lossy network on the real clock could run past it on a loaded
+  machine.
+- BEAM parallel model checks pause with a run of yields instead of a 1 ms
+  timer, which a loaded machine stretches across hundreds of runs.
+- Refined record fields are now generated instead of filtered. On Python, a
+  constructor field refined by a regex also draws samples of that regex. On
+  every target, a data input whose refinement matches one of its fields
+  against a regex (`validPet p`) now starts from values whose field matches.
+  This stops Hypothesis's `filter_too_much` health check from failing.
 
 ## [0.23.0] - 2026-10-12
 
@@ -1614,7 +1634,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/brain-fuel/lawspec/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/brain-fuel/lawspec/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/brain-fuel/lawspec/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/brain-fuel/lawspec/compare/v0.20.1...v0.21.0

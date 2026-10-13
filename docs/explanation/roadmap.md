@@ -24,6 +24,7 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.21 | Abilities and handlers, built-ins, secure distribution and the test harness | — |
 | 0.22 | Erlang, Elixir and Gleam targets, with native tests and OTP processes | — |
 | 0.23 | F# and C# targets; typed native code; records, sequences and handlers of several abilities; where tests ran; parallel CI | A typed fast path for Erlang, Elixir and Gleam |
+| 0.24 | Scala, Groovy, Clojure and Swift targets; typed native code on Erlang, Elixir and Gleam | Groovy and Clojure reuse the Java model rather than generating their own; Swift's post-quantum crypto and secure network need macOS 26 (CryptoKit); on the BEAM, a definition or handler without native forms stays dynamic, and a large handler state peaks at several times its live heap |
 
 0.16 in detail:
 
@@ -134,16 +135,21 @@ and OTP supervisors.
   attestation.
 - `lawspec-dev ci` runs its steps in parallel.
 
+0.24 in detail:
+
+- Scala runs over the shared JVM runtime, with ScalaTest and ScalaCheck.
+  Groovy (Spock and JetCheck) and Clojure (`clojure.test` and test.check)
+  run over the Java target's model.
+- Swift is written for Swift 6 with strict concurrency. Its properties run on
+  a small shrink-tree engine.
+- Checked definitions and spec handlers compile to typed native Erlang on
+  Erlang, Elixir and Gleam. `lawspec-dev bench kafka` has a driver for each
+  new target.
+
 The [changelog](../../CHANGELOG.md) records patch releases and the complete
 changes for each milestone.
 
 ## Planned
-
-### 0.24: JVM and Swift targets
-
-- Scala, Groovy and Clojure join Java and Kotlin on the JVM.
-- Swift joins as a target.
-- Erlang, Elixir and Gleam get the typed fast path.
 
 ### 0.25: Prolog, configuration and documents
 
