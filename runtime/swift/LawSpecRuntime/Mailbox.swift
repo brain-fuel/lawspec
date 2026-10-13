@@ -139,6 +139,24 @@ public final class Mailbox: NodeService, @unchecked Sendable {
         return .data("Maybe::Nothing", [])
     }
 
+    /// As receiveWithin, timed by the Clock in scope: the real clock waits;
+    /// any other clock (the virtual one) takes what is there, then sleeps.
+    public func receiveWithClock(_ micros: BigInt, _ schema: Schema) throws -> Value {
+        func real(_ h: Effects.Handler) -> Bool {
+            switch h {
+            case .recording(_, let inner): return real(inner)
+            case .stateful: return false
+            case .stateless: return true
+            }
+        }
+        let handler = try Effects.handler(schema, "lawspec.time::ability::Clock")
+        if real(handler) { return try receiveWithin(micros) }
+        if let value = try wait(0) { return .data("Maybe::Just", [value]) }
+        let duration = Value.data("lawspec.time::type::Duration::Duration", [.int(micros.isNegative ? BigInt(0) : micros)])
+        _ = try Effects.invoke(handler, schema, "sleep", [duration])
+        return .data("Maybe::Nothing", [])
+    }
+
     /// The next value within a time, or nil.
     public func receive(within timeout: Duration) throws -> Value? { try wait(max(0, Timeouts.seconds(timeout))) }
 

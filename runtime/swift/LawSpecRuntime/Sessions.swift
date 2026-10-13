@@ -249,9 +249,108 @@ public final class SessionEnd: @unchecked Sendable, CustomStringConvertible {
     public var description: String { "session end \(side) of \(channel.spec.id) at step \(step)" }
 }
 
+/// The ends a task holds: given up if the task fails or is cancelled.
+final class OwnedEnds: @unchecked Sendable {
+    private let gate = NSLock()
+    private var ends: [SessionEnd] = []
+
+    init(_ ends: [SessionEnd]) { self.ends = ends }
+
+    func add(_ e: SessionEnd) { gate.lock(); ends.append(e); gate.unlock() }
+
+    func remove(_ e: SessionEnd) {
+        gate.lock()
+        ends.removeAll { $0.channel === e.channel && $0.side == e.side }
+        gate.unlock()
+    }
+
+    /// Give up every end still held.
+    func discardAll() {
+        gate.lock()
+        let held = ends
+        gate.unlock()
+        for e in held { SessionChannel.discard(e) }
+    }
+}
+
+/// A task that runs a body with an end it was given; joined for its result.
+public final class SessionTask: @unchecked Sendable {
+    let owned: OwnedEnds
+    private let done = DispatchSemaphore(value: 0)
+    private var outcome: Result<Value, any Error>?
+
+    init(_ owned: OwnedEnds) { self.owned = owned }
+
+    func settle(_ result: Result<Value, any Error>) {
+        outcome = result
+        done.signal()
+    }
+
+    /// The result, waiting for it; at most `seconds` when given.
+    func wait(_ seconds: Double?) -> Result<Value, any Error>? {
+        if let seconds {
+            guard done.wait(timeout: .now() + seconds) == .success else { return nil }
+        } else {
+            done.wait()
+        }
+        done.signal()
+        return outcome
+    }
+}
+
 /// Session operations, as the generated typed ends call them.
-/// ref:DEC-sessions-by-construction
+/// ref:DEC-sessions-by-construction ref:DEC-async-native-tasks
 public enum Sessions {
+    private static let ownedKey = "lawspec.sessions.owned"
+
+    /// Note that the running task now holds an end.
+    @discardableResult
+    private static func track(_ e: SessionEnd) -> SessionEnd {
+        (Ambient.get(ownedKey) as? OwnedEnds)?.add(e)
+        return e
+    }
+
+    /// Note that the running task no longer holds an end.
+    private static func untrack(_ e: SessionEnd) { (Ambient.get(ownedKey) as? OwnedEnds)?.remove(e) }
+
+    /// Run a body that owns some ends; if it fails, the ends it holds are given up.
+    public static func withOwned<T>(_ ends: [SessionEnd], _ body: () throws -> T) throws -> T {
+        let owned = OwnedEnds(ends)
+        return try Ambient.with(ownedKey, owned) {
+            do {
+                return try body()
+            } catch {
+                owned.discardAll()
+                throw error
+            }
+        }
+    }
+
+    /// Start a task with an end it now owns.
+    public static func spawn(_ e: SessionEnd, _ body: @escaping @Sendable (SessionEnd) throws -> Value) throws -> SessionTask {
+        let moved = try transfer(e)
+        let task = SessionTask(OwnedEnds([moved]))
+        LawThread.start {
+            Ambient.set(ownedKey, task.owned)
+            do {
+                task.settle(.success(try body(moved)))
+            } catch {
+                task.owned.discardAll()
+                task.settle(.failure(error))
+            }
+        }
+        return task
+    }
+
+    /// Wait for a task's result; its failure is thrown here.
+    public static func join(_ task: SessionTask) throws -> Value { try task.wait(nil)!.get() }
+
+    /// Cancel a task: the ends it still owns are given up, so it stops at its next step.
+    public static func cancel(_ task: SessionTask) {
+        task.owned.discardAll()
+        _ = task.wait(5)
+    }
+
     private static let names = Locked<Int64>(0)
     private static let textType = Wire.textType
 
@@ -309,7 +408,7 @@ public enum Sessions {
         let e = channel.handle(side)
         do {
             if let peer = connection { try endpoint.connect(peer) }
-            return e
+            return track(e)
         } catch {
             endpoint.stop()
             throw error
@@ -344,11 +443,13 @@ public enum Sessions {
             let bytes = try encode(part, value)
             let next = try channel.advance(e)
             try endpoint.send(bytes)
-            return next
+            untrack(e)
+            return track(next)
         }
         let next = try channel.advance(e)
         channel.enqueue(1 - e.side, .item(value))
-        return next
+        untrack(e)
+        return track(next)
     }
 
     private static func failedPeer(_ channel: SessionChannel, _ side: Int, _ reason: String) -> LawSpecError {
@@ -362,6 +463,8 @@ public enum Sessions {
         let part = try channel.part(e, false)
         if case .end = part { throw fail("wrong_receive_kind") }
         let next = try channel.advance(e)
+        untrack(e)
+        track(next)
         if let (_, endpoint, _) = channel.network {
             switch try endpoint.receive(channel.spec.deadline) {
             case .success(let bytes):
@@ -381,13 +484,18 @@ public enum Sessions {
     public static func abandon(_ e: SessionEnd) throws {
         try e.channel.locked { _ = try e.channel.check(e) }
         e.channel.closeSide(e.side)
+        untrack(e)
     }
 
     /// The protocol an end follows.
     public static func specification(_ e: SessionEnd) -> SessionSpec { e.channel.spec }
 
     /// Move an end to another holder: the old handle is spent.
-    public static func transfer(_ e: SessionEnd) throws -> SessionEnd { try e.channel.reissue(e) }
+    public static func transfer(_ e: SessionEnd) throws -> SessionEnd {
+        let moved = try e.channel.reissue(e)
+        untrack(e)
+        return moved
+    }
 
     private static func unusedFirst(_ e: SessionEnd, _ expected: String) throws {
         try e.channel.locked { _ = try e.channel.check(e) }
@@ -407,6 +515,7 @@ public enum Sessions {
             s.generation = -s.generation
             s.closed = true
         }
+        untrack(e)
         return address
     }
 
@@ -473,14 +582,16 @@ public enum Sessions {
             let addressText = try offer(node, other, expected)
             let next = try channel.advance(e)
             try endpoint.send(try encode(.end(expected), .text(addressText)))
-            return next
+            untrack(e)
+            return track(next)
         }
         try unusedFirst(other, expected)
         try SessionChannel.move(other.channel, channel)
         let moved = try transfer(other)
         let next = try channel.advance(e)
         channel.enqueue(1 - e.side, .delegated(moved))
-        return next
+        untrack(e)
+        return track(next)
     }
 
     /// Receive an end; it and the next end.
@@ -488,6 +599,8 @@ public enum Sessions {
         let channel = e.channel
         guard case .end(let proto) = try channel.part(e, false) else { throw fail("wrong_receive_kind") }
         let next = try channel.advance(e)
+        untrack(e)
+        track(next)
         if let (node, endpoint, _) = channel.network {
             switch try endpoint.receive(channel.spec.deadline) {
             case .success(let bytes):
@@ -495,7 +608,7 @@ public enum Sessions {
                     throw failedPeer(channel, e.side, "invalid_payload")
                 }
                 do {
-                    return (try take(node, addressText, channel.spec.with(id: proto)), next)
+                    return (track(try take(node, addressText, channel.spec.with(id: proto))), next)
                 } catch {
                     throw failedPeer(channel, e.side, Node.message(error))
                 }
@@ -506,7 +619,7 @@ public enum Sessions {
         switch try channel.await(e.side) {
         case .delegated(let other):
             SessionChannel.release(other.channel)
-            return (other, next)
+            return (track(other), next)
         case .item:
             throw fail("wrong_receive_kind")
         }
