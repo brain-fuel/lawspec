@@ -2,7 +2,7 @@
 -- evaluation or planning. Nominal identities remain opaque. Every original
 -- constructor restriction sequence is audited before equivalent products share
 -- a declaration, including sequences that normalize to the same descriptor.
-module LawSpec.Core.RecordNormalize (normalizeProgramRecords) where
+module LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords) where
 
 import Control.Monad (unless, forM)
 import Control.Monad.State.Strict
@@ -11,6 +11,8 @@ import qualified Data.Set as S
 import LawSpec.Common (Diagnostic(..))
 import LawSpec.Core
 import LawSpec.Core.RecordIdentity
+import LawSpec.Core.RecordViews (structuralViews)
+import qualified LawSpec.Core.Types as Types
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified LawSpec.Core.Machine as Machine
 import qualified LawSpec.Core.Program as Scenario
@@ -20,14 +22,15 @@ data Normalizing = Normalizing
   , products :: M.Map Id DataDeclaration
   , productOrder :: [Id]
   , typeResults :: M.Map Type Type
-  , active :: S.Set Type }
+  , active :: S.Set Type
+  , nominalResults :: M.Map Id DataDeclaration }
 type Normalize = StateT Normalizing (Either String)
 
 normalizeProgramRecords :: Program -> Either [Diagnostic] Program
 normalizeProgramRecords program
   | all ((== Nothing) . dataStructural) (programDataDeclarations program) = Right program
   | otherwise = do
-      (result,_) <- diagnostic $ runStateT rewrite (Normalizing source M.empty [] M.empty S.empty)
+      (result,_) <- diagnostic $ runStateT rewrite (Normalizing source M.empty [] M.empty S.empty M.empty)
       -- Check all occurrences before interning. A descriptor deliberately
       -- excludes cross-field source order; an unsafe order must still fail.
       _ <- constructorProofContracts (programMachineBits program) (programDataDeclarations result)
@@ -45,13 +48,36 @@ normalizeProgramRecords program
                        Just d <- [M.lookup identity (products state)]]
       pure program{programDataDeclarations=declarations++extra,programUnits=units}
 
+-- | The same normalization for a standalone fixture/refinement term. This
+-- performs no execution and invents no implementation or test declaration.
+normalizeExpressionRecords :: Int -> [DataDeclaration] -> Expr -> Either [Diagnostic] (Expr,[DataDeclaration])
+normalizeExpressionRecords bits declarations value
+  | all ((==Nothing) . dataStructural) declarations = Right (value,declarations)
+  | otherwise = do
+      ((made,known),_) <- diagnostic $ runStateT rewrite (Normalizing source M.empty [] M.empty S.empty M.empty)
+      _ <- constructorProofContracts bits known
+      interned <- diagnostic (internRecordDeclarations known)
+      pure (made,interned)
+  where
+    source=M.fromListWith (\_ first->first) [(dataId d,d) | d<-declarations]
+    diagnostic=either (Left . pure . (\message->Diagnostic "record-type" message Nothing)) Right
+    rewrite=do
+      known<-mapM dataDeclaration declarations
+      made<-expression value
+      state<-get
+      let present=S.fromList (map dataId known)
+          extra=[d | identity<-reverse (productOrder state),identity `S.notMember` present,Just d<-[M.lookup identity (products state)]]
+      pure (made,known++extra)
+
 checked :: Either String a -> Normalize a
 checked = lift
 
 findData :: Id -> Normalize (Maybe DataDeclaration)
-findData identity = gets (\state -> case M.lookup identity (products state) of
+findData identity = gets (\state -> case M.lookup identity (nominalResults state) of
   Just d -> Just d
-  Nothing -> M.lookup identity (originals state))
+  Nothing -> case M.lookup identity (products state) of
+    Just d -> Just d
+    Nothing -> M.lookup identity (originals state))
 
 remember :: DataDeclaration -> Normalize ()
 remember declaration = do
@@ -123,7 +149,9 @@ dataDeclaration declaration
         predicates <- mapM expression (constructorPredicates constructor)
         equations <- mapM (\(parameter,value) -> (,) parameter <$> ty value) (constructorEquations constructor)
         pure constructor{constructorFields=fields,constructorPredicates=predicates,constructorEquations=equations}
-      pure declaration{dataConstructors=constructors}
+      let made=declaration{dataConstructors=constructors}
+      modify (\state -> state{nominalResults=M.insert (dataId made) made (nominalResults state)})
+      pure made
 
 binder :: Binder -> Normalize Binder
 binder value = do
@@ -156,7 +184,20 @@ constructorAt before after identity = case (before,after) of
 
 expression :: Expr -> Normalize Expr
 expression original = do
-  children' <- traverseChildren expression original
+  normalized <- normalizeExpression original
+  state <- get
+  let catalog=M.union (nominalResults state) (M.union (products state) (originals state))
+      hasProducts=any ((/=Nothing) . dataStructural) (M.elems catalog)
+  if not hasProducts then pure normalized else do
+    result <- structuralViews ty (M.elems catalog) M.empty normalized
+    checked result
+
+-- Structural views lower to ordinary matches. Normalize away an identity
+-- product reconstruction before rebuilding the required storage view, so
+-- repeated whole-program normalization cannot accumulate conversion matches.
+normalizeExpression :: Expr -> Normalize Expr
+normalizeExpression original = do
+  children' <- traverseChildren normalizeExpression original
   result <- ty (expressionType original)
   node <- case expressionNode children' of
     Construct identity values -> Construct <$> constructorAt (expressionType original) result identity <*> pure values
@@ -186,7 +227,20 @@ expression original = do
         WithHandler ref handler -> flip WithHandler handler <$> ability ref
       pure (Handle handling' value)
     other -> pure other
-  pure children'{expressionType=result,expressionNode=node}
+  let made=children'{expressionType=result,expressionNode=node}
+  case node of
+    Match value [branch] | Construct tag fields <- expressionNode (caseBody branch),
+      tag==caseConstructor branch,expressionType value==expressionType made,
+      expressionType (caseBody branch)==expressionType made,
+      fields==[Expr (binderType b) (Local (binderId b)) (expressionOrigin field) | (b,field)<-zip (caseBinders branch) fields],
+      length fields==length (caseBinders branch) -> do
+        declaration<-case expressionType value of Constructor name _->findData (Id name);_->pure Nothing
+        state<-get
+        let known=M.elems (M.union (nominalResults state) (M.union (products state) (originals state)))
+            actual=Types.makeRegistry known >>= \registry->Types.constructorFieldsFor registry (expressionType value) tag
+            validFields=fmap (map binderType) actual==Right (map binderType (caseBinders branch))
+        pure (case declaration of Just d | dataStructural d/=Nothing,validFields->value;_->made)
+    _->pure made
 
 quantifier :: Quantifier -> Normalize Quantifier
 quantifier q = Quantifier <$> binder (quantifiedBinder q) <*> mapM expression (quantifiedPredicates q)

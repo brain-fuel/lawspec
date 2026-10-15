@@ -6,14 +6,16 @@
 module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
+import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
 import LawSpec.Model
-import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithProfile, inlineFieldDefinitions)
-import LawSpec.Capabilities (satisfiedWithData)
+import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, inlineFieldDefinitions)
+import LawSpec.Capabilities (satisfiedWithContext)
+import qualified LawSpec.SourceContext as Source
 import LawSpec.Inference
-import LawSpec.DefinitionTotality (auditTemplates)
+import LawSpec.DefinitionTotality (auditTemplatesWithContext)
 import qualified LawSpec.SourceRecords as SourceRecords
 import LawSpec.Core.Total (constructorProofContracts)
-import LawSpec.SpecializeDefinitions (specializeDefinitions)
+import LawSpec.SpecializeDefinitions (specializeDefinitionsWithContext)
 import qualified LawSpec.Elaboration as Elaboration
 import qualified LawSpec.Core as Core
 import qualified LawSpec.Core.Eval as CoreEval
@@ -139,7 +141,8 @@ expandScoped scoped definitions table unit env stack law args = do
           forM_ (map (normal . subst replacements') (argumentChecks renamed)) $ \check ->
             when (closedCheck [] check) $ do
               dataTypes <- gets dataDeclarations
-              (term,registry) <- lift (evaluationTerm dataTypes [] bits (Core.Id key) Core.Id (environmentTypes scope') check)
+              sourceTypes <- gets sourceContext
+              (term,registry) <- lift (evaluationTerm sourceTypes dataTypes [] bits (Core.Id key) Core.Id (environmentTypes scope') check)
               value <- lift (CoreEval.evaluateValuePure registry bits [] term)
               unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
           mapM_ (\(Capability c ty) -> resolve ty >>= require c) (typeConstraints renamed)
@@ -208,9 +211,9 @@ validType _ = False
 scalar :: Type -> Bool
 scalar (Arrow _ _) = False
 scalar t = validType t
-validateUnit :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
-validateUnit dataTypes bits u = either (Left . pure . (\m -> Diagnostic "declaration" m Nothing)) Right $ do
-  let checkTypes = typeCheck dataTypes bits
+validateUnit :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
+validateUnit sourceTypes dataTypes bits u = either (Left . pure . (\m -> Diagnostic "declaration" m Nothing)) Right $ do
+  let checkTypes = typeCheck sourceTypes dataTypes bits
   unique "constructor" [dataConstructorName c | d <- LawSpec.Model.dataTypes u, c <- dataTypeConstructors d]
   unique "function" (map fst (functions u)); unique "law" (map lawName (laws u))
   forM_ (functions u) $ \(n,t) -> do
@@ -369,28 +372,28 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
   lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported) parsed)
   let us = map qualifyDataNames lowered
   mapM_ checkRegexes us
-  nominalTypes <- elaborateDataDeclarationsWithProfile bits us
+  (nominalTypes,sourceTypes) <- elaborateDataDeclarationsWithContext bits us
   declaredRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
-    (SourceRecords.recordDeclarations nominalTypes bits (concatMap SourceRecords.unitTypeReferences us))
+    (SourceRecords.recordDeclarationsWithContext sourceTypes nominalTypes bits (concatMap SourceRecords.unitTypeReferences us))
   let dataTypes = if null declaredRecords then nominalTypes else nominalTypes ++ declaredRecords
   _ <- constructorProofContracts bits dataTypes
-  let checkTypes = typeCheck dataTypes bits
+  let checkTypes = typeCheck sourceTypes dataTypes bits
   _ <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)
   unless (length us == length (nub (map unitName us))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   -- Each unit is validated, and each law expanded, under a key of exactly
   -- its inputs: a law's expansion depends on the law, the laws it invokes,
   -- its unit's signatures (not its definitions' bodies) and the data types,
   -- so editing a body or another unit's laws reuses it.
-  let dataDigest = digestHex (digestString (show dataTypes))
+  let dataDigest = digestHex (digestString (show (dataTypes,sourceTypes)))
       key parts = digestHex (digestString parts)
-  mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit dataTypes bits u)) us
-  mapM_ (\u -> Memo.memoized validationTable (key (show ("totality", bits, dataDigest, u))) (validateDefinitionTotality dataTypes bits u)) us
+  mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit sourceTypes dataTypes bits u)) us
+  mapM_ (\u -> Memo.memoized validationTable (key (show ("totality", bits, dataDigest, u))) (validateDefinitionTotalityWithContext sourceTypes dataTypes bits u)) us
   let table = M.fromList [((unitName u,lawName l),l) | u <- us, l <- laws u]
       signatures u = [ (functionName d, functionArguments d, functionResult d, functionRequirements d) | d <- functionDefinitions u ]
       expansionKey u l = key (show (canonical, bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))
       typedChecked environment expression = do
-        (tree, requirements) <- typedExpressionWithSchemes dataTypes bits environment expression
-        forM_ requirements $ \requirement -> unless (satisfiedWithData dataTypes bits [] requirement)
+        (tree, requirements) <- typedExpressionWithSchemesContext sourceTypes dataTypes bits environment expression
+        forM_ requirements $ \requirement -> unless (satisfiedWithContext sourceTypes dataTypes bits [] requirement)
           (Left ("unsatisfied capability: " ++ show requirement))
         pure tree
   allExpanded <- forM [(u,l) | u <- us,l <- laws u] $ \(u,l) -> Memo.memoized expansionTable (expansionKey u l) $
@@ -425,7 +428,7 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
         (throwC "a recorded value is compared in an example, or in a law without `for all`: every input would need its own recording")
       os <- gets obligations >>= mapM (\(Capability c t) -> Capability c <$> resolve t)
       let allowed = [Capability c (rigid t) | Capability c t <- requirements l]
-      forM_ os $ \c -> unless (satisfiedWithData dataTypes bits allowed c) (throwC ("unsatisfied capability: " ++ show c))
+      forM_ os $ \c -> unless (satisfiedWithContext sourceTypes dataTypes bits allowed c) (throwC ("unsatisfied capability: " ++ show c))
       unless symbolic $ do
         lift (unique "expanded input name" (map inputName checkedInputs))
       -- Canonical tables retain all columns until reuse has expanded the law.
@@ -454,30 +457,31 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
       normalized <- if symbolic then pure sourceExamples else forM sourceExamples $ \ex -> do
         bs' <- forM (bindings ex) $ \(n,v) -> do
           t <- maybe (throwC "unknown example input") pure (lookup n [(inputName inp,inputType inp) | inp <- checkedInputs])
-          value <- lift (normalizeLiteralWithData dataTypes bits t v)
+          value <- lift (normalizeLiteralWithContext sourceTypes dataTypes bits t v)
           pure (n,value)
         checks' <- forM (expectations ex) $ \c -> do
           t <- infer expressionEnvironment (actual c) >>= resolve
-          value <- lift (normalizeLiteralWithData dataTypes bits t (expected c))
+          value <- lift (normalizeLiteralWithContext sourceTypes dataTypes bits t (expected c))
           pure c{expected=value}
         pure ex{bindings=bs',expectations=checks'}
       let resolvedInputs = [inp{inputRefinements=map (mapExprTypes resolveKnown) (inputRefinements inp)} | inp <- checkedInputs]
           resolveKnown t = t
       pure (Expanded (unitName u) (lawName l) resolvedInputs a b gs body tr l{examples=normalized} ir (if take 9 (lawName l) == "contract " then "contract" else "law") settings (map (planDomain [(inputId i,inputType i) | i <- resolvedInputs]) resolvedInputs) argumentChecks (if canonical then UniversalDomain else NonemptyDomain))
-      ) (withDataDeclarations dataTypes (initialState bits))
-  mapM_ (validateContracts dataTypes bits) us
+      ) (withSourceContext sourceTypes (withDataDeclarations dataTypes (initialState bits)))
+  mapM_ (validateContracts sourceTypes dataTypes bits) us
   witnessed <- prepareHarnessWitnesses (filter ((/= "prelude") . unitName) us)
     (filter (null . parameters . original) allExpanded)
-  (specialized, properties) <- specializeDefinitions dataTypes bits (satisfiedWithData dataTypes bits [])
+  (specialized, properties) <- specializeDefinitionsWithContext sourceTypes dataTypes bits (satisfiedWithContext sourceTypes dataTypes bits [])
     witnessed (filter (null . parameters . original) allExpanded)
   collectedUnits <- either (Left . pure . (\message -> Diagnostic "definition" message Nothing)) Right
-    (mapM (Elaboration.elaborateDefinitionUnitWithRecords dataTypes bits) specialized)
+    (mapM (Elaboration.elaborateDefinitionUnitWithSourceRecords sourceTypes dataTypes bits) specialized)
   propertyRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
-    (SourceRecords.recordDeclarations dataTypes bits
+    (SourceRecords.recordDeclarationsWithContext sourceTypes dataTypes bits
       (concatMap (concatMap SourceRecords.typedTypeReferences . typedExpressions) properties))
   let collectedRecords = concatMap snd collectedUnits ++ propertyRecords
       closedDataTypes = if null collectedRecords then dataTypes else dataTypes ++ collectedRecords
-  closedProgram <- deferProgramPostconditions (Core.Program bits closedDataTypes (map fst collectedUnits))
+  normalizedProgram <- normalizeProgramRecords (Core.Program bits closedDataTypes (map fst collectedUnits))
+  closedProgram <- deferProgramPostconditions normalizedProgram
   invoke <- prepareDefinitions closedProgram
   registry <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry (Core.programDataDeclarations closedProgram))
   forM_ properties $ \property -> do
@@ -487,12 +491,12 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
       evalStateT (do
         let identify name = Core.Id (unitName u ++ "::" ++ name)
         forM_ (refinementArgumentChecks property) $ \check -> do
-          (term,known) <- lift (evaluationTerm closedDataTypes (map (identify . fst) (functions u))
+          (term,known) <- lift (evaluationTerm sourceTypes closedDataTypes (map (identify . fst) (functions u))
             bits (Core.Id (name property)) identify (functions u) check)
           value <- lift (CoreEval.evaluateValue known bits invoke [] term)
           unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
         mapM_ (validateExampleDomains bits u invoke (inputs property)) (examples (original property)))
-        (withDataDeclarations closedDataTypes (initialState bits))
+        (withSourceContext sourceTypes (withDataDeclarations closedDataTypes (initialState bits)))
   pure (specialized, properties)
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
@@ -560,14 +564,14 @@ assertionExpressions (AssertImplies g body) = g:assertionExpressions body
 assertionExpressions (AssertAll as) = concatMap assertionExpressions as
 assertionExpressions (AssertNot body) = assertionExpressions body
 assertionExpressions (AssertQuantified _ input body) = inputRefinements input ++ assertionExpressions body
-normalizeLiteralWithData :: [Core.DataDeclaration] -> Int -> Type -> Literal -> Either String Literal
-normalizeLiteralWithData dataTypes bits t (ConstructorLiteral name fields) = do
-  parameters <- evalStateT (constructorParameters t name) (withDataDeclarations dataTypes (initialState bits))
+normalizeLiteralWithContext :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Type -> Literal -> Either String Literal
+normalizeLiteralWithContext sourceTypes dataTypes bits t (ConstructorLiteral name fields) = do
+  parameters <- evalStateT (constructorParameters t name) (withSourceContext sourceTypes (withDataDeclarations dataTypes (initialState bits)))
   unless (length parameters == length fields) (Left ("wrong constructor arity: " ++ name))
-  ConstructorLiteral name <$> sequence [normalizeLiteralWithData dataTypes bits parameter field | (parameter, field) <- zip parameters fields]
-normalizeLiteralWithData dataTypes bits (Applied "List" element) (ListLiteral xs) = ListLiteral <$> mapM (normalizeLiteralWithData dataTypes bits element) xs
-normalizeLiteralWithData _ _ _ (ListLiteral _) = Left "list literal requires a List type"
-normalizeLiteralWithData dataTypes bits t (RecordLiteral fields) = case baseType t of
+  ConstructorLiteral name <$> sequence [normalizeLiteralWithContext sourceTypes dataTypes bits parameter field | (parameter, field) <- zip parameters fields]
+normalizeLiteralWithContext sourceTypes dataTypes bits (Applied "List" element) (ListLiteral xs) = ListLiteral <$> mapM (normalizeLiteralWithContext sourceTypes dataTypes bits element) xs
+normalizeLiteralWithContext _ _ _ _ (ListLiteral _) = Left "list literal requires a List type"
+normalizeLiteralWithContext sourceTypes dataTypes bits t (RecordLiteral fields) = case baseType t of
   Record expected -> do
     let labels=map fst fields
         declared=map recordFieldLabel expected
@@ -577,9 +581,9 @@ normalizeLiteralWithData dataTypes bits t (RecordLiteral fields) = case baseType
     RecordLiteral <$> forM fields (\(label,value) -> do
       ty <- maybe (Left ("unknown record literal field: " ++ label)) Right
         (lookup label [(recordFieldLabel field,recordFieldType field) | field <- expected])
-      (,) label <$> normalizeLiteralWithData dataTypes bits (baseType ty) value)
+      (,) label <$> normalizeLiteralWithContext sourceTypes dataTypes bits (baseType ty) value)
   _ -> Left "record literal requires a structural record type"
-normalizeLiteralWithData _ bits t v = do
+normalizeLiteralWithContext _ _ bits t v = do
   value <- case v of
     DecimalLiteral c e -> Right (SDecimal c e)
     IntLiteral n -> Right (SInteger "BigInt" n)
@@ -602,8 +606,8 @@ checkPredicate definitions env e = do
   where isFunction (Arrow _ _) = True
         isFunction _ = False
 
-validateContracts :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
-validateContracts dataTypes bits u = either (Left . pure . (\m -> Diagnostic "contract" m Nothing)) Right $ forM_ (contracts u) $ \c -> evalStateT (do
+validateContracts :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
+validateContracts sourceTypes dataTypes bits u = either (Left . pure . (\m -> Diagnostic "contract" m Nothing)) Right $ forM_ (contracts u) $ \c -> evalStateT (do
   _ <- foldM (\env (n,t) -> do
     let env' = M.insert n (Monomorphic (baseType t)) env
     mapM_ (checkPredicate (map functionName (functionDefinitions u)) env') (typePredicates (Var n) t)
@@ -613,18 +617,19 @@ validateContracts dataTypes bits u = either (Left . pure . (\m -> Diagnostic "co
   mapM_ (checkPredicate (map functionName (functionDefinitions u)) env) (contractPostconditions c)
   mapM_ (\(Capability k ty) -> require k ty) (typeConstraints (snd (contractResult c)))
   os <- gets obligations >>= mapM (\(Capability name ty) -> Capability name <$> resolve ty)
-  forM_ os $ \o -> unless (satisfiedWithData dataTypes bits [] o) (throwC ("unsatisfied contract capability: " ++ show o))
-  ) (withDataDeclarations dataTypes (initialState bits))
+  forM_ os $ \o -> unless (satisfiedWithContext sourceTypes dataTypes bits [] o) (throwC ("unsatisfied contract capability: " ++ show o))
+  ) (withSourceContext sourceTypes (withDataDeclarations dataTypes (initialState bits)))
 
 validateExampleDomains :: Int -> Unit -> (Core.Id -> [CoreValue.Value] -> Either String CoreValue.Value) -> [Input] -> Example -> C ()
 validateExampleDomains bits unit invoke ins ex = withContext ("example " ++ exampleName ex ++ ": ") $ do
   dataTypes <- gets dataDeclarations
+  sourceTypes <- gets sourceContext
   registry <- lift (CoreTypes.makeRegistry dataTypes)
   let origin = Core.Id ("example::" ++ exampleName ex)
       identify name = Core.Id (unitName unit ++ "::" ++ name)
       resolve name = if name `elem` map inputId ins then Core.Id name else identify name
       env = functions unit ++ [(inputId input,inputType input) | input <- ins]
-      lower = evaluationTerm dataTypes (map (identify . fst) (functions unit)) bits origin resolve env
+      lower = evaluationTerm sourceTypes dataTypes (map (identify . fst) (functions unit)) bits origin resolve env
   values <- forM ins $ \input -> do
     literal <- maybe (throwC "missing example input") pure (lookup (inputName input) (bindings ex))
     (term,known) <- lift (lower (Annotate (literalExpr literal) (inputType input)))
@@ -639,12 +644,13 @@ validateExampleDomains bits unit invoke ins ex = withContext ("example " ++ exam
 -- A standalone validation term may introduce products that are absent from
 -- implementation signatures. Audit its occurrence stream before using a shared
 -- lookup registry; final program elaboration retains its own source occurrences.
-evaluationTerm declarations functions bits origin resolve env source = do
-  (term,records) <- Elaboration.elaborateResolvedWithRecords False declarations functions bits origin resolve env source
+evaluationTerm sourceTypes declarations functions bits origin resolve env source = do
+  (term,records) <- Elaboration.elaborateResolvedWithSourceRecords sourceTypes False declarations functions bits origin resolve env source
   let known = if null records then declarations else declarations ++ records
   _ <- either (Left . unlines . map message) Right (constructorProofContracts bits known)
-  registry <- CoreTypes.makeRegistry known
-  pure (term,registry)
+  (normalized,complete) <- either (Left . unlines . map message) Right (normalizeExpressionRecords bits known term)
+  registry <- CoreTypes.makeRegistry complete
+  pure (normalized,registry)
 
 resolveExpr :: Expr -> C Expr
 resolveExpr (Located range e) = Located range <$> resolveExpr e
@@ -679,11 +685,11 @@ abstractType = mapType (\t -> case t of Named n@('@':_) -> Variable n; _ -> t) i
 -- | Whether a type is valid given the data types: the registry is built once
 -- for every type a caller checks with the same function, which matters for a
 -- program of thousands of types.
-typeCheck :: [Core.DataDeclaration] -> Int -> Type -> Bool
-typeCheck declarations bits = case CoreTypes.makeRegistry declarations of
+typeCheck :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Type -> Bool
+typeCheck sourceTypes declarations bits = case CoreTypes.makeRegistry declarations of
   Left _ -> const False
   Right registry -> \t -> either (const False) (const True) $ do
-    (ty,records) <- Elaboration.coreTypeWithRecords declarations bits t
+    (ty,records) <- Elaboration.coreTypeWithSourceRecords sourceTypes declarations bits t
     if null records then CoreTypes.checkType registry ty else do
       extended <- CoreTypes.makeRegistry (declarations ++ records)
       CoreTypes.checkType extended ty
@@ -710,7 +716,7 @@ concreteValue check t = valueType check t && concrete (baseType t)
 -- still pass Core.Total; generic bodies must pass termination/definedness and
 -- closed-call specialization before the frontend can enable them for execution.
 validateDefinitionTypes :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
-validateDefinitionTypes declarations bits unit = () <$ inferDefinitionTemplates declarations bits unit
+validateDefinitionTypes declarations bits unit = () <$ inferDefinitionTemplates Source.emptyContext declarations bits unit
 
 -- | A checked definition is executed by every target's tests, so it must be
 -- proved total before emission; orchestrations call adapters and are exempt.
@@ -718,16 +724,18 @@ validateDefinitionTypes declarations bits unit = () <$ inferDefinitionTemplates 
 validateDefinitionTotality :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
 -- An orchestration's body is type-checked like any definition, but calls
 -- adapters, so only the others are proved total.
-validateDefinitionTotality declarations bits unit =
-  inferDefinitionTemplates declarations bits unit >>= auditTemplates declarations bits unit
+validateDefinitionTotality = validateDefinitionTotalityWithContext Source.emptyContext
+
+validateDefinitionTotalityWithContext sourceTypes declarations bits unit =
+  inferDefinitionTemplates sourceTypes declarations bits unit >>= auditTemplatesWithContext sourceTypes declarations bits unit
     . filter (\(d, _, _, _) -> functionName d `notElem` orchestrations unit)
 
-inferDefinitionTemplates :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] [(FunctionDefinition, TypedExpr, [TypedExpr], [TypedExpr])]
-inferDefinitionTemplates declarations bits unit = do
+inferDefinitionTemplates :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] [(FunctionDefinition, TypedExpr, [TypedExpr], [TypedExpr])]
+inferDefinitionTemplates sourceTypes declarations bits unit = do
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   mapM validate (functionDefinitions unit)
   where
-    checkTypes = typeCheck declarations bits
+    checkTypes = typeCheck sourceTypes declarations bits
     signature d = foldr Arrow (functionResult d) (map snd (functionArguments d))
     globals = M.union
       (M.fromList [(functionName d, Universal (variables (signature d))
@@ -754,15 +762,15 @@ inferDefinitionTemplates declarations bits unit = do
           (Left ("unknown capability: " ++ name))
         unless (valueType checkTypes ty && all (`elem` bound) (variables ty))
           (Left "capability mentions an invalid or unbound type")
-        when (null (variables ty) && not (satisfiedWithData declarations bits [] (Capability name ty)))
+        when (null (variables ty) && not (satisfiedWithContext sourceTypes declarations bits [] (Capability name ty)))
           (Left ("unsatisfied definition capability: " ++ show (Capability name ty)))
       unless (all (`elem` bound) (concatMap variables (annotations (functionBody d))))
         (Left "body annotation mentions an unbound type variable")
-      (body, obligations) <- typedExpressionWithSchemes declarations bits environment
+      (body, obligations) <- typedExpressionWithSchemesContext sourceTypes declarations bits environment
         (Annotate (normal (mapExprTypes rigid (functionBody d))) (rigid (baseType (functionResult d))))
       contract <- definitionContractFor d
       let predicate scope expression = do
-            (tree, constraints) <- typedExpressionWithSchemes declarations bits scope
+            (tree, constraints) <- typedExpressionWithSchemesContext sourceTypes declarations bits scope
               (Annotate (normal (mapExprTypes rigid expression)) (Named "Bool"))
             pure (tree,constraints)
           globalScope = globals
@@ -778,7 +786,7 @@ inferDefinitionTemplates declarations bits unit = do
             value <- functionResult d : map snd parameters,
             Capability name ty <- typeConstraints value]
       forM_ (obligations ++ preObligations ++ concatMap snd postconditions ++ domainObligations) $ \obligation ->
-        unless (satisfiedWithData declarations bits allowed obligation)
+        unless (satisfiedWithContext sourceTypes declarations bits allowed obligation)
           (Left ("unsatisfied definition capability: " ++ show obligation))
       pure (d, body, preconditions, map fst postconditions)
     variables ty = nub $ case baseType ty of

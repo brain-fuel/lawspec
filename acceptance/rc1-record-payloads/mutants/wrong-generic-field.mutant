@@ -1,0 +1,6 @@
+@@ examples/rc1/record-payloads.lawspec
+<<<<<<<
+envelope.payload.value
+=======
+envelope.payload.copy
+>>>>>>>

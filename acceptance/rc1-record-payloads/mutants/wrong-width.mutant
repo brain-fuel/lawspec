@@ -1,0 +1,6 @@
+@@ examples/rc1/record-payloads.lawspec
+<<<<<<<
+picture.dimensions.width
+=======
+picture.dimensions.height
+>>>>>>>

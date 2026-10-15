@@ -6,8 +6,8 @@ import qualified LawSpec.Compile as S
 import LawSpec.Inference (monoEnvironment)
 import qualified LawSpec.Core as C
 import LawSpec.Common
-import LawSpec.Data (elaborateDataDeclarationsWithProfile)
-import LawSpec.Elaboration (elaborateExpression, binaryOp, elaborateDefinitionUnitWithRecords, elaborateContractWithRecords, abilityReferenceWithRecords, unitOperationsWithRecords, performOperations, collectRecords, collectType, collectExpression, collectEquation, collectAbilityReference)
+import LawSpec.Data (elaborateDataDeclarationsWithContext)
+import LawSpec.Elaboration (elaborateExpression, binaryOp, elaborateDefinitionUnitWithSourceRecords, elaborateContractWithSourceRecords, abilityReferenceWithSourceRecords, unitOperationsWithSourceRecords, performOperations, collectSourceRecords, collectType, collectExpression, collectEquation, collectAbilityReference)
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Release (checkResourceReleases)
 import LawSpec.Core.Total (deferProgramPostconditions)
@@ -43,8 +43,8 @@ compileCoreCanonical bits settings sources = do
 -- before any backend sees it. ref:DEC-elaborate-before-core
 elaborate :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
 elaborate bits units properties = do
-  dataDeclarations <- elaborateDataDeclarationsWithProfile bits units
-  collected <- mapM (unit dataDeclarations) units
+  (dataDeclarations,sourceTypes) <- elaborateDataDeclarationsWithContext bits units
+  collected <- mapM (unit sourceTypes dataDeclarations) units
   let elaborated = C.Program bits (appendRecords dataDeclarations (concatMap snd collected)) (map fst collected)
   normalized <- normalizeProgramRecords elaborated
   -- Postconditions over non-linear index arithmetic become runtime checks.
@@ -58,38 +58,38 @@ elaborate bits units properties = do
   where
     appendRecords known [] = known
     appendRecords known records = known ++ records
-    unit nominalDeclarations u = do
+    unit sourceTypes nominalDeclarations u = do
       (closed, owned, ps0, cs, dataDeclarations, occurrences) <- contextual Nothing $ do
-        (closed,definitionRecords) <- elaborateDefinitionUnitWithRecords nominalDeclarations bits u
+        (closed,definitionRecords) <- elaborateDefinitionUnitWithSourceRecords sourceTypes nominalDeclarations bits u
         let knownDefinitions = appendRecords nominalDeclarations definitionRecords
-        contracts <- mapM (elaborateContractWithRecords knownDefinitions bits u) (S.contracts u)
+        contracts <- mapM (elaborateContractWithSourceRecords sourceTypes knownDefinitions bits u) (S.contracts u)
         let contractRecords = concatMap snd contracts
             dataDeclarations = appendRecords knownDefinitions contractRecords
             cs = map fst contracts
         -- A law's Core depends on it, its unit's signatures and the data types.
-        let dataDigest = digestHex (digestString (show dataDeclarations))
+        let dataDigest = digestHex (digestString (show (dataDeclarations,sourceTypes)))
             elaborated p = memoized elaborationTable
               (digestHex (digestString (show (bits, dataDigest, S.unitName u, S.functions u, S.resourceDeclarations u, p))))
-              (property dataDeclarations u p)
+              (property sourceTypes dataDeclarations u p)
             owned = filter ((== S.unitName u) . S.owner) properties
         ps0 <- mapM elaborated owned
         let propertyRecords = concatMap snd ps0
         pure (closed, owned, map fst ps0, cs, appendRecords dataDeclarations propertyRecords,
           definitionRecords ++ contractRecords ++ propertyRecords)
       -- The harness plane: how each law is tested (LawSpec.Harness).
-      harnesses <- mapM (\(sp, cp) -> harnessed dataDeclarations closed u sp cp) (zip owned ps0)
+      harnesses <- mapM (\(sp, cp) -> harnessed sourceTypes dataDeclarations closed u sp cp) (zip owned ps0)
       let harnessRecords = concatMap snd harnesses
           knownHarnesses = appendRecords dataDeclarations harnessRecords
           ps = map fst harnesses
-      (settings,benchmarkRecords) <- unitHarnessSettings knownHarnesses closed u
+      (settings,benchmarkRecords) <- unitHarnessSettings sourceTypes knownHarnesses closed u
       let knownSettings = appendRecords knownHarnesses benchmarkRecords
       contextual Nothing $ do
         -- Calls to ability operations are Perform; each law gets the handlers
         -- the abilities pass chose for it.
-        ((_, operations), operationRecords) <- unitOperationsWithRecords knownSettings bits u
+        ((_, operations), operationRecords) <- unitOperationsWithSourceRecords sourceTypes knownSettings bits u
         handled <- forM ps $ \p -> do
           assignments <- forM (maybe [] id (lookup (C.propertyName p) (S.lawAssignments u))) $ \(ability, choice) -> do
-            (reference,records) <- abilityReferenceWithRecords (appendRecords knownSettings operationRecords) bits u ability
+            (reference,records) <- abilityReferenceWithSourceRecords sourceTypes (appendRecords knownSettings operationRecords) bits u ability
             pure ((reference,handlerRef u choice),records)
           let assignment = map fst assignments
           -- A resource's operations (a built-in resource's lawspec.host
@@ -120,7 +120,7 @@ elaborate bits units properties = do
       C.Perform op args -> op : concatMap performedIn args
       _ -> concatMap performedIn (C.children e)
     declarationId u n = C.Id (S.unitName u ++ "::" ++ n)
-    property dataDeclarations u p = collectRecords dataDeclarations $ do
+    property sourceTypes dataDeclarations u p = collectSourceRecords sourceTypes dataDeclarations $ do
       let pid = C.Id (S.unitName u ++ "::law::" ++ escapeIdentity (S.name p))
           original = S.original p
           resourceIds = [(n,C.Id (C.idText pid ++ "::resource::" ++ show index)) | (index,(n,_)) <- zip [0::Int ..] (S.lawResources original)]
@@ -217,21 +217,21 @@ elaborate bits units properties = do
     -- A law's harness plan, elaborated over its inputs. Its expressions may
     -- call checked definitions only: calling native code or an ability
     -- operation could change what the law observes.
-    harnessed dataDeclarations closed u sp cp = case lookup (S.name sp) (S.lawHarness u) of
+    harnessed sourceTypes dataDeclarations closed u sp cp = case lookup (S.name sp) (S.lawHarness u) of
       Nothing -> pure (cp { C.propertyHarness = C.noHarness { C.harnessUnit = S.harnessName <$> S.unitHarness u } },[])
       Just plan -> do
         witnesses <- forM (S.planResolvedWitnesses plan) $ \witness ->
           either (\message -> Left [Diagnostic "harness" message (Just (spanStart (S.witnessSourceSpan witness)))]) Right
-            (collectRecords dataDeclarations (elaborateWitness closed u sp cp witness))
+            (collectSourceRecords sourceTypes dataDeclarations (elaborateWitness closed u sp cp witness))
         let witnessRecords = concatMap snd witnesses
             knownWitnesses = appendRecords dataDeclarations witnessRecords
         draws <- forM (S.planDraws plan) $ \selected@(inputName,_,_,_) ->
           either (\message -> Left [Diagnostic "harness" message (Just
             (maybe (S.location (S.original sp)) spanStart (lookup inputName (S.planDrawLocations plan))))]) Right
-            (collectRecords knownWitnesses (elaborateHarnessStrategy closed u sp cp selected))
+            (collectSourceRecords sourceTypes knownWitnesses (elaborateHarnessStrategy closed u sp cp selected))
         let drawRecords = concatMap snd draws
             knownDraws = appendRecords knownWitnesses drawRecords
-        (property,records) <- either (\msg -> Left [Diagnostic "harness" msg (Just (S.location (S.original sp)))]) Right $ collectRecords knownDraws $ do
+        (property,records) <- either (\msg -> Left [Diagnostic "harness" msg (Just (S.location (S.original sp)))]) Right $ collectSourceRecords sourceTypes knownDraws $ do
           let pid = C.propertyId cp
               functionIds = [declarationId u n | (n,_) <- S.functions u]
               inputIds = [(S.inputId i, C.binderId (C.quantifiedBinder q)) | (i, q) <- zip (S.inputs sp) (C.propertyInputs cp)] ++
@@ -393,7 +393,7 @@ elaborate bits units properties = do
         -- Only a draw of the strategy's own type aims at its refinement.
         anyOf own aim ty = C.DrawAny <$> collectType bits ty <*> pure (if ty == own then aim else Nothing)
     -- Benchmarks, sharing and order: the harness settings beyond laws.
-    unitHarnessSettings dataDeclarations _ u = case S.unitHarness u of
+    unitHarnessSettings sourceTypes dataDeclarations _ u = case S.unitHarness u of
       Nothing -> pure (Nothing,[])
       Just h -> do
         let functionIds = [declarationId u n | (n,_) <- S.functions u]
@@ -401,7 +401,7 @@ elaborate bits units properties = do
         benchmarks <- forM [(n, e, range) | S.HarnessBenchmark n e range <- S.harnessItems h] $ \(n, e, range) -> do
           let at = Just (spanStart range)
               failing msg = Left [Diagnostic "harness" ("benchmark `" ++ n ++ "`: " ++ msg) at]
-          either failing Right $ collectRecords dataDeclarations $ do
+          either failing Right $ collectSourceRecords sourceTypes dataDeclarations $ do
             t <- collectExpression False (`Set.member` Set.fromList functionIds) bits (C.Id (S.unitName u ++ "::benchmark::" ++ n))
               (declarationId u) (monoEnvironment (S.functions u)) e
             -- A benchmark that calls what uses abilities runs under their

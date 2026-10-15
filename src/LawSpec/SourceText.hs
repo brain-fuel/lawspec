@@ -100,12 +100,26 @@ formatSource (Source path body) = Source path (stabilize body)
     wrap line
       | hasHarness || length line <= 80 || any ((== CommentToken) . tokenKind) tokens = [line]
       | otherwise = case reverse [tokenOffset t | t <- tokens, tokenKind t == TriviaToken,
-          tokenOffset t > indentation, tokenOffset t <= 80] of
+          tokenOffset t > indentation, tokenOffset t <= 80,canSplit t] of
           [] -> [line]
           split:_ -> take split line : wrap (replicate indentation ' ' ++ dropWhile isSpace (drop split line))
       where
         tokens = sourceTokens line
         indentation = length (takeWhile isSpace line)
+        -- Keep grammatical phrases together when wrapping. In particular,
+        -- splitting "end function" would turn its second word into a false
+        -- declaration opener on the next formatting pass.
+        canSplit trivia = case
+          (reverse [tokenText t | t<-tokens,tokenKind t/=TriviaToken,tokenOffset t<tokenOffset trivia],
+            [tokenText t | t<-tokens,tokenKind t/=TriviaToken,tokenOffset t>tokenOffset trivia]) of
+          (left:_,right:_) -> (left,right) `notElem` protectedPairs
+          _ -> True
+        protectedPairs = [("end",construct) | construct<-["function","procedure","type","case","if","mapping"]] ++
+          [("of","type"),("one","of"),("first","matching"),("matching","case"),("case","of"),
+           ("for","all"),("there","exists"),("there","must"),("there","does"),("must","exist"),
+           ("must","not"),("does","not"),("not","exist"),("such","that"),("must","be"),
+           ("given","("),("in","table")] ++
+          [(section,":") | section<-["definition","description","rationale","references"]]
     trimOutsideLiteral value = case reverse (sourceTokens value) of
       t:rest | tokenKind t == TriviaToken -> restoreSource (reverse rest)
       _ -> value

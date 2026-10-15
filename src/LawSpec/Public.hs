@@ -6,6 +6,9 @@ import Data.Aeson
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import qualified Data.Map.Strict as M
+import qualified LawSpec.Core.Eval as Eval
+import qualified LawSpec.Core.Types as Types
+import qualified LawSpec.Core.Value as Values
 import LawSpec.Core.Evidence (Obligation(..), statusName)
 import qualified LawSpec.Model as S
 import LawSpec.Common
@@ -293,7 +296,18 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
     -- Closed record literals carry lexical lets to preserve source evaluation
     -- order. The validator admits only data here; retain that boundary while
     -- resolving the data bindings for the existing public value shape.
-    constant = constantIn M.empty
+    constant expression
+      | hasMatch expression = case Types.makeRegistry programDataDeclarations >>= \registry->Eval.evaluateValuePure registry programMachineBits [] expression of
+          Right value -> concreteValue value
+          Left message -> error ("invalid checked example binding: "++message)
+      | otherwise = constantIn M.empty expression
+    hasMatch expression = case C.expressionNode expression of
+      C.Match _ _ -> True
+      _ -> any hasMatch (C.children expression)
+    concreteValue value = case value of
+      Values.DataValue ty tag fields -> object ["kind" .= str "data", "type" .= typeView ty,
+        "constructor" .= C.idText tag,"fields" .= map concreteValue fields]
+      _ -> either error toJSON (Values.toScalarValue value)
     constantIn scope e = case C.expressionNode e of
       C.Constant v -> toJSON v
       C.Construct tag fields -> object ["kind" .= str "data", "type" .= typeView (C.expressionType e), "constructor" .= C.idText tag, "fields" .= map (constantIn scope) fields]

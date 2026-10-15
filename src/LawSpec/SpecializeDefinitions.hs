@@ -1,6 +1,6 @@
 -- | Closed monomorphization after law expansion and template auditing. Target
 -- generators continue to receive only concrete, independently validated Core.
-module LawSpec.SpecializeDefinitions (specializeDefinitions) where
+module LawSpec.SpecializeDefinitions (specializeDefinitions, specializeDefinitionsWithContext) where
 
 import Control.Monad.State.Strict
 import Control.Monad (forM, forM_, unless, when, foldM)
@@ -11,6 +11,7 @@ import Data.Char (ord)
 import Data.Bits (xor)
 import Data.Word (Word64)
 import Numeric (showHex)
+import qualified LawSpec.SourceContext as Source
 import LawSpec.Model
 import qualified LawSpec.Core as Core
 import LawSpec.Inference
@@ -27,7 +28,11 @@ type Specialize = StateT Work (Either String)
 -- target receives concrete code and needs no generics of its own.
 specializeDefinitions :: [Core.DataDeclaration] -> Int -> (Constraint -> Bool)
   -> [Unit] -> [Expanded] -> Either [Diagnostic] ([Unit],[Expanded])
-specializeDefinitions declarations bits satisfies units properties = do
+specializeDefinitions = specializeDefinitionsWithContext Source.emptyContext
+
+specializeDefinitionsWithContext :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> (Constraint -> Bool)
+  -> [Unit] -> [Expanded] -> Either [Diagnostic] ([Unit],[Expanded])
+specializeDefinitionsWithContext sourceTypes declarations bits satisfies units properties = do
   results <- mapM unit units
   pure (map fst results, concatMap snd results)
   where
@@ -117,7 +122,7 @@ specializeDefinitions declarations bits satisfies units properties = do
             <*> rewriteGen (M.union (monoEnvironment [(name,valueType)]) scope) (Set.insert name local) ty body
           _ -> pure gen
         typed scope expression = do
-          (tree, constraints) <- lift (typedExpressionWithSchemes declarations bits scope (normal expression))
+          (tree, constraints) <- lift (typedExpressionWithSchemesContext sourceTypes declarations bits scope (normal expression))
           forM_ constraints $ \constraint -> unless (satisfies constraint)
             (lift (Left ("unsatisfied specialization capability: " ++ show constraint)))
           pure tree
@@ -286,9 +291,9 @@ specializeDefinitions declarations bits satisfies units properties = do
         refresh result expanded = do
           let scope = functions result ++ [(inputId i,inputType i) | i <- inputs expanded ++ assertionInputs (assertion expanded)] ++ lawResources (original expanded)
               examplesScope = scope ++ [(inputName i,inputType i) | i <- inputs expanded]
-          trees <- lift $ (++) <$> mapM (typedExpressionWithData declarations bits scope)
+          trees <- lift $ (++) <$> mapM (typedExpressionWithContext sourceTypes declarations bits scope)
             (concatMap inputRefinements (inputs expanded) ++ assertionExpressions (assertion expanded)) <*>
-            mapM (typedExpressionWithData declarations bits examplesScope)
+            mapM (typedExpressionWithContext sourceTypes declarations bits examplesScope)
               [actual expectation | example <- examples (original expanded), expectation <- expectations example]
           pure expanded{typedExpressions=trees}
     closed ty = null (typeVariables ty) && case baseType ty of
@@ -299,7 +304,7 @@ specializeDefinitions declarations bits satisfies units properties = do
       Record fields -> all (closed . recordFieldType) fields
       _ -> True
     match replacements pattern concrete = substitutions <$> execStateT (unify pattern concrete)
-      (withDataDeclarations declarations (initialState bits)){substitutions=replacements}
+      (withSourceContext sourceTypes (withDataDeclarations declarations (initialState bits))){substitutions=replacements}
     assertionExpressions (AssertEqual a b) = [a,b]
     assertionExpressions (AssertImplies guard body) = guard : assertionExpressions body
     assertionExpressions (AssertAll bodies) = concatMap assertionExpressions bodies

@@ -714,6 +714,10 @@ isConcrete = dataOnly Set.empty
       -- references outside this expression remain excluded.
       Let binder value body -> dataOnly scope value && dataOnly (Set.insert (binderId binder) scope) body
       Local identity -> identity `Set.member` scope
+      -- Compiler-generated structural views only destructure closed data and
+      -- rebuild data. Calls, arithmetic and free locals remain excluded.
+      Match value [branch] -> dataOnly scope value &&
+        dataOnly (Set.union scope (Set.fromList (map binderId (caseBinders branch)))) (caseBody branch)
       _ -> False
 
 -- | Root expressions, without repeated descendants, for backend capability and

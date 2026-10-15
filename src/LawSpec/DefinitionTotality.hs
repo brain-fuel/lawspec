@@ -1,6 +1,6 @@
 -- | Lower already-typed templates to the same proof obligations used by Core.
 -- This view is never executable IR and is never consumed by target generators.
-module LawSpec.DefinitionTotality (auditTemplates) where
+module LawSpec.DefinitionTotality (auditTemplates, auditTemplatesWithContext) where
 
 import Control.Monad.State.Strict
 import Control.Monad (forM, when)
@@ -13,8 +13,9 @@ import qualified LawSpec.Core.PayloadPlan as P
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Inference (dataIndex)
 import LawSpec.Core.Total (safeConversionTypes, constructorProofContracts, resultBounds)
-import LawSpec.Elaboration (coreTypeWithRecords, binaryOp)
-import LawSpec.SourceRecords (recordDeclarations,typedTypeReferences)
+import LawSpec.Elaboration (coreTypeWithSourceRecords, binaryOp)
+import qualified LawSpec.SourceContext as Source
+import LawSpec.SourceRecords (recordDeclarationsWithContext,typedTypeReferences)
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Refinement (definitionContractFor)
 import LawSpec.Scalar
@@ -25,17 +26,20 @@ type ProofM = StateT Int (Either String)
 -- | Generic definitions are audited before specialisation, so a body that is
 -- never used at any type is still proved total. ref:DEC-total-definitions
 auditTemplates :: [C.DataDeclaration] -> Int -> S.Unit -> [(S.FunctionDefinition, S.TypedExpr, [S.TypedExpr], [S.TypedExpr])] -> Either [Diagnostic] ()
-auditTemplates initial bits unit templates = do
+auditTemplates = auditTemplatesWithContext Source.emptyContext
+
+auditTemplatesWithContext :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Unit -> [(S.FunctionDefinition,S.TypedExpr,[S.TypedExpr],[S.TypedExpr])] -> Either [Diagnostic] ()
+auditTemplatesWithContext context initial bits unit templates = do
   records <- either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
-    (recordDeclarations initial bits (concat [concatMap typedTypeReferences (body:pre ++ post) |
+    (recordDeclarationsWithContext context initial bits (concat [concatMap typedTypeReferences (body:pre ++ post) |
       (_,body,pre,post) <- templates]))
   let occurrences=if null records then initial else initial ++ records
   constructors <- constructorProofContracts bits occurrences
   declarations <- either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
     (if null records then pure initial else internRecordDeclarations occurrences)
-  auditCollected declarations constructors bits unit templates
+  auditCollected context declarations constructors bits unit templates
 
-auditCollected declarations constructors bits unit templates = do
+auditCollected context declarations constructors bits unit templates = do
   lowered <- mapM lower templates
   -- Non-linear postconditions the prover defers become runtime checks in Core.
   () <$ T.auditDeferringWithResults constructors (map snd lowered) (map fst lowered)
@@ -55,7 +59,7 @@ auditCollected declarations constructors bits unit templates = do
         parent _ = "invalid-constructor"
     identity name = C.Id (S.unitName unit ++ "::" ++ name)
     -- The single constructor of a record type, from the declarations.
-    coreType ty = fst <$> coreTypeWithRecords declarations bits ty
+    coreType ty = fst <$> coreTypeWithSourceRecords context declarations bits ty
     recordOf ty = case S.baseType ty of
       S.Record _ -> do
         lowered <- coreType ty

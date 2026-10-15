@@ -20,6 +20,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Mem.StableName (StableName, makeStableName)
 import qualified LawSpec.Core as Core
 import LawSpec.Core.Types (builtinDataDeclarations, makeRegistry)
+import qualified LawSpec.SourceContext as Source
 
 -- | Givens are branch-local facts about rigid type variables: matching a GADT
 -- constructor that refines `a` to Int32 makes @a resolve to Int32 there.
@@ -28,7 +29,8 @@ data CS = CS { substitutions :: M.Map String Type, counter :: Int, obligations :
              -- their constructors by name and by identity: a program may
              -- have thousands of types (withDataDeclarations sets both).
              , typesByName :: M.Map String [Core.DataDeclaration]
-             , constructorsByName :: M.Map String [(Core.DataDeclaration, Core.DataConstructor)] }
+             , constructorsByName :: M.Map String [(Core.DataDeclaration, Core.DataConstructor)]
+             , sourceContext :: Source.SourceContext }
 
 -- | The state with these data declarations, indexed.
 withDataDeclarations :: [Core.DataDeclaration] -> CS -> CS
@@ -69,7 +71,10 @@ typesNamed parent = gets (M.findWithDefault [] parent . typesByName)
 -- profile, which decides the range of machine-sized literals.
 -- ref:DEC-explicit-machine-profile
 initialState :: Int -> CS
-initialState bits = withDataDeclarations [] (CS M.empty 0 [] bits [] M.empty M.empty M.empty)
+initialState bits = withDataDeclarations [] (CS M.empty 0 [] bits [] M.empty M.empty M.empty Source.emptyContext)
+
+withSourceContext :: Source.SourceContext -> CS -> CS
+withSourceContext context state = state { sourceContext=context }
 
 -- | Inference fails with one message at the first error, which is what a
 -- specification author needs; state carries the substitution and obligations.
@@ -104,35 +109,7 @@ schemeType (Universal _ _ ty) = ty
 -- | A definition is generalised over the variables its signature mentions, in
 -- order of appearance, so instantiation is predictable.
 typeVariables :: Type -> [String]
-typeVariables ty = nub $ case ty of
-  Variable name -> [name]
-  Arrow a b -> typeVariables a ++ typeVariables b
-  Applied _ a -> typeVariables a
-  Application _ arguments -> concatMap typeVariables arguments
-  Record fields -> concatMap (typeVariables . recordFieldType) fields
-  Refined _ inner predicate -> typeVariables inner ++ maybe [] expressionVariables predicate
-  Qualified constraints inner -> typeVariables inner ++ concat [typeVariables t | Capability _ t <- constraints]
-  CheckedType predicates inner -> typeVariables inner ++ concatMap expressionVariables predicates
-  RefinementApp _ arguments -> concat [case argument of
-    TypeArgument t -> typeVariables t
-    ValueArgument e -> expressionVariables e | argument <- arguments]
-  _ -> []
-  where
-    expressionVariables expression = case expression of
-      Located _ e -> expressionVariables e
-      Annotate e t -> expressionVariables e ++ typeVariables t
-      TypeBound _ t -> typeVariables t
-      Apply a b -> expressionVariables a ++ expressionVariables b
-      Compose a b -> expressionVariables a ++ expressionVariables b
-      Binary _ a b -> expressionVariables a ++ expressionVariables b
-      Unary _ a -> expressionVariables a
-      ListLit values -> concatMap expressionVariables values
-      RecordLit fields -> concatMap (expressionVariables . snd) fields
-      ConstructLit _ values -> concatMap expressionVariables values
-      MatchExpr value branches -> expressionVariables value ++ concat [expressionVariables body | MatchBranch _ _ body <- branches]
-      AllElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
-      AllPayloadsExpr value predicates -> expressionVariables value ++ concatMap (expressionVariables . snd) predicates
-      _ -> []
+typeVariables = typeVariableNames
 
 -- | A definition is checked against the curried type its arguments and result
 -- spell out.
@@ -533,7 +510,7 @@ checkExpr env expected e = do
       unless (length parameters == length fields) (throwC ("wrong constructor arity: " ++ name))
       zipWithM_ (checkExpr env) parameters fields
     (_,MatchExpr value branches) -> do
-      scopes <- matchScopes env value branches
+      scopes <- matchScopesWithResult env (Just t) value branches
       sequence_ [withGivens local (checkExpr scope t body) | (Just (scope, local), MatchBranch _ _ body) <- zip scopes branches]
     (Applied "List" element,ListLit xs) -> mapM_ (checkExpr env element) xs
     -- if c then a else b: each branch is checked against the expected type.
@@ -822,18 +799,24 @@ typedExpression = typedExpressionWithData []
 
 -- | User data types are known when typing an expression that constructs them.
 typedExpressionWithData :: [Core.DataDeclaration] -> Int -> [(String,Type)] -> Expr -> Either String TypedExpr
-typedExpressionWithData declarations bits env expression =
-  fst <$> typedExpressionWithSchemes declarations bits (monoEnvironment env) expression
+typedExpressionWithData = typedExpressionWithContext Source.emptyContext
+
+typedExpressionWithContext :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> [(String,Type)] -> Expr -> Either String TypedExpr
+typedExpressionWithContext context declarations bits env expression =
+  fst <$> typedExpressionWithSchemesContext context declarations bits (monoEnvironment env) expression
 
 -- | Elaboration needs both the typed tree and the capabilities it requires, so
 -- the obligations are returned rather than discharged here.
 typedExpressionWithSchemes :: [Core.DataDeclaration] -> Int -> Env -> Expr -> Either String (TypedExpr, [Constraint])
-typedExpressionWithSchemes declarations bits env e = do
+typedExpressionWithSchemes = typedExpressionWithSchemesContext Source.emptyContext
+
+typedExpressionWithSchemesContext :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Env -> Expr -> Either String (TypedExpr,[Constraint])
+typedExpressionWithSchemesContext context declarations bits env e = do
   _ <- makeRegistry declarations
   evalStateT (do
     expression <- go env Nothing e >>= resolveTree
     requirements <- gets obligations >>= mapM (\(Capability name ty) -> Capability name <$> resolve ty)
-    pure (expression, nub requirements)) (withDataDeclarations declarations (initialState bits))
+    pure (expression, nub requirements)) (withSourceContext context (withDataDeclarations declarations (initialState bits)))
   where
     go context expected (Located range e) = do
       value <- go context expected e
@@ -855,6 +838,8 @@ typedExpressionWithSchemes declarations bits env e = do
           checkExpr context targetType b
           resolve targetType
         (Just targetType, ListLit _) -> checkExpr context targetType e >> resolve targetType
+        (Just targetType,MatchExpr _ [MatchBranch tag [_] _]) | tag == letTag ->
+          checkExpr context targetType e >> resolve targetType
         -- An application checks against its expected type before its
         -- numeric literals, which may then take a polymorphic parameter's
         -- type from it.
@@ -878,6 +863,13 @@ typedExpressionWithSchemes declarations bits env e = do
           _ -> throwC "record literal requires a structural record type"
         AllPayloadsExpr value _ -> sequence [descend Nothing value]
         AllElementsExpr value _ _ -> sequence [descend Nothing value]
+        MatchExpr value branches@[MatchBranch tag [name] _] | tag == letTag -> do
+          scopes <- matchScopesWithResult context (Just t) value branches
+          case scopes of
+            [Just (scope,_)] -> case M.lookup name scope of
+              Just scheme -> sequence [descend (Just (schemeType scheme)) value]
+              Nothing -> throwC "missing typed let binding"
+            _ -> throwC "invalid typed let scope"
         MatchExpr value _ -> do
           valueType <- infer context value
           resolved <- resolve valueType
@@ -1256,10 +1248,18 @@ shapeOf name candidates = case candidates of
         convert (Core.Arrow a b) = Arrow <$> convert a <*> convert b
         argument (Core.TypeArgument ty) = convert ty
         argument _ = throwC "indexed constructor requires indexed type inference"
-    equations <- mapM (\(parameter, ty) -> (,) parameter <$> convert ty) (Core.constructorEquations constructor)
+    catalogue <- gets (Source.constructorSources . sourceContext)
+    source <- case M.lookup (Core.constructorId constructor) catalogue of
+      Nothing -> pure Nothing
+      Just original -> Just <$> lift (Source.instantiateSource variables original)
+    equations <- case source of
+      Just (_,equations) -> pure equations
+      Nothing -> mapM (\(parameter, ty) -> (,) parameter <$> convert ty) (Core.constructorEquations constructor)
     let arguments = [maybe (variable, False) (\ty -> (ty, True)) (lookup parameter equations) | (parameter, variable) <- parameters]
         result = applyType (Core.idText (Core.dataId declaration)) (map fst arguments)
-    fields <- mapM (convert . Core.binderType) (Core.constructorFields constructor)
+    fields <- case source of
+      Just (fields,_) -> pure (map baseType fields)
+      Nothing -> mapM (convert . Core.binderType) (Core.constructorFields constructor)
     let mentioned = concatMap (coreVariables . snd) (Core.constructorEquations constructor)
         fieldOnly = [v | (e, v) <- existentials, e `notElem` mentioned]
     pure (ConstructorShape fields result arguments (map snd existentials) fieldOnly)
@@ -1400,19 +1400,46 @@ contextualizeStructural = contextualizeStructuralWithData []
 
 -- | As contextualizeStructural, knowing the user's data types.
 contextualizeStructuralWithData :: [Core.DataDeclaration] -> Int -> [(String,Type)] -> Expr -> Expr -> Either String (Expr, Expr)
-contextualizeStructuralWithData declarations bits env a b =
-  evalStateT (jointStructuralContext (monoEnvironment env) a b) (withDataDeclarations declarations (initialState bits))
+contextualizeStructuralWithData = contextualizeStructuralWithContext Source.emptyContext
+
+contextualizeStructuralWithContext :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> [(String,Type)] -> Expr -> Expr -> Either String (Expr,Expr)
+contextualizeStructuralWithContext context declarations bits env a b =
+  evalStateT (jointStructuralContext (monoEnvironment env) a b)
+    (withSourceContext context (withDataDeclarations declarations (initialState bits)))
 
 -- | Constructor coverage is checked while resolving branch environments and is
 -- checked again independently at the Core boundary. Each branch is Nothing when
 -- its GADT constructor cannot build the scrutinee's type, or its scope and the
 -- givens it adds.
 matchScopes :: Env -> Expr -> [MatchBranch] -> C [Maybe (Env, M.Map String Type)]
--- let x = e in body: x has e's type.
-matchScopes env value [MatchBranch tag [name] _] | tag == letTag = do
-  ty <- infer env value >>= resolve
-  pure [Just (M.insert name (Monomorphic ty) env, M.empty)]
-matchScopes env value branches = do
+matchScopes env value branches = matchScopesWithResult env Nothing value branches
+
+-- Constructor construction uses strict lets to retain source evaluation order.
+-- A literal bound to one of its fields still takes that field's contextual
+-- type. Find the direct constructor use through its lexical let chain without
+-- evaluating or re-inferring the body. Fresh constructor parameters prevent an
+-- authored type parameter with the same spelling from being captured.
+constructorFieldContext :: String -> Maybe Type -> Expr -> C (Maybe Type)
+constructorFieldContext name result expression = case unlocated expression of
+  Annotate body ty -> constructorFieldContext name (Just ty) body
+  MatchExpr _ [MatchBranch tag [binder] body] | tag == letTag,binder /= name -> constructorFieldContext name result body
+  ConstructLit constructor fields -> case [index | (index,field) <- zip [0..] fields,unlocated field == Var name] of
+    [] -> pure Nothing
+    index:_ -> do
+      types <- case result of
+        Just ty -> constructorParameters ty constructor
+        Nothing -> fst <$> constructorSignature constructor
+      pure (case drop index types of ty:_ -> Just ty; [] -> Nothing)
+  _ -> pure Nothing
+
+matchScopesWithResult :: Env -> Maybe Type -> Expr -> [MatchBranch] -> C [Maybe (Env,M.Map String Type)]
+matchScopesWithResult env result value [MatchBranch tag [name] body] | tag == letTag = do
+  hint <- if isLiteral value then constructorFieldContext name result body else pure Nothing
+  ty <- case hint of
+    Just expected -> checkExpr env expected value >> resolve expected
+    Nothing -> infer env value >>= resolve
+  pure [Just (M.insert name (Monomorphic ty) env,M.empty)]
+matchScopesWithResult env _ value branches = do
   ty <- infer env value >>= resolve
   let tags = [tag | MatchBranch tag _ _ <- branches]
   unless (distinct tags) (throwC "duplicate match constructor")

@@ -11,7 +11,7 @@ import Data.Aeson hiding (Number)
 import LawSpec.Scalar
 import LawSpec.IndexTerm (FamilyIndex)
 import GHC.Generics (Generic)
-import Data.List (intercalate)
+import Data.List (intercalate, nub)
 
 data Type = Named String | Variable String | Arrow Type Type | Applied String Type | Application String [Type] | Record [RecordField] | Refined String Type (Maybe Expr) | RefinementApp String [RefinementArgument] | Qualified [Constraint] Type | CheckedType [Expr] Type deriving (Eq, Show, Generic)
 -- A field's public label and lexical binder start with the same spelling.
@@ -677,3 +677,36 @@ replaceBoundExpr env binder predicate =
       name = if binder `elem` forbidden then fresh else binder
       body = if name == binder then predicate else replaceExprVars [(binder,Var name)] predicate
   in (name,replaceExprVars active body)
+
+-- | Type parameters throughout types and their expression annotations.
+typeVariableNames :: Type -> [String]
+typeVariableNames ty = nub $ case ty of
+  Variable name -> [name]
+  Arrow a b -> typeVariableNames a ++ typeVariableNames b
+  Applied _ a -> typeVariableNames a
+  Application _ arguments -> concatMap typeVariableNames arguments
+  Record fields -> concatMap (typeVariableNames . recordFieldType) fields
+  Refined _ inner predicate -> typeVariableNames inner ++ maybe [] expressionVariables predicate
+  Qualified constraints inner -> typeVariableNames inner ++ concat [typeVariableNames t | Capability _ t <- constraints]
+  CheckedType predicates inner -> typeVariableNames inner ++ concatMap expressionVariables predicates
+  RefinementApp _ arguments -> concat [case argument of
+    TypeArgument t -> typeVariableNames t
+    ValueArgument e -> expressionVariables e | argument <- arguments]
+  _ -> []
+  where
+    expressionVariables expression = case expression of
+      Located _ e -> expressionVariables e
+      Annotate e t -> expressionVariables e ++ typeVariableNames t
+      TypeBound _ t -> typeVariableNames t
+      Apply a b -> expressionVariables a ++ expressionVariables b
+      Compose a b -> expressionVariables a ++ expressionVariables b
+      Binary _ a b -> expressionVariables a ++ expressionVariables b
+      Unary _ a -> expressionVariables a
+      ListLit values -> concatMap expressionVariables values
+      RecordLit fields -> concatMap (expressionVariables . snd) fields
+      ConstructLit _ values -> concatMap expressionVariables values
+      MatchExpr value branches -> expressionVariables value ++ concat [expressionVariables body | MatchBranch _ _ body <- branches]
+      AllElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
+      AllPayloadsExpr value predicates -> expressionVariables value ++ concatMap (expressionVariables . snd) predicates
+      _ -> []
+

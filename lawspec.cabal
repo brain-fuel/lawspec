@@ -276,6 +276,7 @@ extra-source-files:
     examples/rc1/empty-domains.lawspec
     examples/rc1/finite-integer-domains.lawspec
     examples/rc1/law-metadata.lawspec
+    examples/rc1/record-payloads.lawspec
     examples/rc1/recursive-records.lawspec
     examples/rc1/requirement-composition.lawspec
     examples/rc1/structural-records.lawspec
@@ -508,6 +509,7 @@ library
       LawSpec.Core.QuantifierDomain
       LawSpec.Core.RecordIdentity
       LawSpec.Core.RecordNormalize
+      LawSpec.Core.RecordViews
       LawSpec.Core.RefinementProof
       LawSpec.Core.Schema
       LawSpec.Core.Search
@@ -651,6 +653,7 @@ library
       LawSpec.Sessions.Rust
       LawSpec.Sessions.Web
       LawSpec.Sha3
+      LawSpec.SourceContext
       LawSpec.SourceRecords
       LawSpec.SourceText
       LawSpec.SpecializeDefinitions
@@ -884,6 +887,8 @@ test-suite lawspec-test
       SourceRecordHarnessFixtures
       SourceRecordHarnessSpec
       SourceRecordInferenceSpec
+      SourceRecordPayloadFixtures
+      SourceRecordPayloadSpec
       SourceRecordScopeSpec
       SourceRecordUnitFixtures
       SourceRecordUnitSpec

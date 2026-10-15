@@ -1,11 +1,12 @@
 -- | Source data declarations are resolved once, before core validation. Target
 -- emitters only see qualified identities and specialized core field types.
-module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, qualifyDataNames, inlineFieldDefinitions) where
+module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, elaborateDataDeclarationsWithContext, qualifyDataNames, inlineFieldDefinitions) where
 
 import Control.Monad (forM, unless)
 import Data.List (nub)
-import LawSpec.Elaboration (elaborateResolvedWithData)
-import LawSpec.Capabilities (satisfiedWithData)
+import LawSpec.Elaboration (coreTypeWithSourceRecords, elaborateResolvedWithSourceRecords)
+import qualified LawSpec.SourceContext as Source
+import LawSpec.CapabilityCheck (checkCapability)
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Model as S
@@ -22,28 +23,56 @@ elaborateDataDeclarations = elaborateDataDeclarationsWithProfile 64
 -- | Data declarations are resolved once, to qualified identities, so emitters
 -- never resolve a type name again. ref:DEC-typed-core-boundary
 elaborateDataDeclarationsWithProfile :: Int -> [S.Unit] -> Either [Diagnostic] [C.DataDeclaration]
-elaborateDataDeclarationsWithProfile bits units = do
-  shapes <- concat <$> mapM unit units
-  declarations <- forM (zip [(u,d) | u <- units, d <- S.dataTypes u] shapes) $ \((u,source),shape) ->
+elaborateDataDeclarationsWithProfile bits units = fst <$> elaborateDataDeclarationsWithContext bits units
+
+-- Source signatures survive nominal-field erasure until inference has finished.
+-- Headers supply identities and field positions while structural descriptors
+-- are built; they are never admitted or returned as executable declarations.
+-- Every field/equation is completed before constructor admission checks run.
+elaborateDataDeclarationsWithContext :: Int -> [S.Unit] -> Either [Diagnostic] ([C.DataDeclaration],Source.SourceContext)
+elaborateDataDeclarationsWithContext bits units = do
+  headers <- concat <$> mapM unit units
+  let sources=zip [(u,d) | u <- units,d <- S.dataTypes u] headers
+      context=Source.SourceContext (M.fromList (concatMap constructorSources sources))
+  completed <- forM headers $ \header -> do
+    constructors <- forM (C.dataConstructors header) $ \constructor -> case M.lookup (C.constructorId constructor) (Source.constructorSources context) of
+      Nothing -> pure (constructor,[])
+      Just source -> contextualOrigin (C.constructorOrigin constructor) $ do
+        fields <- mapM (coreTypeWithSourceRecords context headers bits) (Source.sourceFields source)
+        equations <- mapM (\(name,ty) -> do
+          (value,records) <- coreTypeWithSourceRecords context headers bits ty
+          pure ((name,value),records)) (Source.sourceEquations source)
+        pure (constructor {C.constructorFields=zipWith (\field (ty,_) -> field{C.binderType=ty}) (C.constructorFields constructor) fields,
+          C.constructorEquations=map fst equations},concatMap snd fields ++ concatMap snd equations)
+    pure (header{C.dataConstructors=map fst constructors},concatMap snd constructors)
+  let nominalShapes=map fst completed
+      payloadRecords=concatMap snd completed
+      shapes=if null payloadRecords then nominalShapes else nominalShapes ++ payloadRecords
+  declarationsWithRecords <- forM (zip [(u,d) | u <- units, d <- S.dataTypes u] nominalShapes) $ \((u,source),shape) ->
     contextual (S.dataTypeSpan source) $ do
       let typeVariables = M.fromList (zip (S.dataTypeParameters source) (map C.idText (C.dataParameters shape)))
           substitute = S.mapType (\ty -> case ty of
             S.Variable name -> S.Variable (M.findWithDefault name name typeVariables)
             other -> other) (S.mapExprTypes substitute)
       constructors <- forM (zip (S.dataTypeConstructors source) (C.dataConstructors shape)) $ \(original,constructor) -> do
-        let fields = [(name,substitute ty) | (name,ty) <- S.dataConstructorFields original]
+        let fields = case M.lookup (C.constructorId constructor) (Source.constructorSources context) of
+              Just retained -> zip (map fst (S.dataConstructorFields original)) (Source.sourceFields retained)
+              Nothing -> [(name,substitute ty) | (name,ty) <- S.dataConstructorFields original]
             identities = zip (map fst fields) (map C.binderId (C.constructorFields constructor))
             resolve name = M.findWithDefault (C.Id (S.unitName u ++ "::" ++ name)) name (M.fromList identities)
         predicates <- fmap concat $ forM (zip [1..] fields) $ \(count,(name,ty)) -> do
-          unless (all (satisfiedWithData shapes bits []) (S.typeConstraints ty))
+          unless (all (checkCapability (coreTypeWithSourceRecords context shapes bits) shapes bits []) (S.typeConstraints ty))
             (Left ("unsatisfied constructor field capability: " ++ name))
           let scope = [(n,S.baseType t) | (n,t) <- take count fields]
-          mapM (elaborateResolvedWithData shapes [] bits (C.constructorId constructor) resolve scope)
+          mapM (elaborateResolvedWithSourceRecords context False shapes [] bits (C.constructorId constructor) resolve scope)
             (S.typePredicates (S.Var name) ty)
-        pure constructor{C.constructorPredicates=predicates}
-      pure shape{C.dataConstructors=constructors}
-  _ <- constructorProofContracts bits declarations
-  pure declarations
+        pure (constructor{C.constructorPredicates=map fst predicates},concatMap snd predicates)
+      pure (shape{C.dataConstructors=map fst constructors},concatMap snd constructors)
+  let declarations=map fst declarationsWithRecords
+      records=payloadRecords ++ concatMap snd declarationsWithRecords
+      result=if null records then declarations else declarations ++ records
+  _ <- constructorProofContracts bits result
+  pure (result,context)
   where
     unit u = mapM (declaration u) (S.dataTypes u)
     declaration u d = contextual (S.dataTypeSpan d) $ do
@@ -60,15 +89,12 @@ elaborateDataDeclarationsWithProfile bits units = do
             S.Application n as -> C.Constructor (typeName n) <$> mapM (fmap C.TypeArgument . coreWith variables) as
             S.Arrow a b -> C.Arrow <$> coreWith variables a <*> coreWith variables b
             S.Qualified [] a -> coreWith variables a
-            S.Record _ -> Left "anonymous record payloads in nominal declarations require the source constructor context; this integration is not yet implemented"
+            -- A temporary header preserves nominal identities and field
+            -- positions. The completion pass replaces this slot with the
+            -- actual structural type before mandatory constructor validation.
+            S.Record _ -> Right (C.scalarType "Unit")
             _ -> Left "unresolved constructor field type"
-          sourceVariables t = case S.baseType t of
-            S.Variable n -> [n]
-            S.Applied _ a -> sourceVariables a
-            S.Application _ as -> concatMap sourceVariables as
-            S.Arrow a b -> sourceVariables a ++ sourceVariables b
-            S.Qualified _ a -> sourceVariables a
-            _ -> []
+          sourceVariables = S.typeVariableNames
       unless (primitive name == Nothing && name `notElem` ["Type", "Nullable", "Optional", "List", "Maybe", "Either"])
         (Left ("reserved data type name: " ++ name))
       unless (name `notElem` map S.refinementName (S.refinements u))
@@ -93,6 +119,35 @@ elaborateDataDeclarationsWithProfile bits units = do
             [(C.idText identity ++ "::" ++ tag, c) | (tag, c) <- familyIndexConstructors i] }) (S.dataTypeIndex d)
       pure (C.MkDataDeclaration identity name (map parameter (S.dataTypeParameters d)) constructors (C.SourceSpan (S.dataTypeSpan d)) index
         (name `elem` S.handles u) Nothing Nothing)
+    containsRecord ty = case S.baseType ty of
+      S.Record _ -> True
+      S.Applied _ a -> containsRecord a
+      S.Application _ values -> any containsRecord values
+      S.Arrow a b -> containsRecord a || containsRecord b
+      _ -> False
+    constructorSources ((u,source),header) =
+      [(C.constructorId constructor,Source.SourceConstructor
+          (map (rewrite . snd) (S.dataConstructorFields original))
+          [(parameterName, rewrite ty) | (name,ty) <- S.dataConstructorEquations original,
+             Just parameterName <- [lookup name parameters]])
+      | (original,constructor) <- zip (S.dataTypeConstructors source) (C.dataConstructors header)
+      , any (containsRecord . snd) (S.dataConstructorFields original ++ S.dataConstructorEquations original)
+      , let parameters=zip (S.dataTypeParameters source) (C.dataParameters header)
+            existentialNames=nub [name | (_,ty) <- S.dataConstructorFields original ++ S.dataConstructorEquations original,
+              name <- S.typeVariableNames ty,name `notElem` S.dataTypeParameters source]
+            variables=parameters ++ zip existentialNames (C.constructorExistentials constructor)
+            typeNames=[(S.dataTypeName declaration,C.idText (typeIdentity u (S.dataTypeName declaration))) | declaration <- S.dataTypes u]
+            rename name=maybe name id (lookup name typeNames)
+            rewrite=S.mapType change (S.mapExprTypes rewrite)
+            change ty=case ty of
+              S.Variable name -> S.Variable (maybe name C.idText (lookup name variables))
+              S.Named name -> S.Named (rename name)
+              S.Applied name argument -> S.Applied (rename name) argument
+              S.Application name arguments -> S.Application (rename name) arguments
+              other -> other]
+    contextualOrigin origin = case origin of
+      C.SourceSpan range -> contextual range
+      _ -> either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
     typeIdentity u name = C.Id (S.unitName u ++ "::type::" ++ name)
     contextual range = either (Left . pure . (\message -> Diagnostic "data-type" message (Just (spanStart range)))) Right
 

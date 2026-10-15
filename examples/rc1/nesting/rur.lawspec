@@ -1,26 +1,12 @@
 unit example.delivery.rur
 
-type PdfFile is a record{
-  fileName of type Text
-  byteCount of type Whole
-}
-end type
-
-type InvoiceDetails is a record{
-  number of type Text
-  file of type PdfFile
-}
-end type
-
-type LetterDetails is a record{
-  subject of type Text
-  file of type PdfFile
-}
-end type
-
 type Document is one of
-  | Invoice of type InvoiceDetails
-  | Letter of type LetterDetails
+  | Invoice of type record{number of type Text
+    file of type record{fileName of type Text
+      byteCount of type Whole}}
+  | Letter of type record{subject of type Text
+    file of type record{fileName of type Text
+      byteCount of type Whole}}
 end type
 
 type EmailDelivery is a record{
@@ -40,8 +26,7 @@ end function
 
 function emailPdfInvoice (name of type Text) -> EmailDelivery is
   EmailDelivery record{recipient = "accounts@example.com", document = (Invoice
-    (InvoiceDetails record{number = "INV-2026-10", file = PdfFile
-      record{fileName
+    (record{number = "INV-2026-10", file = record{fileName
         = name, byteCount = 1200}}))}
 end function
 
@@ -57,7 +42,7 @@ end
 
 function emailPdfLetter (name of type Text) -> EmailDelivery is
   EmailDelivery record{recipient = "accounts@example.com", document = (Letter
-    (LetterDetails record{subject = "Receipt", file = PdfFile record{fileName =
+    (record{subject = "Receipt", file = record{fileName =
         name, byteCount = 1200}}))}
 end function
 

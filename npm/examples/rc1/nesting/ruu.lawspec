@@ -1,36 +1,16 @@
 unit example.delivery.ruu
 
-type PdfDetails is a record{
-  fileName of type Text
-  byteCount of type Whole
-}
-end type
-
-type PlainTextDetails is a record{
-  fileName of type Text
-}
-end type
-
 type File is one of
-  | Pdf of type PdfDetails
-  | PlainText of type PlainTextDetails
-end type
-
-type InvoiceDetails is a record{
-  number of type Text
-  file of type File
-}
-end type
-
-type LetterDetails is a record{
-  subject of type Text
-  file of type File
-}
+  | Pdf of type record{fileName of type Text
+    byteCount of type Whole}
+  | PlainText of type record{fileName of type Text}
 end type
 
 type Document is one of
-  | Invoice of type InvoiceDetails
-  | Letter of type LetterDetails
+  | Invoice of type record{number of type Text
+    file of type File}
+  | Letter of type record{subject of type Text
+    file of type File}
 end type
 
 type EmailDelivery is a record{
@@ -50,8 +30,8 @@ end function
 
 function emailPdfInvoice (name of type Text) -> EmailDelivery is
   EmailDelivery record{recipient = "accounts@example.com", document = (Invoice
-    (InvoiceDetails record{number = "INV-2026-10", file = (Pdf (PdfDetails
-      record{fileName = name, byteCount = 1200}))}))}
+    (record{number = "INV-2026-10", file = (Pdf (record{fileName = name,
+        byteCount = 1200}))}))}
 end function
 
 law "|emailPdfInvoice result| is
@@ -66,8 +46,8 @@ end
 
 function emailPlainTextInvoice (name of type Text) -> EmailDelivery is
   EmailDelivery record{recipient = "accounts@example.com", document = (Invoice
-    (InvoiceDetails record{number = "INV-2026-10", file = (PlainText
-      (PlainTextDetails record{fileName = name}))}))}
+    (record{number = "INV-2026-10", file = (PlainText
+      (record{fileName = name}))}))}
 end function
 
 law "|emailPlainTextInvoice result| is
@@ -82,8 +62,8 @@ end
 
 function emailPdfLetter (name of type Text) -> EmailDelivery is
   EmailDelivery record{recipient = "accounts@example.com", document = (Letter
-    (LetterDetails record{subject = "Receipt", file = (Pdf (PdfDetails
-      record{fileName = name, byteCount = 1200}))}))}
+    (record{subject = "Receipt", file = (Pdf (record{fileName = name, byteCount
+        = 1200}))}))}
 end function
 
 law "|emailPdfLetter result| is

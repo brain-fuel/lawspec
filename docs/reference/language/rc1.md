@@ -429,9 +429,37 @@ field-order equality, nested projection and empty products. Type fields may
 use optional commas; value fields require commas. Duplicate labels and missing
 or extra value fields are errors. Exact scalar contexts, positive field
 restrictions and automatic definedness checks apply to these constructions.
-Anonymous record payloads declared directly inside nominal types and checked
-function calls in anonymous field restrictions still require compiler work.
-These limits remain RC1 acceptance gates.
+Anonymous products may also appear directly inside named records and alternative
+payloads, including parameterized products:
+
+```text
+type Envelope (a of type Type) is a record{
+  payload of type record{value of type a copy of type a}
+}
+end type
+
+function extract (envelope of type Envelope a) -> a is
+  envelope.payload.value
+end function
+```
+
+The [payload example](../../../examples/rc1/record-payloads.lawspec) exercises
+nested positive dimensions, alternative matching, generic projections, complete
+product returns and record-valued table inputs. Its reproducible suite is
+`make acceptance SUITE=rc1-record-payloads TARGET=java`; CI schedules every target
+in both machine profiles. Mutants independently return the wrong dimension,
+download label and generic field.
+
+Source constructor contexts preserve structural field types and GADT equations
+through inference. Instantiating a nominal product retains its storage layout;
+ordinary checked constructor matches and constructions reconcile equivalent
+structural representations. This introduces no implicit nominal conversion.
+Automatic field refinements, capability requirements and definedness still apply.
+
+Generic nominal projections inside structural field refinements, generic
+structural GADT result equations, structural payloads under containers such as
+`List`, and checked function expansion in anonymous field restrictions still
+require compiler work. These limits remain RC1 acceptance gates.
 
 Recursive record and constructor patterns preserve structural descent for
 checked recursive functions. The
@@ -473,7 +501,8 @@ end case
 ```
 
 The [eight delivery/document/file examples](../../../examples/rc1/nesting/rrr.lawspec)
-cover each record/alternative combination. Their 20 closed outcome laws are
+cover each record/alternative combination using inline anonymous products inside
+nominal record and alternative payloads. Their 20 closed outcome laws are
 checked by exhaustive compiler evaluation. All eight examples generate through all
 17 targets and their 20 outcomes also pass native execution on each target.
 Run the reproducible suite with `make acceptance SUITE=rc1-nesting TARGET=java`
@@ -507,7 +536,7 @@ tracks features and gates still awaiting implementation and verification.
 
 The implemented syntax below describes the canonical frontend entry point.
 The review packet also specifies grammar still awaiting implementation,
-including structural products in nominal payloads and broader witness evidence. The legacy grammar remains the migration input language.
+including the remaining generic structural-payload cases and broader witness evidence. The legacy grammar remains the migration input language.
 
 ```ebnf
 annotation = "of" "type" | "::" ;

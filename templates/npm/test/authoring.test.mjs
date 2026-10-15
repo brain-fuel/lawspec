@@ -359,3 +359,42 @@ test('anonymous record construction retains mandatory validation with no law lay
     assert.ok(result.diagnostics.length, content);
   }
 });
+
+
+test('nominal structural payloads preserve generic fields, table values and mandatory contracts', async () => {
+  const {readFile} = await import('node:fs/promises');
+  const {createCompiler} = await import('../api.mjs');
+  const {targets} = await import('../templates.mjs');
+  const compiler = await createCompiler();
+  const path = 'examples/rc1/record-payloads.lawspec';
+  const content = await readFile(new URL('../' + path, import.meta.url), 'utf8');
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+    sources: [{path, content}]};
+  for (const machineBits of [32, 64]) {
+    const checked = await compiler.check({...request, machineBits});
+    assert.deepEqual(checked.diagnostics, []);
+    assert.equal(checked.laws.length, 8);
+    assert.equal(checked.laws.flatMap(law => law.examples).length, 4);
+    const boxes = checked.laws.find(law => law.name === 'boxedRows').examples;
+    assert.deepEqual(boxes.map(row => String.fromCodePoint(...row.bindings[0].value.fields[0].fields[0].units)), ['note', 'paper']);
+    assert.ok(checked.evidence.filter(item => item.stage === 'law').every(item => item.status === 'not-verified'));
+    for (const target of targets) {
+      const plan = await compiler.planGeneration({...request, machineBits, target});
+      assert.deepEqual(plan.diagnostics, [], target);
+      assert.ok(plan.files.some(file => file.placement === 'test'), target);
+    }
+  }
+  const formatted = await compiler.format(request);
+  assert.deepEqual(formatted.diagnostics, []);
+  for (const [keyword, count] of [['type', 4], ['function', 5], ['law', 8]])
+    assert.equal(formatted.formattedSources[0].content.split(/\n/).filter(line => line.startsWith(keyword + ' ')).length, count);
+  assert.deepEqual((await compiler.format({...request, sources: formatted.formattedSources})).formattedSources, formatted.formattedSources);
+  for (const invalid of [
+    content.replace('height = 3', 'height = 0'),
+    content.replace('dimensions = record{height = 3,', 'dimensions = record{height = 1 / 0,'),
+  ]) {
+    assert.notEqual(invalid, content);
+    const checked = await compiler.check({...request, sources: [{path, content: invalid}]});
+    assert.ok(checked.diagnostics.length, 'definition contracts remain mandatory with no law layers');
+  }
+});

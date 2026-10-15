@@ -61,6 +61,20 @@ test_recordNormalizationPreservesPrograms=describe "structural record normalizat
     let once=normalizeProgramRecords (recordInteroperabilityProgram 64)
     once `shouldSatisfy` isRight
     (once >>= normalizeProgramRecords) `shouldBe` once
+  it "does not erase malformed record identity matches" $ do
+    let declaration=make [] [field "value" integerType]
+        wanted=scalarType (idText (dataId declaration))
+        constructor=head (dataConstructors declaration)
+        value=either error id (constructRecord (Id "malformed") declaration [] [("value",number 7)] origin)
+        badField=Binder (Id "bad.match.field") "value" boolean
+        badLocal=local badField
+        rebuilt=Expr wanted (Construct (constructorId constructor) [badLocal]) origin
+        bad=Expr wanted (Match value [MatchCase (constructorId constructor) [badField] rebuilt]) origin
+        signature=Declaration (Id "bad.identity") "identity" wanted origin
+        program=Program 64 [declaration] [Unit (Id "bad") [signature] [] [] [Definition signature [] bad] []]
+    case normalizeProgramRecords program of
+      Left _ -> pure ()
+      Right normalized -> validateProgram normalized `shouldSatisfy` isLeft
   it "retains every duplicate occurrence's definedness audit after normalization" $ do
     let x=field "z" integerType; y=field "a" integerType
         nonzero=comparison NotEqual (local (recordFieldBinder x)) (number 0)

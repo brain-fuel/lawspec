@@ -2,14 +2,18 @@
 -- The declaration stream is distinct from the lookup catalogue; callers never
 -- discard a differently ordered invariant by interning an equal identity.
 -- ref:DEC-typed-core-boundary ref:DEC-total-definitions
-module LawSpec.SourceRecords (recordDeclarations,unitTypeReferences,typedTypeReferences) where
+module LawSpec.SourceRecords (recordDeclarations,recordDeclarationsWithContext,unitTypeReferences,typedTypeReferences) where
 
 import qualified LawSpec.Model as S
 import qualified LawSpec.Core as C
-import LawSpec.Elaboration (coreTypeWithRecords)
+import LawSpec.Elaboration (coreTypeWithSourceRecords)
+import qualified LawSpec.SourceContext as Source
 
 recordDeclarations :: [C.DataDeclaration] -> Int -> [S.Type] -> Either String [C.DataDeclaration]
-recordDeclarations known bits types = concatMap snd <$> mapM (coreTypeWithRecords known bits) (filter contains types)
+recordDeclarations = recordDeclarationsWithContext Source.emptyContext
+
+recordDeclarationsWithContext :: Source.SourceContext -> [C.DataDeclaration] -> Int -> [S.Type] -> Either String [C.DataDeclaration]
+recordDeclarationsWithContext context known bits types = concatMap snd <$> mapM (coreTypeWithSourceRecords context known bits) (filter contains types)
   where
     contains ty = case S.baseType ty of
       S.Record _ -> True

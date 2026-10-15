@@ -1,9 +1,9 @@
 -- | Lower typed surface expressions once. Law expansion and fixture checking
 -- both use this bridge; no backend reinterprets surface syntax.
 module LawSpec.Elaboration
-  ( coreType, coreTypeWithRecords, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, elaborateResolvedWithRecords, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateDefinitionUnitWithRecords, elaborateContract, elaborateContractWithRecords
-  , abilityReference, abilityReferenceWithRecords, unitOperations, unitOperationsWithRecords, performOperations
-  , CollectRecords, collectRecords, collectType, collectExpression, collectEquation, collectAbilityReference ) where
+  ( coreType, coreTypeWithRecords, coreTypeWithSourceRecords, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, elaborateResolvedWithRecords, elaborateResolvedWithSourceRecords, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateDefinitionUnitWithRecords, elaborateDefinitionUnitWithSourceRecords, elaborateContract, elaborateContractWithRecords, elaborateContractWithSourceRecords
+  , abilityReference, abilityReferenceWithRecords, abilityReferenceWithSourceRecords, unitOperations, unitOperationsWithRecords, unitOperationsWithSourceRecords, performOperations
+  , CollectRecords, collectRecords, collectSourceRecords, collectType, collectExpression, collectEquation, collectAbilityReference ) where
 
 import LawSpec.Abilities (clauseDefinitionName, abilityArguments, instantiatedOperations, unqualifiedHandler)
 import Data.Maybe (listToMaybe)
@@ -18,6 +18,7 @@ import LawSpec.Time (timeUnit, durationType, instantType, durationArithmetic, du
 import LawSpec.Imports (importedDefinitionName)
 import LawSpec.Collections (collectionsUnit, internalConstructor, boundedArithmeticTypes, boundedArithmeticDefinition)
 import qualified LawSpec.Model as S
+import qualified LawSpec.SourceContext as Source
 import qualified LawSpec.Inference as S
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Machine as C
@@ -49,7 +50,10 @@ coreType t = case S.baseType t of
 -- construction. Callers retain every occurrence until mandatory admission;
 -- a shared identity must never erase a different restriction ordering.
 coreTypeWithRecords :: [C.DataDeclaration] -> Int -> S.Type -> Either String (C.Type,[C.DataDeclaration])
-coreTypeWithRecords dataTypes bits source = case S.baseType source of
+coreTypeWithRecords = coreTypeWithSourceRecords Source.emptyContext
+
+coreTypeWithSourceRecords :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Type -> Either String (C.Type,[C.DataDeclaration])
+coreTypeWithSourceRecords context dataTypes bits source = case S.baseType source of
   S.Record fields -> do
     let labels = map S.recordFieldLabel fields
         bindings = map S.recordFieldBinding fields
@@ -57,7 +61,7 @@ coreTypeWithRecords dataTypes bits source = case S.baseType source of
       (Left "duplicate or empty record field label")
     unless (all (not . null) bindings && length bindings == length (nub bindings))
       (Left "duplicate or empty record field binding")
-    lowered <- mapM (coreTypeWithRecords dataTypes bits . S.recordFieldType) fields
+    lowered <- mapM (coreTypeWithSourceRecords context dataTypes bits . S.recordFieldType) fields
     let nested = concatMap snd lowered
         origin = C.GeneratedFrom (C.Id "lawspec::source-record")
         binders = [C.Binder (C.Id ("lawspec::source-record::field::" ++ S.recordFieldLabel field))
@@ -67,10 +71,10 @@ coreTypeWithRecords dataTypes bits source = case S.baseType source of
     known <- Records.internRecordDeclarations (dataTypes ++ nested)
     stored <- sequence [do
       let scope = [(S.recordFieldBinding f,rigid (S.baseType (S.recordFieldType f))) | f <- take count fields]
-      unless (all (checkCapability (coreTypeWithRecords known bits) known bits [])
+      unless (all (checkCapability (coreTypeWithSourceRecords context known bits) known bits [])
           (S.typeConstraints (S.recordFieldType field)))
         (Left ("unsatisfied record field capability: " ++ S.recordFieldLabel field))
-      loweredPredicates <- mapM (elaborateResolvedWithRecords False known [] bits (C.Id "lawspec::source-record") resolve scope)
+      loweredPredicates <- mapM (elaborateResolvedWithSourceRecords context True known [] bits (C.Id "lawspec::source-record") resolve scope)
         (map (S.mapExprTypes rigid) (S.typePredicates (S.Var (S.recordFieldBinding field)) (S.recordFieldType field)))
       pure (Records.RecordField binder (map fst loweredPredicates),concatMap snd loweredPredicates)
       | (count,(field,binder)) <- zip [1..] (zip fields binders)]
@@ -81,8 +85,8 @@ coreTypeWithRecords dataTypes bits source = case S.baseType source of
     (declaration,arguments) <- Records.makeRecordDeclaration parameters recordFields origin
     pure (C.Constructor (C.idText (C.dataId declaration)) (map (C.TypeArgument . C.TypeVariable) arguments),nested ++ predicateRecords ++ [declaration])
   S.Arrow a b -> do
-    (a',left) <- coreTypeWithRecords dataTypes bits a
-    (b',right) <- coreTypeWithRecords (dataTypes ++ left) bits b
+    (a',left) <- coreTypeWithSourceRecords context dataTypes bits a
+    (b',right) <- coreTypeWithSourceRecords context (dataTypes ++ left) bits b
     pure (C.Arrow a' b',left ++ right)
   S.Applied name argument -> application name [argument]
   S.Application name arguments -> application name arguments
@@ -99,7 +103,7 @@ coreTypeWithRecords dataTypes bits source = case S.baseType source of
       S.Variable name -> S.Named ('@':name)
       other -> other) (S.mapExprTypes rigid)
     application name arguments = do
-      lowered <- mapM (coreTypeWithRecords dataTypes bits) arguments
+      lowered <- mapM (coreTypeWithSourceRecords context dataTypes bits) arguments
       pure (C.Constructor name (map (C.TypeArgument . fst) lowered),concatMap snd lowered)
     typeVariables ty = case ty of
       C.TypeVariable name -> [name]
@@ -126,10 +130,10 @@ equationWithData dataTypes declarations bits origin resolve env left right = do
 
 collectEquation :: [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> S.Expr -> CollectRecords C.Proposition
 collectEquation declarations bits origin resolve env left right = do
-  RecordCollection dataTypes _ <- get
-  (a,b) <- lift (S.contextualizeStructuralWithData dataTypes bits env left right)
-  ta <- lift (S.typedExpressionWithData dataTypes bits env (S.normal a))
-  tb <- lift (S.typedExpressionWithData dataTypes bits env (S.normal b))
+  RecordCollection dataTypes _ context <- get
+  (a,b) <- lift (S.contextualizeStructuralWithContext context dataTypes bits env left right)
+  ta <- lift (S.typedExpressionWithContext context dataTypes bits env (S.normal a))
+  tb <- lift (S.typedExpressionWithContext context dataTypes bits env (S.normal b))
   let contextual e = case S.unlocated e of
         S.ConstructLit _ _ -> True
         S.ListLit _ -> True
@@ -156,7 +160,7 @@ collectEquation declarations bits origin resolve env left right = do
   let declared = (`Set.member` Set.fromList declarations)
   x <- collectExpression False declared bits origin resolve (S.monoEnvironment env) a'
   y <- collectExpression False declared bits origin resolve (S.monoEnvironment env) b'
-  RecordCollection known _ <- get
+  RecordCollection known _ _ <- get
   registry <- lift (makeRegistry known)
   ev <- lift (operationEvidenceWithRegistry registry C.Equal (C.expressionType x) (C.expressionType y))
   pure (C.Equation ev x y)
@@ -182,8 +186,11 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env =
 -- Keep field nodes while auditing a definition; lower them for a law term,
 -- just as the existing definition and proposition elaborators do.
 elaborateResolvedWithRecords :: Bool -> [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> Either String (C.Expr,[C.DataDeclaration])
-elaborateResolvedWithRecords projections dataTypes declarations bits origin resolve env =
-  elaborateResolvedRecordsIn projections dataTypes (`Set.member` Set.fromList declarations) bits origin resolve (S.monoEnvironment env)
+elaborateResolvedWithRecords = elaborateResolvedWithSourceRecords Source.emptyContext
+
+elaborateResolvedWithSourceRecords :: Source.SourceContext -> Bool -> [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> Either String (C.Expr,[C.DataDeclaration])
+elaborateResolvedWithSourceRecords context projections dataTypes declarations bits origin resolve env =
+  elaborateResolvedRecordsIn context projections dataTypes (`Set.member` Set.fromList declarations) bits origin resolve (S.monoEnvironment env)
 
 -- | As elaborateResolvedWithData, with the declarations as a membership test
 -- and the environment already made: a unit elaborates thousands of
@@ -193,7 +200,7 @@ elaborateResolvedWithRecords projections dataTypes declarations bits origin reso
 -- they are the matches they stand for (a law's terms).
 elaborateResolvedIn :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String C.Expr
 elaborateResolvedIn projections dataTypes declared bits origin resolve env source = do
-  collected <- elaborateResolvedRecordsIn projections dataTypes declared bits origin resolve env source
+  collected <- elaborateResolvedRecordsIn Source.emptyContext projections dataTypes declared bits origin resolve env source
   requireRegisteredRecords dataTypes bits collected
 
 -- Discarding occurrences is permitted only when the caller already owns the
@@ -212,36 +219,39 @@ requireRegisteredRecords dataTypes bits (value,records) = do
 -- The lookup catalogue may share descriptors while the admission stream must
 -- retain every source occurrence. No global mutable registry participates in
 -- collection. Empty additions keep the catalogue's identity and its caches.
-data RecordCollection = RecordCollection [C.DataDeclaration] [[C.DataDeclaration]]
+data RecordCollection = RecordCollection [C.DataDeclaration] [[C.DataDeclaration]] Source.SourceContext
 type CollectRecords = StateT RecordCollection (Either String)
 
 collectRecords :: [C.DataDeclaration] -> CollectRecords a -> Either String (a,[C.DataDeclaration])
-collectRecords declarations action = do
-  (value,RecordCollection _ occurrences) <- runStateT action (RecordCollection declarations [])
+collectRecords = collectSourceRecords Source.emptyContext
+
+collectSourceRecords :: Source.SourceContext -> [C.DataDeclaration] -> CollectRecords a -> Either String (a,[C.DataDeclaration])
+collectSourceRecords context declarations action = do
+  (value,RecordCollection _ occurrences _) <- runStateT action (RecordCollection declarations [] context)
   pure (value,concat (reverse occurrences))
 
-collectLowered :: ([C.DataDeclaration] -> Either String (a,[C.DataDeclaration])) -> CollectRecords a
+collectLowered :: (Source.SourceContext -> [C.DataDeclaration] -> Either String (a,[C.DataDeclaration])) -> CollectRecords a
 collectLowered lower = do
-  RecordCollection known occurrences <- get
-  (value,records) <- lift (lower known)
+  RecordCollection known occurrences context <- get
+  (value,records) <- lift (lower context known)
   unless (null records) $ do
     catalog <- lift (Records.internRecordDeclarations (known ++ records))
-    put (RecordCollection catalog (records:occurrences))
+    put (RecordCollection catalog (records:occurrences) context)
   pure value
 
 collectType :: Int -> S.Type -> CollectRecords C.Type
-collectType bits ty = collectLowered (\known -> coreTypeWithRecords known bits ty)
+collectType bits ty = collectLowered (\context known -> coreTypeWithSourceRecords context known bits ty)
 
 collectExpression :: Bool -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> CollectRecords C.Expr
 collectExpression projections declared bits origin resolve env source =
-  collectLowered (\known -> elaborateResolvedRecordsIn projections known declared bits origin resolve env source)
+  collectLowered (\context known -> elaborateResolvedRecordsIn context projections known declared bits origin resolve env source)
 
-elaborateResolvedRecordsIn :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String (C.Expr,[C.DataDeclaration])
-elaborateResolvedRecordsIn projections dataTypes declared bits origin resolve env source = do
-  (typed,_) <- S.typedExpressionWithSchemes dataTypes bits env (S.normal source)
-  records <- concatMap snd <$> mapM (coreTypeWithRecords dataTypes bits) (filter containsRecord (types typed))
+elaborateResolvedRecordsIn :: Source.SourceContext -> Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String (C.Expr,[C.DataDeclaration])
+elaborateResolvedRecordsIn context projections dataTypes declared bits origin resolve env source = do
+  (typed,_) <- S.typedExpressionWithSchemesContext context dataTypes bits env (S.normal source)
+  records <- concatMap snd <$> mapM (coreTypeWithSourceRecords context dataTypes bits) (filter containsRecord (types typed))
   known <- if null records then pure dataTypes else Records.internRecordDeclarations (dataTypes ++ records)
-  value <- lowerResolvedTree projections known declared bits origin resolve typed
+  value <- lowerResolvedTree context projections known declared bits origin resolve typed
   pure (value,records)
   where
     types tree = S.expressionType tree : maybe [] pure (S.requiredConversion tree) ++
@@ -253,9 +263,9 @@ elaborateResolvedRecordsIn projections dataTypes declared bits origin resolve en
       S.Application _ ts -> any containsRecord ts
       _ -> False
 
-lowerResolvedTree :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.TypedExpr -> Either String C.Expr
-lowerResolvedTree projections dataTypes declared bits origin resolve typed = finish <$> lowerWith [] typed where
-  coreType ty = fst <$> coreTypeWithRecords dataTypes bits ty
+lowerResolvedTree :: Source.SourceContext -> Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.TypedExpr -> Either String C.Expr
+lowerResolvedTree context projections dataTypes declared bits origin resolve typed = finish <$> lowerWith [] typed where
+  coreType ty = fst <$> coreTypeWithSourceRecords context dataTypes bits ty
   finish e = if projections then e else C.lowerFieldNodes (builtinDataDeclarations ++ dataTypes) (C.idText origin) e
   -- The constructor and position of a field of a value of this type.
   -- The program's index of types by name (built once, LawSpec.Inference).
@@ -624,23 +634,26 @@ elaborateDefinitionUnit dataDeclarations bits u = do
 -- The returned occurrences are part of the caller's program and must undergo
 -- normal constructor and definition admission before interning or execution.
 elaborateDefinitionUnitWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> Either String (C.Unit,[C.DataDeclaration])
-elaborateDefinitionUnitWithRecords dataDeclarations bits u = unsafePerformIO $ do
+elaborateDefinitionUnitWithRecords = elaborateDefinitionUnitWithSourceRecords Source.emptyContext
+
+elaborateDefinitionUnitWithSourceRecords :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Unit -> Either String (C.Unit,[C.DataDeclaration])
+elaborateDefinitionUnitWithSourceRecords context dataDeclarations bits u = unsafePerformIO $ do
   -- Compilation and elaboration both elaborate each unit's definitions, the
   -- same unit with the same data types: the results are kept, keyed by the
   -- unit's identity in memory and the data types (a pure
   -- function, so this is only a cache).
   name <- evaluate u >>= makeStableName
-  let key = (bits, dataDeclarations)
+  let key = (context,bits,dataDeclarations)
   cached <- readIORef unitCache
   case [result | (n, k, result) <- cached, n == name, k == key] of
     result : _ -> pure result
     [] -> do
-      let result = collectRecords dataDeclarations (elaborateDefinitionUnitCollected bits u)
+      let result = collectSourceRecords context dataDeclarations (elaborateDefinitionUnitCollected bits u)
       writeIORef unitCache (take 64 ((name, key, result) : cached))
       pure result
-{-# NOINLINE elaborateDefinitionUnitWithRecords #-}
+{-# NOINLINE elaborateDefinitionUnitWithSourceRecords #-}
 
-unitCache :: IORef [(StableName S.Unit, (Int, [C.DataDeclaration]), Either String (C.Unit,[C.DataDeclaration]))]
+unitCache :: IORef [(StableName S.Unit, (Source.SourceContext, Int, [C.DataDeclaration]), Either String (C.Unit,[C.DataDeclaration]))]
 unitCache = unsafePerformIO (newIORef [])
 {-# NOINLINE unitCache #-}
 
@@ -742,8 +755,11 @@ elaborateContract dataDeclarations bits u contract = do
 
 -- | Contracts use the same collector as signatures and definition bodies.
 elaborateContractWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> S.Contract -> Either String (C.Contract,[C.DataDeclaration])
-elaborateContractWithRecords dataDeclarations bits u contract =
-  collectRecords dataDeclarations (elaborateContractCollected bits u contract)
+elaborateContractWithRecords = elaborateContractWithSourceRecords Source.emptyContext
+
+elaborateContractWithSourceRecords :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Unit -> S.Contract -> Either String (C.Contract,[C.DataDeclaration])
+elaborateContractWithSourceRecords context dataDeclarations bits u contract =
+  collectSourceRecords context dataDeclarations (elaborateContractCollected bits u contract)
 
 elaborateContractCollected :: Int -> S.Unit -> S.Contract -> CollectRecords C.Contract
 elaborateContractCollected bits u c = do
@@ -769,8 +785,11 @@ abilityReference :: S.Unit -> S.Type -> Either String C.AbilityRef
 abilityReference = abilityReferenceWith coreType
 
 abilityReferenceWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> S.Type -> Either String (C.AbilityRef,[C.DataDeclaration])
-abilityReferenceWithRecords declarations bits unit ty =
-  collectRecords declarations (collectAbilityReference bits unit ty)
+abilityReferenceWithRecords = abilityReferenceWithSourceRecords Source.emptyContext
+
+abilityReferenceWithSourceRecords :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Unit -> S.Type -> Either String (C.AbilityRef,[C.DataDeclaration])
+abilityReferenceWithSourceRecords context declarations bits unit ty =
+  collectSourceRecords context declarations (collectAbilityReference bits unit ty)
 
 collectAbilityReference :: Int -> S.Unit -> S.Type -> CollectRecords C.AbilityRef
 collectAbilityReference bits = abilityReferenceWith (collectType bits)
@@ -797,8 +816,11 @@ unitOperations :: S.Unit -> Either String ([C.Ability], Operations)
 unitOperations = unitOperationsWith coreType
 
 unitOperationsWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> Either String (([C.Ability], Operations),[C.DataDeclaration])
-unitOperationsWithRecords declarations bits unit =
-  collectRecords declarations (unitOperationsWith (collectType bits) unit)
+unitOperationsWithRecords = unitOperationsWithSourceRecords Source.emptyContext
+
+unitOperationsWithSourceRecords :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Unit -> Either String (([C.Ability],Operations),[C.DataDeclaration])
+unitOperationsWithSourceRecords context declarations bits unit =
+  collectSourceRecords context declarations (unitOperationsWith (collectType bits) unit)
 
 unitOperationsWith :: Monad m => (S.Type -> m C.Type) -> S.Unit -> m ([C.Ability], Operations)
 unitOperationsWith lower u = do

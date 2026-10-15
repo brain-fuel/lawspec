@@ -1,52 +1,22 @@
 unit example.delivery.uuu
 
-type PdfDetails is a record{
-  fileName of type Text
-  byteCount of type Whole
-}
-end type
-
-type PlainTextDetails is a record{
-  fileName of type Text
-}
-end type
-
 type File is one of
-  | Pdf of type PdfDetails
-  | PlainText of type PlainTextDetails
-end type
-
-type InvoiceDetails is a record{
-  number of type Text
-  file of type File
-}
-end type
-
-type LetterDetails is a record{
-  subject of type Text
-  file of type File
-}
+  | Pdf of type record{fileName of type Text
+    byteCount of type Whole}
+  | PlainText of type record{fileName of type Text}
 end type
 
 type Document is one of
-  | Invoice of type InvoiceDetails
-  | Letter of type LetterDetails
-end type
-
-type EmailDetails is a record{
-  recipient of type Text
-  document of type Document
-}
-end type
-
-type DownloadDetails is a record{
-  document of type Document
-}
+  | Invoice of type record{number of type Text
+    file of type File}
+  | Letter of type record{subject of type Text
+    file of type File}
 end type
 
 type Delivery is one of
-  | Email of type EmailDetails
-  | Download of type DownloadDetails
+  | Email of type record{recipient of type Text
+    document of type Document}
+  | Download of type record{document of type Document}
 end type
 
 function "|email invoice PDF file name|
@@ -60,9 +30,9 @@ function "|email invoice PDF file name|
 end function
 
 function emailPdfInvoice (name of type Text) -> Delivery is
-  Email (EmailDetails record{recipient = "accounts@example.com", document =
-    (Invoice (InvoiceDetails record{number = "INV-2026-10", file = (Pdf
-      (PdfDetails record{fileName = name, byteCount = 1200}))}))})
+  Email (record{recipient = "accounts@example.com", document =
+    (Invoice (record{number = "INV-2026-10", file = (Pdf
+      (record{fileName = name, byteCount = 1200}))}))})
 end function
 
 law "|emailPdfInvoice result| is
@@ -76,9 +46,9 @@ law "|emailPdfInvoice result| is
 end
 
 function emailPlainTextInvoice (name of type Text) -> Delivery is
-  Email (EmailDetails record{recipient = "accounts@example.com", document =
-    (Invoice (InvoiceDetails record{number = "INV-2026-10", file = (PlainText
-      (PlainTextDetails record{fileName = name}))}))})
+  Email (record{recipient = "accounts@example.com", document =
+    (Invoice (record{number = "INV-2026-10", file = (PlainText
+      (record{fileName = name}))}))})
 end function
 
 law "|emailPlainTextInvoice result| is
@@ -92,9 +62,9 @@ law "|emailPlainTextInvoice result| is
 end
 
 function emailPdfLetter (name of type Text) -> Delivery is
-  Email (EmailDetails record{recipient = "accounts@example.com", document =
-    (Letter (LetterDetails record{subject = "Receipt", file = (Pdf (PdfDetails
-      record{fileName = name, byteCount = 1200}))}))})
+  Email (record{recipient = "accounts@example.com", document =
+    (Letter (record{subject = "Receipt", file = (Pdf (record{fileName = name,
+        byteCount = 1200}))}))})
 end function
 
 law "|emailPdfLetter result| is
@@ -108,8 +78,8 @@ law "|emailPdfLetter result| is
 end
 
 function downloadPdfInvoice (name of type Text) -> Delivery is
-  Download (DownloadDetails record{document = (Invoice (InvoiceDetails
-    record{number = "INV-2026-10", file = (Pdf (PdfDetails record{fileName =
+  Download (record{document = (Invoice (record{number = "INV-2026-10", file =
+      (Pdf (record{fileName =
         name,
         byteCount = 1200}))}))})
 end function
