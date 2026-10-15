@@ -31,6 +31,25 @@ Acceptance requires:
 
 The current-parser audit accepts a law/section/quantifier sample with three bare endings, rejects `end definition` / `end law`, accepts `end function`, and rejects a bare function ending. This is evidence that the next-milestone change is needed, not a claim that it has been implemented. All other acceptance and pre-final-1.0 requirements below remain in scope. Historical references to RC1 name the earlier plan, not the current minor version.
 
+The parser inventory for that work includes the following block families. This records current behavior; it does not select the unresolved future quantifier or operation-clause labels.
+
+| Block family | Current canonical closer | Following-milestone coverage |
+| --- | --- | --- |
+| Function, procedure, named record or alternative type, first-matching case, conditional, mapping | `end function`, `end procedure`, `end type`, `end case`, `end if`, `end mapping` | Preserve and test matching labels. |
+| Law; definition, description, rationale and references sections | Bare `end` for each block | Label both outer declarations and every section. |
+| Universal, existential and normative/negative existential quantifiers; `given` | Bare `end` for each scope | Settle labels for all alternate wordings and test nesting. |
+| Refinement, wrapper | Bare `end` | Include type-related declarations outside `type`. |
+| Workflow; its concurrent `all` group | Bare `end` for each block | Include the inner group before `combine`. |
+| Protocol, model, actor, supervisor | Bare `end` | Include all stateful declaration families. |
+| Scenario; `par`; a receive operation's `or else` recovery block | Bare `end` for each block | Include parallel branches and recovery nesting. |
+| Ability, handler set (`handlers`), handler; written handler operation body | Bare `end` for each block | Distinguish outer handlers from nested operation bodies. |
+| `handle ... with ...` expression | Bare `end` | Include expression-level effect scopes. |
+| Resource; acquire, release and optional reset bodies | Bare `end` for each block | Label all resource lifecycle bodies. |
+| Named example, expectation table | Bare `end` | Preserve independent expectations and row failures. |
+| Harness, strategy, benchmark | Bare `end` | Include implementation-plane blocks and standalone harness files. |
+
+Legacy `definition`, `match` and `references are` forms also need explicit migration correspondence. By contrast, a unit header, scalar law metadata, ability `laws` introducer, harness `for law` settings group, handler `operation by function` clause and ordinary let expression have no separate end-delimited block in the current grammar. This inventory does not add closers to them. The implementation must repeat the audit against the final grammar so new or transformed productions cannot escape the no-bare-`end` gate.
+
 ## Implementation baseline and decisions
 
 Language profile: `1.0-rc.1`. API schema: **5**. Configuration version: **2**.
