@@ -294,6 +294,8 @@ extra-source-files:
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec
     test/fixtures/definition_contracts.lawspec
+    test/fixtures/eq-set-operations-library.lawspec
+    test/fixtures/eq-set-operations.lawspec
     test/fixtures/list_contracts.lawspec
     test/fixtures/native_empty_domains.lawspec
     test/fixtures/native_shapes.lawspec
@@ -857,6 +859,7 @@ test-suite lawspec-test
       DocumentSpec
       DomainModelSpec
       DotNetSpec
+      EqSetOperationsSpec
       EqSetSpec
       FlowSpec
       GadtSpec

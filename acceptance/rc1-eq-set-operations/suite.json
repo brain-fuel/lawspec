@@ -1,0 +1,6 @@
+{
+  "specs": [
+    "test/fixtures/eq-set-operations-library.lawspec",
+    "test/fixtures/eq-set-operations.lawspec"
+  ]
+}

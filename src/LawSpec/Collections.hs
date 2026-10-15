@@ -111,7 +111,7 @@ collectionsSource :: [String] -> String
 collectionsSource types = unlines $
   ["unit " ++ collectionsUnit, ""] ++
   concat [block | (t, block) <- declarations, t `elem` types] ++
-  (if any (`elem` types) ["Set", "Queue", "Stack", "Deque"] then listHelpers else []) ++
+  (if any (`elem` types) ["Set", "EqSet", "Queue", "Stack", "Deque"] then listHelpers else []) ++
   concat [block | (t, block) <- operations, t `elem` types] ++
   (if boundedArithmeticBlock `elem` types then boundedArithmeticSource else [])
   where
@@ -120,6 +120,8 @@ collectionsSource types = unlines $
       , ("Entry", ["type Entry (k :: Type) (v :: Type) is Entry key :: k value :: v end", ""])
       , ("Pair", ["type Pair (a :: Type) (b :: Type) is Pair first :: a second :: b end", ""])
       , ("Set", ["type Set (a :: Type) is SetItems items :: List a end", ""])
+      -- Internal representation; canonical exports are introduced separately.
+      , ("EqSet", ["type EqSet (a :: Type) is EqSetItems items :: List a end", ""])
       , ("KeyVal", ["type KeyVal (k :: Type) (v :: Type) is KeyValEntries entries :: List (Entry k v) end", ""])
       , ("Queue", ["type Queue (a :: Type) is QueueItems items :: List a end", ""])
       , ("Stack", ["type Stack (a :: Type) is StackItems items :: List a end", ""])
@@ -178,9 +180,70 @@ collectionsSource types = unlines $
       , "end"
       , "" ]
     operations =
-      [ ("Set", setOperations), ("KeyVal", keyValOperations), ("Stack", stackOperations)
+      [ ("Set", setOperations), ("EqSet", eqSetOperations), ("KeyVal", keyValOperations), ("Stack", stackOperations)
       , ("Queue", queueOperations), ("Deque", dequeOperations)
       , ("SizedStack", sizedStackOperations), ("SizedQueue", sizedQueueOperations) ]
+    eqSetOperations =
+      [ "definition eqSetContainsItems (x :: a) (xs :: List a) :: Bool requires Eq a is"
+      , "  match xs with"
+      , "  | Nil -> false"
+      , "  | Cons h t -> x == h || eqSetContainsItems x t"
+      , "  end"
+      , "end", ""
+      , "definition eqSetDistinctItems (xs :: List a) (seen :: List a) :: List a requires Eq a is"
+      , "  match xs with"
+      , "  | Nil -> xs"
+      , "  | Cons h t -> if eqSetContainsItems h seen then eqSetDistinctItems t seen"
+      , "    else Cons h (eqSetDistinctItems t (Cons h seen))"
+      , "  end"
+      , "end", ""
+      , "definition eqSetOf (xs :: List a) :: EqSet a requires Eq a is"
+      , "  EqSetItems (eqSetDistinctItems xs [])"
+      , "end", ""
+      , "definition eqSetItems (set :: EqSet a) :: List a is"
+      , "  match set with | EqSetItems items -> items end"
+      , "end", ""
+      , "definition eqSetMember (x :: a) (set :: EqSet a) :: Bool requires Eq a is"
+      , "  eqSetContainsItems x (eqSetItems set)"
+      , "end", ""
+      , "definition eqSetInsert (x :: a) (set :: EqSet a) :: EqSet a requires Eq a is"
+      , "  if eqSetMember x set then set"
+      , "  else EqSetItems (collectionAppend (eqSetItems set) [x])"
+      , "end", ""
+      , "definition eqSetRemoveItems (x :: a) (items :: List a) :: List a requires Eq a is"
+      , "  match items with"
+      , "  | Nil -> items"
+      , "  | Cons h t -> if x == h then eqSetRemoveItems x t"
+      , "    else Cons h (eqSetRemoveItems x t)"
+      , "  end"
+      , "end", ""
+      , "definition eqSetRemove (x :: a) (set :: EqSet a) :: EqSet a requires Eq a is"
+      , "  EqSetItems (eqSetRemoveItems x (eqSetItems set))"
+      , "end", ""
+      , "definition eqSetUnion (left :: EqSet a) (right :: EqSet a) :: EqSet a requires Eq a is"
+      , "  eqSetOf (collectionAppend (eqSetItems left) (eqSetItems right))"
+      , "end", ""
+      , "definition eqSetFilterItems (items :: List a) (other :: List a) (keepMembers :: Bool) :: List a requires Eq a is"
+      , "  match items with"
+      , "  | Nil -> items"
+      , "  | Cons h t -> if (eqSetContainsItems h other) == keepMembers"
+      , "    then Cons h (eqSetFilterItems t other keepMembers)"
+      , "    else eqSetFilterItems t other keepMembers"
+      , "  end"
+      , "end", ""
+      , "definition eqSetIntersection (left :: EqSet a) (right :: EqSet a) :: EqSet a requires Eq a is"
+      , "  EqSetItems (eqSetFilterItems (eqSetItems left) (eqSetItems right) true)"
+      , "end", ""
+      , "definition eqSetDifference (left :: EqSet a) (right :: EqSet a) :: EqSet a requires Eq a is"
+      , "  EqSetItems (eqSetFilterItems (eqSetItems left) (eqSetItems right) false)"
+      , "end", ""
+      , "definition eqSetSize (set :: EqSet a) :: Natural is"
+      , "  prelude.length (eqSetItems set)"
+      , "end", ""
+      , "definition eqSetIsEmpty (set :: EqSet a) :: Bool is"
+      , "  match eqSetItems set with | Nil -> true | Cons h t -> false end"
+      , "end", ""
+      ]
     setOperations =
       [ "definition setInsertItems (x :: a) (xs :: List a) :: List a requires Keyed a is"
       , "  match xs with"

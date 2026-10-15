@@ -1,0 +1,9 @@
+rejected-at: generation
+expect: refuted
+expect: creation retains first occurrences
+@@ test/fixtures/eq-set-operations-library.lawspec
+<<<<<<<
+if eqSetContainsItems h seen then eqSetDistinctItems t seen
+=======
+if eqSetContainsItems h t then eqSetDistinctItems t seen
+>>>>>>>

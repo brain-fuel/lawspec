@@ -1,0 +1,9 @@
+rejected-at: generation
+expect: refuted
+expect: union retains left arrivals before new right arrivals
+@@ test/fixtures/eq-set-operations-library.lawspec
+<<<<<<<
+eqSetOf (collectionAppend (eqSetItems left) (eqSetItems right))
+=======
+eqSetOf (collectionAppend (eqSetItems right) (eqSetItems left))
+>>>>>>>
