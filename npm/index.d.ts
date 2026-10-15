@@ -72,6 +72,14 @@ export interface Expr {
 
 export type ExprNode =
     {kind: 'constant'; value: ScalarValue;} |
+    {kind: 'field'; constructor: string; index: number; value: Expr;} |
+    {
+      kind: 'update';
+      constructor: string;
+      index: number;
+      value: Expr;
+      field: Expr;
+    } |
     {kind: 'match'; value: Expr; cases: MatchCase[];} |
     {kind: 'allElements'; value: Expr; binder: Binder; predicate: Expr;} |
     {kind: 'allPayloads'; value: Expr; predicates: PayloadPredicate[];} |
@@ -87,8 +95,25 @@ export type ExprNode =
     } |
     {kind: 'unary'; operator: '-' | '!'; argument: Expr;} |
     {kind: 'shortCircuit'; operator: '&&' | '||'; left: Expr; right: Expr;} |
+    {kind: 'if'; condition: Expr; then: Expr; else: Expr;} |
     {kind: 'convert'; conversion: 'explicit' | 'checked'; argument: Expr;} |
-    {kind: 'helper'; name: string; arguments: Expr[];};
+    {kind: 'helper'; name: string; arguments: Expr[];} |
+    {kind: 'perform'; ability: string; operation: string; arguments: Expr[];} |
+    {kind: 'handle'; handling: 'catchFailure'; ability: string; body: Expr;} |
+    {
+      kind: 'handle';
+      handling: 'withHandler';
+      ability: string;
+      handler: string;
+      body: Expr;
+    } |
+    {kind: 'let'; binder: Binder; value: Expr; body: Expr;} |
+    {
+      kind: 'calls';
+      ability: string;
+      operation: string;
+      arguments: Expr[] | null;
+    };
 
 export type Assertion =
     {kind: 'equal'; evidence: Evidence; left: Expr; right: Expr;} |

@@ -9,7 +9,20 @@ export function children(node: ExprNode): Expr[] {
     case 'construct':
     case 'call':
     case 'helper':
+    case 'perform':
       return node.arguments;
+    case 'calls':
+      return node.arguments ?? [];
+    case 'field':
+      return [node.value];
+    case 'update':
+      return [node.value, node.field];
+    case 'if':
+      return [node.condition, node.then, node.else];
+    case 'let':
+      return [node.value, node.body];
+    case 'handle':
+      return [node.body];
     case 'match':
       return [node.value, ...node.cases.map(branch => branch.body)];
     case 'allElements':
@@ -24,22 +37,44 @@ export function children(node: ExprNode): Expr[] {
       return [node.argument];
     default: {
       const unreachable: never = node;
-      return unreachable;
+      throw new Error(`Unrecognized expression node: ${JSON.stringify(unreachable)}`);
     }
   }
 }
 
-declare const value: Expr;
-declare const callback: PayloadPredicate;
-const payload: ExprNode = {kind: 'allPayloads', value, predicates: [callback]};
-const element: ExprNode = {
-  kind: 'allElements', value, binder: callback.binder, predicate: callback.predicate,
-};
-children(payload);
-children(element);
-// @ts-expect-error Callbacks require typed binder metadata.
-const malformed: PayloadPredicate = {binder: 'payload', predicate: value};
-void malformed;
+export function nodeFixtures(value: Expr, callback: PayloadPredicate): ExprNode[] {
+  const payload: ExprNode = {kind: 'allPayloads', value, predicates: [callback]};
+  const element: ExprNode = {
+    kind: 'allElements', value, binder: callback.binder, predicate: callback.predicate,
+  };
+  children(payload);
+  children(element);
+  const remainingNodes: ExprNode[] = [
+    {kind: 'field', constructor: 'Record', index: 0, value},
+    {kind: 'update', constructor: 'Record', index: 0, value, field: value},
+    {kind: 'if', condition: value, then: value, else: value},
+    {kind: 'let', binder: callback.binder, value, body: value},
+    {kind: 'perform', ability: 'Log', operation: 'write', arguments: [value]},
+    {kind: 'handle', handling: 'catchFailure', ability: 'Fail', body: value},
+    {kind: 'handle', handling: 'withHandler', ability: 'Log', handler: 'recording fakeLog', body: value},
+    {kind: 'calls', ability: 'Log', operation: 'write', arguments: null},
+    {kind: 'calls', ability: 'Log', operation: 'write', arguments: []},
+  ];
+  remainingNodes.forEach(children);
+  // @ts-expect-error A spec handler name is required for withHandler.
+  const missingHandler: ExprNode = {kind: 'handle', handling: 'withHandler', ability: 'Log', body: value};
+  // @ts-expect-error A let binder has typed lexical identity, not just a name.
+  const missingBinderType: ExprNode = {kind: 'let', binder: 'entry', value, body: value};
+  // @ts-expect-error Calls without an argument filter use null explicitly.
+  const missingCallArguments: ExprNode = {kind: 'calls', ability: 'Log', operation: 'write'};
+  // @ts-expect-error Field positions are numeric indices.
+  const malformedField: ExprNode = {kind: 'field', constructor: 'Record', index: 'value', value};
+  void missingHandler; void missingBinderType; void missingCallArguments; void malformedField;
+  // @ts-expect-error Callbacks require typed binder metadata.
+  const malformed: PayloadPredicate = {binder: 'payload', predicate: value};
+  void malformed;
+  return [payload, element, ...remainingNodes];
+}
 
 
 export function referencedTarget(reference: DocumentaryReference): DocumentaryTarget | null {

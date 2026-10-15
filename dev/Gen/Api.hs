@@ -86,6 +86,8 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "Expr" (fields [("type", "Type"), ("origin", "Origin"), ("text", "string"), ("node", "ExprNode")])
   , alias "ExprNode"
       [ variant "constant" [("value", "ScalarValue")]
+      , variant "field" [("constructor", "string"), ("index", "number"), ("value", "Expr")]
+      , variant "update" [("constructor", "string"), ("index", "number"), ("value", "Expr"), ("field", "Expr")]
       , variant "match" [("value", "Expr"), ("cases", "MatchCase[]")]
       , variant "allElements" [("value", "Expr"), ("binder", "Binder"), ("predicate", "Expr")]
       , variant "allPayloads" [("value", "Expr"), ("predicates", "PayloadPredicate[]")]
@@ -95,8 +97,14 @@ declarations = joinWith (softbreak <> softbreak)
       , variant "binary" [("operator", "string"), ("evidence", "Evidence"), ("left", "Expr"), ("right", "Expr")]
       , record [("kind", quoted "unary"), ("operator", union (map quoted ["-", "!"])), ("argument", text "Expr")]
       , record [("kind", quoted "shortCircuit"), ("operator", union (map quoted ["&&", "||"])), ("left", text "Expr"), ("right", text "Expr")]
+      , variant "if" [("condition", "Expr"), ("then", "Expr"), ("else", "Expr")]
       , record [("kind", quoted "convert"), ("conversion", union (map quoted ["explicit", "checked"])), ("argument", text "Expr")]
       , variant "helper" [("name", "string"), ("arguments", "Expr[]")]
+      , variant "perform" [("ability", "string"), ("operation", "string"), ("arguments", "Expr[]")]
+      , record [("kind", quoted "handle"), ("handling", quoted "catchFailure"), ("ability", text "string"), ("body", text "Expr")]
+      , record [("kind", quoted "handle"), ("handling", quoted "withHandler"), ("ability", text "string"), ("handler", text "string"), ("body", text "Expr")]
+      , variant "let" [("binder", "Binder"), ("value", "Expr"), ("body", "Expr")]
+      , variant "calls" [("ability", "string"), ("operation", "string"), ("arguments", "Expr[] | null")]
       ]
   , alias "Assertion"
       [variant "equal" [("evidence", "Evidence"), ("left", "Expr"), ("right", "Expr")],

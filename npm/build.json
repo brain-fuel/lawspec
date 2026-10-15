@@ -958,6 +958,6 @@
     "npm/core.wasm": "d1aa61e2753a8667536aac1a8062fb33df8d5b14c8bd27159adcd6efc9a2a7dd",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "b0c61400b2183f6af2ee5ac67bd9bb313bc4fe23149015a2fa2bf61119323dfd",
-    "npm/index.d.ts": "1a64ae717269c7fb10b0fb91273bbe6dc6c65ac933dc13e08e90708da265a638"
+    "npm/index.d.ts": "2e527e4175fb71b3cb705f83e937feba02700b0cb914cffd62d0c96824317047"
   }
 }

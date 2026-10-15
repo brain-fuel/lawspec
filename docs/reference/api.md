@@ -200,7 +200,14 @@ Every expression is `{type, origin, text, node}`. `text` is for display;
 | `convert` | `conversion`: `checked` (a computed value must fit an adapter parameter) or `explicit` (a source conversion); `argument` |
 | `helper` | `name`, `arguments` |
 | `construct` | `constructor` ID, `arguments` |
+| `field` | `constructor` ID, zero-based `index` in its fields, `value` |
+| `update` | `constructor` ID, zero-based `index`, `value`, replacement `field` |
 | `match` | `value` (the scrutinee), `cases`: each `{constructor, binders, body}` |
+| `if` | `condition`, `then`, `else` |
+| `let` | typed `binder`, `value`, `body` |
+| `perform` | `ability` ID, `operation`, `arguments` |
+| `handle` | `handling`: `catchFailure` or `withHandler`; `ability`, `body`; `withHandler` also carries `handler` |
+| `calls` | `ability`, `operation`, `arguments`: an expression array for a matching-arguments filter, or `null` for every call |
 | `allElements` | `value`, `binder`, `predicate`: the predicate holds for every list element |
 | `allPayloads` | `value`, `predicates`: one `{binder, predicate}` per type argument of the root data type |
 
@@ -212,6 +219,15 @@ predicate; traversal follows stored occurrences of each type parameter through
 recursive declarations and containers, is vacuously true for empty or phantom
 storage, and short-circuits on rejection. Exhaustive visitors must handle every
 kind.
+
+A let binder scopes over its body, after its value has been evaluated. Branches
+and handlers retain their own computations; a visitor traversing their syntax
+does not execute them. `calls.arguments: []` selects calls to a zero-argument
+operation, whereas `null` applies no argument filter. Handler text retains
+recording and native/spec handler choices. These nodes are included in the
+generated TypeScript discriminated union, including both handler shapes, so an
+exhaustive visitor can traverse operational expressions and structural field
+restrictions through the same interface.
 
 A `call` to an ID found in `definitions` is a checked definition; any other
 call is an adapter. Refinement and contract expressions may call checked
