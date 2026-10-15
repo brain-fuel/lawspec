@@ -1,0 +1,25 @@
+unit example.rc1.nativeNames
+
+function flipValue (value of type Bool) -> Bool is
+  value
+end function
+
+function "|flip value| (value of type Bool) -> Bool is
+  not value
+end function
+
+law "|ordinary value is preserved| is
+  definition:
+    for all (value of type Bool) =>
+      flipValue value must be value
+    end
+  end
+end
+
+law "|phrase value is negated| is
+  definition:
+    for all (value of type Bool) =>
+      "|flip value| value must be (not value)
+    end
+  end
+end

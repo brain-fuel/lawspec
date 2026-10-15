@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ examples/rc1/bounded-witness-search.lawspec
+<<<<<<<
+      amount > 0 and amount <= 0
+=======
+      amount > 0 or amount <= 0
+>>>>>>>

@@ -1,0 +1,125 @@
+unit example.delivery.uuu
+
+type PdfDetails is a record{
+  fileName of type Text
+  byteCount of type Whole
+}
+end type
+
+type PlainTextDetails is a record{
+  fileName of type Text
+}
+end type
+
+type File is one of
+  | Pdf of type PdfDetails
+  | PlainText of type PlainTextDetails
+end type
+
+type InvoiceDetails is a record{
+  number of type Text
+  file of type File
+}
+end type
+
+type LetterDetails is a record{
+  subject of type Text
+  file of type File
+}
+end type
+
+type Document is one of
+  | Invoice of type InvoiceDetails
+  | Letter of type LetterDetails
+end type
+
+type EmailDetails is a record{
+  recipient of type Text
+  document of type Document
+}
+end type
+
+type DownloadDetails is a record{
+  document of type Document
+}
+end type
+
+type Delivery is one of
+  | Email of type EmailDetails
+  | Download of type DownloadDetails
+end type
+
+function "|email invoice PDF file name|
+  (delivery of type Delivery) -> Maybe Text is
+  first matching case of delivery:
+    when Email record{document = Invoice record{file = Pdf record{fileName =
+            name}}}
+      then Just name
+    otherwise Nothing
+  end case
+end function
+
+function emailPdfInvoice (name of type Text) -> Delivery is
+  Email (EmailDetails record{recipient = "accounts@example.com", document =
+    (Invoice (InvoiceDetails record{number = "INV-2026-10", file = (Pdf
+      (PdfDetails record{fileName = name, byteCount = 1200}))}))})
+end function
+
+law "|emailPdfInvoice result| is
+  description:
+    "PDF invoices sent by email retain their file names."
+  end
+  definition:
+    "|email invoice PDF file name| (emailPdfInvoice "invoice.pdf") must be Just
+    "invoice.pdf"
+  end
+end
+
+function emailPlainTextInvoice (name of type Text) -> Delivery is
+  Email (EmailDetails record{recipient = "accounts@example.com", document =
+    (Invoice (InvoiceDetails record{number = "INV-2026-10", file = (PlainText
+      (PlainTextDetails record{fileName = name}))}))})
+end function
+
+law "|emailPlainTextInvoice result| is
+  description:
+    "Plain-text invoices have no PDF file name."
+  end
+  definition:
+    "|email invoice PDF file name| (emailPlainTextInvoice "invoice.pdf") must be
+    Nothing
+  end
+end
+
+function emailPdfLetter (name of type Text) -> Delivery is
+  Email (EmailDetails record{recipient = "accounts@example.com", document =
+    (Letter (LetterDetails record{subject = "Receipt", file = (Pdf (PdfDetails
+      record{fileName = name, byteCount = 1200}))}))})
+end function
+
+law "|emailPdfLetter result| is
+  description:
+    "Letters have no invoice PDF file name."
+  end
+  definition:
+    "|email invoice PDF file name| (emailPdfLetter "invoice.pdf") must be
+    Nothing
+  end
+end
+
+function downloadPdfInvoice (name of type Text) -> Delivery is
+  Download (DownloadDetails record{document = (Invoice (InvoiceDetails
+    record{number = "INV-2026-10", file = (Pdf (PdfDetails record{fileName =
+        name,
+        byteCount = 1200}))}))})
+end function
+
+law "|downloadPdfInvoice result| is
+  description:
+    "Downloads have no email invoice PDF file name."
+  end
+  definition:
+    "|email invoice PDF file name| (downloadPdfInvoice "invoice.pdf") must be
+    Nothing
+  end
+end

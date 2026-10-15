@@ -110,6 +110,48 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
       Web.emitWebData True (Doc.Pretty 80)
         [decl "never" [] []] `shouldSatisfy` isLeft
   describe "native Go declarations" $ do
+    it "gives directly recursive products a sealed interface and matching codecs" $ do
+      let loop = decl "Loop" [] [ctor "Again" [scalarType "Loop"]]
+      case Go.emitGoData (Doc.PrettyTabs 100) "fixture" [loop] of
+        Left problem -> expectationFailure problem
+        Right code -> do
+          code `shouldSatisfy` isInfixOf "type Loop interface"
+          code `shouldSatisfy` isInfixOf "type LoopAgain struct"
+          code `shouldNotSatisfy` isInfixOf "type Loop struct"
+      case Go.emitGoCodecs (Doc.PrettyTabs 100) "fixture" [loop] of
+        Left problem -> expectationFailure problem
+        Right code -> do
+          code `shouldSatisfy` isInfixOf "case LoopAgain:"
+          code `shouldSatisfy` isInfixOf "return LoopAgain{"
+    it "follows mutual inline recursion and instantiated generic fields" $ do
+      let box = decl "Box" [Id "a"] [ctor "Wrap" [TypeVariable (Id "a")]]
+          a = decl "First" [] [ctor "Start" [app "Box" [scalarType "Second"]]]
+          b = decl "Second" [] [ctor "Back" [scalarType "First"]]
+          outer = decl "Envelope" [] [ctor "Envelope" [scalarType "First"]]
+      case Go.emitGoData (Doc.PrettyTabs 100) "fixture" [box,a,b,outer] of
+        Left problem -> expectationFailure problem
+        Right code -> do
+          code `shouldSatisfy` isInfixOf "type First interface"
+          code `shouldSatisfy` isInfixOf "type Second interface"
+          code `shouldSatisfy` isInfixOf "type Box[T0 any] struct"
+          code `shouldSatisfy` isInfixOf "type Envelope struct"
+    it "keeps slice recursion, phantom arguments and finite nested products as structs" $ do
+      let tree = decl "Tree" [] [ctor "Tree" [app "List" [scalarType "Tree"]]]
+          phantom = decl "Phantom" [Id "a"] [ctor "Phantom" []]
+          safe = decl "Safe" [] [ctor "Safe" [app "Phantom" [scalarType "Safe"]]]
+          box = decl "Box" [Id "a"] [ctor "Box" [TypeVariable (Id "a")]]
+          nested = decl "Nested" [] [ctor "Nested" [app "Box" [app "Box" [scalarType "Bool"]]]]
+      case Go.emitGoData (Doc.PrettyTabs 100) "fixture" [tree,phantom,safe,box,nested] of
+        Left problem -> expectationFailure problem
+        Right code -> mapM_ (\name -> code `shouldSatisfy` isInfixOf ("type " ++ name ++ " struct"))
+          ["Tree","Safe","Nested"]
+    it "breaks recursive layout through inline presence wrappers" $ do
+      let chain = decl "Chain" [] [ctor "Link" [app "Maybe" [scalarType "Chain"]]]
+      case Go.emitGoData (Doc.PrettyTabs 100) "fixture" [chain] of
+        Left problem -> expectationFailure problem
+        Right code -> do
+          code `shouldSatisfy` isInfixOf "type Chain interface"
+          code `shouldSatisfy` isInfixOf "LawSpecMaybe[Chain]"
     it "preserves native parameterized fields and containers" $ do
       let box = decl "Box" [Id "a"] [ctor "Box" [TypeVariable (Id "a")]]
       Go.goDataType [box] (app "List" [app "Box" [scalarType "Int8"]]) `shouldBe`

@@ -5,7 +5,7 @@
 -- dependencies. Each range selects the highest supplied version it accepts,
 -- and a package may be supplied in several versions (see preparePackages).
 module LawSpec.Packages
-  ( Package(..), Project(..), emptyProject, preparePackages, packagesView, versionedDiagnostics
+  ( Package(..), Project(..), emptyProject, preparePackages, preparePackagesWithReferences, packagesView, versionedDiagnostics
   , Version, parseVersion, parseRange, satisfies
   ) where
 
@@ -52,9 +52,17 @@ instance FromJSON Package where
 -- importing package selects, keeping the alias the import had. A package
 -- supplied in one version keeps its names, so nothing changes for it.
 preparePackages :: Project -> [Package] -> [Source] -> Either [Diagnostic] ([Source], String -> String -> Maybe String, [(Package, [String])])
-preparePackages project packages sources
+preparePackages project packages sources = do
+  (allSources, visible, _, described) <- preparePackagesWithReferences project packages sources
+  pure (allSources, visible, described)
+
+-- Documentary qualification follows the dependent's selected version without
+-- rewriting body text or moving the reference's original source span.
+preparePackagesWithReferences :: Project -> [Package] -> [Source] -> Either [Diagnostic]
+  ([Source], String -> String -> Maybe String, String -> String -> String, [(Package, [String])])
+preparePackagesWithReferences project packages sources
   | null packages && M.null (projectDependencies project) && projectPackage project == Nothing =
-      pure (sources, \_ _ -> Nothing, [])
+      pure (sources, \_ _ -> Nothing, \_ name -> name, [])
   | otherwise = do
       let root = maybe "" fst (projectPackage project)
           rootKey = (root, "")
@@ -142,7 +150,11 @@ preparePackages project packages sources
               | fst from == fst to -> Just (imported ++ " belongs to " ++ label to ++ ", but " ++ label from ++ " uses another version")
               | otherwise -> Just (imported ++ " belongs to " ++ label to ++ ", which is not a dependency of " ++ label from)
             _ -> Nothing
-      pure (map snd compiled, visible, renamedUnits)
+          referenceUnit importer imported
+            | M.member imported owner = imported
+            | Just key <- M.lookup importer owner = retarget key imported
+            | otherwise = imported
+      pure (map snd compiled, visible, referenceUnit, renamedUnits)
   where
     failure message = Left [Diagnostic "package" message Nothing]
     keyOf p = (packageName p, packageVersion p)

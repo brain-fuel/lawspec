@@ -10,6 +10,10 @@ laws are tested: which handlers the tests run against, how inputs are drawn,
 how many cases are enough, and how the tests run. It lives on its own
 plane, and it can never change what a law means.
 
+Profile `1.0-rc.1` also supports constructive existential witnesses in a
+selected law's harness. See [RC1 witness search](rc1.md#constructive-witness-search)
+for the grammar, lexical paths and evidence limits.
+
 See [Abilities, and laws kept apart from the harness](../../explanation/abilities.md)
 for why the two planes are kept apart.
 
@@ -162,6 +166,12 @@ is checked against the input's refinements (`where …`): a value outside them i
 a failure of the harness ("the strategy orders produced … for order, which is
 outside the input's refinement"), never a reason to skip the case. A strategy
 can choose which values are tried; it cannot widen what the law is about.
+
+In profile `1.0-rc.1`, `use` can also select a nested logical binder through
+a qualified lexical path. This uses a bounded deterministic candidate schedule;
+an invalid candidate is rejected and an exhausted search remains inconclusive.
+See [bounded witness strategies](rc1.md#bounded-witness-strategies) for scope,
+limits, dependent rechecks and the distinction from complete finite coverage.
 
 The strategies draw through each target's own property-testing library, so a
 failing case still shrinks: Hypothesis (Python), fast-check (JavaScript and

@@ -71,6 +71,8 @@ railwayUnit u = u
               , examples = [x { expectations = [c { actual = railwayExpr (actual c) } | c <- expectations x] } | x <- examples l] }
     definition' d = case d of
       Forall bs body -> Forall [(n, typ t) | (n, t) <- bs] (definition' body)
+      Exists bs body -> Exists [(n, typ t) | (n, t) <- bs] (definition' body)
+      Not body -> Not (definition' body)
       Equal a b -> Equal (railwayExpr a) (railwayExpr b)
       Holds a -> Holds (railwayExpr a)
       Implies g body -> Implies (railwayExpr g) (definition' body)

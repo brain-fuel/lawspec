@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ examples/rc1/documentary-review.lawspec
+<<<<<<<
+review false must be Declined
+=======
+review false must be Approved
+>>>>>>>

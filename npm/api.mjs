@@ -4,10 +4,20 @@ import {loadCore} from './launcher.mjs';
 export async function createCompiler() {
   const call = await loadCore();
   return {
+    format: (input) =>
+        call(
+            {
+              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
+              input.nativeBindings === undefined ? 3 : 4,
+              ...input,
+              method: 'format',
+            }
+        ),
     check: (input) =>
         call(
             {
-              schemaVersion: input.nativeBindings === undefined ? 3 : 4,
+              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
+              input.nativeBindings === undefined ? 3 : 4,
               ...input,
               method: 'check',
             }
@@ -15,7 +25,8 @@ export async function createCompiler() {
     expand: (input) =>
         call(
             {
-              schemaVersion: input.nativeBindings === undefined ? 3 : 4,
+              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
+              input.nativeBindings === undefined ? 3 : 4,
               ...input,
               method: 'expand',
             }
@@ -23,7 +34,8 @@ export async function createCompiler() {
     planGeneration: (input) =>
         call(
             {
-              schemaVersion: input.nativeBindings === undefined ? 3 : 4,
+              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
+              input.nativeBindings === undefined ? 3 : 4,
               ...input,
               method: 'planGeneration',
             }

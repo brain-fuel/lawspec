@@ -6,6 +6,9 @@ import path from "node:path";
 import { createCompiler } from "../api.mjs";
 import { targets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
+import { migrationReport } from "../migrate.mjs";
+import { serveLanguage } from "../lsp.mjs";
+import { explainLaw, explanationViews } from "../explain.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
 import { beamCoverageRequirement, collectBeamCoverage } from "../beam-coverage.mjs";
@@ -28,7 +31,7 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report", "--attestation"].includes(arg)) {
+  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report", "--attestation", "--view", "--from"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
@@ -37,7 +40,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = [...(options[arg.slice(2)] ?? []), ...args[++i].split(",").filter(Boolean)];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--write", "--stdio"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -136,6 +139,39 @@ async function packageInput(owner, root) {
     ...(owner.dependencies !== undefined ? { dependencies: owner.dependencies } : {}),
   };
 }
+async function migrateCommand() {
+  if (options.from !== "0.24") throw new Error("migrate requires --from 0.24");
+  const config = JSON.parse(await readFile(configFile, "utf8"));
+  if (config.version !== 1) throw new Error("migrate --from 0.24 requires configuration version 1");
+  const compiler = await createCompiler();
+  const report = await migrationReport(compiler, config, {
+    sources: await sources(config), ...(await packageInput(config, configRoot)),
+    generation: config.generation, machineBits: config.machineBits ?? 64,
+  });
+  diagnostics(report);
+  if (options.write && !report.validated) throw Object.assign(new Error(
+    "migration-incomplete: writing requires validated source, constructor and native binding transformations; no files were written"),
+    { diagnostics: [{ code: "migration-incomplete", message: report.blockers.join(" "), at: null }] });
+  output(options.json ? report : `Read-only migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` +
+    report.blockers.join("\n") + "\nNo files were written. Use --json to review the typed baseline and proposed configuration.");
+}
+
+async function formatCommand() {
+  const config = positional.length ? null : JSON.parse(await readFile(configFile, "utf8"));
+  const root = positional.length ? process.cwd() : configRoot;
+  const files = await lawspecFiles(root, positional.length ? positional : config.sources);
+  const compiler = await createCompiler();
+  const result = diagnostics(await compiler.format({
+    sources: files, ...(config ? await packageInput(config, configRoot) : {}),
+    languageProfile: "1.0-rc.1", verification: { layers: [] },
+  }));
+  const changed = result.formattedSources.filter((file, index) => file.content !== files[index].content);
+  if (!options.check) for (const file of changed) await atomicWrite(path.resolve(root, file.path), file.content);
+  output(options.json ? { changed: changed.map(file => file.path), check: !!options.check }
+    : changed.length ? `${changed.length} source file(s) ${options.check ? "need formatting" : "formatted"}.` : "All sources are formatted.");
+  if (options.check && changed.length) process.exitCode = 1;
+}
+
 async function packageCommand() {
   const directory = path.resolve(options.project || ".");
   const { manifest, package: own } = await loadPackage(directory);
@@ -181,7 +217,7 @@ async function init() {
   const current = await readOptional(configFile);
   const config =
     current === null
-      ? { version: 1, sources: ["laws"], targets: [] }
+      ? { version: 2, languageProfile: "1.0-rc.1", verification: { layers: [] }, sources: ["laws"], targets: [] }
       : JSON.parse(current);
   if (
     config.targets.some(
@@ -228,7 +264,7 @@ async function init() {
   if (current === null)
     await atomicWrite(
       starter,
-      await readFile(new URL("../starter.lawspec", import.meta.url), "utf8"),
+      await readFile(new URL("../starter-rc1.lawspec", import.meta.url), "utf8"),
       true,
     );
   if (options.machineBits !== undefined) config.machineBits = options.machineBits;
@@ -672,7 +708,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check]\n       lawspec migrate --from 0.24 [--write]\n       lawspec lsp --stdio\n       lawspec check | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -681,7 +717,7 @@ async function main() {
     output(VERSION);
     return;
   }
-  if (positional.length > (["explain", "evidence"].includes(verb) ? 1 : 0))
+  if (verb !== "fmt" && positional.length > (["explain", "evidence"].includes(verb) ? 1 : 0))
     throw new Error(`Unexpected argument: ${positional.join(" ")}`);
   if (verb === "examples") {
     if (
@@ -712,6 +748,7 @@ async function main() {
     );
     return;
   }
+  if (options.view && verb !== "explain") throw new Error("--view applies to explain");
   if (options.output) throw new Error("--output is only supported by examples");
   if (options.example) throw new Error("--example is only supported by examples");
   if (options.minify && !["init", "generate", "examples", "test"].includes(verb))
@@ -723,23 +760,34 @@ async function main() {
     throw new Error("--attestation applies to evidence and test");
   if (options.seed !== undefined && !/^[0-9]+$/.test(options.seed))
     throw new Error("--seed must be a whole number");
+  if (options.from && verb !== "migrate") throw new Error("--from applies to migrate");
+  if (options.write && verb !== "migrate") throw new Error("--write applies to migrate");
+  if (options.stdio && verb !== "lsp") throw new Error("--stdio applies to lsp");
+  if (verb === "migrate") return migrateCommand();
+  if (verb === "lsp") {
+    if (!options.stdio) throw new Error("lsp requires --stdio");
+    return serveLanguage();
+  }
+  if (verb === "fmt") return formatCommand();
   if (verb === "init") return init();
   if (verb === "package") return packageCommand();
   if (!["check", "doctor", "evidence", "explain", "generate", "test"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);
   const config = JSON.parse(await readFile(configFile, "utf8"));
   if (
-    config.version !== 1 ||
+    ![1,2].includes(config.version) ||
     !Array.isArray(config.sources) ||
     !Array.isArray(config.targets)
   )
     throw new Error(
-      "Expected lawspec.json version 1 with sources and targets arrays",
+      "Expected lawspec.json version 2 with languageProfile 1.0-rc.1, sources and targets arrays (version 1 is migration input)",
     );
+  if (config.version === 2 && config.languageProfile !== "1.0-rc.1") throw new Error("Configuration version 2 requires languageProfile 1.0-rc.1");
   const selected = config.targets.filter(
     (t) => !options.target || t.language === options.target,
   );
-  if (["doctor", "generate", "test"].includes(verb) && !selected.length)
+  if (["doctor", "generate", "test"].includes(verb) && !selected.length &&
+      !(verb === "test" && !options.benchmarks && config.version === 2 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))))
     throw new Error("No matching configured target");
   const roots = selected.map((t) => path.resolve(configRoot, t.root));
   if (new Set(roots).size !== roots.length)
@@ -769,6 +817,7 @@ async function main() {
   const input = {
     ...(cache === undefined ? {} : { cacheDirectory: cache }),
     sources: await sources(config),
+    ...(config.version === 2 ? { languageProfile: config.languageProfile, verification: config.verification ?? { layers: [] } } : {}),
     ...(await packageInput(config, configRoot)),
     generation: config.generation,
     machineBits: options.machineBits ?? config.machineBits ?? 64,
@@ -884,17 +933,16 @@ async function main() {
         ({ e }) => !positional[0] || `${e.owner}::${e.name}` === positional[0],
       );
     if (!indices.length) throw new Error("No matching law");
-    output(
-      options.json
-        ? indices.map(({ e, i }) => ({ ...e, expansion: result.expansions[i] }))
-        : indices
-            .map(
-              ({ e, i }) =>
-                `${e.owner}::${e.name}\n${e.trace.join("\n=> ")}\n=> ${result.expansions[i]}` +
-                explainAbilities(e, result.expansions[i], result.units) + explainExamples(e),
-            )
-            .join("\n\n"),
-    );
+    const view = options.view ?? "developer";
+    if (!explanationViews.includes(view)) throw new Error(`Choose --view ${explanationViews.join("|")}`);
+    const explanations = indices.map(({e}) => explainLaw(e, result, view));
+    output(options.json ? explanations : explanations.map(e => e.text).join("\n\n"));
+    return;
+  }
+  if (verb === "test" && !options.benchmarks && config.version === 2 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))) {
+    const checked = diagnostics(await compiler.check(input));
+    output(options.json ? { verification: checked.verification, evidence: checked.evidence, testsExecuted: 0 }
+      : (config.verification?.layers?.length ? "No native law checks selected. See lawspec evidence for the selected static analyses." : "No law verification layers selected. Intrinsic definition checks passed; no law checks ran."));
     return;
   }
   if (verb === "test") return runTests(compiler, input, selected, roots, config);

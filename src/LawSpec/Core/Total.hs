@@ -274,6 +274,7 @@ proofExpression schema bits = proof
       Let binder value body -> T.Match (proof value) [([], T.substituteProof (M.singleton (binderId binder) (proof value)) (proof body))]
       Helper Unreachable [Expr _ (Constant (SSequence _ points)) _] -> T.Absurd (map toEnum points)
       Helper Unreachable _ -> T.Absurd "a constructor"
+      Helper IncompleteSearch _ -> T.Absurd "an incomplete witness search"
       Helper Length [value] -> T.Opaque "length" [proof value]
       -- Text tests and the sequence helpers are total functions of their
       -- values: atoms, so a field's regex is a fact a match knows and a

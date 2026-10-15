@@ -39,7 +39,7 @@ import LawSpec.Model
 type Failure = (Maybe Location, String)
 
 emptyPlan :: String -> HarnessPlan
-emptyPlan name = HarnessPlan name [] Nothing Nothing Nothing 1 0 [] [] [] Nothing [] Nothing
+emptyPlan name = HarnessPlan name [] Nothing Nothing Nothing 1 0 [] [] [] Nothing [] Nothing [] [] []
 
 -- Whether a law's final name is the law written as base: the law itself, one
 -- of its handler variants (`base [native]`), or, for an ability's law, one
@@ -89,8 +89,6 @@ elaborateHarness u = case unitHarness u of
       (Left (at (strategySpan s), "the strategy " ++ strategyName s ++ " uses itself; strategies may not be recursive"))
     -- Laws: every name refers to a law of the served unit.
     let matching base = [n | n <- finalNames, lawBaseMatches abilityNames base n]
-        ownLaw base = [l | l <- laws u ++ concatMap abilityLaws (abilities u), lawName l == base] ++
-          [l | l <- laws u, lawBaseMatches abilityNames base (lawName l)]
     forM_ [(names, range) | HarnessFor names _ range <- items] $ \(names, range) -> forM_ names $ \base ->
       when (null (matching base))
         (Left (at range, "the harness " ++ harnessName h ++ " refers to the law `" ++ base ++ "`, but " ++ unitLabel ++
@@ -106,13 +104,10 @@ elaborateHarness u = case unitHarness u of
       _ -> pure ()
     forM_ [(ss, r) | HarnessDefault s r <- items, let ss = [s]] $ \(ss, range) -> forM_ ss $ \s -> case s of
       UseStrategy _ input -> Left (at range, "use ... for " ++ input ++ " names a law's input, so it belongs in a `for law` block")
+      WitnessSetting _ _ _ -> Left (at range, "witness ... for ... belongs in a selected `for law` block")
       _ -> pure ()
-    forM_ [(names, ss) | HarnessFor names ss _ <- items] $ \(names, ss) -> forM_ ss $ \(s, range) -> case s of
-      UseStrategy _ input -> forM_ names $ \base -> forM_ (take 1 (ownLaw base)) $ \l ->
-        unless (input `elem` lawInputs l)
-          (Left (at range, "use ... for " ++ input ++ ": the law `" ++ base ++ "` has no input called " ++ input ++
-            (case lawInputs l of [] -> " (it has no inputs)"; xs -> " (its inputs are " ++ intercalate ", " xs ++ ")")))
-      _ -> pure ()
+    -- Input and scoped search paths resolve after reusable-law expansion,
+    -- when their actual binders and lexical identities are available.
     -- Sharing: only a resource that declares reset.
     forM_ [(r, scope, range) | HarnessShare r scope range <- items] $ \(r, scope, range) ->
       case [isJust (resourceReset d) | d <- resourceDeclarations u, resourceTypeName (resourceType d) == r] of
@@ -155,12 +150,6 @@ elaborateHarness u = case unitHarness u of
     pure u { lawHarness = plans }
   where
     scopeName scope = case scope of SharePerGroup -> "group"; SharePerUnit -> "unit"; SharePerRun -> "run"
-    lawInputs l = nub (forallNames (definition l) ++ map fst (parameters l))
-    forallNames d = case d of
-      Forall bound body -> map fst bound ++ forallNames body
-      Implies _ body -> forallNames body
-      And a b -> forallNames a ++ forallNames b
-      _ -> []
     checkGen where' g = case g of
       GenFrequency alternatives -> mapM_ (checkGen where' . snd) alternatives
       GenSuchThat inner _ _ -> checkGen where' inner
@@ -172,11 +161,15 @@ elaborateHarness u = case unitHarness u of
       [] -> pure z
       x : rest -> f z x >>= \z' -> foldlM f z' rest
     apply table plan (setting, range) = case setting of
+      WitnessSetting path expression names ->
+        pure plan { planWitnesses = planWitnesses plan ++ [(path, expression, names, range)] }
       UseStrategy s input -> case M.lookup s table of
         Just declaration
           | input `elem` [i | (i, _, _, _) <- planDraws plan] ->
               Left (Just (spanStart range), "two strategies are given for the input " ++ input)
-          | otherwise -> pure plan { planDraws = planDraws plan ++ [(input, s, strategyType declaration, strategyBody declaration)] }
+          | otherwise -> pure plan
+              { planDraws = planDraws plan ++ [(input, s, strategyType declaration, strategyBody declaration)]
+              , planDrawLocations = planDrawLocations plan ++ [(input,range)] }
         Nothing -> pure plan
       TestWith _ -> pure plan
       CoverSetting p label e -> pure plan { planCover = planCover plan ++ [(p, label, e)] }

@@ -12,7 +12,7 @@ import LawSpec.Core.Types (TypeRegistry, makeRegistry)
 import LawSpec.Core.Value
 import qualified LawSpec.Core.Payload as Payload
 import qualified Data.Map.Strict as M
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 
 type Adapter = Id -> [Scalar] -> Either String Scalar
 
@@ -136,6 +136,11 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
       run (M.insert (binderId binder) bound env) body
     Calls _ _ -> Left "calls are counted when the law runs, not by the compiler"
     Helper Unreachable _ -> Left "a branch the indices rule out was reached"
+    Helper IncompleteSearch [reason] -> do
+      value <- go reason
+      case value of
+        ScalarValue (SSequence "Text" codePoints) -> Left (map toEnum codePoints)
+        _ -> Left "quantifier-search-incomplete: invalid diagnostic reason"
     Helper builtin args -> mapM go args >>= helper builtin
   helper Length [value@(DataValue (Constructor "List" [_]) _ _)] =
     ScalarValue . SInteger "Integer" . fromIntegral . length <$> listItems value
@@ -195,6 +200,7 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
     Just v -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Just") [v]
     Nothing -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Nothing") []
   context origin result = case result of
+    Left msg | "quantifier-search-incomplete:" `isPrefixOf` msg -> Left msg
     Left msg -> Left (show origin ++ ": " ++ msg)
     Right v -> Right v
 
@@ -218,5 +224,7 @@ evaluateValueProposition registry bits adapter env = go where
   go (Equation _ a b) = do x <- term a; y <- term b; equalValues bits x y
   go (Implication g p) = do enabled <- term g >>= valueBoolean; if enabled then go p else pure True
   go (Conjunction ps) = allM ps
+  go (Negation body) = not <$> go body
+  go (Quantified _ _ _) = Left "a quantified proposition requires a complete search plan before evaluation"
   allM [] = Right True
   allM (p:ps) = do ok <- go p; if ok then allM ps else pure False

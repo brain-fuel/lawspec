@@ -24,6 +24,8 @@ cp examples/specs/atoi_codec.lawspec npm/starter.lawspec
 rm -rf npm/examples
 mkdir -p npm/examples/specs npm/examples/native-payments npm/examples/packages
 cp examples/specs/*.lawspec npm/examples/specs/
+cp examples/rc1-authoring.lawspec npm/examples/
+cp -R examples/rc1 npm/examples/rc1
 cp -R examples/native-payments/. npm/examples/native-payments/
 cp -R examples/packages/. npm/examples/packages/
 cp LICENSE npm/

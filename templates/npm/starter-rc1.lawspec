@@ -1,0 +1,24 @@
+unit example.codec
+
+itoa of type Int32 -> Text
+atoi of type Text -> Int32
+
+law codec is
+  description:
+    "Converting an integer to decimal text and reading it back preserves it."
+  end
+
+  definition:
+    for all (x of type Int32) =>
+      atoi (itoa x) must be x
+    end
+  end
+
+  expect itoa x = encoded
+  expect atoi encoded = x
+  in table (x, encoded):
+    row -42, "-42"
+    row 0, "0"
+    row 42, "42"
+  end
+end

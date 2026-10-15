@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: total
+@@ examples/rc1/constructive-witnesses.lawspec
+<<<<<<<
+  value + 1
+=======
+  increment value
+>>>>>>>

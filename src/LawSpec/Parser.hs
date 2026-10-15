@@ -1,7 +1,7 @@
 -- | The concrete syntax of LawSpec, keywords first with symbols as aliases, so a
 -- specification reads as prose to someone who is not a mathematician.
 -- ref:DEC-readable-notation
-module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) where
+module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, parseSourceCanonical, parseSourcesWithCanonical, sourceUnit) where
 
 import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
 import LawSpec.Resilience (resilienceName)
@@ -23,20 +23,21 @@ import LawSpec.Core.Program (Program(..))
 import LawSpec.Core.Machine (Machine(..), Supervisor(..), SupervisionStrategy(..), Lifetime(..), Consistency(..))
 import Data.Functor (($>))
 import LawSpec.Scalar
+import LawSpec.Core.Semantics (scalarEqual)
 import Control.Monad.Combinators.Expr
 import Control.Monad (void, unless, when, forM_, forM)
-import Control.Monad.Reader (Reader, ask, asks, runReader)
+import Control.Monad.Reader (Reader, ask, asks, runReader, local)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
-import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum)
-import Data.List (uncons, intercalate, isInfixOf)
+import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace)
+import Data.List (uncons, intercalate, isInfixOf, nub)
 import Data.Void (Void)
 import Text.Megaparsec hiding (SourcePos, parse)
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
-data Header = RefinementHeader [Bool] | DataHeader [Bool] | AliasHeader
+data Header = RefinementHeader [Bool] | DataHeader [Bool] | RecordHeader [(String,Type)] | AliasHeader
 type P = ParsecT Void String (Reader (M.Map String Header))
 spaceP :: P ()
 spaceP = L.space space1 (L.skipLineComment "--") empty
@@ -48,11 +49,47 @@ keyword :: String -> P ()
 keyword s = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '_')))
 ident :: P String
 ident = lexeme identRaw
+-- The same grammar serves legacy migration and strict canonical input. Built-in
+-- sources keep their versioned legacy grammar; user sources opt into RC1.
+canonicalP :: P Bool
+canonicalP = asks (M.member "profile:canonical")
+annotationP :: P ()
+annotationP = try (keyword "of" *> keyword "type") <|> void (symbol "::")
+closeP :: String -> P ()
+closeP name = do
+  keyword "end"
+  canonical <- canonicalP
+  when canonical (keyword name)
+sectionP :: String -> P a -> P a
+sectionP name body = do
+  keyword name
+  canonical <- canonicalP
+  if canonical then void (symbol ":" <* notFollowedBy (char ':')) else keyword "is"
+  body <* keyword "end"
+
+-- Phrase delimiters are kept in the resolved spelling, so namespace dots in
+-- the body cannot be mistaken for qualification and names remain lossless.
+phraseNameRaw :: P String
+phraseNameRaw = do
+  try (string "\"|")
+  body <- manyTill character (char '|')
+  when (null body || isSpace (head body) || isSpace (last body))
+    (fail "a phrase name must be nonempty without leading or trailing whitespace")
+  pure ("\"|" ++ concatMap escape body ++ "|")
+  where
+    character = (char '\\' *> (char '|' <|> char '\\'))
+      <|> satisfy (\c -> c /= '|' && c /= '\\' && c /= '\n' && c /= '\r')
+    escape c | c == '|' || c == '\\' = ['\\', c]
+             | otherwise = [c]
+
 -- | A name without the space after it, so a field access can follow it.
 identRaw :: P String
-identRaw = try $ do
+identRaw = phraseNameRaw <|> try (do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
-  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] then fail "reserved identifier" else pure x
+  canonical <- canonicalP
+  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] ||
+      (canonical && x `elem` ["if","then","else","in","when","otherwise","must"])
+    then fail "reserved identifier" else pure x)
 -- | A name, or alias.name for a name exported by an imported unit. The alias and
 -- the dot are adjacent; write f . g with spaces to compose a function named
 -- like an alias.
@@ -70,10 +107,20 @@ qualifiedNameRaw = try (do
   <|> identRaw
 -- | The declared name without its import alias.
 baseName :: String -> String
-baseName = reverse . takeWhile (/= '.') . reverse
+baseName name = case break (== '"') name of
+  (_, '"' : _) -> '"' : drop 1 (dropWhile (/= '"') name)
+  _ -> reverse (takeWhile (/= '.') (reverse name))
 -- | Constructors start with an uppercase letter; prelude.Int32 is a conversion.
 startsUpper :: String -> Bool
 startsUpper name = take 8 name /= "prelude." && maybe False (isUpper . fst) (uncons (baseName name))
+lawNameP :: P String
+lawNameP = do
+  canonical <- canonicalP
+  if canonical then ident else quoted
+sectionStartP :: P ()
+sectionStartP = do
+  canonical <- canonicalP
+  if canonical then void (symbol ":" <* notFollowedBy (char ':')) else keyword "is"
 lawReference :: P String
 lawReference = try (do
     alias <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
@@ -83,10 +130,19 @@ lawReference = try (do
     n <- quoted
     pure (alias ++ ".`" ++ n ++ "`"))
   <|> quoted
+-- Canonical infix calls have no closing backtick. Header scanners must never
+-- pair two calls as a legacy quoted law name, even on the same source line.
+quotedOrInfixToken :: P ()
+quotedOrInfixToken = canonicalP >>= \canonical ->
+  if canonical then void namedInfixP else void quoted
+
 quoted :: P String
 quoted = lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
-str = lexeme (char '"' *> manyTill L.charLiteral (char '"'))
+str = lexeme $ do
+  canonical <- canonicalP
+  try (char '"' *> when canonical (notFollowedBy (char '|')))
+  manyTill L.charLiteral (char '"')
 parens :: P a -> P a
 parens = between (symbol "(") (symbol ")")
 typeP :: P Type
@@ -96,8 +152,8 @@ typeP = do
   a' <- option a (do void (symbol "/"); b <- typeAtom; pure (Application flowTypeName [a, b]))
   option a' (Arrow a' <$> (symbol "->" *> typeP))
 typeAtom :: P Type
-typeAtom = try (parens $ do
-    n <- ident; void (symbol "::"); t <- typeP
+typeAtom = (Named "Unit" <$ try (symbol "(" *> symbol ")")) <|> try (parens $ do
+    n <- ident; annotationP; t <- typeP
     p <- optional (keyword "where" *> expr)
     pure (Refined n t p))
   <|> parens typeP
@@ -105,18 +161,34 @@ typeAtom = try (parens $ do
   -- for a generated error type.
   <|> (Variable "_" <$ try (lexeme (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
   <|> do
-    n <- qualifiedName
-    headers <- asks (M.lookup n)
-    case headers of
-      Just (RefinementHeader kinds) -> RefinementApp n <$> mapM argument kinds
-      Just (DataHeader kinds)
-        | and kinds -> application n <$> mapM (const typeAtom) kinds
-        | otherwise -> RefinementApp (indexedRefinementName n) <$> mapM indexArgument kinds
-      Nothing | n == naturalRefinementName -> pure (RefinementApp n [])
-              | n `elem` ["Nullable","Optional","List","Maybe",failAbilityName] -> Applied n <$> typeAtom
-              | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
-              | '.' `elem` n -> pure (Named n)
-              | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
+    n0 <- qualifiedName
+    canonical <- canonicalP
+    let n = if canonical then case n0 of
+          "Whole" -> "BigUInt"
+          "\"|whole number|" -> "BigUInt"
+          "Nat" -> "lawspecPositiveNatural"
+          "\"|natural number|" -> "lawspecPositiveNatural"
+          _ -> n0
+        else n0
+    legacySet <- asks (M.member ("legacy-set:" ++ n0))
+    when (canonical && (n0 == "Set" || legacySet))
+      (fail "canonical Eq-only Set and SortedSet migration are not yet implemented; legacy ordered Set semantics cannot be used as canonical Set")
+    when (canonical && n0 `elem` ["Natural","BigUInt","BigInt"])
+      (fail "use Integer, Whole or Nat in 1.0-rc.1; migrate legacy numeric names")
+    if n == "lawspecPositiveNatural" then pure (Refined "value" (Named "BigUInt") (Just (Binary ">" (Var "value") (Number 0)))) else do
+     headers <- asks (M.lookup n)
+     case headers of
+       Just (RefinementHeader kinds) -> RefinementApp n <$> mapM argument kinds
+       Just (RecordHeader _) -> pure (Named n)
+       Just AliasHeader -> fail (n ++ " is not a type declaration")
+       Just (DataHeader kinds)
+         | and kinds -> application n <$> mapM (const typeAtom) kinds
+         | otherwise -> RefinementApp (indexedRefinementName n) <$> mapM indexArgument kinds
+       Nothing | n == naturalRefinementName -> pure (RefinementApp n [])
+               | n `elem` ["Nullable","Optional","List","Maybe",failAbilityName] -> Applied n <$> typeAtom
+               | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
+               | '.' `elem` n -> pure (Named n)
+               | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
   where indexArgument True = TypeArgument <$> typeAtom
         indexArgument False = ValueArgument <$> (parens indexExpr <|> try numeric <|> (Var <$> ident))
         argument True = TypeArgument <$> typeAtom
@@ -126,7 +198,7 @@ typeAtom = try (parens $ do
         application n args = Application n args
 param :: P (String,Type)
 param = parens $ do
-  n <- ident; void (symbol "::"); t <- typeP
+  n <- ident; annotationP; t <- typeP
   p <- optional (keyword "where" *> expr)
   pure (n,maybe t (\e -> Refined n t (Just e)) p)
 constraintsP :: P [Constraint]
@@ -153,7 +225,7 @@ wrapperP = do
     parameters <- many $ parens $ do
       parameter <- ident
       unless (maybe False (isLower . fst) (uncons parameter)) (fail "type parameters must start with a lowercase letter")
-      void (symbol "::")
+      annotationP
       keyword "Type"
       pure parameter
     keyword "is"
@@ -173,7 +245,7 @@ workflowP = do
   ((name, ty, stages), range) <- withSpan $ do
     keyword "workflow"
     name <- ident
-    void (symbol "::")
+    annotationP
     ty <- typeP
     keyword "is"
     stages <- some (do stage <- stageP; policies <- many policyP; pure (stage, policies))
@@ -249,8 +321,8 @@ workflowP = do
         _ -> fail "expected a duration, such as 250ms"
     stageP = do
       (stage, stageRange) <- withSpan $ choice
-        [ try (DeclaredStep <$> ident <* symbol "::" <*> typeP)
-        , try ((keyword "then" <|> void (symbol ">>=")) *> (DeclaredStep <$> ident <* symbol "::" <*> typeP))
+        [ try (DeclaredStep <$> ident <* annotationP <*> typeP)
+        , try ((keyword "then" <|> void (symbol ">>=")) *> (DeclaredStep <$> ident <* annotationP <*> typeP))
         , StepStage <$> ((keyword "then" <|> void (symbol ">>=")) *> qualifiedName)
         , MapStage <$> ((keyword "map" <|> void (symbol "<$>")) *> qualifiedName)
         , MapErrorStage <$> ((keyword "mapError" <|> void (symbol "<!>")) *> qualifiedName)
@@ -261,7 +333,7 @@ workflowP = do
             keyword "all"
             accumulate <- option False (True <$ keyword "accumulate")
             steps <- some (choice
-              [ try ((\n t -> (n, Just t)) <$> ident <* symbol "::" <*> typeP)
+              [ try ((\n t -> (n, Just t)) <$> ident <* annotationP <*> typeP)
               , (\n -> (n, Nothing)) <$> ((keyword "then" <|> void (symbol ">>=")) *> qualifiedName) ])
             keyword "end"
             keyword "combine"
@@ -358,7 +430,7 @@ modelP = do
   ((name, shared, state, model, items), range) <- withSpan $ do
     keyword "model"
     name <- ident
-    void (symbol "::")
+    annotationP
     shared <- option False (True <$ keyword "shared")
     state <- typeP
     behaves <- (False <$ keyword "by") <|> (True <$ (keyword "behaves" *> keyword "like"))
@@ -405,7 +477,7 @@ actorP = do
   ((name, own, model, items), range) <- withSpan $ do
     keyword "actor"
     name <- ident
-    void (symbol "::")
+    annotationP
     own <- typeP
     keyword "by"
     model <- typeP
@@ -467,17 +539,20 @@ supervisorP = do
 -- | Declarations with a Natural parameter or an index equation are indexed
 -- families; LawSpec.Indexed elaborates them after the unit is parsed.
 declarationP :: P (Either IndexedFamily DataTypeDeclaration)
-declarationP = do
+declarationP = canonicalRecordP <|> do
   ((name, parameters, constructors), range) <- withSpan $ do
     keyword "type"
     name <- upperName
     parameters <- many $ parens $ do
       parameter <- ident
       unless (maybe False (isLower . fst) (uncons parameter)) (fail "type parameters must start with a lowercase letter")
-      void (symbol "::")
-      isType <- (True <$ keyword "Type") <|> (False <$ keyword naturalRefinementName)
+      annotationP
+      canonical <- canonicalP
+      isType <- (True <$ keyword "Type") <|> (False <$ keyword (if canonical then "Whole" else naturalRefinementName))
       pure (parameter, isType)
     keyword "is"
+    canonical <- canonicalP
+    when canonical (keyword "one" *> keyword "of")
     let typeParameters = [p | (p, True) <- parameters]
         equation = do
           lhs <- ident
@@ -487,10 +562,13 @@ declarationP = do
       void (optional (symbol "|"))
       ((tag, fields, equations), constructorRange) <- withSpan $ do
         tag <- upperName
-        fields <- many $ try $ do
+        fields <- if canonical then option [] (do
+          annotationP
+          ty <- typeP
+          pure [("value",ty)]) else many $ try $ do
           field <- ident
           unless (maybe False (isLower . fst) (uncons field)) (fail "field names must start with a lowercase letter")
-          void (symbol "::")
+          annotationP
           (,) field <$> typeP
         -- An equation on a Type parameter refines it (a GADT constructor); on
         -- a Natural parameter it states the index.
@@ -499,7 +577,7 @@ declarationP = do
       let indexEquations = [(n, e) | (n, Right e) <- equations]
           typeEquations = [(n, t) | (n, Left t) <- equations]
       pure (IndexedConstructor (ConstructorDeclaration tag fields constructorRange typeEquations) indexEquations)
-    keyword "end"
+    closeP "type"
     pure (name, parameters, constructors)
   pure $ if all snd parameters && all (null . indexedEquations) constructors
     then Right (DataTypeDeclaration name (map fst parameters) (map indexedDeclaration constructors) range Nothing)
@@ -509,6 +587,220 @@ declarationP = do
       name <- ident
       unless (maybe False (isUpper . fst) (uncons name)) (fail "type and constructor names must start with an uppercase letter")
       pure name
+-- Named records are nominal single-constructor products; no new execution
+-- mechanism is introduced. Record values retain explicit nominal construction.
+canonicalRecordP :: P (Either IndexedFamily DataTypeDeclaration)
+canonicalRecordP = do
+  canonical <- canonicalP
+  unless canonical empty
+  ((name, parameters, fields), range) <- withSpan $ do
+    try (keyword "type" *> lookAhead (ident *> many typeParameter *> keyword "is" *> keyword "a" *> keyword "record"))
+    name <- ident
+    parameters <- many typeParameter
+    keyword "is"; keyword "a"; keyword "record"
+    fields <- between (symbol "{") (symbol "}") (many field)
+    unless (length (map fst fields) == length (nub (map fst fields))) (fail "duplicate record field")
+    closeP "type"
+    pure (name, parameters, fields)
+  pure (Right (DataTypeDeclaration name parameters [ConstructorDeclaration name fields range []] range Nothing))
+  where typeParameter = parens (ident <* annotationP <* keyword "Type")
+        field = do
+          label <- ident
+          annotationP
+          ty <- typeP
+          void (optional (symbol ","))
+          pure (label,ty)
+
+-- Ordered selection reuses lazy matches and select. Binding the scrutinee
+-- once also scopes it correctly in nested cases.
+data SelectionPattern
+  = SelectionConstructor String [SelectionPattern]
+  | SelectionRecord [(String,SelectionPattern)]
+  | SelectionLiteral Expr | SelectionCondition Expr
+  | SelectionBinding String | SelectionAny
+
+data SelectionRow = SelectionRow [SelectionPattern] [(String,Expr)] (Maybe Expr) Expr
+
+firstCaseP :: P Expr
+firstCaseP = do
+  canonical <- canonicalP
+  unless canonical empty
+  try (keyword "first" *> keyword "matching" *> keyword "case" *> keyword "of")
+  value <- expr
+  void (symbol ":" <* notFollowedBy (char ':'))
+  branches <- some $ do
+    keyword "when"
+    explicit <- option False (True <$ try (keyword "it" *> keyword "matches"))
+    pattern <- selectionPatternP explicit
+    let names = selectionBindings pattern
+    unless (length names == length (nub names)) (fail "repeated variable binding in pattern")
+    guard <- optional (keyword "if" *> expr <* keyword "then")
+    void (optional (keyword "then"))
+    body <- expr
+    pure $ case pattern of
+      SelectionCondition condition -> SelectionRow [SelectionAny] []
+        (Just (maybe condition (Binary "&&" condition) guard)) body
+      _ -> SelectionRow [pattern] [] guard body
+  fallback <- optional (keyword "otherwise" *> expr)
+  closeP "case"
+  let rows = branches ++ maybe [] (\body -> [SelectionRow [SelectionAny] [] Nothing body]) fallback
+  pure (MatchExpr value [MatchBranch letTag ["it"] (selectionMatrix 0 [Var "it"] rows)])
+
+selectionBindings :: SelectionPattern -> [String]
+selectionBindings pattern = case pattern of
+  SelectionBinding name -> [name]
+  SelectionConstructor _ fields -> concatMap selectionBindings fields
+  SelectionRecord fields -> concatMap (selectionBindings . snd) fields
+  _ -> []
+
+-- Ordered pattern-matrix specialization retains constructor branches in typed
+-- Core. That preserves its GADT facts and exhaustiveness audit even for nested
+-- patterns. A failed guard resumes with the original rows and lexical scope.
+selectionMatrix :: Int -> [Expr] -> [SelectionRow] -> Expr
+selectionMatrix _ values [] = MatchExpr (case values of value:_ -> value; [] -> Var "it") []
+selectionMatrix depth values rows@(SelectionRow patterns aliases guard body : remaining)
+  | null refutable =
+      let replacements = aliases ++ [(name,value) | (SelectionBinding name,value) <- zip patterns values]
+          result = replaceExprVars replacements body
+      in maybe result (\condition -> select (replaceExprVars replacements condition) result
+          (selectionMatrix (depth + 1) values remaining)) guard
+  | otherwise = case selectedPattern of
+      SelectionRecord _ ->
+        let labels = nub [label | SelectionRow ps _ _ _ <- rows,
+              SelectionRecord fs <- [ps !! position], (label,_) <- fs]
+            names = freshNames (length labels)
+            projections = [Apply (Var (fieldAccessPrefix ++ label)) selected | label <- labels]
+            specialize (SelectionRow ps as g b) = case ps !! position of
+              SelectionRecord fs -> SelectionRow (replaceAt position SelectionAny ps ++
+                [maybe SelectionAny id (lookup label fs) | label <- labels]) as g b
+              _ -> SelectionRow (ps ++ replicate (length labels) SelectionAny) as g b
+            result = selectionMatrix (depth + 1) (values ++ map Var names) (map specialize rows)
+        in foldr (\(name,value) rest -> MatchExpr value [MatchBranch letTag [name] rest]) result (zip names projections)
+      SelectionConstructor _ _ ->
+        let constructors = nub [(tag,length fields) | SelectionRow ps _ _ _ <- rows,
+              SelectionConstructor tag fields <- [ps !! position]]
+            specialize tag count (SelectionRow ps as g b) = case ps !! position of
+              SelectionConstructor other fields | tag == other -> Just (SelectionRow (splice fields ps) as g b)
+              SelectionAny -> Just (SelectionRow (splice (replicate count SelectionAny) ps) as g b)
+              SelectionBinding name -> Just (SelectionRow (splice (replicate count SelectionAny) ps) ((name,selected):as) g b)
+              _ -> Nothing
+            branch (tag,count) = let names = freshNames count
+              in MatchBranch tag names (selectionMatrix (depth + 1) (splice (map Var names) values)
+                [row | original <- rows, Just row <- [specialize tag count original]])
+            defaults = [SelectionRow (removeAt position ps) (case ps !! position of
+                SelectionBinding name -> (name,selected):as; _ -> as) g b
+              | SelectionRow ps as g b <- rows, case ps !! position of
+                  SelectionAny -> True; SelectionBinding _ -> True; _ -> False]
+        in MatchExpr selected (map branch constructors ++
+            [MatchBranch "_" [] (selectionMatrix (depth + 1) (removeAt position values) defaults) | not (null defaults)])
+      SelectionLiteral literal | BoolLit _ <- unlocated literal ->
+        let specialize value (SelectionRow ps as g b) = case ps !! position of
+              SelectionLiteral other | unlocated other == BoolLit value -> Just (SelectionRow (removeAt position ps) as g b)
+              SelectionAny -> Just (SelectionRow (removeAt position ps) as g b)
+              SelectionBinding name -> Just (SelectionRow (removeAt position ps) ((name,selected):as) g b)
+              _ -> Nothing
+            branch value = selectionMatrix (depth + 1) (removeAt position values)
+              [row | original <- rows, Just row <- [specialize value original]]
+        in select selected (branch True) (branch False)
+      SelectionLiteral literal ->
+        let yes (SelectionRow ps as g b) = case ps !! position of
+              SelectionLiteral other | unlocated literal == unlocated other ->
+                SelectionRow (replaceAt position SelectionAny ps) as g b
+              -- A different spelling can be equal after contextual typing
+              -- (1 and 1.0, or IEEE signed zero). Keep it as a typed comparison
+              -- when a preceding guard fails, rather than discarding its row.
+              _ -> SelectionRow ps as g b
+            no = [row | row@(SelectionRow ps _ _ _) <- rows, case ps !! position of
+                SelectionLiteral other -> unlocated literal /= unlocated other; _ -> True]
+        in select (Binary "==" selected literal)
+            (selectionMatrix (depth + 1) values (map yes rows))
+            (selectionMatrix (depth + 1) values no)
+      _ -> MatchExpr selected []
+  where
+    refutable = [i | (i,pattern) <- zip [0..] patterns, case pattern of
+      SelectionAny -> False; SelectionBinding _ -> False; _ -> True]
+    position = head refutable
+    selected = values !! position
+    selectedPattern = case [p | SelectionRow ps _ _ _ <- rows, p@(SelectionRecord _) <- [ps !! position]] of
+      record:_ -> record
+      [] -> patterns !! position
+    splice fields xs = take position xs ++ fields ++ drop (position + 1) xs
+    freshNames count = ["_lawspecSelection" ++ show depth ++ "x" ++ show i | i <- [0..count - 1]]
+    select condition yes no = foldl Apply (Var "prelude.select") [condition,yes,no]
+    replaceAt i value xs = take i xs ++ [value] ++ drop (i + 1) xs
+    removeAt i xs = take i xs ++ drop (i + 1) xs
+
+selectionPatternP :: Bool -> P SelectionPattern
+selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> literal
+  <|> try (parens (do
+    pattern <- selectionPatternP True
+    case pattern of
+      SelectionBinding _ | not explicit -> empty
+      _ -> pure pattern))
+  <|> if explicit then binding else condition
+  where
+    wildcard = SelectionAny <$ (keyword "#any" <|> void (lexeme (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
+    constructor = do
+      tag <- qualifiedName
+      unless (startsUpper tag) empty
+      recordHeader <- asks (M.lookup ("record:" ++ tag))
+      namedRecord <- case recordHeader of
+        Just (RecordHeader _) -> optional (keyword "record" *> recordFields)
+        _ -> pure Nothing
+      case namedRecord of
+        Just fields -> do
+          declared <- asks (M.lookup ("record:" ++ tag))
+          labels <- case declared of
+            Just (RecordHeader fs) -> pure (map fst fs)
+            _ -> fail (tag ++ " is not a named record")
+          unless (all ((`elem` labels) . fst) fields) (fail "unknown record pattern field")
+          pure (SelectionConstructor tag [maybe SelectionAny id (lookup label fields) | label <- labels])
+        Nothing -> do
+          declared <- asks (M.lookup ("constructor:" ++ tag))
+          count <- case declared of
+            Just (DataHeader fields) -> pure (length fields)
+            _ -> maybe (fail ("unknown constructor in pattern: " ++ tag)) pure
+              (lookup tag [("Nothing",0),("Just",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
+          SelectionConstructor tag <$> sequence (replicate count (selectionPatternP True))
+    record = do
+      try (keyword "record" <* lookAhead (symbol "{"))
+      fields <- recordFields
+      unless (not (null fields))
+        (fail "bare empty record patterns require typed structural product support; use a named record pattern or a wildcard")
+      pure (SelectionRecord fields)
+    recordFields = do
+      fields <- between (symbol "{") (symbol "}") (((,) <$> ident <* symbol "=" <*> selectionPatternP True) `sepBy` symbol ",")
+      unless (length (map fst fields) == length (nub (map fst fields))) (fail "duplicate record pattern field")
+      pure fields
+    literal = SelectionLiteral <$> (try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP) <|> scalarP)
+    binding = do
+      name <- ident
+      unless (maybe False (isLower . fst) (uncons name)) empty
+      pure (SelectionBinding name)
+    condition = SelectionCondition <$> expr
+
+recordValueP :: P Expr
+recordValueP = do
+  canonical <- canonicalP
+  unless canonical empty
+  name <- try (qualifiedName <* lookAhead (keyword "record"))
+  keyword "record"
+  fields <- between (symbol "{") (symbol "}") (field `sepBy` symbol ",")
+  declared <- asks (M.lookup ("record:" ++ name))
+  labels <- case declared of
+    Just (RecordHeader fs) -> pure (map fst fs)
+    _ -> fail (name ++ " is not a named record")
+  let supplied = map fst fields
+  unless (length supplied == length (nub supplied)) (fail "duplicate record value field")
+  unless (all (`elem` labels) supplied && all (`elem` supplied) labels)
+    (fail "a named record value must supply exactly its declared fields")
+  -- Preserve evaluation order with lets before canonical declaration ordering.
+  let binders = ["_lawspecRecordField" ++ show i | i <- [0 :: Int .. length fields - 1]]
+      values = zip supplied (map Var binders)
+      body = ConstructLit name [maybe (BoolLit False) id (lookup label values) | label <- labels]
+  pure (foldr (\(binder,(_,value)) rest -> MatchExpr value [MatchBranch letTag [binder] rest]) body (zip binders fields))
+  where field = (,) <$> ident <* symbol "=" <*> expr
+
 -- | Index expressions are natural arithmetic, written only where an index is
 -- expected. div, mod and ^ elaborate to the prelude's quot, rem and pow, which
 -- agree with them on naturals.
@@ -526,7 +818,8 @@ indexExpr = located $ makeExprParser indexAtom
 -- definition's flow parameter just above it.
 expr :: P Expr
 expr = do
-  first <- statement
+  canonical <- canonicalP
+  first <- if canonical then canonicalBoolExpr else statement
   option first (located (sequenced first <$> (symbol ";" *> expr)))
   where
     -- `a; b` orders two expressions: a is evaluated for its effects, then b
@@ -575,10 +868,19 @@ operatorExpr = located $ makeExprParser application (higherOperators ++
       -- still called as contains xs x.
       -- takes at most ends the expression a budget applies to.
       first <- notFollowedBy budgetStartP *> applicationAtom
-      rest <- many (notFollowedBy matcherWord *> notFollowedBy budgetStartP *> applicationAtom)
+      rest <- many (notFollowedBy matcherWord *> notFollowedBy budgetStartP *> guardBoundary *> logicBoundary *> applicationAtom)
       pure $ case first : rest of
         start:others | ConstructLit name [] <- unlocated start -> ConstructLit name others
         terms -> foldl1 Apply terms
+
+-- A branch guard starts after its condition, rather than becoming an argument
+-- conditional. Parentheses keep ordinary conditional arguments explicit.
+guardBoundary :: P ()
+guardBoundary = canonicalP >>= \canonical -> when canonical (notFollowedBy (keyword "if"))
+
+logicBoundary :: P ()
+logicBoundary = canonicalP >>= \canonical -> when canonical
+  (notFollowedBy (keyword "and" <|> keyword "or" <|> keyword "implies"))
 
 -- The operator levels above the matchers, from the tightest.
 higherOperators :: [[Operator P Expr]]
@@ -597,6 +899,7 @@ higherOperators =
   , [InfixL (Binary ">>=" <$ operator ">>=")]
   , [InfixL (Binary op <$ operator op) | op <- ["<|>","??"]]
   , [InfixL (Binary "|>" <$ operator "|>")]
+  , [InfixN namedInfixP]
   , [InfixN (Binary op <$ operator op) | op <- ["<=",">=","==","!=","<",">"]]
   ]
   where
@@ -608,6 +911,25 @@ higherOperators =
       ">" -> ">="
       ">=" -> ">"
       _ -> ""
+
+-- Named application is nonassociative and sits immediately above comparisons.
+-- Prefix/infix preserve exactly the same function identity and argument order.
+namedInfixP :: P (Expr -> Expr -> Expr)
+namedInfixP = do
+  canonical <- canonicalP
+  unless canonical empty
+  void (optional (try (keyword "is" <* lookAhead (char '`'))))
+  void (char '`')
+  name <- (do
+      void (char '|')
+      body <- manyTill ((char '\\' *> (char '|' <|> char '\\')) <|>
+        satisfy (\c -> c /= '|' && c /= '\\' && c /= '\n' && c /= '\r')) (char '|')
+      when (null body || isSpace (head body) || isSpace (last body))
+        (fail "an infix phrase name must be nonempty without edge whitespace")
+      pure ("\"|" ++ concatMap (\c -> if c == '|' || c == '\\' then ['\\',c] else [c]) body ++ "|"))
+    <|> qualifiedNameRaw
+  spaceP
+  pure (\a b -> Apply (Apply (Var name) a) b)
 
 -- The words that start a matcher after an operand (see matcherSuffix), and
 -- of, which ends the tolerance in x is within 0.001 of y.
@@ -714,14 +1036,14 @@ patternTest = go (0 :: Int)
 applicationAtom :: P Expr
 applicationAtom = atom
   where
-    atom = located $ temporalP <|> matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+    atom = located $ (ScalarLit (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> firstCaseP <|> recordValueP <|> temporalP <|> matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedFields
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
     -- if, then and else are keywords inside expressions.
     -- (e).logs reads a field of a parenthesized value, the dot adjacent.
     parenthesizedFields = do
-      e <- symbol "(" *> (do e <- expr; option e (Annotate e <$> (symbol "::" *> typeP))) <* char ')'
+      e <- symbol "(" *> (do e <- expr; option e (Annotate e <$> (annotationP *> typeP))) <* char ')'
       fields <- many (try (char '.' *> fieldName))
       spaceP
       pure (foldl (\value field -> Apply (Var (fieldAccessPrefix ++ field)) value) e fields)
@@ -790,9 +1112,13 @@ applicationAtom = atom
       yes <- expr
       keyword "else"
       no <- expr
+      canonical <- canonicalP
+      when canonical (closeP "if")
       pure (foldl Apply (Var "prelude.select") [condition, yes, no])
     matchP = do
       keyword "match"
+      canonical <- canonicalP
+      when canonical (fail "use first matching case of ...: in 1.0-rc.1")
       value <- expr
       keyword "with"
       branches <- some $ do
@@ -803,7 +1129,7 @@ applicationAtom = atom
         unless (all (maybe False (isLower . fst) . uncons) names) (fail "pattern binders must start with a lowercase letter")
         void (symbol "->")
         MatchBranch tag names <$> expr
-      keyword "end"
+      closeP "case"
       pure (MatchExpr value branches)
     -- An adjacent sign remains part of a numeric argument: f -42. For subtraction use x - 42.
 located :: P Expr -> P Expr
@@ -818,24 +1144,35 @@ withSpan parser = do
   let position p = Location (sourceName p) (unPos (sourceLine p)) (unPos (sourceColumn p))
   pure (value,Span (position start) (position end))
 numeric :: P Expr
-numeric = lexeme $ do
-  sign <- option "" ((:[]) <$> oneOf ['-','+'])
-  ds <- some digitChar
-  fraction <- optional (try (char '.' *> some digitChar))
-  powerToken <- optional (try (oneOf ['e','E'] *> L.signed (pure ()) L.decimal))
-  let power = maybe 0 id powerToken
-  let coefficient = read ((if sign == "+" then "" else sign) ++ ds ++ maybe "" id fraction)
-  -- A duration literal: a whole number of units, as in 250ms, is the constant
-  -- Duration of that many microseconds (LawSpec.Time).
-  unit <- optional (try (choice [constructor <$ (string suffix <* notFollowedBy (alphaNumChar <|> char '_'))
-    | (suffix, constructor) <- durationSuffixes]))
-  case (unit, sign, fraction, powerToken) of
-    (Just constructor, "", Nothing, Nothing)
-      | coefficient * durationFactor constructor <= durationLimit -> pure (ConstructLit "Duration" [Number (coefficient * durationFactor constructor)])
-      | otherwise -> fail ("a duration is at most " ++ show durationLimit ++ " microseconds")
-    (Just _, _, _, _) -> fail "a duration literal is a whole number of units, without a sign"
-    (Nothing, _, Nothing, Nothing) -> pure (Number coefficient)
-    _ -> pure (DecimalNumber coefficient (power - maybe 0 (fromIntegral . length) fraction))
+numeric = lexeme (try based <|> decimal)
+  where
+   based = do
+     sign <- option 1 ((-1) <$ char '-' <|> 1 <$ char '+')
+     base <- try (string "0x" *> pure 16) <|> try (string "0b" *> pure 2)
+     digits <- some (if base == 16 then hexDigitChar else oneOf ['0','1'])
+     notFollowedBy alphaNumChar
+     let digit c | c <= '9' = fromEnum c - fromEnum '0'
+                 | c <= 'F' = fromEnum c - fromEnum 'A' + 10
+                 | otherwise = fromEnum c - fromEnum 'a' + 10
+     pure (Number (sign * foldl (\n c -> n * base + fromIntegral (digit c)) 0 digits))
+   decimal = do
+    sign <- option "" ((:[]) <$> oneOf ['-','+'])
+    ds <- some digitChar
+    fraction <- optional (try (char '.' *> some digitChar))
+    powerToken <- optional (try (oneOf ['e','E'] *> L.signed (pure ()) L.decimal))
+    let power = maybe 0 id powerToken
+    let coefficient = read ((if sign == "+" then "" else sign) ++ ds ++ maybe "" id fraction)
+    -- A duration literal: a whole number of units, as in 250ms, is the constant
+    -- Duration of that many microseconds (LawSpec.Time).
+    unit <- optional (try (choice [constructor <$ (string suffix <* notFollowedBy (alphaNumChar <|> char '_'))
+      | (suffix, constructor) <- durationSuffixes]))
+    case (unit, sign, fraction, powerToken) of
+      (Just constructor, "", Nothing, Nothing)
+        | coefficient * durationFactor constructor <= durationLimit -> pure (ConstructLit "Duration" [Number (coefficient * durationFactor constructor)])
+        | otherwise -> fail ("a duration is at most " ++ show durationLimit ++ " microseconds")
+      (Just _, _, _, _) -> fail "a duration literal is a whole number of units, without a sign"
+      (Nothing, _, Nothing, Nothing) -> pure (Number coefficient)
+      _ -> pure (DecimalNumber coefficient (power - maybe 0 (fromIntegral . length) fraction))
 scalarP :: P Expr
 scalarP = ScalarLit <$> choice
   [ SAbsent "Unit" <$ keyword "unitValue", SAbsent "Null" <$ keyword "null", SAbsent "Undefined" <$ keyword "undefined"
@@ -860,10 +1197,14 @@ scalarP = ScalarLit <$> choice
       let value = case e of Number n -> SInteger "BigInt" n; DecimalNumber c p -> SDecimal c p; ScalarLit s -> s; _ -> SAbsent "invalid"
       either fail pure (convertScalar 64 t value)
 parenthesizedExpr :: P Expr
-parenthesizedExpr = parens (do e <- expr; option e (Annotate e <$> (symbol "::" *> typeP)))
+parenthesizedExpr = parens (do e <- expr; option e (Annotate e <$> (annotationP *> typeP)))
 
 defP :: P Definition
-defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Forall ps <$> defP)
+defP = do
+  canonical <- canonicalP
+  if canonical then canonicalDefinition else legacyDefinition
+legacyDefinition :: P Definition
+legacyDefinition = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Forall ps <$> defP)
    <|> do a <- clause
           option a (And a <$> (keyword "and" *> defP))
   where
@@ -874,6 +1215,93 @@ defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Foral
           <|> (symbol "=" *> ((Holds <$> recordedP a) <|> (Equal a <$> expr)))
           <|> pure (Holds a))
       <|> parens defP
+-- Universal RC1 syntax lowers to the existing typed obligation pipeline.
+-- A quantifier owns its end; a section owns a separate end.
+canonicalDefinition :: P Definition
+canonicalDefinition = do
+  canonical <- canonicalP
+  unless canonical empty
+  makeExprParser atom
+    [ [Prefix prefixes]
+    , [InfixL (And <$ keyword "and")]
+    , [InfixL ((\a b -> Not (And (Not a) (Not b))) <$ keyword "or")]
+    , [InfixR (implication <$ keyword "implies")]
+    ]
+  where
+    -- Comparisons remain expressions in value positions (including function
+    -- arguments). At a law boundary the same comparison is an obligation.
+    -- Try value parentheses before proposition grouping, so (x + 1) = y
+    -- keeps its existing meaning while (there exists ... end) can compose.
+    atom = quantified <|> existential <|> given <|> application
+      <|> try comparisonDefinition <|> parens defP
+    prefixes = do
+      modifiers <- some ((Not <$ keyword "not") <|> (id <$ keyword "must"))
+      pure (\body -> foldr ($) body modifiers)
+    comparisonDefinition = do
+      a <- canonicalComparison
+      pure (case unlocated a of Binary "==" left right -> Equal left right; _ -> Holds a)
+    implication a b = case booleanDefinition a of
+      Just guard -> Implies guard b
+      Nothing -> Not (And a (Not b))
+    booleanDefinition definition = case definition of
+      Holds value -> Just value
+      Equal a b -> Just (Binary "==" a b)
+      Not body -> Unary "!" <$> booleanDefinition body
+      And a b -> Binary "&&" <$> booleanDefinition a <*> booleanDefinition b
+      Implies guard body -> Binary "||" (Unary "!" guard) <$> booleanDefinition body
+      _ -> Nothing
+    quantified = do
+      try (keyword "for" *> keyword "all")
+      ps <- some param
+      void (symbol "=>")
+      body <- defP
+      keyword "end"
+      pure (Forall ps body)
+    existential = do
+      try (keyword "there" *> lookAhead (keyword "exists" <|> keyword "must" <|> keyword "does"))
+      negative <- (False <$ keyword "exists")
+        <|> (keyword "must" *> ((True <$ (keyword "not" *> keyword "exist")) <|> (False <$ keyword "exist")))
+        <|> (True <$ (keyword "does" *> keyword "not" *> keyword "exist"))
+      ps <- some (optional (try (keyword "a" <|> keyword "an")) *> param)
+      keyword "such"; keyword "that"
+      body <- defP
+      keyword "end"
+      pure ((if negative then Not else id) (Exists ps body))
+    given = do
+      keyword "given"
+      ps <- some param
+      guard <- optional (keyword "when" *> canonicalBoolExpr)
+      keyword "then"
+      body <- defP
+      keyword "end"
+      pure (Forall ps (maybe body (\c -> Implies c body) guard))
+    -- Applying a requirement is explicit, so a law and a function can have
+    -- the same spelling without changing ordinary expression resolution.
+    application = do
+      try (keyword "apply" *> keyword "law")
+      name <- try (do keyword "prelude"; void (char '.'); ("prelude." ++) <$> ident)
+        <|> qualifiedName
+      arguments <- many (notFollowedBy matcherWord *> guardBoundary *> logicBoundary *> applicationAtom)
+      pure (Invoke name arguments)
+
+-- The proposition parser and value parser share type-directed equality: a
+-- Boolean equality becomes the same Eq obligation when used as a law body.
+canonicalBoolExpr :: P Expr
+canonicalBoolExpr = located $ makeExprParser canonicalComparison
+  [ [Prefix (Unary "!" <$ keyword "not")]
+  , [InfixL (Binary "&&" <$ keyword "and")]
+  , [InfixL (Binary "||" <$ keyword "or")]
+  , [InfixR ((\a b -> Binary "||" (Unary "!" a) b) <$ keyword "implies")]
+  ]
+
+canonicalComparison :: P Expr
+canonicalComparison = located $ do
+  a <- updatedExpr
+  option a (do
+    void (try (keyword "must" *> (keyword "be" <|> void (symbol "=")))
+      <|> keyword "is" <|> void (try (symbol "=" <* notFollowedBy (char '='))))
+    Binary "==" a <$> updatedExpr)
+
 boolP :: P Bool
 boolP = (keyword "true" *> pure True) <|> (keyword "false" *> pure False)
 constructorLiteral :: P Literal
@@ -895,7 +1323,7 @@ literalP = constructorLiteral
   <|> try (do e <- scalarP; case e of ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
   <|> try (parens (do
         e <- numeric <|> scalarP
-        void (symbol "::")
+        annotationP
         t <- typeP
         case (e,t) of
           (Number n,Named name) -> either fail (pure . ScalarLiteral) (convertScalar 64 name (SInteger "BigInt" n))
@@ -917,7 +1345,7 @@ literalP = constructorLiteral
         _ -> fail "literal"
 
 block :: String -> P a -> P a
-block n p = keyword n *> keyword "is" *> p <* keyword "end"
+block = sectionP
 lawP :: P Law
 lawP = fst <$> lawUsingP
 
@@ -926,17 +1354,20 @@ lawUsingP :: P (Law, [HandlerUse])
 lawUsingP = do
   pos <- getSourcePos
   keyword "law"
-  n <- quoted
+  n <- lawNameP
   ps <- many param
   req <- constraintsP
   using <- option [] (keyword "using" *> (handlerUseP `sepBy1` symbol ","))
   resources <- lawResourcesP
   keyword "is"
-  d <- block "definition" defP
-  desc <- option "" (block "description" str)
-  why <- option "" (block "rationale" str)
-  written <- many ((pure <$> exampleP) <|> tableP)
-  refs <- option [] (keyword "references" *> keyword "are" *> some str <* keyword "end")
+  canonical <- canonicalP
+  (d, desc, why, written, refs, metadata) <- if canonical then canonicalLawBodyP else do
+    d <- block "definition" defP
+    desc <- option "" (block "description" str)
+    why <- option "" (block "rationale" str)
+    written <- many ((pure <$> exampleP) <|> tableP)
+    refs <- option [] (keyword "references" *> keyword "are" *> some (ExternalReference Nothing <$> str) <* keyword "end")
+    pure (d, desc, why, written, refs, emptyLawMetadata)
   keyword "end"
   documented <- descriptionExamples desc
   let tables = length [() | rows <- written, isTable rows]
@@ -948,9 +1379,85 @@ lawUsingP = do
           then (k + 1, acc ++ [e { exampleName = (if tables > 1 then "table " ++ show k ++ ", " else "") ++
             drop (length ("table " :: String)) (exampleName e) } | e <- rows])
           else (k, acc ++ rows)) (1 :: Int, []) written)
-  pure (Law n ps req d desc why (numbered ++ documented) refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))) resources, using)
+  pure (Law n ps req d desc why (numbered ++ documented) refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))) resources metadata, using)
   where
     isPrefixOf' prefix text = take (length prefix) text == prefix
+
+data LawSection = DefinitionSection Definition | DescriptionSection String
+  | RationaleSection String | ExamplesSection [Example] | ReferencesSection [DocumentaryReference SourceReferenceTarget]
+
+canonicalLawBodyP :: P (Definition, String, String, [[Example]], [DocumentaryReference SourceReferenceTarget], LawMetadata)
+canonicalLawBodyP = do
+  scalars <- many scalarMetadataP
+  unless (length (map fst scalars) == length (nub (map fst scalars)))
+    (fail "law scalar metadata entries are singletons")
+  sections <- many (DefinitionSection <$> block "definition" defP
+    <|> DescriptionSection <$> block "description" str
+    <|> RationaleSection <$> block "rationale" str
+    <|> ExamplesSection . pure <$> exampleP
+    <|> ExamplesSection <$> tableP
+    <|> ReferencesSection . concat <$> block "references" (many documentaryReferencesP))
+  misplaced <- optional (lookAhead (keyword "id" <|> keyword "owner"))
+  when (misplaced /= Nothing) (fail "scalar metadata must precede law sections")
+  let definitions = [d | DefinitionSection d <- sections]
+      descriptions = [d | DescriptionSection d <- sections]
+      rationales = [d | RationaleSection d <- sections]
+      references = [d | ReferencesSection d <- sections]
+      namedReferences = [name | entries <- references, ExternalReference (Just name) _ <- entries]
+  unless (length definitions == 1) (fail "a law requires exactly one authoritative definition: section")
+  unless (all ((<= 1) . length) [descriptions,rationales]) (fail "description and rationale sections are singletons")
+  unless (length references <= 1) (fail "references is a singleton section")
+  unless (length namedReferences == length (nub namedReferences)) (fail "named external references must be unique within a law")
+  case definitions of
+    [definition] -> pure (definition, concat descriptions, concat rationales,
+      [es | ExamplesSection es <- sections], concat references,
+      LawMetadata (lookup "id" scalars) (lookup "owner" scalars))
+    _ -> fail "missing law definition"
+
+-- A documentary group is flattened without constructing a value-level set.
+-- Dots inside a phrase stay in that name; dots outside qualify the target.
+documentaryReferencesP :: P [DocumentaryReference SourceReferenceTarget]
+documentaryReferencesP = group (concat <$> documentaryReferencesP `sepBy` symbol ",")
+  <|> do
+    keyword "ref"
+    make <- (LawReference <$ keyword "law") <|>
+      ((\target _ -> FunctionReference target) <$ keyword "function")
+    targets <- group (referenceTargetP `sepBy1` symbol ",") <|> ((:[]) <$> referenceTargetP)
+    selector <- optional referenceSelectorP
+    let entries = [make target selector | target <- targets]
+    when (selector /= Nothing && any isFunction entries) (fail "a function reference selects its definition and has no section selector")
+    pure entries
+  <|> ((:[]) <$> namedExternal)
+  <|> ((:[]) . ExternalReference Nothing <$> str)
+  where
+    group = between (symbol "#S{") (symbol "}")
+    isFunction FunctionReference{} = True
+    isFunction _ = False
+    namedExternal = do
+      name <- lexeme phraseNameRaw
+      void (symbol ":" <* notFollowedBy (char ':'))
+      ExternalReference (Just name) <$> str
+
+referenceTargetP :: P SourceReferenceTarget
+referenceTargetP = do
+  (parts, range) <- lexeme (withSpan ((:) <$> identRaw <*> many (try (char '.' *> identRaw))))
+  pure (ParsedReferenceTarget parts range)
+
+referenceSelectorP :: P ReferenceSelector
+referenceSelectorP = optional (symbol ".") *> choice
+  [ ReferenceDefinition <$ keyword "definition"
+  , ReferenceDescription <$ keyword "description"
+  , ReferenceRationale <$ keyword "rationale"
+  , do keyword "references"
+       option ReferenceReferences (ReferenceNamed <$> (symbol "." *> lexeme phraseNameRaw)) ]
+
+scalarMetadataP :: P (String,String)
+scalarMetadataP = do
+  name <- ("id" <$ keyword "id") <|> ("owner" <$ keyword "owner")
+  void (symbol ":" <* notFollowedBy (char ':'))
+  -- Documentary identifiers need no import or value-name resolution.
+  value <- str <|> lexeme (intercalate "." <$> identRaw `sepBy1` char '.')
+  pure (name,value)
 
 -- for db :: Database, dir :: TemporaryDirectory: the resources a law takes.
 lawResourcesP :: P [(String, Type)]
@@ -958,7 +1465,7 @@ lawResourcesP = option [] $ do
   keyword "for"
   flip sepBy1 (symbol ",") $ do
     name <- ident
-    void (symbol "::")
+    annotationP
     ty <- typeP
     pure (name, ty)
 
@@ -992,7 +1499,7 @@ resourceP = do
 -- example `name` is (x = literal)* (expect ...)* end
 exampleP :: P Example
 exampleP = do
-  keyword "example"; en <- quoted; keyword "is"
+  keyword "example"; en <- lawNameP; sectionStartP
   bs <- some ((,) <$> ident <* symbol "=" <*> literalP)
   checks <- many expectationP
   keyword "end"; pure (Example en bs checks)
@@ -1004,17 +1511,15 @@ exampleP = do
 -- when a law has several.
 tableP :: P [Example]
 tableP = do
+  canonical <- canonicalP
+  leading <- if canonical then some tableExpectationP <* keyword "in" else pure []
   keyword "table"
   columns <- parens (ident `sepBy1` symbol ",")
-  keyword "is"
+  sectionStartP
   rows <- some $ withSpan $ do
     keyword "row"
     literalP `sepBy1` symbol ","
-  checks <- many $ do
-    keyword "expect"
-    left <- expr
-    right <- optional (symbol "=" *> ((Left <$> recordedName) <|> (Right . Right <$> try ident) <|> (Right . Left <$> literalP)))
-    pure (left, right)
+  checks <- if canonical then pure leading else many tableExpectationP
   keyword "end"
   let expectedColumns = [c | (_, Just (Right (Right c))) <- checks]
   forM_ expectedColumns $ \c -> unless (c `elem` columns)
@@ -1023,7 +1528,7 @@ tableP = do
     (fail ("row " ++ show i ++ " of the table has " ++ show (length values) ++ " values, but the table has " ++ show (length columns) ++ " columns"))
   pure
     [ Example ("table row " ++ show i ++ ": " ++ intercalate ", " (map (prettyExpr . literalExpr) values))
-        [(c, v) | (c, v) <- row, c `notElem` expectedColumns]
+        [(c, v) | (c, v) <- row, canonical || c `notElem` expectedColumns]
         [ case right of
             Nothing -> Expectation (substitute left) (BoolLiteral True)
             Just (Left name) -> Expectation (Apply (Apply (Var "prelude.recorded") (StringLit (name ++ " row " ++ show i))) (substitute left)) (BoolLiteral True)
@@ -1032,8 +1537,14 @@ tableP = do
         | (left, right) <- checks
         , let substitute = replaceExprVars [(c, literalExpr v) | (c, v) <- row, c `elem` expectedColumns] ]
     | (i, (values, _)) <- zip [1 :: Int ..] rows, let row = zip columns values ]
-  where
-    recordedName = keyword "recorded" *> str
+
+tableExpectationP :: P (Expr, Maybe (Either String (Either Literal String)))
+tableExpectationP = do
+  keyword "expect"
+  canonical <- canonicalP
+  left <- if canonical then updatedExpr else expr
+  right <- optional (symbol "=" *> ((Left <$> (keyword "recorded" *> str)) <|> (Right . Right <$> try ident) <|> (Right . Left <$> literalP)))
+  pure (left,right)
 
 -- Examples written in a description, in fences:
 --
@@ -1076,7 +1587,8 @@ descriptionExamples description = do
 expectationP :: P Expectation
 expectationP = do
   keyword "expect"
-  actual' <- expr
+  canonical <- canonicalP
+  actual' <- if canonical then updatedExpr else expr
   option (Expectation actual' (BoolLiteral True)) $ do
     void (symbol "=")
     ((`Expectation` BoolLiteral True) <$> recordedP actual') <|> (Expectation actual' <$> literalP)
@@ -1181,7 +1693,7 @@ abilityP = do
     parameters <- many $ parens $ do
       parameter <- ident
       unless (maybe False (isLower . fst) (uncons parameter)) (fail "type parameters must start with a lowercase letter")
-      void (symbol "::")
+      annotationP
       keyword "Type"
       pure parameter
     -- ability A with T is: native handlers of A are made with a T.
@@ -1189,7 +1701,7 @@ abilityP = do
     keyword "is"
     -- op :: T [fails with E]: an operation may fail, as a signature may.
     operations <- many (do
-      op <- try (ident <* symbol "::")
+      op <- try (ident <* annotationP)
       ty <- typeP
       failure <- optional (try (keyword "fails" *> keyword "with") *> typeP)
       pure ((op, ty), (,) op <$> failure))
@@ -1223,7 +1735,7 @@ handlerP = do
     state <- optional $ do
       try (keyword "with" *> keyword "state")
       s <- ident
-      void (symbol "::")
+      annotationP
       ty <- typeP
       keyword "start"
       start <- expr
@@ -1256,7 +1768,7 @@ functionDefinitionP = do
     keyword "definition"
     name <- ident
     arguments <- some param
-    void (symbol "::")
+    annotationP
     result <- typeP
     requirements <- constraintsP
     body <- keyword "is" *> expr <* keyword "end"
@@ -1267,16 +1779,110 @@ functionDefinitionP = do
 definitionUsesP :: P (FunctionDefinition, Maybe [Type])
 definitionUsesP = do
   ((name, arguments, result, requirements, used, body), range) <- withSpan $ do
-    keyword "definition"
+    canonical <- canonicalP
+    kind <- if canonical then ("function" <$ keyword "function") <|> ("procedure" <$ keyword "procedure") else "definition" <$ keyword "definition"
     name <- ident
     arguments <- some param
-    void (symbol "::")
-    result <- typeP
+    result <- if canonical
+      then (symbol "->" *> typeP) <|> (if kind == "procedure" then pure (Named "Unit") else fail "a function requires -> and a result type")
+      else symbol "::" *> typeP
     requirements <- constraintsP
-    used <- optional (lookAhead (keyword "uses" <|> keyword "fails") *> usesP)
-    body <- keyword "is" *> expr <* keyword "end"
+    used' <- optional (lookAhead (keyword "uses" <|> keyword "fails") *> usesP)
+    let used = if canonical && kind == "function" then Just [] else used'
+    when (canonical && kind == "function" && maybe False (not . null) used')
+      (fail "a function is pure; declare a procedure for ability operations")
+    body <- keyword "is" *> expr <* closeP kind
     pure (name, arguments, result, requirements, used, body)
   pure (FunctionDefinition name arguments result requirements body range, used)
+
+-- Typed constants lower to ordinary checked definitions. Exhaustive constructor
+-- coverage is admitted by the same compiler contract audit as hand-written code.
+mappingP :: P [FunctionDefinition]
+mappingP = do
+  canonical <- canonicalP
+  unless canonical empty
+  ((name,keyType,resultType,writtenRows,writtenFallback), range) <- withSpan $ do
+    keyword "mapping"
+    name <- ident
+    annotationP
+    keyType <- typeAtom
+    void (symbol "->")
+    resultType <- typeP
+    keyword "is"
+    rows <- some (keyword "row" *> ((,) <$> literalP <* symbol "," <*> literalP))
+    fallback <- optional (keyword "otherwise" *> literalP)
+    keyword "end"; keyword "mapping"
+    pure (name,keyType,resultType,rows,fallback)
+  rows <- mapM (\(key,value) -> (,) <$> contextualLiteral keyType key <*> contextualLiteral resultType value) writtenRows
+  fallback <- traverse (contextualLiteral resultType) writtenFallback
+  unless (all simpleKey (map fst rows) && case baseType keyType of RefinementApp _ _ -> False; _ -> True)
+    (fail "mapping keys currently require a primitive type or unqualified payload-free constructor; resolved compound-key validation is not yet implemented")
+  let equal a b = literalEquality a b
+      keys = map fst rows
+      outputs = map snd rows
+  unless (all (\k -> equal k k) keys) (fail "mapping keys must be reflexive under Eq; NaN is not a key")
+  unless (and [not (equal a b) | (index,a) <- zip [0 :: Int ..] keys, b <- drop (index + 1) keys])
+    (fail "duplicate mapping key")
+  let input = "lawspecMappingInput"
+      select c yes no = foldl Apply (Var "prelude.select") [c,yes,no]
+      lookupRows result = foldr (\(key,value) rest -> select (Binary "==" (Var input) (literalExpr key)) (literalExpr value) rest) result rows
+      body = case fallback of
+        Just other -> lookupRows (literalExpr other)
+        Nothing | all enumKey keys -> MatchExpr (Var input)
+          [MatchBranch tag [] (literalExpr value) | (ConstructorLiteral tag [],value) <- rows]
+        Nothing | keyType == Named "Bool", any (equal (BoolLiteral True)) keys, any (equal (BoolLiteral False)) keys ->
+          lookupRows (literalExpr (snd (head rows)))
+        Nothing -> MatchExpr (Var input) []
+      make n argument result expr = FunctionDefinition n [(input,argument)] result [] expr range
+      -- Compare each typed output at execution, so aliases or contextual
+      -- representations cannot make a compile-time grouping lose preimages.
+      preimage = foldr (\(key,value) rest -> Apply (Apply (Var "prelude.append")
+        (select (Binary "==" (Var input) (literalExpr value)) (ListLit [literalExpr key]) (ListLit []))) rest) (ListLit []) rows
+      inverse = foldr (\(key,value) rest -> select (Binary "==" (Var input) (literalExpr value))
+        (ConstructLit "Just" [literalExpr key]) rest) (ConstructLit "Nothing" []) rows
+      eligibleInverse = all simpleKey outputs && case baseType resultType of
+        RefinementApp _ _ -> False
+        _ -> True
+      unique = eligibleInverse && all (\v -> equal v v) outputs && and
+        [not (equal a b) | (index,a) <- zip [0 :: Int ..] outputs, b <- drop (index + 1) outputs]
+  pure ([make name keyType resultType body] ++
+    [make (derived name "preimages") resultType (Applied "List" keyType) preimage | fallback == Nothing] ++
+    [make (derived name "inverse") resultType (Applied "Maybe" keyType) inverse | unique && fallback == Nothing])
+  where
+    simpleKey (ConstructorLiteral name []) = '.' `notElem` name
+    simpleKey (ConstructorLiteral _ _) = False
+    simpleKey (ListLiteral _) = False
+    simpleKey _ = True
+    contextualLiteral ty value = case (baseType ty, literalExpr value) of
+      (Named name, expression) | primitive name /= Nothing -> case expression of
+        ScalarLit scalar -> convert scalar
+        Number n -> convert (SInteger "Integer" n)
+        DecimalNumber c e -> convert (SDecimal c e)
+        StringLit text -> convert (textScalar text)
+        BoolLit b -> convert (SBool b)
+        _ -> pure value
+        where convert scalar = either fail (pure . ScalarLiteral) (convertScalar 64 name scalar)
+      _ -> pure value
+    enumKey (ConstructorLiteral _ []) = True
+    enumKey _ = False
+    derived ('"':'|':body) suffix = "\"|" ++ take (length body - 1) body ++ " " ++ suffix ++ "|"
+    derived name suffix = name ++ (if suffix == "preimages" then "Preimages" else "Inverse")
+
+literalEquality :: Literal -> Literal -> Bool
+literalEquality a b = case (literalScalar a,literalScalar b) of
+  (Just x,Just y) -> scalarEqual x y
+  _ -> case (a,b) of
+    (ConstructorLiteral x xs,ConstructorLiteral y ys) -> x == y && length xs == length ys && and (zipWith literalEquality xs ys)
+    (ListLiteral xs,ListLiteral ys) -> length xs == length ys && and (zipWith literalEquality xs ys)
+    _ -> False
+  where
+    literalScalar literal = case literal of
+      IntLiteral n -> Just (SInteger "Integer" n)
+      DecimalLiteral c e -> Just (SDecimal c e)
+      TextLiteral text -> Just (textScalar text)
+      BoolLiteral bool -> Just (SBool bool)
+      ScalarLiteral scalar -> Just scalar
+      _ -> Nothing
 
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | WrapperMember Wrapper | WorkflowMember Workflow | ModelMember ModelDeclaration
@@ -1284,7 +1890,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | MailboxMember (String, Type, Span)
   | HandleMember (String, Span) | ProtocolMember Protocol | ScenarioMember Scenario
   | SignatureMember ((String, Type), Span) [Type] | AsyncMember ((String, Type), Span) [Type] | LawMember (Law, [HandlerUse])
-  | DefinitionMember (FunctionDefinition, Maybe [Type])
+  | DefinitionMember (FunctionDefinition, Maybe [Type]) | MappingMember [FunctionDefinition]
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
   | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration | HandlerSetMember HandlerSet
 
@@ -1298,9 +1904,22 @@ importP = do
     keyword "import"
     target <- unitNameP
     alias <- optional (keyword "as" *> ident)
-    items <- option [] (parens (((\n -> "`" ++ n ++ "`") <$> quoted <|> ident) `sepBy1` symbol ","))
+    items <- option [] (parens (importItemP `sepBy1` symbol ","))
     pure (target, alias, items)
   pure (Import target (maybe (baseName target) id alias) items range)
+
+-- Import retains its existing law marker internally; only the delimiters are
+-- synthetic. A backtick inside a phrase is part of the name.
+importItemP :: P String
+importItemP = do
+  canonical <- canonicalP
+  if canonical then ((\n -> "`" ++ n ++ "`") <$> (keyword "law" *> itemName)) <|> itemName
+    else ((\n -> "`" ++ n ++ "`") <$> quoted) <|> ident
+  where
+    -- The preamble is read before aliases are installed. There is no field
+    -- projection ambiguity in an import/export list, so parse qualification
+    -- syntactically and leave target resolution to Imports.
+    itemName = lexeme (intercalate "." <$> identRaw `sepBy1` char '.')
 
 -- | export Money, domain.add, `commutative`: names this unit imports, offered
 -- to the units that import it as if declared here (a facade). It is kept with
@@ -1309,7 +1928,9 @@ exportP :: P Import
 exportP = do
   (items, range) <- withSpan $ do
     keyword "export"
-    (((\n -> "`" ++ n ++ "`") <$> quoted) <|> qualifiedExport) `sepBy1` symbol ","
+    canonical <- canonicalP
+    if canonical then importItemP `sepBy1` symbol ","
+      else (((\n -> "`" ++ n ++ "`") <$> quoted) <|> qualifiedExport) `sepBy1` symbol ","
   pure (Import "" "" items range)
   where
     qualifiedExport = lexeme $ try $ do
@@ -1357,15 +1978,16 @@ unitP = do
     <|> (HandlerSetMember <$> (try (lookAhead (keyword "handlers" *> ident *> keyword "is")) *> handlerSetP))
     -- harness name for unit is ... end (LawSpec.Harness).
     <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
+    <|> (MappingMember <$> mappingP)
     <|> (DefinitionMember <$> definitionUsesP)
-    <|> try (AsyncMember <$> (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)) <*> usesP)
-    <|> try (SignatureMember <$> withSpan ((,) <$> ident <* symbol "::" <*> typeP) <*> usesP)
+    <|> try (AsyncMember <$> (keyword "async" *> withSpan ((,) <$> ident <* annotationP <*> typeP)) <*> usesP)
+    <|> try (SignatureMember <$> withSpan ((,) <$> ident <* annotationP <*> typeP) <*> usesP)
     <|> (LawMember <$> lawUsingP))
   eof
   let members = asyncSugar members'
   when (length [() | HarnessMember _ <- members] > 1)
     (fail "a unit has at most one harness")
-  let definitions = [d | DefinitionMember (d, _) <- members]
+  let definitions = [d | DefinitionMember (d, _) <- members] ++ concat [ds | MappingMember ds <- members]
       signatures = [signature | member <- members, signature <- case member of
           SignatureMember s _ -> [s]
           AsyncMember s _ -> [s]
@@ -1390,6 +2012,8 @@ unitP = do
 -- one-file requests and the tests need.
 parseSource :: Source -> Either [Diagnostic] Unit
 parseSource source = fst . fst <$> parseWith M.empty [] [] source
+parseSourceCanonical :: Source -> Either [Diagnostic] Unit
+parseSourceCanonical source = fst . fst <$> parseWith (M.singleton "profile:canonical" AliasHeader) [] [] source
 
 -- | Parse sources that may import one another. Each unit sees the declaration
 -- arities of the units it imports, qualified by alias and unqualified for
@@ -1402,7 +2026,11 @@ parseSources = parseSourcesWith [] []
 -- unit (LawSpec.Time, LawSpec.Resilience) is imported, with its types, by the
 -- sources it says use it.
 parseSourcesWith :: [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSourcesWith collections builtins allSources = do
+parseSourcesWith = parseSourcesWithProfile False
+parseSourcesWithCanonical :: [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
+parseSourcesWithCanonical = parseSourcesWithProfile True
+parseSourcesWithProfile :: Bool -> [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
+parseSourcesWithProfile canonical collections builtins allSources = do
   forM_ harnessSources $ \(Source path _, header) -> case header of
     Left message -> Left [Diagnostic "parse" message Nothing]
     Right (name, served) -> unless (served `elem` [n | (_, n, _) <- preambles])
@@ -1425,7 +2053,7 @@ parseSourcesWith collections builtins allSources = do
         [f | f <- declared, familyName f `elem` importItems i]
       | i <- imports, Just (Right (_, declared)) <- [Lazy.lookup (importUnit i) results] ]
     preambles = [(s, n, imports) | s <- sources, Right (n, imports) <- [preamble s]]
-    preamble (Source p s) = implicit s <$> runReader (runParserT preambleP p s) M.empty
+    preamble source@(Source p s) = implicit s <$> runReader (runParserT preambleP p s) (profile source M.empty)
     implicit s (n, imports)
       | n `elem` ("prelude" : collectionsUnit : [unit | (unit, _, _, _) <- builtins]) = (n, imports)
       | otherwise =
@@ -1460,15 +2088,20 @@ parseSourcesWith collections builtins allSources = do
             | (name, t, o) <- found ]
           ownersOut = [(name, cs) | (name, _, o) <- found, Just cs <- [lookup name o]]
       in (M.union table entries, owners ++ ownersOut)
-    imported source = case preamble source of
+    profile source@(Source path _) env = if canonical && take 1 path /= "<"
+      then M.insert "profile:canonical" AliasHeader env else env
+    imported source = profile source $ case preamble source of
       Left _ -> M.empty
       Right (_, imports) -> M.unions
-        [ M.insert ("alias:" ++ importAlias i) AliasHeader (M.unions
+        [ (if importUnit i == "lawspec.collections"
+            then M.insert ("legacy-set:" ++ importAlias i ++ ".Set") AliasHeader else id) $
+          M.insert ("alias:" ++ importAlias i) AliasHeader (M.unions
             [ M.fromList [(qualify (importAlias i) key, h) | (key, h) <- M.toList table]
             , M.fromList [(key, h) | let allowed = listed owners (importItems i), (key, h) <- M.toList table, allowed key] ])
         | i <- imports, Just (table, owners) <- [Lazy.lookup (importUnit i) exports] ]
     qualify alias key = case break (== ':') key of
       ("constructor", ':' : n) -> "constructor:" ++ alias ++ "." ++ n
+      ("record", ':' : n) -> "record:" ++ alias ++ "." ++ n
       _ -> alias ++ "." ++ key
     -- Sets, as an import may list thousands of names.
     listed owners items =
@@ -1477,6 +2110,7 @@ parseSourcesWith collections builtins allSources = do
           constructors = S.fromList (concat [cs | item <- items, Just cs <- [M.lookup item ownerTable]])
       in \key -> case break (== ':') key of
         ("constructor", ':' : n) -> n `S.member` constructors
+        ("record", ':' : n) -> n `S.member` names
         _ -> key `S.member` names
     acyclic start = go [start] start
       where
@@ -1497,12 +2131,16 @@ sourceUnit source@(Source p s) = case partitionHarnessSources [source] of
 -- constructor arities, with each data type's constructors.
 sourceExports :: M.Map String Header -> Source -> (M.Map String Header, [(String, [String])])
 sourceExports extra (Source _ s) =
-  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders s (M.union (headers s) extra)),
+  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)),
    constructorOwners extra s)
 
 parseWith :: M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
 parseWith extra importedFamilies harnessFiles (Source p s) = case runReader (runParserT unitP p s) environment of
-  Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
+  Left e -> let offset = errorOffset (NE.head (bundleErrors e))
+                (_,state) = reachOffset offset (bundlePosState e)
+                pos = pstateSourcePos state
+            in Left [Diagnostic "parse" (errorBundlePretty e)
+                 (Just (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))))]
   Right (u0, imports, families, wrappers, workflows, models, (protocols, scenarios)) -> do
     -- A harness file is read with the names of the unit it serves.
     separate <- mapM (\(Source hp hs) -> either (\e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]) Right
@@ -1527,7 +2165,7 @@ parseWith extra importedFamilies harnessFiles (Source p s) = case runReader (run
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
       (elaborateFamiliesWith importedFamilies families' flowed)
     pure ((elaborated, imports), families')
-  where environment = literalHeaders s (M.union (headers s) extra)
+  where environment = literalHeaders s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)
 
 -- Sources that hold a harness rather than a unit, each with its header.
 partitionHarnessSources :: [Source] -> ([(Source, Either String (String, String))], [Source])
@@ -1542,12 +2180,17 @@ partitionHarnessSources sources =
 -- | Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.
 headers :: String -> M.Map String Header
-headers source = M.fromList (scan tokens) where
-  tokens = either (const []) id $ runReader (runParserT (spaceP *> many token <* eof) "headers" source) M.empty
-  token = ("<string>" <$ str) <|> ("<quoted>" <$ quoted)
+headers = headersWithProfile False
+headersWithProfile :: Bool -> String -> M.Map String Header
+headersWithProfile canonical source = M.fromList (scan tokens) where
+  tokens = either (const []) id $ runReader (runParserT (spaceP *> many token <* eof) "headers" source) (if canonical then M.singleton "profile:canonical" AliasHeader else M.empty)
+  token = try phraseNameRaw <|> ("<string>" <$ try str) <|> ("<quoted>" <$ try quotedOrInfixToken)
       <|> lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))
       <|> symbol "::" <|> ((:[]) <$> lexeme anySingle)
+  -- A named closer must not consume the next declaration as a type header.
+  scan ("end":"type":rest) | canonical = scan rest
   scan ("unit":_:rest) = scan (dropUnit rest)
+  scan ("of":"type":rest) = scan rest
   scan ("refinement":n:rest) = let (ks,remaining) = parametersH rest in (n,RefinementHeader ks):scan remaining
   scan ("type":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
   scan ("wrapper":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
@@ -1559,7 +2202,7 @@ headers source = M.fromList (scan tokens) where
   dropUnit rest = rest
   parametersH ("(":rest) = let (inside,remaining) = group (1 :: Int) [] rest
                                (ks,remaining') = parametersH remaining
-                           in ((case inside of [_ ,"::","Type"] -> True; _ -> False):ks,remaining')
+                           in ((case inside of [_ ,"::","Type"] -> True; [_,"of","type","Type"] -> True; _ -> False):ks,remaining')
   parametersH rest = ([],rest)
   group _ acc [] = (reverse acc,[])
   group depth acc (t:rest)
@@ -1569,12 +2212,12 @@ headers source = M.fromList (scan tokens) where
 -- | Each data type or wrapper with its constructor names.
 constructorOwners :: M.Map String Header -> String -> [(String, [String])]
 constructorOwners extra source = either (const []) id $
-  runReader (runParserT scan "constructor owners" source) (M.union (headers source) extra)
+  runReader (runParserT scan "constructor owners" source) (M.union (headersWithProfile (M.member "profile:canonical" extra) source) extra)
   where
     scan = spaceP *> (concat <$> many ((pure . owner <$> try dataTypeP)
       <|> ((\w -> [(wrapperName w, [wrapperName w])]) <$> try wrapperP) <|> ([] <$ token))) <* eof
     owner d = (dataTypeName d, map dataConstructorName (dataTypeConstructors d))
-    token = void str <|> void quoted <|>
+    token = void (try phraseNameRaw) <|> void (try str) <|> try quotedOrInfixToken <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
 
 -- | Reuse the declaration parser to discover fixture constructor arities. This
@@ -1583,15 +2226,18 @@ constructorOwners extra source = either (const []) id $
 literalHeaders :: String -> M.Map String Header -> M.Map String Header
 literalHeaders source initial = case runReader (runParserT scan "constructor headers" source) initial of
   Left _ -> initial
-  Right declarations -> M.union (M.fromList
+  Right declarations -> M.union (M.fromList (
+    [("record:" ++ dataTypeName d, RecordHeader (dataConstructorFields c))
+      | Just d <- declarations, [c] <- [dataTypeConstructors d], dataConstructorName c == dataTypeName d,
+        not (M.member "profile:canonical" initial) || dataConstructorSpan c == dataTypeSpan d] ++
     [("constructor:" ++ dataConstructorName c, DataHeader (replicate (length (dataConstructorFields c)) True))
-      | Just d <- declarations, c <- dataTypeConstructors d]) initial
+      | Just d <- declarations, c <- dataTypeConstructors d])) initial
   where
     -- A wrapper's constructor shares its name and takes the single value field.
     wrapped w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)
       [ConstructorDeclaration (wrapperName w) [("value", wrapperBase w)] (wrapperSpan w) []] (wrapperSpan w) Nothing
     scan = spaceP *> many ((Just <$> try dataTypeP) <|> (Just . wrapped <$> try wrapperP) <|> (Nothing <$ token)) <* eof
-    token = void str <|> void quoted <|>
+    token = void (try phraseNameRaw) <|> void (try str) <|> try quotedOrInfixToken <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
 
 -- Harness units (LawSpec.Harness). A harness is the implementation plane of
@@ -1642,7 +2288,7 @@ harnessItemP = forbidden *> choice
   [ HarnessStrategy <$> strategyP
   , do ((names, settings), range) <- withSpan $ do
          try (keyword "for" *> (keyword "laws" <|> keyword "law"))
-         names <- quoted `sepBy1` symbol ","
+         names <- lawNameP `sepBy1` symbol ","
          settings <- many (forbidden *> harnessSettingSpanP)
          pure (names, settings)
        pure (HarnessFor names settings range)
@@ -1675,7 +2321,23 @@ harnessSettingSpanP = withSpan harnessSettingP
 
 harnessSettingP :: P HarnessSetting
 harnessSettingP = choice
-  [ UseStrategy <$> (keyword "use" *> ident) <*> (keyword "for" *> ident)
+  [ do keyword "witness"
+       canonical <- canonicalP
+       unless canonical (fail "harness witnesses require the 1.0-rc.1 profile")
+       value <- regionExpr [["for"]]
+       keyword "for"
+       root <- option [] (try (keyword "definition" *> symbol "." *> pure ["definition"]))
+       path <- lexeme (identRaw `sepBy1` char '.')
+       pure (WitnessSetting (root ++ path) value [])
+  , do strategy <- keyword "use" *> ident
+       keyword "for"
+       canonical <- canonicalP
+       target <- if canonical then do
+         root <- option [] (try (keyword "definition" *> symbol "." *> pure ["definition"]))
+         path <- lexeme (identRaw `sepBy1` char '.')
+         pure (intercalate "." (root ++ path))
+         else ident
+       pure (UseStrategy strategy target)
   , TestWith <$> (try (keyword "test" *> keyword "with") *> (ident `sepBy1` symbol ","))
   , do keyword "cover"
        percent <- lexeme L.decimal
@@ -1719,7 +2381,7 @@ strategyP = do
     keyword "strategy"
     name <- ident
     unless (maybe False (isLower . fst) (uncons name)) (fail "strategy names start with a lowercase letter")
-    void (symbol "::")
+    annotationP
     ty <- typeP
     keyword "is"
     body <- genP
@@ -1743,7 +2405,7 @@ genCoreP = choice
   [ GenFrequency <$> (keyword "frequency" *> (((,) <$> weight <*> genAtomP) `sepBy1` symbol ","))
   , do keyword "bind"
        x <- ident
-       void (symbol "::")
+       annotationP
        ty <- typeP
        keyword "from"
        from <- genAtomP
@@ -1769,9 +2431,10 @@ genAtomP = choice
 -- read the next setting as arguments.
 regionExpr :: [[String]] -> P Expr
 regionExpr stops = do
+  canonical <- canonicalP
   st <- getParserState
   let input = stateInput st
-      region = cut 0 input
+      region = cut canonical 0 input
   when (all (`elem` (" \t\r" :: String)) region) (fail "expected an expression")
   (after, result) <- lift (runParserT' (expr <* eof) st { stateInput = region })
   case result of
@@ -1782,17 +2445,24 @@ regionExpr stops = do
       spaceP
       pure e
   where
-    cut :: Int -> String -> String
-    cut _ [] = []
-    cut _ ('\n' : _) = []
-    cut 0 rest@('-' : '-' : _) = takeWhile (/= '\n') rest `seq` []
-    cut depth ('"' : rest) = let (inside, after) = stringBody rest in '"' : inside ++ cut depth after
-    cut depth ('`' : rest) = let (inside, after) = break (== '`') rest in '`' : inside ++ take 1 after ++ cut depth (drop 1 after)
-    cut depth s@(c : rest)
+    cut :: Bool -> Int -> String -> String
+    cut _ _ [] = []
+    cut _ _ ('\n' : _) = []
+    cut _ 0 rest@('-' : '-' : _) = takeWhile (/= '\n') rest `seq` []
+    cut True depth ('"' : '|' : rest) = let (inside, after) = phraseBody rest in "\"|" ++ inside ++ cut True depth after
+    cut True depth ('`' : '|' : rest) = let (inside, after) = phraseBody rest in "`|" ++ inside ++ cut True depth after
+    cut True depth ('`' : rest) = '`' : cut True depth rest
+    cut canonical depth ('"' : rest) = let (inside, after) = stringBody rest in '"' : inside ++ cut canonical depth after
+    cut canonical depth ('`' : rest) = let (inside, after) = break (== '`') rest in '`' : inside ++ take 1 after ++ cut canonical depth (drop 1 after)
+    cut canonical depth s@(c : rest)
       | depth == 0, Just _ <- stopAt s = []
-      | c `elem` ("([" :: String) = c : cut (depth + 1) rest
-      | c `elem` (")]" :: String) = if depth == 0 then (if [")"] `elem` stops then [] else c : cut depth rest) else c : cut (depth - 1) rest
-      | otherwise = c : cut depth rest
+      | c `elem` ("([{" :: String) = c : cut canonical (depth + 1) rest
+      | c `elem` (")]}" :: String) = if depth == 0 then (if [")"] `elem` stops then [] else c : cut canonical depth rest) else c : cut canonical (depth - 1) rest
+      | otherwise = c : cut canonical depth rest
+    phraseBody ('\\' : x : rest) = let (a,b) = phraseBody rest in ('\\' : x : a,b)
+    phraseBody ('|' : rest) = ("|",rest)
+    phraseBody (x : rest) = let (a,b) = phraseBody rest in (x:a,b)
+    phraseBody [] = ([],[])
     stringBody ('\\' : x : rest) = let (a, b) = stringBody rest in ('\\' : x : a, b)
     stringBody ('"' : rest) = ("\"", rest)
     stringBody (x : rest) = let (a, b) = stringBody rest in (x : a, b)

@@ -1,4 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law} from '../../npm/index.js';
 
 // Every published node must be traversable without an unchecked cast.
 export function children(node: ExprNode): Expr[] {
@@ -40,3 +40,28 @@ children(element);
 // @ts-expect-error Callbacks require typed binder metadata.
 const malformed: PayloadPredicate = {binder: 'payload', predicate: value};
 void malformed;
+
+
+export function referencedTarget(reference: DocumentaryReference): DocumentaryTarget | null {
+  switch (reference.kind) {
+    case 'law':
+    case 'function':
+      return reference.target;
+    case 'external':
+      return null;
+    default: {
+      const unreachable: never = reference;
+      return unreachable;
+    }
+  }
+}
+export function documentaryTargets(law: Law): DocumentaryTarget[] {
+  return law.references.flatMap(reference => {
+    if (typeof reference === 'string') return [];
+    const target = referencedTarget(reference);
+    return target ? [target] : [];
+  });
+}
+// @ts-expect-error External references require a documentary resource.
+const missingResource: DocumentaryReference = { kind: 'external', name: 'policy' };
+void missingResource;

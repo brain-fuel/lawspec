@@ -37,10 +37,7 @@ witnessPlan plan@Plan{..}
     quantifier q = q
       { quantifiedPredicates = map expr (quantifiedPredicates q)
       , quantifiedBounds = [(op, expr x) | (op, x) <- quantifiedBounds q] }
-    proposition prop = case prop of
-      Equation evidence a b -> Equation evidence (expr a) (expr b)
-      Implication guard body -> Implication (expr guard) (proposition body)
-      Conjunction bodies -> Conjunction (map proposition bodies)
+    proposition = mapPropositionExpressions expr
     planned p = p
       { plannedProperty = property (plannedProperty p)
       , finiteCases = map (map value) <$> finiteCases p

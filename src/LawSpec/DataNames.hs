@@ -1,7 +1,7 @@
 -- | Native names for data declarations that share a short name. Units scope
 -- their declarations, so two units may both declare a Currency; targets with
 -- one data namespace qualify such a name by its unit (ShopDomainCurrency).
-module LawSpec.DataNames (qualifiedDataName, flatDataCandidates, isProduct, productConstructors, caseNames, caseInsensitiveCounts, ambiguous) where
+module LawSpec.DataNames (qualifiedDataName, flatDataCandidates, flatDataCandidatesWith, isProduct, productConstructors, caseNames, caseInsensitiveCounts, ambiguous) where
 
 import Data.Char (isAlphaNum, toLower, toUpper)
 import qualified LawSpec.Core as C
@@ -49,9 +49,14 @@ caseNames owner constructors =
 -- Products have no constructor name of their own (see productConstructors).
 -- The case function adapts short names to the target (capitalization).
 flatDataCandidates :: (String -> String) -> (String -> Bool) -> [C.DataDeclaration] -> [(C.Id, String)]
-flatDataCandidates cased forced declarations = types ++ constructors
+flatDataCandidates = flatDataCandidatesWith isProduct
+
+-- A target can require indirection even for a single-constructor declaration.
+-- Its constructor then needs a distinct native name, like any sum variant.
+flatDataCandidatesWith :: (C.DataDeclaration -> Bool) -> (String -> String) -> (String -> Bool) -> [C.DataDeclaration] -> [(C.Id, String)]
+flatDataCandidatesWith inline cased forced declarations = types ++ constructors
   where
-    sums = filter (not . isProduct) declarations
+    sums = filter (not . inline) declarations
     shortTypes = [(C.dataId d, cased (C.dataName d)) | d <- declarations]
     shortConstructors = [(C.constructorId c, cased (C.dataName d) ++ cased (C.constructorName c))
       | d <- sums, c <- C.dataConstructors d]

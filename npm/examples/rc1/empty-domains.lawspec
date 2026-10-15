@@ -1,0 +1,46 @@
+unit example.rc1.emptyDomains
+
+type UnissuedApproval is one of
+  | Unissued of type UnissuedApproval
+  | StillUnissued of type UnissuedApproval
+end type
+
+law "|no issued approval incurs an obligation| is
+  definition:
+    for all (approval of type UnissuedApproval) =>
+      false
+    end
+  end
+  description:
+    "No approval can be constructed in this domain. Universal verification evaluates zero cases."
+  end
+end
+
+law "|excluded inputs require no witnesses| is
+  definition:
+    for all (enabled of type Bool where false) =>
+      there must exist (witness of type Integer) such that
+        false
+      end
+    end
+  end
+  description:
+    "The restriction excludes every input. This establishes no witness for any actual input."
+  end
+end
+
+law "|absence remains different from existence| is
+  definition:
+    there must not exist (approval of type UnissuedApproval) such that
+      true
+    end
+  end
+end
+
+law "|excluded payments incur no obligation| is
+  definition:
+    for all (eligible of type Bool where false) =>
+      false
+    end
+  end
+end

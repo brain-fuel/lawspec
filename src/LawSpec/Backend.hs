@@ -5,10 +5,10 @@ module LawSpec.Backend where
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as Doc
 import LawSpec.Testing (PlannedProperty(..), GeneratorRequirement(..))
-import LawSpec.Common (Generation, Location)
+import LawSpec.Common (Generation, Location, Quantification(..), renderReference, documentaryUnit, documentaryName)
 import LawSpec.Scalar (prettyScalar)
-import Data.List (intercalate, stripPrefix)
-import Data.Char (isAlphaNum)
+import Data.List (intercalate, stripPrefix, isPrefixOf)
+import Data.Char (isAlphaNum, isDigit)
 
 -- | Emitters were written against these names; the aliases keep their code
 -- unchanged while their input is Core. ref:DEC-typed-core-boundary
@@ -30,7 +30,6 @@ pattern AssertImplies :: Expr -> Assertion -> Assertion
 pattern AssertImplies a b = C.Implication a b
 pattern AssertAll :: [Assertion] -> Assertion
 pattern AssertAll ps = C.Conjunction ps
-{-# COMPLETE AssertEqual, AssertImplies, AssertAll #-}
 -- | As Type, Core units under the emitters' name.
 type Unit = C.Unit
 -- | As Type, quantifiers under the emitters' name.
@@ -85,7 +84,7 @@ description, rationale :: C.Property -> String
 description = C.propertyDescription
 rationale = C.propertyRationale
 references :: C.Property -> [String]
-references = C.propertyReferences
+references = map (renderReference (\target -> documentaryUnit target ++ "." ++ documentaryName target)) . C.propertyReferences
 location :: C.Property -> Location
 location = C.propertyLocation
 generation :: Expanded -> Generation
@@ -133,6 +132,8 @@ localName i | (_,Just suffix) <- splitOnce "::let::" (C.idText i) =
 localName i | (_,Just suffix) <- splitOnce "::match::" (C.idText i) =
   "_match" ++ map (\c -> if c == ':' then '_' else c) suffix
 localName i | (_,Just n) <- splitOnce "::resource::" (C.idText i) = "_resource" ++ takeWhile isAlphaNum n
+localName i | (_,Just n) <- splitOnce "::logical::" (C.idText i) =
+  "_logical" ++ map (\c -> if isAlphaNum c then c else '_') n
 localName i = case splitOnce "::input::" (C.idText i) of
   (_,Just n) -> "_input" ++ n
   _ -> case splitOnce "::contract::" (C.idText i) of
@@ -200,8 +201,15 @@ prettyExpr e = case C.expressionNode e of
   C.Handle (C.WithHandler _ _) body -> "handle (" ++ prettyExpr body ++ ")"
   C.Project _ index value -> prettyExpr value ++ "." ++ show index
   C.Update _ index value field -> "(" ++ prettyExpr value ++ " with " ++ show index ++ " = " ++ prettyExpr field ++ ")"
+  C.Let binder _ _ | searchDecision (C.binderId binder) -> "the scoped requirement"
   C.Let binder value body -> "let " ++ localName (C.binderId binder) ++ " = " ++ prettyExpr value ++ " in " ++ prettyExpr body
   C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map prettyExpr xs) ++ ")") args
+
+-- Internal search decisions are execution machinery. The surrounding failure
+-- already names the authoritative law and its inputs; keep its label readable.
+searchDecision :: C.Id -> Bool
+searchDecision identity = let (digits,rest) = span isDigit (reverse (C.idText identity))
+  in not (null digits) && reverse "::logical::decision" `isPrefixOf` rest
 
 -- | As in LawSpec.Compile, the quantified statement a test checks.
 prettyExpanded :: Expanded -> String
@@ -212,6 +220,11 @@ propositionText :: Assertion -> String
 propositionText (AssertEqual a b) = prettyExpr a ++ " = " ++ prettyExpr b
 propositionText (AssertImplies g p) = prettyExpr g ++ " implies " ++ propositionText p
 propositionText (AssertAll ps) = intercalate " and " (map propositionText ps)
+propositionText (C.Negation body) = "not (" ++ propositionText body ++ ")"
+propositionText (C.Quantified kind q body) =
+  (if kind == ForEvery then "for all " else "there exists ") ++ "(" ++ C.binderName (C.quantifiedBinder q) ++
+  " :: " ++ prettyType (C.binderType (C.quantifiedBinder q)) ++ ") " ++
+  (if kind == ForEvery then "=> " else "such that ") ++ propositionText body ++ " end"
 
 -- | Every generated test begins with its law's description, rationale and
 -- references, so the test explains why it exists.

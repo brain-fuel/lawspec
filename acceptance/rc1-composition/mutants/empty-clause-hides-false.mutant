@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ examples/rc1/requirement-composition.lawspec
+<<<<<<<
+authorizes authorization FirstPayment
+=======
+false
+>>>>>>>

@@ -18,6 +18,12 @@ import LawSpec.IndexTerm
 import LawSpec.Scalar (Scalar)
 
 instance Binary Generation
+instance Binary Quantification
+instance Binary InputDomain
+instance Binary LawMetadata
+instance Binary ReferenceSelector
+instance Binary DocumentaryTarget
+instance Binary target => Binary (DocumentaryReference target)
 instance Binary Location
 instance Binary Diagnostic
 instance Binary Artifact
@@ -68,6 +74,7 @@ instance Binary C.Node
 instance Binary C.Origin
 instance Binary C.Program
 instance Binary C.LawHarness
+instance Binary C.WitnessChoice
 instance Binary C.Cover
 instance Binary C.Draw
 instance Binary C.UnitHarness

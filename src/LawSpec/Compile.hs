@@ -3,7 +3,7 @@
 -- testing plan needs. It stops at the surface; LawSpec.Frontend turns its
 -- result into typed Core, so the eight emitters never see source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, validateDefinitionTypes, validateDefinitionTotality) where
+module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Model
@@ -20,9 +20,11 @@ import qualified LawSpec.Core.Types as CoreTypes
 import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Scalar
 import LawSpec.Parser
-import LawSpec.Imports (resolveImports)
+import LawSpec.Imports (resolveImportsWithProfile)
+import LawSpec.Documentary (resolveDocumentaryReferences)
 import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Harness (elaborateHarness)
+import LawSpec.HarnessWitness (prepareHarnessWitnesses)
 import LawSpec.Collections (usedCollections, collectionsSource)
 import LawSpec.Time (timeUnit, timeAlias, timeTypes, usesTime, timeSource)
 import LawSpec.Matchers (matchersUnit, matchersAlias, matchersTypes, usesMatchers, matchersSource, regexTypeName)
@@ -38,7 +40,7 @@ import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import qualified Data.Map.Strict as M
 import Data.List (nub, intercalate, uncons)
 import Data.Char (isLower)
-import Data.List (isSuffixOf, isPrefixOf, isInfixOf)
+import Data.List (isSuffixOf, isPrefixOf, isInfixOf, stripPrefix)
 import qualified Data.Set as Set
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Digest (digestHex, digestString)
@@ -94,8 +96,36 @@ closedCheck definitions (Annotate a _) = closedCheck definitions a
 closedCheck _ _ = True
 
 type Table = M.Map (String,String) Law
+
+-- Built-in laws keep their versioned source grammar. Canonical callers name
+-- their existing mathematical laws with ordinary phrase delimiters; local
+-- and explicitly imported names are resolved before this prelude fallback.
+preludeLawName :: String -> String
+preludeLawName name = unphrase (maybe name id (stripPrefix "prelude." name))
+  where
+    unphrase ('"':'|':rest) | "|" `isSuffixOf` rest = unescape (init rest)
+    unphrase n = n
+    unescape ('\\':c:rest) = c : unescape rest
+    unescape (c:rest) = c : unescape rest
+    unescape [] = []
+
 expand :: [String] -> Table -> String -> Env -> [String] -> Law -> [Expr] -> C ([Input], Assertion, [String], [Expr])
-expand definitions table unit env stack law args = do
+expand = expandScoped False
+
+-- Canonical quantifiers keep lexical scope throughout expansion. Only a
+-- leading universal prefix becomes generated inputs; sibling quantifiers
+-- and binders in implications/negations stay in the typed proposition.
+expandCanonical :: [String] -> Table -> String -> Env -> [String] -> Law -> [Expr] -> C ([Input], Assertion, [String], [Expr])
+expandCanonical definitions table unit env stack law args = do
+  (_,body,trace,checks) <- expandScoped True definitions table unit env stack law args
+  let outer inputs (AssertQuantified ForEvery input rest)
+        | inputName input `notElem` map inputName inputs = outer (inputs ++ [input]) rest
+      outer inputs body = (inputs,body)
+      (inputs,assertion) = outer [] body
+  pure (inputs,assertion,trace,checks)
+
+expandScoped :: Bool -> [String] -> Table -> String -> Env -> [String] -> Law -> [Expr] -> C ([Input], Assertion, [String], [Expr])
+expandScoped scoped definitions table unit env stack law args = do
   let key = unit ++ "::" ++ lawName law
   when (key `elem` stack) (throwC ("recursive law expansion: " ++ intercalate " -> " (reverse (key:stack))))
   unless (length args == length (parameters law)) (throwC ("wrong argument count for law " ++ lawName law))
@@ -104,8 +134,7 @@ expand definitions table unit env stack law args = do
   zipWithM_ (\(_,t) arg -> checkExpr env (rt t) arg) (parameters law) args
   modify (\s -> s{obligations=map (renameConstraint p) (requirements law) ++ obligations s})
   let replacements = M.fromList (zip (map fst (parameters law)) args)
-      walk e m (Forall qs d) = do
-        (bs,e',m',checks) <- foldM (\(bs,scope,replacements',checks) (n,t) -> do
+      bind e m qs = foldM (\(bs,scope,replacements',checks) (n,t) -> do
           when (n `elem` map inputName bs) (throwC "duplicate quantified input")
           i <- ("_input"++) <$> fresh
           let renamed = rt t
@@ -126,9 +155,19 @@ expand definitions table unit env stack law args = do
           mapM_ (\(Capability c ty) -> resolve ty >>= require c) (typeConstraints renamed)
           pure (bs ++ [Input n i t' predicates],scope',M.insert n (Var i) replacements',
             checks ++ filter (closedCheck definitions) (map (normal . subst replacements') (argumentChecks renamed)))) ([],e,m,[]) qs
-        (rest,body,tr,more) <- walk e' m' d
-        pure (bs++rest,body,tr,checks++more)
-      walk e m (Equal a b) = do
+      walk mode e m (Forall qs d) = do
+        (bs,e',m',checks) <- bind e m qs
+        (rest,body,tr,more) <- walk mode e' m' d
+        if mode then pure ([],foldr (AssertQuantified ForEvery) body (bs ++ rest),tr,checks ++ more)
+          else pure (bs ++ rest,body,tr,checks ++ more)
+      walk _ e m (Exists qs d) = do
+        (bs,e',m',checks) <- bind e m qs
+        (_,body,tr,more) <- walk True e' m' d
+        pure ([],foldr (AssertQuantified ForSome) body bs,tr,checks ++ more)
+      walk _ e m (Not d) = do
+        (_,body,tr,checks) <- walk True e m d
+        pure ([],AssertNot body,tr,checks)
+      walk mode e m (Equal a b) = do
         let left = normal (subst m (mapExprTypes rt a)); right = normal (subst m (mapExprTypes rt b))
         (l,r) <- jointStructuralContext e left right
         lt <- infer e l >>= resolve
@@ -143,22 +182,22 @@ expand definitions table unit env stack law args = do
             | otherwise -> unify lt rt'
         modify (\s -> s{obligations=Capability "Eq" (if isLiteral l then rt' else lt):obligations s})
         pure ([],AssertEqual l r,[],[])
-      walk e m (Holds a) = walk e m (Equal a (BoolLit True))
-      walk e m (Implies condition consequence) = do
+      walk mode e m (Holds a) = walk mode e m (Equal a (BoolLit True))
+      walk mode e m (Implies condition consequence) = do
         let guard = normal (subst m (mapExprTypes rt condition))
         infer e guard >>= unify (Named "Bool")
-        (bs,body,tr,checks) <- walk e m consequence
+        (bs,body,tr,checks) <- walk mode e m consequence
         pure (bs,AssertImplies guard body,tr,checks)
-      walk e m (And a b) = do
-        (as,a',at,ac) <- walk e m a
-        (bs,b',bt,bc) <- walk e m b
+      walk mode e m (And a b) = do
+        (as,a',at,ac) <- walk mode e m a
+        (bs,b',bt,bc) <- walk mode e m b
         pure (as++bs,AssertAll [a',b'],at++bt,ac++bc)
-      walk e m (Invoke n as) = do
+      walk mode e m (Invoke n as) = do
         (u,called) <- case M.lookup (unit,n) table of
           Just v -> pure (unit,v)
-          Nothing -> maybe (throwC ("unknown law: " ++ n)) (pure . (,) "prelude") (M.lookup ("prelude",n) table)
-        expand definitions table u e (key:stack) called (map (subst m) as)
-  (bs,body,tr,checks) <- walk env replacements (definition law)
+          Nothing -> maybe (throwC ("unknown law: " ++ n)) (pure . (,) "prelude") (M.lookup ("prelude",preludeLawName n) table)
+        expandScoped mode definitions table u e (key:stack) called (map (subst m . mapExprTypes rt) as)
+  (bs,body,tr,checks) <- walk scoped env replacements (definition law)
   pure (bs,body,(lawName law ++ concatMap ((" "++) . prettyExpr) args):tr,checks)
 
 unique :: String -> [String] -> Either String ()
@@ -184,7 +223,7 @@ validateUnit dataTypes u = either (Left . pure . (\m -> Diagnostic "declaration"
   unique "constructor" [dataConstructorName c | d <- LawSpec.Model.dataTypes u, c <- dataTypeConstructors d]
   unique "function" (map fst (functions u)); unique "law" (map lawName (laws u))
   forM_ (functions u) $ \(n,t) -> do
-    unless (maybe False (isLower . fst) (uncons n)) (Left "function names must start with a lowercase letter")
+    unless (take 2 n == "\"|" || maybe False (isLower . fst) (uncons n)) (Left "function names must start with a lowercase letter")
     let (args,result) = functionType t
     -- An ability operation may take no values (now :: Instant).
     if n `elem` operationNames u
@@ -223,6 +262,8 @@ checkRegexes u = do
         _ -> mapM_ (check at) (subexpressions e)
       definitionExprs d = case d of
         Forall _ body -> definitionExprs body
+        Exists _ body -> definitionExprs body
+        Not body -> definitionExprs body
         Equal a b -> [a, b]
         Holds a -> [a]
         Implies a body -> a : definitionExprs body
@@ -230,6 +271,8 @@ checkRegexes u = do
         Invoke _ args -> args
       quantified d = case d of
         Forall qs body -> qs ++ quantified body
+        Exists qs body -> qs ++ quantified body
+        Not body -> quantified body
         Implies _ body -> quantified body
         And a b -> quantified a ++ quantified b
         _ -> []
@@ -275,7 +318,17 @@ compileWithSettings = compileWithImports (\_ _ -> Nothing)
 -- | visible importer imported explains why a unit may not import another
 -- (package boundaries), or is Nothing when it may.
 compileWithImports :: (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
-compileWithImports visible bits settings sources = do
+compileWithImports = compileWithParser False parseSourcesWith (\_ name -> name)
+compileCanonical :: [Source] -> Either [Diagnostic] ([Unit],[Expanded])
+compileCanonical = compileCanonicalWithImports (\_ _ -> Nothing) 64 defaultGeneration
+compileCanonicalWithImports :: (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
+compileCanonicalWithImports = compileCanonicalWithReferenceUnits (\_ name -> name)
+-- | Documentary unit paths follow package version selection independently of
+-- executable imports. The default entry point leaves unit paths unchanged.
+compileCanonicalWithReferenceUnits :: (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
+compileCanonicalWithReferenceUnits = compileWithParser True parseSourcesWithCanonical
+compileWithParser :: Bool -> ([String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]) -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
+compileWithParser canonical parseUnits referenceUnit visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Programs that use a collection get the built-in collections unit.
@@ -310,9 +363,10 @@ compileWithImports visible bits settings sources = do
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.
         [("lawspec.host", "lawspecHost", [], \text -> usesResources text && not (importsBuiltin "lawspec.host" text)) | resources]
-  parsedUnits <- parseSourcesWith collections implicit (builtins ++ sources)
+  parsedUnits <- parseUnits collections implicit (builtins ++ sources)
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
-  imported' <- resolveImports visible parsedUnits
+  documented <- resolveDocumentaryReferences referenceUnit visible parsedUnits
+  imported' <- resolveImportsWithProfile canonical visible documented
   -- Abilities, handlers and rows, once each unit has what it imports.
   abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
   -- The harness, once every law has its final name.
@@ -337,7 +391,7 @@ compileWithImports visible bits settings sources = do
   mapM_ (\u -> Memo.memoized validationTable (key (show ("totality", bits, dataDigest, u))) (validateDefinitionTotality dataTypes bits u)) us
   let table = M.fromList [((unitName u,lawName l),l) | u <- us, l <- laws u]
       signatures u = [ (functionName d, functionArguments d, functionResult d, functionRequirements d) | d <- functionDefinitions u ]
-      expansionKey u l = key (show (bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))
+      expansionKey u l = key (show (canonical, bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))
       typedChecked environment expression = do
         (tree, requirements) <- typedExpressionWithSchemes dataTypes bits environment expression
         forM_ requirements $ \requirement -> unless (satisfiedWithData dataTypes bits [] requirement)
@@ -354,9 +408,15 @@ compileWithImports visible bits settings sources = do
           -- A law's resources are values its body may use, like inputs it
           -- does not quantify over.
           env = M.union (monoEnvironment ([(n,rigid t) | (n,t) <- parameters l] ++ lawResources l)) (definitionEnvironment u)
-      (bs0,body0,tr,argumentChecks0) <- expand (map functionName (functionDefinitions u)) table (unitName u) env [] l (map (Var . fst) (parameters l))
+      (bs0,body0,tr,argumentChecks0) <- (if canonical then expandCanonical else expand)
+        (map functionName (functionDefinitions u)) table (unitName u) env [] l (map (Var . fst) (parameters l))
       bs <- mapM (\i -> do ps <- mapM resolveExpr (inputRefinements i); pure i{inputRefinements=ps}) bs0
       body <- resolveAssertion body0
+      forM_ (assertionInputs body) $ \input -> do
+        unless (valueType checkTypes (inputType input) || (symbolic && valueType checkTypes (abstractType (inputType input))))
+          (throwC ("unsupported quantified type: " ++ show (inputType input)))
+        when (not symbolic && not (concreteValue checkTypes (inputType input)))
+          (throwC "executable logical binders must have a concrete value type")
       argumentChecks <- mapM resolveExpr argumentChecks0
       checkedInputs <- forM bs $ \v -> do
         t <- resolve (inputType v)
@@ -372,7 +432,14 @@ compileWithImports visible bits settings sources = do
       forM_ os $ \c -> unless (satisfiedWithData dataTypes bits allowed c) (throwC ("unsatisfied capability: " ++ show c))
       unless symbolic $ do
         lift (unique "expanded input name" (map inputName checkedInputs))
-      forM_ (examples l) $ \ex -> withContext ("example " ++ exampleName ex ++ ": ") $ do
+      -- Canonical tables retain all columns until reuse has expanded the law.
+      -- Its authoritative inputs may belong to an imported requirement.
+      let tableInputs ex
+            | canonical && any (`isPrefixOf` exampleName ex) ["row ","table "] =
+                ex { bindings = [(n,v) | (n,v) <- bindings ex, n `elem` map inputName checkedInputs] }
+            | otherwise = ex
+          sourceExamples = map tableInputs (examples l)
+      forM_ sourceExamples $ \ex -> withContext ("example " ++ exampleName ex ++ ": ") $ do
         lift (unique "example binding" (map fst (bindings ex)))
         unless (M.keys (M.fromList (bindings ex)) == M.keys (M.fromList [(inputName v,()) | v <- checkedInputs])) (throwC ("example " ++ exampleName ex ++ " must bind exactly: " ++ intercalate ", " (map inputName checkedInputs)))
         forM_ (bindings ex) $ \(n,v) -> do
@@ -384,11 +451,11 @@ compileWithImports visible bits settings sources = do
           actualType <- infer exampleEnv (actual check) >>= resolve
           checkExpr M.empty actualType (literalExpr (expected check))
       let (a,b,gs) = firstConclusion body
-      let lawEnvironment = M.union (monoEnvironment [(inputId inp,inputType inp) | inp <- checkedInputs]) env
+      let lawEnvironment = M.union (monoEnvironment [(inputId inp,inputType inp) | inp <- checkedInputs ++ assertionInputs body]) env
           expressionEnvironment = M.union (monoEnvironment [(inputName inp,inputType inp) | inp <- checkedInputs]) lawEnvironment
           lawEnv = environmentTypes lawEnvironment
-      ir <- if symbolic then pure [] else lift ((++) <$> mapM (typedChecked lawEnvironment) (concatMap inputRefinements checkedInputs ++ assertionExpressions body) <*> mapM (typedChecked expressionEnvironment) [actual c | ex <- examples l, c <- expectations ex])
-      normalized <- if symbolic then pure (examples l) else forM (examples l) $ \ex -> do
+      ir <- if symbolic then pure [] else lift ((++) <$> mapM (typedChecked lawEnvironment) (concatMap inputRefinements checkedInputs ++ assertionExpressions body) <*> mapM (typedChecked expressionEnvironment) [actual c | ex <- sourceExamples, c <- expectations ex])
+      normalized <- if symbolic then pure sourceExamples else forM sourceExamples $ \ex -> do
         bs' <- forM (bindings ex) $ \(n,v) -> do
           t <- maybe (throwC "unknown example input") pure (lookup n [(inputName inp,inputType inp) | inp <- checkedInputs])
           value <- lift (normalizeLiteralWithData dataTypes bits t v)
@@ -400,11 +467,13 @@ compileWithImports visible bits settings sources = do
         pure ex{bindings=bs',expectations=checks'}
       let resolvedInputs = [inp{inputRefinements=map (mapExprTypes resolveKnown) (inputRefinements inp)} | inp <- checkedInputs]
           resolveKnown t = t
-      pure (Expanded (unitName u) (lawName l) resolvedInputs a b gs body tr l{examples=normalized} ir (if take 9 (lawName l) == "contract " then "contract" else "law") settings (map (planDomain [(inputId i,inputType i) | i <- resolvedInputs]) resolvedInputs) argumentChecks)
+      pure (Expanded (unitName u) (lawName l) resolvedInputs a b gs body tr l{examples=normalized} ir (if take 9 (lawName l) == "contract " then "contract" else "law") settings (map (planDomain [(inputId i,inputType i) | i <- resolvedInputs]) resolvedInputs) argumentChecks (if canonical then UniversalDomain else NonemptyDomain))
       ) (withDataDeclarations dataTypes (initialState bits))
   mapM_ (validateContracts dataTypes bits) us
+  witnessed <- prepareHarnessWitnesses (filter ((/= "prelude") . unitName) us)
+    (filter (null . parameters . original) allExpanded)
   (specialized, properties) <- specializeDefinitions dataTypes bits (satisfiedWithData dataTypes bits [])
-    (filter ((/= "prelude") . unitName) us) (filter (null . parameters . original) allExpanded)
+    witnessed (filter (null . parameters . original) allExpanded)
   closedUnits <- either (Left . pure . (\message -> Diagnostic "definition" message Nothing)) Right
     (mapM (Elaboration.elaborateDefinitionUnit dataTypes bits) specialized)
   closedProgram <- deferProgramPostconditions (Core.Program bits dataTypes closedUnits)
@@ -434,10 +503,13 @@ invokedLaws table root = go Set.empty (invoked (definition root))
     go seen (n : rest)
       | Set.member n seen = go seen rest
       | otherwise =
-          let found = [ l | ((_, name), l) <- M.toList table, name `isSuffixOf` n ]
+          let found = [ l | ((owner, name), l) <- M.toList table,
+                name `isSuffixOf` n || (owner == "prelude" && name == preludeLawName n) ]
           in found ++ go (Set.insert n seen) (concatMap (invoked . definition) found ++ rest)
     invoked d = case d of
       Forall _ body -> invoked body
+      Exists _ body -> invoked body
+      Not body -> invoked body
       Implies _ body -> invoked body
       And a b -> invoked a ++ invoked b
       Invoke n _ -> [n]
@@ -456,11 +528,17 @@ validationTable = unsafePerformIO (Memo.newPersistentTable "validate" 4096 (cons
 prettyExpanded :: Expanded -> String
 prettyExpanded e | propertyKind e == "contract" = description (original e)
 prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ (if null (inputRefinements i) then "" else " where " ++ intercalate " && " (map showExpr (inputRefinements i))) ++ ")" | i <- inputs e] ++ " . " ++ showAssertion (assertion e)
-  where names = M.fromList [(inputId i,Var (inputName i)) | i <- inputs e]
+  where names = M.fromList [(inputId i,Var (inputName i)) | i <- inputs e ++ assertionInputs (assertion e)]
         showExpr = prettyExpr . subst names
         showAssertion (AssertEqual a b) = showExpr a ++ " = " ++ showExpr b
         showAssertion (AssertImplies g a) = showExpr g ++ " implies " ++ showAssertion a
         showAssertion (AssertAll as) = intercalate " and " ["(" ++ showAssertion a ++ ")" | a <- as]
+        showAssertion (AssertNot body) = "not (" ++ showAssertion body ++ ")"
+        showAssertion (AssertQuantified kind input body) =
+          (if kind == ForEvery then "for all " else "there exists ") ++ "(" ++ inputName input ++ " :: " ++
+          prettyType (inputType input) ++ (if null (inputRefinements input) then "" else " where " ++
+            intercalate " and " (map showExpr (inputRefinements input))) ++ ") " ++
+          (if kind == ForEvery then "=> " else "such that ") ++ showAssertion body ++ " end"
 
 -- | Braced references are checked against the law's lexical function environment.
 metadataText :: [String] -> String -> Either String String
@@ -479,6 +557,8 @@ assertionExpressions :: Assertion -> [Expr]
 assertionExpressions (AssertEqual a b) = [a,b]
 assertionExpressions (AssertImplies g body) = g:assertionExpressions body
 assertionExpressions (AssertAll as) = concatMap assertionExpressions as
+assertionExpressions (AssertNot body) = assertionExpressions body
+assertionExpressions (AssertQuantified _ input body) = inputRefinements input ++ assertionExpressions body
 normalizeLiteralWithData :: [Core.DataDeclaration] -> Int -> Type -> Literal -> Either String Literal
 normalizeLiteralWithData dataTypes bits t (ConstructorLiteral name fields) = do
   parameters <- evalStateT (constructorParameters t name) (withDataDeclarations dataTypes (initialState bits))
@@ -562,6 +642,11 @@ resolveAssertion :: Assertion -> C Assertion
 resolveAssertion (AssertEqual a b) = AssertEqual <$> resolveExpr a <*> resolveExpr b
 resolveAssertion (AssertImplies a b) = AssertImplies <$> resolveExpr a <*> resolveAssertion b
 resolveAssertion (AssertAll xs) = AssertAll <$> mapM resolveAssertion xs
+resolveAssertion (AssertNot body) = AssertNot <$> resolveAssertion body
+resolveAssertion (AssertQuantified kind input body) = do
+  ty <- resolve (inputType input)
+  predicates <- mapM resolveExpr (inputRefinements input)
+  AssertQuantified kind (input { inputType = ty, inputRefinements = predicates }) <$> resolveAssertion body
 
 
 abstractType :: Type -> Type

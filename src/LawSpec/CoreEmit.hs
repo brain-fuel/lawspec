@@ -58,6 +58,7 @@ import LawSpec.TargetNames (nativeName, allTargetKeywords)
 import qualified LawSpec.Targets as Targets
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
+import qualified Data.Map.Strict as M
 import Control.Monad (unless)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
 import Data.Binary (Binary(..))
@@ -87,19 +88,40 @@ emitPlan = emitPlanWithFormat False
 -- | Canonical adapter references are independent of the selected presentation.
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithFormat minify target given | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
+emitPlanWithFormat minify target plan = do
+  checkExecutionPlan plan
+  mapM_ (checkNames target . plannedUnit) (plannedUnits plan)
+  emitPlanWithFormatUnchecked minify target plan
+
+-- Every public emitter receives an execution plan, never an unplanned search.
+-- Refuse malformed manually constructed plans before any target renderer runs.
+checkExecutionPlan :: Plan -> Either [Diagnostic] ()
+checkExecutionPlan plan = mapM_ check [plannedProperty p | u <- plannedUnits plan, p <- plannedProperties u]
+  where
+    executable proposition = case proposition of
+      C.Equation _ _ _ -> True
+      C.Implication _ body -> executable body
+      C.Conjunction bodies -> all executable bodies
+      C.Negation _ -> False
+      C.Quantified _ _ _ -> False
+    check property = unless (all executable (C.propertyBody property :
+      concatMap C.exampleExpectations (C.propertyExamples property)))
+      (Left [Diagnostic "verification-incomplete" "a scoped proposition requires a complete execution plan before native emission"
+        (Just (C.propertyLocation property))])
+emitPlanWithFormatUnchecked :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithFormatUnchecked minify target given | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
-emitPlanWithFormat minify target given | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
+emitPlanWithFormatUnchecked minify target given | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
 -- Groovy runs over the Java target's files (DEC-groovy-over-java).
-emitPlanWithFormat minify "groovy" given =
+emitPlanWithFormatUnchecked minify "groovy" given =
   Groovy.groovyFromJava given =<< emitPlanWithFormat minify "java" (escapePlan "groovy" given)
 -- Clojure runs over them too (DEC-clojure-over-java).
-emitPlanWithFormat minify "clojure" given =
+emitPlanWithFormatUnchecked minify "clojure" given =
   Clojure.clojureFromJava Clojure.noClojureBindings given =<< emitPlanWithFormat minify "java" (escapePlan "clojure" given)
-emitPlanWithFormat minify "swift" given = Swift.emitSwift minify
+emitPlanWithFormatUnchecked minify "swift" given = Swift.emitSwift minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
-emitPlanWithFormat minify target given = do
+emitPlanWithFormatUnchecked minify target given = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan given))))
   emittedFiles <- emitPlanFormatted minify target plan
   extras <- companionArtifacts minify target plan
@@ -230,6 +252,16 @@ escapePlan target plan = plan { plannedUnits = [u { plannedUnit = escapeUnit (pl
       { C.unitDeclarations = map (escapeDeclaration target) (C.unitDeclarations unit)
       , C.unitDefinitions = [d { C.definitionDeclaration = escapeDeclaration target (C.definitionDeclaration d) }
                             | d <- C.unitDefinitions unit] }
+
+checkNames :: String -> C.Unit -> Either [Diagnostic] ()
+checkNames target unit = mapM_ collision (M.toList groups)
+  where
+    groups = M.fromListWith (++)
+      [(nativeName target (C.declarationName d), [C.declarationName d]) | d <- C.unitDeclarations unit]
+    collision (native,written) = unless (length written <= 1)
+      (Left [Diagnostic "native-name-collision"
+        ("the public native name " ++ native ++ " on " ++ target ++ " is shared by " ++
+         intercalate ", " written ++ "; choose an explicit nativeBindings.names override by declaration identity") Nothing])
 
 escapeDeclaration :: String -> C.Declaration -> C.Declaration
 escapeDeclaration target d = d { C.declarationName = nativeName target (C.declarationName d) }
@@ -478,7 +510,7 @@ emitPlanFormatted minify target Plan{..} = do
       | target == "haskell" = HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "python" = PythonDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | otherwise = WebDefinitions.definitionCalls (map plannedUnit plannedUnits)
-    lawKey law = D.keyOf graph (show (planMachineBits, plannedProperty law)) (D.lawReferences graph (plannedProperty law))
+    lawKey law = D.keyOf graph (show (planMachineBits, law)) (D.lawReferences graph (plannedProperty law))
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
       in fmap (map unstore) $ memoized emitTable (digestHex (digestString (show (minify, target, planMachineBits,
@@ -522,14 +554,32 @@ emitPlanWithOptions minify target sourceDir testDir plan =
 -- so a law about `class` or `type` still compiles in Java or Go.
 -- ref:DEC-idiomatic-generated-types
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithNativeOptions minify "groovy" sourceDir testDir unescaped unwitnessed =
+emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
+  checkExecutionPlan original
+  let rename declaration = case lookup (C.declarationId declaration) (NB.bindingNames bindings) of
+        Just name -> declaration { C.declarationName = name }
+        Nothing -> declaration
+      unit u = u { C.unitDeclarations = map rename (C.unitDeclarations u)
+                 , C.unitDefinitions = [d { C.definitionDeclaration = rename (C.definitionDeclaration d) }
+                                       | d <- C.unitDefinitions u] }
+      plan = original { plannedUnits = [u { plannedUnit = unit (plannedUnit u) } | u <- plannedUnits original] }
+      named = bindings { NB.bindingFunctions = [(rename d,r) | (d,r) <- NB.bindingFunctions bindings]
+                       , NB.bindingCalls = [(rename d,c) | (d,c) <- NB.bindingCalls bindings]
+                       , NB.bindingNames = [] }
+  mapM_ (checkNames target . plannedUnit) (plannedUnits plan)
+  emitPlanWithNativeNames minify target sourceDir testDir named plan
+
+emitPlanWithNativeNames :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithNativeNames minify "groovy" sourceDir testDir unescaped unwitnessed =
   Groovy.groovyLayout sourceDir testDir <$> (Groovy.groovyFromJava unwitnessed =<<
     emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "groovy" unescaped) (escapePlan "groovy" unwitnessed))
-emitPlanWithNativeOptions minify "clojure" sourceDir testDir unescaped unwitnessed = do
+emitPlanWithNativeNames minify "clojure" sourceDir testDir unescaped unwitnessed = do
   (java, clojure) <- Clojure.splitBindings unescaped
   Clojure.clojureLayout sourceDir testDir <$> (Clojure.clojureFromJava clojure unwitnessed =<<
     emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "clojure" java) (escapePlan "clojure" unwitnessed))
-emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
+emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = do
+  -- Public names are deterministic. A collision never receives a silent suffix.
+  mapM_ (checkNames target . plannedUnit) (plannedUnits unwitnessed)
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
       bindings = escapeBindings target unescaped
   unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","scala","go","haskell","erlang","elixir","gleam","fsharp","csharp","swift"] || not (any Binding.resolvedGeneratorStub

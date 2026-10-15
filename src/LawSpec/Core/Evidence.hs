@@ -23,7 +23,7 @@ import qualified LawSpec.Core.Program as P
 -- is a run's outcome (a test that failed, then passed on a retry), which
 -- lawspec evidence reads from the last run.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
-  | KnownFailing | Flaky | Skipped
+  | KnownFailing | Flaky | Skipped | Planned | NotVerified | Incomplete | Unsupported
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- | Every status, in order of strength, for reports that list them all.
@@ -44,6 +44,10 @@ statusName Assumed = "assumed"
 statusName KnownFailing = "known-failing"
 statusName Flaky = "flaky"
 statusName Skipped = "skipped"
+statusName Planned = "planned"
+statusName NotVerified = "not-verified"
+statusName Incomplete = "incomplete"
+statusName Unsupported = "unsupported"
 
 -- | Each claim the program makes, with the strongest evidence found for it, so
 -- lawspec evidence can show which laws are proved and which only tested.

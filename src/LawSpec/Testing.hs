@@ -3,10 +3,14 @@
 module LawSpec.Testing where
 import GHC.Generics (Generic)
 import LawSpec.Core
+import qualified LawSpec.Core.Verification as V
 import LawSpec.Common
 import LawSpec.Scalar
 import LawSpec.Core.Eval (evaluateValue, evaluateValuePure)
 import LawSpec.Core.Definitions (prepareDefinitions)
+import LawSpec.Core.Quantification (lowerFiniteProposition, lowerWitnessProposition, lowerSearchProposition)
+import LawSpec.Core.Search (Candidate(..), strategyCandidates)
+import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Value
 import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements, freeExistentials, substitute, witnessPool)
@@ -23,7 +27,7 @@ import System.Mem.StableName (StableName, makeStableName)
 import Data.List (find, nub, partition, sort, stripPrefix, zip3)
 import LawSpec.Regex (Regex, parseRegex, regexSamples)
 import LawSpec.IndexTerm
-import Control.Monad (filterM, unless)
+import Control.Monad (filterM, unless, when)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
 
 -- | The testing plan is computed once, from Core, and shared by every target,
@@ -55,18 +59,49 @@ data IndexedGeneration = IndexedGeneration
   , indexedEquations :: [(Id, [String])]
   } deriving (Eq, Show, Generic)
 
--- | A law that cannot be planned, such as one over an uninhabited domain, is a
--- generation error at compile time, never a test that passes vacuously.
+-- | An unavailable execution plan is a generation error. Legacy input domains
+-- require inhabitants; canonical universal domains can be proved empty, with
+-- explicit zero-case evidence rather than successful property-testing evidence.
 -- ref:DEC-never-pass-vacuously
 -- | The plan sees each definition's field nodes as the matches they stand
 -- for (lowerFieldNodes), as every backend does.
 planTesting :: Program -> Either [Diagnostic] Plan
 planTesting = planLowered . lowerProgramFields
 
+-- | Execution is planned independently of completed evidence. No layers means
+-- no optional tests; typed definitions still reach every native emitter.
+planTestingWith :: V.Verification -> Program -> Either [Diagnostic] Plan
+planTestingWith config program = do
+  unless (V.selected config V.Model || all (\u -> null (unitMachines u) && null (unitSupervisors u)) (programUnits program))
+    (Left [Diagnostic "verification-unsupported" "selective native generation for models and supervision is not yet supported; the typed model and runtime semantics have been retained" Nothing])
+  let executable = any (V.selected config) [V.Exhaustive,V.Property,V.Examples]
+      selectedProgram = program { programUnits =
+        [ u { unitProperties = if executable then unitProperties u else [] }
+        | u <- programUnits program ] }
+  plan <- planTesting selectedProgram
+  when (V.selected config V.Exhaustive && not (V.selected config V.Property) &&
+    any ((== Nothing) . finiteCases) (concatMap plannedProperties (plannedUnits plan)))
+    (Left [Diagnostic "verification-incomplete" "complete finite coverage was requested but exceeds the finite domain or exhaustive limit; no exhaustive success is claimed" Nothing])
+  pure plan { plannedUnits = [let properties = map choose (plannedProperties u)
+    in u { plannedProperties = properties, plannedUnit = (plannedUnit u) { unitProperties = map plannedProperty properties } }
+    | u <- plannedUnits plan] }
+  where
+    choose p = p
+      { plannedProperty = (plannedProperty p) { propertyExamples =
+          if V.selected config V.Examples then propertyExamples (plannedProperty p) else [] }
+      , finiteCases = if propertyInputDomain (plannedProperty p) == UniversalDomain && finiteCases p == Just [] then Just []
+          else if V.selected config V.Exhaustive && finiteCases p /= Nothing then finiteCases p
+          else if V.selected config V.Property then
+            if null (propertyInputs (plannedProperty p)) then finiteCases p else Nothing
+          else Just []
+      , boundaryCases = if V.selected config V.Property then boundaryCases p else [] }
+
 planLowered :: Program -> Either [Diagnostic] Plan
 planLowered program@Program{..} = do
   plan <- lawPlanner program
-  let unit u = PlannedUnit u <$> mapM property (unitProperties u)
+  let unit u = do
+        properties <- mapM property (unitProperties u)
+        pure (PlannedUnit (u { unitProperties = map plannedProperty properties }) properties)
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right (plan p)
   Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
 
@@ -102,10 +137,52 @@ planTable = unsafePerformIO (newPersistentTable "plan" 2048 (const 1))
 -- | One property's finite domain, boundary cases and generator requirements.
 planProperty :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value) -> [Definition]
   -> Property -> Either String PlannedProperty
-planProperty registry programMachineBits invoke definitions p = do
+planProperty registry bits invoke definitions p
+  | propertyInputDomain p == UniversalDomain = do
+      let qs = propertyInputs p
+          limit = exhaustiveLimit (propertyGeneration p)
+      closedRestrictions <- mapM (evaluateValue registry bits invoke [])
+        [predicate | q <- qs,predicate <- quantifiedPredicates q,null (freeBinders predicate)]
+      finite <- if ScalarValue (SBool False) `elem` closedRestrictions
+        then pure (Just []) else finiteUniversalInputs registry bits limit invoke qs
+      case finite of
+        Just [] -> do
+          unless (null (propertyExamples p))
+            (Left "an example cannot supply inputs in an empty universal domain")
+          -- No input can reach the body, including any inner infinite search
+          -- or native operation. Keep the authoritative body in the program;
+          -- the execution plan needs neither generators nor a body evaluation.
+          let boolean = scalarType "Bool"
+              truth = Expr boolean (Constant (SBool True)) (GeneratedFrom (propertyId p))
+          pure (PlannedProperty (p { propertyBody = Equation (Structural boolean) truth truth }) (Just []) [] [])
+        _ -> planPopulatedProperty registry bits invoke definitions p
+  | otherwise = planPopulatedProperty registry bits invoke definitions p
+
+planPopulatedProperty :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value) -> [Definition]
+  -> Property -> Either String PlannedProperty
+planPopulatedProperty registry programMachineBits invoke definitions p = do
       let qs = propertyInputs p
           settings = propertyGeneration p
           types = map (binderType . quantifiedBinder) qs
+          effectful = withSeen []
+          withSeen seen expression = case expressionNode expression of
+            Perform _ _ -> True
+            Handle _ _ -> True
+            Calls _ _ -> True
+            Helper operation _ | operation `elem` [Recorded,AcquireResource,ReleaseResource,FreePort] -> True
+            ExternalCall name arguments -> any (withSeen seen) arguments || any
+              (\definition -> declarationId (definitionDeclaration definition) == name &&
+                (definitionOrchestrates definition || not (null (declarationUses (definitionDeclaration definition))) ||
+                 (name `notElem` seen && withSeen (name : seen) (definitionBody definition)))) definitions
+            _ -> any (withSeen seen) (children expression)
+          searched proposition = case proposition of
+            Quantified _ _ _ -> propositionExpressions proposition
+            Negation body -> searched body
+            Conjunction bodies -> concatMap searched bodies
+            Implication _ body -> searched body
+            Equation _ _ _ -> []
+      when (any effectful (searched (propertyBody p)))
+        (Left "quantifier-search-unsupported: effectful witness search requires explicit snapshot semantics")
       mapM_ (supportedWithRegistry registry) types
       let inhabitants = population registry
       mapM_ (\ty -> unless (inhabited inhabitants ty) (Left ("uninhabited input domain: " ++ show ty))) types
@@ -114,9 +191,11 @@ planProperty registry programMachineBits invoke definitions p = do
           unless (v == ScalarValue (SBool True)) (Left "refined input domain has no valid tuples")
         else Right ()) (concatMap quantifiedPredicates qs)
       domains <- mapM (finiteValuesWithRegistry registry programMachineBits (exhaustiveLimit settings)) types
-      finite <- case sequence domains of
-        Just sets | product (map (toInteger . length) sets) <= toInteger (exhaustiveLimit settings) -> Just <$> filterM (validTupleWithDefinitions registry programMachineBits invoke qs) (sequence sets)
-        _ -> Right Nothing
+      finite <- if propertyInputDomain p == UniversalDomain then
+        finiteUniversalInputs registry programMachineBits (exhaustiveLimit settings) invoke qs
+        else case sequence domains of
+          Just sets | product (map (toInteger . length) sets) <= toInteger (exhaustiveLimit settings) -> Just <$> filterM (validTupleWithDefinitions registry programMachineBits invoke qs) (sequence sets)
+          _ -> Right Nothing
       unless (finite /= Just []) (Left "refined input domain has no valid tuples")
       -- A text refined by a regex starts from texts the regex matches, and
       -- a value whose field is, from values with such fields.
@@ -134,7 +213,112 @@ planProperty registry programMachineBits invoke definitions p = do
           (lookup (binderId (quantifiedBinder q)) bindings)) qs
         valid <- validTupleWithDefinitions registry programMachineBits invoke qs values
         unless valid (Left ("example " ++ exampleName example ++ " violates refinement"))) (propertyExamples p)
-      pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q ++ patternHints definitions q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
+      let scopedDomain = finiteQuantifierTerms programMachineBits (exhaustiveLimit settings)
+            (finiteValuesWithRegistry registry programMachineBits (exhaustiveLimit settings))
+      body <- if propertyInputDomain p == UniversalDomain then
+        lowerSearchProposition scopedDomain (boundedLawSearch registry programMachineBits p)
+          (exhaustiveLimit settings) (maxAttempts settings) (propertyId p) (harnessWitnesses (propertyHarness p)) (propertyBody p)
+        else lowerWitnessProposition scopedDomain
+          (exhaustiveLimit settings) (propertyId p) (harnessWitnesses (propertyHarness p)) (propertyBody p)
+      exampleBodies <- mapM (\example -> do
+        expectations <- mapM (lowerFiniteProposition scopedDomain
+          (exhaustiveLimit settings) (propertyId p)) (exampleExpectations example)
+        pure (example { exampleExpectations = expectations })) (propertyExamples p)
+      pure (PlannedProperty (p { propertyBody = body, propertyExamples = exampleBodies }) finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q ++ patternHints definitions q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
+
+-- | Bounded deterministic search shares typed strategy expressions with the
+-- ordinary harness. Samples are never exposed as complete finite covers.
+-- Restrictions are checked later in the actual lexical prefix, including
+-- every recheck made while the outer framework shrinks a counterexample.
+boundedLawSearch :: TypeRegistry -> Int -> Property -> Quantifier -> Proposition -> Either String [Candidate]
+boundedLawSearch registry bits property q body = case selected of
+  strategy:_ -> strategyCandidates budget pool strategy
+  [] | configured -> pure []
+     | otherwise -> map Candidate <$> pool ty (Just q)
+  where
+    settings = propertyGeneration property
+    budget = max 0 (min (cases settings) (maxAttempts settings))
+    ty = binderType (quantifiedBinder q)
+    identity = binderId (quantifiedBinder q)
+    selected = [strategy | (target,_,_,strategy) <- harnessSearches (propertyHarness property),target == identity]
+    configured = any ((== identity) . witnessTarget) (harnessWitnesses (propertyHarness property))
+    origin = GeneratedFrom (propertyId property)
+    pool wanted aim = do
+      let target = case aim of
+            Just aimed -> aimed
+            Nothing | wanted == ty -> q
+            _ -> Quantifier (Binder (Id (idText identity ++ "::sample")) "sample" wanted) [] []
+          hints = [candidate | hint <- domainHints target,candidate <- nearby wanted hint]
+          literals = [normal expression | root <- propositionExpressions body,expression <- descend root,
+            expressionType expression == wanted,literalSeed expression]
+          small = case wanted of
+            Constructor name [] | isInteger name -> [Expr wanted (Constant scalar) origin |
+              n <- take budget (0 : concat [[k,negate k] | k <- [1..]]),
+              Right scalar <- [validateScalar bits (SInteger name n)]]
+            _ -> []
+      finite <- finiteQuantifierTerms bits (max 1 (maxAttempts settings))
+        (finiteValuesWithRegistry registry bits (max 1 (maxAttempts settings))) target
+      edges <- case finite of
+        Just values -> pure values
+        Nothing -> mapM valueTerm =<< boundariesWithRegistry registry bits wanted
+      pure (take budget (nub (map normal (hints ++ literals ++ edges ++ small))))
+    descend expression = expression : concatMap descend (children expression)
+    normal expression = (mapChildren normal expression) { expressionOrigin = origin }
+    literalSeed expression = isConcrete expression || case expressionNode expression of
+      Unary Negate value -> literalSeed value
+      _ -> False
+    valueTerm value = case value of
+      ScalarValue scalar -> pure (Expr (valueType value) (Constant scalar) origin)
+      DataValue wanted tag values -> (\terms -> Expr wanted (Construct tag terms) origin) <$> mapM valueTerm values
+      PresenceValue wanted _ -> (\scalar -> Expr wanted (Constant scalar) origin) <$> toScalarValue value
+    nearby wanted hint = case (wanted,expressionType hint) of
+      (Constructor name [],Constructor actual []) | isInteger name && isInteger actual ->
+        [integerCandidate wanted (adjust offset) | offset <- [0,1,-1]]
+        where
+          integer = scalarType "Integer"
+          base = if expressionType hint == integer then hint else Expr integer (Convert CheckedArgument integer hint) origin
+          adjust 0 = base
+          adjust offset = Expr integer (Binary Add (Numeric integer) base
+            (Expr integer (Constant (SInteger "Integer" offset)) origin)) origin
+      _ -> [hint | expressionType hint == wanted]
+    integerCandidate wanted value
+      | wanted == scalarType "Integer" = value
+      | otherwise = let
+          name = case wanted of Constructor n [] -> n; _ -> "Integer"
+          integer = scalarType "Integer"
+          bound op n = Expr (scalarType "Bool") (Binary op (Numeric integer) value
+            (Expr integer (Constant (SInteger "Integer" n)) origin)) origin
+          conditions = case integerBounds bits name of
+            Just (lo,hi) -> [bound GreaterEqual lo,bound LessEqual hi]
+            Nothing | name == "BigUInt" -> [bound GreaterEqual 0]
+            _ -> []
+          valid = foldr (\a b -> Expr (scalarType "Bool") (ShortCircuit And a b) origin)
+            (Expr (scalarType "Bool") (Constant (SBool True)) origin) conditions
+          in Expr wanted (If valid (Expr wanted (Convert CheckedArgument wanted value) origin)
+            (Expr wanted (Constant (SInteger name 0)) origin)) origin
+
+-- | A complete cover may contain terms depending on earlier inputs. Evaluate
+-- each in its actual prefix, then recheck every restriction before continuing.
+-- The product bounds expansion before constructing tuples; nothing sampled is
+-- admitted as a complete domain. Legacy domains retain their prior planning.
+finiteUniversalInputs :: TypeRegistry -> Int -> Int -> (Id -> [Value] -> Either String Value)
+  -> [Quantifier] -> Either String (Maybe [[Value]])
+finiteUniversalInputs registry bits limit invoke qs = do
+  domains <- mapM (finiteQuantifierTerms bits limit (finiteValuesWithRegistry registry bits limit)) qs
+  if Just [] `elem` domains then pure (Just []) else case sequence domains of
+    Just covers | product (map (toInteger . length) covers) <= toInteger limit ->
+      Just <$> walk [] (zip qs covers)
+    _ -> pure Nothing
+  where
+    walk prefix [] = pure [map snd prefix]
+    walk prefix ((q,terms):rest) = fmap concat $ mapM (\term -> do
+      value <- evaluateValue registry bits invoke prefix term
+      let bindings = prefix ++ [(binderId (quantifiedBinder q),value)]
+      accepted <- allM (\predicate -> (== ScalarValue (SBool True)) <$>
+        evaluateValue registry bits invoke bindings predicate) (quantifiedPredicates q)
+      if accepted then walk bindings rest else pure []) terms
+    allM _ [] = pure True
+    allM f (x:xs) = do accepted <- f x; if accepted then allM f xs else pure False
 
 -- | Refinements may mention earlier inputs, so a tuple is checked input by input
 -- in order.

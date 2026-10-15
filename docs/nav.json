@@ -313,6 +313,12 @@
           },
           {
             "path": "reference/language/expressions-and-arithmetic.md"
+          },
+          {
+            "path": "reference/language/rc1.md"
+          },
+          {
+            "path": "reference/language/linguist-eligibility.md"
           }
         ]
       },

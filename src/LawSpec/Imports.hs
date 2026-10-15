@@ -8,7 +8,7 @@
 -- under names derived from the declaring unit, so two units may declare the
 -- same names. Adapter signatures and concrete laws belong to their unit and
 -- are not importable.
-module LawSpec.Imports (resolveImports, importedDefinitionName) where
+module LawSpec.Imports (resolveImports, resolveImportsWithProfile, importedDefinitionName) where
 
 import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
@@ -22,7 +22,7 @@ import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
 import LawSpec.Common (importedDefinitionName)
 import Data.Functor.Identity (Identity(..))
-import Data.List (intercalate, isSuffixOf, nub, stripPrefix, isInfixOf)
+import Data.List (intercalate, isSuffixOf, isPrefixOf, nub, stripPrefix, isInfixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
@@ -31,7 +31,9 @@ import qualified Data.Set as S
 data Names m = Names
   { onType :: String -> m String, onConstructor :: String -> m String
   , onRefinement :: String -> m String, onValue :: String -> m String
-  , onLaw :: String -> m String }
+  , onLaw :: String -> m String
+  , contextualArticles :: Bool, restrictionExpression :: Bool
+  , declaredValue :: String -> Bool }
 
 data Kind = TypeName | ConstructorName | RefinementName | ValueName | LawName
   deriving (Eq, Ord, Show)
@@ -76,14 +78,17 @@ data Resolved = Resolved { resolvedUnit :: Unit, resolvedExports :: Exports, por
 -- | visible importer imported: Nothing when the import is allowed, or the reason
 -- it is not (package boundaries).
 resolveImports :: (String -> String -> Maybe String) -> [(Unit, [Import])] -> Either [Diagnostic] [Unit]
-resolveImports visible units = mapM (\(u, _) -> resolvedUnit <$> table Lazy.! unitName u) units
+resolveImports = resolveImportsWithProfile False
+
+resolveImportsWithProfile :: Bool -> (String -> String -> Maybe String) -> [(Unit, [Import])] -> Either [Diagnostic] [Unit]
+resolveImportsWithProfile canonical visible units = mapM (\(u, _) -> resolvedUnit <$> table Lazy.! unitName u) units
   where
     -- Lazy in import order; LawSpec.Parser rejects import cycles.
-    table = Lazy.fromList [(unitName u, resolveUnit visible table u imports) | (u, imports) <- units]
+    table = Lazy.fromList [(unitName u, resolveUnit canonical visible table u imports) | (u, imports) <- units]
 
-resolveUnit :: (String -> String -> Maybe String) -> M.Map String (Either [Diagnostic] Resolved)
+resolveUnit :: Bool -> (String -> String -> Maybe String) -> M.Map String (Either [Diagnostic] Resolved)
   -> Unit -> [Import] -> Either [Diagnostic] Resolved
-resolveUnit visible table u allImports = do
+resolveUnit canonical visible table u allImports = do
   let imports = [i | i <- allImports, not (null (importUnit i))]
       exportLines = [i | i <- allImports, null (importUnit i)]
       at i = Just (spanStart (importSpan i))
@@ -111,12 +116,13 @@ resolveUnit visible table u allImports = do
       lookupName kind name = case M.lookup (kind, name) scope of
         Just (target : _) -> Right target
         _ -> case break (== '.') name of
-          (alias, '.' : rest) | Just (unit, exports) <- M.lookup alias aliasUnits
-                              , kind /= LawName || take 1 rest == "`" ->
+          (alias, '.' : rest) | Just (unit, exports) <- M.lookup alias aliasUnits ->
             Left [Diagnostic "import" (missing unit exports kind rest) Nothing]
           _ -> Right name
       names = Names (lookupName TypeName) (lookupName ConstructorName)
         (lookupName RefinementName) (lookupName ValueName) (lookupName LawName)
+        canonical False (\n -> n `elem` map fst (functions u) || n `elem` map functionName (functionDefinitions u) ||
+          n `elem` operationNames u || M.member (ValueName,n) scope)
   renamed <- walkUnit names u
   -- Copy what the renamed unit uses, and what that uses in turn.
   let origins = [(resolvedUnit source, portable source) | (_, source) <- sources]
@@ -138,7 +144,10 @@ resolveUnit visible table u allImports = do
   -- Re-exports: each listed name resolves to what this unit imports it as.
   reexports <- forM [(i, item) | i <- exportLines, item <- importItems i] $ \(i, item) -> do
     let law = "`" `isSuffixOf` item
-        base = if law then item else reverse (takeWhile (/= '.') (reverse item))
+        unqualified name = case break (== '.') name of
+          (alias, '.' : rest) | M.member alias aliasUnits -> rest
+          _ -> name
+        base = if law then "`" ++ unqualified (unquote item) ++ "`" else unqualified item
         resolvedAs kind = case M.lookup (kind, if kind == LawName then unquote item else item) scope of
           Just (target : _) -> [(kind, base, target)]
           _ -> []
@@ -215,7 +224,7 @@ resolveUnit visible table u allImports = do
   where
     isPrefixOf' prefix s = take (length prefix) s == prefix
     nubOn key = foldr (\x acc -> if key x `elem` map key acc then acc else x : acc) []
-    unquote n = filter (/= '`') n
+    unquote = unquoteLaw
     xs `onlyIf` condition = if condition then xs else []
     missing unit exports kind name
       | name `elem` exportAdapters exports =
@@ -235,6 +244,7 @@ importScope u i exports = do
         [((RefinementName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportRefinements exports)] ++
         [((ValueName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportDefinitions exports)] ++
         [((LawName, alias ++ ".`" ++ n ++ "`"), q) | (n, q) <- M.toList (exportLaws exports)] ++
+        [((LawName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportLaws exports)] ++
         -- An imported ability keeps its name, and so do its operations.
         [((TypeName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportAbilities exports)] ++
         [((ValueName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportOperations exports)]
@@ -275,7 +285,11 @@ importScope u i exports = do
     when (n `elem` [dataConstructorName c | d <- dataTypes u, c <- dataTypeConstructors d])
       (failAt (n ++ " is imported from " ++ importUnit i ++ " and also declared in " ++ unitName u))
   pure (M.union qualified (M.fromList items))
-  where unquote = filter (/= '`')
+  where unquote = unquoteLaw
+
+unquoteLaw :: String -> String
+unquoteLaw ('`':rest) | "`" `isSuffixOf` rest = init rest
+unquoteLaw name = name
 
 -- | A unit's own declarations: not the copies its imports brought in.
 unitExports :: S.Set String -> Unit -> Exports
@@ -310,6 +324,7 @@ portableUnit exports u = runIdentity $ do
   let rename table n = Identity (M.findWithDefault n n table)
       names = Names (rename (exportTypes exports)) (rename (exportConstructors exports))
         (rename (exportRefinements exports)) (rename (exportDefinitions exports)) (rename (exportLaws exports))
+        False False (const False)
       declared table n = M.findWithDefault n n table
   walked <- walkUnit names u
   pure walked
@@ -372,6 +387,7 @@ lawReferences l = collect (walkLaw collector l)
 
 collector :: Names (State (S.Set (Kind, String)))
 collector = Names (record TypeName) (record ConstructorName) (record RefinementName) (record ValueName) (record LawName)
+  False False (const False)
   where
     record :: Kind -> String -> State (S.Set (Kind, String)) String
     record kind n = modify (S.insert (kind, n)) >> pure n
@@ -426,9 +442,18 @@ walkHarness names inputs h = do
       GenNamed n -> pure (GenNamed n)
       GenOneOf es -> GenOneOf <$> mapM (walkExpr names scope) es
       GenFrequency alternatives -> GenFrequency <$> forM alternatives (\(w, a) -> (,) w <$> gen scope a)
-      GenSuchThat inner p n -> (\i p' -> GenSuchThat i p' n) <$> gen scope inner <*> walkExpr names ("it" : scope) p
+      GenSuchThat inner p n -> (\i p' -> GenSuchThat i p' n) <$> gen scope inner <*> walkRestriction names ("it" : scope) p
       GenBind x t from body -> GenBind x <$> walkType names [] t <*> gen scope from <*> gen (x : scope) body
     setting' st = case st of
+      WitnessSetting path e renames -> do
+        let variables = exprVars e
+        -- Keep variable spellings until lexical scope is known. Constructor
+        -- patterns and type annotations can already resolve their imports.
+        pending <- walkExpr names variables e
+        resolved <- if null renames
+          then mapM (\n -> (,) n <$> walkExpr names [] (Var n)) variables
+          else mapM (\(n, value) -> (,) n <$> walkExpr names [] value) renames
+        pure (WitnessSetting path pending resolved)
       CoverSetting p l e -> CoverSetting p l <$> walkExpr names inputs e
       ClassifySetting e l -> (`ClassifySetting` l) <$> walkExpr names inputs e
       LabelSetting e -> LabelSetting <$> walkExpr names inputs e
@@ -492,26 +517,39 @@ walkLaw names l = do
   examples' <- forM (examples l) $ \e -> do
     bindings' <- forM (bindings e) $ \(n, v) -> (,) n <$> walkLiteral names v
     checks <- forM (expectations e) $ \x ->
-      Expectation <$> walkExpr names bound (actual x) <*> walkLiteral names (expected x)
+      Expectation <$> walkExpr names (map fst (bindings e) ++ bound) (actual x) <*> walkLiteral names (expected x)
     pure e{bindings = bindings', expectations = checks}
   pure l{parameters = parameters', requirements = requirements', definition = body, examples = examples', lawResources = resources'}
   where
     quantified (Forall qs d) = map fst qs ++ quantified d
-    quantified (Implies _ d) = quantified d
-    quantified (And a b) = quantified a ++ quantified b
     quantified _ = []
 
 walkDefinition :: Monad m => Names m -> [String] -> Definition -> m Definition
 walkDefinition names scope d = case d of
   Forall qs body -> do
     let scope' = scope ++ map fst qs
-    qs' <- forM qs $ \(n, t) -> (,) n <$> walkType names scope' t
+    qs' <- walkLogicalBinders names scope qs
     Forall qs' <$> walkDefinition names scope' body
+  Exists qs body -> do
+    let scope' = scope ++ map fst qs
+    qs' <- walkLogicalBinders names scope qs
+    Exists qs' <$> walkDefinition names scope' body
+  Not body -> Not <$> walkDefinition names scope body
   Equal a b -> Equal <$> walkExpr names scope a <*> walkExpr names scope b
   Holds a -> Holds <$> walkExpr names scope a
-  Implies g body -> Implies <$> walkExpr names scope g <*> walkDefinition names scope body
+  Implies g body -> Implies <$> walkRestriction names scope g <*> walkDefinition names scope body
   And a b -> And <$> walkDefinition names scope a <*> walkDefinition names scope b
   Invoke n args -> Invoke <$> onLaw names n <*> mapM (walkExpr names scope) args
+
+-- A later binder must not hide an imported function from an earlier
+-- restriction. The current binder is visible in its own restriction.
+walkLogicalBinders :: Monad m => Names m -> [String] -> [(String,Type)] -> m [(String,Type)]
+walkLogicalBinders _ _ [] = pure []
+walkLogicalBinders names scope ((name,ty):rest) = do
+  let scope' = name : scope
+  ty' <- walkType names scope' ty
+  rest' <- walkLogicalBinders names scope' rest
+  pure ((name,ty'):rest')
 
 walkConstraint :: Monad m => Names m -> Constraint -> m Constraint
 walkConstraint names (Capability c t) = Capability c <$> walkType names [] t
@@ -529,16 +567,28 @@ walkType names scope t = case t of
   Arrow a b -> Arrow <$> walkType names scope a <*> walkType names scope b
   Applied n a -> Applied <$> onType names n <*> walkType names scope a
   Application n args -> Application <$> onType names n <*> mapM (walkType names scope) args
-  Refined n a p -> Refined n <$> walkType names scope a <*> traverse (walkExpr names (n : scope)) p
+  Refined n a p -> Refined n <$> walkType names scope a <*> traverse (walkRestriction names (n : scope)) p
   RefinementApp n args -> RefinementApp <$> onRefinement names n <*> forM args (\argument -> case argument of
     TypeArgument a -> TypeArgument <$> walkType names scope a
     ValueArgument e -> ValueArgument <$> walkExpr names scope e)
   Qualified cs a -> Qualified <$> mapM (walkConstraint names) cs <*> walkType names scope a
   CheckedType es a -> CheckedType <$> mapM (walkExpr names scope) es <*> walkType names scope a
 
+-- Articles are resolved with imports and lexical bindings, rather than stripped
+-- from source. A real value called `the` keeps ordinary application semantics.
+-- The operand keeps its own source location; the source document retains the
+-- article's spelling for formatting and authoring tools.
+walkRestriction :: Monad m => Names m -> [String] -> Expr -> m Expr
+walkRestriction names = walkExpr names{restrictionExpression = contextualArticles names}
+
 walkExpr :: Monad m => Names m -> [String] -> Expr -> m Expr
 walkExpr names scope e = case e of
+  Located _ inner | Just value <- articleOperand inner -> walkExpr names scope value
   Located range inner -> Located range <$> walkExpr names scope inner
+  Apply _ _ | Just value <- articleOperand e -> walkExpr names scope value
+  Apply prefix value
+    | Apply function article <- unlocated prefix, articleWord article, boundReference value ->
+        Apply <$> walkExpr names scope function <*> walkExpr names scope value
   -- prelude.<op> of a collection is a definition of the collections unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just (definition, _) <- collectionOperation op ->
           Var <$> onValue names (collectionsAlias ++ "." ++ definition)
@@ -553,7 +603,7 @@ walkExpr names scope e = case e of
   Apply a b -> Apply <$> walkExpr names scope a <*> walkExpr names scope b
   Compose a b -> Compose <$> walkExpr names scope a <*> walkExpr names scope b
   ListLit xs -> ListLit <$> mapM (walkExpr names scope) xs
-  ConstructLit n fields -> ConstructLit <$> onConstructor names n <*> mapM (walkExpr names scope) fields
+  ConstructLit n fields -> ConstructLit <$> onConstructor names n <*> mapM (walkExpr names scope) (articleArguments fields)
   MatchExpr value branches -> MatchExpr <$> walkExpr names scope value <*> forM branches (\(MatchBranch tag binders body) ->
     -- A matcher's wildcard branch _ names no constructor.
     MatchBranch <$> (if tag == "_" then pure tag else onConstructor names tag) <*> pure binders <*> walkExpr names (binders ++ scope) body)
@@ -566,3 +616,19 @@ walkExpr names scope e = case e of
   Annotate a ty -> Annotate <$> walkExpr names scope a <*> walkType names scope ty
   TypeBound bound ty -> TypeBound bound <$> walkType names scope ty
   other -> pure other
+  where
+    articleOperand expression = case unlocated expression of
+      Apply function value
+        | articleWord function
+        , boundReference value -> Just value
+      _ -> Nothing
+    articleWord word = contextualArticles names && restrictionExpression names &&
+      unlocated word == Var "the" && "the" `notElem` scope && not (declaredValue names "the")
+    articleArguments (word:value:rest)
+      | articleWord word && boundReference value = value : articleArguments rest
+    articleArguments (value:rest) = value : articleArguments rest
+    articleArguments [] = []
+    boundReference value = case unlocated value of
+      Var name -> name `elem` scope
+      Apply field record | Var name <- unlocated field, fieldAccessPrefix `isPrefixOf` name -> boundReference record
+      _ -> False

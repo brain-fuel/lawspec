@@ -1,0 +1,298 @@
+// Generated from templates/npm/test/authoring.test.mjs by lawspec-dev generate. Do not edit.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { PassThrough } from 'node:stream';
+import { serveLanguage, utf16Position } from '../lsp.mjs';
+import { explainLaw } from '../explain.mjs';
+
+const law = { id: 'shop::law::identity', inputs: [{ name: 'amount', type: { kind: 'constructor', name: 'Integer', arguments: [] }, predicates: [] }],
+  assertion: { kind: 'equal', left: { text: 'refund amount' }, right: { text: 'Approved' } },
+  location: { file: 'shop.lawspec', line: 1, column: 1 }, trace: [], examples: [], description: 'A captured amount may be refunded.', rationale: '' };
+
+test('explanation views retain the same authoritative typed assertion and evidence', () => {
+  const result = { evidence: [{ declaration: law.id, status: 'not-verified', reason: 'No law verification layers selected.' }] };
+  for (const view of ['developer', 'business', 'formal', 'evidence']) {
+    const explanation = explainLaw(law, result, view);
+    assert.equal(explanation.assertion, law.assertion);
+    assert.deepEqual(explanation.evidence, result.evidence);
+  }
+  assert.match(explainLaw(law, result, 'business').text, /must be Approved/);
+  assert.match(explainLaw(law, result, 'evidence').text, /NOT-VERIFIED/);
+  const wholeLaw = { ...law, inputs: [{ ...law.inputs[0], type: { kind: 'constructor', name: 'BigUInt', arguments: [] } }] };
+  assert.match(explainLaw(wholeLaw, result, 'business').text, /amount of type Whole/);
+  assert.throws(() => explainLaw(law, result, 'other'), /Choose --view/);
+});
+
+test('explanation views preserve nested existential scope and negation', () => {
+  const assertion = { kind: 'not', body: { kind: 'exists',
+    binder: { id: 'witness', name: 'authorization', type: { kind: 'constructor', name: 'Bool', arguments: [] } },
+    predicates: [{ text: 'authorization = active' }], body: law.assertion } };
+  const scoped = { ...law, assertion };
+  assert.equal(explainLaw(scoped, {}, 'business').assertion, assertion);
+  assert.match(explainLaw(scoped, {}, 'business').text, /There must not exist authorization of type Bool where authorization = active/);
+  assert.match(explainLaw(scoped, {}, 'formal').text, /not \(there exists \(authorization of type Bool where authorization = active\) such that/);
+});
+
+test('documentary metadata remains separate from proposition identity and evidence', () => {
+  const metadata = { id: 'REVIEW-001', owner: 'Payments.Review' };
+  const documented = { ...law, metadata };
+  const result = { evidence: [{ declaration: law.id, status: 'not-verified', reason: 'No law checks selected.' }] };
+  for (const view of ['developer', 'business', 'formal', 'evidence']) {
+    const explanation = explainLaw(documented, result, view);
+    assert.equal(explanation.metadata, metadata);
+    assert.equal(explanation.law, law.id);
+    assert.equal(explanation.assertion, law.assertion);
+    assert.deepEqual(explanation.evidence, result.evidence);
+  }
+  assert.match(explainLaw(documented, result, 'business').text, /Requirement: REVIEW-001\nOwner: Payments.Review/);
+  assert.equal(explainLaw(documented, result, 'formal').text, explainLaw(law, result, 'formal').text);
+});
+
+test('documentary links remain finite in all explanation views without changing evidence', () => {
+  const references = [
+    { kind: 'law', target: { id: law.id, unit: 'shop', name: 'identity' }, selector: { kind: 'named-reference', name: '\"|policy|' } },
+    { kind: 'function', target: { id: 'shop::refund', unit: 'shop', name: 'refund' } },
+    { kind: 'external', name: '\"|policy|', resource: 'approved wording' },
+  ];
+  const documented = { ...law, references };
+  const result = { evidence: [{ declaration: law.id, status: 'incomplete', reason: 'A bounded miss is inconclusive.' }] };
+  for (const view of ['developer', 'business', 'formal', 'evidence']) {
+    const explanation = explainLaw(documented, result, view);
+    assert.equal(explanation.references, references);
+    assert.equal(explanation.assertion, law.assertion);
+    assert.deepEqual(explanation.evidence, result.evidence);
+  }
+  assert.match(explainLaw(documented, result, 'business').text, /Reference: ref law shop.identity references\.\"\|policy\|/);
+  assert.match(explainLaw(documented, result, 'developer').text, /Reference: ref function shop.refund/);
+  for (const view of ['formal', 'evidence']) assert.equal(explainLaw(documented, result, view).text, explainLaw(law, result, view).text);
+  assert.match(explainLaw({ ...law, references: ['legacy citation'] }, result, 'business').text, /Reference: legacy citation/);
+  const prelude = { ...law, references: [{ kind: 'law', target: { id: 'prelude::law::left inverse', unit: 'prelude', name: 'left inverse' } }] };
+  assert.match(explainLaw(prelude, result, 'business').text, /ref law prelude\."\|left inverse\|/);
+});
+
+test('configured witness strategies stay separate from propositions and completed evidence', () => {
+  const witnesses = [{ binder: 'shop::law::identity::logical::0', path: ['amount', 'answer'], expression: { text: 'amount + 1' } }];
+  const configured = { ...law, harness: { witnesses } };
+  const result = { evidence: [{ declaration: law.id, status: 'not-verified', reason: 'No law layers selected.' }] };
+  for (const view of ['developer', 'business', 'formal', 'evidence']) {
+    const explanation = explainLaw(configured, result, view);
+    assert.equal(explanation.witnesses, witnesses);
+    assert.equal(explanation.assertion, law.assertion);
+    assert.deepEqual(explanation.evidence, result.evidence);
+    if (['business', 'formal'].includes(view)) assert.equal(explanation.text, explainLaw(law, result, view).text);
+    else assert.match(explanation.text, /Configured witness \(not completed evidence\): definition.amount.answer = amount \+ 1/);
+  }
+});
+
+test('configured scoped searches retain the same obligation and evidence in every view', () => {
+  const searches = [{binder: 'shop::law::identity::logical::0', path: ['amount', 'answer'], strategy: 'answers'}];
+  const configured = {...law, harness: {searches}};
+  const result = {evidence: [{declaration: law.id, status: 'incomplete', reason: 'A bounded miss is inconclusive.'}]};
+  for (const view of ['developer', 'business', 'formal', 'evidence']) {
+    const explanation = explainLaw(configured, result, view);
+    assert.equal(explanation.searches, searches);
+    assert.equal(explanation.assertion, law.assertion);
+    assert.deepEqual(explanation.evidence, result.evidence);
+    if (['business', 'formal'].includes(view)) assert.equal(explanation.text, explainLaw(law, result, view).text);
+    else assert.match(explanation.text, /Configured search \(not completed evidence\): definition.amount.answer uses answers/);
+  }
+});
+
+test('explanation views present composed propositions from the typed logical tree', () => {
+  const exists = { kind: 'exists', binder: { id: 'a', name: 'approval', type: { kind: 'constructor', name: 'Bool', arguments: [] } },
+    predicates: [], body: law.assertion };
+  const disjunction = { kind: 'not', body: { kind: 'all', items: [{ kind: 'not', body: exists }, { kind: 'not', body: law.assertion }] } };
+  const implication = { kind: 'not', body: { kind: 'all', items: [exists, { kind: 'not', body: law.assertion }] } };
+  assert.match(explainLaw({ ...law, assertion: disjunction }, {}, 'formal').text, /\) or \(/);
+  assert.match(explainLaw({ ...law, assertion: implication }, {}, 'business').text, /If \(There must exist approval/);
+  assert.equal(explainLaw({ ...law, assertion: disjunction }, {}, 'business').assertion, disjunction);
+});
+
+test('LSP positions count UTF-16 units and expand parser tab columns', () => {
+  const text = 'a😀b\n\t😀x\n';
+  assert.deepEqual(utf16Position(text, { line: 1, column: 3 }), { line: 0, character: 3 });
+  assert.deepEqual(utf16Position(text, { line: 2, column: 10 }), { line: 1, character: 3 });
+});
+
+test('contextual articles retain typed predicates, source positions and explanation meaning', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const line = 'law selected is definition: for all (enabled :: Bool where the enabled) => enabled = true end end end';
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: ['exhaustive']},
+    sources: [{path: 'articles.lawspec', content: 'unit articles\n' + line + '\n'}]};
+  const worded = await compiler.check(request);
+  const plain = await compiler.check({...request, sources: [{...request.sources[0], content: request.sources[0].content.replace('the enabled', 'enabled')}]});
+  assert.deepEqual(worded.diagnostics, []);
+  assert.deepEqual(plain.diagnostics, []);
+  const predicate = worded.laws[0].inputs[0].predicates[0];
+  assert.equal(predicate.text, 'enabled');
+  assert.equal(predicate.node.id, worded.laws[0].inputs[0].id);
+  assert.deepEqual(predicate.origin.span.start, {file: 'articles.lawspec', line: 2, column: line.indexOf('enabled', line.indexOf('the enabled')) + 1});
+  for (const view of ['business', 'formal', 'evidence'])
+    assert.equal(explainLaw(worded.laws[0], worded, view).text, explainLaw(plain.laws[0], plain, view).text);
+  assert.equal(worded.evidence.find(e => e.stage === 'law').status, 'exhaustively-checked');
+  const unselected = await compiler.check({...request, verification: {layers: []}});
+  assert.deepEqual(unselected.diagnostics, []);
+  assert.equal(unselected.evidence.find(e => e.stage === 'law').status, 'not-verified');
+  const formatted = await compiler.format(request);
+  assert.deepEqual(formatted.diagnostics, []);
+  assert.match(formatted.formattedSources[0].content, /the enabled/);
+  assert.deepEqual((await compiler.format({...request, sources: formatted.formattedSources})).formattedSources, formatted.formattedSources);
+});
+
+function frame(message) {
+  const body = Buffer.from(JSON.stringify({ jsonrpc: '2.0', ...message }));
+  return Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`), body]);
+}
+function messages(data) {
+  const result = [];
+  while (data.length) {
+    const header = data.indexOf('\r\n\r\n');
+    assert.ok(header >= 0);
+    const size = Number(/Content-Length:\s*(\d+)/i.exec(data.subarray(0, header).toString())[1]);
+    result.push(JSON.parse(data.subarray(header + 4, header + 4 + size).toString()));
+    data = data.subarray(header + 4 + size);
+  }
+  return result;
+}
+
+test('LSP transport accepts split UTF-8 messages and formats unsaved source without writing it', async () => {
+  const input = new PassThrough(), output = new PassThrough();
+  const chunks = [];
+  output.on('data', data => chunks.push(data));
+  const compiler = {
+    check: async request => {
+      assert.equal(request.languageProfile, '1.0-rc.1');
+      assert.deepEqual(request.verification.layers, []);
+      return { diagnostics: [{ code: 'total', message: 'Invalid 😀 result', at: { file: request.sources[0].path, line: 1, column: 3 } }] };
+    },
+    format: async request => ({ diagnostics: [], formattedSources: request.sources.map(s => ({ ...s, content: s.content + '\n' })) }),
+  };
+  const running = serveLanguage(input, output, compiler);
+  const protocol = Buffer.concat([
+    frame({ id: 1, method: 'initialize', params: { rootUri: 'file:///unlikely-lawspec-test-project' } }),
+    frame({ method: 'textDocument/didOpen', params: { textDocument: { uri: 'file:///unlikely-lawspec-test-project/test.lawspec', version: 1, text: 'a😀b' } } }),
+    frame({ id: 2, method: 'textDocument/formatting', params: { textDocument: { uri: 'file:///unlikely-lawspec-test-project/test.lawspec' } } }),
+    frame({ id: 3, method: 'shutdown' }),
+  ]);
+  for (let i = 0; i < protocol.length; i += 7) input.write(protocol.subarray(i, i + 7));
+  input.end();
+  await running;
+  const responses = messages(Buffer.concat(chunks));
+  assert.equal(responses.find(r => r.id === 1).result.capabilities.positionEncoding, 'utf-16');
+  const diagnostic = responses.find(r => r.method === 'textDocument/publishDiagnostics').params.diagnostics[0];
+  assert.equal(diagnostic.range.start.character, 3);
+  assert.equal(diagnostic.code, 'total');
+  assert.equal(responses.find(r => r.id === 2).result[0].newText, 'a😀b\n');
+  assert.deepEqual(responses.find(r => r.id === 2).result[0].range.end, { line: 0, character: 4 });
+});
+
+
+test('LSP follows documentary links to original source with UTF-16 ranges and no expansion', async () => {
+  const uri = 'file:///unlikely-lawspec-test-project/references.lawspec';
+  const file = '/unlikely-lawspec-test-project/references.lawspec';
+  const text = 'law \"|😀 source| is\n\tref law \"|😀 source|\nend\n';
+  const location = (line, column) => ({ file, line, column });
+  const target = { id: 'shop::law::\"|😀 source|', unit: 'shop', name: '\"|😀 source|',
+    span: { spanStart: location(1, 1), spanEnd: location(1, 1) },
+    referenceSpan: { spanStart: location(2, 17), spanEnd: location(2, 28) } };
+  const input = new PassThrough(), output = new PassThrough(), chunks = [];
+  output.on('data', data => chunks.push(data));
+  const running = serveLanguage(input, output, { check: async () => ({ laws: [{ id: 'shop::law::linked', name: 'linked', location: location(3, 1), references: [{ kind: 'law', target }] }] }) });
+  input.end(Buffer.concat([
+    frame({ id: 1, method: 'initialize', params: { rootUri: 'file:///unlikely-lawspec-test-project' } }),
+    frame({ method: 'textDocument/didOpen', params: { textDocument: { uri, version: 1, text } } }),
+    frame({ id: 2, method: 'textDocument/definition', params: { textDocument: { uri }, position: { line: 1, character: 12 } } }),
+    frame({ id: 3, method: 'textDocument/hover', params: { textDocument: { uri }, position: { line: 1, character: 12 } } }),
+    frame({ id: 4, method: 'textDocument/references', params: { textDocument: { uri }, position: { line: 1, character: 12 }, context: { includeDeclaration: true } } }),
+    frame({ id: 5, method: 'shutdown' }),
+  ]));
+  await running;
+  const responses = messages(Buffer.concat(chunks));
+  assert.deepEqual(responses.find(r => r.id === 2).result, { uri, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } });
+  assert.deepEqual(responses.find(r => r.id === 3).result.range, { start: { line: 1, character: 9 }, end: { line: 1, character: 21 } });
+  assert.match(responses.find(r => r.id === 3).result.contents.value, /😀 source/);
+  assert.equal(responses.find(r => r.id === 4).result.length, 2);
+});
+
+test('WASM-backed LSP follows unsaved documentary function and law links', async () => {
+  const uri = 'file:///unlikely-lawspec-test-project/actual-references.lawspec';
+  const text = 'unit actual.references\nfunction "|😀 echo| (value :: Bool) -> Bool is value end function\nlaw linked is\n  definition: true end\n  references:\n    ref function "|😀 echo|\n    ref law linked description\n  end\nend\n';
+  const input = new PassThrough(), output = new PassThrough(), chunks = [];
+  output.on('data', data => chunks.push(data));
+  // Create the real compiler before feeding a stream that can already end.
+  const {createCompiler} = await import('../api.mjs');
+  const running = serveLanguage(input, output, await createCompiler());
+  input.end(Buffer.concat([
+    frame({ id: 1, method: 'initialize', params: { rootUri: 'file:///unlikely-lawspec-test-project' } }),
+    frame({ method: 'textDocument/didOpen', params: { textDocument: { uri, version: 1, text } } }),
+    frame({ id: 2, method: 'textDocument/definition', params: { textDocument: { uri }, position: { line: 5, character: 21 } } }),
+    frame({ id: 3, method: 'textDocument/hover', params: { textDocument: { uri }, position: { line: 5, character: 21 } } }),
+    frame({ id: 4, method: 'textDocument/references', params: { textDocument: { uri }, position: { line: 6, character: 14 }, context: { includeDeclaration: true } } }),
+    frame({ id: 5, method: 'shutdown' }),
+  ]));
+  await running;
+  const responses = messages(Buffer.concat(chunks));
+  assert.deepEqual(responses.find(r => r.method === 'textDocument/publishDiagnostics').params.diagnostics, []);
+  assert.equal(responses.find(r => r.id === 2).result.uri, uri);
+  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, { line: 1, character: 0 });
+  assert.deepEqual(responses.find(r => r.id === 3).result.range, { start: { line: 5, character: 17 }, end: { line: 5, character: 27 } });
+  assert.equal(responses.find(r => r.id === 4).result.length, 2);
+});
+
+test('WASM-backed LSP checks and navigates witness settings in unsaved harnesses', async () => {
+  const root = 'file:///unlikely-lawspec-witness-project';
+  const uri = root + '/law.lawspec', harnessUri = root + '/law.harness.lawspec';
+  const text = 'unit example.lspWitness\nfunction build (flag :: Bool) -> Integer is 1 end function\nlaw selected is definition: there exists (answer :: Integer) such that answer = 1 end end end\n';
+  const header = 'harness example.lspWitness.testing for example.lspWitness is\nfor law selected\n';
+  const input = new PassThrough(), output = new PassThrough(), chunks = [];
+  output.on('data', data => chunks.push(data));
+  const {createCompiler} = await import('../api.mjs');
+  const running = serveLanguage(input, output, await createCompiler());
+  input.end(Buffer.concat([
+    frame({ id: 1, method: 'initialize', params: { rootUri: root } }),
+    frame({ method: 'textDocument/didOpen', params: { textDocument: { uri, version: 1, text } } }),
+    frame({ method: 'textDocument/didOpen', params: { textDocument: { uri: harnessUri, version: 1, text: header + 'witness false for answer\nend\n' } } }),
+    frame({ method: 'textDocument/didChange', params: { textDocument: { uri: harnessUri, version: 2 }, contentChanges: [{ text: header + 'witness build true for definition.answer\nend\n' }] } }),
+    frame({ id: 2, method: 'textDocument/definition', params: { textDocument: { uri: harnessUri }, position: { line: 2, character: 10 } } }),
+    frame({ id: 3, method: 'shutdown' }),
+  ]));
+  await running;
+  const responses = messages(Buffer.concat(chunks));
+  const diagnostics = responses.filter(r => r.method === 'textDocument/publishDiagnostics' && r.params.uri === harnessUri).map(r => r.params.diagnostics);
+  assert.equal(diagnostics[0].length, 1);
+  assert.equal(diagnostics[0][0].code, 'harness');
+  assert.deepEqual(diagnostics[0][0].range.start, { line: 2, character: 0 });
+  assert.deepEqual(diagnostics.at(-1), []);
+  assert.equal(responses.find(r => r.id === 2).result.uri, uri);
+  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, { line: 1, character: 0 });
+});
+
+test('WASM-backed LSP points to unsaved scoped strategy targets and navigates their checked calls', async () => {
+  const root = 'file:///unlikely-lawspec-scoped-search-project';
+  const uri = root + '/law.lawspec', harnessUri = root + '/law.harness.lawspec';
+  const text = 'unit example.lspSearch\nfunction build (flag :: Bool) -> Integer is 1 end function\nlaw selected is definition: there exists (answer :: Integer) such that answer = 1 end end end\n';
+  const strategy = 'strategy answers :: Integer is one of build true end';
+  const header = 'harness example.lspSearch.testing for example.lspSearch is\n' + strategy + '\nfor law selected\n';
+  const input = new PassThrough(), output = new PassThrough(), chunks = [];
+  output.on('data', data => chunks.push(data));
+  const {createCompiler} = await import('../api.mjs');
+  const running = serveLanguage(input, output, await createCompiler());
+  input.end(Buffer.concat([
+    frame({id: 1, method: 'initialize', params: {rootUri: root}}),
+    frame({method: 'textDocument/didOpen', params: {textDocument: {uri, version: 1, text}}}),
+    frame({method: 'textDocument/didOpen', params: {textDocument: {uri: harnessUri, version: 1, text: header + 'use answers for missing\nend\n'}}}),
+    frame({method: 'textDocument/didChange', params: {textDocument: {uri: harnessUri, version: 2}, contentChanges: [{text: header + 'use answers for definition.answer\nend\n'}]}}),
+    frame({id: 2, method: 'textDocument/definition', params: {textDocument: {uri: harnessUri}, position: {line: 1, character: strategy.indexOf('build') + 1}}}),
+    frame({id: 3, method: 'shutdown'}),
+  ]));
+  await running;
+  const responses = messages(Buffer.concat(chunks));
+  const diagnostics = responses.filter(r => r.method === 'textDocument/publishDiagnostics' && r.params.uri === harnessUri).map(r => r.params.diagnostics);
+  assert.equal(diagnostics[0].length, 1);
+  assert.equal(diagnostics[0][0].code, 'harness');
+  assert.deepEqual(diagnostics[0][0].range.start, {line: 3, character: 0});
+  assert.deepEqual(diagnostics.at(-1), []);
+  assert.equal(responses.find(r => r.id === 2).result.uri, uri);
+  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, {line: 1, character: 0});
+});

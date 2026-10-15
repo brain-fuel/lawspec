@@ -332,7 +332,7 @@ test_payloadPredicatesTraverseRecursiveParametersScoped = describe "recursive pa
       let body = expression [(item,truth)]
           property = Property (Id "payload::law::payload") "payload" (Location "payload" 1 1)
             [Quantifier (Binder rootId "tree" treeType) [] []]
-            (Equation (Structural boolean) body truth) [] defaultGeneration "" "" [] [] [] [] noHarness
+            (Equation (Structural boolean) body truth) [] defaultGeneration "" "" [] [] [] [] noHarness NonemptyDomain emptyLawMetadata
           unit = Unit (Id "payload") [] [] [property] [] []
           plan = Testing.Plan 64 [tree]
             [Testing.PlannedUnit unit [Testing.PlannedProperty property Nothing [] []]]

@@ -1,0 +1,75 @@
+unit example.rc1.finiteIntegerDomains
+
+function credit (amount of type Integer) -> Integer is
+  amount + 1
+end function
+
+law "|each small credit has its exact settlement amount| is
+  description:
+    "Every amount from zero through three receives exactly one extra cent."
+  end
+  definition:
+    for all (amount of type Integer where amount >= 0 and amount <= 3) =>
+      there exists (settled of type Integer where
+        settled >= amount + 1 and settled <= amount + 1) such that
+        settled must be credit amount
+      end
+    end
+  end
+  expect credit amount = expected
+  in table (amount, expected):
+    row 0, 1
+    row 1, 2
+    row 2, 3
+    row 3, 4
+  end
+end
+
+law "|small retry budgets include zero| is
+  definition:
+    for all (budget of type Whole where budget <= 3) =>
+      must budget >= 0
+    end
+  end
+end
+
+law "|positive attempt counts exclude zero| is
+  definition:
+    there must not exist (attempts of type Nat where attempts <= 3) such that
+      attempts = 0
+    end
+  end
+end
+
+law "|a small credit cannot settle outside the limit| is
+  definition:
+    there must not exist (settled of type Integer where
+      settled >= 0 and settled <= 3) such that
+      settled = 4
+    end
+  end
+end
+
+law "|consecutive exact cents have no intermediate amount| is
+  description:
+    "No exact integer amount lies strictly between two consecutive cents."
+  end
+  definition:
+    for all (amount of type Integer)
+      (between of type Integer where between > amount and between < amount + 1)
+      =>
+      false
+    end
+  end
+end
+
+law "|every exact amount has an adjacent settlement amount| is
+  definition:
+    for all (amount of type Integer) =>
+      there exists (settled of type Integer where
+        settled > amount and settled <= amount + 2) such that
+        settled must be amount + 1
+      end
+    end
+  end
+end

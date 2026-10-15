@@ -19,7 +19,7 @@ import qualified LawSpec.Model as S
 import LawSpec.Parser (parseSource)
 import LawSpec.Elaboration (elaborateDefinitionUnit)
 import LawSpec.Frontend (elaborate, compileCore)
-import LawSpec.Common (Source(..), Location(..), defaultGeneration)
+import LawSpec.Common (Source(..), Location(..), defaultGeneration, InputDomain(..), emptyLawMetadata)
 import qualified LawSpec.Core.Totality as T
 import LawSpec.Scalar (Scalar(..))
 
@@ -231,7 +231,7 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
           circular = Expr boolean (Binary Equal (Structural ty) literal literal) origin
           declaration = datatype [circular]
           property = Property (Id "cycle-property") "cycle" (Location "cycle" 1 1) []
-            (Equation (Structural ty) literal literal) [] defaultGeneration "" "" [] [] [] [] noHarness
+            (Equation (Structural ty) literal literal) [] defaultGeneration "" "" [] [] [] [] noHarness NonemptyDomain emptyLawMetadata
           p = Program 64 [declaration] [Unit (Id "cycle") [] [] [property] [] []]
       validateProgram p `shouldSatisfy` isLeft
     it "preserves declared parameters in generic constructor-predicate matches" $ do

@@ -1,0 +1,9 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {"layers": ["exhaustive", "examples"]},
+  "specs": [
+    "examples/rc1/authorization-snapshots.lawspec",
+    "examples/rc1/requirement-composition.lawspec",
+    "acceptance/rc1-composition/effects.lawspec"
+  ]
+}

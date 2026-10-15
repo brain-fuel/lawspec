@@ -14,6 +14,9 @@ export async function generateExamples(options) {
     if (options.example !== "payments") throw new Error(`Unknown example: ${options.example}`);
     return exportNativePayments(options, selected);
   }
+  const projectRoot = process.cwd();
+  const outputDirectory = options.output || "example_artifacts";
+  const root = await safePath(projectRoot, outputDirectory);
   const directory = new URL("./examples/specs/", import.meta.url);
   const sources = await Promise.all(
     (await readdir(directory))
@@ -39,10 +42,8 @@ export async function generateExamples(options) {
       });
     artifacts.push(result.files);
   }
-  const root = await safePath(
-    process.cwd(),
-    options.output || "example_artifacts",
-  );
+  // Recheck the destination after compilation, before creating output files.
+  await safePath(projectRoot, outputDirectory);
   await mkdir(root, { recursive: true });
   const plans = [];
   for (let i = 0; i < selected.length; i++) {

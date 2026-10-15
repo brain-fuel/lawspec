@@ -14,8 +14,9 @@ generated code does with it. For step-by-step use, see
 ## Configuration
 
 Bindings are set per target in `lawspec.json` (`targets[].nativeBindings`) or in
-a schema-4 compiler request (`nativeBindings`). The fields are `types`,
-`functions`, `generators`, `rustCrate`, `goImports` and `erlangIncludes`; their shapes are in the
+a compiler request (`nativeBindings`): schema 5 for the RC1 profile, or schema 4
+for legacy migration input. The fields include `types`, `functions`, `generators`,
+`rustCrate`, `goImports` and `erlangIncludes`; their shapes are in the
 [API reference](api.md#native-bindings).
 
 - Declarations are named by resolved identity: `<unit>::type::<Name>` for data
@@ -36,6 +37,27 @@ a schema-4 compiler request (`nativeBindings`). The fields are `types`,
   Kotlin then names the handle's type in full, as in
   `ConcurrentLinkedQueue<kotlin.Int>`, instead of `kotlin.Any`. Other
   targets ignore it; Java keeps `Object`.
+
+RC1 also accepts `names`, which explicitly chooses a generated public function
+name. This applies to checked definitions and adapters, preserving declaration
+identity, type, body, contracts and every call to the declaration:
+
+```json
+{
+  "names": [
+    {"declaration": "example::\"|adds value|", "name": "addAnotherValue"}
+  ]
+}
+```
+
+Names use portable ASCII identifiers starting with a lowercase letter. Each
+target still applies its naming and keyword rules. Unknown identities,
+duplicate overrides and malformed identifiers are errors. A collision after
+overrides remains an error; generated public names never acquire automatic
+suffixes. A name override supplies no native implementation and creates no
+native bridge on its own. The compiler requires schema 5 and the explicit
+`1.0-rc.1` profile for this field. The `rc1-native-names` acceptance suite checks
+two colliding source spellings with distinct behavior on every target.
 
 ## Async adapters
 
@@ -180,6 +202,12 @@ generator factories and bound functions are `codec`, `generator` and
 - An empty type parameter is supplied as an `Arb` that fails when sampled.
 
 ### Go
+
+Generated products with cyclic inline layouts use a sealed interface and one
+variant. Ordinary products remain structs; slices and existing sum interfaces
+already provide indirection. This applies through instantiated generic fields
+and presence wrappers. Constructor names and codecs follow the same layout
+decision. Source record identity and field order retain their meaning.
 
 - References are one package-local identifier, or an alias from `goImports`
   and an exported identifier. Aliases are resolved to compiler-owned names, so

@@ -163,7 +163,9 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     Handle _ _ -> Left "a handled failure names its type"
     Let binder value body -> do
       validateExpressionWithRegistry registry bits declarations scope value
-      unless (binderType binder == expressionTypeOf value) (Left "let binder type does not match its value")
+      unless (binderType binder == expressionTypeOf value) (Left
+        ("let binder type does not match its value: " ++ binderName binder ++ " expects " ++
+          show (binderType binder) ++ ", received " ++ show (expressionTypeOf value)))
       unless (M.notMember (binderId binder) scope) (Left "duplicate core binder identity")
       validateExpressionWithRegistry registry bits declarations (M.insert (binderId binder) (binderType binder) scope) body
       pure (expressionTypeOf body)
@@ -188,6 +190,7 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     expressionTypeOf = LawSpec.Core.expressionType
     requireType n e = unless (expressionTypeOf e == scalarType n) (Left ("expected " ++ n))
     helperType Checked [_] = Right (scalarType "Bool")
+    helperType IncompleteSearch [reason] | expressionTypeOf reason == scalarType "Text" = Right (scalarType "Bool")
     helperType Concurrently [a] = Right (expressionTypeOf a)
     helperType Select [c, a, b] | expressionTypeOf c == scalarType "Bool" && expressionTypeOf a == expressionTypeOf b =
       Right (expressionTypeOf a)

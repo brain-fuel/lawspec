@@ -1,0 +1,10 @@
+rejected-at: generation
+expect: refuted
+@@ examples/rc1/empty-domains.lawspec
+<<<<<<<
+  | Unissued of type UnissuedApproval
+  | StillUnissued of type UnissuedApproval
+=======
+  | Unissued
+  | StillUnissued
+>>>>>>>

@@ -20,22 +20,47 @@ For each law, the testing plan combines:
 4. **Generated cases**: otherwise, `cases` inputs from the framework's
    generators.
 
+In the canonical profile, [complete integer ranges](../reference/language/rc1.md#complete-integer-ranges)
+include domains made finite by restrictions and fixed-width intervals depending
+on earlier inputs. Every candidate is checked against all its restrictions.
+This complete enumeration is separate from bounded sampling: exceeding the
+expansion limit supplies no proof of nonexistence.
+
+Canonical [scoped witness strategies](../reference/language/rc1.md#bounded-witness-strategies)
+use a bounded deterministic schedule alongside complete finite search. Their
+restrictions are checked with the current enclosing inputs on every attempt
+and every outer shrinking recheck. A bounded miss remains inconclusive, even
+when all configured candidates were tried. Individual witness-value shrinking
+and concrete search traces remain separate implementation work.
+
 Examples and boundaries always run. Custom generators and narrow refinements
 cannot remove them.
 
 ## Never pass vacuously
 
-A property that checked no inputs has proved nothing, so LawSpec treats every
-way of checking nothing as a failure: ref:DEC-never-pass-vacuously
+A property test that checked no inputs supplies no verification evidence.
+In the legacy profile, execution requires nonempty input domains:
+ref:DEC-never-pass-vacuously
 
 - An input domain that is empty or unreachable fails; it does not pass.
 - A generator that cannot find a valid input within `maxAttempts` fails with
   reproduction information. Exhausting a search does not prove the domain is
   empty, so it is never reported that way.
-- A statically empty domain is a compile error, and so is an example outside
-  its domain.
+- A statically empty domain is an execution-planning error. An example outside
+  its domain is rejected.
 - A type with no values cannot supply an argument, although containers of it,
   such as `List Empty`, still can.
+
+In the canonical `1.0-rc.1` profile, universal propositions retain their
+mathematical meaning over empty domains. When the compiler establishes that
+the entire input domain is empty, selected proof or exhaustive verification
+reports that fact explicitly, with zero evaluated cases and no produced
+witnesses. Property testing alone reports `incomplete` because no cases ran.
+The execution plan supplies no generators or boundary cases for this domain.
+Examples still require valid inputs. Failure to generate a sample within a
+budget never establishes emptiness. See the
+[RC1 logical contract](../reference/language/rc1.md) for nested quantifiers and
+incomplete search.
 
 ## Refinement bounds
 

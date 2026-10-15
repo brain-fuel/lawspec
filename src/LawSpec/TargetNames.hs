@@ -2,9 +2,10 @@
 -- target language is emitted with a leading underscore, so a definition or
 -- adapter called `short` is `_short` in Java and `short` elsewhere. The
 -- declaration's identity is unchanged; only its native spelling differs.
-module LawSpec.TargetNames (targetKeywords, nativeName, allTargetKeywords) where
+module LawSpec.TargetNames (targetKeywords, nativeName, phraseNativeName, allTargetKeywords) where
 
 import Data.List (nub)
+import Data.Char (isAlphaNum, isAscii, isDigit, toLower, toUpper)
 
 -- | Words the target's grammar reserves in the positions LawSpec emits
 -- user-chosen function names. Go exports names by capitalizing them, and its
@@ -30,9 +31,26 @@ targetKeywords target = case target of
 -- | A keyword gets a leading underscore, which every target accepts in an
 -- identifier, while messages keep the declared name.
 nativeName :: String -> String -> String
-nativeName target name
+nativeName target written
   | name `elem` targetKeywords target = '_' : name
   | otherwise = name
+  where name = phraseNativeName written
+
+-- | Split phrase words deterministically before applying the target's existing
+-- naming/keyword rules. Ordinary identifiers preserve their existing spelling.
+phraseNativeName :: String -> String
+phraseNativeName ('"' : '|' : body) = case words (map separator (take (max 0 (length body - 1)) body)) of
+  first : rest -> prefix (lowerFirst first ++ concatMap capital rest)
+  [] -> "phrase"
+  where
+    separator c = if isAscii c && isAlphaNum c then c else ' '
+    lowerFirst (c:cs) = toLower c : cs
+    lowerFirst [] = []
+    capital (c:cs) = toUpper c : cs
+    capital [] = []
+    prefix name@(c:_) | isDigit c = '_' : name
+    prefix name = name
+phraseNativeName name = name
 
 -- | A name that is a keyword anywhere is escaped everywhere it matters, so one
 -- specification produces valid code for every target.

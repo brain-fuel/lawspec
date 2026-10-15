@@ -93,7 +93,10 @@ export type ExprNode =
 export type Assertion =
     {kind: 'equal'; evidence: Evidence; left: Expr; right: Expr;} |
     {kind: 'implies'; guard: Expr; body: Assertion;} |
-    {kind: 'all'; items: Assertion[];};
+    {kind: 'all'; items: Assertion[];} |
+    {kind: 'not'; body: Assertion;} |
+    {kind: 'forall'; binder: Binder; predicates: Expr[]; body: Assertion;} |
+    {kind: 'exists'; binder: Binder; predicates: Expr[]; body: Assertion;};
 
 export interface Generation {
   cases: number;
@@ -126,6 +129,74 @@ export interface Example {
   expectations: Assertion[];
 }
 
+export interface LawMetadata {
+  id?: string;
+  owner?: string;
+}
+
+export interface HarnessWitness {
+  binder: string;
+  path: string[];
+  expression: Expr;
+}
+
+export type HarnessDraw =
+    {kind: 'any'; type: Type; aim: Input | null;} |
+    {kind: 'one-of'; type: Type; values: Expr[];} |
+    {kind: 'frequency'; alternatives: {weight: number; draw: HarnessDraw;}[];} |
+    {
+      kind: 'such-that';
+      draw: HarnessDraw;
+      binder: Binder;
+      predicate: Expr;
+      maxDiscards: number;
+    } |
+    {kind: 'bind'; binder: Binder; from: HarnessDraw; body: HarnessDraw;};
+
+export interface HarnessSearch {
+  binder: string;
+  path: string[];
+  strategy: string;
+  draw: HarnessDraw;
+}
+
+export interface LawHarness {
+  unit: string | null;
+  tags: string[];
+  skip: string | null;
+  knownFailing: string | null;
+  timeoutMilliseconds: number | null;
+  repeat: number;
+  retries: number;
+  labels: Expr[];
+  target: Expr | null;
+  group: string | null;
+  orderRandom: boolean;
+  parallel: boolean;
+  witnesses: HarnessWitness[];
+  searches: HarnessSearch[];
+  cover: {percent: number; label: string; when: Expr;}[];
+  classify: {label: string; when: Expr;}[];
+  strategies: {input: string; strategy: string; draw: HarnessDraw;}[];
+}
+
+export interface DocumentaryTarget {
+  id: string;
+  unit: string;
+  name: string;
+  span: {spanStart: Location; spanEnd: Location;};
+  referenceSpan: {spanStart: Location; spanEnd: Location;};
+}
+
+export type ReferenceSelector =
+    {kind: 'definition' | 'description' | 'rationale' | 'references';} |
+    {kind: 'named-reference'; name: string;};
+
+export type DocumentaryReference =
+    {kind: 'law'; target: DocumentaryTarget; selector?: ReferenceSelector;} |
+    {kind: 'function'; target: DocumentaryTarget;} |
+    {kind: 'external'; resource: string; name?: string;};
+
 export interface Law {
   id: string;
   owner: string;
@@ -135,10 +206,13 @@ export interface Law {
   examples: Example[];
   description: string;
   rationale: string;
-  references: string[];
+  references: DocumentaryReference[] | string[];
   location: Location;
   trace: string[];
   generation: Generation;
+  inputDomain: 'nonempty' | 'universal';
+  metadata: LawMetadata;
+  harness: LawHarness;
 }
 
 export interface Unit {
@@ -211,6 +285,11 @@ export interface NativeFunctionBinding {
   constructor?: NativeReference;
 }
 
+export interface NativeNameBinding {
+  declaration: string;
+  name: string;
+}
+
 export interface NativeGoImport {
   alias: string;
   path: string;
@@ -227,10 +306,18 @@ export interface NativeBindings {
   functions?: NativeFunctionBinding[];
   rustCrate?: string;
   goImports?: NativeGoImport[];
+  names?: NativeNameBinding[];
   erlangIncludes?: NativeErlangInclude[];
 }
 
 export type DischargeStatus =
+    'planned' |
+    'not-verified' |
+    'incomplete' |
+    'unsupported' |
+    'known-failing' |
+    'flaky' |
+    'skipped' |
     'proved' |
     'exhaustively-checked' |
     'property-tested' |
@@ -298,9 +385,24 @@ export interface PackageView {
   units: string[];
 }
 
+export type VerificationLayer =
+    'proof' |
+    'exhaustive' |
+    'property' |
+    'examples' |
+    'runtime' |
+    'model' |
+    'analysis';
+
+export interface Verification {
+  layers?: VerificationLayer[];
+}
+
 export interface CheckRequest {
+  languageProfile?: '1.0-rc.1';
+  verification?: Verification;
   sources: Source[];
-  schemaVersion?: 3 | 4;
+  schemaVersion?: 3 | 4 | 5;
   machineBits?: 32 | 64;
   generation?: Partial<Generation>;
   nativeBindings?: NativeBindings;
@@ -319,8 +421,10 @@ export interface GenerationRequest extends CheckRequest {
 }
 
 export interface Result {
-  schemaVersion: 3 | 4;
+  schemaVersion: 3 | 4 | 5;
   machineBits?: 32 | 64;
+  languageProfile?: "1.0-rc.1";
+  verification?: Verification;
   generation?: Generation;
   units?: Unit[];
   dataTypes?: DataTypeDeclaration[];
@@ -331,6 +435,7 @@ export interface Result {
   diagnostics: Diagnostic[];
   expansions?: string[];
   files?: Artifact[];
+  formattedSources?: Source[];
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;
   packages?: PackageView[];
@@ -386,6 +491,7 @@ export type ScalarValue =
     {type: 'Nullable' | 'Optional'; value: ScalarValue | null;};
 
 export interface Compiler {
+  format(input: CheckRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;

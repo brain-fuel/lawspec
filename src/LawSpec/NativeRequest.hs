@@ -1,6 +1,6 @@
 -- | Public binding configuration is resolved before entering target emission.
 module LawSpec.NativeRequest
-  ( NativeRequest(..), NetworkBinding(..), networkArtifacts, FunctionBinding(..), NativeCall(..), GoImport(..), ErlangInclude(..), BindingPlan(..), HandlerBinding(..), FailureMapping(..)
+  ( NativeRequest(..), NetworkBinding(..), networkArtifacts, FunctionBinding(..), NameBinding(..), NativeCall(..), GoImport(..), ErlangInclude(..), BindingPlan(..), HandlerBinding(..), FailureMapping(..)
   , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, hasBindings
   ) where
 
@@ -9,7 +9,7 @@ import Data.Aeson
 import Data.Aeson.Types (Parser)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Data.Char (isAscii, isAlpha, isAlphaNum)
+import Data.Char (isAscii, isAlpha, isAlphaNum, isLower)
 import Data.List (find, nub)
 import qualified LawSpec.Core as C
 import LawSpec.NativeBinding
@@ -27,6 +27,9 @@ data NativeRequest = NativeRequest
   , requestFailures :: [FailureMapping]
   -- The node identity and trusted peers of the secure network handler.
   , requestNetwork :: Maybe NetworkBinding
+  -- Public generated names are presentation choices, independent of native
+  -- implementations and of the declaration's semantic identity.
+  , requestNames :: [NameBinding]
   } deriving (Eq, Show)
 -- network: {"identity": "<file>", "trusted": "<file>"}: the file holding a
 -- node's ML-DSA-65 identity seed (64 hexadecimal digits), and the file
@@ -55,6 +58,8 @@ data ErlangInclude = ErlangInclude { erlangIncludePath :: FilePath, erlangInclud
 -- to fill in. ref:DEC-native-bindings-typed-identity
 data FunctionBinding = FunctionBinding
   { functionDeclaration :: C.Id, functionNative :: NativeCall } deriving (Eq, Show)
+data NameBinding = NameBinding
+  { nameDeclaration :: C.Id, nameOverride :: String } deriving (Eq, Show)
 -- | How a bound adapter calls native code: a static function, a method of its
 -- handle argument (`method`), or a native constructor (`constructor`), for a
 -- model's start.
@@ -74,24 +79,28 @@ data BindingPlan = BindingPlan
   , bindingHandlers :: [(C.Id, NativeRef)]
   -- The native exceptions that become failures.
   , bindingFailures :: [C.FailureBinding]
+  , bindingNames :: [(C.Id, String)]
   } deriving (Eq, Show)
 -- | A request without bindings.
 emptyNativeRequest :: NativeRequest
-emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] [] [] [] Nothing
+emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] [] [] [] Nothing []
 -- | A plan without bindings, which emitters treat as the generated-types path.
 emptyBindingPlan :: BindingPlan
-emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] [] [] []
+emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] [] [] [] []
 -- | Projects without bindings skip the binding companion files. Bound handlers
 -- and failures do not count: they only change how the tests make production
 -- handlers and catch native failures.
 hasBindings :: BindingPlan -> Bool
-hasBindings plan = plan { bindingHandlers = [], bindingFailures = [] } /= emptyBindingPlan
+hasBindings plan = plan { bindingHandlers = [], bindingFailures = [], bindingNames = [] } /= emptyBindingPlan
 
 -- | Bindings are checked against the compiled program before emission, so a
 -- misspelled name is an error with that name, not a target build failure.
 resolveNativeRequest :: C.Program -> NativeRequest -> Either String BindingPlan
 resolveNativeRequest program NativeRequest{..} = do
   representations <- resolveBindings (C.programDataDeclarations program) requestBindings
+  unless (length requestNames == length (nub (map nameDeclaration requestNames)))
+    (Left "duplicate native name override")
+  names <- mapM resolveName requestNames
   unless (length requestFunctions == length (nub (map functionDeclaration requestFunctions)))
     (Left "duplicate native function binding")
   functions <- mapM resolve requestFunctions
@@ -109,8 +118,15 @@ resolveNativeRequest program NativeRequest{..} = do
   failures <- mapM failureMapping requestFailures
   unless (length failures == length (nub (map C.failureNative failures))) (Left "duplicate native failure mapping")
   pure (BindingPlan representations [(d, ref) | (d, StaticCall ref) <- functions]
-    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports requestErlangIncludes handlers failures)
+    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports requestErlangIncludes handlers failures names)
   where
+    resolveName NameBinding{..} = do
+      unless (nameDeclaration `elem` [C.declarationId d | u <- C.programUnits program, d <- C.unitDeclarations u])
+        (Left ("unknown declaration in native name override: " ++ C.idText nameDeclaration))
+      validIdentifier nameOverride
+      unless (case nameOverride of c:_ -> isLower c; [] -> False)
+        (Left "a public native function name override must start with a lowercase letter")
+      pure (nameDeclaration, nameOverride)
     definitions = [C.declarationId (C.definitionDeclaration d) |
       u <- C.programUnits program, d <- C.unitDefinitions u]
     declarations = [d | u <- C.programUnits program, d <- C.unitDeclarations u,
@@ -259,12 +275,15 @@ instance FromJSON HandlerBinding where
 instance FromJSON FailureMapping where
   parseJSON = strict "native failure" ["native","failure"] $ \o ->
     FailureMapping <$> o .: "native" <*> o .: "failure"
+instance FromJSON NameBinding where
+  parseJSON = strict "native name override" ["declaration","name"] $ \o ->
+    NameBinding . C.Id <$> o .: "declaration" <*> o .: "name"
 instance FromJSON NativeRequest where
-  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","erlangIncludes","handlers","failures","network"] $ \o -> do
+  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","erlangIncludes","handlers","failures","network","names"] $ \o -> do
     types <- o .:? "types" .!= []
     generators <- o .:? "generators" .!= []
     NativeRequest (Bindings types generators) <$> o .:? "functions" .!= [] <*> o .:? "rustCrate" <*> o .:? "goImports" .!= []
-      <*> o .:? "erlangIncludes" .!= [] <*> o .:? "handlers" .!= [] <*> o .:? "failures" .!= [] <*> o .:? "network"
+      <*> o .:? "erlangIncludes" .!= [] <*> o .:? "handlers" .!= [] <*> o .:? "failures" .!= [] <*> o .:? "network" <*> o .:? "names" .!= []
 instance FromJSON NetworkBinding where
   parseJSON = strict "network" ["identity","trusted"] $ \o ->
     NetworkBinding <$> o .:? "identity" <*> o .:? "trusted"

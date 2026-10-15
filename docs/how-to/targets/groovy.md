@@ -32,6 +32,10 @@ gradle test
 `init` creates `settings.gradle` and a `build.gradle` with these dependencies.
 It makes `src/main/java` and `src/test/java` Groovy source directories, so the
 Java model and your Groovy classes compile jointly and can call each other.
+The generated build lets Groovy compiler workers use up to 2 GiB of heap.
+Large scoped-search specifications exceed Gradle's 512 MiB worker default
+during parsing. This is a maximum, rather than a fixed allocation; adjust
+`groovyOptions.forkOptions.memoryMaximumSize` in your build when needed.
 
 ## Layout
 

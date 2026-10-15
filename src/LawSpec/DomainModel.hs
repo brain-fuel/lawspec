@@ -467,7 +467,7 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
       x = Var subject
       lawFor title description proposition =
         Law (name ++ " " ++ title) [] [] (Forall [(subject, input)] proposition) description
-          "LawSpec generates the workflow; this law checks every target runs it as specified" [] [] start []
+          "LawSpec generates the workflow; this law checks every target runs it as specified" [] [] start [] emptyLawMetadata
       isLeft m = Apply (Var "prelude.isLeft") m
       isRight m = Apply (Var "prelude.isRight") m
       errorOf m = matchEither m "e" (\e -> ConstructLit "Maybe::Just" [e]) (const (ConstructLit "Maybe::Nothing" []))

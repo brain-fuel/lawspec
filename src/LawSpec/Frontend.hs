@@ -1,6 +1,6 @@
 -- | The only bridge from checked surface syntax to the typed core. Targets never
 -- receive TypedExpr's source tree or perform contextual literal inference.
-module LawSpec.Frontend (compileCore, elaborate, elaborateExpression) where
+module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateExpression) where
 import qualified LawSpec.Model as S
 import qualified LawSpec.Compile as S
 import qualified LawSpec.Core as C
@@ -11,7 +11,7 @@ import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Release (checkResourceReleases)
 import LawSpec.Core.Total (deferProgramPostconditions)
 import Control.Monad (forM, unless)
-import Data.List (nub, nubBy, stripPrefix)
+import Data.List (nub, nubBy, stripPrefix, intercalate)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
@@ -26,6 +26,11 @@ compileCore bits settings sources = do
   (units,properties) <- S.compileWithSettings bits settings sources
   -- Callers that read a whole program (tools, tests, emitters) see field
   -- nodes as the matches they stand for, as the testing plan does.
+  C.lowerProgramFields <$> elaborate bits units properties
+
+compileCoreCanonical :: Int -> Generation -> [Source] -> Either [Diagnostic] C.Program
+compileCoreCanonical bits settings sources = do
+  (units,properties) <- S.compileCanonicalWithImports (\_ _ -> Nothing) bits settings sources
   C.lowerProgramFields <$> elaborate bits units properties
 
 -- | Every surface construct is lowered here, once, and the result validated
@@ -93,14 +98,22 @@ elaborate bits units properties = do
       let pid = C.Id (S.unitName u ++ "::law::" ++ escapeIdentity (S.name p))
           original = S.original p
           resourceIds = [(n,C.Id (C.idText pid ++ "::resource::" ++ show index)) | (index,(n,_)) <- zip [0::Int ..] (S.lawResources original)]
-          bindings = [(S.inputId i,C.Id (C.idText pid ++ "::input::" ++ show index)) | (index,i) <- zip [0::Int ..] (S.inputs p)] ++ resourceIds
-          env = S.functions u ++ [(S.inputId i,S.inputType i) | i <- S.inputs p] ++ S.lawResources original
+          nestedInputs = S.assertionInputs (S.assertion p)
+          bindings = [(S.inputId i,C.Id (C.idText pid ++ "::input::" ++ show index)) | (index,i) <- zip [0::Int ..] (S.inputs p)] ++
+            [(S.inputId i,C.Id (C.idText pid ++ "::logical::" ++ show index)) | (index,i) <- zip [0::Int ..] nestedInputs] ++ resourceIds
+          env = S.functions u ++ [(S.inputId i,S.inputType i) | i <- S.inputs p ++ nestedInputs] ++ S.lawResources original
           resolve n = maybe (declarationId u n) id (lookup n bindings)
           term = elaborateResolvedWithData dataDeclarations [declarationId u n | (n,_) <- S.functions u] bits pid resolve env
           equal a b = equationWithData dataDeclarations [declarationId u n | (n,_) <- S.functions u] bits pid resolve env a b
           assertion (S.AssertEqual a b) = equal a b
           assertion (S.AssertImplies g body) = C.Implication <$> term g <*> assertion body
           assertion (S.AssertAll bodies) = C.Conjunction <$> mapM assertion bodies
+          assertion (S.AssertNot body) = C.Negation <$> assertion body
+          assertion (S.AssertQuantified kind i body) = do
+            ty <- coreType (S.inputType i)
+            predicates <- mapM term (S.inputRefinements i)
+            let quantifier = C.Quantifier (C.Binder (resolve (S.inputId i)) (S.inputName i) ty) predicates []
+            C.Quantified kind quantifier <$> assertion body
       qs <- forM (S.inputs p) $ \i -> do
         t <- coreType (S.inputType i)
         preds <- mapM term (S.inputRefinements i)
@@ -160,61 +173,126 @@ elaborate bits units properties = do
               pure (C.Resource binder acquire release reset Nothing (S.resourceConcurrent declaration))
             [] -> Left (S.name p ++ " takes " ++ n ++ " :: " ++ S.prettyType ty ++ ", but no resource is declared for " ++ S.prettyType ty ++ "; declare resource " ++ S.prettyType ty ++ " is acquire ... release ... end")
             _ -> Left ("more than one resource is declared for " ++ S.prettyType ty)
+      references <- mapM (traverseReference (\target -> case target of
+        S.ResolvedReferenceTarget resolved -> pure resolved
+        S.ParsedReferenceTarget _ _ -> Left "unresolved documentary reference")) (S.references original)
       pure C.Property
         { C.propertyId=pid, C.propertyName=S.name p, C.propertyLocation=S.location original
         , C.propertyInputs=qs, C.propertyBody=body, C.propertyExamples=examples
         , C.propertyGeneration=S.generation p, C.propertyDescription=S.description original
-        , C.propertyRationale=S.rationale original, C.propertyReferences=S.references original
-        , C.propertyTrace=S.trace p, C.propertyHandlers=[], C.propertyResources=resources, C.propertyHarness=C.noHarness }
+        , C.propertyRationale=S.rationale original, C.propertyReferences=references
+        , C.propertyTrace=S.trace p, C.propertyHandlers=[], C.propertyResources=resources, C.propertyHarness=C.noHarness
+        , C.propertyInputDomain=S.inputDomain p, C.propertyMetadata=S.lawMetadata original }
     contextual at = either (Left . pure . (\msg -> Diagnostic "elaboration" msg at)) Right
     -- A law's harness plan, elaborated over its inputs. Its expressions may
     -- call checked definitions only: calling native code or an ability
     -- operation could change what the law observes.
     harnessed dataDeclarations closed u sp cp = case lookup (S.name sp) (S.lawHarness u) of
       Nothing -> pure cp { C.propertyHarness = C.noHarness { C.harnessUnit = S.harnessName <$> S.unitHarness u } }
-      Just plan -> either (\msg -> Left [Diagnostic "harness" msg (Just (S.location (S.original sp)))]) Right $ do
-        let pid = C.propertyId cp
-            functionIds = [declarationId u n | (n,_) <- S.functions u]
-            inputIds = [(S.inputId i, C.binderId (C.quantifiedBinder q)) | (i, q) <- zip (S.inputs sp) (C.propertyInputs cp)]
-            aliases = [(S.inputName i, S.Var (S.inputId i)) | i <- S.inputs sp]
-            lawEnv = S.functions u ++ [(S.inputId i, S.inputType i) | i <- S.inputs sp]
-            resolveWith locals n = maybe (maybe (declarationId u n) id (lookup n inputIds)) id (lookup n locals)
-            pureOnly what e = checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) what e
-            lawTerm what ty e = do
-              t <- elaborateResolvedWithData dataDeclarations functionIds bits pid (resolveWith []) lawEnv
-                (maybe id (flip S.Annotate) ty (S.replaceExprVars aliases e))
-              pureOnly what t
-        covers <- mapM (\(percent, label, e) -> C.Cover percent label <$> lawTerm ("cover \"" ++ label ++ "\"") (Just (S.Named "Bool")) e) (S.planCover plan)
-        classes <- mapM (\(e, label) -> (\t -> (t, label)) <$> lawTerm ("classify as \"" ++ label ++ "\"") (Just (S.Named "Bool")) e) (S.planClassify plan)
-        labels <- mapM (lawTerm "label" (Just (S.Named "Text"))) (S.planLabels plan)
-        target <- traverse (\e -> do
-          t <- lawTerm "target maximize" Nothing e
-          case C.expressionType t of
-            C.Constructor n [] | n `elem` numericTypes -> pure t
-            other -> Left ("target maximize needs a number to maximize, but " ++ S.prettyExpr e ++ " is " ++ show other)) (S.planTarget plan)
-        draws <- forM (S.planDraws plan) $ \(inputName, strategy, declared, gen) -> do
-          (i, q) <- maybe (Left ("use " ++ strategy ++ " for " ++ inputName ++ ": the law has no input called " ++ inputName)) Right
-            (lookup inputName [(S.inputName i, (i, q)) | (i, q) <- zip (S.inputs sp) (C.propertyInputs cp)])
-          -- A strategy of a refined type, (n :: T where p), keeps only the
-          -- values that satisfy p, as `such that` does.
-          let (plain, refined) = case declared of
-                S.Refined n t (Just p) -> (t, Just (S.replaceExprVars [(n, S.Var "it")] p))
-                _ -> (declared, Nothing)
-              gen' = maybe gen (\p -> S.GenSuchThat gen p 100) refined
-          declaredType <- coreType plain
-          let inputType = C.binderType (C.quantifiedBinder q)
-          unless (declaredType == inputType)
-            (Left ("the strategy " ++ strategy ++ " produces values of " ++ S.prettyType declared ++ ", but the input " ++
-              inputName ++ " is " ++ S.prettyType (S.inputType i) ++ "; a strategy may only produce values of its type"))
-          draw <- elaborateDraw dataDeclarations closed u pid strategy (S.inputId i) plain refined gen'
-          pure (C.binderId (C.quantifiedBinder q), strategy, draw)
-        pure cp { C.propertyHarness = C.LawHarness
-          { C.harnessUnit = Just (S.planHarness plan), C.harnessTags = S.planTags plan
-          , C.harnessSkip = S.planSkip plan, C.harnessKnownFailing = S.planKnownFailing plan
-          , C.harnessTimeout = S.planTimeout plan, C.harnessRepeat = S.planRepeat plan
-          , C.harnessRetries = S.planRetries plan, C.harnessCover = covers, C.harnessClassify = classes
-          , C.harnessLabels = labels, C.harnessTarget = target, C.harnessDraws = draws
-          , C.harnessGroup = S.planGroup plan } }
+      Just plan -> do
+        witnesses <- forM (S.planResolvedWitnesses plan) $ \witness ->
+          either (\message -> Left [Diagnostic "harness" message (Just (spanStart (S.witnessSourceSpan witness)))]) Right
+            (elaborateWitness dataDeclarations closed u sp cp witness)
+        draws <- forM (S.planDraws plan) $ \selected@(inputName,_,_,_) ->
+          either (\message -> Left [Diagnostic "harness" message (Just
+            (maybe (S.location (S.original sp)) spanStart (lookup inputName (S.planDrawLocations plan))))]) Right
+            (elaborateHarnessStrategy dataDeclarations closed u sp cp selected)
+        either (\msg -> Left [Diagnostic "harness" msg (Just (S.location (S.original sp)))]) Right $ do
+          let pid = C.propertyId cp
+              functionIds = [declarationId u n | (n,_) <- S.functions u]
+              inputIds = [(S.inputId i, C.binderId (C.quantifiedBinder q)) | (i, q) <- zip (S.inputs sp) (C.propertyInputs cp)] ++
+                [(S.inputId i, C.Id (C.idText pid ++ "::logical::" ++ show index))
+                | (index,i) <- zip [0::Int ..] (S.assertionInputs (S.assertion sp))]
+              aliases = [(S.inputName i, S.Var (S.inputId i)) | i <- S.inputs sp]
+              lawEnv = S.functions u ++ [(S.inputId i, S.inputType i) | i <- S.inputs sp]
+              resolveWith locals n = maybe (maybe (declarationId u n) id (lookup n inputIds)) id (lookup n locals)
+              pureOnly what e = checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) what e
+              lawTerm what ty e = do
+                t <- elaborateResolvedWithData dataDeclarations functionIds bits pid (resolveWith []) lawEnv
+                  (maybe id (flip S.Annotate) ty (S.replaceExprVars aliases e))
+                pureOnly what t
+          covers <- mapM (\(percent, label, e) -> C.Cover percent label <$> lawTerm ("cover \"" ++ label ++ "\"") (Just (S.Named "Bool")) e) (S.planCover plan)
+          classes <- mapM (\(e, label) -> (\t -> (t, label)) <$> lawTerm ("classify as \"" ++ label ++ "\"") (Just (S.Named "Bool")) e) (S.planClassify plan)
+          labels <- mapM (lawTerm "label" (Just (S.Named "Text"))) (S.planLabels plan)
+          target <- traverse (\e -> do
+            t <- lawTerm "target maximize" Nothing e
+            case C.expressionType t of
+              C.Constructor n [] | n `elem` numericTypes -> pure t
+              other -> Left ("target maximize needs a number to maximize, but " ++ S.prettyExpr e ++ " is " ++ show other)) (S.planTarget plan)
+          let targets = [identity | (identity,_,_,_,_) <- draws]
+          unless (length targets == length (nub targets))
+            (Left "two strategies select the same expanded input or search binder")
+          pure cp { C.propertyHarness = C.LawHarness
+            { C.harnessUnit = Just (S.planHarness plan), C.harnessTags = S.planTags plan
+            , C.harnessSkip = S.planSkip plan, C.harnessKnownFailing = S.planKnownFailing plan
+            , C.harnessTimeout = S.planTimeout plan, C.harnessRepeat = S.planRepeat plan
+            , C.harnessRetries = S.planRetries plan, C.harnessCover = covers, C.harnessClassify = classes
+            , C.harnessLabels = labels, C.harnessTarget = target
+            , C.harnessDraws = [(identity,strategy,draw) | (identity,_,True,strategy,draw) <- draws]
+            , C.harnessGroup = S.planGroup plan, C.harnessWitnesses = witnesses
+            , C.harnessSearches = [(identity,path,strategy,draw) | (identity,path,False,strategy,draw) <- draws] } }
+    elaborateHarnessStrategy dataDeclarations closed u sp cp (inputName,strategy,declared,gen) = do
+      let pid = C.propertyId cp
+          inputIds = [(S.inputId i,C.binderId (C.quantifiedBinder q)) | (i,q) <- zip (S.inputs sp) (C.propertyInputs cp)] ++
+            [(S.inputId i,C.Id (C.idText pid ++ "::logical::" ++ show index)) |
+              (index,i) <- zip [0::Int ..] (S.assertionInputs (S.assertion sp))]
+      let roots = [([S.inputName i],i,True) | i <- S.inputs sp]
+          targets = roots ++ scopedTargets (map S.inputName (S.inputs sp)) (S.assertion sp)
+          written = case stripPrefix "definition." inputName of Just path -> path; Nothing -> inputName
+          exact = [target | target@(path,_,_) <- targets,intercalate "." path == written]
+          root = [target | target@(_,i,True) <- roots,S.inputName i == written]
+          short = [target | target@(_,i,_) <- targets,S.inputName i == written]
+          matches = if not (null root) then root else if not (null exact) then exact else short
+          paths = intercalate ", " ["definition." ++ intercalate "." path | (path,_,_) <- targets]
+      (path,i,isRoot) <- case matches of
+        [target] -> pure target
+        [] -> Left ("use " ++ strategy ++ " for " ++ inputName ++ ": the law has no input called " ++ inputName ++
+          "; available input and search paths are " ++ paths)
+        _ -> Left ("ambiguous strategy target " ++ inputName ++ "; use its qualified lexical path: " ++ paths)
+      identity <- maybe (Left "a strategy target has no expanded binder identity") Right (lookup (S.inputId i) inputIds)
+      let inputType = maybe (C.TypeVariable identity) id (lookup identity
+            [(C.binderId (C.quantifiedBinder q),C.binderType (C.quantifiedBinder q)) |
+              q <- C.propertyInputs cp ++ scopedQuantifiers (C.propertyBody cp)])
+      -- A strategy of a refined type, (n :: T where p), keeps only the
+      -- values that satisfy p, as `such that` does.
+      let (plain, refined) = case declared of
+            S.Refined n t (Just p) -> (t, Just (S.replaceExprVars [(n, S.Var "it")] p))
+            _ -> (declared, Nothing)
+          gen' = maybe gen (\p -> S.GenSuchThat gen p 100) refined
+      declaredType <- coreType plain
+      unless (declaredType == inputType)
+        (Left ("the strategy " ++ strategy ++ " produces values of " ++ S.prettyType declared ++ ", but the input " ++
+          inputName ++ " is " ++ S.prettyType (S.inputType i) ++ "; a strategy may only produce values of its type"))
+      draw <- elaborateDraw dataDeclarations closed u pid strategy (S.inputId i) plain refined gen'
+      pure (identity,path,isRoot,strategy,draw)
+    scopedTargets path claim = case claim of
+      S.AssertQuantified _ input body -> let full = path ++ [S.inputName input]
+        in (full,input,False) : scopedTargets full body
+      S.AssertNot body -> scopedTargets path body
+      S.AssertImplies _ body -> scopedTargets path body
+      S.AssertAll bodies -> concat [scopedTargets (path ++ ["branch" ++ show k]) body | (k,body) <- zip [1::Int ..] bodies]
+      S.AssertEqual _ _ -> []
+    scopedQuantifiers claim = case claim of
+      C.Quantified _ q body -> q : scopedQuantifiers body
+      C.Negation body -> scopedQuantifiers body
+      C.Implication _ body -> scopedQuantifiers body
+      C.Conjunction bodies -> concatMap scopedQuantifiers bodies
+      _ -> []
+    elaborateWitness dataDeclarations closed u sp cp witness = do
+      let pid = C.propertyId cp
+          functionIds = [declarationId u n | (n,_) <- S.functions u]
+          ids = [(S.inputId i,C.binderId (C.quantifiedBinder q)) | (i,q) <- zip (S.inputs sp) (C.propertyInputs cp)] ++
+            [(S.inputId i,C.Id (C.idText pid ++ "::logical::" ++ show index)) |
+              (index,i) <- zip [0::Int ..] (S.assertionInputs (S.assertion sp))]
+          resolve n = maybe (declarationId u n) id (lookup n ids)
+          scope = [(S.inputId i,S.inputType i) | i <- S.witnessScope witness] ++ S.functions u
+          input = S.witnessInput witness
+          what = "witness for definition." ++ intercalate "." (S.witnessPath witness)
+      value <- elaborateResolvedWithData dataDeclarations functionIds bits pid resolve scope
+        (S.Annotate (S.witnessExpression witness) (S.inputType input))
+      checked <- checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) what value
+      let lowered = C.lowerFieldNodes dataDeclarations (C.idText pid ++ "::witness::" ++ S.inputId input) checked
+      pure (C.WitnessChoice (resolve (S.inputId input)) (S.witnessPath witness) lowered)
     -- A strategy's draw. Its values are typed by the strategy's type; a
     -- bound value, or `it` in such that, is a local of the test.
     -- A refined strategy's any (the strategy's own value, of its declared
@@ -308,20 +386,25 @@ elaborate bits units properties = do
 
 -- A harness expression calls checked definitions only.
 checkHarnessExpression :: C.Unit -> S.Unit -> Maybe String -> String -> C.Expr -> Either String C.Expr
-checkHarnessExpression closed u harness what e = case [n | n <- calls e, n `notElem` pureDefinitions] of
+checkHarnessExpression closed u harness what e = case forbidden [] e of
   [] -> pure e
   n : _ -> Left (what ++ " in the harness" ++ maybe "" (" " ++) harness ++ " calls " ++ shortName n ++
     ", which is not a checked definition; a harness expression may call only checked definitions, " ++
     "since calling native code or an ability could change what the law observes")
   where
-    pureDefinitions = [C.declarationId (C.definitionDeclaration d) | d <- C.unitDefinitions closed, not (C.definitionOrchestrates d)]
-      ++ [C.Id n | n <- prelude]
-    prelude = []
-    calls x = case C.expressionNode x of
-      C.ExternalCall n args -> n : concatMap calls args
+    pureDefinitions = [(C.declarationId (C.definitionDeclaration d),d) | d <- C.unitDefinitions closed,
+      not (C.definitionOrchestrates d), null (C.declarationUses (C.definitionDeclaration d))]
+    forbidden seen x = case C.expressionNode x of
+      C.ExternalCall n args -> concatMap (forbidden seen) args ++ case lookup n pureDefinitions of
+        Nothing -> [n]
+        Just definition | n `elem` seen -> []
+                        | otherwise -> forbidden (n:seen) (C.definitionBody definition)
       C.Perform op args -> C.Id (C.operationName op) : concatMap calls args
       C.Calls op _ -> [C.Id (C.operationName op)]
-      _ -> concatMap calls (C.children x)
+      C.Handle _ _ -> [C.Id "an ability handler"]
+      C.Helper operation _ | operation `elem` [C.Recorded,C.AcquireResource,C.ReleaseResource,C.FreePort] -> [C.Id (C.builtinName operation)]
+      _ -> concatMap (forbidden seen) (C.children x)
+      where calls = forbidden seen
     shortName (C.Id n) = maybe n id (stripPrefix (S.unitName u ++ "::") n)
 
 handlerRef :: S.Unit -> S.HandlerChoice -> C.HandlerRef
@@ -340,9 +423,7 @@ mapProperty f p = p
   , C.propertyExamples = [e { C.exampleBindings = [(i, f v) | (i, v) <- C.exampleBindings e]
                             , C.exampleExpectations = map proposition (C.exampleExpectations e) } | e <- C.propertyExamples p] }
   where
-    proposition (C.Equation ev a b) = C.Equation ev (f a) (f b)
-    proposition (C.Implication g body) = C.Implication (f g) (proposition body)
-    proposition (C.Conjunction ps) = C.Conjunction (map proposition ps)
+    proposition = C.mapPropositionExpressions f
 
 -- | The last part of a qualified name: lawspec.resources::type::FreePort gives FreePort.
 baseName :: String -> String

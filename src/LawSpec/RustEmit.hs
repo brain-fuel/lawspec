@@ -463,6 +463,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               pure (block (statements [binding "condition" guard,
                 conditional (Doc.text "condition.boolean()?") inner]))
             Conjunction ps -> statements <$> mapM (proposition names label) ps
+            Quantified _ _ _ -> Left "a scoped proposition requires complete search planning before native emission"
+            Negation _ -> Left "proposition negation requires execution planning before native emission"
           predicate names label p = do
             value <- render names p
             pure (block (statements [binding "condition" value,

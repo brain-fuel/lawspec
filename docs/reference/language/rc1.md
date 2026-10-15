@@ -1,0 +1,549 @@
+---
+id: lawspec.reference.language.rc1
+kind: reference
+title: RC1 authoring contract
+---
+# RC1 authoring contract
+
+The authoritative release contract and remaining gates are in
+[the single review packet](../../../LAWSPEC-PRE-1.0-REVIEW.md). Profile
+`1.0-rc.1` uses API schema 5 and configuration version 2. RC1 is a milestone;
+completing it does not release final 1.0.
+
+Automatic exhaustiveness, termination, definedness, refinements and definition
+contracts stay intrinsic. A pure `function` has no ability operations; a
+`procedure` declares or infers its effects. Law verification is independent:
+`verification.layers` defaults to `[]`. No selections means no selected law
+checks, and does not constitute verification success. Deferred definition
+postconditions still run at native boundaries.
+
+```text
+unit example.identity
+
+function same (value of type Integer) -> Integer is
+  value
+end function
+
+law identity is
+  definition:
+    for all (value of type Integer) =>
+      same value must be value
+    end
+  end
+
+  expect same value = expected
+  in table (value, expected):
+    row -1, -1
+    row 0, 0
+    row 1, 1
+  end
+end
+```
+
+Laws may start with optional scalar `id` and `owner` metadata. Each takes one
+text value or documentary identifier, such as `id: "REVIEW-001"` and
+`owner: Payments.Review`. Entries precede all sections, occur at most once each,
+and have no closing `end`. Documentary identifiers need no import resolution.
+These fields do not change the law's qualified identity, proposition or
+verification evidence. The [review example](../../../examples/rc1/law-metadata.lawspec)
+shows both scalar orders. Formatting preserves the chosen order and spelling;
+`id` and `owner` remain ordinary identifiers in other contexts.
+
+A `references:` section contains documentary links, as in the
+[documented review requirements](../../../examples/rc1/documentary-review.lawspec):
+
+```text
+references:
+  #S{ref law "|allowed requests are approved| definition,
+     ref function review}
+  ref law "|other requests are declined| references."|Review policy|
+  "|Review policy|: "Allowed requests are approved; all other requests are declined."
+end
+```
+
+`ref law` accepts a local name, an imported alias, or a full unit-qualified
+name. Dots within phrase delimiters belong to the name. Local declarations
+resolve first, followed by explicitly listed imports and the prelude; ambiguous
+unqualified links require qualification. Facades preserve the original target
+identity and source location. Full qualification also respects package
+visibility. When several package versions are loaded, full-unit paths select
+the same dependency version as imports, without rewriting reference text or
+moving its source span. A concrete law can be linked through an alias without importing it
+for reusable-law application.
+
+A law selector is `definition`, `description`, `rationale`, `references`, or
+`references.` followed by a named external reference's phrase name. A selector
+may follow whitespace or a dot after the law name. A known section selector
+addresses that documentary field; an omitted optional section has empty text
+or entries. A named selector requires an actual entry on the selected law.
+`ref function` selects a checked function or procedure definition. An adapter
+signature has no source definition to select. An unselected law link addresses
+the law as a whole. Named external entries use a phrase name, a colon and one
+text resource; unnamed quoted citations are also external links. Named entries
+are unique within their law. Resources are documentary text, with no network
+lookup or implicit proof authority.
+
+`#S{...}` groups complete links. `ref law #S{first, second} description`
+selects the same field on each target. Groups flatten into ordered links and
+do not construct a runtime set. Resolution diagnoses missing or wrong-kind
+targets before elaboration. Links retain declaration and use spans, permit
+cycles, and never copy or expand a linked obligation. They do not discharge
+laws. Developer and business explanations show the links; formal propositions
+and evidence retain their existing meaning. Editor navigation uses the same
+resolved identities and spans.
+
+`must be`, `is`, `=`, `must =`, and leading `must` elaborate to the same typed
+Eq obligation. Equality in a value context is Boolean. Existing IEEE equality
+and refinement predicates retain their meaning. Worded `not`, `and`, `or`, and
+right-associative `implies` have their logical precedence; named infix
+application is nonassociative immediately above comparisons.
+
+Logical quantifiers keep their lexical order and own their closing `end`:
+
+```text
+law witnesses is
+  definition:
+    for all (value of type Bool) =>
+      there must exist a (witness of type Bool where witness = value) such that
+        witness must be value
+      end
+    end
+  end
+end
+```
+
+Restrictions bind left to right. A name is visible in its own restriction;
+existential restrictions must hold for a witness. Universal restrictions are
+antecedents. An inner binder may shadow an outer name without capturing its
+identity. Existential propositions remain distinct from existentially packaged
+data. `must not P` negates a proposition, including a reusable law application.
+`there does not exist` and `there must not exist` both negate existence.
+
+In a restriction, `the` may precede an already bound name: `where the reply =
+the value`. This includes the current binder, earlier and enclosing binders,
+and field projections such as `the authorization.granted`. The same wording
+works in `given ... when` conditions and harness `such that` filters. It does
+not make a later or sibling binder visible. The article changes no predicate
+or obligation; formatting preserves its spelling and diagnostics retain the
+original name's location.
+
+The words `a`, `an` and `the` remain ordinary names elsewhere. A local or
+explicitly imported function named `the`, or a bound variable named `the`,
+keeps ordinary application semantics even inside a restriction. Use the
+bound name directly when that ordinary declaration takes precedence. Function
+purity and refinement checks still apply.
+
+Complete finite search currently supports enumerable primitive and algebraic
+domains within the exhaustive limit. The shared execution plan lowers logical
+binders to ordinary typed terms, retaining the scoped proposition in API and
+explanation views. Empty nested domains and false restrictions have their
+logical meanings. Swapping `for all` and `there exists` can change the result.
+The [authorization snapshots](../../../examples/rc1/authorization-snapshots.lawspec)
+use exactly two approval identities, explicit activation snapshots and a
+payment-matching relation, including complete absence claims after revocation.
+Their domain does not describe an unbounded history or future executions.
+
+Quantified propositions compose with explicit `and`, `or`, `not` and
+right-associative `implies`. Parentheses group propositions. Each clause keeps
+its own binders: an empty universal domain in one clause cannot hide a false
+sibling clause. Only an uninterrupted leading universal prefix becomes law
+inputs; a repeated name stays in its nested scope. Reusable requirements keep
+the same scope when expanded. The
+[composed requirements](../../../examples/rc1/requirement-composition.lawspec)
+exercise conjunction, alternatives, implications and distinct nominal domains.
+These words express logical obligations; their textual order establishes no
+policy priority. Explanation views derive their wording from the typed
+proposition, including alternatives and implications represented through
+negation and conjunction.
+
+## Constructive witness search
+
+A harness can supply a checked expression for an existential binder:
+
+```text
+harness example.testing for example is
+  for law successors
+    witness value + 1 for definition.value.answer
+end
+```
+
+The [complete constructive example](../../../examples/rc1/constructive-witnesses.lawspec)
+includes an unbounded integer theorem, nominal record witnesses, a later
+witness depending on an earlier one, sibling binders, complete finite absence,
+and an empty outer domain. A witness setting belongs inside `for law` or
+`for laws`; it is not a unit default or a new law declaration. Like existing
+harness expressions, the setting occupies one line. Complex construction can
+live in an ordinary checked function, called from the setting.
+
+Paths follow the expanded law's lexical binders, including its leading
+universal inputs. `definition.value.answer` and `value.answer` name the same
+binder. A bare `answer` is accepted when exactly one existential has that name.
+Conjunction siblings introduce `branch1`, `branch2`, and so on; use the listed
+qualified path if names repeat. Negation does not add a path segment. Paths
+address the expanded typed obligation, including reusable-law expansion. These
+branch labels are search addresses and establish no policy priority. This
+path spelling is an explicit mechanical default. Names inside phrase
+delimiters remain atomic and case-sensitive.
+
+An expression sees enclosing binders, with the nearest same-named binder
+winning, and cannot depend on its own target or a later binder. Imported names
+resolve after that lexical scope is known. Its result must have the witness's
+type, including nominal boundaries. The candidate must also satisfy the
+binder's restriction when checked. Expressions call only checked functions;
+unchecked native calls and effectful operations are rejected, including calls
+hidden behind a checked wrapper. Checked recursion, polymorphism, capability
+requirements and constructor contracts retain their ordinary checks.
+
+A successful candidate establishes the existential subclaim for its enclosing
+inputs. A failed candidate leaves it undecided unless complete finite search
+settles it. Finite fallback remains available. Negation preserves the undecided
+outcome: a miss is never proof of nonexistence. A verified witness can refute a
+nonexistence claim. The native execution plan uses ordinary typed lets and
+conditionals and evaluates each visited candidate once. An undecided attempt
+reports `quantifier-search-incomplete`, rather than returning Boolean false.
+
+The existing contract prover checks a sufficient constructive proof goal; it
+can prove a theorem such as every integer having a successor without sampling
+that infinite domain. Complete checking of finite outer inputs is reported as
+exhaustive checking. Property execution is planned until it actually runs and
+can supply witnesses only for the inputs it checked. Neither a sample nor a
+configured expression proves an unbounded universal theorem. Empty outer
+domains still produce zero cases and no witness values. No selected law layers
+still means `not-verified`.
+
+Schema 5 exposes configured choices in `law.harness.witnesses`, each with a
+binder identity, normalized path and typed expression. These are strategy
+settings, not completed evidence. Developer and evidence explanations label
+them accordingly; business and formal wording retain the declared proposition.
+Detailed concrete witness-value traces, shrinking individual existential
+witnesses and snapshot-aware effectful search remain required work.
+
+## Bounded witness strategies
+
+Existing harness strategies can select a scoped existential or universal binder:
+
+```text
+strategy answers of type Integer is one of 1, 2 end
+for law selected
+  use answers for definition.allowed.answer
+```
+
+Scoped paths use the same lexical convention as configured witnesses. A short
+name is accepted when unambiguous; an outer input keeps its existing short name.
+`definition.` is optional. Reusable laws expand before paths resolve. Two paths
+that select the same binder are rejected. Ordinary outer-input strategies
+continue to use the target's property framework and shrinker.
+
+Scoped search uses a bounded deterministic schedule. `one of` supplies candidate
+expressions; `frequency` uses weighted cycles; `bind` explores dependent pairs
+diagonally; `such that` retains its checked filter and discard budget. Named
+strategy references keep their own lexical bindings and declared refinements.
+Generic checked functions used only by a strategy are specialized normally.
+Candidate computations become ordinary typed lets and conditionals, including
+filters and dependent binds, and every visited computation is evaluated once.
+
+Without a selected strategy, the compiler tries safe restriction hints and
+nearby integers, closed literal values, existing type boundaries and small
+integers. An `any` strategy uses this pool. Structural default search currently
+uses existing boundary values and closed literals; it does not claim the breadth
+of each framework's random generator. The schedule is deterministic for the
+typed obligation and enclosing inputs, so no additional random seed is needed.
+The outer framework's seed still reproduces its generated inputs.
+
+`generation.cases` bounds candidates per binder and `maxAttempts` bounds the
+expanded candidate evaluation plan for a scoped branch, including its nesting.
+Independent conjunction branches retain their own budgets. Complete finite coverage has its separate
+`exhaustiveLimit` and remains available independently of the selected strategy.
+A configured `witness` is tried first; without a selected strategy it retains
+its complete finite fallback. With a selected strategy it can cooperate with
+those bounded candidates.
+
+A found existential witness establishes that subclaim for the current inputs.
+A failed or exhausted search is incomplete, including beneath negation. A
+counterexample can refute a universal subclaim, but passing bounded universal
+samples cannot establish it. A strategy's finite choice list is never treated
+as complete coverage of the law's type. Only complete finite coverage or a proof
+can establish absence. Proof certificates go through the existing contract
+prover; a candidate list is not itself a proof of an unbounded universal law.
+
+Dependent restrictions are checked with the actual enclosing values on every
+attempt and every outer shrinking recheck. No strategy changes the proposition,
+widens its domain, bypasses intrinsic definition checking or permits unchecked
+native/effectful candidate computations. Schema 5 exposes configured scoped
+strategies as `law.harness.searches`, with binder identity, normalized path and
+strategy name. Explanation views label these as configuration rather than
+completed evidence.
+
+The [bounded-search example](../../../examples/rc1/bounded-witness-search.lawspec)
+includes cooperating witnesses, nominal record candidates, independent expected
+replies, sibling paths, dependent filters, weighted choices, finite absence,
+an empty domain and a universal counterexample. Concrete witness-value traces,
+broader stochastic candidate generation and shrinking individual witness values
+remain implementation requirements.
+
+## Complete integer ranges
+
+An integer restriction can make an otherwise unbounded domain finite. The
+canonical profile checks all values when mandatory conjuncts establish a
+complete interval within `exhaustiveLimit`:
+
+```text
+there does not exist (value of type Integer where value >= 0 and value < 4) such that
+  value = 4
+end
+```
+
+The same planning applies to leading universal inputs and scoped quantifiers.
+Strict endpoints, reversed comparisons, equality and exact affine arithmetic
+are supported. Finite-width bounds are intersected before values are constructed;
+`Whole` includes zero and `Nat` retains its positive restriction. Additional
+predicates are checked for every candidate, in lexical order.
+
+Exact signed integer ranges may depend on enclosing binders when both endpoints
+have the same variable coefficients, such as `next > amount` and
+`next <= amount + 3`. This is a complete three-value cover for every amount,
+including an unbounded universal input. A later restriction is checked with
+the actual earlier values. The
+[settlement example](../../../examples/rc1/finite-integer-domains.lawspec)
+includes fixed and dependent ranges, positive attempt counts and an empty gap
+between consecutive cents.
+
+These are complete covers, not samples. An interval with contradictory endpoints
+is empty without searching an unreachable inner domain. A complete finite miss
+can establish nonexistence. A cover that exceeds the expansion budget remains
+incomplete; it is never truncated into an absence proof. A proof of an unbounded
+universal claim still requires the prover. Otherwise native property checks
+remain planned until executed.
+
+Range inference uses required conjunctions only. It does not extract a bound
+from an optional disjunct, treat rational or floating-point intervals as discrete,
+or infer nonlinear bounds. Variable-width dependent intervals and opaque
+function-based bounds still need further search support. The declared
+proposition and source restrictions are preserved in every explanation view.
+
+A search that cannot decide its proposition reports `incomplete`, with no proof
+of absence. No selected law layers still reports `not-verified`.
+Broader stochastic search, shrinking individual witness values, complete
+variable-width or opaque refined integer covers, and effectful search
+with explicit snapshot semantics remain required implementation work. A
+candidate evaluation error reports
+`verification-incomplete`, rather than refuting existence.
+An effectful sibling clause retains its chosen handler and executes outside
+the finite search. Effects repeated within a logical search still report the
+missing snapshot semantics.
+
+An empty outer universal domain is valid in the canonical profile. Complete
+verification states that the domain is empty and that zero cases were evaluated;
+it produces no witness for an actual input. Property testing alone reports that
+no cases ran. Examples still need valid inputs. The
+[empty-domain example](../../../examples/rc1/empty-domains.lawspec) contrasts an
+empty universal obligation with the absence of existential witnesses. The
+legacy profile retains its nonempty test-domain requirement until migration.
+A law with no input binders has one case: its proposition is evaluated once.
+This differs from a universal binder whose domain has zero values.
+
+```text
+function "|adds the values| (a :: Integer) (b :: Integer) -> Integer is
+  a + b
+end function
+
+"|adds the values| 1 2
+1 `|adds the values| 2
+1 `adds 2
+```
+
+The last expression calls the ordinary function `adds`; it is not an alias for
+`"|adds the values|`. Dots outside phrase delimiters qualify a name. Dots inside
+belong to the name. Phrase bodies preserve case and spelling, permit escaped
+pipes and backslashes, and reject emptiness, edge whitespace and line breaks.
+
+`Whole` includes zero, and `Nat` is strictly positive; their phrase aliases are
+`"|whole number|` and `"|natural number|`. Canonical integers are unbounded
+`Integer`. Legacy numeric names require migration. Collection indices and
+lengths retain their zero-inclusive semantics.
+
+Reusable requirements use `apply law` followed by the law's name and arguments
+in declaration order. Applying the prelude's left-inverse law takes the decoder
+first and encoder second:
+
+```text
+law roundTrip is
+  definition:
+    apply law "|left inverse| decode encode
+  end
+end
+```
+
+The same typed expansion checks polymorphism, capabilities, argument count and
+recursive reuse. Local and explicitly imported laws resolve before the prelude;
+`prelude."|left inverse|` selects the built-in law explicitly. An import such as
+`import codec.requirements as c (law "|recovers the input|)` offers qualified
+`c."|recovers the input|` and unqualified use. A facade can write
+`export law c."|recovers the input|`. Phrase spelling, including internal dots
+and backticks, survives both forms. Law application does not change expression
+or function-name resolution. Expectation tables bind the expanded law's inputs.
+
+Native phrase names use deterministic word splitting and the target's naming
+rules. Colliding public names require an explicit
+[`nativeBindings.names` override](../native-bindings.md#configuration) by resolved
+declaration identity. Overrides preserve typed behavior and all call identities;
+they do not substitute an unchecked implementation.
+
+The [bit codec](../../../examples/rc1/bit-codec.lawspec) combines a checked
+mapping, Maybe-valued decoding, direct round trips, the reusable inverse and
+independent expected encodings. Its reversed-encoding mutant retains round-trip
+agreement but fails the expected encodings. This distinguishes agreement
+between derived functions from conformance to an external requirement.
+
+Named records are nominal products with an explicit constructor:
+
+```text
+type Picture is a record{
+  fileName of type Text
+  width of type Nat
+}
+end type
+
+function picture (width of type Nat) -> Picture is
+  Picture record{fileName = "photo.jpg", width = width}
+end function
+```
+
+Recursive record and constructor patterns preserve structural descent for
+checked recursive functions. The
+[approval-chain example](../../../examples/rc1/recursive-records.lawspec)
+counts nested records and distinguishes productive chains from recursive types
+with no finite construction. Projecting a field of a newly built record or a
+function result does not establish descent from the function's original input.
+
+Alternatives have no payload or one explicitly typed payload. Ordered cases
+bind the selected expression once as `it`; guards continue to later branches
+when false. Intrinsic exhaustiveness still applies.
+
+```text
+type Answer is one of
+  | Yes of type Integer
+  | No
+end type
+
+function answerValue (answer of type Answer) -> Integer is
+  first matching case of answer:
+    when Yes value then value
+    when No then 0
+  end case
+end function
+```
+
+Nested constructor and record patterns keep the same ordered behavior. Record
+patterns use `field = pattern` entries, may omit fields, and reject unknown or
+duplicate fields and repeated variable bindings. Boolean literal patterns may
+cover both values without a fallback. A whole-value binding requires
+`it matches name`.
+
+```text
+first matching case of delivery:
+  when Email record{document = Invoice record{file = Pdf record{fileName = name}}}
+    then Just name
+  otherwise Nothing
+end case
+```
+
+The [eight delivery/document/file examples](../../../examples/rc1/nesting/rrr.lawspec)
+cover each record/alternative combination. Their 20 closed outcome laws are
+checked by exhaustive compiler evaluation. All eight examples generate through all
+17 targets and their 20 outcomes also pass native execution on each target.
+Run the reproducible suite with `make acceptance SUITE=rc1-nesting TARGET=java`
+(or another supported target); CI schedules it for every target. Eight mutants
+remove the extracted filename and must be rejected during exhaustive checking. The
+examples count domain layers; explicit record payloads add product nodes.
+
+Finite mappings lower to ordinary checked lookup definitions. Constant keys
+must be distinct and reflexive under Eq. Complete constructor coverage or an
+explicit `otherwise` is required. Complete mappings derive finite preimages;
+an inverse is Maybe-valued and derived when outputs are unique and reflexive.
+A fallback does not silently acquire an incomplete finite inverse. The current
+implementation checks primitive scalar and unqualified payload-free enum keys.
+Resolved compound keys, additional finite domains and explicitly partial
+mappings remain implementation gates. Preimages compare outputs using typed
+Eq; inverse derivation requires established output uniqueness.
+
+```text
+mapping answerText of type Answer -> Text is
+  row No, "no"
+  otherwise "yes"
+end mapping
+```
+
+Completed proofs and compiler-evaluated exhaustive results remain evidence.
+Generated native tests are `planned` until an execution supplies results.
+Incomplete and unsupported analyses report their limits. Canonical `Set` currently reports its implementation limit, including qualified
+imports of the legacy collection type, rather than inheriting ordered iteration.
+Eq-only sets and `SortedSet` migration remain required. The review packet
+tracks features and gates still awaiting implementation and verification.
+
+The implemented syntax below describes the canonical frontend entry point.
+The review packet also specifies grammar still awaiting implementation,
+including structural products and broader witness evidence. The legacy grammar remains the migration input language.
+
+```ebnf
+annotation = "of" "type" | "::" ;
+parameter = "(" identifier annotation type ["where" boolean] ")" ;
+function = "function" name parameter+ "->" type "is" expression "end" "function" ;
+procedure = "procedure" name parameter+ ["->" type] "is" expression "end" "procedure" ;
+record = "type" name "is" "a" "record" "{" field* "}" "end" "type" ;
+field = identifier annotation type [","] ;
+alternatives = "type" name "is" "one" "of" alternative* "end" "type" ;
+alternative = ["|"] name [annotation type] ;
+recordValue = name "record" "{" [entry {"," entry}] "}" ;
+entry = identifier "=" expression ;
+selection = "first" "matching" "case" "of" expression ":"
+            branch+ ["otherwise" expression] "end" "case" ;
+branch = "when" ["it" "matches"] pattern ["if" boolean "then"] ["then"] expression ;
+pattern = "#any" | "_" | literal | constructorPattern | recordPattern | "(" pattern ")" ;
+recordPattern = [name] "record" "{" [patternEntry {"," patternEntry}] "}" ;
+patternEntry = identifier "=" pattern ;
+law = "law" name parameter* "is" metadata* section+ "end" ;
+metadata = ("id" | "owner") ":" (text | documentaryIdentifier) ;
+section = "definition" ":" proposition "end"
+        | ("description" | "rationale") ":" text "end"
+        | "references" ":" reference* "end"
+        | namedExample | expectationTable ;
+reference = "ref" "law" referenceTargets [referenceSelector]
+          | "ref" "function" referenceTargets
+          | phraseName ":" text | text
+          | "#S{" [reference {"," reference}] "}" ;
+referenceTargets = qualifiedName | "#S{" qualifiedName {"," qualifiedName} "}" ;
+referenceSelector = ["."] ("definition" | "description" | "rationale"
+                  | "references" ["." phraseName]) ;
+proposition = "for" "all" parameter+ "=>" proposition "end"
+            | existential parameter+ "such" "that" proposition "end"
+            | "must" "not" proposition
+            | "given" parameter+ ["when" boolean] "then" proposition "end"
+            | "apply" "law" qualifiedName argument*
+            | ["must"] boolean ;
+existential = "there" ("exists" | "must" "exist"
+            | "does" "not" "exist" | "must" "not" "exist") ["a" | "an"] ;
+importItem = name | "law" qualifiedName ;
+mapping = "mapping" name annotation type "->" type "is"
+          ("row" literal "," literal)+ ["otherwise" literal] "end" "mapping" ;
+witnessSetting = "witness" expression "for" ["definition" "."] qualifiedBinderPath ;
+strategySetting = "use" identifier "for" ["definition" "."] qualifiedBinderPath ;
+expectationTable = ("expect" expression "=" expected)+ "in" "table"
+                   "(" identifier {"," identifier} ")" ":"
+                   ("row" literal {"," literal})+ "end" ;
+```
+
+Each law has exactly one `definition:`. Description, rationale and references
+are singletons; examples and tables may repeat. Constructor arity determines
+its nested pattern arguments. Boolean branch conditions are an additional
+selection form; whole-value variable patterns require explicit `it matches`.
+Function/procedure requirements, resources, handlers and existing type features
+continue through the established typed pipeline.
+
+The translations use one typed Core: `given ... when C then P` becomes universal
+inputs and implication; each equality wording becomes typed Eq; nominal records
+become single-constructor products; ordered patterns become a typed decision
+tree; mappings become ordinary checked functions. Formatting retains section
+order, equality wording, annotation choices, infix notation, comments and
+literal spelling. It uses two spaces and targets 80 columns without splitting
+indivisible literals or reflowing line-scoped harness settings.

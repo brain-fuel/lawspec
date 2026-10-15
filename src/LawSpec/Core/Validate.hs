@@ -58,6 +58,19 @@ validateProgramWith registry Program{..} = do
   where
     definitions = Set.fromList [declarationId (definitionDeclaration d)
       | u <- programUnits, d <- unitDefinitions u]
+    definitionTable = M.fromList [(declarationId (definitionDeclaration d),d)
+      | u <- programUnits, d <- unitDefinitions u]
+    closedWitness seen e = case expressionNode e of
+      ExternalCall name arguments -> all (closedWitness seen) arguments && case M.lookup name definitionTable of
+        Just definition -> not (definitionOrchestrates definition) &&
+          null (declarationUses (definitionDeclaration definition)) &&
+          (name `Set.member` seen || closedWitness (Set.insert name seen) (definitionBody definition))
+        Nothing -> False
+      Perform _ _ -> False
+      Handle _ _ -> False
+      Calls _ _ -> False
+      Helper operation _ | operation `elem` [Recorded,AcquireResource,ReleaseResource,FreePort] -> False
+      _ -> all (closedWitness seen) (children e)
     closedPredicate e = case expressionNode e of
       ExternalCall name arguments -> Set.member name definitions && all closedPredicate arguments
       Perform _ _ -> False
@@ -82,6 +95,20 @@ validateProgramWith registry Program{..} = do
         unless (expressionType g == scalarType "Bool") (Left "proposition guard must be Bool")
         proposition ds scope body
       Conjunction ps -> mapM_ (proposition ds scope) ps
+      Negation body -> proposition ds scope body
+      Quantified _ q body -> do
+        scope' <- quantify ds scope q
+        proposition ds scope' body
+    quantify ds scope q = do
+      next <- extend scope (quantifiedBinder q)
+      mapM_ (predicate ds next) (quantifiedPredicates q)
+      mapM_ (\(op,e) -> do
+        expression ds scope e
+        unless (op `elem` [Equal,Less,LessEqual,Greater,GreaterEqual]) (Left "invalid generator bound operator")
+        unless (integerType (binderType (quantifiedBinder q)) && exactType (expressionType e))
+          (Left "generator bounds require an integer domain and exact value")
+        unless (isPure e && totalBound e) (Left "generator bounds must be total pure expressions")) (quantifiedBounds q)
+      pure next
     validateUnit ds u = do
       let own = unitDeclarations u
       mapM_ (\definition -> unless (definitionDeclaration definition `elem` own)
@@ -114,15 +141,7 @@ validateProgramWith registry Program{..} = do
       mapM_ (validateProperty ds) (unitProperties u)
       mapM_ (validateContract ds) (unitContracts u)
     validateProperty ds p = do
-      scope <- foldM (\s q -> do
-        next <- extend s (quantifiedBinder q)
-        mapM_ (predicate ds next) (quantifiedPredicates q)
-        mapM_ (\(op,e) -> do
-          expression ds s e
-          unless (op `elem` [Equal,Less,LessEqual,Greater,GreaterEqual]) (Left "invalid generator bound operator")
-          unless (integerType (binderType (quantifiedBinder q)) && exactType (expressionType e)) (Left "generator bounds require an integer domain and exact value")
-          unless (isPure e && totalBound e) (Left "generator bounds must be total pure expressions")) (quantifiedBounds q)
-        pure next) M.empty (propertyInputs p)
+      scope <- foldM (quantify ds) M.empty (propertyInputs p)
       -- A law's resources are in scope in its body and examples; each one's
       -- acquire sees none of them, and its release sees it.
       resourceScope <- foldM (\s r -> do
@@ -133,7 +152,78 @@ validateProgramWith registry Program{..} = do
         mapM_ (expression ds own) (resourceReset r)
         extend s (resourceBinder r)) scope (propertyResources p)
       proposition ds resourceScope (propertyBody p)
+      let choices = harnessWitnesses (propertyHarness p)
+          targets = [witnessTarget w | w <- choices]
+          available = existentialTargets (propertyBody p)
+      unless (length targets == length (nub targets) && all (`elem` available) targets)
+        (Left "witness choices must select distinct existential binders of their law")
+      witnesses ds scope choices (propertyBody p)
+      let searches = harnessSearches (propertyHarness p)
+          searchIds = [identity | (identity,_,_,_) <- searches]
+          binders = scopedBinders (propertyBody p)
+      unless (length searchIds == length (nub searchIds) && all (`elem` map binderId binders) searchIds)
+        (Left "search strategies must select distinct scoped binders of their law")
+      mapM_ (\(identity,_,_,strategy) -> case [binderType b | b <- binders,binderId b == identity] of
+        [ty] -> validateDraw ds M.empty ty strategy
+        _ -> Left "search strategy selects an unknown scoped binder") searches
       mapM_ (validateExample ds scope resourceScope) (propertyExamples p)
+    scopedBinders claim = case claim of
+      Quantified _ q body -> quantifiedBinder q : scopedBinders body
+      Conjunction bodies -> concatMap scopedBinders bodies
+      Implication _ body -> scopedBinders body
+      Negation body -> scopedBinders body
+      _ -> []
+    validateDraw ds scope expected draw = case draw of
+      DrawAny ty aim -> do
+        unless (ty == expected) (Left "search generator type does not match its binder")
+        mapM_ (\q -> do
+          unless (binderType (quantifiedBinder q) == ty) (Left "search generator refinement type mismatch")
+          _ <- quantify ds scope q
+          mapM_ pureDraw (quantifiedPredicates q)
+          pure ()) aim
+      DrawOneOf ty values -> do
+        unless (ty == expected && not (null values)) (Left "search choices must have the binder's type and at least one value")
+        mapM_ (\value -> do
+          expression ds scope value
+          unless (expressionType value == ty) (Left "search candidate type mismatch")
+          pureDraw value) values
+      DrawFrequency alternatives -> do
+        unless (not (null alternatives) && all ((>0) . fst) alternatives) (Left "search weights must be positive")
+        mapM_ (validateDraw ds scope expected . snd) alternatives
+      DrawSuchThat inner binder predicate limit -> do
+        unless (binderType binder == expected && limit >= 0) (Left "invalid search filter binder or discard limit")
+        validateDraw ds scope expected inner
+        own <- extend scope binder
+        expression ds own predicate
+        unless (expressionType predicate == scalarType "Bool") (Left "search filters must be Boolean")
+        pureDraw predicate
+      DrawBind binder from body -> do
+        validateDraw ds scope (binderType binder) from
+        own <- extend scope binder
+        validateDraw ds own expected body
+    pureDraw value = unless (closedWitness Set.empty value)
+      (Left "search strategies may call only pure checked definitions")
+    existentialTargets claim = case claim of
+      Quantified kind q body -> [binderId (quantifiedBinder q) | kind == ForSome] ++ existentialTargets body
+      Conjunction bodies -> concatMap existentialTargets bodies
+      Implication _ body -> existentialTargets body
+      Negation body -> existentialTargets body
+      _ -> []
+    witnesses ds scope choices claim = case claim of
+      Quantified _ q body -> do
+        let binder = quantifiedBinder q
+        mapM_ (\w -> do
+          expression ds scope (witnessValue w)
+          unless (expressionType (witnessValue w) == binderType binder)
+            (Left "witness expression type does not match its existential binder")
+          unless (closedWitness Set.empty (witnessValue w)) (Left "witness expressions may call only pure checked definitions"))
+          [w | w <- choices, witnessTarget w == binderId binder]
+        scope' <- quantify ds scope q
+        witnesses ds scope' choices body
+      Conjunction bodies -> mapM_ (witnesses ds scope choices) bodies
+      Implication _ body -> witnesses ds scope choices body
+      Negation body -> witnesses ds scope choices body
+      _ -> pure ()
     validateExample ds scope resourceScope e = do
       unless (M.keys (M.fromList (exampleBindings e)) == M.keys scope && length (exampleBindings e) == M.size scope) (Left "example must bind every input exactly once")
       mapM_ (\(i,v) -> do

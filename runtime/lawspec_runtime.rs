@@ -2985,6 +2985,7 @@ fn matcher_helper(name: &str, args: &[Value]) -> Result<Option<Value>> {
         "endsWith" => Value::Bool(text(0)?.ends_with(text(1)?)),
         "textContains" => Value::Bool(text(0)?.contains(text(1)?)),
         "regexMatches" => Value::Bool(regex_matches(text(0)?, text(1)?)?),
+        "incompleteSearch" => return Err(text(0)?.to_owned()),
         "recorded" => Value::Bool(recorded(text(0)?, args.get(1).ok_or("recorded expects a value")?)?),
         "acquireResource" => Value::Text(acquire_resource(text(0)?)?),
         "releaseResource" => {

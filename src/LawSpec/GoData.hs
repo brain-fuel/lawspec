@@ -1,7 +1,7 @@
 -- | Native sealed interfaces and variants follow Go+'s resolved enum lowering.
 module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
 
-import LawSpec.DataNames (flatDataCandidates, productConstructors, isProduct, caseInsensitiveCounts, ambiguous)
+import LawSpec.DataNames (flatDataCandidatesWith, productConstructors, isProduct, caseInsensitiveCounts, ambiguous)
 import LawSpec.GoTypeRefs
 import qualified LawSpec.GoExpr as E
 import LawSpec.Core.Total (constructorProofContracts)
@@ -11,7 +11,8 @@ import Data.List (intercalate, nub, find)
 import LawSpec.NativeBinding
 import Numeric (showHex)
 import qualified LawSpec.Core as C
-import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
+import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials, substitute)
+import qualified Data.Map.Strict as M
 import LawSpec.Collections (collectionContainer, entryTypeName)
 import LawSpec.Time (isDurationType)
 import LawSpec.Scalar (nativeRepresentation, primitives, primitiveName)
@@ -22,6 +23,33 @@ import qualified Data.Text.Lazy.Encoding as T
 import qualified LawSpec.Code.Doc as D
 
 type Names = [(C.Id, String)]
+
+-- Go structs embed fields by value. A cycle in that layout needs an interface
+-- boundary; slices and existing sums already provide one. Follow instantiated
+-- generic fields, so Box Self is distinguished from a phantom Box parameter.
+-- A smaller repeated instantiation is finite nesting, not recursive layout.
+goProduct :: [C.DataDeclaration] -> C.DataDeclaration -> Bool
+goProduct declarations declaration = isProduct declaration && not (cyclicLayout [] root)
+  where
+    root = C.Constructor (C.idText (C.dataId declaration))
+      (map (C.TypeArgument . C.TypeVariable) (C.dataParameters declaration))
+    cyclicLayout seen ty = case ty of
+      C.Constructor name arguments
+        | name == "List" || collectionContainer name /= Nothing -> False
+        | name `elem` ["Maybe","Either","Nullable","Optional"] ->
+            any (cyclicLayout seen) [t | C.TypeArgument t <- arguments]
+        | Just d <- find ((== C.Id name) . C.dataId) declarations
+        , native d, isProduct d ->
+            if any (\(identity,size) -> identity == C.dataId d && size <= weight ty) seen
+              then C.dataId d == C.dataId declaration
+              else let substitutions = M.fromList (zip (C.dataParameters d) [t | C.TypeArgument t <- arguments])
+                   in or [cyclicLayout ((C.dataId d,weight ty):seen) (substitute substitutions (C.binderType field))
+                     | constructor <- C.dataConstructors d,field <- C.constructorFields constructor
+                     , not (mentionsAny (C.constructorExistentials constructor) (C.binderType field))]
+      _ -> False
+    weight (C.Constructor _ arguments) = 1 + sum [weight t | C.TypeArgument t <- arguments]
+    weight (C.Arrow a b) = 1 + weight a + weight b
+    weight _ = 1 :: Int
 
 capitalize :: String -> String
 capitalize [] = []
@@ -38,9 +66,10 @@ identifier name = unless valid (Left ("invalid Go data identifier: " ++ name))
 
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let qualifiedCounts = caseInsensitiveCounts qualified
+  let inline = goProduct declarations
+      qualifiedCounts = caseInsensitiveCounts qualified
       reserved name = take 7 name == "LawSpec"
-      qualified = flatDataCandidates capitalize reserved declarations
+      qualified = flatDataCandidatesWith inline capitalize reserved declarations
       names = [(identity, if ambiguous qualifiedCounts name || reserved name then "Data" ++ name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
       -- A handle has no generated type: its native type is any (or its
       -- bound native type), and its codec passes the native value through.
@@ -49,7 +78,7 @@ namesFor declarations = do
       owned = [entry | entry@(identity,_) <- names, identity `notElem` handles]
   mapM_ (identifier . snd) owned
   unless (length owned == length (nub (map (map toLower . snd) owned))) (Left "conflicting Go data identities")
-  pure (planned ++ productConstructors declarations names)
+  pure (planned ++ productConstructors (filter inline declarations) names)
 
 -- | A handle's native type where it is not bound: never a generated name, which
 -- is capitalized.
@@ -156,7 +185,7 @@ emitGoData layout packageName declarations = do
             -- Go cannot construct a variant at existential types inside a
             -- generic codec, so such a variant keeps every parameter and holds
             -- existential fields as checked dynamic values.
-            own = if isProduct declaration || null equations || not (null existentials) then args else open
+            own = if goProduct declarations declaration || null equations || not (null existentials) then args else open
         markerArguments <- if not (null existentials) then pure args else
           forM parameters $ \(p, v) -> maybe (pure v) (typeText names scope) (lookup p equations)
         fields <- forM (C.constructorFields variant) $ \field -> do
@@ -178,7 +207,7 @@ emitGoData layout packageName declarations = do
         pure (D.text header <> body, D.text method)
       -- A product is a plain struct named after its type; a sum is a sealed
       -- interface whose variants carry the marker method.
-      if isProduct declaration then pure (D.joinWith mempty (map fst variants)) else
+      if goProduct declarations declaration then pure (D.joinWith mempty (map fst variants)) else
        pure (D.text ("type " ++ generic ++ " interface ") <>
         D.block 8 (D.text (marker ++ "(" ++ intercalate ", " args ++ ")")) <>
         (if null variants then mempty else D.hardline <> D.hardline <>
@@ -377,7 +406,7 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
       variants <- forM (C.dataConstructors declaration) $ \variant -> do
         variantName <- lookupName (nativeNamesFor names mappings) (C.constructorId variant)
         let existential = mentionsAny (C.constructorExistentials variant)
-            refinedOnly = not (isProduct declaration) && not (null (C.constructorEquations variant)) && null (C.constructorExistentials variant)
+            refinedOnly = not (goProduct declarations declaration) && not (null (C.constructorEquations variant)) && null (C.constructorExistentials variant)
             openArguments = [v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations variant)]
         let free = length (freeExistentials declaration variant)
         declaredFields <- forM (zip [0 :: Int ..] (C.constructorFields variant)) $ \(position, field) -> do
@@ -431,7 +460,7 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
              linesDoc ([d | (d,_,_) <- variants] ++ [line "default:" <> D.nest 8 (D.hardline <> line "panic(\"unknown checked constructor\")")]) <>
              D.hardline <> line "}")
           encodeValue = line ("func(value " ++ native ++ ", path lawSpecPath) LawSpecValue ") <> D.block 8
-            (if prefix == "lawSpec" && isProduct declaration then
+            (if prefix == "lawSpec" && goProduct declarations declaration then
               line "native := value" <> D.hardline <>
               (if any (\v -> null (C.constructorFields v)) (C.dataConstructors declaration) then line "_ = native" <> D.hardline else mempty) <>
               linesDoc [r | (_,_,r) <- variants]

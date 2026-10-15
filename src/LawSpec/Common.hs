@@ -3,6 +3,7 @@ module LawSpec.Common where
 import Data.Aeson
 import GHC.Generics (Generic)
 import Data.Char (toUpper)
+import LawSpec.TargetNames (phraseNativeName)
 
 -- | One set of generation limits for every target, mapped onto each framework's
 -- own settings, so a law is tried as hard on one target as on another.
@@ -13,6 +14,66 @@ data Generation = Generation { cases :: Int, maxAttempts :: Int, maxShrinks :: I
 -- ref:quickcheck
 defaultGeneration :: Generation
 defaultGeneration = Generation 100 10000 1000 4096
+-- Logical binders are separate from existentially packaged data types.
+data Quantification = ForEvery | ForSome deriving (Eq, Show, Generic)
+instance ToJSON Quantification
+-- Canonical universal obligations include empty domains. Legacy test inputs
+-- retain their nonempty-population requirement during migration.
+data InputDomain = NonemptyDomain | UniversalDomain deriving (Eq, Show, Generic)
+instance ToJSON InputDomain where
+  toJSON NonemptyDomain = String "nonempty"
+  toJSON UniversalDomain = String "universal"
+-- Documentary scalars have no effect on a law's proposition or ownership
+-- namespace. Their names are contextual within a law's metadata prefix.
+data LawMetadata = LawMetadata
+  { metadataIdentifier :: Maybe String, metadataOwner :: Maybe String
+  } deriving (Eq, Show, Generic)
+emptyLawMetadata :: LawMetadata
+emptyLawMetadata = LawMetadata Nothing Nothing
+instance ToJSON LawMetadata where
+  toJSON metadata = object
+    (["id" .= value | Just value <- [metadataIdentifier metadata]] ++
+     ["owner" .= value | Just value <- [metadataOwner metadata]])
+-- Documentary links retain identity and origin, never a copy of the linked
+-- proposition. This permits cycles without introducing proof dependencies.
+data ReferenceSelector = ReferenceDefinition | ReferenceDescription
+  | ReferenceRationale | ReferenceReferences | ReferenceNamed String
+  deriving (Eq, Show, Generic)
+data DocumentaryTarget = DocumentaryTarget
+  { documentaryId :: String, documentaryUnit :: String, documentaryName :: String
+  , documentarySpan :: Span, documentaryReferenceSpan :: Span } deriving (Eq, Show, Generic)
+data DocumentaryReference target = LawReference target (Maybe ReferenceSelector)
+  | FunctionReference target | ExternalReference (Maybe String) String
+  deriving (Eq, Show, Generic)
+traverseReference :: Applicative f => (a -> f b) -> DocumentaryReference a -> f (DocumentaryReference b)
+traverseReference f (LawReference target selector) = (`LawReference` selector) <$> f target
+traverseReference f (FunctionReference target) = FunctionReference <$> f target
+traverseReference _ (ExternalReference name resource) = pure (ExternalReference name resource)
+referenceSelectorText :: ReferenceSelector -> String
+referenceSelectorText ReferenceDefinition = "definition"
+referenceSelectorText ReferenceDescription = "description"
+referenceSelectorText ReferenceRationale = "rationale"
+referenceSelectorText ReferenceReferences = "references"
+referenceSelectorText (ReferenceNamed name) = "references." ++ name
+renderReference :: (target -> String) -> DocumentaryReference target -> String
+renderReference name reference = case reference of
+  LawReference target selector -> "ref law " ++ name target ++ maybe "" ((" " ++) . referenceSelectorText) selector
+  FunctionReference target -> "ref function " ++ name target
+  ExternalReference Nothing resource -> resource
+  ExternalReference (Just label) resource -> label ++ ": " ++ resource
+instance ToJSON ReferenceSelector where
+  toJSON (ReferenceNamed name) = object ["kind" .= ("named-reference" :: String), "name" .= name]
+  toJSON selector = object ["kind" .= referenceSelectorText selector]
+instance ToJSON DocumentaryTarget where
+  toJSON target = object ["id" .= documentaryId target, "unit" .= documentaryUnit target,
+    "name" .= documentaryName target, "span" .= documentarySpan target,
+    "referenceSpan" .= documentaryReferenceSpan target]
+instance ToJSON target => ToJSON (DocumentaryReference target) where
+  toJSON (LawReference target selector) = object
+    (["kind" .= ("law" :: String), "target" .= target] ++ ["selector" .= s | Just s <- [selector]])
+  toJSON (FunctionReference target) = object ["kind" .= ("function" :: String), "target" .= target]
+  toJSON (ExternalReference name resource) = object
+    (["kind" .= ("external" :: String), "resource" .= resource] ++ ["name" .= n | Just n <- [name]])
 instance ToJSON Generation
 instance FromJSON Generation where
   parseJSON = withObject "generation" $ \o -> Generation <$> o .:? "cases" .!= 100 <*> o .:? "maxAttempts" .!= 10000 <*> o .:? "maxShrinks" .!= 1000 <*> o .:? "exhaustiveLimit" .!= 4096
@@ -68,7 +129,7 @@ pointSpan p = Span p p
 -- definition, such as a family's index measure, by this name too.
 importedDefinitionName :: String -> String -> String
 importedDefinitionName unit name = case pieces unit of
-  first : rest -> first ++ concatMap capital rest ++ capital name
+  first : rest -> first ++ concatMap capital rest ++ capital (phraseNativeName name)
   [] -> name
   where
     pieces s = case break (== '.') s of

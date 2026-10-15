@@ -1,0 +1,5 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {"layers": ["proof", "exhaustive", "property", "examples"]},
+  "specs": ["examples/rc1/finite-integer-domains.lawspec"]
+}

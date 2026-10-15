@@ -114,8 +114,8 @@ renderExpressionWithContext declarations width schema ref key local external = r
         argument <- render value
         inner <- render body
         let name = local (binderId binder)
-        pure (D.text "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-          [D.text (name ++ " := ") <> argument, D.text ("_ = " ++ name), D.text "return " <> inner]) <> D.text "()")
+        pure (call "lsEvaluate" [D.text "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+          [D.text (name ++ " := ") <> argument, D.text ("_ = " ++ name), D.text "return " <> inner])])
       Constant value -> scalarLiteral (expressionType term) value >>= checked (expressionType term)
       Construct tag args -> do
         values <- mapM render args
@@ -141,8 +141,8 @@ renderExpressionWithContext declarations width schema ref key local external = r
         condition <- render c
         yes <- render a
         no <- render b
-        pure (D.text "func() LawSpecValue { if " <> call "lsTruth" [condition] <> D.text " { return " <> yes <>
-          D.text " }; return " <> no <> D.text " }()")
+        pure (call "lsEvaluate" [D.text "func() LawSpecValue { if " <> call "lsTruth" [condition] <> D.text " { return " <> yes <>
+          D.text " }; return " <> no <> D.text " }"])
       ShortCircuit op a b -> do
         left <- render a
         right <- render b

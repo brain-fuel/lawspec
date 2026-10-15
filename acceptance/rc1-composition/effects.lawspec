@@ -1,0 +1,22 @@
+unit example.rc1.siblingEffects
+
+ability Signal is
+  signal of type Bool -> Bool
+end
+
+handler echo for Signal is
+  signal value is value end
+end
+
+procedure read (value of type Bool) -> Bool uses Signal is
+  signal value
+end procedure
+
+law "|local binding preserves the chosen handler| using echo is
+  definition:
+    (for all (read of type Bool) =>
+      read must be read
+    end)
+    and read true must be true
+  end
+end

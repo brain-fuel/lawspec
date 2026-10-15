@@ -297,6 +297,10 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   -- A branch the indices rule out: the totality audit proves it is never
   -- reached; reaching it anyway fails.
   | Unreachable
+  -- An undecided verification search is a diagnostic, never Boolean false.
+  -- Only the execution planner introduces this helper; source definitions
+  -- cannot use it to evade their intrinsic totality checks.
+  | IncompleteSearch
   -- concurrently (C a b ...) is C a b ...; matched at once, as an all
   -- group's steps are, its fields are evaluated at the same time.
   | Concurrently
@@ -319,7 +323,8 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   | Append | Slice | At | Range | Octets | BytesOf | Utf8 | TextOf | Join deriving (Eq, Show, Generic)
 -- | What a law asserts: equations, implications and conjunctions, each equation
 -- with the evidence of how its sides are compared.
-data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show, Generic)
+data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition]
+  | Quantified Quantification Quantifier Proposition | Negation Proposition deriving (Eq, Show, Generic)
 -- | A quantified input carries its refinements and bounds, so generation draws
 -- only values inside the domain instead of filtering most away.
 -- ref:DEC-shrink-within-domain
@@ -339,7 +344,7 @@ data Property = Property
   , propertyInputs :: [Quantifier], propertyBody :: Proposition
   , propertyExamples :: [Example], propertyGeneration :: Generation
   , propertyDescription :: String, propertyRationale :: String
-  , propertyReferences :: [String], propertyTrace :: [String]
+  , propertyReferences :: [DocumentaryReference DocumentaryTarget], propertyTrace :: [String]
   -- The handler the law runs under for each ability it uses.
   , propertyHandlers :: [(AbilityRef, HandlerRef)]
   -- The resources the law takes, in order: each case acquires them first
@@ -348,6 +353,8 @@ data Property = Property
   -- How the law's tests run: the harness plane, which never changes what
   -- the law means (LawSpec.Harness).
   , propertyHarness :: LawHarness
+  , propertyInputDomain :: InputDomain
+  , propertyMetadata :: LawMetadata
   } deriving (Eq, Show, Generic)
 
 -- A law's harness. Every expression is over the law's inputs (or a
@@ -369,7 +376,15 @@ data LawHarness = LawHarness
   -- The strategy each input is drawn with, instead of the default.
   , harnessDraws :: [(Id, String, Draw)]
   , harnessGroup :: Maybe String
+  , harnessWitnesses :: [WitnessChoice]
+  -- Scoped strategies select search candidates, separately from the root
+  -- input draws composed by each target's property framework.
+  , harnessSearches :: [(Id, [String], String, Draw)]
   } deriving (Eq, Show, Generic)
+
+data WitnessChoice = WitnessChoice
+  { witnessTarget :: Id, witnessLexicalPath :: [String], witnessValue :: Expr }
+  deriving (Eq, Show, Generic)
 
 -- cover p% "label" when e: at least p% of generated cases must satisfy e.
 data Cover = Cover { coverPercent :: Integer, coverLabel :: String, coverWhen :: Expr }
@@ -388,7 +403,7 @@ data Draw
   deriving (Eq, Show, Generic)
 
 noHarness :: LawHarness
-noHarness = LawHarness Nothing [] Nothing Nothing Nothing 1 0 [] [] [] Nothing [] Nothing
+noHarness = LawHarness Nothing [] Nothing Nothing Nothing 1 0 [] [] [] Nothing [] Nothing [] []
 
 -- A unit's harness settings that are not about one law.
 data UnitHarness = UnitHarness
@@ -657,6 +672,7 @@ builtinName Checked = "checked"
 builtinName Compare = "compare"
 builtinName Select = "select"
 builtinName Unreachable = "unreachable"
+builtinName IncompleteSearch = "incompleteSearch"
 builtinName Concurrently = "concurrently"
 builtinName StartsWith = "startsWith"
 builtinName EndsWith = "endsWith"
@@ -688,16 +704,49 @@ propositionExpressions :: Proposition -> [Expr]
 propositionExpressions (Equation _ a b) = [a,b]
 propositionExpressions (Implication guard body) = guard : propositionExpressions body
 propositionExpressions (Conjunction bodies) = concatMap propositionExpressions bodies
+propositionExpressions (Quantified _ q body) = quantifiedPredicates q ++ map snd (quantifiedBounds q) ++ propositionExpressions body
+propositionExpressions (Negation body) = propositionExpressions body
+
+mapPropositionExpressions :: (Expr -> Expr) -> Proposition -> Proposition
+mapPropositionExpressions f proposition = case proposition of
+  Equation ev a b -> Equation ev (f a) (f b)
+  Implication guard body -> Implication (f guard) (go body)
+  Conjunction bodies -> Conjunction (map go bodies)
+  Negation body -> Negation (go body)
+  Quantified kind q body -> Quantified kind (q { quantifiedPredicates = map f (quantifiedPredicates q)
+    , quantifiedBounds = [(op,f value) | (op,value) <- quantifiedBounds q] }) (go body)
+  where go = mapPropositionExpressions f
+
+hasLogicalQuantifier :: Proposition -> Bool
+hasLogicalQuantifier (Quantified _ _ _) = True
+hasLogicalQuantifier (Negation body) = hasLogicalQuantifier body
+hasLogicalQuantifier (Implication _ body) = hasLogicalQuantifier body
+hasLogicalQuantifier (Conjunction bodies) = any hasLogicalQuantifier bodies
+hasLogicalQuantifier _ = False
 
 -- | Dependency analysis needs every expression a law mentions, its inputs'
 -- refinements and its examples included. ref:DEC-incremental-compilation
 propertyExpressions :: Property -> [Expr]
 propertyExpressions property =
   propositionExpressions (propertyBody property) ++
+  map witnessValue (harnessWitnesses (propertyHarness property)) ++
+  concatMap (drawExpressions . third) (harnessDraws (propertyHarness property)) ++
+  concatMap (drawExpressions . fourth) (harnessSearches (propertyHarness property)) ++
   concat [[resourceAcquire r, resourceRelease r] ++ maybe [] pure (resourceReset r) | r <- propertyResources property] ++
   concat [quantifiedPredicates q ++ map snd (quantifiedBounds q) | q <- propertyInputs property] ++
   concat [map snd (exampleBindings example) ++ concatMap propositionExpressions (exampleExpectations example)
     | example <- propertyExamples property]
+  where
+    third (_,_,value) = value
+    fourth (_,_,_,value) = value
+
+drawExpressions :: Draw -> [Expr]
+drawExpressions draw = case draw of
+  DrawAny _ aim -> maybe [] (\q -> quantifiedPredicates q ++ map snd (quantifiedBounds q)) aim
+  DrawOneOf _ values -> values
+  DrawFrequency alternatives -> concatMap (drawExpressions . snd) alternatives
+  DrawSuchThat inner _ predicate _ -> predicate : drawExpressions inner
+  DrawBind _ from body -> drawExpressions from ++ drawExpressions body
 
 -- | As propertyExpressions, for a contract's conditions.
 contractExpressions :: Contract -> [Expr]

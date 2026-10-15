@@ -40,6 +40,10 @@ test('declarations, quantifiers, refinements, constraints, and match branches', 
     ['import shop.money as money', 'as', 'keyword.control.import'],
     ['law `reversing twice` is', 'law', 'keyword.control'],
     ['law `reversing twice` is', '`reversing twice`', 'entity.name.function.law'],
+    ['  id: "REVIEW-001"', 'id', 'keyword.other.metadata'],
+    ['  owner: Payments.Review', 'owner', 'keyword.other.metadata'],
+    ['id :: Bool -> Bool', 'id', 'entity.name.function'],
+    ['(owner :: Bool)', 'owner', 'variable.parameter'],
     ['definition is `for all` (xs :: List Int32) . xs = xs end', '`for all`', 'keyword.control.quantifier'],
     ['definition is `involution` reverse end', '`involution`', 'entity.name.function.law'],
     ['refinement Positive is (x :: Int8 where x > 0) end', 'Positive', 'entity.name.type'],
@@ -54,6 +58,11 @@ test('declarations, quantifiers, refinements, constraints, and match branches', 
     ['match xs with | Cons x rest -> x end', '|', 'punctuation.separator.branch'],
     ['type Δέντρο (α :: Type) is', 'Δέντρο', 'entity.name.type'],
     ['(α :: Int8)', 'α', 'variable.parameter'],
+    ['there must exist an (answer :: Bool)', 'an', 'keyword.other.article'],
+    ['there exists a (reply :: Bool)', 'a (', 'keyword.other.article'],
+    ['(the :: Bool)', 'the', 'variable.parameter'],
+    ['(an :: Bool)', 'an', 'variable.parameter'],
+    ['function the (flag :: Bool)', 'the', 'entity.name.function'],
   ]) scopeAt(line, fragment, scope);
 });
 
@@ -96,7 +105,7 @@ test('comments, strings, quoted names, and identifier boundaries isolate keyword
   scopeAt(String.raw`"escaped \" law" end`, 'law', 'string.quoted.double');
   scopeAt(String.raw`"escaped \" law" end`, 'end', 'keyword.control');
   scopeAt(String.raw`"\n\x41"`, '\\n', 'constant.character.escape');
-  for (const name of ['laws', 'law_name', 'law2', 'true_value', 'unitValueSuffix', 'lawα']) {
+  for (const name of ['laws', 'law_name', 'law2', 'true_value', 'unitValueSuffix', 'lawα', 'the', 'a', 'an']) {
     scopeAt(name, name, 'variable.other');
   }
   const broken = tokens('`unfinished law name');

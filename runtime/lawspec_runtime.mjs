@@ -588,6 +588,7 @@ export function compareValues(a, b) {
 }
 
 export function helper(n, args, types, bits = 64) {
+  if (n === 'incompleteSearch') throw new Error(args[0]);
   const x = args[0];
   if (Object.hasOwn(sequenceHelpers, n)) return sequenceHelpers[n](args, types);
   if (n === 'startsWith') return args[0].startsWith(args[1]);

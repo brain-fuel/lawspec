@@ -1,0 +1,56 @@
+unit example.rc1
+
+function "|adds the values| (a of type Integer) (b of type Integer) -> Integer is
+  a + b
+end function
+
+law "|addition preserves the inputs| is
+  description:
+    "Adding two amounts gives their mathematical sum."
+  end
+
+  definition:
+    for all (a of type Integer) (b of type Integer) =>
+      a `|adds the values| b must be a + b
+    end
+  end
+
+  expect "|adds the values| a b = expected
+  in table (a, b, expected):
+    row -1, 1, 0
+    row 0, 0, 0
+    row 1, 2, 3
+  end
+end
+
+type Picture is a record{
+  fileName of type Text
+  width of type Nat
+}
+end type
+
+function picture (width of type Nat) -> Picture is
+  Picture record{fileName = "photo.jpg", width = width}
+end function
+
+function pictureWidth (picture of type Picture) -> Nat is
+  picture.width
+end function
+
+type Direction is one of
+  | North
+  | South
+end type
+
+mapping directionText of type Direction -> Text is
+  row North, "north"
+  row South, "south"
+end mapping
+
+function "|picture category| (width of type Nat) -> Text is
+  first matching case of width:
+    when it < 100 then "small"
+    when it < 1000 then "medium"
+    otherwise "large"
+  end case
+end function

@@ -1,0 +1,7 @@
+expect: quantifier-search-incomplete
+@@ examples/rc1/bounded-witness-search.lawspec
+<<<<<<<
+strategy replies of type Integer is one of 1, 2 end
+=======
+strategy replies of type Integer is one of 0, 1 end
+>>>>>>>

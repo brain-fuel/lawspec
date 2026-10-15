@@ -313,6 +313,14 @@ proposition at flows d = case d of
     modify (\f -> f { flowStates = M.union (bindAll params) (flowStates f)
                     , flowFacts = M.unionWith max (facts params) (flowFacts f) })
     Forall params <$> proposition at flows body
+  Exists params body -> do
+    saved <- get
+    modify (\f -> f { flowStates = M.union (bindAll params) (flowStates f)
+                    , flowFacts = M.unionWith max (facts params) (flowFacts f) })
+    body' <- proposition at flows body
+    put saved
+    pure (Exists params body')
+  Not body -> Not <$> proposition at flows body
   Equal a b -> do
     (left, bindingsA) <- rewrite at flows True a
     (right, bindingsB) <- rewrite at flows True b

@@ -13,7 +13,7 @@
 --   assumed               native adapters, bindings and generators on trust
 {-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 module LawSpec.Discharge
-  ( dischargeEvidence, bindingEvidence, defaultHandlerEvidence, lawClaim, callees
+  ( dischargeEvidence, dischargeEvidenceWith, bindingEvidence, defaultHandlerEvidence, lawClaim, callees
   ) where
 
 import Control.Monad (forM)
@@ -25,6 +25,8 @@ import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (definitionContracts)
 import LawSpec.Core.Definitions (prepareHookedDefinitions)
 import LawSpec.Core.Eval (evaluateValueProposition, evaluateValue)
+import LawSpec.Core.Quantification (lowerWitnessProof, lowerSearchProof)
+import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Core.Evidence
@@ -36,12 +38,17 @@ import LawSpec.NativeRequest (BindingPlan(..))
 import LawSpec.Scalar (Scalar(..), prettyScalar)
 import LawSpec.Builtins (defaultedUnits, defaultHandlerReason)
 import LawSpec.Temporal (isBudgetBinder)
-import LawSpec.Testing (PlannedProperty(..), lawPlanner)
+import qualified LawSpec.Core.Verification as V
+import LawSpec.Testing (PlannedProperty(..), lawPlanner, finiteValuesWithRegistry, boundedLawSearch)
 
 -- | Laws first, then contracts, constructions and adapters. A law over checked
 -- definitions whose finite domain contains a counterexample is refuted here.
 dischargeEvidence :: Program -> Either [Diagnostic] [Obligation]
-dischargeEvidence program = do
+dischargeEvidence = dischargeSelected Nothing
+dischargeEvidenceWith :: V.Verification -> Program -> Either [Diagnostic] [Obligation]
+dischargeEvidenceWith config = dischargeSelected (Just config)
+dischargeSelected :: Maybe V.Verification -> Program -> Either [Diagnostic] [Obligation]
+dischargeSelected selection program = do
   hooked <- prepareHookedDefinitions program
   plan <- lawPlanner program
   registry <- either (Left . pure . (\m -> Diagnostic "generation" m Nothing)) Right
@@ -68,7 +75,7 @@ dischargeEvidence program = do
             Just (h, clause) -> Just (step states h (invoke' clause))
             Nothing -> Nothing
         invokeWith states = hooked (hook states)
-        obligation status reason = Obligation (unitId u) (propertyId p) "law" (Just (lawClaim original)) status reason
+        obligation status reason = Obligation (unitId u) (propertyId p) "law" (lawClaim original) status reason
         called = S.fromList (concatMap callees (propertyExpressions p))
         adapters = S.toList (S.difference called definitionIds)
         reached = reachableDefinitions definitions (S.toList called)
@@ -79,6 +86,13 @@ dischargeEvidence program = do
         relying adapters' = relyingOn (adapters' ++ [Id ("the native " ++ abilityKey a ++ " handler") | a <- natives])
         -- A law with resources gets them when it runs, never from the compiler.
         closed = null adapters && null (propertyResources p)
+        scopedDomains
+          | not (null (harnessSearches (propertyHarness p))) =
+              "; scoped checking uses selected bounded strategies, configured witnesses and complete finite fallback; a bounded miss never proves nonexistence"
+          | not (null (harnessWitnesses (propertyHarness p))) =
+              "; scoped checking uses configured constructive witnesses and any complete finite fallback; candidate failure alone supplies no nonexistence evidence"
+          | hasLogicalQuantifier (propertyBody p) = "; scoped checking uses complete finite covers or verified bounded candidates; a bounded miss never proves nonexistence"
+          | otherwise = ""
         count n noun = show n ++ " " ++ noun ++ (if n == 1 then "" else "s")
         settings = propertyGeneration p
         every [_] = "its only case"
@@ -96,27 +110,82 @@ dischargeEvidence program = do
           Just _ -> Left [Diagnostic "harness" ("the law " ++ propertyName p ++ " is " ++ statusName status ++
             " by the compiler, so its harness cannot mark it known failing") (Just (propertyLocation p))]
           Nothing -> pure (obligation status (reason ++ maybe "" (const "; its harness skips its tests") (harnessSkip harness)))
-    case plan p of
-      Left message -> pure (tested Assumed ("not executable, so taken on trust: " ++ message))
-      Right _ | budgeted p -> pure (tested Measured
-            "a performance budget: the generated tests time it on the real clock, so it is measured, never proved")
-      Right planned
-        | closed, Right () <- proves program definitions p -> static Proved
-            "proved statically from its input refinements and the definitions it calls"
-        | closed, not effects, Just tuples <- finiteCases planned -> do
-            mapM_ (\values -> do
-              states <- freshStates registry bits (invokeWith Nothing) program original values
-              refute registry bits (invokeWith states) p values) tuples
-            static ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
-              "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively")
-        | Just tuples <- finiteCases planned -> pure (tested ExhaustivelyChecked
-            ("the generated tests check " ++ every tuples ++ relying adapters))
-        | otherwise -> pure (tested PropertyTested
-            ("the generated tests check " ++ count (cases settings) "generated case" ++ ", " ++
-             count (length (boundaryCases planned)) "boundary case" ++ " and " ++
-             count (length (propertyExamples p)) "example" ++ relying adapters))
-  pure (laws ++ programEvidence program)
+    let enabled layer = maybe True (`V.selected` layer) selection
+        pending status reason = pure (tested (if selection == Nothing then status else Planned) reason)
+    if not (any enabled [V.Proof,V.Exhaustive,V.Property,V.Examples,V.Runtime,V.Model,V.Analysis])
+      then pure (obligation NotVerified "no law verification layers selected; intrinsic definition checks still apply")
+      else case plan p of
+        Left message -> pure (tested (if selection == Nothing then Assumed else
+          if "quantifier-search-incomplete:" `isPrefixOf` message then Incomplete else Unsupported)
+          ((if selection == Nothing then "not executable, so taken on trust: " else "verification cannot execute this domain: ") ++ message))
+        Right _ | budgeted p -> pending Measured
+              (if selection == Nothing then "a performance budget: the generated tests time it on the real clock, so it is measured, never proved"
+               else "a performance budget: the generated tests will time it on the real clock; no measurement has completed")
+        Right planned
+          | propertyInputDomain original == UniversalDomain, finiteCases planned == Just [] ->
+              if enabled V.Exhaustive || enabled V.Proof then static
+                (if enabled V.Exhaustive then ExhaustivelyChecked else Proved)
+                "the universal input domain is empty; no cases were evaluated and no witnesses were produced"
+              else pure (obligation Incomplete "the universal input domain is empty; no test cases ran, and proof or exhaustive verification was not selected")
+          | enabled V.Proof, closed, Right () <- proveScoped definitions registry bits p (plannedProperty planned) -> static Proved
+              ("proved statically from its input refinements and the definitions it calls" ++ scopedDomains)
+          | enabled V.Exhaustive, closed, not effects, Just tuples <- finiteCases planned -> do
+              results <- mapM (\values -> do
+                states <- freshStates registry bits (invokeWith Nothing) program original values
+                pure (refute (hasLogicalQuantifier (propertyBody original)) registry bits (invokeWith states) (plannedProperty planned) values)) tuples
+              let failures = concat [ds | Left ds <- results]
+                  incomplete = [d | d <- failures, code d == "witness-search-incomplete"]
+                  errors = [d | d <- failures, code d /= "witness-search-incomplete"]
+              if not (null errors) then Left errors
+              else if not (null incomplete) then pure (obligation Incomplete (message (head incomplete)))
+              else static ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
+                "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively" ++ scopedDomains)
+          | enabled V.Exhaustive, Just tuples <- finiteCases planned -> pending ExhaustivelyChecked
+              ("the generated tests check " ++ every tuples ++ relying adapters ++ scopedDomains)
+          | enabled V.Property -> pending PropertyTested
+              ("the generated tests check " ++ count (cases settings) "generated case" ++ ", " ++
+               count (length (boundaryCases planned)) "boundary case" ++ " and " ++
+               count (length (propertyExamples p)) "example" ++ relying adapters)
+          | enabled V.Examples -> pending PropertyTested
+              ("the generated tests will check " ++ count (length (propertyExamples p)) "example" ++ relying adapters)
+          | otherwise -> pure (obligation Incomplete "the selected analyses have not established this law; no completed proof or exhaustive result")
+  let intrinsic item = case selection of
+        Nothing -> item
+        Just config | obligationStage item `elem`
+          ["model","linearizable","sequentially consistent","causally consistent","eventually consistent","restart","scenario","supervision"] ->
+            item { obligationStatus = if V.selected config V.Model then Planned else NotVerified
+                 , obligationReason = if V.selected config V.Model then "native model checks are planned; no execution evidence supplied"
+                     else "model verification was not selected; intrinsic typing and scenario checks still apply" }
+        _ -> item
+  pure (laws ++ map intrinsic (programEvidence program))
   where
+    proveScoped definitions registry bits original planned
+      | propertyInputDomain original == UniversalDomain && hasLogicalQuantifier (propertyBody original) = do
+          let settings = propertyGeneration original
+              limit = exhaustiveLimit settings
+              budget = max 1 (min (cases settings) (maxAttempts settings))
+              sizes n | n >= toInteger budget = [budget]
+                      | otherwise = fromInteger n : sizes (min (toInteger budget) (2*n))
+              -- Small constructive certificates avoid spending the prover's
+              -- branch budget on unused alternatives. Increasing prefixes
+              -- can still combine different witnesses for different inputs.
+              attempt _ [] = Left "the constructive candidates did not establish a proof within the shared prover's limits"
+              attempt seen (size:rest) = do
+                claim <- lowerSearchProof (finiteQuantifierTerms bits limit (finiteValuesWithRegistry registry bits limit))
+                  (\q body -> take size <$> boundedLawSearch registry bits original q body)
+                  limit (maxAttempts settings) (propertyId original)
+                  (harnessWitnesses (propertyHarness original)) (propertyBody original)
+                if claim `elem` seen then attempt seen rest else
+                  case proves program definitions original { propertyBody = claim } of
+                    Right () -> Right ()
+                    Left _ -> attempt (claim:seen) rest
+          attempt [] (sizes 1)
+      | null (harnessWitnesses (propertyHarness original)) = proves program definitions planned
+      | otherwise = do
+          let limit = exhaustiveLimit (propertyGeneration original)
+          claim <- lowerWitnessProof (finiteQuantifierTerms bits limit (finiteValuesWithRegistry registry bits limit)) limit (propertyId original)
+            (harnessWitnesses (propertyHarness original)) (propertyBody original)
+          proves program definitions original { propertyBody = claim }
     relyingOn [] = ""
     relyingOn adapters = "; relies on " ++ intercalate ", " (map idText adapters)
     production choice = case choice of
@@ -129,7 +198,7 @@ dischargeEvidence program = do
       Calls _ _ -> True
       Helper b _ | b `elem` [Recorded, AcquireResource, ReleaseResource, FreePort] -> True
       _ -> any (effectful answered) (children e)
-    refute registry bits invoke p values = do
+    refute scoped registry bits invoke p values = do
       let env = zip (map (binderId . quantifiedBinder) (propertyInputs p)) values
           at = Just (propertyLocation p)
           shown = intercalate ", " [binderName (quantifiedBinder q) ++ " = " ++ showValue v | (q, v) <- zip (propertyInputs p) values]
@@ -137,6 +206,11 @@ dischargeEvidence program = do
       case evaluateValueProposition registry bits invoke env (propertyBody p) of
         Right True -> pure ()
         Right False -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " is false" ++ input) at]
+        Left message | "quantifier-search-incomplete:" `isPrefixOf` message -> Left [Diagnostic "witness-search-incomplete"
+          ("law " ++ propertyName p ++ " remains inconclusive" ++ input ++ ": " ++ message) at]
+        Left message | scoped -> Left [Diagnostic "verification-incomplete"
+          ("scoped search for law " ++ propertyName p ++ " could not complete" ++ input ++ ": " ++ message ++
+           "; a failed candidate evaluation does not establish nonexistence") at]
         Left message -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " fails" ++ input ++ ": " ++ message) at]
 
 -- Each operation a law's spec handlers with state answer, by handler and
@@ -210,9 +284,7 @@ resolvePerforms resolver p
       , propertyExamples = [x { exampleBindings = [(i, go v) | (i, v) <- exampleBindings x]
                               , exampleExpectations = map proposition (exampleExpectations x) } | x <- propertyExamples p] }
   where
-    proposition (Equation ev a b) = Equation ev (go a) (go b)
-    proposition (Implication g body) = Implication (go g) (proposition body)
-    proposition (Conjunction ps) = Conjunction (map proposition ps)
+    proposition = mapPropositionExpressions go
     go e = case expressionNode e of
       Perform op args | Just clause <- M.lookup (operationId op) resolver ->
         e { expressionNode = ExternalCall clause (if null args then [unit (expressionOrigin e)] else map go args) }
@@ -231,46 +303,50 @@ reachableDefinitions definitions = go S.empty
       | otherwise = go (S.insert n seen) rest
 -- | The law as a Boolean claim over its inputs: implications become disjunctions.
 -- `p = true` is shown as p; other equations are shown as written.
-lawClaim :: Property -> Expr
+lawClaim :: Property -> Maybe Expr
 lawClaim = claimWith False
 
--- | For the prover, a Boolean equation between two predicates becomes their
--- equivalence, which linear arithmetic can decide.
-proofClaim :: Property -> Expr
+-- The scalar proof engine receives only executable Boolean claims. Scoped
+-- propositions have no scalar stand-in; their authoritative wire view remains
+-- the proposition, until a complete search plan can lower it.
+proofClaim :: Property -> Maybe Expr
 proofClaim = claimWith True
 
-claimWith :: Bool -> Property -> Expr
+claimWith :: Bool -> Property -> Maybe Expr
 claimWith forProof p = claim (propertyBody p)
   where
     origin = GeneratedFrom (propertyId p)
     bool = scalarType "Bool"
-    claim (Equation evidence a b)
-      | expressionType a == bool = case (expressionNode a, expressionNode b) of
-          (_, Constant (SBool True)) -> a
-          (Constant (SBool True), _) -> b
-          (_, Constant (SBool False)) -> negation a
-          (Constant (SBool False), _) -> negation b
-          _ | forProof -> Expr bool (ShortCircuit Or (Expr bool (ShortCircuit And a b) origin)
-                 (Expr bool (ShortCircuit And (negation a) (negation b)) origin)) origin
-          _ -> Expr bool (Binary Equal evidence a b) origin
-      | otherwise = Expr bool (Binary Equal evidence a b) origin
+    claim (Equation evidence a b) = Just $
+      if expressionType a == bool then case (expressionNode a, expressionNode b) of
+        (_, Constant (SBool True)) -> a
+        (Constant (SBool True), _) -> b
+        (_, Constant (SBool False)) -> negation a
+        (Constant (SBool False), _) -> negation b
+        _ | forProof -> Expr bool (ShortCircuit Or (Expr bool (ShortCircuit And a b) origin)
+               (Expr bool (ShortCircuit And (negation a) (negation b)) origin)) origin
+        _ -> Expr bool (Binary Equal evidence a b) origin
+      else Expr bool (Binary Equal evidence a b) origin
     claim (Implication guard body) =
-      Expr bool (ShortCircuit Or (negation guard) (claim body)) origin
-    claim (Conjunction []) = Expr bool (Constant (SBool True)) origin
-    claim (Conjunction ps) = foldr1 (\a b -> Expr bool (ShortCircuit And a b) origin) (map claim ps)
+      (\value -> Expr bool (ShortCircuit Or (negation guard) value) origin) <$> claim body
+    claim (Conjunction []) = Just (Expr bool (Constant (SBool True)) origin)
+    claim (Conjunction bodies) = foldr1 (\a b -> Expr bool (ShortCircuit And a b) origin) <$> mapM claim bodies
+    claim (Negation body) = negation <$> claim body
+    claim (Quantified _ _ _) = Nothing
     negation e = Expr bool (Unary Not e) origin
 
 -- | A law over definitions only is proved when the totality audit proves it as
 -- the result contract of a synthetic definition whose body is the claim and
 -- whose preconditions are the input refinements.
 proves :: Program -> [Definition] -> Property -> Either String ()
-proves program definitions p =
+proves program definitions p = do
+  scalarClaim <- maybe (Left "a scoped proposition needs a complete search or constructive proof") Right (proofClaim p)
   let proof = Id (idText (propertyId p) ++ "::proof")
       result = Binder (Id (idText proof ++ "::result")) "result" bool
       inputs = map quantifiedBinder (propertyInputs p)
       bool = scalarType "Bool"
       origin = GeneratedFrom (propertyId p)
-      claim = inline program definitions (proofClaim p)
+      claim = inline program definitions scalarClaim
       -- The claim is the postcondition itself: the prover must derive it from
       -- the input refinements alone. The body only has to be defined.
       synthetic = Definition (Declaration proof ("proof of " ++ propertyName p)
@@ -285,7 +361,7 @@ proves program definitions p =
         | otherwise = close seen rest
       used = [d | d <- definitions, declarationId (definitionDeclaration d) `S.member` reachable]
       contracts = [c | c <- definitionContracts (programUnits program), contractDeclaration c `S.member` reachable]
-  in either (Left . show) (const (Right ()))
+  either (Left . show) (const (Right ()))
        (validateDefinitionContracts (programMachineBits program) (programDataDeclarations program)
          (used ++ [synthetic]) (contracts ++ [contract]))
 

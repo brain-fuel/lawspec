@@ -5,6 +5,23 @@ title: Compiler API
 ---
 # Compiler API
 
+Canonical requests use `schemaVersion: 5`, explicit
+`languageProfile: "1.0-rc.1"`, and optional `verification: {layers: []}`.
+An empty selection performs intrinsic definition checks and reports laws as
+`not-verified`. Native tests are `planned` until an execution supplies evidence.
+The existing schema-3/4 interface below is retained during migration; making
+schema 5 the sole normal interface remains an RC1 release gate.
+The `format` method requires schema 5 and returns `formattedSources` after
+canonical validation. Every view and editor service uses the same typed Core.
+Typed laws expose `inputDomain: "universal"` for canonical obligations and
+`"nonempty"` for legacy test domains. Complete verification of an empty universal
+domain explicitly reports zero evaluated cases and no produced witnesses.
+Selecting property testing alone does not report completed verification when
+the domain supplies no cases.
+Laws expose documentary scalars as `metadata: {id?: string, owner?: string}`.
+The top-level law `id` and `owner` continue to identify its declaration and unit;
+documentary metadata neither renames them nor establishes verification evidence.
+
 The compiler exposes three methods through `createCompiler()` in the `lawspec`
 package. Each takes a JSON request and returns a JSON result. The TypeScript
 declarations in `index.d.ts` describe the protocol exactly; this page explains
@@ -218,6 +235,33 @@ type Assertion =
   | {kind: 'all'; items: Assertion[]};
 ```
 
+Schema 5 returns `Law.references` as `DocumentaryReference[]`. Each link has
+`kind: "law"`, `"function"` or `"external"`. Internal links carry a `target`
+with stable `id`, declaring `unit`, source `name`, declaration `span` and
+`referenceSpan` at the use. Both spans use `{spanStart: Location, spanEnd:
+Location}`. Law links optionally carry `selector: {kind: "definition" |
+"description" | "rationale" | "references"}` or `{kind: "named-reference",
+name: string}`. External links carry `resource` and an optional phrase `name`.
+No target contains an expanded proposition, so cycles remain finite. These
+links never provide verification evidence. Transitional schemas 3/4 retain
+string citation arrays, as in the interface above; the generated TypeScript
+union covers both wire versions.
+
+Schema 5 also exposes `law.harness.witnesses`: each entry has a target `binder`
+ID, a normalized lexical `path: string[]`, and a typed `expression: Expr`.
+These describe configured search choices. Completed proof/checking status is
+still reported in `evidence`; a configured candidate is never itself evidence.
+A failed unbounded candidate yields `incomplete`, and native execution reports
+`quantifier-search-incomplete`. Finite fallback can still establish a result.
+
+Configured scoped strategies appear in `law.harness.searches`, each with a
+`binder` identity, normalized lexical `path`, `strategy` name and typed `draw`.
+Outer `law.harness.strategies` entries also retain their typed draws. Draws
+preserve checked expressions and source origins for editor navigation. They describe
+configuration, not executed samples or completed evidence. Default bounded
+search can find a witness without enumerating an infinite domain. A bounded
+miss remains incomplete; a strategy's finite choice list never proves absence.
+
 The `assertion` tree is authoritative. Traverse it to keep the scope of shared
 guards and the order of conjuncts; do not flatten guards or turn refinement
 predicates into implications.
@@ -340,6 +384,7 @@ interface NativeBindings {
   types?: NativeTypeBinding[];
   generators?: NativeGeneratorBinding[];
   functions?: NativeFunctionBinding[];
+  names?: {declaration: string; name: string}[];       // schema 5: public generated function names
   rustCrate?: string;
   goImports?: {alias: string; path: string}[];
   erlangIncludes?: {path: string; library?: boolean}[];

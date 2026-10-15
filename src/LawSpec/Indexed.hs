@@ -342,6 +342,11 @@ bindLaw table known l = do
         (binders', inner) <- bindBinders table scope
           [(n, substituteIndices substitution t) | (n, t) <- binders]
         Forall binders' <$> walk (scope ++ map fst binders') (substitution ++ inner) body
+      Exists binders body -> do
+        (binders', inner) <- bindBinders table scope
+          [(n, substituteIndices substitution t) | (n, t) <- binders]
+        Exists binders' <$> walk (scope ++ map fst binders') (substitution ++ inner) body
+      Not body -> Not <$> walk scope substitution body
       Equal a b -> pure (Equal (replaceExprVars substitution a) (replaceExprVars substitution b))
       Holds e -> pure (Holds (replaceExprVars substitution e))
       Implies e rest -> Implies (replaceExprVars substitution e) <$> walk scope substitution rest

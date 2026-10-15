@@ -40,6 +40,7 @@ contextual(Identity, Body) ->
         error:{lawspec, Reason}:Stack -> erlang:raise(error, {lawspec, {Identity, Reason}}, Stack)
     end.
 
+helper(<<"incompleteSearch">>, [Reason], _, _) -> erlang:error({lawspec, Reason});
 helper(<<"unreachable">>, _, _, _) -> erlang:error({lawspec, unreachable});
 helper(<<"recorded">>, [Key, Value], [_, Type], _) -> recorded(Key, Value, Type, none);
 helper(<<"recorded">>, [Key, Value], [], _) -> recorded_text(Key, lawspec_beam_values:render(Value));

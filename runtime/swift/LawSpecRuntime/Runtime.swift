@@ -153,6 +153,9 @@ public enum Runtime {
     /// A built-in helper by name.
     public static func helper(_ name: String, _ values: [Value], _ types: [String], _ bits: Int) throws -> Value {
         switch (name, values.count) {
+        case ("incompleteSearch", 1):
+            if case .text(let reason) = values[0] { throw Fail.with("QuantifierSearchIncomplete", reason) }
+            throw Fail.with("QuantifierSearchIncomplete")
         case ("unreachable", _): throw Fail.with("Unreachable")
         case ("regexMatches", 2):
             if case .text(let pattern) = values[0], case .text(let text) = values[1] { return .bool(try Regex.matches(pattern, text)) }

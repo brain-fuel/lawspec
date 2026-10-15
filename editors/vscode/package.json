@@ -1,7 +1,7 @@
 {
   "name": "lawspec-language",
   "displayName": "LawSpec",
-  "description": "LawSpec syntax highlighting, comments, and bracket matching.",
+  "description": "LawSpec syntax, compiler diagnostics, formatting, outlines, hover and navigation.",
   "version": "0.1.0",
   "publisher": "brain-fuel",
   "private": true,
@@ -37,13 +37,30 @@
         "scopeName": "source.lawspec",
         "path": "./syntaxes/lawspec.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "LawSpec",
+      "properties": {
+        "lawspec.command": {
+          "type": "string",
+          "default": "lawspec",
+          "description": "Path to the LawSpec CLI used for the language server."
+        }
+      }
+    }
   },
   "scripts": {
     "test": "node --test test/*.test.mjs"
   },
   "devDependencies": {
-    "vscode-textmate": "9.2.0",
-    "vscode-oniguruma": "2.0.1"
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.2.0"
+  },
+  "main": "./extension.cjs",
+  "activationEvents": [
+    "onLanguage:lawspec"
+  ],
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
   }
 }

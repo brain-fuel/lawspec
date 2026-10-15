@@ -1,0 +1,144 @@
+unit example.rc1.boundedWitnessSearch
+
+type RequestLabel is a record{
+  text of type Text
+}
+end type
+
+function keepValue (value of type a) -> a is
+  value
+end function
+
+function reply (allowed of type Bool) -> Integer is
+  if allowed then 1 else 2 end if
+end function
+
+function labelFor (allowed of type Bool) -> RequestLabel is
+  RequestLabel record{
+    text = if allowed then "approved" else "declined" end if
+}
+end function
+
+law "|each request can receive its matching reply| is
+  description:
+    "Allowed requests receive reply one; other requests receive reply two."
+  end
+  definition:
+    for all (allowed of type Bool) =>
+      there exists (answer of type Integer) such that
+        answer must be reply allowed
+      end
+    end
+  end
+  expect reply allowed = expected
+  in table (allowed, expected):
+    row true, 1
+    row false, 2
+  end
+end
+
+law "|each request can receive its matching label| is
+  definition:
+    for all (allowed of type Bool) =>
+      there exists (label of type RequestLabel) such that
+        label.text must be (if allowed then "approved" else "declined" end if)
+    end
+  end
+end
+end
+
+law "|an adjusted amount can exceed any exact amount| is
+  definition:
+    for all (amount of type Integer) =>
+      there exists (adjusted of type Integer where adjusted > amount) such that
+        adjusted > amount
+      end
+    end
+  end
+end
+
+law "|a small amount cannot be both positive and nonpositive| is
+  definition:
+    there must not exist (amount of type Integer where
+      amount >= 0 and amount <= 3) such that
+      amount > 0 and amount <= 0
+    end
+  end
+end
+
+law "|independent requirements can choose distinct amounts| is
+  definition:
+    (there exists (amount of type Integer) such that amount = 1 end)
+    and
+    (there exists (amount of type Integer) such that amount = 2 end)
+  end
+end
+
+law "|a dependent strategy can propose the adjusted count| is
+  definition:
+    there exists (count of type Integer) such that
+      count must be 4
+    end
+  end
+end
+
+law "|an exceptional request can receive a manual category| is
+  definition:
+    there exists (category of type Text) such that
+      category must be "manual"
+    end
+  end
+end
+
+law "|consecutive exact cents have no intermediate amount| is
+  definition:
+    for all (amount of type Integer)
+      (between of type Integer where between > amount and between < amount + 1)
+      =>
+      false
+    end
+  end
+end
+
+law "|exact amounts are not all zero| is
+  definition:
+    must not for all (amount of type Integer) =>
+      amount = 0
+    end
+  end
+end
+
+harness example.rc1.boundedWitnessSearch.testing for example.rc1.boundedWitnessSearch is
+strategy replies of type Integer is one of 1, 2 end
+strategy labels of type RequestLabel is
+one of keepValue (labelFor true), keepValue (labelFor false)
+end
+strategy firstAmount of type Integer is one of 1 end
+strategy secondAmount of type Integer is one of 2 end
+strategy bases of type Integer is one of 0, 3 end
+strategy counts of type Integer is
+(bind base of type Integer from bases in one of base + 1)
+such that it > 0
+end
+strategy ordinaryCategory of type Text is one of "automatic" end
+strategy manualCategory of type Text is one of "manual" end
+strategy categories of type Text is
+frequency 3 ordinaryCategory, 1 manualCategory
+end
+strategy nonzeroAmount of type Integer is one of 1 end
+
+for law "|each request can receive its matching reply|
+witness 0 for allowed.answer
+use replies for definition.allowed.answer
+for law "|each request can receive its matching label|
+use labels for allowed.label
+for law "|independent requirements can choose distinct amounts|
+use firstAmount for branch1.amount
+use secondAmount for definition.branch2.amount
+for law "|a dependent strategy can propose the adjusted count|
+use counts for count
+for law "|an exceptional request can receive a manual category|
+use categories for category
+for law "|exact amounts are not all zero|
+use nonzeroAmount for amount
+end

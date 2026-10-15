@@ -549,6 +549,7 @@ canonicalItems keyed values = foldr keepLast [] (sortBy order values)
 
 helper :: String -> [Scalar] -> Int -> Scalar
 helper n args bits = case (n,args) of
+  ("incompleteSearch",[SSequence "Text" reason]) -> error (map chr reason)
   -- Sequences: Text and Bytes hold their units, a List its values; a slice
   -- is clamped.
   ("append",[SSequence t a,SSequence _ b]) -> SSequence t (a ++ b)

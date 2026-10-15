@@ -327,11 +327,22 @@ elaborateUnit u0 = do
       -- The abilities a law needs: everything its clauses and examples call,
       -- through the laws it invokes.
       lawRow seen l =
-        let own = canonical (concat [expressionRowNames (bound' l) e | e <- lawExpressions l] ++
+        let scope = map fst (parameters l) ++ map fst (lawResources l)
+            own = canonical (definitionRow scope (definition l) ++
+              concat [expressionRowNames (map fst (bindings example) ++ scope) (actual check)
+                | example <- examples l, check <- expectations example] ++
               concatMap opInstances (countedOperations l))
             invoked = [i | n <- invokedNames (definition l), n `notElem` seen, Just i <- [M.lookup n lawTable]]
         in canonical (own ++ concatMap (lawRow (lawName l : seen)) invoked)
-      bound' l = map fst (parameters l) ++ map fst (lawResources l) ++ quantifiedNames (definition l)
+      definitionRow scope definition = case definition of
+        Forall qs body -> definitionRow (map fst qs ++ scope) body
+        Exists qs body -> definitionRow (map fst qs ++ scope) body
+        Not body -> definitionRow scope body
+        Equal a b -> expressionRowNames scope a ++ expressionRowNames scope b
+        Holds a -> expressionRowNames scope a
+        Implies guard body -> expressionRowNames scope guard ++ definitionRow scope body
+        And a b -> definitionRow scope a ++ definitionRow scope b
+        Invoke _ arguments -> concatMap (expressionRowNames scope) arguments
       expressionRowNames bound e =
         let (outer, regions) = splitHandled e
         in concatMap nameRow (nub [x | x <- exprVars outer, x `notElem` bound, M.member x known]) ++ concat
@@ -473,6 +484,8 @@ elaborateUnit u0 = do
         let where' = Just (location l)
             go d = case d of
               Forall bound body -> Forall bound <$> go body
+              Exists bound body -> Exists bound <$> go body
+              Not body -> Not <$> go body
               Equal a b -> Equal <$> attemptIn where' a <*> attemptIn where' b
               Holds a -> Holds <$> attemptIn where' a
               Implies a body -> Implies <$> attemptIn where' a <*> go body
@@ -591,12 +604,6 @@ elaborateUnit u0 = do
       ChooseSpec h -> any (\d -> handlerName d == h && null (handlerOrigin d)) (handlerDeclarations u0)
       ChooseRecording inner -> ownHandler a inner
     canonical = sortOn prettyType . nub
-    lawExpressions l = definitionExpressions (definition l) ++ concat [map actual (expectations e) | e <- examples l]
-    quantifiedNames d = case d of
-      Forall qs body -> map fst qs ++ quantifiedNames body
-      Implies _ body -> quantifiedNames body
-      And a b -> quantifiedNames a ++ quantifiedNames b
-      _ -> []
 
 -- The type variable an ability's parameter becomes in its operations' types;
 -- LawSpec.Inference instantiates it afresh at each use.
@@ -612,6 +619,8 @@ instantiateLaw table l = l { definition = go (definition l) }
     expr = mapExprTypes ty
     go d = case d of
       Forall qs body -> Forall [(n, ty t) | (n, t) <- qs] (go body)
+      Exists qs body -> Exists [(n, ty t) | (n, t) <- qs] (go body)
+      Not body -> Not (go body)
       Equal a b -> Equal (expr a) (expr b)
       Holds a -> Holds (expr a)
       Implies a body -> Implies (expr a) (go body)
@@ -622,7 +631,7 @@ instantiateLaw table l = l { definition = go (definition l) }
 -- refinement, from every handler, for arguments that keep theirs.
 refinementLaws :: AbilityDeclaration -> Type -> [Law]
 refinementLaws a inst =
-  [ Law (op ++ " gives what its type says") [] [] claim "" "" [] [] (Location "<ability>" (line (abilitySpan a)) 1) []
+  [ Law (op ++ " gives what its type says") [] [] claim "" "" [] [] (Location "<ability>" (line (abilitySpan a)) 1) [] emptyLawMetadata
   | (op, ty) <- instantiatedOperations a inst
   , let (arguments, result) = functionType ty
         values = ["value" ++ show i | i <- [0 .. length arguments - 1]]
@@ -736,6 +745,8 @@ splitHandled e = case e of
 definitionExpressions :: Definition -> [Expr]
 definitionExpressions d = case d of
   Forall _ body -> definitionExpressions body
+  Exists _ body -> definitionExpressions body
+  Not body -> definitionExpressions body
   Equal a b -> [a, b]
   Holds a -> [a]
   Implies a body -> a : definitionExpressions body
@@ -745,6 +756,8 @@ definitionExpressions d = case d of
 invokedNames :: Definition -> [String]
 invokedNames d = case d of
   Forall _ body -> invokedNames body
+  Exists _ body -> invokedNames body
+  Not body -> invokedNames body
   Implies _ body -> invokedNames body
   And a b -> invokedNames a ++ invokedNames b
   Invoke n _ -> [n]
@@ -802,6 +815,8 @@ seededHandlers u
                     , examples = [ex { expectations = [c { actual = renameHandles (actual c) } | c <- expectations ex] } | ex <- examples l] }
     renameDefinition d = case d of
       Forall bound body -> Forall bound (renameDefinition body)
+      Exists bound body -> Exists bound (renameDefinition body)
+      Not body -> Not (renameDefinition body)
       Equal a b -> Equal (renameHandles a) (renameHandles b)
       Holds a -> Holds (renameHandles a)
       Implies a body -> Implies (renameHandles a) (renameDefinition body)

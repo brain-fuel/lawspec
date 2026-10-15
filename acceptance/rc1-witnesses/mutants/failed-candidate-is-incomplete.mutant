@@ -1,0 +1,7 @@
+expect: quantifier-search-incomplete
+@@ examples/rc1/constructive-witnesses.lawspec
+<<<<<<<
+witness keep (value `|add for approval| 1) for definition.value.answer
+=======
+witness 0 for definition.value.answer
+>>>>>>>

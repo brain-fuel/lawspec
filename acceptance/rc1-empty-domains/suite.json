@@ -1,0 +1,5 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {"layers": ["exhaustive", "examples"]},
+  "specs": ["examples/rc1/empty-domains.lawspec"]
+}

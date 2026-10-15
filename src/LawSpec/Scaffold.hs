@@ -227,6 +227,8 @@ scaffoldFilesWith crypto minify target = case target of
         , kotlinBlock "sourceSets"
             [ "main { java { srcDirs = [] }; groovy { srcDirs = ['src/main/groovy', 'src/main/java'] } }"
             , "test { java { srcDirs = [] }; groovy { srcDirs = ['src/test/groovy', 'src/test/java'] } }" ]
+        , kotlinBlock "tasks.withType(org.gradle.api.tasks.compile.GroovyCompile).configureEach"
+            [ "groovyOptions.forkOptions.memoryMaximumSize = '2g'" ]
         , kotlinBlock "dependencies"
             ([ "implementation 'org.apache.groovy:groovy:5.0.8'" ] ++
              [ "implementation 'org.bouncycastle:bcprov-jdk18on:1.86'" | crypto ] ++

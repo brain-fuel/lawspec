@@ -7,7 +7,7 @@ import LawSpec.Scalar
 import qualified LawSpec.Targets as Targets
 
 methods :: [(String, String)]
-methods = [("check", "CheckRequest"), ("expand", "CheckRequest"), ("planGeneration", "GenerationRequest")]
+methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("planGeneration", "GenerationRequest")]
 
 apiSources :: Layout -> [(FilePath, String)]
 apiSources layout = [("api.mjs", output api), ("index.d.ts", output declarations)]
@@ -59,7 +59,7 @@ api = text "import {loadCore} from './launcher.mjs';" <> softbreak <> softbreak 
   where
     method name = group (text (name ++ ": (input) =>") <>
       nest 4 (softline <> text "call" <>
-        delimit 4 "(" ")" [group (object [text "schemaVersion: input.nativeBindings === undefined ? 3 : 4", text "...input", text "method: " <> quoted name])]))
+        delimit 4 "(" ")" [group (object [group (text "schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :" <> softline <> text "input.nativeBindings === undefined ? 3 : 4"), text "...input", text "method: " <> quoted name])]))
 
 declarations :: Doc
 declarations = joinWith (softbreak <> softbreak)
@@ -101,7 +101,10 @@ declarations = joinWith (softbreak <> softbreak)
   , alias "Assertion"
       [variant "equal" [("evidence", "Evidence"), ("left", "Expr"), ("right", "Expr")],
        variant "implies" [("guard", "Expr"), ("body", "Assertion")],
-       variant "all" [("items", "Assertion[]")]]
+       variant "all" [("items", "Assertion[]")],
+       variant "not" [("body", "Assertion")],
+       variant "forall" [("binder", "Binder"), ("predicates", "Expr[]"), ("body", "Assertion")],
+       variant "exists" [("binder", "Binder"), ("predicates", "Expr[]"), ("body", "Assertion")]]
   , interface "Generation" (fields [("cases", "number"), ("maxAttempts", "number"), ("maxShrinks", "number"), ("exhaustiveLimit", "number")])
   , interface "Binder" (fields [("id", "string"), ("name", "string"), ("type", "Type")])
   , interface "Definition" (fields [("owner", "string"), ("id", "string"), ("arguments", "Binder[]"), ("body", "Expr")])
@@ -110,11 +113,40 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "Example"
       [("name", text "string"), ("bindings", text "(Binder & " <> record [("value", text "DataValue")] <> text ")[]"),
        ("expectations", text "Assertion[]")]
+  , interface "LawMetadata" (fields [("id?", "string"), ("owner?", "string")])
+  , interface "HarnessWitness" (fields [("binder", "string"), ("path", "string[]"), ("expression", "Expr")])
+  , alias "HarnessDraw"
+      [variant "any" [("type", "Type"), ("aim", "Input | null")],
+       variant "one-of" [("type", "Type"), ("values", "Expr[]")],
+       record [("kind", quoted "frequency"), ("alternatives", array (record (fields [("weight", "number"), ("draw", "HarnessDraw")])) )],
+       variant "such-that" [("draw", "HarnessDraw"), ("binder", "Binder"), ("predicate", "Expr"), ("maxDiscards", "number")],
+       variant "bind" [("binder", "Binder"), ("from", "HarnessDraw"), ("body", "HarnessDraw")]]
+  , interface "HarnessSearch" (fields [("binder", "string"), ("path", "string[]"), ("strategy", "string"), ("draw", "HarnessDraw")])
+  , interface "LawHarness"
+      (fields [("unit", "string | null"), ("tags", "string[]"), ("skip", "string | null"),
+       ("knownFailing", "string | null"), ("timeoutMilliseconds", "number | null"), ("repeat", "number"),
+       ("retries", "number"), ("labels", "Expr[]"), ("target", "Expr | null"), ("group", "string | null"),
+       ("orderRandom", "boolean"), ("parallel", "boolean"), ("witnesses", "HarnessWitness[]"), ("searches", "HarnessSearch[]")] ++
+       [("cover", array (record (fields [("percent", "number"), ("label", "string"), ("when", "Expr")]))),
+        ("classify", array (record (fields [("label", "string"), ("when", "Expr")]))),
+        ("strategies", array (record (fields [("input", "string"), ("strategy", "string"), ("draw", "HarnessDraw")])))] )
+  , interface "DocumentaryTarget"
+      [("id", text "string"), ("unit", text "string"), ("name", text "string"),
+       ("span", record (fields [("spanStart", "Location"), ("spanEnd", "Location")])),
+       ("referenceSpan", record (fields [("spanStart", "Location"), ("spanEnd", "Location")]))]
+  , alias "ReferenceSelector"
+      [record [("kind", union (map quoted ["definition", "description", "rationale", "references"]))],
+       variant "named-reference" [("name", "string")]]
+  , alias "DocumentaryReference"
+      [variant "law" [("target", "DocumentaryTarget"), ("selector?", "ReferenceSelector")],
+       variant "function" [("target", "DocumentaryTarget")],
+       variant "external" [("resource", "string"), ("name?", "string")]]
   , interface "Law" (fields
       [("id", "string"), ("owner", "string"), ("name", "string"), ("inputs", "Input[]"),
        ("assertion", "Assertion"), ("examples", "Example[]"), ("description", "string"),
-       ("rationale", "string"), ("references", "string[]"), ("location", "Location"),
-       ("trace", "string[]"), ("generation", "Generation")])
+       ("rationale", "string"), ("references", "DocumentaryReference[] | string[]"), ("location", "Location"),
+       ("trace", "string[]"), ("generation", "Generation"), ("inputDomain", "'nonempty' | 'universal'"),
+       ("metadata", "LawMetadata"), ("harness", "LawHarness")])
   , interface "Unit"
       [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin")] <> text ")[]")]
   , interface "DataTypeDeclaration"
@@ -137,12 +169,14 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "NativeTypeBinding" (fields [("type", "string"), ("native", "NativeReference"), ("constructors?", "NativeConstructorBinding[]"), ("codec?", "NativeCodecBinding"), ("arguments?", "string[]")])
   , interface "NativeGeneratorBinding" (fields [("type", "string"), ("factory", "NativeReference"), ("stub?", "boolean")])
   , interface "NativeFunctionBinding" (fields [("declaration", "string"), ("native?", "NativeReference"), ("method?", "string"), ("constructor?", "NativeReference")])
+  , interface "NativeNameBinding" (fields [("declaration", "string"), ("name", "string")])
   , interface "NativeGoImport" (fields [("alias", "string"), ("path", "string")])
   , interface "NativeErlangInclude" (fields [("path", "string"), ("library?", "boolean")])
   , interface "NativeBindings" (fields [("types?", "NativeTypeBinding[]"), ("generators?", "NativeGeneratorBinding[]"),
       ("functions?", "NativeFunctionBinding[]"), ("rustCrate?", "string"), ("goImports?", "NativeGoImport[]"),
+      ("names?", "NativeNameBinding[]"),
       ("erlangIncludes?", "NativeErlangInclude[]")])
-  , alias "DischargeStatus" (map quoted ["proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed"])
+  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed"])
   , interface "ObligationEvidence"
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
        [("claim", union [text "Expr", text "null"])] ++
@@ -159,17 +193,20 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "PackageVersion" (fields [("name", "string"), ("version", "string")])
   , interface "Package" (fields [("name", "string"), ("version", "string"), ("dependencies?", "Record<string, string>"), ("sources", "Source[]")])
   , interface "PackageView" (fields [("name", "string"), ("version", "string"), ("dependencies", "Record<string, string>"), ("units", "string[]")])
+  , alias "VerificationLayer" (map quoted ["proof", "exhaustive", "property", "examples", "runtime", "model", "analysis"])
+  , interface "Verification" [("layers?", text "VerificationLayer[]")]
   , interface "CheckRequest"
-      [("sources", text "Source[]"), ("schemaVersion?", union [text "3", text "4"]),
+      [("languageProfile?", quoted "1.0-rc.1"), ("verification?", text "Verification"),
+       ("sources", text "Source[]"), ("schemaVersion?", union [text "3", text "4", text "5"]),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
        ("attestation?", text "unknown")]
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , interface "Result"
-      ([("schemaVersion", union [text "3", text "4"]), ("machineBits?", union [text "32", text "64"])] ++
-       fields [("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
+      ([("schemaVersion", union [text "3", text "4", text "5"]), ("machineBits?", union [text "32", text "64"])] ++
+       fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "Verification"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
-       fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]")] ++
+       fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
        [("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])

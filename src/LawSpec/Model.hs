@@ -17,7 +17,7 @@ data Type = Named String | Variable String | Arrow Type Type | Applied String Ty
 data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
 data MatchBranch = MatchBranch String [String] Expr deriving (Eq, Show, Generic)
 data TypedCase = TypedCase String [(String,Type)] TypedExpr deriving (Eq, Show, Generic)
-data Definition = Forall [(String, Type)] Definition | Equal Expr Expr | Holds Expr | Implies Expr Definition | And Definition Definition | Invoke String [Expr] deriving (Eq, Show, Generic)
+data Definition = Forall [(String, Type)] Definition | Equal Expr Expr | Holds Expr | Implies Expr Definition | And Definition Definition | Invoke String [Expr] | Exists [(String, Type)] Definition | Not Definition deriving (Eq, Show, Generic)
 data Constraint = Capability String Type deriving (Eq, Show, Generic)
 data RefinementArgument = TypeArgument Type | ValueArgument Expr deriving (Eq, Show, Generic)
 data Refinement = Refinement { refinementName :: String, refinementParameters :: [(String,Type)], refinementRequirements :: [Constraint], refinementBody :: Type } deriving (Eq, Show, Generic)
@@ -46,7 +46,12 @@ data Example = Example { exampleName :: String, bindings :: [(String, Literal)],
 -- lawResources are the resources a law takes (law ... for db :: Database
 -- is): each case acquires them first and releases them after, even when it
 -- fails.
-data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements :: [Constraint], definition :: Definition, description :: String, rationale :: String, examples :: [Example], references :: [String], location :: Location, lawResources :: [(String, Type)] } deriving (Eq, Show, Generic)
+-- Qualification is parsed without alias lookup; resolution is a separate,
+-- documentary pass before executable import expansion.
+data SourceReferenceTarget = ParsedReferenceTarget [String] Span
+  | ResolvedReferenceTarget DocumentaryTarget deriving (Eq, Show, Generic)
+instance ToJSON SourceReferenceTarget
+data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements :: [Constraint], definition :: Definition, description :: String, rationale :: String, examples :: [Example], references :: [DocumentaryReference SourceReferenceTarget], location :: Location, lawResources :: [(String, Type)], lawMetadata :: LawMetadata } deriving (Eq, Show, Generic)
 data DataTypeDeclaration = DataTypeDeclaration
   { dataTypeName :: String, dataTypeParameters :: [String]
   , dataTypeConstructors :: [ConstructorDeclaration], dataTypeSpan :: Span
@@ -142,6 +147,9 @@ data Gen
 
 data HarnessSetting
   = UseStrategy String String           -- use strategy for input
+  -- Imports remain delayed until expansion establishes the actual lexical
+  -- binder scope. A local binder must win over an imported value of its name.
+  | WitnessSetting [String] Expr [(String, Expr)]
   | TestWith [String]                   -- which lawful handlers (native or spec)
   | CoverSetting Integer String Expr    -- cover p% "label" when e
   | ClassifySetting Expr String         -- classify e as "label"
@@ -165,8 +173,15 @@ data HarnessPlan = HarnessPlan
   , planCover :: [(Integer, String, Expr)], planClassify :: [(Expr, String)]
   , planLabels :: [Expr], planTarget :: Maybe Expr
   , planDraws :: [(String, String, Type, Gen)]   -- input, strategy, its type, its body
-  , planGroup :: Maybe String }
+  , planGroup :: Maybe String
+  , planWitnesses :: [([String], Expr, [(String, Expr)], Span)]
+  , planResolvedWitnesses :: [HarnessWitness]
+  , planDrawLocations :: [(String,Span)] }
   deriving (Eq, Show, Generic)
+
+data HarnessWitness = HarnessWitness
+  { witnessPath :: [String], witnessInput :: Input, witnessScope :: [Input]
+  , witnessExpression :: Expr, witnessSourceSpan :: Span } deriving (Eq, Show, Generic)
 
 -- resource T is acquire is e end release x is e end [reset x is e end] end.
 -- A law that takes a T acquires one before each case and releases it after
@@ -282,10 +297,10 @@ data Protocol = Protocol
   { protocolName :: String, protocolSteps :: [Step], protocolSpan :: Span }
   deriving (Eq, Show, Generic)
 data Input = Input { inputName :: String, inputId :: String, inputType :: Type, inputRefinements :: [Expr] } deriving (Eq, Show, Generic)
-data Assertion = AssertEqual Expr Expr | AssertImplies Expr Assertion | AssertAll [Assertion] deriving (Eq, Show, Generic)
+data Assertion = AssertEqual Expr Expr | AssertImplies Expr Assertion | AssertAll [Assertion] | AssertQuantified Quantification Input Assertion | AssertNot Assertion deriving (Eq, Show, Generic)
 instance ToJSON Assertion
 
-data Expanded = Expanded { owner :: String, name :: String, inputs :: [Input], left :: Expr, right :: Expr, guards :: [Expr], assertion :: Assertion, trace :: [String], original :: Law, typedExpressions :: [TypedExpr], propertyKind :: String, generation :: Generation, generationPlan :: [DomainPlan], refinementArgumentChecks :: [Expr] } deriving (Eq, Show, Generic)
+data Expanded = Expanded { owner :: String, name :: String, inputs :: [Input], left :: Expr, right :: Expr, guards :: [Expr], assertion :: Assertion, trace :: [String], original :: Law, typedExpressions :: [TypedExpr], propertyKind :: String, generation :: Generation, generationPlan :: [DomainPlan], refinementArgumentChecks :: [Expr], inputDomain :: InputDomain } deriving (Eq, Show, Generic)
 instance ToJSON Type
 instance ToJSON Expr where
   toJSON (DecimalNumber c e) = object ["tag" .= ("DecimalNumber" :: String), "contents" .= [show c,show e]]
@@ -345,6 +360,15 @@ firstConclusion (AssertEqual a b) = (a,b,[])
 firstConclusion (AssertImplies g body) = let (a,b,gs) = firstConclusion body in (a,b,g:gs)
 firstConclusion (AssertAll (a:_)) = firstConclusion a
 firstConclusion (AssertAll []) = (BoolLit True,BoolLit True,[])
+firstConclusion (AssertQuantified _ _ body) = firstConclusion body
+firstConclusion (AssertNot body) = firstConclusion body
+
+assertionInputs :: Assertion -> [Input]
+assertionInputs (AssertQuantified _ input body) = input : assertionInputs body
+assertionInputs (AssertNot body) = assertionInputs body
+assertionInputs (AssertImplies _ body) = assertionInputs body
+assertionInputs (AssertAll bodies) = concatMap assertionInputs bodies
+assertionInputs _ = []
 
 -- | Typed operations retain operand types and adapter conversions after specialization.
 data TypedExpr = TypedExpr { expressionType :: Type, expression :: Expr, operands :: [TypedExpr], requiredConversion :: Maybe Type, typedCases :: [TypedCase] } deriving (Eq, Show, Generic)

@@ -21,6 +21,7 @@ instance Binary S.Expr
 instance Binary S.FunctionDefinition
 instance Binary S.Import
 instance Binary S.Input
+instance Binary S.SourceReferenceTarget
 instance Binary S.Law
 instance Binary S.Literal
 instance Binary S.MatchBranch
@@ -46,3 +47,4 @@ instance Binary S.StrategyDeclaration
 instance Binary S.Gen
 instance Binary S.HarnessSetting
 instance Binary S.HarnessPlan
+instance Binary S.HarnessWitness

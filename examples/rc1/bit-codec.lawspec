@@ -1,0 +1,56 @@
+unit example.rc1.bitCodec
+
+mapping bitText of type Bool -> Text is
+  row false, "0"
+  row true, "1"
+end mapping
+
+function decodeBit (text of type Text) -> Maybe Bool is
+  bitTextInverse text
+end function
+
+function "|decode with zero default| (text of type Text) -> Bool is
+  first matching case of decodeBit text:
+    when Just bit then bit
+    when Nothing then false
+  end case
+end function
+
+law "|each bit is recovered| is
+  definition:
+    for all (bit of type Bool) =>
+      decodeBit (bitText bit) must be Just bit
+    end
+  end
+
+  description:
+    "Each bit has a one-character encoding that decodes to the original bit."
+  end
+
+  expect bitText bit = encoded
+  expect decodeBit encoded = decoded
+  in table (bit, encoded, decoded):
+    row false, "0", Just false
+    row true, "1", Just true
+  end
+end
+
+law "|decoding is a left inverse| is
+  definition:
+    apply law "|left inverse| "|decode with zero default| bitText
+  end
+
+  description:
+    "Decoding an encoded bit recovers it. The inverse is the first argument."
+  end
+end
+
+law "|other text has no bit| is
+  definition:
+    decodeBit "01" must be Nothing
+  end
+
+  description:
+    "Two characters are not one encoded bit. Invalid input has no decoded value."
+  end
+end

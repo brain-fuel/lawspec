@@ -1,0 +1,89 @@
+unit example.rc1.requirementComposition
+
+import example.rc1.authorizationSnapshots as snapshot
+  (Payment, Authorization, AuthorizationState, active, authorizes)
+
+law "|each item has a match| (relation of type a -> b -> Bool) is
+  definition:
+    for all (item of type b) =>
+      there exists (witness of type a) such that
+        relation witness item
+      end
+    end
+  end
+end
+
+function revokedMatch (authorization of type Authorization)
+  (payment of type Payment) -> Bool is
+  active AllRevoked authorization and authorizes authorization payment
+end function
+
+law "|matching and readiness agree| is
+  definition:
+    (apply law "|each item has a match| authorizes)
+    and
+    (for all (payment of type Payment) =>
+      there exists (authorization of type Authorization
+        where active Ready authorization) such that
+        authorizes authorization payment
+      end
+    end)
+  end
+
+  description:
+    "Every payment has a matching identity and an active approval when ready."
+  end
+end
+
+law "|revocation or matching has a complete explanation| is
+  definition:
+    (must not apply law "|each item has a match| revokedMatch)
+    or apply law "|each item has a match| authorizes
+  end
+
+  description:
+    "Either revoked approvals cannot cover every payment, or matching succeeds."
+  end
+end
+
+law "|matching implies ready approval coverage| is
+  definition:
+    (apply law "|each item has a match| authorizes)
+    implies
+    (for all (payment of type Payment) =>
+      there exists (authorization of type Authorization
+        where active Ready authorization) such that
+        authorizes authorization payment
+      end
+    end)
+  end
+end
+
+law "|payment and approval identities have separate scopes| is
+  definition:
+    (for all (value of type Payment) =>
+      value = FirstPayment or value = SecondPayment
+    end)
+    and
+    (for all (value of type Authorization) =>
+      value = FirstApproval or value = SecondApproval
+    end)
+  end
+end
+
+law "|an empty condition does not hide required coverage| is
+  definition:
+    (for all (authorization of type Authorization where false) =>
+      false
+    end)
+    and
+    (there exists (authorization of type Authorization
+      where active Ready authorization) such that
+      authorizes authorization FirstPayment
+    end)
+  end
+
+  rationale:
+    "A vacuous first clause leaves the approval requirement in force."
+  end
+end

@@ -1,0 +1,72 @@
+unit example.delivery.rur
+
+type PdfFile is a record{
+  fileName of type Text
+  byteCount of type Whole
+}
+end type
+
+type InvoiceDetails is a record{
+  number of type Text
+  file of type PdfFile
+}
+end type
+
+type LetterDetails is a record{
+  subject of type Text
+  file of type PdfFile
+}
+end type
+
+type Document is one of
+  | Invoice of type InvoiceDetails
+  | Letter of type LetterDetails
+end type
+
+type EmailDelivery is a record{
+  recipient of type Text
+  document of type Document
+}
+end type
+
+function "|email invoice PDF file name|
+  (delivery of type EmailDelivery) -> Maybe Text is
+  first matching case of delivery:
+    when record{document = Invoice record{file = record{fileName = name}}}
+      then Just name
+    otherwise Nothing
+  end case
+end function
+
+function emailPdfInvoice (name of type Text) -> EmailDelivery is
+  EmailDelivery record{recipient = "accounts@example.com", document = (Invoice
+    (InvoiceDetails record{number = "INV-2026-10", file = PdfFile
+      record{fileName
+        = name, byteCount = 1200}}))}
+end function
+
+law "|emailPdfInvoice result| is
+  description:
+    "PDF invoices sent by email retain their file names."
+  end
+  definition:
+    "|email invoice PDF file name| (emailPdfInvoice "invoice.pdf") must be Just
+    "invoice.pdf"
+  end
+end
+
+function emailPdfLetter (name of type Text) -> EmailDelivery is
+  EmailDelivery record{recipient = "accounts@example.com", document = (Letter
+    (LetterDetails record{subject = "Receipt", file = PdfFile record{fileName =
+        name, byteCount = 1200}}))}
+end function
+
+law "|emailPdfLetter result| is
+  description:
+    "Letters have no invoice PDF file name."
+  end
+  definition:
+    "|email invoice PDF file name| (emailPdfLetter "invoice.pdf") must be
+    Nothing
+  end
+end

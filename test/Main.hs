@@ -2,6 +2,11 @@
 -- it verifies and cites the requirement that property serves.
 -- ref:DEC-tests-cite-requirements
 module Main where
+import qualified WitnessSpec
+import qualified QuantifierDomainSpec
+import qualified SearchSpec
+import qualified CanonicalSpec
+import qualified ContextualSpec
 import Test.Hspec
 import qualified NativeBindingSpec
 import qualified NativeRequestSpec
@@ -67,6 +72,11 @@ concrete :: String -> String
 concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
+  CanonicalSpec.test_canonicalAuthoringPreservesIntrinsicGuarantees
+  ContextualSpec.test_articlesPreserveOrdinaryNamesAndScope
+  WitnessSpec.test_constructiveWitnessesPreserveScopedMeaning
+  QuantifierDomainSpec.test_refinedIntegerDomainsAreComplete
+  SearchSpec.test_boundedWitnessSearchPreservesEvidence
   BeamSpec.test_beamCodeUsesCheckedCoreAndNativeFrameworks
   BeamSpec.test_beamRunsTheLanguageGaps
   DotNetSpec.test_dotnetTargetsShareOneRuntime

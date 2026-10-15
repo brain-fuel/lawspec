@@ -48,6 +48,38 @@ specializeDefinitions declarations bits satisfies units properties = do
           forM_ definitions $ \d -> unless (functionName d `elem` generic) $
             ensure (functionName d) (baseType (definitionType d)) >> pure ()
           rewritten <- mapM property owned
+          rewrittenHarness <- forM (lawHarness originalUnit) $ \(name, plan) -> do
+            witnesses <- forM (planResolvedWitnesses plan) $ \witness -> do
+              let bindings = [(inputId i,inputType i) | i <- witnessScope witness]
+                  scope = M.union (monoEnvironment bindings) environment
+                  local = Set.fromList (map fst bindings)
+              value <- rewrite scope local (Annotate (witnessExpression witness) (inputType (witnessInput witness)))
+              pure witness { witnessExpression = value }
+            draws <- forM (planDraws plan) $ \(input,strategy,ty,body) -> do
+              ty' <- rewriteStrategyType ty
+              body' <- rewriteGen environment Set.empty (baseType ty) body
+              pure (input,strategy,ty',body')
+            pure (name, plan { planResolvedWitnesses = witnesses,planDraws = draws })
+          let declarations = [s | Just h <- [unitHarness originalUnit],HarnessStrategy s <- harnessItems h]
+              referenced gen = case gen of
+                GenNamed n -> [n]
+                GenFrequency alternatives -> concatMap (referenced . snd) alternatives
+                GenSuchThat inner _ _ -> referenced inner
+                GenBind _ _ from body -> referenced from ++ referenced body
+                _ -> []
+              reachable seen [] = seen
+              reachable seen (n:rest) | n `Set.member` seen = reachable seen rest
+                | otherwise = reachable (Set.insert n seen) (rest ++ concat
+                    [referenced (strategyBody s) | s <- declarations,strategyName s == n])
+              used = reachable Set.empty [strategy | (_,plan) <- lawHarness originalUnit,(_,strategy,_,_) <- planDraws plan]
+          rewrittenHarnessUnit <- traverse (\h -> do
+            items <- forM (harnessItems h) $ \item -> case item of
+              HarnessStrategy s | strategyName s `Set.member` used -> do
+                ty <- rewriteStrategyType (strategyType s)
+                body <- rewriteGen environment Set.empty (baseType (strategyType s)) (strategyBody s)
+                pure (HarnessStrategy s { strategyBody = body,strategyType = ty })
+              _ -> pure item
+            pure h { harnessItems = items }) (unitHarness originalUnit)
           rewrittenContracts <- mapM contract [c | c <- contracts originalUnit,
             contractName c `notElem` map functionName definitions]
           drain
@@ -57,6 +89,8 @@ specializeDefinitions declarations bits satisfies units properties = do
                 name `notElem` map functionName definitions]
               result = originalUnit
                 { functions = external ++ [(functionName d, definitionType d) | d <- bodies]
+                , lawHarness = rewrittenHarness
+                , unitHarness = rewrittenHarnessUnit
                 , functionDefinitions = bodies
                 , contracts = rewrittenContracts ++ [c | Instance _ _ (Just c) _ <- entries]
                 , declarationSpans = [(name,range) | (name,range) <- declarationSpans originalUnit,
@@ -64,6 +98,24 @@ specializeDefinitions declarations bits satisfies units properties = do
                 }
           final <- mapM (refresh result) rewritten
           pure (result, final)
+        rewriteStrategyType ty = case ty of
+          Refined name base (Just predicate) -> do
+            value <- rewrite (M.union (monoEnvironment [(name,base)]) environment) (Set.singleton name)
+              (Annotate predicate (Named "Bool"))
+            pure (Refined name base (Just value))
+          _ -> pure ty
+        rewriteGen scope local ty gen = case gen of
+          GenOneOf values -> GenOneOf <$> mapM (rewrite scope local . (`Annotate` ty)) values
+          GenFrequency alternatives -> GenFrequency <$> mapM (\(weight,inner) -> (,) weight <$> rewriteGen scope local ty inner) alternatives
+          GenSuchThat inner predicate limit -> do
+            inner' <- rewriteGen scope local ty inner
+            predicate' <- rewrite (M.union (monoEnvironment [("it",ty)]) scope) (Set.insert "it" local)
+              (Annotate predicate (Named "Bool"))
+            pure (GenSuchThat inner' predicate' limit)
+          GenBind name valueType from body -> GenBind name valueType
+            <$> rewriteGen scope local (baseType valueType) from
+            <*> rewriteGen (M.union (monoEnvironment [(name,valueType)]) scope) (Set.insert name local) ty body
+          _ -> pure gen
         typed scope expression = do
           (tree, constraints) <- lift (typedExpressionWithSchemes declarations bits scope (normal expression))
           forM_ constraints $ \constraint -> unless (satisfies constraint)
@@ -204,12 +256,16 @@ specializeDefinitions declarations bits satisfies units properties = do
             (contractPostconditions original)
           pure original{contractPreconditions=pre,contractPostconditions=post}
         property expanded = do
-          let bindings = [(inputId i,inputType i) | i <- inputs expanded] ++ lawResources (original expanded)
+          let bindings = [(inputId i,inputType i) | i <- inputs expanded ++ assertionInputs (assertion expanded)] ++ lawResources (original expanded)
               local = Set.fromList (map fst bindings)
               scope = M.union (monoEnvironment bindings) environment
               walk (AssertEqual a b) = uncurry AssertEqual <$> equation scope local a b
               walk (AssertImplies guard body) = AssertImplies <$> rewrite scope local guard <*> walk body
               walk (AssertAll bodies) = AssertAll <$> mapM walk bodies
+              walk (AssertNot body) = AssertNot <$> walk body
+              walk (AssertQuantified kind input body) = do
+                predicates <- mapM (rewrite scope local) (inputRefinements input)
+                AssertQuantified kind (input { inputRefinements = predicates }) <$> walk body
           body <- walk (assertion expanded)
           argumentChecks <- mapM (rewrite environment Set.empty) (refinementArgumentChecks expanded)
           inputs' <- forM (inputs expanded) $ \input -> do
@@ -227,7 +283,7 @@ specializeDefinitions declarations bits satisfies units properties = do
             original=(original expanded){examples=examples'}, generationPlan=map
               (planDomain [(inputId i,inputType i) | i <- inputs']) inputs'}
         refresh result expanded = do
-          let scope = functions result ++ [(inputId i,inputType i) | i <- inputs expanded] ++ lawResources (original expanded)
+          let scope = functions result ++ [(inputId i,inputType i) | i <- inputs expanded ++ assertionInputs (assertion expanded)] ++ lawResources (original expanded)
               examplesScope = scope ++ [(inputName i,inputType i) | i <- inputs expanded]
           trees <- lift $ (++) <$> mapM (typedExpressionWithData declarations bits scope)
             (concatMap inputRefinements (inputs expanded) ++ assertionExpressions (assertion expanded)) <*>
@@ -254,3 +310,5 @@ specializeDefinitions declarations bits satisfies units properties = do
     assertionExpressions (AssertEqual a b) = [a,b]
     assertionExpressions (AssertImplies guard body) = guard : assertionExpressions body
     assertionExpressions (AssertAll bodies) = concatMap assertionExpressions bodies
+    assertionExpressions (AssertNot body) = assertionExpressions body
+    assertionExpressions (AssertQuantified _ input body) = inputRefinements input ++ assertionExpressions body

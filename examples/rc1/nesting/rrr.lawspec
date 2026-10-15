@@ -1,0 +1,43 @@
+unit example.delivery.rrr
+
+type PdfFile is a record{
+  fileName of type Text
+  byteCount of type Whole
+}
+end type
+
+type Invoice is a record{
+  number of type Text
+  file of type PdfFile
+}
+end type
+
+type EmailDelivery is a record{
+  recipient of type Text
+  document of type Invoice
+}
+end type
+
+function "|email invoice PDF file name|
+  (delivery of type EmailDelivery) -> Maybe Text is
+  first matching case of delivery:
+    when record{document = record{file = record{fileName = name}}}
+      then Just name
+  end case
+end function
+
+function emailPdfInvoice (name of type Text) -> EmailDelivery is
+  EmailDelivery record{recipient = "accounts@example.com", document = Invoice
+    record{number = "INV-2026-10", file = PdfFile record{fileName = name,
+        byteCount = 1200}}}
+end function
+
+law "|emailPdfInvoice result| is
+  description:
+    "PDF invoices sent by email retain their file names."
+  end
+  definition:
+    "|email invoice PDF file name| (emailPdfInvoice "invoice.pdf") must be Just
+    "invoice.pdf"
+  end
+end

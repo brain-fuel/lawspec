@@ -174,6 +174,9 @@ propositionRefs owners proposition = case proposition of
   Equation evidence a b -> evidenceRefs evidence ++ exprRefs owners a ++ exprRefs owners b
   Implication guard body -> exprRefs owners guard ++ propositionRefs owners body
   Conjunction parts -> concatMap (propositionRefs owners) parts
+  Negation body -> propositionRefs owners body
+  Quantified _ q body -> typeRefs (binderType (quantifiedBinder q)) ++
+    concatMap (exprRefs owners) (quantifiedPredicates q ++ map snd (quantifiedBounds q)) ++ propositionRefs owners body
 
 evidenceRefs :: Evidence -> [Ref]
 evidenceRefs (Numeric t) = typeRefs t

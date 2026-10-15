@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ acceptance/rc1-native-names/spec.lawspec
+<<<<<<<
+  not value
+=======
+  value
+>>>>>>>

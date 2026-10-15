@@ -475,6 +475,8 @@ def compare_values(a, b):
 
 
 def helper(n, args, types, bits=64):
+    if n == 'incompleteSearch':
+        raise ValueError(args[0])
     x = args[0] if args else None
     if n in _SEQUENCE_HELPERS:
         return _SEQUENCE_HELPERS[n](*args)

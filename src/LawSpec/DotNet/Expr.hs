@@ -222,4 +222,6 @@ propositionWith equal renderer p = case p of
   C.Conjunction ps -> do
     parts <- mapM (propositionWith equal renderer) ps
     pure (foldr (\a rest -> If (truth a) tValue rest (bool False)) (bool True) parts)
+  C.Quantified _ _ _ -> Left "a scoped proposition requires complete search planning before native emission"
+  C.Negation _ -> Left "proposition negation requires execution planning before native emission"
   where _ = intercalate

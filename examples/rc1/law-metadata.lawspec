@@ -1,0 +1,29 @@
+unit example.rc1.lawMetadata
+
+type Review is one of
+  | Approved
+  | Declined
+end type
+
+function review (allowed of type Bool) -> Review is
+  if allowed then Approved else Declined end if
+end function
+
+law "|allowed requests are approved| is
+  id: "REVIEW-001"
+  owner: Payments.Review
+  description:
+    "An allowed request receives approval."
+  end
+  definition:
+    review true must be Approved
+  end
+end
+
+law "|other requests are declined| is
+  owner: Payments.Review
+  id: "REVIEW-002"
+  definition:
+    review false must be Declined
+  end
+end

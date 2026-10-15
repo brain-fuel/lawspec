@@ -39,6 +39,12 @@ import (
 	"unicode/utf8"
 )
 
+// lsEvaluate preserves expression-local scope without letting Go's inliner
+// expand hundreds of nested search closures into their callers.
+//
+//go:noinline
+func lsEvaluate(expression func() LawSpecValue) LawSpecValue { return expression() }
+
 // LawSpecValue is a value of a LawSpec type together with that type, because a
 // Go value alone cannot say whether it is an Int32, a BigInt or a Decimal, and
 // the law's semantics depend on which. ref:DEC-portable-exact-arithmetic
@@ -1279,6 +1285,9 @@ func lsSign(n int) int {
 }
 
 func lsHelper(n string, args []LawSpecValue, bits int) LawSpecValue {
+	if n == "incompleteSearch" {
+		panic(lsCodePointsText(args[0].Data.([]int)))
+	}
 	if result, ok := lsSequenceHelper(n, args); ok {
 		return result
 	}

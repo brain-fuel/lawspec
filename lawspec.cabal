@@ -267,6 +267,26 @@ extra-source-files:
     examples/specs/tables.lawspec
     examples/specs/total_functions.lawspec
     examples/specs/workflows.lawspec
+    examples/rc1-authoring.lawspec
+    examples/rc1/authorization-snapshots.lawspec
+    examples/rc1/bit-codec.lawspec
+    examples/rc1/bounded-witness-search.lawspec
+    examples/rc1/constructive-witnesses.lawspec
+    examples/rc1/documentary-review.lawspec
+    examples/rc1/empty-domains.lawspec
+    examples/rc1/finite-integer-domains.lawspec
+    examples/rc1/law-metadata.lawspec
+    examples/rc1/recursive-records.lawspec
+    examples/rc1/requirement-composition.lawspec
+    examples/rc1/nesting/rrr.lawspec
+    examples/rc1/nesting/rru.lawspec
+    examples/rc1/nesting/rur.lawspec
+    examples/rc1/nesting/ruu.lawspec
+    examples/rc1/nesting/urr.lawspec
+    examples/rc1/nesting/uru.lawspec
+    examples/rc1/nesting/uur.lawspec
+    examples/rc1/nesting/uuu.lawspec
+    test/fixtures/blake3-256.json
     test/fixtures/constructor_boundaries.lawspec
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec
@@ -456,6 +476,7 @@ library
       LawSpec.BeamProperties
       LawSpec.BeamRemote
       LawSpec.BeamSessions
+      LawSpec.Blake3
       LawSpec.Bounds
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
@@ -481,8 +502,11 @@ library
       LawSpec.Core.PayloadPlan
       LawSpec.Core.Policy
       LawSpec.Core.Program
+      LawSpec.Core.Quantification
+      LawSpec.Core.QuantifierDomain
       LawSpec.Core.RefinementProof
       LawSpec.Core.Schema
+      LawSpec.Core.Search
       LawSpec.Core.Semantics
       LawSpec.Core.Stages
       LawSpec.Core.Total
@@ -490,6 +514,7 @@ library
       LawSpec.Core.Types
       LawSpec.Core.Validate
       LawSpec.Core.Value
+      LawSpec.Core.Verification
       LawSpec.CoreEmit
       LawSpec.CoreNativeScalarEmit
       LawSpec.CorePersist
@@ -501,6 +526,7 @@ library
       LawSpec.Dependencies
       LawSpec.Digest
       LawSpec.Discharge
+      LawSpec.Documentary
       LawSpec.Domain
       LawSpec.DomainModel
       LawSpec.DotNet.Abilities
@@ -542,6 +568,7 @@ library
       LawSpec.Groovy.Spock
       LawSpec.GroovySources
       LawSpec.Harness
+      LawSpec.HarnessWitness
       LawSpec.HaskellData
       LawSpec.HaskellDefinitions
       LawSpec.HaskellExpr
@@ -620,6 +647,7 @@ library
       LawSpec.Sessions.Rust
       LawSpec.Sessions.Web
       LawSpec.Sha3
+      LawSpec.SourceText
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
       LawSpec.Swift.Abilities
@@ -804,8 +832,10 @@ test-suite lawspec-test
       BeamSpec
       BoundsSpec
       BuiltinsSpec
+      CanonicalSpec
       CollectionsSpec
       ConditionalSpec
+      ContextualSpec
       CoreSpec
       DataShapeSpec
       DefinitionContractFixture
@@ -831,10 +861,12 @@ test-suite lawspec-test
       NativeRequestSpec
       PayloadProofSpec
       PayloadSpec
+      QuantifierDomainSpec
       RailwaySpec
       RefinementProofSpec
       ScenarioSpec
       SchedulerSpec
+      SearchSpec
       SessionsPythonSpec
       SourceDataSpec
       StatefulModelSpec
@@ -846,6 +878,7 @@ test-suite lawspec-test
       TotalSpec
       TypedSpec
       UnificationSpec
+      WitnessSpec
       Scheduler
       Paths_lawspec
   hs-source-dirs:

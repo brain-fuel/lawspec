@@ -133,3 +133,5 @@ propositionWith equal render p = case p of
     body <- propositionWith equal render inner
     pure (infixDoc "orelse" (D.text "(not " <> condition <> D.text ")") body)
   C.Conjunction ps -> foldr (infixDoc "andalso") (E.atom "true") <$> mapM (propositionWith equal render) ps
+  C.Quantified _ _ _ -> Left "a scoped proposition requires complete search planning before native emission"
+  C.Negation _ -> Left "proposition negation requires execution planning before native emission"

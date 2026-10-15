@@ -119,7 +119,7 @@ withHeader template target content
   | otherwise = case lines content of
       first : rest | "#!" `isPrefixOf` first -> unlines (first : header : rest)
       _ -> header ++ "\n" ++ content
-  where header = "// Generated from " ++ template ++ " by lawspec-dev generate. Do not edit."
+  where header = (if takeExtension target == ".lawspec" then "--" else "//") ++ " Generated from " ++ template ++ " by lawspec-dev generate. Do not edit."
 
 -- | Values Haskell owns, as JavaScript source text.
 factFills :: String -> [(String, Fill)]
@@ -139,7 +139,7 @@ factFills version =
 
 -- | What the npm package contains, beside its code.
 shippedFiles :: [String]
-shippedFiles = ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi.js"] ++ copiedDocuments ++ ["LICENSE", "starter.lawspec", "examples"]
+shippedFiles = ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi.js"] ++ copiedDocuments ++ ["LICENSE", "starter.lawspec", "starter-rc1.lawspec", "examples"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.

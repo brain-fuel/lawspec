@@ -575,12 +575,13 @@ domainBounds name domains =
     maximumMaybe xs = if null xs then Nothing else Just (maximum xs)
     minimumMaybe xs = if null xs then Nothing else Just (minimum xs)
 
--- | Guard auditing precedes call auditing, so a presentValue projection is a
--- genuine strict subterm. Results of calls still have no argument provenance.
+-- | Checked record fields and guarded presentValue projections are strict
+-- subterms. Results of calls still have no argument provenance.
 valueProvenance :: Provenance -> Proof -> Maybe (Int,Bool)
 valueProvenance scope value = case value of
   Variable name -> M.lookup name scope
   Integral inner -> valueProvenance scope inner
+  Field _ _ _ inner -> (\(index,_) -> (index,True)) <$> valueProvenance scope inner
   PresentValue inner -> (\(index,_) -> (index,True)) <$> valueProvenance scope inner
   _ -> Nothing
 
@@ -875,7 +876,7 @@ entails facts expression
 derivedFacts :: Facts -> Proof -> [Proof]
 derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap unfolded (nub calls') ++ concatMap bound (nub quotients)
   ++ concatMap productBounds (nub products) ++ concatMap remainderBounds (nub remainders) ++ concatMap measureBounds (nub measures)
-  ++ nub fieldDomains
+  ++ nub fieldDomains ++ nub fieldGuarantees
   where
     terms = universe expression
     remainders = [(a, b) | Division False Remainder a b <- terms]
@@ -883,6 +884,14 @@ derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap un
     -- A field read from a value lies in its field's domain.
     fieldDomains = concat [ [ExactComparison GreaterEqual term (integer n) | Just n <- [lo]] ++ [ExactComparison LessEqual term (integer n) | Just n <- [hi]]
                           | term@(Field _ _ (lo, hi) _) <- terms ]
+    -- A well-typed projection reads a stored constructor field. Instantiate
+    -- its admitted contract over projections of the same value, so refined
+    -- fields and dependencies survive projection without nominal unwrapping.
+    fieldGuarantees = concat
+      [ instantiateConstructor contract
+          [Field tag index (Nothing, Nothing) value | index <- [0 .. length (constructorParameters contract) - 1]]
+      | Field tag _ _ value <- terms, faithful value
+      , Just contract <- [M.lookup tag (constructorContracts facts)] ]
     -- A length or a size is never negative, and fits a 64-bit count.
     measureBounds term = [ExactComparison GreaterEqual term (integer 0), ExactComparison LessEqual term (integer (2 ^ (63 :: Int) - 1))]
     -- A remainder takes the dividend's sign and is smaller than the divisor

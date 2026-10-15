@@ -757,6 +757,7 @@ public final class LawSpecRuntime {
   }
 
   public static Value helper(String n, Value[] args, int bits) {
+    if (n.equals("incompleteSearch")) throw new IllegalStateException(codePointsText(args[0]));
     Value sequenceResult = sequenceHelper(n, args);
     if (sequenceResult != null) return sequenceResult;
     switch (n) {

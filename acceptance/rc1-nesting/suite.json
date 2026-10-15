@@ -1,0 +1,18 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {
+    "layers": [
+      "exhaustive"
+    ]
+  },
+  "specs": [
+    "examples/rc1/nesting/rrr.lawspec",
+    "examples/rc1/nesting/rru.lawspec",
+    "examples/rc1/nesting/rur.lawspec",
+    "examples/rc1/nesting/ruu.lawspec",
+    "examples/rc1/nesting/urr.lawspec",
+    "examples/rc1/nesting/uru.lawspec",
+    "examples/rc1/nesting/uur.lawspec",
+    "examples/rc1/nesting/uuu.lawspec"
+  ]
+}

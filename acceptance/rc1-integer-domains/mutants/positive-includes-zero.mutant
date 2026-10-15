@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ examples/rc1/finite-integer-domains.lawspec
+<<<<<<<
+(attempts of type Nat where attempts <= 3)
+=======
+(attempts of type Whole where attempts <= 3)
+>>>>>>>

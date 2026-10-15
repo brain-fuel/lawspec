@@ -782,6 +782,14 @@ typedExpressionWithSchemes declarations bits env e = do
               body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
               pure [TypedCase "" [(binder,element)] body]
             _ -> throwC "element predicate requires a List"
+        -- A let binds this occurrence's inferred value. Inferring it again
+        -- would give a polymorphic constructor such as Nothing a different
+        -- type variable, losing the body context that fixes its payload type.
+        MatchExpr _ [MatchBranch tag [name] body] | tag == letTag, [value] <- children -> do
+          let boundType = maybe (expressionType value) id (requiredConversion value)
+          body' <- go (M.insert name (Monomorphic boundType) context) (Just t) body
+          resolved <- resolve boundType
+          pure [TypedCase tag [(name,resolved)] body']
         -- Branches a GADT constructor cannot reach at this type are dropped,
         -- so a specialized instance never mentions them.
         MatchExpr value branches -> do

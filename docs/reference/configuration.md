@@ -12,7 +12,9 @@ names another file. Relative paths resolve from the file's directory.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "languageProfile": "1.0-rc.1",
+  "verification": {"layers": []},
   "sources": ["laws"],
   "machineBits": 64,
   "generation": {"cases": 100, "maxAttempts": 10000, "maxShrinks": 1000, "exhaustiveLimit": 4096},
@@ -27,7 +29,9 @@ names another file. Relative paths resolve from the file's directory.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `version` | `1` | Yes | The configuration format version. |
+| `version` | `2` | Yes | The canonical configuration format. Version 1 is retained as migration input during the RC1 transition. |
+| `languageProfile` | `1.0-rc.1` | Yes in version 2 | The explicit canonical grammar and semantics. |
+| `verification` | object | No | `layers` defaults to `[]`, selecting none of the optional law checks. Choices: proof, exhaustive, property, examples, runtime, model, analysis. Intrinsic definition checks and their runtime enforcement remain automatic. |
 | `sources` | array of paths | Yes | `.lawspec` files, or directories scanned recursively for them. A file may hold a unit or a [harness](language/harness.md) for one. |
 | `targets` | array of targets | Yes | The target projects. |
 | `machineBits` | `32` or `64` | No | The machine profile. Default `64`. `--machine-bits` overrides it. |
@@ -37,7 +41,7 @@ names another file. Relative paths resolve from the file's directory.
 | `cache` | boolean | No | Keep the compiler's work in `.lawspec/cache` between runs. Default `true`; see [the compiler cache](cli.md#the-compiler-cache). |
 | `attestation` | path | No | An environment attestation that `lawspec test` and `lawspec evidence` read when `--attestation` is not given; see [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran). |
 
-How laws are tested (strategies, handlers, adequacy, tags, timeouts and
+Which optional law layers are selected is explicit in version 2. How those checks run (strategies, handlers, adequacy, tags, timeouts and
 retries) is not configured here: it is a [harness unit](language/harness.md),
 written in LawSpec beside the laws. `lawspec.json` keeps only what concerns the
 toolchain. `lawspec test` keeps its state next to this file: results in
@@ -49,7 +53,7 @@ toolchain. `lawspec test` keeps its state next to this file: results in
 
 | Field | Targets | Meaning |
 | --- | --- | --- |
-| `language` | all | `java`, `python`, `javascript`, `typescript`, `go`, `haskell`, `kotlin` or `rust`. |
+| `language` | all | `java`, `python`, `javascript`, `typescript`, `go`, `haskell`, `kotlin`, `rust`, `scala`, `groovy`, `clojure`, `swift`, `fsharp`, `csharp`, `erlang`, `elixir` or `gleam`. |
 | `root` | all | The target's project root. Each target needs its own root. |
 | `sourceDir` | all | Source directory, relative to the root. |
 | `testDir` | all | Test directory, relative to the root. |

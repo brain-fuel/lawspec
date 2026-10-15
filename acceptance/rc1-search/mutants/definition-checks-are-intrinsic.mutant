@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: total
+@@ examples/rc1/bounded-witness-search.lawspec
+<<<<<<<
+  if allowed then 1 else 2 end if
+=======
+  reply allowed
+>>>>>>>

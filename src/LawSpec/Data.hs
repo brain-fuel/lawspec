@@ -165,6 +165,7 @@ qualifyDataNames unit = unit
       , S.planClassify = [(expr e, label) | (e, label) <- S.planClassify plan]
       , S.planLabels = map expr (S.planLabels plan)
       , S.planTarget = expr <$> S.planTarget plan
+      , S.planWitnesses = [(path, expr e, [(n,expr value) | (n,value) <- names], range) | (path,e,names,range) <- S.planWitnesses plan]
       , S.planDraws = [(i, n, ty t, gen g) | (i, n, t, g) <- S.planDraws plan] }
     gen g = case g of
       S.GenAny t -> S.GenAny (ty <$> t)
@@ -182,6 +183,8 @@ qualifyDataNames unit = unit
     literal other = other
     definition d = case d of
       S.Forall binders body -> S.Forall (map pair binders) (definition body)
+      S.Exists binders body -> S.Exists (map pair binders) (definition body)
+      S.Not body -> S.Not (definition body)
       S.Equal a b -> S.Equal (expr a) (expr b)
       S.Holds value -> S.Holds (expr value)
       S.Implies guard body -> S.Implies (expr guard) (definition body)

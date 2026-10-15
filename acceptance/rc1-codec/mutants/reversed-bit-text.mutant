@@ -1,0 +1,9 @@
+expect: each bit is recovered
+@@ examples/rc1/bit-codec.lawspec
+<<<<<<<
+row false, "0"
+  row true, "1"
+=======
+row false, "1"
+  row true, "0"
+>>>>>>>

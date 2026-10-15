@@ -127,9 +127,36 @@ propositionView names p = case p of
   C.Equation ev a b -> object ["kind" .= str "equal", "evidence" .= evidenceView ev, "left" .= expr a, "right" .= expr b]
   C.Implication g body -> object ["kind" .= str "implies", "guard" .= expr g, "body" .= propositionView names body]
   C.Conjunction ps -> object ["kind" .= str "all", "items" .= map (propositionView names) ps]
+  C.Negation body -> object ["kind" .= str "not", "body" .= propositionView names body]
+  C.Quantified kind q body ->
+    let binder = C.quantifiedBinder q
+        scoped = (C.binderId binder,C.binderName binder) : names
+    in object ["kind" .= str (if kind == ForEvery then "forall" else "exists"),
+      "binder" .= binderView binder, "predicates" .= map (expressionView scoped) (C.quantifiedPredicates q),
+      "body" .= propositionView scoped body]
   where expr = expressionView names
 binderView :: C.Binder -> Value
 binderView b = object ["id" .= C.idText (C.binderId b), "name" .= C.binderName b, "type" .= typeView (C.binderType b)]
+
+drawView :: Names -> C.Draw -> Value
+drawView names draw = case draw of
+  C.DrawAny ty aim -> object ["kind" .= str "any","type" .= typeView ty,"aim" .= fmap quantifier aim]
+  C.DrawOneOf ty values -> object ["kind" .= str "one-of","type" .= typeView ty,"values" .= map expr values]
+  C.DrawFrequency alternatives -> object ["kind" .= str "frequency","alternatives" .=
+    [object ["weight" .= weight,"draw" .= drawView names inner] | (weight,inner) <- alternatives]]
+  C.DrawSuchThat inner binder predicate limit -> object ["kind" .= str "such-that",
+    "draw" .= drawView names inner,"binder" .= binderView binder,
+    "predicate" .= expressionView (scoped binder) predicate,"maxDiscards" .= limit]
+  C.DrawBind binder from body -> object ["kind" .= str "bind","binder" .= binderView binder,
+    "from" .= drawView names from,"body" .= drawView (scoped binder) body]
+  where
+    expr = expressionView names
+    scoped binder = (C.binderId binder,C.binderName binder) : names
+    quantifier q = let binder = C.quantifiedBinder q in object
+      ["id" .= C.idText (C.binderId binder),"name" .= C.binderName binder,"type" .= typeView (C.binderType binder),
+       "predicates" .= map (expressionView (scoped binder)) (C.quantifiedPredicates q),
+       "bounds" .= [object ["operator" .= C.binaryName op,"value" .= expressionView (scoped binder) value] |
+         (op,value) <- C.quantifiedBounds q]]
 
 -- | The versioned JSON view of a checked program, the contract between the
 -- compiler and the CLI, editor and site. ref:DEC-wasm-distribution
@@ -196,10 +223,18 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         ,"examples" .= map example (C.propertyExamples p), "description" .= C.propertyDescription p
         ,"rationale" .= C.propertyRationale p, "references" .= C.propertyReferences p
         ,"location" .= C.propertyLocation p, "trace" .= C.propertyTrace p, "generation" .= C.propertyGeneration p
+        ,"inputDomain" .= (case C.propertyInputDomain p of NonemptyDomain -> "nonempty" :: String; UniversalDomain -> "universal")
+        ,"metadata" .= C.propertyMetadata p
         -- The handler the law runs under for each ability it uses.
         ,"handlers" .= [object ["ability" .= C.abilityKey a, "handler" .= handlerText h] | (a, h) <- C.propertyHandlers p]
         -- How its tests run: the harness plane, apart from the law itself.
-        ,"harness" .= harnessView names (C.propertyHarness p)]
+        ,"harness" .= harnessView (names ++ logicalNames (C.propertyBody p)) (C.propertyHarness p)]
+    logicalNames claim = case claim of
+      C.Quantified _ q body -> let b = C.quantifiedBinder q in (C.binderId b,C.binderName b) : logicalNames body
+      C.Conjunction bodies -> concatMap logicalNames bodies
+      C.Implication _ body -> logicalNames body
+      C.Negation body -> logicalNames body
+      _ -> []
     harnessView names h = object
       [ "unit" .= C.harnessUnit h, "tags" .= C.harnessTags h, "skip" .= C.harnessSkip h
       , "knownFailing" .= C.harnessKnownFailing h, "timeoutMilliseconds" .= C.harnessTimeout h
@@ -208,7 +243,12 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       , "classify" .= [object ["label" .= label, "when" .= expressionView names e] | (e, label) <- C.harnessClassify h]
       , "labels" .= map (expressionView names) (C.harnessLabels h)
       , "target" .= fmap (expressionView names) (C.harnessTarget h)
-      , "strategies" .= [object ["input" .= maybe (C.idText i) id (lookup i names), "strategy" .= n] | (i, n, _) <- C.harnessDraws h]
+      , "strategies" .= [object ["input" .= maybe (C.idText i) id (lookup i names), "strategy" .= n,
+          "draw" .= drawView names draw] | (i, n, draw) <- C.harnessDraws h]
+      , "witnesses" .= [object ["binder" .= C.idText (C.witnessTarget w), "path" .= C.witnessLexicalPath w,
+          "expression" .= expressionView names (C.witnessValue w)] | w <- C.harnessWitnesses h]
+      , "searches" .= [object ["binder" .= C.idText identity,"path" .= path,"strategy" .= strategy,
+          "draw" .= drawView names draw] | (identity,path,strategy,draw) <- C.harnessSearches h]
       , "group" .= C.harnessGroup h
       -- The unit's run settings: its tests in a random order, at the same time.
       , "orderRandom" .= or [C.harnessOrderRandom s | Just s <- [unitSettingsOf h]]

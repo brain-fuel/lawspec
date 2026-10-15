@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ examples/rc1/authorization-snapshots.lawspec
+<<<<<<<
+when Ready then true
+=======
+when Ready then false
+>>>>>>>

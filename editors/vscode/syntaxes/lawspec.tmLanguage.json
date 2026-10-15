@@ -17,6 +17,101 @@
       }
     },
     {
+      "name": "entity.name.function.phrase.lawspec",
+      "begin": "\"\\|",
+      "end": "\\||$",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.phrase.begin.lawspec"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.phrase.end.lawspec"
+        }
+      },
+      "patterns": [
+        {
+          "match": "\\\\[|\\\\]",
+          "name": "constant.character.escape.lawspec"
+        }
+      ]
+    },
+    {
+      "name": "entity.name.function.infix.lawspec",
+      "begin": "`\\|",
+      "end": "\\||$",
+      "patterns": [
+        {
+          "match": "\\\\[|\\\\]",
+          "name": "constant.character.escape.lawspec"
+        }
+      ]
+    },
+    {
+      "match": "^([ \\t]*)(witness)\\b(?=[ \\t]+.*[ \\t]+for[ \\t]+)",
+      "captures": {
+        "2": {
+          "name": "keyword.other.witness.lawspec"
+        }
+      }
+    },
+    {
+      "match": "^([ \\t]*)(id|owner)([ \\t]*)(:)(?!:)",
+      "captures": {
+        "2": {
+          "name": "keyword.other.metadata.lawspec"
+        },
+        "4": {
+          "name": "punctuation.separator.key-value.lawspec"
+        }
+      }
+    },
+    {
+      "match": "\\b(function|procedure|mapping)\\b([ \\t]+)(\\p{L}[\\p{L}\\p{N}_]*)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.lawspec"
+        },
+        "3": {
+          "name": "entity.name.function.lawspec"
+        }
+      }
+    },
+    {
+      "match": "\\b(for\\s+all|there\\s+(?:(?:must\\s+not|does\\s+not|must)\\s+)?exists?|first\\s+matching\\s+case\\s+of)\\b(?:[ \\t]+(a|an)\\b(?=[ \\t]*\\())?",
+      "name": "keyword.control.quantifier.lawspec",
+      "captures": {
+        "2": {
+          "name": "keyword.other.article.lawspec"
+        }
+      }
+    },
+    {
+      "match": "\\b(function|procedure|mapping|apply|given|when|then|otherwise|if|else|not|or|must|be|such|that|of|record|one|ref)\\b",
+      "name": "keyword.control.lawspec"
+    },
+    {
+      "match": "#any\\b",
+      "name": "constant.language.wildcard.lawspec"
+    },
+    {
+      "match": "#S(?=\\{)",
+      "name": "support.type.lawspec"
+    },
+    {
+      "match": "\\b(Whole|Nat|SortedSet)\\b",
+      "name": "support.type.lawspec"
+    },
+    {
+      "match": "(?<![\\p{L}\\p{N}_])[-+]?(?:0x[0-9a-fA-F]+|0b[01]+)\\b",
+      "name": "constant.numeric.lawspec"
+    },
+    {
+      "match": "`[\\p{L}][\\p{L}\\p{N}_]*(?:\\.(?:[\\p{L}][\\p{L}\\p{N}_]*))*\\b(?![^`\\n]*`)",
+      "name": "entity.name.function.infix.lawspec"
+    },
+    {
       "name": "string.quoted.double.lawspec",
       "begin": "\"",
       "end": "\"",

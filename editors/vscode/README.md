@@ -1,8 +1,12 @@
-# LawSpec syntax highlighting
+# LawSpec editor support
 
 A standalone TextMate grammar for LawSpec (`source.lawspec`), with VS Code
-language registration for `.lawspec` files. This extension contains no executable
-extension code and needs no language server or compiler installation.
+language registration for `.lawspec` files. The extension launches `lawspec lsp
+--stdio` for compiler diagnostics, source formatting, outlines, hover, definition
+navigation and references. Install the CLI and set `lawspec.command` when it is
+not on PATH. Editor positions use UTF-16; compiler checks stay authoritative.
+The language server uses the explicit `1.0-rc.1` profile with no optional law
+verification selected. Legacy projects need migration before canonical editing.
 
 It highlights:
 
@@ -32,16 +36,17 @@ To build an installable extension using Microsoft's packaging tool:
 
 ```sh
 cd editors/vscode
-npx @vscode/vsce package --no-dependencies
+npx @vscode/vsce package
 code --install-extension lawspec-language-0.1.0.vsix
 ```
 
 This is a local extension, not a published Marketplace listing. Its version is
-independent of the compiler release. The npm CLI package is unchanged.
+independent of the compiler release. The CLI also exposes `fmt` and four `explain --view` presentations.
 
 ## Reuse the grammar
 
-[`syntaxes/lawspec.tmLanguage.json`](syntaxes/lawspec.tmLanguage.json) is the
+[`syntaxes/lawspec.tmLanguage.json`](syntaxes/lawspec.tmLanguage.json) is generated from the shared
+[grammar template](../../templates/editors/vscode/syntaxes/lawspec.tmLanguage.json). It is the
 canonical grammar, licensed under MIT. Other TextMate-compatible editors and
 highlighting services can register it under `source.lawspec` with the `lawspec`
 language identifier and `.lawspec` extension. No VS Code APIs are required.
