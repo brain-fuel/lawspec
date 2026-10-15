@@ -504,6 +504,7 @@ library
       LawSpec.Core.Program
       LawSpec.Core.Quantification
       LawSpec.Core.QuantifierDomain
+      LawSpec.Core.RecordIdentity
       LawSpec.Core.RefinementProof
       LawSpec.Core.Schema
       LawSpec.Core.Search
@@ -863,6 +864,8 @@ test-suite lawspec-test
       PayloadSpec
       QuantifierDomainSpec
       RailwaySpec
+      RecordIdentityFixtures
+      RecordIdentitySpec
       RefinementProofSpec
       ScenarioSpec
       SchedulerSpec

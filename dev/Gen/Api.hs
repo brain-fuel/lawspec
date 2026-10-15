@@ -149,9 +149,13 @@ declarations = joinWith (softbreak <> softbreak)
        ("metadata", "LawMetadata"), ("harness", "LawHarness")])
   , interface "Unit"
       [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin")] <> text ")[]")]
+  , interface "StructuralRecord"
+      [("kind",quoted "record"),("digest",text "string"),("descriptor",text "string"),
+       ("fields",array (record (fields [("name","string"),("predicates","Expr[]")])))]
   , interface "DataTypeDeclaration"
       (fields [("id", "string"), ("name", "string"), ("parameters", "string[]"), ("origin", "Origin")] ++
-       [("constructors", array (record (fields [("id", "string"), ("name", "string"), ("fields", "Binder[]"), ("origin", "Origin")])))] )
+       [("constructors", array (record (fields [("id", "string"), ("name", "string"), ("fields", "Binder[]"), ("origin", "Origin")]))),
+        ("structure?",text "StructuralRecord")] )
   , interface "Contract" (fields
       [("id", "string"), ("name", "string"), ("arguments", "Binder[]"), ("result", "Binder"),
        ("preconditions", "Expr[]"), ("postconditions", "Expr[]")])

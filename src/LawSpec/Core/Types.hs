@@ -16,6 +16,7 @@ import Data.List (nub, sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Core
+import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Scalar (primitiveName, primitives)
 
 -- | Every type a program may mention, built once and consulted by Core
@@ -83,7 +84,8 @@ registryCache = unsafePerformIO (newIORef Nothing)
 
 buildRegistry :: [DataDeclaration] -> Either String TypeRegistry
 buildRegistry userDeclarations = do
-  let allDeclarations = builtinDataDeclarations ++ userDeclarations
+  interned <- internRecordDeclarations userDeclarations
+  let allDeclarations = builtinDataDeclarations ++ interned
       scalarKinds = [(primitiveName p, TypeKind) | p <- primitives]
       presenceKinds = [(n, KindArrow TypeKind TypeKind) | n <- ["Nullable", "Optional"]]
       kinds = scalarKinds ++ presenceKinds ++

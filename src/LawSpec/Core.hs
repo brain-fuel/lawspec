@@ -80,11 +80,20 @@ data DataDeclaration = MkDataDeclaration
   -- A bound handle's native type, written for the target being emitted
   -- (set from the target's type binding when it names the type in full).
   , dataNative :: Maybe String
+  -- Closed structural products keep their canonical descriptor separately
+  -- from nominal declarations and dependency/cache fingerprints.
+  , dataStructural :: Maybe StructuralRecord
   } deriving (Eq, Show, Generic)
 pattern DataDeclaration :: Id -> String -> [Id] -> [DataConstructor] -> Origin -> Maybe FamilyIndex -> DataDeclaration
-pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _ _
-  where DataDeclaration identity name parameters constructors origin index = MkDataDeclaration identity name parameters constructors origin index False Nothing
+pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _ _ _
+  where DataDeclaration identity name parameters constructors origin index = MkDataDeclaration identity name parameters constructors origin index False Nothing Nothing
 {-# COMPLETE DataDeclaration #-}
+-- Predicate indexes refer to the constructor's authoritative typed terms.
+-- Grouping retains the field each restriction belongs to without duplicating
+-- expressions or imposing the source's field order on type identity.
+data StructuralRecord = StructuralRecord
+  { structuralDescriptor :: String, structuralPredicates :: [(String,[Int])] }
+  deriving (Eq, Show, Generic)
 -- | A GADT constructor's equations fix declaration parameters to types over its
 -- existentials: a value of T args uses the constructor only where each
 -- equation matches its argument, which also determines the existentials.

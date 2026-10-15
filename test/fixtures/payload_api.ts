@@ -1,4 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord} from '../../npm/index.js';
 
 // Every published node must be traversable without an unchecked cast.
 export function children(node: ExprNode): Expr[] {
@@ -65,3 +65,13 @@ export function documentaryTargets(law: Law): DocumentaryTarget[] {
 // @ts-expect-error External references require a documentary resource.
 const missingResource: DocumentaryReference = { kind: 'external', name: 'policy' };
 void missingResource;
+
+export function structuralRestrictions(declaration: DataTypeDeclaration): Expr[] {
+  const structure: StructuralRecord | undefined = declaration.structure;
+  if (!structure) return [];
+  const kind: 'record' = structure.kind;
+  const identity: string = structure.digest;
+  const descriptor: string = structure.descriptor;
+  void kind; void identity; void descriptor;
+  return structure.fields.flatMap(field => field.predicates);
+}

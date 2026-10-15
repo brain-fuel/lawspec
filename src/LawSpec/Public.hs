@@ -180,7 +180,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       , "body" .= expressionView [(C.binderId b,C.binderName b) | b <- C.definitionArguments d] (C.definitionBody d)
       ]
     dataView declaration = object
-      [ "id" .= C.idText (C.dataId declaration), "name" .= C.dataName declaration
+      ([ "id" .= C.idText (C.dataId declaration), "name" .= C.dataName declaration
       , "parameters" .= map C.idText (C.dataParameters declaration)
       , "origin" .= originView (C.dataOrigin declaration)
       , "constructors" .= [object
@@ -188,7 +188,15 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
           , "fields" .= map binderView (C.constructorFields constructor)
           , "origin" .= originView (C.constructorOrigin constructor)
           ] | constructor <- C.dataConstructors declaration]
-      ]
+      ] ++ ["structure" .= object
+        [ "kind" .= str "record", "digest" .= reverse (takeWhile (/= ':') (reverse (C.idText (C.dataId declaration))))
+        , "descriptor" .= C.structuralDescriptor structure
+        , "fields" .= [object ["name" .= label,"predicates" .=
+            [expressionView [(C.binderId field,C.binderName field) | field <- C.constructorFields constructor] predicate
+              | index <- indexes,Just predicate <- [M.lookup index predicates]]]
+          | (label,indexes) <- C.structuralPredicates structure
+          , let predicates = M.fromList (zip [0..] (C.constructorPredicates constructor))]
+        ] | Just structure <- [C.dataStructural declaration],constructor <- take 1 (C.dataConstructors declaration)])
     unitView u = object (["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++ ["async" .= True | C.declarationAsync d] ++
         -- Its ability row, declared or inferred.
         ["uses" .= declarationRow d | not (null (declarationRow d))]) | d <- C.unitDeclarations u]] ++

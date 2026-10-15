@@ -38,6 +38,7 @@ instance Binary C.Contract
 instance Binary C.Conversion
 instance Binary C.DataConstructor
 instance Binary C.DataDeclaration
+instance Binary C.StructuralRecord
 instance Binary C.Declaration
 instance Binary C.Definition
 instance Binary name => Binary (StagePolicy name)

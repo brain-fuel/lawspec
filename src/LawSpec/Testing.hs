@@ -18,6 +18,7 @@ import qualified Data.Map.Strict as M
 import Data.Containers.ListUtils (nubOrd)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
 import LawSpec.CorePersist ()
+import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import Data.Binary (Binary)
 import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
@@ -99,11 +100,15 @@ planTestingWith config program = do
 planLowered :: Program -> Either [Diagnostic] Plan
 planLowered program@Program{..} = do
   plan <- lawPlanner program
+  -- lawPlanner admits all original constructor contracts before duplicate
+  -- structural products are shared by generated native declarations.
+  interned <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right
+    (internRecordDeclarations programDataDeclarations)
   let unit u = do
         properties <- mapM property (unitProperties u)
         pure (PlannedUnit (u { unitProperties = map plannedProperty properties }) properties)
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right (plan p)
-  Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
+  Plan programMachineBits interned <$> mapM unit programUnits
 
 -- | How each law of a program is planned, by the generated tests and by
 -- evidence discharge alike. A law is planned from what it reaches: the types

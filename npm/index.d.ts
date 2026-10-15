@@ -220,12 +220,20 @@ export interface Unit {
   declarations: (Binder & {origin: Origin;})[];
 }
 
+export interface StructuralRecord {
+  kind: 'record';
+  digest: string;
+  descriptor: string;
+  fields: {name: string; predicates: Expr[];}[];
+}
+
 export interface DataTypeDeclaration {
   id: string;
   name: string;
   parameters: string[];
   origin: Origin;
   constructors: {id: string; name: string; fields: Binder[]; origin: Origin;}[];
+  structure?: StructuralRecord;
 }
 
 export interface Contract {

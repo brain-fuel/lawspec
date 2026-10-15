@@ -10,6 +10,7 @@ import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWith
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Release (checkResourceReleases)
 import LawSpec.Core.Total (deferProgramPostconditions)
+import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import Control.Monad (forM, unless)
 import Data.List (nub, nubBy, stripPrefix, intercalate)
 import System.IO.Unsafe (unsafePerformIO)
@@ -43,7 +44,10 @@ elaborate bits units properties = do
   core <- deferProgramPostconditions elaborated
   validateProgram core
   checkResourceReleases core
-  pure core
+  -- Audit every occurrence before interning: a duplicate descriptor must not
+  -- hide an ill-defined source ordering of constructor restrictions.
+  interned <- contextual Nothing (internRecordDeclarations (C.programDataDeclarations core))
+  pure core{C.programDataDeclarations=interned}
   where
     unit dataDeclarations u = do
       (closed, owned, ps0, cs) <- contextual Nothing $ do
