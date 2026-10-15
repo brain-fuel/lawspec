@@ -1,0 +1,239 @@
+// Generated from templates/npm/test/expression-presentation.test.mjs by lawspec-dev generate. Do not edit.
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { test } from 'node:test';
+import { createTypePresentation } from '../typed-presentation.mjs';
+import { explainLaw } from '../explain.mjs';
+
+const integer = {kind: 'constructor', name: 'Integer', arguments: []};
+const expression = (node, text = 'original checked term', type = integer) => ({node, text, type});
+const local = (id, text = id) => expression({kind: 'local', id}, text);
+const number = value => expression({kind: 'constant', value: {type: 'Integer', value: String(value)}}, String(value));
+const unit = expression({kind: 'constant', value: {type: 'Unit'}}, 'unitValue');
+const binder = (id, name = id) => ({id, name, type: integer});
+const letIn = (binding, value, body) => expression({kind: 'let', binder: binding, value, body});
+const binary = (operator, left, right) => expression({kind: 'binary', operator, left, right});
+const construct = (constructor, ...arguments_) => expression({kind: 'construct', constructor, arguments: arguments_});
+const record = (id, labels) => ({id, name: id, parameters: [], structure: {kind: 'record', fields: labels.map(name => ({name, predicates: []}))},
+  constructors: [{id: id + '::Record', name: 'Record', fields: labels.map(name => binder(id + '::' + name, name))}]});
+const functions = declarations => [{id: 'domain', declarations: declarations.map(name => ({id: 'domain::' + name, name}))}];
+const call = (name, ...arguments_) => expression({kind: 'call', declaration: 'domain::' + name, arguments: arguments_});
+const presentation = result => createTypePresentation(result).expressionText;
+
+test('record reconstruction preserves evaluation order and every computation exactly once', () => {
+  const result = {dataTypes: [record('pair', ['a', 'z'])], units: functions(['first', 'second'])};
+  const term = letIn(binder('one', '_lawspecRecordField0'), call('first', unit),
+    letIn(binder('two', '_lawspecRecordField1'), call('second', unit),
+      construct('pair::Record', local('two'), local('one'))));
+  const before = structuredClone(term);
+  assert.equal(presentation(result)(term), 'record{z = first (), a = second ()}');
+  assert.deepEqual(term, before);
+});
+
+test('dependent, reused and unused bindings remain explicit without capture', () => {
+  const render = presentation({dataTypes: [record('pair', ['a', 'z'])]});
+  const dependent = letIn(binder('a', 'x'), number(1),
+    letIn(binder('b', 'x'), binary('+', local('a', 'x'), number(1)), construct('pair::Record', local('a'), local('b'))));
+  assert.equal(render(dependent), 'let x = 1 in let x1 = (x + 1) in record{a = x, z = x1}');
+  const reused = letIn(binder('a', 'x'), binary('/', number(1), number(0)), construct('pair::Record', local('a'), local('a')));
+  assert.equal(render(reused), 'let x = (1 / 0) in record{a = x, z = x}');
+  const unused = letIn(binder('a', 'x'), binary('/', number(1), number(0)), number(2));
+  assert.equal(render(unused), 'let x = (1 / 0) in 2');
+  const shadow = letIn(binder('inner', 'x'), number(2), binary('+', local('outer', 'x'), local('inner', 'x')));
+  assert.equal(render(shadow), 'let x1 = 2 in (x + x1)');
+  const phrase = letIn(binder('inner', '"|amount due|'), number(2), binary('+', local('outer', '"|amount due|'), local('inner', '"|amount due|')));
+  assert.equal(render(phrase), 'let value1 = 2 in ("|amount due| + value1)');
+});
+
+test('projection presentation retains strict unselected fields in its subject', () => {
+  const data = {id: 'domain::type::Box', constructors: [{id: 'Box', name: 'Box', fields: [binder('chosen'), binder('unused')]}]};
+  const term = expression({kind: 'match', value: construct('Box', number(1), binary('/', number(1), number(0))),
+    cases: [{constructor: 'Box', binders: [binder('one'), binder('two')], body: local('one')}]});
+  assert.equal(presentation({dataTypes: [data]})(term), 'Box(chosen = 1, unused = (1 / 0)).chosen');
+});
+
+test('ordered cases and callback scopes keep distinct binders and all branches', () => {
+  const data = {id: 'domain::type::Choice', constructors: ['Left', 'Right'].map(name => ({id: name, name, fields: [binder('value')]}))};
+  const term = expression({kind: 'match', value: local('subject', 'choice'), cases: [
+    {constructor: 'Left', binders: [binder('one', 'x')], body: binary('+', local('outside', 'x'), local('one', 'x'))},
+    {constructor: 'Right', binders: [binder('two', 'x')], body: local('two', 'x')},
+  ]});
+  const render = presentation({dataTypes: [data]});
+  assert.equal(render(term), 'case choice of {domain.Choice.Left(x1): (x + x1); domain.Choice.Right(x1): x1}');
+  const product = expression({kind: 'match', value: local('pair'), cases: [{constructor: 'pair::Record',
+    binders: [binder('one', 'a'), binder('two', 'z')], body: binary('+', local('one', 'a'), local('two', 'z'))}]});
+  assert.equal(presentation({dataTypes: [record('pair', ['a', 'z'])]})(product), 'case pair of {record{a = a, z = z}: (a + z)}');
+  const elements = expression({kind: 'allElements', value: local('items'), binder: binder('item', 'x'),
+    predicate: binary('>', local('item', 'x'), local('outside', 'x'))});
+  assert.equal(render(elements), 'every x1 in (items) satisfies ((x1 > x))');
+  const payloads = expression({kind: 'allPayloads', value: local('items'), predicates: [
+    {binder: binder('one', 'x'), predicate: binary('>', local('one', 'x'), local('outside', 'x'))},
+    {binder: binder('two', 'x'), predicate: local('two', 'x')},
+  ]});
+  assert.equal(render(payloads), 'allPayloads (items) [x1 of type Integer => (x1 > x); x1 of type Integer => x1]');
+});
+
+test('global names resolve by identity with qualification and phrase spelling', () => {
+  const render = presentation({units: [
+    {id: 'first', declarations: [{id: 'f', name: 'send notice'}, {id: 'single', name: 'check'}]},
+    {id: 'second', declarations: [{id: 'g', name: 'send notice'}]},
+  ]});
+  assert.equal(render(expression({kind: 'call', declaration: 'f', arguments: [unit]})), 'first."|send notice| ()');
+  const shadowed = binary('+', local('input', 'check'), expression({kind: 'call', declaration: 'single', arguments: [unit]}));
+  assert.equal(render(shadowed), '(check + (first.check ()))');
+  const imported = presentation({units: [
+    {id: 'owner', declarations: [{id: 'owner::check', name: 'check'}]},
+    {id: 'importer', declarations: [{id: 'owner::check', name: 'check'}]},
+  ]});
+  assert.equal(imported(expression({kind: 'call', declaration: 'owner::check', arguments: []}), new Map([['input', 'check']])), 'owner.check');
+  const alternatives = ['One', 'Two'].map(name => ({id: 'domain::type::' + name,
+    constructors: [{id: name + '::Yes', name: 'Yes', fields: []}]}));
+  const qualified = presentation({dataTypes: alternatives});
+  assert.equal(qualified(construct('One::Yes')), 'domain.One.Yes');
+  assert.equal(qualified(construct('Two::Yes')), 'domain.Two.Yes');
+});
+
+test('Boolean precedence, literal contents, conversions and effect modes stay explicit', () => {
+  const render = presentation({});
+  const negated = expression({kind: 'unary', operator: '!', argument: local('enabled')});
+  assert.equal(render(binary('==', negated, local('other'))), '((not (enabled)) = other)');
+  const text = expression({kind: 'constant', value: {type: 'Text', value: 'a == b'}}, '"a == b"');
+  assert.equal(render(binary('==', text, text)), '("a == b" = "a == b")');
+  for (const conversion of ['explicit', 'checked'])
+    assert.equal(render(expression({kind: 'convert', conversion, argument: local('input')})), `${conversion} conversion of (input) to Integer`);
+  const perform = expression({kind: 'perform', ability: 'Log', operation: 'write', arguments: [text]});
+  assert.equal(render(perform), 'perform Log.write("a == b")');
+  assert.equal(render(expression({kind: 'handle', handling: 'catchFailure', ability: 'Fail', body: perform})), 'catch failure of Fail in (perform Log.write("a == b"))');
+  assert.equal(render(expression({kind: 'handle', handling: 'withHandler', ability: 'Log', handler: 'recording native', body: perform})),
+    'handle (perform Log.write("a == b")) with recording native for Log');
+  assert.equal(render(expression({kind: 'calls', ability: 'Log', operation: 'write', arguments: null})), 'calls of Log.write');
+  assert.equal(render(expression({kind: 'calls', ability: 'Log', operation: 'write', arguments: []})), 'calls of Log.write with ()');
+  const fields = presentation({dataTypes: [record('pair', ['a', 'z'])]});
+  const load = expression({kind: 'helper', name: 'prelude.load', arguments: [unit]});
+  assert.equal(fields(expression({kind: 'update', constructor: 'pair::Record', index: 1, value: load, field: number(7)})),
+    '(prelude.load ()) with z = 7');
+  assert.equal(render(expression({kind: 'if', condition: local('enabled'), then: perform, else: number(0)})),
+    'if enabled then perform Log.write("a == b") else 0 end if');
+});
+
+test('unhandled terms fall back as a whole before any binder is renamed', () => {
+  const child = expression({kind: 'future-node'}, 'x');
+  const term = letIn(binder('x', '_lawspecTemporary'), number(1), child);
+  term.text = 'original let _lawspecTemporary = 1 in opaque(_lawspecTemporary)';
+  assert.equal(presentation({})(term), term.text);
+  const call = expression({kind: 'call', declaration: 'unknown', arguments: [local('x')]}, 'original unknown call');
+  assert.equal(presentation({})(call), call.text);
+});
+
+test('actual parcel assertions use readable terms with the original obligations and evidence', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const content = await readFile(new URL('../../examples/rc1/parcel-measurements.lawspec', import.meta.url), 'utf8');
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+    sources: [{path: 'parcel-measurements.lawspec', content}]});
+  assert.deepEqual(result.diagnostics, []);
+  const before = structuredClone(result), law = result.laws.find(law => law.id.endsWith('::sampleWeight'));
+  assert.ok(law);
+  for (const view of ['developer', 'business', 'formal']) {
+    const shown = explainLaw(law, result, view);
+    assert.match(shown.text, /sampleParcel \(\) (must be|=) Parcel\(details = record\{weight = Measurement\(reading = record\{value = 1\}\)\}\)/);
+    assert.doesNotMatch(shown.text, /lawspec::structural|lawspecRecordView|_lawspecRecordField/);
+    assert.equal(shown.assertion, law.assertion);
+    assert.equal(shown.inputs, law.inputs);
+    assert.deepEqual(shown.evidence, result.evidence.filter(item => item.declaration === law.id));
+  }
+  assert.match(explainLaw(law, result, 'evidence').text, /NOT-VERIFIED/);
+  assert.deepEqual(result, before);
+});
+
+test('rendered structural assertions recompile with the same checked outcome and source field order', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const content = `unit display.order
+function first (unused of type ()) -> Integer is 1 end function
+function second (unused of type ()) -> Integer is 2 end function
+law ordered is
+  definition:
+    record{z = first (), a = second ()} must be record{a = 2, z = 1}
+  end
+end
+`;
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: ['exhaustive']},
+    sources: [{path: 'order.lawspec', content}]};
+  const result = await compiler.check(request);
+  assert.deepEqual(result.diagnostics, []);
+  const law = result.laws.find(law => law.id.endsWith('::ordered'));
+  assert.ok(law);
+  const text = explainLaw(law, result, 'business').text;
+  assert.equal(text, 'record{z = first (), a = second ()} must be record{a = 2, z = 1}');
+  const roundtrip = await compiler.check({...request, sources: [{path: 'order.lawspec', content:
+    content + `\nlaw displayed is definition: ${text} end end\n`}]});
+  assert.deepEqual(roundtrip.diagnostics, []);
+  const rendered = roundtrip.laws.find(law => law.id.endsWith('::displayed'));
+  assert.ok(rendered);
+  assert.deepEqual(rendered.assertion.left.type, law.assertion.left.type);
+  for (const checked of [law, rendered]) {
+    const evidence = roundtrip.evidence.find(e => e.declaration === checked.id && e.stage === 'law');
+    assert.equal(evidence?.status, 'exhaustively-checked');
+  }
+});
+
+test('primitive constructor metadata presents nested records and retains undefined unselected law computations', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const content = `unit display.primitives
+function optionalValue (unused of type ()) -> Maybe record{value of type Integer} is Just record{value = 1} end function
+function eitherValue (unused of type ()) -> Either record{value of type Integer} Bool is Left record{value = 1} end function
+law optional is definition: optionalValue () must be Just record{value = 1} end end
+law either is definition: eitherValue () must be Left record{value = 1} end end
+law lists is definition: [record{value = 1}, record{value = 2}] must be [record{value = 1}, record{value = 2}] end end
+law unused is definition: record{chosen = 1, unused = 1 / 0} must be record{chosen = 1, unused = 1 / 0} end end
+`;
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+    sources: [{path: 'primitives.lawspec', content}]});
+  assert.deepEqual(result.diagnostics, []);
+  const texts = new Map(result.laws.map(law => [law.id.split('::').at(-1), explainLaw(law, result, 'business').text]));
+  assert.equal(texts.get('optional'), 'optionalValue () must be Just(value = record{value = 1})');
+  assert.equal(texts.get('either'), 'eitherValue () must be Left(value = record{value = 1})');
+  assert.match(texts.get('lists'), /Cons\(head = record\{value = 1\}, tail = Cons\(head = record\{value = 2\}, tail = Nil\)\)/);
+  assert.equal(texts.get('unused').match(/\(1 \/ 0\)/g)?.length, 2);
+  for (const [name, text] of texts) {
+    assert.doesNotMatch(text, /lawspec::structural|_lawspec|lawspecRecordView/);
+    const law = result.laws.find(law => law.id.endsWith('::' + name));
+    assert.equal(result.evidence.find(e => e.declaration === law.id && e.stage === 'law')?.status, 'not-verified');
+  }
+});
+
+test('emitted operational terms retain handlers, call filters and the original evidence', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  for (const fixture of ['abilities', 'failures']) {
+    const content = await readFile(new URL(`../../examples/specs/${fixture}.lawspec`, import.meta.url), 'utf8') +
+      (fixture === 'abilities' ? '\ndefinition handledCheckout (cents :: Int32) :: Bool is handle checkout cents with fakeGateway end end\n' : '');
+    // These published examples remain explicit migration-schema inputs.
+    const result = await compiler.expand({schemaVersion: 4, sources: [{path: fixture + '.lawspec', content}]});
+    assert.deepEqual(result.diagnostics, []);
+    const before = structuredClone(result), render = presentation(result), terms = [];
+    function collect(value) {
+      if (value === null || typeof value !== 'object') return;
+      if (value.type && typeof value.text === 'string' && value.node?.kind) terms.push(value);
+      for (const child of Object.values(value)) collect(child);
+    }
+    collect(result);
+    for (const term of terms) {
+      const text = render(term), node = term.node;
+      assert.equal(typeof text, 'string');
+      if (node.kind === 'perform') assert.ok(text.startsWith(`perform ${node.ability}.${node.operation}(`));
+      if (node.kind === 'handle' && node.handling === 'catchFailure') assert.ok(text.startsWith(`catch failure of ${node.ability} in (`));
+      if (node.kind === 'handle' && node.handling === 'withHandler') assert.ok(text.includes(`with ${node.handler} for ${node.ability}`));
+      if (node.kind === 'calls') assert.equal(text.includes(' with ('), node.arguments !== null);
+    }
+    for (const law of result.laws) for (const view of ['developer', 'business', 'formal', 'evidence']) {
+      const shown = explainLaw(law, result, view);
+      assert.equal(shown.assertion, law.assertion);
+      assert.equal(shown.inputs, law.inputs);
+      assert.deepEqual(shown.evidence, result.evidence.filter(e => e.declaration === law.id));
+    }
+    assert.deepEqual(result, before);
+  }
+});

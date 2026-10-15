@@ -102,8 +102,25 @@ The repeated `weight` names the refinement's local binder. Generated storage
 views are hidden only when they copy the complete structural product; unhandled
 expression forms retain their checked text. The JSON still contains the original
 typed inputs, assertion and evidence. A readable domain adds no verification
-evidence. Record-valued assertion text can still expose internal construction
-details and needs further presentation work.
+evidence.
+
+Expression views also show structural record values by label and nominal or
+alternative constructors as checked terms such as
+`Parcel(details = record{weight = Measurement(reading = record{value = 1})})`.
+`Constructor(field = value)` and the view's case/handler terms are presentation
+notation, rather than additional authoring syntax. Constructor names keep
+their identities; ambiguous names are qualified. Primitive constructor names
+and field order come from the compiler's existing registry.
+
+Fields appear in evaluation order. A chain of strict lets can display as a
+constructor value only when every binding supplies exactly one field and no
+later value depends on an earlier binding. Dependent, repeated or unused
+bindings remain explicit. Projections retain their complete subject, including
+unselected computations. Branch order, short-circuit conditions, checked versus
+explicit conversions and handler choices remain visible. If a term or its
+metadata cannot be presented, the whole expression retains its original
+checked text, including its binders. The views do not execute expressions or
+turn them into verification evidence.
 
 `must be`, `is`, `=`, `must =`, and leading `must` elaborate to the same typed
 Eq obligation. Equality in a value context is Boolean. Existing IEEE equality

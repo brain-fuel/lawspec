@@ -4,51 +4,56 @@
 import { createTypePresentation } from './typed-presentation.mjs';
 
 export const explanationViews = ['developer', 'business', 'formal', 'evidence'];
-const presentationProposition = typeName => function proposition(assertion, business = false) {
+const presentationProposition = ({ typeName, expressionText }, inputs) => function proposition(assertion, business = false, scope = inputs) {
+  const term = expression => expressionText(expression, scope);
+  const recurse = (body, wording = business) => proposition(body, wording, scope);
   switch (assertion.kind) {
-    case 'equal': return `${assertion.left.text} ${business ? 'must be' : '='} ${assertion.right.text}`;
+    case 'equal': return `${term(assertion.left)} ${business ? 'must be' : '='} ${term(assertion.right)}`;
     case 'implies': return business
-      ? `If ${assertion.guard.text}, then ${proposition(assertion.body, true)}`
-      : `(${assertion.guard.text}) implies (${proposition(assertion.body)})`;
-    case 'all': return assertion.items.map(a => `(${proposition(a, business)})`).join(' and ');
+      ? `If ${term(assertion.guard)}, then ${recurse(assertion.body, true)}`
+      : `(${term(assertion.guard)}) implies (${recurse(assertion.body)})`;
+    case 'all': return assertion.items.map(a => `(${recurse(a)})`).join(' and ');
     case 'not': {
       // The compiler's ordinary negation/conjunction representation also
       // expresses disjunction and implications with proposition premises.
       const items = assertion.body.kind === 'all' ? assertion.body.items : [];
       if (items.length > 1 && items.every(item => item.kind === 'not'))
-        return items.map(item => `(${proposition(item.body, business)})`).join(' or ');
+        return items.map(item => `(${recurse(item.body)})`).join(' or ');
       if (items.length === 2 && items[1].kind === 'not') return business
-        ? `If (${proposition(items[0], true)}), then (${proposition(items[1].body, true)})`
-        : `(${proposition(items[0])}) implies (${proposition(items[1].body)})`;
+        ? `If (${recurse(items[0], true)}), then (${recurse(items[1].body, true)})`
+        : `(${recurse(items[0])}) implies (${recurse(items[1].body)})`;
       return business && assertion.body.kind === 'exists'
-        ? proposition(assertion.body, true).replace(/^There must exist/, 'There must not exist')
-        : `${business ? 'Must not' : 'not'} (${proposition(assertion.body)})`;
+        ? recurse(assertion.body, true).replace(/^There must exist/, 'There must not exist')
+        : `${business ? 'Must not' : 'not'} (${recurse(assertion.body, false)})`;
     }
     case 'forall':
     case 'exists': {
       const universal = assertion.kind === 'forall';
       const binder = `${assertion.binder.name} of type ${typeName(assertion.binder.type)}`;
-      const restrictions = assertion.predicates.map(p => p.text);
+      const nested = new Map([...scope, [assertion.binder.id, assertion.binder.name]]);
+      const restrictions = assertion.predicates.map(p => expressionText(p, nested));
       const restricted = restrictions.length ? ` where ${restrictions.join(' and ')}` : '';
-      if (business) return `${universal ? 'For every' : 'There must exist'} ${binder}${restricted}, ${proposition(assertion.body, true)}`;
-      return `${universal ? 'for all' : 'there exists'} (${binder}${restricted}) ${universal ? '=>' : 'such that'}\n${proposition(assertion.body)}\nend`;
+      if (business) return `${universal ? 'For every' : 'There must exist'} ${binder}${restricted}, ${proposition(assertion.body, true, nested)}`;
+      return `${universal ? 'for all' : 'there exists'} (${binder}${restricted}) ${universal ? '=>' : 'such that'}\n${proposition(assertion.body, false, nested)}\nend`;
     }
     default: throw new Error(`Unsupported typed assertion ${assertion.kind}`);
   }
 };
 export function explainLaw(law, result, view = 'developer') {
   if (!explanationViews.includes(view)) throw new Error(`Choose --view ${explanationViews.join('|')}`);
-  const { typeName } = createTypePresentation(result);
-  const proposition = presentationProposition(typeName);
+  const presentation = createTypePresentation(result);
+  const { typeName, expressionText } = presentation;
+  const scope = new Map(law.inputs.map(input => [input.id, input.name]));
+  const proposition = presentationProposition(presentation, scope);
   const evidence = (result.evidence ?? []).filter(e => e.declaration === law.id);
   const quantifiers = law.inputs.map(input => `${input.name} of type ${typeName(input.type)}`);
-  const restrictions = law.inputs.flatMap(input => input.predicates.map(p => p.text));
+  const restrictions = law.inputs.flatMap(input => input.predicates.map(p => expressionText(p, scope)));
   const metadata = law.metadata ?? {};
   const references = law.references ?? [];
   const witnesses = law.harness?.witnesses ?? [];
   const searches = law.harness?.searches ?? [];
   const strategies = [
-    ...witnesses.map(witness => `Configured witness (not completed evidence): definition.${witness.path.join('.')} = ${witness.expression.text}`),
+    ...witnesses.map(witness => `Configured witness (not completed evidence): definition.${witness.path.join('.')} = ${expressionText(witness.expression, scope)}`),
     ...searches.map(search => `Configured search (not completed evidence): definition.${search.path.join('.')} uses ${search.strategy}`),
   ];
   const documentary = [metadata.id === undefined ? '' : `Requirement: ${metadata.id}`,

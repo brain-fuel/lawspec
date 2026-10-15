@@ -1,8 +1,11 @@
 // Presentation only: identities, constraints and proof evidence remain in Core.
 // In particular, a nominal record is never expanded into a structural product.
+import { createExpressionPresentation } from './expression-presentation.mjs';
+import { builtinDataNames } from './builtin-data-names.mjs';
+
 export function createTypePresentation(result) {
-  const declarations = new Map((result.dataTypes ?? []).map(d => [d.id, d]));
-  const constructors = new Map((result.dataTypes ?? []).flatMap(d =>
+  const declarations = new Map([...builtinDataNames, ...(result.dataTypes ?? [])].map(d => [d.id, d]));
+  const constructors = new Map([...declarations.values()].flatMap(d =>
     d.constructors.map(c => [c.id, { declaration: d, constructor: c }])));
   const shortName = name => ({ BigUInt: 'Whole', BigInt: 'Integer', Natural: 'Whole' })[name]
     ?? name.split('::type::').at(-1);
@@ -24,7 +27,7 @@ export function createTypePresentation(result) {
     const source = constructors.get(branch.constructor), target = constructors.get(body?.constructor);
     if (body?.kind !== 'construct' || !source || !target
       || source.declaration.structure?.kind !== 'record' || target.declaration.structure?.kind !== 'record'
-      || expression.origin?.kind !== 'generated' || expression.origin.declaration !== 'lawspec::source-record'
+      || expression.origin?.kind !== 'generated'
       || !branch.binders.length || !branch.binders.every(b => b.id.startsWith('lawspec::record-view::'))
       || branch.binders.length !== source.constructor.fields.length
       || body.arguments.length !== branch.binders.length
@@ -101,5 +104,5 @@ export function createTypePresentation(result) {
       ? { ...a, type: substitute(a.type, bindings) } : a) };
     return type;
   }
-  return { typeName };
+  return { typeName, expressionText: createExpressionPresentation(result, { constructors, typeName, storageView }) };
 }

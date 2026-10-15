@@ -28,6 +28,8 @@ import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage, e
 import Gen.Json
 import Gen.Template
 import LawSpec.Code.Doc (Layout(..))
+import qualified LawSpec.Core as Core
+import qualified LawSpec.Core.Types as CoreTypes
 import LawSpec.Scaffold (scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
 import LawSpec.Targets (targetLabel)
 
@@ -125,6 +127,13 @@ withHeader template target content
 factFills :: String -> [(String, Fill)]
 factFills version =
   [ ("version", Inline (jsonString version))
+  , ("builtin-data-names", Inline (json (Array
+      [ Object [("id", String (Core.idText (Core.dataId declaration))), ("name", String (Core.dataName declaration)),
+          ("constructors", Array [Object [("id", String (Core.idText (Core.constructorId constructor))),
+            ("name", String (Core.constructorName constructor)),
+            ("fields", Array [Object [("name", String (Core.binderName field))] | field <- Core.constructorFields constructor])]
+            | constructor <- Core.dataConstructors declaration])]
+      | declaration <- CoreTypes.builtinDataDeclarations ])))
   , ("targets", Inline (json (Array (map String scaffoldTargets))))
   , ("target-labels", Inline (json (Array [Array [String t, String (targetLabel t)] | t <- scaffoldTargets])))
   , ("commands", Inline (json (Object [(t, String c) | t <- scaffoldTargets, Just c <- [testCommand t]])))
