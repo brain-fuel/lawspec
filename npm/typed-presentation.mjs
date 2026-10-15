@@ -3,20 +3,24 @@
 // In particular, a nominal record is never expanded into a structural product.
 import { createExpressionPresentation } from './expression-presentation.mjs';
 import { builtinDataNames } from './builtin-data-names.mjs';
+import { showScalar } from './scalars.mjs';
 
 export function createTypePresentation(result) {
   const declarations = new Map([...builtinDataNames, ...(result.dataTypes ?? [])].map(d => [d.id, d]));
   const constructors = new Map([...declarations.values()].flatMap(d =>
     d.constructors.map(c => [c.id, { declaration: d, constructor: c }])));
   const shortName = name => ({ BigUInt: 'Whole', BigInt: 'Integer', Natural: 'Whole' })[name]
-    ?? name.split('::type::').at(-1);
+    ?? declarations.get(name)?.name ?? name.split('::type::').at(-1);
   const names = new Map();
   for (const d of declarations.values()) {
     const name = shortName(d.id);
     names.set(name, (names.get(name) ?? 0) + 1);
   }
-  const nominalName = name => names.get(shortName(name)) > 1
-    ? name.replace('::type::', '.') : shortName(name);
+  const nominalName = name => {
+    const display = shortName(name), separator = name.indexOf('::type::');
+    return names.get(display) > 1 && separator >= 0
+      ? `${name.slice(0, separator)}.${display}` : display;
+  };
 
   // Recognize only compiler-generated storage views which copy every field in
   // order. Do not simplify user matches, erase conversions or discard unused
@@ -105,5 +109,19 @@ export function createTypePresentation(result) {
       ? { ...a, type: substitute(a.type, bindings) } : a) };
     return type;
   }
-  return { typeName, expressionText: createExpressionPresentation(result, { constructors, typeName, storageView }) };
+  const checkedExpressionText = createExpressionPresentation(result, { constructors, typeName, storageView });
+  // Example bindings are already checked concrete values. Render their stored
+  // structure through the same constructor metadata; do not execute anything.
+  function valueExpression(value) {
+    const text = JSON.stringify(value);
+    if (value?.kind === 'data') return {type: value.type, text,
+      node: {kind: 'construct', constructor: value.constructor,
+        arguments: value.fields.map(valueExpression)}};
+    return {type: {kind: 'constructor', name: value.type, arguments: []},
+      text: showScalar(value), node: {kind: 'constant', value}};
+  }
+  function valueText(value, scope = new Map()) {
+    return checkedExpressionText(valueExpression(value), scope);
+  }
+  return { typeName, expressionText: checkedExpressionText, valueText };
 }

@@ -442,3 +442,26 @@ test('generic record refinements and named-record tables preserve mandatory chec
       'intrinsic field restrictions remain mandatory with no law layers');
   }
 });
+
+test('developer explanations retain concrete table inputs and every typed expectation', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const {readFile} = await import('node:fs/promises');
+  const compiler = await createCompiler();
+  const content = await readFile(new URL('../starter-rc1.lawspec', import.meta.url), 'utf8');
+  const result = await compiler.expand({schemaVersion: 5, languageProfile: '1.0-rc.1',
+    sources: [{path: 'starter.lawspec', content}]});
+  assert.deepEqual(result.diagnostics, []);
+  const law = result.laws[0];
+  assert.equal(law.examples.length, 3);
+  for (const view of ['developer', 'business', 'formal', 'evidence']) {
+    const shown = explainLaw(law, result, view);
+    assert.equal(shown.examples, law.examples);
+    assert.equal(shown.assertion, law.assertion);
+  }
+  const text = explainLaw(law, result, 'developer').text;
+  assert.match(text, /x = -42/);
+  assert.match(text, /expect itoa -42 = "-42"/);
+  assert.match(text, /expect atoi "-42" = -42/);
+  assert.equal((text.match(/  expect /g) ?? []).length, 6);
+  assert.equal(result.evidence.filter(item => item.stage === 'law')[0].status, 'not-verified');
+});

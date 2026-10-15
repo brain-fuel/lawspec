@@ -54,6 +54,14 @@ test_canonicalCollections = describe "canonical collections" $ do
     body "law values is definition: (prelude.setOf [float64Bits(\"3ff0000000000000\")]) = #S{1.0} end end" `shouldSatisfy` isRight
   it "does not specialize computed values to a literal's expected element type" $
     body "function invalid (value :: Integer) -> Set Float64 is #S{value} end function" `shouldSatisfy` isLeft
+  it "keeps checked exact arguments beside literal collection arguments" $ do
+    let source = unlines
+          [ "function keep (items :: List Integer) (value :: Int64) -> Int64 is value end function"
+          , "function negative (unused :: Bool) -> Int64 is keep [] (0 - prelude.Int64 1) end function"
+          , "law negativeValue is definition: for all (unused :: Bool) => negative unused = -1 end end end" ]
+    case body source of
+      Left ds -> expectationFailure (show ds)
+      Right program -> dischargeEvidenceWith (Verification [Exhaustive]) program `shouldSatisfy` isRight
   it "keeps Eq-only and ordered sets distinct in checked outcomes and every target" $ do
     source <- readFile "test/fixtures/canonical-sets.lawspec"
     forM_ [32,64] $ \bits -> case compile bits source of

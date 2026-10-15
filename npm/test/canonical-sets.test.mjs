@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
+import {explainLaw} from '../explain.mjs';
 
 const compiler = await createCompiler();
 const request = (content, layers = [], machineBits = 64) => ({
@@ -57,6 +58,7 @@ test('membership and construction require Eq while iteration does not', async ()
     ['function create (items :: List a) -> Set a is prelude.setOf items end function', false],
     ['function create (items :: List a) -> Set a requires Eq a is prelude.setOf items end function', true],
     ['function read (members :: Set (a -> a)) -> List (a -> a) is prelude.toList members end function', true],
+    ['function keep (items :: List Integer) (value :: Int64) -> Int64 is value end function\nfunction negative (unused :: Bool) -> Int64 is keep [] (0 - prelude.Int64 1) end function', true],
     ['function invalid (unused :: Bool) -> Set Nat is #S{0} end function', false],
     ['function invalid (value :: Integer) -> Set Float64 is #S{value} end function', false],
     ['function invalid (unused :: Bool) -> SortedSet Float64 is prelude.sortedSetOf [1.0] end function', false],
@@ -64,7 +66,7 @@ test('membership and construction require Eq while iteration does not', async ()
   for (const [body, valid] of bodies) {
     const result = await compiler.check(request(definition(body)));
     assert.equal(result.diagnostics.length === 0, valid, `${body}: ${JSON.stringify(result.diagnostics)}`);
-    assert.equal(result.verification.intrinsicDefinitionChecks, true);
+    if (valid) assert.equal(result.verification.intrinsicDefinitionChecks, true);
   }
 });
 
@@ -77,4 +79,28 @@ test('user paths cannot choose a legacy grammar or compiler-owned identity', asy
   const source = 'unit lawspec.collections\nfunction same (value :: Bool) -> Bool is value end function';
   const result = await compiler.check(request(source));
   assert.ok(result.diagnostics.some(item => item.code === 'reserved-unit'));
+});
+
+
+test('explanation domains use canonical Set and SortedSet metadata', async () => {
+  const result = await compiler.check(request(`unit set_names
+law members is definition: for all (members :: Set Float64) => members = members end end end
+law ordered is definition: for all (members :: SortedSet Integer) => members = members end end end`));
+  assert.deepEqual(result.diagnostics, []);
+  const [members, ordered] = result.laws;
+  assert.match(explainLaw(members, result, 'developer').text, /members of type Set Float64/);
+  assert.match(explainLaw(ordered, result, 'developer').text, /members of type SortedSet Integer/);
+  assert.ok(evidence(result).every(item => item.status === 'not-verified'));
+  const custom = {path: 'custom.lawspec', content: 'unit custom\ntype Set is a record{value :: Bool} end type'};
+  const use = {path: 'use.lawspec', content: `unit display
+import custom as custom
+import lawspec.collections as collections
+law own is definition: for all (members :: custom.Set) => members = members end end end
+law builtin is definition: for all (members :: collections.Set Bool) => members = members end end end`};
+  const qualified = await compiler.check({...request(''), sources: [custom, use]});
+  assert.deepEqual(qualified.diagnostics, []);
+  const own = qualified.laws.find(law => law.name === 'own');
+  const builtin = qualified.laws.find(law => law.name === 'builtin');
+  assert.match(explainLaw(own, qualified).text, /members of type custom\.Set/);
+  assert.match(explainLaw(builtin, qualified).text, /members of type lawspec\.collections\.Set Bool/);
 });

@@ -42,7 +42,8 @@ const presentationProposition = ({ typeName, expressionText }, inputs) => functi
 export function explainLaw(law, result, view = 'developer') {
   if (!explanationViews.includes(view)) throw new Error(`Choose --view ${explanationViews.join('|')}`);
   const presentation = createTypePresentation(result);
-  const { typeName, expressionText } = presentation;
+  const { typeName, expressionText, valueText } = presentation;
+  const examples = law.examples ?? [];
   const scope = new Map(law.inputs.map(input => [input.id, input.name]));
   const proposition = presentationProposition(presentation, scope);
   const evidence = (result.evidence ?? []).filter(e => e.declaration === law.id);
@@ -74,9 +75,15 @@ export function explainLaw(law, result, view = 'developer') {
     ...(quantifiers.length ? [`Inputs: ${quantifiers.join('; ')}`] : []),
     ...(restrictions.length ? [`Restrictions: ${restrictions.join(' and ')}`] : []), proposition(law.assertion),
     `Source: ${law.location.file}:${law.location.line}:${law.location.column}`,
-    `Examples: ${law.examples.length}`].join('\n');
+    `Examples: ${examples.length}`,
+    ...examples.flatMap(example => {
+      const locals = new Map([...scope, ...example.bindings.map(binding => [binding.id, binding.name])]);
+      return [`example ${JSON.stringify(example.name)}`,
+        ...example.bindings.map(binding => `  ${binding.name} = ${valueText(binding.value, locals)}`),
+        ...example.expectations.map(expectation => `  expect ${proposition(expectation, false, locals)}`)];
+    })].join('\n');
   if (view === 'evidence' && strategies.length) text += '\n' + strategies.join('\n');
-  return { view, law: law.id, metadata, references, witnesses, searches, inputs: law.inputs, assertion: law.assertion, evidence, text };
+  return { view, law: law.id, metadata, references, witnesses, searches, examples, inputs: law.inputs, assertion: law.assertion, evidence, text };
 }
 function referenceText(reference) {
   if (typeof reference === 'string') return reference;

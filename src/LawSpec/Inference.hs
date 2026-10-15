@@ -954,7 +954,10 @@ typedExpressionWithSchemesContext context declarations bits env e = do
         -- expected type carries the argument's and the result's, so a
         -- partial application's literals see both.
         Apply f x | any contextualLiteralArgument (snd (application e)) -> do
-          argument <- if contextualLiteralArgument x then Variable . ("argument:" ++) <$> fresh else infer context x >>= resolve
+          -- The declared function parameter supplies the expected argument
+          -- type. Inferring a computed exact argument first would force its
+          -- natural type and lose the existing checked scalar conversion.
+          argument <- Variable . ("argument:" ++) <$> fresh
           function <- resolve (Arrow argument natural)
           f' <- descend (Just function) f
           a <- resolve argument
