@@ -1,14 +1,22 @@
 ---
 id: lawspec.reference.language.rc1
 kind: reference
-title: RC1 authoring contract
+title: Minor-version authoring contract
 ---
-# RC1 authoring contract
+# Minor-version authoring contract
 
-The authoritative release contract and remaining gates are in
-[the single review packet](../../../LAWSPEC-PRE-1.0-REVIEW.md). Profile
-`1.0-rc.1` uses API schema 5 and configuration version 2. RC1 is a milestone;
-completing it does not release final 1.0.
+The authoritative implementation contract and remaining gates are in
+[the single review packet](../../../LAWSPEC-PRE-1.0-REVIEW.md). The current
+authoring milestone is a minor version, not a release candidate. The existing
+technical profile `1.0-rc.1` uses API schema 5 and configuration version 2;
+its identifier does not designate a released RC or final 1.0.
+
+Current syntax still uses bare `end` for laws, sections, quantifiers and some
+other blocks. The immediately following minor milestone must give every
+end-delimited block a named closer and reject bare `end` in normal source.
+That requires coordinated grammar, parser, formatter, migration, editor and
+example changes. The syntax and examples on this page describe the current
+implementation; they do not claim that the all-named-ending milestone is done.
 
 Automatic exhaustiveness, termination, definedness, refinements and definition
 contracts stay intrinsic. A pure `function` has no ability operations; a

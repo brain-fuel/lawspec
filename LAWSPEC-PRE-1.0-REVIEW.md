@@ -1,6 +1,6 @@
 # LawSpec 1.0 design and business review draft
 
-**RC1 implementation contract — 14 October 2026**
+**Minor authoring implementation contract — revised 15 October 2026**
 
 Repository: brain-fuel/lawspec\
 Audience: business readers, product owners, developers, language designers, and verification practitioners.
@@ -9,26 +9,42 @@ LawSpec describes what software must do and connects those requirements to imple
 
 The immediate task is to discover whether actual business readers can understand these specifications. Agreement between programmers about attractive syntax is insufficient. Readers should be able to predict outcomes, explain obligations, identify missing requirements, and understand what the evidence establishes.
 
-The RC1 contract below is authoritative and authorizes implementation. The earlier discussion is preserved as clearly labeled history; its unresolved alternatives do not override the RC1 decisions.
+The latest approved milestone direction below is authoritative. The implementation contract originally called RC1 remains the implementation baseline, subject to the later decisions recorded here. Earlier discussion and superseded alternatives remain history.
 
-**Implementation status:** the repository is at version 0.24.0. The redesigned examples below are language-design examples; they are not claims that the current parser accepts them. Code blocks deliberately use plain text rather than simulated syntax highlighting.
+**Implementation status:** the repository is at version 0.24.0. The authoring work currently being prepared is a minor-version milestone, **not a release candidate**. No RC version or tag is authorized. The existing technical profile identifier `1.0-rc.1` is retained during implementation; it is not a release designation. The redesigned examples below are language-design examples; they are not claims that the current parser accepts them. Code blocks deliberately use plain text rather than simulated syntax highlighting.
 
 Examples are independent unless a section explicitly connects them. Repeated unit names and simplified signatures are separate presentations, not declarations intended to coexist in one source file.
 
-## Authoritative RC1 decisions
+## Latest approved milestone direction — 15 October 2026
+
+The user supplied a `tensorflow.ctc` specification and required every `end` to identify the block it closes. The current parser does not yet meet that requirement: functions, procedures, types, cases, conditionals and mappings have named closers, while laws, sections, quantifiers, tables and several other constructs still accept bare `end`.
+
+The milestone immediately following the minor authoring version currently being prepared must complete **named endings for every end-delimited block**. A bare `end` must be an error in normal source parsing. This supersedes the earlier decision to retain plain endings for laws, sections and quantifiers; that earlier syntax remains the current-minor compatibility baseline, not the next milestone's target. A numerical version for the following milestone is not assigned here.
+
+Acceptance requires:
+
+- Inventory every end-delimited grammar production, including laws; definition, description, rationale and references sections; universal, existential, negated-existential and `given` scopes; examples and expectation tables; abilities, handlers, resources, workflows, models, actors, protocols, scenarios, harnesses, benchmarks and their nested blocks. Preserve existing named function/procedure/type/case/if/mapping closers. No block may silently retain a bare ending.
+- Specify the matching closing label for every production, including alternate quantifier wording and nested forms. `end law` and `end definition` follow the same explicit-closing principle as `end function`; the complete grammar must settle every remaining spelling together.
+- Reject missing labels, mismatched labels and bare `end`, with source spans that identify both the opener and the offending closer. Scalar metadata and other constructs that do not open a block acquire no artificial closing block.
+- Update parser, authoritative grammar, formatter, migration, editor grammar/services, examples, documentation and native/WASM consumers together. Legacy bare-ended source enters through explicit migration; it must not remain permissive normal syntax in the following milestone.
+- Migrate the supplied CTC example and the authoring corpus while preserving typed obligations, evaluation order, mandatory definition checks, examples and evidence. Exercise nested blocks and every closing form, and verify formatter idempotence and all supported targets/interfaces.
+
+The current-parser audit accepts a law/section/quantifier sample with three bare endings, rejects `end definition` / `end law`, accepts `end function`, and rejects a bare function ending. This is evidence that the next-milestone change is needed, not a claim that it has been implemented. All other acceptance and pre-final-1.0 requirements below remain in scope. Historical references to RC1 name the earlier plan, not the current minor version.
+
+## Implementation baseline and decisions
 
 Language profile: `1.0-rc.1`. API schema: **5**. Configuration version: **2**.
 
 The user-approved RC1 implementation plan is the source of intent. These mechanical defaults are now adopted explicitly, without claiming they were approved in the earlier example discussion.
 
-- `function` declares pure computation; `procedure` declares effects. `ability` remains distinct from capabilities. Declarations use `is`, sections use `:`, and functions, procedures, types, cases and conditionals have named closers. Laws, sections and quantifiers close with plain `end`.
+- `function` declares pure computation; `procedure` declares effects. `ability` remains distinct from capabilities. Declarations use `is`, sections use `:`, and functions, procedures, types, cases and conditionals have named closers. **Historical/current-minor compatibility syntax:** laws, sections and quantifiers close with plain `end`. The following milestone replaces every bare ending as required above.
 - Every ordinary law has one authoritative `definition:`. Description, rationale and references are optional singleton sections. Examples and expectation-first tables repeat. Scalar metadata has one value before sections. Formatting preserves section order and chosen valid annotations/equality wording/infix notation.
 - Phrase names begin with `"|` and end with `|`, without a closing quote. Infix names begin with a backtick, with optional pipe delimiters. One function namespace serves prefix/infix and qualified calls. Phrase bodies are case-sensitive, allow escaped pipes/backslashes, and reject emptiness, edge whitespace and line breaks. Namespace dots outside delimiters qualify; internal dots are part of a name. Native word splitting is deterministic and public collisions require explicit binding overrides.
 - `Integer` is exact/unbounded, `Whole` (also `"|whole number|`) includes zero, and `Nat` (also `"|natural number|`) is positive. Migrate `BigUInt` and zero-inclusive `Natural` to `Whole`, preserving bounded nonzero refinements. Lengths and indices include zero.
 - Named records use braces, are nominal, and construct as `Picture record{...}`. Anonymous records are closed structural products. No width subtyping or nominal unwrapping. Annotated type fields may have commas; canonical multiline types omit commas. Values/patterns use comma-separated `field = value`. An alternative has zero or one explicitly typed payload; a bare name is payload-free, even if a type has that name.
 - Anonymous record identity uses a 256-bit BLAKE3 digest of a versioned, field-label-sorted descriptor containing resolved types, refinements and dependent relationships. Normalize aliases and bound names; preserve nominal references, compare interned descriptors, and keep dependency fingerprints separate. Source evaluation order is independent. Native/WASM share a portable implementation checked against official vectors and GoForge; existing SHA-256 caches remain.
 - `first matching case of value:` evaluates once and tries ordered branches. Guards continue on failure; nested cases scope their own `it`. Constructor/tuple/record/literal patterns may omit `it matches`; ambiguous whole bindings require it. Partial record patterns reject duplicate/unknown fields and repeated binders. `#any` and `_` are wildcards. `otherwise` is unique and last; guards alone do not prove coverage. Preserve GADT and dependent facts and recursive/destructuring patterns.
-- Quantifiers close with explicit `end` and bind left to right; binders are visible in their own restrictions. Universal restrictions are antecedents; existential restrictions are required witness conditions. `there must exist` is existence; `there does not exist`/`there must not exist` negate existence. `given ... when C then P` means universal `C implies P`; `given ... then P` means universal P. `must` preserves a proposition; `must not` negates it. Text order establishes no priority or conjunction.
+- Quantifiers own an explicit closing block and bind left to right; binders are visible in their own restrictions. The current-minor plain `end` spelling is superseded for the following milestone by the named-ending requirement above. Universal restrictions are antecedents; existential restrictions are required witness conditions. `there must exist` is existence; `there does not exist`/`there must not exist` negate existence. `given ... when C then P` means universal `C implies P`; `given ... then P` means universal P. `must` preserves a proposition; `must not` negates it. Text order establishes no priority or conjunction.
 - `must be`, `is`, `=`, `must =`, and leading `must` express the same typed equality in laws. `must be` is preferred wording only. Value equality is Boolean; proposition equality is an obligation. Preserve Eq, IEEE equality and Boolean refinements. Legacy `==` migration uses typed context.
 - Preserve symbolic precedence. Named infix is nonassociative immediately above comparisons; comparisons/equality/membership precede worded `not`, `and`, `or`, and right-associative `implies`. No user fixities or infix sections. Contextual a/an/the/is do not reserve ordinary variables or change resolution. Line breaks never imply sequencing or conjunction.
 - `#S{...}` is primitive set notation. `Set` construction and membership require Eq for elements, without requiring ordering; duplicate detection retains first-occurrence order and IEEE caveats. Existing ordered sets migrate to `SortedSet`; maps retain Keyed. Generalize `any` to finite collections, with explicit map keys/values/entries; iteration needs no Eq. Text substrings stay explicit; pin full default Unicode case folding consistently without implicit normalization or boundaries. Contextual binary/hex literals and proven lossless widening never narrow, lose float precision, or unwrap nominal values. Prelude resolution follows locals and explicit imports and diagnoses ambiguity.

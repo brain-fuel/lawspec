@@ -151,6 +151,32 @@ changes for each milestone.
 
 ## Planned
 
+### Authoring milestones and explicit block endings
+
+The authoring work currently being prepared is a minor-version milestone,
+not a release candidate. The repository's current version is 0.24.0; no new
+version number or RC tag is assigned here.
+
+The immediately following minor milestone must give **every end-delimited
+block a named closing form**. Bare `end` must be rejected in normal source.
+This includes laws, named sections, quantifiers and their business-worded
+forms, examples, tables and every other nested block, alongside existing
+`end function`, `end procedure`, `end type`, `end case`, `end if` and
+`end mapping`. The earlier preference for plain law/section/quantifier endings
+is superseded.
+
+The milestone must inventory all block productions, specify every matching
+closer, diagnose missing or mismatched labels, and update formatting,
+migration, editor support, documentation and examples together. It must
+preserve typed obligations, evaluation order, automatic definition checks and
+verification evidence across all supported interfaces and targets. Existing
+bare-ended source is migration input, not permissive normal syntax for the
+following milestone. The complete acceptance criteria are recorded in
+[the review packet](../../LAWSPEC-PRE-1.0-REVIEW.md).
+
+The target, demonstration, verification and final-1.0 work below remains in
+scope; this sequencing decision does not declare that work complete.
+
 ### 0.25: Prolog, configuration and documents
 
 Prolog joins as a program target. HCL and YAML become configuration
