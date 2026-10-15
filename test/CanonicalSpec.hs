@@ -10,7 +10,7 @@ import qualified LawSpec.Model
 import Data.Aeson.Types (parseEither, Parser)
 import Test.Hspec
 import LawSpec.Model (Source(..), Diagnostic, defaultGeneration)
-import LawSpec.Parser (parseSource, parseSourceCanonical)
+import LawSpec.Parser (parseSource, parseSourceCanonical, parseSourcesWithCanonical)
 import LawSpec.Compile (compileCanonicalWithImports)
 import LawSpec.Frontend (compileCore, compileCoreCanonical)
 import LawSpec.Discharge (dischargeEvidenceWith)
@@ -38,6 +38,16 @@ core body = compileCoreCanonical 64 defaultGeneration [source body]
 -- ref:DEC-readable-notation
 test_canonicalAuthoringPreservesIntrinsicGuarantees :: Spec
 test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical authoring" $ do
+  it "chooses canonical grammar independently of user source filenames" $ do
+    let legacy = "unit filename\ndefinition double (x :: Integer) :: Integer is x + x end"
+        canonical = "unit filename\nfunction double (x :: Integer) -> Integer is x + x end function"
+    mapM_ (\path -> do
+      compileCoreCanonical 64 defaultGeneration [Source path legacy] `shouldSatisfy` isLeft
+      compileCoreCanonical 64 defaultGeneration [Source path canonical] `shouldSatisfy` isRight
+      parseSourcesWithCanonical [] [] [Source path legacy] `shouldSatisfy` isLeft)
+      ["filename.lawspec","<filename>","<lawspec.collections>"]
+  it "keeps compiler-provided collections in their versioned grammar" $
+    core "function values (x :: Integer) -> Queue Integer is prelude.queueOf [x] end function" `shouldSatisfy` isRight
   it "retains intrinsic checking on pure functions with no verification layers" $
     core "function double (x of type Integer) -> Integer is x + x end function" `shouldSatisfy` isRight
   it "rejects an unsafe denominator before any optional law check" $

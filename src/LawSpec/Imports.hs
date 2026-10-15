@@ -8,7 +8,7 @@
 -- under names derived from the declaring unit, so two units may declare the
 -- same names. Adapter signatures and concrete laws belong to their unit and
 -- are not importable.
-module LawSpec.Imports (resolveImports, resolveImportsWithProfile, importedDefinitionName) where
+module LawSpec.Imports (resolveImports, resolveImportsWithProfile, resolveImportsByProfile, importedDefinitionName) where
 
 import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
@@ -81,10 +81,15 @@ resolveImports :: (String -> String -> Maybe String) -> [(Unit, [Import])] -> Ei
 resolveImports = resolveImportsWithProfile False
 
 resolveImportsWithProfile :: Bool -> (String -> String -> Maybe String) -> [(Unit, [Import])] -> Either [Diagnostic] [Unit]
-resolveImportsWithProfile canonical visible units = mapM (\(u, _) -> resolvedUnit <$> table Lazy.! unitName u) units
+resolveImportsWithProfile canonical = resolveImportsByProfile (const canonical)
+
+-- | A built-in provider retains its versioned semantics while a canonical
+-- importer gets canonical name resolution. Profiles come from the compiler.
+resolveImportsByProfile :: (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit, [Import])] -> Either [Diagnostic] [Unit]
+resolveImportsByProfile canonical visible units = mapM (\(u, _) -> resolvedUnit <$> table Lazy.! unitName u) units
   where
     -- Lazy in import order; LawSpec.Parser rejects import cycles.
-    table = Lazy.fromList [(unitName u, resolveUnit canonical visible table u imports) | (u, imports) <- units]
+    table = Lazy.fromList [(unitName u, resolveUnit (canonical (unitName u)) visible table u imports) | (u, imports) <- units]
 
 resolveUnit :: Bool -> (String -> String -> Maybe String) -> M.Map String (Either [Diagnostic] Resolved)
   -> Unit -> [Import] -> Either [Diagnostic] Resolved

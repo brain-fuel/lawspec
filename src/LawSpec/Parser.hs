@@ -1,7 +1,7 @@
 -- | The concrete syntax of LawSpec, keywords first with symbols as aliases, so a
 -- specification reads as prose to someone who is not a mathematician.
 -- ref:DEC-readable-notation
-module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, parseSourceCanonical, parseSourcesWithCanonical, sourceUnit) where
+module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, parseSourceCanonical, parseSourcesWithCanonical, parseSourcesWithBuiltins, sourceUnit) where
 
 import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
 import LawSpec.Resilience (resilienceName)
@@ -2092,11 +2092,13 @@ parseSources = parseSourcesWith [] []
 -- unit (LawSpec.Time, LawSpec.Resilience) is imported, with its types, by the
 -- sources it says use it.
 parseSourcesWith :: [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSourcesWith = parseSourcesWithProfile False
+parseSourcesWith collections implicit = parseSourcesWithBuiltins False collections implicit []
 parseSourcesWithCanonical :: [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSourcesWithCanonical = parseSourcesWithProfile True
-parseSourcesWithProfile :: Bool -> [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSourcesWithProfile canonical collections builtins allSources = do
+parseSourcesWithCanonical collections implicit = parseSourcesWithBuiltins True collections implicit []
+-- | Versioned built-in sources are provided separately by the compiler. A user
+-- path (including one starting with '<') never chooses a language profile.
+parseSourcesWithBuiltins :: Bool -> [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
+parseSourcesWithBuiltins canonical collections builtins versioned userSources = do
   forM_ harnessSources $ \(Source path _, header) -> case header of
     Left message -> Left [Diagnostic "parse" message Nothing]
     Right (name, served) -> unless (served `elem` [n | (_, n, _) <- preambles])
@@ -2105,15 +2107,16 @@ parseSourcesWithProfile canonical collections builtins allSources = do
   let names = [n | (_, n, _) <- preambles]
   forM_ names $ \n -> when (length (filter (== n) names) > 1)
     (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
-  mapM (\source -> either (const (fst <$> parseWith (imported source) [] [] source))
+  mapM (\source -> either (const (fst <$> parseWithProfiles profile (imported source) [] [] source))
     (\(n, imports) -> (\(u, _) -> (u, imports)) . fst <$> results Lazy.! n) (preamble source)) sources
   where
+    allSources = versioned ++ userSources
     -- A harness in a file of its own is parsed with the unit it serves.
     (harnessSources, sources) = partitionHarnessSources allSources
     harnessesOf n = [source | (source, Right (_, served)) <- harnessSources, served == n]
     -- Parsed lazily in import order, so a unit sees its imports' indexed
     -- families under the names it uses for them.
-    results = Lazy.fromList [(n, parseWith (imported s) (families imports) (harnessesOf n) s) | (s, n, imports) <- preambles]
+    results = Lazy.fromList [(n, parseWithProfiles profile (imported s) (families imports) (harnessesOf n) s) | (s, n, imports) <- preambles]
     families imports = concat
       [ [f{familyName = importAlias i ++ "." ++ familyName f} | f <- declared] ++
         [f | f <- declared, familyName f `elem` importItems i]
@@ -2154,8 +2157,8 @@ parseSourcesWithProfile canonical collections builtins allSources = do
             | (name, t, o) <- found ]
           ownersOut = [(name, cs) | (name, _, o) <- found, Just cs <- [lookup name o]]
       in (M.union table entries, owners ++ ownersOut)
-    profile source@(Source path _) env = if canonical && take 1 path /= "<"
-      then M.insert "profile:canonical" AliasHeader env else env
+    profile source env = if canonical && source `notElem` versioned
+      then M.insert "profile:canonical" AliasHeader env else M.delete "profile:canonical" env
     imported source = profile source $ case preamble source of
       Left _ -> M.empty
       Right (_, imports) -> M.unions
@@ -2201,7 +2204,10 @@ sourceExports extra (Source _ s) =
    constructorOwners extra s)
 
 parseWith :: M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
-parseWith extra importedFamilies harnessFiles (Source p s) = case runReader (runParserT unitP p s) environment of
+parseWith = parseWithProfiles (\_ env -> env)
+
+parseWithProfiles :: (Source -> M.Map String Header -> M.Map String Header) -> M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
+parseWithProfiles profile extra importedFamilies harnessFiles (Source p s) = case runReader (runParserT unitP p s) environment of
   Left e -> let offset = errorOffset (NE.head (bundleErrors e))
                 (_,state) = reachOffset offset (bundlePosState e)
                 pos = pstateSourcePos state
@@ -2209,8 +2215,8 @@ parseWith extra importedFamilies harnessFiles (Source p s) = case runReader (run
                  (Just (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))))]
   Right (u0, imports, families, wrappers, workflows, models, (protocols, scenarios)) -> do
     -- A harness file is read with the names of the unit it serves.
-    separate <- mapM (\(Source hp hs) -> either (\e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]) Right
-      (runReader (runParserT harnessFileP hp hs) environment)) harnessFiles
+    separate <- mapM (\harness@(Source hp hs) -> either (\e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]) Right
+      (runReader (runParserT harnessFileP hp hs) (profile harness environment))) harnessFiles
     u <- case (unitHarness u0, separate) of
       (_, []) -> pure u0
       (Nothing, [h]) -> pure u0 { unitHarness = Just h }

@@ -24,7 +24,7 @@ import qualified LawSpec.Core.Types as CoreTypes
 import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Scalar
 import LawSpec.Parser
-import LawSpec.Imports (resolveImportsWithProfile)
+import LawSpec.Imports (resolveImportsByProfile)
 import LawSpec.Documentary (resolveDocumentaryReferences)
 import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Harness (elaborateHarness)
@@ -313,7 +313,7 @@ compileWithSettings = compileWithImports (\_ _ -> Nothing)
 -- | visible importer imported explains why a unit may not import another
 -- (package boundaries), or is Nothing when it may.
 compileWithImports :: (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
-compileWithImports = compileWithParser False parseSourcesWith (\_ name -> name)
+compileWithImports = compileWithParser False (\_ name -> name)
 compileCanonical :: [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileCanonical = compileCanonicalWithImports (\_ _ -> Nothing) 64 defaultGeneration
 compileCanonicalWithImports :: (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
@@ -321,9 +321,9 @@ compileCanonicalWithImports = compileCanonicalWithReferenceUnits (\_ name -> nam
 -- | Documentary unit paths follow package version selection independently of
 -- executable imports. The default entry point leaves unit paths unchanged.
 compileCanonicalWithReferenceUnits :: (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
-compileCanonicalWithReferenceUnits = compileWithParser True parseSourcesWithCanonical
-compileWithParser :: Bool -> ([String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]) -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
-compileWithParser canonical parseUnits referenceUnit visible bits settings sources = do
+compileCanonicalWithReferenceUnits = compileWithParser True
+compileWithParser :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
+compileWithParser canonical referenceUnit visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Programs that use a collection get the built-in collections unit.
@@ -358,10 +358,11 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.
         [("lawspec.host", "lawspecHost", [], \text -> usesResources text && not (importsBuiltin "lawspec.host" text)) | resources]
-  parsedUnits <- parseUnits collections implicit (builtins ++ sources)
+  parsedUnits <- parseSourcesWithBuiltins canonical collections implicit builtins sources
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   documented <- resolveDocumentaryReferences referenceUnit visible parsedUnits
-  imported' <- resolveImportsWithProfile canonical visible documented
+  let canonicalUnits = Set.fromList [name | source <- sources, Right name <- [sourceUnit source]]
+  imported' <- resolveImportsByProfile (\name -> canonical && name `Set.member` canonicalUnits) visible documented
   -- Abilities, handlers and rows, once each unit has what it imports.
   abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
   -- The harness, once every law has its final name.
