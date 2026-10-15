@@ -16,6 +16,7 @@ import System.Mem.StableName (StableName, makeStableName)
 
 import LawSpec.Time (timeUnit, durationType, instantType, durationArithmetic, durationValue)
 import LawSpec.Imports (importedDefinitionName)
+import LawSpec.PreludeNames (simplePreludeHelpers,sequencePreludeHelpers)
 import LawSpec.Collections (collectionsUnit, internalConstructor, boundedArithmeticTypes, boundedArithmeticDefinition)
 import qualified LawSpec.Model as S
 import qualified LawSpec.SourceContext as Source
@@ -603,7 +604,7 @@ lowerResolvedTree context projections dataTypes declared bits origin resolve typ
     | n == "drop", [k, x] <- xs = pure (node t (C.Helper C.Slice [x, k, integerConstant (2 ^ (63 :: Int) - 1)]))
     | n == "at", [i, x] <- xs = pure (node t (C.Helper C.At [x, i]))
     | n == "range", [lo, hi] <- xs = pure (node t (C.Helper C.Range [lo, hi]))
-    | Just builtin <- lookup n [("octets", C.Octets), ("bytesOf", C.BytesOf), ("utf8", C.Utf8), ("textOf", C.TextOf), ("join", C.Join)] =
+    | Just builtin <- lookup n sequencePreludeHelpers =
         pure (node t (C.Helper builtin xs))
     | n == "isEmpty", [x] <- xs = do
         items <- collectionItems x
@@ -615,10 +616,7 @@ lowerResolvedTree context projections dataTypes declared bits origin resolve typ
           [ C.MatchCase (C.Id "List::Nil") [] (bool True)
           , C.MatchCase (C.Id "List::Cons") [binder "head" element, binder "tail" listType] (bool False) ]))
     | otherwise = do
-        builtin <- maybe (Left ("unknown resolved helper: " ++ n)) Right (lookup n
-          [("length",C.Length),("isPresent",C.IsPresent),("presentValue",C.PresentValue),("real",C.RealPart),("imag",C.ImaginaryPart)
-          ,("isNaN",C.IsNaN),("isInfinite",C.IsInfinite),("isFinite",C.IsFinite),("isNegativeZero",C.IsNegativeZero),("round",C.RoundHalfEven),("checked",C.Checked)
-          ,("compare",C.Compare),("select",C.Select),("unreachable",C.Unreachable),("concurrently",C.Concurrently)])
+        builtin <- maybe (Left ("unknown resolved helper: " ++ n)) Right (lookup n simplePreludeHelpers)
         args <- case (builtin,xs) of
           (C.RoundHalfEven,[a,b]) -> do
             let ty = C.scalarType "Int32"

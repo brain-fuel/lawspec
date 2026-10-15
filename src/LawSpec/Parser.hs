@@ -16,6 +16,7 @@ import qualified Data.List.NonEmpty as NE
 import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
+import LawSpec.PreludeNames (preludeValueName)
 import LawSpec.DomainModel
 import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels, checkSupervisors)
 import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios, toProgram)
@@ -90,6 +91,14 @@ identRaw = phraseNameRaw <|> try (do
   if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] ||
       (canonical && x `elem` ["if","then","else","in","when","otherwise","must"])
     then fail "reserved identifier" else pure x)
+
+-- A public prelude operation may coincide with a grammatical word (then).
+-- Qualification identifies that namespace without reserving more user names.
+preludeIdentifierRaw :: P String
+preludeIdentifierRaw = try (do
+  name <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
+  unless (preludeValueName name) (fail "not a public prelude operation")
+  pure name) <|> identRaw
 -- | A name, or alias.name for a name exported by an imported unit. The alias and
 -- the dot are adjacent; write f . g with spaces to compose a function named
 -- like an alias.
@@ -1101,7 +1110,7 @@ applicationAtom = atom
       name <- identRaw
       unless (maybe False (isLower . fst) (uncons name)) (fail "a field's name starts with a lowercase letter")
       pure name
-    valueNameRaw = try (do void (string "prelude"); notFollowedBy (alphaNumChar <|> char '_'); spaceP; void (symbol "."); n <- identRaw; pure ("prelude." ++ n)) <|> qualifiedNameRaw
+    valueNameRaw = try (do void (string "prelude"); notFollowedBy (alphaNumChar <|> char '_'); spaceP; void (symbol "."); n <- preludeIdentifierRaw; pure ("prelude." ++ n)) <|> qualifiedNameRaw
     -- let x = e in body: e is evaluated first, then body, with x its value.
     letP = do
       try (keyword "let" *> lookAhead (ident *> symbol "=" *> notFollowedBy (char '=')))
@@ -2145,15 +2154,15 @@ parseSourcesWithBuiltins canonical collections builtins versioned userSources = 
       | n `elem` ("prelude" : collectionsUnit : [unit | (unit, _, _, _) <- builtins]) = (n, imports)
       | otherwise =
           let local = M.keys (headers s) ++ concatMap importItems imports
-              builtin unit alias types =
+              builtin namespaceOnly unit alias types =
                 let items = [t | t <- types, t `notElem` local, t /= boundedArithmeticBlock]
                     origin = Location ("<" ++ unit ++ ">") 1 1
                 -- A built-in with no types to list (lawspec.host) is imported
                 -- whole, as the collections unit is for bounded arithmetic.
-                in [Import unit alias items (Span origin origin) | not (null items) || unit == "lawspec.host" || boundedArithmeticBlock `elem` types]
+                in [Import unit alias items (Span origin origin) | namespaceOnly || not (null items) || unit == "lawspec.host" || boundedArithmeticBlock `elem` types]
               collectionNames = if canonicalSource source then canonicalCollectionNames collections else collections
-          in (n, imports ++ builtin collectionsUnit collectionsAlias collectionNames ++
-               concat [builtin unit alias types | (unit, alias, types, uses) <- builtins, uses s])
+          in (n, imports ++ builtin False collectionsUnit collectionsAlias collectionNames ++
+               concat [builtin (canonicalSource source) unit alias types | (unit, alias, types, uses) <- builtins, uses s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.
@@ -2249,7 +2258,8 @@ parseWithProfiles profile extra importedFamilies harnessFiles (Source p s) = cas
       (Nothing, [h]) -> pure u0 { unitHarness = Just h }
       _ -> Left [Diagnostic "harness" ("the unit " ++ unitName u0 ++ " has more than one harness; a unit has at most one") Nothing]
     domained <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
-      (elaborateDomain wrappers workflows (railwayUnit u))
+      (elaborateDomain wrappers workflows
+        (if M.member "profile:canonical" environment then u else railwayUnit u))
     -- Models read typestate from flow parameters, so they come first.
     modeled <- either (\(at, message) -> Left [Diagnostic "model" message (spanStart <$> at)]) Right
       (elaborateModels models domained >>= \m -> m <$ checkSupervisors m)

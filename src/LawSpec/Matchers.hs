@@ -8,7 +8,7 @@
 -- at compile time (LawSpec.Regex).
 module LawSpec.Matchers
   ( matchersUnit, matchersAlias, matchersSource, matchersTypes, usesMatchers
-  , matcherOperation, regexTypeName
+  , matcherOperation, matcherOperations, regexTypeName
   ) where
 
 import Data.Char (isAlphaNum)
@@ -30,7 +30,10 @@ regexTypeName = matchersUnit ++ "::type::Regex"
 
 -- prelude.<op> and the definition implementing it.
 matcherOperation :: String -> Maybe String
-matcherOperation op = lookup op
+matcherOperation op = lookup op matcherOperations
+
+matcherOperations :: [(String,String)]
+matcherOperations =
   [ ("sameItems", "matchersSameItems"), ("containsAll", "matchersContainsAll")
   , ("isSubsetOf", "matchersIsSubsetOf"), ("matchesRegex", "matchersMatchesRegex") ]
 
@@ -43,7 +46,8 @@ usesMatchers text =
       pairs = zip3 tokens (drop 1 tokens) (drop 2 tokens)
       declared = or [keyword `elem` ["type", "wrapper"] && name == "Regex" | (keyword, name) <- zip tokens (drop 1 tokens)]
   in not declared && (or [ (a, b) == ("same", "items") || (a, b, c) == ("contains", "all", "of") || (a, b, c) == ("is", "subset", "of")
-                         | (a, b, c) <- pairs ] || any (`elem` tokens) ["regex", "Regex"])
+                         | (a, b, c) <- pairs ] || any (`elem` tokens)
+                           (["regex", "Regex"] ++ ["prelude." ++ operation | (operation,_) <- matcherOperations]))
   where
     stripComments = unlines . map takeComment . lines
     takeComment line = case [i | (i, rest) <- zip [0 :: Int ..] (tails line), "--" `isPrefixOf` rest] of

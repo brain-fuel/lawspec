@@ -56,6 +56,25 @@ a definition `size`; `domain.Usd` and a local `Usd` are different constructors.
 - Imports are not re-exported unless the unit says so with `export` (below):
   a unit uses only what it imports itself.
 
+In the `1.0-rc.1` language profile, public prelude functions are also available
+unqualified. For example, `member value items` and `prelude.member value items`
+use the same checked operation. Lexical bindings, local declarations and
+explicitly imported names are resolved first. A local `length` keeps its own
+meaning; `prelude.length` remains available explicitly. An ambiguous explicit
+import remains an error. A type mismatch in a local call does not make the
+compiler retry it as a prelude call.
+
+This fallback includes collection and duration operations and explicit numeric
+conversions such as `Int32 value`. It preserves the qualified operation's
+capability requirements, effects, bounds and definition checks. It does not
+add implicit numeric conversions. Phrase names retain their own exact spelling;
+a phrase whose body happens to contain a prelude name is a separate name.
+Local or explicitly imported types named `Regex` or `Duration` retain their
+nominal identities while the compiler loads the prelude operations' provider.
+The provider's type names are not substituted for those user types.
+An operation whose name is a reserved grammatical word keeps its qualified
+spelling, such as `prelude.then`.
+
 Targets with a single data namespace (Python, JavaScript, TypeScript, Go and
 Haskell) name colliding types after their unit, such as `ShopDomainCurrency`
 and `ShopOrdersCurrency`, and their constructors `ShopDomainCurrencyUsd`. Java,

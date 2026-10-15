@@ -1,0 +1,102 @@
+unit example.prelude_names
+
+type Regex is one of | OwnRegex end type
+type Duration is one of | OwnDuration end type
+type RetryDecision is one of | OwnRetry end type
+
+function keepPattern (value of type Regex) -> Regex is value end function
+function keepDuration (value of type Duration) -> Duration is value end function
+
+function affirmative (value of type Bool) -> Bool is value end function
+function exceeds (limit of type Integer) (value of type Integer) -> Bool is
+  value > limit
+end function
+
+function increment (value of type Integer) -> Integer is value + 1 end function
+function accept (value of type Integer) -> Either Text Integer is Right value
+end function
+function recover (failure of type Text) -> Either Text Integer is Right 0
+end function
+function mark (failure of type Text) -> Text is failure ++ "!" end function
+
+law collectionNames is
+  definition:
+    length [false, true] = 2 and
+    size (setOf [true, false, true]) = 2 and
+    member true #S{false, true} and
+    any affirmative (queueOf [false, true]) and
+    sortedSetMember false (sortedSetOf [true, false])
+  end
+end
+
+law literalPredicates is
+  definition:
+    any (exceeds 3) [1, 4] and
+    not (any affirmative ([] of type List Bool)) and
+    true `member #S{false, true}
+  end
+end
+
+law matcherNames is
+  definition:
+    containsAll [false, true] [true] and
+    sameItems [false, true] [true, false] and
+    contains "alphabet" "pha"
+  end
+end
+
+law durationNames is
+  definition:
+    toMicroseconds (seconds 2) = 2000000 and
+    toMicroseconds (prelude . milliseconds 2) = 2000
+  end
+end
+
+law providerTypesRemainSeparate is
+  definition:
+    keepPattern OwnRegex = OwnRegex and
+    keepDuration OwnDuration = OwnDuration and
+    OwnRetry = OwnRetry and
+    prelude.sameItems [true, false] [false, true] and
+    prelude.toMicroseconds (prelude.seconds 1) = 1000000
+  end
+end
+
+law exactConversions is
+  definition:
+    Int32 7 = 7 and
+    prelude.Int32 7 = Int32 7
+  end
+end
+
+law railwayNames is
+  definition:
+    map increment (Right 1 of type Either Text Integer) = Right 2 and
+    mapError mark (Left "declined" of type Either Text Bool) = Left "declined!" and
+    bind (Right 1 of type Either Text Integer) accept = Right 1 and
+    prelude.then (Right 1 of type Either Text Integer) accept = Right 1 and
+    orElse (Left "declined" of type Either Text Integer) recover = Right 0 and
+    fallback (Left "declined" of type Either Text Bool) false = false and
+    ensure affirmative "declined" (Right false of type Either Text Bool) = Left "declined" and
+    pipe 1 increment = 2 and
+    isRight (Right true of type Either Text Bool) and
+    isLeft (Left "declined" of type Either Text Bool) and
+    fromEither false (Left "declined" of type Either Text Bool) = false and
+    both (Right 1 of type Either Text Integer)
+      (Right true of type Either Text Bool) = Right (Pair 1 true) and
+    andThen accept accept 1 = Right 1
+  end
+end
+
+law independentExamples is
+  definition:
+    for all (value of type Bool) => any affirmative [value] = value end
+  end
+  expect any affirmative [value] = expected
+  expect length [false, value] = count
+  expect toMicroseconds (seconds 2) = micros
+  in table (value, expected, count, micros):
+    row false, false, 2, 2000000
+    row true, true, 2, 2000000
+  end
+end

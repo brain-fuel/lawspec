@@ -5,6 +5,11 @@ title: Primitives
 ---
 # Primitives
 
+Canonical `1.0-rc.1` source may omit `prelude.` from public operation names
+when no lexical, local or explicitly imported name takes precedence. The
+qualified spellings in this reference remain available. See
+[names and scope](language/imports-and-packages.md#names-and-scope).
+
 Every scalar type has a declared domain, checked literals, equality, property
 generators and boundary cases. This page lists the scalar types. Structural
 types (`List`, `Maybe`, `Either` and declared data) are described in

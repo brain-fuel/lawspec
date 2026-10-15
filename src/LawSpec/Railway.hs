@@ -18,7 +18,7 @@
 --   m <*> n  prelude.both m n         both successes as a Pair, else the first error
 --            prelude.ensure p e m     fail with e unless p holds of the value
 --            prelude.isLeft m, prelude.isRight m
-module LawSpec.Railway (railwayUnit, railwayLaw, railwayExpr, railwayOperators, usesPair) where
+module LawSpec.Railway (railwayUnit, railwayLaw, railwayExpr, railwayExprWithShadowed, railwayOperators, railwayNames, usesPair) where
 
 import Control.Monad.State.Strict (State, evalState, get, put)
 import Data.List (isInfixOf)
@@ -28,6 +28,10 @@ import LawSpec.Model
 -- | The symbols, loosest last, as the parser binds them.
 railwayOperators :: [String]
 railwayOperators = [">=>", "<$>", "<!>", "<*>", ">>=", "<|>", "??", "|>"]
+
+-- The named public forms handled by the same rewrite below.
+railwayNames :: [String]
+railwayNames = ["bind","then","map","mapError","orElse","fallback","fromEither","andThen","pipe","both","ensure","isLeft","isRight"]
 
 -- | Whether a source uses pairs, which the collections unit provides.
 usesPair :: String -> Bool
@@ -81,7 +85,13 @@ railwayUnit u = u
 
 -- | Fresh names avoid every name the expression already uses.
 railwayExpr :: Expr -> Expr
-railwayExpr e = evalState (go e) 0
+railwayExpr = railwayExprWithShadowed []
+
+-- Canonical resolution can distinguish a user constructor called Left/Right
+-- before applying a literal optimization. Qualified built-in identities are
+-- always unambiguous; a shadowed short name must undergo ordinary typing.
+railwayExprWithShadowed :: [String] -> Expr -> Expr
+railwayExprWithShadowed shadowed e = evalState (go e) 0
   where
     taken = S.fromList (names e)
     fresh :: String -> State Int String
@@ -149,8 +159,8 @@ railwayExpr e = evalState (go e) 0
         | otherwise -> pure (Apply f x)
     -- A literal Right or Left decides the match: Right x >>= f is f x.
     eitherMatchM m onLeft onRight
-      | ConstructLit tag [v] <- unlocated m, tag `elem` ["Right", "Either::Right"] = onRight v
-      | ConstructLit tag [e] <- unlocated m, tag `elem` ["Left", "Either::Left"] = onLeft e
+      | ConstructLit tag [v] <- unlocated m, tag == "Either::Right" || (tag == "Right" && tag `notElem` shadowed) = onRight v
+      | ConstructLit tag [e] <- unlocated m, tag == "Either::Left" || (tag == "Left" && tag `notElem` shadowed) = onLeft e
     eitherMatchM m onLeft onRight = do
       e <- fresh "railwayError"
       v <- fresh "railwayValue"

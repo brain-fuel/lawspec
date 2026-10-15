@@ -39,6 +39,7 @@ import LawSpec.Network (networkUnit, networkSource)
 import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock, clockSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
+import LawSpec.PreludeNames (preludeDiscoveryText,preludeDependencyText)
 import Control.Monad.State.Strict
 import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import qualified Data.Map.Strict as M
@@ -338,11 +339,14 @@ compileWithParser canonical referenceUnit visible bits settings sources = do
   -- Programs that import a built-in unit with abilities get it
   -- (LawSpec.Builtins); importing lawspec.time adds its clock. Their
   -- handlers with state use collections too.
-  let clock = any usesClock [text | Source _ text <- sources]
-      time = clock || any usesTime [text | Source _ text <- sources]
+  let discovery = if canonical then preludeDiscoveryText else id
+      userTexts = [discovery text | Source _ text <- sources]
+      providerUses uses text = uses text || (canonical && uses (preludeDependencyText text))
+      clock = any usesClock [text | Source _ text <- sources]
+      time = clock || any (providerUses usesTime) [text | Source _ text <- sources]
       resilience = any usesResilience [text | Source _ text <- sources]
       -- Programs that use matchers over lists, or regexes, get the matchers unit.
-      matchers = any usesMatchers [text | Source _ text <- sources]
+      matchers = any (providerUses usesMatchers) [text | Source _ text <- sources]
       -- Programs that name a built-in resource get the resources unit.
       resources = any usesResources [text | Source _ text <- sources]
       -- Built-in resources acquire and release through lawspec.host's
@@ -352,16 +356,16 @@ compileWithParser canonical referenceUnit visible bits settings sources = do
         -- lawspec.network: the secure network handler's module (LawSpec.Network).
         [Source ("<" ++ networkUnit ++ ">") networkSource | any (importsBuiltin networkUnit) [text | Source _ text <- sources]]
       versionedCollectionSources = [text | Source _ text <- abilityUnits] ++ [clockSource | clock]
-      collections = if canonical then usedCollectionsCanonical [text | Source _ text <- sources] versionedCollectionSources
+      collections = if canonical then usedCollectionsCanonical userTexts versionedCollectionSources
         else usedCollections ([text | Source _ text <- sources] ++ versionedCollectionSources)
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)] ++
         [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "")) | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
         [Source "<lawspec.matchers>" matchersSource | matchers] ++
         [Source "<lawspec.resources>" resourcesSource | resources] ++
         abilityUnits
-      implicit = [(timeUnit, timeAlias, timeTypes, usesTime) | time] ++
+      implicit = [(timeUnit, timeAlias, timeTypes, providerUses usesTime) | time] ++
         [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience] ++
-        [(matchersUnit, matchersAlias, matchersTypes, usesMatchers) | matchers] ++
+        [(matchersUnit, matchersAlias, matchersTypes, providerUses usesMatchers) | matchers] ++
         [(resourcesUnit, resourcesAlias, resourcesTypes, usesResources) | resources] ++
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.

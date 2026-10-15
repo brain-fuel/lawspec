@@ -18,6 +18,9 @@ import LawSpec.Matchers (matchersUnit, matchersAlias, matcherOperation)
 import LawSpec.Resources (resourcesUnit)
 import LawSpec.Resilience (resilienceUnit, resilienceDefinitions)
 import LawSpec.Builtins (instantDefinitions)
+import LawSpec.PreludeNames (preludeValueName)
+import LawSpec.Scalar (isNumeric)
+import LawSpec.Railway (railwayExprWithShadowed)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
 import LawSpec.Common (importedDefinitionName)
@@ -33,7 +36,7 @@ data Names m = Names
   , onRefinement :: String -> m String, onValue :: String -> m String
   , onLaw :: String -> m String
   , contextualArticles :: Bool, restrictionExpression :: Bool
-  , declaredValue :: String -> Bool }
+  , declaredValue :: String -> Bool, declaredConstructor :: String -> Bool }
 
 data Kind = TypeName | ConstructorName | RefinementName | ValueName | LawName
   deriving (Eq, Ord, Show)
@@ -129,6 +132,8 @@ resolveUnit canonical visible table u allImports = do
         (lookupName RefinementName) (lookupName ValueName) (lookupName LawName)
         canonical False (\n -> n `elem` map fst (functions u) || n `elem` map functionName (functionDefinitions u) ||
           n `elem` operationNames u || M.member (ValueName,n) scope)
+        (\n -> n `elem` [dataConstructorName c | d <- dataTypes u,c <- dataTypeConstructors d] ||
+          M.member (ConstructorName,n) scope)
   renamed <- walkUnit names u
   -- Copy what the renamed unit uses, and what that uses in turn.
   let origins = [(resolvedUnit source, portable source) | (_, source) <- sources]
@@ -343,7 +348,7 @@ portableUnit exports u = runIdentity $ do
   let rename table n = Identity (M.findWithDefault n n table)
       names = Names (rename (exportTypes exports)) (rename (exportConstructors exports))
         (rename (exportRefinements exports)) (rename (exportDefinitions exports)) (rename (exportLaws exports))
-        False False (const False)
+        False False (const False) (const False)
       declared table n = M.findWithDefault n n table
   walked <- walkUnit names u
   pure walked
@@ -406,7 +411,7 @@ lawReferences l = collect (walkLaw collector l)
 
 collector :: Names (State (S.Set (Kind, String)))
 collector = Names (record TypeName) (record ConstructorName) (record RefinementName) (record ValueName) (record LawName)
-  False False (const False)
+  False False (const False) (const False)
   where
     record :: Kind -> String -> State (S.Set (Kind, String)) String
     record kind n = modify (S.insert (kind, n)) >> pure n
@@ -631,7 +636,9 @@ walkRestriction :: Monad m => Names m -> [String] -> Expr -> m Expr
 walkRestriction names = walkExpr names{restrictionExpression = contextualArticles names}
 
 walkExpr :: Monad m => Names m -> [String] -> Expr -> m Expr
-walkExpr names scope e = case e of
+walkExpr names scope e
+  | contextualArticles names,Just resolved <- preludeHead e = walkExpr names scope resolved
+  | otherwise = case e of
   Located _ inner | Just value <- articleOperand inner -> walkExpr names scope value
   Located range inner -> Located range <$> walkExpr names scope inner
   Apply _ _ | Just value <- articleOperand e -> walkExpr names scope value
@@ -668,7 +675,12 @@ walkExpr names scope e = case e of
           Var <$> onValue names (timeAlias ++ "." ++ definition)
   Var n | n `elem` scope || take 8 n == "prelude." -> pure (Var n)
         | otherwise -> Var <$> onValue names n
-  Apply a b -> Apply <$> walkExpr names scope a <*> walkExpr names scope b
+  Apply a b -> do
+    function <- walkExpr names scope a
+    argument <- walkExpr names scope b
+    let call = Apply function argument
+        rewritten = canonicalCombinators call
+    if rewritten == call then pure call else walkExpr names scope rewritten
   Compose a b -> Compose <$> walkExpr names scope a <*> walkExpr names scope b
   ListLit xs -> ListLit <$> mapM (walkExpr names scope) xs
   ConstructLit n fields -> ConstructLit <$> onConstructor names n <*> mapM (walkExpr names scope) (articleArguments fields)
@@ -680,12 +692,36 @@ walkExpr names scope e = case e of
     AllElementsExpr <$> walkExpr names scope value <*> pure binder <*> walkExpr names (binder : scope) predicate
   AllPayloadsExpr value predicates -> AllPayloadsExpr <$> walkExpr names scope value <*>
     forM predicates (\(binder, body) -> (,) binder <$> walkExpr names (binder : scope) body)
-  Binary op a b -> Binary op <$> walkExpr names scope a <*> walkExpr names scope b
+  Binary op a b -> do
+    left <- walkExpr names scope a
+    right <- walkExpr names scope b
+    let expression = Binary op left right
+        rewritten = canonicalCombinators expression
+    if rewritten == expression then pure expression else walkExpr names scope rewritten
   Unary op a -> Unary op <$> walkExpr names scope a
   Annotate a ty -> Annotate <$> walkExpr names scope a <*> walkType names scope ty
   TypeBound bound ty -> TypeBound bound <$> walkType names scope ty
   other -> pure other
   where
+    canonicalCombinators expression
+      | contextualArticles names = railwayExprWithShadowed
+          [name | name <- ["Left","Right"],declaredConstructor names name] expression
+      | otherwise = expression
+    -- Resolve the head before recognizing special forms such as any. A lexical
+    -- binder, own declaration or explicit import wins. Keep source locations
+    -- and arguments, and use the explicitly qualified call's existing checks.
+    preludeHead expression = case expression of
+      Located range inner -> Located range <$> preludeHead inner
+      Apply function argument -> (`Apply` argument) <$> preludeHead function
+      Var name | available name -> Just (Var ("prelude." ++ name))
+      ConstructLit name fields | name `elem` scope ||
+          (declaredValue names name && not (declaredConstructor names name)) ->
+        Just (foldl Apply (Var name) fields)
+      ConstructLit name fields | isNumeric name,available name ->
+        Just (foldl Apply (Var ("prelude." ++ name)) fields)
+      _ -> Nothing
+    available name = name `notElem` scope && not (declaredValue names name) &&
+      not (declaredConstructor names name) && preludeValueName name
     articleOperand expression = case unlocated expression of
       Apply function value
         | articleWord function

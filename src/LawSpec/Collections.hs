@@ -10,7 +10,7 @@
 -- along with its operations.
 module LawSpec.Collections
   ( collectionsUnit, collectionsAlias, collectionTypes, collectionsSource
-  , usedCollections, usedCollectionsCanonical, collectionOperation, canonicalCollectionOperation, collectionOperations
+  , usedCollections, usedCollectionsCanonical, collectionOperation, canonicalCollectionOperation, collectionOperations, canonicalCollectionOperations
   , canonicalCollectionTypes, canonicalCollectionValues, canonicalCollectionNames
   , boundedArithmeticBlock, boundedArithmeticTypes, boundedArithmeticDefinition, boundedArithmeticDefinitions
   , internalConstructor, isCollectionsType, collectionContainer, entryTypeName
@@ -70,9 +70,10 @@ canonicalCollectionNames :: [String] -> [String]
 canonicalCollectionNames = map (\name -> case name of "EqSet" -> "Set"; "Set" -> "SortedSet"; _ -> name)
 
 canonicalCollectionOperation :: String -> Maybe (String,String)
-canonicalCollectionOperation op = case lookup op sorted of
-  Just name -> Just (name,"SortedSet")
-  Nothing -> collectionOperation op
+canonicalCollectionOperation op = lookup op canonicalCollectionOperations
+
+canonicalCollectionOperations :: [(String,(String,String))]
+canonicalCollectionOperations = [(op,(name,"SortedSet")) | (op,name) <- sorted] ++ collectionOperations
   where sorted = [("sortedSetOf","sortedSetOf"),("sortedSetMember","sortedSetMember"),
           ("sortedSetInsert","sortedSetInsert"),("sortedSetRemove","sortedSetRemove"),
           ("sortedSetUnion","sortedSetUnion"),("sortedSetIntersection","sortedSetIntersection"),
