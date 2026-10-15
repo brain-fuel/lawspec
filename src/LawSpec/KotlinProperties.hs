@@ -109,7 +109,7 @@ emitTests Config{..} unit laws = do
     -- order random: LawSpec registers the unit's tests in an order the
     -- run's seed chooses. A local String.invoke collects them, and they are
     -- registered, shuffled, after the block that declares them.
-    testType = "suspend io.kotest.core.test.TestScope.() -> Unit"
+    testType = "suspend io.kotest.core.test.TestScope.() -> kotlin.Unit"
     ordered docs
       | orderRandom =
           [ text ("val _lawspecTests = mutableListOf<Pair<String, " ++ testType ++ ">>()")
@@ -118,7 +118,7 @@ emitTests Config{..} unit laws = do
           , text "for ((name, test) in lawspec.testing.LawSpecHarness.shuffled(" <> quoted unitLabel <> text ", _lawspecTests)) name(test)" ]
       | otherwise = docs
     testFunction name body = case stripPrefix "harness:" name of
-      Just rest -> text ("val lawspecHarness" ++ takeWhile (/= ':') rest ++ ": suspend () -> Unit = ") <> closure "" body
+      Just rest -> text ("val lawspecHarness" ++ takeWhile (/= ':') rest ++ ": suspend () -> kotlin.Unit = ") <> closure "" body
       Nothing -> quoted name <> text " " <> block body
     runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
     observed h = not (null (C.harnessCover h) && null (C.harnessClassify h) && null (C.harnessLabels h)) || C.harnessTarget h /= Nothing

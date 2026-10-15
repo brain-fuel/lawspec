@@ -97,7 +97,7 @@ emitBindings minify plan testing files = do
         resultBody <- case ref of
           StaticCall r -> do
             let application = E.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
-            pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "Unit" else
+            pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "kotlin.Unit" else
               D.text "val result = " <> application <> D.hardline <> returned
           _ -> do
             application <- case ref of
@@ -112,7 +112,7 @@ emitBindings minify plan testing files = do
                 helper <- maybe (Left "unplanned native call") Right
                   (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
                 pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
-            pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "Unit"
+            pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "kotlin.Unit"
               -- A method's null is Nothing; anything else is Just.
               else case maybeElement of
                 Just element -> D.text "val found: Any? = " <> application <> D.hardline <>
@@ -134,7 +134,7 @@ emitBindings minify plan testing files = do
         operations <- forM (C.abilityOperations a) $ \(op, ty) -> do
           let (args, result) = C.functionType ty
           types <- mapM (K.kotlinDataTypeDoc declarations) args
-          resultType <- if result == C.scalarType "Unit" then pure (D.text "Unit") else K.kotlinDataTypeDoc declarations result
+          resultType <- if result == C.scalarType "Unit" then pure (D.text "kotlin.Unit") else K.kotlinDataTypeDoc declarations result
           canonical <- mapM (K.kotlinCodecDocWithContext (D.text "symbols") declarations) args
           native <- mapM (K.kotlinNativeCodecDoc declarations) args
           canonicalResult <- K.kotlinCodecDocWithContext (D.text "symbols") declarations result

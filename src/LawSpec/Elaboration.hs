@@ -3,7 +3,7 @@
 module LawSpec.Elaboration
   ( coreType, coreTypeWithRecords, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, elaborateResolvedWithRecords, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateDefinitionUnitWithRecords, elaborateContract, elaborateContractWithRecords
   , abilityReference, abilityReferenceWithRecords, unitOperations, unitOperationsWithRecords, performOperations
-  , CollectRecords, collectRecords, collectType, collectExpression, collectEquation ) where
+  , CollectRecords, collectRecords, collectType, collectExpression, collectEquation, collectAbilityReference ) where
 
 import LawSpec.Abilities (clauseDefinitionName, abilityArguments, instantiatedOperations, unqualifiedHandler)
 import Data.Maybe (listToMaybe)
@@ -770,7 +770,10 @@ abilityReference = abilityReferenceWith coreType
 
 abilityReferenceWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> S.Type -> Either String (C.AbilityRef,[C.DataDeclaration])
 abilityReferenceWithRecords declarations bits unit ty =
-  collectRecords declarations (abilityReferenceWith (collectType bits) unit ty)
+  collectRecords declarations (collectAbilityReference bits unit ty)
+
+collectAbilityReference :: Int -> S.Unit -> S.Type -> CollectRecords C.AbilityRef
+collectAbilityReference bits = abilityReferenceWith (collectType bits)
 
 abilityReferenceWith :: Monad m => (S.Type -> m C.Type) -> S.Unit -> S.Type -> m C.AbilityRef
 abilityReferenceWith lower u t = do

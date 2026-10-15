@@ -7,7 +7,7 @@ import LawSpec.Inference (monoEnvironment)
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.Data (elaborateDataDeclarationsWithProfile)
-import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnitWithRecords, elaborateContractWithRecords, abilityReference, abilityReferenceWithRecords, unitOperationsWithRecords, performOperations, collectRecords, collectType, collectExpression, collectEquation)
+import LawSpec.Elaboration (elaborateExpression, binaryOp, elaborateDefinitionUnitWithRecords, elaborateContractWithRecords, abilityReferenceWithRecords, unitOperationsWithRecords, performOperations, collectRecords, collectType, collectExpression, collectEquation, collectAbilityReference)
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Release (checkResourceReleases)
 import LawSpec.Core.Total (deferProgramPostconditions)
@@ -16,6 +16,7 @@ import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import Control.Monad (forM, unless)
 import Control.Monad.Trans.Class (lift)
 import qualified Data.Set as Set
+import qualified Data.Map.Strict as M
 import Data.List (nub, nubBy, stripPrefix, intercalate)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Digest (digestHex, digestString)
@@ -76,15 +77,19 @@ elaborate bits units properties = do
         pure (closed, owned, map fst ps0, cs, appendRecords dataDeclarations propertyRecords,
           definitionRecords ++ contractRecords ++ propertyRecords)
       -- The harness plane: how each law is tested (LawSpec.Harness).
-      ps <- mapM (\(sp, cp) -> harnessed dataDeclarations closed u sp cp) (zip owned ps0)
-      settings <- unitHarnessSettings dataDeclarations closed u
+      harnesses <- mapM (\(sp, cp) -> harnessed dataDeclarations closed u sp cp) (zip owned ps0)
+      let harnessRecords = concatMap snd harnesses
+          knownHarnesses = appendRecords dataDeclarations harnessRecords
+          ps = map fst harnesses
+      (settings,benchmarkRecords) <- unitHarnessSettings knownHarnesses closed u
+      let knownSettings = appendRecords knownHarnesses benchmarkRecords
       contextual Nothing $ do
         -- Calls to ability operations are Perform; each law gets the handlers
         -- the abilities pass chose for it.
-        ((_, operations), operationRecords) <- unitOperationsWithRecords dataDeclarations bits u
+        ((_, operations), operationRecords) <- unitOperationsWithRecords knownSettings bits u
         handled <- forM ps $ \p -> do
           assignments <- forM (maybe [] id (lookup (C.propertyName p) (S.lawAssignments u))) $ \(ability, choice) -> do
-            (reference,records) <- abilityReferenceWithRecords (appendRecords dataDeclarations operationRecords) bits u ability
+            (reference,records) <- abilityReferenceWithRecords (appendRecords knownSettings operationRecords) bits u ability
             pure ((reference,handlerRef u choice),records)
           let assignment = map fst assignments
           -- A resource's operations (a built-in resource's lawspec.host
@@ -97,7 +102,7 @@ elaborate bits units properties = do
         -- A benchmark's operations are Perform, like a law's.
         let settings' = fmap (\h -> h { C.harnessBenchmarks = [(n, performOperations operations b) | (n, b) <- C.harnessBenchmarks h] }) settings
         pure (closed{C.unitContracts=cs,C.unitProperties=map fst handled,C.unitHarnessSettings=settings'},
-          occurrences ++ operationRecords ++ concatMap snd handled)
+          occurrences ++ harnessRecords ++ benchmarkRecords ++ operationRecords ++ concatMap snd handled)
     -- share R per group | unit | run: the key of the scope whose cases share
     -- one R (the harness has checked that R declares reset).
     shared settings p = p { C.propertyResources =
@@ -206,31 +211,38 @@ elaborate bits units properties = do
         , C.propertyTrace=S.trace p, C.propertyHandlers=[], C.propertyResources=resources, C.propertyHarness=C.noHarness
         , C.propertyInputDomain=S.inputDomain p, C.propertyMetadata=S.lawMetadata original }
     contextual at = either (Left . pure . (\msg -> Diagnostic "elaboration" msg at)) Right
+    -- Lexical locals are ordered innermost first, as the resolver's lookup is.
+    -- They shadow declarations, even when their spelling names a function.
+    lexicalEnvironment u locals = M.union (monoEnvironment (reverse locals)) (monoEnvironment (S.functions u))
     -- A law's harness plan, elaborated over its inputs. Its expressions may
     -- call checked definitions only: calling native code or an ability
     -- operation could change what the law observes.
     harnessed dataDeclarations closed u sp cp = case lookup (S.name sp) (S.lawHarness u) of
-      Nothing -> pure cp { C.propertyHarness = C.noHarness { C.harnessUnit = S.harnessName <$> S.unitHarness u } }
+      Nothing -> pure (cp { C.propertyHarness = C.noHarness { C.harnessUnit = S.harnessName <$> S.unitHarness u } },[])
       Just plan -> do
         witnesses <- forM (S.planResolvedWitnesses plan) $ \witness ->
           either (\message -> Left [Diagnostic "harness" message (Just (spanStart (S.witnessSourceSpan witness)))]) Right
-            (elaborateWitness dataDeclarations closed u sp cp witness)
+            (collectRecords dataDeclarations (elaborateWitness closed u sp cp witness))
+        let witnessRecords = concatMap snd witnesses
+            knownWitnesses = appendRecords dataDeclarations witnessRecords
         draws <- forM (S.planDraws plan) $ \selected@(inputName,_,_,_) ->
           either (\message -> Left [Diagnostic "harness" message (Just
             (maybe (S.location (S.original sp)) spanStart (lookup inputName (S.planDrawLocations plan))))]) Right
-            (elaborateHarnessStrategy dataDeclarations closed u sp cp selected)
-        either (\msg -> Left [Diagnostic "harness" msg (Just (S.location (S.original sp)))]) Right $ do
+            (collectRecords knownWitnesses (elaborateHarnessStrategy closed u sp cp selected))
+        let drawRecords = concatMap snd draws
+            knownDraws = appendRecords knownWitnesses drawRecords
+        (property,records) <- either (\msg -> Left [Diagnostic "harness" msg (Just (S.location (S.original sp)))]) Right $ collectRecords knownDraws $ do
           let pid = C.propertyId cp
               functionIds = [declarationId u n | (n,_) <- S.functions u]
               inputIds = [(S.inputId i, C.binderId (C.quantifiedBinder q)) | (i, q) <- zip (S.inputs sp) (C.propertyInputs cp)] ++
                 [(S.inputId i, C.Id (C.idText pid ++ "::logical::" ++ show index))
                 | (index,i) <- zip [0::Int ..] (S.assertionInputs (S.assertion sp))]
               aliases = [(S.inputName i, S.Var (S.inputId i)) | i <- S.inputs sp]
-              lawEnv = S.functions u ++ [(S.inputId i, S.inputType i) | i <- S.inputs sp]
+              lawEnv = lexicalEnvironment u [(S.inputId i, S.inputType i) | i <- S.inputs sp]
               resolveWith locals n = maybe (maybe (declarationId u n) id (lookup n inputIds)) id (lookup n locals)
-              pureOnly what e = checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) what e
+              pureOnly what e = lift (checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) what e)
               lawTerm what ty e = do
-                t <- elaborateResolvedWithData dataDeclarations functionIds bits pid (resolveWith []) lawEnv
+                t <- collectExpression False (`Set.member` Set.fromList functionIds) bits pid (resolveWith []) lawEnv
                   (maybe id (flip S.Annotate) ty (S.replaceExprVars aliases e))
                 pureOnly what t
           covers <- mapM (\(percent, label, e) -> C.Cover percent label <$> lawTerm ("cover \"" ++ label ++ "\"") (Just (S.Named "Bool")) e) (S.planCover plan)
@@ -240,20 +252,21 @@ elaborate bits units properties = do
             t <- lawTerm "target maximize" Nothing e
             case C.expressionType t of
               C.Constructor n [] | n `elem` numericTypes -> pure t
-              other -> Left ("target maximize needs a number to maximize, but " ++ S.prettyExpr e ++ " is " ++ show other)) (S.planTarget plan)
-          let targets = [identity | (identity,_,_,_,_) <- draws]
+              other -> lift (Left ("target maximize needs a number to maximize, but " ++ S.prettyExpr e ++ " is " ++ show other))) (S.planTarget plan)
+          let targets = [identity | ((identity,_,_,_,_),_) <- draws]
           unless (length targets == length (nub targets))
-            (Left "two strategies select the same expanded input or search binder")
+            (lift (Left "two strategies select the same expanded input or search binder"))
           pure cp { C.propertyHarness = C.LawHarness
             { C.harnessUnit = Just (S.planHarness plan), C.harnessTags = S.planTags plan
             , C.harnessSkip = S.planSkip plan, C.harnessKnownFailing = S.planKnownFailing plan
             , C.harnessTimeout = S.planTimeout plan, C.harnessRepeat = S.planRepeat plan
             , C.harnessRetries = S.planRetries plan, C.harnessCover = covers, C.harnessClassify = classes
             , C.harnessLabels = labels, C.harnessTarget = target
-            , C.harnessDraws = [(identity,strategy,draw) | (identity,_,True,strategy,draw) <- draws]
-            , C.harnessGroup = S.planGroup plan, C.harnessWitnesses = witnesses
-            , C.harnessSearches = [(identity,path,strategy,draw) | (identity,path,False,strategy,draw) <- draws] } }
-    elaborateHarnessStrategy dataDeclarations closed u sp cp (inputName,strategy,declared,gen) = do
+            , C.harnessDraws = [(identity,strategy,draw) | ((identity,_,True,strategy,draw),_) <- draws]
+            , C.harnessGroup = S.planGroup plan, C.harnessWitnesses = map fst witnesses
+            , C.harnessSearches = [(identity,path,strategy,draw) | ((identity,path,False,strategy,draw),_) <- draws] } }
+        pure (property,witnessRecords ++ drawRecords ++ records)
+    elaborateHarnessStrategy closed u sp cp (inputName,strategy,declared,gen) = do
       let pid = C.propertyId cp
           inputIds = [(S.inputId i,C.binderId (C.quantifiedBinder q)) | (i,q) <- zip (S.inputs sp) (C.propertyInputs cp)] ++
             [(S.inputId i,C.Id (C.idText pid ++ "::logical::" ++ show index)) |
@@ -266,12 +279,12 @@ elaborate bits units properties = do
           short = [target | target@(_,i,_) <- targets,S.inputName i == written]
           matches = if not (null root) then root else if not (null exact) then exact else short
           paths = intercalate ", " ["definition." ++ intercalate "." path | (path,_,_) <- targets]
-      (path,i,isRoot) <- case matches of
+      (path,i,isRoot) <- lift $ case matches of
         [target] -> pure target
         [] -> Left ("use " ++ strategy ++ " for " ++ inputName ++ ": the law has no input called " ++ inputName ++
           "; available input and search paths are " ++ paths)
         _ -> Left ("ambiguous strategy target " ++ inputName ++ "; use its qualified lexical path: " ++ paths)
-      identity <- maybe (Left "a strategy target has no expanded binder identity") Right (lookup (S.inputId i) inputIds)
+      identity <- lift (maybe (Left "a strategy target has no expanded binder identity") Right (lookup (S.inputId i) inputIds))
       let inputType = maybe (C.TypeVariable identity) id (lookup identity
             [(C.binderId (C.quantifiedBinder q),C.binderType (C.quantifiedBinder q)) |
               q <- C.propertyInputs cp ++ scopedQuantifiers (C.propertyBody cp)])
@@ -281,11 +294,11 @@ elaborate bits units properties = do
             S.Refined n t (Just p) -> (t, Just (S.replaceExprVars [(n, S.Var "it")] p))
             _ -> (declared, Nothing)
           gen' = maybe gen (\p -> S.GenSuchThat gen p 100) refined
-      declaredType <- coreType plain
+      declaredType <- collectType bits plain
       unless (declaredType == inputType)
-        (Left ("the strategy " ++ strategy ++ " produces values of " ++ S.prettyType declared ++ ", but the input " ++
-          inputName ++ " is " ++ S.prettyType (S.inputType i) ++ "; a strategy may only produce values of its type"))
-      draw <- elaborateDraw dataDeclarations closed u pid strategy (S.inputId i) plain refined gen'
+        (lift (Left ("the strategy " ++ strategy ++ " produces values of " ++ S.prettyType declared ++ ", but the input " ++
+          inputName ++ " is " ++ S.prettyType (S.inputType i) ++ "; a strategy may only produce values of its type")))
+      draw <- elaborateDraw closed u pid strategy (S.inputId i) plain refined gen'
       pure (identity,path,isRoot,strategy,draw)
     scopedTargets path claim = case claim of
       S.AssertQuantified _ input body -> let full = path ++ [S.inputName input]
@@ -300,28 +313,27 @@ elaborate bits units properties = do
       C.Implication _ body -> scopedQuantifiers body
       C.Conjunction bodies -> concatMap scopedQuantifiers bodies
       _ -> []
-    elaborateWitness dataDeclarations closed u sp cp witness = do
+    elaborateWitness closed u sp cp witness = do
       let pid = C.propertyId cp
           functionIds = [declarationId u n | (n,_) <- S.functions u]
           ids = [(S.inputId i,C.binderId (C.quantifiedBinder q)) | (i,q) <- zip (S.inputs sp) (C.propertyInputs cp)] ++
             [(S.inputId i,C.Id (C.idText pid ++ "::logical::" ++ show index)) |
               (index,i) <- zip [0::Int ..] (S.assertionInputs (S.assertion sp))]
           resolve n = maybe (declarationId u n) id (lookup n ids)
-          scope = [(S.inputId i,S.inputType i) | i <- S.witnessScope witness] ++ S.functions u
+          scope = [(S.inputId i,S.inputType i) | i <- reverse (S.witnessScope witness)]
           input = S.witnessInput witness
           what = "witness for definition." ++ intercalate "." (S.witnessPath witness)
-      value <- elaborateResolvedWithData dataDeclarations functionIds bits pid resolve scope
+      value <- collectExpression False (`Set.member` Set.fromList functionIds) bits pid resolve (lexicalEnvironment u scope)
         (S.Annotate (S.witnessExpression witness) (S.inputType input))
-      checked <- checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) what value
-      let lowered = C.lowerFieldNodes dataDeclarations (C.idText pid ++ "::witness::" ++ S.inputId input) checked
-      pure (C.WitnessChoice (resolve (S.inputId input)) (S.witnessPath witness) lowered)
+      checked <- lift (checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) what value)
+      pure (C.WitnessChoice (resolve (S.inputId input)) (S.witnessPath witness) checked)
     -- A strategy's draw. Its values are typed by the strategy's type; a
     -- bound value, or `it` in such that, is a local of the test.
     -- A refined strategy's any (the strategy's own value, of its declared
     -- type) aims at the refinement, as a law input's generator does: its
     -- quantifier carries the refinement, whose bounds direct generation.
     -- The such that around it still checks every drawn value.
-    elaborateDraw dataDeclarations closed u pid strategy input declared refinement gen = do
+    elaborateDraw closed u pid strategy input declared refinement gen = do
       aim <- refinedAim (-1) declared refinement
       go declared aim (0 :: Int) [] declared gen
       where
@@ -330,80 +342,82 @@ elaborate bits units properties = do
         local :: Int -> String -> C.Id
         local k n = C.Id (C.idText pid ++ "::input::" ++ input ++ "_" ++ n ++ show k)
         refinedAim k ty refined = forM refined $ \p -> do
-          core <- coreType ty
+          core <- collectType bits ty
           let binder = C.Binder (local k "it_aim") "it" core
           predicate <- term [("it", (C.binderId binder, ty))] (S.Named "Bool") p
           pure (C.Quantifier binder [predicate] [])
         term locals ty e = do
-          t <- elaborateResolvedWithData dataDeclarations functionIds bits pid
+          t <- collectExpression False (`Set.member` Set.fromList functionIds) bits pid
             (\n -> maybe (declarationId u n) fst (lookup n locals))
-            ([(n, t') | (n, (_, t')) <- locals] ++ S.functions u) (S.Annotate e ty)
-          checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) ("the strategy " ++ strategy) t
+            (lexicalEnvironment u [(n, t') | (n, (_, t')) <- locals]) (S.Annotate e ty)
+          lift (checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) ("the strategy " ++ strategy) t)
         go own aim k locals ty g = case g of
           S.GenAny Nothing -> anyOf own aim ty
           S.GenAny (Just other) -> do
-            unless (S.baseType other == S.baseType ty || coreType other == coreType ty)
-              (Left ("the strategy " ++ strategy ++ " draws any " ++ S.prettyType other ++ " where it needs " ++ S.prettyType ty))
+            actual <- collectType bits other
+            expected <- collectType bits ty
+            unless (actual == expected)
+              (lift (Left ("the strategy " ++ strategy ++ " draws any " ++ S.prettyType other ++ " where it needs " ++ S.prettyType ty)))
             anyOf own aim ty
           -- A reference keeps its declared type and refinement. Inlining the
           -- surface body earlier lost both, and could capture a caller's bind.
           -- Harness has already checked that this reference graph is acyclic.
           S.GenNamed n -> case lookup n strategies of
-            Nothing -> Left ("the strategy " ++ n ++ " is not known here")
+            Nothing -> lift (Left ("the strategy " ++ n ++ " is not known here"))
             Just named -> do
               let (plain, refined) = case S.strategyType named of
                     S.Refined x t (Just p) -> (t, Just (S.replaceExprVars [(x, S.Var "it")] p))
                     t -> (t, Nothing)
                   body = maybe (S.strategyBody named) (\p -> S.GenSuchThat (S.strategyBody named) p 100) refined
-              actual <- coreType plain
-              expected <- coreType ty
-              unless (actual == expected) (Left ("the strategy " ++ n ++ " produces values of " ++
+              actual <- collectType bits plain
+              expected <- collectType bits ty
+              unless (actual == expected) (lift (Left ("the strategy " ++ n ++ " produces values of " ++
                 S.prettyType (S.strategyType named) ++ ", but this draw expects " ++ S.prettyType ty ++
-                "; a strategy may only produce values of its type"))
+                "; a strategy may only produce values of its type")))
               namedAim <- refinedAim k plain refined
               go plain namedAim (k + 1) [] plain body
-          S.GenOneOf values -> C.DrawOneOf <$> coreType ty <*> mapM (term locals ty) values
+          S.GenOneOf values -> C.DrawOneOf <$> collectType bits ty <*> mapM (term locals ty) values
           S.GenFrequency alternatives -> C.DrawFrequency <$> mapM (\(w, a) -> (,) w <$> go own aim k locals ty a) alternatives
           S.GenSuchThat inner p limit -> do
             inner' <- go own aim (k + 1) locals ty inner
-            core <- coreType ty
+            core <- collectType bits ty
             let binder = C.Binder (local k "it") "it" core
             predicate <- term (("it", (C.binderId binder, ty)) : locals) (S.Named "Bool") p
             pure (C.DrawSuchThat inner' binder predicate limit)
           S.GenBind x xty from body -> do
-            core <- coreType xty
+            core <- collectType bits xty
             let binder = C.Binder (local k x) x core
             from' <- go own Nothing (k + 1) locals xty from
             body' <- go own aim (k + 1) ((x, (C.binderId binder, xty)) : locals) ty body
             pure (C.DrawBind binder from' body')
         -- Only a draw of the strategy's own type aims at its refinement.
-        anyOf own aim ty = C.DrawAny <$> coreType ty <*> pure (if ty == own then aim else Nothing)
+        anyOf own aim ty = C.DrawAny <$> collectType bits ty <*> pure (if ty == own then aim else Nothing)
     -- Benchmarks, sharing and order: the harness settings beyond laws.
     unitHarnessSettings dataDeclarations _ u = case S.unitHarness u of
-      Nothing -> pure Nothing
+      Nothing -> pure (Nothing,[])
       Just h -> do
         let functionIds = [declarationId u n | (n,_) <- S.functions u]
             withAbilities = [n | (n, row) <- S.abilityRows u, not (null row)]
         benchmarks <- forM [(n, e, range) | S.HarnessBenchmark n e range <- S.harnessItems h] $ \(n, e, range) -> do
           let at = Just (spanStart range)
               failing msg = Left [Diagnostic "harness" ("benchmark `" ++ n ++ "`: " ++ msg) at]
-          t <- either failing Right
-            (elaborateResolvedWithData dataDeclarations functionIds bits (C.Id (S.unitName u ++ "::benchmark::" ++ n))
-              (declarationId u) (S.functions u) e)
-          -- A benchmark that calls what uses abilities runs under their
-          -- production handlers (the native ones, or the defaults), each
-          -- installed around it; a failure it raises fails the benchmark.
-          refs <- either failing Right (mapM (abilityReference u)
-            (nubBy (\a b -> S.prettyType a == S.prettyType b)
-              [ty | x <- S.exprVars e, x `elem` withAbilities, Just row <- [lookup x (S.abilityRows u)], ty <- row]))
-          let installed = foldr (\ref body -> body { C.expressionNode = C.Handle (C.WithHandler ref C.ProductionHandler) body })
-                t [ref | ref <- nub refs, not (C.isFail ref)]
-          pure (n, installed)
+          either failing Right $ collectRecords dataDeclarations $ do
+            t <- collectExpression False (`Set.member` Set.fromList functionIds) bits (C.Id (S.unitName u ++ "::benchmark::" ++ n))
+              (declarationId u) (monoEnvironment (S.functions u)) e
+            -- A benchmark that calls what uses abilities runs under their
+            -- production handlers (the native ones, or the defaults), each
+            -- installed around it; a failure it raises fails the benchmark.
+            refs <- mapM (collectAbilityReference bits u)
+              (nubBy (\a b -> S.prettyType a == S.prettyType b)
+                [ty | x <- S.exprVars e, x `elem` withAbilities, Just row <- [lookup x (S.abilityRows u)], ty <- row])
+            let installed = foldr (\ref body -> body { C.expressionNode = C.Handle (C.WithHandler ref C.ProductionHandler) body })
+                  t [ref | ref <- nub refs, not (C.isFail ref)]
+            pure (n, installed)
         pure (Just (C.UnitHarness (S.harnessName h)
           (not (null [() | S.HarnessOrderRandom _ <- S.harnessItems h]))
           (not (null [() | S.HarnessParallel _ <- S.harnessItems h]))
           [(r, case scope of S.SharePerGroup -> "group"; S.SharePerUnit -> "unit"; S.SharePerRun -> "run") | S.HarnessShare r scope _ <- S.harnessItems h]
-          benchmarks))
+          (map fst benchmarks)),concatMap snd benchmarks)
     numericTypes = ["Int8","Int16","Int32","Int64","UInt8","UInt16","UInt32","UInt64","IntSize","UIntSize","Integer","BigInt","BigUInt","Float32","Float64","Decimal","Rational"]
 
 -- A harness expression calls checked definitions only.
