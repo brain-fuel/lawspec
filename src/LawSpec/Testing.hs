@@ -3,6 +3,7 @@
 module LawSpec.Testing where
 import GHC.Generics (Generic)
 import LawSpec.Core
+import qualified LawSpec.Core.EqSet as EqSet
 import qualified LawSpec.Core.Verification as V
 import LawSpec.Common
 import LawSpec.Scalar
@@ -96,9 +97,13 @@ planTestingWith config program = do
       , finiteCases = if propertyInputDomain (plannedProperty p) == UniversalDomain && finiteCases p == Just [] then Just []
           else if V.selected config V.Exhaustive && finiteCases p /= Nothing then finiteCases p
           else if V.selected config V.Property then
-            if null (propertyInputs (plannedProperty p)) then finiteCases p else Nothing
+            -- A complete singleton has no varying choices. Execute that
+            -- input once, just as a law with no inputs, instead of asking a
+            -- native framework to invent distinct random samples.
+            if null (propertyInputs (plannedProperty p)) || singleton p then finiteCases p else Nothing
           else Just []
       , boundaryCases = if V.selected config V.Property then boundaryCases p else [] }
+    singleton p = case finiteCases p of Just [_] -> True; _ -> False
 
 planLowered :: Program -> Either [Diagnostic] Plan
 planLowered program@Program{..} = do
@@ -626,6 +631,13 @@ finiteValuesWithRegistry registry bits limit ty = do
             values <- walk seen element
             pure (values >>= bounded . (PresenceValue t Nothing :) . map (PresenceValue t . Just))
           Constructor _ _ | any (\(key, size) -> key == populationKey table t && size <= typeSize t) seen -> Right Nothing
+          Constructor _ [TypeArgument element] | EqSet.isEqSetType t -> do
+            members <- walk ((populationKey table t, typeSize t) : seen) element
+            case members of
+              Nothing -> pure Nothing
+              Just values -> do
+                sequences <- EqSet.finiteMemberSequences limit (equalValues bits) (nub values)
+                pure (map (\items -> DataValue t EqSet.eqSetConstructorId [listValue element items]) <$> sequences)
           Constructor _ _ -> do
             constructors <- viableConstructors registry table t
             alternatives <- mapM (\(tag,fields) -> do
@@ -653,7 +665,7 @@ hasValueContracts registry ty
     declarations = registryDeclarations registry
     -- Index guards (balanced subtrees, non-negative subtraction) constrain
     -- values just like constructor predicates.
-    own declaration = idText (dataId declaration) `elem` ["lawspec.collections::type::Set", "lawspec.collections::type::KeyVal"] ||
+    own declaration = idText (dataId declaration) `elem` ["lawspec.collections::type::Set", "lawspec.collections::type::EqSet", "lawspec.collections::type::KeyVal"] ||
       any (not . null . constructorPredicates) (dataConstructors declaration) ||
       maybe False (any (not . null . constructorIndexGuards . snd) . familyIndexConstructors) (dataIndex declaration)
     initial = M.fromList [(dataId d,(dataParameters d,(own d,[]))) | d <- declarations]

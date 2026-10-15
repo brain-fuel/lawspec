@@ -173,6 +173,14 @@ public enum Generators {
             return result
         }
         switch (t, value) {
+        case (.named("lawspec.collections::type::EqSet", _), .data(let tag, let f)):
+            if f.count == 1, case .list(let items) = f[0] {
+                var distinct = [Value]()
+                for item in items {
+                    if !distinct.contains(where: { Scalar.equal(item, $0) }) { distinct.append(item) }
+                }
+                return .data(tag, [.list(distinct)])
+            }
         case (.named("lawspec.collections::type::Set", _), .data(let tag, let f)):
             if f.count == 1, case .list(let items) = f[0] { return .data(tag, [.list(try distinctSorted(items) { $0 })]) }
         case (.named("lawspec.collections::type::KeyVal", _), .data(let tag, let f)):

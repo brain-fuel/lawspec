@@ -915,15 +915,23 @@ public final class LawSpecSchema {
 
   private static final String COLLECTIONS = "lawspec.collections::type::";
 
-  /** Whether a type's values keep sorted, distinct items (a Set) or keys (a KeyVal). */
+  /** Whether a collection's generated storage requires duplicate detection or ordering. */
   public static boolean canonicalCollection(String name) {
-    return name.equals(COLLECTIONS + "Set") || name.equals(COLLECTIONS + "KeyVal");
+    return name.equals(COLLECTIONS + "Set") || name.equals(COLLECTIONS + "EqSet") || name.equals(COLLECTIONS + "KeyVal");
   }
 
-  /** A Set or KeyVal with its items sorted by key, keeping the last of equal keys. */
+  /** Canonical generation: equality-based sets retain first arrivals; ordered collections sort. */
   public static Value canonical(Value collection) {
     var data = (Data) collection.data();
     var list = data.fields().get(0);
+    if (collection.type().startsWith(COLLECTIONS + "EqSet")) {
+      var distinct = new ArrayList<Value>();
+      for (var item : (List<?>) list.data()) {
+        var member = (Value) item;
+        if (distinct.stream().noneMatch(prior -> LawSpecRuntime.equal(member, prior))) distinct.add(member);
+      }
+      return new Value(collection.type(), new Data(data.tag(), List.of(new Value(list.type(), List.copyOf(distinct)))));
+    }
     boolean keyed = collection.type().startsWith(COLLECTIONS + "KeyVal");
     Function<Value, Value> key = item -> keyed ? ((Data) item.data()).fields().get(0) : item;
     var items = new ArrayList<Value>();

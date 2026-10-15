@@ -162,12 +162,21 @@ with_witnesses(F, Native, Witnesses) ->
 %% Sorting and deduplication map the native tree, so every shrink remains a
 %% canonical collection. A custom native factory is validated without repair.
 %% ref:DEC-native-property-frameworks ref:DEC-shrink-within-domain
+canonical({<<"lawspec.collections::type::EqSet">>, _}, {ls_data, Tag, [Items]}) ->
+    {ls_data, Tag, [distinct_equal(Items, [])]};
 canonical({<<"lawspec.collections::type::Set">>, _}, {ls_data, Tag, [Items]}) ->
     {ls_data, Tag, [lists:usort(fun(A, B) -> lawspec_beam_scalar:compare(A, B) =< 0 end, Items)]};
 canonical({<<"lawspec.collections::type::KeyVal">>, _}, {ls_data, Tag, [Entries]}) ->
     {ls_data, Tag, [lists:usort(fun({ls_data, _, [A, _]}, {ls_data, _, [B, _]}) ->
         lawspec_beam_scalar:compare(A, B) =< 0 end, Entries)]};
 canonical(_, Value) -> Value.
+
+distinct_equal([], Previous) -> lists:reverse(Previous);
+distinct_equal([Item | Rest], Previous) ->
+    case lists:any(fun(Prior) -> lawspec_beam_scalar:equal(Item, Prior) end, Previous) of
+        true -> distinct_equal(Rest, Previous);
+        false -> distinct_equal(Rest, [Item | Previous])
+    end.
 
 accepted(V, T, S) ->
     try lawspec_beam_schema:validate(V, T, S), true catch

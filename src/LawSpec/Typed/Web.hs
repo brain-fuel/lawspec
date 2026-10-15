@@ -237,7 +237,8 @@ classDoc env d
                D.text ("export class " ++ name ++ generics ++ " ") <> braces
                  (declarations ++ [D.text ("constructor(" ++ intercalate ", " params ++ ") ") <> braces assignments])
           union = [ D.text ("export type " ++ envClasses env M.! dataId d ++ generics ++ " = " ++
-                      intercalate " | " [envClasses env M.! constructorId c ++ generics | c <- dataConstructors d] ++ ";")
+                      (if null (dataConstructors d) then "never" else
+                        intercalate " | " [envClasses env M.! constructorId c ++ generics | c <- dataConstructors d]) ++ ";")
                   | envTs env, not (isProductType d) ]
       pure (map variant (dataConstructors d) ++ union)
   where

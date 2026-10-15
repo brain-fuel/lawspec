@@ -173,6 +173,19 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
                     if constructor.predicates:
                         values = values.filter(lambda value: valid(ty, value))
                     alternatives.append(values)
+            if ty.name == "lawspec.collections::type::EqSet":
+                def distinct(value):
+                    items = []
+                    try:
+                        for item in value.fields[0]:
+                            if not any(schema.equal(ty.arguments[0], item, prior,
+                                                    bits, symbols) for prior in items):
+                                items.append(item)
+                    except RefinementViolation:
+                        return value
+                    return ls.DataValue(value.tag, (items,))
+                return st.one_of(*alternatives).map(distinct).filter(
+                    lambda value: valid(ty, value))
             if ty.name in CANONICAL:
                 return st.one_of(*alternatives).map(CANONICAL[ty.name])
             return st.one_of(*alternatives)

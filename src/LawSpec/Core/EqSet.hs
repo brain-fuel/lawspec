@@ -3,10 +3,13 @@
 -- that order. The existing ordered collection remains a distinct type.
 module LawSpec.Core.EqSet
   ( eqSetTypeId, eqSetConstructorId, eqSetDeclaration, isEqSetType
-  , validateEqSetDeclaration, sameMembers, distinctMembers
+  , validateEqSetDeclaration, sameMembers, distinctMembers, finiteMemberSequences
   ) where
 
-import Control.Monad (unless)
+import Control.Monad (unless, when, forM, filterM)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Except (runExceptT, throwE)
+import Control.Monad.Trans.State.Strict (evalStateT, get, modify)
 import LawSpec.Core
 
 eqSetTypeId, eqSetConstructorId :: Id
@@ -79,3 +82,25 @@ distinctMembers equal = go []
     member value (candidate:rest) = do
       same <- equal value candidate
       if same then pure True else member value rest
+
+
+-- | Every observable duplicate-free storage sequence over a finite element
+-- domain. Equal but differently stored elements remain separate choices, and
+-- all iteration orders remain observable. A non-reflexive element can repeat
+-- without a duplicate, so its complete set-storage domain is unbounded.
+-- The shared output budget stops traversal before factorial materialization.
+finiteMemberSequences :: Monad m => Int -> (a -> a -> m Bool) -> [a] -> m (Maybe [[a]])
+finiteMemberSequences limit equal values = do
+  reflexive <- and <$> mapM (\value -> equal value value) values
+  if not reflexive then pure Nothing else do
+    result <- evalStateT (runExceptT (visit [] values)) 0
+    pure (either (const Nothing) Just result)
+  where
+    visit prefix remaining = do
+      used <- lift get
+      when (used >= limit) (throwE ())
+      lift (modify (+1))
+      branches <- forM remaining $ \value -> do
+        available <- lift (lift (filterM (\candidate -> not <$> equal candidate value) remaining))
+        visit (value:prefix) available
+      pure (reverse prefix : concat branches)

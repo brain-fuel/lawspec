@@ -268,6 +268,22 @@ export function strategy(
       }
       result = fc.oneof({withCrossShrink: true}, ...alternatives);
       if (CANONICAL[type.name]) result = result.map(CANONICAL[type.name]);
+      if (type.name === 'lawspec.collections::type::EqSet') {
+        result = result.map((value) => {
+          const distinct = [];
+          try {
+            for (const item of value.fields[0]) {
+              if (!distinct.some(prior => schema.equal(type.args[0], item, prior, bits, symbols))) distinct.push(item);
+            }
+          } catch (error) {
+            // The complete candidate's existing bounded contract check rejects
+            // invalid members; a map must not swallow shape or evaluation errors.
+            if (error instanceof RefinementViolation) return value;
+            throw error;
+          }
+          return new ls.DataValue(value.tag, [distinct]);
+        });
+      }
     } else if (type.args.length === 0) {
       result = scalar(type.name).map((value) =>
           schema.validate(type, value, bits, symbols),

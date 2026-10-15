@@ -1,0 +1,9 @@
+rejected-at: generation
+expect: refuted
+expect: both iteration orders are available
+@@ test/fixtures/canonical-set-domains.lawspec
+<<<<<<<
+prelude.toList members = [true, false]
+=======
+prelude.toList members = [true, true]
+>>>>>>>

@@ -1,0 +1,9 @@
+rejected-at: generation
+expect: refuted
+expect: Boolean sets contain at most two members
+@@ test/fixtures/canonical-set-domains.lawspec
+<<<<<<<
+prelude.size members <= 2
+=======
+prelude.size members <= 1
+>>>>>>>

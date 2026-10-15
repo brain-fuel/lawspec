@@ -290,6 +290,8 @@ extra-source-files:
     examples/rc1/nesting/uur.lawspec
     examples/rc1/nesting/uuu.lawspec
     test/fixtures/blake3-256.json
+    test/fixtures/canonical-set-domains.lawspec
+    test/fixtures/canonical-set-generation.lawspec
     test/fixtures/canonical-set-literals.lawspec
     test/fixtures/canonical-sets.lawspec
     test/fixtures/constructor_boundaries.lawspec

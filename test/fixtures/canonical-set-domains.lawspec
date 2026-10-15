@@ -1,0 +1,71 @@
+unit example.set_domains
+
+type Empty is one of
+end type
+
+law "|Boolean sets contain at most two members| is
+  definition:
+    for all (members of type Set Bool) =>
+      prelude.size members <= 2
+    end
+  end
+  expect prelude.toList members = expected
+  in table (members, expected):
+    row #S{}, []
+    row #S{false}, [false]
+    row #S{true}, [true]
+    row #S{false, true}, [false, true]
+    row #S{true, false}, [true, false]
+  end
+end
+
+law "|both iteration orders are available| is
+  definition:
+    there exists (members of type Set Bool) such that
+      prelude.toList members = [true, false]
+    end
+  end
+end
+
+law "|union agrees on members in either order| is
+  definition:
+    for all (left of type Set Bool) (right of type Set Bool) =>
+      prelude.union left right = prelude.union right left
+    end
+  end
+end
+
+law "|dependent set domains retain their restrictions| is
+  definition:
+    for all (left of type Set Bool)
+      (right of type Set Bool where prelude.size right <= prelude.size left) =>
+      prelude.size right <= prelude.size left
+    end
+  end
+end
+
+law "|nested Boolean sets contain at most four membership classes| is
+  definition:
+    for all (members of type Set (Set Bool)) =>
+      prelude.size members <= 4
+    end
+  end
+end
+
+law "|an empty element domain admits only an empty set| is
+  definition:
+    for all (members of type Set Empty) => prelude.size members = 0 end
+  end
+end
+
+law "|unit sets contain at most one member| is
+  definition:
+    for all (members of type Set ()) => prelude.size members <= 1 end
+  end
+end
+
+law "|optional Boolean sets contain at most three members| is
+  definition:
+    for all (members of type Set (Maybe Bool)) => prelude.size members <= 3 end
+  end
+end

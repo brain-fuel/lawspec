@@ -633,6 +633,22 @@ fn shape_strategy_with_generators(
                 let union = proptest::strategy::Union::new(alternatives).boxed();
                 // Generated collections are canonicalised rather than filtered.
                 match ty {
+                    ls::TypeRef::Named(name, _) if *name == "lawspec.collections::type::EqSet" =>
+                        union.prop_map(|value| match value {
+                            Value::Data(tag, mut fields) if fields.len() == 1 => match fields.pop().unwrap() {
+                                Value::List(items) => {
+                                    let mut distinct = Vec::new();
+                                    for item in items {
+                                        if !distinct.iter().any(|prior| ls::equal(&item, prior).expect("generated set members share their checked type")) {
+                                            distinct.push(item);
+                                        }
+                                    }
+                                    Value::Data(tag, vec![Value::List(distinct)])
+                                }
+                                other => Value::Data(tag, vec![other]),
+                            },
+                            other => other,
+                        }).boxed(),
                     ls::TypeRef::Named(name, _)
                         if name.starts_with(ls::COLLECTIONS) && (name.ends_with("::Set") || name.ends_with("::KeyVal")) =>
                     {

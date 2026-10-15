@@ -11,13 +11,47 @@ import LawSpec.Core.Verification (Verification(..),Layer(..))
 import LawSpec.Discharge (dischargeEvidenceWith)
 import LawSpec.Frontend (compileCoreCanonical)
 import LawSpec.Model (Source(..),defaultGeneration,code)
-import LawSpec.Testing (planTestingWith)
+import LawSpec.Testing (planTestingWith,Plan(..),PlannedUnit(..),PlannedProperty(..))
+import LawSpec.Core.Evidence (Obligation(..),Status(..))
 import LawSpec.SourceText (formatSource)
 
 compile bits text = compileCoreCanonical bits defaultGeneration [Source "canonical-sets.lawspec" text]
 body text = compile 64 ("unit collections\n" ++ text)
 
 test_canonicalCollections = describe "canonical collections" $ do
+  it "checks complete finite set domains without discarding stored iteration orders" $ do
+    source <- readFile "test/fixtures/canonical-set-domains.lawspec"
+    forM_ [32,64] $ \bits -> case compile bits source of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        fmap (map obligationStatus . filter ((== "law") . obligationStage))
+          (dischargeEvidenceWith (Verification [Exhaustive,Examples]) program)
+          `shouldBe` Right (replicate 8 ExhaustivelyChecked)
+        case planTestingWith (Verification [Exhaustive,Examples]) program of
+          Left ds -> expectationFailure (show ds)
+          Right plan -> do
+            [length values | unit <- plannedUnits plan, property <- plannedProperties unit,
+              Just values <- [finiteCases property]] `shouldBe` [5,1,25,17,114,1,2,16]
+            forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
+  it "runs a complete singleton once without promoting planned property evidence" $ do
+    source <- readFile "test/fixtures/canonical-set-domains.lawspec"
+    case compile 64 source of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        fmap (map obligationStatus . filter ((== "law") . obligationStage))
+          (dischargeEvidenceWith (Verification [Property,Examples]) program)
+          `shouldBe` Right (replicate 8 Planned)
+        case planTestingWith (Verification [Property,Examples]) program of
+          Left ds -> expectationFailure (show ds)
+          Right plan -> [fmap length (finiteCases property) | unit <- plannedUnits plan,
+            property <- plannedProperties unit] `shouldBe`
+              [Nothing,Just 1,Nothing,Nothing,Nothing,Just 1,Nothing,Nothing]
+  it "retains incomplete coverage for an unbounded floating set domain" $ do
+    case body "law selected is definition: for all (members :: Set Float64) => prelude.size members >= 0 end end end" of
+      Left ds -> expectationFailure (show ds)
+      Right program -> case planTestingWith (Verification [Exhaustive]) program of
+        Left ds -> map code ds `shouldContain` ["verification-incomplete"]
+        Right _ -> expectationFailure "an unbounded IEEE set domain became a complete cover"
   it "elaborates primitive set notation in expressions, records, alternatives, examples and tables" $ do
     source <- readFile "test/fixtures/canonical-set-literals.lawspec"
     forM_ [32,64] $ \bits -> case compile bits source of

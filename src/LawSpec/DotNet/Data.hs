@@ -317,11 +317,23 @@ emitData FSharp layout bits bound declarations
       let ps = [("t" ++ show i, typeParameter FSharp i) | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
           self = name ++ typeParams d
           header = "[<CompiledName(\"" ++ name ++ "\")>] " ++ escapeFSharp (camel name) ++ typeParams d ++ " " ++ (if null ps then "()" else unwords ["(" ++ n ++ ": Codec<" ++ p ++ ">)" | (n, p) <- ps]) ++ " : Codec<" ++ self ++ "> ="
-      pure (D.text header <> D.nest 4 (D.hardline <>
+      if null cases then pure (D.text header <> D.nest 4 (D.hardline <>
+        D.text ("{ ToNative = fun _ -> Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp (name ++ " has no values")) <> D.hardline <>
+        D.text ("  FromNative = fun _ -> Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp (name ++ " has no values") ++ " }")))
+      else pure (D.text header <> D.nest 4 (D.hardline <>
         D.text "{ ToNative =" <> D.nest 4 (D.hardline <> D.text "fun value ->" <> D.nest 4 (D.hardline <> D.text "match value with" <> D.hardline <>
           D.joinWith D.hardline (map (D.text . fst) cases) <> D.hardline <> D.text ("| _ -> Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp name))) <> D.hardline <>
         D.text "  FromNative =" <> D.nest 4 (D.hardline <> D.text ("fun (native: " ++ self ++ ") ->") <> D.nest 4 (D.hardline <> D.text "match native with" <> D.hardline <>
           D.joinWith D.hardline (map (D.text . snd) cases))) <> D.text " }"))
+    fsharpType _ s | null (shapeCases s) = do
+      let params = if null (shapeParameters s) then "" else "<" ++ intercalate ", " (map snd (shapeParameters s)) ++ ">"
+      pure ("/// " ++ C.idText (C.dataId (shapeDeclaration s)), "[<Sealed>]",
+        D.text (shapeName s ++ params ++ " private () =") <> D.nest 4 (D.hardline <>
+          D.text ("override _.Equals(_: obj) = invalidOp " ++ stringLiteral FSharp (shapeName s ++ " has no values")) <> D.hardline <>
+          D.text ("override _.GetHashCode() = invalidOp " ++ stringLiteral FSharp (shapeName s ++ " has no values")) <> D.hardline <>
+          D.text "interface Portable.IPortable" <> D.hardline <>
+          D.text "interface System.IComparable with" <> D.nest 4 (D.hardline <>
+            D.text ("member _.CompareTo(_: obj) = invalidOp " ++ stringLiteral FSharp (shapeName s ++ " has no values")))))
     fsharpType names s = do
       let compared = comparedParameters declarations (C.dataId (shapeDeclaration s))
           constraint ps = case [p | (i, (_, p)) <- zip [0 :: Int ..] ps, i `elem` compared] of
@@ -399,7 +411,10 @@ emitData FSharp layout bits bound declarations
             [] -> ""
             cs -> " when " ++ intercalate " and " [c ++ ": comparison" | c <- cs]
           header = "[<CompiledName(\"" ++ shapeName s ++ "\")>] " ++ escapeFSharp (camel (shapeName s)) ++ (if null params then "" else "<" ++ intercalate ", " (map snd params) ++ constraint ++ ">") ++ " " ++ (if null params then "()" else unwords ["(" ++ n ++ ": Codec<" ++ p ++ ">)" | (n, p) <- params]) ++ " : Codec<" ++ self ++ "> ="
-      pure (D.text header <> D.nest 4 (D.hardline <>
+      if null (shapeCases s) then pure (D.text header <> D.nest 4 (D.hardline <>
+        D.text ("{ ToNative = fun _ -> Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp (shapeName s ++ " has no values")) <> D.hardline <>
+        D.text ("  FromNative = fun _ -> Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp (shapeName s ++ " has no values") ++ " }")))
+      else pure (D.text header <> D.nest 4 (D.hardline <>
         D.text "{ ToNative =" <> D.nest 4 (D.hardline <> D.text "fun value ->" <> D.nest 4 (D.hardline <> D.text "match value with" <> D.hardline <>
           D.joinWith D.hardline (map fst cases) <> D.hardline <> D.text ("| _ -> Fail.raiseWith \"InvalidNativeValue\" " ++ stringLiteral FSharp (shapeName s)))) <> D.hardline <>
         D.text "  FromNative =" <> D.nest 4 (D.hardline <> D.text "fun native ->" <> D.nest 4 (D.hardline <> D.text "match native with" <> D.hardline <>

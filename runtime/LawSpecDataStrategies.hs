@@ -213,6 +213,7 @@ buildStrategyWith factories schema reference bits budget scalar finish = do
           generator <- concat <$> mapM (witnessVariants available) variants >>= alternatives
           -- Generated collections are canonicalised rather than filtered.
           pure (case ty of
+            S.Named "lawspec.collections::type::EqSet" _ -> fmap (fmap canonicalEqSet) generator
             S.Named name _ | name `elem` ["lawspec.collections::type::Set", "lawspec.collections::type::KeyVal"] ->
               fmap (fmap (canonical (name == "lawspec.collections::type::KeyVal"))) generator
             _ -> generator)
@@ -441,3 +442,11 @@ canonical :: Bool -> LS.Scalar -> LS.Scalar
 canonical keyed value = case value of
   LS.SData tag [LS.SList items] -> LS.SData tag [LS.SList (LS.canonicalItems keyed items)]
   _ -> value
+
+-- | Preserve the first stored representation of each language-equal member.
+canonicalEqSet :: LS.Scalar -> LS.Scalar
+canonicalEqSet value = case value of
+  LS.SData tag [LS.SList items] -> LS.SData tag [LS.SList (reverse (foldl retain [] items))]
+  _ -> value
+  where
+    retain previous item = if any (LS.equal item) previous then previous else item : previous

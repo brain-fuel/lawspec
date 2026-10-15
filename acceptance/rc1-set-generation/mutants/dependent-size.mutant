@@ -1,0 +1,11 @@
+expect: dependent set domains retain their restrictions
+@@ test/fixtures/canonical-set-domains.lawspec
+<<<<<<<
+=>
+      prelude.size right <= prelude.size left
+    end
+=======
+=>
+      prelude.size right = prelude.size left
+    end
+>>>>>>>

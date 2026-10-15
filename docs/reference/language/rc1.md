@@ -591,9 +591,13 @@ storage fields are private. User sources cannot replace compiler-owned units.
 
 Local declarations and explicit imports take precedence over implicit collection
 names. Native metadata distinguishes `Set` from `SortedSet`; canonical set
-values use checked data storage. Complete set-input generation, generalized
-membership over finite collections, native adapter coverage and validated
-project-wide migration remain required. A finite example does not prove a law
+values use checked data storage. Complete finite set checks preserve every
+observable storage order: five inputs for `Set Bool` and 114 for
+`Set (Set Bool)`. Insufficient budgets and unavailable or non-reflexive element
+domains retain incomplete coverage. Property generation and shrinking retain
+checked element and dependent restrictions; planned tests remain planned.
+Generalized membership over finite collections, native adapter coverage and
+validated project-wide migration remain required. A finite example does not prove a law
 over all sets. The review packet tracks all remaining gates.
 
 The implemented syntax below describes the canonical frontend entry point.

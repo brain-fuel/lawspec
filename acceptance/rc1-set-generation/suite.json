@@ -1,0 +1,8 @@
+{
+  "specs": [
+    "test/fixtures/canonical-set-domains.lawspec",
+    "test/fixtures/canonical-set-generation.lawspec"
+  ],
+  "languageProfile": "1.0-rc.1",
+  "verification": {"layers": ["property", "examples"]}
+}

@@ -13,6 +13,16 @@ stored elements and detects duplicates. These operations do not require an
 order. Iteration with `prelude.toList`, size and emptiness do not compare
 elements and need no `Eq` requirement. Set equality ignores iteration order.
 
+| Operation on `Set a` | Required capability |
+| --- | --- |
+| Construction, membership, insertion, removal, union, intersection, difference, equality | `Eq a` |
+| Iteration, size, emptiness, accepting or returning an existing set | None for its elements |
+
+For a concrete element type, the compiler resolves equality automatically.
+A generic function that tests membership must declare `requires Eq a`.
+Membership always requires equality; the canonical set removes the additional
+ordering requirement imposed by the old `Keyed` representation.
+
 Use `#S{3, 1, 3}` or `prelude.setOf [3, 1, 3]`; iteration produces `[3, 1]`.
 Use `SortedSet a` and `prelude.sortedSetOf` when portable sorted iteration is
 required. Its elements require `Keyed a`. Keyed maps retain their requirements.
@@ -21,7 +31,19 @@ IEEE equality is preserved: signed zeros compare equal, and a NaN is unequal
 to itself. A stored NaN therefore does not make membership of that NaN true.
 Canonical set values use the checked data representation on all targets; the
 legacy native collection mappings below describe the ordered representation.
-Complete set-input generation and project-wide migration remain unfinished.
+Complete finite checking includes every observable storage order. `Set Bool`
+has five inputs: the empty set, each singleton, and both orders of the two
+Boolean members. `Set (Set Bool)` has 114 stored inputs: equal inner sets
+retain their distinct iteration orders, but cannot coexist as duplicate outer
+members. Enumeration reports incomplete coverage when the configured limit
+is insufficient or the element domain is unavailable. A non-reflexive
+member can repeat without comparing equal, so its storage domain is unbounded.
+
+Property checking selects sampled native generation and shrinking; planning
+those checks supplies no completed verification evidence. A complete singleton
+input runs once. Each candidate and shrink must still satisfy element and
+dependent input restrictions. Project-wide migration and native adapter
+coverage remain unfinished.
 
 ## Version 0.24 reference
 

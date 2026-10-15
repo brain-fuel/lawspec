@@ -678,7 +678,15 @@ public final class LawSpecDataStrategies {
           if (budgets == null) continue;
           var children = new ArrayList<Generator<Value>>();
           for (int i = 0; i < fields.size(); i++) {
-            children.add(generate((Named) fields.get(i).type(), budgets.get(i)));
+            var fieldType = (Named) fields.get(i).type();
+            int cost = budgets.get(i);
+            var child = generate(fieldType, cost);
+            // Keep empty and small sets observable as the structural budget
+            // grows; deduplicating long lists otherwise saturates finite domains.
+            if (type.name().equals("lawspec.collections::type::EqSet") && cost > 3) {
+              child = Generator.anyOf(generate(fieldType, 3), child);
+            }
+            children.add(child);
           }
           var keys = choice.keys();
           variants.add(
@@ -687,7 +695,7 @@ public final class LawSpecDataStrategies {
                     var values = new ArrayList<Value>();
                     for (var child : children) values.add(environment.generate(child));
                     for (var key : keys) values.add(LawSpecSchema.witnessText(key));
-                    return unchecked
+                    return unchecked || type.name().equals("lawspec.collections::type::EqSet")
                         ? new Value(LawSpecSchema.key(type), new Data(tag, List.copyOf(values)))
                         : schema.construct(type, tag, values, bits);
                   }));

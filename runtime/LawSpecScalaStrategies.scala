@@ -387,11 +387,18 @@ object LawSpecScalaStrategies:
               val fields = instance.fields().asScala.toList
               val witnessValues = instance.keys().asScala.toList.map(LawSpecSchema.witnessText)
               allocation(fields, available - 1).map { costs =>
-                val children = fields.zip(costs).map((field, cost) => build(field.`type`().asInstanceOf[Named], cost).get)
+                val children = fields.zip(costs).map { (field, cost) =>
+                  val fieldType = field.`type`().asInstanceOf[Named]
+                  val child = build(fieldType, cost).get
+                  // Retain small sets as growing raw lists saturate finite domains.
+                  if tpe.name() == "lawspec.collections::type::EqSet" && cost > 3 then
+                    Arb.choice(build(fieldType, 3).get, child)
+                  else child
+                }
                 val product = children.foldLeft(Arb.constant(List.empty[Value]))((prior, child) => Arb.bind(prior, child)(_ :+ _))
                 product.map(_ ++ witnessValues).map { values =>
                   val value =
-                    if symbols == null then schema.construct(tpe, tag, values.asJava, bits)
+                    if symbols == null && tpe.name() != "lawspec.collections::type::EqSet" then schema.construct(tpe, tag, values.asJava, bits)
                     else Value(LawSpecSchema.key(tpe), Data(tag, values.asJava))
                   // Generated collections are canonicalised rather than filtered.
                   if LawSpecSchema.canonicalCollection(tpe.name()) then LawSpecSchema.canonical(value) else value

@@ -4,7 +4,7 @@ module EqSetSpec (test_eqOnlySetsPreserveMembershipAndIteration) where
 
 import Control.Monad (forM_)
 import Data.Either (isLeft,isRight)
-import Data.List (permutations)
+import Data.List (permutations, subsequences, nub)
 import qualified Data.Map.Strict as M
 import Test.Hspec
 import LawSpec.Core
@@ -17,7 +17,7 @@ import qualified LawSpec.Typed.Plan as Typed
 import LawSpec.Frontend (compileCore)
 import qualified LawSpec.Model as Source
 import LawSpec.Discharge (dischargeEvidence)
-import LawSpec.Testing (planTesting)
+import LawSpec.Testing (planTesting, finiteValuesWithRegistry)
 import LawSpec.CoreEmit (emitPlan,targets)
 
 origin :: Origin
@@ -137,6 +137,42 @@ test_eqOnlySetsPreserveMembershipAndIteration = describe "Eq-only set Core seman
         plan = Typed.typedPlan [Set.eqSetDeclaration] [unit]
     M.member (Id "setIdentity") (Typed.typedDefinitions plan) `shouldBe` False
     M.member (Id "integerIdentity") (Typed.typedDefinitions plan) `shouldBe` True
+  it "enumerates every Boolean storage order and respects exact expansion budgets" $ do
+    r <- registry []
+    let boolean = scalarType "Bool"
+        value = set boolean . map (ScalarValue . SBool)
+        expected = map value [[],[False],[True],[False,True],[True,False]]
+    forM_ [32,64] $ \bits -> do
+      finiteValuesWithRegistry r bits 5 (setType boolean) `shouldSatisfy`
+        (\result -> case result of Right (Just values) -> length values == 5 && all (`elem` values) expected; _ -> False)
+      finiteValuesWithRegistry r bits 4 (setType boolean) `shouldBe` Right Nothing
+      finiteValuesWithRegistry r bits 0 (setType boolean) `shouldBe` Right Nothing
+  it "preserves equal elements with different stored orders in nested finite sets" $ do
+    r <- registry []
+    let boolean = scalarType "Bool"
+        orders = [[],[False],[True],[False,True],[True,False]]
+        masks = map (sum . map (\b -> if b then 2 else 1)) orders
+        indexes = [xs | chosen <- subsequences [0..4], xs <- permutations chosen,
+          let keys = map (masks !!) xs, length keys == length (nub keys)]
+        inner = map (set boolean . map (ScalarValue . SBool)) orders
+        expected = [set (setType boolean) (map (inner !!) xs) | xs <- indexes]
+    length expected `shouldBe` 114
+    case finiteValuesWithRegistry r 64 114 (setType (setType boolean)) of
+      Right (Just values) -> values `shouldMatchList` expected
+      other -> expectationFailure (show other)
+    finiteValuesWithRegistry r 64 113 (setType (setType boolean)) `shouldBe` Right Nothing
+  it "retains the empty set over an empty element type" $ do
+    let empty = DataDeclaration (Id "Empty") "Empty" [] [] origin Nothing
+        ty = Constructor "Empty" []
+    r <- registry [empty]
+    finiteValuesWithRegistry r 64 1 (setType ty) `shouldBe` Right (Just [set ty []])
+  it "never presents non-reflexive repetition or a bounded prefix as a complete domain" $ do
+    let equal a b = Right (a == b && a /= (0 :: Int)) :: Either String Bool
+    Set.finiteMemberSequences 100 equal [0,1] `shouldBe` Right Nothing
+    Set.finiteMemberSequences 1 equal [] `shouldBe` Right (Just [[]])
+    Set.finiteMemberSequences 0 equal [] `shouldBe` Right Nothing
+    Set.finiteMemberSequences 100 (\_ _ -> Left "comparison failed" :: Either String Bool) [1 :: Int]
+      `shouldBe` Left "comparison failed"
   it "checks the internal representation's outcome laws and emits every target" $ do
     content <- readFile "test/fixtures/eq-set-foundation.lawspec"
     forM_ [32,64] $ \bits ->

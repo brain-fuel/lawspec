@@ -794,7 +794,7 @@ publicDoc env declarations d = do
       toArm c = line (typedPattern c ++ " => " ++ nativeRecord c ["f" ++ show k ++ ".to_native()" | k <- [0 .. length (constructorFields c) - 1]] ++ ",")
       fromArm c = line (nativeRecord c [ "f" ++ show k | k <- [0 .. length (constructorFields c) - 1]] ++ " => " ++
         typedOf c ["ls::fast::Public::from_native(f" ++ show k ++ ")" | k <- [0 .. length (constructorFields c) - 1]] ++ ",")
-      scrutinee = if fieldless d then "self" else "&*self.0"
+      scrutinee = if null variants then "*self" else if fieldless d then "self" else "&*self.0"
   pure (line ("impl" ++ bounded ++ " ls::fast::Public for " ++ name ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
     [ line ("type Native = " ++ native ++ ";")
     , line "fn to_native(&self) -> Self::Native " <> D.block 4 (line ("match " ++ scrutinee ++ " ") <> D.block 4 (D.joinWith D.hardline (map toArm variants)))

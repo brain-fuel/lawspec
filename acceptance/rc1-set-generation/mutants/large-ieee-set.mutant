@@ -1,0 +1,7 @@
+expect: insertion lookup preserves IEEE equality
+@@ test/fixtures/canonical-set-generation.lawspec
+<<<<<<<
+prelude.member value (prelude.insert value members) = (value = value)
+=======
+prelude.member value (prelude.insert value members) = ((value = value) and prelude.size members <= 8)
+>>>>>>>
