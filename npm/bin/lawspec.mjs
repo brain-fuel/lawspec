@@ -153,7 +153,7 @@ async function migrateCommand() {
     "migration-incomplete: writing requires validated source, constructor and native binding transformations; no files were written"),
     { diagnostics: [{ code: "migration-incomplete", message: report.blockers.join(" "), at: null }] });
   output(options.json ? report : `Read-only migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` +
-    report.blockers.join("\n") + "\nNo files were written. Use --json to review the typed baseline and proposed configuration.");
+    report.blockers.join("\n") + "\nNo files were written. Use --json to review the typed baseline, source-edit preview and proposed configuration. The source preview is not a validated project migration.");
 }
 
 async function formatCommand() {

@@ -9,6 +9,32 @@ This page records how the compiler API has changed, for clients upgrading from
 earlier versions. The current protocol is specified in the
 [API reference](../reference/api.md).
 
+## Source migration from 0.24
+
+`lawspec migrate --from 0.24 --json` reports the checked legacy declarations,
+laws, constructor payloads and native bindings, together with a proposed
+version-2 configuration preserving the selected law checks. The report remains
+read-only.
+
+`sourcePreview` now includes planned edits for checked computation declarations,
+their result arrows and named closers, conditional closers, and ordinary text
+literals beginning with the reserved `"|` sequence. Effect rows determine
+`function` versus `procedure`. Edits use the compiler's original source spans;
+comments and other literal contents remain intact. Each source includes the
+original UTF-16 offset ranges, replacement text and retained-source segments
+for reviewing the changes.
+
+Legacy `==` edits use checked equality-expression operands and their source
+ranges, including Boolean values, IEEE values and refinement predicates.
+Occurrences inside comments or text literals keep their original spelling.
+
+This preview is a step toward the complete project transformation. The report
+keeps `validated: false` and lists the remaining correspondence gates.
+`--write` reports `migration-incomplete` and writes nothing until the complete
+source, constructor and native-binding transformation passes project-wide
+semantic and generated-behavior validation. The current authoring syntax is
+specified in the [minor-version contract](../reference/language/rc1.md).
+
 ## Schema 2 to schema 3 (0.8.0)
 
 Schema 3 replaced serialized internal Haskell constructors with explicitly
