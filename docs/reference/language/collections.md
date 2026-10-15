@@ -45,6 +45,49 @@ input runs once. Each candidate and shrink must still satisfy element and
 dependent input restrictions. Project-wide migration and native adapter
 coverage remain unfinished.
 
+## Membership and predicates
+
+Canonical membership accepts a List, Set, SortedSet, Queue, Stack, Deque or
+Bytes. Bytes expose octets of type UInt8. These forms have the same meaning:
+
+```text
+prelude.member value members
+value in members
+value is in members
+value must be in members
+```
+
+Membership requires `Eq` for the element type and uses language equality.
+It evaluates the candidate and collection once, in that order. Comparisons
+stop at the first equal element. `not (value in members)` negates the result.
+Membership is nonassociative; parenthesize larger Boolean expressions.
+
+`prelude.any predicate members` asks whether a Boolean predicate holds for
+at least one element. It visits elements in iteration order and stops at the
+first true result; an empty collection gives false. It needs no element `Eq`
+unless the predicate itself compares elements. Named and partially applied
+checked functions can supply the predicate. Captured arguments are evaluated
+once before iteration, including when the collection is empty. Mandatory
+checks still reject undefined arguments or invalid predicate definitions
+when no optional law verification is selected.
+
+Literal collections take their element type from a candidate or predicate.
+For example, a Float64 predicate gives `[1.0, 2.0]` Float64 elements.
+Computed collections retain their own types; the operation does not silently
+convert Decimal data into floating-point data or unwrap nominal types.
+
+Maps select their domain explicitly with `prelude.keys`, `prelude.values` or
+`prelude.entries`. Passing a map directly to membership or `any` is an error.
+Sized stacks and queues expose their checked `prelude.sizedStackItems` and
+`prelude.sizedQueueItems` operations; use those lists for membership or `any`.
+Text substring matching remains explicit, for example `text contains fragment`.
+Membership does not add text normalization, case folding or word boundaries.
+
+The [native membership fixture](../../../test/fixtures/canonical-collection-membership.lawspec)
+exercises these forms, IEEE equality, map selections and dependent sized
+operations. Law verification remains independently selected: a planned native
+predicate test is not a completed proof or exhaustive verification.
+
 ## Version 0.24 reference
 
 The remainder of this page describes version 0.24 source. Its ordered `Set`

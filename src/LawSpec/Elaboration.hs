@@ -327,7 +327,7 @@ lowerResolvedTree context projections dataTypes declared bits origin resolve typ
         _ -> Left "invalid typed payload predicate"
       S.AllElementsExpr _ _ _ -> case (operands,cases) of
         ([value],[S.TypedCase _ [(name,fieldType)] predicate]) -> do
-          scrutinee <- lower value
+          scrutinee <- lower value >>= collectionItems
           binder <- C.Binder (C.Id (C.idText origin ++ "::match::" ++ show (length bound) ++ "::element::" ++ name)) name <$> coreType fieldType
           body <- lowerWith ((name,C.binderId binder):bound) predicate
           pure (node t (C.AllElements scrutinee binder body))
@@ -425,6 +425,7 @@ lowerResolvedTree context projections dataTypes declared bits origin resolve typ
   -- A collection's items: its single constructor's field.
   collectionItems x = case C.expressionType x of
     C.Constructor "List" _ -> pure x
+    C.Constructor "Bytes" [] -> pure (node (C.Constructor "List" [C.TypeArgument (C.scalarType "UInt8")]) (C.Helper C.Octets [x]))
     C.Constructor name arguments
       | Just short <- stripPrefix (collectionsUnit ++ "::type::") name, Just constructor <- internalConstructor short -> do
           let itemType = case (short, [a | C.TypeArgument a <- arguments]) of
@@ -512,6 +513,22 @@ lowerResolvedTree context projections dataTypes declared bits origin resolve typ
         C.ExternalCall identity [] -> pure (node t (C.Calls (C.Operation (C.AbilityRef (C.Id "") []) (C.idText identity))
           (if null rest then Nothing else Just rest)))
         _ -> Left "calls of names an ability operation"
+    | n == "member", [value,collection] <- xs = do
+        -- Function arguments are strict, evaluated once in source order,
+        -- including when the collection is empty or membership stops early.
+        let key = C.idText origin ++ "::let::membership::" ++ take 16 (digestHex (digestString (show xs)))
+            needle = C.Binder (C.Id (key ++ "::needle")) "needle" (C.expressionType value)
+            stored = C.Binder (C.Id (key ++ "::collection")) "collection" (C.expressionType collection)
+            local binder = node (C.binderType binder) (C.Local (C.binderId binder))
+        items <- collectionItems (local stored)
+        element <- case C.expressionType items of
+          C.Constructor "List" [C.TypeArgument element] -> pure element
+          _ -> Left "membership requires finite element iteration"
+        let binder = C.Binder (C.Id (key ++ "::element")) "item" element
+        evidence <- operationEvidence C.NotEqual element (C.expressionType value)
+        let differs = node t (C.Binary C.NotEqual evidence (local needle) (local binder))
+            found = node t (C.Unary C.Not (node t (C.AllElements items binder differs)))
+        pure (node t (C.Let needle value (node t (C.Let stored collection found))))
     -- Matchers (LawSpec.Matchers).
     | n == "contains", [whole, part] <- xs = case C.expressionType whole of
         C.Constructor "Text" [] -> pure (node t (C.Helper C.TextContains [whole, part]))

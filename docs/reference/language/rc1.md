@@ -596,8 +596,16 @@ observable storage order: five inputs for `Set Bool` and 114 for
 `Set (Set Bool)`. Insufficient budgets and unavailable or non-reflexive element
 domains retain incomplete coverage. Property generation and shrinking retain
 checked element and dependent restrictions; planned tests remain planned.
-Generalized membership over finite collections, native adapter coverage and
-validated project-wide migration remain required. A finite example does not prove a law
+`prelude.member value members`, `value in members`, `value is in members`
+and `value must be in members` use Eq-based membership over List, Set,
+SortedSet, Queue, Stack, Deque and Bytes. `prelude.any predicate members`
+uses checked iteration with no additional element Eq requirement. Captured
+predicate arguments and membership arguments are strict and evaluated once;
+empty collections do not bypass their mandatory checks. Maps select keys,
+values or entries explicitly. Sized containers use their existing checked
+item-list operations. Literal element context does not reinterpret computed
+collections. Native adapter coverage, broader unqualified prelude resolution
+and validated project-wide migration remain required. A finite example does not prove a law
 over all sets. The review packet tracks all remaining gates.
 
 The implemented syntax below describes the canonical frontend entry point.

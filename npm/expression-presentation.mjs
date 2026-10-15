@@ -74,7 +74,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
   function bind(binder, scope, reserved) {
     // Source binders keep their spelling unless that would capture a name.
     // Generated temporaries have no authoring significance.
-    const base = /^_?lawspec|^lawspecRecord/.test(binder.name) ? 'value' : binder.name;
+    const base = /^(?:~|_)?lawspec/.test(binder.name) ? 'value' : binder.name;
     const used = new Set([...scope.values(), ...reserved]);
     let name = base, suffix = 1;
     while (used.has(name)) name = `${base.startsWith('"|') ? 'value' : base}${suffix++}`;

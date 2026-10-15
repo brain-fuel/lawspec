@@ -1,0 +1,184 @@
+unit example.collection_membership
+
+function affirmative (value of type Bool) -> Bool is value end function
+function exceeds (limit of type Integer) (value of type Integer) -> Bool is
+  value > limit
+end function
+
+law "|list membership compares elements| is
+  definition:
+    for all (value of type Bool) => value in [false, true] end
+  end
+  expect prelude.member value [false, true] = expected
+  in table (value, expected):
+    row false, true
+    row true, true
+  end
+end
+
+law "|set membership accepts business wording| is
+  definition:
+    for all (value of type Bool) => value must be in #S{false, true} end
+  end
+end
+
+law "|sorted membership needs equality for stored elements| is
+  definition:
+    for all (value of type Bool) => value is in prelude.sortedSetOf [false, true] end
+  end
+end
+
+law "|queue membership compares elements| is
+  definition:
+    for all (value of type Bool) => prelude.member value (prelude.queueOf [false, true]) end
+  end
+end
+
+law "|stack membership compares elements| is
+  definition:
+    for all (value of type Bool) => value in prelude.stackOf [false, true] end
+  end
+end
+
+law "|deque membership compares elements| is
+  definition:
+    for all (value of type Bool) => value in prelude.dequeOf [false, true] end
+  end
+end
+
+law "|any traverses each collection without comparing elements| is
+  definition:
+    prelude.any affirmative [false, true] and
+    prelude.any affirmative #S{false, true} and
+    prelude.any affirmative (prelude.sortedSetOf [false, true]) and
+    prelude.any affirmative (prelude.queueOf [false, true]) and
+    prelude.any affirmative (prelude.stackOf [false, true]) and
+    prelude.any affirmative (prelude.dequeOf [false, true])
+  end
+end
+
+law "|an empty collection has no satisfying element| is
+  definition:
+    not (prelude.any affirmative ([] :: List Bool))
+  end
+end
+
+law "|partial predicates retain their arguments| is
+  definition:
+    prelude.any (exceeds 4) [3, 5]
+  end
+end
+
+law "|maps select their values explicitly| is
+  definition:
+    2 in prelude.values (prelude.keyValOf [Entry false 1, Entry true 2]) and
+    prelude.any affirmative (prelude.keys (prelude.keyValOf [Entry false 1, Entry true 2]))
+  end
+end
+
+law "|IEEE membership does not assume reflexivity| is
+  definition:
+    not (float64Bits("7ff8000000000001") in [float64Bits("7ff8000000000001")])
+  end
+end
+
+function positiveByte (value of type UInt8) -> Bool is value > 0 end function
+function selectedEntry (entry of type Entry Bool Integer) -> Bool is
+  first matching case of entry:
+    when Entry key value then key
+  end case
+end function
+function largerFloat (limit of type Float64) (value of type Float64) -> Bool is
+  value > limit
+end function
+function floatListMember (members of type List Float64) (value of type Float64) -> Bool is
+  value in members
+end function
+function floatSetMember (members of type Set Float64) (value of type Float64) -> Bool is
+  value in members
+end function
+function floatMember (value of type Float64) -> Bool is
+  value in [1.0, 2.0]
+end function
+
+law "|byte membership and predicates inspect octets| is
+  definition:
+    0 in prelude.bytesOf [0, 1] and
+    prelude.any positiveByte (prelude.bytesOf [0, 1])
+  end
+end
+
+law "|maps select their entries explicitly| is
+  definition:
+    prelude.any selectedEntry (prelude.entries (prelude.keyValOf [Entry false 1, Entry true 2]))
+  end
+end
+
+law "|sized collections use their checked item operations| is
+  definition:
+    prelude.any affirmative (prelude.sizedStackItems (prelude.sizedPush false (prelude.sizedPush true SizedStackEmpty))) and
+    false in prelude.sizedQueueItems (prelude.sizedEnqueue false (prelude.sizedEnqueue true SizedQueueEmpty))
+  end
+end
+
+law "|floating literals keep their predicate and membership context| is
+  definition:
+    floatMember float64Bits("3ff0000000000000") and
+    prelude.any (largerFloat 1.0) [1.0, 2.0] and
+    prelude.any (floatListMember [1.0]) [1.0, 2.0] and
+    prelude.any (floatSetMember #S{1.0}) [1.0, 2.0]
+  end
+end
+
+law "|example predicates agree with independent expected outcomes| is
+  definition:
+    for all (selected of type Bool) => prelude.any affirmative [selected] = selected end
+  end
+  expect prelude.any affirmative [selected] = expected
+  in table (selected, expected):
+    row false, false
+    row true, true
+  end
+end
+
+law "|example membership retains IEEE signed zero behavior| is
+  definition:
+    for all (unused of type Bool) =>
+      float64Bits("0000000000000000") in #S{float64Bits("8000000000000000")}
+    end
+  end
+  expect prelude.member float64Bits("0000000000000000") #S{float64Bits("8000000000000000")} = expected
+  in table (unused, expected):
+    row false, true
+    row true, true
+  end
+end
+
+function anyAffirmative (members of type List Bool) -> Bool is
+  prelude.any affirmative members
+end function
+function anyQueued (members of type Queue Bool) -> Bool is
+  prelude.any affirmative members
+end function
+
+law "|checked definitions use the same predicate iteration| is
+  definition:
+    anyAffirmative [false, true] and
+    anyQueued (prelude.queueOf [false, true])
+  end
+end
+
+law "|nested membership retains independent strict bindings| is
+  definition:
+    false in [true in [false]] and
+    (false in [false]) in #S{true}
+  end
+end
+
+law "|ordinary names remain outside generated callback scopes| is
+  definition:
+    for all (lawspecAnyItem of type Bool) =>
+      prelude.any affirmative [lawspecAnyItem] = lawspecAnyItem
+    end
+  end
+end

@@ -1,0 +1,11 @@
+expect: list membership compares elements
+@@ test/fixtures/canonical-collection-membership.lawspec
+<<<<<<<
+expect prelude.member value [false, true] = expected
+  in table (value, expected):
+    row false, true
+=======
+expect prelude.member value [false, true] = expected
+  in table (value, expected):
+    row false, false
+>>>>>>>

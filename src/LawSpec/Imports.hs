@@ -604,6 +604,25 @@ walkType names scope t = case t of
       remaining <- recordFields inner rest
       pure (field{recordFieldType=ty}:remaining)
 
+-- Preserve creation of a partially applied predicate independently of its
+-- later calls. Names come from an infinite, capture-avoiding supply.
+preparePredicate :: Expr -> [String] -> (Expr,[(String,Expr)],[String])
+preparePredicate expression names = case expression of
+  Located range inner -> let (value,bindings,rest) = preparePredicate inner names
+    in (Located range value,bindings,rest)
+  Apply function argument ->
+    let (function',bindings,remaining) = preparePredicate function names
+    in case remaining of
+      name:rest -> (Apply function' (Var name),bindings ++ [(name,argument)],rest)
+      [] -> (expression,[],[]) -- The supplied infinite name stream never ends.
+  Compose left right ->
+    let (left',before,remaining) = preparePredicate left names
+        (right',after,rest) = preparePredicate right remaining
+    in (Compose left' right',before ++ after,rest)
+  Annotate value ty -> let (value',bindings,rest) = preparePredicate value names
+    in (Annotate value' ty,bindings,rest)
+  _ -> (expression,[],names)
+
 -- Articles are resolved with imports and lexical bindings, rather than stripped
 -- from source. A real value called `the` keeps ordinary application semantics.
 -- The operand keeps its own source location; the source document retains the
@@ -619,6 +638,24 @@ walkExpr names scope e = case e of
   Apply prefix value
     | Apply function article <- unlocated prefix, articleWord article, boundReference value ->
         Apply <$> walkExpr names scope function <*> walkExpr names scope value
+  -- Existential iteration uses the existing scoped, checked element callback.
+  -- Resolve the predicate before introducing its binder to avoid capture.
+  Apply prefix collection | contextualArticles names,
+      Apply function predicate <- unlocated prefix,
+      Var "prelude.any" <- unlocated function -> do
+    predicate' <- walkExpr names scope predicate
+    collection' <- walkExpr names scope collection
+    let taken = scope ++ exprVars predicate' ++ exprVars collection'
+        freshNames = ["~lawspecAnyItem" ++ replicate i '_' | i <- [0..],
+          "~lawspecAnyItem" ++ replicate i '_' `notElem` taken]
+        binder = head freshNames
+        (function, captures, _) = preparePredicate predicate' (tail freshNames)
+        iteration = Unary "!" (AllElementsExpr collection' binder (Unary "!" (Apply function (Var binder))))
+    -- Captured arguments are strict, even for an empty collection, and are
+    -- evaluated once before drawing any elements or invoking the predicate.
+    pure (foldr (\(name,value) body -> MatchExpr value [MatchBranch letTag [name] body]) iteration captures)
+  -- Canonical membership is type-directed across finite collections.
+  Var "prelude.member" | contextualArticles names -> pure (Var "prelude.member")
   -- prelude.<op> of a collection is a definition of the collections unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n,
           Just (definition, _) <- (if contextualArticles names then canonicalCollectionOperation else collectionOperation) op ->

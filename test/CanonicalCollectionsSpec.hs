@@ -19,6 +19,44 @@ compile bits text = compileCoreCanonical bits defaultGeneration [Source "canonic
 body text = compile 64 ("unit collections\n" ++ text)
 
 test_canonicalCollections = describe "canonical collections" $ do
+  it "checks finite membership and any through the shared checked element iteration" $ do
+    source <- readFile "test/fixtures/canonical-collection-membership.lawspec"
+    forM_ [32,64] $ \bits -> case compile bits source of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        fmap (map obligationStatus . filter ((== "law") . obligationStage))
+          (dischargeEvidenceWith (Verification [Exhaustive,Examples]) program)
+          `shouldBe` Right (replicate 20 ExhaustivelyChecked)
+        case planTestingWith (Verification [Exhaustive,Examples]) program of
+          Left ds -> expectationFailure (show ds)
+          Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
+  it "requires Eq for generic membership while any needs only its predicate" $ do
+    body "function includes (value :: a) (members :: List a) -> Bool is value in members end function" `shouldSatisfy` isLeft
+    body "function includes (value :: a) (members :: List a) -> Bool requires Eq a is value in members end function" `shouldSatisfy` isRight
+    body "function includes (value :: a) (members :: Queue a) -> Bool requires Eq a is value in members end function" `shouldSatisfy` isRight
+    body "function same (value :: a) -> Bool is true end function\nfunction anyValue (members :: List a) -> Bool is prelude.any same members end function" `shouldSatisfy` isRight
+  it "checks strict membership arguments and captured predicates even for empty collections" $ do
+    body "function invalid (ignored :: Bool) -> Bool is prelude.member (1 / 0) ([] :: List Integer) end function" `shouldSatisfy` isLeft
+    body "function exceeds (limit :: Integer) (value :: Integer) -> Bool is value > limit end function\nfunction invalid (ignored :: Bool) -> Bool is prelude.any (exceeds (1 / 0)) ([] :: List Integer) end function" `shouldSatisfy` isLeft
+    body "function unsafe (value :: Integer) -> Bool is 1 / value > 0 end function\nfunction invalid (ignored :: Bool) -> Bool is prelude.any unsafe ([] :: List Integer) end function" `shouldSatisfy` isLeft
+  it "takes literal collection element types from membership values and predicates" $ do
+    body "function included (value :: Float64) -> Bool is value in [1.0, 2.0] end function" `shouldSatisfy` isRight
+    body "function positive (value :: Float64) -> Bool is value > 0.0 end function\nfunction selected (unused :: Bool) -> Bool is prelude.any positive [1.0, 2.0] end function" `shouldSatisfy` isRight
+    body "function included (value :: Float64) -> Bool is value in #S{1.0, 2.0} end function" `shouldSatisfy` isRight
+    body "function invalid (value :: Decimal) (members :: List Float64) -> Bool is value in members end function" `shouldSatisfy` isLeft
+    body "function exceeds (limit :: Float64) (value :: Float64) -> Bool is value > limit end function\nfunction selected (unused :: Bool) -> Bool is prelude.any (exceeds 1.0) [1.0, 2.0] end function" `shouldSatisfy` isRight
+    body "function included (members :: List Float64) (value :: Float64) -> Bool is value in members end function\nfunction selected (unused :: Bool) -> Bool is prelude.any (included [1.0]) [1.0, 2.0] end function" `shouldSatisfy` isRight
+    body "function same (value :: Float64) -> Float64 is value end function\nfunction exceeds (limit :: Float64) (value :: Float64) -> Bool is value > limit end function\nfunction selected (unused :: Bool) -> Bool is prelude.any ((exceeds 1.0) . same) [1.0, 2.0] end function" `shouldSatisfy` isRight
+    body "function includes (members :: List a) (value :: a) -> Bool requires Eq a is value in members end function\nfunction selected (unused :: Bool) -> Bool is prelude.any ((includes [1.0]) :: Float64 -> Bool) [1.0, 2.0] end function" `shouldSatisfy` isRight
+  it "keeps membership nonassociative and respects exact keyword boundaries" $ do
+    body "function inside (insideValue :: Integer) -> Bool is insideValue in [1, 2] end function" `shouldSatisfy` isRight
+    body "law invalid is definition: 1 in [1] in [true] end end" `shouldSatisfy` isLeft
+    body "law invalid is definition: 1 = in [1] end end" `shouldSatisfy` isLeft
+  it "requires explicit map selections and keeps substring matching separate" $ do
+    forM_ ["prelude.member 1 (prelude.keyValOf [Entry 1 2])",
+      "prelude.any affirmative (prelude.keyValOf [Entry false 1])",
+      "prelude.member \"a\" \"abc\""] $ \expression ->
+      body ("function affirmative (value :: Bool) -> Bool is value end function\nlaw invalid is definition: " ++ expression ++ " end end") `shouldSatisfy` isLeft
   it "checks complete finite set domains without discarding stored iteration orders" $ do
     source <- readFile "test/fixtures/canonical-set-domains.lawspec"
     forM_ [32,64] $ \bits -> case compile bits source of

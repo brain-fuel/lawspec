@@ -313,10 +313,8 @@ infer env (AllPayloadsExpr value predicates) = do
     | (argument,(binder,body)) <- zip arguments predicates]
   pure (Named "Bool")
 infer env (AllElementsExpr value binder predicate) = do
-  element <- Variable . ("element:" ++) <$> fresh
-  infer env value >>= unify (Applied "List" element)
-  resolved <- resolve element
-  checkExpr (M.insert binder (Monomorphic resolved) env) (Named "Bool") predicate
+  (_,element) <- iterationTypes env value binder predicate
+  checkExpr (M.insert binder (Monomorphic element) env) (Named "Bool") predicate
   pure (Named "Bool")
 infer env (MatchExpr value branches) = do
   scopes <- matchScopes env value branches
@@ -690,6 +688,11 @@ builtin env n args
         (throwC "calls of op with (...) needs one value for each of op's arguments")
       zipWithM_ (checkExpr env) parameters rest
       pure (Named "Int64")
+  -- Membership compares elements; iteration itself has no Eq obligation.
+  | n == "member", [value,collection] <- args = do
+      (_,element) <- membershipTypes env value collection
+      require "Eq" element
+      pure (Named "Bool")
   -- Matchers (LawSpec.Matchers). xs contains x: an item of a List, or a
   -- Text inside a Text.
   | n == "contains", [a,b] <- args = do
@@ -909,7 +912,9 @@ typedExpressionWithSchemesContext context declarations bits env e = do
             _ -> throwC "unknown record value field" | (label,value) <- fields]
           _ -> throwC "record literal requires a structural record type"
         AllPayloadsExpr value _ -> sequence [descend Nothing value]
-        AllElementsExpr value _ _ -> sequence [descend Nothing value]
+        AllElementsExpr value binder predicate -> do
+          (collection,_) <- iterationTypes context value binder predicate
+          sequence [descend (Just collection) value]
         MatchExpr value branches@[MatchBranch tag [name] _] | tag == letTag -> do
           scopes <- matchScopesWithResult context (Just t) value branches
           case scopes of
@@ -935,6 +940,9 @@ typedExpressionWithSchemesContext context declarations bits env e = do
           (at,bt) <- operandTypes context a b
           number <- resolve at
           sequence [descend (Just number) tolerance, descend (Just at) a, descend (Just bt) b]
+        Apply _ _ | (Var "prelude.member", [value,collection]) <- application e -> do
+          (collectionType,element) <- membershipTypes context value collection
+          sequence [descend (Just element) value, descend (Just collectionType) collection]
         Apply _ _ | (Var "prelude.contains", [whole,part]) <- application e -> do
           wholeType <- infer context whole >>= resolve
           case wholeType of
@@ -999,12 +1007,9 @@ typedExpressionWithSchemesContext context declarations bits env e = do
             pure (TypedCase "" [(binder,argument)] body')
             | (argument,(binder,body)) <- zip arguments predicates]
         AllElementsExpr value binder predicate -> do
-          valueType <- infer context value >>= resolve
-          case valueType of
-            Applied "List" element -> do
-              body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
-              pure [TypedCase "" [(binder,element)] body]
-            _ -> throwC "element predicate requires a List"
+          (_,element) <- iterationTypes context value binder predicate
+          body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
+          pure [TypedCase "" [(binder,element)] body]
         -- A let binds this occurrence's inferred value. Inferring it again
         -- would give a polymorphic constructor such as Nothing a different
         -- type variable, losing the body context that fixes its payload type.
@@ -1490,9 +1495,33 @@ constructorFieldContext name result expression = case unlocated expression of
       pure (case drop index types of ty:_ -> Just ty; [] -> Nothing)
   _ -> pure Nothing
 
+-- Strict captures introduced for any retain the original function argument's
+-- literal context. This is not general let-polymorphism or computed coercion.
+capturedArgumentContext :: Env -> String -> Expr -> C (Maybe Type)
+capturedArgumentContext env name expression = do
+  context <- Variable . ("capture:" ++) <$> fresh
+  probe (M.insert name (Monomorphic context) env) expression
+  Just <$> resolve context
+  where
+    -- Later captures participate through fresh monomorphic slots. Their
+    -- actual values are still checked by their own strict let, in order.
+    -- Infer the complete callback so partial application, composition and
+    -- explicit function annotations all share ordinary argument inference.
+    probe scope expression = case unlocated expression of
+      MatchExpr value [MatchBranch tag [binder] body] | tag == letTag -> do
+        ty <- if contextualLiteralArgument value || literalApplication value
+          then Variable . ("capture:" ++) <$> fresh
+          else infer scope value >>= resolve
+        probe (M.insert binder (Monomorphic ty) scope) body
+      Unary _ body -> probe scope body
+      _ -> infer scope expression >> pure ()
+
 matchScopesWithResult :: Env -> Maybe Type -> Expr -> [MatchBranch] -> C [Maybe (Env,M.Map String Type)]
 matchScopesWithResult env result value [MatchBranch tag [name] body] | tag == letTag = do
-  hint <- if isLiteral value then constructorFieldContext name result body else pure Nothing
+  hint <- if contextualLiteralArgument value || literalApplication value then
+      if "~lawspecAnyItem" `isPrefixOf` name then capturedArgumentContext env name body
+      else if isLiteral value then constructorFieldContext name result body else pure Nothing
+    else pure Nothing
   ty <- case hint of
     Just expected -> checkExpr env expected value >> resolve expected
     Nothing -> infer env value >>= resolve
@@ -1556,6 +1585,78 @@ payloadArguments ty = do
       _ -> throwC "payload predicates require a registered data type"
   unless (count == length arguments) (throwC "payload data type arity mismatch")
   pure arguments
+
+-- | Literal collection arguments take an element context without first
+-- committing their values to a default scalar type. Computed collections and
+-- explicit annotations retain their own types.
+collectionLiteral :: Expr -> Bool
+collectionLiteral value = case unlocated value of
+  ListLit _ -> True
+  _ -> literalApplication value
+
+collectionTypesWith :: Env -> Expr -> Maybe Type -> C (Type,Type)
+collectionTypesWith env value hint = case (unlocated value,hint) of
+  (ListLit _,Just element) -> contextual (Applied "List" element)
+  (_,Just element) | literalApplication value -> do
+    let (function,arguments) = application value
+    signature <- infer env function >>= resolve
+    result <- resultType (length arguments) signature
+    parameter <- finiteCollectionElement result
+    unify parameter element
+    resolve result >>= contextual
+  _ -> do
+    collection <- infer env value >>= resolve
+    element <- finiteCollectionElement collection
+    pure (collection,element)
+  where
+    contextual collection = do
+      checkExpr env collection value
+      resolved <- resolve collection
+      element <- finiteCollectionElement resolved
+      pure (resolved,element)
+    resultType 0 ty = pure ty
+    resultType count (Arrow _ result) = resultType (count-1) result
+    resultType _ _ = throwC "a collection constructor has insufficient arguments"
+
+membershipTypes :: Env -> Expr -> Expr -> C (Type,Type)
+membershipTypes env value collection = do
+  hint <- if collectionLiteral collection && not (numericLiteral value)
+    then Just <$> (infer env value >>= resolve) else pure Nothing
+  selected@(_,element) <- collectionTypesWith env collection hint
+  checkExpr env element value
+  pure selected
+
+iterationTypes :: Env -> Expr -> String -> Expr -> C (Type,Type)
+iterationTypes env value binder predicate = do
+  hint <- if "~lawspecAnyItem" `isPrefixOf` binder && collectionLiteral value then do
+      element <- Variable . ("iteration:" ++) <$> fresh
+      checkExpr (M.insert binder (Monomorphic element) env) (Named "Bool") predicate
+      Just <$> resolve element
+    else case callback predicate of
+     Just function | collectionLiteral value, binder `notElem` exprVars function -> do
+       signature <- infer env function >>= resolve
+       case signature of
+         Arrow element result -> unify result (Named "Bool") >> pure (Just element)
+         _ -> throwC "any requires an element predicate returning Bool"
+     _ -> pure Nothing
+  collectionTypesWith env value hint
+  where
+    callback expression = case unlocated expression of
+      Unary "!" body -> callback body
+      Apply function argument | unlocated argument == Var binder -> Just function
+      _ -> Nothing
+
+-- | Only registered finite collection identities supply element iteration.
+-- Maps select keys, values or entries explicitly; text substring matching is
+-- a separate operation. Never infer iteration from a user type's field shape.
+finiteCollectionElement :: Type -> C Type
+finiteCollectionElement ty = case baseType ty of
+  Applied "List" element -> pure element
+  Applied name element | collectionName name `elem` map Just ["Set","EqSet","Queue","Stack","Deque"] -> pure element
+  Named "Bytes" -> pure (Named "UInt8")
+  Application name _ | collectionName name == Just "KeyVal" ->
+    throwC "map iteration requires explicit prelude.keys, prelude.values or prelude.entries"
+  _ -> throwC ("element iteration requires a finite collection, not " ++ prettyType ty)
 
 -- | A collections-unit type's short name.
 collectionName :: String -> Maybe String

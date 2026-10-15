@@ -9,6 +9,7 @@ import LawSpec.CoreEmit (emitPlan)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.TargetNames (nativeName)
+import LawSpec.Backend (localName)
 import LawSpec.Testing (planTesting)
 
 keywords :: String
@@ -40,6 +41,11 @@ test_targetNamesNeverCollideWithKeywords = describe "target names" $ do
     nativeName "haskell" "class" `shouldBe` "_class"
   it "never escape a Go name, which is exported capitalized" $
     nativeName "go" "func" `shouldBe` "func"
+  it "escapes private callback binders without changing their Core identity" $ do
+    let identity = C.Id "owner::match::0::element::~lawspecAnyItem"
+    localName identity `shouldBe` "_match0__element___lawspecAnyItem"
+    C.idText identity `shouldBe` "owner::match::0::element::~lawspecAnyItem"
+    localName (C.Id "owner::match::0::value") `shouldBe` "_match0__value"
   it "are idempotent" $
     nativeName "java" (nativeName "java" "short") `shouldBe` "_short"
   it "escape definitions and adapters in emitted code and stubs" $ do

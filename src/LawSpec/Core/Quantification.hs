@@ -158,7 +158,7 @@ lowerSearchProposition :: (Quantifier -> Either String (Maybe [Expr]))
   -> (Quantifier -> Proposition -> Either String [Candidate]) -> Int -> Int -> Id
   -> [WitnessChoice] -> Proposition -> Either String Proposition
 lowerSearchProposition domain search limit searchBudget identity choices proposition
-  | not (hasLogicalQuantifier proposition) = pure proposition
+  | not (hasLogicalQuantifier proposition) = lowerFiniteProposition domain limit identity proposition
   | otherwise = flip evalStateT (0 :: Int) $ do
       (decision,_) <- walk proposition
       claim <- bind decision $ \outcome -> pure (branch (is 1 outcome) (boolean True)

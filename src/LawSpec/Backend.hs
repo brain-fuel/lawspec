@@ -130,7 +130,7 @@ localName i | (_,Just suffix) <- splitOnce "::payload::" (C.idText i) =
 localName i | (_,Just suffix) <- splitOnce "::let::" (C.idText i) =
   "_let" ++ map (\c -> if isAlphaNum c then c else '_') suffix
 localName i | (_,Just suffix) <- splitOnce "::match::" (C.idText i) =
-  "_match" ++ map (\c -> if c == ':' then '_' else c) suffix
+  "_match" ++ map (\c -> if isAlphaNum c then c else '_') suffix
 localName i | (_,Just n) <- splitOnce "::resource::" (C.idText i) = "_resource" ++ takeWhile isAlphaNum n
 localName i | (_,Just n) <- splitOnce "::logical::" (C.idText i) =
   "_logical" ++ map (\c -> if isAlphaNum c then c else '_') n

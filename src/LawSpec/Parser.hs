@@ -935,9 +935,15 @@ higherOperators =
   , [InfixL (Binary op <$ operator op) | op <- ["<|>","??"]]
   , [InfixL (Binary "|>" <$ operator "|>")]
   , [InfixN namedInfixP]
-  , [InfixN (Binary op <$ operator op) | op <- ["<=",">=","==","!=","<",">"]]
+  , [InfixN (Binary op <$ operator op) | op <- ["<=",">=","==","!=","<",">"]] ++
+      [InfixN membership]
   ]
   where
+    membership = do
+      canonical <- canonicalP
+      unless canonical empty
+      keyword "in"
+      pure (\value collection -> Apply (Apply (Var "prelude.member") value) collection)
     -- An operator never matches the start of a longer one: < is not <$>
     -- or <|>, > is not >>= or >=>, and >= is not >=>.
     operator op = try (symbol op <* notFollowedBy (oneOf (longer op)))
@@ -1339,9 +1345,12 @@ canonicalComparison :: P Expr
 canonicalComparison = located $ do
   a <- updatedExpr
   option a (do
-    void (try (keyword "must" *> (keyword "be" <|> void (symbol "=")))
-      <|> keyword "is" <|> void (try (symbol "=" <* notFollowedBy (char '='))))
-    Binary "==" a <$> updatedExpr)
+    wording <- (True <$ try (keyword "must" *> keyword "be"))
+      <|> (False <$ try (keyword "must" *> void (symbol "=")))
+      <|> (True <$ keyword "is") <|> (False <$ try (symbol "=" <* notFollowedBy (char '=')))
+    membership <- if wording then optional (keyword "in") else pure Nothing
+    b <- updatedExpr
+    pure (case membership of Just _ -> Apply (Apply (Var "prelude.member") a) b; _ -> Binary "==" a b))
 
 boolP :: P Bool
 boolP = (keyword "true" *> pure True) <|> (keyword "false" *> pure False)

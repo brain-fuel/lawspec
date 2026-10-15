@@ -1,0 +1,11 @@
+expect: example membership retains IEEE signed zero behavior
+@@ test/fixtures/canonical-collection-membership.lawspec
+<<<<<<<
+expect prelude.member float64Bits("0000000000000000") #S{float64Bits("8000000000000000")} = expected
+  in table (unused, expected):
+    row false, true
+=======
+expect prelude.member float64Bits("0000000000000000") #S{float64Bits("8000000000000000")} = expected
+  in table (unused, expected):
+    row false, false
+>>>>>>>

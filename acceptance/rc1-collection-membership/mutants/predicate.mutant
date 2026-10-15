@@ -1,0 +1,13 @@
+expect: example predicates agree with independent expected outcomes
+@@ test/fixtures/canonical-collection-membership.lawspec
+<<<<<<<
+expect prelude.any affirmative [selected] = expected
+  in table (selected, expected):
+    row false, false
+    row true, true
+=======
+expect prelude.any affirmative [selected] = expected
+  in table (selected, expected):
+    row false, false
+    row true, false
+>>>>>>>
