@@ -22,7 +22,7 @@ data RecordField = RecordField
   { recordFieldLabel :: String, recordFieldBinding :: String, recordFieldType :: Type }
   deriving (Eq, Show, Generic)
 instance ToJSON RecordField
-data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
+data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | RecordLit [(String,Expr)] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
 data MatchBranch = MatchBranch String [String] Expr deriving (Eq, Show, Generic)
 data TypedCase = TypedCase String [(String,Type)] TypedExpr deriving (Eq, Show, Generic)
 data Definition = Forall [(String, Type)] Definition | Equal Expr Expr | Holds Expr | Implies Expr Definition | And Definition Definition | Invoke String [Expr] | Exists [(String, Type)] Definition | Not Definition deriving (Eq, Show, Generic)
@@ -353,6 +353,8 @@ prettyExpr (AllElementsExpr value binder predicate) = "allElements (" ++ prettyE
 prettyExpr (MatchExpr value branches) = "match " ++ prettyExpr value ++ " with " ++ concat
   ["| " ++ unwords (tag:names) ++ " -> " ++ prettyExpr body ++ " " | MatchBranch tag names body <- branches] ++ "end"
 prettyExpr (ListLit xs) = "[" ++ intercalate ", " (map prettyExpr xs) ++ "]"
+prettyExpr (RecordLit fields) = "record{" ++ intercalate ", "
+  [label ++ " = " ++ prettyExpr value | (label,value) <- fields] ++ "}"
 prettyExpr (Binary op a b) = "(" ++ prettyExpr a ++ " " ++ op ++ " " ++ prettyExpr b ++ ")"
 prettyExpr (Unary op a) = op ++ "(" ++ prettyExpr a ++ ")"
 prettyExpr (Annotate a t) = "(" ++ prettyExpr a ++ " :: " ++ prettyType t ++ ")"
@@ -411,6 +413,7 @@ substituteExpr :: [String] -> ([(String,Expr)] -> Type -> Type)
 substituteExpr extra onType env expression = case expression of
   Located range e -> Located range (go e)
   ConstructLit name fields -> ConstructLit name (map go fields)
+  RecordLit fields -> RecordLit [(label,go value) | (label,value) <- fields]
   AllPayloadsExpr value predicates -> AllPayloadsExpr (go value)
     [bound binder body | (binder,body) <- predicates]
   AllElementsExpr value binder predicate ->
@@ -546,6 +549,7 @@ mapExprTypes f e = case e of
   Annotate a t -> Annotate (go a) (f t)
   TypeBound b t -> TypeBound b (f t)
   ConstructLit name fields -> ConstructLit name (map go fields)
+  RecordLit fields -> RecordLit [(label,go value) | (label,value) <- fields]
   AllPayloadsExpr value predicates -> AllPayloadsExpr (go value) [(binder,go body) | (binder,body) <- predicates]
   AllElementsExpr value binder predicate -> AllElementsExpr (go value) binder (go predicate)
   MatchExpr value branches -> MatchExpr (go value) [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
@@ -561,6 +565,7 @@ exprVars :: Expr -> [String]
 exprVars (Located _ e) = exprVars e
 exprVars (Var n) = [n]
 exprVars (ConstructLit _ fields) = concatMap exprVars fields
+exprVars (RecordLit fields) = concatMap (exprVars . snd) fields
 exprVars (AllPayloadsExpr value predicates) = exprVars value ++ concat [filter (/= binder) (exprVars body) | (binder,body) <- predicates]
 exprVars (AllElementsExpr value binder predicate) = exprVars value ++ filter (/= binder) (exprVars predicate)
 exprVars (MatchExpr value branches) = exprVars value ++ concat
@@ -646,6 +651,7 @@ unlocated e = e
 stripLocations :: Expr -> Expr
 stripLocations e = case unlocated e of
   ConstructLit name fields -> ConstructLit name (map go fields)
+  RecordLit fields -> RecordLit [(label,go value) | (label,value) <- fields]
   AllPayloadsExpr value predicates -> AllPayloadsExpr (go value) [(binder,go body) | (binder,body) <- predicates]
   AllElementsExpr value binder predicate -> AllElementsExpr (go value) binder (go predicate)
   MatchExpr value branches -> MatchExpr (go value) [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]

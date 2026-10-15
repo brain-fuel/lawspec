@@ -1,7 +1,7 @@
 -- | Lower typed surface expressions once. Law expansion and fixture checking
 -- both use this bridge; no backend reinterprets surface syntax.
 module LawSpec.Elaboration
-  ( coreType, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract
+  ( coreType, coreTypeWithRecords, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, elaborateResolvedWithRecords, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract
   , abilityReference, unitOperations, performOperations ) where
 
 import LawSpec.Abilities (clauseDefinitionName, abilityArguments, instantiatedOperations, unqualifiedHandler)
@@ -21,7 +21,10 @@ import qualified LawSpec.Inference as S
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Machine as C
 import LawSpec.Core.Validate (operationEvidenceWithRegistry)
+import LawSpec.Core.Total (constructorProofContracts)
+import LawSpec.CapabilityCheck (checkCapability)
 import LawSpec.Core.Types (makeRegistry, builtinDataDeclarations)
+import qualified LawSpec.Core.RecordIdentity as Records
 import LawSpec.Core.Semantics (convertValue)
 import LawSpec.Scalar
 import LawSpec.Digest (digestHex, digestString)
@@ -38,6 +41,73 @@ coreType t = case S.baseType t of
   S.Application n as -> C.Constructor n <$> mapM (fmap C.TypeArgument . coreType) as
   S.Arrow a b -> C.Arrow <$> coreType a <*> coreType b
   _ -> Left "unelaborated type at core boundary"
+
+-- | Structural products return their declarations along with their type.
+-- Restrictions are typed in an explicit field context before descriptor
+-- construction. Callers retain every occurrence until mandatory admission;
+-- a shared identity must never erase a different restriction ordering.
+coreTypeWithRecords :: [C.DataDeclaration] -> Int -> S.Type -> Either String (C.Type,[C.DataDeclaration])
+coreTypeWithRecords dataTypes bits source = case S.baseType source of
+  S.Record fields -> do
+    let labels = map S.recordFieldLabel fields
+        bindings = map S.recordFieldBinding fields
+    unless (all (not . null) labels && length labels == length (nub labels))
+      (Left "duplicate or empty record field label")
+    unless (all (not . null) bindings && length bindings == length (nub bindings))
+      (Left "duplicate or empty record field binding")
+    lowered <- mapM (coreTypeWithRecords dataTypes bits . S.recordFieldType) fields
+    let nested = concatMap snd lowered
+        origin = C.GeneratedFrom (C.Id "lawspec::source-record")
+        binders = [C.Binder (C.Id ("lawspec::source-record::field::" ++ S.recordFieldLabel field))
+          (S.recordFieldLabel field) ty | (field,(ty,_)) <- zip fields lowered]
+        identities = zip bindings (map C.binderId binders)
+        resolve name = maybe (C.Id ("lawspec::source-record::unbound::" ++ name)) id (lookup name identities)
+    known <- Records.internRecordDeclarations (dataTypes ++ nested)
+    stored <- sequence [do
+      let scope = [(S.recordFieldBinding f,rigid (S.baseType (S.recordFieldType f))) | f <- take count fields]
+      unless (all (checkCapability (coreTypeWithRecords known bits) known bits [])
+          (S.typeConstraints (S.recordFieldType field)))
+        (Left ("unsatisfied record field capability: " ++ S.recordFieldLabel field))
+      loweredPredicates <- mapM (elaborateResolvedWithRecords False known [] bits (C.Id "lawspec::source-record") resolve scope)
+        (map (S.mapExprTypes rigid) (S.typePredicates (S.Var (S.recordFieldBinding field)) (S.recordFieldType field)))
+      pure (Records.RecordField binder (map fst loweredPredicates),concatMap snd loweredPredicates)
+      | (count,(field,binder)) <- zip [1..] (zip fields binders)]
+    let recordFields = map fst stored
+        predicateRecords = concatMap snd stored
+    let parameters = nub (concat [typeVariables (C.binderType binder) ++
+          concatMap expressionVariables predicates | Records.RecordField binder predicates <- recordFields])
+    (declaration,arguments) <- Records.makeRecordDeclaration parameters recordFields origin
+    pure (C.Constructor (C.idText (C.dataId declaration)) (map (C.TypeArgument . C.TypeVariable) arguments),nested ++ predicateRecords ++ [declaration])
+  S.Arrow a b -> do
+    (a',left) <- coreTypeWithRecords dataTypes bits a
+    (b',right) <- coreTypeWithRecords (dataTypes ++ left) bits b
+    pure (C.Arrow a' b',left ++ right)
+  S.Applied name argument -> application name [argument]
+  S.Application name arguments -> application name arguments
+  S.Named ('@':parameter) -> pure (C.TypeVariable (C.Id parameter),[])
+  ty -> do
+    lowered <- coreType ty
+    pure (lowered,[])
+  where
+    -- A declaration's enclosing parameters are fixed while checking its
+    -- restrictions. Only a use site may instantiate them. Otherwise an
+    -- annotation in a predicate could silently replace a parameter and drop
+    -- its dependency from the structural descriptor.
+    rigid = S.mapType (\ty -> case ty of
+      S.Variable name -> S.Named ('@':name)
+      other -> other) (S.mapExprTypes rigid)
+    application name arguments = do
+      lowered <- mapM (coreTypeWithRecords dataTypes bits) arguments
+      pure (C.Constructor name (map (C.TypeArgument . fst) lowered),concatMap snd lowered)
+    typeVariables ty = case ty of
+      C.TypeVariable name -> [name]
+      C.Constructor _ arguments -> concat [typeVariables t | C.TypeArgument t <- arguments]
+      C.Arrow a b -> typeVariables a ++ typeVariables b
+    expressionVariables value = typeVariables (C.expressionType value) ++
+      concatMap expressionVariables (C.children value) ++ case C.expressionNode value of
+        C.Let binder _ _ -> typeVariables (C.binderType binder)
+        C.Match _ cases -> concat [concatMap (typeVariables . C.binderType) (C.caseBinders entry) | entry <- cases]
+        _ -> []
 
 -- | Equality's contextual typing belongs to elaboration, including the expected
 -- result in an example. It is performed exactly once for every backend.
@@ -93,6 +163,15 @@ elaborateResolvedWithData :: [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (St
 elaborateResolvedWithData dataTypes declarations bits origin resolve env =
   elaborateResolvedIn False dataTypes (`Set.member` Set.fromList declarations) bits origin resolve (S.monoEnvironment env)
 
+-- | The explicit collector for expressions that introduce anonymous products.
+-- Its result uses ordinary typed Core; whole-program admission remains the
+-- caller's responsibility, exactly as for existing source data declarations.
+-- Keep field nodes while auditing a definition; lower them for a law term,
+-- just as the existing definition and proposition elaborators do.
+elaborateResolvedWithRecords :: Bool -> [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> Either String (C.Expr,[C.DataDeclaration])
+elaborateResolvedWithRecords projections dataTypes declarations bits origin resolve env =
+  elaborateResolvedRecordsIn projections dataTypes (`Set.member` Set.fromList declarations) bits origin resolve (S.monoEnvironment env)
+
 -- | As elaborateResolvedWithData, with the declarations as a membership test
 -- and the environment already made: a unit elaborates thousands of
 -- definitions against the same ones.
@@ -100,8 +179,37 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env =
 -- and Update (a definition's body, which checking reads directly); without,
 -- they are the matches they stand for (a law's terms).
 elaborateResolvedIn :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String C.Expr
-elaborateResolvedIn projections dataTypes declared bits origin resolve env source =
-  fmap finish (fst <$> S.typedExpressionWithSchemes dataTypes bits env (S.normal source) >>= lowerWith []) where
+elaborateResolvedIn projections dataTypes declared bits origin resolve env source = do
+  (value,records) <- elaborateResolvedRecordsIn projections dataTypes declared bits origin resolve env source
+  unless (all (\record -> C.dataId record `elem` map C.dataId dataTypes) records)
+    (Left "structural record declarations require an explicit elaboration collector")
+  -- A caller may already hold the same descriptor from another occurrence.
+  -- Before discarding duplicate declarations, audit their actual predicate
+  -- order as well: equal type identities do not imply equal definedness.
+  unless (null records) $ either (Left . unlines . map S.message) (const (pure ()))
+    (constructorProofContracts bits (dataTypes ++ records))
+  pure value
+
+elaborateResolvedRecordsIn :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String (C.Expr,[C.DataDeclaration])
+elaborateResolvedRecordsIn projections dataTypes declared bits origin resolve env source = do
+  (typed,_) <- S.typedExpressionWithSchemes dataTypes bits env (S.normal source)
+  records <- concatMap snd <$> mapM (coreTypeWithRecords dataTypes bits) (filter containsRecord (types typed))
+  known <- if null records then pure dataTypes else Records.internRecordDeclarations (dataTypes ++ records)
+  value <- lowerResolvedTree projections known declared bits origin resolve typed
+  pure (value,records)
+  where
+    types tree = S.expressionType tree : maybe [] pure (S.requiredConversion tree) ++
+      concatMap types (S.operands tree) ++ concat [map snd fields ++ types body | S.TypedCase _ fields body <- S.typedCases tree]
+    containsRecord ty = case S.baseType ty of
+      S.Record _ -> True
+      S.Arrow a b -> containsRecord a || containsRecord b
+      S.Applied _ t -> containsRecord t
+      S.Application _ ts -> any containsRecord ts
+      _ -> False
+
+lowerResolvedTree :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.TypedExpr -> Either String C.Expr
+lowerResolvedTree projections dataTypes declared bits origin resolve typed = finish <$> lowerWith [] typed where
+  coreType ty = fst <$> coreTypeWithRecords dataTypes bits ty
   finish e = if projections then e else C.lowerFieldNodes (builtinDataDeclarations ++ dataTypes) (C.idText origin) e
   -- The constructor and position of a field of a value of this type.
   -- The program's index of types by name (built once, LawSpec.Inference).
@@ -137,6 +245,18 @@ elaborateResolvedIn projections dataTypes declared bits origin resolve env sourc
           tag <- constructorTag parent name
           node t . C.Construct tag <$> mapM lower operands
         _ -> Left "constructor expression requires a data type"
+      S.RecordLit fields -> case t of
+        C.Constructor parent arguments -> do
+          declaration <- case [d | d <- dataTypes,C.idText (C.dataId d) == parent,C.dataStructural d /= Nothing] of
+            [d] -> Right d
+            _ -> Left "record literal requires a collected structural declaration"
+          parameters <- mapM (\argument -> case argument of
+            C.TypeArgument ty -> Right ty
+            _ -> Left "record literal has an unresolved dependent type argument") arguments
+          values <- mapM lower operands
+          let identity = C.Id (C.idText origin ++ "::record::" ++ digestHex (digestString (show expression)))
+          Records.constructRecord identity declaration parameters (zip (map fst fields) values) generated
+        _ -> Left "record literal requires a structural record type"
       S.AllPayloadsExpr _ _ -> case operands of
         [value] -> do
           scrutinee <- lower value

@@ -481,6 +481,7 @@ library
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
       LawSpec.Capabilities
+      LawSpec.CapabilityCheck
       LawSpec.Clojure.Bindings
       LawSpec.Clojure.Bridge
       LawSpec.Clojure.Emit
@@ -874,6 +875,9 @@ test-suite lawspec-test
       SearchSpec
       SessionsPythonSpec
       SourceDataSpec
+      SourceRecordElaborationSpec
+      SourceRecordFixtures
+      SourceRecordInferenceSpec
       SourceRecordScopeSpec
       StatefulModelSpec
       StructuralSpec

@@ -6,11 +6,11 @@ import LawSpec.Collections (collectionsUnit)
 import LawSpec.Time (durationType, instantType)
 import Data.List (stripPrefix)
 import LawSpec.Model
-import LawSpec.Refinement (hasValueRefinements)
+import LawSpec.Refinement (hasValueRefinements, substituteType)
 import LawSpec.Scalar
 import LawSpec.Eval (boundsValue)
 import Control.Monad (when, unless, zipWithM_, zipWithM, forM, forM_)
-import Data.List (nub, isInfixOf, isPrefixOf, intercalate)
+import Data.List (nub, isInfixOf, isPrefixOf, intercalate, sort, sortOn)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
@@ -51,7 +51,8 @@ dataIndex declarations = unsafePerformIO $ do
       let known = builtinDataDeclarations ++ declarations
           index = ( M.fromListWith (flip (++)) [(Core.idText (Core.dataId d), [d]) | d <- known]
                   , M.fromListWith (flip (++)) (concat
-                      [ [(Core.constructorName c, [(d, c)])] ++ [(Core.idText (Core.constructorId c), [(d, c)]) | Core.idText (Core.constructorId c) /= Core.constructorName c]
+                      [ [(Core.constructorName c, [(d, c)]) | Core.dataStructural d == Nothing] ++
+                        [(Core.idText (Core.constructorId c), [(d, c)]) | Core.idText (Core.constructorId c) /= Core.constructorName c || Core.dataStructural d /= Nothing]
                       | d <- known, c <- Core.dataConstructors d ]) )
       writeIORef dataIndexCache (Just (name, ids, index))
       pure index
@@ -103,12 +104,35 @@ schemeType (Universal _ _ ty) = ty
 -- | A definition is generalised over the variables its signature mentions, in
 -- order of appearance, so instantiation is predictable.
 typeVariables :: Type -> [String]
-typeVariables ty = nub $ case baseType ty of
+typeVariables ty = nub $ case ty of
   Variable name -> [name]
   Arrow a b -> typeVariables a ++ typeVariables b
   Applied _ a -> typeVariables a
   Application _ arguments -> concatMap typeVariables arguments
+  Record fields -> concatMap (typeVariables . recordFieldType) fields
+  Refined _ inner predicate -> typeVariables inner ++ maybe [] expressionVariables predicate
+  Qualified constraints inner -> typeVariables inner ++ concat [typeVariables t | Capability _ t <- constraints]
+  CheckedType predicates inner -> typeVariables inner ++ concatMap expressionVariables predicates
+  RefinementApp _ arguments -> concat [case argument of
+    TypeArgument t -> typeVariables t
+    ValueArgument e -> expressionVariables e | argument <- arguments]
   _ -> []
+  where
+    expressionVariables expression = case expression of
+      Located _ e -> expressionVariables e
+      Annotate e t -> expressionVariables e ++ typeVariables t
+      TypeBound _ t -> typeVariables t
+      Apply a b -> expressionVariables a ++ expressionVariables b
+      Compose a b -> expressionVariables a ++ expressionVariables b
+      Binary _ a b -> expressionVariables a ++ expressionVariables b
+      Unary _ a -> expressionVariables a
+      ListLit values -> concatMap expressionVariables values
+      RecordLit fields -> concatMap (expressionVariables . snd) fields
+      ConstructLit _ values -> concatMap expressionVariables values
+      MatchExpr value branches -> expressionVariables value ++ concat [expressionVariables body | MatchBranch _ _ body <- branches]
+      AllElementsExpr value _ predicate -> expressionVariables value ++ expressionVariables predicate
+      AllPayloadsExpr value predicates -> expressionVariables value ++ concatMap (expressionVariables . snd) predicates
+      _ -> []
 
 -- | A definition is checked against the curried type its arguments and result
 -- spell out.
@@ -158,14 +182,25 @@ resolve (Named ('@':n)) = gets (M.lookup n . givens) >>= maybe (pure (Named ('@'
 resolve (Arrow a b) = Arrow <$> resolve a <*> resolve b
 resolve (Applied n t) = Applied n <$> resolve t
 resolve (Application n ts) = Application n <$> mapM resolve ts
+resolve t@(Record fields) = checkRecordFields fields >> resolveRetained t
 resolve t = pure (baseType t)
+
+-- Intrinsic record restrictions belong to the product's type identity. The
+-- ordinary scalar context erases refinements; resolving a stored field must
+-- substitute through them, including any typed predicate annotations.
+resolveRetained :: Type -> C Type
+resolveRetained ty = do
+  state <- get
+  let replacements = M.union (substitutions state) (M.mapKeys ('@':) (givens state))
+      walk seen current = do
+        let next = substituteType replacements M.empty current
+        if next == current then pure current else do
+          when (next `elem` seen) (throwC "infinite type")
+          walk (current:seen) next
+  walk [] ty
 -- | Binding a variable to a type that contains it would make an infinite type.
 occurs :: String -> Type -> Bool
-occurs n (Variable m) = n == m
-occurs n (Arrow a b) = occurs n a || occurs n b
-occurs n (Applied _ t) = occurs n t
-occurs n (Application _ ts) = any (occurs n) ts
-occurs _ _ = False
+occurs name ty = name `elem` typeVariables ty
 -- | First-order unification is enough: LawSpec has no higher-rank types, so
 -- every law can be inferred without annotations beyond its signatures.
 unify :: Type -> Type -> C ()
@@ -178,9 +213,96 @@ unify a b = do
     (Arrow p q,Arrow r s) -> unify p r >> unify q s
     (Applied n p, Applied m q) | n == m -> unify p q
     (Application n ps, Application m qs) | n == m && length ps == length qs -> zipWithM_ unify ps qs
+    (Record fields,Record others) -> unifyRecordFields fields others
     _ -> throwC ("type mismatch: " ++ prettyType x ++ " and " ++ prettyType y)
   where bind n t | occurs n t = throwC "infinite type"
                  | otherwise = modify (\s -> s{substitutions=M.insert n t (substitutions s)})
+
+-- Closed products compare labels, stored types and restrictions. They never
+-- acquire implicit width subtyping or a conversion from a nominal product.
+unifyRecordFields :: [RecordField] -> [RecordField] -> C ()
+unifyRecordFields left right = do
+  checkRecordFields left
+  checkRecordFields right
+  unless (sort (map recordFieldLabel left) == sort (map recordFieldLabel right))
+    (throwC "record types must have exactly the same fields")
+  let forbidden = concatMap (typeValueVars . recordFieldType) (left ++ right)
+      canonical label = head ["$record:" ++ label ++ replicate i '_' | i <- [0..],
+        ("$record:" ++ label ++ replicate i '_') `notElem` forbidden]
+      prepare fields = sortOn fst (walk [] fields)
+      walk _ [] = []
+      walk scope (field:rest) =
+        let inner = (recordFieldBinding field,Var (canonical (recordFieldLabel field))) : scope
+        in (recordFieldLabel field,replaceTypeValueVars inner (recordFieldType field)) : walk inner rest
+  zipWithM_ (\(_,a) (_,b) -> stored a b) (prepare left) (prepare right)
+  where
+    stored a b = do
+      x <- resolveRetained a
+      y <- resolveRetained b
+      case (x,y) of
+        _ | x == y -> pure ()
+        (Variable name,ty) -> bind name ty
+        (ty,Variable name) -> bind name ty
+        (Qualified _ ty,other) -> stored ty other
+        (other,Qualified _ ty) -> stored other ty
+        (Refined _ ty Nothing,other) -> stored ty other
+        (other,Refined _ ty Nothing) -> stored other ty
+        (Refined name ty predicate,Refined other target condition) -> do
+          stored ty target
+          resolved <- mapM resolveRetained [x,y]
+          case resolved of
+            [Refined name' _ predicate',Refined other' _ condition'] -> do
+              let used = maybe [] exprVars predicate' ++ maybe [] exprVars condition'
+                  local = head ["$record:refinement" ++ replicate i '_' | i <- [0..],
+                    ("$record:refinement" ++ replicate i '_') `notElem` used]
+                  normalize binder = fmap (stripLocations . replaceExprVars [(binder,Var local)])
+              unless (normalize name' predicate' == normalize other' condition')
+                (throwC "record field restrictions differ")
+            _ -> throwC "lost a stored field refinement while resolving its type"
+        (CheckedType checks ty,CheckedType conditions target) -> do
+          stored ty target
+          unless (map stripLocations checks == map stripLocations conditions)
+            (throwC "record field argument checks differ")
+        (Arrow p q,Arrow r s) -> stored p r >> stored q s
+        (Applied name ty,Applied other target) | name == other -> stored ty target
+        (Application name types,Application other targets) | name == other && length types == length targets ->
+          zipWithM_ stored types targets
+        (Record fields,Record others) -> unifyRecordFields fields others
+        _ -> throwC ("record field type mismatch: " ++ prettyType x ++ " and " ++ prettyType y)
+    bind name ty = do
+      when (occurs name ty) (throwC "infinite type")
+      modify (\state -> state{substitutions=M.insert name ty (substitutions state)})
+
+checkRecordFields :: [RecordField] -> C ()
+checkRecordFields fields = do
+  let labels = map recordFieldLabel fields
+      names = map recordFieldBinding fields
+  unless (all (not . null) labels && length labels == length (nub labels))
+    (throwC "duplicate or empty record field label")
+  unless (all (not . null) names && length names == length (nub names))
+    (throwC "duplicate or empty record field binding")
+  mapM_ (nested . recordFieldType) fields
+  where
+    nested ty = case ty of
+      Record fields -> checkRecordFields fields
+      Arrow a b -> nested a >> nested b
+      Applied _ t -> nested t
+      Application _ ts -> mapM_ nested ts
+      Refined _ t _ -> nested t
+      Qualified _ t -> nested t
+      CheckedType _ t -> nested t
+      _ -> pure ()
+
+-- Intrinsic stored-field restrictions are enforced at checked construction.
+-- An annotation cannot introduce a separate, unchecked value postcondition.
+annotationRefinements :: Type -> Bool
+annotationRefinements ty = case ty of
+  Record _ -> False
+  Arrow a b -> annotationRefinements a || annotationRefinements b
+  Applied _ t -> annotationRefinements t
+  Application _ ts -> any annotationRefinements ts
+  Qualified _ t -> annotationRefinements t
+  other -> hasValueRefinements other
 -- | Types are inferred bottom up where literals do not need their context, so a
 -- law reads without annotations. ref:DEC-readable-notation
 infer :: Env -> Expr -> C Type
@@ -202,6 +324,11 @@ infer env (ConstructLit name fields) = do
   unless (length parameters == length fields) (throwC ("wrong constructor arity: " ++ name))
   zipWithM_ (checkExpr env) parameters fields
   resolve result
+infer env (RecordLit fields) = do
+  let labels = map fst fields
+  unless (all (not . null) labels && length labels == length (nub labels))
+    (throwC "duplicate or empty record value field")
+  Record <$> mapM (\(name,value) -> RecordField name name <$> infer env value) fields
 infer env (AllPayloadsExpr value predicates) = do
   arguments <- infer env value >>= resolve >>= payloadArguments
   unless (length arguments == length predicates) (throwC "payload predicate arity mismatch")
@@ -236,7 +363,7 @@ infer env (ListLit xs) = do
   mapM_ (checkExpr env element) xs
   Applied "List" <$> resolve element
 infer env (Annotate e t) = do
-  when (hasValueRefinements t)
+  when (annotationRefinements t)
     (throwC "refinement predicates in expression annotations require checked contracts; use a quantified input or function signature")
   checkExpr env t e
   pure (baseType t)
@@ -264,7 +391,8 @@ infer env (Binary op a b) = do
     then unify at0 bt0 >> ((,) <$> resolve at0 <*> resolve bt0)
     else pure (at0,bt0)
   case (at,bt) of
-    _ | op `elem` ["==","!="], at == bt, not (case at of Named n -> isNumeric n; _ -> False) -> do
+    _ | op `elem` ["==","!="], at == bt || (structural at && structural bt)
+      , not (case at of Named n -> isNumeric n; _ -> False) -> do
       modify (\s -> s{obligations=Capability "Eq" at:obligations s})
       pure (Named "Bool")
     (Named x,Named y) | take 1 x == "@" || take 1 y == "@" -> do
@@ -389,6 +517,17 @@ checkExpr env expected e = do
   t <- resolve (baseType expected)
   bits <- gets machineBits
   case (t,e) of
+    (Record declared,RecordLit fields) -> do
+      checkRecordFields declared
+      let labels = map fst fields
+          expectedLabels = map recordFieldLabel declared
+      unless (length labels == length (nub labels)) (throwC "duplicate record value field")
+      unless (sort labels == sort expectedLabels) (throwC "record value must supply exactly its declared fields")
+      let types = [(recordFieldLabel field,recordFieldType field) | field <- declared]
+      sequence_ [maybe (throwC "unknown record value field") (\ty -> checkExpr env ty value) (lookup label types)
+        | (label,value) <- fields]
+    (Variable _,RecordLit _) -> infer env e >>= unify t
+    (_,RecordLit _) -> throwC "an anonymous record literal requires a structural record type"
     (_,ConstructLit name fields) -> do
       parameters <- constructorParameters t name
       unless (length parameters == length fields) (throwC ("wrong constructor arity: " ++ name))
@@ -434,25 +573,61 @@ isLiteral (StringLit _) = True
 isLiteral (BoolLit _) = True
 isLiteral (ListLit _) = True
 isLiteral (ConstructLit _ _) = True
+isLiteral (RecordLit _) = True
 isLiteral _ = False
+
+-- Successful unification already establishes corresponding stored field
+-- types. Reordering source fields changes neither storage nor the native
+-- representation, including when the product is nested in a container.
+needsConversion :: Type -> Type -> Bool
+needsConversion target source = not (same target source)
+  where
+    same a b | a == b = True
+    same (Record _) (Record _) = True
+    same (Applied n a) (Applied m b) = n == m && same a b
+    same (Application n as) (Application m bs) = n == m && length as == length bs && and (zipWith same as bs)
+    same (Arrow a b) (Arrow c d) = same a c && same b d
+    same _ _ = False
 -- | Each operand may type the other's literal, so 0.5 * x is Float32 when x is,
 -- without a conversion the author did not write.
 operandTypes :: Env -> Expr -> Expr -> C (Type,Type)
 operandTypes env a b = do
   initialA <- infer env a
   initialB <- infer env b
-  when (structuralLiteral a && structuralLiteral b) (unify initialA initialB)
-  at <- resolve initialA
-  bt <- resolve initialB
-  -- A declared floating context may type an otherwise exact numeric literal.
-  let contextual t e fallback = case t of
-        Named n | isInexact n && contextualNumber e -> checkExpr env t e >> pure t
-        Application _ _ | isLiteral e -> checkExpr env t e >> pure t
-        Applied _ _ | isLiteral e -> checkExpr env t e >> pure t
-        _ -> pure fallback
-  at' <- contextual bt a at
-  bt' <- contextual at b bt
-  pure (at',bt')
+  if structuralLiteral a && structuralLiteral b
+    then do
+      context <- jointLiteralType env a b initialA initialB
+      pure (context,context)
+    else do
+      at <- resolve initialA
+      bt <- resolve initialB
+      -- A declared floating context may type an otherwise exact numeric literal.
+      let contextual t e fallback = case t of
+            Named n | isInexact n && contextualNumber e -> checkExpr env t e >> pure t
+            Application _ _ | isLiteral e -> checkExpr env t e >> pure t
+            Record _ | isLiteral e -> checkExpr env t e >> pure t
+            Applied _ _ | isLiteral e -> checkExpr env t e >> pure t
+            _ -> pure fallback
+      at' <- contextual bt a at
+      bt' <- contextual at b bt
+      pure (at',bt')
+
+-- A literal product may take its scalar field types from the other literal.
+-- Failed alternatives restore inference state, including fresh variables and
+-- capability obligations. Existing values still use ordinary unification.
+jointLiteralType :: Env -> Expr -> Expr -> Type -> Type -> C Type
+jointLiteralType env a b left right = do
+  unified <- tryC (unify left right >> resolve left)
+  case unified of
+    Right context -> pure context
+    Left original -> do
+      contextual <- tryC (checkExpr env left a >> checkExpr env left b >> resolve left)
+      case contextual of
+        Right context -> pure context
+        Left _ -> do
+          other <- tryC (checkExpr env right a >> checkExpr env right b >> resolve right)
+          either (const (throwC original)) pure other
+
 -- | The prelude's built-in operations have types that ordinary signatures cannot
 -- state, such as checked's, so they are typed here.
 builtin :: Env -> String -> [Expr] -> C Type
@@ -669,6 +844,7 @@ typedExpressionWithSchemes declarations bits env e = do
     go context expected e = do
       let descend = go context
       natural <- case (expected, e) of
+        (Just targetType, RecordLit _) -> checkExpr context targetType e >> resolve targetType
         (Just targetType, ConstructLit _ _) -> checkExpr context targetType e >> resolve targetType
         (Just targetType, MatchExpr _ _) -> checkExpr context targetType e >> resolve targetType
         -- Each branch of if c then a else b takes the expected type, so each
@@ -693,8 +869,13 @@ typedExpressionWithSchemes declarations bits env e = do
           resolve inferred
       t <- resolve (if isLiteral e then maybe natural id expected else natural)
       target <- traverse resolve expected
-      let conversion = case target of Just targetType | targetType /= t -> Just targetType; _ -> Nothing
+      let conversion = case target of Just targetType | needsConversion targetType t -> Just targetType; _ -> Nothing
       children <- case e of
+        RecordLit fields -> case t of
+          Record declared -> sequence [case [recordFieldType field | field <- declared,recordFieldLabel field == label] of
+            [ty] -> descend (Just ty) value
+            _ -> throwC "unknown record value field" | (label,value) <- fields]
+          _ -> throwC "record literal requires a structural record type"
         AllPayloadsExpr value _ -> sequence [descend Nothing value]
         AllElementsExpr value _ _ -> sequence [descend Nothing value]
         MatchExpr value _ -> do
@@ -814,44 +995,40 @@ typedExpressionWithSchemes declarations bits env e = do
     -- for).
     fieldAccessTyped context expected e = case application e of
       (Var n, [subject]) | Just field <- stripPrefix fieldAccessPrefix n -> do
-        (t, constructor, names) <- fieldConstructor context subject field
-        pairs <- gets (M.findWithDefault [] constructor . constructorsByName)
-        shape <- shapeOf constructor pairs
-        if not (null (shapeExistentials shape)) || any snd (shapeArguments shape) then pure Nothing else do
-          unify (shapeResult shape) t
-          fields <- mapM resolve (shapeFields shape)
-          subjectType <- resolve t
-          subject' <- go context (Just subjectType) subject
-          let index = length (takeWhile (/= field) names)
-          fieldType' <- resolve (fields !! index)
-          target <- traverse resolve expected
-          forM_ target $ \targetType -> checkInferred targetType e fieldType'
-          target' <- traverse resolve target
-          fieldType'' <- resolve fieldType'
-          let conversion = case target' of
-                Just targetType | targetType /= fieldType'' -> Just targetType
-                _ -> Nothing
-          pure (Just (TypedExpr fieldType'' e [subject'] conversion []))
+        (t, shape, names) <- fieldShape context subject field
+        case shape of
+          Nothing -> pure Nothing
+          Just fields -> do
+            subjectType <- resolve t
+            subject' <- go context (Just subjectType) subject
+            let index = length (takeWhile (/= field) names)
+            fieldType' <- resolve (fields !! index)
+            target <- traverse resolve expected
+            forM_ target $ \targetType -> checkInferred targetType e fieldType'
+            target' <- traverse resolve target
+            fieldType'' <- resolve fieldType'
+            let conversion = case target' of
+                  Just targetType | needsConversion targetType fieldType'' -> Just targetType
+                  _ -> Nothing
+            pure (Just (TypedExpr fieldType'' e [subject'] conversion []))
       (Var n, [subject, value]) | Just field <- stripPrefix fieldUpdatePrefix n -> do
-        (t, constructor, names) <- fieldConstructor context subject field
-        pairs <- gets (M.findWithDefault [] constructor . constructorsByName)
-        shape <- shapeOf constructor pairs
-        if not (null (shapeExistentials shape)) || any snd (shapeArguments shape) then pure Nothing else do
-          unify (shapeResult shape) t
-          fields <- mapM resolve (shapeFields shape)
-          subjectType <- resolve t
-          let index = length (takeWhile (/= field) names)
-          fieldType' <- resolve (fields !! index)
-          value' <- go context (Just fieldType') value
-          subject' <- go context (Just subjectType) subject
-          target <- traverse resolve expected
-          forM_ target $ \targetType -> checkInferred targetType e subjectType
-          target' <- traverse resolve target
-          subjectType' <- resolve subjectType
-          let conversion = case target' of
-                Just targetType | targetType /= subjectType' -> Just targetType
-                _ -> Nothing
-          pure (Just (TypedExpr subjectType' e [subject', value'] conversion []))
+        (t, shape, names) <- fieldShape context subject field
+        case shape of
+          Nothing -> pure Nothing
+          Just fields -> do
+            subjectType <- resolve t
+            let index = length (takeWhile (/= field) names)
+            fieldType' <- resolve (fields !! index)
+            value' <- go context (Just fieldType') value
+            subject' <- go context (Just subjectType) subject
+            target <- traverse resolve expected
+            forM_ target $ \targetType -> checkInferred targetType e subjectType
+            target' <- traverse resolve target
+            subjectType' <- resolve subjectType
+            let conversion = case target' of
+                  Just targetType | needsConversion targetType subjectType' -> Just targetType
+                  _ -> Nothing
+            pure (Just (TypedExpr subjectType' e [subject', value'] conversion []))
       _ -> pure Nothing
     resolveTree (TypedExpr ty expression operands conversion cases) = do
       ty' <- resolve ty
@@ -938,20 +1115,30 @@ fieldDesugar env e = case application e of
 fieldType :: Env -> Expr -> C Type
 fieldType env e = case application e of
   (Var n, [subject]) | Just field <- stripPrefix fieldAccessPrefix n -> do
-    (t, shape, names) <- fieldShape subject field
+    (t, shape, names) <- fieldShape env subject field
     case shape of
       Just fields -> pure (fields !! length (takeWhile (/= field) names))
       Nothing -> fieldDesugar env e >>= infer env
   (Var n, [subject, value]) | Just field <- stripPrefix fieldUpdatePrefix n -> do
-    (t, shape, names) <- fieldShape subject field
+    (t, shape, names) <- fieldShape env subject field
     case shape of
       Just fields -> do
         checkExpr env (fields !! length (takeWhile (/= field) names)) value
         resolve t
       Nothing -> fieldDesugar env e >>= infer env
   _ -> fieldDesugar env e >>= infer env
-  where
-    fieldShape subject field = do
+-- | Field shape shared by inference and the typed expression builder. Structural
+-- records keep their source shape; nominal GADTs retain constructor-local facts.
+fieldShape :: Env -> Expr -> String -> C (Type,Maybe [Type],[String])
+fieldShape env subject field = do
+  ty <- infer env subject >>= resolve
+  case ty of
+    Record fields -> do
+      checkRecordFields fields
+      let names = map recordFieldLabel fields
+      unless (field `elem` names) (throwC ("." ++ field ++ ": record has no field called " ++ field))
+      pure (ty,Just (map (baseType . recordFieldType) fields),names)
+    _ -> do
       (t, constructor, names) <- fieldConstructor env subject field
       pairs <- gets (M.findWithDefault [] constructor . constructorsByName)
       shape <- shapeOf constructor pairs
@@ -994,6 +1181,7 @@ require n t = modify (\s -> s{obligations=Capability n t:obligations s})
 normal :: Expr -> Expr
 normal (Located range e) = Located range (normal e)
 normal (ConstructLit name fields) = ConstructLit name (map normal fields)
+normal (RecordLit fields) = RecordLit [(label,normal value) | (label,value) <- fields]
 normal (AllPayloadsExpr value predicates) = AllPayloadsExpr (normal value) [(binder,normal body) | (binder,body) <- predicates]
 normal (AllElementsExpr value binder predicate) = AllElementsExpr (normal value) binder (normal predicate)
 normal (MatchExpr value branches) = MatchExpr (normal value) [MatchBranch tag names (normal body) | MatchBranch tag names body <- branches]
@@ -1191,6 +1379,7 @@ constructorParameters target name = do
 structuralLiteral :: Expr -> Bool
 structuralLiteral expression = case unlocated expression of
   ConstructLit _ _ -> True
+  RecordLit _ -> True
   ListLit _ -> True
   _ -> False
 
@@ -1201,8 +1390,7 @@ jointStructuralContext env a b
   | structuralLiteral a && structuralLiteral b = do
       left <- infer env a
       right <- infer env b
-      unify left right
-      context <- resolve left
+      context <- jointLiteralType env a b left right
       pure (Annotate a context, Annotate b context)
   | otherwise = pure (a,b)
 

@@ -1,0 +1,36 @@
+-- | Capability checks over an explicitly lowered type and its declarations.
+module LawSpec.CapabilityCheck (checkCapability) where
+
+import LawSpec.Model
+import LawSpec.Scalar
+import qualified LawSpec.Core as Core
+import qualified LawSpec.Core.Types as Types
+
+-- | A capability such as Eq or Ordered is satisfied by what the type's
+-- declaration allows, so a law cannot compare values that have no equality.
+checkCapability :: (Type -> Either String (Core.Type,[Core.DataDeclaration]))
+  -> [Core.DataDeclaration] -> Int -> [Constraint] -> Constraint -> Bool
+checkCapability lower declarations bits allowed constraint@(Capability name ty)
+  | constraint `elem` allowed = True
+  | name `elem` ["Eq","Ordered","Keyed"], Capability "Integer" ty `elem` allowed = True
+  -- A portable order decides equality too.
+  | name == "Eq", Capability "Keyed" ty `elem` allowed = True
+  | name == "Keyed" = either (const False) id $ do
+      (core,records) <- lower (mapType (\t -> case t of Named n@('@':_) -> Variable n; _ -> t) id ty)
+      registry <- Types.makeRegistry (if null records then declarations else declarations ++ records)
+      needed <- Types.keyedRequirements registry core
+      pure (all (\n -> let variable = Named (Core.idText n) in
+        Capability "Keyed" variable `elem` allowed || Capability "Integer" variable `elem` allowed) needed)
+  | name == "Eq" = either (const False) id $ do
+      (core,records) <- lower (mapType (\t -> case t of Named n@('@':_) -> Variable n; _ -> t) id ty)
+      registry <- Types.makeRegistry (if null records then declarations else declarations ++ records)
+      needed <- Types.equalityRequirements registry core
+      pure (all (\n -> let variable = Named (Core.idText n) in
+        any (\c -> Capability c variable `elem` allowed) ["Eq", "Keyed", "Integer"]) needed)
+  | otherwise = case baseType ty of
+      Named n -> case name of
+        "Integer" -> isInteger n
+        "Ordered" -> isNumeric n && n `notElem` ["Complex64","Complex128"]
+        "Bounded" -> maybe False (const True) (integerBounds bits n)
+        _ -> False
+      _ -> False

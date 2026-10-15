@@ -144,6 +144,43 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
           selected=field 0 (T.Variable result)
       check (T.Construct tag [nan]) (T.Comparison Equal selected selected) `shouldSatisfy` isLeft
 
+  describe "known products behind strict source lets" $ do
+    let tag=Id "Product"
+        result=Id "result"
+        selected=Id "selected"
+        n=T.Literal . SInteger "Integer"
+        source value=T.Match (n 7) [([],T.Match (n 9) [([],value)])]
+        match value body=T.DataMatch value [(tag,[selected],body)]
+        definition body=T.ProofDefinition (Id "strictProduct") "strictProduct" Nothing [] body []
+        audit body=T.audit [definition body]
+    it "retains known field values through strict source evaluation" $
+      audit (match (source (T.Construct tag [n 3]))
+        (T.Division False Quotient (n 9) (T.Variable selected))) `shouldBe` Right ()
+    it "still audits an undefined strict prefix before extracting fields" $ do
+      let bad=T.Match (T.Division False Quotient (n 1) (n 0)) [([],T.Construct tag [n 3])]
+      audit (match bad (n 1)) `shouldSatisfy` isLeft
+    it "still audits a constructor field that the branch never reads" $
+      audit (match (source (T.Construct tag [T.Division False Quotient (n 1) (n 0)])) (n 1)) `shouldSatisfy` isLeft
+    it "does not select a different constructor through strict lets" $
+      audit (match (source (T.Construct (Id "Other") [n 3])) (n 1)) `shouldSatisfy` isLeft
+    it "does not establish IEEE reflexivity for a selected NaN field" $ do
+      let nan=T.Literal (SFloat "Float64" "7ff8000000000001")
+          body=match (source (T.Construct tag [nan])) (T.Variable selected)
+      T.auditWithContracts [T.ProofContract (Id "strictProduct") result []
+        [T.Comparison Equal (T.Variable result) (T.Variable result)]] [definition body] `shouldSatisfy` isLeft
+    it "uses an exact projected value through strict source prefixes" $ do
+      let body=T.Field tag 0 (Nothing,Nothing) (source (T.Construct tag [n 3]))
+      T.auditWithContracts [T.ProofContract (Id "strictProduct") result []
+        [T.ExactComparison Equal (T.Variable result) (n 3)]] [definition body] `shouldBe` Right ()
+      let scalarLet=T.Field tag 0 (Nothing,Nothing) (source (T.Construct tag [source (n 3)]))
+      T.auditWithContracts [T.ProofContract (Id "strictProduct") result []
+        [T.ExactComparison Equal (T.Variable result) (n 3)]] [definition scalarLet] `shouldBe` Right ()
+    it "still audits an undefined prefix before proving a projection" $ do
+      let bad=T.Match (T.Division False Quotient (n 1) (n 0)) [([],T.Construct tag [n 3])]
+          body=T.Field tag 0 (Nothing,Nothing) bad
+      T.auditWithContracts [T.ProofContract (Id "strictProduct") result []
+        [T.ExactComparison Equal (T.Variable result) (n 3)]] [definition body] `shouldSatisfy` isLeft
+
   describe "typed constructor contracts and reference execution" $ do
     let tag = Id "Positive::Positive"
         ty = scalarType "Positive"

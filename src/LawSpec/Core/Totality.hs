@@ -662,9 +662,13 @@ dataBranches scope facts value branches = case known of
       | (candidate,binders,body) <- branches, candidate == tag, length fields == length binders]
   Nothing -> map unknown branches
   where
-    known = case value of
+    -- A source record literal evaluates its fields with strict lets. Their
+    -- proof is a sequence of single-result matches whose final body is the
+    -- constructed product. walk has audited the entire selected value before
+    -- using these branch facts; this normalization never skips that audit.
+    known = case knownResult value of
       Construct tag fields -> Just (tag,fields)
-      _ -> variableIdentity value >>= (`M.lookup` constructorValues facts)
+      other -> variableIdentity other >>= (`M.lookup` constructorValues facts)
     unknown (tag,binders,body) =
       -- What the branch already uses, computed once: a constructor of a
       -- large record has hundreds of binders. The body's own names are Core
@@ -802,14 +806,17 @@ linear expression = case expression of
   Division False op a b -> Just (R.variable (nonlinearAtom (show op) (map unwrapped [a, b])))
   NarrowInteger _ _ value -> linear value
   Integral value -> linear value
+  -- Core lets are strict, single-result sequences. Definedness checks their
+  -- prefixes before any arithmetic relation of the result is used.
+  Match _ [([],body)] -> linear body
   Call callee arguments -> Just (R.variable (callAtom callee arguments))
   Opaque name values -> Just (R.variable (Id ("::opaque::" ++ name ++ show (map unwrapped values))))
   -- This is proof normalization only. walk still audits the complete strict
   -- constructor, including fields the projection does not select. General
   -- IEEE comparisons never enter this exact-arithmetic representation.
   Field tag index _ value
-    | Construct actual fields <- stripDomains value,actual == tag,index >= 0,
-      selected:_ <- drop index fields -> linear selected
+    | Construct actual fields <- knownResult value,actual == tag,index >= 0,
+      selected:_ <- drop index fields -> linear (knownResult selected)
     | otherwise -> Just (R.variable (projectionAtom (unwrapped value) tag index))
   _ -> Nothing
 
@@ -1336,6 +1343,18 @@ stripDomains :: Proof -> Proof
 stripDomains (TypedDomain _ body) = stripDomains body
 stripDomains (Integral body) = stripDomains body
 stripDomains body = body
+
+-- A projection or a strict, single-result sequence has a known final value
+-- when its selected constructor does. This only normalizes proof terms: walk
+-- still checks every strict prefix and every field before using the result.
+-- General IEEE comparisons never acquire an exact-arithmetic equality here.
+knownResult :: Proof -> Proof
+knownResult expression = case stripDomains expression of
+  Match _ [([],body)] -> knownResult body
+  Field tag index _ value
+    | Construct actual fields <- knownResult value,actual == tag,index >= 0,
+      selected:_ <- drop index fields -> knownResult selected
+  other -> other
 
 naturalBranch :: (Id -> Bool) -> Proof -> Bool
 naturalBranch natural body = case stripDomains body of
