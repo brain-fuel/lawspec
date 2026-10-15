@@ -155,8 +155,9 @@ declarations = joinWith (softbreak <> softbreak)
        ("rationale", "string"), ("references", "DocumentaryReference[] | string[]"), ("location", "Location"),
        ("trace", "string[]"), ("generation", "Generation"), ("inputDomain", "'nonempty' | 'universal'"),
        ("metadata", "LawMetadata"), ("harness", "LawHarness")])
+  , interface "DeclarationSource" (fields [("unit","string"),("name","string"),("canonicalName?","string")])
   , interface "Unit"
-      [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin")] <> text ")[]")]
+      [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin"),("source?",text "DeclarationSource")] <> text ")[]")]
   , interface "StructuralRecord"
       [("kind",quoted "record"),("digest",text "string"),("descriptor",text "string"),
        ("fields",array (record (fields [("name","string"),("predicates","Expr[]")])))]

@@ -19,6 +19,26 @@ compile bits text = compileCoreCanonical bits defaultGeneration [Source "canonic
 body text = compile 64 ("unit collections\n" ++ text)
 
 test_canonicalCollections = describe "canonical collections" $ do
+  it "retains authored declaration ownership through imports, re-exports and specialization" $ do
+    let library = Source "spelling.lawspec" "unit spelling\nfunction same (value :: a) -> a is value end function"
+        facade = Source "facade.lawspec" "unit facade\nimport spelling as original\nexport original.same"
+        use = Source "use.lawspec" "unit use\nimport facade as copied\nlaw values is definition: copied.same true = true and copied.same 1 = 1 end end"
+    case compileCoreCanonical 64 defaultGeneration [library,facade,use] of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        let declarations = [d | u <- C.programUnits program,d <- C.unitDeclarations u,
+              C.declarationSource d == Just ("spelling","same")]
+        length declarations `shouldBe` 2
+        map C.declarationName declarations `shouldSatisfy` all (/= "same")
+        forM_ declarations $ \d -> C.declarationOrigin d `shouldSatisfy` (\origin -> case origin of C.SourceSpan _ -> True; _ -> False)
+  it "never derives declaration ownership from a compiler-looking user path or generated spelling" $ do
+    let name = "lawspec_lawspecCollectionsEqSetOf_123"
+        source = Source "<lawspec.collections>" ("unit lookalike\nfunction " ++ name ++ " (items :: List Bool) -> Set Bool is #S{false} end function")
+    case compileCoreCanonical 64 defaultGeneration [source] of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        let declarations = [d | u <- C.programUnits program,d <- C.unitDeclarations u,C.declarationName d == name]
+        map C.declarationSource declarations `shouldBe` [Just ("lookalike",name)]
   it "checks finite membership and any through the shared checked element iteration" $ do
     source <- readFile "test/fixtures/canonical-collection-membership.lawspec"
     forM_ [32,64] $ \bits -> case compile bits source of

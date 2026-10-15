@@ -26,6 +26,7 @@ test('finite collection membership and predicates share checked typed execution'
       const shown = explainLaw(law, result, view);
       assert.equal(shown.assertion, law.assertion);
       assert.doesNotMatch(shown.text, /~lawspecAnyItem/);
+      assert.doesNotMatch(shown.text, /lawspec_[\w]+_[\da-f]{8,}|EqSetItems|Cons\(head/);
     }
     const formatted = await compiler.format(request);
     assert.deepEqual(formatted.diagnostics, []);

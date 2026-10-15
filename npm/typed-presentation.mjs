@@ -109,14 +109,22 @@ export function createTypePresentation(result) {
       ? { ...a, type: substitute(a.type, bindings) } : a) };
     return type;
   }
-  const checkedExpressionText = createExpressionPresentation(result, { constructors, typeName, storageView });
+  // Only concrete bindings have already passed the compiler's stored-value
+  // validation. Keep that fact outside the wire expression objects.
+  const storedValues = new WeakSet();
+  const checkedExpressionText = createExpressionPresentation(result, { constructors, typeName, storageView,
+    isStoredValue: expression => storedValues.has(expression) });
   // Example bindings are already checked concrete values. Render their stored
   // structure through the same constructor metadata; do not execute anything.
   function valueExpression(value) {
     const text = JSON.stringify(value);
-    if (value?.kind === 'data') return {type: value.type, text,
-      node: {kind: 'construct', constructor: value.constructor,
-        arguments: value.fields.map(valueExpression)}};
+    if (value?.kind === 'data') {
+      const expression = {type: value.type, text,
+        node: {kind: 'construct', constructor: value.constructor,
+          arguments: value.fields.map(valueExpression)}};
+      storedValues.add(expression);
+      return expression;
+    }
     return {type: {kind: 'constructor', name: value.type, arguments: []},
       text: showScalar(value), node: {kind: 'constant', value}};
   }

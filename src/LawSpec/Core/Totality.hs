@@ -1,6 +1,6 @@
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, forM_, foldM, forM)
@@ -117,7 +117,13 @@ auditDeferring constructors contracts definitions = auditDeferringWithResults co
 -- conversion.
 auditDeferringWithResults :: [ProofConstructorContract] -> [ProofContract]
   -> [ProofDefinition] -> M.Map Id (Maybe Integer, Maybe Integer) -> Either [Diagnostic] [(Id, Int)]
-auditDeferringWithResults constructors contracts definitions results = do
+auditDeferringWithResults = auditDeferringWithTemplates M.empty
+
+-- Compiler-provided template identities survive specialization. Never infer
+-- semantic identity or recursion from an executable name's prefix or suffix.
+auditDeferringWithTemplates :: M.Map Id (Id,String) -> [ProofConstructorContract] -> [ProofContract]
+  -> [ProofDefinition] -> M.Map Id (Maybe Integer, Maybe Integer) -> Either [Diagnostic] [(Id,Int)]
+auditDeferringWithTemplates templates constructors contracts definitions results = do
   let ids = map proofId definitions
       known = S.fromList ids
       signatures = M.fromList [(proofId d,proofArguments d) | d <- definitions]
@@ -125,10 +131,14 @@ auditDeferringWithResults constructors contracts definitions results = do
       unfoldable = M.fromList [(proofId d,(argument,branches)) | d <- definitions,
         [argument] <- [proofArguments d], DataMatch (Variable subject) branches <- [stripDomains (proofBody d)],
         subject == argument]
+      template d = M.findWithDefault (proofId d,proofName d) (proofId d) templates
+      components = stronglyConnComp [(d, proofId d,filter (/= proofId d) (concatMap calls (expressions d))) | d <- definitions]
+      cyclicGroups = [group | CyclicSCC group <- components]
       initialFacts = emptyFacts{constructorContracts=constructorTable,unfoldings=unfoldable,
+        definitionTemplates=M.fromList [(proofId d,fst (template d)) | d <- definitions],
         resultBounds=results,
         naturalMeasures=naturalFixpoint S.empty,
-        measureIds=M.fromListWith (++) [(templateName (proofName d),[proofId d]) | d <- definitions],
+        measureIds=M.fromListWith (++) [(snd (template d),[proofId d]) | d <- definitions],
         guarantees=M.fromList [(contractOwner c,(parameters,contractResult c,postconditions c)) | c <- contracts,
           not (null (postconditions c)), Just parameters <- [M.lookup (contractOwner c) signatures]]}
       -- A measure is natural when every branch is built from natural values:
@@ -175,17 +185,16 @@ auditDeferringWithResults constructors contracts definitions results = do
         (Left "definition postcondition has an out-of-scope variable")
       unless (contractOwner c `notElem` concatMap calls (preconditions c ++ postconditions c))
         (Left "a definition contract cannot call its own definition")
-    forM_ (stronglyConnComp [(d, proofId d,
-      filter (/= proofId d) (concatMap calls (expressions d))) | d <- definitions]) $ \component ->
+    forM_ components $ \component ->
         case component of
           AcyclicSCC _ -> pure ()
           -- Instances of one generic definition (a GADT evaluator at several
           -- type arguments) recurse into each other like a single definition.
           CyclicSCC group
-            | all ((== templateName (proofName (head group))) . templateName . proofName) group -> pure ()
+            | all ((== fst (template (head group))) . fst . template) group -> pure ()
             | otherwise -> Left ("mutually recursive total definitions are not supported: " ++
                 unwords (map proofName group))
-  fmap concat $ forM definitions $ \d -> diagnostic (proofLocation d) $ prefix (proofName d) $ do
+  audited <- forM definitions $ \d -> diagnostic (proofLocation d) $ prefix (proofName d) $ do
     unless (length (proofArguments d) == length (nub (proofArguments d)))
       (Left "duplicate definition argument identity")
     unless (all (`elem` proofArguments d) (concatMap freeVariables (proofArgumentDomains d)))
@@ -197,28 +206,38 @@ auditDeferringWithResults constructors contracts definitions results = do
         visit facts expression = walk signatures contractTable (proofId d) roots facts
           (normalizeCalls (M.keys roots ++ S.toList (usedVariables facts)) expression)
         contract = M.lookup (proofId d) contractTable
-    domains <- foldM (\facts condition -> do
-      _ <- visit facts condition
-      pure (assume True condition facts)) bounded (proofArgumentDomains d)
-    facts <- foldM (\facts condition -> do
-      _ <- visit facts condition
-      pure (assume True condition facts)) domains (maybe [] preconditions contract)
+    (domains,domainCalls) <- foldM (\(facts,scans) condition -> do
+      more <- visit facts condition
+      pure (assume True condition facts,scans ++ more)) (bounded,[]) (proofArgumentDomains d)
+    (facts,preCalls) <- foldM (\(facts,scans) condition -> do
+      more <- visit facts condition
+      pure (assume True condition facts,scans ++ more)) (domains,[]) (maybe [] preconditions contract)
     let body = normalizeCalls (M.keys roots ++ S.toList (usedVariables facts)) (proofBody d)
-    decreases <- walk signatures contractTable (proofId d) roots facts body
+    bodyCalls <- walk signatures contractTable (proofId d) roots facts body
+    let decreases = domainCalls ++ preCalls ++ bodyCalls
     unless (null decreases || not (S.null (foldl1 S.intersection decreases)))
       (Left "no single parameter strictly decreases in every recursive call")
-    deferred <- fmap concat $ forM (maybe [] pure contract) $ \c ->
+    postAudits <- fmap concat $ forM (maybe [] pure contract) $ \c ->
       fmap concat $ forM (resultCases signatures contractTable roots facts body) $ \(scope,branchFacts,result) ->
-        fmap concat $ forM (zip [0..] (postconditions c)) $ \(position,condition) -> do
+        forM (zip [0..] (postconditions c)) $ \(position,condition) -> do
           -- Definedness is checked with each possible result substituted. Local
           -- field domains stay in their branch and never strengthen a sibling.
           let substituted = substituteProof (M.singleton (contractResult c) result) condition
               checked = normalizeCalls (M.keys scope ++ S.toList (usedVariables branchFacts)) substituted
-          _ <- walk signatures contractTable (proofId d) scope branchFacts checked
-          if provesResult signatures contractTable scope branchFacts checked then pure []
-          else if nonlinear checked then pure [(proofId d, position)]
-          else Left "definition result refinement could not be proved"
-    pure (nub deferred)
+          postCalls <- walk signatures contractTable (proofId d) scope branchFacts checked
+          deferred <- if provesResult signatures contractTable scope branchFacts checked then pure []
+            else if nonlinear checked then pure [(proofId d, position)]
+            else Left "definition result refinement could not be proved"
+          pure (postCalls,deferred)
+    let allDecreases = decreases ++ concatMap fst postAudits
+    unless (null allDecreases || not (S.null (foldl1 S.intersection allDecreases)))
+      (Left "no single parameter strictly decreases across the definition and its checks")
+    pure (proofId d,allDecreases,nub (concatMap snd postAudits))
+  diagnostic Nothing $ forM_ cyclicGroups $ \group -> do
+    let scans = concat [decreases | (identity,decreases,_) <- audited,identity `elem` map proofId group]
+    unless (not (null scans) && not (S.null (foldl1 S.intersection scans)))
+      (Left "no single parameter strictly decreases throughout the specialized recursive cycle")
+  pure (concat [deferred | (_,_,deferred) <- audited])
   where
     diagnostic at = either (Left . pure . (\message -> Diagnostic "total" message at)) Right
     prefix name = either (Left . ((name ++ ": ") ++)) Right
@@ -330,6 +349,7 @@ data Facts = Facts
   , guarantees :: M.Map Id ([Id],Id,[Proof])
   -- Each definition's integer result range (see proofResultBounds).
   , resultBounds :: M.Map Id (Maybe Integer, Maybe Integer)
+  , definitionTemplates :: M.Map Id Id
   -- The bounds of the audited definition's integer parameters, which a
   -- recursive call on a smaller integer must stay within.
   , parameterBounds :: M.Map Id (Maybe Integer, Maybe Integer)
@@ -339,30 +359,12 @@ data Facts = Facts
   , constraintSet :: S.Set R.Predicate
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty S.empty S.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty M.empty S.empty S.empty
 
--- | Instances of one template share their recursion check.
-sameDefinition :: Id -> Id -> Bool
-sameDefinition (Id a) (Id b) = a == b || templateIdentity a == templateIdentity b
-  where
-    templateIdentity text = case breakLast text of
-      (owner, name) -> owner ++ templateName name
-    breakLast text = case reverse (splitOnColons text) of
-      name : rest | not (null rest) -> (concatMap (++ "::") (reverse rest), name)
-      _ -> ("", text)
-    splitOnColons text = case breakOn text of
-      (before, Just after) -> before : splitOnColons after
-      (before, Nothing) -> [before]
-    breakOn text = go "" text
-      where go acc (':' : ':' : rest) = (reverse acc, Just rest)
-            go acc (c : rest) = go (c : acc) rest
-            go acc [] = (reverse acc, Nothing)
-
--- | Specialized instances are named lawspec_<template>_<hash>.
-templateName :: String -> String
-templateName n = case stripPrefix "lawspec_" n of
-  Just rest | '_' `elem` rest -> reverse (drop 1 (dropWhile (/= '_') (reverse rest)))
-  _ -> n
+-- | Only explicit template identities may share a recursion check.
+sameDefinition :: Facts -> Id -> Id -> Bool
+sameDefinition facts a b = M.findWithDefault a a (definitionTemplates facts) ==
+  M.findWithDefault b b (definitionTemplates facts)
 
 -- | Index guards over a constructor's fields, with every choice of measure
 -- instance per name; the flag says each name had exactly one instance.
@@ -491,7 +493,7 @@ walk signatures contracts self provenance facts expression = case expression of
     let smaller index value = valueProvenance provenance value == Just (index, True)
         structural = [index | (index,argument) <- zip [0..] arguments, smaller index argument]
         descending = S.fromList (structural ++ numericDescent provenance facts arguments)
-    if not (sameDefinition callee self) then pure nested
+    if not (sameDefinition facts callee self) then pure nested
     else if S.null descending then Left "recursive call has no strict structural descent, and no integer argument moves strictly toward a bound"
     else pure (descending : nested)
   Logical op left right -> do

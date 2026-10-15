@@ -133,7 +133,9 @@ auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContrac
     pure (T.ProofContract (contractDeclaration contract) freshResult
       (map lower (contractPreconditions contract)) (map lower (contractPostconditions contract)))
   constructorProofs <- constructorProofContracts bits dataDeclarations
-  T.auditDeferringWithResults constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
+  T.auditDeferringWithTemplates (M.fromList
+    [(declarationId d,template) | definition <- definitions,let d=definitionDeclaration definition,Just template <- [declarationTemplate d]])
+    constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
     (M.fromList [(declarationId d, resultBounds bits (snd (functionType (declarationType d)))) | d <- map definitionDeclaration definitions])
   where
     location declaration = case declarationOrigin declaration of

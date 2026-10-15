@@ -682,7 +682,13 @@ elaborateDefinitionUnitCollected bits u = do
     uses <- mapM (abilityReferenceWith (collectType bits) u) (maybe [] id (lookup n (S.abilityRows u)))
     pure (C.MkDeclaration (declarationId u n) n ty
       (maybe (C.GeneratedFrom (declarationId u n)) C.SourceSpan (lookup n (S.declarationSpans u)))
-      (n `elem` S.asyncFunctions u) uses)
+      (n `elem` S.asyncFunctions u) uses
+      (case [S.functionSource d | d <- S.functionDefinitions u,S.functionName d == n] of
+        [source] -> source
+        _ -> Just (S.unitName u,n))
+      (case [S.functionTemplate d | d <- S.functionDefinitions u,S.functionName d == n] of
+        [Just name] -> Just (declarationId u name,name)
+        _ -> Nothing))
   (abilities, operations) <- unitOperationsWith (collectType bits) u
   -- What every definition's body sees, made once for the unit.
   let unitEnvironment = S.monoEnvironment (S.functions u)
@@ -759,7 +765,7 @@ machineBridges ds machine = mapM bridge
           binders = [C.Binder (C.Id (C.idText run ++ "::argument::" ++ show i)) ("argument" ++ show i) t | (i, t) <- zip [0 :: Int ..] args]
           call = C.Expr result (C.ExternalCall target [C.Expr (C.binderType b) (C.Local (C.binderId b)) origin | b <- binders]) origin
           name = reverse (takeWhile (/= ':') (reverse (C.idText run)))
-          declaration = adapter { C.declarationId = run, C.declarationName = name, C.declarationOrigin = origin }
+          declaration = adapter { C.declarationId = run, C.declarationName = name, C.declarationOrigin = origin, C.declarationSource = Nothing, C.declarationTemplate = Nothing }
       pure (C.MkDefinition declaration binders call True Nothing)
 
 

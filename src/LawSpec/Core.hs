@@ -46,10 +46,10 @@ data Binder = Binder { binderId :: Id, binderName :: String, binderType :: Type 
 -- declarationUses is its ability row: the abilities it needs a handler for,
 -- declared on an adapter and inferred for a definition. A native adapter
 -- receives one handler per ability, in this order, before its arguments.
-data Declaration = MkDeclaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin, declarationAsync :: Bool, declarationUses :: [AbilityRef] } deriving (Eq, Show, Generic)
+data Declaration = MkDeclaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin, declarationAsync :: Bool, declarationUses :: [AbilityRef], declarationSource :: Maybe (String,String), declarationTemplate :: Maybe (Id,String) } deriving (Eq, Show, Generic)
 pattern Declaration :: Id -> String -> Type -> Origin -> Declaration
-pattern Declaration identity name ty origin <- MkDeclaration identity name ty origin _ _
-  where Declaration identity name ty origin = MkDeclaration identity name ty origin False []
+pattern Declaration identity name ty origin <- MkDeclaration identity name ty origin _ _ _ _
+  where Declaration identity name ty origin = MkDeclaration identity name ty origin False [] Nothing Nothing
 {-# COMPLETE Declaration #-}
 -- | A definition supplies a checked body rather than a user-owned adapter.
 -- Calls retain resolved declaration identities; the total-definition audit

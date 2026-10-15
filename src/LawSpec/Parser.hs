@@ -2238,7 +2238,9 @@ parseWithProfiles profile extra importedFamilies harnessFiles (Source p s) = cas
                 pos = pstateSourcePos state
             in Left [Diagnostic "parse" (errorBundlePretty e)
                  (Just (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))))]
-  Right (u0, imports, families, wrappers, workflows, models, (protocols, scenarios)) -> do
+  Right (parsed, imports, families, wrappers, workflows, models, (protocols, scenarios)) -> do
+    let u0 = parsed { functionDefinitions =
+          [d { functionSource = Just (unitName parsed,functionName d) } | d <- functionDefinitions parsed] }
     -- A harness file is read with the names of the unit it serves.
     separate <- mapM (\harness@(Source hp hs) -> either (\e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]) Right
       (runReader (runParserT harnessFileP hp hs) (profile harness environment))) harnessFiles

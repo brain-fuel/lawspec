@@ -623,3 +623,28 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
         free `shouldBe` Id "bound"
         local `shouldBe` renamed
       other -> expectationFailure (show other)
+
+  it "uses explicit template identities rather than compiler-looking recursion names" $ do
+    let a = Id "scope::lawspec_shared_a"; b = Id "scope::lawspec_shared_b"
+        xs = Id "xs"; ys = Id "ys"; h = Id "head"; t = Id "tail"
+        definition identity other name = T.ProofDefinition identity name Nothing [xs,ys]
+          (T.ListMatch (T.Variable xs) (T.Literal (SBool True)) h t
+            (T.Call other [T.Variable t,T.Variable ys])) []
+        definitions = [definition a b "lawspec_shared_a",definition b a "lawspec_shared_b"]
+        templates = M.fromList [(identity,(Id "scope::template","template")) | identity <- [a,b]]
+    T.audit definitions `shouldSatisfy` isLeft
+    T.auditDeferringWithTemplates templates [] [] definitions M.empty `shouldBe` Right []
+  it "requires one decreasing parameter across a specialized recursive cycle" $ do
+    let a = Id "scope::instanceA"; b = Id "scope::instanceB"
+        xs = Id "xs"; ys = Id "ys"; h = Id "head"; t = Id "tail"
+        grow value = T.ListCons (T.Variable h) (T.Variable value)
+        first = T.ProofDefinition a "instanceA" Nothing [xs,ys]
+          (T.ListMatch (T.Variable xs) (T.Literal (SBool True)) h t
+            (T.Call b [T.Variable t,grow ys])) []
+        second = T.ProofDefinition b "instanceB" Nothing [xs,ys]
+          (T.ListMatch (T.Variable ys) (T.Literal (SBool True)) h t
+            (T.Call a [grow xs,T.Variable t])) []
+        templates = M.fromList [(identity,(Id "scope::template","template")) | identity <- [a,b]]
+    case T.auditDeferringWithTemplates templates [] [] [first,second] M.empty of
+      Left [diagnostic] -> S.message diagnostic `shouldBe` "no single parameter strictly decreases throughout the specialized recursive cycle"
+      other -> expectationFailure (show other)

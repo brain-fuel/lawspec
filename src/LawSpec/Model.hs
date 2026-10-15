@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 -- | The surface syntax tree shared by the parser, inference and expansion. It
 -- stays out of Core and the emitters, which the boundary check enforces.
 -- ref:DEC-typed-core-boundary
@@ -82,11 +83,19 @@ data Import = Import
   { importUnit :: String, importAlias :: String
   , importItems :: [String], importSpan :: Span
   } deriving (Eq, Show, Generic)
-data FunctionDefinition = FunctionDefinition
+data FunctionDefinition = MkFunctionDefinition
   { functionName :: String, functionArguments :: [(String, Type)]
   , functionResult :: Type, functionRequirements :: [Constraint]
   , functionBody :: Expr, functionSpan :: Span
+  -- Owning source unit and authored spelling, retained through copies and
+  -- specialization independently of generated executable identities.
+  , functionSource :: Maybe (String,String)
+  , functionTemplate :: Maybe String
   } deriving (Eq, Show, Generic)
+pattern FunctionDefinition :: String -> [(String,Type)] -> Type -> [Constraint] -> Expr -> Span -> FunctionDefinition
+pattern FunctionDefinition name arguments result requirements body range <- MkFunctionDefinition name arguments result requirements body range _ _
+  where FunctionDefinition name arguments result requirements body range = MkFunctionDefinition name arguments result requirements body range Nothing Nothing
+{-# COMPLETE FunctionDefinition #-}
 -- | asyncFunctions names the adapters declared `async`: their results arrive
 -- later, as each target's task, and tests await them where they are called.
 -- orchestrations names the definitions that may call adapters: workflows,

@@ -1,4 +1,13 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit} from '../../npm/index.js';
+
+export function authoredNames(unit: Unit): string[] {
+  return unit.declarations.flatMap(declaration => {
+    const source: DeclarationSource | undefined = declaration.source;
+    if (!source) return [];
+    const canonical: string | undefined = source.canonicalName;
+    return [canonical ?? `${source.unit}.${source.name}`];
+  });
+}
 
 // Every published node must be traversable without an unchecked cast.
 export function children(node: ExprNode): Expr[] {

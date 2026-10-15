@@ -240,9 +240,15 @@ export interface Law {
   harness: LawHarness;
 }
 
+export interface DeclarationSource {
+  unit: string;
+  name: string;
+  canonicalName?: string;
+}
+
 export interface Unit {
   id: string;
-  declarations: (Binder & {origin: Origin;})[];
+  declarations: (Binder & {origin: Origin; source?: DeclarationSource;})[];
 }
 
 export interface StructuralRecord {

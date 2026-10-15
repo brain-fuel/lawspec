@@ -202,6 +202,7 @@ specializeDefinitionsWithContext sourceTypes declarations bits satisfies units p
               generated <- if name `elem` generic then allocate name concrete else pure name
               let definition = template
                     { functionName = generated
+                    , functionTemplate = case functionTemplate template of Just original -> Just original; _ -> Just name
                     , functionArguments = [(n,replace ty) | (n,ty) <- functionArguments template]
                     , functionResult = replace (functionResult template)
                     , functionRequirements = requirements

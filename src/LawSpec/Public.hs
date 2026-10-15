@@ -14,6 +14,7 @@ import qualified LawSpec.Model as S
 import LawSpec.Common
 import LawSpec.Scalar (prettyScalar)
 import LawSpec.Backend (declarationName, prettyType)
+import LawSpec.Collections (collectionsUnit,canonicalCollectionValues,collectionOperations,canonicalCollectionOperation)
 
 type Names = [(C.Id,String)]
 
@@ -200,7 +201,20 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
           | (label,indexes) <- C.structuralPredicates structure
           , let predicates = M.fromList (zip [0..] (C.constructorPredicates constructor))]
         ] | Just structure <- [C.dataStructural declaration],constructor <- take 1 (C.dataConstructors declaration)])
-    unitView u = object (["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++ ["async" .= True | C.declarationAsync d] ++
+    -- Source ownership comes from parsing the declaring unit, never from an
+    -- origin filename or the spelling of a specialized generated identifier.
+    sourceView owner name = object (["unit" .= owner,"name" .= name] ++
+      ["canonicalName" .= ("prelude." ++ operation) | owner == collectionsUnit,
+        Just operation <- [collectionName name]])
+    collectionName name = case [operation | operation <- map fst collectionOperations ++ map fst canonicalCollectionValues,
+      let public = case [alias | (alias,internal) <- canonicalCollectionValues,internal == name] of
+            alias:_ -> alias
+            _ -> name,
+      Just (definition,_) <- [canonicalCollectionOperation operation],definition == public] of
+        operation:_ -> Just operation
+        _ -> Nothing
+    unitView u = object (["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++
+        ["source" .= sourceView owner name | Just (owner,name) <- [C.declarationSource d]] ++ ["async" .= True | C.declarationAsync d] ++
         -- Its ability row, declared or inferred.
         ["uses" .= declarationRow d | not (null (declarationRow d))]) | d <- C.unitDeclarations u]] ++
       -- What each existing effect-like construct uses, as abilities

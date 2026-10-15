@@ -326,7 +326,13 @@ presence value.
 ## Declarations
 
 - `units`: each `{id, declarations}`, where declarations are the unit's
-  signatures with origins.
+  signatures with origins. When an authored declaration is known, its optional
+  `source: {unit, name, canonicalName?}` retains the declaring unit and original
+  spelling through imports, re-exports and specialization. `canonicalName`,
+  when present, identifies a compiler-owned prelude collection operation.
+  Generated helpers may have no source declaration. Resolve executable calls
+  by their declaration IDs; do not infer ownership from a filename or a
+  generated name.
 - `dataTypes`: each `{id, name, parameters, origin, constructors}`, with
   constructor IDs and ordered typed fields. Built-in containers are not listed.
   An imported data type keeps the ID of the unit that declares it.

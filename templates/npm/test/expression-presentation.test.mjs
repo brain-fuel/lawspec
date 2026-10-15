@@ -206,7 +206,7 @@ law unused is definition: record{chosen = 1, unused = 1 / 0} must be record{chos
   const texts = new Map(result.laws.map(law => [law.id.split('::').at(-1), explainLaw(law, result, 'business').text]));
   assert.equal(texts.get('optional'), 'optionalValue () must be Just(value = record{value = 1})');
   assert.equal(texts.get('either'), 'eitherValue () must be Left(value = record{value = 1})');
-  assert.match(texts.get('lists'), /Cons\(head = record\{value = 1\}, tail = Cons\(head = record\{value = 2\}, tail = Nil\)\)/);
+  assert.match(texts.get('lists'), /\[record\{value = 1\}, record\{value = 2\}\]/);
   assert.equal(texts.get('unused').match(/\(1 \/ 0\)/g)?.length, 2);
   for (const [name, text] of texts) {
     assert.doesNotMatch(text, /lawspec::structural|_lawspec|lawspecRecordView/);
@@ -253,5 +253,181 @@ test('emitted operational terms retain handlers, call filters and the original e
       assert.deepEqual(shown.evidence, result.evidence.filter(e => e.declaration === law.id));
     }
     assert.deepEqual(result, before);
+  }
+});
+
+
+test('source provenance names specializations once and qualifies independent declarations', () => {
+  const data = {units: [{id: 'use', declarations: [
+    {id: 'use::specialized_1', name: 'generated_1', source: {unit: 'library', name: 'echo'}},
+    {id: 'use::specialized_2', name: 'generated_2', source: {unit: 'library', name: 'echo'}},
+  ]}]};
+  const render = presentation(data);
+  assert.equal(render(expression({kind: 'call', declaration: 'use::specialized_1', arguments: [number(1)]})), 'echo 1');
+  assert.equal(render(expression({kind: 'call', declaration: 'use::specialized_2', arguments: [number(2)]})), 'echo 2');
+  const qualified = presentation({units: [...data.units, {id: 'other', declarations: [
+    {id: 'other::echo', name: 'echo', source: {unit: 'other', name: 'echo'}},
+  ]}]});
+  assert.equal(qualified(expression({kind: 'call', declaration: 'use::specialized_1', arguments: [number(1)]})), 'library.echo 1');
+});
+
+test('list presentation preserves strict computations and keeps unknown tails explicit', () => {
+  const listType = {kind: 'constructor', name: 'List', arguments: [{kind: 'type', type: integer}]};
+  const nil = expression({kind: 'construct', constructor: 'List::Nil', arguments: []}, 'Nil', listType);
+  const cons = (head, tail) => expression({kind: 'construct', constructor: 'List::Cons', arguments: [head, tail]}, 'Cons', listType);
+  const render = presentation({});
+  assert.equal(render(cons(binary('/', number(1), number(0)), cons(number(2), nil))), '[(1 / 0), 2]');
+  const unknown = expression({kind: 'helper', name: 'unknownTail', arguments: []}, 'tail', listType);
+  assert.equal(render(cons(number(1), unknown)), 'Cons(head = 1, tail = unknownTail)');
+});
+
+test('checked collection names come only from explicit declaration metadata', () => {
+  const listType = {kind: 'constructor', name: 'List', arguments: [{kind: 'type', type: integer}]};
+  const list = expression({kind: 'construct', constructor: 'List::Cons', arguments: [number(1),
+    expression({kind: 'construct', constructor: 'List::Nil', arguments: []}, 'Nil', listType)]}, 'Cons', listType);
+  const data = {units: [{id: 'use', declarations: [
+    {id: 'use::trusted', name: 'mangled', source: {unit: 'lawspec.collections', name: 'eqSetOf', canonicalName: 'prelude.setOf'}},
+    {id: 'use::fake', name: 'lawspec_lawspecCollectionsEqSetOf_123',
+      origin: {kind: 'source', span: {start: {file: '<lawspec.collections>', line: 1, column: 1}}}},
+  ]}]};
+  const render = presentation(data);
+  assert.equal(render(expression({kind: 'call', declaration: 'use::trusted', arguments: [list]})), '#S{1}');
+  assert.equal(render(expression({kind: 'call', declaration: 'use::fake', arguments: [list]})), 'lawspec_lawspecCollectionsEqSetOf_123 [1]');
+  const opaque = expression({kind: 'helper', name: 'buildItems', arguments: []}, 'buildItems', listType);
+  assert.equal(render(expression({kind: 'call', declaration: 'use::trusted', arguments: [opaque]})), 'prelude.setOf (buildItems)');
+});
+
+test('membership presentation keeps strict values once and retains dependent bindings', () => {
+  const listType = {kind: 'constructor', name: 'List', arguments: [{kind: 'type', type: integer}]};
+  const bool = {kind: 'constructor', name: 'Bool', arguments: []};
+  const item = binder('item'), needle = binder('needle'), stored = {...binder('stored', 'collection'), type: listType};
+  const list = expression({kind: 'construct', constructor: 'List::Cons', arguments: [number(1),
+    expression({kind: 'construct', constructor: 'List::Nil', arguments: []}, 'Nil', listType)]}, 'items', listType);
+  const value = expression({kind: 'local', id: stored.id}, 'collection', listType);
+  const differs = expression({kind: 'binary', operator: '!=', left: local(needle.id), right: local(item.id)}, 'differs', bool);
+  const iteration = expression({kind: 'allElements', value, binder: item, predicate: differs}, 'every', bool);
+  const found = expression({kind: 'unary', operator: '!', argument: iteration}, 'found', bool);
+  const term = letIn(needle, call('first', unit), letIn(stored, list, found));
+  const render = presentation({units: functions(['first', 'make'])});
+  const before = structuredClone(term);
+  assert.equal(render(term), '((first ()) in [1])');
+  assert.deepEqual(term, before);
+  const dependent = letIn(needle, call('first', unit), letIn(stored, call('make', local(needle.id)), found));
+  assert.match(render(dependent), /^let needle = first \(\) in let collection = make needle in /);
+});
+
+test('finite existential iteration keeps callback scopes and Boolean polarity', () => {
+  const listType = {kind: 'constructor', name: 'List', arguments: [{kind: 'type', type: integer}]};
+  const bool = {kind: 'constructor', name: 'Bool', arguments: []};
+  const bound = binder('inner', '~lawspecAnyItem');
+  const predicate = expression({kind: 'binary', operator: '>', left: local(bound.id), right: local('outside', 'value')}, 'predicate', bool);
+  const inverted = expression({kind: 'unary', operator: '!', argument: predicate}, 'not predicate', bool);
+  const items = expression({kind: 'construct', constructor: 'List::Nil', arguments: []}, 'Nil', listType);
+  const every = expression({kind: 'allElements', value: items, binder: bound, predicate: inverted}, 'every', bool);
+  const term = expression({kind: 'unary', operator: '!', argument: every}, 'not every', bool);
+  assert.equal(presentation({})(term), 'any value1 in ([]) satisfies ((value1 > value))');
+});
+
+test('stored set values use set notation without repairing arbitrary storage expressions', () => {
+  const listType = {kind: 'constructor', name: 'List', arguments: [{kind: 'type', type: integer}]};
+  const setType = {kind: 'constructor', name: 'lawspec.collections::type::EqSet', arguments: [{kind: 'type', type: integer}]};
+  const constructor = setType.name + '::EqSetItems';
+  const result = {dataTypes: [{id: setType.name, name: 'Set', parameters: [], constructors: [
+    {id: constructor, name: 'EqSetItems', fields: [{...binder('items'), type: listType}]},
+  ]}]};
+  const one = {type: 'Integer', value: '1'};
+  const nil = {kind: 'data', type: listType, constructor: 'List::Nil', fields: []};
+  const items = {kind: 'data', type: listType, constructor: 'List::Cons', fields: [one, nil]};
+  const before = structuredClone(result);
+  assert.equal(createTypePresentation(result).valueText({kind: 'data', type: setType, constructor, fields: [items]}), '#S{1}');
+  const rawList = expression({kind: 'construct', constructor: 'List::Cons', arguments: [number(1),
+    expression({kind: 'construct', constructor: 'List::Cons', arguments: [number(1),
+      expression({kind: 'construct', constructor: 'List::Nil', arguments: []}, 'Nil', listType)]}, 'Cons', listType)]}, 'Cons', listType);
+  assert.equal(presentation(result)(expression({kind: 'construct', constructor, arguments: [rawList]}, 'storage', setType)), 'EqSetItems(items = [1, 1])');
+  assert.deepEqual(result, before);
+});
+
+test('compiled declarations retain authored ownership through facades and polymorphic specialization', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const sources = [
+    {path: 'spelling.lawspec', content: 'unit spelling\nfunction same (value :: a) -> a is value end function'},
+    {path: 'facade.lawspec', content: 'unit facade\nimport spelling as original\nexport original.same'},
+    {path: 'use.lawspec', content: 'unit use\nimport facade as copied\nlaw values is definition: copied.same true = true and copied.same 1 = 1 end end'},
+  ];
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []}, sources});
+  assert.deepEqual(result.diagnostics, []);
+  const declarations = result.units.flatMap(unit => unit.declarations).filter(d => d.source?.unit === 'spelling');
+  assert.equal(new Set(declarations.map(d => d.id)).size, 2);
+  for (const declaration of declarations) {
+    assert.deepEqual(declaration.source, {unit: 'spelling', name: 'same'});
+    assert.notEqual(declaration.name, 'same');
+  }
+  const law = result.laws.find(law => law.id === 'use::law::values');
+  assert.ok(law);
+  for (const view of ['developer', 'business', 'formal']) {
+    const shown = explainLaw(law, result, view);
+    assert.match(shown.text, /same true/);
+    assert.match(shown.text, /same 1/);
+    assert.doesNotMatch(shown.text, /lawspec_|copied\.|facade\./);
+    assert.equal(shown.assertion, law.assertion);
+  }
+});
+
+test('compiler-looking source paths and names never receive builtin collection presentation', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const name = 'lawspec_lawspecCollectionsEqSetOf_123';
+  const content = `unit lookalike
+function ${name} (items :: List Bool) -> Set Bool is #S{false} end function
+law actual is definition: ${name} [true] = #S{false} end end`;
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: ['exhaustive']},
+    sources: [{path: '<lawspec.collections>', content}]});
+  assert.deepEqual(result.diagnostics, []);
+  const declaration = result.units.flatMap(unit => unit.declarations).find(d => d.name === name);
+  assert.deepEqual(declaration?.source, {unit: 'lookalike', name});
+  const law = result.laws.find(law => law.id === 'lookalike::law::actual');
+  assert.ok(law);
+  assert.equal(explainLaw(law, result, 'business').text, `${name} [true] must be #S{false}`);
+});
+
+test('compiled source names preserve escaped phrase spelling, case and qualified collisions', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const phrase = String.raw`"|Keep\|Case\\Name|`;
+  const sources = [
+    {path: 'one.lawspec', content: `unit one\nfunction ${phrase} (value :: a) -> a is value end function`},
+    {path: 'two.lawspec', content: `unit two\nfunction ${phrase} (value :: a) -> a is value end function`},
+    {path: 'use.lawspec', content: `unit use\nimport one as first\nimport two as second\nlaw names is definition: first.${phrase} true = second.${phrase} true end end`},
+  ];
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []}, sources});
+  assert.deepEqual(result.diagnostics, []);
+  for (const owner of ['one', 'two']) assert.ok(result.units.flatMap(unit => unit.declarations)
+    .some(declaration => declaration.source?.unit === owner && declaration.source.name === phrase));
+  const law = result.laws.find(law => law.id === 'use::law::names');
+  assert.ok(law);
+  assert.equal(explainLaw(law, result, 'business').text, `one.${phrase} true must be two.${phrase} true`);
+});
+
+test('set membership explanations recompile with identical typed obligations and finite outcomes', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const content = 'unit readable\nlaw included is definition: true in #S{false, true} end end';
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: ['exhaustive']},
+    sources: [{path: 'readable.lawspec', content}]};
+  const result = await compiler.check(request);
+  assert.deepEqual(result.diagnostics, []);
+  const law = result.laws.find(law => law.id === 'readable::law::included');
+  assert.ok(law);
+  const text = explainLaw(law, result, 'business').text;
+  assert.match(text, /true in #S\{false, true\}/);
+  assert.doesNotMatch(text, /lawspec_|Cons|EqSetItems/);
+  const roundtrip = await compiler.check({...request, sources: [{path: 'readable.lawspec', content:
+    content + `\nlaw displayed is definition: ${text} end end`}]});
+  assert.deepEqual(roundtrip.diagnostics, []);
+  for (const checked of roundtrip.laws) {
+    assert.equal(roundtrip.evidence.find(e => e.declaration === checked.id && e.stage === 'law')?.status, 'exhaustively-checked');
+    assert.equal(checked.assertion.kind, 'equal');
+    assert.deepEqual(checked.assertion.left.type, law.assertion.left.type);
   }
 });

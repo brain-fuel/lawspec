@@ -1,16 +1,24 @@
 // Generated from templates/npm/expression-presentation.mjs by lawspec-dev generate. Do not edit.
 // Render checked terms, without evaluating them or changing their evidence.
 // Constructor(field = term) is presentation notation, not authoring syntax.
-export function createExpressionPresentation(result, { constructors, typeName, storageView }) {
+export function createExpressionPresentation(result, { constructors, typeName, storageView, isStoredValue = () => false }) {
   const unavailable = Symbol('unavailable expression presentation');
   const values = new Map();
-  for (const unit of result.units ?? []) for (const declaration of unit.declarations)
-    values.set(declaration.id, { name: declaration.name,
-      owner: declaration.id.includes('::') ? declaration.id.slice(0, declaration.id.indexOf('::')) : unit.id });
+  for (const unit of result.units ?? []) for (const declaration of unit.declarations) {
+    const source = declaration.source;
+    values.set(declaration.id, { name: source?.name ?? declaration.name,
+      owner: source?.unit ?? (declaration.id.includes('::') ? declaration.id.slice(0, declaration.id.indexOf('::')) : unit.id),
+      identity: source ? JSON.stringify([source.unit, source.name]) : declaration.id,
+      canonicalName: source?.canonicalName });
+  }
   for (const [id, entry] of constructors) if (entry.declaration.structure?.kind !== 'record')
     values.set(id, { name: entry.constructor.name, owner: entry.declaration.id.replace('::type::', '.') });
-  const counts = new Map();
-  for (const { name } of values.values()) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const identities = new Map();
+  for (const [id, value] of values) {
+    if (!identities.has(value.name)) identities.set(value.name, new Set());
+    identities.get(value.name).add(value.identity ?? id);
+  }
+  const counts = new Map([...identities].map(([name, owners]) => [name, owners.size]));
   const abilities = new Map((result.units ?? []).flatMap(unit => (unit.abilities ?? []).map(ability =>
     [ability.id, { name: ability.name, owner: ability.id.split('::')[0] }])));
   const abilityCounts = new Map();
@@ -34,6 +42,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
   function globalName(id, scope) {
     const value = values.get(id);
     if (!value) throw unavailable;
+    if (value.canonicalName) return value.canonicalName;
     const name = spelling(value.name);
     return counts.get(value.name) > 1 || [...scope.values()].includes(name)
       ? `${value.owner}.${name}` : name;
@@ -85,6 +94,20 @@ export function createExpressionPresentation(result, { constructors, typeName, s
     while ((view = storageView(expression)) !== undefined) expression = view;
     return expression;
   }
+  // Flatten only the complete built-in list spine; unknown tails, conversions
+  // and arbitrary computations remain explicit. Every head keeps source order.
+  function listElements(expression) {
+    const items = [];
+    while (expression?.type?.kind === 'constructor' && expression.type.name === 'List') {
+      const node = expression.node;
+      if (node?.kind !== 'construct') return undefined;
+      if (node.constructor === 'List::Nil' && node.arguments.length === 0) return items;
+      if (node.constructor !== 'List::Cons' || node.arguments.length !== 2) return undefined;
+      items.push(node.arguments[0]);
+      expression = node.arguments[1];
+    }
+    return undefined;
+  }
   function constructed(tag, entries, scope) {
     const entry = constructors.get(tag);
     if (!entry) throw unavailable;
@@ -101,6 +124,33 @@ export function createExpressionPresentation(result, { constructors, typeName, s
       || branch.binders.length !== entry.constructor.fields.length || branch.body.node?.kind !== 'local') return undefined;
     const index = branch.binders.findIndex(binder => binder.id === branch.body.node.id);
     return index < 0 ? undefined : { value: node.value, label: entry.constructor.fields[index].name };
+  }
+  function iterationCollection(expression) {
+    const node = expression?.node;
+    if (node?.kind === 'helper' && node.name === 'prelude.octets' && node.arguments.length === 1
+      && node.arguments[0].type?.name === 'Bytes') return node.arguments[0];
+    if (node?.kind !== 'match' || node.cases.length !== 1) return expression;
+    const branch = node.cases[0], entry = constructors.get(branch.constructor);
+    const types = ['EqSet', 'Set', 'Queue', 'Stack', 'Deque', 'KeyVal'].map(name => `lawspec.collections::type::${name}`);
+    if (!entry || !types.includes(entry.declaration.id) || node.value.type?.name !== entry.declaration.id
+      || entry.constructor.fields.length !== 1 || branch.binders.length !== 1
+      || branch.body.node?.kind !== 'local' || branch.body.node.id !== branch.binders[0].id) return expression;
+    return node.value;
+  }
+  function membership(expression, scope, reserved) {
+    const outer = expression.node, inner = outer?.body?.node;
+    if (outer?.kind !== 'let' || inner?.kind !== 'let' || outer.binder.id === inner.binder.id
+      || freeLocals(inner.value).has(outer.binder.id)) return undefined;
+    const negated = inner.body.node, iteration = negated?.argument?.node;
+    if (negated?.kind !== 'unary' || negated.operator !== '!' || iteration?.kind !== 'allElements') return undefined;
+    const collection = iterationCollection(iteration.value), comparison = iteration.predicate.node;
+    if (collection.node?.kind !== 'local' || collection.node.id !== inner.binder.id
+      || comparison?.kind !== 'binary' || comparison.operator !== '!='
+      || comparison.left.node?.kind !== 'local' || comparison.left.node.id !== outer.binder.id
+      || comparison.right.node?.kind !== 'local' || comparison.right.node.id !== iteration.binder.id) return undefined;
+    // The exact typed shape consumes each strict argument once. Do not inline
+    // dependent bindings, conversions, unknown tails or other computations.
+    return resultText(`(${argument(render(outer.value, scope, reserved))} in ${argument(render(inner.value, scope, reserved))})`, true);
   }
   function literal(expression, scope, reserved) {
     const bindings = [];
@@ -137,6 +187,8 @@ export function createExpressionPresentation(result, { constructors, typeName, s
     if (!node) throw unavailable;
     const go = (value, bindings = scope) => render(value, bindings, reserved);
     const args = values => values.map(value => argument(go(value))).join(' ');
+    const list = listElements(expression);
+    if (list !== undefined) return resultText(`[${list.map(value => go(value).text).join(', ')}]`, true);
     const select = projection(expression);
     if (select) return resultText(`${argument(go(select.value))}.${select.label}`, true);
     switch (node.kind) {
@@ -144,11 +196,18 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         : resultText(expression.text, /^(?:[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false)$/.test(expression.text) || expression.text.startsWith('"'));
       case 'local': return resultText(scope.get(node.id) ?? expression.text, true);
       case 'construct': {
+        if (node.constructor === 'lawspec.collections::type::EqSet::EqSetItems' && isStoredValue(expression)
+          && node.arguments.length === 1) {
+          const items = listElements(node.arguments[0]);
+          if (items !== undefined) return resultText(`#S{${items.map(value => go(value).text).join(', ')}}`, true);
+        }
         const entry = constructors.get(node.constructor);
         if (!entry || entry.constructor.fields.length !== node.arguments.length) throw unavailable;
         return constructed(node.constructor, node.arguments.map((value, i) => [entry.constructor.fields[i].name, go(value)]), scope);
       }
       case 'let': {
+        const member = membership(expression, scope, reserved);
+        if (member) return member;
         const record = literal(expression, scope, reserved);
         if (record) return record;
         const bound = bind(node.binder, scope, reserved);
@@ -164,11 +223,26 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         if (!field) throw unavailable;
         return resultText(`${argument(go(node.value))} with ${field.name} = ${go(node.field).text}`);
       }
-      case 'call': return resultText(globalName(node.declaration, scope) + (node.arguments.length ? ` ${args(node.arguments)}` : ''));
+      case 'call': {
+        // A checked public set constructor and a literal list have exactly the
+        // authoring meaning of #S, including duplicate handling and order.
+        if (values.get(node.declaration)?.canonicalName === 'prelude.setOf' && node.arguments.length === 1) {
+          const items = listElements(node.arguments[0]);
+          if (items !== undefined) return resultText(`#S{${items.map(value => go(value).text).join(', ')}}`, true);
+        }
+        return resultText(globalName(node.declaration, scope) + (node.arguments.length ? ` ${args(node.arguments)}` : ''));
+      }
       case 'helper': return resultText(node.name + (node.arguments.length ? ` ${args(node.arguments)}` : ''));
       case 'binary':
       case 'shortCircuit': return resultText(`(${argument(go(node.left))} ${{ '==': '=', '&&': 'and', '||': 'or' }[node.operator] ?? node.operator} ${argument(go(node.right))})`, true);
-      case 'unary': return resultText(`${node.operator === '!' ? 'not' : node.operator} (${go(node.argument).text})`);
+      case 'unary': {
+        const iteration = node.argument.node, predicate = iteration?.predicate?.node;
+        if (node.operator === '!' && iteration?.kind === 'allElements' && predicate?.kind === 'unary' && predicate.operator === '!') {
+          const bound = bind(iteration.binder, scope, reserved);
+          return resultText(`any ${bound.name} in (${go(iterationCollection(iteration.value)).text}) satisfies (${go(predicate.argument, bound.scope).text})`);
+        }
+        return resultText(`${node.operator === '!' ? 'not' : node.operator} (${go(node.argument).text})`);
+      }
       case 'if': return resultText(`if ${go(node.condition).text} then ${go(node.then).text} else ${go(node.else).text} end if`);
       case 'convert': return resultText(`${node.conversion} conversion of (${go(node.argument).text}) to ${typeName(expression.type)}`);
       case 'match': return resultText(`case ${argument(go(node.value))} of {${node.cases.map(branch => {
