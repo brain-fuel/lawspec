@@ -408,8 +408,23 @@ truth _ = error "Bool required"
 -- | Equality defined once for all targets instead of derived Eq: NaN differs from
 -- itself, signed zeros are equal, handles and symbols compare by identity, and
 -- data compares field by field. ref:DEC-portable-exact-arithmetic
+eqSetTag :: String
+eqSetTag = "lawspec.collections::type::EqSet::EqSetItems"
+
+sameMembers :: [Scalar] -> [Scalar] -> Bool
+sameMembers left right = all (\value -> any (equal value) right) left &&
+  all (\value -> any (equal value) left) right
+
+distinctMembers :: [Scalar] -> Bool
+distinctMembers = go []
+  where
+    go _ [] = True
+    go previous (value:rest) = not (any (equal value) previous) && go (value:previous) rest
+
 equal :: Scalar -> Scalar -> Bool
 equal a b
+  | SData tag [SList xs] <- a, SData other [SList ys] <- b
+  , tag == eqSetTag && other == eqSetTag = sameMembers xs ys
   | SData tag xs <- a, SData other ys <- b =
       tag == other && length xs == length ys && and (zipWith equal xs ys)
   | SList xs <- a, SList ys <- b =

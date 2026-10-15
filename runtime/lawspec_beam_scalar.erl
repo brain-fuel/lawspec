@@ -6,7 +6,7 @@
 -module(lawspec_beam_scalar).
 -export([
     literal/1, literal/2, wire/2, validate/3, convert/3,
-    binary/5, negate/1, equal/2, compare/2, helper/4,
+    binary/5, negate/1, equal/2, compare/2, helper/4, distinct_members/1,
     ratio/2, decimal/2, exact/1, float_bits/2, float_from_ratio/4,
     float_from_native/2, float_to_native/1, float_class/1,
     float_binary/3, float_compare/2, integer_type/1, bounds/2,
@@ -524,6 +524,9 @@ equal({ls_complex, W, R, I}, {ls_float, _, _} = B) ->
 equal({ls_float, _, _} = A, {ls_complex, _, _, _} = B) -> equal(B, A);
 equal({ls_symbol, A, _}, {ls_symbol, B, _}) -> A =:= B;
 equal({ls_presence, T, {some, A}}, {ls_presence, T, {some, B}}) -> equal(A, B);
+equal({ls_data, <<"lawspec.collections::type::EqSet::EqSetItems">>, [A]},
+      {ls_data, <<"lawspec.collections::type::EqSet::EqSetItems">>, [B]}) ->
+    same_members(A, B);
 equal({ls_data, T, A}, {ls_data, T, B}) -> equal(A, B);
 equal(A, B) when is_list(A), is_list(B) -> equal_lists(A, B);
 equal(A, B) when is_tuple(A), is_tuple(B) ->
@@ -536,6 +539,13 @@ equal(A, B) ->
         true -> same_ratio(exact(A), exact(B));
         false -> A =:= B
     end.
+same_members(Left, Right) ->
+    lists:all(fun(V) -> lists:any(fun(C) -> equal(V, C) end, Right) end, Left) andalso
+    lists:all(fun(V) -> lists:any(fun(C) -> equal(V, C) end, Left) end, Right).
+distinct_members(Items) -> distinct_members(Items, []).
+distinct_members([], _) -> true;
+distinct_members([V | Rest], Previous) ->
+    not lists:any(fun(C) -> equal(V, C) end, Previous) andalso distinct_members(Rest, [V | Previous]).
 equal_lists([], []) -> true;
 equal_lists([A | As], [B | Bs]) -> equal(A, B) andalso equal_lists(As, Bs);
 equal_lists(_, _) -> false.

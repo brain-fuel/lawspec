@@ -537,6 +537,12 @@ pub fn equal(a: &Value, b: &Value) -> Result<bool> {
         | (Value::Left(x), Value::Left(y))
         | (Value::Right(x), Value::Right(y)) => equal(x, y),
         (Value::Data(left_tag, _), Value::Data(right_tag, _)) if left_tag != right_tag => Ok(false),
+        (Value::Data(tag, left), Value::Data(_, right)) if tag == EQ_SET_TAG => {
+            match (left.as_slice(), right.as_slice()) {
+                ([Value::List(xs)], [Value::List(ys)]) => same_members(xs, ys),
+                _ => Err("Eq-only set equality requires one List field".into()),
+            }
+        }
         (Value::List(xs), Value::List(ys)) | (Value::Data(_, xs), Value::Data(_, ys)) => {
             if xs.len() != ys.len() {
                 return Ok(false);
@@ -550,6 +556,26 @@ pub fn equal(a: &Value, b: &Value) -> Result<bool> {
         }
         _ => Ok(a == b),
     }
+}
+
+pub const EQ_SET_TAG: &str = "lawspec.collections::type::EqSet::EqSetItems";
+
+fn member(value: &Value, candidates: &[Value]) -> Result<bool> {
+    for candidate in candidates { if equal(value, candidate)? { return Ok(true); } }
+    Ok(false)
+}
+
+pub fn same_members(left: &[Value], right: &[Value]) -> Result<bool> {
+    for value in left { if !member(value, right)? { return Ok(false); } }
+    for value in right { if !member(value, left)? { return Ok(false); } }
+    Ok(true)
+}
+
+pub fn distinct_members(items: &[Value]) -> Result<bool> {
+    for (index, value) in items.iter().enumerate() {
+        if member(value, &items[..index])? { return Ok(false); }
+    }
+    Ok(true)
 }
 
 /// `domain` is the compiler-resolved arithmetic evidence, never inferred here.
@@ -1666,6 +1692,13 @@ impl Schema {
                 })
                 .collect::<std::result::Result<_, ValidationFailure>>()?;
             if !native {
+                if *name == "lawspec.collections::type::EqSet" {
+                    if let [Value::List(items)] = checked.as_slice() {
+                        if !distinct_members(items)? {
+                            return Err(ValidationFailure::Rejected("Eq-only set: duplicate equal elements".into()));
+                        }
+                    }
+                }
                 if let Some(predicates) = self.contracts.get(constructor.tag) {
                     for (index, predicate) in predicates.iter().enumerate() {
                         let label = format!("{tag}: field refinement {}", index + 1);

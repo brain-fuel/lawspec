@@ -383,6 +383,7 @@ validateChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits val
             let field position index = indexOf schema (fieldTypes expected !! position) (checked !! position) index
             holds <- fromEvaluation (indexGuard field text)
             unless holds (Left (Rejected (tag ++ ": index guard " ++ text ++ " failed")))
+          checkEqSet typeRef checked
           pure (LS.SData tag checked)
       _ -> Left (EvaluationFailure
         ("expected constructor payload for " ++ show typeRef))
@@ -502,12 +503,18 @@ shallowChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits valu
           let field position index = indexOf schema (fieldTypes expected !! position) (fields !! position) index
           holds <- fromEvaluation (indexGuard field text)
           unless holds (Left (Rejected (tag ++ ": index guard " ++ text ++ " failed")))
+        checkEqSet typeRef fields
         pure value
     _ -> validateChecked scope schema typeRef bits value
 
 equal :: Schema -> TypeRef -> Int -> LS.Scalar -> LS.Scalar
       -> Either String Bool
 equal = equalWith Nothing
+
+checkEqSet :: TypeRef -> [LS.Scalar] -> Either ValidationFailure ()
+checkEqSet (Named "lawspec.collections::type::EqSet" _) [LS.SList items] =
+  unless (LS.distinctMembers items) (Left (Rejected "Eq-only set: duplicate equal elements"))
+checkEqSet _ _ = Right ()
 
 equalWith :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int
           -> LS.Scalar -> LS.Scalar -> Either String Bool

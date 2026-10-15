@@ -46,6 +46,7 @@ import qualified DataShapeSpec
 import qualified GadtSpec
 import qualified FlowSpec
 import qualified CollectionsSpec
+import qualified EqSetSpec
 import qualified AsyncSpec
 import qualified AbilitiesSpec
 import qualified LawPrimitivesSpec
@@ -81,6 +82,7 @@ concrete :: String -> String
 concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
+  EqSetSpec.test_eqOnlySetsPreserveMembershipAndIteration
   CanonicalSpec.test_canonicalAuthoringPreservesIntrinsicGuarantees
   ContextualSpec.test_articlesPreserveOrdinaryNamesAndScope
   RecordIdentitySpec.test_recordIdentitiesPreserveSemantics

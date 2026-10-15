@@ -257,6 +257,8 @@ let rec private strictOrder values =
 
 let private checkCollection (name: string) (fields: Value list) =
     match name, fields with
+    | "lawspec.collections::type::EqSet", [ List items ] ->
+        if not (Scalar.distinctMembers items) then fail "RefinementViolation" "Eq-only set: duplicate equal elements"
     | "lawspec.collections::type::Set", [ List items ] ->
         if not (strictOrder items) then fail "RefinementViolation" name
     | "lawspec.collections::type::KeyVal", [ List entries ] ->

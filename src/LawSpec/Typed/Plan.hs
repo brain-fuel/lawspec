@@ -25,6 +25,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Collections (collectionsUnit, collectionContainer)
 import LawSpec.Core
+import qualified LawSpec.Core.EqSet as EqSet
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Digest (digestHex, digestString)
 
@@ -114,6 +115,9 @@ typedDeclarations :: [String] -> [DataDeclaration] -> [DataDeclaration]
 typedDeclarations scalars declarations = filter ((`S.member` final) . idText . dataId) candidates
   where
     candidates = [ d | d <- declarations, not (dataHandle d), dataIndex d == Nothing
+                 -- Extensional set equality is not native product equality.
+                 -- Keep these definitions on the existing checked value path.
+                 , dataId d /= EqSet.eqSetTypeId
                  , collectionContainer (idText (dataId d)) `notElem` [Just "KeyVal", Just "Set"]
                  , all (\c -> null (constructorEquations c) && null (constructorExistentials c)) (dataConstructors d)
                  , all (\p -> any (mentions p . binderType) (concatMap constructorFields (dataConstructors d))) (dataParameters d) ]

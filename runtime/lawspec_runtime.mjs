@@ -471,6 +471,17 @@ export function isHandle(value) {
   return handleTable(value).has(value);
 }
 
+// Membership always invokes language equality, even for aliased values.
+export function sameMembers(left, right, equal) {
+  return left.every(value => right.some(candidate => equal(value, candidate))) &&
+    right.every(value => left.some(candidate => equal(value, candidate)));
+}
+
+export function distinctMembers(items, equal) {
+  return items.every((value, index) =>
+    !items.slice(0, index).some(candidate => equal(value, candidate)));
+}
+
 /**
  * Equality defined once for all targets instead of borrowed from each
  * language's: NaN differs from itself, signed zeros are equal, handles and

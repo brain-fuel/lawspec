@@ -29,4 +29,4 @@ tests:
   lawspec-test:
     main: Main.hs
     source-dirs: [test, dev/scheduler]
-    dependencies: [lawspec, hspec, vector, process]
+    dependencies: [lawspec, hspec, vector, process, binary]

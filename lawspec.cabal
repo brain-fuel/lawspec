@@ -498,6 +498,7 @@ library
       LawSpec.Core
       LawSpec.Core.DefinitionContracts
       LawSpec.Core.Definitions
+      LawSpec.Core.EqSet
       LawSpec.Core.Eval
       LawSpec.Core.Evidence
       LawSpec.Core.Expression
@@ -856,6 +857,7 @@ test-suite lawspec-test
       DocumentSpec
       DomainModelSpec
       DotNetSpec
+      EqSetSpec
       FlowSpec
       GadtSpec
       GenericDefinitionSpec
@@ -918,6 +920,7 @@ test-suite lawspec-test
   build-depends:
       aeson
     , base >=4.18 && <5
+    , binary
     , bytestring
     , containers
     , directory

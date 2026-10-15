@@ -888,6 +888,10 @@ export class Schema {
         }
       });
       if (mode === 'validate' || mode === 'shallow') {
+        if (type.name === 'lawspec.collections::type::EqSet' &&
+            !ls.distinctMembers(converted[0], (a, b) => this.equal(type.args[0], a, b, bits, symbols))) {
+          throw new RefinementViolation('Eq-only set: duplicate equal elements');
+        }
         constructor.predicates.forEach((predicate, index) => {
           const context = `${constructor.tag}: field refinement ${index + 1}`;
           let accepted;
@@ -1052,6 +1056,10 @@ export class Schema {
   equal(type, left, right, bits = 64, symbols = new Map()) {
     left = this.validate(type, left, bits, symbols);
     right = this.validate(type, right, bits, symbols);
+    if (type.name === 'lawspec.collections::type::EqSet') {
+      return ls.sameMembers(left.fields[0], right.fields[0],
+          (a, b) => this.equal(type.args[0], a, b, bits, symbols));
+    }
     if (this.#definitions.get(type.name)?.handle) return left === right;
     const constructors = this.constructors(type);
     if (constructors !== null) {

@@ -737,6 +737,10 @@ public final class LawSpecSchema {
         }
         checkIndices(type, constructor, logical);
       }
+      if (type.name().equals("lawspec.collections::type::EqSet")
+          && !LawSpecRuntime.distinctMembers(
+              LawSpecRuntime.eqSetItems(new Data(data.tag(), checked)), this::equalValidated))
+        throw new RefinementViolation("Eq-only set: duplicate equal elements");
       return new Value(key(type), new Data(data.tag(), checked));
     }
     if (type.name().equals("List")) {
@@ -1079,6 +1083,8 @@ public final class LawSpecSchema {
   private boolean equalValidated(Value left, Value right) {
     if (left.data() instanceof Data a && right.data() instanceof Data b) {
       if (!a.tag().equals(b.tag()) || a.fields().size() != b.fields().size()) return false;
+      if (a.tag().equals(LawSpecRuntime.EQ_SET_TAG))
+        return LawSpecRuntime.sameMembers(LawSpecRuntime.eqSetItems(a), LawSpecRuntime.eqSetItems(b), this::equalValidated);
       for (int index = 0; index < a.fields().size(); index++) {
         if (!equalValidated(a.fields().get(index), b.fields().get(index))) return false;
       }

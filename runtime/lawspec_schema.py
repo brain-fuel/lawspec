@@ -759,6 +759,10 @@ class Schema:
                     if accepted is not True:
                         raise ValueError(f"{context} did not produce Bool")
                 self._check_indices(constructor, converted)
+                if (reference.name == "lawspec.collections::type::EqSet"
+                        and not ls.distinct_members(converted[0], lambda a, b:
+                            self.equal(reference.arguments[0], a, b, bits, symbols))):
+                    raise RefinementViolation("Eq-only set: duplicate equal elements")
             return ls.DataValue(constructor.tag, converted)
         name, arguments = reference.name, reference.arguments
         if not arguments:
@@ -834,6 +838,9 @@ class Schema:
         symbols = {} if symbols is None else symbols
         left = self.validate(reference, left, bits, symbols)
         right = self.validate(reference, right, bits, symbols)
+        if reference.name == "lawspec.collections::type::EqSet":
+            return ls.same_members(left.fields[0], right.fields[0], lambda a, b:
+                                  self.equal(reference.arguments[0], a, b, bits, symbols))
         definition = self._definitions.get(reference.name)
         if definition is not None and definition.handle:
             return left is right

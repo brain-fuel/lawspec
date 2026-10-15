@@ -541,6 +541,9 @@ public enum Scalar {
         case let (.symbol(x, _), .symbol(y, _)): return x === y
         case let (.presence(k1, x?), .presence(k2, y?)): return k1 == k2 && equal(x, y)
         case let (.presence(k1, nil), .presence(k2, nil)): return k1 == k2
+        case let (.data(t1, f1), .data(t2, f2)) where t1 == "lawspec.collections::type::EqSet::EqSetItems" && t2 == t1:
+            guard f1.count == 1, f2.count == 1, case let .list(x) = f1[0], case let .list(y) = f2[0] else { return false }
+            return x.allSatisfy { value in y.contains { equal(value, $0) } } && y.allSatisfy { value in x.contains { equal(value, $0) } }
         case let (.data(t1, f1), .data(t2, f2)): return t1 == t2 && equalLists(f1, f2)
         case let (.list(x), .list(y)): return equalLists(x, y)
         case _ where isExact(a) && isExact(b):
@@ -554,6 +557,13 @@ public enum Scalar {
         case (.unit, .unit), (.null, .null), (.undefined, .undefined): return true
         default: return false
         }
+    }
+
+    public static func distinctMembers(_ items: [Value]) -> Bool {
+        for (index, value) in items.enumerated() {
+            if items[..<index].contains(where: { equal(value, $0) }) { return false }
+        }
+        return true
     }
 
     private static func equalLists(_ xs: [Value], _ ys: [Value]) -> Bool {

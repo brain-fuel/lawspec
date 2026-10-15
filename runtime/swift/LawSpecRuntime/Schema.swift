@@ -270,6 +270,8 @@ public struct Schema: Sendable {
 
     private static func checkCollection(_ name: String, _ fields: [Value]) throws {
         switch (name, fields.first) {
+        case ("lawspec.collections::type::EqSet", .list(let items)?):
+            if !Scalar.distinctMembers(items) { throw fail("RefinementViolation", "Eq-only set: duplicate equal elements") }
         case ("lawspec.collections::type::Set", .list(let items)?):
             if !(try strictOrder(items)) { throw fail("RefinementViolation", name) }
         case ("lawspec.collections::type::KeyVal", .list(let entries)?):

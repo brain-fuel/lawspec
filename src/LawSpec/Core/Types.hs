@@ -15,6 +15,7 @@ import Data.Graph (SCC(..), stronglyConnComp)
 import Data.List (nub, sort)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import qualified LawSpec.Core.EqSet as EqSet
 import LawSpec.Core
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Scalar (primitiveName, primitives)
@@ -91,10 +92,11 @@ buildRegistry userDeclarations = do
       kinds = scalarKinds ++ presenceKinds ++
         [(idText (dataId d), foldr (const (KindArrow TypeKind)) TypeKind (dataParameters d)) | d <- allDeclarations]
       registry = TypeRegistry kinds (M.fromList kinds) (M.fromList [(dataId d, d) | d <- allDeclarations])
-        (deriveStoredFieldCapabilities everyPrimitive allDeclarations)
-        (deriveStoredFieldCapabilities keyedPrimitive allDeclarations)
+        (deriveStoredFieldCapabilities everyPrimitive (const True) allDeclarations)
+        (deriveStoredFieldCapabilities keyedPrimitive ((/= EqSet.eqSetTypeId) . dataId) allDeclarations)
   unique "type constructor identity" (map fst kinds)
   unique "data constructor identity" [constructorId c | d <- allDeclarations, c <- dataConstructors d]
+  mapM_ EqSet.validateEqSetDeclaration allDeclarations
   mapM_ (validateDeclaration registry) allDeclarations
   validateStrictPositivity allDeclarations
   pure registry
@@ -357,14 +359,14 @@ validateStrictPositivity definitions = mapM_ checkComponent components
 -- than demanding Eq for every argument. The finite fixed point also handles
 -- mutual and non-regular recursion without unfolding an infinite type tree.
 -- Nothing means a stored field has no equality (for example a function).
-deriveStoredFieldCapabilities :: (String -> Bool) -> [DataDeclaration] -> M.Map Id (Maybe [Id])
-deriveStoredFieldCapabilities primitiveOk definitions = fixedPoint initial
+deriveStoredFieldCapabilities :: (String -> Bool) -> (DataDeclaration -> Bool) -> [DataDeclaration] -> M.Map Id (Maybe [Id])
+deriveStoredFieldCapabilities primitiveOk admitted definitions = fixedPoint initial
   where
     table = M.fromList [(dataId d, d) | d <- definitions]
     initial = M.fromList [(dataId d, Just []) | d <- definitions]
     fixedPoint previous =
       let next = M.fromList
-            [(dataId d, combineNeeds
+            [(dataId d, if not (admitted d) then Nothing else combineNeeds
               -- An existential's types (the witness pool, or those its
               -- equations fix) all have equality and generators.
               [filter (`notElem` constructorExistentials c) <$> storedFieldNeeds primitiveOk table previous (binderType f)

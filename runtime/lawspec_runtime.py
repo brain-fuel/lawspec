@@ -376,6 +376,18 @@ def handle_label(value):
     return _handles[id(value)][1]
 
 
+def same_members(left, right, equal):
+    return (all(any(equal(value, candidate) for candidate in right)
+                for value in left)
+            and all(any(equal(value, candidate) for candidate in left)
+                    for value in right))
+
+
+def distinct_members(items, equal):
+    return all(not any(equal(value, candidate) for candidate in items[:index])
+               for index, value in enumerate(items))
+
+
 def equal(a, b, ta, tb):
     """Equality defined once for all targets instead of borrowed from each
     language's: NaN differs from itself, signed zeros are equal, handles and

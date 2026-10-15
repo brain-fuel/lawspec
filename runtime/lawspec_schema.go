@@ -736,6 +736,9 @@ func (s *lawSpecSchema) validateValue(t lawSpecTypeRef, value LawSpecValue, bits
 			})
 		}
 		s.checkIndices(constructor, fields)
+		if t.name == "lawspec.collections::type::EqSet" && !lsDistinctMembers(lsEqSetItems(lawSpecData{data.tag, fields}), lsSchemaEqual) {
+			panic(lawSpecRefinementViolation{"Eq-only set: duplicate equal elements"})
+		}
 		return LawSpecValue{t.key(), lawSpecData{data.tag, fields}}
 	}
 	panic("unknown constructor " + data.tag + " for " + t.key())
@@ -928,6 +931,9 @@ func lsSchemaEqual(a, b LawSpecValue) bool {
 		y, ok := b.Data.(lawSpecData)
 		if !ok || x.tag != y.tag || len(x.fields) != len(y.fields) {
 			return false
+		}
+		if x.tag == lsEqSetTag {
+			return lsSameMembers(lsEqSetItems(x), lsEqSetItems(y), lsSchemaEqual)
 		}
 		for index, field := range x.fields {
 			if !lsSchemaEqual(field, y.fields[index]) {

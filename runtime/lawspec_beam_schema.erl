@@ -290,6 +290,11 @@ walk_data(Value, {Name, Args}, Cs, S, Mode) ->
 %% Core collections have one canonical order. Reject malformed native values
 %% instead of accepting duplicate set items or duplicate map keys.
 %% ref:DEC-typed-core-boundary
+check_collection(<<"lawspec.collections::type::EqSet">>, [Items]) ->
+    case lawspec_beam_scalar:distinct_members(Items) of
+        true -> ok;
+        false -> fail({refinement_violation, <<"Eq-only set: duplicate equal elements">>})
+    end;
 check_collection(<<"lawspec.collections::type::Set">> = Name, [Items]) ->
     require(strict_order(Items), {refinement_violation, Name});
 check_collection(<<"lawspec.collections::type::KeyVal">> = Name, [Entries]) ->

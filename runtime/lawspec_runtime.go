@@ -956,6 +956,21 @@ func lsBinary(op string, a, b LawSpecValue) LawSpecValue {
 // signed zeros are equal, handles and symbols compare by identity, and data
 // compares field by field. ref:DEC-portable-exact-arithmetic
 func lsEqual(a, b LawSpecValue) bool {
+	if x, ok := a.Data.(lawSpecData); ok {
+		y, ok := b.Data.(lawSpecData)
+		if !ok || x.tag != y.tag || len(x.fields) != len(y.fields) {
+			return false
+		}
+		if x.tag == lsEqSetTag {
+			return lsSameMembers(lsEqSetItems(x), lsEqSetItems(y), lsEqual)
+		}
+		for index, field := range x.fields {
+			if !lsEqual(field, y.fields[index]) {
+				return false
+			}
+		}
+		return true
+	}
 	if lsSumType(a.Type) || lsSumType(b.Type) {
 		if !lsSumType(a.Type) || !lsSumType(b.Type) {
 			return false
@@ -1012,6 +1027,49 @@ func lsEqual(a, b LawSpecValue) bool {
 	return reflect.DeepEqual(a.Data, b.Data)
 }
 func lsTruth(v LawSpecValue) bool { return lsValidate("Bool", v, 64).Data.(bool) }
+
+const lsEqSetTag = "lawspec.collections::type::EqSet::EqSetItems"
+
+func lsEqSetItems(data lawSpecData) []LawSpecValue {
+	if len(data.fields) != 1 {
+		panic("Eq-only set requires one List field")
+	}
+	items, ok := data.fields[0].Data.([]LawSpecValue)
+	if !ok {
+		panic("Eq-only set requires List storage")
+	}
+	return items
+}
+
+func lsSameMembers(left, right []LawSpecValue, equal func(LawSpecValue, LawSpecValue) bool) bool {
+	included := func(values, candidates []LawSpecValue) bool {
+		for _, value := range values {
+			found := false
+			for _, candidate := range candidates {
+				if equal(value, candidate) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	}
+	return included(left, right) && included(right, left)
+}
+
+func lsDistinctMembers(items []LawSpecValue, equal func(LawSpecValue, LawSpecValue) bool) bool {
+	for index, value := range items {
+		for _, earlier := range items[:index] {
+			if equal(value, earlier) {
+				return false
+			}
+		}
+	}
+	return true
+}
 
 // LawSpecTask is an async adapter's result: a goroutine's value, awaited where
 // it is used. A panic in the goroutine is raised again by Await.

@@ -11,6 +11,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
 import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, DataDeclaration(..), DataConstructor(..), binderId, binderType)
 import qualified Data.Map.Strict as M
+import qualified LawSpec.Core.EqSet as EqSet
 import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsAt, constructorPredicatesFor, lookupData, freeExistentials, matchType, substitute)
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), evaluateIndex, guardHolds)
 import LawSpec.Core.Semantics (binaryValue)
@@ -107,6 +108,10 @@ checkValueWith evaluate registry bits expected value =
           pure (DataValue actual tag checked)
     -- A Set's items and a KeyVal's keys strictly increase.
     canonicalCollection actual checked = case (actual, checked) of
+      (ty, [items]) | EqSet.isEqSetType ty -> do
+        values <- lift (listItems items)
+        distinct <- lift (EqSet.distinctMembers (equalValues bits) values)
+        unless distinct (throwE "Eq-only set: duplicate equal elements")
       (Constructor name _, [items])
         | name `elem` [collections ++ "Set", collections ++ "KeyVal"] -> do
             values <- lift (listItems items)
@@ -181,6 +186,14 @@ equalValues bits (ScalarValue a) (ScalarValue b) = do
   result <- binaryValue bits "==" a b
   case result of SBool answer -> Right answer; _ -> Left "equality did not produce Bool"
 equalValues bits (DataValue ta ca as) (DataValue tb cb bs)
+  | ta == tb && ca == cb && EqSet.isEqSetType ta = do
+      unless (ca == EqSet.eqSetConstructorId) (Left "invalid Eq-only set constructor")
+      case (as,bs) of
+        ([left],[right]) -> do
+          xs <- listItems left
+          ys <- listItems right
+          EqSet.sameMembers (equalValues bits) xs ys
+        _ -> Left "Eq-only set equality requires one List field"
   | ta == tb && ca == cb && length as == length bs = equalFields as bs
   | otherwise = Right False
   where
@@ -205,6 +218,8 @@ equalValues _ _ _ = Right False
 -- numbers and symbols have no portable order.
 compareValues :: Value -> Value -> Either String Ordering
 compareValues a b = case (a, b) of
+  (DataValue ty _ _, _) | EqSet.isEqSetType ty -> Left "Eq-only sets have no portable order"
+  (_, DataValue ty _ _) | EqSet.isEqSetType ty -> Left "Eq-only sets have no portable order"
   (ScalarValue x, ScalarValue y) -> scalar x y
   (PresenceValue _ x, PresenceValue _ y) -> optional (maybe [] pure x) (maybe [] pure y)
   (DataValue (Constructor "List" _) _ _, DataValue (Constructor "List" _) _ _) -> do
