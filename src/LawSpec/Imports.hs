@@ -567,12 +567,21 @@ walkType names scope t = case t of
   Arrow a b -> Arrow <$> walkType names scope a <*> walkType names scope b
   Applied n a -> Applied <$> onType names n <*> walkType names scope a
   Application n args -> Application <$> onType names n <*> mapM (walkType names scope) args
+  Record fields -> Record <$> recordFields scope fields
   Refined n a p -> Refined n <$> walkType names scope a <*> traverse (walkRestriction names (n : scope)) p
   RefinementApp n args -> RefinementApp <$> onRefinement names n <*> forM args (\argument -> case argument of
     TypeArgument a -> TypeArgument <$> walkType names scope a
     ValueArgument e -> ValueArgument <$> walkExpr names scope e)
-  Qualified cs a -> Qualified <$> mapM (walkConstraint names) cs <*> walkType names scope a
+  Qualified cs a -> Qualified <$> mapM (\(Capability name ty) ->
+    Capability name <$> walkType names scope ty) cs <*> walkType names scope a
   CheckedType es a -> CheckedType <$> mapM (walkExpr names scope) es <*> walkType names scope a
+  where
+    recordFields _ [] = pure []
+    recordFields outer (field:rest) = do
+      let inner = recordFieldBinding field : outer
+      ty <- walkType names inner (recordFieldType field)
+      remaining <- recordFields inner rest
+      pure (field{recordFieldType=ty}:remaining)
 
 -- Articles are resolved with imports and lexical bindings, rather than stripped
 -- from source. A real value called `the` keeps ordinary application semantics.

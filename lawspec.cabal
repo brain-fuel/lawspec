@@ -874,6 +874,7 @@ test-suite lawspec-test
       SearchSpec
       SessionsPythonSpec
       SourceDataSpec
+      SourceRecordScopeSpec
       StatefulModelSpec
       StructuralSpec
       TargetNamesSpec

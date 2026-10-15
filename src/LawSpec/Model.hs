@@ -13,7 +13,15 @@ import LawSpec.IndexTerm (FamilyIndex)
 import GHC.Generics (Generic)
 import Data.List (intercalate)
 
-data Type = Named String | Variable String | Arrow Type Type | Applied String Type | Application String [Type] | Refined String Type (Maybe Expr) | RefinementApp String [RefinementArgument] | Qualified [Constraint] Type | CheckedType [Expr] Type deriving (Eq, Show, Generic)
+data Type = Named String | Variable String | Arrow Type Type | Applied String Type | Application String [Type] | Record [RecordField] | Refined String Type (Maybe Expr) | RefinementApp String [RefinementArgument] | Qualified [Constraint] Type | CheckedType [Expr] Type deriving (Eq, Show, Generic)
+-- A field's public label and lexical binder start with the same spelling.
+-- Substitution can rename the binder without renaming the property. Fields
+-- retain declaration order: their binders scope over their own restrictions
+-- and subsequent fields, never over earlier fields.
+data RecordField = RecordField
+  { recordFieldLabel :: String, recordFieldBinding :: String, recordFieldType :: Type }
+  deriving (Eq, Show, Generic)
+instance ToJSON RecordField
 data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
 data MatchBranch = MatchBranch String [String] Expr deriving (Eq, Show, Generic)
 data TypedCase = TypedCase String [(String,Type)] TypedExpr deriving (Eq, Show, Generic)
@@ -323,6 +331,8 @@ prettyType (Named n) = n
 prettyType (Variable n) = reverse (takeWhile (/= ':') (reverse n))
 prettyType (Applied n t) = n ++ " (" ++ prettyType t ++ ")"
 prettyType (Application n ts) = n ++ concatMap (\t -> " (" ++ prettyType t ++ ")") ts
+prettyType (Record fields) = "record{" ++ intercalate ", "
+  [recordFieldLabel field ++ " :: " ++ prettyType (recordFieldType field) | field <- fields] ++ "}"
 prettyType (Arrow a b) = atom a ++ " -> " ++ prettyType b where
   atom t@(Arrow _ _) = "(" ++ prettyType t ++ ")"
   atom t = prettyType t
@@ -390,31 +400,51 @@ finiteScalar (Applied n t) = n `elem` ["Nullable", "Optional"] && finiteScalar t
 finiteScalar _ = False
 
 replaceExprVars :: [(String, Expr)] -> Expr -> Expr
-replaceExprVars env (Located range e) = Located range (replaceExprVars env e)
-replaceExprVars env (ConstructLit name fields) = ConstructLit name (map (replaceExprVars env) fields)
-replaceExprVars env (AllPayloadsExpr value predicates) = AllPayloadsExpr (replaceExprVars env value)
-  [replaceBoundExpr env binder body | (binder,body) <- predicates]
-replaceExprVars env (AllElementsExpr value binder predicate) =
-  let (name,body) = replaceBoundExpr env binder predicate
-  in AllElementsExpr (replaceExprVars env value) name body
-replaceExprVars env (MatchExpr value branches) = MatchExpr (replaceExprVars env value)
-  [let active = filter ((`notElem` names) . fst) env
-       forbidden = concatMap (exprVars . snd) active
-       used = names ++ exprVars body ++ forbidden ++ map fst env
-       renamed = [(n, head ["_match_" ++ n ++ "_" ++ show i | i <- [0::Int ..],
-                    ("_match_" ++ n ++ "_" ++ show i) `notElem` used]) | n <- names, n `elem` forbidden]
-       names' = [maybe n id (lookup n renamed) | n <- names]
-       body' = replaceExprVars [(n, Var fresh) | (n,fresh) <- renamed] body
-   in MatchBranch tag names' (replaceExprVars active body')
-  | MatchBranch tag names body <- branches]
-replaceExprVars env (ListLit xs) = ListLit (map (replaceExprVars env) xs)
-replaceExprVars env (Var n) = maybe (Var n) id (lookup n env)
-replaceExprVars env (Apply f x) = Apply (replaceExprVars env f) (replaceExprVars env x)
-replaceExprVars env (Compose f g) = Compose (replaceExprVars env f) (replaceExprVars env g)
-replaceExprVars env (Binary op a b) = Binary op (replaceExprVars env a) (replaceExprVars env b)
-replaceExprVars env (Unary op a) = Unary op (replaceExprVars env a)
-replaceExprVars env (Annotate a t) = Annotate (replaceExprVars env a) t
-replaceExprVars _ e = e
+replaceExprVars = substituteExpr [] replaceTypeValueVars
+
+-- | Traverse expressions and dependent annotations in one simultaneous
+-- substitution. Processing their types in a second pass would substitute
+-- dependencies introduced by the first pass a second time. Extra names are
+-- dependencies introduced by the caller's type-variable substitutions.
+substituteExpr :: [String] -> ([(String,Expr)] -> Type -> Type)
+  -> [(String,Expr)] -> Expr -> Expr
+substituteExpr extra onType env expression = case expression of
+  Located range e -> Located range (go e)
+  ConstructLit name fields -> ConstructLit name (map go fields)
+  AllPayloadsExpr value predicates -> AllPayloadsExpr (go value)
+    [bound binder body | (binder,body) <- predicates]
+  AllElementsExpr value binder predicate ->
+    let (name,body) = bound binder predicate
+    in AllElementsExpr (go value) name body
+  MatchExpr value branches -> MatchExpr (go value)
+    [let active = filter ((`notElem` names) . fst) env
+         forbidden = extra ++ concatMap (exprVars . snd) active
+         used = names ++ exprVars body ++ forbidden ++ map fst env
+         renamed = [(n, head ["_match_" ++ n ++ "_" ++ show i | i <- [0::Int ..],
+                      ("_match_" ++ n ++ "_" ++ show i) `notElem` used]) | n <- names, n `elem` forbidden]
+         names' = [maybe n id (lookup n renamed) | n <- names]
+         body' = replaceExprVars [(n, Var fresh) | (n,fresh) <- renamed] body
+     in MatchBranch tag names' (substituteExpr extra onType active body')
+    | MatchBranch tag names body <- branches]
+  ListLit xs -> ListLit (map go xs)
+  Var n -> maybe (Var n) id (lookup n env)
+  Apply f x -> Apply (go f) (go x)
+  Compose f g -> Compose (go f) (go g)
+  Binary op a b -> Binary op (go a) (go b)
+  Unary op a -> Unary op (go a)
+  Annotate a t -> Annotate (go a) (onType env t)
+  TypeBound name t -> TypeBound name (onType env t)
+  e -> e
+  where
+    go = substituteExpr extra onType env
+    bound binder body =
+      let active = filter ((/= binder) . fst) env
+          forbidden = extra ++ concatMap (exprVars . snd) active
+          used = exprVars body ++ forbidden ++ map fst env ++ [binder]
+          fresh = head [binder ++ replicate i '_' | i <- [1..], binder ++ replicate i '_' `notElem` used]
+          name = if binder `elem` forbidden then fresh else binder
+          renamed = if name == binder then body else replaceExprVars [(binder,Var name)] body
+      in (name,substituteExpr extra onType active renamed)
 
 bridgeType :: TypedExpr -> Type
 bridgeType e = maybe (expressionType e) id (requiredConversion e)
@@ -426,6 +456,9 @@ baseType (CheckedType _ t) = baseType t
 baseType (Arrow a b) = Arrow (baseType a) (baseType b)
 baseType (Applied n t) = Applied n (baseType t)
 baseType (Application n ts) = Application n (map baseType ts)
+-- Field restrictions form part of a structural product's identity and
+-- constructor contract. Erasing an enclosing refinement must retain them.
+baseType t@(Record _) = t
 baseType t = t
 
 -- | Predicates are expressions over values; aliases never introduce storage wrappers.
@@ -491,6 +524,7 @@ typeConstraints (CheckedType _ t) = typeConstraints t
 typeConstraints (Refined _ t _) = typeConstraints t
 typeConstraints (Applied _ t) = typeConstraints t
 typeConstraints (Application _ ts) = concatMap typeConstraints ts
+typeConstraints (Record fields) = concatMap (typeConstraints . recordFieldType) fields
 typeConstraints (Arrow a b) = typeConstraints a ++ typeConstraints b
 typeConstraints _ = []
 
@@ -499,6 +533,7 @@ mapType f g = walk where
   walk (Arrow a b) = f (Arrow (walk a) (walk b))
   walk (Applied n t) = f (Applied n (walk t))
   walk (Application n ts) = f (Application n (map walk ts))
+  walk (Record fields) = f (Record [field{recordFieldType=walk (recordFieldType field)} | field <- fields])
   walk (Refined n t p) = f (Refined n (walk t) (g <$> p))
   walk (CheckedType ps t) = f (CheckedType (map g ps) (walk t))
   walk (Qualified cs t) = f (Qualified [Capability n (walk a) | Capability n a <- cs] (walk t))
@@ -535,8 +570,73 @@ exprVars (Apply a b) = exprVars a ++ exprVars b
 exprVars (Compose a b) = exprVars a ++ exprVars b
 exprVars (Binary _ a b) = exprVars a ++ exprVars b
 exprVars (Unary _ a) = exprVars a
-exprVars (Annotate a _) = exprVars a
+exprVars (Annotate a ty) = exprVars a ++ typeValueVars ty
+exprVars (TypeBound _ ty) = typeValueVars ty
 exprVars _ = []
+
+-- | Free value dependencies of a type, including annotations inside predicates.
+-- Type variables belong to a separate namespace and are deliberately absent.
+typeValueVars :: Type -> [String]
+typeValueVars ty = case ty of
+  Arrow a b -> typeValueVars a ++ typeValueVars b
+  Applied _ a -> typeValueVars a
+  Application _ arguments -> concatMap typeValueVars arguments
+  Refined binder inner predicate -> typeValueVars inner ++
+    filter (/= binder) (maybe [] exprVars predicate)
+  CheckedType predicates inner -> concatMap exprVars predicates ++ typeValueVars inner
+  Qualified constraints inner -> concat [typeValueVars t | Capability _ t <- constraints] ++ typeValueVars inner
+  RefinementApp _ arguments -> concat [case argument of
+    TypeArgument t -> typeValueVars t
+    ValueArgument e -> exprVars e | argument <- arguments]
+  Record fields -> fieldsFree [] fields
+  _ -> []
+  where
+    fieldsFree _ [] = []
+    fieldsFree bound (field:rest) =
+      let scope = recordFieldBinding field : bound
+      in filter (`notElem` scope) (typeValueVars (recordFieldType field)) ++ fieldsFree scope rest
+
+-- | Substitute value dependencies without capturing a refinement or field
+-- binder. Public field labels and declaration order never change.
+replaceTypeValueVars :: [(String,Expr)] -> Type -> Type
+replaceTypeValueVars env ty = case ty of
+  Arrow a b -> Arrow (go a) (go b)
+  Applied name a -> Applied name (go a)
+  Application name arguments -> Application name (map go arguments)
+  Record fields -> Record (scopeRecordFields [] env replaceTypeValueVars fields)
+  Refined binder inner predicate -> case predicate of
+    Nothing -> Refined binder (go inner) Nothing
+    Just body -> let (name,body') = replaceBoundExpr env binder body
+                 in Refined name (go inner) (Just body')
+  CheckedType predicates inner -> CheckedType (map (replaceExprVars env) predicates) (go inner)
+  Qualified constraints inner -> Qualified [Capability name (go t) | Capability name t <- constraints] (go inner)
+  RefinementApp name arguments -> RefinementApp name [case argument of
+    TypeArgument t -> TypeArgument (go t)
+    ValueArgument e -> ValueArgument (replaceExprVars env e) | argument <- arguments]
+  _ -> ty
+  where go = replaceTypeValueVars env
+
+-- | Shared left-to-right field scope for value and type substitution. The
+-- extra names are free dependencies introduced by replacement types. The
+-- transformation receives only substitutions still active at this field.
+scopeRecordFields :: [String] -> [(String,Expr)]
+  -> ([(String,Expr)] -> Type -> Type) -> [RecordField] -> [RecordField]
+scopeRecordFields extra env transform fields = walk used env [] fields
+  where
+    used = extra ++ map fst env ++ concatMap (exprVars . snd) env ++
+      concat [[recordFieldLabel field,recordFieldBinding field] ++ typeValueVars (recordFieldType field) | field <- fields]
+    walk _ _ _ [] = []
+    walk taken active renamed (field:rest) =
+      let binder = recordFieldBinding field
+          active' = filter ((/= binder) . fst) active
+          forbidden = extra ++ concatMap (exprVars . snd) active'
+          fresh = head ["_record_" ++ binder ++ "_" ++ show i | i <- [0 :: Int ..],
+            ("_record_" ++ binder ++ "_" ++ show i) `notElem` taken]
+          name = if binder `elem` forbidden then fresh else binder
+          renamed' = (binder,Var name) : filter ((/= binder) . fst) renamed
+          ty' = transform active' (replaceTypeValueVars renamed' (recordFieldType field))
+      in field{recordFieldBinding=name,recordFieldType=ty'} :
+        walk (name:taken) active' renamed' rest
 
 -- | Source wrappers survive renaming and substitution. Consumers that only inspect
 -- syntax may discard wrappers explicitly; elaboration retains their real ranges.

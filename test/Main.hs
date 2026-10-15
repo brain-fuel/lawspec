@@ -9,6 +9,7 @@ import qualified CanonicalSpec
 import qualified ContextualSpec
 import qualified RecordIdentitySpec
 import qualified RecordNormalizeSpec
+import qualified SourceRecordScopeSpec
 import Test.Hspec
 import qualified NativeBindingSpec
 import qualified NativeRequestSpec
@@ -78,6 +79,7 @@ main = hspec $ do
   ContextualSpec.test_articlesPreserveOrdinaryNamesAndScope
   RecordIdentitySpec.test_recordIdentitiesPreserveSemantics
   RecordNormalizeSpec.test_recordNormalizationPreservesPrograms
+  SourceRecordScopeSpec.test_recordTypeScopesPreserveDependencies
   WitnessSpec.test_constructiveWitnessesPreserveScopedMeaning
   QuantifierDomainSpec.test_refinedIntegerDomainsAreComplete
   SearchSpec.test_boundedWitnessSearchPreservesEvidence

@@ -111,6 +111,9 @@ expandType structures table stack ts vs t = case substituteType ts vs t of
     if n == "Either" || not (any hasValueRefinements args')
       then pure application else namedPredicates n args' application
   Arrow a b -> Arrow <$> expandType structures table stack M.empty M.empty a <*> expandType structures table stack M.empty M.empty b
+  Record fields -> Record <$> mapM (\field -> do
+    ty <- expandType structures table stack M.empty M.empty (recordFieldType field)
+    pure field{recordFieldType=ty}) fields
   CheckedType ps a -> CheckedType ps <$> expandType structures table stack M.empty M.empty a
   Qualified cs a -> Qualified cs <$> expandType structures table stack M.empty M.empty a
   a -> pure a
@@ -149,6 +152,7 @@ hasValueRefinements ty = case ty of
   Qualified _ inner -> hasValueRefinements inner
   Applied _ inner -> hasValueRefinements inner
   Application _ arguments -> any hasValueRefinements arguments
+  Record fields -> any (hasValueRefinements . recordFieldType) fields
   Arrow a b -> hasValueRefinements a || hasValueRefinements b
   _ -> False
 
@@ -158,15 +162,22 @@ substituteType :: M.Map String Type -> M.Map String Expr -> Type -> Type
 substituteType ts vs = go where
   go (Named n) = M.findWithDefault (Named n) n ts
   go (Variable n) = M.findWithDefault (Variable n) n ts
+  go (Record fields) = Record (scopeRecordFields
+    (concatMap typeValueVars (M.elems ts)) (M.toList vs)
+    (\active -> substituteType ts (M.fromList active)) fields)
   go (Refined n t p) = Refined fresh (go t) (expr <$> p)
-    where fresh = if n `elem` concatMap exprVars (M.elems vs) then head ["_ref_" ++ n ++ show i | i <- [0::Int ..], ("_ref_" ++ n ++ show i) `notElem` concatMap exprVars (M.elems vs)] else n
-          expr = mapExprTypes go . replaceExprVars (M.toList (M.delete n vs)) . replaceExprVars [(n,Var fresh)]
+    where forbidden = concatMap exprVars (M.elems vs) ++ concatMap typeValueVars (M.elems ts)
+          used = forbidden ++ typeValueVars t ++ maybe [] exprVars p ++ M.keys vs
+          fresh = if n `elem` forbidden then head ["_ref_" ++ n ++ show i | i <- [0::Int ..], ("_ref_" ++ n ++ show i) `notElem` used] else n
+          expr = expression (M.delete n vs) . replaceExprVars [(n,Var fresh)]
   go (Arrow a b) = Arrow (go a) (go b)
   go (Applied n a) = Applied n (go a)
   go (Application n args) = Application n (map go args)
-  go (CheckedType ps a) = CheckedType (map (mapExprTypes go . replaceExprVars (M.toList vs)) ps) (go a)
+  go (CheckedType ps a) = CheckedType (map (expression vs) ps) (go a)
   go (Qualified cs a) = Qualified [Capability n (go t) | Capability n t <- cs] (go a)
-  go (RefinementApp n args) = RefinementApp n [case a of TypeArgument t -> TypeArgument (go t); ValueArgument e -> ValueArgument (mapExprTypes go (replaceExprVars (M.toList vs) e)) | a <- args]
+  go (RefinementApp n args) = RefinementApp n [case a of TypeArgument t -> TypeArgument (go t); ValueArgument e -> ValueArgument (expression vs e) | a <- args]
+  expression values = substituteExpr (concatMap typeValueVars (M.elems ts))
+    (\active -> substituteType ts (M.fromList active)) (M.toList values)
 
 -- | Synthetic predicate binders are not user-declared dependent argument names.
 -- '$' is unavailable in source identifiers, so it cannot capture a source binder.
@@ -219,6 +230,7 @@ typeNames (Variable n) = [n]
 typeNames (Arrow a b) = typeNames a ++ typeNames b
 typeNames (Applied _ t) = typeNames t
 typeNames (Application _ ts) = concatMap typeNames ts
+typeNames (Record fields) = concatMap (typeNames . recordFieldType) fields
 typeNames (Refined _ t p) = typeNames t ++ maybe [] exprVars p
 typeNames (Qualified _ t) = typeNames t
 typeNames (CheckedType ps t) = concatMap exprVars ps ++ typeNames t
