@@ -3,7 +3,7 @@
 module EqSetSpec (test_eqOnlySetsPreserveMembershipAndIteration) where
 
 import Control.Monad (forM_)
-import Data.Either (isLeft)
+import Data.Either (isLeft,isRight)
 import Data.List (permutations)
 import qualified Data.Map.Strict as M
 import Test.Hspec
@@ -14,6 +14,11 @@ import LawSpec.Core.Types
 import LawSpec.Core.Value
 import LawSpec.Scalar
 import qualified LawSpec.Typed.Plan as Typed
+import LawSpec.Frontend (compileCore)
+import qualified LawSpec.Model as Source
+import LawSpec.Discharge (dischargeEvidence)
+import LawSpec.Testing (planTesting)
+import LawSpec.CoreEmit (emitPlan,targets)
 
 origin :: Origin
 origin = GeneratedFrom (Id "eq-set-regression")
@@ -132,3 +137,13 @@ test_eqOnlySetsPreserveMembershipAndIteration = describe "Eq-only set Core seman
         plan = Typed.typedPlan [Set.eqSetDeclaration] [unit]
     M.member (Id "setIdentity") (Typed.typedDefinitions plan) `shouldBe` False
     M.member (Id "integerIdentity") (Typed.typedDefinitions plan) `shouldBe` True
+  it "checks the internal representation's outcome laws and emits every target" $ do
+    content <- readFile "test/fixtures/eq-set-foundation.lawspec"
+    forM_ [32,64] $ \bits ->
+      case compileCore bits Source.defaultGeneration [Source.Source "eq-set-foundation.lawspec" content] of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right program -> do
+          dischargeEvidence program `shouldSatisfy` isRight
+          case planTesting program of
+            Left diagnostics -> expectationFailure (show diagnostics)
+            Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
