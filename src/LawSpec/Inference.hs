@@ -358,15 +358,12 @@ infer env (Unary "-" e) = do
 infer _ (Unary _ _) = throwC "unknown unary operation"
 infer env (Binary op a b) | op `elem` ["&&","||"] = checkExpr env (Named "Bool") a >> checkExpr env (Named "Bool") b >> pure (Named "Bool")
 infer env (Binary op a b) = do
-  (at0,bt0) <- operandTypes env a b
+  (at,bt) <- operationOperandTypes env op a b
   -- Structural equality relates one type: Right 1 == positive x fixes the
   -- error type of Right 1. Numbers keep their promotion rules.
   let structural t = case t of
         Named n -> not (isNumeric n) && take 1 n /= "@"
         _ -> True
-  (at,bt) <- if op `elem` ["==","!="] && at0 /= bt0 && structural at0 && structural bt0
-    then unify at0 bt0 >> ((,) <$> resolve at0 <*> resolve bt0)
-    else pure (at0,bt0)
   case (at,bt) of
     _ | op `elem` ["==","!="], at == bt || (structural at && structural bt)
       , not (case at of Named n -> isNumeric n; _ -> False) -> do
@@ -479,6 +476,16 @@ numericLiteral e = case e of
   Unary "-" inner -> numericLiteral inner
   _ -> False
 
+-- Products keep the same literal context as a direct numeric argument. Explicit
+-- annotations and computed values keep their own types.
+contextualLiteralArgument :: Expr -> Bool
+contextualLiteralArgument e = numericLiteral e || case e of
+  Located _ inner -> contextualLiteralArgument inner
+  ListLit _ -> True
+  RecordLit _ -> True
+  ConstructLit _ _ -> True
+  _ -> False
+
 -- | Calls are checked against the function's whole signature, so the result type
 -- can type literal arguments.
 application :: Expr -> (Expr,[Expr])
@@ -525,6 +532,8 @@ checkExpr env expected e = do
     (Applied "Optional" _,ScalarLit (SAbsent "Undefined")) -> pure ()
     (Applied n a,ScalarLit (SPresent m (Just v))) | n == m -> checkExpr env a (ScalarLit v)
     (Applied n _,ScalarLit (SPresent m Nothing)) | n == m -> pure ()
+    (_,Apply _ _) | (Var name,args) <- application e, take 8 name /= "prelude.", any contextualLiteralArgument args ->
+      checkApplication env t e >> pure ()
     _ -> do
       actual <- infer env e
       checkInferred t e actual
@@ -569,25 +578,63 @@ needsConversion target source = not (same target source)
 -- without a conversion the author did not write.
 operandTypes :: Env -> Expr -> Expr -> C (Type,Type)
 operandTypes env a b = do
+  previousRequirements <- gets obligations
   initialA <- infer env a
   initialB <- infer env b
-  if structuralLiteral a && structuralLiteral b
+  (at,bt) <- if contextualStructure initialA a && contextualStructure initialB b
     then do
       context <- jointLiteralType env a b initialA initialB
       pure (context,context)
     else do
-      at <- resolve initialA
-      bt <- resolve initialB
-      -- A declared floating context may type an otherwise exact numeric literal.
+      left <- resolve initialA
+      right <- resolve initialB
       let contextual t e fallback = case t of
             Named n | isInexact n && contextualNumber e -> checkExpr env t e >> pure t
-            Application _ _ | isLiteral e -> checkExpr env t e >> pure t
-            Record _ | isLiteral e -> checkExpr env t e >> pure t
-            Applied _ _ | isLiteral e -> checkExpr env t e >> pure t
+            Application _ _ | isLiteral e || literalApplication e -> checkExpr env t e >> pure t
+            Record _ | isLiteral e || literalApplication e -> checkExpr env t e >> pure t
+            Applied _ _ | isLiteral e || literalApplication e -> checkExpr env t e >> pure t
             _ -> pure fallback
-      at' <- contextual bt a at
-      bt' <- contextual at b bt
-      pure (at',bt')
+      left' <- contextual right a left
+      right' <- contextual left b right
+      pure (left',right')
+  provisional <- mapM resolve [initialA,initialB]
+  selected <- mapM resolve [at,bt]
+  -- A contextual instantiation replaces provisional defaults, not their
+  -- capability requirements. Recheck both actual operands at the selected
+  -- types; unrelated requirements and rigid substitutions remain intact.
+  when (provisional /= selected && (hasLiteralApplication a || hasLiteralApplication b)) $ do
+    modify (\state -> state{obligations=previousRequirements})
+    checkExpr env at a
+    checkExpr env bt b
+  (,) <$> resolve at <*> resolve bt
+
+literalApplication :: Expr -> Bool
+literalApplication value = case application value of
+  (Var name,args) -> take 8 name /= "prelude." && any contextualLiteralArgument args
+  _ -> False
+
+hasLiteralApplication :: Expr -> Bool
+hasLiteralApplication value = literalApplication value || case unlocated value of
+  ListLit items -> any hasLiteralApplication items
+  RecordLit fields -> any (hasLiteralApplication . snd) fields
+  ConstructLit _ fields -> any hasLiteralApplication fields
+  _ -> False
+
+contextualStructure :: Type -> Expr -> Bool
+contextualStructure ty value = structuralLiteral value ||
+  (case ty of Applied _ _ -> True; Application _ _ -> True; Record _ -> True; _ -> False) && literalApplication value
+
+-- Typed children share the enclosing equality's instantiation, including a
+-- polymorphic builder whose argument is an empty collection.
+operationOperandTypes :: Env -> String -> Expr -> Expr -> C (Type,Type)
+operationOperandTypes env op a b = do
+  (at,bt) <- operandTypes env a b
+  let structural ty = case ty of
+        Named name -> not (isNumeric name) && take 1 name /= "@"
+        _ -> True
+  if op `elem` ["==","!="] && at /= bt && structural at && structural bt
+    then unify at bt >> ((,) <$> resolve at <*> resolve bt)
+    else pure (at,bt)
 
 -- A literal product may take its scalar field types from the other literal.
 -- Failed alternatives restore inference state, including fresh variables and
@@ -705,7 +752,7 @@ builtin env n args
   | n `elem` ["toList","size","isEmpty"], [a] <- args = do
       t <- infer env a >>= resolve
       items <- case t of
-        Applied c e | Just short <- collectionName c, short `elem` ["Set","Queue","Stack","Deque"] -> pure e
+        Applied c e | Just short <- collectionName c, short `elem` ["Set","EqSet","Queue","Stack","Deque"] -> pure e
         Application c [k,v] | collectionName c == Just "KeyVal" -> pure (Application (collectionsUnit ++ "::type::Entry") [k,v])
         Applied "List" e -> pure e
         _ -> throwC ("prelude." ++ n ++ " requires a List, Set, KeyVal, Queue, Stack or Deque")
@@ -843,7 +890,7 @@ typedExpressionWithSchemesContext context declarations bits env e = do
         -- An application checks against its expected type before its
         -- numeric literals, which may then take a polymorphic parameter's
         -- type from it.
-        (Just targetType, Apply _ _) | (Var n, args) <- application e, take 8 n /= "prelude.", any numericLiteral args ->
+        (Just targetType, Apply _ _) | (Var n, args) <- application e, take 8 n /= "prelude.", any contextualLiteralArgument args ->
           checkApplication context targetType e
         _ -> do
           inferred <- infer context e
@@ -906,8 +953,8 @@ typedExpressionWithSchemesContext context declarations bits env e = do
         -- With a numeric literal among its arguments, the function's
         -- expected type carries the argument's and the result's, so a
         -- partial application's literals see both.
-        Apply f x | any numericLiteral (snd (application e)) -> do
-          argument <- if numericLiteral x then Variable . ("argument:" ++) <$> fresh else infer context x >>= resolve
+        Apply f x | any contextualLiteralArgument (snd (application e)) -> do
+          argument <- if contextualLiteralArgument x then Variable . ("argument:" ++) <$> fresh else infer context x >>= resolve
           function <- resolve (Arrow argument natural)
           f' <- descend (Just function) f
           a <- resolve argument
@@ -922,7 +969,7 @@ typedExpressionWithSchemesContext context declarations bits env e = do
               function <- resolve ft
               sequence [descend (Just function) f,descend (Just a) x]
             _ -> sequence [descend Nothing f,descend Nothing x]
-        Binary _ a b -> do (at,bt) <- operandTypes context a b; sequence [descend (Just at) a,descend (Just bt) b]
+        Binary op a b -> do (at,bt) <- operationOperandTypes context op a b; sequence [descend (Just at) a,descend (Just bt) b]
         Unary _ a -> sequence [descend Nothing a]
         Annotate a t' -> sequence [descend (Just t') a]
         Compose f g -> do
@@ -1098,7 +1145,7 @@ fieldDesugar env e = case application e of
           _ -> throwC (what ++ prettyType t ++ " has more than one constructor, so a field is read with match")
         _ -> throwC (what ++ prettyType t ++ " is not a data type with fields")
     isCollectionsName parent = (collectionsUnit ++ "::type::") `isPrefixOf` parent &&
-      drop (length collectionsUnit + 8) parent `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"]
+      drop (length collectionsUnit + 8) parent `elem` ["Set", "EqSet", "KeyVal", "Queue", "Stack", "Deque"]
 
 -- | The type of b.f or b with f = v, without building the match it
 -- desugars to: inferring that match again at every enclosing expression,
@@ -1161,7 +1208,7 @@ fieldConstructor env subject field = do
     _ -> throwC (what ++ prettyType t ++ " is not a data type with fields")
   where
     isCollectionsName parent = (collectionsUnit ++ "::type::") `isPrefixOf` parent &&
-      drop (length collectionsUnit + 8) parent `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"]
+      drop (length collectionsUnit + 8) parent `elem` ["Set", "EqSet", "KeyVal", "Queue", "Stack", "Deque"]
 
 -- | Capabilities such as Eq a are collected as obligations and discharged once
 -- every type is known.
@@ -1392,6 +1439,14 @@ jointStructuralContext env a b
       right <- infer env b
       context <- jointLiteralType env a b left right
       pure (Annotate a context, Annotate b context)
+  | literalApplication a || literalApplication b = do
+      left <- infer env a >>= resolve
+      right <- infer env b >>= resolve
+      let structured ty = case ty of Applied _ _ -> True; Application _ _ -> True; Record _ -> True; _ -> False
+      if structured left && structured right then do
+        (left',right') <- operationOperandTypes env "==" a b
+        pure (Annotate a left',Annotate b right')
+      else pure (a,b)
   | otherwise = pure (a,b)
 
 -- | As jointStructuralContext, for callers outside inference.

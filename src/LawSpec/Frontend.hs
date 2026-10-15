@@ -1,14 +1,19 @@
 -- | The only bridge from checked surface syntax to the typed core. Targets never
 -- receive TypedExpr's source tree or perform contextual literal inference.
-module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateExpression) where
+module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateCanonical, elaborateExpression) where
 import qualified LawSpec.Model as S
 import qualified LawSpec.Compile as S
 import LawSpec.Inference (monoEnvironment)
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.EqSet as EqSet
 import LawSpec.Common
 import LawSpec.Data (elaborateDataDeclarationsWithContext)
 import LawSpec.Elaboration (elaborateExpression, binaryOp, elaborateDefinitionUnitWithSourceRecords, elaborateContractWithSourceRecords, abilityReferenceWithSourceRecords, unitOperationsWithSourceRecords, performOperations, collectSourceRecords, collectType, collectExpression, collectEquation, collectAbilityReference)
 import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.Definitions (prepareDefinitions)
+import LawSpec.Core.Types (makeRegistry)
+import qualified LawSpec.Core.Eval as CoreEval
+import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Release (checkResourceReleases)
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
@@ -37,7 +42,55 @@ compileCore bits settings sources = do
 compileCoreCanonical :: Int -> Generation -> [Source] -> Either [Diagnostic] C.Program
 compileCoreCanonical bits settings sources = do
   (units,properties) <- S.compileCanonicalWithImports (\_ _ -> Nothing) bits settings sources
-  C.lowerProgramFields <$> elaborate bits units properties
+  C.lowerProgramFields <$> elaborateCanonical bits units properties
+
+-- Source names differ across profiles; nominal identities and checked bodies
+-- remain stable. All consumers receive the same canonical typed metadata.
+elaborateCanonical :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
+elaborateCanonical bits units properties = names <$> elaborate bits units properties
+  where
+    names program = program{C.programDataDeclarations=map name (C.programDataDeclarations program)}
+    name declaration
+      | C.dataId declaration == EqSet.eqSetTypeId = declaration{C.dataName="Set"}
+      | C.dataId declaration == C.Id "lawspec.collections::type::Set" = declaration{C.dataName="SortedSet"}
+      | otherwise = declaration
+
+-- A surface constant may use a checked collection builder. Evaluate it through
+-- the ordinary definition invoker, then retain concrete Core input values.
+-- Final validation still checks every materialized example and its domain.
+materializeExampleBindings :: C.Program -> Either [Diagnostic] C.Program
+materializeExampleBindings program
+  | not (any hasCalls [value | unit <- C.programUnits program, property <- C.unitProperties unit,
+      example <- C.propertyExamples property, (_,value) <- C.exampleBindings example]) = Right program
+  | otherwise = do
+      let definitions = program{C.programUnits = [unit{C.unitProperties =
+            [property{C.propertyExamples=[]} | property <- C.unitProperties unit]} | unit <- C.programUnits program]}
+      invoke <- prepareDefinitions definitions
+      registry <- either (\message -> Left [Diagnostic "core" message Nothing]) Right
+        (makeRegistry (C.programDataDeclarations program))
+      units <- forM (C.programUnits program) $ \unit -> do
+        properties <- forM (C.unitProperties unit) $ \property -> do
+          examples <- forM (C.propertyExamples property) $ \example -> do
+            bindings <- forM (C.exampleBindings example) $ \(identity,expression) ->
+              if not (hasCalls expression) then pure (identity,expression) else do
+                let checked = either (\message -> Left [Diagnostic "example-constant"
+                      (C.propertyName property ++ ": " ++ C.exampleName example ++ ": " ++ message)
+                      (Just (C.propertyLocation property))]) Right
+                value <- checked (CoreEval.evaluateValue registry (C.programMachineBits program) invoke [] expression)
+                constant <- checked (valueTerm (C.expressionOrigin expression) value)
+                pure (identity,constant)
+            pure example{C.exampleBindings=bindings}
+          pure property{C.propertyExamples=examples}
+        pure unit{C.unitProperties=properties}
+      pure program{C.programUnits=units}
+  where
+    hasCalls expression = case C.expressionNode expression of
+      C.ExternalCall _ _ -> True
+      _ -> any hasCalls (C.children expression)
+    valueTerm origin value = case value of
+      CoreValue.ScalarValue scalar -> Right (C.Expr (CoreValue.valueType value) (C.Constant scalar) origin)
+      CoreValue.DataValue ty tag values -> (\fields -> C.Expr ty (C.Construct tag fields) origin) <$> mapM (valueTerm origin) values
+      CoreValue.PresenceValue ty _ -> (\scalar -> C.Expr ty (C.Constant scalar) origin) <$> CoreValue.toScalarValue value
 
 -- | Every surface construct is lowered here, once, and the result validated
 -- before any backend sees it. ref:DEC-elaborate-before-core
@@ -48,7 +101,8 @@ elaborate bits units properties = do
   let elaborated = C.Program bits (appendRecords dataDeclarations (concatMap snd collected)) (map fst collected)
   normalized <- normalizeProgramRecords elaborated
   -- Postconditions over non-linear index arithmetic become runtime checks.
-  core <- deferProgramPostconditions normalized
+  admitted <- deferProgramPostconditions normalized
+  core <- materializeExampleBindings admitted
   validateProgram core
   checkResourceReleases core
   -- Audit every occurrence before interning: a duplicate descriptor must not

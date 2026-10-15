@@ -1,0 +1,7 @@
+expect: record examples preserve set fields
+@@ test/fixtures/canonical-set-literals.lawspec
+<<<<<<<
+expect saved value = Saved record{members = #S{1, 2}}
+=======
+expect saved value = Saved record{members = #S{1, 3}}
+>>>>>>>

@@ -48,6 +48,7 @@ import qualified FlowSpec
 import qualified CollectionsSpec
 import qualified EqSetSpec
 import qualified EqSetOperationsSpec
+import qualified CanonicalCollectionsSpec
 import qualified AsyncSpec
 import qualified AbilitiesSpec
 import qualified LawPrimitivesSpec
@@ -85,6 +86,7 @@ main :: IO ()
 main = hspec $ do
   EqSetSpec.test_eqOnlySetsPreserveMembershipAndIteration
   EqSetOperationsSpec.test_eqSetOperations
+  CanonicalCollectionsSpec.test_canonicalCollections
   CanonicalSpec.test_canonicalAuthoringPreservesIntrinsicGuarantees
   ContextualSpec.test_articlesPreserveOrdinaryNamesAndScope
   RecordIdentitySpec.test_recordIdentitiesPreserveSemantics

@@ -37,7 +37,7 @@ instance ToJSON Refinement
 instance ToJSON Contract
 instance ToJSON DomainPlan
 
-data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] | RecordLiteral [(String,Literal)] deriving (Eq, Show, Generic)
+data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] | RecordLiteral [(String,Literal)] | SetLiteral String [Literal] deriving (Eq, Show, Generic)
 instance ToJSON Literal where
   toJSON (DecimalLiteral c e) = toJSON (SDecimal c e)
   toJSON (IntLiteral n) = toJSON (SInteger "BigInt" n)
@@ -47,6 +47,7 @@ instance ToJSON Literal where
   toJSON (ConstructorLiteral name fields) = object ["constructor" .= name, "fields" .= fields]
   toJSON (ListLiteral xs) = object ["list" .= xs]
   toJSON (RecordLiteral fields) = object ["record" .= fields]
+  toJSON (SetLiteral _ items) = object ["set" .= items]
 
 data Expectation = Expectation { actual :: Expr, expected :: Literal } deriving (Eq, Show, Generic)
 instance ToJSON Expectation
@@ -397,6 +398,28 @@ literalExpr (ScalarLiteral s) = ScalarLit s
 literalExpr (ConstructorLiteral name fields) = ConstructLit name (map literalExpr fields)
 literalExpr (ListLiteral xs) = ListLit (map literalExpr xs)
 literalExpr (RecordLiteral fields) = RecordLit [(label,literalExpr value) | (label,value) <- fields]
+literalExpr (SetLiteral builder items) = Apply (Var builder) (ListLit (map literalExpr items))
+
+-- Documentary example labels retain literal notation before name resolution.
+-- Checked builders are an elaboration detail, not part of a table row label.
+prettyLiteral :: Literal -> String
+prettyLiteral literal = case literal of
+  SetLiteral _ items -> "#S{" ++ intercalate ", " (map prettyLiteral items) ++ "}"
+  ListLiteral items -> "[" ++ intercalate ", " (map prettyLiteral items) ++ "]"
+  RecordLiteral fields -> "record{" ++ intercalate ", " [label ++ " = " ++ prettyLiteral value | (label,value) <- fields] ++ "}"
+  ConstructorLiteral name fields -> unwords (name : map argument fields)
+  _ -> prettyExpr (literalExpr literal)
+  where
+    argument value@(ConstructorLiteral _ (_:_)) = "(" ++ prettyLiteral value ++ ")"
+    argument value = prettyLiteral value
+
+containsSetLiteral :: Literal -> Bool
+containsSetLiteral literal = case literal of
+  SetLiteral _ _ -> True
+  ListLiteral items -> any containsSetLiteral items
+  ConstructorLiteral _ fields -> any containsSetLiteral fields
+  RecordLiteral fields -> any (containsSetLiteral . snd) fields
+  _ -> False
 
 finiteScalar :: Type -> Bool
 finiteScalar (Named n) = n `elem` ["Bool","Unit","Null","Undefined"]

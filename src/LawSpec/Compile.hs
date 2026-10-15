@@ -29,7 +29,7 @@ import LawSpec.Documentary (resolveDocumentaryReferences)
 import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Harness (elaborateHarness)
 import LawSpec.HarnessWitness (prepareHarnessWitnesses)
-import LawSpec.Collections (usedCollections, collectionsSource)
+import LawSpec.Collections (collectionsUnit, usedCollections, usedCollectionsCanonical, collectionsSource)
 import LawSpec.Time (timeUnit, timeAlias, timeTypes, usesTime, timeSource)
 import LawSpec.Matchers (matchersUnit, matchersAlias, matchersTypes, usesMatchers, matchersSource, regexTypeName)
 import LawSpec.Regex (parseRegex)
@@ -326,6 +326,12 @@ compileWithParser :: Bool -> (String -> String -> String) -> (String -> String -
 compileWithParser canonical referenceUnit visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
+  -- Reserved Core identities belong to compiler-provided versioned sources.
+  -- A user unit must not manufacture one when its built-in is not injected.
+  when canonical $ forM_ sources $ \source -> case sourceUnit source of
+    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : resourcesUnit : networkUnit : builtinUnits) ->
+      Left [Diagnostic "reserved-unit" ("the unit " ++ name ++ " is reserved for compiler-provided definitions") Nothing]
+    _ -> pure ()
   -- Programs that use a collection get the built-in collections unit.
   -- Programs that use durations get the built-in time unit.
   -- Programs whose workflows use stateful policies get the resilience unit.
@@ -345,7 +351,9 @@ compileWithParser canonical referenceUnit visible bits settings sources = do
                      , any (importsBuiltin unit) [text | Source _ text <- sources] || (unit == "lawspec.host" && resources)] ++
         -- lawspec.network: the secure network handler's module (LawSpec.Network).
         [Source ("<" ++ networkUnit ++ ">") networkSource | any (importsBuiltin networkUnit) [text | Source _ text <- sources]]
-      collections = usedCollections ([text | Source _ text <- sources ++ abilityUnits] ++ [clockSource | clock])
+      versionedCollectionSources = [text | Source _ text <- abilityUnits] ++ [clockSource | clock]
+      collections = if canonical then usedCollectionsCanonical [text | Source _ text <- sources] versionedCollectionSources
+        else usedCollections ([text | Source _ text <- sources] ++ versionedCollectionSources)
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)] ++
         [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "")) | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
         [Source "<lawspec.matchers>" matchersSource | matchers] ++
@@ -446,12 +454,12 @@ compileWithParser canonical referenceUnit visible bits settings sources = do
         unless (M.keys (M.fromList (bindings ex)) == M.keys (M.fromList [(inputName v,()) | v <- checkedInputs])) (throwC ("example " ++ exampleName ex ++ " must bind exactly: " ++ intercalate ", " (map inputName checkedInputs)))
         forM_ (bindings ex) $ \(n,v) -> do
           case lookup n [(inputName inp,inputType inp) | inp <- checkedInputs] of
-            Just expected -> checkExpr M.empty expected (literalExpr v)
+            Just expected -> checkExpr env expected (literalExpr v)
             Nothing -> throwC "unknown example input"
         let exampleEnv = M.union (monoEnvironment [(inputName inp,inputType inp) | inp <- checkedInputs]) env
         forM_ (expectations ex) $ \check -> do
           actualType <- infer exampleEnv (actual check) >>= resolve
-          checkExpr M.empty actualType (literalExpr (expected check))
+          checkExpr env actualType (literalExpr (expected check))
       let (a,b,gs) = firstConclusion body
       let lawEnvironment = M.union (monoEnvironment [(inputId inp,inputType inp) | inp <- checkedInputs ++ assertionInputs body]) env
           expressionEnvironment = M.union (monoEnvironment [(inputName inp,inputType inp) | inp <- checkedInputs]) lawEnvironment
@@ -574,6 +582,10 @@ normalizeLiteralWithContext sourceTypes dataTypes bits t (ConstructorLiteral nam
   ConstructorLiteral name <$> sequence [normalizeLiteralWithContext sourceTypes dataTypes bits parameter field | (parameter, field) <- zip parameters fields]
 normalizeLiteralWithContext sourceTypes dataTypes bits (Applied "List" element) (ListLiteral xs) = ListLiteral <$> mapM (normalizeLiteralWithContext sourceTypes dataTypes bits element) xs
 normalizeLiteralWithContext _ _ _ _ (ListLiteral _) = Left "list literal requires a List type"
+normalizeLiteralWithContext sourceTypes dataTypes bits ty (SetLiteral builder items) = case baseType ty of
+  Applied "lawspec.collections::type::EqSet" element ->
+    SetLiteral builder <$> mapM (normalizeLiteralWithContext sourceTypes dataTypes bits element) items
+  _ -> Left "a set literal requires the canonical Set type"
 normalizeLiteralWithContext sourceTypes dataTypes bits t (RecordLiteral fields) = case baseType t of
   Record expected -> do
     let labels=map fst fields
@@ -636,7 +648,7 @@ validateExampleDomains bits unit invoke ins ex = withContext ("example " ++ exam
   values <- forM ins $ \input -> do
     literal <- maybe (throwC "missing example input") pure (lookup (inputName input) (bindings ex))
     (term,known) <- lift (lower (Annotate (literalExpr literal) (inputType input)))
-    value <- lift (CoreEval.evaluateValuePure known bits [] term)
+    value <- lift (CoreEval.evaluateValue known bits invoke [] term)
     pure (Core.Id (inputId input), value)
   forM_ (concatMap inputRefinements ins) $ \predicate -> do
     (term,known) <- lift (lower predicate)

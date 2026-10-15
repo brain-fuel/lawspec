@@ -1,0 +1,9 @@
+{
+  "specs": [
+    "test/fixtures/canonical-sets.lawspec"
+  ],
+  "languageProfile": "1.0-rc.1",
+  "verification": {
+    "layers": ["exhaustive", "examples"]
+  }
+}

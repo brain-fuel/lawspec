@@ -1,0 +1,7 @@
+expect: alternative examples preserve set payloads
+@@ test/fixtures/canonical-set-literals.lawspec
+<<<<<<<
+expect event value = Selected #S{2}
+=======
+expect event value = Selected #S{3}
+>>>>>>>

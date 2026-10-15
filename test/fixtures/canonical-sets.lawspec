@@ -1,0 +1,62 @@
+unit example.canonical_sets
+
+function arrivals (reverse of type Bool) -> Set Float64 is
+  if reverse then
+    prelude.setOf [float64Bits("4000000000000000"), float64Bits("3ff0000000000000"), float64Bits("4000000000000000")]
+  else
+    prelude.setOf [float64Bits("3ff0000000000000"), float64Bits("4000000000000000"), float64Bits("3ff0000000000000")]
+  end if
+end function
+
+function ordered (reverse of type Bool) -> SortedSet Integer is
+  if reverse then prelude.sortedSetOf [2, 1, 2]
+  else prelude.sortedSetOf [1, 2, 1]
+  end if
+end function
+
+law "|first arrivals determine iteration| is
+  definition:
+    for all (reverse of type Bool) =>
+      prelude.toList (arrivals reverse) =
+        if reverse then [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")]
+        else [float64Bits("3ff0000000000000"), float64Bits("4000000000000000")]
+        end if
+    end
+  end
+end
+
+law "|membership ignores iteration order| is
+  definition:
+    for all (reverse of type Bool) =>
+      arrivals reverse must be arrivals (not reverse)
+    end
+  end
+end
+
+law "|an existing arrival is a member| is
+  definition:
+    for all (reverse of type Bool) =>
+      prelude.member float64Bits("3ff0000000000000") (arrivals reverse) must be true
+    end
+  end
+end
+
+law "|equal duplicates do not increase size| is
+  definition:
+    for all (reverse of type Bool) => prelude.size (arrivals reverse) must be 2 end
+  end
+end
+
+law "|ordered sets retain portable sorted iteration| is
+  definition:
+    for all (reverse of type Bool) => prelude.toList (ordered reverse) must be [1, 2] end
+  end
+end
+
+law "|NaN remains unequal to a stored NaN| is
+  definition:
+    for all (unused of type Bool) =>
+      prelude.member float64Bits("7ff8000000000001") (prelude.setOf [float64Bits("7ff8000000000001")]) must be false
+    end
+  end
+end

@@ -709,9 +709,9 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       ,"function width (p of type Picture) -> (result of type Whole where result > p.width) is p.width end function"]) `shouldSatisfy` isLeft
   it "types contextual hexadecimal and binary constants exactly" $
     core "function bits (x :: Integer) -> Integer is 0x10 + 0b10 + x end function" `shouldSatisfy` isRight
-  it "reports the unfinished Eq-only Set contract instead of inheriting legacy ordered iteration" $ do
-    core "function same (values of type Set Integer) -> Set Integer is values end function" `shouldSatisfy` isLeft
-    core "import lawspec.collections as c\nfunction same (values of type c.Set Integer) -> c.Set Integer is values end function" `shouldSatisfy` isLeft
+  it "resolves canonical Set to Eq-only storage in ordinary and qualified signatures" $ do
+    core "function same (values of type Set Float64) -> Set Float64 is values end function" `shouldSatisfy` isRight
+    core "import lawspec.collections as c\nfunction same (values of type c.Set Float64) -> c.Set Float64 is values end function" `shouldSatisfy` isRight
   it "reports no selected checks and generates no optional law tests" $ case core
     "function same (x :: Bool) -> Bool is x end function\nlaw identity is definition: for all (x :: Bool) => same x = x end end end" of
     Left ds -> expectationFailure (show ds)

@@ -1,0 +1,7 @@
+expect: examples preserve set values
+@@ test/fixtures/canonical-set-literals.lawspec
+<<<<<<<
+row #S{3, 1, 3}, #S{1, 3}
+=======
+row #S{3, 1, 3}, #S{1, 4}
+>>>>>>>

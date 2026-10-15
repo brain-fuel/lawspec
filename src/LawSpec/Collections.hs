@@ -10,7 +10,8 @@
 -- along with its operations.
 module LawSpec.Collections
   ( collectionsUnit, collectionsAlias, collectionTypes, collectionsSource
-  , usedCollections, collectionOperation, collectionOperations
+  , usedCollections, usedCollectionsCanonical, collectionOperation, canonicalCollectionOperation, collectionOperations
+  , canonicalCollectionTypes, canonicalCollectionValues, canonicalCollectionNames
   , boundedArithmeticBlock, boundedArithmeticTypes, boundedArithmeticDefinition, boundedArithmeticDefinitions
   , internalConstructor, isCollectionsType, collectionContainer, entryTypeName
   ) where
@@ -50,7 +51,32 @@ entryTypeName = collectionsUnit ++ "::type::Entry"
 -- | A container's single, internal constructor, which source cannot name.
 internalConstructor :: String -> Maybe String
 internalConstructor name = lookup name
-  [("Set", "SetItems"), ("KeyVal", "KeyValEntries"), ("Queue", "QueueItems"), ("Stack", "StackItems"), ("Deque", "DequeItems")]
+  [("Set", "SetItems"), ("EqSet", "EqSetItems"), ("KeyVal", "KeyValEntries"), ("Queue", "QueueItems"), ("Stack", "StackItems"), ("Deque", "DequeItems")]
+
+-- Canonical names select existing resolved identities; provider definitions
+-- continue to use their own versioned names and capabilities.
+canonicalCollectionTypes :: [(String,String)]
+canonicalCollectionTypes = [("Set","EqSet"),("SortedSet","Set")]
+
+canonicalCollectionValues :: [(String,String)]
+canonicalCollectionValues =
+  [(public,internal) | (public,internal) <- setNames] ++
+  [("sortedS" ++ drop 1 public,public) | (public,_) <- setNames]
+  where setNames = [("setOf","eqSetOf"),("setMember","eqSetMember"),("setInsert","eqSetInsert"),
+          ("setRemove","eqSetRemove"),("setUnion","eqSetUnion"),
+          ("setIntersection","eqSetIntersection"),("setDifference","eqSetDifference")]
+
+canonicalCollectionNames :: [String] -> [String]
+canonicalCollectionNames = map (\name -> case name of "EqSet" -> "Set"; "Set" -> "SortedSet"; _ -> name)
+
+canonicalCollectionOperation :: String -> Maybe (String,String)
+canonicalCollectionOperation op = case lookup op sorted of
+  Just name -> Just (name,"SortedSet")
+  Nothing -> collectionOperation op
+  where sorted = [("sortedSetOf","sortedSetOf"),("sortedSetMember","sortedSetMember"),
+          ("sortedSetInsert","sortedSetInsert"),("sortedSetRemove","sortedSetRemove"),
+          ("sortedSetUnion","sortedSetUnion"),("sortedSetIntersection","sortedSetIntersection"),
+          ("sortedSetDifference","sortedSetDifference")]
 
 -- | prelude.<op>: the definition implementing it and the type it belongs to.
 collectionOperations :: [(String, (String, String))]
@@ -76,6 +102,25 @@ collectionOperations =
 collectionOperation :: String -> Maybe (String, String)
 collectionOperation op = lookup op collectionOperations
 
+-- User sources and versioned built-ins have different meanings for Set.
+-- Both representations retain separate, stable nominal identities.
+usedCollectionsCanonical :: [String] -> [String] -> [String]
+usedCollectionsCanonical users versioned =
+  let user = usedCollections users
+      legacy = usedCollections versioned
+      wordsOf = words . map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ')
+      explicit = any (\text -> "import lawspec.collections" `isInfixOf` text) users
+      setOps = ["prelude." ++ op | (op,(_,owner)) <- collectionOperations, owner == "Set"]
+      eqSet = "Set" `elem` user || explicit || any ("#S" `isInfixOf`) users ||
+        any (\text -> any (`elem` wordsOf text) setOps) users
+      sorted = explicit || any (\text -> "SortedSet" `elem` wordsOf text ||
+        any (\token -> case stripPrefix "prelude." token >>= canonicalCollectionOperation of
+          Just (_,"SortedSet") -> True; _ -> False) (wordsOf text)) users
+      wanted = filter (/= "Set") user ++ legacy ++ ["Set" | eqSet || sorted] ++ ["EqSet" | eqSet]
+      closed = wanted ++ ["Ordering" | "Set" `elem` wanted]
+  in [name | name <- collectionTypes ++ ["EqSet",boundedArithmeticBlock], name `elem` closed]
+  where stripPrefix prefix text = if prefix `isPrefixOf` text then Just (drop (length prefix) text) else Nothing
+
 -- | The collection types a program's sources use and do not themselves declare:
 -- a type name or a prelude operation of one. A source's own type shadows the
 -- built-in only in that source. Entry and Ordering come with KeyVal and Set,
@@ -88,7 +133,8 @@ usedCollections sources =
   where
     used text =
       let tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') (stripComments text))
-          declared = [name | (keyword, name) <- zip tokens (drop 1 tokens), keyword `elem` ["type", "wrapper"]]
+          declared = [name | (previous,keyword,name) <- zip3 ("":tokens) tokens (drop 1 tokens),
+            keyword `elem` ["type", "wrapper"], previous /= "of"]
           named = [t | t <- collectionTypes, t `elem` tokens]
           operated = [owner | t <- tokens, Just op <- [stripPrefix' "prelude." t], Just (_, owner) <- [collectionOperation op]] ++
             ["Ordering" | "prelude.compare" `elem` tokens] ++

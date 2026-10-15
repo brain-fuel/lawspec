@@ -244,6 +244,7 @@ qualifyDataNames unit = unit
       other -> other
     literal (S.ConstructorLiteral tag fields) = S.ConstructorLiteral (qualify constructors tag) (map literal fields)
     literal (S.ListLiteral xs) = S.ListLiteral (map literal xs)
+    literal (S.SetLiteral builder xs) = S.SetLiteral builder (map literal xs)
     literal (S.RecordLiteral fields) = S.RecordLiteral [(label,literal value) | (label,value) <- fields]
     literal other = other
     definition d = case d of

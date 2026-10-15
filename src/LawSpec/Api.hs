@@ -12,7 +12,7 @@ import LawSpec.Model
 import LawSpec.Digest (digestString, digestHex)
 import LawSpec.SourceText (formatSource)
 import LawSpec.Compile
-import LawSpec.Frontend (elaborate)
+import LawSpec.Frontend (elaborate, elaborateCanonical)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), planTesting, planTestingWith)
 import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core as C
@@ -178,7 +178,7 @@ stages project packages sources bits settings native verification = case prepare
   Left ds -> Left (failure ds)
   Right (allSources,visible,referenceUnit,described) -> case (if verification == Nothing then compileWithImports visible else compileCanonicalWithReferenceUnits referenceUnit visible) bits settings allSources of
     Left ds -> Left (failure (versionedDiagnostics described ds))
-    Right (us,es) -> case elaborate bits us es of
+    Right (us,es) -> case (if verification == Nothing then elaborate else elaborateCanonical) bits us es of
       Left ds -> Left (failure (versionedDiagnostics described ds))
       Right core -> case resolveNativeRequest core native of
         Left message -> Left (failure [Diagnostic "native-binding" message Nothing])

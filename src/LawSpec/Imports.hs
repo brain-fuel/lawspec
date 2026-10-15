@@ -12,7 +12,7 @@ module LawSpec.Imports (resolveImports, resolveImportsWithProfile, resolveImport
 
 import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
-import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor, boundedArithmeticDefinitions)
+import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, canonicalCollectionOperation, canonicalCollectionTypes, canonicalCollectionValues, internalConstructor, boundedArithmeticDefinitions)
 import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
 import LawSpec.Matchers (matchersUnit, matchersAlias, matcherOperation)
 import LawSpec.Resources (resourcesUnit)
@@ -103,7 +103,8 @@ resolveUnit canonical visible table u allImports = do
     when (importAlias i == "prelude") (failAt i "prelude is reserved and cannot be an import alias")
     maybe (pure ()) (failAt i) (visible (unitName u) (importUnit i))
     source <- maybe (failAt i ("unknown unit: " ++ importUnit i)) id (Lazy.lookup (importUnit i) table)
-    pure (i, source)
+    pure (i, if canonical && importUnit i == collectionsUnit
+      then source{resolvedExports=canonicalCollections (resolvedExports source)} else source)
   let aliases = map importAlias imports
   forM_ imports $ \i -> when (length (filter (== importAlias i) aliases) > 1)
     (failAt i ("duplicate import alias: " ++ importAlias i))
@@ -291,6 +292,19 @@ importScope u i exports = do
       (failAt (n ++ " is imported from " ++ importUnit i ++ " and also declared in " ++ unitName u))
   pure (M.union qualified (M.fromList items))
   where unquote = unquoteLaw
+
+canonicalCollections :: Exports -> Exports
+canonicalCollections exports = exports
+  { exportTypes = renamed canonicalCollectionTypes ["EqSet"] (exportTypes exports)
+  , exportDefinitions = renamed canonicalCollectionValues
+      [name | name <- M.keys (exportDefinitions exports), "eqSet" `isPrefixOf` name] (exportDefinitions exports)
+  , exportConstructors = foldr M.delete (exportConstructors exports) ["SetItems","EqSetItems"]
+  , exportOwners = renamed [(name,internal) | (name,internal) <- canonicalCollectionTypes] ["EqSet"]
+      (M.mapWithKey (\name constructors -> if name `elem` ["Set","EqSet"] then [] else constructors) (exportOwners exports)) }
+  where
+    renamed aliases hidden table = M.union
+      (M.fromList [(public,value) | (public,internal) <- aliases, Just value <- [M.lookup internal table]])
+      (foldr M.delete table (hidden ++ map fst aliases))
 
 unquoteLaw :: String -> String
 unquoteLaw ('`':rest) | "`" `isSuffixOf` rest = init rest
@@ -563,6 +577,7 @@ walkLiteral :: Monad m => Names m -> Literal -> m Literal
 walkLiteral names v = case v of
   ConstructorLiteral n fields -> ConstructorLiteral <$> onConstructor names n <*> mapM (walkLiteral names) fields
   ListLiteral xs -> ListLiteral <$> mapM (walkLiteral names) xs
+  SetLiteral builder xs -> SetLiteral <$> onValue names builder <*> mapM (walkLiteral names) xs
   RecordLiteral fields -> RecordLiteral <$> mapM (\(label,value) -> (,) label <$> walkLiteral names value) fields
   other -> pure other
 
@@ -605,7 +620,8 @@ walkExpr names scope e = case e of
     | Apply function article <- unlocated prefix, articleWord article, boundReference value ->
         Apply <$> walkExpr names scope function <*> walkExpr names scope value
   -- prelude.<op> of a collection is a definition of the collections unit.
-  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just (definition, _) <- collectionOperation op ->
+  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n,
+          Just (definition, _) <- (if contextualArticles names then canonicalCollectionOperation else collectionOperation) op ->
           Var <$> onValue names (collectionsAlias ++ "." ++ definition)
   -- prelude.<op> of a matcher over lists is a definition of the matchers unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- matcherOperation op ->

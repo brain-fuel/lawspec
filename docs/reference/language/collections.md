@@ -5,6 +5,29 @@ title: Collections
 ---
 # Collections
 
+## RC1 authoring profile
+
+In `1.0-rc.1`, `Set a` stores distinct elements in first-occurrence order.
+Construction and membership require `Eq a`: equality compares candidates with
+stored elements and detects duplicates. These operations do not require an
+order. Iteration with `prelude.toList`, size and emptiness do not compare
+elements and need no `Eq` requirement. Set equality ignores iteration order.
+
+Use `#S{3, 1, 3}` or `prelude.setOf [3, 1, 3]`; iteration produces `[3, 1]`.
+Use `SortedSet a` and `prelude.sortedSetOf` when portable sorted iteration is
+required. Its elements require `Keyed a`. Keyed maps retain their requirements.
+
+IEEE equality is preserved: signed zeros compare equal, and a NaN is unequal
+to itself. A stored NaN therefore does not make membership of that NaN true.
+Canonical set values use the checked data representation on all targets; the
+legacy native collection mappings below describe the ordered representation.
+Complete set-input generation and project-wide migration remain unfinished.
+
+## Version 0.24 reference
+
+The remainder of this page describes version 0.24 source. Its ordered `Set`
+becomes `SortedSet` in the canonical profile.
+
 Besides `List`, LawSpec has five built-in collections:
 
 | Type | Holds |

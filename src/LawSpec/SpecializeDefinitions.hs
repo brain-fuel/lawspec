@@ -3,7 +3,7 @@
 module LawSpec.SpecializeDefinitions (specializeDefinitions, specializeDefinitionsWithContext) where
 
 import Control.Monad.State.Strict
-import Control.Monad (forM, forM_, unless, when, foldM)
+import Control.Monad (forM, forM_, unless, when, foldM, zipWithM)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import Data.List (sortOn, foldl')
@@ -262,9 +262,9 @@ specializeDefinitionsWithContext sourceTypes declarations bits satisfies units p
             (contractPostconditions original)
           pure original{contractPreconditions=pre,contractPostconditions=post}
         property expanded = do
-          let bindings = [(inputId i,inputType i) | i <- inputs expanded ++ assertionInputs (assertion expanded)] ++ lawResources (original expanded)
-              local = Set.fromList (map fst bindings)
-              scope = M.union (monoEnvironment bindings) environment
+          let inputBindings = [(inputId i,inputType i) | i <- inputs expanded ++ assertionInputs (assertion expanded)] ++ lawResources (original expanded)
+              local = Set.fromList (map fst inputBindings)
+              scope = M.union (monoEnvironment inputBindings) environment
               walk (AssertEqual a b) = uncurry AssertEqual <$> equation scope local a b
               walk (AssertImplies guard body) = AssertImplies <$> rewrite scope local guard <*> walk body
               walk (AssertAll bodies) = AssertAll <$> mapM walk bodies
@@ -280,10 +280,19 @@ specializeDefinitionsWithContext sourceTypes declarations bits satisfies units p
           examples' <- forM (examples (original expanded)) $ \example -> do
             let exampleScope = M.union (monoEnvironment [(inputName i,inputType i) | i <- inputs expanded]) scope
                 exampleLocals = Set.union local (Set.fromList (map inputName (inputs expanded)))
+            bindings' <- forM (bindings example) $ \(name,literal) ->
+              if not (containsSetLiteral literal) then pure (name,literal) else do
+                ty <- maybe (lift (Left ("unknown example input: " ++ name))) pure
+                  (lookup name [(inputName i,inputType i) | i <- inputs expanded])
+                tree <- typed exampleScope (Annotate (literalExpr literal) ty)
+                expression <- rewriteTree exampleLocals tree
+                value <- lift (specializedLiteral literal expression)
+                pure (name,value)
             expectations' <- forM (expectations example) $ \expectation -> do
-              (actual',_) <- equation exampleScope exampleLocals (actual expectation) (literalExpr (expected expectation))
-              pure expectation{actual=actual'}
-            pure example{expectations=expectations'}
+              (actual',expected') <- equation exampleScope exampleLocals (actual expectation) (literalExpr (expected expectation))
+              literal <- lift (specializedLiteral (expected expectation) expected')
+              pure expectation{actual=actual',expected=literal}
+            pure example{bindings=bindings',expectations=expectations'}
           let (a,b,conditions) = firstConclusion body
           pure expanded{assertion=body,left=a,right=b,guards=conditions,inputs=inputs',refinementArgumentChecks=argumentChecks,
             original=(original expanded){examples=examples'}, generationPlan=map
@@ -310,3 +319,29 @@ specializeDefinitionsWithContext sourceTypes declarations bits satisfies units p
     assertionExpressions (AssertAll bodies) = concatMap assertionExpressions bodies
     assertionExpressions (AssertNot body) = assertionExpressions body
     assertionExpressions (AssertQuantified _ input body) = inputRefinements input ++ assertionExpressions body
+
+-- Constants normally contain no calls. Set notation uses the ordinary checked
+-- builder, including when nested in a record or constructor; retain the same
+-- monomorphic call identities discovered for the executable expression.
+specializedLiteral :: Literal -> Expr -> Either String Literal
+specializedLiteral original expression
+  | not (containsSetLiteral original) = Right original
+  | otherwise = case (original,strip expression) of
+      (SetLiteral _ items,value) -> case application value of
+        (Var builder,[argument]) | ListLit values <- strip argument ->
+          SetLiteral builder <$> children items values
+        _ -> mismatch
+      (ListLiteral items,ListLit values) -> ListLiteral <$> children items values
+      (ConstructorLiteral _ fields,ConstructLit tag values) -> ConstructorLiteral tag <$> children fields values
+      (RecordLiteral fields,RecordLit values) -> RecordLiteral <$> mapM
+        (\(label,literal) -> maybe mismatch (\value -> (,) label <$> specializedLiteral literal value) (lookup label values)) fields
+      _ -> mismatch
+  where
+    strip (Located _ inner) = strip inner
+    strip (Annotate inner _) = strip inner
+    strip inner = inner
+    children items values
+      | length items == length values = zipWithM specializedLiteral items values
+      | otherwise = mismatch
+    mismatch :: Either String a
+    mismatch = Left "set literal specialization did not preserve its constant structure"

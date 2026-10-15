@@ -570,10 +570,31 @@ end mapping
 
 Completed proofs and compiler-evaluated exhaustive results remain evidence.
 Generated native tests are `planned` until an execution supplies results.
-Incomplete and unsupported analyses report their limits. Canonical `Set` currently reports its implementation limit, including qualified
-imports of the legacy collection type, rather than inheriting ordered iteration.
-Eq-only sets and `SortedSet` migration remain required. The review packet
-tracks features and gates still awaiting implementation and verification.
+Incomplete and unsupported analyses report their limits.
+
+Canonical `Set a` construction and membership require `Eq a`: equality detects
+duplicates and compares a candidate with stored elements. These operations do
+not require ordering. Iteration, size and emptiness do not compare elements
+and need no `Eq` requirement. Equal duplicates retain their first occurrence;
+set equality compares membership independently of stored iteration order.
+IEEE equality remains authoritative: signed zeros compare equal, and a NaN
+remains unequal to itself even when stored in a set.
+
+`#S{3, 1, 3}` constructs a set whose iteration order is `[3, 1]`. Empty and
+nested sets are supported, including constant table and example values under
+records and alternatives. `prelude.setOf`, `member`, `insert`, `remove`,
+`union`, `intersection` and `difference` use ordinary checked definitions.
+Use `SortedSet a` and `prelude.sortedSetOf` for the old portable sorted
+representation, requiring `Keyed a`. Explicit `lawspec.collections` imports
+expose these same resolved identities and operations. Their constructors and
+storage fields are private. User sources cannot replace compiler-owned units.
+
+Local declarations and explicit imports take precedence over implicit collection
+names. Native metadata distinguishes `Set` from `SortedSet`; canonical set
+values use checked data storage. Complete set-input generation, generalized
+membership over finite collections, native adapter coverage and validated
+project-wide migration remain required. A finite example does not prove a law
+over all sets. The review packet tracks all remaining gates.
 
 The implemented syntax below describes the canonical frontend entry point.
 The review packet also specifies grammar still awaiting implementation,
@@ -592,6 +613,8 @@ anonymousRecordType = "record" "{" field* "}" ;
 recordValue = [name] "record" "{" [entry {"," entry}] "}" ;
 recordLiteral = [name] "record" "{" [literalEntry {"," literalEntry}] "}" ;
 literalEntry = identifier "=" literal ;
+setValue = "#S{" [expression {"," expression}] "}" ;
+setLiteral = "#S{" [literal {"," literal}] "}" ;
 entry = identifier "=" expression ;
 selection = "first" "matching" "case" "of" expression ":"
             branch+ ["otherwise" expression] "end" "case" ;

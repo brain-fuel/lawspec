@@ -5,7 +5,7 @@ module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, parseSourceC
 
 import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
 import LawSpec.Resilience (resilienceName)
-import LawSpec.Collections (collectionsUnit, collectionsAlias, boundedArithmeticBlock)
+import LawSpec.Collections (collectionsUnit, collectionsAlias, boundedArithmeticBlock, canonicalCollectionTypes, canonicalCollectionNames)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Builtins (virtualClockHandler, seededHandlerName, seededHandler)
 import LawSpec.Temporal (Temporal(..), temporalExpr, budgetExpr, budgetStart)
@@ -170,9 +170,6 @@ typeAtom = anonymousRecordTypeP <|> (Named "Unit" <$ try (symbol "(" *> symbol "
           "\"|natural number|" -> "lawspecPositiveNatural"
           _ -> n0
         else n0
-    legacySet <- asks (M.member ("legacy-set:" ++ n0))
-    when (canonical && (n0 == "Set" || legacySet))
-      (fail "canonical Eq-only Set and SortedSet migration are not yet implemented; legacy ordered Set semantics cannot be used as canonical Set")
     when (canonical && n0 `elem` ["Natural","BigUInt","BigInt"])
       (fail "use Integer, Whole or Nat in 1.0-rc.1; migrate legacy numeric names")
     if n == "lawspecPositiveNatural" then pure (Refined "value" (Named "BigUInt") (Just (Binary ">" (Var "value") (Number 0)))) else do
@@ -185,7 +182,7 @@ typeAtom = anonymousRecordTypeP <|> (Named "Unit" <$ try (symbol "(" *> symbol "
          | and kinds -> application n <$> mapM (const typeAtom) kinds
          | otherwise -> RefinementApp (indexedRefinementName n) <$> mapM indexArgument kinds
        Nothing | n == naturalRefinementName -> pure (RefinementApp n [])
-               | n `elem` ["Nullable","Optional","List","Maybe",failAbilityName] -> Applied n <$> typeAtom
+               | n `elem` ["Nullable","Optional","List","Maybe",failAbilityName] || (canonical && n `elem` ["Set","SortedSet"]) -> Applied n <$> typeAtom
                | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
                | '.' `elem` n -> pure (Named n)
                | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
@@ -1074,7 +1071,7 @@ patternTest = go (0 :: Int)
 applicationAtom :: P Expr
 applicationAtom = atom
   where
-    atom = located $ (ScalarLit (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> firstCaseP <|> recordValueP <|> temporalP <|> matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+    atom = located $ (ScalarLit (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> setValue <|> firstCaseP <|> recordValueP <|> temporalP <|> matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedFields
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
@@ -1143,6 +1140,12 @@ applicationAtom = atom
       pure (foldl Apply (Var "prelude.calls") (Var op : maybe [] id arguments))
     -- if c then a else b: only the branch c selects is evaluated (it is
     -- prelude.select, which elaborates to Core's If).
+    setValue = do
+      canonical <- canonicalP
+      unless canonical empty
+      void (symbol "#S")
+      values <- between (symbol "{") (symbol "}") (expr `sepBy` symbol ",")
+      pure (Apply (Var "prelude.setOf") (ListLit values))
     ifP = do
       keyword "if"
       condition <- expr
@@ -1356,7 +1359,7 @@ constructorLiteral = do
   ConstructorLiteral name <$> count arity literalP
 
 literalP :: P Literal
-literalP = namedRecordLiteral <|> recordLiteral <|> (ScalarLiteral (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> constructorLiteral
+literalP = setLiteral <|> namedRecordLiteral <|> recordLiteral <|> (ScalarLiteral (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> constructorLiteral
   <|> (ListLiteral <$> between (symbol "[") (symbol "]") (literalP `sepBy` symbol ","))
   <|> try (do e <- scalarP; case e of ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
   <|> try (parens (do
@@ -1372,6 +1375,11 @@ literalP = namedRecordLiteral <|> recordLiteral <|> (ScalarLiteral (SAbsent "Uni
   <|> (BoolLiteral <$> boolP) <|> (TextLiteral <$> str)
   <|> numericLiteral
   where
+    setLiteral = do
+      canonical <- canonicalP
+      unless canonical empty
+      void (symbol "#S")
+      SetLiteral (collectionsAlias ++ ".setOf") <$> between (symbol "{") (symbol "}") (literalP `sepBy` symbol ",")
     namedRecordLiteral = do
       canonical <- canonicalP
       unless canonical empty
@@ -1589,7 +1597,7 @@ tableP = do
   forM_ (zip [1 :: Int ..] rows) $ \(i, (values, _)) -> unless (length values == length columns)
     (fail ("row " ++ show i ++ " of the table has " ++ show (length values) ++ " values, but the table has " ++ show (length columns) ++ " columns"))
   pure
-    [ Example ("table row " ++ show i ++ ": " ++ intercalate ", " (map (prettyExpr . literalExpr) values))
+    [ Example ("table row " ++ show i ++ ": " ++ intercalate ", " (map prettyLiteral values))
         [(c, v) | (c, v) <- row, canonical || c `notElem` expectedColumns]
         [ case right of
             Nothing -> Expectation (substitute left) (BoolLiteral True)
@@ -1915,6 +1923,7 @@ mappingP = do
     simpleKey (ConstructorLiteral _ _) = False
     simpleKey (ListLiteral _) = False
     simpleKey (RecordLiteral _) = False
+    simpleKey (SetLiteral _ _) = False
     simpleKey _ = True
     contextualLiteral ty value = case (baseType ty, literalExpr value) of
       (Named name, expression) | primitive name /= Nothing -> case expression of
@@ -2122,33 +2131,34 @@ parseSourcesWithBuiltins canonical collections builtins versioned userSources = 
         [f | f <- declared, familyName f `elem` importItems i]
       | i <- imports, Just (Right (_, declared)) <- [Lazy.lookup (importUnit i) results] ]
     preambles = [(s, n, imports) | s <- sources, Right (n, imports) <- [preamble s]]
-    preamble source@(Source p s) = implicit s <$> runReader (runParserT preambleP p s) (profile source M.empty)
-    implicit s (n, imports)
+    preamble source@(Source p s) = implicit source s <$> runReader (runParserT preambleP p s) (profile source M.empty)
+    implicit source s (n, imports)
       | n `elem` ("prelude" : collectionsUnit : [unit | (unit, _, _, _) <- builtins]) = (n, imports)
       | otherwise =
-          let local = M.keys (headers s)
+          let local = M.keys (headers s) ++ concatMap importItems imports
               builtin unit alias types =
                 let items = [t | t <- types, t `notElem` local, t /= boundedArithmeticBlock]
                     origin = Location ("<" ++ unit ++ ">") 1 1
                 -- A built-in with no types to list (lawspec.host) is imported
                 -- whole, as the collections unit is for bounded arithmetic.
                 in [Import unit alias items (Span origin origin) | not (null items) || unit == "lawspec.host" || boundedArithmeticBlock `elem` types]
-          in (n, imports ++ builtin collectionsUnit collectionsAlias collections ++
+              collectionNames = if canonicalSource source then canonicalCollectionNames collections else collections
+          in (n, imports ++ builtin collectionsUnit collectionsAlias collectionNames ++
                concat [builtin unit alias types | (unit, alias, types, uses) <- builtins, uses s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.
-    exports = Lazy.fromList [(n, reexported imports (sourceExports (imported s) s)) | (s, n, imports) <- preambles]
+    exports = Lazy.fromList [(n, reexported s imports (sourceExports (imported s) s)) | (s, n, imports) <- preambles]
     -- A unit's export line offers the arities of the names it lists, from the
     -- units it imports them from, and a listed type's constructors with it.
-    reexported imports (table, owners) =
+    reexported source imports (table, owners) =
       let listed = concat [importItems i | i <- imports, isExport i]
           from i item = case break (== '.') item of
             (alias, '.' : name) | alias == importAlias i -> Just name
             _ | item `elem` importItems i -> Just item
               | otherwise -> Nothing
           found = [ (name, t, o) | i <- imports, not (isExport i), item <- listed, Just name <- [from i item]
-                  , Just (t, o) <- [Lazy.lookup (importUnit i) exports] ]
+                  , Just raw <- [Lazy.lookup (importUnit i) exports], let (t,o) = collectionExports source i raw ]
           entries = M.fromList $ concat
             [ [(key, h) | (key, h) <- M.toList t, key == name || key == "constructor:" ++ name ||
                 maybe False (\cs -> case break (== ':') key of
@@ -2157,17 +2167,23 @@ parseSourcesWithBuiltins canonical collections builtins versioned userSources = 
             | (name, t, o) <- found ]
           ownersOut = [(name, cs) | (name, _, o) <- found, Just cs <- [lookup name o]]
       in (M.union table entries, owners ++ ownersOut)
-    profile source env = if canonical && source `notElem` versioned
+    canonicalSource source = canonical && source `notElem` versioned
+    profile source env = if canonicalSource source
       then M.insert "profile:canonical" AliasHeader env else M.delete "profile:canonical" env
     imported source = profile source $ case preamble source of
       Left _ -> M.empty
       Right (_, imports) -> M.unions
-        [ (if importUnit i == "lawspec.collections"
-            then M.insert ("legacy-set:" ++ importAlias i ++ ".Set") AliasHeader else id) $
-          M.insert ("alias:" ++ importAlias i) AliasHeader (M.unions
+        [ M.insert ("alias:" ++ importAlias i) AliasHeader (M.unions
             [ M.fromList [(qualify (importAlias i) key, h) | (key, h) <- M.toList table]
             , M.fromList [(key, h) | let allowed = listed owners (importItems i), (key, h) <- M.toList table, allowed key] ])
-        | i <- imports, Just (table, owners) <- [Lazy.lookup (importUnit i) exports] ]
+        | i <- imports, Just raw <- [Lazy.lookup (importUnit i) exports], let (table,owners) = collectionExports source i raw ]
+    collectionExports source i raw@(table,owners)
+      | not (canonicalSource source) || importUnit i /= collectionsUnit = raw
+      | otherwise =
+          let hidden = ["Set","SortedSet","EqSet","constructor:SetItems","constructor:EqSetItems"]
+              renamed = [(public,value) | (public,internal) <- canonicalCollectionTypes, Just value <- [M.lookup internal table]]
+          in (M.union (M.fromList renamed) (foldr M.delete table hidden),
+              [(public,[]) | (public,_) <- renamed] ++ [(name,cs) | (name,cs) <- owners, name `notElem` hidden])
     qualify alias key = case break (== ':') key of
       ("constructor", ':' : n) -> "constructor:" ++ alias ++ "." ++ n
       ("record", ':' : n) -> "record:" ++ alias ++ "." ++ n

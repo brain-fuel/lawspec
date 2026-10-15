@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
 
-test('WASM checks the internal Eq-only set foundation without exposing canonical authoring', async () => {
+test('WASM checks the internal equality-based set foundation through the legacy profile', async () => {
   const compiler = await createCompiler();
   const content = await readFile(new URL('../../test/fixtures/eq-set-foundation.lawspec', import.meta.url), 'utf8');
   for (const machineBits of [32, 64]) {
