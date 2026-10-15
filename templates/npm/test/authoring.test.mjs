@@ -391,7 +391,7 @@ test('nominal structural payloads preserve generic fields, table values and mand
   assert.deepEqual((await compiler.format({...request, sources: formatted.formattedSources})).formattedSources, formatted.formattedSources);
   for (const invalid of [
     content.replace('height = 3', 'height = 0'),
-    content.replace('dimensions = record{height = 3,', 'dimensions = record{height = 1 / 0,'),
+    content + '\nfunction invalid (ignored of type ()) -> Box Integer is Box record{value = 1 / 0} end function\n',
   ]) {
     assert.notEqual(invalid, content);
     const checked = await compiler.check({...request, sources: [{path, content: invalid}]});
