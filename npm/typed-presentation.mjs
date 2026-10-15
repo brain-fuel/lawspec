@@ -1,0 +1,106 @@
+// Generated from templates/npm/typed-presentation.mjs by lawspec-dev generate. Do not edit.
+// Presentation only: identities, constraints and proof evidence remain in Core.
+// In particular, a nominal record is never expanded into a structural product.
+export function createTypePresentation(result) {
+  const declarations = new Map((result.dataTypes ?? []).map(d => [d.id, d]));
+  const constructors = new Map((result.dataTypes ?? []).flatMap(d =>
+    d.constructors.map(c => [c.id, { declaration: d, constructor: c }])));
+  const shortName = name => ({ BigUInt: 'Whole', BigInt: 'Integer', Natural: 'Whole' })[name]
+    ?? name.split('::type::').at(-1);
+  const names = new Map();
+  for (const d of declarations.values()) {
+    const name = shortName(d.id);
+    names.set(name, (names.get(name) ?? 0) + 1);
+  }
+  const nominalName = name => names.get(shortName(name)) > 1
+    ? name.replace('::type::', '.') : shortName(name);
+
+  // Recognize only compiler-generated storage views which copy every field in
+  // order. Do not simplify user matches, erase conversions or discard unused
+  // constructor arguments: those may contain checks or undefined computations.
+  function storageView(expression) {
+    const node = expression.node;
+    if (node?.kind !== 'match' || node.cases.length !== 1) return undefined;
+    const branch = node.cases[0], body = branch.body.node;
+    const source = constructors.get(branch.constructor), target = constructors.get(body?.constructor);
+    if (body?.kind !== 'construct' || !source || !target
+      || source.declaration.structure?.kind !== 'record' || target.declaration.structure?.kind !== 'record'
+      || expression.origin?.kind !== 'generated' || expression.origin.declaration !== 'lawspec::source-record'
+      || !branch.binders.length || !branch.binders.every(b => b.id.startsWith('lawspec::record-view::'))
+      || branch.binders.length !== source.constructor.fields.length
+      || body.arguments.length !== branch.binders.length
+      || target.constructor.fields.length !== branch.binders.length) return undefined;
+    for (let i = 0; i < branch.binders.length; i++) {
+      if (source.constructor.fields[i].name !== target.constructor.fields[i].name) return undefined;
+      let argument = body.arguments[i], unwrapped;
+      while ((unwrapped = storageView(argument)) !== undefined) argument = unwrapped;
+      if (argument.node?.kind !== 'local' || argument.node.id !== branch.binders[i].id) return undefined;
+    }
+    return node.value;
+  }
+
+  function expressionText(expression, locals) {
+    const view = storageView(expression);
+    if (view) return expressionText(view, locals);
+    const node = expression.node;
+    switch (node?.kind) {
+      case 'local': return locals.get(node.id) ?? expression.text;
+      case 'field': {
+        const field = constructors.get(node.constructor)?.constructor.fields[node.index];
+        if (!field) return expression.text;
+        let value = node.value, unwrapped;
+        while ((unwrapped = storageView(value)) !== undefined) value = unwrapped;
+        const text = expressionText(value, locals);
+        return `${['local', 'field'].includes(value.node?.kind) ? text : `(${text})`}.${field.name}`;
+      }
+      case 'binary':
+      case 'shortCircuit': return `(${expressionText(node.left, locals)} ${{ '==': '=', '&&': 'and', '||': 'or' }[node.operator] ?? node.operator} ${expressionText(node.right, locals)})`;
+      case 'unary': return `${node.operator === '!' ? 'not' : node.operator} (${expressionText(node.argument, locals)})`;
+      // Keep unfamiliar expressions verbatim; never omit a restriction because
+      // a presentation does not yet know its typed node.
+      default: return expression.text;
+    }
+  }
+
+  function typeName(type, substitutions = new Map(), active = new Set()) {
+    if (type.kind === 'variable') {
+      const replacement = substitutions.get(type.id);
+      return replacement ? typeName(replacement) : type.id;
+    }
+    if (type.kind === 'function') return `(${typeName(type.parameter, substitutions, active)} -> ${typeName(type.result, substitutions, active)})`;
+    if (type.kind !== 'constructor') return type.id;
+    const declaration = declarations.get(type.name);
+    const argumentsText = () => type.arguments.map(a => {
+      if (a.kind !== 'type') return a.value ?? a.id;
+      const text = typeName(a.type, substitutions, active);
+      return a.type.kind === 'constructor' && a.type.arguments.length ? `(${text})` : text;
+    }).join(' ');
+    const named = () => nominalName(type.name) + (type.arguments.length ? ` ${argumentsText()}` : '');
+    if (declaration?.structure?.kind !== 'record' || active.has(type.name)) return named();
+    const constructor = declaration.constructors[0];
+    const bindings = new Map(substitutions);
+    declaration.parameters.forEach((parameter, i) => {
+      const argument = type.arguments[i];
+      if (argument?.kind === 'type') bindings.set(parameter, substitute(argument.type, substitutions));
+    });
+    const nested = new Set([...active, type.name]);
+    const locals = new Map(constructor.fields.map(f => [f.id, f.name]));
+    const fields = constructor.fields.map(field => {
+      const base = typeName(field.type, bindings, nested);
+      const predicates = declaration.structure.fields.find(f => f.name === field.name)?.predicates ?? [];
+      const refined = predicates.length
+        ? `(${field.name} of type ${base} where ${predicates.map(p => expressionText(p, locals)).join(' and ')})`
+        : base;
+      return `${field.name} of type ${refined}`;
+    });
+    return `record{${fields.join(', ')}}`;
+  }
+  function substitute(type, bindings) {
+    if (type.kind === 'variable') return bindings.get(type.id) ?? type;
+    if (type.kind === 'function') return { ...type, parameter: substitute(type.parameter, bindings), result: substitute(type.result, bindings) };
+    if (type.kind === 'constructor') return { ...type, arguments: type.arguments.map(a => a.kind === 'type'
+      ? { ...a, type: substitute(a.type, bindings) } : a) };
+    return type;
+  }
+  return { typeName };
+}

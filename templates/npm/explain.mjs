@@ -1,11 +1,9 @@
 // All presentations read the same typed law and its evidence. No view parses
 // business wording or changes an obligation.
+import { createTypePresentation } from './typed-presentation.mjs';
+
 export const explanationViews = ['developer', 'business', 'formal', 'evidence'];
-const authoringTypeName = name => ({ BigUInt: 'Whole', BigInt: 'Integer', Natural: 'Whole' })[name] ?? name.split('::type::').at(-1);
-const typeName = type => type.kind === 'constructor'
-  ? authoringTypeName(type.name) + (type.arguments.length ? ' ' + type.arguments.map(a => a.kind === 'type' ? typeName(a.type) : a.value ?? a.id).join(' ') : '')
-  : type.kind === 'function' ? `(${typeName(type.parameter)} -> ${typeName(type.result)})` : type.id;
-function proposition(assertion, business = false) {
+const presentationProposition = typeName => function proposition(assertion, business = false) {
   switch (assertion.kind) {
     case 'equal': return `${assertion.left.text} ${business ? 'must be' : '='} ${assertion.right.text}`;
     case 'implies': return business
@@ -36,9 +34,11 @@ function proposition(assertion, business = false) {
     }
     default: throw new Error(`Unsupported typed assertion ${assertion.kind}`);
   }
-}
+};
 export function explainLaw(law, result, view = 'developer') {
   if (!explanationViews.includes(view)) throw new Error(`Choose --view ${explanationViews.join('|')}`);
+  const { typeName } = createTypePresentation(result);
+  const proposition = presentationProposition(typeName);
   const evidence = (result.evidence ?? []).filter(e => e.declaration === law.id);
   const quantifiers = law.inputs.map(input => `${input.name} of type ${typeName(input.type)}`);
   const restrictions = law.inputs.flatMap(input => input.predicates.map(p => p.text));
@@ -64,7 +64,9 @@ export function explainLaw(law, result, view = 'developer') {
   else if (view === 'formal') text = [quantifiers.length ? `for all (${quantifiers.join(') (')}) =>` : '',
     restrictions.length ? `(${restrictions.join(' and ')}) implies` : '',
     proposition(law.assertion), ...(quantifiers.length ? ['end'] : [])].filter(Boolean).join('\n');
-  else text = [law.id, ...documentary, ...law.trace, ...strategies, proposition(law.assertion),
+  else text = [law.id, ...documentary, ...law.trace, ...strategies,
+    ...(quantifiers.length ? [`Inputs: ${quantifiers.join('; ')}`] : []),
+    ...(restrictions.length ? [`Restrictions: ${restrictions.join(' and ')}`] : []), proposition(law.assertion),
     `Source: ${law.location.file}:${law.location.line}:${law.location.column}`,
     `Examples: ${law.examples.length}`].join('\n');
   if (view === 'evidence' && strategies.length) text += '\n' + strategies.join('\n');

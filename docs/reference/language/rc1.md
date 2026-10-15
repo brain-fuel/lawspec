@@ -92,6 +92,19 @@ laws. Developer and business explanations show the links; formal propositions
 and evidence retain their existing meaning. Editor navigation uses the same
 resolved identities and spans.
 
+Developer, business and formal explanations render anonymous record input
+domains from their checked field metadata, including nested products, generic
+type arguments and field restrictions. Named records retain their nominal
+names. For example, the positive-weight domain in the
+[parcel example](../../../examples/rc1/parcel-measurements.lawspec) displays as
+`record{weight of type (weight of type Measurement Integer where (weight.reading.value > 0))}`.
+The repeated `weight` names the refinement's local binder. Generated storage
+views are hidden only when they copy the complete structural product; unhandled
+expression forms retain their checked text. The JSON still contains the original
+typed inputs, assertion and evidence. A readable domain adds no verification
+evidence. Record-valued assertion text can still expose internal construction
+details and needs further presentation work.
+
 `must be`, `is`, `=`, `must =`, and leading `must` elaborate to the same typed
 Eq obligation. Equality in a value context is Boolean. Existing IEEE equality
 and refinement predicates retain their meaning. Worded `not`, `and`, `or`, and
