@@ -1,0 +1,9 @@
+rejected-at: generation
+expect: refuted
+expect: set equality ignores iteration order
+@@ test/fixtures/eq-set-foundation.lawspec
+<<<<<<<
+if reverse then EqSetItems [float64Bits("3ff0000000000000"), float64Bits("4000000000000000")] else EqSetItems [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")]
+=======
+if reverse then EqSetItems [float64Bits("3ff0000000000000"), float64Bits("4000000000000000")] else EqSetItems [float64Bits("4000000000000000"), float64Bits("4008000000000000")]
+>>>>>>>
