@@ -1,0 +1,14 @@
+@@ examples/rc1/parcel-measurements.lawspec
+<<<<<<<
+function sampleParcel (unused of type ()) -> Parcel is
+  Parcel record{details = record{
+    weight = Measurement record{reading = record{value = 1}}
+  }}
+end function
+=======
+function sampleParcel (unused of type ()) -> Parcel is
+  Parcel record{details = record{
+    weight = Measurement record{reading = record{value = 2}}
+  }}
+end function
+>>>>>>>

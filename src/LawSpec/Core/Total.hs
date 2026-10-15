@@ -1,5 +1,5 @@
 -- | Structural termination and definedness auditing over typed Core only.
-module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes) where
+module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes, proofExpression) where
 
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
 import Control.Monad (unless, forM_, forM, foldM)

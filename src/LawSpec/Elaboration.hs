@@ -23,7 +23,7 @@ import qualified LawSpec.Inference as S
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Machine as C
 import LawSpec.Core.Validate (operationEvidenceWithRegistry)
-import LawSpec.Core.Total (constructorProofContracts)
+import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import LawSpec.CapabilityCheck (checkCapability)
 import LawSpec.Core.Types (makeRegistry, builtinDataDeclarations)
 import qualified LawSpec.Core.RecordIdentity as Records
@@ -213,7 +213,7 @@ requireRegisteredRecords dataTypes bits (value,records) = do
   -- Before discarding duplicate declarations, audit their actual predicate
   -- order as well: equal type identities do not imply equal definedness.
   unless (null records) $ either (Left . unlines . map S.message) (const (pure ()))
-    (constructorProofContracts bits (dataTypes ++ records))
+    (normalizeProgramRecords (C.Program bits (dataTypes ++ records) []))
   pure value
 
 -- The lookup catalogue may share descriptors while the admission stream must

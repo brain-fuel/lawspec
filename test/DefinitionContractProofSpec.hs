@@ -144,6 +144,26 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
           selected=field 0 (T.Variable result)
       check (T.Construct tag [nan]) (T.Comparison Equal selected selected) `shouldSatisfy` isLeft
 
+  describe "known products through representation matches" $ do
+    let before=Id "Before"
+        after=Id "After"
+        first=Id "first"
+        second=Id "second"
+        result=Id "result"
+        n=T.Literal . SInteger "Integer"
+        view unused=T.DataMatch (T.Construct before [n 3,unused])
+          [(before,[first,second],T.Construct after [T.Variable first,T.Variable second])]
+        field tag unused=T.Field tag 0 (Nothing,Nothing) (view unused)
+        function body=T.ProofDefinition (Id "view") "view" Nothing [] body []
+        agrees=T.ProofContract (Id "view") result []
+          [T.ExactComparison Equal (T.Variable result) (n 3)]
+    it "proves a selected field after matching and rebuilding known constructor data" $
+      T.auditWithContracts [agrees] [function (field after (n 9))] `shouldBe` Right ()
+    it "retains definedness checks for an unused field in the matched construction" $
+      T.auditWithContracts [agrees]
+        [function (field after (T.Division False Divide (n 1) (n 0)))] `shouldSatisfy` isLeft
+    it "does not select a field of an unrelated constructor" $
+      T.auditWithContracts [agrees] [function (field (Id "Other") (n 9))] `shouldSatisfy` isLeft
   describe "known products behind strict source lets" $ do
     let tag=Id "Product"
         result=Id "result"

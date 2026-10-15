@@ -276,6 +276,7 @@ extra-source-files:
     examples/rc1/empty-domains.lawspec
     examples/rc1/finite-integer-domains.lawspec
     examples/rc1/law-metadata.lawspec
+    examples/rc1/parcel-measurements.lawspec
     examples/rc1/record-payloads.lawspec
     examples/rc1/recursive-records.lawspec
     examples/rc1/requirement-composition.lawspec
@@ -887,6 +888,7 @@ test-suite lawspec-test
       SourceRecordHarnessFixtures
       SourceRecordHarnessSpec
       SourceRecordInferenceSpec
+      SourceRecordMetadataFixtures
       SourceRecordPayloadFixtures
       SourceRecordPayloadSpec
       SourceRecordScopeSpec

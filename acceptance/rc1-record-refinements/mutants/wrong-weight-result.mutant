@@ -1,0 +1,6 @@
+@@ examples/rc1/parcel-measurements.lawspec
+<<<<<<<
+parcel.weight.reading.value
+=======
+0 - parcel.weight.reading.value
+>>>>>>>

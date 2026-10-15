@@ -22,6 +22,7 @@ import LawSpec.Core.Eval (evaluateValue,evaluateValueProposition)
 import LawSpec.CoreEmit (emitPlan,targets)
 import LawSpec.Testing (planTesting,plannedUnits,plannedProperties,plannedProperty)
 import SourceRecordPayloadFixtures (payloadSource)
+import SourceRecordMetadataFixtures (metadataSource)
 
 compile body=compileCoreCanonical 64 S.defaultGeneration [S.Source "payloads.lawspec" ("unit example.payloads\n"++body)]
 checked source action=either (expectationFailure . show) action source
@@ -100,6 +101,49 @@ test_structuralNominalPayloads = describe "structural nominal payloads" $ do
       "function invalid (ignored of type ()) -> Delivery is Download record{document = \"paper\", unused = 1 / 0} end function"]) `shouldSatisfy` isLeft
     compile (unlines ["type Delivery is one of | Download of type record{count of type Nat} end type",
       "function invalid (ignored of type ()) -> Delivery is Download record{count = 0} end function"]) `shouldSatisfy` isLeft
+  it "checks generic nominal projections in intrinsic structural refinements" $ do
+    let declarations=unlines
+          [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type"
+          , "type Positive is a record{data of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}} end type"
+          ]
+    checked (compile (declarations++"law selected is definition: Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} = Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} end end")) $ \candidate -> do
+      checkOutcomes 64 candidate
+      let once=normalizeProgramRecords candidate
+      (once >>= normalizeProgramRecords) `shouldBe` once
+    compile (declarations++"function invalid (ignored of type ()) -> Positive is Positive record{data = record{box = Capsule record{payload = record{value = 0}}}} end function") `shouldSatisfy` isLeft
+  it "admits valid constructors whose intrinsic refinement reads generic nominal storage" $ do
+    checked (compile (unlines
+      [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type"
+      , "type Positive is a record{data of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}} end type"
+      , "function positive (ignored of type ()) -> Positive is Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} end function"
+      , "law selected is definition: positive () = positive () end end"
+      ])) (checkOutcomes 64)
+  it "admits generic nominal field refinements in structural function inputs" $ do
+    checked (compile (unlines
+      [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type"
+      , "function value (input of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}) -> Integer is input.box.payload.value end function"
+      , "law selected is definition: for all (input of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}) => value input > 0 end end"
+      , "expect value input = expected in table (input, expected):"
+      , "row record{box = Capsule record{payload = record{value = 1}}}, 1"
+      , "row record{box = Capsule record{payload = record{value = 3}}}, 3"
+      , "end end"
+      ])) (checkOutcomes 64)
+  it "checks named-record literal fields by label inside generic payload tables" $ do
+    let declarations=unlines
+          [ "type Customer is a record{code of type UInt8 note of type Text} end type"
+          , "type Envelope (a of type Type) is a record{payload of type record{value of type a}} end type"
+          , "function note (wrapped of type Envelope Customer) -> Text is wrapped.payload.value.note end function"
+          , "law notes is definition: for all (wrapped of type Envelope Customer) => note wrapped = note wrapped end end"
+          , "expect note wrapped = expected in table (wrapped, expected):"
+          ]
+        row="row Envelope record{payload = record{value = Customer record{note = \"first\", code = 7}}}, \"first\"\nend end"
+    checked (compile (declarations++row)) (checkOutcomes 64)
+    forM_ ["note = \"first\"","note = \"first\", code = 7, code = 8","note = \"first\", code = 7, extra = true"] $ \fields ->
+      compile (declarations++"row Envelope record{payload = record{value = Customer record{"++fields++"}}}, \"first\"\nend end") `shouldSatisfy` isLeft
+  it "checks parcel measurements and label tables with intrinsic generic refinements" $
+    forM_ [32,64] $ \bits -> checked
+      (compileCoreCanonical bits S.defaultGeneration [S.Source "metadata.lawspec" metadataSource])
+      (checkOutcomes bits)
   it "checks capabilities against completed constructor shapes" $ do
     let source field=unlines ["type Task is one of | Task of type record{"++field++"} end type",
           "type Gate is a record{check of type record{task of type (value of type Task where value = value)}} end type"]

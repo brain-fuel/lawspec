@@ -8,6 +8,7 @@ import LawSpec.Elaboration (coreTypeWithSourceRecords, elaborateResolvedWithSour
 import qualified LawSpec.SourceContext as Source
 import LawSpec.CapabilityCheck (checkCapability)
 import LawSpec.Core.Total (constructorProofContracts)
+import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Model as S
 import qualified LawSpec.Core as C
@@ -71,8 +72,14 @@ elaborateDataDeclarationsWithContext bits units = do
   let declarations=map fst declarationsWithRecords
       records=payloadRecords ++ concatMap snd declarationsWithRecords
       result=if null records then declarations else declarations ++ records
-  _ <- constructorProofContracts bits result
-  pure (result,context)
+  -- Intrinsic predicates may project a canonical product through the generic
+  -- storage of a nominal constructor. Reconcile those checked representations
+  -- before admission; normalization still audits every constructor occurrence
+  -- before interning its descriptor.
+  normalized <- normalizeProgramRecords (C.Program bits result [])
+  let admitted=C.programDataDeclarations normalized
+  _ <- constructorProofContracts bits admitted
+  pure (admitted,context)
   where
     unit u = mapM (declaration u) (S.dataTypes u)
     declaration u d = contextual (S.dataTypeSpan d) $ do

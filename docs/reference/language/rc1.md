@@ -456,10 +456,19 @@ ordinary checked constructor matches and constructions reconcile equivalent
 structural representations. This introduces no implicit nominal conversion.
 Automatic field refinements, capability requirements and definedness still apply.
 
-Generic nominal projections inside structural field refinements, generic
-structural GADT result equations, structural payloads under containers such as
-`List`, and checked function expansion in anonymous field restrictions still
-require compiler work. These limits remain RC1 acceptance gates.
+Structural field restrictions can inspect products stored inside generic named
+records. The [parcel measurements example](../../../examples/rc1/parcel-measurements.lawspec)
+requires positive measurements and checks named-record table values by label,
+including labels supplied in a different order. Its checked functions, field
+restrictions and table inputs remain validated when no law layers are selected.
+
+All 17 targets consume constructor field contracts through their schema emitters.
+The parcel fixture runs on every target in both profiles, with separate checks
+for native field enforcement. Run its reproducible suite with
+`make acceptance SUITE=rc1-record-refinements TARGET=java` (or another target);
+CI schedules every target/profile and three independent result mutants. Generic structural GADT result equations, payloads under
+containers such as `List`, and checked function expansion in anonymous field
+restrictions still require compiler work.
 
 Recursive record and constructor patterns preserve structural descent for
 checked recursive functions. The
@@ -549,7 +558,7 @@ alternatives = "type" name "is" "one" "of" alternative* "end" "type" ;
 alternative = ["|"] name [annotation type] ;
 anonymousRecordType = "record" "{" field* "}" ;
 recordValue = [name] "record" "{" [entry {"," entry}] "}" ;
-recordLiteral = "record" "{" [literalEntry {"," literalEntry}] "}" ;
+recordLiteral = [name] "record" "{" [literalEntry {"," literalEntry}] "}" ;
 literalEntry = identifier "=" literal ;
 entry = identifier "=" expression ;
 selection = "first" "matching" "case" "of" expression ":"

@@ -70,8 +70,11 @@ dataSchemasWithContracts :: [C.DataDeclaration]
   -> Either String ([DataSchema],[ConstructorContractSchema])
 dataSchemasWithContracts declarations = do
   schemas <- mapM definition declarations
+  -- Lower the executable contract view only. Structural identity retains its
+  -- canonical typed predicate descriptor in the original declarations.
   let contracts = [ConstructorContractSchema (C.idText (C.constructorId constructor))
-        (C.dataParameters declaration) (C.constructorFields constructor) (C.constructorPredicates constructor)
+        (C.dataParameters declaration) (C.constructorFields constructor)
+        (map (C.lowerFieldNodes declarations (C.idText (C.constructorId constructor))) (C.constructorPredicates constructor))
         | declaration <- declarations, constructor <- C.dataConstructors declaration,
           not (null (C.constructorPredicates constructor))]
   pure (schemas,contracts)

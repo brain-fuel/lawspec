@@ -375,7 +375,9 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
   (nominalTypes,sourceTypes) <- elaborateDataDeclarationsWithContext bits us
   declaredRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
     (SourceRecords.recordDeclarationsWithContext sourceTypes nominalTypes bits (concatMap SourceRecords.unitTypeReferences us))
-  let dataTypes = if null declaredRecords then nominalTypes else nominalTypes ++ declaredRecords
+  let occurrences = if null declaredRecords then nominalTypes else nominalTypes ++ declaredRecords
+  normalizedDeclarations <- normalizeProgramRecords (Core.Program bits occurrences [])
+  let dataTypes=Core.programDataDeclarations normalizedDeclarations
   _ <- constructorProofContracts bits dataTypes
   let checkTypes = typeCheck sourceTypes dataTypes bits
   _ <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)
@@ -647,8 +649,8 @@ validateExampleDomains bits unit invoke ins ex = withContext ("example " ++ exam
 evaluationTerm sourceTypes declarations functions bits origin resolve env source = do
   (term,records) <- Elaboration.elaborateResolvedWithSourceRecords sourceTypes False declarations functions bits origin resolve env source
   let known = if null records then declarations else declarations ++ records
-  _ <- either (Left . unlines . map message) Right (constructorProofContracts bits known)
   (normalized,complete) <- either (Left . unlines . map message) Right (normalizeExpressionRecords bits known term)
+  _ <- either (Left . unlines . map message) Right (constructorProofContracts bits complete)
   registry <- CoreTypes.makeRegistry complete
   pure (normalized,registry)
 

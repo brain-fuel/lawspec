@@ -1351,6 +1351,11 @@ stripDomains body = body
 knownResult :: Proof -> Proof
 knownResult expression = case stripDomains expression of
   Match _ [([],body)] -> knownResult body
+  DataMatch value branches
+    | Construct tag fields <- knownResult value
+    , [(binders,body)] <- [(names,result) | (candidate,names,result)<-branches,
+        candidate==tag,length names==length fields] ->
+        knownResult (substituteProof (M.fromList (zip binders fields)) body)
   Field tag index _ value
     | Construct actual fields <- knownResult value,actual == tag,index >= 0,
       selected:_ <- drop index fields -> knownResult selected

@@ -1356,7 +1356,7 @@ constructorLiteral = do
   ConstructorLiteral name <$> count arity literalP
 
 literalP :: P Literal
-literalP = recordLiteral <|> (ScalarLiteral (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> constructorLiteral
+literalP = namedRecordLiteral <|> recordLiteral <|> (ScalarLiteral (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> constructorLiteral
   <|> (ListLiteral <$> between (symbol "[") (symbol "]") (literalP `sepBy` symbol ","))
   <|> try (do e <- scalarP; case e of ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
   <|> try (parens (do
@@ -1372,13 +1372,30 @@ literalP = recordLiteral <|> (ScalarLiteral (SAbsent "Unit") <$ try (symbol "(" 
   <|> (BoolLiteral <$> boolP) <|> (TextLiteral <$> str)
   <|> numericLiteral
   where
+    namedRecordLiteral = do
+      canonical <- canonicalP
+      unless canonical empty
+      (name,labels) <- try $ do
+        name <- qualifiedName
+        lookAhead (keyword "record" *> symbol "{")
+        declared <- asks (M.lookup ("record:" ++ name))
+        case declared of
+          Just (RecordHeader fields) -> pure (name,map fst fields)
+          _ -> empty
+      keyword "record"
+      fields <- literalRecordFields
+      unless (all (`elem` labels) (map fst fields) && length fields==length labels)
+        (fail "a named record literal must supply exactly its declared fields")
+      ConstructorLiteral name <$> mapM (\label -> maybe (fail "missing named record literal field") pure (lookup label fields)) labels
     recordLiteral = do
       canonical <- canonicalP
       unless canonical empty
       try (keyword "record" <* lookAhead (symbol "{"))
+      RecordLiteral <$> literalRecordFields
+    literalRecordFields = do
       fields <- between (symbol "{") (symbol "}") (((,) <$> ident <* symbol "=" <*> literalP) `sepBy` symbol ",")
       unless (length fields == length (nub (map fst fields))) (fail "duplicate record literal field")
-      pure (RecordLiteral fields)
+      pure fields
     numericLiteral = do
       e <- numeric
       case e of

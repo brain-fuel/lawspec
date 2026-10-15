@@ -1,0 +1,6 @@
+@@ examples/rc1/parcel-measurements.lawspec
+<<<<<<<
+delivery.contents.value.recipient
+=======
+"other"
+>>>>>>>

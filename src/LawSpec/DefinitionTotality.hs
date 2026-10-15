@@ -13,6 +13,9 @@ import qualified LawSpec.Core.PayloadPlan as P
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Inference (dataIndex)
 import LawSpec.Core.Total (safeConversionTypes, constructorProofContracts, resultBounds)
+import qualified LawSpec.Core.Total as Total
+import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
+import LawSpec.Elaboration (collectSourceRecords,collectType)
 import LawSpec.Elaboration (coreTypeWithSourceRecords, binaryOp)
 import qualified LawSpec.SourceContext as Source
 import LawSpec.SourceRecords (recordDeclarationsWithContext,typedTypeReferences)
@@ -34,7 +37,8 @@ auditTemplatesWithContext context initial bits unit templates = do
     (recordDeclarationsWithContext context initial bits (concat [concatMap typedTypeReferences (body:pre ++ post) |
       (_,body,pre,post) <- templates]))
   let occurrences=if null records then initial else initial ++ records
-  constructors <- constructorProofContracts bits occurrences
+  normalized <- normalizeProgramRecords (C.Program bits occurrences [])
+  constructors <- constructorProofContracts bits (C.programDataDeclarations normalized)
   declarations <- either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
     (if null records then pure initial else internRecordDeclarations occurrences)
   auditCollected context declarations constructors bits unit templates
@@ -127,7 +131,11 @@ auditCollected context declarations constructors bits unit templates = do
             [] -> pure T.ListNil
             [first,rest] -> T.ListCons <$> recur first <*> recur rest
             _ -> lift (Left "invalid typed List construction")
-        S.ConstructLit tag _ -> T.Construct (constructorTag (S.expressionType typed) tag) <$> mapM recur operands
+        S.ConstructLit tag _ -> do
+          values<-mapM recur operands
+          if hasProducts then structuralProof owner typed operands values
+            (\_ children -> Right (C.Construct (constructorTag (S.expressionType typed) tag) children))
+            else pure (T.Construct (constructorTag (S.expressionType typed) tag) values)
         S.RecordLit fields -> do
           constructor <- lift (recordOf (S.expressionType typed))
           values <- mapM recur operands
@@ -138,7 +146,11 @@ auditCollected context declarations constructors bits unit templates = do
           ordered <- forM (C.constructorFields constructor) $ \field ->
             maybe (lift (Left "invalid typed record literal field")) (pure . T.Variable . fst)
               (lookup (C.binderName field) bindings)
-          let make=T.Construct (C.constructorId constructor) ordered
+          make<-if hasProducts then structuralProof owner typed operands values
+            (\_ children -> Right (C.Construct (C.constructorId constructor)
+              [child | field<-C.constructorFields constructor,
+                (label,child)<-zip (map fst fields) children,C.binderName field==label]))
+            else pure (T.Construct (C.constructorId constructor) ordered)
           pure (foldr (\(_,(binder,value)) body -> T.Match value
             [([],T.substituteProof (M.singleton binder value) body)]) make bindings)
         S.AllPayloadsExpr _ _ -> case operands of
@@ -188,22 +200,29 @@ auditCollected context declarations constructors bits unit templates = do
         S.Apply (S.Var n) _ | Just field <- stripPrefix S.fieldAccessPrefix n, [value] <- operands -> do
           scrutinee <- recur value
           (tag, index, fieldType) <- lift (fieldOf (effectiveType value) field)
-          pure (T.Field tag index (resultBounds bits fieldType) scrutinee)
+          if hasProducts then structuralProof owner typed [value] [scrutinee]
+            (projection tag index)
+            else pure (T.Field tag index (resultBounds bits fieldType) scrutinee)
         -- b with f = v: the value built again from b's other fields and v.
         S.Apply (S.Apply (S.Var n) _) _ | Just field <- stripPrefix S.fieldUpdatePrefix n, [value, replacement] <- operands -> do
           new <- recur replacement
           scrutinee <- recur value
           (tag, index, _) <- lift (fieldOf (effectiveType value) field)
-          fields <- lift (fieldsOf (effectiveType value))
-          -- As the match it stands for: the other fields are bound, with what
-          -- the constructor's contract says of them.
-          names <- forM fields $ \_ -> do
-            index' <- get
-            put (index' + 1)
-            pure (C.Id (C.idText owner ++ "::match::" ++ show (index' :: Int)))
-          let domains = concat [T.integerAssumptions bits name primitive | (name, C.Constructor primitive []) <- zip names fields]
-              rebuilt = T.Construct tag [ if k == index then new else T.Variable name | (k, name) <- zip [0 ..] names ]
-          pure (T.DataMatch scrutinee [(tag, names, T.TypedDomain domains rebuilt)])
+          if hasProducts then structuralProof owner typed operands [scrutinee,new]
+            (\_ children -> case children of
+              [subject,field] -> Right (C.Update tag index subject field)
+              _ -> Left "invalid typed structural update arity")
+            else do
+              fields <- lift (fieldsOf (effectiveType value))
+              -- As the match it stands for: the other fields are bound, with
+              -- what the constructor's contract says of them.
+              names <- forM fields $ \_ -> do
+                index' <- get
+                put (index' + 1)
+                pure (C.Id (C.idText owner ++ "::match::" ++ show (index' :: Int)))
+              let domains = concat [T.integerAssumptions bits name primitive | (name, C.Constructor primitive []) <- zip names fields]
+                  rebuilt = T.Construct tag [ if k == index then new else T.Variable name | (k, name) <- zip [0 ..] names ]
+              pure (T.DataMatch scrutinee [(tag, names, T.TypedDomain domains rebuilt)])
         -- b.f (LawSpec.Inference.fieldDesugar): the field, as an atom.
         S.MatchExpr _ [S.MatchBranch tag names _] | [value] <- operands
           , [S.TypedCase _ fields body] <- S.typedCases typed
@@ -214,7 +233,9 @@ auditCollected context declarations constructors bits unit templates = do
             let bounds = case S.baseType fieldType of
                   S.Named primitive -> resultBounds bits (C.Constructor primitive [])
                   _ -> (Nothing, Nothing)
-            pure (T.Field (constructorTag (effectiveType value) tag) index bounds scrutinee)
+            if hasProducts then structuralProof owner typed [value] [scrutinee]
+              (projection (constructorTag (effectiveType value) tag) index)
+              else pure (T.Field (constructorTag (effectiveType value) tag) index bounds scrutinee)
         S.MatchExpr _ _ -> case operands of
           [value] -> do
             scrutinee <- recur value
@@ -270,6 +291,36 @@ auditCollected context declarations constructors bits unit templates = do
           S.Named name | primitive name /= Nothing ->
             T.Literal <$> lift (convertScalar bits name value)
           _ -> pure (T.Literal value)
+    hasProducts=any ((/=Nothing) . C.dataStructural) declarations
+    projection tag index _ children=case children of
+      [value] -> Right (C.Project tag index value)
+      _ -> Left "invalid typed structural projection arity"
+
+    -- Representation changes are the same ordinary checked Core matches used
+    -- by executable definitions. Source proof operands remain opaque locals
+    -- until that view is normalized; their existing proof terms are then
+    -- substituted back. This keeps generic admission aligned with execution
+    -- without inventing a second conversion or evaluation mechanism.
+    structuralProof owner typed inputs values build = do
+      site<-get
+      put (site+1)
+      (types,records)<-lift (collectSourceRecords context declarations
+        (mapM (collectType bits) (S.expressionType typed:map effectiveType inputs)))
+      case types of
+        result:arguments -> do
+          let identities=[C.Id (C.idText owner++"::structural-proof::"++show site++"::"++show index) | index<-[0..length arguments-1]]
+              origin=C.GeneratedFrom owner
+              children=[C.Expr ty (C.Local name) origin | (name,ty)<-zip identities arguments]
+              known=if null records then declarations else declarations++records
+          node<-lift (build result children)
+          let expression=C.Expr result node origin
+          (normalized,complete)<-lift (either (Left . unlines . map message) Right
+            (normalizeExpressionRecords bits known expression))
+          registry<-lift (makeRegistry complete)
+          pure (T.substituteProof (M.fromList (zip identities values))
+            (Total.proofExpression (P.fromRegistry registry) bits normalized))
+        [] -> lift (Left "missing structural proof result type")
+
     helper :: S.TypedExpr -> [String] -> String -> [S.TypedExpr] -> [T.Proof] -> ProofM T.Proof
     helper typed integers name operands values = case (name, operands, values) of
       (_, [operand], [value]) | isNumeric name ->

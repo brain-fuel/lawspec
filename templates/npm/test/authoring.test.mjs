@@ -398,3 +398,47 @@ test('nominal structural payloads preserve generic fields, table values and mand
     assert.ok(checked.diagnostics.length, 'definition contracts remain mandatory with no law layers');
   }
 });
+
+
+test('generic record refinements and named-record tables preserve mandatory checks through the public API', async () => {
+  const {readFile} = await import('node:fs/promises');
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const path = 'examples/rc1/parcel-measurements.lawspec';
+  const content = await readFile(new URL('../' + path, import.meta.url), 'utf8');
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+    sources: [{path, content}]};
+  for (const machineBits of [32, 64]) {
+    const checked = await compiler.check({...request, machineBits});
+    assert.deepEqual(checked.diagnostics, []);
+    assert.equal(checked.laws.length, 3);
+    assert.equal(checked.laws.flatMap(law => law.examples).length, 4);
+    const weights = checked.laws.find(law => law.name === 'positiveWeights').examples;
+    assert.deepEqual(weights.map(row => row.bindings[0].value.fields[0].fields[0].fields[0].value), ['1', '3']);
+    const labels = checked.laws.find(law => law.name === 'recipientLabels').examples;
+    assert.deepEqual(labels.map(row => String.fromCodePoint(...row.bindings[0].value.fields[0].fields[0].fields[1].units)), ['Asha', 'Bo']);
+    assert.ok(checked.evidence.filter(item => item.stage === 'law').every(item => item.status === 'not-verified'));
+    const selected = await compiler.check({...request, machineBits, verification: {layers: ['exhaustive']}});
+    assert.deepEqual(selected.diagnostics, []);
+    assert.equal(selected.evidence.find(item => item.stage === 'law' && item.declaration.endsWith('::sampleWeight')).status, 'exhaustively-checked');
+    assert.ok(selected.evidence.filter(item => item.stage === 'law' && !item.declaration.endsWith('::sampleWeight')).every(item => item.status === 'incomplete'));
+    for (const target of ['python', 'javascript']) {
+      const plan = await compiler.planGeneration({...request, machineBits, target});
+      assert.deepEqual(plan.diagnostics, [], target);
+      assert.ok(plan.files.some(file => file.placement === 'test'), target);
+    }
+  }
+  const formatted = await compiler.format(request);
+  assert.deepEqual(formatted.diagnostics, []);
+  assert.deepEqual((await compiler.format({...request, sources: formatted.formattedSources})).formattedSources, formatted.formattedSources);
+  assert.deepEqual((await compiler.check({...request, sources: formatted.formattedSources})).diagnostics, []);
+  for (const invalid of [
+    content.replace('value = 1', 'value = 0'),
+    content.replace('row record{weight = Measurement record{reading = record{value = 1}}}, 1',
+      'row record{weight = Measurement record{reading = record{value = 0}}}, 0'),
+  ]) {
+    assert.notEqual(invalid, content);
+    assert.ok((await compiler.check({...request, sources: [{path, content: invalid}]})).diagnostics.length,
+      'intrinsic field restrictions remain mandatory with no law layers');
+  }
+});
