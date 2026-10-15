@@ -206,12 +206,13 @@ renderStatements lang e = evalState (body lang tUnit Discard (distinct lang e)) 
 renderExpr :: Lang -> Expr -> D.Doc
 renderExpr lang e = evalState (inline lang (distinct lang e)) 0
 
--- | C# refuses a local that another local in scope already names, where F#
--- shadows it; so for C# each binder that reuses a name bound earlier in the
--- body is renamed (the first keeps its name, which raw text may mention).
+-- | Flattening moves bindings out of sibling argument expressions. Preserve
+-- their lexical scopes by giving their binders distinct names before hoisting.
+-- F# otherwise accepts the shadowing and changes the value of an earlier
+-- operand, while C# refuses it. The first binder keeps its name, which raw
+-- text may mention.
 distinct :: Lang -> Expr -> Expr
-distinct FSharp e = e
-distinct CSharp e = evalState (go M.empty e) S.empty
+distinct _ e = evalState (go M.empty e) S.empty
   where
     go :: M.Map String String -> Expr -> State (S.Set String) Expr
     go env x = case x of

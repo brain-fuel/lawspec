@@ -1,8 +1,9 @@
 -- | Lower typed surface expressions once. Law expansion and fixture checking
 -- both use this bridge; no backend reinterprets surface syntax.
 module LawSpec.Elaboration
-  ( coreType, coreTypeWithRecords, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, elaborateResolvedWithRecords, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract
-  , abilityReference, unitOperations, performOperations ) where
+  ( coreType, coreTypeWithRecords, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, elaborateResolvedWithRecords, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateDefinitionUnitWithRecords, elaborateContract, elaborateContractWithRecords
+  , abilityReference, abilityReferenceWithRecords, unitOperations, unitOperationsWithRecords, performOperations
+  , CollectRecords, collectRecords, collectType, collectExpression, collectEquation ) where
 
 import LawSpec.Abilities (clauseDefinitionName, abilityArguments, instantiatedOperations, unqualifiedHandler)
 import Data.Maybe (listToMaybe)
@@ -30,6 +31,7 @@ import LawSpec.Scalar
 import LawSpec.Digest (digestHex, digestString)
 import Data.List (stripPrefix, nub)
 import Control.Monad (forM, unless)
+import Control.Monad.State.Strict (StateT, runStateT, get, put, lift)
 
 -- | Surface types become Core types by structure; only checked shapes reach
 -- here, so failure is a compiler bug. ref:DEC-typed-core-boundary
@@ -118,12 +120,20 @@ equation = equationWithData []
 -- takes the other side's type.
 equationWithData :: [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> S.Expr -> Either String C.Proposition
 equationWithData dataTypes declarations bits origin resolve env left right = do
-  (a,b) <- S.contextualizeStructuralWithData dataTypes bits env left right
-  ta <- S.typedExpressionWithData dataTypes bits env (S.normal a)
-  tb <- S.typedExpressionWithData dataTypes bits env (S.normal b)
+  collected <- collectRecords dataTypes
+    (collectEquation declarations bits origin resolve env left right)
+  requireRegisteredRecords dataTypes bits collected
+
+collectEquation :: [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> S.Expr -> CollectRecords C.Proposition
+collectEquation declarations bits origin resolve env left right = do
+  RecordCollection dataTypes _ <- get
+  (a,b) <- lift (S.contextualizeStructuralWithData dataTypes bits env left right)
+  ta <- lift (S.typedExpressionWithData dataTypes bits env (S.normal a))
+  tb <- lift (S.typedExpressionWithData dataTypes bits env (S.normal b))
   let contextual e = case S.unlocated e of
         S.ConstructLit _ _ -> True
         S.ListLit _ -> True
+        S.RecordLit _ -> True
         S.Number _ -> True
         S.DecimalNumber _ _ -> True
         S.ScalarLit s -> scalarName s `elem` ["Null","Undefined","Nullable","Optional"]
@@ -135,6 +145,7 @@ equationWithData dataTypes declarations bits origin resolve env left right = do
         S.Applied _ inner -> open inner
         S.Application _ ts -> any open ts
         S.Arrow x y -> open x || open y
+        S.Record fields -> any (open . S.recordFieldType) fields
         S.Refined _ inner _ -> open inner
         _ -> False
       ta' = S.expressionType ta
@@ -142,10 +153,12 @@ equationWithData dataTypes declarations bits origin resolve env left right = do
       (a',b') | contextual a || (open ta' && not (open tb')) = (S.Annotate a tb',b)
               | contextual b || (open tb' && not (open ta')) = (a,S.Annotate b ta')
               | otherwise = (a,b)
-  x <- elaborateResolvedWithData dataTypes declarations bits origin resolve env a'
-  y <- elaborateResolvedWithData dataTypes declarations bits origin resolve env b'
-  registry <- makeRegistry dataTypes
-  ev <- operationEvidenceWithRegistry registry C.Equal (C.expressionType x) (C.expressionType y)
+  let declared = (`Set.member` Set.fromList declarations)
+  x <- collectExpression False declared bits origin resolve (S.monoEnvironment env) a'
+  y <- collectExpression False declared bits origin resolve (S.monoEnvironment env) b'
+  RecordCollection known _ <- get
+  registry <- lift (makeRegistry known)
+  ev <- lift (operationEvidenceWithRegistry registry C.Equal (C.expressionType x) (C.expressionType y))
   pure (C.Equation ev x y)
 
 -- | The default for an expression that calls no declaration.
@@ -180,7 +193,13 @@ elaborateResolvedWithRecords projections dataTypes declarations bits origin reso
 -- they are the matches they stand for (a law's terms).
 elaborateResolvedIn :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String C.Expr
 elaborateResolvedIn projections dataTypes declared bits origin resolve env source = do
-  (value,records) <- elaborateResolvedRecordsIn projections dataTypes declared bits origin resolve env source
+  collected <- elaborateResolvedRecordsIn projections dataTypes declared bits origin resolve env source
+  requireRegisteredRecords dataTypes bits collected
+
+-- Discarding occurrences is permitted only when the caller already owns the
+-- declarations, and only after checking every occurrence's predicate order.
+requireRegisteredRecords :: [C.DataDeclaration] -> Int -> (a,[C.DataDeclaration]) -> Either String a
+requireRegisteredRecords dataTypes bits (value,records) = do
   unless (all (\record -> C.dataId record `elem` map C.dataId dataTypes) records)
     (Left "structural record declarations require an explicit elaboration collector")
   -- A caller may already hold the same descriptor from another occurrence.
@@ -189,6 +208,33 @@ elaborateResolvedIn projections dataTypes declared bits origin resolve env sourc
   unless (null records) $ either (Left . unlines . map S.message) (const (pure ()))
     (constructorProofContracts bits (dataTypes ++ records))
   pure value
+
+-- The lookup catalogue may share descriptors while the admission stream must
+-- retain every source occurrence. No global mutable registry participates in
+-- collection. Empty additions keep the catalogue's identity and its caches.
+data RecordCollection = RecordCollection [C.DataDeclaration] [[C.DataDeclaration]]
+type CollectRecords = StateT RecordCollection (Either String)
+
+collectRecords :: [C.DataDeclaration] -> CollectRecords a -> Either String (a,[C.DataDeclaration])
+collectRecords declarations action = do
+  (value,RecordCollection _ occurrences) <- runStateT action (RecordCollection declarations [])
+  pure (value,concat (reverse occurrences))
+
+collectLowered :: ([C.DataDeclaration] -> Either String (a,[C.DataDeclaration])) -> CollectRecords a
+collectLowered lower = do
+  RecordCollection known occurrences <- get
+  (value,records) <- lift (lower known)
+  unless (null records) $ do
+    catalog <- lift (Records.internRecordDeclarations (known ++ records))
+    put (RecordCollection catalog (records:occurrences))
+  pure value
+
+collectType :: Int -> S.Type -> CollectRecords C.Type
+collectType bits ty = collectLowered (\known -> coreTypeWithRecords known bits ty)
+
+collectExpression :: Bool -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> CollectRecords C.Expr
+collectExpression projections declared bits origin resolve env source =
+  collectLowered (\known -> elaborateResolvedRecordsIn projections known declared bits origin resolve env source)
 
 elaborateResolvedRecordsIn :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String (C.Expr,[C.DataDeclaration])
 elaborateResolvedRecordsIn projections dataTypes declared bits origin resolve env source = do
@@ -570,7 +616,15 @@ binaryOp op = maybe (Left ("unknown binary operation: " ++ op)) Right (lookup op
 -- | Reused by example-domain checking and final program elaboration. This keeps
 -- closed definition execution on the same typed Core path as generated code.
 elaborateDefinitionUnit :: [C.DataDeclaration] -> Int -> S.Unit -> Either String C.Unit
-elaborateDefinitionUnit dataDeclarations bits u = unsafePerformIO $ do
+elaborateDefinitionUnit dataDeclarations bits u = do
+  collected <- elaborateDefinitionUnitWithRecords dataDeclarations bits u
+  requireRegisteredRecords dataDeclarations bits collected
+
+-- | Lower a whole implementation plane in one explicit structural context.
+-- The returned occurrences are part of the caller's program and must undergo
+-- normal constructor and definition admission before interning or execution.
+elaborateDefinitionUnitWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> Either String (C.Unit,[C.DataDeclaration])
+elaborateDefinitionUnitWithRecords dataDeclarations bits u = unsafePerformIO $ do
   -- Compilation and elaboration both elaborate each unit's definitions, the
   -- same unit with the same data types: the results are kept, keyed by the
   -- unit's identity in memory and the data types (a pure
@@ -581,25 +635,25 @@ elaborateDefinitionUnit dataDeclarations bits u = unsafePerformIO $ do
   case [result | (n, k, result) <- cached, n == name, k == key] of
     result : _ -> pure result
     [] -> do
-      let result = elaborateDefinitionUnitUncached dataDeclarations bits u
+      let result = collectRecords dataDeclarations (elaborateDefinitionUnitCollected bits u)
       writeIORef unitCache (take 64 ((name, key, result) : cached))
       pure result
-{-# NOINLINE elaborateDefinitionUnit #-}
+{-# NOINLINE elaborateDefinitionUnitWithRecords #-}
 
-unitCache :: IORef [(StableName S.Unit, (Int, [C.DataDeclaration]), Either String C.Unit)]
+unitCache :: IORef [(StableName S.Unit, (Int, [C.DataDeclaration]), Either String (C.Unit,[C.DataDeclaration]))]
 unitCache = unsafePerformIO (newIORef [])
 {-# NOINLINE unitCache #-}
 
-elaborateDefinitionUnitUncached :: [C.DataDeclaration] -> Int -> S.Unit -> Either String C.Unit
-elaborateDefinitionUnitUncached dataDeclarations bits u = do
+elaborateDefinitionUnitCollected :: Int -> S.Unit -> CollectRecords C.Unit
+elaborateDefinitionUnitCollected bits u = do
   -- Ability operations are not declarations: handlers answer them.
   ds <- forM [f | f@(n,_) <- S.functions u, n `notElem` S.operationNames u] $ \(n,t) -> do
-    ty <- coreType t
-    uses <- mapM (abilityReference u) (maybe [] id (lookup n (S.abilityRows u)))
+    ty <- collectType bits t
+    uses <- mapM (abilityReferenceWith (collectType bits) u) (maybe [] id (lookup n (S.abilityRows u)))
     pure (C.MkDeclaration (declarationId u n) n ty
       (maybe (C.GeneratedFrom (declarationId u n)) C.SourceSpan (lookup n (S.declarationSpans u)))
       (n `elem` S.asyncFunctions u) uses)
-  (abilities, operations) <- unitOperations u
+  (abilities, operations) <- unitOperationsWith (collectType bits) u
   -- What every definition's body sees, made once for the unit.
   let unitEnvironment = S.monoEnvironment (S.functions u)
       unitDeclarations = Set.fromList [declarationId u n | (n,_) <- S.functions u]
@@ -614,33 +668,33 @@ elaborateDefinitionUnitUncached dataDeclarations bits u = do
         env = M.union (S.monoEnvironment parameters) unitEnvironment
         hidden = Set.fromList [declarationId u n | (n,_) <- parameters]
         visible i = i `Set.member` unitDeclarations && i `Set.notMember` hidden
-    unless (length parameters == length (nub (map fst parameters))) (Left (name ++ ": duplicate definition argument"))
-    arguments <- forM parameters $ \(n,t) -> C.Binder (resolve n) n <$> coreType t
-    body <- performOperations operations <$> elaborateResolvedIn True dataDeclarations visible bits did resolve env
+    unless (length parameters == length (nub (map fst parameters))) (lift (Left (name ++ ": duplicate definition argument")))
+    arguments <- forM parameters $ \(n,t) -> C.Binder (resolve n) n <$> collectType bits t
+    body <- performOperations operations <$> collectExpression True visible bits did resolve env
       (S.Annotate (S.functionBody d) (S.functionResult d))
     declaration <- case M.findWithDefault [] did declarationTable of
-      [value] -> Right value
-      _ -> Left (name ++ ": missing or duplicate definition signature")
+      [value] -> pure value
+      _ -> lift (Left (name ++ ": missing or duplicate definition signature"))
     -- A stage's policy names checked definitions of this unit.
     let policy = fmap (declarationId u) <$> lookup name (S.policies u)
     pure (C.MkDefinition declaration arguments body (name `elem` S.orchestrations u) policy)
-  contracts <- mapM (elaborateContract dataDeclarations bits u)
+  contracts <- mapM (elaborateContractCollected bits u)
     [contract | contract <- S.contracts u,
       S.contractName contract `elem` map S.functionName (S.functionDefinitions u)]
   let machines = map (fmap (declarationId u)) (S.machines u)
-  bridges <- concat <$> mapM (machineBridges ds) machines
+  bridges <- lift (concat <$> mapM (machineBridges ds) machines)
   sessions <- mapM session (S.protocols u)
-  mailboxes <- mapM (\(n, t, _) -> C.Mailbox n <$> coreType t) (S.mailboxes u)
+  mailboxes <- mapM (\(n, t, _) -> C.Mailbox n <$> collectType bits t) (S.mailboxes u)
   handlers <- forM (S.handlerDeclarations u) $ \h -> do
-    ability <- abilityReference u (S.handlerAbility h)
-    also <- mapM (abilityReference u) (S.handlerAlso h)
+    ability <- abilityReferenceWith (collectType bits) u (S.handlerAbility h)
+    also <- mapM (abilityReferenceWith (collectType bits) u) (S.handlerAlso h)
     let identity = C.Id (S.unitName u ++ "::handler::" ++ S.handlerName h)
         clauses = [(op, declarationId u (clauseDefinitionName (S.handlerName h) op)) | ref <- ability : also, (op, _) <- C.abilityOperations
           (maybe C.failAbility id (lookup ref [(C.abilityInstance a, a) | a <- abilities]))]
         visible = [declarationId u n | (n,_) <- S.functions u]
     state <- forM (S.handlerState h) $ \(_, ty, start) -> do
-      t <- coreType ty
-      value <- elaborateResolvedWithData dataDeclarations visible bits identity (declarationId u) (S.functions u) (S.Annotate start ty)
+      t <- collectType bits ty
+      value <- collectExpression False (`Set.member` Set.fromList visible) bits identity (declarationId u) (S.monoEnvironment (S.functions u)) (S.Annotate start ty)
       pure (t, value)
     pure (C.Handler identity (S.handlerName h) ability clauses state (C.SourceSpan (S.handlerSpan h)) also)
   pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u) mailboxes abilities handlers [] Nothing)
@@ -653,7 +707,7 @@ elaborateDefinitionUnitUncached dataDeclarations bits u = do
     step (S.Receive t) = (,) False <$> stepType t
     stepType t = case t of
       S.Named n | n `elem` map S.protocolName (S.protocols u) -> pure (C.Constructor (C.idText (sessionIdentity n)) [])
-      _ -> coreType t
+      _ -> collectType bits t
 
 -- | A model's commands, start and abstraction are adapters; the model runtime
 -- calls each through a generated orchestration definition of the same type,
@@ -682,17 +736,29 @@ machineBridges ds machine = mapM bridge
 -- | Closed fixture evaluation and final frontend elaboration must preserve the
 -- same contract binder identities and ordered predicates.
 elaborateContract :: [C.DataDeclaration] -> Int -> S.Unit -> S.Contract -> Either String C.Contract
-elaborateContract dataDeclarations bits u c = do
+elaborateContract dataDeclarations bits u contract = do
+  collected <- elaborateContractWithRecords dataDeclarations bits u contract
+  requireRegisteredRecords dataDeclarations bits collected
+
+-- | Contracts use the same collector as signatures and definition bodies.
+elaborateContractWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> S.Contract -> Either String (C.Contract,[C.DataDeclaration])
+elaborateContractWithRecords dataDeclarations bits u contract =
+  collectRecords dataDeclarations (elaborateContractCollected bits u contract)
+
+elaborateContractCollected :: Int -> S.Unit -> S.Contract -> CollectRecords C.Contract
+elaborateContractCollected bits u c = do
   let declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
       cid = declarationId u (S.contractName c)
       pairs = S.contractArguments c ++ [S.contractResult c]
       ids = [(n,C.Id (C.idText cid ++ "::contract::" ++ show i)) | (i,(n,_)) <- zip [0::Int ..] pairs]
       resolve n = maybe (declarationId u n) id (lookup n ids)
-      env = S.functions u ++ pairs
-      term = elaborateResolvedWithData dataDeclarations [declarationId u n | (n,_) <- S.functions u] bits cid resolve env
-  args <- forM (S.contractArguments c) $ \(n,t) -> C.Binder (resolve n) n <$> coreType t
+      env = S.monoEnvironment (S.functions u ++ pairs)
+      visible = Set.fromList [declarationId u n | (n,_) <- S.functions u,
+        n `notElem` map fst pairs]
+      term = collectExpression False (`Set.member` visible) bits cid resolve env
+  args <- forM (S.contractArguments c) $ \(n,t) -> C.Binder (resolve n) n <$> collectType bits t
   let (n,t) = S.contractResult c
-  result <- C.Binder (resolve n) n <$> coreType t
+  result <- C.Binder (resolve n) n <$> collectType bits t
   C.Contract cid args result <$> mapM term (S.contractPreconditions c) <*> mapM term (S.contractPostconditions c) <*> pure []
 
 
@@ -700,8 +766,15 @@ elaborateContract dataDeclarations bits u c = do
 -- <unit>::ability::Gateway, where <unit> declares it (an imported ability
 -- keeps its owner), and Fail E the built-in Fail at E.
 abilityReference :: S.Unit -> S.Type -> Either String C.AbilityRef
-abilityReference u t = do
-  arguments <- mapM coreType (abilityArguments t)
+abilityReference = abilityReferenceWith coreType
+
+abilityReferenceWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> S.Type -> Either String (C.AbilityRef,[C.DataDeclaration])
+abilityReferenceWithRecords declarations bits unit ty =
+  collectRecords declarations (abilityReferenceWith (collectType bits) unit ty)
+
+abilityReferenceWith :: Monad m => (S.Type -> m C.Type) -> S.Unit -> S.Type -> m C.AbilityRef
+abilityReferenceWith lower u t = do
+  arguments <- mapM lower (abilityArguments t)
   let name = S.abilityTypeName t
       owner = case [S.abilityOrigin a | a <- S.abilities u, S.abilityName a == name] of
         origin : _ | not (null origin) -> origin
@@ -718,23 +791,30 @@ data Operations = Operations
 
 -- A unit's abilities at each type it uses them at, and its operations.
 unitOperations :: S.Unit -> Either String ([C.Ability], Operations)
-unitOperations u = do
+unitOperations = unitOperationsWith coreType
+
+unitOperationsWithRecords :: [C.DataDeclaration] -> Int -> S.Unit -> Either String (([C.Ability], Operations),[C.DataDeclaration])
+unitOperationsWithRecords declarations bits unit =
+  collectRecords declarations (unitOperationsWith (collectType bits) unit)
+
+unitOperationsWith :: Monad m => (S.Type -> m C.Type) -> S.Unit -> m ([C.Ability], Operations)
+unitOperationsWith lower u = do
   let mentioned = concatMap snd (S.abilityRows u) ++ concatMap S.handlerAbilities (S.handlerDeclarations u) ++
         concatMap (map fst . snd) (S.lawAssignments u) ++ concatMap snd (S.declaredUses u)
   found <- forM (S.abilities u) $ \a -> do
     let instances = if null (S.abilityParameters a) then [S.Named (S.abilityName a)]
           else nub [t | t <- mentioned, S.abilityTypeName t == S.abilityName a]
     forM instances $ \t -> do
-      ref <- abilityReference u t
-      operations <- forM (instantiatedOperations a t) $ \(op, ty) -> (,) op <$> coreType ty
+      ref <- abilityReferenceWith lower u t
+      operations <- forM (instantiatedOperations a t) $ \(op, ty) -> (,) op <$> lower ty
       failures <- forM (S.abilityFailures a) $ \(op, failure) -> do
-        failureType <- coreType failure
+        failureType <- lower failure
         pure (op, C.AbilityRef C.failAbilityId [failureType])
-      resource <- traverse coreType (S.abilityResource a)
+      resource <- traverse lower (S.abilityResource a)
       pure (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)) (C.abilityRefArguments ref) Nothing failures resource, ref)
   let present = concat found
   handlers <- forM (S.handlerDeclarations u) $ \h -> do
-    ref <- abilityReference u (S.handlerAbility h)
+    ref <- abilityReferenceWith lower u (S.handlerAbility h)
     pure (S.handlerName h, (ref, C.Id (S.unitName u ++ "::handler::" ++ S.handlerName h)))
   pure (map fst present, Operations
     (M.fromListWith (flip (++))

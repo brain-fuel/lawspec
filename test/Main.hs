@@ -11,6 +11,7 @@ import qualified RecordIdentitySpec
 import qualified RecordNormalizeSpec
 import qualified SourceRecordScopeSpec
 import qualified SourceRecordInferenceSpec
+import qualified SourceRecordUnitSpec
 import qualified SourceRecordElaborationSpec
 import Test.Hspec
 import qualified NativeBindingSpec
@@ -84,6 +85,7 @@ main = hspec $ do
   SourceRecordScopeSpec.test_recordTypeScopesPreserveDependencies
   SourceRecordInferenceSpec.test_recordInferencePreservesClosedShapes
   SourceRecordElaborationSpec.test_recordElaborationUsesCheckedCore
+  SourceRecordUnitSpec.test_recordUnitsCollectEveryOccurrence
   WitnessSpec.test_constructiveWitnessesPreserveScopedMeaning
   QuantifierDomainSpec.test_refinedIntegerDomainsAreComplete
   SearchSpec.test_boundedWitnessSearchPreservesEvidence

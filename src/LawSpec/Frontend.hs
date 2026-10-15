@@ -3,16 +3,19 @@
 module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateExpression) where
 import qualified LawSpec.Model as S
 import qualified LawSpec.Compile as S
+import LawSpec.Inference (monoEnvironment)
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.Data (elaborateDataDeclarationsWithProfile)
-import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract, abilityReference, unitOperations, performOperations)
+import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnitWithRecords, elaborateContractWithRecords, abilityReference, abilityReferenceWithRecords, unitOperationsWithRecords, performOperations, collectRecords, collectType, collectExpression, collectEquation)
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Release (checkResourceReleases)
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import Control.Monad (forM, unless)
+import Control.Monad.Trans.Class (lift)
+import qualified Data.Set as Set
 import Data.List (nub, nubBy, stripPrefix, intercalate)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Digest (digestHex, digestString)
@@ -40,7 +43,8 @@ compileCoreCanonical bits settings sources = do
 elaborate :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
 elaborate bits units properties = do
   dataDeclarations <- elaborateDataDeclarationsWithProfile bits units
-  elaborated <- C.Program bits dataDeclarations <$> mapM (unit dataDeclarations) units
+  collected <- mapM (unit dataDeclarations) units
+  let elaborated = C.Program bits (appendRecords dataDeclarations (concatMap snd collected)) (map fst collected)
   normalized <- normalizeProgramRecords elaborated
   -- Postconditions over non-linear index arithmetic become runtime checks.
   core <- deferProgramPostconditions normalized
@@ -51,10 +55,16 @@ elaborate bits units properties = do
   interned <- contextual Nothing (internRecordDeclarations (C.programDataDeclarations core))
   pure core{C.programDataDeclarations=interned}
   where
-    unit dataDeclarations u = do
-      (closed, owned, ps0, cs) <- contextual Nothing $ do
-        closed <- elaborateDefinitionUnit dataDeclarations bits u
-        cs <- mapM (elaborateContract dataDeclarations bits u) (S.contracts u)
+    appendRecords known [] = known
+    appendRecords known records = known ++ records
+    unit nominalDeclarations u = do
+      (closed, owned, ps0, cs, dataDeclarations, occurrences) <- contextual Nothing $ do
+        (closed,definitionRecords) <- elaborateDefinitionUnitWithRecords nominalDeclarations bits u
+        let knownDefinitions = appendRecords nominalDeclarations definitionRecords
+        contracts <- mapM (elaborateContractWithRecords knownDefinitions bits u) (S.contracts u)
+        let contractRecords = concatMap snd contracts
+            dataDeclarations = appendRecords knownDefinitions contractRecords
+            cs = map fst contracts
         -- A law's Core depends on it, its unit's signatures and the data types.
         let dataDigest = digestHex (digestString (show dataDeclarations))
             elaborated p = memoized elaborationTable
@@ -62,27 +72,32 @@ elaborate bits units properties = do
               (property dataDeclarations u p)
             owned = filter ((== S.unitName u) . S.owner) properties
         ps0 <- mapM elaborated owned
-        pure (closed, owned, ps0, cs)
+        let propertyRecords = concatMap snd ps0
+        pure (closed, owned, map fst ps0, cs, appendRecords dataDeclarations propertyRecords,
+          definitionRecords ++ contractRecords ++ propertyRecords)
       -- The harness plane: how each law is tested (LawSpec.Harness).
       ps <- mapM (\(sp, cp) -> harnessed dataDeclarations closed u sp cp) (zip owned ps0)
       settings <- unitHarnessSettings dataDeclarations closed u
       contextual Nothing $ do
         -- Calls to ability operations are Perform; each law gets the handlers
         -- the abilities pass chose for it.
-        (_, operations) <- unitOperations u
+        ((_, operations), operationRecords) <- unitOperationsWithRecords dataDeclarations bits u
         handled <- forM ps $ \p -> do
-          assignment <- forM (maybe [] id (lookup (C.propertyName p) (S.lawAssignments u))) $ \(ability, choice) ->
-            (,) <$> abilityReference u ability <*> pure (handlerRef u choice)
+          assignments <- forM (maybe [] id (lookup (C.propertyName p) (S.lawAssignments u))) $ \(ability, choice) -> do
+            (reference,records) <- abilityReferenceWithRecords (appendRecords dataDeclarations operationRecords) bits u ability
+            pure ((reference,handlerRef u choice),records)
+          let assignment = map fst assignments
           -- A resource's operations (a built-in resource's lawspec.host
           -- ones) run under the production handler of their ability.
           let handledProperty = mapProperty (performOperations operations) p
               resourceAbilities = nub [C.operationAbility op | r <- C.propertyResources handledProperty
                 , e <- [C.resourceAcquire r, C.resourceRelease r] ++ maybe [] pure (C.resourceReset r), op <- performedIn e]
               withResources = assignment ++ [(a, C.ProductionHandler) | a <- resourceAbilities, a `notElem` map fst assignment]
-          pure (shared settings handledProperty) { C.propertyHandlers = withResources }
+          pure ((shared settings handledProperty) { C.propertyHandlers = withResources },concatMap snd assignments)
         -- A benchmark's operations are Perform, like a law's.
         let settings' = fmap (\h -> h { C.harnessBenchmarks = [(n, performOperations operations b) | (n, b) <- C.harnessBenchmarks h] }) settings
-        pure closed{C.unitContracts=cs,C.unitProperties=handled,C.unitHarnessSettings=settings'}
+        pure (closed{C.unitContracts=cs,C.unitProperties=map fst handled,C.unitHarnessSettings=settings'},
+          occurrences ++ operationRecords ++ concatMap snd handled)
     -- share R per group | unit | run: the key of the scope whose cases share
     -- one R (the harness has checked that R declares reset).
     shared settings p = p { C.propertyResources =
@@ -100,7 +115,7 @@ elaborate bits units properties = do
       C.Perform op args -> op : concatMap performedIn args
       _ -> concatMap performedIn (C.children e)
     declarationId u n = C.Id (S.unitName u ++ "::" ++ n)
-    property dataDeclarations u p = do
+    property dataDeclarations u p = collectRecords dataDeclarations $ do
       let pid = C.Id (S.unitName u ++ "::law::" ++ escapeIdentity (S.name p))
           original = S.original p
           resourceIds = [(n,C.Id (C.idText pid ++ "::resource::" ++ show index)) | (index,(n,_)) <- zip [0::Int ..] (S.lawResources original)]
@@ -109,35 +124,36 @@ elaborate bits units properties = do
             [(S.inputId i,C.Id (C.idText pid ++ "::logical::" ++ show index)) | (index,i) <- zip [0::Int ..] nestedInputs] ++ resourceIds
           env = S.functions u ++ [(S.inputId i,S.inputType i) | i <- S.inputs p ++ nestedInputs] ++ S.lawResources original
           resolve n = maybe (declarationId u n) id (lookup n bindings)
-          term = elaborateResolvedWithData dataDeclarations [declarationId u n | (n,_) <- S.functions u] bits pid resolve env
-          equal a b = equationWithData dataDeclarations [declarationId u n | (n,_) <- S.functions u] bits pid resolve env a b
+          declared = (`Set.member` Set.fromList [declarationId u n | (n,_) <- S.functions u])
+          term = collectExpression False declared bits pid resolve (monoEnvironment env)
+          equal a b = collectEquation [declarationId u n | (n,_) <- S.functions u] bits pid resolve env a b
           assertion (S.AssertEqual a b) = equal a b
           assertion (S.AssertImplies g body) = C.Implication <$> term g <*> assertion body
           assertion (S.AssertAll bodies) = C.Conjunction <$> mapM assertion bodies
           assertion (S.AssertNot body) = C.Negation <$> assertion body
           assertion (S.AssertQuantified kind i body) = do
-            ty <- coreType (S.inputType i)
+            ty <- collectType bits (S.inputType i)
             predicates <- mapM term (S.inputRefinements i)
             let quantifier = C.Quantifier (C.Binder (resolve (S.inputId i)) (S.inputName i) ty) predicates []
             C.Quantified kind quantifier <$> assertion body
       qs <- forM (S.inputs p) $ \i -> do
-        t <- coreType (S.inputType i)
+        t <- collectType bits (S.inputType i)
         preds <- mapM term (S.inputRefinements i)
         let bounds = concat [S.domainBounds plan | plan <- S.generationPlan p, S.inputId (S.domainInput plan) == S.inputId i]
-        boundTerms <- mapM (\(op,e) -> (,) <$> binaryOp op <*> term e) bounds
+        boundTerms <- mapM (\(op,e) -> (,) <$> lift (binaryOp op) <*> term e) bounds
         pure (C.Quantifier (C.Binder (resolve (S.inputId i)) (S.inputName i) t) preds boundTerms)
       body <- assertion (S.assertion p)
       examples <- forM (S.examples original) $ \e -> do
         let aliases = [(S.inputName i,S.Var (S.inputId i)) | i <- S.inputs p]
             replace = S.replaceExprVars aliases
         values <- forM (S.inputs p) $ \i -> do
-          lit <- maybe (Left ("missing example binding: " ++ S.inputName i)) Right (lookup (S.inputName i) (S.bindings e))
+          lit <- lift (maybe (Left ("missing example binding: " ++ S.inputName i)) Right (lookup (S.inputName i) (S.bindings e)))
           value <- term (S.Annotate (S.literalExpr lit) (S.inputType i))
           pure (resolve (S.inputId i),value)
         expects <- forM (S.expectations e) $ \x -> equal (replace (S.actual x)) (S.literalExpr (S.expected x))
         pure (C.Example (S.exampleName e) values expects)
       resources <- forM (zip resourceIds (S.lawResources original)) $ \((n, rid), (_, ty)) -> do
-        t <- coreType ty
+        t <- collectType bits ty
         let binder = C.Binder rid n t
             self = C.Expr t (C.Local rid) (C.GeneratedFrom rid)
             text value = C.Expr (C.scalarType "Text") (C.Constant (SSequence "Text" (map fromEnum value))) (C.GeneratedFrom rid)
@@ -169,19 +185,19 @@ elaborate bits units properties = do
               acquire <- term (S.Annotate (S.resourceAcquire declaration) ty)
               let (parameter, releaseBody) = S.resourceRelease declaration
                   resolveRelease name = if name == parameter then rid else resolve name
-              release <- elaborateResolvedWithData dataDeclarations [declarationId u n' | (n',_) <- S.functions u] bits pid resolveRelease
-                ((parameter, ty) : S.functions u) releaseBody
+              release <- collectExpression False declared bits pid resolveRelease
+                (monoEnvironment ((parameter, ty) : S.functions u)) releaseBody
               reset <- forM (S.resourceReset declaration) $ \(resetParameter, resetBody) ->
-                elaborateResolvedWithData dataDeclarations [declarationId u n' | (n',_) <- S.functions u] bits pid
-                  (\name -> if name == resetParameter then rid else resolve name) ((resetParameter, ty) : S.functions u) resetBody
+                collectExpression False declared bits pid
+                  (\name -> if name == resetParameter then rid else resolve name) (monoEnvironment ((resetParameter, ty) : S.functions u)) resetBody
               -- A law that releases its own resource is rejected over the
               -- whole program (LawSpec.Release), once definitions are known.
               pure (C.Resource binder acquire release reset Nothing (S.resourceConcurrent declaration))
-            [] -> Left (S.name p ++ " takes " ++ n ++ " :: " ++ S.prettyType ty ++ ", but no resource is declared for " ++ S.prettyType ty ++ "; declare resource " ++ S.prettyType ty ++ " is acquire ... release ... end")
-            _ -> Left ("more than one resource is declared for " ++ S.prettyType ty)
-      references <- mapM (traverseReference (\target -> case target of
+            [] -> lift (Left (S.name p ++ " takes " ++ n ++ " :: " ++ S.prettyType ty ++ ", but no resource is declared for " ++ S.prettyType ty ++ "; declare resource " ++ S.prettyType ty ++ " is acquire ... release ... end"))
+            _ -> lift (Left ("more than one resource is declared for " ++ S.prettyType ty))
+      references <- lift (mapM (traverseReference (\target -> case target of
         S.ResolvedReferenceTarget resolved -> pure resolved
-        S.ParsedReferenceTarget _ _ -> Left "unresolved documentary reference")) (S.references original)
+        S.ParsedReferenceTarget _ _ -> Left "unresolved documentary reference")) (S.references original))
       pure C.Property
         { C.propertyId=pid, C.propertyName=S.name p, C.propertyLocation=S.location original
         , C.propertyInputs=qs, C.propertyBody=body, C.propertyExamples=examples
@@ -442,6 +458,6 @@ baseName name = case break (== ':') name of
 escapeIdentity :: String -> String
 escapeIdentity = concatMap (\c -> case c of ':' -> "%3A"; '%' -> "%25"; _ -> [c])
 
-elaborationTable :: Table (Either String C.Property)
+elaborationTable :: Table (Either String (C.Property,[C.DataDeclaration]))
 elaborationTable = unsafePerformIO (newPersistentTable "elaborate" 4096 (const 1))
 {-# NOINLINE elaborationTable #-}

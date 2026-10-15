@@ -879,6 +879,8 @@ test-suite lawspec-test
       SourceRecordFixtures
       SourceRecordInferenceSpec
       SourceRecordScopeSpec
+      SourceRecordUnitFixtures
+      SourceRecordUnitSpec
       StatefulModelSpec
       StructuralSpec
       TargetNamesSpec

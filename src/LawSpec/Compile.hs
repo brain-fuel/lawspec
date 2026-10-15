@@ -474,11 +474,13 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
     (filter (null . parameters . original) allExpanded)
   (specialized, properties) <- specializeDefinitions dataTypes bits (satisfiedWithData dataTypes bits [])
     witnessed (filter (null . parameters . original) allExpanded)
-  closedUnits <- either (Left . pure . (\message -> Diagnostic "definition" message Nothing)) Right
-    (mapM (Elaboration.elaborateDefinitionUnit dataTypes bits) specialized)
-  closedProgram <- deferProgramPostconditions (Core.Program bits dataTypes closedUnits)
+  collectedUnits <- either (Left . pure . (\message -> Diagnostic "definition" message Nothing)) Right
+    (mapM (Elaboration.elaborateDefinitionUnitWithRecords dataTypes bits) specialized)
+  let collectedRecords = concatMap snd collectedUnits
+      closedDataTypes = if null collectedRecords then dataTypes else dataTypes ++ collectedRecords
+  closedProgram <- deferProgramPostconditions (Core.Program bits closedDataTypes (map fst collectedUnits))
   invoke <- prepareDefinitions closedProgram
-  registry <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)
+  registry <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry (Core.programDataDeclarations closedProgram))
   forM_ properties $ \property -> do
     u <- maybe (Left [Diagnostic "semantic" "missing property owner" Nothing]) Right
       (lookup (owner property) [(unitName u,u) | u <- specialized])
@@ -486,12 +488,12 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
       evalStateT (do
         let identify name = Core.Id (unitName u ++ "::" ++ name)
         forM_ (refinementArgumentChecks property) $ \check -> do
-          term <- lift (Elaboration.elaborateResolvedWithData dataTypes (map (identify . fst) (functions u))
+          term <- lift (Elaboration.elaborateResolvedWithData closedDataTypes (map (identify . fst) (functions u))
             bits (Core.Id (name property)) identify (functions u) check)
           value <- lift (CoreEval.evaluateValue registry bits invoke [] term)
           unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
         mapM_ (validateExampleDomains bits u invoke (inputs property)) (examples (original property)))
-        (withDataDeclarations dataTypes (initialState bits))
+        (withDataDeclarations closedDataTypes (initialState bits))
   pure (specialized, properties)
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
