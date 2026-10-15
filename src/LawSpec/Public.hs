@@ -290,7 +290,15 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       ,"parameters" .= [object ["name" .= n,"kind" .= (if t == S.Named "Type" then str "type" else "value"),"type" .= S.prettyType t] | (n,t) <- S.refinementParameters r]
       ,"requirements" .= [object ["capability" .= n,"type" .= S.prettyType t] | S.Capability n t <- S.refinementRequirements r]
       ,"definition" .= S.prettyType (S.refinementBody r)]
-    constant e = case C.expressionNode e of
+    -- Closed record literals carry lexical lets to preserve source evaluation
+    -- order. The validator admits only data here; retain that boundary while
+    -- resolving the data bindings for the existing public value shape.
+    constant = constantIn M.empty
+    constantIn scope e = case C.expressionNode e of
       C.Constant v -> toJSON v
-      C.Construct tag fields -> object ["kind" .= str "data", "type" .= typeView (C.expressionType e), "constructor" .= C.idText tag, "fields" .= map constant fields]
+      C.Construct tag fields -> object ["kind" .= str "data", "type" .= typeView (C.expressionType e), "constructor" .= C.idText tag, "fields" .= map (constantIn scope) fields]
+      C.Let binder value body -> constantIn (M.insert (C.binderId binder) (constantIn scope value) scope) body
+      C.Local identity -> case M.lookup identity scope of
+        Just value -> value
+        Nothing -> error "core validator must reject unbound example locals"
       _ -> error "core validator must reject non-concrete example bindings"

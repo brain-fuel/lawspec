@@ -296,3 +296,67 @@ test('WASM-backed LSP points to unsaved scoped strategy targets and navigates th
   assert.equal(responses.find(r => r.id === 2).result.uri, uri);
   assert.deepEqual(responses.find(r => r.id === 2).result.range.start, {line: 1, character: 0});
 });
+
+
+test('canonical anonymous records reach checked definitions, literal tables and every target', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const {targets} = await import('../templates.mjs');
+  const compiler = await createCompiler();
+  const content = `unit records
+function double (value of type record{count of type Integer}) -> record{count of type Integer} is
+  record{count = value.count + value.count}
+end function
+function wrap (value of type a) -> record{wrapped of type a} is record{wrapped = value} end function
+law doubles is
+  definition: for all (value of type record{count of type Integer}) =>
+    (double value).count must be value.count + value.count
+  end end
+  expect double value = expected
+  in table (value, expected):
+    row record{count = -1}, record{count = -2}
+    row record{count = 0}, record{count = 0}
+    row record{count = 1}, record{count = 2}
+  end
+end
+law wraps is definition: (wrap true).wrapped = true end end
+law ordered is definition: record{a = 1, b = true} = record{b = true, a = 1} end end
+law empty is definition: record{} = record{} end end
+`;
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+    sources: [{path: 'records.lawspec', content}]};
+  for (const machineBits of [32, 64]) {
+    const result = await compiler.check({...request, machineBits});
+    assert.deepEqual(result.diagnostics, []);
+    assert.equal(result.laws.length, 4);
+    assert.equal(result.laws[0].examples.length, 3);
+    assert.ok(result.evidence.filter(e => e.stage === 'law').every(e => e.status === 'not-verified'));
+  }
+  for (const target of targets) {
+    const plan = await compiler.planGeneration({...request, target});
+    assert.deepEqual(plan.diagnostics, [], target);
+    assert.ok(plan.files.some(file => file.placement === 'test'), target);
+  }
+  const formatted = await compiler.format(request);
+  assert.deepEqual(formatted.diagnostics, []);
+  assert.match(formatted.formattedSources[0].content, /must be/);
+  assert.equal(formatted.formattedSources[0].content.split(/\n/).filter(line => line.startsWith('law ')).length, 4);
+  assert.deepEqual((await compiler.format({...request, sources: formatted.formattedSources})).formattedSources, formatted.formattedSources);
+  assert.deepEqual((await compiler.check({...request, sources: formatted.formattedSources})).diagnostics, []);
+});
+
+test('anonymous record construction retains mandatory validation with no law layers', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  for (const content of [
+    'function invalid (value of type ()) -> Integer is record{safe = 1, unused = 1 / 0}.safe end function',
+    'function invalid (value of type record{n Integer}) -> Integer is 1 end function',
+    'law invalid is definition: record{n = 1, n = 2} = record{n = 1} end end',
+    'law invalid is definition: record{} = () end end',
+    `law invalid is definition: for all (value of type record{count of type Nat}) => value = value end end
+     expect value.count = 0 in table (value): row record{count = 0} end end`,
+  ]) {
+    const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+      sources: [{path: 'invalid-record.lawspec', content: 'unit records\n' + content}]});
+    assert.ok(result.diagnostics.length, content);
+  }
+});

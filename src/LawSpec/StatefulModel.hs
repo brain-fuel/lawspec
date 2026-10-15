@@ -309,6 +309,7 @@ shape ty = case unrefinedType ty of
   Arrow a b -> Arrow (shape a) (shape b)
   Applied n t -> Applied n (shape t)
   Application n ts -> Application n (map shape ts)
+  Record fields -> Record [field{recordFieldType=shape (recordFieldType field)} | field<-fields]
   t@(RefinementApp _ _) | Just (family, _) <- stateHead t -> Named family
   RefinementApp n args -> RefinementApp n [TypeArgument (shape a) | TypeArgument a <- args]
   t -> t
@@ -319,6 +320,7 @@ typeVariablesOf ty = case ty of
   Arrow a b -> typeVariablesOf a ++ typeVariablesOf b
   Applied _ t -> typeVariablesOf t
   Application _ ts -> concatMap typeVariablesOf ts
+  Record fields -> concatMap (typeVariablesOf . recordFieldType) fields
   Refined _ t _ -> typeVariablesOf t
   RefinementApp _ args -> concat [typeVariablesOf t | TypeArgument t <- args]
   Qualified _ t -> typeVariablesOf t
@@ -332,6 +334,7 @@ mentions vs ty = case unrefinedType ty of
   Arrow a b -> mentions vs a || mentions vs b
   Applied _ t -> mentions vs t
   Application _ ts -> any (mentions vs) ts
+  Record fields -> any (mentions vs . recordFieldType) fields
   _ -> False
   where
     exprVariables e = case stripLocation e of

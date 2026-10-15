@@ -558,6 +558,7 @@ walkLiteral :: Monad m => Names m -> Literal -> m Literal
 walkLiteral names v = case v of
   ConstructorLiteral n fields -> ConstructorLiteral <$> onConstructor names n <*> mapM (walkLiteral names) fields
   ListLiteral xs -> ListLiteral <$> mapM (walkLiteral names) xs
+  RecordLiteral fields -> RecordLiteral <$> mapM (\(label,value) -> (,) label <$> walkLiteral names value) fields
   other -> pure other
 
 walkType :: Monad m => Names m -> [String] -> Type -> m Type
@@ -613,6 +614,7 @@ walkExpr names scope e = case e of
   Compose a b -> Compose <$> walkExpr names scope a <*> walkExpr names scope b
   ListLit xs -> ListLit <$> mapM (walkExpr names scope) xs
   ConstructLit n fields -> ConstructLit <$> onConstructor names n <*> mapM (walkExpr names scope) (articleArguments fields)
+  RecordLit fields -> RecordLit <$> mapM (\(label,value) -> (,) label <$> walkExpr names scope value) fields
   MatchExpr value branches -> MatchExpr <$> walkExpr names scope value <*> forM branches (\(MatchBranch tag binders body) ->
     -- A matcher's wildcard branch _ names no constructor.
     MatchBranch <$> (if tag == "_" then pure tag else onConstructor names tag) <*> pure binders <*> walkExpr names (binders ++ scope) body)

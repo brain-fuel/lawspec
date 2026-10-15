@@ -37,7 +37,7 @@ instance ToJSON Refinement
 instance ToJSON Contract
 instance ToJSON DomainPlan
 
-data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] deriving (Eq, Show, Generic)
+data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] | RecordLiteral [(String,Literal)] deriving (Eq, Show, Generic)
 instance ToJSON Literal where
   toJSON (DecimalLiteral c e) = toJSON (SDecimal c e)
   toJSON (IntLiteral n) = toJSON (SInteger "BigInt" n)
@@ -46,6 +46,7 @@ instance ToJSON Literal where
   toJSON (ScalarLiteral s) = toJSON s
   toJSON (ConstructorLiteral name fields) = object ["constructor" .= name, "fields" .= fields]
   toJSON (ListLiteral xs) = object ["list" .= xs]
+  toJSON (RecordLiteral fields) = object ["record" .= fields]
 
 data Expectation = Expectation { actual :: Expr, expected :: Literal } deriving (Eq, Show, Generic)
 instance ToJSON Expectation
@@ -395,6 +396,7 @@ literalExpr (BoolLiteral b) = BoolLit b
 literalExpr (ScalarLiteral s) = ScalarLit s
 literalExpr (ConstructorLiteral name fields) = ConstructLit name (map literalExpr fields)
 literalExpr (ListLiteral xs) = ListLit (map literalExpr xs)
+literalExpr (RecordLiteral fields) = RecordLit [(label,literalExpr value) | (label,value) <- fields]
 
 finiteScalar :: Type -> Bool
 finiteScalar (Named n) = n `elem` ["Bool","Unit","Null","Undefined"]

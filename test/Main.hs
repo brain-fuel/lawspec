@@ -11,6 +11,7 @@ import qualified RecordIdentitySpec
 import qualified RecordNormalizeSpec
 import qualified SourceRecordScopeSpec
 import qualified SourceRecordInferenceSpec
+import qualified SourceRecordCanonicalSpec
 import qualified SourceRecordHarnessSpec
 import qualified SourceRecordUnitSpec
 import qualified SourceRecordElaborationSpec
@@ -88,6 +89,7 @@ main = hspec $ do
   SourceRecordElaborationSpec.test_recordElaborationUsesCheckedCore
   SourceRecordUnitSpec.test_recordUnitsCollectEveryOccurrence
   SourceRecordHarnessSpec.test_recordHarnessesUseOneTypedContext
+  SourceRecordCanonicalSpec.test_canonicalRecordsReachCheckedCore
   WitnessSpec.test_constructiveWitnessesPreserveScopedMeaning
   QuantifierDomainSpec.test_refinedIntegerDomainsAreComplete
   SearchSpec.test_boundedWitnessSearchPreservesEvidence

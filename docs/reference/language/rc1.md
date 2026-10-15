@@ -409,6 +409,30 @@ function picture (width of type Nat) -> Picture is
 end function
 ```
 
+Anonymous records are closed structural products. Their field labels and
+resolved types determine identity independently of declaration order; every
+supplied value is evaluated in source order. A bare `record{...}` constructs
+an anonymous value, including the empty product `record{}`. The empty product
+is distinct from `()`. Matching fields do not convert a nominal record into
+an anonymous one or make different nominal records interchangeable.
+
+```text
+function double (value of type record{count of type Integer})
+    -> record{count of type Integer} is
+  record{count = value.count + value.count}
+end function
+```
+
+The [structural record example](../../../examples/rc1/structural-records.lawspec)
+includes record-valued table inputs and expected results, a generic wrapper,
+field-order equality, nested projection and empty products. Type fields may
+use optional commas; value fields require commas. Duplicate labels and missing
+or extra value fields are errors. Exact scalar contexts, positive field
+restrictions and automatic definedness checks apply to these constructions.
+Anonymous record payloads declared directly inside nominal types and checked
+function calls in anonymous field restrictions still require compiler work.
+These limits remain RC1 acceptance gates.
+
 Recursive record and constructor patterns preserve structural descent for
 checked recursive functions. The
 [approval-chain example](../../../examples/rc1/recursive-records.lawspec)
@@ -483,7 +507,7 @@ tracks features and gates still awaiting implementation and verification.
 
 The implemented syntax below describes the canonical frontend entry point.
 The review packet also specifies grammar still awaiting implementation,
-including structural products and broader witness evidence. The legacy grammar remains the migration input language.
+including structural products in nominal payloads and broader witness evidence. The legacy grammar remains the migration input language.
 
 ```ebnf
 annotation = "of" "type" | "::" ;
@@ -494,7 +518,10 @@ record = "type" name "is" "a" "record" "{" field* "}" "end" "type" ;
 field = identifier annotation type [","] ;
 alternatives = "type" name "is" "one" "of" alternative* "end" "type" ;
 alternative = ["|"] name [annotation type] ;
-recordValue = name "record" "{" [entry {"," entry}] "}" ;
+anonymousRecordType = "record" "{" field* "}" ;
+recordValue = [name] "record" "{" [entry {"," entry}] "}" ;
+recordLiteral = "record" "{" [literalEntry {"," literalEntry}] "}" ;
+literalEntry = identifier "=" literal ;
 entry = identifier "=" expression ;
 selection = "first" "matching" "case" "of" expression ":"
             branch+ ["otherwise" expression] "end" "case" ;
@@ -542,7 +569,8 @@ continue through the established typed pipeline.
 
 The translations use one typed Core: `given ... when C then P` becomes universal
 inputs and implication; each equality wording becomes typed Eq; nominal records
-become single-constructor products; ordered patterns become a typed decision
+become single-constructor products; anonymous products use canonical structural
+identities with source-ordered construction; ordered patterns become a typed decision
 tree; mappings become ordinary checked functions. Formatting retains section
 order, equality wording, annotation choices, infix notation, comments and
 literal spelling. It uses two spaces and targets 80 columns without splitting

@@ -11,6 +11,8 @@ import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithProfile, inl
 import LawSpec.Capabilities (satisfiedWithData)
 import LawSpec.Inference
 import LawSpec.DefinitionTotality (auditTemplates)
+import qualified LawSpec.SourceRecords as SourceRecords
+import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.SpecializeDefinitions (specializeDefinitions)
 import qualified LawSpec.Elaboration as Elaboration
 import qualified LawSpec.Core as Core
@@ -55,19 +57,7 @@ rename p = mapType change (mapExprTypes (rename p)) where
 renameConstraint :: String -> Constraint -> Constraint
 renameConstraint p (Capability n t) = Capability n (rename p t)
 subst :: M.Map String Expr -> Expr -> Expr
-subst m (Located range e) = Located range (subst m e)
-subst m (ConstructLit name fields) = ConstructLit name (map (subst m) fields)
-subst m e@(AllPayloadsExpr _ _) = replaceExprVars (M.toList m) e
-subst m e@(AllElementsExpr _ _ _) = replaceExprVars (M.toList m) e
-subst m e@(MatchExpr _ _) = replaceExprVars (M.toList m) e
-subst m (ListLit xs) = ListLit (map (subst m) xs)
-subst m (Var n) = M.findWithDefault (Var n) n m
-subst m (Apply f x) = Apply (subst m f) (subst m x)
-subst m (Compose f g) = Compose (subst m f) (subst m g)
-subst m (Binary op a b) = Binary op (subst m a) (subst m b)
-subst m (Unary op a) = Unary op (subst m a)
-subst m (Annotate a t) = Annotate (subst m a) t
-subst _ e = e
+subst replacements = replaceExprVars (M.toList replacements)
 argumentChecks :: Type -> [Expr]
 argumentChecks (CheckedType ps t) = ps ++ argumentChecks t
 argumentChecks (Refined _ t _) = argumentChecks t
@@ -78,6 +68,7 @@ argumentChecks _ = []
 closedCheck :: [String] -> Expr -> Bool
 closedCheck definitions (Located _ e) = closedCheck definitions e
 closedCheck definitions (ConstructLit _ fields) = all (closedCheck definitions) fields
+closedCheck definitions (RecordLit fields) = all (closedCheck definitions . snd) fields
 closedCheck definitions (AllPayloadsExpr value predicates) = closedCheck definitions value && all
   (\(binder,body) -> closedCheck definitions (replaceExprVars [(binder,BoolLit False)] body)) predicates
 closedCheck definitions (AllElementsExpr value binder predicate) = closedCheck definitions value &&
@@ -148,8 +139,7 @@ expandScoped scoped definitions table unit env stack law args = do
           forM_ (map (normal . subst replacements') (argumentChecks renamed)) $ \check ->
             when (closedCheck [] check) $ do
               dataTypes <- gets dataDeclarations
-              registry <- lift (CoreTypes.makeRegistry dataTypes)
-              term <- lift (Elaboration.elaborateResolvedWithData dataTypes [] bits (Core.Id key) Core.Id (environmentTypes scope') check)
+              (term,registry) <- lift (evaluationTerm dataTypes [] bits (Core.Id key) Core.Id (environmentTypes scope') check)
               value <- lift (CoreEval.evaluateValuePure registry bits [] term)
               unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
           mapM_ (\(Capability c ty) -> resolve ty >>= require c) (typeConstraints renamed)
@@ -208,6 +198,7 @@ validType :: Type -> Bool
 validType (Named n) = maybe False (const True) (primitive n)
 validType (Applied n t) = n `elem` ["Nullable","Optional","List","Maybe"] && scalar t
 validType (Application "Either" [a,b]) = scalar a && scalar b
+validType (Record fields) = all (validType . recordFieldType) fields
 validType (Variable _) = True
 validType (Arrow a b) = validType a && validType b
 validType (Refined _ t _) = validType t
@@ -217,9 +208,9 @@ validType _ = False
 scalar :: Type -> Bool
 scalar (Arrow _ _) = False
 scalar t = validType t
-validateUnit :: [Core.DataDeclaration] -> Unit -> Either [Diagnostic] ()
-validateUnit dataTypes u = either (Left . pure . (\m -> Diagnostic "declaration" m Nothing)) Right $ do
-  let checkTypes = typeCheck dataTypes
+validateUnit :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
+validateUnit dataTypes bits u = either (Left . pure . (\m -> Diagnostic "declaration" m Nothing)) Right $ do
+  let checkTypes = typeCheck dataTypes bits
   unique "constructor" [dataConstructorName c | d <- LawSpec.Model.dataTypes u, c <- dataTypeConstructors d]
   unique "function" (map fst (functions u)); unique "law" (map lawName (laws u))
   forM_ (functions u) $ \(n,t) -> do
@@ -290,6 +281,7 @@ checkRegexes u = do
       Compose a b -> [a, b]
       ListLit xs -> xs
       ConstructLit _ fields -> fields
+      RecordLit fields -> map snd fields
       MatchExpr v branches -> v : [b | MatchBranch _ _ b <- branches]
       AllElementsExpr v _ p -> [v, p]
       AllPayloadsExpr v ps -> v : map snd ps
@@ -377,8 +369,12 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
   lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported) parsed)
   let us = map qualifyDataNames lowered
   mapM_ checkRegexes us
-  dataTypes <- elaborateDataDeclarationsWithProfile bits us
-  let checkTypes = typeCheck dataTypes
+  nominalTypes <- elaborateDataDeclarationsWithProfile bits us
+  declaredRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
+    (SourceRecords.recordDeclarations nominalTypes bits (concatMap SourceRecords.unitTypeReferences us))
+  let dataTypes = if null declaredRecords then nominalTypes else nominalTypes ++ declaredRecords
+  _ <- constructorProofContracts bits dataTypes
+  let checkTypes = typeCheck dataTypes bits
   _ <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)
   unless (length us == length (nub (map unitName us))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   -- Each unit is validated, and each law expanded, under a key of exactly
@@ -387,7 +383,7 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
   -- so editing a body or another unit's laws reuses it.
   let dataDigest = digestHex (digestString (show dataTypes))
       key parts = digestHex (digestString parts)
-  mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit dataTypes u)) us
+  mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit dataTypes bits u)) us
   mapM_ (\u -> Memo.memoized validationTable (key (show ("totality", bits, dataDigest, u))) (validateDefinitionTotality dataTypes bits u)) us
   let table = M.fromList [((unitName u,lawName l),l) | u <- us, l <- laws u]
       signatures u = [ (functionName d, functionArguments d, functionResult d, functionRequirements d) | d <- functionDefinitions u ]
@@ -476,7 +472,10 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
     witnessed (filter (null . parameters . original) allExpanded)
   collectedUnits <- either (Left . pure . (\message -> Diagnostic "definition" message Nothing)) Right
     (mapM (Elaboration.elaborateDefinitionUnitWithRecords dataTypes bits) specialized)
-  let collectedRecords = concatMap snd collectedUnits
+  propertyRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
+    (SourceRecords.recordDeclarations dataTypes bits
+      (concatMap (concatMap SourceRecords.typedTypeReferences . typedExpressions) properties))
+  let collectedRecords = concatMap snd collectedUnits ++ propertyRecords
       closedDataTypes = if null collectedRecords then dataTypes else dataTypes ++ collectedRecords
   closedProgram <- deferProgramPostconditions (Core.Program bits closedDataTypes (map fst collectedUnits))
   invoke <- prepareDefinitions closedProgram
@@ -488,9 +487,9 @@ compileWithParser canonical parseUnits referenceUnit visible bits settings sourc
       evalStateT (do
         let identify name = Core.Id (unitName u ++ "::" ++ name)
         forM_ (refinementArgumentChecks property) $ \check -> do
-          term <- lift (Elaboration.elaborateResolvedWithData closedDataTypes (map (identify . fst) (functions u))
+          (term,known) <- lift (evaluationTerm closedDataTypes (map (identify . fst) (functions u))
             bits (Core.Id (name property)) identify (functions u) check)
-          value <- lift (CoreEval.evaluateValue registry bits invoke [] term)
+          value <- lift (CoreEval.evaluateValue known bits invoke [] term)
           unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
         mapM_ (validateExampleDomains bits u invoke (inputs property)) (examples (original property)))
         (withDataDeclarations closedDataTypes (initialState bits))
@@ -568,6 +567,18 @@ normalizeLiteralWithData dataTypes bits t (ConstructorLiteral name fields) = do
   ConstructorLiteral name <$> sequence [normalizeLiteralWithData dataTypes bits parameter field | (parameter, field) <- zip parameters fields]
 normalizeLiteralWithData dataTypes bits (Applied "List" element) (ListLiteral xs) = ListLiteral <$> mapM (normalizeLiteralWithData dataTypes bits element) xs
 normalizeLiteralWithData _ _ _ (ListLiteral _) = Left "list literal requires a List type"
+normalizeLiteralWithData dataTypes bits t (RecordLiteral fields) = case baseType t of
+  Record expected -> do
+    let labels=map fst fields
+        declared=map recordFieldLabel expected
+    unless (length labels == length (nub labels)) (Left "duplicate record literal field")
+    unless (length labels == length declared && all (`elem` declared) labels)
+      (Left "a record literal must supply exactly its declared fields")
+    RecordLiteral <$> forM fields (\(label,value) -> do
+      ty <- maybe (Left ("unknown record literal field: " ++ label)) Right
+        (lookup label [(recordFieldLabel field,recordFieldType field) | field <- expected])
+      (,) label <$> normalizeLiteralWithData dataTypes bits (baseType ty) value)
+  _ -> Left "record literal requires a structural record type"
 normalizeLiteralWithData _ bits t v = do
   value <- case v of
     DecimalLiteral c e -> Right (SDecimal c e)
@@ -613,21 +624,32 @@ validateExampleDomains bits unit invoke ins ex = withContext ("example " ++ exam
       identify name = Core.Id (unitName unit ++ "::" ++ name)
       resolve name = if name `elem` map inputId ins then Core.Id name else identify name
       env = functions unit ++ [(inputId input,inputType input) | input <- ins]
-      lower = Elaboration.elaborateResolvedWithData dataTypes (map (identify . fst) (functions unit)) bits origin resolve env
+      lower = evaluationTerm dataTypes (map (identify . fst) (functions unit)) bits origin resolve env
   values <- forM ins $ \input -> do
     literal <- maybe (throwC "missing example input") pure (lookup (inputName input) (bindings ex))
-    term <- lift (lower (Annotate (literalExpr literal) (inputType input)))
-    value <- lift (CoreEval.evaluateValuePure registry bits [] term)
+    (term,known) <- lift (lower (Annotate (literalExpr literal) (inputType input)))
+    value <- lift (CoreEval.evaluateValuePure known bits [] term)
     pure (Core.Id (inputId input), value)
   forM_ (concatMap inputRefinements ins) $ \predicate -> do
-    term <- lift (lower predicate)
-    value <- lift (CoreEval.evaluateValue registry bits invoke values term)
+    (term,known) <- lift (lower predicate)
+    value <- lift (CoreEval.evaluateValue known bits invoke values term)
     unless (value == CoreValue.ScalarValue (SBool True))
       (throwC ("example violates refinement: " ++ prettyExpr predicate))
+
+-- A standalone validation term may introduce products that are absent from
+-- implementation signatures. Audit its occurrence stream before using a shared
+-- lookup registry; final program elaboration retains its own source occurrences.
+evaluationTerm declarations functions bits origin resolve env source = do
+  (term,records) <- Elaboration.elaborateResolvedWithRecords False declarations functions bits origin resolve env source
+  let known = if null records then declarations else declarations ++ records
+  _ <- either (Left . unlines . map message) Right (constructorProofContracts bits known)
+  registry <- CoreTypes.makeRegistry known
+  pure (term,registry)
 
 resolveExpr :: Expr -> C Expr
 resolveExpr (Located range e) = Located range <$> resolveExpr e
 resolveExpr (ConstructLit name fields) = ConstructLit name <$> mapM resolveExpr fields
+resolveExpr (RecordLit fields) = RecordLit <$> mapM (\(label,value) -> (,) label <$> resolveExpr value) fields
 resolveExpr (AllPayloadsExpr value predicates) = AllPayloadsExpr <$> resolveExpr value <*> mapM (\(binder,body) -> (,) binder <$> resolveExpr body) predicates
 resolveExpr (AllElementsExpr value binder predicate) = AllElementsExpr <$> resolveExpr value <*> pure binder <*> resolveExpr predicate
 resolveExpr (MatchExpr value branches) = MatchExpr <$> resolveExpr value <*> mapM
@@ -657,10 +679,14 @@ abstractType = mapType (\t -> case t of Named n@('@':_) -> Variable n; _ -> t) i
 -- | Whether a type is valid given the data types: the registry is built once
 -- for every type a caller checks with the same function, which matters for a
 -- program of thousands of types.
-typeCheck :: [Core.DataDeclaration] -> Type -> Bool
-typeCheck declarations = case CoreTypes.makeRegistry declarations of
+typeCheck :: [Core.DataDeclaration] -> Int -> Type -> Bool
+typeCheck declarations bits = case CoreTypes.makeRegistry declarations of
   Left _ -> const False
-  Right registry -> \t -> either (const False) (const True) (Elaboration.coreType t >>= CoreTypes.checkType registry)
+  Right registry -> \t -> either (const False) (const True) $ do
+    (ty,records) <- Elaboration.coreTypeWithRecords declarations bits t
+    if null records then CoreTypes.checkType registry ty else do
+      extended <- CoreTypes.makeRegistry (declarations ++ records)
+      CoreTypes.checkType extended ty
 
 validTypeWithData :: (Type -> Bool) -> Type -> Bool
 validTypeWithData check t = check t
@@ -676,6 +702,7 @@ concreteValue check t = valueType check t && concrete (baseType t)
     concrete (Named ('@':_)) = False
     concrete (Applied _ a) = concrete a
     concrete (Application _ args) = all concrete args
+    concrete (Record fields) = all (concrete . recordFieldType) fields
     concrete (Arrow a b) = concrete a && concrete b
     concrete _ = True
 
@@ -700,7 +727,7 @@ inferDefinitionTemplates declarations bits unit = do
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   mapM validate (functionDefinitions unit)
   where
-    checkTypes = typeCheck declarations
+    checkTypes = typeCheck declarations bits
     signature d = foldr Arrow (functionResult d) (map snd (functionArguments d))
     globals = M.union
       (M.fromList [(functionName d, Universal (variables (signature d))
@@ -759,6 +786,7 @@ inferDefinitionTemplates declarations bits unit = do
       Arrow a b -> variables a ++ variables b
       Applied _ a -> variables a
       Application _ arguments -> concatMap variables arguments
+      Record fields -> concatMap (variables . recordFieldType) fields
       _ -> []
     annotations expression = case expression of
       Located _ body -> annotations body
@@ -769,6 +797,7 @@ inferDefinitionTemplates declarations bits unit = do
       Binary _ a b -> annotations a ++ annotations b
       Unary _ body -> annotations body
       ConstructLit _ fields -> concatMap annotations fields
+      RecordLit fields -> concatMap (annotations . snd) fields
       ListLit fields -> concatMap annotations fields
       AllPayloadsExpr value predicates -> annotations value ++ concatMap (annotations . snd) predicates
       AllElementsExpr value _ predicate -> annotations value ++ annotations predicate

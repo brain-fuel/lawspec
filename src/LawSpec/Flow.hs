@@ -427,6 +427,9 @@ rewrite at flows sequential expression = case expression of
   ConstructLit n es -> do
     results <- mapM (rewrite at flows sequential) es
     pure (ConstructLit n (map fst results), concatMap snd results)
+  RecordLit fields -> do
+    results <- mapM (rewrite at flows sequential . snd) fields
+    pure (RecordLit (zip (map fst fields) (map fst results)),concatMap snd results)
   MatchExpr value branches -> do
     (value', vs) <- rewrite at flows sequential value
     (result, bindings) <- branching at flows sequential

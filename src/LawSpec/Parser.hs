@@ -152,7 +152,7 @@ typeP = do
   a' <- option a (do void (symbol "/"); b <- typeAtom; pure (Application flowTypeName [a, b]))
   option a' (Arrow a' <$> (symbol "->" *> typeP))
 typeAtom :: P Type
-typeAtom = (Named "Unit" <$ try (symbol "(" *> symbol ")")) <|> try (parens $ do
+typeAtom = anonymousRecordTypeP <|> (Named "Unit" <$ try (symbol "(" *> symbol ")")) <|> try (parens $ do
     n <- ident; annotationP; t <- typeP
     p <- optional (keyword "where" *> expr)
     pure (Refined n t p))
@@ -196,6 +196,23 @@ typeAtom = (Named "Unit" <$ try (symbol "(" *> symbol ")")) <|> try (parens $ do
         application n [] = Named n
         application n [a] = Applied n a
         application n args = Application n args
+-- Structural type fields retain public labels and lexical bindings separately.
+anonymousRecordTypeP :: P Type
+anonymousRecordTypeP = do
+  canonical <- canonicalP
+  unless canonical empty
+  try (keyword "record" <* lookAhead (symbol "{"))
+  fields <- between (symbol "{") (symbol "}") (many field)
+  unless (length fields == length (nub (map recordFieldLabel fields))) (fail "duplicate record field")
+  pure (Record fields)
+  where
+    field = do
+      label <- ident
+      annotationP
+      ty <- typeP
+      void (optional (symbol ","))
+      pure (RecordField label label ty)
+
 param :: P (String,Type)
 param = parens $ do
   n <- ident; annotationP; t <- typeP
@@ -781,25 +798,46 @@ selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> lit
 
 recordValueP :: P Expr
 recordValueP = do
+  value <- recordConstructionP
+  fields <- many (try (char '.' *> identRaw))
+  spaceP
+  pure (foldl (\record field -> Apply (Var (fieldAccessPrefix ++ field)) record) value fields)
+
+recordConstructionP :: P Expr
+recordConstructionP = anonymousRecordValueP <|> do
   canonical <- canonicalP
   unless canonical empty
-  name <- try (qualifiedName <* lookAhead (keyword "record"))
+  (name,labels) <- try $ do
+    name <- qualifiedName
+    lookAhead (keyword "record")
+    declared <- asks (M.lookup ("record:" ++ name))
+    case declared of
+      Just (RecordHeader fs) -> pure (name,map fst fs)
+      _ -> empty
   keyword "record"
-  fields <- between (symbol "{") (symbol "}") (field `sepBy` symbol ",")
-  declared <- asks (M.lookup ("record:" ++ name))
-  labels <- case declared of
-    Just (RecordHeader fs) -> pure (map fst fs)
-    _ -> fail (name ++ " is not a named record")
+  fields <- between (symbol "{") (char '}') (field `sepBy` symbol ",")
   let supplied = map fst fields
   unless (length supplied == length (nub supplied)) (fail "duplicate record value field")
   unless (all (`elem` labels) supplied && all (`elem` supplied) labels)
     (fail "a named record value must supply exactly its declared fields")
   -- Preserve evaluation order with lets before canonical declaration ordering.
-  let binders = ["_lawspecRecordField" ++ show i | i <- [0 :: Int .. length fields - 1]]
+  let occupied = concatMap (exprVars . snd) fields
+      binders = [head [candidate | suffix <- [0 :: Int ..],
+        let candidate="_lawspecRecordField" ++ show i ++ replicate suffix '_',candidate `notElem` occupied]
+        | i <- [0 :: Int .. length fields - 1]]
       values = zip supplied (map Var binders)
       body = ConstructLit name [maybe (BoolLit False) id (lookup label values) | label <- labels]
   pure (foldr (\(binder,(_,value)) rest -> MatchExpr value [MatchBranch letTag [binder] rest]) body (zip binders fields))
   where field = (,) <$> ident <* symbol "=" <*> expr
+
+anonymousRecordValueP :: P Expr
+anonymousRecordValueP = do
+  canonical <- canonicalP
+  unless canonical empty
+  try (keyword "record" <* lookAhead (symbol "{"))
+  fields <- between (symbol "{") (char '}') (((,) <$> ident <* symbol "=" <*> expr) `sepBy` symbol ",")
+  unless (length fields == length (nub (map fst fields))) (fail "duplicate record value field")
+  pure (RecordLit fields)
 
 -- | Index expressions are natural arithmetic, written only where an index is
 -- expected. div, mod and ^ elaborate to the prelude's quot, rem and pow, which
@@ -1318,7 +1356,7 @@ constructorLiteral = do
   ConstructorLiteral name <$> count arity literalP
 
 literalP :: P Literal
-literalP = constructorLiteral
+literalP = recordLiteral <|> (ScalarLiteral (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> constructorLiteral
   <|> (ListLiteral <$> between (symbol "[") (symbol "]") (literalP `sepBy` symbol ","))
   <|> try (do e <- scalarP; case e of ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
   <|> try (parens (do
@@ -1334,6 +1372,13 @@ literalP = constructorLiteral
   <|> (BoolLiteral <$> boolP) <|> (TextLiteral <$> str)
   <|> numericLiteral
   where
+    recordLiteral = do
+      canonical <- canonicalP
+      unless canonical empty
+      try (keyword "record" <* lookAhead (symbol "{"))
+      fields <- between (symbol "{") (symbol "}") (((,) <$> ident <* symbol "=" <*> literalP) `sepBy` symbol ",")
+      unless (length fields == length (nub (map fst fields))) (fail "duplicate record literal field")
+      pure (RecordLiteral fields)
     numericLiteral = do
       e <- numeric
       case e of
@@ -1543,7 +1588,7 @@ tableExpectationP = do
   keyword "expect"
   canonical <- canonicalP
   left <- if canonical then updatedExpr else expr
-  right <- optional (symbol "=" *> ((Left <$> (keyword "recorded" *> str)) <|> (Right . Right <$> try ident) <|> (Right . Left <$> literalP)))
+  right <- optional (symbol "=" *> ((Left <$> (keyword "recorded" *> str)) <|> (Right . Left <$> try (lookAhead (keyword "record" *> symbol "{") *> literalP)) <|> (Right . Right <$> try ident) <|> (Right . Left <$> literalP)))
   pure (left,right)
 
 -- Examples written in a description, in fences:
@@ -1852,6 +1897,7 @@ mappingP = do
     simpleKey (ConstructorLiteral name []) = '.' `notElem` name
     simpleKey (ConstructorLiteral _ _) = False
     simpleKey (ListLiteral _) = False
+    simpleKey (RecordLiteral _) = False
     simpleKey _ = True
     contextualLiteral ty value = case (baseType ty, literalExpr value) of
       (Named name, expression) | primitive name /= Nothing -> case expression of
@@ -1874,6 +1920,9 @@ literalEquality a b = case (literalScalar a,literalScalar b) of
   _ -> case (a,b) of
     (ConstructorLiteral x xs,ConstructorLiteral y ys) -> x == y && length xs == length ys && and (zipWith literalEquality xs ys)
     (ListLiteral xs,ListLiteral ys) -> length xs == length ys && and (zipWith literalEquality xs ys)
+    (RecordLiteral xs,RecordLiteral ys) -> length xs == length ys &&
+      length xs == length (nub (map fst xs)) && length ys == length (nub (map fst ys)) &&
+      all (\(label,value) -> maybe False (literalEquality value) (lookup label ys)) xs
     _ -> False
   where
     literalScalar literal = case literal of

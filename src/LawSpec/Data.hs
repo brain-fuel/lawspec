@@ -60,6 +60,7 @@ elaborateDataDeclarationsWithProfile bits units = do
             S.Application n as -> C.Constructor (typeName n) <$> mapM (fmap C.TypeArgument . coreWith variables) as
             S.Arrow a b -> C.Arrow <$> coreWith variables a <*> coreWith variables b
             S.Qualified [] a -> coreWith variables a
+            S.Record _ -> Left "anonymous record payloads in nominal declarations require the source constructor context; this integration is not yet implemented"
             _ -> Left "unresolved constructor field type"
           sourceVariables t = case S.baseType t of
             S.Variable n -> [n]
@@ -148,6 +149,7 @@ qualifyDataNames unit = unit
     expr e = case e of
       S.Located range value -> S.Located range (expr value)
       S.ConstructLit name fields -> S.ConstructLit (qualify constructors name) (map expr fields)
+      S.RecordLit fields -> S.RecordLit [(label,expr value) | (label,value) <- fields]
       S.AllPayloadsExpr value predicates -> S.AllPayloadsExpr (expr value) [(binder,expr body) | (binder,body) <- predicates]
       S.AllElementsExpr value binder predicate -> S.AllElementsExpr (expr value) binder (expr predicate)
       S.MatchExpr value branches -> S.MatchExpr (expr value)
@@ -180,6 +182,7 @@ qualifyDataNames unit = unit
       other -> other
     literal (S.ConstructorLiteral tag fields) = S.ConstructorLiteral (qualify constructors tag) (map literal fields)
     literal (S.ListLiteral xs) = S.ListLiteral (map literal xs)
+    literal (S.RecordLiteral fields) = S.RecordLiteral [(label,literal value) | (label,value) <- fields]
     literal other = other
     definition d = case d of
       S.Forall binders body -> S.Forall (map pair binders) (definition body)
@@ -223,6 +226,7 @@ inlineFieldDefinitions u = u { S.dataTypes = map declaration (S.dataTypes u) }
       S.Compose a b -> S.Compose (unfold depth active a) (unfold depth active b)
       S.ListLit xs -> S.ListLit (map (unfold depth active) xs)
       S.ConstructLit n xs -> S.ConstructLit n (map (unfold depth active) xs)
+      S.RecordLit fields -> S.RecordLit [(label,unfold depth active value) | (label,value) <- fields]
       S.MatchExpr v bs -> S.MatchExpr (unfold depth active v) [S.MatchBranch t ns (unfold depth active b) | S.MatchBranch t ns b <- bs]
       S.AllElementsExpr v n p -> S.AllElementsExpr (unfold depth active v) n (unfold depth active p)
       S.AllPayloadsExpr v ps -> S.AllPayloadsExpr (unfold depth active v) [(n, unfold depth active b) | (n, b) <- ps]
@@ -243,6 +247,7 @@ inlineFieldDefinitions u = u { S.dataTypes = map declaration (S.dataTypes u) }
       S.Compose a b -> S.Compose (rename table a) (rename table b)
       S.ListLit xs -> S.ListLit (map (rename table) xs)
       S.ConstructLit n xs -> S.ConstructLit n (map (rename table) xs)
+      S.RecordLit fields -> S.RecordLit [(label,rename table value) | (label,value) <- fields]
       S.MatchExpr v bs -> S.MatchExpr (rename table v) [S.MatchBranch t ns (rename (foldr M.delete table ns) b) | S.MatchBranch t ns b <- bs]
       S.AllElementsExpr v n p -> S.AllElementsExpr (rename table v) n (rename (M.delete n table) p)
       S.AllPayloadsExpr v ps -> S.AllPayloadsExpr (rename table v) [(n, rename (M.delete n table) b) | (n, b) <- ps]

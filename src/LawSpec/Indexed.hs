@@ -474,6 +474,7 @@ completeMatches table d = d { functionBody = go (functionBody d) }
       Binary op a b -> Binary op (go a) (go b)
       Unary op a -> Unary op (go a)
       ConstructLit n fields -> ConstructLit n (map go fields)
+      RecordLit fields -> RecordLit [(label,go value) | (label,value) <- fields]
       ListLit xs -> ListLit (map go xs)
       Annotate inner t -> Annotate (go inner) t
       other -> other

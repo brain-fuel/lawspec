@@ -98,6 +98,7 @@ railwayExpr e = evalState (go e) 0
       Compose a b -> Compose <$> go a <*> go b
       ListLit xs -> ListLit <$> mapM go xs
       ConstructLit n xs -> ConstructLit n <$> mapM go xs
+      RecordLit fields -> RecordLit <$> mapM (\(label,value) -> (,) label <$> go value) fields
       MatchExpr s bs -> MatchExpr <$> go s <*> mapM (\(MatchBranch t ns b) -> MatchBranch t ns <$> go b) bs
       AllElementsExpr a n b -> (\x y -> AllElementsExpr x n y) <$> go a <*> go b
       AllPayloadsExpr a fs -> AllPayloadsExpr <$> go a <*> mapM (\(n, x) -> (,) n <$> go x) fs
@@ -183,6 +184,7 @@ names expression = case expression of
   Compose a b -> names a ++ names b
   ListLit xs -> concatMap names xs
   ConstructLit _ xs -> concatMap names xs
+  RecordLit fields -> concatMap (names . snd) fields
   MatchExpr s bs -> names s ++ concat [ns ++ names b | MatchBranch _ ns b <- bs]
   AllElementsExpr a n b -> n : names a ++ names b
   AllPayloadsExpr a fs -> names a ++ concat [n : names x | (n, x) <- fs]

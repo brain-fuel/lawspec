@@ -278,6 +278,7 @@ extra-source-files:
     examples/rc1/law-metadata.lawspec
     examples/rc1/recursive-records.lawspec
     examples/rc1/requirement-composition.lawspec
+    examples/rc1/structural-records.lawspec
     examples/rc1/nesting/rrr.lawspec
     examples/rc1/nesting/rru.lawspec
     examples/rc1/nesting/rur.lawspec
@@ -650,6 +651,7 @@ library
       LawSpec.Sessions.Rust
       LawSpec.Sessions.Web
       LawSpec.Sha3
+      LawSpec.SourceRecords
       LawSpec.SourceText
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
@@ -875,6 +877,8 @@ test-suite lawspec-test
       SearchSpec
       SessionsPythonSpec
       SourceDataSpec
+      SourceRecordCanonicalFixtures
+      SourceRecordCanonicalSpec
       SourceRecordElaborationSpec
       SourceRecordFixtures
       SourceRecordHarnessFixtures

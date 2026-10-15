@@ -562,6 +562,7 @@ replaceVar name replacement = go
       Located range a -> Located range (go a)
       Apply a b -> Apply (go a) (go b)
       ConstructLit n xs -> ConstructLit n (map go xs)
+      RecordLit fields -> RecordLit [(label,go value) | (label,value) <- fields]
       MatchExpr s bs -> MatchExpr (go s) [MatchBranch t ns (if name `elem` ns then b else go b) | MatchBranch t ns b <- bs]
       Binary op a b -> Binary op (go a) (go b)
       Unary op a -> Unary op (go a)

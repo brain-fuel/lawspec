@@ -466,6 +466,7 @@ elaborateUnit u0 = do
         Unary op a -> Unary op <$> attemptIn where' a
         Annotate a t -> (`Annotate` t) <$> attemptIn where' a
         ConstructLit n fields -> ConstructLit n <$> mapM (attemptIn where') fields
+        RecordLit fields -> RecordLit <$> mapM (\(label,value) -> (,) label <$> attemptIn where' value) fields
         ListLit xs -> ListLit <$> mapM (attemptIn where') xs
         MatchExpr v branches -> MatchExpr <$> attemptIn where' v <*>
           mapM (\(MatchBranch tag names body) -> MatchBranch tag names <$> attemptIn where' body) branches
@@ -510,6 +511,7 @@ elaborateUnit u0 = do
         Unary op a -> Unary op (typedAttempts a)
         Annotate a t -> Annotate (typedAttempts a) t
         ConstructLit n fields -> ConstructLit n (map typedAttempts fields)
+        RecordLit fields -> RecordLit [(label,typedAttempts value) | (label,value) <- fields]
         ListLit xs -> ListLit (map typedAttempts xs)
         MatchExpr v branches -> MatchExpr (typedAttempts v) [MatchBranch tag names (typedAttempts b) | MatchBranch tag names b <- branches]
         _ -> e
@@ -732,6 +734,8 @@ splitHandled e = case e of
   Unary op a -> let (o, rs) = splitHandled a in (Unary op o, rs)
   Annotate a t -> let (o, rs) = splitHandled a in (Annotate o t, rs)
   ConstructLit n fields -> let parts = map splitHandled fields in (ConstructLit n (map fst parts), concatMap snd parts)
+  RecordLit fields -> let parts = [(label,splitHandled value) | (label,value) <- fields]
+    in (RecordLit [(label,value) | (label,(value,_)) <- parts],concat [uses | (_,(_,uses)) <- parts])
   ListLit xs -> let parts = map splitHandled xs in (ListLit (map fst parts), concatMap snd parts)
   MatchExpr v branches ->
     let (o, rs) = splitHandled v
@@ -774,6 +778,7 @@ countedOperations l = nub (concatMap counted (definitionExpressions (definition 
       Unary _ a -> counted a
       Annotate a _ -> counted a
       ConstructLit _ fields -> concatMap counted fields
+      RecordLit fields -> concatMap (counted . snd) fields
       ListLit xs -> concatMap counted xs
       MatchExpr v branches -> counted v ++ concat [counted b | MatchBranch _ _ b <- branches]
       Compose a b -> counted a ++ counted b

@@ -13,7 +13,9 @@ import qualified LawSpec.Core.PayloadPlan as P
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Inference (dataIndex)
 import LawSpec.Core.Total (safeConversionTypes, constructorProofContracts, resultBounds)
-import LawSpec.Elaboration (coreType, binaryOp)
+import LawSpec.Elaboration (coreTypeWithRecords, binaryOp)
+import LawSpec.SourceRecords (recordDeclarations,typedTypeReferences)
+import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Refinement (definitionContractFor)
 import LawSpec.Scalar
 import LawSpec.Common
@@ -23,8 +25,17 @@ type ProofM = StateT Int (Either String)
 -- | Generic definitions are audited before specialisation, so a body that is
 -- never used at any type is still proved total. ref:DEC-total-definitions
 auditTemplates :: [C.DataDeclaration] -> Int -> S.Unit -> [(S.FunctionDefinition, S.TypedExpr, [S.TypedExpr], [S.TypedExpr])] -> Either [Diagnostic] ()
-auditTemplates declarations bits unit templates = do
-  constructors <- constructorProofContracts bits declarations
+auditTemplates initial bits unit templates = do
+  records <- either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
+    (recordDeclarations initial bits (concat [concatMap typedTypeReferences (body:pre ++ post) |
+      (_,body,pre,post) <- templates]))
+  let occurrences=if null records then initial else initial ++ records
+  constructors <- constructorProofContracts bits occurrences
+  declarations <- either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
+    (if null records then pure initial else internRecordDeclarations occurrences)
+  auditCollected declarations constructors bits unit templates
+
+auditCollected declarations constructors bits unit templates = do
   lowered <- mapM lower templates
   -- Non-linear postconditions the prover defers become runtime checks in Core.
   () <$ T.auditDeferringWithResults constructors (map snd lowered) (map fst lowered)
@@ -44,7 +55,13 @@ auditTemplates declarations bits unit templates = do
         parent _ = "invalid-constructor"
     identity name = C.Id (S.unitName unit ++ "::" ++ name)
     -- The single constructor of a record type, from the declarations.
+    coreType ty = fst <$> coreTypeWithRecords declarations bits ty
     recordOf ty = case S.baseType ty of
+      S.Record _ -> do
+        lowered <- coreType ty
+        case lowered of
+          C.Constructor name _ -> lookupRecord name
+          _ -> Left "invalid structural record type"
       S.Named name -> lookupRecord name
       S.Applied name _ -> lookupRecord name
       S.Application name _ -> lookupRecord name
@@ -107,6 +124,19 @@ auditTemplates declarations bits unit templates = do
             [first,rest] -> T.ListCons <$> recur first <*> recur rest
             _ -> lift (Left "invalid typed List construction")
         S.ConstructLit tag _ -> T.Construct (constructorTag (S.expressionType typed) tag) <$> mapM recur operands
+        S.RecordLit fields -> do
+          constructor <- lift (recordOf (S.expressionType typed))
+          values <- mapM recur operands
+          bindings <- forM (zip (map fst fields) values) $ \(label,value) -> do
+            index <- get
+            put (index+1)
+            pure (label,(C.Id (C.idText owner ++ "::record::" ++ show index),value))
+          ordered <- forM (C.constructorFields constructor) $ \field ->
+            maybe (lift (Left "invalid typed record literal field")) (pure . T.Variable . fst)
+              (lookup (C.binderName field) bindings)
+          let make=T.Construct (C.constructorId constructor) ordered
+          pure (foldr (\(_,(binder,value)) body -> T.Match value
+            [([],T.substituteProof (M.singleton binder value) body)]) make bindings)
         S.AllPayloadsExpr _ _ -> case operands of
           [value] -> do
             scrutinee <- recur value

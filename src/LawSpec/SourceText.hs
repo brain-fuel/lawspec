@@ -46,13 +46,13 @@ formatSource (Source path body) = Source path (stabilize body)
       in if next == text then next else stabilize next
     layout text = unlines (concatMap (if any multiline (sourceTokens text) then pure else wrap) (indent text))
     multiline token = tokenKind token `elem` [LiteralToken,PhraseToken] && '\n' `elem` tokenText token
-    indent text = snd (mapAccumL formatLine (0 :: Int,[],[]) (zip offsets original))
+    indent text = snd (mapAccumL formatLine (0 :: Int,[],[],Nothing) (zip offsets original))
       where
         original = lines text
         offsets = scanl (\n line -> n + length line + 1) 0 original
         protected = [(tokenOffset t,tokenOffset t + length (tokenText t)) | t <- sourceTokens text,
           tokenKind t `elem` [LiteralToken,PhraseToken], '\n' `elem` tokenText t]
-        formatLine state@(depth,cases,braces) (offset,line)
+        formatLine state@(depth,cases,braces,previous) (offset,line)
           | any (\(start,end) -> start < offset && offset < end) protected = (state,line)
           | null (dropWhile isSpace line) = (state,"")
           | otherwise =
@@ -63,17 +63,21 @@ formatSource (Source path body) = Source path (stabilize body)
                   base = case cases of current:_ -> current; [] -> depth
                   closing = case tokens of "end":_ -> 1; "}":_ -> 1; "else":_ -> 1; _ -> 0
                   indentation = max 0 (if caseEnd then base - 1 else if branch then base else depth - closing)
-                  opened = opens tokens
+                  declarationType = take 1 tokens == ["type"] && (depth == 0 || maybe True (/= "of") previous)
+                  opened = opens declarationType tokens
                   ends = length (filter (== "end") tokens)
-                  recordType = take 1 tokens == ["type"] && "record" `elem` tokens
+                  recordType = declarationType && "record" `elem` tokens
                   (braceDelta,braces') = braceChanges recordType braces tokens
                   nextDepth = max 0 ((if branch then base + 1 else if caseEnd then base - 1 else depth) + opened -
                     (if caseEnd then max 0 (ends - 1) else ends) + braceDelta)
                   cases' = (if contains ["first","matching","case","of"] tokens then (nextDepth :) else id)
                     (if caseEnd then drop 1 cases else cases)
-              in ((nextDepth,cases',braces'),replicate (indentation * 2) ' ' ++ trimOutsideLiteral content)
-    opens tokens =
-      (if take 1 tokens `elem` [["function"],["procedure"],["law"],["type"],["example"],["mapping"]] then 1 else 0) +
+              in ((nextDepth,cases',braces',case reverse tokens of first:_ -> Just first; [] -> previous),replicate (indentation * 2) ' ' ++ trimOutsideLiteral content)
+    -- Wrapping may put the second word of "of type" at a line's start.
+    -- That annotation continues the existing declaration, rather than opening
+    -- a new type block and indenting every following declaration.
+    opens declarationType tokens =
+      (if declarationType || take 1 tokens `elem` [["function"],["procedure"],["law"],["example"],["mapping"]] then 1 else 0) +
       length [() | (a,b) <- zip tokens (drop 1 tokens), a `elem` ["definition","description","rationale","references"], b == ":"] +
       length [() | (a,b) <- zip tokens (drop 1 tokens), (a,b) `elem` [("for","all"),("given","(")]] +
       length [() | rest <- suffixes tokens, any (`isPrefixOf` rest)

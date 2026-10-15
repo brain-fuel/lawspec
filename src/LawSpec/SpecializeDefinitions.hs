@@ -160,6 +160,7 @@ specializeDefinitions declarations bits satisfies units properties = do
                 (Annotate _ (Arrow _ _),[a]) -> Right a
                 (Annotate _ ty,[a]) -> Right (Annotate a ty)
                 (ConstructLit tag _,fields) -> Right (ConstructLit tag fields)
+                (RecordLit original,fields) | length original == length fields -> Right (RecordLit (zip (map fst original) fields))
                 (ListLit _,fields) -> Right (ListLit fields)
                 (_,[]) -> Right other
                 _ -> Left "invalid typed expression during specialization"
@@ -295,18 +296,10 @@ specializeDefinitions declarations bits satisfies units properties = do
       Arrow a b -> closed a && closed b
       Applied _ a -> closed a
       Application _ arguments -> all closed arguments
+      Record fields -> all (closed . recordFieldType) fields
       _ -> True
-    match substitutions pattern concrete = case (pattern,concrete) of
-      (Variable name,_) -> case M.lookup name substitutions of
-        Nothing -> Right (M.insert name concrete substitutions)
-        Just ty | ty == concrete -> Right substitutions
-                | otherwise -> Left "inconsistent generic definition instance"
-      (Arrow a b,Arrow x y) -> match substitutions a x >>= \next -> match next b y
-      (Applied name a,Applied other b) | name == other -> match substitutions a b
-      (Application name args,Application other values) | name == other && length args == length values ->
-        foldM (\next (a,b) -> match next a b) substitutions (zip args values)
-      _ | pattern == concrete -> Right substitutions
-        | otherwise -> Left "definition instance does not match its signature"
+    match replacements pattern concrete = substitutions <$> execStateT (unify pattern concrete)
+      (withDataDeclarations declarations (initialState bits)){substitutions=replacements}
     assertionExpressions (AssertEqual a b) = [a,b]
     assertionExpressions (AssertImplies guard body) = guard : assertionExpressions body
     assertionExpressions (AssertAll bodies) = concatMap assertionExpressions bodies
