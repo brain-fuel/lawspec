@@ -119,6 +119,31 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
       audit [invariant{T.constructorConditions=[T.Call (Id "predicate") [T.Variable field]]}]
         `shouldSatisfy` isLeft
 
+  describe "known product projections" $ do
+    let tag=Id "Product"
+        argument=Id "input"
+        result=Id "result"
+        n=T.Literal . SInteger "Integer"
+        field index value=T.Field tag index (Nothing,Nothing) value
+        body second=T.Construct tag [T.Variable argument,second]
+        definition value=T.ProofDefinition (Id "product") "product" Nothing [argument] value []
+        check value condition=T.auditWithContracts
+          [T.ProofContract (Id "product") result [] [condition]] [definition value]
+        same index=T.ExactComparison Equal (field index (T.Variable result)) (T.Variable argument)
+    it "proves the selected exact field's relation to the constructor argument" $
+      check (body (n 1)) (same 0) `shouldBe` Right ()
+    it "still audits an undefined field that the projection does not select" $
+      check (body (T.Division False Quotient (n 1) (n 0))) (same 0) `shouldSatisfy` isLeft
+    it "does not confuse field positions or constructor identities" $ do
+      check (body (n 1)) (same 1) `shouldSatisfy` isLeft
+      check (body (n 1)) (same 2) `shouldSatisfy` isLeft
+      let other=T.Field (Id "Other") 0 (Nothing,Nothing) (T.Variable result)
+      check (body (n 1)) (T.ExactComparison Equal other (T.Variable argument)) `shouldSatisfy` isLeft
+    it "does not turn IEEE field equality into exact reflexivity" $ do
+      let nan=T.Literal (SFloat "Float64" "7ff8000000000001")
+          selected=field 0 (T.Variable result)
+      check (T.Construct tag [nan]) (T.Comparison Equal selected selected) `shouldSatisfy` isLeft
+
   describe "typed constructor contracts and reference execution" $ do
     let tag = Id "Positive::Positive"
         ty = scalarType "Positive"

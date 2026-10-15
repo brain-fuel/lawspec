@@ -11,6 +11,7 @@ import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Release (checkResourceReleases)
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
+import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import Control.Monad (forM, unless)
 import Data.List (nub, nubBy, stripPrefix, intercalate)
 import System.IO.Unsafe (unsafePerformIO)
@@ -40,8 +41,9 @@ elaborate :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
 elaborate bits units properties = do
   dataDeclarations <- elaborateDataDeclarationsWithProfile bits units
   elaborated <- C.Program bits dataDeclarations <$> mapM (unit dataDeclarations) units
+  normalized <- normalizeProgramRecords elaborated
   -- Postconditions over non-linear index arithmetic become runtime checks.
-  core <- deferProgramPostconditions elaborated
+  core <- deferProgramPostconditions normalized
   validateProgram core
   checkResourceReleases core
   -- Audit every occurrence before interning: a duplicate descriptor must not

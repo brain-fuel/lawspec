@@ -804,7 +804,13 @@ linear expression = case expression of
   Integral value -> linear value
   Call callee arguments -> Just (R.variable (callAtom callee arguments))
   Opaque name values -> Just (R.variable (Id ("::opaque::" ++ name ++ show (map unwrapped values))))
-  Field tag index _ value -> Just (R.variable (projectionAtom (unwrapped value) tag index))
+  -- This is proof normalization only. walk still audits the complete strict
+  -- constructor, including fields the projection does not select. General
+  -- IEEE comparisons never enter this exact-arithmetic representation.
+  Field tag index _ value
+    | Construct actual fields <- stripDomains value,actual == tag,index >= 0,
+      selected:_ <- drop index fields -> linear selected
+    | otherwise -> Just (R.variable (projectionAtom (unwrapped value) tag index))
   _ -> Nothing
 
 projectionAtom :: Proof -> Id -> Int -> Id

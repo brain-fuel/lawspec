@@ -6,6 +6,7 @@ module LawSpec.Core.RecordIdentity
   , descriptorDigest, descriptorDependencies, dependencyFingerprint
   , RecordInterner, emptyInterner, internRecord, internRecordWith
   , makeRecordDeclaration, validateRecordDeclaration, internRecordDeclarations
+  , instantiateRecordDeclaration, rebuildRecordDeclaration
   , constructRecord
   ) where
 
@@ -22,7 +23,7 @@ import qualified Data.Set as S
 import LawSpec.Blake3 (blake3Hex)
 import LawSpec.Core
 import LawSpec.Digest (digest, digestHex)
-import LawSpec.Scalar (Scalar(..), primitive)
+import LawSpec.Scalar (Scalar(..), primitive, isNumeric)
 
 -- | A restriction belongs to its field even when it mentions only another
 -- field. This association cannot be recovered from a flat predicate list.
@@ -329,6 +330,94 @@ makeRecordDeclaration available fields origin = do
 
 recordIdentity :: RecordDescriptor -> Id
 recordIdentity descriptor = Id ("lawspec::structural::record::" ++ descriptorDigest descriptor)
+
+-- | Substitute a record's parameters into its actual fields before computing
+-- its identity. A generic record at Integer is the same structural product as
+-- one written with Integer directly. The remaining arguments name the caller's
+-- free parameters in the new declaration's canonical order.
+--
+-- This builds typed syntax; ordinary constructor admission still checks every
+-- resulting declaration. Nested structural types must likewise be normalized
+-- by the caller's type traversal.
+instantiateRecordDeclaration :: DataDeclaration -> [Type] -> Origin
+  -> Either String (DataDeclaration,[Type])
+instantiateRecordDeclaration original arguments origin = do
+  validateRecordDeclaration original
+  _ <- maybe (Left "structural instantiation requires a record type") Right (dataStructural original)
+  unless (length arguments == length (dataParameters original))
+    (Left "wrong structural record type argument count")
+  constructor <- case dataConstructors original of
+    [value] -> Right value
+    _ -> Left "a structural record requires one constructor"
+  let replacements = M.fromList (zip (dataParameters original) arguments)
+      substitute ty = case ty of
+        TypeVariable identity -> M.findWithDefault ty identity replacements
+        Constructor name args -> Constructor name [case argument of
+          TypeArgument value -> TypeArgument (substitute value)
+          other -> other | argument <- args]
+        Arrow a b -> Arrow (substitute a) (substitute b)
+      predicates = map (mapExpressionTypes substitute) (constructorPredicates constructor)
+      available = nub (concatMap typeVariables arguments)
+  (made,parameters) <- rebuildRecordDeclaration original available
+    (map (substitute . binderType) (constructorFields constructor)) predicates origin
+  pure (made,map TypeVariable parameters)
+
+-- | Rebuild after a checked traversal changes field and predicate types. The
+-- flat predicate sequence remains authoritative: canonical field ordering must
+-- never move a guard after a partial operation. Remaining parameters belong to
+-- the caller's scope, as in makeRecordDeclaration.
+rebuildRecordDeclaration :: DataDeclaration -> [Id] -> [Type] -> [Expr] -> Origin
+  -> Either String (DataDeclaration,[Id])
+rebuildRecordDeclaration original available fieldTypes predicates origin = do
+  validateRecordDeclaration original
+  metadata <- maybe (Left "structural rebuilding requires a record type") Right (dataStructural original)
+  constructor <- case dataConstructors original of
+    [value] -> Right value
+    _ -> Left "a structural record requires one constructor"
+  unless (length fieldTypes == length (constructorFields constructor) &&
+          length predicates == length (constructorPredicates constructor))
+    (Left "structural rebuilding must retain every field and restriction")
+  let fields = [RecordField (field{binderType=ty})
+          [predicates !! index | index <- maybe [] id (lookup (binderName field) (structuralPredicates metadata))]
+        | (field,ty) <- zip (constructorFields constructor) fieldTypes]
+  (made,parameters) <- makeRecordDeclaration available fields origin
+  let newConstructor = head (dataConstructors made)
+      parameterMap = M.fromList (zip parameters (dataParameters made))
+      fieldMap = M.fromList (zip (map binderId (constructorFields constructor))
+        (map binderId (constructorFields newConstructor)))
+      -- Rebuilding a descriptor groups restrictions by canonical field label.
+      -- Restore the original execution order and its predicate indexes after
+      -- renaming. In particular, retain guards preceding partial operations.
+      restored = made{dataConstructors=[newConstructor{constructorPredicates=
+        map (renameExpression parameterMap fieldMap) predicates}],
+        dataStructural=fmap (\structure -> structure{structuralPredicates=structuralPredicates metadata}) (dataStructural made)}
+  validateRecordDeclaration restored
+  pure (restored,parameters)
+
+-- Every occurrence of a type in an expression participates in substitution,
+-- including capability evidence, lexical binders and effect arguments.
+mapExpressionTypes :: (Type -> Type) -> Expr -> Expr
+mapExpressionTypes transform expression = expression
+  { expressionType=transform (expressionType expression)
+  , expressionNode=case expressionNode (mapChildren (mapExpressionTypes transform) expression) of
+      Binary operation evidence a b -> Binary operation (case evidence of
+        Numeric ty -> Numeric (transform ty)
+        Structural ty -> case transform ty of
+          concrete@(Constructor name []) | operation `elem` [Equal,NotEqual],isNumeric name -> Numeric concrete
+          concrete -> Structural concrete) a b
+      Let binder value body -> Let (bound binder) value body
+      Match value branches -> Match value [branch{caseBinders=map bound (caseBinders branch)} | branch <- branches]
+      AllElements value binder predicate -> AllElements value (bound binder) predicate
+      AllPayloads value predicates -> AllPayloads value [(bound binder,predicate) | (binder,predicate) <- predicates]
+      Convert conversion ty value -> Convert conversion (transform ty) value
+      Perform (Operation ref name) values -> Perform (Operation (ability ref) name) values
+      Calls (Operation ref name) values -> Calls (Operation (ability ref) name) values
+      Handle (CatchFailure ref) value -> Handle (CatchFailure (ability ref)) value
+      Handle (WithHandler ref handler) value -> Handle (WithHandler (ability ref) handler) value
+      other -> other }
+  where
+    bound binder=binder{binderType=transform (binderType binder)}
+    ability (AbilityRef identity arguments)=AbilityRef identity (map transform arguments)
 
 renameType :: M.Map Id Id -> M.Map Id Id -> Type -> Type
 renameType parameters values ty = case ty of

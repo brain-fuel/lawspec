@@ -1,5 +1,5 @@
 -- Shared semantic probes for native/WASM parity and native backend execution.
-module RecordIdentityFixtures (recordSmokeProgram, recordIdentityProbes) where
+module RecordIdentityFixtures (recordSmokeProgram, recordInteroperabilityProgram, recordIdentityProbes) where
 
 import LawSpec.Common (Location(..), InputDomain(..), defaultGeneration, emptyLawMetadata)
 import LawSpec.Core
@@ -48,6 +48,85 @@ recordSmokeProgram bits = Program bits [empty,plain,generic,nested,plain{dataOri
         (lowerFieldNodes [empty,plain,generic,nested] ("expected::" ++ name) expected))
       [] defaultGeneration "" "" [] [] [] [] noHarness UniversalDomain emptyLawMetadata
     unit = Unit (Id "records.fixtures") [] [] properties [] []
+
+-- Generic and directly written products cross checked function, contract,
+-- nested product and nominal payload boundaries in this program. Its scalar
+-- expectations are independent of the normalizer's descriptor calculation.
+recordInteroperabilityProgram :: Int -> Program
+recordInteroperabilityProgram bits = Program bits [inner,integerInner,outer,integerOuter,envelope,positiveRecord,positiveRecord]
+  [Unit (Id "records.interoperability") (map definitionDeclaration definitions) [makeContract] properties definitions []]
+  where
+    parameter=Id "parameter"
+    inner=make [parameter] [field "value" (TypeVariable parameter)]
+    integerInner=make [] [field "value" integerType]
+    applied d arguments=Constructor (idText (dataId d)) (map TypeArgument arguments)
+    innerType=applied inner [integerType]
+    concreteInner=applied integerInner []
+    outer=make [parameter] [field "inner" (applied inner [TypeVariable parameter]),field "flag" boolean]
+    integerOuter=make [] [field "inner" concreteInner,field "flag" boolean]
+    outerType=applied outer [integerType]
+    concreteOuter=applied integerOuter []
+    envelopeType=scalarType "records.interoperability::type::Envelope"
+    envelopeConstructor=Id "records.interoperability::type::Envelope::Envelope"
+    envelope=DataDeclaration (Id "records.interoperability::type::Envelope") "Envelope" []
+      [DataConstructor envelopeConstructor "Envelope" [Binder (Id "envelope.payload") "payload" outerType] [] origin [] []] origin Nothing
+    positiveField=field "amount" integerType
+    positiveRecord=make [] [positiveField{recordFieldPredicates=[Expr boolean
+      (Binary Greater (Numeric integerType) (local (recordFieldBinder positiveField)) (integer 0)) origin]}]
+    positiveValue=construct "interoperability.positive" positiveRecord [] [("amount",integer 2)]
+    float=scalarType "Float64"
+    floatRecordType=applied inner [float]
+    floatRecord prefix bits=construct prefix inner [float]
+      [("value",Expr float (Constant (SFloat "Float64" bits)) origin)]
+    nanValue=floatRecord "interoperability.nan" "7ff8000000000001"
+    positiveZero=floatRecord "interoperability.positiveZero" "0000000000000000"
+    negativeZero=floatRecord "interoperability.negativeZero" "8000000000000000"
+    finiteValue=floatRecord "interoperability.finite" "3ff4000000000000"
+    floatEqual a b=Expr boolean (Binary Equal (Structural floatRecordType) a b) origin
+    local b=Expr (binderType b) (Local (binderId b)) origin
+    identity name=Id ("records.interoperability::"++name)
+    call name wanted arguments=Expr wanted (ExternalCall (identity name) arguments) origin
+    define name input output body=
+      let argument=Binder (Id (idText (identity name)++"::input::0")) "value" input
+      in Definition (Declaration (identity name) name (Arrow input output) origin) [argument] (body argument)
+    makeInner=define "makeInner" integerType innerType $ \b -> construct "interoperability.makeInner" inner [integerType] [("value",local b)]
+    readInner=define "readInner" concreteInner integerType $ \b -> project integerInner 0 integerType (local b)
+    makeOuter=define "makeOuter" integerType outerType $ \b -> construct "interoperability.makeOuter" outer [integerType]
+      [("inner",call "makeInner" innerType [local b]),("flag",true)]
+    readOuter=define "readOuter" concreteOuter integerType $ \b ->
+      project integerInner 0 integerType (project integerOuter 1 concreteInner (local b))
+    pack=define "pack" integerType envelopeType $ \b -> Expr envelopeType
+      (Construct envelopeConstructor [call "makeOuter" outerType [local b]]) origin
+    unpack=define "unpack" envelopeType integerType $ \b -> call "readOuter" integerType
+      [Expr outerType (Project envelopeConstructor 0 (local b)) origin]
+    replaceValue=define "replaceValue" innerType innerType $ \b -> Expr innerType
+      (Update (constructorId (head (dataConstructors inner))) 0 (local b) (integer 5)) origin
+    definitions=[makeInner,readInner,makeOuter,readOuter,pack,unpack,replaceValue]
+    argument=head (definitionArguments makeInner)
+    result=Binder (Id "records.interoperability::contract::result") "result" innerType
+    makeContract=Contract (identity "makeInner") [argument] result []
+      [Expr boolean (Binary Equal (Numeric integerType) (project inner 0 integerType (local result)) (local argument)) origin] []
+    concrete n=construct "interoperability.concrete" integerOuter []
+      [("flag",true),("inner",construct "interoperability.concrete.inner" integerInner [] [("value",integer n)])]
+    tag=head (dataConstructors inner)
+    matched=let b=Binder (Id "records.interoperability::match::value") "value" integerType
+      in Expr integerType (Match (call "makeInner" innerType [integer 7])
+        [MatchCase (constructorId tag) [b] (local b)]) origin
+    updated=call "replaceValue" innerType [call "makeInner" innerType [integer 4]]
+    properties=
+      [ property "generic inputs meet concrete function parameters" (call "readInner" integerType [call "makeInner" innerType [integer 7]]) (integer 7)
+      , property "nested generic inputs meet concrete parameters" (call "readOuter" integerType [call "makeOuter" outerType [integer 9]]) (integer 9)
+      , property "generic and concrete products compare" (call "makeOuter" outerType [integer 3]) (concrete 3)
+      , property "nominal payloads retain their product semantics" (call "unpack" integerType [call "pack" envelopeType [integer 11]]) (integer 11)
+      , property "patterns follow the instantiated constructor" matched (integer 7)
+      , property "updates follow the instantiated constructor" (call "readInner" integerType [updated]) (integer 5)
+      , property "shared refined products retain their constructor checks" positiveValue positiveValue
+      , property "NaN fields retain nonreflexive equality" (floatEqual nanValue nanValue) (Expr boolean (Constant (SBool False)) origin)
+      , property "signed zero fields retain IEEE equality" (floatEqual negativeZero positiveZero) true
+      , property "finite float fields retain reflexive equality" (floatEqual finiteValue finiteValue) true ]
+    property name actual expected=Property (Id ("records.interoperability::law::"++name)) name (Location "records.interoperability" 1 1)
+      [] (Equation (if expressionType actual==integerType then Numeric integerType else Structural (expressionType actual)) actual expected)
+      [] defaultGeneration "" "" [] [] [] [] noHarness UniversalDomain emptyLawMetadata
 
 recordIdentityProbes :: [(String,RecordDescription)]
 recordIdentityProbes =

@@ -2,8 +2,8 @@
 module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes) where
 
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
-import Control.Monad (unless, forM_, forM)
-import Data.List (nub)
+import Control.Monad (unless, forM_, forM, foldM)
+import Data.List (nub,foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Control.Exception (evaluate)
@@ -169,8 +169,22 @@ constructorProofContracts bits dataDeclarations = do
               | field <- fields, Constructor name [] <- [binderType field]]
         pure (T.ProofConstructorContract (constructorId c) (map binderId fields)
           (domains ++ map (proofExpression (Payload.fromRegistry registry) bits) (constructorPredicates c)) guards)
-  T.auditWithConstructorContracts constructorProofs [] []
-  pure constructorProofs
+  -- Structural occurrences can share an identity but retain different source
+  -- orders. The proof environment needs unique identities; admission must still
+  -- check every distinct ordering, replacing that identity's selected contract
+  -- while retaining the other constructors it may depend on.
+  let (defaults,reversed) = foldl' (\(known,kept) contract ->
+        if M.member (T.constructorOwner contract) known then (known,kept)
+        else (M.insert (T.constructorOwner contract) contract known,contract:kept)) (M.empty,[]) constructorProofs
+      preferred = reverse reversed
+  T.auditWithConstructorContracts preferred [] []
+  _ <- foldM (\audited candidate -> do
+    let owner=T.constructorOwner candidate
+    if candidate `elem` M.findWithDefault [] owner audited then pure audited else do
+      T.auditWithConstructorContracts
+        [if T.constructorOwner contract == owner then candidate else contract | contract <- preferred] [] []
+      pure (M.insertWith (++) owner [candidate] audited)) (M.map pure defaults) constructorProofs
+  pure preferred
   where
     -- Index guards with each field reference's measure name (<index>Of<Family>).
     indexGuards d c =

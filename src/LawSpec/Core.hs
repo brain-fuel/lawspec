@@ -10,6 +10,7 @@ import LawSpec.IndexTerm (FamilyIndex(..))
 import LawSpec.Common
 import LawSpec.Scalar (Scalar)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 -- | Core names everything by a resolved identity rather than by its spelling, so
 -- two units' declarations of the same name never meet and an emitter never
@@ -703,9 +704,17 @@ builtinName Join = "join"
 
 -- | Example bindings are closed data, never computations or adapter invocations.
 isConcrete :: Expr -> Bool
-isConcrete Expr{expressionNode = Constant _} = True
-isConcrete Expr{expressionNode = Construct _ fields} = all isConcrete fields
-isConcrete _ = False
+isConcrete = dataOnly Set.empty
+  where
+    dataOnly scope Expr{expressionNode=node} = case node of
+      Constant _ -> True
+      Construct _ fields -> all (dataOnly scope) fields
+      -- Record literals preserve author order with lexical lets. Closed
+      -- bindings of data to data are still literals; arithmetic, calls and
+      -- references outside this expression remain excluded.
+      Let binder value body -> dataOnly scope value && dataOnly (Set.insert (binderId binder) scope) body
+      Local identity -> identity `Set.member` scope
+      _ -> False
 
 -- | Root expressions, without repeated descendants, for backend capability and
 -- dependency checks. Include fixtures and generator bounds as well as laws.

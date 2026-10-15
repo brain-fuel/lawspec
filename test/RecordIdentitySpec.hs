@@ -223,5 +223,57 @@ test_recordIdentitiesPreserveSemantics = describe "closed structural record iden
     forM_ [32,64] $ \bits -> case Testing.planTesting (recordSmokeProgram bits) of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right plan -> do
-        length (Testing.planDataDeclarations plan) `shouldBe` 4
+        length (Testing.planDataDeclarations plan) `shouldBe` 5
         forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
+  it "gives an instantiated generic record the identity of its concrete fields" $ do
+    let a=Id "a"; b=Id "b"
+        (generic,_)=either error id (makeRecordDeclaration [a,b]
+          [field "value" (TypeVariable a),field "flag" (TypeVariable b)] origin)
+        (closed,remaining)=either error id (instantiateRecordDeclaration generic [boolean,integerType] origin)
+        concrete=record [field "flag" boolean,field "value" integerType]
+    dataId closed `shouldBe` dataId concrete
+    remaining `shouldBe` []
+    dataParameters closed `shouldBe` []
+    validateRecordDeclaration closed `shouldBe` Right ()
+  it "returns canonical remaining arguments after partial structural instantiation" $ do
+    let a=Id "a"; b=Id "b"; x=Id "caller.x"; z=Id "caller.z"
+        listZ=Constructor "List" [TypeArgument (TypeVariable z)]
+        (generic,_)=either error id (makeRecordDeclaration [a,b]
+          [field "value" (TypeVariable a),field "flag" (TypeVariable b)] origin)
+        (partial,remaining)=either error id (instantiateRecordDeclaration generic [listZ,TypeVariable x] origin)
+        (direct,_)=either error id (makeRecordDeclaration [x,z]
+          [field "value" (TypeVariable x),field "flag" listZ] origin)
+    dataId partial `shouldBe` dataId direct
+    remaining `shouldBe` [TypeVariable z,TypeVariable x]
+  it "retains guarding restrictions in source order when specializing a record" $ do
+    let parameter=Id "parameter"
+        z=field "z" integerType; a=field "a" (TypeVariable parameter)
+        nonzero=comparison NotEqual (local (recordFieldBinder z)) (value 0)
+        divided=Expr integerType (Binary Quotient (Numeric integerType) (value 1) (local (recordFieldBinder z))) origin
+        positive=comparison Greater divided (value 0)
+        (generic,_)=either error id (makeRecordDeclaration [parameter]
+          [z{recordFieldPredicates=[nonzero]},a{recordFieldPredicates=[positive]}] origin)
+        (closed,_)=either error id (instantiateRecordDeclaration generic [boolean] origin)
+    constructorProofContracts 64 [closed] `shouldSatisfy` isRight
+  it "specializes the types of restriction evidence and field references together" $ do
+    let parameter=Id "parameter"; x=field "x" (TypeVariable parameter)
+        reflexive=Expr boolean (Binary Equal (Structural (TypeVariable parameter))
+          (local (recordFieldBinder x)) (local (recordFieldBinder x))) origin
+        (generic,_)=either error id (makeRecordDeclaration [parameter] [x{recordFieldPredicates=[reflexive]}] origin)
+        (closed,_)=either error id (instantiateRecordDeclaration generic [boolean] origin)
+        concreteX=field "x" boolean
+        concrete=record [concreteX{recordFieldPredicates=[Expr boolean
+          (Binary Equal (Structural boolean) (local (recordFieldBinder concreteX)) (local (recordFieldBinder concreteX))) origin]}]
+    dataId closed `shouldBe` dataId concrete
+    constructorProofContracts 64 [closed] `shouldSatisfy` isRight
+  it "selects numeric equality evidence when a generic restriction becomes numeric" $ do
+    let parameter=Id "parameter"; x=field "x" (TypeVariable parameter)
+        reflexive=Expr boolean (Binary Equal (Structural (TypeVariable parameter))
+          (local (recordFieldBinder x)) (local (recordFieldBinder x))) origin
+        (generic,_)=either error id (makeRecordDeclaration [parameter] [x{recordFieldPredicates=[reflexive]}] origin)
+    forM_ [integerType,scalarType "Float64"] $ \wanted -> do
+      let (closed,_)=either error id (instantiateRecordDeclaration generic [wanted] origin)
+      constructorProofContracts 64 [closed] `shouldSatisfy` isRight
+      case constructorPredicates (head (dataConstructors closed)) of
+        [Expr _ (Binary Equal (Numeric actual) _ _) _] -> actual `shouldBe` wanted
+        other -> expectationFailure (show other)

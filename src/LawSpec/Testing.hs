@@ -19,6 +19,7 @@ import Data.Containers.ListUtils (nubOrd)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
 import LawSpec.CorePersist ()
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
+import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import Data.Binary (Binary)
 import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
@@ -67,7 +68,9 @@ data IndexedGeneration = IndexedGeneration
 -- | The plan sees each definition's field nodes as the matches they stand
 -- for (lowerFieldNodes), as every backend does.
 planTesting :: Program -> Either [Diagnostic] Plan
-planTesting = planLowered . lowerProgramFields
+planTesting program = do
+  normalized <- normalizeProgramRecords program
+  planLowered (lowerProgramFields normalized)
 
 -- | Execution is planned independently of completed evidence. No layers means
 -- no optional tests; typed definitions still reach every native emitter.
