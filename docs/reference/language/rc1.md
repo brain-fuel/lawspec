@@ -121,6 +121,8 @@ explicit conversions and handler choices remain visible. If a term or its
 metadata cannot be presented, the whole expression retains its original
 checked text, including its binders. The views do not execute expressions or
 turn them into verification evidence.
+Known abilities use their checked source names, qualifying collisions;
+unresolved type-argument keys remain explicit.
 
 `must be`, `is`, `=`, `must =`, and leading `must` elaborate to the same typed
 Eq obligation. Equality in a value context is Boolean. Existing IEEE equality

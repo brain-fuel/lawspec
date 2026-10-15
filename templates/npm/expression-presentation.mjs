@@ -10,10 +10,25 @@ export function createExpressionPresentation(result, { constructors, typeName, s
     values.set(id, { name: entry.constructor.name, owner: entry.declaration.id.replace('::type::', '.') });
   const counts = new Map();
   for (const { name } of values.values()) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const abilities = new Map((result.units ?? []).flatMap(unit => (unit.abilities ?? []).map(ability =>
+    [ability.id, { name: ability.name, owner: ability.id.split('::')[0] }])));
+  const abilityCounts = new Map();
+  for (const { name } of abilities.values()) abilityCounts.set(name, (abilityCounts.get(name) ?? 0) + 1);
+  const abilityIds = [...abilities.keys()].sort((a, b) => b.length - a.length);
   const spelling = name => name.startsWith('"|') || /^[\p{L}_][\p{L}\p{N}_]*$/u.test(name)
     ? name : `"|${name.replace(/[\\|]/g, '\\$&')}|`;
   const resultText = (text, atomic = false) => ({ text, atomic });
   const argument = value => value.atomic ? value.text : `(${value.text})`;
+
+  function abilityName(key) {
+    // The wire key appends parenthesized type arguments to the identity. Name
+    // the known identity, retaining argument keys verbatim rather than guessing
+    // types from text. Longest identity wins when phrase bodies contain '('.
+    const id = abilityIds.find(id => key === id || key.startsWith(id + '('));
+    if (id === undefined) return key;
+    const ability = abilities.get(id), name = spelling(ability.name);
+    return (abilityCounts.get(ability.name) > 1 ? `${ability.owner}.${name}` : name) + key.slice(id.length);
+  }
 
   function globalName(id, scope) {
     const value = values.get(id);
@@ -177,13 +192,13 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         const bound = bind(predicate.binder, scope, reserved);
         return `${bound.name} of type ${typeName(predicate.binder.type)} => ${go(predicate.predicate, bound.scope).text}`;
       }).join('; ')}]`);
-      case 'perform': return resultText(`perform ${node.ability}.${node.operation}(${node.arguments.map(value => go(value).text).join(', ')})`);
+      case 'perform': return resultText(`perform ${abilityName(node.ability)}.${node.operation}(${node.arguments.map(value => go(value).text).join(', ')})`);
       case 'handle': {
-        if (node.handling === 'catchFailure') return resultText(`catch failure of ${node.ability} in (${go(node.body).text})`);
-        if (node.handling === 'withHandler') return resultText(`handle (${go(node.body).text}) with ${node.handler} for ${node.ability}`);
+        if (node.handling === 'catchFailure') return resultText(`catch failure of ${abilityName(node.ability)} in (${go(node.body).text})`);
+        if (node.handling === 'withHandler') return resultText(`handle (${go(node.body).text}) with ${node.handler} for ${abilityName(node.ability)}`);
         throw unavailable;
       }
-      case 'calls': return resultText(`calls of ${node.ability}.${node.operation}${node.arguments === null ? '' : ` with (${node.arguments.map(value => go(value).text).join(', ')})`}`);
+      case 'calls': return resultText(`calls of ${abilityName(node.ability)}.${node.operation}${node.arguments === null ? '' : ` with (${node.arguments.map(value => go(value).text).join(', ')})`}`);
       default: throw unavailable;
     }
   }

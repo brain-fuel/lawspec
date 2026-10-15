@@ -124,6 +124,18 @@ test('unhandled terms fall back as a whole before any binder is renamed', () => 
   assert.equal(presentation({})(call), call.text);
 });
 
+test('ability identities use checked source names and retain ambiguous or unresolved argument keys', () => {
+  const units = [{id: 'one', declarations: [], abilities: [{id: 'one::ability::Gateway', name: 'Gateway'}]}];
+  const term = expression({kind: 'perform', ability: 'one::ability::Gateway', operation: 'capture', arguments: [number(1)]});
+  const before = structuredClone(term);
+  assert.equal(presentation({units})(term), 'perform Gateway.capture(1)');
+  const parameterized = {...term, node: {...term.node, ability: 'one::ability::Gateway(opaque::type::Payload)'}};
+  assert.equal(presentation({units})(parameterized), 'perform Gateway(opaque::type::Payload).capture(1)');
+  const ambiguous = [...units, {id: 'two', declarations: [], abilities: [{id: 'two::ability::Gateway', name: 'Gateway'}]}];
+  assert.equal(presentation({units: ambiguous})(term), 'perform one.Gateway.capture(1)');
+  assert.deepEqual(term, before);
+});
+
 test('actual parcel assertions use readable terms with the original obligations and evidence', async () => {
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
@@ -222,9 +234,16 @@ test('emitted operational terms retain handlers, call filters and the original e
     for (const term of terms) {
       const text = render(term), node = term.node;
       assert.equal(typeof text, 'string');
-      if (node.kind === 'perform') assert.ok(text.startsWith(`perform ${node.ability}.${node.operation}(`));
-      if (node.kind === 'handle' && node.handling === 'catchFailure') assert.ok(text.startsWith(`catch failure of ${node.ability} in (`));
-      if (node.kind === 'handle' && node.handling === 'withHandler') assert.ok(text.includes(`with ${node.handler} for ${node.ability}`));
+      if (node.kind === 'perform') {
+        assert.ok(text.startsWith('perform '));
+        assert.ok(text.includes(`.${node.operation}(`));
+        if (node.ability.endsWith('::ability::Gateway')) assert.ok(text.startsWith('perform Gateway.'));
+      }
+      if (node.kind === 'handle' && node.handling === 'catchFailure') assert.ok(text.startsWith('catch failure of '));
+      if (node.kind === 'handle' && node.handling === 'withHandler') {
+        assert.ok(text.includes(`with ${node.handler} for `));
+        if (node.ability.endsWith('::ability::Gateway')) assert.ok(text.endsWith('for Gateway'));
+      }
       if (node.kind === 'calls') assert.equal(text.includes(' with ('), node.arguments !== null);
     }
     for (const law of result.laws) for (const view of ['developer', 'business', 'formal', 'evidence']) {
