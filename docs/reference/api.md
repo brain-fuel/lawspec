@@ -189,6 +189,16 @@ algorithm and machine width before comparing fingerprints. This metadata does
 not establish complete project migration, source-template correspondence,
 native binding correspondence, generated behavior or law verification.
 
+Available snapshots may also contain `sourceTemplates`, either unavailable
+with a reason or an independent version-1 SHA-256 snapshot at the same machine
+width. Its `declarationsDigest`, `definitionTemplatesDigest`,
+`lawTemplatesDigest` and `lawBodiesDigest` cover checked frontend values before
+specialization. `units`, `definitions` and `laws` contain part fingerprints;
+`domainPolicies` retains each expanded law's actual policy. The template
+law-body projection alone excludes that policy. This metadata includes unused
+generic definitions and reusable laws. It is comparison evidence, not execution
+or law-verification evidence.
+
 ### Diagnostics
 
 ```ts

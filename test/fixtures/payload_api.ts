@@ -8,7 +8,13 @@ export function migrationDigests(result: Result): string[] {
   const machineBits: 32 | 64 = snapshot.machineBits;
   const policy: ('nonempty' | 'universal')[] = snapshot.domainPolicies.map(item => item.policy);
   void version; void algorithm; void machineBits; void policy;
+  const templates = snapshot.sourceTemplates;
+  const sourceDigests = templates?.status === 'available'
+    ? [templates.declarationsDigest, templates.definitionTemplatesDigest, templates.lawTemplatesDigest,
+      templates.lawBodiesDigest, ...templates.definitions.map(item => item.digest),
+      ...templates.laws.map(item => item.comparisonId)] : [];
   return [snapshot.programDigest, snapshot.definitionPlaneDigest, snapshot.lawBodiesDigest,
+    ...sourceDigests,
     ...snapshot.definitions.map(item => item.comparisonId + ':' + item.digest),
     ...snapshot.contracts.map(item => item.digest), ...snapshot.dataTypes.map(item => item.digest)];
 }

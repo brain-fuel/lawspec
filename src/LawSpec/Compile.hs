@@ -3,12 +3,13 @@
 -- testing plan needs. It stops at the surface; LawSpec.Frontend turns its
 -- result into typed Core, so the eight emitters never see source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, validateDefinitionTypes, validateDefinitionTotality) where
+module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithMigrationCapture, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
 import LawSpec.Model
 import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..),SyntaxReference(..))
+import LawSpec.MigrationTemplates (SourceTemplates(..),DefinitionTemplate)
 import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, inlineFieldDefinitions)
 import LawSpec.Capabilities (satisfiedWithContext)
 import qualified LawSpec.SourceContext as Source
@@ -326,13 +327,18 @@ compileCanonicalWithReferenceUnits :: (String -> String -> String) -> (String ->
 compileCanonicalWithReferenceUnits = compileWithParser True
 compileWithParser :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileWithParser canonical referenceUnit visible bits settings sources = do
-  (units,properties,_) <- compileWithParserInventory False canonical referenceUnit visible bits settings sources
+  (units,properties,_,_) <- compileWithParserInventory False canonical referenceUnit visible bits settings sources
   pure (units,properties)
 
 compileWithSourceSyntax :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
-compileWithSourceSyntax = compileWithParserInventory True
+compileWithSourceSyntax canonical referenceUnit visible bits settings sources = do
+  (units,properties,syntax,_) <- compileWithMigrationCapture canonical referenceUnit visible bits settings sources
+  pure (units,properties,syntax)
 
-compileWithParserInventory :: Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
+compileWithMigrationCapture :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
+compileWithMigrationCapture = compileWithParserInventory True
+
+compileWithParserInventory :: Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
 compileWithParserInventory capture canonical referenceUnit visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
@@ -415,7 +421,12 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
   let dataDigest = digestHex (digestString (show (dataTypes,sourceTypes)))
       key parts = digestHex (digestString parts)
   mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit sourceTypes dataTypes bits u)) us
-  mapM_ (\u -> Memo.memoized validationTable (key (show ("totality", bits, dataDigest, u))) (validateDefinitionTotalityWithContext sourceTypes dataTypes bits u)) us
+  checkedTemplates <- forM us $ \u -> do
+    templates <- Memo.memoized definitionTemplatesTable (key (show (bits,dataDigest,u)))
+      (inferDefinitionTemplates sourceTypes dataTypes bits u)
+    Memo.memoized validationTable (key (show ("totality", bits, dataDigest, u)))
+      (auditDefinitionTemplates sourceTypes dataTypes bits u templates)
+    pure (unitName u,templates)
   let table = M.fromList [((unitName u,lawName l),l) | u <- us, l <- laws u]
       signatures u = [ (functionName d, functionArguments d, functionResult d, functionRequirements d) | d <- functionDefinitions u ]
       expansionKey u l = key (show (canonical, bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))
@@ -538,7 +549,10 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
           Just used <- lookup owner sourceRows >>= lookup name = item{syntaxUses=Just (map prettyType used)}
         | otherwise = item
   pure (specialized, properties,
-    [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]])
+    [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]],
+    if capture then Just (SourceTemplates bits us checkedTemplates allExpanded dataTypes
+      [(identity,Source.sourceFields constructor,Source.sourceEquations constructor) |
+        (identity,constructor)<-M.toAscList (Source.constructorSources sourceTypes)]) else Nothing)
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
 -- names it invokes, a superset of the ones expansion resolves.
@@ -568,6 +582,14 @@ expansionTable = unsafePerformIO (Memo.newPersistentTable "expand" 4096 (const 1
 validationTable :: Memo.Table (Either [Diagnostic] ())
 validationTable = unsafePerformIO (Memo.newPersistentTable "validate" 4096 (const 1))
 {-# NOINLINE validationTable #-}
+
+definitionTemplatesTable :: Memo.Table (Either [Diagnostic] [DefinitionTemplate])
+definitionTemplatesTable = unsafePerformIO (Memo.newPersistentTable "definition-templates" (32*1024) weight)
+  where
+    weight (Left _) = 1
+    weight (Right values) = 1 + sum [sum (map nodes (body:pre ++ post)) | (_,body,pre,post)<-values]
+    nodes value = 1 + sum (map nodes (operands value)) + sum [nodes body | TypedCase _ _ body<-typedCases value]
+{-# NOINLINE definitionTemplatesTable #-}
 
 -- | Diagnostics and evidence quote a law as the quantified statement that is
 -- actually tested, so a reader sees what a failure refers to.
@@ -772,8 +794,10 @@ validateDefinitionTotality :: [Core.DataDeclaration] -> Int -> Unit -> Either [D
 validateDefinitionTotality = validateDefinitionTotalityWithContext Source.emptyContext
 
 validateDefinitionTotalityWithContext sourceTypes declarations bits unit =
-  inferDefinitionTemplates sourceTypes declarations bits unit >>= auditTemplatesWithContext sourceTypes declarations bits unit
-    . filter (\(d, _, _, _) -> functionName d `notElem` orchestrations unit)
+  inferDefinitionTemplates sourceTypes declarations bits unit >>= auditDefinitionTemplates sourceTypes declarations bits unit
+
+auditDefinitionTemplates sourceTypes declarations bits unit = auditTemplatesWithContext sourceTypes declarations bits unit
+  . filter (\(d, _, _, _) -> functionName d `notElem` orchestrations unit)
 
 inferDefinitionTemplates :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] [(FunctionDefinition, TypedExpr, [TypedExpr], [TypedExpr])]
 inferDefinitionTemplates sourceTypes declarations bits unit = do

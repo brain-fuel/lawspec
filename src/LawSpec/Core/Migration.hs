@@ -2,7 +2,9 @@
 -- | A comparison view of the authoritative Core, never executable code.
 -- Generic traversal retains fields that the documentary public JSON omits,
 -- including constructor predicates, GADT equations and runtime contracts.
-module LawSpec.Core.Migration (migrationSnapshot, normalizedProgram) where
+module LawSpec.Core.Migration
+  ( migrationSnapshot, normalizedProgram
+  , Project(..), GenericProject(..), Context(..), semanticName ) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value,object,(.=))

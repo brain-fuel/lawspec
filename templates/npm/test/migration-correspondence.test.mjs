@@ -10,6 +10,51 @@ const snapshot={status:'available',version:1,algorithm:'sha256',machineBits:64,
   definitions:[],contracts:[],dataTypes:[],
   domainPolicies:[{comparisonId:'unit::law::same',policy:'nonempty'}]};
 
+const templates={status:'available',version:1,algorithm:'sha256',machineBits:64,
+  declarationsDigest:'3'.repeat(64),definitionTemplatesDigest:'4'.repeat(64),lawTemplatesDigest:'5'.repeat(64),lawBodiesDigest:'6'.repeat(64),
+  units:[],definitions:[],laws:[],domainPolicies:[]};
+
+test('matching checked source templates remain separate from native binding and behavior correspondence',()=>{
+  const compared=compareMigrationSnapshots({...snapshot,sourceTemplates:templates},{...snapshot,sourceTemplates:templates});
+  assert.equal(compared.sourceTemplates.status,'matched');
+  assert.equal(compared.sourceTemplates.definitions.basis,'matching-checked-source-template-fingerprints');
+  assert.equal(compared.nativeBindings.status,'not-established');
+  assert.equal(compared.generatedBehavior.status,'not-established');
+  assert.equal(compared.status,'not-established');
+});
+
+test('an unused template change cannot disappear behind matching concrete Core fingerprints',()=>{
+  const before={...templates,definitions:[{comparisonId:'unit::pick',digest:'7'.repeat(64)}]};
+  const after={...before,definitionTemplatesDigest:'8'.repeat(64),definitions:[{comparisonId:'unit::pick',digest:'9'.repeat(64)}]};
+  const compared=compareMigrationSnapshots({...snapshot,sourceTemplates:before},{...snapshot,sourceTemplates:after});
+  assert.equal(compared.program.status,'matched');
+  assert.equal(compared.sourceTemplates.status,'not-established');
+  assert.equal(compared.sourceTemplates.definitions.status,'not-established');
+  assert.deepEqual(compared.sourceTemplates.differences.definitions.changed,['unit::pick']);
+});
+
+test('template law-body matches cannot discharge changed domain policies',()=>{
+  const before={...templates,domainPolicies:[{comparisonId:'unit::law::unused',policy:'nonempty'}]};
+  const after={...before,lawTemplatesDigest:'7'.repeat(64),domainPolicies:[{comparisonId:'unit::law::unused',policy:'universal'}]};
+  const compared=compareMigrationSnapshots({...snapshot,sourceTemplates:before},{...snapshot,sourceTemplates:after});
+  assert.equal(compared.sourceTemplates.lawBodies.status,'matched');
+  assert.equal(compared.sourceTemplates.lawBodies.includesDomainPolicy,false);
+  assert.equal(compared.sourceTemplates.domainPolicies.status,'not-established');
+  assert.equal(compared.sourceTemplates.status,'not-established');
+});
+
+test('absent, malformed and unsupported template snapshots cannot be accepted as correspondence',()=>{
+  for(const after of [undefined,null,{...templates,version:2},{...templates,machineBits:32},
+    {...templates,definitionTemplatesDigest:undefined},{...templates,definitions:[null]},
+    {...templates,domainPolicies:[{comparisonId:'law',policy:'unchecked'}]}]) {
+    const compared=compareMigrationSnapshots({...snapshot,sourceTemplates:templates},{...snapshot,sourceTemplates:after});
+    assert.equal(compared.sourceTemplates.status,'not-established');
+  }
+  const unknown=compareMigrationSnapshots({sourceTemplates:{...templates,machineBits:undefined}},
+    {sourceTemplates:{...templates,machineBits:undefined}});
+  assert.equal(unknown.sourceTemplates.status,'not-established');
+});
+
 test('matching concrete fingerprints never claim full migration or law verification',()=>{
   const compared=compareMigrationSnapshots(snapshot,snapshot);
   for(const name of ['program','definitionPlane','lawBodies','domainPolicies']) assert.equal(compared[name].status,'matched');
@@ -148,4 +193,38 @@ test('explicit snapshot capture cannot bypass mandatory definition checks or acc
   }
   const malformed=await compiler.check({...options,migrationSnapshot:'yes',sources:[]});
   assert.ok(malformed.diagnostics.length);
+});
+
+test('actual unused generic bodies and capability requirements survive concrete specialization',async()=>{
+  const original='unit unused\ndefinition pick (left :: a) (right :: a) :: a requires Eq a is left end';
+  const capture=async content=>{
+    const result=await compiler.migrationBaseline({...options,from:'0.24',sources:[{path:'unused.lawspec',content}]});
+    assert.deepEqual(result.diagnostics,[]);
+    assert.equal(result.migrationSemantics.sourceTemplates.status,'available');
+    return result.migrationSemantics;
+  };
+  for(const changed of [original.replace('is left','is right'),original.replace('requires Eq','requires Keyed')]) {
+    const before=await capture(original),after=await capture(changed);
+    assert.equal(before.programDigest,after.programDigest,'Unused templates have no concrete implementation');
+    const compared=compareMigrationSnapshots(before,after);
+    assert.equal(compared.program.status,'matched');
+    assert.equal(compared.sourceTemplates.definitions.status,'not-established');
+    assert.deepEqual(compared.sourceTemplates.differences.definitions.changed,['unused::pick']);
+  }
+});
+
+test('actual unused reusable-law requirements survive concrete law filtering',async()=>{
+  const original='unit unused\nlaw `preserved` (operation :: a -> a) requires Eq a is '+
+    'definition is `for all` (value :: a) . operation value = value end end';
+  const capture=async content=>{
+    const result=await compiler.migrationBaseline({...options,from:'0.24',sources:[{path:'unused-law.lawspec',content}]});
+    assert.deepEqual(result.diagnostics,[]);
+    return result.migrationSemantics;
+  };
+  const before=await capture(original),after=await capture(original.replace('operation value = value','value = value'));
+  assert.equal(before.programDigest,after.programDigest);
+  const compared=compareMigrationSnapshots(before,after);
+  assert.equal(compared.sourceTemplates.status,'not-established');
+  assert.equal(compared.sourceTemplates.laws.status,'not-established');
+  assert.deepEqual(compared.sourceTemplates.differences.laws.changed,['unused::law::preserved']);
 });

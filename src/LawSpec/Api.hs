@@ -18,6 +18,7 @@ import LawSpec.Testing (Plan(..), PlannedUnit(..), planTesting, planTestingWith)
 import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Migration as Migration
+import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
 import LawSpec.Core.Evidence (Obligation)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
@@ -46,18 +47,20 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     case memoized syntaxStagesTable (sharedRequest bytes)
       (stagesWithInput False True project packages sources bits settings native verification) of
       Left response -> response
-      Right ((us,es,core,bindings,evidence,described,_),syntax) ->
+      Right ((us,es,core,bindings,evidence,described,_,templates),syntax) ->
         let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-        in withMigrationSemantics False us core $ withMigrationSyntax syntax $ withAttestation attestation core obligations $ withVerification verification $
+        in withMigrationSemantics False us core templates $ withMigrationSyntax syntax $ withAttestation attestation core obligations $ withVerification verification $
           withPackages project described (programView settings us (map prettyExpanded es) [] obligations (C.lowerProgramFields core))
    else
    -- Compilation, evidence and the testing plan depend on neither the method
    -- nor the target, so a compiler asked for several targets does them once.
-   case memoized stagesTable (sharedRequest bytes) (stages project packages sources bits settings native verification) of
+   case (if snapshotRequested then fst <$> memoized syntaxStagesTable ("canonical:" ++ sharedRequest bytes)
+          (stagesWithInput True True project packages sources bits settings native verification)
+        else memoized stagesTable (sharedRequest bytes) (stages project packages sources bits settings native verification)) of
     Left response -> response
-    Right (us,es,core,bindings,evidence,described,plan) ->
+    Right (us,es,core,bindings,evidence,described,plan,templates) ->
      let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-         result files = (if snapshotRequested then withMigrationSemantics True us core else id) $
+         result files = (if snapshotRequested then withMigrationSemantics True us core templates else id) $
            withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
           "expand" -> result []
@@ -154,16 +157,21 @@ withMigrationSyntax _ value = value
 
 -- A comparison projection of the actual, fully admitted Core. Snapshot errors
 -- never weaken mandatory validation or change which programs compile.
-withMigrationSemantics :: Bool -> [Unit] -> C.Program -> Value -> Value
-withMigrationSemantics canonical units core (Object value) = Object
+withMigrationSemantics :: Bool -> [Unit] -> C.Program -> Maybe SourceTemplates -> Value -> Value
+withMigrationSemantics canonical units core templates (Object value) = Object
   (KM.insert "migrationSemantics" snapshot value)
   where
     names=[(C.Id (unitName unit ++ "::law::" ++ lawName law),lawName law) | unit<-units,law<-laws unit]
     snapshot=case Migration.migrationSnapshot canonical names core of
       Left reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]
-      Right (Object fields) -> Object (KM.insert "status" (String "available") fields)
+      Right (Object fields) -> Object (KM.insert "sourceTemplates" templateFields (KM.insert "status" (String "available") fields))
       Right _ -> object ["status" .= ("unavailable"::String),"reason" .= ("invalid Core snapshot"::String)]
-withMigrationSemantics _ _ _ value = value
+    templateFields=case templates of
+      Nothing -> object ["status" .= ("unavailable"::String),"reason" .= ("checked source templates were not captured"::String)]
+      Just captured -> case templateSnapshot canonical captured of
+        Left reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]
+        Right fields -> fields
+withMigrationSemantics _ _ _ _ value = value
 
 -- Selected law checks are reported separately from completed evidence. This
 -- field never claims that an unrun native test passed.
@@ -212,7 +220,7 @@ withBenchmarks _ value = value
 failure :: [Diagnostic] -> Value
 failure ds = object ["schemaVersion" .= (3 :: Int), "diagnostics" .= ds]
 
-type Stages = ([Unit], [Expanded], C.Program, BindingPlan, [Obligation], [(Package, [String])], Either [Diagnostic] Plan)
+type Stages = ([Unit], [Expanded], C.Program, BindingPlan, [Obligation], [(Package, [String])], Either [Diagnostic] Plan,Maybe SourceTemplates)
 
 stages :: Project -> [Package] -> [Source] -> Int -> Generation -> NativeRequest -> Maybe V.Verification -> Either Value Stages
 stages project packages sources bits settings native verification =
@@ -222,17 +230,17 @@ stagesWithInput :: Bool -> Bool -> Project -> [Package] -> [Source] -> Int -> Ge
 stagesWithInput canonical capture project packages sources bits settings native verification = case preparePackagesWithReferences project packages sources of
   Left ds -> Left (failure ds)
   Right (allSources,visible,referenceUnit,described) -> case
-    (if capture then compileWithSourceSyntax canonical referenceUnit visible bits settings allSources
-      else (\(units,properties) -> (units,properties,[])) <$>
+    (if capture then compileWithMigrationCapture canonical referenceUnit visible bits settings allSources
+      else (\(units,properties) -> (units,properties,[],Nothing)) <$>
         (if canonical then compileCanonicalWithReferenceUnits referenceUnit visible else compileWithImports visible) bits settings allSources) of
     Left ds -> Left (failure (versionedDiagnostics described ds))
-    Right (us,es,syntax) -> case (if canonical then elaborateCanonical else elaborate) bits us es of
+    Right (us,es,syntax,templates) -> case (if canonical then elaborateCanonical else elaborate) bits us es of
       Left ds -> Left (failure (versionedDiagnostics described ds))
       Right core -> case resolveNativeRequest core native of
         Left message -> Left (failure [Diagnostic "native-binding" message Nothing])
         Right bindings -> case maybe dischargeEvidence dischargeEvidenceWith verification core of
           Left ds -> Left (failure ds)
-          Right evidence -> Right ((us, es, core, bindings, evidence, described, maybe planTesting planTestingWith verification core),syntax)
+          Right evidence -> Right ((us, es, core, bindings, evidence, described, maybe planTesting planTestingWith verification core,templates),syntax)
 
 -- | The request without the fields that only select a method, target or layout.
 sharedRequest :: B.ByteString -> String

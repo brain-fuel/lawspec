@@ -496,6 +496,27 @@ export interface MigrationRequest extends CheckRequest {
   from: '0.24';
 }
 
+export type MigrationTemplateSnapshot =
+    {
+      status: 'available';
+      version: 1;
+      algorithm: 'sha256';
+      machineBits: 32 | 64;
+      scope: string;
+      declarationsDigest: string;
+      definitionTemplatesDigest: string;
+      lawTemplatesDigest: string;
+      lawBodiesDigest: string;
+      units: {comparisonId: string; digest: string;}[];
+      definitions: {comparisonId: string; digest: string;}[];
+      laws: {comparisonId: string; digest: string;}[];
+      domainPolicies: {
+        comparisonId: string;
+        policy: 'nonempty' | 'universal';
+      }[];
+    } |
+    {status: 'unavailable'; reason: string;};
+
 export type MigrationSemanticSnapshot =
     {
       status: 'available';
@@ -506,6 +527,7 @@ export type MigrationSemanticSnapshot =
       programDigest: string;
       definitionPlaneDigest: string;
       lawBodiesDigest: string;
+      sourceTemplates?: MigrationTemplateSnapshot;
       definitions: {comparisonId: string; digest: string;}[];
       contracts: {comparisonId: string; digest: string;}[];
       dataTypes: {comparisonId: string; digest: string;}[];

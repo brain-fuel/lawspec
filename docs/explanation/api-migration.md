@@ -97,9 +97,10 @@ nominal identities, operand order and the actual input-domain policy remain.
 
 `correspondence` compares those fingerprints and lists changed, added and removed
 definition, contract and data-type comparison identities. A matching fingerprint
-covers that concrete Core projection only. Uninstantiated source templates,
-native bindings and generated behavior remain separate, unestablished gates;
-the overall result remains `not-established`. The law-body projection explicitly
+covers that concrete Core projection only. Checked source templates,
+native bindings and generated behavior remain separate gates;
+the overall result remains `not-established` while native bindings and generated
+behavior lack correspondence evidence. The law-body projection explicitly
 excludes input-domain policy and cannot justify changing that policy. Differing
 fingerprints report unestablished correspondence rather than a proof of
 inequivalence. Chapter 6 currently exposes real payload-shape changes in this
@@ -110,6 +111,27 @@ Schema-5 clients may request the same `migrationSemantics` metadata with
 it automatically. Ordinary compile responses do not include these fingerprints,
 and requesting them does not change mandatory checks or law evidence. Snapshot
 versions and machine widths must agree before comparison.
+
+`migrationSemantics.sourceTemplates` separately fingerprints the complete
+checked source units, typed definition bodies and contracts, expanded reusable
+laws, and resolved constructor context before specialization. It retains unused
+generic definitions and reusable laws that concrete Core omits. The captured
+typed bodies are the same values used by mandatory definition admission; the
+metadata does not introduce another type checker or execution path. The typed
+template cache has a bounded node budget.
+
+`correspondence.sourceTemplates` compares declaration, typed-definition and
+expanded-law fingerprints, lists changed unit/definition/law identities, and
+keeps actual law-domain policies separate from the projection excluding those
+policies. This includes unused versioned prelude laws; their policy changes do
+not disappear merely because no concrete test instantiates them. Literal
+values, capability requirements, effects, refinements, parameter relationships
+and nonempty effect annotations remain. Comments and coordinates are excluded.
+Explicit empty effect rows on checked pure definitions agree with inferred
+empty rows; expansion traces normalize only a uniquely recognized law-name
+prefix, preserving their argument text. Other source-shape differences remain
+conservative blockers. Neither a template match nor a concrete Core match
+establishes native binding or generated-behavior correspondence.
 
 `domainPolicyChanges` records legacy nonempty input-domain handling versus
 canonical universal quantification. Empty and dependent domains require

@@ -375,6 +375,7 @@
     "src/LawSpec/Mailboxes.hs",
     "src/LawSpec/Matchers.hs",
     "src/LawSpec/Memo.hs",
+    "src/LawSpec/MigrationTemplates.hs",
     "src/LawSpec/Model.hs",
     "src/LawSpec/ModelTests.hs",
     "src/LawSpec/NativeBinding.hs",
@@ -484,7 +485,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "32b40834ed6f58d5290af56b62037426cb5868b4d4fa2ee6de0aa541a494199f",
-    "lawspec.cabal": "079363ea8ec391b68c7c5904fd3c2fe1f56be58b3b038efc8483246379c133db",
+    "lawspec.cabal": "890b694c56d426d1c8f731c3371c2e30e121d42b946896f3bea0c5a1a555a26f",
     "package.yaml": "8f340b6e338af7793afb1f13c4feab28eeddc4c3b2754bff181f9460406962f9",
     "runtime/LawSpecCodecs.hs": "4109ac35634ab4c226b5464e824b03b90014a6b44426b5c33e34c6608d0bea70",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
@@ -711,7 +712,7 @@
     "src/LawSpec/Actors/Scala.hs": "6a034fb96983fd11b8714d5c6b8c09b5cb24ceb06977b52010c2424a51b60f38",
     "src/LawSpec/Actors/Types.hs": "09f764a8da926f00817a0de0f17a03d48194c819a3c64aca78c96b19d38ac823",
     "src/LawSpec/Actors/Web.hs": "b8a63be30754569d7b150d454e656b4089a63e2f913bb2276ba722e2529e185d",
-    "src/LawSpec/Api.hs": "daf55cd5c4a3546c6d8ceda575abd7e4f571f54329e0900dedb23bf2ab132a0a",
+    "src/LawSpec/Api.hs": "fccc33bb1b46b25e4304cd56642f141c6685d90768e4c448d9c2644386130780",
     "src/LawSpec/Attestation.hs": "55ac5bca528ef22cd29762cf2b3c226c2b4e18a50a667aac6d74a36be78bd62c",
     "src/LawSpec/Backend.hs": "2b707ebc5a9ad32e7783caa7041ebfdd4fe22bd73cbff136dc5344cff33d59d5",
     "src/LawSpec/BeamAbilities.hs": "958d34b7a8808dbe4f5fad6a5b6b922651ac1659f2dc6bcf7189732dc4e2d823",
@@ -746,7 +747,7 @@
     "src/LawSpec/Code/JavaScript.hs": "20e9536ba253a43fbbca96a8c20c3fd7c87b8fcacc065b5c5f4a1741f321b843",
     "src/LawSpec/Collections.hs": "318c6e8a526015f84baa8b6ab01c3fc112acecd9754a22388874aeca035bb34f",
     "src/LawSpec/Common.hs": "a3610f7f2e50c32a6b304953eaad601311bfda4dcc5c49cf8555a845690e3864",
-    "src/LawSpec/Compile.hs": "df7eab76e877a11b5b2809a67ad53d94133be6303a6beb42dd460698bedb541b",
+    "src/LawSpec/Compile.hs": "77bca40e46300ca8d08bbb1d959c9d184285e02ff53daa4d4cbc52e0391a2c44",
     "src/LawSpec/Core.hs": "f2761b12a730ce80cb824389cf7618c75d5d5d89be418ad5f575d8d5b6c61de9",
     "src/LawSpec/Core/DefinitionContracts.hs": "62b3c10c29ff6abf3b89eb3b28e765c81f9fe57507207ff8a1b2dee4d0655b4b",
     "src/LawSpec/Core/Definitions.hs": "cbe7d4140dcd56a086c14f4fbe5f375927d00879ecd6b3623ab0d802517301f0",
@@ -755,7 +756,7 @@
     "src/LawSpec/Core/Evidence.hs": "47bd81763ee01b39c90fe0a787a27b08e1f177d23a70e51326850c2735a472fa",
     "src/LawSpec/Core/Expression.hs": "c39616deda20bec7d8a393e874da79776873b85b30e20c72f115fa3dba740dc7",
     "src/LawSpec/Core/Machine.hs": "d3a73468fb8af489c59e81907269983717c07522b76639147d4ba0ef27f17037",
-    "src/LawSpec/Core/Migration.hs": "34ffc00f94a0f2a80e7de198b8635637949aeedf3fc0181adb75c81593145d24",
+    "src/LawSpec/Core/Migration.hs": "298bb900ae62d706fea6b0c14971ced4dce9b14b5fa705a4297fa8044cffd98d",
     "src/LawSpec/Core/Payload.hs": "3d0b0e36f1382a708e96ce9d5aa4c727956b70b7c6136a8c1d486b00beb60458",
     "src/LawSpec/Core/PayloadPlan.hs": "64c6d2df88d7a0f48fc989d9ab191adc145dfce856d6501e3c1ea9bae4ebb0b0",
     "src/LawSpec/Core/Policy.hs": "6d2ccf0f99ff2e5c9a2b70c8aa098f48632db8d58375234e1da3d594b1ee82e7",
@@ -857,6 +858,7 @@
     "src/LawSpec/Mailboxes.hs": "b0e9152adf484d4c1810586e3a6137d1b8091ea182804502ab49a655d3913786",
     "src/LawSpec/Matchers.hs": "f67dfc877e4e02329e283984724cbc567dec803dc8bdfce110ff56d3d04e484e",
     "src/LawSpec/Memo.hs": "82b1ef6e0472f5df641f9860abc6d8eb1e3834b4c5a54a6f2ec8abfda43d4a15",
+    "src/LawSpec/MigrationTemplates.hs": "1cdeedd8366531d9928f6eac65e08df7695101b491d8b30545365490a1055970",
     "src/LawSpec/Model.hs": "f974bda929cd2c2ef51f82f89c4024983c2e3c39ce9c4b20c4f0f4bfebbc15f5",
     "src/LawSpec/ModelTests.hs": "8385c70983780cdcf30e38f9ac4d3c348fb92b3d979985dab88520b4a07e4ede",
     "src/LawSpec/NativeBinding.hs": "d3f338afb61d75cb27b55a784a7358a847f5958c40c210c8e3989fa6b6fb89cd",
@@ -963,9 +965,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "2265072342911c0880df8f7bb8a9331be24b50318c45afc2d04d549175655cee",
+    "npm/core.wasm": "4e72fb9005927a553af024edcf4079de0243d58a1474148688145004d56380c7",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "7dcaf99c6dc757863b075ebf7763edb988b128555e58742e36b0e33699e03957",
-    "npm/index.d.ts": "dacbe2182e567410ab18aa60ccb592d1273244b4bb9deb59aaedb448625c2d60"
+    "npm/index.d.ts": "8783eb39a6efe17a687fb2cf4ea7fdf505ea3837db43333a4a65a9628c076c07"
   }
 }

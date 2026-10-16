@@ -221,10 +221,19 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , interface "MigrationRequest extends CheckRequest"
       [("schemaVersion?",text "5"),("languageProfile",quoted "1.0-rc.1"),("from",quoted "0.24")]
+  , alias "MigrationTemplateSnapshot"
+      [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),
+          ("machineBits",union [text "32",text "64"])] ++
+          fields [("scope","string"),("declarationsDigest","string"),("definitionTemplatesDigest","string"),
+            ("lawTemplatesDigest","string"),("lawBodiesDigest","string")] ++
+          [(name,array (record (fields [("comparisonId","string"),("digest","string")]))) | name<-["units","definitions","laws"]] ++
+          [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))]))])
+      , record [("status",quoted "unavailable"),("reason",text "string")]]
   , alias "MigrationSemanticSnapshot"
       [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),
           ("machineBits",union [text "32",text "64"])] ++
-          fields [("scope","string"),("programDigest","string"),("definitionPlaneDigest","string"),("lawBodiesDigest","string")] ++
+          fields [("scope","string"),("programDigest","string"),("definitionPlaneDigest","string"),("lawBodiesDigest","string"),
+            ("sourceTemplates?","MigrationTemplateSnapshot")] ++
           [(name,array (record (fields [("comparisonId","string"),("digest","string")]))) | name<-["definitions","contracts","dataTypes"]] ++
           [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))]))])
       , record [("status",quoted "unavailable"),("reason",text "string")]]

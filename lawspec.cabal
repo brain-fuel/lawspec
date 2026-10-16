@@ -616,6 +616,7 @@ library
       LawSpec.Mailboxes
       LawSpec.Matchers
       LawSpec.Memo
+      LawSpec.MigrationTemplates
       LawSpec.Model
       LawSpec.ModelTests
       LawSpec.NativeBinding
@@ -885,6 +886,7 @@ test-suite lawspec-test
       LanguageGapsSpec
       LawPrimitivesSpec
       MigrationSnapshotSpec
+      MigrationTemplateSpec
       NativeBindingSpec
       NativeRequestSpec
       PayloadProofSpec
