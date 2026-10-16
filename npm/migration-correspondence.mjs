@@ -67,7 +67,9 @@ function compareDomainPolicies(before,after) {
     if(!next) return {comparisonId:row.comparisonId,status:'not-established',reason:'The migrated input domain is missing.'};
     if(row.policy===next.policy) return {comparisonId:row.comparisonId,status:'matched',basis:'unchanged-domain-policy'};
     const old=oldDomains.get(row.comparisonId),changed=newDomains.get(row.comparisonId);
-    if(validWitness(old)&&validWitness(changed)&&old.domainDigest===changed.domainDigest) return {
+    if(validWitness(old)&&validWitness(changed)&&old.domainDigest===changed.domainDigest&&
+      old.inputCount===changed.inputCount&&
+      JSON.stringify(old.witness.map(binding=>binding.binder))===JSON.stringify(changed.witness.map(binding=>binding.binder))) return {
       comparisonId:row.comparisonId,status:'matched',basis:'matching-domain-dependencies-and-verified-input-witnesses',
       before:old.witness,after:changed.witness};
     return {comparisonId:row.comparisonId,status:'not-established',reason:
@@ -79,7 +81,35 @@ function compareDomainPolicies(before,after) {
     before:original,after:migrated,domains:rows,lawVerification:'not-established-by-domain-evidence'};
 }
 
-export function compareMigrationSnapshots(before,after) {
+function compareTransportedDomains(before,after,transport,direct) {
+  if(direct.status==='matched'||!transport) return direct;
+  // Bind the comparison copy to both actual admitted programs. A shape match,
+  // a body match, or an unanchored witness is not an input-domain certificate.
+  const anchored=['matched','not-established'].includes(transport.status)&&transport.version===1&&transport.algorithm==='sha256'&&
+    transport.machineBits===before.machineBits&&transport.copyValidated===true&&transport.originalsUnchanged===true&&
+    transport.sourceBeforeDigest===before.programDigest&&available(transport.before)&&available(transport.after)&&
+    transport.before.machineBits===before.machineBits&&transport.after.machineBits===after.machineBits&&
+    transport.after.programDigest===after.programDigest&&
+    JSON.stringify(transport.before.domainPolicies)===JSON.stringify(before.domainPolicies)&&
+    JSON.stringify(transport.after.domainPolicies)===JSON.stringify(after.domainPolicies);
+  if(!anchored) return direct;
+  const compared=compareDomainPolicies(transport.before,transport.after);
+  const candidates=new Map((compared.domains??[]).map(row=>[row.comparisonId,row]));
+  const domains=direct.domains.map(row=>{
+    if(row.status==='matched') return row;
+    const candidate=candidates.get(row.comparisonId);
+    return candidate?.status==='matched'?{...candidate,
+      basis:'matching-transported-domain-dependencies-and-verified-input-witnesses',
+      valueRepresentation:'transported-before-and-canonical-after'}:row;
+  });
+  const matched=before.domainPolicies.length===after.domainPolicies.length&&domains.every(row=>row.status==='matched');
+  return {...direct,status:matched?'matched':'not-established',domains,
+    ...(matched?{basis:'verified-input-domain-correspondence',reason:undefined}:{}),
+    transport:{status:'available',sourceBeforeDigest:transport.sourceBeforeDigest,
+      copyValidated:true,originalsUnchanged:true}};
+}
+
+export function compareMigrationSnapshots(before,after,transport) {
   const incomplete=reason=>({status:'not-established',reason});
   const unproved={
     sourceTemplates:compareTemplates(before?.sourceTemplates,after?.sourceTemplates,
@@ -98,5 +128,5 @@ export function compareMigrationSnapshots(before,after) {
   return {status:'not-established',scope:'checked concrete Core',...checks,
     differences:differences(before,after,parts),
     lawBodies:{...checks.lawBodies,includesDomainPolicy:false},
-    domainPolicies:compareDomainPolicies(before,after),...unproved};
+    domainPolicies:compareTransportedDomains(before,after,transport,compareDomainPolicies(before,after)),...unproved};
 }

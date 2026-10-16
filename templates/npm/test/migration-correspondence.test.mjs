@@ -203,9 +203,10 @@ test('actual nominal restrictions and GADT equations participate in full-Core fi
   }
 });
 
-test('Chapter 6 reports actual payload-shape differences instead of silently erasing nominal boundaries',async()=>{
+test('Chapter 6 retains raw shape differences and establishes transported concrete input domains at both widths',async()=>{
   const content=await readFile(new URL('../../test/fixtures/migration-chap06-0.24.lawspec',import.meta.url),'utf8');
-  const report=await migrationReport(compiler,{version:1,targets:[]},{sources:[{path:'chap06.lawspec',content}]});
+  for(const machineBits of [32,64]) {
+  const report=await migrationReport(compiler,{version:1,targets:[]},{machineBits,sources:[{path:'chap06.lawspec',content}]});
   assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
   assert.equal(report.correspondence.program.status,'not-established');
   assert.equal(report.correspondence.nativeBindings.status,'not-established');
@@ -214,15 +215,17 @@ test('Chapter 6 reports actual payload-shape differences instead of silently era
   assert.ok(report.correspondence.differences.dataTypes.added[0].startsWith('lawspec::structural::record::'));
   assert.equal(report.correspondence.differences.definitions.changed.length,8);
   assert.equal(report.correspondence.domainPolicies.before.length,23);
-  assert.equal(report.correspondence.domainPolicies.status,'not-established');
+  assert.equal(report.correspondence.domainPolicies.status,'matched');
   for(const snapshot of [report.baseline.coreSnapshot,report.sourcePreview.canonicalCheck.coreSnapshot]) {
     assert.equal(snapshot.inputDomains.domains.length,23);
     assert.ok(snapshot.inputDomains.domains.every(domain=>domain.status==='inhabited'));
   }
-  assert.equal(report.correspondence.domainPolicies.domains.filter(domain=>domain.status==='matched').length,17);
-  assert.equal(report.correspondence.domainPolicies.domains.filter(domain=>domain.status==='not-established').length,6);
+  assert.equal(report.correspondence.domainPolicies.domains.filter(domain=>domain.status==='matched').length,23);
+  assert.equal(report.correspondence.domainPolicies.domains.filter(domain=>domain.valueRepresentation==='transported-before-and-canonical-after').length,6);
+  assert.equal(report.correspondence.domainPolicies.lawVerification,'not-established-by-domain-evidence');
   assert.equal(report.validated,false);
   assert.deepEqual(report.filesWritten,[]);
+  }
 });
 
 test('explicit snapshot capture cannot bypass mandatory definition checks or accept a malformed request',async()=>{

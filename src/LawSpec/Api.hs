@@ -19,9 +19,9 @@ import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Migration as Migration
 import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
-import LawSpec.MigrationDomains (domainSnapshot)
+import LawSpec.MigrationDomains (domainSnapshot,withTransportDomains)
 import LawSpec.MigrationPayloads (payloadCorrespondenceWithPlan)
-import LawSpec.Core.PayloadTransport (transportComparison)
+import LawSpec.Core.PayloadTransport (transportComparisonWithProgram)
 import LawSpec.Core.Evidence (Obligation)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
@@ -114,7 +114,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                             Right (Object fields,Just plan) ->
                               let names units=[(C.Id (unitName unit ++ "::law::" ++ lawName law),lawName law) | unit<-units,law<-laws unit]
                                   transported=either (\reason -> object ["status" .= ("not-established"::String),"reason" .= reason]) id
-                                    (transportComparison plan (names beforeUnits) beforeCore (names afterUnits) afterCore)
+                                    (do (copy,view)<-transportComparisonWithProgram plan (names beforeUnits) beforeCore (names afterUnits) afterCore
+                                        pure (withTransportDomains (names beforeUnits) copy (names afterUnits) afterCore view))
                               in Object (KM.insert "executableTransport" transported fields)
                             Right (view,_) -> view
                           _ -> unavailable "checked source templates were not captured for both inputs"

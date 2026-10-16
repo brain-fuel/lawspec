@@ -175,6 +175,7 @@ export function payloadFields(result: Result): string[] {
   const status: 'matched' | 'not-established' = value.executableTransport.status;
   if ('copyValidated' in value.executableTransport) {
     const validatedCopy: true = value.executableTransport.copyValidated;
+    const sourceDigest: string = value.executableTransport.sourceBeforeDigest;
     const digest: string = value.executableTransport.after.programDigest;
     void validatedCopy; void digest;
   }

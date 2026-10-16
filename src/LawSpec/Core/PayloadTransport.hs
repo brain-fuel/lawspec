@@ -2,7 +2,7 @@
 -- ordinary record normalizer and mandatory Core validator audit the result;
 -- neither this copy nor its rules are emitted or used to run laws.
 module LawSpec.Core.PayloadTransport
-  ( PayloadPlan(..), transportProgram, transportComparison ) where
+  ( PayloadPlan(..), transportProgram, transportComparison, transportComparisonWithProgram ) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value(..),object,(.=))
@@ -170,7 +170,13 @@ transportProgram plan original = do
 -- execution order; field and predicate order, units and model metadata remain
 -- authoritative. Domain policies are reported separately from body matching.
 transportComparison :: PayloadPlan -> [(C.Id,String)] -> C.Program -> [(C.Id,String)] -> C.Program -> Either String Value
-transportComparison plan beforeNames before afterNames after = do
+transportComparison plan beforeNames before afterNames after =
+  snd <$> transportComparisonWithProgram plan beforeNames before afterNames after
+
+-- Return the same validated comparison copy for frontend input-domain evidence;
+-- callers must not reconstruct it from the wire view or use it for generation.
+transportComparisonWithProgram :: PayloadPlan -> [(C.Id,String)] -> C.Program -> [(C.Id,String)] -> C.Program -> Either String (C.Program,Value)
+transportComparisonWithProgram plan beforeNames before afterNames after = do
   unless (C.programMachineBits before==C.programMachineBits after) (Left "transport requires matching machine widths")
   made<-transportProgram plan before
   let order=map C.dataId (C.programDataDeclarations after)
@@ -180,6 +186,7 @@ transportComparison plan beforeNames before afterNames after = do
         else made
   old<-migrationSnapshot False beforeNames aligned
   new<-migrationSnapshot True afterNames after
+  source<-migrationSnapshot False beforeNames before
   let field key (Object fields)=maybe (Left "transport snapshot field is missing") Right (KM.lookup key fields)
       field _ _=Left "transport snapshot is not an object"
       fingerprint key snapshot=field key snapshot >>= \value -> case value of
@@ -190,6 +197,7 @@ transportComparison plan beforeNames before afterNames after = do
       available value=value
   oldProgram<-fingerprint "programDigest" old
   newProgram<-fingerprint "programDigest" new
+  sourceProgram<-fingerprint "programDigest" source
   oldDefinitions<-fingerprint "definitionPlaneDigest" old
   newDefinitions<-fingerprint "definitionPlaneDigest" new
   oldLaws<-fingerprint "lawBodiesDigest" old
@@ -197,10 +205,10 @@ transportComparison plan beforeNames before afterNames after = do
   oldPolicies<-field "domainPolicies" old
   newPolicies<-field "domainPolicies" new
   let matched=oldDefinitions==newDefinitions && oldLaws==newLaws
-  pure (object ["status" .= (if matched then "matched" else "not-established"::String),
+  pure (aligned,object ["status" .= (if matched then "matched" else "not-established"::String),
     "version" .= (1::Int),"algorithm" .= ("sha256"::String),"machineBits" .= C.programMachineBits before,
     "scope" .= ("complete checked concrete Core after certified payload transport; body matching excludes input-domain policies"::String),
-    "copyValidated" .= True,"originalsUnchanged" .= True,
+    "copyValidated" .= True,"originalsUnchanged" .= True,"sourceBeforeDigest" .= sourceProgram,
     "catalogOrdering" .= ("aligned by checked type identity; field and predicate order retained"::String),
     "assumptions" .= ["External adapters and handlers must respect the same value transport; native conformance remains separate."::String],
     "program" .= result oldProgram newProgram,"definitionPlane" .= result oldDefinitions newDefinitions,

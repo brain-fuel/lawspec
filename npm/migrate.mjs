@@ -52,7 +52,7 @@ export async function migrationReport(compiler, config, input) {
     baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax,
       coreSnapshot:syntax.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'} },
     sourcePreview,
-    correspondence:{...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot),
+    correspondence:{...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,payloadComparison.executableTransport),
       payloads:payloadComparison},
     domainPolicyChanges: laws.map(law => ({law:law.id,from:law.inputDomain,to:'universal',
       requirement:'Establish domain correspondence, including empty and dependent domains, before validating this migration.'})),

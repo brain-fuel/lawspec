@@ -240,7 +240,8 @@ declarations = joinWith (softbreak <> softbreak)
   , alias "MigrationCoreTransport"
       [text "MigrationPending", record ([("status",union (map quoted ["matched","not-established"])),("version",text "1"),
           ("algorithm",quoted "sha256"),("machineBits",union [text "32",text "64"]),("scope",text "string"),
-          ("copyValidated",text "true"),("originalsUnchanged",text "true"),("catalogOrdering",text "string"),("assumptions",text "string[]")] ++
+          ("copyValidated",text "true"),("originalsUnchanged",text "true"),("sourceBeforeDigest",text "string"),
+          ("catalogOrdering",text "string"),("assumptions",text "string[]")] ++
         [(name,record [("status",union (map quoted ["matched","not-established"])),("before",text "string"),("after",text "string")]) |
           name<-["program","definitionPlane","lawBodies"]] ++
         [("domainPolicies",record [("status",union (map quoted ["matched","not-established"])),

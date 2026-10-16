@@ -8,16 +8,18 @@ import qualified Data.Binary as Binary
 import Data.IORef
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as M
+import qualified Data.Vector as Vector
 import qualified LawSpec.Core as C
 import qualified LawSpec.Compile as Compile
 import qualified LawSpec.Frontend as Frontend
 import LawSpec.Core.Definitions (prepareHookedDefinitions,prepareDefinitions)
-import LawSpec.Core.Migration (normalizedProgram,transformProgram)
+import LawSpec.Core.Migration (normalizedProgram,transformProgram,migrationSnapshot)
 import LawSpec.Core.PayloadTransport
 import LawSpec.Core.Value (Value(..),compareValues)
 import qualified LawSpec.Core.Value as CV
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.MigrationPayloads (payloadCorrespondenceWithPlan)
+import LawSpec.MigrationDomains (withTransportDomains)
 import LawSpec.Model (Source(..),defaultGeneration)
 import LawSpec.Scalar (Scalar(..))
 import System.IO.Unsafe (unsafePerformIO)
@@ -40,6 +42,13 @@ pair bits old new=do
 
 field key (Object value)=KM.lookup key value
 field _ _=Nothing
+domainRows key view=case field key view >>= field "inputDomains" >>= field "domains" of
+  Just (Array rows)->Vector.toList rows
+  _->[]
+domainComparison bits before after=do
+  (plan,old,new)<-pair bits before after
+  (copy,view)<-either fail pure (transportComparisonWithProgram plan [] old [] new)
+  pure (withTransportDomains [] copy [] new view)
 correspondence bits old new=do
   (plan,before,after)<-pair bits old new
   either fail pure (transportComparison plan [] before [] after)
@@ -76,6 +85,45 @@ runObserved program = do
   pure (observed,answer)
 
 test_payloadTransport=describe "checked executable payload transport" $ do
+  it "anchors the validated comparison copy to both original admitted programs" $ do
+    (plan,old,new)<-pair 64 (oldType++oldMake) (newType++newMake)
+    let original=Binary.encode old
+    (copy,view)<-either fail pure (transportComparisonWithProgram plan [] old [] new)
+    before<-either fail pure (migrationSnapshot False [] old)
+    after<-either fail pure (migrationSnapshot True [] new)
+    field "sourceBeforeDigest" view `shouldBe` field "programDigest" before
+    (field "after" view >>= field "programDigest") `shouldBe` field "programDigest" after
+    Binary.encode old `shouldBe` original
+    validateProgram copy `shouldBe` Right ()
+  it "verifies input tuples independently on both transported representations" $
+    forM_ [32,64] $ \bits -> do
+      view<-domainComparison bits (oldType++"law `same` is definition is `for all` (value :: Capsule) . value = value end end")
+        (newType++"law \"|same| is definition: for all (value :: Capsule) => value = value end end end")
+      let before=domainRows "before" view; after=domainRows "after" view
+      length before `shouldBe` 1
+      map (field "status") before `shouldBe` [Just (String "inhabited")]
+      map (field "domainDigest") before `shouldBe` map (field "domainDigest") after
+      map (field "status") after `shouldBe` [Just (String "inhabited")]
+  it "retains changed transitive restriction dependencies after transport" $ do
+    let before=oldType++"definition allowed (value :: Capsule) :: Bool is value.last end\n"++
+          "law `same` is definition is `for all` (value :: Capsule where allowed value) . value = value end end"
+        after=newType++"function allowed (value :: Capsule) -> Bool is not value.value.last end function\n"++
+          "law \"|same| is definition: for all (value :: Capsule where allowed value) => value = value end end end"
+    view<-domainComparison 64 before after
+    map (field "status") (domainRows "before" view) `shouldBe` [Just (String "inhabited")]
+    map (field "status") (domainRows "after" view) `shouldBe` [Just (String "inhabited")]
+    map (field "domainDigest") (domainRows "before" view) `shouldNotBe` map (field "domainDigest") (domainRows "after" view)
+  it "retains complete empty input domains rather than inventing transported witnesses" $ do
+    view<-domainComparison 64 (oldType++"law `same` is definition is `for all` (value :: Capsule where false) . value = value end end")
+      (newType++"law \"|same| is definition: for all (value :: Capsule where false) => value = value end end end")
+    map (field "status") (domainRows "before" view) `shouldBe` [Just (String "empty")]
+    map (field "status") (domainRows "after" view) `shouldBe` [Just (String "empty")]
+  it "does not evaluate a false law body while establishing its input domain" $ do
+    view<-domainComparison 64 (oldType++"law `same` is definition is `for all` (value :: Capsule) . value = value end end")
+      (newType++"law \"|same| is definition: for all (value :: Capsule) => false end end end")
+    (field "lawBodies" view >>= field "status") `shouldBe` Just (String "not-established")
+    map (field "status") (domainRows "after" view) `shouldBe` [Just (String "inhabited")]
+    (field "after" view >>= field "inputDomains" >>= field "lawBodiesEvaluated") `shouldBe` Just (Bool False)
   it "preserves complete Core byte-for-byte under an identity traversal" $ do
     forM_ ["examples/specs/abilities.lawspec","examples/specs/failures.lawspec",
         "test/fixtures/migration-chap06-0.24.lawspec"] $ \path -> do

@@ -1,9 +1,10 @@
 -- | Wire projection of input-domain facts. The dependency fingerprint retains
 -- transitive checked dependencies, so nominal references and same-named
 -- predicate calls cannot conceal a changed domain implementation.
-module LawSpec.MigrationDomains (domainSnapshot) where
+module LawSpec.MigrationDomains (domainSnapshot,withTransportDomains) where
 
-import Data.Aeson (Value,object,(.=))
+import Data.Aeson (Value(..),object,(.=))
+import qualified Data.Aeson.KeyMap as KM
 import Data.Binary (encode)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as M
@@ -17,6 +18,21 @@ import LawSpec.Digest (digest,digestHex)
 import LawSpec.Public (valueView)
 import qualified LawSpec.Dependencies as Dependencies
 import LawSpec.Scalar (Scalar(..))
+
+-- Both snapshots use their admitted Core representation. The source side here
+-- is the mandatory-validated transport copy, never a reinterpretation of the
+-- original serialized witness. Law bodies are not evaluated by this evidence.
+withTransportDomains :: [(C.Id,String)] -> C.Program -> [(C.Id,String)] -> C.Program -> Value -> Value
+withTransportDomains beforeNames before afterNames after (Object fields) =
+  Object (adjust (attach False beforeNames before) "before"
+    (adjust (attach True afterNames after) "after" fields))
+  where
+    adjust f key values=maybe values (\value -> KM.insert key (f value) values) (KM.lookup key values)
+    attach canonical names program (Object snapshot) = Object (KM.insert "inputDomains" evidence snapshot)
+      where evidence=either (\reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]) id
+              (domainSnapshot canonical names program)
+    attach _ _ _ value=value
+withTransportDomains _ _ _ _ value=value
 
 domainSnapshot :: Bool -> [(C.Id,String)] -> C.Program -> Either String Value
 domainSnapshot canonical names program = do

@@ -552,6 +552,7 @@ export type MigrationCoreTransport =
       scope: string;
       copyValidated: true;
       originalsUnchanged: true;
+      sourceBeforeDigest: string;
       catalogOrdering: string;
       assumptions: string[];
       program: {

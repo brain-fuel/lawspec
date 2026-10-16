@@ -179,9 +179,17 @@ That is population-policy correspondence, not verification of the law or the
 complete migration. Abstract reusable-law domains still need their own evidence.
 
 Chapter 6 currently has verified input tuples for all 23 concrete domains.
-Seventeen population-policy changes have matching dependencies; six remain
-unestablished because they reach changed payload shapes. These domain facts do
-not discharge Chapter 6's laws, payload correspondence or native bindings.
+Seventeen population-policy changes have matching dependencies directly. Six
+more match after the certified payload transport. The compiler independently
+checks inputs on the mandatory-validated comparison copy and the canonical
+program; it does not reinterpret serialized old witnesses. `sourceBeforeDigest`
+anchors that copy to the original admitted program, and its target fingerprint
+must match the actual canonical snapshot. Witnesses from this comparison are
+labeled `transported-before-and-canonical-after`. Changed transitive predicates,
+empty domains, incomplete searches and stale anchors cannot clear a changed
+population policy. The report retains independent direct matches when transport
+evidence is unavailable. These domain facts do not discharge Chapter 6's laws,
+unused reusable-law schemes, native bindings or complete migration.
 
 This preview is a step toward the complete project transformation. The report
 keeps `validated: false` and lists the remaining correspondence gates.
