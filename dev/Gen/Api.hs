@@ -269,13 +269,19 @@ declarations = joinWith (softbreak <> softbreak)
           ("machineBits",union [text "32",text "64"]),("lawBodiesEvaluated",text "false")] ++
           fields [("scope","string"),("domains","MigrationInputDomain[]")]),
         record [("status",quoted "unavailable"),("reason",text "string")]]
+  , interface "MigrationTemplateDomainAnchors" (fields [("declarationsDigest","string"),
+      ("definitionTemplatesDigest","string"),("lawTemplatesDigest","string"),("lawBodiesDigest","string")])
+  , alias "MigrationTemplateDomainSnapshot"
+      [group (text "MigrationDomainSnapshot &" <> softline <>
+        record [("status",quoted "available"),("sourceTemplates",text "MigrationTemplateDomainAnchors")])]
   , alias "MigrationTemplateSnapshot"
       [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),
           ("machineBits",union [text "32",text "64"])] ++
           fields [("scope","string"),("declarationsDigest","string"),("definitionTemplatesDigest","string"),
             ("lawTemplatesDigest","string"),("lawBodiesDigest","string")] ++
           [(name,array (record (fields [("comparisonId","string"),("digest","string")]))) | name<-["units","definitions","laws"]] ++
-          [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))]))])
+          [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))])),
+           ("inputDomains?",text "MigrationTemplateDomainSnapshot")])
       , record [("status",quoted "unavailable"),("reason",text "string")]]
   , alias "MigrationSemanticSnapshot"
       [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),

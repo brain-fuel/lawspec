@@ -32,11 +32,22 @@ function compareTemplates(before,after,machineBits) {
   const checks=Object.fromEntries(templateComponents.map(([field,name])=>[name,
     before[field]===after[field]?{status:'matched',basis:'matching-checked-source-template-fingerprints'}:
       {status:'not-established',reason:'The checked source-template '+name+' fingerprints differ.'}]));
-  const policiesEqual=JSON.stringify(before.domainPolicies)===JSON.stringify(after.domainPolicies);
-  return {status:policiesEqual&&Object.values(checks).every(check=>check.status==='matched')?'matched':'not-established',
+  // Domain evidence belongs to the complete source capture that produced it.
+  // A concrete-Core witness, stale capture, or one chosen law parameter is
+  // insufficient for a reusable template's uniform input population.
+  const anchored=value=>{
+    const evidence=value.inputDomains;
+    return {...value,inputDomains:templateComponents.every(([field])=>evidence?.sourceTemplates?.[field]===value[field])?
+      evidence:undefined};
+  };
+  const policies=compareDomainPolicies(anchored(before),anchored(after));
+  if(checks.laws.status!=='matched'&&checks.lawBodies.status==='matched'&&policies.status==='matched') {
+    checks.laws={status:'matched',basis:'matching-policy-erased-source-templates-and-verified-input-domains'};
+  }
+  return {status:policies.status==='matched'&&Object.values(checks).every(check=>check.status==='matched')?'matched':'not-established',
     scope:'pre-specialization checked source templates',...checks,
     lawBodies:{...checks.lawBodies,includesDomainPolicy:false},
-    domainPolicies:{status:policiesEqual?'matched':'not-established',before:before.domainPolicies,after:after.domainPolicies},
+    domainPolicies:policies,
     differences:differences(before,after,['units','definitions','laws'])};
 }
 

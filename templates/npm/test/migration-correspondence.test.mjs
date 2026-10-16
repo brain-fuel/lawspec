@@ -311,3 +311,100 @@ test('actual changed checked predicates invalidate matching-looking domain names
   assert.notEqual(before.migrationSemantics.inputDomains.domains[0].domainDigest,after.migrationSemantics.inputDomains.domains[0].domainDigest);
   assert.equal(compareMigrationSnapshots(before.migrationSemantics,after.migrationSemantics).domainPolicies.status,'not-established');
 });
+
+
+const templateAnchors=value=>Object.fromEntries(
+  ['declarationsDigest','definitionTemplatesDigest','lawTemplatesDigest','lawBodiesDigest'].map(key=>[key,value[key]]));
+function templatePair() {
+  const before={...templates,domainPolicies:[{comparisonId:domain.comparisonId,policy:'nonempty'}]};
+  const after={...before,lawTemplatesDigest:'7'.repeat(64),domainPolicies:[{comparisonId:domain.comparisonId,policy:'universal'}]};
+  for(const value of [before,after]) value.inputDomains={...domainSnapshot(domain),sourceTemplates:templateAnchors(value)};
+  return [before,after];
+}
+const templateComparison=(before,after)=>compareMigrationSnapshots(
+  {...snapshot,machineBits:before.machineBits,sourceTemplates:before},
+  {...snapshot,machineBits:after.machineBits,sourceTemplates:after}).sourceTemplates;
+
+test('uniform source-template input evidence clears population policy without claiming law verification',()=>{
+  const [before,after]=templatePair(),compared=templateComparison(before,after);
+  assert.equal(compared.domainPolicies.status,'matched');
+  assert.equal(compared.domainPolicies.domains[0].status,'matched');
+  assert.equal(compared.domainPolicies.lawVerification,'not-established-by-domain-evidence');
+  assert.equal(compared.laws.status,'matched');
+  assert.equal(compared.status,'matched');
+  const complete=compareMigrationSnapshots({...snapshot,sourceTemplates:before},{...snapshot,sourceTemplates:after});
+  for(const key of ['status','nativeBindings','generatedBehavior']) {
+    assert.equal(key==='status'?complete[key]:complete[key].status,'not-established');
+  }
+});
+
+test('source-template evidence cannot be transplanted across captures or widths',()=>{
+  const [before,after]=templatePair();
+  const evidence=after.inputDomains;
+  const invalid=[undefined,domainSnapshot(domain),{...evidence,sourceTemplates:templateAnchors(before)},
+    {...evidence,version:2},{...evidence,machineBits:32},{...evidence,lawBodiesEvaluated:true},
+    {...evidence,domains:[domain,domain]},
+    ...Object.keys(templateAnchors(after)).map(key=>({...evidence,sourceTemplates:{...evidence.sourceTemplates,[key]:'f'.repeat(64)}}))];
+  for(const inputDomains of invalid) {
+    assert.equal(templateComparison(before,{...after,inputDomains}).domainPolicies.status,'not-established');
+  }
+});
+
+test('generic, empty, incomplete or parameter-dependent source domains cannot clear a policy change',()=>{
+  const [before,after]=templatePair();
+  for(const row of [{...domain,status:'unsupported',witness:undefined,complete:false},
+    {...domain,status:'incomplete',witness:undefined,complete:false},
+    {...domain,status:'empty',witness:undefined,complete:true},
+    {...domain,domainDigest:'f'.repeat(64)},{...domain,inputCount:2},{...domain,witness:[]}]) {
+    const compared=templateComparison(before,{...after,inputDomains:{...after.inputDomains,domains:[row]}});
+    assert.equal(compared.domainPolicies.status,'not-established');
+    assert.equal(compared.laws.status,'not-established');
+  }
+});
+
+test('domain evidence never hides a changed source body or unused definition',()=>{
+  const [before,after]=templatePair();
+  for(const key of ['lawBodiesDigest','definitionTemplatesDigest','declarationsDigest']) {
+    const changed={...after,[key]:'f'.repeat(64)};
+    changed.inputDomains={...after.inputDomains,sourceTemplates:templateAnchors(changed)};
+    assert.equal(templateComparison(before,changed).status,'not-established');
+  }
+});
+
+test('actual reusable source domains report uniform, dependent and generic limits at both widths',async()=>{
+  for(const machineBits of [32,64]) {
+    const oldClaim='`for all` (value :: Bool) . operation value = value';
+    const newClaim='for all (value :: Bool) => operation value must be value end';
+    const oldSource='unit uniform\nlaw `domain` (operation :: Bool -> Bool) is definition is '+oldClaim+' end end';
+    const newSource='unit uniform\nlaw \"|domain| (operation :: Bool -> Bool) is definition: '+newClaim+' end end';
+    const old=await compiler.migrationBaseline({...options,machineBits,from:'0.24',sources:[{path:'uniform.lawspec',content:oldSource}]});
+    const next=await compiler.check({...options,machineBits,migrationSnapshot:true,sources:[{path:'uniform.lawspec',content:newSource}]});
+    for(const result of [old,next]) assert.deepEqual(result.diagnostics,[]);
+    const a=old.migrationSemantics.sourceTemplates,b=next.migrationSemantics.sourceTemplates;
+    for(const value of [a,b]) {
+      assert.equal(value.inputDomains.lawBodiesEvaluated,false);
+      assert.deepEqual(value.inputDomains.sourceTemplates,templateAnchors(value));
+      assert.equal(value.inputDomains.domains.length,value.laws.length);
+      assert.equal(value.inputDomains.domains.find(row=>row.comparisonId==='uniform::law::domain').status,'inhabited');
+    }
+    const compared=templateComparison(a,b);
+    assert.equal(compared.domainPolicies.domains.find(row=>row.comparisonId==='uniform::law::domain').status,'matched');
+    // Generic prelude laws remain visible; no blanket assumption of inhabitance.
+    assert.equal(compared.status,'not-established');
+    assert.ok(compared.domainPolicies.domains.some(row=>row.status==='not-established'));
+    assert.equal(old.migrationSemantics.domainPolicies.length,0);
+    for(const [content,expected] of [
+      [newSource.replace('(operation :: Bool -> Bool)','(required :: Bool)').replace('(value :: Bool)','(value :: Bool where required)').replace('operation value must be value','true'),'unsupported'],
+      [newSource.replace('(operation :: Bool -> Bool)','(operation :: a -> a) requires Eq a').replace('(value :: Bool)','(value :: a)'),'unsupported'],
+      [newSource.replace('(value :: Bool)','(value :: Bool where false)'),'empty'],
+      [newSource.replace('(value :: Bool)','(value :: Integer where value * value = -1)').replace('operation value must be value','false'),'incomplete'],
+      [newSource.replace('operation value must be value','(1 / 0 :: Integer) = 0'),'inhabited'],
+    ]) {
+      const result=await compiler.check({...options,machineBits,migrationSnapshot:true,sources:[{path:'uniform.lawspec',content}]});
+      assert.deepEqual(result.diagnostics,[]);
+      const row=result.migrationSemantics.sourceTemplates.inputDomains.domains.find(row=>row.comparisonId==='uniform::law::domain');
+      assert.equal(row.status,expected);
+      if(expected!=='inhabited') assert.equal(row.witness,undefined);
+    }
+  }
+});

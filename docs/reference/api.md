@@ -273,6 +273,17 @@ law-body projection alone excludes that policy. This metadata includes unused
 generic definitions and reusable laws. It is comparison evidence, not execution
 or law-verification evidence.
 
+A source-template snapshot can also contain `inputDomains`. Its domain snapshot
+adds a `sourceTemplates` object containing all four template digests above;
+clients must match these anchors to the surrounding capture before using its
+rows. Concrete laws reuse their admitted input-domain facts. Reusable laws use
+the ordinary compiler and checked evaluator to analyze their input restrictions
+with the law body removed. A witness must work uniformly over admissible law
+parameters: parameter-dependent restrictions remain `unsupported` rather than
+sampling one function argument. Generic domains can also remain unsupported.
+Unused prelude laws remain in the capture and retain these limits. Neither a
+witness nor a complete empty-domain result verifies the law's proposition.
+
 `inputDomains` is another optional, versioned snapshot at the program's machine
 width. Available results have `lawBodiesEvaluated: false` and a `domains` array.
 Each entry includes `comparisonId`, `domainDigest`, `inputCount`, `search`,

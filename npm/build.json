@@ -380,6 +380,7 @@
     "src/LawSpec/Memo.hs",
     "src/LawSpec/MigrationDomains.hs",
     "src/LawSpec/MigrationPayloads.hs",
+    "src/LawSpec/MigrationTemplateDomains.hs",
     "src/LawSpec/MigrationTemplates.hs",
     "src/LawSpec/Model.hs",
     "src/LawSpec/ModelTests.hs",
@@ -490,7 +491,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "32b40834ed6f58d5290af56b62037426cb5868b4d4fa2ee6de0aa541a494199f",
-    "lawspec.cabal": "b061d1ec6aa4a458ce2e321bd032c0c4a9d408a2bec6358dce6b8ecdddcd8f1d",
+    "lawspec.cabal": "c58965d12c5112e5418b196b2ee4e193ebbab1a1d6ea59909c500561151a2507",
     "package.yaml": "8f340b6e338af7793afb1f13c4feab28eeddc4c3b2754bff181f9460406962f9",
     "runtime/LawSpecCodecs.hs": "4109ac35634ab4c226b5464e824b03b90014a6b44426b5c33e34c6608d0bea70",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
@@ -717,7 +718,7 @@
     "src/LawSpec/Actors/Scala.hs": "6a034fb96983fd11b8714d5c6b8c09b5cb24ceb06977b52010c2424a51b60f38",
     "src/LawSpec/Actors/Types.hs": "09f764a8da926f00817a0de0f17a03d48194c819a3c64aca78c96b19d38ac823",
     "src/LawSpec/Actors/Web.hs": "b8a63be30754569d7b150d454e656b4089a63e2f913bb2276ba722e2529e185d",
-    "src/LawSpec/Api.hs": "34e4d5f27b28f4f080280ee9be2e19e251ea1416c4eb3ffea39527900139aa37",
+    "src/LawSpec/Api.hs": "934ef057605420c733f9028e4e1d20f4d67d5e84053a1c96fb344ff31f522f8a",
     "src/LawSpec/Attestation.hs": "55ac5bca528ef22cd29762cf2b3c226c2b4e18a50a667aac6d74a36be78bd62c",
     "src/LawSpec/Backend.hs": "2b707ebc5a9ad32e7783caa7041ebfdd4fe22bd73cbff136dc5344cff33d59d5",
     "src/LawSpec/BeamAbilities.hs": "958d34b7a8808dbe4f5fad6a5b6b922651ac1659f2dc6bcf7189732dc4e2d823",
@@ -823,7 +824,7 @@
     "src/LawSpec/Emit.hs": "b4e67bb1fd0f5acfd1864516be417c5d560aaf147d2a86a6f1360a61fd58b2ba",
     "src/LawSpec/Eval.hs": "441bb211945a09fbbe03641e7f2ee4d321699c068909d6be80b3f8fb28adb3ea",
     "src/LawSpec/Flow.hs": "01c840c6045a2ded8a334947ac3d48f167c49f77bc69ba9c6536860e209f1a87",
-    "src/LawSpec/Frontend.hs": "028cec929f42915c9a657e5c52c6a5fbf8fdd525106c38cafe981a73dedced4d",
+    "src/LawSpec/Frontend.hs": "69abcbf56ed829b89ea80577b9f9fc0412b7eeaf8b1adc51264f3850e1671192",
     "src/LawSpec/GleamCode.hs": "49d34079b19593079c768b5c6fd7b38d2c339568c296d8370b955afb28635f9d",
     "src/LawSpec/GleamNative.hs": "e65ad6b24c5dfeba893b24efbb867e0d8d011ed525cb47a76eac0977f758b9ec",
     "src/LawSpec/GoData.hs": "260d7d11bdf0efe892428cbd0df90c4c1c8092b748a5de7ac6d2e2a5073115eb",
@@ -868,6 +869,7 @@
     "src/LawSpec/Memo.hs": "82b1ef6e0472f5df641f9860abc6d8eb1e3834b4c5a54a6f2ec8abfda43d4a15",
     "src/LawSpec/MigrationDomains.hs": "3d251df3f12281299babfaada92a2c8c6bf7c65afd9592cfb8218ce3d1058aea",
     "src/LawSpec/MigrationPayloads.hs": "a9f6fcc6fe70c18e160f7e3c1a71aa13d8ae408546af89bc8c9caf2639428109",
+    "src/LawSpec/MigrationTemplateDomains.hs": "dee92d5642f24449275cc4cb3570e58c5b2a7f61b75928e4c3831a28b2b20287",
     "src/LawSpec/MigrationTemplates.hs": "b40317e88d0f0d2e945cefa0adc6cb11b2a38e667a52aebb2cf1d4a602fa0f54",
     "src/LawSpec/Model.hs": "d5df3c2e7b738cb504f46e1c4232dadef0e9a08ba38b28880dce92112f86cfd1",
     "src/LawSpec/ModelTests.hs": "8385c70983780cdcf30e38f9ac4d3c348fb92b3d979985dab88520b4a07e4ede",
@@ -975,9 +977,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "9548ce13ed18d81a2d2da03bb88577c9c1cb5c58078aa81f65fc494d07c28eee",
+    "npm/core.wasm": "85f8e41bb52b4066a4f0ad8b0e6ce88d438e8877486c5ad1b4a49a00d72ed97f",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "0bc724149ec4e6d7ca8c4ea08390a457f57fac103974c2b5041a62c3f64ed9db",
-    "npm/index.d.ts": "55f3a3cd5b36244584840b1136d886a751c092401c44078f3348418b479acc82"
+    "npm/index.d.ts": "7b7fd24b24501f4482d9fbb8089090a0e74dce26875de40d431621a0dc95e01d"
   }
 }

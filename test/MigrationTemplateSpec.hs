@@ -93,3 +93,91 @@ test_migrationTemplates = describe "checked source template migration capture" $
     before <- accepted (source "ability Clock is tick :: Bool -> Bool end\ndefinition same (value :: a) :: a uses Clock is value end")
     after <- accepted (source "ability Clock is tick :: Bool -> Bool end\ndefinition same (value :: a) :: a is value end")
     digest "declarationsDigest" before `shouldNotBe` digest "declarationsDigest" after
+
+  describe "source-template input domains" $ do
+    let domains result = case templates result >>= field "inputDomains" >>= field "domains" of
+          Just (Array values) -> V.toList values
+          _ -> []
+        selected result = case filter (\row -> field "comparisonId" row==Just (String "templates::law::domain")) (domains result) of
+          [row] -> pure row
+          _ -> fail "expected exactly one source-template input domain"
+        reusable inputs claim = source ("law `domain` (operation :: Bool -> Bool) is definition is `for all` " ++ inputs ++ " . " ++ claim ++ " end end")
+        status result = selected result >>= \row -> pure (field "status" row)
+    it "anchors every domain row to the full admitted source-template capture" $ do
+      result <- accepted (reusable "(value :: Bool)" "operation value = value")
+      let evidence = templates result >>= field "inputDomains"
+      (evidence >>= field "lawBodiesEvaluated") `shouldBe` Just (Bool False)
+      mapM_ (\key -> (evidence >>= field "sourceTemplates" >>= field key) `shouldBe` digest key result)
+        ["declarationsDigest","definitionTemplatesDigest","lawTemplatesDigest","lawBodiesDigest"]
+      length (domains result) `shouldBe` length (rows "laws" result)
+    it "establishes a uniform Bool witness without choosing a law function parameter" $ do
+      result <- accepted (reusable "(value :: Bool)" "operation value = value")
+      status result `shouldReturn` Just (String "inhabited")
+      (core result >>= field "domainPolicies") `shouldBe` Just (Array mempty)
+    it "reuses a concrete input tuple without executing a false law" $ do
+      result <- accepted (source "law `domain` is definition is `for all` (value :: Bool) . false end end")
+      status result `shouldReturn` Just (String "inhabited")
+    it "does not execute an undefined reusable-law body" $ do
+      result <- accepted (reusable "(value :: Bool)" "(1 / 0 :: Integer) = 0")
+      status result `shouldReturn` Just (String "inhabited")
+    it "requires a uniform witness when input restrictions depend on a law parameter" $ do
+      result <- accepted (source "law `domain` (required :: Bool) is definition is `for all` (value :: Bool where required) . true end end")
+      status result `shouldReturn` Just (String "unsupported")
+      row <- selected result
+      field "complete" row `shouldBe` Just (Bool False)
+    it "keeps a generic element domain unsupported rather than inventing a value" $ do
+      result <- accepted (source "law `domain` (operation :: a -> a) requires Eq a is definition is `for all` (value :: a) . operation value = value end end")
+      status result `shouldReturn` Just (String "unsupported")
+    it "records complete emptiness independently of a false law body" $ do
+      result <- accepted (reusable "(value :: Bool where false)" "false")
+      status result `shouldReturn` Just (String "empty")
+      row <- selected result
+      field "complete" row `shouldBe` Just (Bool True)
+    it "preserves dependent input order and restrictions" $ do
+      result <- accepted (reusable "(first :: Bool where first) (second :: Bool where second == first)" "false")
+      status result `shouldReturn` Just (String "inhabited")
+      row <- selected result
+      field "inputCount" row `shouldBe` Just (Number 2)
+    it "retains checked predicate dependencies behind the same reusable domain" $ do
+      let body predicate=source ("definition allowed (value :: Bool) :: Bool is " ++ predicate ++ " end\n" ++
+            "law `domain` (operation :: Bool -> Bool) is definition is `for all` (value :: Bool where allowed value) . operation value = value end end")
+      before <- accepted (body "value") >>= selected
+      after <- accepted (body "value == false") >>= selected
+      field "status" before `shouldBe` Just (String "inhabited")
+      field "status" after `shouldBe` Just (String "inhabited")
+      field "domainDigest" before `shouldNotBe` field "domainDigest" after
+
+    it "does not confuse an input shadowing a law parameter with a dependency on that parameter" $ do
+      result <- accepted (reusable "(operation :: Bool where operation)" "operation = operation")
+      status result `shouldReturn` Just (String "inhabited")
+    it "records a bounded miss without claiming complete emptiness" $ do
+      result <- accepted (reusable "(value :: Integer where value * value == -1)" "false")
+      status result `shouldReturn` Just (String "incomplete")
+      row <- selected result
+      field "complete" row `shouldBe` Just (Bool False)
+      field "witness" row `shouldBe` Nothing
+    it "supports the one empty input tuple uniformly without evaluating generic law parameters" $ do
+      result <- accepted (source "law `domain` (operation :: a -> a) is definition is true end end")
+      status result `shouldReturn` Just (String "inhabited")
+      row <- selected result
+      field "inputCount" row `shouldBe` Just (Number 0)
+      field "witness" row `shouldBe` Just (Array mempty)
+
+    it "retains unused polymorphic constructor fields in the domain-only program" $ do
+      result <- accepted (source ("type Box (a :: Type) is Box value :: a end\n" ++
+        "law `domain` (operation :: Bool -> Bool) is definition is `for all` (value :: Box Bool) . false end end"))
+      status result `shouldReturn` Just (String "inhabited")
+      row <- selected result
+      field "witness" row `shouldSatisfy` (/= Nothing)
+    it "checks intrinsic field restrictions of unused nominal constructors" $ do
+      result <- accepted (source ("type Positive is Positive value :: (n :: UInt8 where n > 0) end\n" ++
+        "law `domain` (operation :: Bool -> Bool) is definition is `for all` (value :: Positive) . false end end"))
+      status result `shouldReturn` Just (String "inhabited")
+      row <- selected result
+      case field "witness" row of
+        Just (Array bindings) | [binding] <- V.toList bindings ->
+          case field "value" binding >>= field "fields" of
+            Just (Array values) | [value] <- V.toList values ->
+              field "value" value `shouldSatisfy` (\case Just (Number n) -> n > 0; Just (String n) -> n /= "0"; _ -> False)
+            _ -> expectationFailure "missing intrinsic field witness"
+        _ -> expectationFailure "missing input witness"

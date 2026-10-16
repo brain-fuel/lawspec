@@ -1,8 +1,9 @@
 -- | The only bridge from checked surface syntax to the typed core. Targets never
 -- receive TypedExpr's source tree or perform contextual literal inference.
-module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateCanonical, elaborateExpression) where
+module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateCanonical, elaborateWithSourceDeclarations, elaborateExpression) where
 import qualified LawSpec.Model as S
 import qualified LawSpec.Compile as S
+import qualified LawSpec.SourceContext as Source
 import LawSpec.Inference (monoEnvironment)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.EqSet as EqSet
@@ -47,9 +48,11 @@ compileCoreCanonical bits settings sources = do
 -- Source names differ across profiles; nominal identities and checked bodies
 -- remain stable. All consumers receive the same canonical typed metadata.
 elaborateCanonical :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
-elaborateCanonical bits units properties = names <$> elaborate bits units properties
+elaborateCanonical bits units properties = canonicalNames <$> elaborate bits units properties
+
+canonicalNames :: C.Program -> C.Program
+canonicalNames program = program{C.programDataDeclarations=map name (C.programDataDeclarations program)}
   where
-    names program = program{C.programDataDeclarations=map name (C.programDataDeclarations program)}
     name declaration
       | C.dataId declaration == EqSet.eqSetTypeId = declaration{C.dataName="Set"}
       | C.dataId declaration == C.Id "lawspec.collections::type::Set" = declaration{C.dataName="SortedSet"}
@@ -97,6 +100,14 @@ materializeExampleBindings program
 elaborate :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
 elaborate bits units properties = do
   (dataDeclarations,sourceTypes) <- elaborateDataDeclarationsWithContext bits units
+  elaborateWithSourceDeclarations False sourceTypes dataDeclarations bits units properties
+
+-- | Migration captures retain complete unused constructor fields. Analyze
+-- their input domains through the ordinary lowering and mandatory validator,
+-- without rebuilding a sparse declaration context from the executable roots.
+elaborateWithSourceDeclarations :: Bool -> Source.SourceContext -> [C.DataDeclaration]
+  -> Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
+elaborateWithSourceDeclarations canonical sourceTypes dataDeclarations bits units properties = do
   collected <- mapM (unit sourceTypes dataDeclarations) units
   let elaborated = C.Program bits (appendRecords dataDeclarations (concatMap snd collected)) (map fst collected)
   normalized <- normalizeProgramRecords elaborated
@@ -108,7 +119,7 @@ elaborate bits units properties = do
   -- Audit every occurrence before interning: a duplicate descriptor must not
   -- hide an ill-defined source ordering of constructor restrictions.
   interned <- contextual Nothing (internRecordDeclarations (C.programDataDeclarations core))
-  pure core{C.programDataDeclarations=interned}
+  pure ((if canonical then canonicalNames else id) core{C.programDataDeclarations=interned})
   where
     appendRecords known [] = known
     appendRecords known records = known ++ records

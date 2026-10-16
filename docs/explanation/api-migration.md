@@ -154,6 +154,21 @@ prefix, preserving their argument text. Other source-shape differences remain
 conservative blockers. Neither a template match nor a concrete Core match
 establishes native binding or generated-behavior correspondence.
 
+The optional `sourceTemplates.inputDomains` snapshot supplies domain-only rows
+for those same expanded templates, including reusable laws without executable
+instances. All four surrounding source-template digests anchor the evidence.
+The compiler reuses concrete input tuples where available and otherwise lowers
+a domain-only copy through its ordinary specialization and mandatory checks.
+It does not evaluate a law body or choose one sample function for a law
+parameter. Parameter-dependent restrictions and unsupported generic domains
+remain explicit blockers. Matching domain dependencies and verified uniform
+input witnesses can justify an individual population-policy change; the full
+policy-erased template must still match before its laws correspond. Complete
+empty domains, bounded misses and unavailable searches cannot justify the
+change. Unused generic prelude laws remain visible, so one matched concrete or
+reusable domain does not clear the entire source-template gate. The migration
+writer remains unvalidated.
+
 `domainPolicyChanges` records legacy nonempty input-domain handling versus
 canonical universal quantification. Empty and dependent domains require
 explicit correspondence checks before the migration can be validated; a

@@ -13,6 +13,16 @@ export function migrationDigests(result: Result): string[] {
     ? [templates.declarationsDigest, templates.definitionTemplatesDigest, templates.lawTemplatesDigest,
       templates.lawBodiesDigest, ...templates.definitions.map(item => item.digest),
       ...templates.laws.map(item => item.comparisonId)] : [];
+  const templateDomains = templates?.status === 'available' ? templates.inputDomains : undefined;
+  if (templateDomains) {
+    const evaluated: false = templateDomains.lawBodiesEvaluated;
+    const anchor: string = templateDomains.sourceTemplates.lawBodiesDigest;
+    const rows: MigrationInputDomain[] = templateDomains.domains;
+    void evaluated; void anchor; void rows;
+    // @ts-expect-error Domain evidence never represents completed law verification.
+    const verified: true = templateDomains.lawBodiesEvaluated;
+    void verified;
+  }
   const inputDomains = snapshot.inputDomains;
   const domainDigests = inputDomains?.status === 'available'
     ? inputDomains.domains.map(domain => {

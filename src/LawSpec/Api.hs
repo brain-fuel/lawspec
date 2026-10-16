@@ -19,6 +19,7 @@ import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Migration as Migration
 import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
+import LawSpec.MigrationTemplateDomains (withTemplateInputDomains)
 import LawSpec.MigrationDomains (domainSnapshot,withTransportDomains)
 import LawSpec.MigrationPayloads (payloadCorrespondenceWithPlan)
 import LawSpec.Core.PayloadTransport (transportComparisonWithProgram)
@@ -223,7 +224,7 @@ withMigrationSemantics canonical units core templates (Object value) = Object
       Nothing -> object ["status" .= ("unavailable"::String),"reason" .= ("checked source templates were not captured"::String)]
       Just captured -> case templateSnapshot canonical captured of
         Left reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]
-        Right fields -> fields
+        Right fields -> withTemplateInputDomains canonical captured core domainFields fields
     domainFields=case domainSnapshot canonical names core of
       Left reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]
       Right fields -> fields

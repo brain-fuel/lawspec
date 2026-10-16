@@ -655,6 +655,17 @@ export type MigrationDomainSnapshot =
     } |
     {status: 'unavailable'; reason: string;};
 
+export interface MigrationTemplateDomainAnchors {
+  declarationsDigest: string;
+  definitionTemplatesDigest: string;
+  lawTemplatesDigest: string;
+  lawBodiesDigest: string;
+}
+
+export type MigrationTemplateDomainSnapshot =
+    MigrationDomainSnapshot &
+    {status: 'available'; sourceTemplates: MigrationTemplateDomainAnchors;};
+
 export type MigrationTemplateSnapshot =
     {
       status: 'available';
@@ -673,6 +684,7 @@ export type MigrationTemplateSnapshot =
         comparisonId: string;
         policy: 'nonempty' | 'universal';
       }[];
+      inputDomains?: MigrationTemplateDomainSnapshot;
     } |
     {status: 'unavailable'; reason: string;};
 

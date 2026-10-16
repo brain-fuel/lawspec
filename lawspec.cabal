@@ -624,6 +624,7 @@ library
       LawSpec.Memo
       LawSpec.MigrationDomains
       LawSpec.MigrationPayloads
+      LawSpec.MigrationTemplateDomains
       LawSpec.MigrationTemplates
       LawSpec.Model
       LawSpec.ModelTests
