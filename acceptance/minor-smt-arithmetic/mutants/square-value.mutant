@@ -1,0 +1,7 @@
+expect: nonnegative
+@@ test/fixtures/canonical-smt-arithmetic.lawspec
+<<<<<<<
+  value * value
+=======
+  value + value
+>>>>>>>

@@ -15,7 +15,7 @@ import LawSpec.Common (Artifact(..), Diagnostic(..), mapArtifactContent)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..))
 import LawSpec.TestNames (unitTestNames, lawWords, kindSuffix)
 import LawSpec.Groovy.Source (groovyLiterals, idiomaticGroovy)
-import LawSpec.Groovy.Spock (spockSpecification, specClassName)
+import LawSpec.Groovy.Spock (spockSpecification, specClassName, needsJavaBody, javaBodySpecification)
 import LawSpec.GroovySources (groovySource)
 
 groovySourceDirectory, groovyTestDirectory :: String
@@ -41,8 +41,13 @@ groovyFromJava plan javaFiles = do
       | Just rest <- stripPrefix "src/test/java/" path, ".java" `isSuffixOf` rest, "@Test" `isInfixOf` artifactContent a =
           let className = takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse rest)))
               directory = take (length rest - length className - 5) rest
-          in [a { artifactPath = groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy"
-                , artifactContent = spockSpecification className (title path) (groovyLiterals (artifactContent a)) }]
+              (body, specification) = javaBodySpecification className (title path) (artifactContent a)
+          in if needsJavaBody (artifactContent a)
+             then [a { artifactPath = "src/test/java/" ++ directory ++ className ++ "Body.java", artifactContent = body },
+                   a { artifactPath = groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy",
+                       artifactContent = specification }]
+             else [a { artifactPath = groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy"
+                     , artifactContent = spockSpecification className (title path) (groovyLiterals (artifactContent a)) }]
       | otherwise = [a]
       where path = artifactPath a
     groovyFile rest = take (length rest - 5) rest ++ ".groovy"

@@ -7,6 +7,7 @@ import { createCompiler } from "../api.mjs";
 import { targets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
 import { migrationReport } from "../migrate.mjs";
+import { proveWithZ3 } from "../proof.mjs";
 import { serveLanguage } from "../lsp.mjs";
 import { explainLaw, explanationViews } from "../explain.mjs";
 import { showScalar } from "../scalars.mjs";
@@ -31,7 +32,7 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report", "--attestation", "--view", "--from"].includes(arg)) {
+  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report", "--attestation", "--view", "--from", "--solver", "--proof-timeout", "--proof-memory", "--proof-rlimit", "--proof-seed"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
@@ -708,7 +709,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check]\n       lawspec migrate --from 0.24 [--write]\n       lawspec lsp --stdio\n       lawspec check | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check]\n       lawspec migrate --from 0.24 [--write]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -748,6 +749,8 @@ async function main() {
     );
     return;
   }
+  if (["solver","proof-timeout","proof-memory","proof-rlimit","proof-seed"].some(key => options[key] !== undefined) && verb !== "prove")
+    throw new Error("Z3 options apply to prove");
   if (options.view && verb !== "explain") throw new Error("--view applies to explain");
   if (options.output) throw new Error("--output is only supported by examples");
   if (options.example) throw new Error("--example is only supported by examples");
@@ -771,7 +774,7 @@ async function main() {
   if (verb === "fmt") return formatCommand();
   if (verb === "init") return init();
   if (verb === "package") return packageCommand();
-  if (!["check", "doctor", "evidence", "explain", "generate", "test"].includes(verb))
+  if (!["check", "doctor", "evidence", "explain", "generate", "test", "prove"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);
   const config = JSON.parse(await readFile(configFile, "utf8"));
   if (
@@ -823,6 +826,22 @@ async function main() {
     machineBits: options.machineBits ?? config.machineBits ?? 64,
   };
   const compiler = await createCompiler();
+  if (verb === "prove") {
+    if (config.version !== 2) throw new Error("prove requires configuration version 2 and languageProfile 1.0-rc.1");
+    const result = diagnostics(await proveWithZ3(compiler, input, {
+      ...(options.solver !== undefined ? {binary: options.solver} : {}),
+      ...Object.fromEntries([["proof-timeout","timeoutMs"],["proof-memory","memoryMb"],
+        ["proof-rlimit","resourceLimit"],["proof-seed","seed"]]
+        .filter(([name]) => options[name] !== undefined).map(([name,key]) => [key,Number(options[name])])),
+    }));
+    output(options.json ? result : result.solverEvidence.length
+      ? result.solverEvidence.map(row => `${row.declaration}: ${row.status} (${row.outcome}). ${row.reason}`).join("\n")
+      : (input.verification?.layers.includes("proof")
+        ? "No source law obligations are available. No solver was invoked."
+        : "No proof layer selected. Intrinsic definition checks passed; no solver was invoked."));
+    if (result.solverEvidence.some(row => row.status !== "proved")) process.exitCode = 2;
+    return;
+  }
   // Each obligation reports how it is discharged, strongest first.
   const statuses = [
     ["proved", "PROVED"],

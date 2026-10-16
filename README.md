@@ -20,6 +20,7 @@ npm as prebuilt WebAssembly, with a Node CLI and a typed JavaScript API.
 - **Indexed families** such as [length-indexed vectors](docs/reference/language/indexed-families.md), with proved indices.
 - **Domain modeling** with [wrappers and workflows](docs/reference/language/domain-modeling.md).
 - **Imports and versioned packages** of [shared laws and types](docs/reference/language/imports-and-packages.md).
+- **Optional Z3 law proofs** through an [explicit solver host](docs/explanation/smt-proof.md), with task identities, limits and outcomes recorded.
 - **Evidence** for every obligation: [proved, exhaustively checked, property tested, runtime checked or assumed](docs/reference/language/evidence-and-discharge.md).
 - **Native bindings** to [your existing domain types and generators](docs/how-to/bind-native-types.md).
 - **Safe regeneration**: [your adapters and build files stay yours](docs/explanation/ownership-and-regeneration.md).

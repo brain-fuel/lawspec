@@ -18,6 +18,10 @@
     ".": {
       "types": "./index.d.ts",
       "import": "./api.mjs"
+    },
+    "./proof": {
+      "types": "./proof.d.ts",
+      "import": "./proof.mjs"
     }
   },
   "types": "index.d.ts",
@@ -25,6 +29,7 @@
              "*.mjs",
              "*.json",
              "index.d.ts",
+             "proof.d.ts",
              "bin",
              "core.wasm",
              "core_jsffi.js",

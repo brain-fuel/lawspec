@@ -714,6 +714,30 @@ export type MigrationSemanticSnapshot =
     } |
     {status: 'unavailable'; reason: string;};
 
+export type ProofTask =
+    {
+      encoding: 'lawspec-smtlib-v1';
+      owner: string;
+      declaration: string;
+      at: Location;
+      programFingerprint: string;
+      machineBits: 32 | 64;
+      status: 'ready';
+      script: string;
+      taskFingerprint: string;
+      trust: string;
+    } |
+    {
+      encoding: 'lawspec-smtlib-v1';
+      owner: string;
+      declaration: string;
+      at: Location;
+      programFingerprint: string;
+      machineBits: 32 | 64;
+      status: 'unsupported';
+      reason: string;
+    };
+
 export interface Result {
   schemaVersion: 3 | 4 | 5;
   machineBits?: 32 | 64;
@@ -735,6 +759,7 @@ export interface Result {
   migrationSemantics?: MigrationSemanticSnapshot;
   migrationComparison?: MigrationPayloadComparison;
   migrationComparisonInput?: 'before' | 'migrated';
+  proofTasks?: ProofTask[];
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;
   packages?: PackageView[];
@@ -793,6 +818,7 @@ export interface Compiler {
   format(input: CheckRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
+  proofTasks(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
   migrationBaseline(input: MigrationRequest): Promise<Result>;
   migrationComparison(input: MigrationComparisonRequest): Promise<Result>;

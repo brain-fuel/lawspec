@@ -16,6 +16,7 @@ import LawSpec.Compile
 import LawSpec.Frontend (elaborate, elaborateCanonical)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), planTesting, planTestingWith)
 import qualified LawSpec.Core.Verification as V
+import qualified LawSpec.Core.Smt as Smt
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Migration as Migration
 import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
@@ -23,7 +24,7 @@ import LawSpec.MigrationTemplateDomains (withTemplateInputDomains)
 import LawSpec.MigrationDomains (domainSnapshot,withTransportDomains)
 import LawSpec.MigrationPayloads (payloadCorrespondenceWithPlan)
 import LawSpec.Core.PayloadTransport (transportComparisonWithProgram)
-import LawSpec.Core.Evidence (Obligation)
+import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
 import LawSpec.Public (programView)
@@ -57,18 +58,41 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
         in withMigrationSemantics False us core templates $ withMigrationSyntax syntax $ withAttestation attestation core obligations $ withVerification verification $
           withPackages project described (programView settings us (map prettyExpanded es) [] obligations (C.lowerProgramFields core))
    else
-   -- Compilation, evidence and the testing plan depend on neither the method
-   -- nor the target, so a compiler asked for several targets does them once.
-   case (if snapshotRequested then fst <$> memoized syntaxStagesTable ("canonical:" ++ sharedRequest bytes)
-          (stagesWithInput True True project packages sources bits settings native verification)
-        else memoized stagesTable (sharedRequest bytes) (stages project packages sources bits settings native verification)) of
+   -- Typed compilation is shared across targets. SMT task preparation has a
+   -- separate key because it prepares, rather than executes, optional proofs.
+   let taskMethod = method == "proofTasks"
+       -- Task preparation does not run the older optional law prover. Intrinsic
+       -- definition admission remains in compilation, independently of this.
+       stageVerification = if taskMethod then fmap (\config -> V.Verification
+         (filter (/= V.Proof) (V.verificationLayers config))) verification else verification
+       stageKey = (if taskMethod then "smt-task-preparation:" else "") ++ sharedRequest bytes
+   in case (if snapshotRequested then fst <$> memoized syntaxStagesTable ("canonical:" ++ stageKey)
+          (stagesWithInput True True project packages sources bits settings native stageVerification)
+        else memoized stagesTable stageKey (stages project packages sources bits settings native stageVerification)) of
     Left response -> response
     Right (us,es,core,bindings,evidence,described,plan,templates) ->
-     let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
+     let pending item | method=="proofTasks", maybe False (`V.selected` V.Proof) verification,
+                        obligationStage item=="law", obligationStatus item==NotVerified =
+                          case [why | unit<-C.programUnits core, law<-C.unitProperties unit,
+                            C.propertyId law==obligationDeclaration item,
+                            Just why<-[C.harnessKnownFailing (C.propertyHarness law)]] of
+                            why:_ -> item{obligationStatus=KnownFailing,obligationReason="marked known failing: "++why}
+                            [] -> item{obligationStatus=Planned,obligationReason="an SMT proof task is requested; no solver execution has completed"}
+                      | otherwise = item
+         obligations = map pending evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
          result files = (if snapshotRequested then withMigrationSemantics True us core templates else id) $
            withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
           "expand" -> result []
+          "proofTasks" | Just selection <- verification ->
+            if V.selected selection V.Proof
+              then either failure (\tasks -> case result [] of
+                Object response -> Object (KM.insert "proofTasks" (toJSON tasks) response)
+                response -> response) (Smt.proofTasks core)
+              else case result [] of
+                Object response -> Object (KM.insert "proofTasks" (toJSON ([] :: [Smt.ProofTask])) response)
+                response -> response
+          "proofTasks" -> failure [Diagnostic "language-profile" "proofTasks requires API schema 5 and languageProfile 1.0-rc.1" Nothing]
           "format" | verification /= Nothing -> case preparePackagesWithReferences project packages (map formatSource sources) of
             Left ds -> failure ds
             Right (formatted,visible,referenceUnit,_) -> case compileCanonicalWithReferenceUnits referenceUnit visible bits settings formatted of

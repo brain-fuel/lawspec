@@ -33,6 +33,12 @@ The reasoning behind these categories is in
 
 ## Laws over checked definitions
 
+Canonical authoring configuration selects law verification through
+`verification.layers`; an empty selection leaves laws unverified. Intrinsic
+definition admission remains mandatory. The following describes the compiler's
+existing static proof procedure when selected. [The explicit Z3 host](../../explanation/smt-proof.md)
+has its own documented encoding, execution evidence and trust boundary.
+
 A law that calls only checked definitions is attempted as a proof: its claim
 must follow from its input refinements by the exact linear arithmetic that
 proves definition results. Definitions without preconditions are unfolded into
@@ -204,6 +210,8 @@ shows where each law last passed. See [the CLI](../cli.md#evidence).
 
 ## Reading the evidence
 
+- `lawspec prove` submits selected supported law tasks to Z3 and retains its
+  task-bound results. A solver model alone is not source-refutation evidence.
 - `lawspec check` prints the number of obligations with each status.
 - `lawspec evidence` lists each obligation with its claim and reason, grouped
   by status. It accepts a unit or a `unit::declaration` filter, and `--json`

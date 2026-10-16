@@ -3,11 +3,12 @@
 -- fails the feature by throwing; JUnit's skip, order and concurrency marks
 -- become Spock's. Properties run on JetCheck, as on Java.
 -- ref:DEC-groovy-over-java ref:DEC-groovy-property-library
-module LawSpec.Groovy.Spock (spockSpecification, specClassName) where
+module LawSpec.Groovy.Spock (spockSpecification, specClassName, needsJavaBody, javaBodySpecification) where
 
 import Data.Char (isAlphaNum)
 import Control.Monad (msum)
 import Data.List (isSuffixOf, stripPrefix)
+import LawSpec.Groovy.Source (groovyLiterals)
 
 -- | A test class's name as a specification's: FooLawSpecTest is
 -- FooLawSpec, FooTest is FooSpec.
@@ -16,6 +17,49 @@ specClassName name
   | "LawSpecTest" `isSuffixOf` name = take (length name - 4) name
   | "Test" `isSuffixOf` name = take (length name - 4) name ++ "Spec"
   | otherwise = name ++ "Spec"
+
+-- Large finite searches contain thousands of nested, typed Java callbacks.
+-- Passing those bodies through Groovy's parser exhausts its prediction cache.
+-- Keep the existing Java execution body and expose each independent test as a
+-- Spock feature. This changes only the host-language bridge, never the search.
+-- Count callbacks rather than bytes so formatting cannot select the strategy.
+needsJavaBody :: String -> Bool
+needsJavaBody = count (128 :: Int)
+  where
+    count 0 _ = True
+    count _ [] = False
+    count remaining source@(_:rest) = case stripPrefix "LawSpecRuntime.let(" source of
+      Just after -> count (remaining - 1) after
+      Nothing -> count remaining rest
+
+javaBodySpecification :: String -> (String -> String) -> String -> (String, String)
+javaBodySpecification className title source = (body, spockSpecification className title (groovyLiterals wrapper))
+  where
+    helper = className ++ "Body"
+    sourceLines = lines source
+    classHeader line = any (`stripStarts` line)
+      ["public final class " ++ className ++ " ", "public class " ++ className ++ " ",
+       "final class " ++ className ++ " ", "class " ++ className ++ " "]
+    stripStarts prefix line = case stripPrefix prefix line of Just _ -> True; Nothing -> False
+    (prefix,rest) = break classHeader sourceLines
+    wrapper = unlines (prefix ++ take 1 rest ++ features (drop 1 rest) ++ ["}"])
+    features [] = []
+    features (line:next:remaining)
+      | dropWhile (== ' ') line == "@Test"
+      , Just after <- stripPrefix "void " (dropWhile (== ' ') next) =
+          let name = takeWhile (\c -> isAlphaNum c || c == '_') after
+          in ["  @Test", "  void " ++ name ++ "() {", "    new " ++ helper ++ "()." ++ name ++ "();", "  }"] ++ features remaining
+    features (line:remaining)
+      | "@org.junit.jupiter.api.Disabled(" `stripStarts` dropWhile (== ' ') line = line : features remaining
+      | otherwise = features remaining
+    -- The helper has no JUnit entry points. Spock owns discovery, skipping,
+    -- ordering and reporting; each feature gets a fresh execution instance.
+    body = replaceWord className helper (unlines (publicTests sourceLines))
+    publicTests [] = []
+    publicTests (line:next:remaining)
+      | dropWhile (== ' ') line == "@Test" =
+          (takeWhile (== ' ') next ++ "public " ++ dropWhile (== ' ') next) : publicTests remaining
+    publicTests (line:remaining) = line : publicTests remaining
 
 -- | A Java test class (already in Groovy's literals) as a specification;
 -- title names each test method's feature.

@@ -303,6 +303,7 @@ extra-source-files:
     test/fixtures/canonical-set-generation.lawspec
     test/fixtures/canonical-set-literals.lawspec
     test/fixtures/canonical-sets.lawspec
+    test/fixtures/canonical-smt-arithmetic.lawspec
     test/fixtures/constructor_boundaries.lawspec
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec
@@ -539,6 +540,7 @@ library
       LawSpec.Core.Schema
       LawSpec.Core.Search
       LawSpec.Core.Semantics
+      LawSpec.Core.Smt
       LawSpec.Core.Stages
       LawSpec.Core.Total
       LawSpec.Core.Totality
@@ -895,6 +897,7 @@ test-suite lawspec-test
       FlowSpec
       GadtSpec
       GenericDefinitionSpec
+      GroovyBridgeSpec
       HarnessSpec
       ImportSpec
       IncrementalSpec
@@ -922,6 +925,7 @@ test-suite lawspec-test
       SearchSpec
       SelectionAdmissionSpec
       SessionsPythonSpec
+      SmtSpec
       SourceDataSpec
       SourceGadtIndicesSpec
       SourceGadtRefinementsSpec

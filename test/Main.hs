@@ -13,6 +13,8 @@ import qualified SourceRecordScopeSpec
 import qualified SourceRecordInferenceSpec
 import qualified ContainerRecordViewsSpec
 import qualified SourceGadtIndicesSpec
+import qualified SmtSpec
+import qualified GroovyBridgeSpec
 import qualified FieldDefinitionExpansionSpec
 import qualified SourceGadtRefinementsSpec
 import qualified SourceRecordPayloadSpec
@@ -118,6 +120,8 @@ main = hspec $ do
   SourceRecordHarnessSpec.test_recordHarnessesUseOneTypedContext
   ContainerRecordViewsSpec.test_containerRecordViews
   SourceGadtIndicesSpec.test_sourceGadtPayloadIndices
+  SmtSpec.test_smtTasks
+  GroovyBridgeSpec.test_groovyJavaBody
   FieldDefinitionExpansionSpec.test_fieldDefinitionExpansion
   SourceGadtRefinementsSpec.test_sourceGadtRefinements
   SourceRecordPayloadSpec.test_structuralNominalPayloads

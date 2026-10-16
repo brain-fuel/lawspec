@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: total
+@@ test/fixtures/canonical-smt-arithmetic.lawspec
+<<<<<<<
+function reciprocal (value of type Integer where value != 0) -> Rational is
+=======
+function reciprocal (value of type Integer where value >= 0) -> Rational is
+>>>>>>>

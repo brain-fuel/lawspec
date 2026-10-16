@@ -137,8 +137,11 @@ renderExpression declarations bits local external = render
       Let binder value body -> do
         argument <- render value
         inner <- render body
-        pure (D.text "(" <> argument <> D.text ").let { " <> D.text (local (binderId binder) ++ " ->") <>
-          D.nest 4 (D.softline <> inner) <> D.softline <> D.text "}")
+        -- Kotlin's inline stdlib let expands an entire finite search into
+        -- one JVM method. The shared JVM helper preserves the same strict
+        -- binding while giving each callback a separate bytecode method.
+        pure (runtime "let" [argument,D.text ("{ " ++ local (binderId binder) ++ " ->") <>
+          D.nest 4 (D.softline <> inner) <> D.softline <> D.text "}"])
       Constant value -> scalarLiteral (expressionType term) value >>= checked declarations bits (expressionType term)
       Construct tag args -> do
         values <- mapM render args

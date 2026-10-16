@@ -150,7 +150,7 @@ factFills version =
 
 -- | What the npm package contains, beside its code.
 shippedFiles :: [String]
-shippedFiles = ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi.js"] ++ copiedDocuments ++ ["LICENSE", "starter.lawspec", "starter-rc1.lawspec", "examples"]
+shippedFiles = ["*.mjs", "*.json", "index.d.ts", "proof.d.ts", "bin", "core.wasm", "core_jsffi.js"] ++ copiedDocuments ++ ["LICENSE", "starter.lawspec", "starter-rc1.lawspec", "examples"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.

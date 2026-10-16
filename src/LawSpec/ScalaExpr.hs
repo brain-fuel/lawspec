@@ -29,8 +29,9 @@ array = call ("Array[" ++ valueType ++ "]")
 
 -- | A function literal with typed parameters, which Scala converts to the Java
 -- functional interface a runtime method expects.
+-- A space before ':' keeps it separate from identifiers ending in '_'.
 lambda :: [(String, String)] -> D.Doc -> D.Doc
-lambda parameters body = D.group (D.text ("(" ++ commaList [n ++ ": " ++ t | (n, t) <- parameters] ++ ") =>") <>
+lambda parameters body = D.group (D.text ("(" ++ commaList [n ++ " : " ++ t | (n, t) <- parameters] ++ ") =>") <>
   D.nest 2 (D.softline <> body))
   where commaList = foldr1' (\a b -> a ++ ", " ++ b)
         foldr1' _ [] = ""

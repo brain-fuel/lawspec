@@ -7,6 +7,7 @@ title: CLI
 
 ```text
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
+lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec check [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
@@ -81,6 +82,20 @@ Parses, resolves, type-checks and expands every law, without target tools.
 Prints the number of laws and the count of obligations with each
 [evidence status](language/evidence-and-discharge.md). Validates the native
 bindings of the selected targets. `--json` prints the compiler's full result.
+
+## `prove`
+
+Requires configuration version 2 and selects the configured `proof` layer.
+The compiler prepares typed tasks; the Node host invokes the specified Z3
+executable, or `z3` on `PATH`. With no proof layer selected, no solver is invoked.
+See [proof with Z3](../explanation/smt-proof.md) for supported theories, resource
+limits, model-validation limits and the recorded trust boundary.
+
+A successful solver proof updates the matching law's evidence. A satisfying
+model remains unvalidated; unknown, timeout, resource-limit, unavailable and
+unsupported outcomes do not establish a law. `--json` includes task identities,
+solver evidence and raw output. Other verification layers and intrinsic
+contracts retain their own guarantees.
 
 ## `evidence`
 
@@ -312,4 +327,5 @@ Exports the bundled examples. Needs no configuration and no target tools.
 ## Exit status
 
 `0` on success. `1` when a command fails, `doctor` finds a target that is not
-ready, or `generate --check` finds changes.
+ready, or `generate --check` finds changes. `prove` uses status `2` when a
+selected task remains incomplete or unsupported.

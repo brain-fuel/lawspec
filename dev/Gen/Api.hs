@@ -7,7 +7,7 @@ import LawSpec.Scalar
 import qualified LawSpec.Targets as Targets
 
 methods :: [(String, String)]
-methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest"), ("migrationComparison", "MigrationComparisonRequest")]
+methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("proofTasks", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest"), ("migrationComparison", "MigrationComparisonRequest")]
 
 apiSources :: Layout -> [(FilePath, String)]
 apiSources layout = [("api.mjs", output api), ("index.d.ts", output declarations)]
@@ -291,6 +291,13 @@ declarations = joinWith (softbreak <> softbreak)
           [(name,array (record (fields [("comparisonId","string"),("digest","string")]))) | name<-["definitions","contracts","dataTypes"]] ++
           [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))]))])
       , record [("status",quoted "unavailable"),("reason",text "string")]]
+  , alias "ProofTask"
+      [record (fields [("encoding","'lawspec-smtlib-v1'"),("owner","string"),("declaration","string"),
+          ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
+        [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string")]),
+       record (fields [("encoding","'lawspec-smtlib-v1'"),("owner","string"),("declaration","string"),
+          ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
+        [("status",quoted "unsupported"),("reason",text "string")])]
   , interface "Result"
       ([("schemaVersion", union [text "3", text "4", text "5"]), ("machineBits?", union [text "32", text "64"])] ++
        fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
@@ -298,7 +305,7 @@ declarations = joinWith (softbreak <> softbreak)
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
        [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("migrationSemantics?",text "MigrationSemanticSnapshot"),
         ("migrationComparison?",text "MigrationPayloadComparison"),("migrationComparisonInput?",union (map quoted ["before","migrated"]))] ++
-       [("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
+       [("proofTasks?",text "ProofTask[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])
   , alias "DataValue" [text "ScalarValue", variant "data" [("type", "Type"), ("constructor", "string"), ("fields", "DataValue[]")]]
