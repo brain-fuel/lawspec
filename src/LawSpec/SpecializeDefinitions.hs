@@ -188,7 +188,7 @@ specializeDefinitionsWithContext sourceTypes declarations bits satisfies units p
               -- definition, such as a collection operation, at hundreds of
               -- types (one per resource of an imported API).
               siblings <- gets (length . filter ((== name) . fst) . M.keys . instances)
-              when (siblings >= 8192 || length (show concrete) > 4000)
+              when (siblings >= 8192 || length (show (budgetType concrete)) > 4000)
                 (lift (Left ("definition " ++ name ++ " needs unboundedly many instances; " ++
                   "polymorphic recursion must not grow its type arguments")))
               template <- lift $ maybe (Left ("unknown definition: " ++ name)) Right
@@ -307,6 +307,10 @@ specializeDefinitionsWithContext sourceTypes declarations bits satisfies units p
             mapM (typedExpressionWithContext sourceTypes declarations bits examplesScope)
               [actual expectation | example <- examples (original expanded), expectation <- expectations example]
           pure expanded{typedExpressions=trees}
+    -- Source paths and spans are not growth in a specialization's type.
+    -- Keep all predicate/type structure in the existing size bound, including
+    -- annotation types, while measuring independently of diagnostic origins.
+    budgetType = mapType id (stripLocations . mapExprTypes budgetType)
     closed ty = null (typeVariables ty) && case baseType ty of
       Named ('@':_) -> False
       Arrow a b -> closed a && closed b

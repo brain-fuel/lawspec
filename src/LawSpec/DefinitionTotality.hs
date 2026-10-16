@@ -1,6 +1,6 @@
 -- | Lower already-typed templates to the same proof obligations used by Core.
 -- This view is never executable IR and is never consumed by target generators.
-module LawSpec.DefinitionTotality (auditTemplates, auditTemplatesWithContext) where
+module LawSpec.DefinitionTotality (auditTemplates, auditTemplatesWithContext, auditTemplatesWithDeferrals) where
 
 import Control.Monad.State.Strict
 import Control.Monad (foldM, forM, forM_, when)
@@ -42,7 +42,13 @@ auditTemplates :: [C.DataDeclaration] -> Int -> S.Unit -> [(S.FunctionDefinition
 auditTemplates = auditTemplatesWithContext Source.emptyContext
 
 auditTemplatesWithContext :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Unit -> [(S.FunctionDefinition,S.TypedExpr,[S.TypedExpr],[S.TypedExpr])] -> Either [Diagnostic] ()
-auditTemplatesWithContext context initial bits unit templates = do
+auditTemplatesWithContext context initial bits unit templates =
+  () <$ auditTemplatesWithDeferrals context initial bits unit templates
+
+-- Preserve the existing deferral report for transformations that must not
+-- erase a checked call's runtime contract enforcement.
+auditTemplatesWithDeferrals :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Unit -> [(S.FunctionDefinition,S.TypedExpr,[S.TypedExpr],[S.TypedExpr])] -> Either [Diagnostic] [(C.Id,Int)]
+auditTemplatesWithDeferrals context initial bits unit templates = do
   records <- either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
     (recordDeclarationsWithContext context initial bits (concat [concatMap typedTypeReferences (body:pre ++ post) |
       (_,body,pre,post) <- templates]))
@@ -68,7 +74,7 @@ auditCollected context declarations constructors bits unit templates = do
     guarantees<-constructorProofContracts bits known
     pure (guarantees,map (Total.definitionProof (P.fromRegistry registry) bits) (M.elems extraViews))
   -- Non-linear postconditions the prover defers become runtime checks in Core.
-  () <$ T.auditDeferringWithResults guarantees [contract | (_,contract,_)<-lowered]
+  T.auditDeferringWithResults guarantees [contract | (_,contract,_)<-lowered]
     ([definition | (definition,_,_)<-lowered]++extraProofs)
     (M.fromList [ (identity (S.functionName d), bounds)
                 | (d, _, _, _) <- templates

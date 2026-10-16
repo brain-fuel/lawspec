@@ -297,6 +297,7 @@ extra-source-files:
     test/fixtures/canonical-gadt-payload-indices.lawspec
     test/fixtures/canonical-positional-products.lawspec
     test/fixtures/canonical-prelude-names.lawspec
+    test/fixtures/canonical-record-predicate-functions.lawspec
     test/fixtures/canonical-refined-gadt-indices.lawspec
     test/fixtures/canonical-set-domains.lawspec
     test/fixtures/canonical-set-generation.lawspec
@@ -890,6 +891,7 @@ test-suite lawspec-test
       DotNetSpec
       EqSetOperationsSpec
       EqSetSpec
+      FieldDefinitionExpansionSpec
       FlowSpec
       GadtSpec
       GenericDefinitionSpec

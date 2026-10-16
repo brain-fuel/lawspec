@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: total
+@@ test/fixtures/canonical-record-predicate-functions.lawspec
+<<<<<<<
+function permitted (value of type UInt8) -> Bool is
+=======
+function permitted (value of type (n of type UInt8 where n > 1)) -> Bool is
+>>>>>>>

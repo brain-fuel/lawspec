@@ -13,6 +13,7 @@ import qualified SourceRecordScopeSpec
 import qualified SourceRecordInferenceSpec
 import qualified ContainerRecordViewsSpec
 import qualified SourceGadtIndicesSpec
+import qualified FieldDefinitionExpansionSpec
 import qualified SourceGadtRefinementsSpec
 import qualified SourceRecordPayloadSpec
 import qualified SourceTupleSpec
@@ -117,6 +118,7 @@ main = hspec $ do
   SourceRecordHarnessSpec.test_recordHarnessesUseOneTypedContext
   ContainerRecordViewsSpec.test_containerRecordViews
   SourceGadtIndicesSpec.test_sourceGadtPayloadIndices
+  FieldDefinitionExpansionSpec.test_fieldDefinitionExpansion
   SourceGadtRefinementsSpec.test_sourceGadtRefinements
   SourceRecordPayloadSpec.test_structuralNominalPayloads
   SourceTupleSpec.test_positionalProducts

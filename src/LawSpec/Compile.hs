@@ -10,11 +10,11 @@ import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpression
 import LawSpec.Model
 import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..),SyntaxReference(..))
 import LawSpec.MigrationTemplates (SourceTemplates(..),DefinitionTemplate)
-import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, inlineFieldDefinitions, migrationConstructorSources)
+import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, dataDeclarationHeaders, inlineFieldDefinitions, fieldDefinitionChecks, fieldDefinitionDependencies, migrationConstructorSources)
 import LawSpec.Capabilities (satisfiedWithContext)
 import qualified LawSpec.SourceContext as Source
 import LawSpec.Inference
-import LawSpec.DefinitionTotality (auditTemplatesWithContext)
+import LawSpec.DefinitionTotality (auditTemplatesWithContext, auditTemplatesWithDeferrals)
 import qualified LawSpec.SourceRecords as SourceRecords
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.SpecializeDefinitions (specializeDefinitionsWithContext)
@@ -397,12 +397,21 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
   -- Abilities, handlers and rows, once each unit has what it imports.
   abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
   -- The harness, once every law has its final name.
-  parsed <- map inlineFieldDefinitions <$> either (\(at, message) -> Left [Diagnostic "harness" message at]) Right (mapM elaborateHarness abled)
+  parsed <- either (\(at, message) -> Left [Diagnostic "harness" message at]) Right (mapM elaborateHarness abled)
   let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=
         [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
         | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]
   lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported) parsed)
-  let us = map qualifyDataNames lowered
+  let beforeExpansion = map qualifyDataNames lowered
+  (headers0,headerContext)<-dataDeclarationHeaders beforeExpansion
+  -- Header slots are for type inference, not index or constructor proofs.
+  let headers=[header{Core.dataIndex=Nothing} | header<-headers0]
+  forM_ beforeExpansion $ \unit -> forM_ (fieldDefinitionChecks unit unit) $ \check -> do
+    let rigid=mapType (\ty->case ty of Variable name->Named ('@':name); other->other) (mapExprTypes rigid)
+        scope=M.union (monoEnvironment [(name,rigid (baseType ty)) | (name,ty)<-functionArguments check]) (definitionEnvironment unit)
+    either (\reason->Left [Diagnostic "definition" ("field restriction: "++reason) (Just (spanStart (functionSpan check)))]) (const (Right ()))
+      (typedExpressionWithSchemesContext headerContext headers bits scope (Annotate (mapExprTypes rigid (functionBody check)) (Named "Bool")))
+  let us=map (inlineFieldDefinitions headerContext headers bits) beforeExpansion
   mapM_ checkRegexes us
   (nominalTypes,sourceTypes) <- elaborateDataDeclarationsWithContext bits us
   declaredRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
@@ -421,12 +430,26 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
   let dataDigest = digestHex (digestString (show (dataTypes,sourceTypes)))
       key parts = digestHex (digestString parts)
   mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit sourceTypes dataTypes bits u)) us
-  checkedTemplates <- forM us $ \u -> do
-    templates <- Memo.memoized definitionTemplatesTable (key (show (bits,dataDigest,u)))
-      (inferDefinitionTemplates sourceTypes dataTypes bits u)
-    Memo.memoized validationTable (key (show ("totality", bits, dataDigest, u)))
-      (auditDefinitionTemplates sourceTypes dataTypes bits u templates)
-    pure (unitName u,templates)
+  checkedTemplates <- forM (zip beforeExpansion us) $ \(original,u) -> do
+    let checks=fieldDefinitionChecks original u
+        dependencies=fieldDefinitionDependencies original checks
+        validationUnit=u{functionDefinitions=functionDefinitions u ++ checks}
+        templateKey=key (show (bits,dataDigest,u,checks))
+        fieldDiagnostics result=either (Left . map renderFieldDiagnostic) Right result
+        renderFieldDiagnostic diagnostic=diagnostic{message=foldl label (message diagnostic) checks}
+        label text check=case stripPrefix (functionName check ++ ": ") text of
+          Just rest->"field restriction: " ++ rest
+          Nothing->text
+    templates <- fieldDiagnostics $ Memo.memoized definitionTemplatesTable templateKey
+      (inferDefinitionTemplates sourceTypes dataTypes bits validationUnit)
+    Memo.memoized validationTable (key (show ("totality-field-expansion",bits,dataDigest,u,checks,dependencies))) $ fieldDiagnostics $ do
+      deferred<-auditTemplatesWithDeferrals sourceTypes dataTypes bits validationUnit
+        (filter (\(definition,_,_,_)->functionName definition `notElem` orchestrations u) templates)
+      forM_ dependencies $ \(name,range) ->
+        when (any ((== Core.Id (unitName u ++ "::" ++ name)) . fst) deferred)
+          (Left [Diagnostic "field-predicate" ("field predicate expansion cannot erase runtime postcondition enforcement for " ++ name) (Just (spanStart range))])
+    let originalNames=map functionName (functionDefinitions u)
+    pure (unitName u,filter (\(definition,_,_,_)->functionName definition `elem` originalNames) templates)
   let table = M.fromList [((unitName u,lawName l),l) | u <- us, l <- laws u]
       signatures u = [ (functionName d, functionArguments d, functionResult d, functionRequirements d) | d <- functionDefinitions u ]
       expansionKey u l = key (show (canonical, bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))

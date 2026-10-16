@@ -95,6 +95,7 @@ emitWebDataWithProfile ts bits layout declarations = do
   where
     handles = handleTypes declarations
     nestedIds expression = (case C.expressionNode expression of
+      C.Let binder _ _ -> [C.binderId binder]
       C.AllElements _ binder _ -> [C.binderId binder]
       C.AllPayloads _ predicates -> map (C.binderId . fst) predicates
       C.Match _ branches -> concatMap (map C.binderId . C.caseBinders) branches

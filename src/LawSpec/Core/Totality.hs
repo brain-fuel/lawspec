@@ -835,6 +835,9 @@ constantFactor expression = case expression of
 
 predicate :: Proof -> Maybe R.Predicate
 predicate expression = case expression of
+  -- The proof projection has already substituted a strict let's binding.
+  -- Its value remains in the walk, so undefined prefixes are still rejected.
+  Match _ [([],body)] -> predicate body
   Literal (SBool value) -> Just (R.Truth value)
   Variable name -> Just (R.Atom name)
   ExactComparison op a b -> do

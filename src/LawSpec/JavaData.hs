@@ -282,6 +282,7 @@ emitJavaSchema bits layout declarations = do
   pure (renderSchemaWith (handlesOf declarations) layout callbacks bindings schemas)
   where
     nestedIds term = (case C.expressionNode term of
+      C.Let binder _ _ -> [C.binderId binder]
       C.AllElements _ binder _ -> [C.binderId binder]
       C.AllPayloads _ predicates -> map (C.binderId . fst) predicates
       C.Match _ branches -> concatMap (map C.binderId . C.caseBinders) branches
