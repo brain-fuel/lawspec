@@ -280,13 +280,23 @@ annotationRefinements ty = case ty of
   Application _ ts -> any annotationRefinements ts
   Qualified _ t -> annotationRefinements t
   other -> hasValueRefinements other
+checkSelectionShapes :: Env -> [Expr] -> C ()
+checkSelectionShapes env checks = mapM_ (checkExpr env (Named "Bool"))
+  [check | check<-checks,Nothing<-[selectionBranchCheck check]]
+
+checkSelectionBranches :: Env -> Type -> [Expr] -> C ()
+checkSelectionBranches env result checks = mapM_ (checkExpr (M.insert selectionBranchResultName (Monomorphic result) env) result)
+  [body | check<-checks,Just body<-[selectionBranchCheck check]]
+
 -- | Types are inferred bottom up where literals do not need their context, so a
 -- law reads without annotations. ref:DEC-readable-notation
 infer :: Env -> Expr -> C Type
 infer env (Located _ e) = infer env e
 infer env e | Just (value,checks) <- selectionValidation e = do
-  mapM_ (checkExpr env (Named "Bool")) checks
-  infer env value
+  checkSelectionShapes env checks
+  result <- infer env value >>= resolve
+  checkSelectionBranches env result checks
+  pure result
 infer env (Var n) = maybe (throwC ("unknown value: " ++ n)) instantiate (M.lookup n env)
 infer _ (DecimalNumber _ _) = pure (Named "Decimal")
 infer _ (Number _) = pure (Named "Integer")
@@ -499,8 +509,9 @@ application e = (e,[])
 checkExpr :: Env -> Type -> Expr -> C ()
 checkExpr env expected (Located _ e) = checkExpr env expected e
 checkExpr env expected e | Just (value,checks) <- selectionValidation e = do
-  mapM_ (checkExpr env (Named "Bool")) checks
+  checkSelectionShapes env checks
   checkExpr env expected value
+  checkSelectionBranches env expected checks
 checkExpr env expected e = do
   t <- resolve (baseType expected)
   bits <- gets machineBits
@@ -902,8 +913,10 @@ typedExpressionWithSchemesContext context declarations bits env e = do
       value <- go context expected e
       pure value{expression=Located range (expression value)}
     go context expected e | Just (value,checks) <- selectionValidation e = do
-      mapM_ (checkExpr context (Named "Bool")) checks
-      go context expected value
+      checkSelectionShapes context checks
+      made <- go context expected value
+      checkSelectionBranches context (maybe (expressionType made) id expected) checks
+      pure made
     go context expected e | isFieldNode e = do
       direct <- fieldAccessTyped context expected e
       maybe (fieldDesugar context e >>= go context expected) pure direct

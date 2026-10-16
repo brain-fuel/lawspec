@@ -290,6 +290,7 @@ extra-source-files:
     examples/rc1/nesting/uur.lawspec
     examples/rc1/nesting/uuu.lawspec
     test/fixtures/blake3-256.json
+    test/fixtures/canonical-branch-admission.lawspec
     test/fixtures/canonical-collection-membership.lawspec
     test/fixtures/canonical-empty-record-patterns.lawspec
     test/fixtures/canonical-positional-products.lawspec
@@ -911,6 +912,7 @@ test-suite lawspec-test
       ScenarioSpec
       SchedulerSpec
       SearchSpec
+      SelectionAdmissionSpec
       SessionsPythonSpec
       SourceDataSpec
       SourceRecordCanonicalFixtures

@@ -209,3 +209,26 @@ including definedness and termination, remains mandatory.
 The current minor retains its existing law, section and quantifier endings.
 The following minor milestone requires named closers for every block and must
 reject bare `end`.
+
+## Typing case branches
+
+Guards and bodies must type-check in their branch scopes even when an earlier
+row covers their pattern. A guard must be Boolean; each result must fit the
+case's result type. Pattern bindings stay local to their own branch. The
+ordinary GADT rules for inaccessible constructors continue to apply.
+
+This function has a type error in its discarded row:
+
+```text
+function decision (value of type Bool) -> Bool is
+  first matching case of value:
+    when #any then true
+    when true then 7
+  end case
+end function
+```
+
+Discarded branches do not execute. Destructuring needs no Eq capability; an
+equality operation in a discarded generic body still needs Eq. Mandatory
+definition typing, definedness and termination checks remain independent of
+the selected law-verification layers.

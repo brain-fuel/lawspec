@@ -1,7 +1,7 @@
 -- | Positional products share checked structural elaboration and ordered
 -- matching; parameter patterns keep mandatory irrefutability and contracts.
 -- ref:DEC-readable-notation ref:DEC-total-definitions
-module SourceTupleSpec (test_positionalProducts) where
+module SourceTupleSpec (test_positionalProducts,checkOutcomes) where
 
 import Test.Hspec
 import Control.Monad (forM_)

@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: definition
+@@ test/fixtures/canonical-branch-admission.lawspec
+<<<<<<<
+    when true if it or false then false
+=======
+    when true if it or false then 7
+>>>>>>>

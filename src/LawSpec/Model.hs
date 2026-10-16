@@ -282,11 +282,24 @@ positionalFields = Positional.positionalFields
 positionalItems :: [(String,a)] -> Maybe [a]
 positionalItems = Positional.positionalItems
 
--- Source-only admission of every authored pattern, including rows omitted by
--- ordered specialization. Checks contain no branch bodies or guards, so this
--- does not duplicate nested computations, effects, or executable syntax.
+-- Source-only admission of every authored pattern. A branch omitted entirely
+-- by ordered specialization also retains its guard and body for type checking.
+-- Those bodies occur only in the checks, never in executable Core.
 selectionValidationName :: String
 selectionValidationName = "prelude.selection-validation:"
+
+selectionBranchCheckName :: String
+selectionBranchCheckName = "prelude.selection-branch-check:"
+
+-- An unspellable source-only local supplies the already known result type for
+-- outcomes outside an independently checked row. No value is ever generated.
+selectionBranchResultName :: String
+selectionBranchResultName = "_lawspecUnreachableBranchResult_"
+
+selectionBranchCheck :: Expr -> Maybe Expr
+selectionBranchCheck value = case unlocated value of
+  Apply function body | Var name <- unlocated function, name == selectionBranchCheckName -> Just body
+  _ -> Nothing
 
 selectionValidation :: Expr -> Maybe (Expr,[Expr])
 selectionValidation expression = case application [] expression of

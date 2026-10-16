@@ -707,7 +707,10 @@ firstCaseP = do
   fallback <- optional (keyword "otherwise" *> expr)
   closeP "case"
   let rows = branches ++ maybe [] (\body -> [SelectionRow [SelectionAny] [] Nothing body]) fallback
-      runtime=selectionMatrix 0 [Var "it"] rows
+      rowNames=[("prelude.selection-row:" ++ show index,index) | index<-[0::Int .. length rows-1]]
+      marked=[SelectionRow patterns aliases guard (Apply (Var name) body) |
+        (SelectionRow patterns aliases guard body,(name,_))<-zip rows rowNames]
+      (runtime,retained)=selectionRuntime rowNames (selectionMatrix 0 [Var "it"] marked)
       -- A row checks its shape in its own constructor/refinement scope. The
       -- fallback makes this validation independent of exhaustive coverage;
       -- only the actual ordered matrix establishes that coverage.
@@ -715,8 +718,34 @@ firstCaseP = do
         let check=selectionMatrix 0 [Var "it"]
               [SelectionRow patterns aliases Nothing (BoolLit True),SelectionRow [SelectionAny] [] Nothing (BoolLit True)],
         unlocated check/=BoolLit True]
-      admitted=if null checks then runtime else foldl Apply (Var selectionValidationName) (runtime:checks)
+      -- Live bodies already receive the actual ordered matrix's dependent
+      -- facts. Only fully discarded bodies need an independent typed match.
+      -- Thus a nested authored body is retained once, rather than recursively
+      -- copying every body's validation into both runtime and checks.
+      bodies=[Apply (Var selectionBranchCheckName) (selectionMatrix 0 [Var "it"]
+        [row,SelectionRow [SelectionAny] [] Nothing (Var selectionBranchResultName)]) |
+        (index,row)<-zip [0::Int ..] rows,index `notElem` retained]
+      validations=checks++bodies
+      admitted=if null validations then runtime else foldl Apply (Var selectionValidationName) (runtime:validations)
   pure (MatchExpr value [MatchBranch letTag ["it"] admitted])
+
+-- Remove temporary row markers from the generated matrix while recording
+-- which authored bodies remain. A marked body is opaque: nested cases have
+-- already finished their own admission, and must not be copied or rewritten.
+selectionRuntime :: [(String,Int)] -> Expr -> (Expr,[Int])
+selectionRuntime names = walk
+  where
+    walk (Apply (Var name) body) | Just index<-lookup name names = (body,[index])
+    walk (Located range value) = let (made,found)=walk value in (Located range made,found)
+    walk (Apply function value) = binary Apply function value
+    walk (Binary operation left right) = binary (Binary operation) left right
+    walk (Unary operation value) = let (made,found)=walk value in (Unary operation made,found)
+    walk (MatchExpr value branches) =
+      let (made,first)=walk value
+          values=[let (body',found)=walk body in (MatchBranch tag bindings body',found) | MatchBranch tag bindings body<-branches]
+      in (MatchExpr made (map fst values),first++concatMap snd values)
+    walk value = (value,[])
+    binary constructor left right = let (a,before)=walk left; (b,after)=walk right in (constructor a b,before++after)
 
 selectionBindings :: SelectionPattern -> [String]
 selectionBindings pattern = case pattern of

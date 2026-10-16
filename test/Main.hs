@@ -13,6 +13,7 @@ import qualified SourceRecordScopeSpec
 import qualified SourceRecordInferenceSpec
 import qualified SourceRecordPayloadSpec
 import qualified SourceTupleSpec
+import qualified SelectionAdmissionSpec
 import qualified SourceRecordCanonicalSpec
 import qualified SourceRecordHarnessSpec
 import qualified SourceRecordUnitSpec
@@ -113,6 +114,7 @@ main = hspec $ do
   SourceRecordHarnessSpec.test_recordHarnessesUseOneTypedContext
   SourceRecordPayloadSpec.test_structuralNominalPayloads
   SourceTupleSpec.test_positionalProducts
+  SelectionAdmissionSpec.test_selectionAdmission
   SourceRecordCanonicalSpec.test_canonicalRecordsReachCheckedCore
   WitnessSpec.test_constructiveWitnessesPreserveScopedMeaning
   QuantifierDomainSpec.test_refinedIntegerDomainsAreComplete

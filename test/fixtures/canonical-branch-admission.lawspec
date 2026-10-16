@@ -1,0 +1,83 @@
+unit matching.admission
+
+type Value (a of type Type) is one of
+  | Number of type record{value of type Integer} where a = Integer
+  | Truth of type record{value of type Bool} where a = Bool
+end type
+
+function selected (value of type Bool) -> Bool is
+  first matching case of value:
+    when #any then value
+    when true if it or false then false
+    otherwise false
+  end case
+end function
+
+function read (value of type Value a) -> a is
+  first matching case of value:
+    when Number record{value = number} then number
+    when Truth record{value = flag} then flag
+    when Number record{value = number} if number >= 0 then number + 1
+    when Truth record{value = flag} then not flag
+  end case
+end function
+
+function retained (packet of type record{flag of type Bool, value of type a}) -> a is
+  first matching case of packet:
+    when record{} then packet.value
+    when record{flag = flag, value = value} if flag then value
+    otherwise packet.value
+  end case
+end function
+
+function bounded (value of type Bool) -> UInt8 is
+  first matching case of value:
+    when true then 255
+    when false then 0
+    when true then 200
+    otherwise 17
+  end case
+end function
+
+law "|the first matching branch determines the outcome| is
+  definition:
+    for all (value of type Bool) =>
+      selected value must be value
+    end
+  end
+
+  expect selected value = expected
+  in table (value, expected):
+    row true, true
+    row false, false
+  end
+end
+
+law "|typed values retain their payload| is
+  definition:
+    read (Number record{value = 7}) must be 7 and
+    read (Truth record{value = false}) must be false
+  end
+end
+
+law "|the packet retains its value| is
+  definition:
+    for all (flag of type Bool) =>
+      retained record{flag = flag, value = "invoice"} must be "invoice"
+    end
+  end
+end
+
+law "|scalar outcomes retain their exact type| is
+  definition:
+    for all (value of type Bool) =>
+      if value then bounded value = 255 else bounded value = 0 end if
+    end
+  end
+
+  expect bounded value = expected
+  in table (value, expected):
+    row true, 255
+    row false, 0
+  end
+end
