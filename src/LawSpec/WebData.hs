@@ -13,7 +13,7 @@ import LawSpec.RuntimeSources (runtimeSource)
 import qualified LawSpec.Code.Doc as D
 
 import LawSpec.WebTypes
-import LawSpec.DataNames (isProduct)
+import LawSpec.DataNames (isProduct, nativeConstructorFieldType)
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified LawSpec.WebExpr as E
 
@@ -155,7 +155,7 @@ emitWebDataWithProfile ts bits layout declarations = do
         fields <- forM (C.constructorFields constructor) $ \field -> do
           identifier False (C.binderName field)
           unless (C.binderName field /= "_lawspecBrand") (Left "reserved TypeScript data field: _lawspecBrand")
-          ty <- typeDocWith handles "" names scope (C.binderType field)
+          ty <- typeDocWith handles "" names scope (nativeConstructorFieldType declaration constructor (C.binderType field))
           pure (C.binderName field,ty)
         -- Each field-only existential's type travels as a witness string.
         let fields' = fields ++ [(S.witnessFieldName (length free) k, D.text "string") | k <- [0 .. length free - 1]]

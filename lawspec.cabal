@@ -293,6 +293,7 @@ extra-source-files:
     test/fixtures/canonical-branch-admission.lawspec
     test/fixtures/canonical-collection-membership.lawspec
     test/fixtures/canonical-empty-record-patterns.lawspec
+    test/fixtures/canonical-gadt-payload-indices.lawspec
     test/fixtures/canonical-positional-products.lawspec
     test/fixtures/canonical-prelude-names.lawspec
     test/fixtures/canonical-set-domains.lawspec
@@ -916,6 +917,7 @@ test-suite lawspec-test
       SelectionAdmissionSpec
       SessionsPythonSpec
       SourceDataSpec
+      SourceGadtIndicesSpec
       SourceRecordCanonicalFixtures
       SourceRecordCanonicalSpec
       SourceRecordElaborationSpec

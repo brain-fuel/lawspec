@@ -196,7 +196,8 @@ emitGoData layout packageName declarations = do
           let fieldName = goFieldName (C.binderName field)
           identifier fieldName
           fieldType <- if mentionsAny (map fst existentials) (C.binderType field) then pure "LawSpecValue"
-            else typeText names scope (C.binderType field)
+            else typeText names scope (if goProduct declarations declaration || not (null existentials)
+              then C.binderType field else substitute (M.fromList equations) (C.binderType field))
           pure (fieldName,fieldType)
         -- Each field-only existential's type travels as a witness string.
         let free = length (freeExistentials declaration variant)
@@ -414,14 +415,16 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
             openArguments = [v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations variant)]
         let free = length (freeExistentials declaration variant)
         declaredFields <- forM (zip [0 :: Int ..] (C.constructorFields variant)) $ \(position, field) -> do
+          let nativeType = if refinedOnly then substitute (M.fromList (C.constructorEquations variant)) (C.binderType field)
+                else C.binderType field
           -- An existential field's type comes from the value's own type, or
           -- from its witnesses (@KEYS@: read from the value or native).
           expression <- if existential (C.binderType field)
             then pure (if free > 0
               then "lsLogicalCodec(schema, bits, lsFieldTypeWith(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ ", @KEYS@), symbols)"
               else "lsLogicalCodec(schema, bits, lsFieldType(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ "), symbols)")
-            else codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.binderType field)
-          fieldType <- if existential (C.binderType field) then pure "LawSpecValue" else typeText names parameters (C.binderType field)
+            else codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters nativeType
+          fieldType <- if existential (C.binderType field) then pure "LawSpecValue" else typeText names parameters nativeType
           let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
                 [c | m <- mappings,c <- resolvedConstructors m]
               fieldName = maybe (goFieldName (C.binderName field)) id

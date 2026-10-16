@@ -1306,19 +1306,22 @@ constructorSignature :: String -> C ([Type], Type)
 constructorSignature name = do
   pairs <- gets (M.findWithDefault [] name . constructorsByName)
   shape <- shapeOf name pairs
-  pure (shapeFields shape, shapeResult shape)
+  realizeConstructor shape
+  (,) <$> mapM resolve (shapeFields shape) <*> resolve (shapeResult shape)
 
 -- | Most uses need only a constructor's fields and result.
 instantiateConstructor :: String -> [Core.DataDeclaration] -> C ([Type], Type)
 instantiateConstructor name declarations = do
   shape <- instantiateShape name declarations
-  pure (shapeFields shape, shapeResult shape)
+  realizeConstructor shape
+  (,) <$> mapM resolve (shapeFields shape) <*> resolve (shapeResult shape)
 
 -- | A fresh instance of a constructor: its fields and result over fresh
 -- variables for the declaration's parameters and the constructor's
 -- existentials. A GADT constructor's result applies its equations.
 data ConstructorShape = ConstructorShape
   { shapeFields :: [Type], shapeResult :: Type
+  , shapeParameters :: [Type] -- the same fresh indices used in payload fields
   , shapeArguments :: [(Type, Bool)]  -- each result argument, and whether an equation fixed it
   , shapeExistentials :: [String]
   -- Existentials no refinement mentions: only a value says what they are.
@@ -1363,13 +1366,19 @@ shapeOf name candidates = case candidates of
       Nothing -> mapM (convert . Core.binderType) (Core.constructorFields constructor)
     let mentioned = concatMap (coreVariables . snd) (Core.constructorEquations constructor)
         fieldOnly = [v | (e, v) <- existentials, e `notElem` mentioned]
-    pure (ConstructorShape fields result arguments (map snd existentials) fieldOnly)
+    pure (ConstructorShape fields result (map snd parameters) arguments (map snd existentials) fieldOnly)
   [] -> throwC ("unknown constructor: " ++ name)
   _ -> throwC ("ambiguous constructor: " ++ name)
   where
     applyType name [] = Named name
     applyType name [argument] = Applied name argument
     applyType name arguments = Application name arguments
+
+-- Construction must satisfy the declared index equations in its fields as
+-- well as its result. Matching solves these relations only inside the branch,
+-- after testing accessibility and learning the scrutinee's rigid equations.
+realizeConstructor :: ConstructorShape -> C ()
+realizeConstructor shape = zipWithM_ unify (shapeParameters shape) (map fst (shapeArguments shape))
 
 -- | An existential that no equation mentions is fixed only by a value.
 coreVariables :: Core.Type -> [Core.Id]
@@ -1423,6 +1432,11 @@ matchConstructor scrutinee tag = do
         Variable _ | refined -> throwC ("matching " ++ tag ++ " refines a type the context does not know; give the definition a signature")
         _ | refined -> refineTypes pattern actual
           | otherwise -> unify pattern actual >> pure M.empty
+    -- A fixed result argument otherwise leaves the constructor's original
+    -- fresh parameter unbound in its payload. Tie those fields to the actual
+    -- scrutinee indices under the branch's givens, including dependent index
+    -- equations that share a determined existential.
+    zipWithM_ unify (shapeParameters shape) arguments
     forM_ (shapeExistentials shape) $ \v -> do
       t <- resolve (Variable v)
       case t of
@@ -1452,6 +1466,7 @@ refineTypes x y = do
     (Applied n p, Applied m q) | n == m -> refineTypes p q
     (Application n ps, Application m qs) | n == m && length ps == length qs ->
       M.unions <$> zipWithM refineTypes ps qs
+    (Record fields,Record others) -> unifyRecordFields fields others >> pure M.empty
     _ -> throwC ("type mismatch: " ++ prettyType a ++ " and " ++ prettyType b)
   where
     refinable n = take 7 n /= "exists:"
@@ -1470,6 +1485,7 @@ constructorParameters target name = do
     Just n -> typesNamed n >>= instantiateShape name
     Nothing -> gets (M.findWithDefault [] name . constructorsByName) >>= shapeOf name
   let (parameters, result) = (shapeFields shape, shapeResult shape)
+  realizeConstructor shape
   -- Bind fresh constructor variables to the caller's parameters, not the
   -- reverse: Core binders retain those declared parameter identities.
   unify result target

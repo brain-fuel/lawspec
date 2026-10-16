@@ -1,0 +1,9 @@
+rejected-at: generation
+expect: definition
+@@ test/fixtures/canonical-gadt-payload-indices.lawspec
+<<<<<<<
+function unwrap (reading of type Reading a) -> a is
+=======
+function invalid (ignored of type ()) -> Reading UInt8 is Counter true end function
+function unwrap (reading of type Reading a) -> a is
+>>>>>>>

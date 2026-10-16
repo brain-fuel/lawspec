@@ -4,7 +4,7 @@
 -- ref:DEC-scala-on-the-jvm-runtime
 module LawSpec.ScalaData (emitScalaDataWithProfile, scalaCodecDocWithContext, scalaDataType, scalaCodec, scalaTypeReference, requiresSchema, scalaDataTypeDoc, scalaCodecDoc, scalaTypeReferenceDoc, identifier, emitScalaNativeCodecs, scalaNativeCodecDoc, scalaNativeTypeDoc, scalaKeywords, escaped, scalaQuoted, scalaScalars, symbolsType, rootQualified) where
 
-import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames, caseInsensitiveCounts, ambiguous)
+import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Scalar (primitives, primitiveName)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
@@ -203,7 +203,7 @@ emitScalaDataWithProfile bits layout declarations = do
                 else if gadt then [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
                 else []
           declared <- forM (C.constructorFields variant) $ \field -> do
-            ty <- typeDoc (handlesOf declarations) names scope (C.binderType field)
+            ty <- typeDoc (handlesOf declarations) names scope (nativeConstructorFieldType declaration variant (C.binderType field))
             let label=escaped (C.binderName field)
             pure (D.text (label ++ if "_" `isSuffixOf` label then " : " else ": ") <> ty)
           let fields = declared ++ [D.text (S.witnessFieldName (length free) k ++ ": java.lang.String") | k <- [0 .. length free - 1]]
@@ -509,10 +509,10 @@ emitCodecs mappings owner layout declarations = do
     decodeArm names parameters dataOwner variant = do
       bindings <- fields names parameters (dataKeys variant) variant
       let decoded i local = D.text (local ++ ".decode(data.fields().get(" ++ show i ++ "))")
-          payload = [if existentialField variant field then call "LawSpecSchema.cast" [decoded i local] else decoded i local
+          payload = [if existentialField variant field || nativeFieldChanged variant field then call "LawSpecSchema.cast" [decoded i local] else decoded i local
             | (i,((local,_,_),field)) <- zip [0::Int ..] (zip bindings (C.constructorFields variant))] ++
             [decoded i local | (i,(local,_,_)) <- drop (length (C.constructorFields variant)) (zip [0::Int ..] bindings)]
-          constructor = if gadtVariant variant
+          constructor = if gadtVariant variant && not (productVariant variant)
             then constructorName dataOwner variant ++ (if ownCount variant > 0 then "[" ++ intercalate ", " (replicate (ownCount variant) "Any") ++ "]" else "")
             else D.render D.Compact (applied (constructorName dataOwner variant) [D.text t | (_,(t,_)) <- parameters, not (generatedObject variant)])
           built = if unitConstructor variant then D.text (constructorName dataOwner variant) else call constructor payload
@@ -525,8 +525,12 @@ emitCodecs mappings owner layout declarations = do
              else built])))
     gadtVariant variant = not (null (C.constructorEquations variant)) || not (null (C.constructorExistentials variant))
     existentialField variant field = any (`elem` C.constructorExistentials variant) (typeVariablesIn (C.binderType field))
+    productVariant variant = maybe False isProduct (declarationOf variant)
+    nativeFieldChanged variant field = maybe False
+      (\d -> nativeConstructorFieldType d variant (C.binderType field)/=C.binderType field) (declarationOf variant)
     ownCount variant = case declarationOf variant of
-      Just d | gadtVariant variant -> length [p | p <- C.dataParameters d, p `notElem` map fst (C.constructorEquations variant)]
+      Just d | isProduct d -> length (C.dataParameters d)
+             | gadtVariant variant -> length [p | p <- C.dataParameters d, p `notElem` map fst (C.constructorEquations variant)]
         + length [e | e <- C.constructorExistentials variant, e `notElem` freeExistentials d variant]
              | otherwise -> length (C.dataParameters d)
       Nothing -> 0

@@ -1,10 +1,11 @@
 -- | Native names for data declarations that share a short name. Units scope
 -- their declarations, so two units may both declare a Currency; targets with
 -- one data namespace qualify such a name by its unit (ShopDomainCurrency).
-module LawSpec.DataNames (qualifiedDataName, flatDataCandidates, flatDataCandidatesWith, isProduct, productConstructors, caseNames, caseInsensitiveCounts, ambiguous) where
+module LawSpec.DataNames (qualifiedDataName, flatDataCandidates, flatDataCandidatesWith, isProduct, nativeConstructorFieldType, productConstructors, caseNames, caseInsensitiveCounts, ambiguous) where
 
 import Data.Char (isAlphaNum, toLower, toUpper)
 import qualified LawSpec.Core as C
+import LawSpec.Core.Types (substitute)
 import qualified Data.Map.Strict as M
 
 -- | shop.domain::type::Currency becomes ShopDomainCurrency, and its constructor
@@ -23,6 +24,14 @@ qualifiedDataName = concatMap capitalize . words . map (\c -> if isAlphaNum c th
 -- name; sums get a closed family of cases.
 isProduct :: C.DataDeclaration -> Bool
 isProduct declaration = length (C.dataConstructors declaration) == 1
+
+-- Products retain the public type's parameters. A sum case owns only open
+-- indices and existentials, so fixed index equations also determine the native
+-- types of its fields. Core schemas retain the original declared relations.
+nativeConstructorFieldType :: C.DataDeclaration -> C.DataConstructor -> C.Type -> C.Type
+nativeConstructorFieldType declaration constructor
+  | isProduct declaration = id
+  | otherwise = substitute (M.fromList (C.constructorEquations constructor))
 
 -- | Each product's constructor, given the native names of the types: it shares
 -- its type's name.

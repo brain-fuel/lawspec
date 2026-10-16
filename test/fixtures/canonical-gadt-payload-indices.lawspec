@@ -1,0 +1,94 @@
+unit authoring.indexedReadings
+
+type Reading (a of type Type) is one of
+  | Counter of type a where a = UInt8
+  | Toggle of type a where a = Bool
+  | Details of type a where a = record{value of type UInt8}
+end type
+
+type Coupled (a of type Type) (b of type Type) is one of
+  | Coupled of type record{first of type a second of type b}
+      where a = List c, b = c
+end type
+
+function unwrap (reading of type Reading a) -> a is
+  first matching case of reading:
+    when Counter value then value
+    when Toggle enabled then enabled
+    when Details details then details
+  end case
+end function
+
+function score (reading of type Reading a) -> UInt8 is
+  first matching case of reading:
+    when Counter value then value
+    when Toggle enabled then
+      if enabled then 1 else 0 end if
+    when Details record{value = value} then value
+  end case
+end function
+
+function second (pair of type Coupled a b) -> b is
+  first matching case of pair:
+    when Coupled record{second = enabled} then enabled
+  end case
+end function
+
+law "|counter values are preserved| is
+  definition:
+    for all (value of type UInt8) =>
+      unwrap (Counter value) must be value
+    end
+  end
+
+  expect unwrap (Counter value) = expected
+  in table (value, expected):
+    row 0, 0
+    row 7, 7
+    row 255, 255
+  end
+end
+
+law "|toggles preserve their Boolean values| is
+  definition:
+    for all (enabled of type Bool) =>
+      unwrap (Toggle enabled) must be enabled
+    end
+  end
+
+  expect unwrap (Toggle enabled) = expected
+  in table (enabled, expected):
+    row false, false
+    row true, true
+  end
+end
+
+law "|detailed readings expose their stored value| is
+  definition:
+    for all (value of type UInt8) =>
+      score (Details record{value = value}) must be value
+    end
+  end
+
+  expect score (Details record{value = value}) = expected
+  in table (value, expected):
+    row 0, 0
+    row 7, 7
+    row 255, 255
+  end
+end
+
+law "|related indices preserve the Boolean component| is
+  definition:
+    for all (enabled of type Bool) =>
+      second (Coupled record{first = [enabled, enabled], second = enabled})
+        must be enabled
+    end
+  end
+
+  expect second (Coupled record{first = [enabled], second = enabled}) = expected
+  in table (enabled, expected):
+    row false, false
+    row true, true
+  end
+end

@@ -11,6 +11,7 @@ import qualified RecordIdentitySpec
 import qualified RecordNormalizeSpec
 import qualified SourceRecordScopeSpec
 import qualified SourceRecordInferenceSpec
+import qualified SourceGadtIndicesSpec
 import qualified SourceRecordPayloadSpec
 import qualified SourceTupleSpec
 import qualified SelectionAdmissionSpec
@@ -112,6 +113,7 @@ main = hspec $ do
   SourceRecordElaborationSpec.test_recordElaborationUsesCheckedCore
   SourceRecordUnitSpec.test_recordUnitsCollectEveryOccurrence
   SourceRecordHarnessSpec.test_recordHarnessesUseOneTypedContext
+  SourceGadtIndicesSpec.test_sourceGadtPayloadIndices
   SourceRecordPayloadSpec.test_structuralNominalPayloads
   SourceTupleSpec.test_positionalProducts
   SelectionAdmissionSpec.test_selectionAdmission

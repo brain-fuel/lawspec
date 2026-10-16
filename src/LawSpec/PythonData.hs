@@ -11,7 +11,7 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.Scalar (primitives, primitiveName)
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.PythonTypes
-import LawSpec.DataNames (isProduct)
+import LawSpec.DataNames (isProduct, nativeConstructorFieldType)
 import LawSpec.Testing (fieldRegexSamples)
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
@@ -73,6 +73,11 @@ emitPythonDataWithProfile bits layout declarations = do
     variable (C.TypeVariable _) = True
     variable (C.Constructor _ args) = any (\arg -> case arg of C.TypeArgument ty -> variable ty; _ -> False) args
     variable (C.Arrow a b) = variable a || variable b
+    forwardReference ty = case ty of
+      C.Constructor name arguments -> any ((==C.Id name) . C.dataId) declarations ||
+        any (\argument -> case argument of C.TypeArgument value -> forwardReference value; _ -> False) arguments
+      C.Arrow a b -> forwardReference a || forwardReference b
+      _ -> False
     definition names declaration = do
       name <- lookupName names (C.dataId declaration)
       let parameters = zip (C.dataParameters declaration)
@@ -96,12 +101,17 @@ emitPythonDataWithProfile bits layout declarations = do
             -- Products use one class for both the type and its constructor.
             -- Its public type arguments must remain available in its fields.
             classArgs = if isProduct declaration then args ++ map (D.text . snd) existentials else open
-        baseArgs <- forM parameters $ \(p, v) -> maybe (pure (D.text v)) (typeDocWith handles "" names scope)
-          (lookup p (C.constructorEquations constructor))
+        baseArgs <- forM parameters $ \(p, v) -> case lookup p (C.constructorEquations constructor) of
+          Nothing -> pure (D.text v)
+          Just ty -> do
+            rendered <- typeDocWith handles "" names scope ty
+            -- Base-class arguments are evaluated even with postponed
+            -- annotations; nominal dependencies may be declared later.
+            pure (if forwardReference ty then D.text (q (D.render D.Compact rendered)) else rendered)
         fields <- forM (C.constructorFields constructor) $ \field -> do
           identifier (C.binderName field)
           unless (take 2 (C.binderName field) /= "__") (Left "Python data fields cannot replace special methods")
-          ty <- typeDocWith handles "" names scope (C.binderType field)
+          ty <- typeDocWith handles "" names scope (nativeConstructorFieldType declaration constructor (C.binderType field))
           pure (D.text (C.binderName field ++ ": ") <> ty)
         -- Each field-only existential's type travels as a witness text.
         let free = freeExistentials declaration constructor

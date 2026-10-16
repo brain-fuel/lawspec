@@ -1,7 +1,7 @@
 -- | Native JVM declarations from checked Core; no surface syntax or inference.
 module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeTypeDoc) where
 
-import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames, caseInsensitiveCounts, ambiguous)
+import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.Scalar (nativeRepresentation, primitives, primitiveName)
 import Control.Monad (unless, forM)
@@ -183,7 +183,7 @@ emitKotlinDataWithProfile bits layout declarations = do
                 else [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
           declared <- forM (C.constructorFields variant) $ \field -> do
             fieldIdentifier (C.binderName field)
-            ty <- typeDoc (handlesOf declarations) names scope (C.binderType field)
+            ty <- typeDoc (handlesOf declarations) names scope (nativeConstructorFieldType declaration variant (C.binderType field))
             pure (D.text ("val " ++ C.binderName field ++ ": ") <> ty)
           let fields = declared ++ [D.text ("val " ++ S.witnessFieldName (length free) k ++ ": String") | k <- [0 .. length free - 1]]
           implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
@@ -476,7 +476,7 @@ emitCodecs mappings owner layout declarations = do
       bindings <- fields names parameters (nativeKeys variant) variant
       let n = length (C.constructorFields variant)
           payload = [call "LawSpecSchema.encodeField"
-            [D.text local, D.text ("value." ++ (if i < n then fieldName variant field else field)), quoted (C.idText (C.constructorId variant) ++ "." ++ field)]
+            [D.text local, nativeValue variant i (if i < n then fieldName variant field else field), quoted (C.idText (C.constructorId variant) ++ "." ++ field)]
             | (i,(local,field,_)) <- zip [0 :: Int ..] bindings]
           condition = (if generatedObject variant && owner == "LawSpecDataCodecs" then ""
             else if unitConstructor variant then "value === "
@@ -493,13 +493,18 @@ emitCodecs mappings owner layout declarations = do
         (D.joinWith D.hardline (identityCheck ++ [doc | (_,_,doc) <- bindings] ++
           [call "schema.construct" [D.text "type", quoted (C.idText (C.constructorId variant)),
             call "listOf" payload, D.text "bits", D.text "symbols"]])))
+    nativeValue variant index name =
+      let term=D.text ("value."++name)
+      in case drop index (C.constructorFields variant) of
+        field:_ | nativeFieldChanged variant field -> call "LawSpecSchema.cast" [term]
+        _ -> term
     decodeArm names parameters owner variant = do
       bindings <- fields names parameters (dataKeys variant) variant
       let decoded i local = D.text (local ++ ".decode(data.fields()[" ++ show i ++ "])")
-          payload = [if existentialField variant field then call "LawSpecSchema.cast" [decoded i local] else decoded i local
+          payload = [if existentialField variant field || nativeFieldChanged variant field then call "LawSpecSchema.cast" [decoded i local] else decoded i local
             | (i,((local,_,_),field)) <- zip [0::Int ..] (zip bindings (C.constructorFields variant))] ++
             [decoded i local | (i,(local,_,_)) <- drop (length (C.constructorFields variant)) (zip [0::Int ..] bindings)]
-          constructor = if gadtVariant variant
+          constructor = if gadtVariant variant && not (productVariant variant)
             then constructorName owner variant ++ (if ownCount variant > 0 then "<" ++ intercalate ", " (replicate (ownCount variant) "Any?") ++ ">" else "")
             else D.render D.Compact (applied (constructorName owner variant) [D.text t | (_,(t,_)) <- parameters])
           built = if unitConstructor variant then D.text (constructorName owner variant) else call constructor payload
@@ -512,8 +517,12 @@ emitCodecs mappings owner layout declarations = do
              else built])))
     gadtVariant variant = not (null (C.constructorEquations variant)) || not (null (C.constructorExistentials variant))
     existentialField variant field = any (`elem` C.constructorExistentials variant) (typeVariablesIn (C.binderType field))
+    productVariant variant = maybe False isProduct (declarationOf variant)
+    nativeFieldChanged variant field = maybe False
+      (\d -> nativeConstructorFieldType d variant (C.binderType field)/=C.binderType field) (declarationOf variant)
     ownCount variant = case declarationOf variant of
-      Just d | gadtVariant variant -> length [p | p <- C.dataParameters d, p `notElem` map fst (C.constructorEquations variant)]
+      Just d | isProduct d -> length (C.dataParameters d)
+             | gadtVariant variant -> length [p | p <- C.dataParameters d, p `notElem` map fst (C.constructorEquations variant)]
         + length [e | e <- C.constructorExistentials variant, e `notElem` freeExistentials d variant]
              | otherwise -> length (C.dataParameters d)
       Nothing -> 0

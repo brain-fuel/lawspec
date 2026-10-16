@@ -46,6 +46,24 @@ end
   `Same`). Each instance it is used at becomes a checked instance, up to 64 per
   definition.
 
+## Payloads determined by indices
+
+A constructor equation constrains occurrences of the index in its payload as
+well as its result. In the canonical
+[indexed-reading fixture](../../../test/fixtures/canonical-gadt-payload-indices.lawspec),
+`Counter of type a where a = UInt8` takes a UInt8 payload. `Details` fixes the
+same parameter to `record{value of type UInt8}`, so a generic match can
+destructure that record and read its field. Those facts remain local to each
+branch. A wrong payload, out-of-range literal or incompatible result is rejected
+during mandatory definition admission, including with no law checks selected.
+Concrete structural indices compare fields by label and retain their complete
+restrictions.
+
+Two indices can share a determined existential, as in `a = List c, b = c`.
+The payload and result use that same `c`; construction cannot choose unrelated
+payload types. This differs from a field-only existential whose type is known
+only through its value's witness.
+
 ## Existentials
 
 A type variable in a constructor that is not a parameter is existential.
@@ -72,3 +90,10 @@ A type variable in a constructor that is not a parameter is existential.
 
 Decoding checks that a value's constructor can build the expected type, so an
 adapter cannot return `Number` where `Expr Bool` is expected.
+
+Generated sum cases use their fixed index types in their native fields. A
+single-constructor product retains its public type parameters; its codec checks
+the constructor equations. Python bases use forward references when an index
+names a data type declared later. Haskell's derived display instance can require
+`Show` for a result parameter that directly determines an existential payload.
+These native display constraints do not add a LawSpec `Eq` requirement.

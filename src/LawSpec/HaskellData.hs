@@ -15,7 +15,7 @@ import Numeric (showHex)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
 import LawSpec.Scalar (primitives, primitiveName, isInteger)
-import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials, keyedRequirements, substitute)
+import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials, keyedRequirements, equalityRequirements, substitute)
 import LawSpec.Collections (collectionContainer)
 import qualified LawSpec.Code.Doc as D
 
@@ -192,7 +192,20 @@ emitHaskellData layout declarations = do
           D.text "{ " <> D.joinWith (D.text ", ") [D.text (field ++ " :: " ++ ty) | (field,ty) <- fields] <> D.text " } -> ") <>
           D.text result)
       constructorNames <- mapM (lookupName names . C.constructorId) (C.dataConstructors declaration)
-      let existential = any (not . null . C.constructorExistentials) (C.dataConstructors declaration)
+      registry <- makeRegistry declarations
+      -- A determined existential can be shown through a result parameter
+      -- that names it directly. Show [a] alone does not supply Show a.
+      let needed = nub [parameter | variant<-C.dataConstructors declaration,
+            (parameter,C.TypeVariable variable)<-C.constructorEquations variant,
+            variable `elem` C.constructorExistentials variant,
+            field<-C.constructorFields variant,
+            Right requirements<-[equalityRequirements registry
+              (substitute (M.fromList (C.constructorEquations variant)) (C.binderType field))],
+            variable `elem` requirements]
+          showContext = case ["P.Show "++variable | (parameter,variable)<-parameters,parameter `elem` needed] of
+            [] -> ""
+            constraints -> "("++intercalate ", " constraints++") => "
+          existential = any (not . null . C.constructorExistentials) (C.dataConstructors declaration)
           -- A field-only existential's value has no Show instance to use:
           -- such a type shows only its constructors.
           opaque = any (not . null . freeExistentials declaration) (C.dataConstructors declaration)
@@ -200,7 +213,7 @@ emitHaskellData layout declarations = do
             (if opaque
               then [D.text ("instance P.Show (" ++ own ++ ") where") <> D.nest 2 (D.hardline <>
                 D.joinWith D.hardline [D.text ("showsPrec _ " ++ constructor ++ " {} = P.showString " ++ show constructor) | constructor <- constructorNames])]
-              else [D.text ("deriving instance P.Show (" ++ own ++ ")")])
+              else [D.text ("deriving instance " ++ showContext ++ "P.Show (" ++ own ++ ")")])
       pure (D.text ("data " ++ own ++ " where") <> D.nest 2 (D.hardline <> D.joinWith D.hardline variants) <>
         D.hardline <> D.hardline <> D.joinWith D.hardline instances)
     lookupName names identity = maybe (Left "unplanned Haskell data name") Right (lookup identity names)

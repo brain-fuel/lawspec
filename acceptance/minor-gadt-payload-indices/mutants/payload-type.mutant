@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: definition
+@@ test/fixtures/canonical-gadt-payload-indices.lawspec
+<<<<<<<
+    when Details record{value = value} then value
+=======
+    when Details record{value = value} then true
+>>>>>>>

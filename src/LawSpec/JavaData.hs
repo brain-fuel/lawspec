@@ -3,7 +3,7 @@
 -- for primitive domains with no faithful Java representation.
 module LawSpec.JavaData (schemaSource, javaConstructorClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaDataName, identifier) where
 
-import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames, caseInsensitiveCounts, ambiguous)
+import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub)
@@ -210,14 +210,15 @@ emitJavaDataWithProfile bits layout declarations = do
                 own = if null equations && null existentials then args
                   else [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
             implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
-            record names scope ("record " ++ caseOf v) own (Just (applied name implemented)) v) variants
+            record names scope ("record " ++ caseOf v) own (Just (applied name implemented))
+              v{C.constructorFields=[field{C.binderType=nativeConstructorFieldType declaration v (C.binderType field)} | field<-C.constructorFields v]}) variants
           let header = D.text "public sealed interface " <> applied name args <>
                 D.nest 4 (D.softline <> D.text "permits " <> D.nest 4 (D.commaSep [D.text (name ++ "." ++ caseOf v) | v <- variants]))
           pure (D.group header <> D.text " " <> D.block 2 body)
       pure (Artifact ("src/main/java/lawspec/data/" ++ name ++ ".java")
         (D.render layout (file source)) "generated" "source")
     record names scope keywordName args implements value = do
-      let free = concat [freeExistentials d value | d <- declarations, value `elem` C.dataConstructors d]
+      let free = concat [freeExistentials d value | d <- declarations, C.constructorId value `elem` map C.constructorId (C.dataConstructors d)]
           parameters = scope ++ [(e, "Object") | e <- free]
           witnesses = [D.text ("String " ++ Schema.witnessFieldName (length free) k) | k <- [0 .. length free - 1]]
       components <- (++ witnesses) <$> mapM (\field -> do
@@ -485,6 +486,7 @@ codecSource layout names declarations = do
         -- A GADT case's own type arguments: none when its refinements fix
         -- every parameter, wildcards for open parameters and existentials.
         caseArguments args value
+          | isProduct declaration = args
           | null (C.constructorEquations value) && null (C.constructorExistentials value) = args
           | otherwise = replicate (length [p | p <- C.dataParameters declaration, p `notElem` map fst (C.constructorEquations value)]
               + length [e | e <- C.constructorExistentials value, e `notElem` freeExistentials declaration value]) (D.text "?")
@@ -522,12 +524,18 @@ codecSource layout names declarations = do
           pure (D.joinWith D.hardline ([doc | (_,_,doc) <- bindings] ++ [D.text "return " <> construct value bindings <> D.text ";"]))
         construct value bindings = call "schema.construct"
           [D.text "type", quoted (C.idText (C.constructorId value)), call "List.of"
-            [call "LawSpecSchema.encodeField" [D.text name, D.text ("item." ++ field ++ "()"), quoted (C.idText (C.constructorId value) ++ "." ++ field)]
+            [call "LawSpecSchema.encodeField" [D.text name, nativeValue value field, quoted (C.idText (C.constructorId value) ++ "." ++ field)]
             | (name,field,_) <- bindings], D.text "bits",D.text "symbols"]
+        nativeValue value name =
+          let term=D.text ("item." ++ name ++ "()")
+              changed=or [nativeConstructorFieldType declaration value (C.binderType field)/=C.binderType field |
+                field<-C.constructorFields value,C.binderName field==name]
+          in if changed then call "LawSpecSchema.cast" [term] else term
         decodeArm parameters value = do
           bindings <- fieldBindings parameters (dataKeys value) value
           let decoded i name = D.text (name ++ ".decode(data.fields().get(" ++ show i ++ "))")
-              fields = [if existential value (C.binderType field) then call "LawSpecSchema.cast" [decoded i name] else decoded i name
+              fields = [if existential value (C.binderType field) || nativeConstructorFieldType declaration value (C.binderType field)/=C.binderType field
+                then call "LawSpecSchema.cast" [decoded i name] else decoded i name
                 | (i,((name,_,_),field)) <- zip [0::Int ..] (zip bindings (C.constructorFields value))] ++
                 [decoded i name | (i,(name,_,_)) <- drop (length (C.constructorFields value)) (zip [0::Int ..] bindings)]
               generic = not (null (caseArguments [D.text "_" | _ <- parameters] value))
