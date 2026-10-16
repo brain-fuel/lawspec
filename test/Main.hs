@@ -53,6 +53,7 @@ import qualified PreludeResolutionSpec
 import qualified SourceSyntaxSpec
 import qualified MigrationSnapshotSpec
 import qualified MigrationTemplateSpec
+import qualified DomainEvidenceSpec
 import qualified AsyncSpec
 import qualified AbilitiesSpec
 import qualified LawPrimitivesSpec
@@ -95,6 +96,7 @@ main = hspec $ do
   SourceSyntaxSpec.test_sourceSyntax
   MigrationSnapshotSpec.test_migrationSnapshot
   MigrationTemplateSpec.test_migrationTemplates
+  DomainEvidenceSpec.test_domainEvidence
   CanonicalSpec.test_canonicalAuthoringPreservesIntrinsicGuarantees
   ContextualSpec.test_articlesPreserveOrdinaryNamesAndScope
   RecordIdentitySpec.test_recordIdentitiesPreserveSemantics

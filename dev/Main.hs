@@ -61,7 +61,7 @@ boundaries = do
       "Frontend", "Refinement", "Domain", "Eval", "Public", "Api"]
     roots = ["Core", "Core.Validate", "Core.Total", "Core.Definitions", "Core.Eval",
       "Core.Payload", "Core.Semantics", "Testing", "Backend", "CoreEmit", "JavaData",
-      "RustEmit", "CoreScalarEmit", "CoreNativeScalarEmit", "KotlinData"]
+      "RustEmit", "CoreScalarEmit", "CoreNativeScalarEmit", "KotlinData", "Core.Migration", "Core.DomainEvidence"]
     visitAll seen [] = pure seen
     visitAll seen ((name, trail) : rest) = do
       when (name `S.member` forbidden)

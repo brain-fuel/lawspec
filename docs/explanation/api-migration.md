@@ -138,6 +138,30 @@ canonical universal quantification. Empty and dependent domains require
 explicit correspondence checks before the migration can be validated; a
 successful recompile does not establish that correspondence.
 
+`migrationSemantics.inputDomains` provides separate domain-only evidence for
+concrete checked laws. An `inhabited` result carries a verified input tuple;
+`empty` requires a complete finite product with only Boolean rejection and no
+evaluation error. A bounded miss is `incomplete`, and unavailable generation is
+`unsupported`. Opaque native handles and existential witness pools cannot be
+used as complete covers. Closed examples, the existing finite enumerator,
+boundary candidates and restriction hints feed the ordinary checked evaluator.
+Every accepted tuple rechecks intrinsic types and dependent restrictions in
+lexical order. No law body or example expectation is evaluated by this analysis.
+
+The corresponding fingerprint includes the transitive type, constructor,
+definition and contract dependencies of the domain, including deferred runtime
+postconditions. Unrelated definition edits do not invalidate it. A changed
+predicate or nominal field restriction does invalidate it, even when its name
+stays the same. The report clears a changed population policy only when both
+snapshots provide verified input witnesses and matching domain fingerprints.
+That is population-policy correspondence, not verification of the law or the
+complete migration. Abstract reusable-law domains still need their own evidence.
+
+Chapter 6 currently has verified input tuples for all 23 concrete domains.
+Seventeen population-policy changes have matching dependencies; six remain
+unestablished because they reach changed payload shapes. These domain facts do
+not discharge Chapter 6's laws, payload correspondence or native bindings.
+
 This preview is a step toward the complete project transformation. The report
 keeps `validated: false` and lists the remaining correspondence gates.
 `--write` reports `migration-incomplete` and writes nothing until the complete

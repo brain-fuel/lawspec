@@ -45,6 +45,39 @@ function available(snapshot) {
     parts.every(name=>rowsValid(snapshot[name]))&&rowsValid(snapshot.domainPolicies,true);
 }
 
+function compareDomainPolicies(before,after) {
+  const original=before.domainPolicies,migrated=after.domainPolicies;
+  const unchanged=JSON.stringify(original)===JSON.stringify(migrated);
+  if(unchanged) return {status:'matched',before:original,after:migrated,basis:'unchanged-domain-policies'};
+  const valid=sample=>sample?.status==='available'&&sample.version===1&&sample.algorithm==='sha256'&&
+    sample.machineBits===before.machineBits&&sample.lawBodiesEvaluated===false&&Array.isArray(sample.domains)&&
+    sample.domains.every(row=>row&&typeof row.comparisonId==='string'&&typeof row.domainDigest==='string'&&digest.test(row.domainDigest)&&
+      ['inhabited','empty','incomplete','unsupported'].includes(row.status))&&
+    new Set(sample.domains.map(row=>row.comparisonId)).size===sample.domains.length;
+  const evidenceAvailable=valid(before.inputDomains)&&valid(after.inputDomains);
+  const oldDomains=new Map(evidenceAvailable?before.inputDomains.domains.map(row=>[row.comparisonId,row]):[]);
+  const newDomains=new Map(evidenceAvailable?after.inputDomains.domains.map(row=>[row.comparisonId,row]):[]);
+  const validWitness=row=>row?.status==='inhabited'&&Number.isSafeInteger(row.inputCount)&&row.inputCount>=0&&
+    Array.isArray(row.witness)&&row.witness.length===row.inputCount&&
+    row.witness.every(binding=>binding&&typeof binding.binder==='string'&&binding.value&&typeof binding.value==='object')&&
+    new Set(row.witness.map(binding=>binding.binder)).size===row.witness.length;
+  const rows=original.map(row=>{
+    const next=migrated.find(item=>item.comparisonId===row.comparisonId);
+    if(!next) return {comparisonId:row.comparisonId,status:'not-established',reason:'The migrated input domain is missing.'};
+    if(row.policy===next.policy) return {comparisonId:row.comparisonId,status:'matched',basis:'unchanged-domain-policy'};
+    const old=oldDomains.get(row.comparisonId),changed=newDomains.get(row.comparisonId);
+    if(validWitness(old)&&validWitness(changed)&&old.domainDigest===changed.domainDigest) return {
+      comparisonId:row.comparisonId,status:'matched',basis:'matching-domain-dependencies-and-verified-input-witnesses',
+      before:old.witness,after:changed.witness};
+    return {comparisonId:row.comparisonId,status:'not-established',reason:
+      'The changed population policy needs matching domain dependencies and verified input witnesses; empty or incomplete searches do not justify it.'};
+  });
+  const matched=original.length===migrated.length&&rows.every(row=>row.status==='matched');
+  return {status:matched?'matched':'not-established',basis:matched?'verified-input-domain-correspondence':undefined,
+    ...(matched?{}:{reason:'Nonempty and universal domains differ. Establish inhabitance, including dependent and empty domains, before accepting this change.'}),
+    before:original,after:migrated,domains:rows,lawVerification:'not-established-by-domain-evidence'};
+}
+
 export function compareMigrationSnapshots(before,after) {
   const incomplete=reason=>({status:'not-established',reason});
   const unproved={
@@ -61,11 +94,8 @@ export function compareMigrationSnapshots(before,after) {
   }
   const checks=Object.fromEntries(components.map(([field,component])=>[component,
     before[field]===after[field]?{status:'matched',basis:'matching-full-Core-fingerprints'}:incomplete('The normalized '+component+' fingerprints differ; correspondence has not been established.')]));
-  const policiesEqual=JSON.stringify(before.domainPolicies)===JSON.stringify(after.domainPolicies);
   return {status:'not-established',scope:'checked concrete Core',...checks,
     differences:differences(before,after,parts),
     lawBodies:{...checks.lawBodies,includesDomainPolicy:false},
-    domainPolicies:{...(policiesEqual?{status:'matched'}:incomplete(
-      'Nonempty and universal domains differ. Establish inhabitance, including dependent and empty domains, before accepting this change.')),
-      before:before.domainPolicies,after:after.domainPolicies},...unproved};
+    domainPolicies:compareDomainPolicies(before,after),...unproved};
 }

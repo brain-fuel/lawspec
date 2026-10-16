@@ -509,6 +509,7 @@ library
       LawSpec.Core
       LawSpec.Core.DefinitionContracts
       LawSpec.Core.Definitions
+      LawSpec.Core.DomainEvidence
       LawSpec.Core.EqSet
       LawSpec.Core.Eval
       LawSpec.Core.Evidence
@@ -616,6 +617,7 @@ library
       LawSpec.Mailboxes
       LawSpec.Matchers
       LawSpec.Memo
+      LawSpec.MigrationDomains
       LawSpec.MigrationTemplates
       LawSpec.Model
       LawSpec.ModelTests
@@ -871,6 +873,7 @@ test-suite lawspec-test
       DischargeSpec
       DistributionSpec
       DocumentSpec
+      DomainEvidenceSpec
       DomainModelSpec
       DotNetSpec
       EqSetOperationsSpec

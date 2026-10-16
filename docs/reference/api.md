@@ -199,6 +199,18 @@ law-body projection alone excludes that policy. This metadata includes unused
 generic definitions and reusable laws. It is comparison evidence, not execution
 or law-verification evidence.
 
+`inputDomains` is another optional, versioned snapshot at the program's machine
+width. Available results have `lawBodiesEvaluated: false` and a `domains` array.
+Each entry includes `comparisonId`, `domainDigest`, `inputCount`, `search`,
+`candidateChecks`, `searchLimit`, `finiteLimit` and diagnostic `notes`.
+An `inhabited` entry adds `witness: {binder, value: DataValue}[]`;
+an `empty` entry has `complete: true`. `incomplete` and `unsupported` entries
+have `complete: false` and a `reason`, and supply no witness. The search limit
+bounds candidate search; finite enumeration has its separate finite limit.
+These are facts about valid input tuples, independent of the law body and its
+selected verification layers. A populated domain can accompany an unverified
+or false law.
+
 ### Diagnostics
 
 ```ts

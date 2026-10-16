@@ -14,6 +14,40 @@ const templates={status:'available',version:1,algorithm:'sha256',machineBits:64,
   declarationsDigest:'3'.repeat(64),definitionTemplatesDigest:'4'.repeat(64),lawTemplatesDigest:'5'.repeat(64),lawBodiesDigest:'6'.repeat(64),
   units:[],definitions:[],laws:[],domainPolicies:[]};
 
+const domain={comparisonId:'unit::law::same',domainDigest:'a'.repeat(64),inputCount:1,status:'inhabited',
+  witness:[{binder:'unit::law::same::bound::0',value:{type:'Bool',value:false}}]};
+const domainSnapshot=entry=>({status:'available',version:1,algorithm:'sha256',machineBits:64,lawBodiesEvaluated:false,domains:[entry]});
+
+test('verified inhabited input domains justify only the changed population policy',()=>{
+  const before={...snapshot,inputDomains:domainSnapshot(domain)};
+  const after={...snapshot,programDigest:'b'.repeat(64),domainPolicies:[{comparisonId:'unit::law::same',policy:'universal'}],
+    inputDomains:domainSnapshot(domain)};
+  const compared=compareMigrationSnapshots(before,after);
+  assert.equal(compared.domainPolicies.status,'matched');
+  assert.equal(compared.domainPolicies.domains[0].basis,'matching-domain-dependencies-and-verified-input-witnesses');
+  assert.equal(compared.domainPolicies.lawVerification,'not-established-by-domain-evidence');
+  assert.equal(compared.program.status,'not-established');
+  assert.equal(compared.status,'not-established');
+});
+
+test('different nominal or predicate dependencies cannot share an input-domain certificate',()=>{
+  const before={...snapshot,inputDomains:domainSnapshot(domain)};
+  const after={...snapshot,domainPolicies:[{comparisonId:'unit::law::same',policy:'universal'}],
+    inputDomains:domainSnapshot({...domain,domainDigest:'b'.repeat(64)})};
+  assert.equal(compareMigrationSnapshots(before,after).domainPolicies.status,'not-established');
+});
+
+test('empty, incomplete, unsupported and malformed input evidence never clears a changed policy',()=>{
+  for(const evidence of [undefined,{...domainSnapshot(domain),version:2},{...domainSnapshot(domain),machineBits:32},
+    {...domainSnapshot(domain),lawBodiesEvaluated:true},domainSnapshot({...domain,status:'empty',complete:true,witness:undefined}),
+    domainSnapshot({...domain,status:'incomplete'}),domainSnapshot({...domain,status:'unsupported'}),
+    domainSnapshot({...domain,witness:[]}),domainSnapshot({...domain,inputCount:undefined})]) {
+    const before={...snapshot,inputDomains:domainSnapshot(domain)};
+    const after={...snapshot,domainPolicies:[{comparisonId:'unit::law::same',policy:'universal'}],inputDomains:evidence};
+    assert.equal(compareMigrationSnapshots(before,after).domainPolicies.status,'not-established');
+  }
+});
+
 test('matching checked source templates remain separate from native binding and behavior correspondence',()=>{
   const compared=compareMigrationSnapshots({...snapshot,sourceTemplates:templates},{...snapshot,sourceTemplates:templates});
   assert.equal(compared.sourceTemplates.status,'matched');
@@ -136,16 +170,19 @@ test('actual compiler snapshots compare migrated computation and preserve the no
   }
 });
 
-test('actual snapshot equality keeps law bodies separate from changed empty-domain policy',async()=>{
+test('actual verified input witnesses keep populated policy correspondence separate from law verification',async()=>{
   const sources=[{path:'law.lawspec',content:'unit domain\nlaw `same` is definition is `for all` (value :: Bool) . value = value end end'}];
   const report=await migrationReport(compiler,{version:1,targets:[]},{sources});
   assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
   assert.equal(report.correspondence.definitionPlane.status,'matched');
   assert.equal(report.correspondence.lawBodies.status,'matched');
-  assert.equal(report.correspondence.domainPolicies.status,'not-established');
+  assert.equal(report.correspondence.domainPolicies.status,'matched');
+  assert.equal(report.correspondence.domainPolicies.lawVerification,'not-established-by-domain-evidence');
   assert.equal(report.correspondence.program.status,'not-established');
   assert.deepEqual(report.correspondence.domainPolicies.before,[{comparisonId:'domain::law::same',policy:'nonempty'}]);
   assert.deepEqual(report.correspondence.domainPolicies.after,[{comparisonId:'domain::law::same',policy:'universal'}]);
+  assert.equal(report.baseline.coreSnapshot.inputDomains.domains[0].status,'inhabited');
+  assert.equal(report.sourcePreview.canonicalCheck.coreSnapshot.inputDomains.domains[0].status,'inhabited');
 });
 
 test('actual nominal restrictions and GADT equations participate in full-Core fingerprints',async()=>{
@@ -178,6 +215,12 @@ test('Chapter 6 reports actual payload-shape differences instead of silently era
   assert.equal(report.correspondence.differences.definitions.changed.length,8);
   assert.equal(report.correspondence.domainPolicies.before.length,23);
   assert.equal(report.correspondence.domainPolicies.status,'not-established');
+  for(const snapshot of [report.baseline.coreSnapshot,report.sourcePreview.canonicalCheck.coreSnapshot]) {
+    assert.equal(snapshot.inputDomains.domains.length,23);
+    assert.ok(snapshot.inputDomains.domains.every(domain=>domain.status==='inhabited'));
+  }
+  assert.equal(report.correspondence.domainPolicies.domains.filter(domain=>domain.status==='matched').length,17);
+  assert.equal(report.correspondence.domainPolicies.domains.filter(domain=>domain.status==='not-established').length,6);
   assert.equal(report.validated,false);
   assert.deepEqual(report.filesWritten,[]);
 });
@@ -227,4 +270,41 @@ test('actual unused reusable-law requirements survive concrete law filtering',as
   assert.equal(compared.sourceTemplates.status,'not-established');
   assert.equal(compared.sourceTemplates.laws.status,'not-established');
   assert.deepEqual(compared.sourceTemplates.differences.laws.changed,['unused::law::preserved']);
+});
+
+test('actual input-domain evidence distinguishes finite emptiness, bounded misses and unverified law bodies',async()=>{
+  const capture=async definition=>{
+    const result=await compiler.check({...options,migrationSnapshot:true,sources:[{path:'domain.lawspec',
+      content:'unit domain\nlaw requirement is definition: '+definition+' end end'}]});
+    assert.deepEqual(result.diagnostics,[]);
+    assert.equal(result.evidence.find(item=>item.stage==='law').status,'not-verified');
+    assert.equal(result.migrationSemantics.inputDomains.lawBodiesEvaluated,false);
+    return result.migrationSemantics.inputDomains.domains[0];
+  };
+  const populated=await capture('for all (value :: Bool) => false end');
+  assert.equal(populated.status,'inhabited');
+  assert.deepEqual(populated.witness[0].value,{type:'Bool',value:false});
+  const empty=await capture('for all (value :: Bool where false) => true end');
+  assert.equal(empty.status,'empty');
+  assert.equal(empty.complete,true);
+  assert.equal(empty.witness,undefined);
+  const missed=await capture('for all (value :: Integer where value * value = 1040400) => true end');
+  assert.equal(missed.status,'incomplete');
+  assert.equal(missed.complete,false);
+  assert.equal(missed.witness,undefined);
+});
+
+test('actual changed checked predicates invalidate matching-looking domain names',async()=>{
+  const old='unit domain\ndefinition allowed (value :: Bool) :: Bool is value end\n'+
+    'law `same` is definition is `for all` (value :: Bool where allowed value) . value = value end end';
+  const before=await compiler.migrationBaseline({...options,from:'0.24',sources:[{path:'before.lawspec',content:old}]});
+  const after=await compiler.check({...options,migrationSnapshot:true,sources:[{path:'after.lawspec',content:
+    'unit domain\nfunction allowed (value :: Bool) -> Bool is not value end function\n'+
+    'law "|same| is definition: for all (value :: Bool where allowed value) => value = value end end end'}]});
+  for(const result of [before,after]) {
+    assert.deepEqual(result.diagnostics,[]);
+    assert.equal(result.migrationSemantics.inputDomains.domains[0].status,'inhabited');
+  }
+  assert.notEqual(before.migrationSemantics.inputDomains.domains[0].domainDigest,after.migrationSemantics.inputDomains.domains[0].domainDigest);
+  assert.equal(compareMigrationSnapshots(before.migrationSemantics,after.migrationSemantics).domainPolicies.status,'not-established');
 });

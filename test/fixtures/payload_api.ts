@@ -1,4 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, CheckRequest} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest} from '../../npm/index.js';
 
 export function migrationDigests(result: Result): string[] {
   const snapshot: MigrationSemanticSnapshot | undefined = result.migrationSemantics;
@@ -13,8 +13,27 @@ export function migrationDigests(result: Result): string[] {
     ? [templates.declarationsDigest, templates.definitionTemplatesDigest, templates.lawTemplatesDigest,
       templates.lawBodiesDigest, ...templates.definitions.map(item => item.digest),
       ...templates.laws.map(item => item.comparisonId)] : [];
+  const inputDomains = snapshot.inputDomains;
+  const domainDigests = inputDomains?.status === 'available'
+    ? inputDomains.domains.map(domain => {
+      if (domain.status === 'inhabited') {
+        const values = domain.witness.map(binding => binding.value);
+        void values;
+      } else if (domain.status === 'empty') {
+        const complete: true = domain.complete;
+        void complete;
+        // @ts-expect-error A complete empty domain has no fabricated witness.
+        void domain.witness;
+      } else {
+        const complete: false = domain.complete;
+        const reason: string = domain.reason;
+        void complete; void reason;
+      }
+      return domain.domainDigest;
+    }) : [];
   return [snapshot.programDigest, snapshot.definitionPlaneDigest, snapshot.lawBodiesDigest,
     ...sourceDigests,
+    ...domainDigests,
     ...snapshot.definitions.map(item => item.comparisonId + ':' + item.digest),
     ...snapshot.contracts.map(item => item.digest), ...snapshot.dataTypes.map(item => item.digest)];
 }
@@ -25,6 +44,9 @@ const malformedCapture: CheckRequest = {sources: [], migrationSnapshot: 'yes'};
 // @ts-expect-error Unavailable snapshots cannot claim matching concrete Core.
 const malformedSnapshot: MigrationSemanticSnapshot = {status: 'unavailable', programDigest: 'digest'};
 void captureRequest; void malformedCapture; void malformedSnapshot;
+// @ts-expect-error An inhabited domain requires actual typed input witnesses.
+const missingInputWitness: MigrationInputDomain = {status: 'inhabited'};
+void missingInputWitness;
 
 export function authoredNames(unit: Unit): string[] {
   return unit.declarations.flatMap(declaration => {

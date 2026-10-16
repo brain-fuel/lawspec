@@ -221,6 +221,17 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , interface "MigrationRequest extends CheckRequest"
       [("schemaVersion?",text "5"),("languageProfile",quoted "1.0-rc.1"),("from",quoted "0.24")]
+  , let common=fields [("comparisonId","string"),("domainDigest","string"),("inputCount","number"),
+          ("search","string"),("candidateChecks","number"),("searchLimit","number"),("finiteLimit","number"),("notes","string[]")]
+    in alias "MigrationInputDomain"
+      [ record (common++[("status",quoted "inhabited"),("witness",array (record (fields [("binder","string"),("value","DataValue")])))]),
+        record (common++[("status",quoted "empty"),("complete",text "true")]),
+        record (common++[("status",union (map quoted ["incomplete","unsupported"])),("complete",text "false"),("reason",text "string")]) ]
+  , alias "MigrationDomainSnapshot"
+      [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),
+          ("machineBits",union [text "32",text "64"]),("lawBodiesEvaluated",text "false")] ++
+          fields [("scope","string"),("domains","MigrationInputDomain[]")]),
+        record [("status",quoted "unavailable"),("reason",text "string")]]
   , alias "MigrationTemplateSnapshot"
       [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),
           ("machineBits",union [text "32",text "64"])] ++
@@ -233,7 +244,7 @@ declarations = joinWith (softbreak <> softbreak)
       [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),
           ("machineBits",union [text "32",text "64"])] ++
           fields [("scope","string"),("programDigest","string"),("definitionPlaneDigest","string"),("lawBodiesDigest","string"),
-            ("sourceTemplates?","MigrationTemplateSnapshot")] ++
+            ("sourceTemplates?","MigrationTemplateSnapshot"),("inputDomains?","MigrationDomainSnapshot")] ++
           [(name,array (record (fields [("comparisonId","string"),("digest","string")]))) | name<-["definitions","contracts","dataTypes"]] ++
           [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))]))])
       , record [("status",quoted "unavailable"),("reason",text "string")]]

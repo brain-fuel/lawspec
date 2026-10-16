@@ -496,6 +496,57 @@ export interface MigrationRequest extends CheckRequest {
   from: '0.24';
 }
 
+export type MigrationInputDomain =
+    {
+      comparisonId: string;
+      domainDigest: string;
+      inputCount: number;
+      search: string;
+      candidateChecks: number;
+      searchLimit: number;
+      finiteLimit: number;
+      notes: string[];
+      status: 'inhabited';
+      witness: {binder: string; value: DataValue;}[];
+    } |
+    {
+      comparisonId: string;
+      domainDigest: string;
+      inputCount: number;
+      search: string;
+      candidateChecks: number;
+      searchLimit: number;
+      finiteLimit: number;
+      notes: string[];
+      status: 'empty';
+      complete: true;
+    } |
+    {
+      comparisonId: string;
+      domainDigest: string;
+      inputCount: number;
+      search: string;
+      candidateChecks: number;
+      searchLimit: number;
+      finiteLimit: number;
+      notes: string[];
+      status: 'incomplete' | 'unsupported';
+      complete: false;
+      reason: string;
+    };
+
+export type MigrationDomainSnapshot =
+    {
+      status: 'available';
+      version: 1;
+      algorithm: 'sha256';
+      machineBits: 32 | 64;
+      lawBodiesEvaluated: false;
+      scope: string;
+      domains: MigrationInputDomain[];
+    } |
+    {status: 'unavailable'; reason: string;};
+
 export type MigrationTemplateSnapshot =
     {
       status: 'available';
@@ -528,6 +579,7 @@ export type MigrationSemanticSnapshot =
       definitionPlaneDigest: string;
       lawBodiesDigest: string;
       sourceTemplates?: MigrationTemplateSnapshot;
+      inputDomains?: MigrationDomainSnapshot;
       definitions: {comparisonId: string; digest: string;}[];
       contracts: {comparisonId: string; digest: string;}[];
       dataTypes: {comparisonId: string; digest: string;}[];

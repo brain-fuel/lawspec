@@ -19,6 +19,7 @@ import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Migration as Migration
 import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
+import LawSpec.MigrationDomains (domainSnapshot)
 import LawSpec.Core.Evidence (Obligation)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
@@ -164,13 +165,16 @@ withMigrationSemantics canonical units core templates (Object value) = Object
     names=[(C.Id (unitName unit ++ "::law::" ++ lawName law),lawName law) | unit<-units,law<-laws unit]
     snapshot=case Migration.migrationSnapshot canonical names core of
       Left reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]
-      Right (Object fields) -> Object (KM.insert "sourceTemplates" templateFields (KM.insert "status" (String "available") fields))
+      Right (Object fields) -> Object (KM.insert "inputDomains" domainFields (KM.insert "sourceTemplates" templateFields (KM.insert "status" (String "available") fields)))
       Right _ -> object ["status" .= ("unavailable"::String),"reason" .= ("invalid Core snapshot"::String)]
     templateFields=case templates of
       Nothing -> object ["status" .= ("unavailable"::String),"reason" .= ("checked source templates were not captured"::String)]
       Just captured -> case templateSnapshot canonical captured of
         Left reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]
         Right fields -> fields
+    domainFields=case domainSnapshot canonical names core of
+      Left reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]
+      Right fields -> fields
 withMigrationSemantics _ _ _ _ value = value
 
 -- Selected law checks are reported separately from completed evidence. This

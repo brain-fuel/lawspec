@@ -1,6 +1,6 @@
 -- | Versioned wire views. Field names and discriminators are selected explicitly;
 -- no internal AST or IR datatype is serialized with genericToJSON.
-module LawSpec.Public (programView, typeView, expressionView) where
+module LawSpec.Public (programView, typeView, expressionView, valueView) where
 import qualified LawSpec.Unification as U
 import Data.Aeson
 import Data.List (intercalate)
@@ -28,6 +28,15 @@ typeView (C.TypeVariable n) = object ["kind" .= str "variable", "id" .= C.idText
 typeView (C.Arrow a b) = object ["kind" .= str "function", "parameter" .= typeView a, "result" .= typeView b]
 str :: String -> String
 str = id
+
+-- | The same lossless wire value for examples and domain witnesses. Callers
+-- retain responsibility for validating its type and intrinsic restrictions.
+valueView :: Values.Value -> Either String Value
+valueView value = case value of
+  Values.DataValue ty tag fields -> do
+    payload <- mapM valueView fields
+    pure (object ["kind" .= str "data","type" .= typeView ty,"constructor" .= C.idText tag,"fields" .= payload])
+  _ -> toJSON <$> Values.toScalarValue value
 
 originView :: C.Origin -> Value
 originView (C.SourceSpan range) = object ["kind" .= str "source", "span" .= object ["start" .= spanStart range,"end" .= spanEnd range]]
@@ -318,10 +327,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
     hasMatch expression = case C.expressionNode expression of
       C.Match _ _ -> True
       _ -> any hasMatch (C.children expression)
-    concreteValue value = case value of
-      Values.DataValue ty tag fields -> object ["kind" .= str "data", "type" .= typeView ty,
-        "constructor" .= C.idText tag,"fields" .= map concreteValue fields]
-      _ -> either error toJSON (Values.toScalarValue value)
+    concreteValue = either error id . valueView
     constantIn scope e = case C.expressionNode e of
       C.Constant v -> toJSON v
       C.Construct tag fields -> object ["kind" .= str "data", "type" .= typeView (C.expressionType e), "constructor" .= C.idText tag, "fields" .= map (constantIn scope) fields]
