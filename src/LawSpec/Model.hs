@@ -269,6 +269,21 @@ letTag = "prelude.Let"
 recordPatternCheckName :: String
 recordPatternCheckName = "prelude.record-pattern:"
 
+-- Source-only admission of every authored pattern, including rows omitted by
+-- ordered specialization. Checks contain no branch bodies or guards, so this
+-- does not duplicate nested computations, effects, or executable syntax.
+selectionValidationName :: String
+selectionValidationName = "prelude.selection-validation:"
+
+selectionValidation :: Expr -> Maybe (Expr,[Expr])
+selectionValidation expression = case application [] expression of
+  (Var name,value:checks) | name==selectionValidationName -> Just (value,checks)
+  _ -> Nothing
+  where
+    application arguments (Located _ value)=application arguments value
+    application arguments (Apply function value)=application (value:arguments) function
+    application arguments value=(value,arguments)
+
 -- Field access and record update, as the parser writes them:
 -- `b.logs` is prelude.field:logs b, and `b with logs = v` is
 -- prelude.update:logs b v. Inference makes each a match on b's single
@@ -360,6 +375,7 @@ prettyExpr (Var n) = n
 prettyExpr (DecimalNumber c e) = prettyScalar (SDecimal c e)
 prettyExpr (Number n) = show n
 prettyExpr (StringLit s) = show s
+prettyExpr value | Just (expression,_) <- selectionValidation value = prettyExpr expression
 prettyExpr (Apply f x) = prettyExpr f ++ " (" ++ prettyExpr x ++ ")"
 prettyExpr (Compose f g) = "(" ++ prettyExpr f ++ " . " ++ prettyExpr g ++ ")"
 

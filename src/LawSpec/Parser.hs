@@ -702,7 +702,16 @@ firstCaseP = do
   fallback <- optional (keyword "otherwise" *> expr)
   closeP "case"
   let rows = branches ++ maybe [] (\body -> [SelectionRow [SelectionAny] [] Nothing body]) fallback
-  pure (MatchExpr value [MatchBranch letTag ["it"] (selectionMatrix 0 [Var "it"] rows)])
+      runtime=selectionMatrix 0 [Var "it"] rows
+      -- A row checks its shape in its own constructor/refinement scope. The
+      -- fallback makes this validation independent of exhaustive coverage;
+      -- only the actual ordered matrix establishes that coverage.
+      checks=[check | SelectionRow patterns aliases _ _<-branches,
+        let check=selectionMatrix 0 [Var "it"]
+              [SelectionRow patterns aliases Nothing (BoolLit True),SelectionRow [SelectionAny] [] Nothing (BoolLit True)],
+        unlocated check/=BoolLit True]
+      admitted=if null checks then runtime else foldl Apply (Var selectionValidationName) (runtime:checks)
+  pure (MatchExpr value [MatchBranch letTag ["it"] admitted])
 
 selectionBindings :: SelectionPattern -> [String]
 selectionBindings pattern = case pattern of

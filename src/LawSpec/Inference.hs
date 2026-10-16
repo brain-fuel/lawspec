@@ -284,6 +284,9 @@ annotationRefinements ty = case ty of
 -- law reads without annotations. ref:DEC-readable-notation
 infer :: Env -> Expr -> C Type
 infer env (Located _ e) = infer env e
+infer env e | Just (value,checks) <- selectionValidation e = do
+  mapM_ (checkExpr env (Named "Bool")) checks
+  infer env value
 infer env (Var n) = maybe (throwC ("unknown value: " ++ n)) instantiate (M.lookup n env)
 infer _ (DecimalNumber _ _) = pure (Named "Decimal")
 infer _ (Number _) = pure (Named "Integer")
@@ -495,6 +498,9 @@ application e = (e,[])
 -- conversion at run time. ref:DEC-portable-exact-arithmetic
 checkExpr :: Env -> Type -> Expr -> C ()
 checkExpr env expected (Located _ e) = checkExpr env expected e
+checkExpr env expected e | Just (value,checks) <- selectionValidation e = do
+  mapM_ (checkExpr env (Named "Bool")) checks
+  checkExpr env expected value
 checkExpr env expected e = do
   t <- resolve (baseType expected)
   bits <- gets machineBits
@@ -883,6 +889,9 @@ typedExpressionWithSchemesContext context declarations bits env e = do
     go context expected (Located range e) = do
       value <- go context expected e
       pure value{expression=Located range (expression value)}
+    go context expected e | Just (value,checks) <- selectionValidation e = do
+      mapM_ (checkExpr context (Named "Bool")) checks
+      go context expected value
     go context expected e | isFieldNode e = do
       direct <- fieldAccessTyped context expected e
       maybe (fieldDesugar context e >>= go context expected) pure direct

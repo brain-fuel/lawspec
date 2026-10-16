@@ -43,6 +43,49 @@ observeField _ _=Left "invalid observed field"
 
 -- Canonical anonymous record syntax is not a nominal coercion.
 test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $ do
+  it "rejects ill-typed record shapes even after an unconditional earlier row" $ do
+    let selected ty pattern="function invalid (value of type "++ty++") -> Bool is first matching case of value: when #any then true when "++pattern++" then false end case end function"
+    forM_ ["Integer","Bool","List Bool","a"] $ \ty ->
+      compile (selected ty "record{}") `shouldSatisfy` isLeft
+    compile (selected "record{flag of type Bool}" "record{missing = any}") `shouldSatisfy` isLeft
+    compile (selected "record{child of type record{flag of type Bool}}" "record{child = record{missing = any}}") `shouldSatisfy` isLeft
+  it "checks hidden constructor payloads, constructor parents and literal types" $ do
+    let prefix="type Packet is one of | Missing | Wrapped of type record{flag of type Bool} end type\n"
+        selected ty rows=prefix++"function invalid (value of type "++ty++") -> Bool is first matching case of value: "++rows++" end case end function"
+    compile (selected "Packet" "when #any then true when Wrapped record{missing = any} then false") `shouldSatisfy` isLeft
+    compile (selected "Packet" "when Wrapped any then true when Missing then false when Wrapped record{missing = any} then false") `shouldSatisfy` isLeft
+    compile (selected "Bool" "when #any then true when Missing then false") `shouldSatisfy` isLeft
+    compile (selected "Bool" "when #any then true when 3 then false") `shouldSatisfy` isLeft
+    compile (selected "Integer" "when #any then true when true then false") `shouldSatisfy` isLeft
+  it "admits valid shadowed record patterns without adding Eq to generic fields" $
+    checked (compile (unlines
+      ["function selected (value of type record{item of type a}) -> Bool is"
+      ,"first matching case of value: when #any then true when record{item = ignored} then false when record{} then false end case end function"
+      ,"law outcome is definition: selected record{item = 3} = true end end"])) $ \program -> do
+        validateProgram program `shouldBe` Right ()
+        case (makeRegistry (C.programDataDeclarations program),prepareDefinitions program) of
+          (Right registry,Right invoke) -> forM_ (concatMap C.unitProperties (C.programUnits program)) $ \law ->
+            evaluateValueProposition registry 64 invoke [] (C.propertyBody law) `shouldBe` Right True
+          _ -> expectationFailure "valid shadowed record patterns did not admit"
+  it "checks shadowed GADT payload patterns using constructor-local type equations" $
+    checked (compile (unlines
+      ["type Value (a of type Type) is one of"
+      ,"| Number of type record{value of type Integer} where a = Integer"
+      ,"| Truth of type record{value of type Bool} where a = Bool end type"
+      ,"function read (expression of type Value a) -> a is first matching case of expression:"
+      ,"when Number record{value = number} then number"
+      ,"when Truth record{value = boolean} then boolean"
+      ,"when Number record{value = 3} then 3"
+      ,"when Truth record{value = true} then true end case end function"
+      ,"law outcomes is definition: read (Number record{value = 7}) = 7 and read (Truth record{value = false}) = false end end"])) $ \program ->
+        case (makeRegistry (C.programDataDeclarations program),prepareDefinitions program) of
+          (Right registry,Right invoke) -> forM_ (concatMap C.unitProperties (C.programUnits program)) $ \law ->
+            evaluateValueProposition registry 64 invoke [] (C.propertyBody law) `shouldBe` Right True
+          _ -> expectationFailure "shadowed GADT patterns lost their branch-local types"
+  it "also checks hidden patterns in laws and effectful procedures" $ do
+    let selection="first matching case of value: when #any then true when record{missing = ignored} then false end case"
+    compile ("law invalid is definition: for all (value of type record{flag of type Bool}) => "++selection++" end end end") `shouldSatisfy` isLeft
+    compile ("procedure invalid (value of type record{flag of type Bool}) -> Bool is "++selection++" end procedure") `shouldSatisfy` isLeft
   it "matches empty and nonempty structural products with typed empty record patterns" $
     forM_ [32,64] $ \bits -> checked (compileCoreCanonical bits S.defaultGeneration [S.Source "empty-patterns.lawspec" (unlines
       ["unit empty.patterns"
@@ -84,7 +127,7 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
     checked (compile (unlines
       ["ability Trace is mark :: Bool -> Bool end"
       ,"procedure observed (flag of type Bool) -> Bool is"
-      ,"first matching case of record{last = mark flag, first = mark true}: when record{} then true end case"
+      ,"first matching case of record{last = mark flag, first = mark true}: when record{} then true when record{first = false} then false when record{last = ignored} then false end case"
       ,"end procedure"])) $ \program -> do
         trace<-newIORef []
         invoke<-either (fail.show) pure (prepareHookedDefinitions program)
