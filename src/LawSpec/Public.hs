@@ -10,6 +10,7 @@ import qualified LawSpec.Core.Eval as Eval
 import qualified LawSpec.Core.Types as Types
 import qualified LawSpec.Core.Value as Values
 import LawSpec.Core.Positional (positionalItems)
+import qualified LawSpec.Core.RecordViewFunctions as RecordViews
 import LawSpec.Core.Evidence (Obligation(..), statusName)
 import qualified LawSpec.Model as S
 import LawSpec.Common
@@ -225,7 +226,10 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         operation:_ -> Just operation
         _ -> Nothing
     unitView u = object (["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++
-        ["source" .= sourceView owner name | Just (owner,name) <- [C.declarationSource d]] ++ ["async" .= True | C.declarationAsync d] ++
+        ["source" .= sourceView owner name | Just (owner,name) <- [C.declarationSource d]] ++
+        ["representation" .= str "structural-record-storage" | C.unitId u==RecordViews.viewUnitId,
+          definition<-C.unitDefinitions u,C.definitionDeclaration definition==d,RecordViews.viewSignature definition/=Nothing] ++
+        ["async" .= True | C.declarationAsync d] ++
         -- Its ability row, declared or inferred.
         ["uses" .= declarationRow d | not (null (declarationRow d))]) | d <- C.unitDeclarations u]] ++
       -- What each existing effect-like construct uses, as abilities

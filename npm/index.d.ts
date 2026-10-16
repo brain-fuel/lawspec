@@ -278,7 +278,11 @@ export interface DeclarationSource {
 
 export interface Unit {
   id: string;
-  declarations: (Binder & {origin: Origin; source?: DeclarationSource;})[];
+  declarations: (Binder & {
+    origin: Origin;
+    source?: DeclarationSource;
+    representation?: 'structural-record-storage';
+  })[];
 }
 
 export interface StructuralRecord {

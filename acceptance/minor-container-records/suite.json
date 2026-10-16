@@ -1,0 +1,12 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {
+    "layers": [
+      "property",
+      "examples"
+    ]
+  },
+  "specs": [
+    "test/fixtures/canonical-container-records.lawspec"
+  ]
+}

@@ -3,7 +3,7 @@
 module LawSpec.DefinitionTotality (auditTemplates, auditTemplatesWithContext) where
 
 import Control.Monad.State.Strict
-import Control.Monad (forM, when)
+import Control.Monad (foldM, forM, forM_, when)
 import Data.List (stripPrefix, isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Model as S
@@ -14,17 +14,27 @@ import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Inference (dataIndex)
 import LawSpec.Core.Total (safeConversionTypes, constructorProofContracts, resultBounds)
 import qualified LawSpec.Core.Total as Total
-import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
+import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecordsWithViews,withRecordViewDefinitions)
 import LawSpec.Elaboration (collectSourceRecords,collectType)
 import LawSpec.Elaboration (coreTypeWithSourceRecords, binaryOp)
 import qualified LawSpec.SourceContext as Source
 import LawSpec.SourceRecords (recordDeclarationsWithContext,typedTypeReferences)
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
+import qualified LawSpec.Core.Validate as CoreValidate
 import LawSpec.Refinement (definitionContractFor)
 import LawSpec.Scalar
 import LawSpec.Common
 
-type ProofM = StateT Int (Either String)
+data ProofState = ProofState
+  { proofSite :: Int, proofViews :: M.Map C.Id C.Definition, proofRecords :: [C.DataDeclaration] }
+type ProofM = StateT ProofState (Either String)
+
+nextProofSite :: ProofM Int
+nextProofSite=do
+  state<-get
+  put state{proofSite=proofSite state+1}
+  pure (proofSite state)
+
 
 -- | Generic definitions are audited before specialisation, so a body that is
 -- never used at any type is still proved total. ref:DEC-total-definitions
@@ -45,14 +55,43 @@ auditTemplatesWithContext context initial bits unit templates = do
 
 auditCollected context declarations constructors bits unit templates = do
   lowered <- mapM lower templates
+  extraViews<-foldM addView M.empty [definition | (_,_,state)<-lowered,definition<-M.elems (proofViews state)]
+  (guarantees,extraProofs)<-if M.null extraViews then pure (constructors,[]) else do
+    occurrences<-either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
+      (uniqueNominals (declarations++concat [proofRecords state | (_,_,state)<-lowered]))
+    known<-either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
+      (internRecordDeclarations occurrences)
+    program<-either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
+      (withRecordViewDefinitions (C.Program bits known []) (M.elems extraViews))
+    CoreValidate.validateProgram program
+    registry<-either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right (makeRegistry known)
+    guarantees<-constructorProofContracts bits known
+    pure (guarantees,map (Total.definitionProof (P.fromRegistry registry) bits) (M.elems extraViews))
   -- Non-linear postconditions the prover defers become runtime checks in Core.
-  () <$ T.auditDeferringWithResults constructors (map snd lowered) (map fst lowered)
+  () <$ T.auditDeferringWithResults guarantees [contract | (_,contract,_)<-lowered]
+    ([definition | (definition,_,_)<-lowered]++extraProofs)
     (M.fromList [ (identity (S.functionName d), bounds)
                 | (d, _, _, _) <- templates
                 , let bounds = case S.baseType (S.functionResult d) of
                         S.Named primitive -> resultBounds bits (C.Constructor primitive [])
                         _ -> (Nothing, Nothing) ])
   where
+    -- Standalone normalizations each return the complete nominal catalog.
+    -- Repeated identical nominal declarations are one identity; retain every
+    -- structural occurrence for descriptor admission and reject disagreements.
+    uniqueNominals supplied = reverse . snd <$> foldM collect (M.empty,[]) supplied
+      where
+        collect (known,ordered) declaration
+          | C.dataStructural declaration/=Nothing = pure (known,declaration:ordered)
+          | otherwise = case M.lookup (C.dataId declaration) known of
+              Nothing -> pure (M.insert (C.dataId declaration) declaration known,declaration:ordered)
+              Just old | old==declaration -> pure (known,ordered)
+                       | otherwise -> Left "structural proof declarations disagree for a nominal type"
+    addView known definition = case M.lookup identity known of
+      Nothing -> pure (M.insert identity definition known)
+      Just old | old==definition -> pure known
+               | otherwise -> Left [Diagnostic "total" "structural proof definition identity collision" Nothing]
+      where identity=C.declarationId (C.definitionDeclaration definition)
     constructorTag ty name
       | "::" `isInfixOf` name = C.Id name
       | otherwise = C.Id (parent (S.baseType ty) ++ "::" ++ name)
@@ -96,7 +135,7 @@ auditCollected context declarations constructors bits unit templates = do
       let result = C.Id (C.idText name ++ "::result")
           argumentScope = M.fromList parameters
           resultScope = M.insert (fst (S.contractResult contract)) result argumentScope
-      (expression,pre,post) <- flip evalStateT 0 $ (,,)
+      ((expression,pre,post),state) <- flip runStateT (ProofState 0 M.empty []) $ (,,)
         <$> proof name integerVariables argumentScope body
         <*> mapM (proof name integerVariables argumentScope) preconditions
         <*> mapM (proof name integerVariables resultScope) postconditions
@@ -105,7 +144,7 @@ auditCollected context declarations constructors bits unit templates = do
         (concat [T.integerAssumptions bits name primitive
           | ((_,name),(_,ty)) <- zip parameters (S.functionArguments definition)
           , S.Named primitive <- [S.baseType ty]]),
-        T.ProofContract name result pre post)
+        T.ProofContract name result pre post,state)
     proof :: C.Id -> [String] -> M.Map String C.Id -> S.TypedExpr -> ProofM T.Proof
     proof owner integers scope typed = do
       let recur = proof owner integers scope
@@ -140,8 +179,7 @@ auditCollected context declarations constructors bits unit templates = do
           constructor <- lift (recordOf (S.expressionType typed))
           values <- mapM recur operands
           bindings <- forM (zip (map fst fields) values) $ \(label,value) -> do
-            index <- get
-            put (index+1)
+            index <- nextProofSite
             pure (label,(C.Id (C.idText owner ++ "::record::" ++ show index),value))
           ordered <- forM (C.constructorFields constructor) $ \field ->
             maybe (lift (Left "invalid typed record literal field")) (pure . T.Variable . fst)
@@ -163,8 +201,7 @@ auditCollected context declarations constructors bits unit templates = do
               _ -> lift (Left "invalid typed payload scrutinee")
             predicates <- forM (S.typedCases typed) $ \entry -> case entry of
               S.TypedCase _ [(name,ty)] predicate -> do
-                index <- get
-                put (index + 1)
+                index <- nextProofSite
                 let binder = C.Id (C.idText owner ++ "::payload::" ++ show index)
                     domains = case S.baseType ty of
                       S.Named primitive -> T.integerAssumptions bits binder primitive
@@ -178,8 +215,7 @@ auditCollected context declarations constructors bits unit templates = do
         S.AllElementsExpr _ _ _ -> case (operands,S.typedCases typed) of
           ([value],[S.TypedCase _ [(name,ty)] predicate]) -> do
             scrutinee <- recur value
-            index <- get
-            put (index + 1)
+            index <- nextProofSite
             let binder = C.Id (C.idText owner ++ "::element::" ++ show (index :: Int))
                 domains = case S.baseType ty of
                   S.Named primitive -> T.integerAssumptions bits binder primitive
@@ -191,8 +227,7 @@ auditCollected context declarations constructors bits unit templates = do
         S.MatchExpr _ [S.MatchBranch tag _ _] | tag == S.letTag, [value] <- operands,
           [S.TypedCase _ [(name, _)] body] <- S.typedCases typed -> do
             bound <- recur value
-            index <- get
-            put (index + 1)
+            index <- nextProofSite
             let binder = C.Id (C.idText owner ++ "::let::" ++ show (index :: Int))
             inner <- proof owner integers (M.insert name binder scope) body
             pure (T.Match bound [([], T.substituteProof (M.singleton binder bound) inner)])
@@ -223,8 +258,7 @@ auditCollected context declarations constructors bits unit templates = do
               -- As the match it stands for: the other fields are bound, with
               -- what the constructor's contract says of them.
               names <- forM fields $ \_ -> do
-                index' <- get
-                put (index' + 1)
+                index' <- nextProofSite
                 pure (C.Id (C.idText owner ++ "::match::" ++ show (index' :: Int)))
               let domains = concat [T.integerAssumptions bits name primitive | (name, C.Constructor primitive []) <- zip names fields]
                   rebuilt = T.Construct tag [ if k == index then new else T.Variable name | (k, name) <- zip [0 ..] names ]
@@ -247,8 +281,7 @@ auditCollected context declarations constructors bits unit templates = do
             scrutinee <- recur value
             branches <- forM (S.typedCases typed) $ \(S.TypedCase tag fields body) -> do
               names <- forM fields $ \(name,_) -> do
-                index <- get
-                put (index + 1)
+                index <- nextProofSite
                 pure (name, C.Id (C.idText owner ++ "::match::" ++ show (index :: Int)))
               branch <- proof owner integers (M.union (M.fromList names) scope) body
               let domains = concat [T.integerAssumptions bits name primitive
@@ -308,8 +341,7 @@ auditCollected context declarations constructors bits unit templates = do
     -- substituted back. This keeps generic admission aligned with execution
     -- without inventing a second conversion or evaluation mechanism.
     structuralProof owner typed inputs values build = do
-      site<-get
-      put (site+1)
+      site<-nextProofSite
       (types,records)<-lift (collectSourceRecords context declarations
         (mapM (collectType bits) (S.expressionType typed:map effectiveType inputs)))
       case types of
@@ -320,8 +352,14 @@ auditCollected context declarations constructors bits unit templates = do
               known=if null records then declarations else declarations++records
           node<-lift (build result children)
           let expression=C.Expr result node origin
-          (normalized,complete)<-lift (either (Left . unlines . map message) Right
-            (normalizeExpressionRecords bits known expression))
+          (normalized,complete,views)<-lift (either (Left . unlines . map message) Right
+            (normalizeExpressionRecordsWithViews bits known expression))
+          forM_ views $ \definition -> do
+            let identity=C.declarationId (C.definitionDeclaration definition)
+            previous<-gets (M.lookup identity . proofViews)
+            when (maybe False (/=definition) previous) (lift (Left "structural proof definition identity collision"))
+            modify (\state -> state{proofViews=M.insert identity definition (proofViews state)})
+          when (not (null views)) (modify (\state -> state{proofRecords=complete++proofRecords state}))
           registry<-lift (makeRegistry complete)
           pure (T.substituteProof (M.fromList (zip identities values))
             (Total.proofExpression (P.fromRegistry registry) bits normalized))

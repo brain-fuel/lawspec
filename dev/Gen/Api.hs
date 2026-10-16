@@ -161,7 +161,7 @@ declarations = joinWith (softbreak <> softbreak)
        ("metadata", "LawMetadata"), ("harness", "LawHarness")])
   , interface "DeclarationSource" (fields [("unit","string"),("name","string"),("canonicalName?","string")])
   , interface "Unit"
-      [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin"),("source?",text "DeclarationSource")] <> text ")[]")]
+      [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin"),("source?",text "DeclarationSource"),("representation?",quoted "structural-record-storage")] <> text ")[]")]
   , interface "StructuralRecord"
       [("kind",quoted "record"),("digest",text "string"),("descriptor",text "string"),
        ("positions?",text "string[]"),

@@ -2,16 +2,17 @@
 -- evaluation or planning. Nominal identities remain opaque. Every original
 -- constructor restriction sequence is audited before equivalent products share
 -- a declaration, including sequences that normalize to the same descriptor.
-module LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords) where
+module LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords,normalizeExpressionRecordsWithViews,withRecordViewDefinitions) where
 
-import Control.Monad (unless, forM)
+import Control.Monad (unless, forM, foldM)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Common (Diagnostic(..))
 import LawSpec.Core
 import LawSpec.Core.RecordIdentity
-import LawSpec.Core.RecordViews (structuralViews)
+import LawSpec.Core.RecordViews (structuralViewsWith)
+import qualified LawSpec.Core.RecordViewFunctions as Views
 import qualified LawSpec.Core.Types as Types
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified LawSpec.Core.Machine as Machine
@@ -23,14 +24,23 @@ data Normalizing = Normalizing
   , productOrder :: [Id]
   , typeResults :: M.Map Type Type
   , active :: S.Set Type
-  , nominalResults :: M.Map Id DataDeclaration }
+  , nominalResults :: M.Map Id DataDeclaration
+  , viewDefinitions :: M.Map (Type,Type) Definition
+  , viewOrder :: [(Type,Type)]
+  , viewBuilding :: S.Set (Type,Type)
+  , viewAllowed :: Bool
+  , viewOccupied :: S.Set Id
+  , viewStripped :: M.Map Id (Type,Type) }
 type Normalize = StateT Normalizing (Either String)
+
+initialNormalizing source allowed occupied=Normalizing source M.empty [] M.empty S.empty M.empty
+  M.empty [] S.empty allowed occupied M.empty
 
 normalizeProgramRecords :: Program -> Either [Diagnostic] Program
 normalizeProgramRecords program
   | all ((== Nothing) . dataStructural) (programDataDeclarations program) = Right program
   | otherwise = do
-      (result,_) <- diagnostic $ runStateT rewrite (Normalizing source M.empty [] M.empty S.empty M.empty)
+      (result,_) <- diagnostic $ runStateT rewrite (initialNormalizing source (not (null (programUnits program))) occupied)
       -- Check all occurrences before interning. A descriptor deliberately
       -- excludes cross-field source order; an unsafe order must still fail.
       _ <- constructorProofContracts (programMachineBits program) (programDataDeclarations result)
@@ -39,25 +49,36 @@ normalizeProgramRecords program
   where
     source = M.fromListWith (\_ first -> first) [(dataId d,d) | d <- programDataDeclarations program]
     diagnostic = either (Left . pure . (\message -> Diagnostic "record-type" message Nothing)) Right
+    occupied=S.fromList [declarationId declaration | owner<-programUnits program,declaration<-unitDeclarations owner,
+      not (any (\definition -> definitionDeclaration definition==declaration && Views.viewSignature definition/=Nothing) (unitDefinitions owner))]
     rewrite = do
-      declarations <- mapM dataDeclaration (programDataDeclarations program)
-      units <- mapM unit (programUnits program)
+      restored<-restoreViews program
+      declarations <- mapM dataDeclaration (programDataDeclarations restored)
+      units <- mapM unit (programUnits restored)
       state <- get
       let present = S.fromList (map dataId declarations)
           extra = [d | identity <- reverse (productOrder state),identity `S.notMember` present,
                        Just d <- [M.lookup identity (products state)]]
-      pure program{programDataDeclarations=declarations++extra,programUnits=units}
+          helpers=[definition | key<-reverse (viewOrder state),Just definition<-[M.lookup key (viewDefinitions state)]]
+      checked (withRecordViewDefinitions program{programDataDeclarations=declarations++extra,programUnits=units} helpers)
 
 -- | The same normalization for a standalone fixture/refinement term. This
 -- performs no execution and invents no implementation or test declaration.
 normalizeExpressionRecords :: Int -> [DataDeclaration] -> Expr -> Either [Diagnostic] (Expr,[DataDeclaration])
-normalizeExpressionRecords bits declarations value
-  | all ((==Nothing) . dataStructural) declarations = Right (value,declarations)
+normalizeExpressionRecords bits declarations value = do
+  (made,known,_)<-normalizeExpressionRecordsUsing False bits declarations value
+  pure (made,known)
+
+normalizeExpressionRecordsWithViews :: Int -> [DataDeclaration] -> Expr -> Either [Diagnostic] (Expr,[DataDeclaration],[Definition])
+normalizeExpressionRecordsWithViews=normalizeExpressionRecordsUsing True
+
+normalizeExpressionRecordsUsing allowed bits declarations value
+  | all ((==Nothing) . dataStructural) declarations = Right (value,declarations,[])
   | otherwise = do
-      ((made,known),_) <- diagnostic $ runStateT rewrite (Normalizing source M.empty [] M.empty S.empty M.empty)
+      ((made,known),state) <- diagnostic $ runStateT rewrite (initialNormalizing source allowed S.empty)
       _ <- constructorProofContracts bits known
       interned <- diagnostic (internRecordDeclarations known)
-      pure (made,interned)
+      pure (made,interned,[definition | key<-reverse (viewOrder state),Just definition<-[M.lookup key (viewDefinitions state)]])
   where
     source=M.fromListWith (\_ first->first) [(dataId d,d) | d<-declarations]
     diagnostic=either (Left . pure . (\message->Diagnostic "record-type" message Nothing)) Right
@@ -184,13 +205,108 @@ constructorAt before after identity = case (before,after) of
 
 expression :: Expr -> Normalize Expr
 expression original = do
-  normalized <- normalizeExpression original
+  restored<-stripViewCalls original
+  normalized <- normalizeExpression restored
   state <- get
   let catalog=M.union (nominalResults state) (M.union (products state) (originals state))
       hasProducts=any ((/=Nothing) . dataStructural) (M.elems catalog)
   if not hasProducts then pure normalized else do
-    result <- structuralViews ty (M.elems catalog) M.empty normalized
+    result <- structuralViewsWith ty (M.elems catalog) (\wanted value -> Right <$> requestView wanted value) M.empty normalized
     checked result
+
+-- All conversions still pass the ordinary definition validator. A recursive
+-- request is merely a reference to the same declaration while its exhaustive
+-- body is being built; it is not a termination exemption.
+requestView :: Type -> Expr -> Normalize Expr
+requestView wanted value = do
+  allowed<-gets viewAllowed
+  unless allowed (checked (Left "recursive structural representation changes require a checked definition context"))
+  let from=expressionType value;key=(from,wanted);identity=Views.viewId from wanted
+      invoke=Expr wanted (ExternalCall identity [value]) (expressionOrigin value)
+  done<-gets (M.member key . viewDefinitions)
+  busy<-gets (S.member key . viewBuilding)
+  if done || busy then pure invoke else do
+    occupied<-gets (S.member identity . viewOccupied)
+    unless (not occupied) (checked (Left "a generated structural view conflicts with a source declaration"))
+    pending<-gets viewBuilding
+    unless (not (any (\(a,b) -> embeds a from && embeds b wanted) (S.toList pending)))
+      (checked (Left "recursive structural representation changes require finitely specializable type arguments"))
+    modify (\state -> state{viewBuilding=S.insert key (viewBuilding state)})
+    _<-ty from;_<-ty wanted
+    state<-get
+    let catalog=M.union (nominalResults state) (M.union (products state) (originals state))
+    result<-Views.buildViewDefinition ty (M.elems catalog) (\target item -> Right <$> requestView target item) from wanted
+    definition<-checked result
+    modify (\state -> state{viewDefinitions=M.insert key definition (viewDefinitions state),
+      viewBuilding=S.delete key (viewBuilding state),viewOrder=key:viewOrder state})
+    pure invoke
+
+-- Homeomorphic embedding catches an expanding polymorphic type cycle while
+-- permitting finite nesting and permutations of a container's arguments.
+embeds :: Type -> Type -> Bool
+embeds before after | before==after=True
+embeds before after = any (embeds before) (parts after) || case (before,after) of
+  (Constructor a xs,Constructor b ys) | a==b,length xs==length ys -> and (zipWith argument xs ys)
+  (Arrow a b,Arrow c d) -> embeds a c && embeds b d
+  _ -> False
+  where
+    parts (Constructor _ xs)=[ty | TypeArgument ty<-xs]
+    parts (Arrow a b)=[a,b]
+    parts _=[]
+    argument (TypeArgument a) (TypeArgument b)=embeds a b
+    argument a b=a==b
+
+-- Reconstruct and compare every stored helper before treating its calls as
+-- representation changes. A private name or a well-typed but altered body is
+-- insufficient. Stripping verified calls before normalization lets the same
+-- ordinary views be regenerated idempotently, without accumulating mappings.
+restoreViews :: Program -> Normalize Program
+restoreViews program = do
+  let candidates=[owner | owner<-programUnits program,unitId owner==Views.viewUnitId,
+        not (null (unitDefinitions owner)),all ((/=Nothing) . Views.viewSignature) (unitDefinitions owner)]
+  case candidates of
+    [] -> pure program
+    [owner] -> do
+      let definitions=unitDefinitions owner
+          expectedOwner=Unit Views.viewUnitId (map definitionDeclaration definitions) [] [] definitions []
+      unless (owner==expectedOwner) (checked (Left "malformed structural representation unit"))
+      signatures<-forM definitions $ \definition -> case Views.viewSignature definition of
+        Nothing -> checked (Left "malformed structural representation signature")
+        Just key@(from,to) -> do
+          let argument=Views.viewArgument from to
+          _<-requestView to (Expr from (Local (binderId argument)) (GeneratedFrom (Views.viewId from to)))
+          expected<-gets (M.lookup key . viewDefinitions)
+          unless (expected==Just definition) (checked (Left "malformed structural representation definition"))
+          pure (declarationId (definitionDeclaration definition),key)
+      modify (\state -> state{viewDefinitions=M.empty,viewOrder=[],viewBuilding=S.empty,viewStripped=M.fromList signatures})
+      pure program{programUnits=[unit | unit<-programUnits program,unitId unit/=Views.viewUnitId]}
+    _ -> checked (Left "duplicate structural representation units")
+
+stripViewCalls :: Expr -> Normalize Expr
+stripViewCalls original = do
+  known<-gets viewStripped
+  case expressionNode original of
+    ExternalCall identity values | Just (from,to)<-M.lookup identity known -> case values of
+      [value] | expressionType value==from,expressionType original==to -> stripViewCalls value
+      _ -> checked (Left "malformed structural representation application")
+    _ -> traverseChildren stripViewCalls original
+
+withRecordViewDefinitions :: Program -> [Definition] -> Either String Program
+withRecordViewDefinitions program []=Right program
+withRecordViewDefinitions program definitions=do
+  let owners=[unit | unit<-programUnits program,unitId unit==Views.viewUnitId]
+  known<-case owners of
+    [] -> pure []
+    [owner] | owner==Unit Views.viewUnitId (map definitionDeclaration (unitDefinitions owner)) [] [] (unitDefinitions owner) [],
+      all ((/=Nothing) . Views.viewSignature) (unitDefinitions owner) -> pure (unitDefinitions owner)
+    _ -> Left "the structural representation unit conflicts with a source unit"
+  merged<-foldM (\acc definition -> case lookup (declarationId (definitionDeclaration definition))
+      [(declarationId (definitionDeclaration old),old) | old<-acc] of
+        Nothing -> pure (acc++[definition])
+        Just old | old==definition -> pure acc
+                 | otherwise -> Left "structural representation definition identity collision") known definitions
+  let owner=Unit Views.viewUnitId (map definitionDeclaration merged) [] [] merged []
+  pure program{programUnits=[unit | unit<-programUnits program,unitId unit/=Views.viewUnitId]++[owner]}
 
 -- Structural views lower to ordinary matches. Normalize away an identity
 -- product reconstruction before rebuilding the required storage view, so

@@ -64,7 +64,13 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       -- A package's bodies: its unit's definitions, its handlers' clauses,
       -- and everything they reach.
       reachable u = closure S.empty (map (declarationId . definitionDeclaration) (unitDefinitions u) ++
-        [clause | h <- handlersOf u, (_, clause) <- handlerClauses h])
+        [clause | h <- handlersOf u, (_, clause) <- handlerClauses h] ++
+        concatMap calledIn (concatMap propertyExpressions (unitProperties u) ++
+          concatMap (\c -> contractExpressions c ++ contractRuntimePostconditions c) (unitContracts u) ++
+          concatMap (harnessExpressions . propertyHarness) (unitProperties u) ++
+          maybe [] (map snd . harnessBenchmarks) (unitHarnessSettings u)))
+      harnessExpressions h = map coverWhen (harnessCover h) ++ map fst (harnessClassify h) ++
+        harnessLabels h ++ maybe [] pure (harnessTarget h)
       closure seen [] = seen
       closure seen (i : rest)
         | i `S.member` seen = closure seen rest

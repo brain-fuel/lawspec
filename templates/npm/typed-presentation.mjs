@@ -22,11 +22,36 @@ export function createTypePresentation(result) {
       ? `${name.slice(0, separator)}.${display}` : display;
   };
 
+  // The compiler marks ordinary checked recursive representation definitions.
+  // Names alone do not authorize hiding a call, and its full signature must
+  // agree with the typed application. The wire assertion is never rewritten.
+  const recursiveViews = new Map((result.units ?? []).flatMap(unit => unit.declarations
+    .filter(d => d.representation === 'structural-record-storage' && d.source === undefined
+      && d.origin?.kind === 'generated' && d.origin.declaration === d.id && d.type.kind === 'function')
+    .map(d => [d.id, d.type])));
+  function sameType(left, right) {
+    if (!left || !right || left.kind !== right.kind) return false;
+    if (left.kind === 'variable') return left.id === right.id;
+    if (left.kind === 'function') return sameType(left.parameter, right.parameter) && sameType(left.result, right.result);
+    if (left.kind !== 'constructor' || left.name !== right.name || left.arguments.length !== right.arguments.length) return false;
+    return left.arguments.every((a, i) => {
+      const b = right.arguments[i];
+      return a.kind === b.kind && (a.kind === 'type' ? sameType(a.type, b.type)
+        : a.kind === 'natural' ? a.value === b.value : a.kind === 'indexVariable' && a.id === b.id);
+    });
+  }
+
   // Recognize only compiler-generated storage views which copy every field in
   // order. Do not simplify user matches, erase conversions or discard unused
   // constructor arguments: those may contain checks or undefined computations.
   function storageView(expression) {
     const node = expression.node;
+    if (node?.kind === 'call') {
+      const signature = recursiveViews.get(node.declaration);
+      return signature && node.arguments.length === 1
+        && sameType(signature.parameter, node.arguments[0].type) && sameType(signature.result, expression.type)
+        ? node.arguments[0] : undefined;
+    }
     if (node?.kind !== 'match' || node.cases.length !== 1) return undefined;
     const branch = node.cases[0], body = branch.body.node;
     const source = constructors.get(branch.constructor), target = constructors.get(body?.constructor);

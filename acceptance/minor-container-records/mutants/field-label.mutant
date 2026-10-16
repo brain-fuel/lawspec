@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: definition
+@@ test/fixtures/canonical-container-records.lawspec
+<<<<<<<
+  Batch items
+=======
+  Batch [record{other = true}]
+>>>>>>>

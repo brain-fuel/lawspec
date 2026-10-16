@@ -506,9 +506,24 @@ All 17 targets consume constructor field contracts through their schema emitters
 The parcel fixture runs on every target in both profiles, with separate checks
 for native field enforcement. Run its reproducible suite with
 `make acceptance SUITE=rc1-record-refinements TARGET=java` (or another target);
-CI schedules every target/profile and three independent result mutants. Generic structural GADT result equations, payloads under
-containers such as `List`, and checked function expansion in anonymous field
-restrictions still require compiler work.
+CI schedules every target/profile and three independent result mutants.
+
+Generic nominal payloads can contain structural records inside `List`, `Maybe`
+and user-defined recursive containers. The compiler reconstructs equivalent
+storage with ordinary checked recursive functions; their matches, recursion and
+constructor restrictions pass the same mandatory validators as source functions.
+The [container fixture](../../../test/fixtures/canonical-container-records.lawspec)
+exercises these paths, named-record projections and record-valued table inputs.
+Run `make acceptance SUITE=minor-container-records TARGET=java` (or another
+target) for native execution and independent result/type mutants. Five finite
+Boolean laws admit complete checking; the two requirements over unbounded lists
+retain planned example evidence rather than a claim of complete verification.
+Explanations hide compiler-marked storage calls only when their complete typed
+signature matches; the authoritative typed assertion retains those calls.
+
+Refinement inside structural GADT index arguments and checked function expansion
+in anonymous field restrictions still require compiler work. Opaque storage and
+infinitely expanding type specializations do not acquire implicit conversions.
 
 Recursive record and constructor patterns preserve structural descent for
 checked recursive functions. The

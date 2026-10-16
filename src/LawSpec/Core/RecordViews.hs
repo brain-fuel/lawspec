@@ -3,7 +3,7 @@
 -- nominal constructors. A view uses ordinary checked matching/construction;
 -- nominal identities and constructor layouts remain unchanged.
 -- ref:DEC-typed-core-boundary ref:DEC-total-definitions
-module LawSpec.Core.RecordViews (structuralViews) where
+module LawSpec.Core.RecordViews (structuralViews,structuralViewsWith,adaptStructuralWith) where
 
 import Control.Monad (unless,zipWithM)
 import Control.Monad.State.Strict
@@ -18,8 +18,23 @@ type Scope = M.Map Id Type
 -- The canonicalizer proves equality using complete typed descriptors, including
 -- restrictions; labels alone never authorize a representation conversion.
 structuralViews :: Monad m => (Type -> m Type) -> [DataDeclaration] -> Scope -> Expr -> m (Either String Expr)
-structuralViews canonical declarations outer source =
-  evalStateT (runExceptT (go outer source)) (0 :: Int)
+structuralViews canonical declarations = structuralViewsWith canonical declarations
+  (\_ _ -> pure (Left "a structural representation view requires matching record storage"))
+
+-- The enclosing program supplies ordinary checked functions for recursive
+-- nominal containers. Standalone closed data needs only finite reconstruction.
+structuralViewsWith :: Monad m => (Type -> m Type) -> [DataDeclaration]
+  -> (Type -> Expr -> m (Either String Expr)) -> Scope -> Expr -> m (Either String Expr)
+structuralViewsWith canonical declarations convert outer = runViews canonical declarations convert outer Nothing
+
+adaptStructuralWith :: Monad m => (Type -> m Type) -> [DataDeclaration]
+  -> (Type -> Expr -> m (Either String Expr)) -> Type -> Expr -> m (Either String Expr)
+adaptStructuralWith canonical declarations convert wanted = runViews canonical declarations convert M.empty (Just wanted)
+
+runViews :: Monad m => (Type -> m Type) -> [DataDeclaration]
+  -> (Type -> Expr -> m (Either String Expr)) -> Scope -> Maybe Type -> Expr -> m (Either String Expr)
+runViews canonical declarations convert outer wanted source =
+  evalStateT (runExceptT (maybe (go outer source) (\target -> adapt target source) wanted)) (0 :: Int)
   where
     registry=Types.makeRegistry declarations
     catalog=M.fromList [(dataId d,d) | d<-Types.builtinDataDeclarations++declarations]
@@ -41,13 +56,88 @@ structuralViews canonical declarations outer source =
                 newFields<-fields wanted (constructorId new) []
                 unless (map binderName oldFields==map binderName newFields)
                   (throwError "structural representation field labels differ")
-                bound<-mapM fresh oldFields
-                let local b=Expr (binderType b) (Local (binderId b)) (expressionOrigin value)
-                values<-zipWithM (\target sourceField->adapt (binderType target) (local sourceField)) newFields bound
-                pure (Expr wanted (Match value [MatchCase (constructorId old) bound
-                  (Expr wanted (Construct (constructorId new) values) (expressionOrigin value))]) (expressionOrigin value))
-              _->throwError "a structural representation view requires matching record storage"
+                nested<-or <$> zipWithM (\a b -> needsContainer (binderType a) (binderType b)) oldFields newFields
+                closedValue<-if nested then closed M.empty value else pure Nothing
+                case closedValue of
+                  Just literal -> finite wanted literal
+                  Nothing -> do
+                    bound<-mapM fresh oldFields
+                    let local b=Expr (binderType b) (Local (binderId b)) (expressionOrigin value)
+                    values<-zipWithM (\target sourceField->adapt (binderType target) (local sourceField)) newFields bound
+                    pure (Expr wanted (Match value [MatchCase (constructorId old) bound
+                      (Expr wanted (Construct (constructorId new) values) (expressionOrigin value))]) (expressionOrigin value))
+              _ | from==to -> do
+                    literal<-closed M.empty value
+                    case literal of
+                      Just constant -> finite wanted constant
+                      Nothing -> lift (lift (convert wanted value)) >>= liftEither
+                | otherwise -> throwError "a structural representation view requires matching record storage"
             _->throwError "a structural representation view requires record storage"
+    same a b = do
+      a'<-lift (lift (canonical a));b'<-lift (lift (canonical b))
+      pure (a'==b')
+    needsContainer a b | a==b = pure False
+    needsContainer a@(Constructor from _) b@(Constructor to _) =
+      case (M.lookup (Id from) catalog,M.lookup (Id to) catalog) of
+        (Just before,Just after) | dataStructural before/=Nothing,dataStructural after/=Nothing,
+          [old]<-dataConstructors before,[new]<-dataConstructors after -> do
+            left<-fields a (constructorId old) [];right<-fields b (constructorId new) []
+            or <$> zipWithM (\x y -> needsContainer (binderType x) (binderType y)) left right
+        _ -> pure (from==to)
+    needsContainer _ _ = pure False
+    -- Pure data may be reconstructed finitely without executing a function.
+    -- Do not drop unused lets, partial matches, or a refinement-forgetting
+    -- reconstruction: each original constructor check must remain represented.
+    closed scope original = case expressionNode original of
+      Constant _ -> pure (Just original)
+      Local name -> pure (M.lookup name scope)
+      Construct tag values -> do
+        children'<-mapM (closed scope) values
+        pure ((\made -> original{expressionNode=Construct tag made}) <$> sequence children')
+      Let bound value body | uses (binderId bound) body==1 -> do
+        value'<-closed scope value
+        case value' of
+          Just actual -> do
+            compatible<-same (binderType bound) (expressionType actual)
+            if compatible then closed (M.insert (binderId bound) actual scope) body else pure Nothing
+          _ -> pure Nothing
+      Match value [branch] -> do
+        value'<-closed scope value
+        compatible<-same (expressionType original) (expressionType value)
+        let structural ty=case ty of
+              Constructor name _ -> maybe False ((/=Nothing) . dataStructural) (M.lookup (Id name) catalog)
+              _ -> False
+        case value' of
+          Just actual | Construct tag values<-expressionNode actual,
+            tag==caseConstructor branch,compatible,structural (expressionType value),structural (expressionType original),
+            length values==length (caseBinders branch) -> do
+              expected<-fields (expressionType actual) tag (map expressionType values)
+              valid<-and <$> zipWithM (\a b -> same (binderType a) (binderType b)) expected (caseBinders branch)
+              if valid then closed (M.union (M.fromList (zip (map binderId (caseBinders branch)) values)) scope) (caseBody branch)
+                else pure Nothing
+          _ -> pure Nothing
+      _ -> pure Nothing
+    uses name expression=case expressionNode expression of
+      Local identity -> if identity==name then 1 else 0
+      Let bound value body -> uses name value + if binderId bound==name then 0 else uses name body
+      Match value branches -> uses name value + sum [uses name (caseBody branch) | branch<-branches,name `notElem` map binderId (caseBinders branch)]
+      AllElements value bound predicate -> uses name value + if binderId bound==name then 0 else uses name predicate
+      AllPayloads value predicates -> uses name value + sum [uses name body | (bound,body)<-predicates,binderId bound/=name]
+      _ -> sum (map (uses name) (children expression))
+    finite wanted value = do
+      equal wanted (expressionType value)
+      case expressionNode value of
+        Construct tag values -> do
+          let targetTag=case wanted of
+                Constructor name _ | Just declaration<-M.lookup (Id name) catalog,
+                  dataStructural declaration/=Nothing,[constructor]<-dataConstructors declaration -> constructorId constructor
+                _ -> tag
+          expected<-fields wanted targetTag (map expressionType values)
+          unless (length expected==length values) (throwError "structural constant view arity mismatch")
+          made<-zipWithM (\field item -> finite (binderType field) item) expected values
+          pure value{expressionType=wanted,expressionNode=Construct targetTag made}
+        _ | wanted==expressionType value -> pure value
+          | otherwise -> throwError "a structural constant view requires constructor data"
     fresh field=do
       index<-lift get;lift (put (index+1))
       let name="lawspecRecordView"++take 12 fingerprint++show index

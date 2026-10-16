@@ -1,5 +1,5 @@
 -- | Structural termination and definedness auditing over typed Core only.
-module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes, proofExpression) where
+module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes, proofExpression, definitionProof) where
 
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
 import Control.Monad (unless, forM_, forM, foldM)
@@ -135,7 +135,7 @@ auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContrac
   constructorProofs <- constructorProofContracts bits dataDeclarations
   T.auditDeferringWithTemplates (M.fromList
     [(declarationId d,template) | definition <- definitions,let d=definitionDeclaration definition,Just template <- [declarationTemplate d]])
-    constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
+    constructorProofs proofs (map (definitionProof (Payload.fromRegistry registry) bits) definitions)
     (M.fromList [(declarationId d, resultBounds bits (snd (functionType (declarationType d)))) | d <- map definitionDeclaration definitions])
   where
     location declaration = case declarationOrigin declaration of
@@ -143,13 +143,19 @@ auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContrac
       GeneratedFrom _ -> Nothing
     diagnostic at = either (Left . pure . (\message -> Diagnostic "total" message at)) Right
     prefix name = either (Left . ((name ++ ": ") ++)) Right
-    proofDefinition schema definition =
-      let declaration = definitionDeclaration definition
-      in T.ProofDefinition (declarationId declaration) (declarationName declaration)
-        (location declaration) (map binderId (definitionArguments definition))
-        (proofExpression schema bits (definitionBody definition))
-        (concat [T.integerAssumptions bits (binderId argument) name
-          | argument <- definitionArguments definition, Constructor name [] <- [binderType argument]])
+-- | The same typed definition-to-proof projection for executable admission
+-- and source-template obligations, including generated structural functions.
+definitionProof :: Payload.Schema -> Int -> Definition -> T.ProofDefinition
+definitionProof schema bits definition =
+  let declaration = definitionDeclaration definition
+      location = case declarationOrigin declaration of
+        SourceSpan span -> Just (spanStart span)
+        GeneratedFrom _ -> Nothing
+  in T.ProofDefinition (declarationId declaration) (declarationName declaration)
+    location (map binderId (definitionArguments definition))
+    (proofExpression schema bits (definitionBody definition))
+    (concat [T.integerAssumptions bits (binderId argument) name
+      | argument <- definitionArguments definition, Constructor name [] <- [binderType argument]])
 
 -- | Shared checked constructor guarantees for Core and typed source templates.
 constructorProofContracts :: Int -> [DataDeclaration] -> Either [Diagnostic] [T.ProofConstructorContract]
