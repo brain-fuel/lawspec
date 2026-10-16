@@ -57,6 +57,28 @@ record fields retain their existing identities; grouped alternative fields
 still require native binding correspondence. Indexed/GADT payload conversions,
 dependency-package migration and validated project writing remain unfinished.
 
+The preview also converts actual legacy ordered `Set` types to `SortedSet`
+and their seven operations to the corresponding `sortedSet` names. Checked
+free-reference spans include original declaration identities through imports
+and facade exports. The compiler's existing lexical traversal excludes bound
+parameters, lets, patterns and quantifiers; a user function named `setOf` does
+not become a collection operation. Import and export lists change together
+with their uses.
+
+Primitive `BigUInt` annotations become `Whole`, retaining bounds, predicates
+and the existing native representation. A user refinement named `BigUInt`
+stays intact; the current canonical grammar's conflict with that spelling
+remains an explicit compilation diagnostic. General `Natural`/positive-number
+and `BigInt`/native-representation migration remain unfinished.
+
+The preserved Chapter 6 preview now passes canonical compilation at both
+machine widths while retaining all 23 laws, 65 table rows, one named example,
+25 definitions, seven ADTs and two refinements. The
+[Python conformance demonstration](../../examples/chap06/README.md) checks its
+emitted codec functions and a native assembler against independent instruction
+vectors. These finite native checks do not establish source-template,
+input-domain or project-wide migration correspondence.
+
 `sourcePreview.canonicalCheck` separately reports whether the partial preview
 passes canonical compilation. This check selects no optional law verification
 and retains mandatory definition validation. An accepted preview still does

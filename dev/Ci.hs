@@ -453,6 +453,8 @@ targetSteps target =
   | target `elem` ["javascript", "typescript"] ] ++
   [ step "python-recorded-runtime" [".integration/python/.venv/bin/python", "-B", "test/fixtures/recorded_python.py"]
   | target == "python" ] ++
+  [ Step ("python-chapter6-oracles" ++ suffix) env ["node", "tools/chapter6-oracles.mjs", "--property"]
+  | target == "python", (suffix,env) <- [("", []), ("-32-compact", compact)] ] ++
   -- A Swift node and a Python node exchange values live over TCP, each
   -- through its own runtime's secure transport.
   [ step "swift-network-interoperability" [".integration/python/.venv/bin/python", "-B", "tools/swift-network-interoperability.py"]

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "repository": "https://github.com/nand2tetris/web-ide",
+  "revision": "52611ad9bc2a30d329293b0cf58be672d672ac96",
+  "decoder": "simulator/src/util/asm.ts",
+  "sources": [
+    {
+      "path": "simulator/src/cpu/alu.ts",
+      "sha256": "0086d734988de6410fb8c5e9ea6cec0e6b68d804d992580ead139baf476d3934"
+    },
+    {
+      "path": "simulator/src/util/asm.ts",
+      "sha256": "023e23fb145d7d3845e093185863a39b095024ababffd1ba56f79c055629aefa"
+    }
+  ],
+  "license": "https://github.com/nand2tetris/web-ide/blob/52611ad9bc2a30d329293b0cf58be672d672ac96/LICENSE",
+  "aInstructions": {
+    "count": 32768,
+    "sha256": "11040ae688d749b31e1fb5931632da600b25a13c2ba3bb9e5f57e0ef41c1ac0a",
+    "encoding": "source TAB sixteen binary digits LF, addresses in ascending order"
+  },
+  "cInstructions": {
+    "count": 1792,
+    "sha256": "f08016812f93cfd7a0d46b9bd01a60a5d41c11ca6fc026ac7be74db1b358c93e",
+    "file": "c-instructions.tsv",
+    "encoding": "source TAB sixteen binary digits LF, first canonical decoder output in numeric word order"
+  }
+}
