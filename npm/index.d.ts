@@ -34,6 +34,20 @@ export interface Span {
   end: Location;
 }
 
+export interface SourceSyntaxNode {
+  kind: string;
+  name?: string;
+  span: Span;
+  uses?: string[];
+}
+
+export interface SourceSyntax {
+  version: 1;
+  path: string;
+  unit: string;
+  nodes: SourceSyntaxNode[];
+}
+
 export interface Diagnostic {
   code: string;
   message: string;
@@ -459,6 +473,12 @@ export interface GenerationRequest extends CheckRequest {
   minify?: boolean;
 }
 
+export interface MigrationRequest extends CheckRequest {
+  schemaVersion?: 5;
+  languageProfile: '1.0-rc.1';
+  from: '0.24';
+}
+
 export interface Result {
   schemaVersion: 3 | 4 | 5;
   machineBits?: 32 | 64;
@@ -475,6 +495,8 @@ export interface Result {
   expansions?: string[];
   files?: Artifact[];
   formattedSources?: Source[];
+  sourceLanguageProfile?: '0.24';
+  sourceSyntax?: SourceSyntax[];
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;
   packages?: PackageView[];
@@ -534,6 +556,7 @@ export interface Compiler {
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
+  migrationBaseline(input: MigrationRequest): Promise<Result>;
 }
 
 export function createCompiler(): Promise<Compiler>;

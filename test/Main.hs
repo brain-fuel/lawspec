@@ -50,6 +50,7 @@ import qualified EqSetSpec
 import qualified EqSetOperationsSpec
 import qualified CanonicalCollectionsSpec
 import qualified PreludeResolutionSpec
+import qualified SourceSyntaxSpec
 import qualified AsyncSpec
 import qualified AbilitiesSpec
 import qualified LawPrimitivesSpec
@@ -89,6 +90,7 @@ main = hspec $ do
   EqSetOperationsSpec.test_eqSetOperations
   CanonicalCollectionsSpec.test_canonicalCollections
   PreludeResolutionSpec.test_preludeResolution
+  SourceSyntaxSpec.test_sourceSyntax
   CanonicalSpec.test_canonicalAuthoringPreservesIntrinsicGuarantees
   ContextualSpec.test_articlesPreserveOrdinaryNamesAndScope
   RecordIdentitySpec.test_recordIdentitiesPreserveSemantics

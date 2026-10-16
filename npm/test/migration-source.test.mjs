@@ -163,6 +163,47 @@ test('read-only migration exposes original spans and edits without claiming a va
   assert.ok(report.blockers.length > 0);
 });
 
+test('source inventory migrates unused generic computation bodies before concrete specialization exists', async () => {
+  const compiler = await createCompiler();
+  const source = {path:'generic.lawspec',content:'unit generic\n' +
+    'definition same (left :: a) (right :: a) :: Bool requires Eq a is if left == right then left == right else false end\n'};
+  const report = await migrationReport(compiler,{version:1,targets:[]},{sources:[source],machineBits:64});
+  assert.deepEqual(report.diagnostics, []);
+  assert.deepEqual(report.sourcePreview.diagnostics, []);
+  assert.equal(report.baseline.definitions.length, 0);
+  assert.ok(report.baseline.sourceSyntax[0].nodes.some(node => node.kind === 'declaration.definition' && node.name === 'same'));
+  const planned = report.sourcePreview.sources[0];
+  assert.match(planned.content,/function same/);
+  assert.equal(planned.edits.filter(edit => edit.reason === 'typed equality').length,2);
+  assert.equal(planned.edits.filter(edit => edit.reason === 'conditional closer').length,1);
+  const before = await compiler.check({schemaVersion:4,sources:[source,{path:'use.lawspec',content:
+    'unit use\nimport generic as generic (same)\nlaw `truth` is definition is `for all` (a :: Bool) (b :: Bool) . generic.same a b = (a == b) end end'}]});
+  const after = await compiler.check({schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive']},sources:[
+    {path:source.path,content:planned.content},{path:'use.lawspec',content:
+      'unit use\nimport generic as generic (same)\nlaw truth is definition: for all (a :: Bool) (b :: Bool) => generic.same a b = (a = b) end end end'}]});
+  assert.deepEqual(before.diagnostics, []);
+  assert.deepEqual(after.diagnostics, []);
+  assert.deepEqual(semantic(after.definitions),semantic(before.definitions));
+  assert.equal(after.evidence.find(item => item.stage === 'law').status,'exhaustively-checked');
+  assert.equal(report.validated,false);
+});
+
+test('source inventory preserves inferred effects when an unused generic procedure has no Core instance', async () => {
+  const compiler = await createCompiler();
+  const source = {path:'effects.lawspec',content:'unit effects\nability Clock is tick :: Bool -> Bool end\n' +
+    'definition observed (value :: a) :: a is tick true; value end\n'};
+  const report = await migrationReport(compiler,{version:1,targets:[]},{sources:[source]});
+  assert.deepEqual(report.diagnostics, []);
+  assert.deepEqual(report.sourcePreview.diagnostics, []);
+  assert.equal(report.baseline.definitions.length,0);
+  const planned = report.sourcePreview.sources[0];
+  assert.match(planned.content,/procedure observed/);
+  assert.match(planned.content,/end procedure/);
+  const checked = await compiler.check({schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},sources:[{path:source.path,content:planned.content}]});
+  assert.deepEqual(checked.diagnostics, []);
+  assert.equal(checked.verification.intrinsicDefinitionChecks,true);
+});
+
 test('the migration CLI reports the computation preview and keeps --write blocked before project validation', async () => {
   const directory = await mkdtemp(join(tmpdir(),'lawspec-source-migration-'));
   try {

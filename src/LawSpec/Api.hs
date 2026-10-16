@@ -11,6 +11,7 @@ import qualified Data.ByteString.Lazy as B
 import LawSpec.Model
 import LawSpec.Digest (digestString, digestHex)
 import LawSpec.SourceText (formatSource)
+import LawSpec.SourceSyntax (SourceSyntax)
 import LawSpec.Compile
 import LawSpec.Frontend (elaborate, elaborateCanonical)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), planTesting, planTestingWith)
@@ -40,6 +41,15 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
   Left err -> failure [Diagnostic "request" err Nothing]
   Right (_, _, Left err) -> failure [Diagnostic "attestation" err Nothing]
   Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native,verification),(project,packages),Right attestation) ->
+   if method == "migrationBaseline" then
+    case memoized syntaxStagesTable (sharedRequest bytes)
+      (stagesWithInput False True project packages sources bits settings native verification) of
+      Left response -> response
+      Right ((us,es,core,bindings,evidence,described,_),syntax) ->
+        let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
+        in withMigrationSyntax syntax $ withAttestation attestation core obligations $ withVerification verification $
+          withPackages project described (programView settings us (map prettyExpanded es) [] obligations (C.lowerProgramFields core))
+   else
    -- Compilation, evidence and the testing plan depend on neither the method
    -- nor the target, so a compiler asked for several targets does them once.
    case memoized stagesTable (sharedRequest bytes) (stages project packages sources bits settings native verification) of
@@ -90,6 +100,12 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     request = withObject "request" $ \o -> do
       version <- o .:? "schemaVersion" .!= (3 :: Int)
       unless (version `elem` [3,4,5]) (fail "LawSpec requires API schemaVersion 3, 4 (migration) or 5; see docs/explanation/api-migration.md")
+      method <- o .:? "method" .!= "check"
+      if method == ("migrationBaseline" :: String) then do
+        unless (version == 5) (fail "migrationBaseline requires API schemaVersion 5")
+        from <- o .: "from"
+        unless (from == ("0.24" :: String)) (fail "migrationBaseline requires from 0.24")
+      else pure ()
       native <- o .:? "nativeBindings" .!= emptyNativeRequest
       unless (native == emptyNativeRequest || version `elem` [4,5])
         (fail "nativeBindings requires API schemaVersion 4; schema 3 compilers may ignore bindings")
@@ -105,7 +121,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       rootPackage <- o .:? "package" >>= traverse (withObject "package" (\p -> (,) <$> p .: "name" <*> p .: "version"))
       dependencies <- o .:? "dependencies" .!= mempty
       packages <- o .:? "packages" .!= []
-      request' <- (,,,,,,,,,) <$> o .:? "method" .!= "check" <*> o .: "sources" <*> o .:? "target" .!= "" <*> o .:? "sourceDir" <*> o .:? "testDir" <*> o .:? "machineBits" .!= 64 <*> o .:? "generation" .!= defaultGeneration <*> o .:? "minify" .!= False <*> pure native <*> pure verification
+      request' <- (,,,,,,,,,) <$> pure method <*> o .: "sources" <*> o .:? "target" .!= "" <*> o .:? "sourceDir" <*> o .:? "testDir" <*> o .:? "machineBits" .!= 64 <*> o .:? "generation" .!= defaultGeneration <*> o .:? "minify" .!= False <*> pure native <*> pure verification
       -- An environment attestation is reporting only: it annotates the
       -- evidence and never changes what is compiled or how a law is
       -- discharged. ref:DEC-environment-attestation
@@ -123,6 +139,11 @@ plannedCore core _ = core
 withSources :: [Source] -> Value -> Value
 withSources sources (Object o) = Object (KM.insert "formattedSources" (toJSON sources) o)
 withSources _ value = value
+
+withMigrationSyntax :: [SourceSyntax] -> Value -> Value
+withMigrationSyntax syntax (Object value) = Object
+  (KM.insert "sourceLanguageProfile" (String "0.24") (KM.insert "sourceSyntax" (toJSON syntax) value))
+withMigrationSyntax _ value = value
 
 -- Selected law checks are reported separately from completed evidence. This
 -- field never claims that an unrun native test passed.
@@ -174,17 +195,24 @@ failure ds = object ["schemaVersion" .= (3 :: Int), "diagnostics" .= ds]
 type Stages = ([Unit], [Expanded], C.Program, BindingPlan, [Obligation], [(Package, [String])], Either [Diagnostic] Plan)
 
 stages :: Project -> [Package] -> [Source] -> Int -> Generation -> NativeRequest -> Maybe V.Verification -> Either Value Stages
-stages project packages sources bits settings native verification = case preparePackagesWithReferences project packages sources of
+stages project packages sources bits settings native verification =
+  fst <$> stagesWithInput (verification /= Nothing) False project packages sources bits settings native verification
+
+stagesWithInput :: Bool -> Bool -> Project -> [Package] -> [Source] -> Int -> Generation -> NativeRequest -> Maybe V.Verification -> Either Value (Stages,[SourceSyntax])
+stagesWithInput canonical capture project packages sources bits settings native verification = case preparePackagesWithReferences project packages sources of
   Left ds -> Left (failure ds)
-  Right (allSources,visible,referenceUnit,described) -> case (if verification == Nothing then compileWithImports visible else compileCanonicalWithReferenceUnits referenceUnit visible) bits settings allSources of
+  Right (allSources,visible,referenceUnit,described) -> case
+    (if capture then compileWithSourceSyntax canonical referenceUnit visible bits settings allSources
+      else (\(units,properties) -> (units,properties,[])) <$>
+        (if canonical then compileCanonicalWithReferenceUnits referenceUnit visible else compileWithImports visible) bits settings allSources) of
     Left ds -> Left (failure (versionedDiagnostics described ds))
-    Right (us,es) -> case (if verification == Nothing then elaborate else elaborateCanonical) bits us es of
+    Right (us,es,syntax) -> case (if canonical then elaborateCanonical else elaborate) bits us es of
       Left ds -> Left (failure (versionedDiagnostics described ds))
       Right core -> case resolveNativeRequest core native of
         Left message -> Left (failure [Diagnostic "native-binding" message Nothing])
         Right bindings -> case maybe dischargeEvidence dischargeEvidenceWith verification core of
           Left ds -> Left (failure ds)
-          Right evidence -> Right (us, es, core, bindings, evidence, described, maybe planTesting planTestingWith verification core)
+          Right evidence -> Right ((us, es, core, bindings, evidence, described, maybe planTesting planTestingWith verification core),syntax)
 
 -- | The request without the fields that only select a method, target or layout.
 sharedRequest :: B.ByteString -> String
@@ -197,3 +225,9 @@ sharedRequest bytes = case decode bytes of
 stagesTable :: Table (Either Value Stages)
 stagesTable = unsafePerformIO (newTable 2 (const 1))
 {-# NOINLINE stagesTable #-}
+
+-- Migration parses an explicitly selected legacy grammar. Its cache cannot
+-- supply canonical check/format/generation responses, or vice versa.
+syntaxStagesTable :: Table (Either Value (Stages,[SourceSyntax]))
+syntaxStagesTable = unsafePerformIO (newTable 2 (const 1))
+{-# NOINLINE syntaxStagesTable #-}

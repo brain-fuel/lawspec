@@ -127,11 +127,22 @@ function walk(value, visit) {
   }
 }
 
-export function planLegacyComputationEdits(sources, baseline) {
+export function planLegacyComputationEdits(sources, baseline, sourceSyntax = []) {
   if (baseline.diagnostics?.length) throw new Error('Migration requires a checked legacy baseline');
   const documents = new Map(sources.map(source => [source.path,new MigrationDocument(source)]));
   if (documents.size !== sources.length) throw new Error('Duplicate migration source path');
-  for (const unit of baseline.units ?? []) for (const declaration of unit.declarations ?? []) {
+  for (const source of sourceSyntax) {
+    if (source.version !== 1 || !Array.isArray(source.nodes)) throw new Error('Unsupported checked source syntax inventory');
+    for (const node of source.nodes) if (!node.span?.start?.file || !node.span?.end?.file)
+      throw new Error('Malformed checked source syntax span');
+  }
+  const parsedDeclarations = sourceSyntax.flatMap(source => source.nodes.filter(node => node.kind === 'declaration.definition')
+    .map(node => {
+      if (!Array.isArray(node.uses)) throw new Error('A checked source definition has no effect context');
+      return {origin:{kind:'source',span:node.span},uses:node.uses};
+    }));
+  const declarations = [...parsedDeclarations,...(baseline.units ?? []).flatMap(unit => unit.declarations ?? [])];
+  for (const declaration of declarations) {
     const document = documents.get(declaration.origin?.span?.start?.file);
     const range = document?.range(declaration.origin);
     if (!range) continue;
@@ -150,6 +161,21 @@ export function planLegacyComputationEdits(sources, baseline) {
     document.edit(annotation.start,annotation.end,'->','computation result');
     const closer = tokens.at(-1);
     document.edit(closer.start,closer.end,'end ' + kind,'computation closer');
+  }
+  for (const source of sourceSyntax) for (const node of source.nodes) {
+    const document = documents.get(node.span?.start?.file);
+    const range = document?.range({kind:'source',span:node.span});
+    if (!range) continue;
+    if (node.kind === 'if') {
+      const tokens = document.code(range.start,range.end);
+      if (tokens[0]?.text !== 'if' || !tokens.at(-1)) throw new Error('Checked conditional syntax has no source block');
+      document.edit(tokens.at(-1).end,tokens.at(-1).end,' end if','conditional closer','conditional:' + tokens[0].start);
+    }
+    if (node.kind === 'operator.value-equality') {
+      const tokens = document.code(range.start,range.end);
+      if (tokens.length !== 1 || tokens[0].text !== '==') throw new Error('Checked equality syntax has no operator token');
+      document.edit(tokens[0].start,tokens[0].end,'=','typed equality');
+    }
   }
   walk(baseline, expression => {
     if (expression.node?.kind === 'binary' && expression.node.operator === '==') {

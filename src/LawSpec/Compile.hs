@@ -3,11 +3,12 @@
 -- testing plan needs. It stops at the surface; LawSpec.Frontend turns its
 -- result into typed Core, so the eight emitters never see source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, validateDefinitionTypes, validateDefinitionTotality) where
+module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
 import LawSpec.Model
+import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..))
 import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, inlineFieldDefinitions)
 import LawSpec.Capabilities (satisfiedWithContext)
 import qualified LawSpec.SourceContext as Source
@@ -325,6 +326,14 @@ compileCanonicalWithReferenceUnits :: (String -> String -> String) -> (String ->
 compileCanonicalWithReferenceUnits = compileWithParser True
 compileWithParser :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileWithParser canonical referenceUnit visible bits settings sources = do
+  (units,properties,_) <- compileWithParserInventory False canonical referenceUnit visible bits settings sources
+  pure (units,properties)
+
+compileWithSourceSyntax :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
+compileWithSourceSyntax = compileWithParserInventory True
+
+compileWithParserInventory :: Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
+compileWithParserInventory capture canonical referenceUnit visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Reserved Core identities belong to compiler-provided versioned sources.
@@ -370,7 +379,9 @@ compileWithParser canonical referenceUnit visible bits settings sources = do
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.
         [("lawspec.host", "lawspecHost", [], \text -> usesResources text && not (importsBuiltin "lawspec.host" text)) | resources]
-  parsedUnits <- parseSourcesWithBuiltins canonical collections implicit builtins sources
+  (parsedUnits,sourceSyntax) <- if capture
+    then parseSourcesWithBuiltinsAndSyntax canonical collections implicit builtins sources
+    else (\units -> (units,[])) <$> parseSourcesWithBuiltins canonical collections implicit builtins sources
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   documented <- resolveDocumentaryReferences referenceUnit visible parsedUnits
   let canonicalUnits = Set.fromList [name | source <- sources, Right name <- [sourceUnit source]]
@@ -512,7 +523,17 @@ compileWithParser canonical referenceUnit visible bits settings sources = do
           unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
         mapM_ (validateExampleDomains bits u invoke (inputs property)) (examples (original property)))
         (withSourceContext sourceTypes (withDataDeclarations closedDataTypes (initialState bits)))
-  pure (specialized, properties)
+  -- Ability inference stores only nonempty rows. A known source definition
+  -- absent from that sparse table is pure; an unknown declaration is not.
+  let sourceRows = [(unitName u,[(functionName d,maybe [] id (lookup (functionName d) (abilityRows u)))
+                        | d <- functionDefinitions u]) | u <- us]
+      annotate syntax = syntax{syntaxNodes=map (node (syntaxUnit syntax)) (syntaxNodes syntax)}
+      node owner item
+        | syntaxKind item == "declaration.definition", Just name <- syntaxName item,
+          Just used <- lookup owner sourceRows >>= lookup name = item{syntaxUses=Just (map prettyType used)}
+        | otherwise = item
+  pure (specialized, properties,
+    [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]])
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
 -- names it invokes, a superset of the ones expansion resolves.

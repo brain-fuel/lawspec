@@ -13,7 +13,7 @@ earlier versions. The current protocol is specified in the
 
 `lawspec migrate --from 0.24 --json` reports the checked legacy declarations,
 laws, constructor payloads and native bindings, together with a proposed
-version-2 configuration preserving the selected law checks. The report remains
+version-2 configuration selecting the prior law layers. The report remains
 read-only.
 
 `sourcePreview` now includes planned edits for checked computation declarations,
@@ -24,13 +24,18 @@ comments and other literal contents remain intact. Each source includes the
 original UTF-16 offset ranges, replacement text and retained-source segments
 for reviewing the changes.
 
-Legacy `==` edits use checked equality-expression operands and their source
-ranges, including Boolean values, IEEE values and refinement predicates.
+Legacy `==` edits use checked equality-expression operands and parser-owned
+value-equality tokens, including Boolean values, IEEE values, refinements and
+uninstantiated generic bodies.
 Occurrences inside comments or text literals keep their original spelling.
 
-Generic definitions and reusable law templates that have not been instantiated
-still need migration coverage from the frontend source syntax inventory. The
-concrete Core baseline omits those templates even when their source is valid.
+`baseline.sourceSyntax` supplements the concrete Core baseline with the
+frontend's original source inventory. It retains generic definitions and
+reusable laws even when they have not been instantiated. Checked effect rows
+let the computation preview select `function` or `procedure` for those generic
+definitions. Nested conditionals and equality tokens use the actual parser's
+source ranges. The inventory also records law sections, constructor fields,
+patterns, table rows and closers for the remaining transformation stages.
 
 This preview is a step toward the complete project transformation. The report
 keeps `validated: false` and lists the remaining correspondence gates.

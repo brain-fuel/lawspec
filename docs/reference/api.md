@@ -10,7 +10,7 @@ Canonical requests use `schemaVersion: 5`, explicit
 An empty selection performs intrinsic definition checks and reports laws as
 `not-verified`. Native tests are `planned` until an execution supplies evidence.
 The existing schema-3/4 interface below is retained during migration; making
-schema 5 the sole normal interface remains an RC1 release gate.
+schema 5 the sole normal interface remains a minor-version interface gate.
 The `format` method requires schema 5 and returns `formattedSources` after
 canonical validation. Every view and editor service uses the same typed Core.
 Typed laws expose `inputDomain: "universal"` for canonical obligations and
@@ -22,16 +22,18 @@ Laws expose documentary scalars as `metadata: {id?: string, owner?: string}`.
 The top-level law `id` and `owner` continue to identify its declaration and unit;
 documentary metadata neither renames them nor establishes verification evidence.
 
-The compiler exposes three methods through `createCompiler()` in the `lawspec`
+The compiler exposes five methods through `createCompiler()` in the `lawspec`
 package. Each takes a JSON request and returns a JSON result. The TypeScript
 declarations in `index.d.ts` describe the protocol exactly; this page explains
 it. For usage, see [Use the JavaScript API](../how-to/use-the-javascript-api.md).
 
 ```ts
 interface Compiler {
+  format(input: CheckRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
+  migrationBaseline(input: MigrationRequest): Promise<Result>;
 }
 function createCompiler(): Promise<Compiler>;
 ```
@@ -41,10 +43,12 @@ function createCompiler(): Promise<Compiler>;
 ```ts
 interface CheckRequest {
   sources: Source[];                        // {path, content}
-  schemaVersion?: 3 | 4;
+  schemaVersion?: 3 | 4 | 5;
+  languageProfile?: '1.0-rc.1';
+  verification?: Verification;
   machineBits?: 32 | 64;                    // default 64
   generation?: Partial<Generation>;         // cases, maxAttempts, maxShrinks, exhaustiveLimit
-  nativeBindings?: NativeBindings;          // schema 4 only
+  nativeBindings?: NativeBindings;          // schema 4 or 5
   package?: {name: string; version: string};
   dependencies?: Record<string, string>;
   packages?: Package[];
@@ -57,6 +61,12 @@ interface GenerationRequest extends CheckRequest {
   sourceDir?: string;
   testDir?: string;
   minify?: boolean;                         // default false
+}
+
+interface MigrationRequest extends CheckRequest {
+  schemaVersion?: 5;
+  languageProfile: '1.0-rc.1';
+  from: '0.24';
 }
 ```
 
@@ -81,12 +91,38 @@ interface GenerationRequest extends CheckRequest {
 
 ### Schema versions
 
+Canonical requests select schema 5 and `languageProfile: '1.0-rc.1'`.
+The JavaScript facade selects schema 5 when that profile is present.
+
 Requests may omit `schemaVersion` or send `3`. Requests with `nativeBindings`
 use `4`; the JavaScript API selects it automatically when `nativeBindings` is
 present, unless you set `schemaVersion` yourself. A non-empty `nativeBindings`
 with schema 3 is rejected, so a compiler that does not understand bindings can
 never ignore them. An explicit schema `2` receives a diagnostic. Results report
 the negotiated schema.
+
+### Migration source inventory
+
+`migrationBaseline` explicitly selects the 0.24 source grammar with `from`.
+It requires schema 5 and the current technical language profile; normal
+schema-5 check, formatting and generation requests keep canonical parsing.
+Migration and normal requests use separate compilation caches.
+
+The result includes `sourceLanguageProfile: '0.24'` and `sourceSyntax`, an
+array of version-1 inventories with `path`, `unit` and `nodes`. Nodes contain
+`kind`, optional `name` and a parser `span`. They identify actual declarations,
+sections, binders, types, expressions, patterns, literals, tables and closers.
+The inventory retains unused generic definitions and reusable law templates
+before elaboration and specialization. Definition nodes also carry their
+checked `uses` row, including an empty array for a pure definition.
+
+These are source syntax and checked declaration context, rather than another
+executable representation. The same type, capability, effect, totality and
+definition-contract checks must succeed before any inventory is returned.
+Law verification still follows `verification.layers`; an empty selection
+reports `not-verified`. Spans count Unicode code points and eight-column tab
+stops, as other compiler spans do. Source-edit clients translate them to their
+own offset convention. See [source migration](../explanation/api-migration.md#source-migration-from-024).
 
 ### Packages
 
@@ -102,7 +138,7 @@ the negotiated schema.
 
 ```ts
 interface Result {
-  schemaVersion: 3 | 4;
+  schemaVersion: 3 | 4 | 5;
   diagnostics: Diagnostic[];
   machineBits?: 32 | 64;
   generation?: Generation;

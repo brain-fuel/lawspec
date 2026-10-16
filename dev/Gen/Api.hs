@@ -7,7 +7,7 @@ import LawSpec.Scalar
 import qualified LawSpec.Targets as Targets
 
 methods :: [(String, String)]
-methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("planGeneration", "GenerationRequest")]
+methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest")]
 
 apiSources :: Layout -> [(FilePath, String)]
 apiSources layout = [("api.mjs", output api), ("index.d.ts", output declarations)]
@@ -67,6 +67,8 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "Source" (fields [("path", "string"), ("content", "string")])
   , interface "Location" (fields [("file", "string"), ("line", "number"), ("column", "number")])
   , interface "Span" (fields [("start", "Location"), ("end", "Location")])
+  , interface "SourceSyntaxNode" (fields [("kind", "string"), ("name?", "string"), ("span", "Span"), ("uses?", "string[]")])
+  , interface "SourceSyntax" ([("version",text "1")] ++ fields [("path", "string"), ("unit", "string"), ("nodes", "SourceSyntaxNode[]")])
   , interface "Diagnostic" [("code", text "string"), ("message", text "string"), ("at", union [text "Location", text "null"])]
   , interface "Artifact"
       [("path", text "string"), ("content", text "string"),
@@ -215,11 +217,14 @@ declarations = joinWith (softbreak <> softbreak)
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
        ("attestation?", text "unknown")]
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
+  , interface "MigrationRequest extends CheckRequest"
+      [("schemaVersion?",text "5"),("languageProfile",quoted "1.0-rc.1"),("from",quoted "0.24")]
   , interface "Result"
       ([("schemaVersion", union [text "3", text "4", text "5"]), ("machineBits?", union [text "32", text "64"])] ++
        fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "Verification"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
+       [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]")] ++
        [("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])

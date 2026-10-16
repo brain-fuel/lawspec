@@ -667,6 +667,7 @@ library
       LawSpec.Sha3
       LawSpec.SourceContext
       LawSpec.SourceRecords
+      LawSpec.SourceSyntax
       LawSpec.SourceText
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
@@ -909,6 +910,7 @@ test-suite lawspec-test
       SourceRecordScopeSpec
       SourceRecordUnitFixtures
       SourceRecordUnitSpec
+      SourceSyntaxSpec
       StatefulModelSpec
       StructuralSpec
       TargetNamesSpec
