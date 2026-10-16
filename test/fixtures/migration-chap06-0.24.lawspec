@@ -1,0 +1,703 @@
+-- Nand2Tetris project 06: the Hack assembler.
+-- Sources: https://www.nand2tetris.org/project06 and the chapter 4/6 specifications.
+-- LawSpec 0.23.0. Only assemble is an adapter; every oracle below is checked.
+-- Wire assemble to your real assembler. Return physical .hack lines as Text.
+-- Return [] for an empty output file. Add this file to lawspec.json sources.
+-- Split LF/CRLF and discard only the final split artifact of a trailing newline.
+-- Do not trim, decode, pad, or filter output: that would conceal assembler bugs.
+-- For a CLI adapter, run Prog.asm and read the generated sibling Prog.hack.
+-- These laws specify valid programs; malformed-input diagnostics are outside
+-- the course contract. Finite test runs provide evidence, not a universal proof.
+
+unit nand2tetris.chap06
+
+assemble :: Text -> List Text
+
+refinement Address is (value :: UInt16 where value <= 32767) end
+
+type Comp is
+  | CZero
+  | COne
+  | CMinusOne
+  | CD
+  | CA
+  | CM
+  | CNotD
+  | CNotA
+  | CNotM
+  | CNegD
+  | CNegA
+  | CNegM
+  | CIncD
+  | CIncA
+  | CIncM
+  | CDecD
+  | CDecA
+  | CDecM
+  | CAddA
+  | CAddM
+  | CSubA
+  | CSubM
+  | CFromA
+  | CFromM
+  | CAndA
+  | CAndM
+  | COrA
+  | COrM
+end
+
+definition compText (value :: Comp) :: Text is
+  match value with
+    | CZero -> "0"
+    | COne -> "1"
+    | CMinusOne -> "-1"
+    | CD -> "D"
+    | CA -> "A"
+    | CM -> "M"
+    | CNotD -> "!D"
+    | CNotA -> "!A"
+    | CNotM -> "!M"
+    | CNegD -> "-D"
+    | CNegA -> "-A"
+    | CNegM -> "-M"
+    | CIncD -> "D+1"
+    | CIncA -> "A+1"
+    | CIncM -> "M+1"
+    | CDecD -> "D-1"
+    | CDecA -> "A-1"
+    | CDecM -> "M-1"
+    | CAddA -> "D+A"
+    | CAddM -> "D+M"
+    | CSubA -> "D-A"
+    | CSubM -> "D-M"
+    | CFromA -> "A-D"
+    | CFromM -> "M-D"
+    | CAndA -> "D&A"
+    | CAndM -> "D&M"
+    | COrA -> "D|A"
+    | COrM -> "D|M"
+  end
+end
+
+definition compBits (value :: Comp) :: UInt8 is
+  match value with
+    | CZero -> 42
+    | COne -> 63
+    | CMinusOne -> 58
+    | CD -> 12
+    | CA -> 48
+    | CM -> 112
+    | CNotD -> 13
+    | CNotA -> 49
+    | CNotM -> 113
+    | CNegD -> 15
+    | CNegA -> 51
+    | CNegM -> 115
+    | CIncD -> 31
+    | CIncA -> 55
+    | CIncM -> 119
+    | CDecD -> 14
+    | CDecA -> 50
+    | CDecM -> 114
+    | CAddA -> 2
+    | CAddM -> 66
+    | CSubA -> 19
+    | CSubM -> 83
+    | CFromA -> 7
+    | CFromM -> 71
+    | CAndA -> 0
+    | CAndM -> 64
+    | COrA -> 21
+    | COrM -> 85
+  end
+end
+
+type Dest is
+  | NoDest
+  | ToM
+  | ToD
+  | ToMD
+  | ToA
+  | ToAM
+  | ToAD
+  | ToAMD
+end
+
+definition destText (value :: Dest) :: Text is
+  match value with
+    | NoDest -> ""
+    | ToM -> "M"
+    | ToD -> "D"
+    | ToMD -> "MD"
+    | ToA -> "A"
+    | ToAM -> "AM"
+    | ToAD -> "AD"
+    | ToAMD -> "AMD"
+  end
+end
+
+definition destBits (value :: Dest) :: UInt8 is
+  match value with
+    | NoDest -> 0
+    | ToM -> 1
+    | ToD -> 2
+    | ToMD -> 3
+    | ToA -> 4
+    | ToAM -> 5
+    | ToAD -> 6
+    | ToAMD -> 7
+  end
+end
+
+type Jump is
+  | NoJump
+  | JGt
+  | JEq
+  | JGe
+  | JLt
+  | JNe
+  | JLe
+  | JAlways
+end
+
+definition jumpText (value :: Jump) :: Text is
+  match value with
+    | NoJump -> ""
+    | JGt -> "JGT"
+    | JEq -> "JEQ"
+    | JGe -> "JGE"
+    | JLt -> "JLT"
+    | JNe -> "JNE"
+    | JLe -> "JLE"
+    | JAlways -> "JMP"
+  end
+end
+
+definition jumpBits (value :: Jump) :: UInt8 is
+  match value with
+    | NoJump -> 0
+    | JGt -> 1
+    | JEq -> 2
+    | JGe -> 3
+    | JLt -> 4
+    | JNe -> 5
+    | JLe -> 6
+    | JAlways -> 7
+  end
+end
+
+type Predefined is
+  | Register index :: (n :: UInt8 where n <= 15)
+  | StackPointer
+  | LocalBase
+  | ArgumentBase
+  | ThisBase
+  | ThatBase
+  | ScreenBase
+  | KeyboardBase
+end
+
+definition predefinedText (symbol :: Predefined) :: Text is
+  match symbol with
+    | Register n -> "R" ++ prelude.textOf n
+    | StackPointer -> "SP"
+    | LocalBase -> "LCL"
+    | ArgumentBase -> "ARG"
+    | ThisBase -> "THIS"
+    | ThatBase -> "THAT"
+    | ScreenBase -> "SCREEN"
+    | KeyboardBase -> "KBD"
+  end
+end
+
+definition predefinedAddress (symbol :: Predefined) :: BigUInt is
+  match symbol with
+    | Register n -> prelude.BigUInt (n)
+    | StackPointer -> 0
+    | LocalBase -> 1
+    | ArgumentBase -> 2
+    | ThisBase -> 3
+    | ThatBase -> 4
+    | ScreenBase -> 16384
+    | KeyboardBase -> 24576
+  end
+end
+
+refinement UserSymbol is
+  (name :: Text where
+    (name matches regex "[A-Za-z_.$:][A-Za-z0-9_.$:]*") && name != "SP" &&
+    name != "LCL" &&
+    name != "ARG" &&
+    name != "THIS" &&
+    name != "THAT" &&
+    name != "SCREEN" &&
+    name != "KBD" &&
+    name != "R0" &&
+    name != "R1" &&
+    name != "R2" &&
+    name != "R3" &&
+    name != "R4" &&
+    name != "R5" &&
+    name != "R6" &&
+    name != "R7" &&
+    name != "R8" &&
+    name != "R9" &&
+    name != "R10" &&
+    name != "R11" &&
+    name != "R12" &&
+    name != "R13" &&
+    name != "R14" &&
+    name != "R15")
+end
+
+-- The generated AST supplies valid syntax independently of the assembler's parser.
+-- A symbolic A-instruction is resolved as a label if one is declared anywhere;
+-- otherwise it denotes a variable, allocated on its first use.
+type Line is
+  | Literal address :: Address
+  | Compute comp :: Comp dest :: Dest jump :: Jump
+  | Builtin symbol :: Predefined
+  | Symbolic name :: UserSymbol
+  | Label name :: UserSymbol
+end
+
+definition bits (width :: UInt8) (value :: BigUInt) :: Text is
+  if width == 0 then "" else
+    bits (prelude.UInt8 (width - 1)) (prelude.BigUInt (prelude.quot value 2)) ++
+      (if prelude.rem value 2 == 0 then "0" else "1")
+end
+
+definition binary16 (value :: BigUInt) :: Text is bits 16 value end
+
+definition computeWord (comp :: Comp) (dest :: Dest) (jump :: Jump) :: Text is
+  binary16 (prelude.BigUInt (57344 + compBits comp * 64 + destBits dest * 8 + jumpBits jump))
+end
+
+definition renderLine (line :: Line) :: Text is
+  match line with
+    | Literal n -> "@" ++ prelude.textOf n
+    | Compute comp dest jump ->
+        (if dest == NoDest then "" else destText dest ++ "=") ++ compText comp ++
+        (if jump == NoJump then "" else ";" ++ jumpText jump)
+    | Builtin symbol -> "@" ++ predefinedText symbol
+    | Symbolic name -> "@" ++ name
+    | Label name -> "(" ++ name ++ ")"
+  end
+end
+
+definition source (program :: List Line) :: Text is
+  match program with
+    | Nil -> ""
+    | Cons line rest -> renderLine line ++ "\n" ++ source rest
+  end
+end
+
+definition instructionCount (program :: List Line) :: BigUInt is
+  match program with
+    | Nil -> 0
+    | Cons line rest -> match line with
+        | Label name -> instructionCount rest
+        | Literal n -> prelude.BigUInt (1 + instructionCount rest)
+        | Compute comp dest jump -> prelude.BigUInt (1 + instructionCount rest)
+        | Builtin symbol -> prelude.BigUInt (1 + instructionCount rest)
+        | Symbolic name -> prelude.BigUInt (1 + instructionCount rest)
+      end
+  end
+end
+
+definition uniqueLabels (program :: List Line) (seen :: Set Text) :: Bool is
+  match program with
+    | Nil -> true
+    | Cons line rest -> match line with
+        | Label name -> !(prelude.member name seen) && uniqueLabels rest (prelude.insert name seen)
+        | Literal n -> uniqueLabels rest seen
+        | Compute comp dest jump -> uniqueLabels rest seen
+        | Builtin symbol -> uniqueLabels rest seen
+        | Symbolic name -> uniqueLabels rest seen
+      end
+  end
+end
+
+definition labelsFit (program :: List Line) (pc :: BigUInt) :: Bool is
+  match program with
+    | Nil -> pc <= 32768
+    | Cons line rest -> match line with
+        | Label name -> pc < 32768 && labelsFit rest pc
+        | Literal n -> labelsFit rest (prelude.BigUInt (pc + 1))
+        | Compute comp dest jump -> labelsFit rest (prelude.BigUInt (pc + 1))
+        | Builtin symbol -> labelsFit rest (prelude.BigUInt (pc + 1))
+        | Symbolic name -> labelsFit rest (prelude.BigUInt (pc + 1))
+      end
+  end
+end
+
+definition scanLabels (program :: List Line) (pc :: BigUInt)
+  (labels :: KeyVal Text BigUInt) :: KeyVal Text BigUInt is
+  match program with
+    | Nil -> labels
+    | Cons line rest -> match line with
+        | Label name -> scanLabels rest pc (prelude.put name pc labels)
+        | Literal n -> scanLabels rest (prelude.BigUInt (pc + 1)) labels
+        | Compute comp dest jump -> scanLabels rest (prelude.BigUInt (pc + 1)) labels
+        | Builtin symbol -> scanLabels rest (prelude.BigUInt (pc + 1)) labels
+        | Symbolic name -> scanLabels rest (prelude.BigUInt (pc + 1)) labels
+      end
+  end
+end
+
+definition variableNames (program :: List Line) (labels :: KeyVal Text BigUInt)
+  (seen :: Set Text) :: Set Text is
+  match program with
+    | Nil -> seen
+    | Cons line rest -> match line with
+        | Symbolic name -> match prelude.lookup name labels with
+            | Just address -> variableNames rest labels seen
+            | Nothing -> variableNames rest labels (prelude.insert name seen)
+          end
+        | Label name -> variableNames rest labels seen
+        | Literal n -> variableNames rest labels seen
+        | Compute comp dest jump -> variableNames rest labels seen
+        | Builtin symbol -> variableNames rest labels seen
+      end
+  end
+end
+
+definition validProgram (program :: List Line) :: Bool is
+  instructionCount program <= 32768 &&
+  uniqueLabels program (prelude.setOf []) && labelsFit program 0 &&
+  prelude.size (variableNames program (scanLabels program 0 (prelude.keyValOf []))
+    (prelude.setOf [])) <= 32752
+end
+
+-- This oracle has no text parser and never calls the implementation under test.
+definition resolve (program :: List Line) (labels :: KeyVal Text BigUInt)
+  (variables :: KeyVal Text BigUInt) (next :: BigUInt) :: List Text is
+  match program with
+    | Nil -> []
+    | Cons line rest -> match line with
+        | Label name -> resolve rest labels variables next
+        | Literal n -> Cons (binary16 (prelude.BigUInt (n))) (resolve rest labels variables next)
+        | Compute comp dest jump -> Cons (computeWord comp dest jump) (resolve rest labels variables next)
+        | Builtin symbol -> Cons (binary16 (predefinedAddress symbol)) (resolve rest labels variables next)
+        | Symbolic name -> match prelude.lookup name labels with
+            | Just address -> Cons (binary16 address) (resolve rest labels variables next)
+            | Nothing -> match prelude.lookup name variables with
+                | Just address -> Cons (binary16 address) (resolve rest labels variables next)
+                | Nothing -> Cons (binary16 next)
+                    (resolve rest labels (prelude.put name next variables) (prelude.BigUInt (next + 1)))
+              end
+          end
+      end
+  end
+end
+
+definition referenceProgram (program :: List Line) :: List Text is
+  resolve program (scanLabels program 0 (prelude.keyValOf [])) (prelude.keyValOf []) 16
+end
+
+type Layout is | Plain | Spaced | Tabbed | Windows | Commented end
+
+definition layoutLine (line :: Line) (layout :: Layout) :: Text is
+  match layout with
+    | Plain -> renderLine line ++ "\n"
+    | Spaced -> "  " ++ renderLine line ++ "  \n\n"
+    | Tabbed -> "\t" ++ renderLine line ++ "\t\n\t\n"
+    | Windows -> renderLine line ++ "\r\n\r\n"
+    | Commented -> "// ignored @ghost (DECOY) D=M\n" ++ renderLine line ++
+        " // ignored @phantom (FAKE) 0;JMP\n\n"
+  end
+end
+
+definition layoutSource (program :: List Line) (layout :: Layout) :: Text is
+  match program with
+    | Nil -> ""
+    | Cons line rest -> layoutLine line layout ++ layoutSource rest layout
+  end
+end
+
+definition binaryLines (lines :: List Text) :: Bool is
+  match lines with
+    | Nil -> true
+    | Cons line rest -> (line matches regex "[01]{16}") && binaryLines rest
+  end
+end
+
+law `A instructions encode every fifteen bit address` is
+  definition is
+    `for all` (address :: Address) .
+      assemble ("@" ++ prelude.textOf address) = [binary16 (prelude.BigUInt (address))]
+  end
+  table (address, expected) is
+    row 0, ["0000000000000000"]
+    row 1, ["0000000000000001"]
+    row 32767, ["0111111111111111"]
+    expect assemble ("@" ++ prelude.textOf address) = expected
+  end
+end
+
+law `numeric A operands are decimal even with leading zeroes` is
+  definition is
+    `for all` (address :: Address) .
+      assemble ("@000" ++ prelude.textOf address ++ "\n") = [binary16 (prelude.BigUInt (address))]
+  end
+  example `eight is not octal` is
+    address = 8
+    expect assemble ("@000" ++ prelude.textOf address ++ "\n") = ["0000000000001000"]
+  end
+end
+
+-- 28 * 8 * 8 = 1792 canonical C-instructions; an exhaustiveLimit >= 1792
+-- makes this law exhaustive, independently of randomized program testing.
+law `all C instruction fields occupy exactly their specified bits` is
+  definition is
+    `for all` (comp :: Comp) (dest :: Dest) (jump :: Jump) .
+      assemble (renderLine (Compute comp dest jump)) = [computeWord comp dest jump]
+  end
+end
+
+law `computation table matches the published machine language` is
+  definition is
+    `for all` (comp :: Comp) .
+      assemble ("D=" ++ compText comp) = [computeWord comp ToD NoJump]
+  end
+  table (comp, expected) is
+    row CZero, ["1110101010010000"]
+    row COne, ["1110111111010000"]
+    row CMinusOne, ["1110111010010000"]
+    row CD, ["1110001100010000"]
+    row CA, ["1110110000010000"]
+    row CM, ["1111110000010000"]
+    row CNotD, ["1110001101010000"]
+    row CNotA, ["1110110001010000"]
+    row CNotM, ["1111110001010000"]
+    row CNegD, ["1110001111010000"]
+    row CNegA, ["1110110011010000"]
+    row CNegM, ["1111110011010000"]
+    row CIncD, ["1110011111010000"]
+    row CIncA, ["1110110111010000"]
+    row CIncM, ["1111110111010000"]
+    row CDecD, ["1110001110010000"]
+    row CDecA, ["1110110010010000"]
+    row CDecM, ["1111110010010000"]
+    row CAddA, ["1110000010010000"]
+    row CAddM, ["1111000010010000"]
+    row CSubA, ["1110010011010000"]
+    row CSubM, ["1111010011010000"]
+    row CFromA, ["1110000111010000"]
+    row CFromM, ["1111000111010000"]
+    row CAndA, ["1110000000010000"]
+    row CAndM, ["1111000000010000"]
+    row COrA, ["1110010101010000"]
+    row COrM, ["1111010101010000"]
+    expect assemble ("D=" ++ compText comp) = expected
+  end
+end
+
+law `destination table matches the published machine language` is
+  definition is
+    `for all` (dest :: Dest) .
+      assemble (renderLine (Compute CD dest NoJump)) = [computeWord CD dest NoJump]
+  end
+  table (dest, expected) is
+    row NoDest, ["1110001100000000"]
+    row ToM, ["1110001100001000"]
+    row ToD, ["1110001100010000"]
+    row ToMD, ["1110001100011000"]
+    row ToA, ["1110001100100000"]
+    row ToAM, ["1110001100101000"]
+    row ToAD, ["1110001100110000"]
+    row ToAMD, ["1110001100111000"]
+    expect assemble (renderLine (Compute CD dest NoJump)) = expected
+  end
+end
+
+law `jump table matches the published machine language` is
+  definition is
+    `for all` (jump :: Jump) .
+      assemble (renderLine (Compute CZero NoDest jump)) = [computeWord CZero NoDest jump]
+  end
+  table (jump, expected) is
+    row NoJump, ["1110101010000000"]
+    row JGt, ["1110101010000001"]
+    row JEq, ["1110101010000010"]
+    row JGe, ["1110101010000011"]
+    row JLt, ["1110101010000100"]
+    row JNe, ["1110101010000101"]
+    row JLe, ["1110101010000110"]
+    row JAlways, ["1110101010000111"]
+    expect assemble (renderLine (Compute CZero NoDest jump)) = expected
+  end
+end
+
+law `predefined symbols keep their specified addresses` is
+  definition is
+    `for all` (symbol :: Predefined) .
+      assemble ("@" ++ predefinedText symbol) = [binary16 (predefinedAddress symbol)]
+  end
+  table (symbol, expected) is
+    row StackPointer, ["0000000000000000"]
+    row LocalBase, ["0000000000000001"]
+    row ArgumentBase, ["0000000000000010"]
+    row ThisBase, ["0000000000000011"]
+    row ThatBase, ["0000000000000100"]
+    row ScreenBase, ["0100000000000000"]
+    row KeyboardBase, ["0110000000000000"]
+    row Register 0, ["0000000000000000"]
+    row Register 15, ["0000000000001111"]
+    expect assemble ("@" ++ predefinedText symbol) = expected
+  end
+end
+
+law `a fresh symbol receives RAM sixteen and repeated uses retain it` is
+  definition is
+    `for all` (name :: UserSymbol) .
+      assemble ("@" ++ name ++ "\n@" ++ name ++ "\n") =
+        ["0000000000010000", "0000000000010000"]
+  end
+  table (name) is
+    row "_"
+    row "."
+    row "$"
+    row ":"
+    row "foo.bar$9:tmp"
+    row "R16"
+    row "R00"
+    row "r0"
+    row "screen"
+    expect assemble ("@" ++ name ++ "\n@" ++ name ++ "\n") =
+      ["0000000000010000", "0000000000010000"]
+  end
+end
+
+law `distinct variables are allocated in first use order` is
+  definition is
+    `for all` (first :: UserSymbol) (second :: UserSymbol where second != first) .
+      assemble ("@" ++ second ++ "\n@" ++ first ++ "\n@" ++ second ++ "\n@" ++ first) =
+        ["0000000000010000", "0000000000010001", "0000000000010000", "0000000000010001"]
+  end
+end
+
+law `every valid generated program agrees with two pass resolution` is
+  definition is
+    `for all` (program :: List Line where validProgram program) .
+      assemble (source program) = referenceProgram program
+  end
+end
+
+law `comments blank lines and supported line endings preserve the program` is
+  definition is
+    `for all` (program :: List Line where validProgram program) (layout :: Layout) .
+      assemble (layoutSource program layout) = referenceProgram program
+  end
+end
+
+law `output contains exactly sixteen binary digits per instruction` is
+  definition is
+    `for all` (program :: List Line where validProgram program) .
+      binaryLines (assemble (source program)) = true
+  end
+end
+
+law `labels never emit instructions` is
+  definition is
+    `for all` (program :: List Line where validProgram program) .
+      prelude.length (assemble (source program)) = instructionCount program
+  end
+end
+
+-- The constructor keeps each call's output separate, including empty programs.
+type Runs is | Runs first :: List Text second :: List Text again :: List Text end
+
+law `assemblies have independent symbol tables and allocation counters` is
+  definition is
+    `for all` (first :: List Line where validProgram first)
+      (second :: List Line where validProgram second) .
+      Runs (assemble (source first)) (assemble (source second)) (assemble (source first)) =
+        Runs (referenceProgram first) (referenceProgram second) (referenceProgram first)
+  end
+end
+
+law `allocation restarts even when symbols recur across inputs` is
+  definition is
+    `for all` (first :: UserSymbol) (second :: UserSymbol where second != first) .
+      let forward = "@" ++ first ++ "\n@" ++ second ++ "\n" in
+      let backward = "@" ++ second ++ "\n@" ++ first ++ "\n" in
+      Runs (assemble forward) (assemble backward) (assemble forward) ==
+        Runs ["0000000000010000", "0000000000010001"]
+          ["0000000000010000", "0000000000010001"]
+          ["0000000000010000", "0000000000010001"]
+  end
+end
+
+law `empty comments and label only sources emit no words` is
+  definition is
+    assemble "" = [] and
+    assemble " \t\r\n// @ghost (FAKE) D=M\r\n\n" = [] and
+    assemble "(EMPTY)\n// no instructions\n" = []
+  end
+end
+
+law `symbols are case sensitive` is
+  definition is
+    assemble "@foo\n@Foo\n@foo\n@Foo\n" =
+      ["0000000000010000", "0000000000010001", "0000000000010000", "0000000000010001"]
+  end
+end
+
+law `forward and backward labels take ROM addresses and do not consume variables` is
+  definition is
+    assemble "@END\n@x\n(START)\n@START\n@x\n(END)\n@END\n@next\n" =
+      ["0000000000000100", "0000000000010000", "0000000000000010",
+       "0000000000010000", "0000000000000100", "0000000000010001"]
+  end
+end
+
+law `adjacent labels share the next instruction address` is
+  definition is
+    assemble "@FIRST\n(FIRST)\n(SECOND)\n@SECOND\n@FIRST\n" =
+      ["0000000000000001", "0000000000000001", "0000000000000001"]
+  end
+end
+
+definition computationLines (computations :: List Comp) :: List Line is
+  match computations with
+    | Nil -> []
+    | Cons comp rest -> Cons (Compute comp NoDest NoJump) (computationLines rest)
+  end
+end
+
+-- Generate references to the same label deliberately: independently generated
+-- symbol names rarely coincide, so the general program law needs this companion.
+law `label addresses count A and C instructions equally` is
+  definition is
+    `for all` (computations :: List Comp where prelude.length computations <= 32766)
+      (name :: UserSymbol) .
+      let middle = computationLines computations in
+      let program = [Symbolic name] ++ middle ++ [Label name, Symbolic name] in
+      let address = binary16 (prelude.BigUInt (1 + prelude.length computations)) in
+      assemble (source program) == [address] ++ referenceProgram middle ++ [address]
+  end
+end
+
+law `predefined addresses do not advance the variable allocator` is
+  definition is
+    assemble "@R0\n@SP\n@SCREEN\n@KBD\n@z\n@a\n@z\n" =
+      ["0000000000000000", "0000000000000000", "0100000000000000", "0110000000000000",
+       "0000000000010000", "0000000000010001", "0000000000010000"]
+  end
+end
+
+law `whitespace around instruction fields is ignored` is
+  definition is
+    assemble " \tD = M ; JGT // comment\r\n @ 21 \r\n ( LOOP ) \r\n @ LOOP \r\n" =
+      ["1111110000010001", "0000000000010101", "0000000000000010"]
+  end
+end
+
+law `Add assembles to the published six word program` is
+  definition is
+    assemble "@2\nD=A\n@3\nD=D+A\n@0\nM=D\n" =
+      ["0000000000000010", "1110110000010000", "0000000000000011",
+       "1110000010010000", "0000000000000000", "1110001100001000"]
+  end
+end

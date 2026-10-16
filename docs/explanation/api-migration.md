@@ -47,6 +47,16 @@ explicit rename before migration introduces a case's scoped `it`; names with
 edge whitespace and tables without expectations also require an authoring
 decision.
 
+Record previews now include nominal braces and explicit single or record
+payloads for alternatives, together with construction, literal and case-pattern
+edits. Namespace bindings from the checked import resolver identify constructors
+across aliases and facade re-exports, including same-spelled local types. The
+planner indexes all supplied source declarations before applying uses, so
+source-file order does not decide which record a constructor denotes. Nominal
+record fields retain their existing identities; grouped alternative fields
+still require native binding correspondence. Indexed/GADT payload conversions,
+dependency-package migration and validated project writing remain unfinished.
+
 `sourcePreview.canonicalCheck` separately reports whether the partial preview
 passes canonical compilation. This check selects no optional law verification
 and retains mandatory definition validation. An accepted preview still does

@@ -17,14 +17,16 @@ export async function migrationReport(compiler, config, input) {
   const types = baseline.dataTypes.filter(d => owned(d.origin));
   const payloads = types.flatMap(type => type.constructors.filter(c => c.fields.length).map(constructor => ({
     type: type.id, constructor: constructor.id, fields: constructor.fields,
-    change: constructor.fields.length > 1 ? 'group fields into one explicit tuple or record payload' : 'declare an explicit typed payload and reconcile its native field binding',
+    change: type.constructors.length===1 && constructor.name===type.name
+      ? 'declare explicit nominal record syntax and preserve its constructor field binding'
+      : constructor.fields.length > 1 ? 'group fields into one explicit record payload and reconcile its native field binding' : 'declare an explicit typed payload and reconcile its native field binding',
   })));
   let sourcePreview;
   try {
-    sourcePreview = {scope:'checked computations, cases, payload-free alternatives, laws, explicit universal scopes and expectation-first tables',
+    sourcePreview = {scope:'checked computations, local records and alternative payloads, cases, laws, explicit universal scopes and expectation-first tables',
       sources:planLegacySourceEdits(input.sources,baseline,syntax.sourceSyntax),diagnostics:[]};
   } catch (error) {
-    sourcePreview = {scope:'checked computations, cases, payload-free alternatives, laws, explicit universal scopes and expectation-first tables',sources:[],
+    sourcePreview = {scope:'checked computations, local records and alternative payloads, cases, laws, explicit universal scopes and expectation-first tables',sources:[],
       diagnostics:[{code:'migration-source',message:error.message,at:null}]};
   }
   if (!sourcePreview.diagnostics.length) {

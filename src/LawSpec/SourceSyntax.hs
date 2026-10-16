@@ -1,7 +1,7 @@
 -- | Source grammar inventory for migration and authoring tools. These nodes
 -- describe parsed syntax, not a second typed or executable representation.
 -- Clients receive them only after the ordinary compiler checks succeed.
-module LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), sourceSyntax) where
+module LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), SyntaxBinding(..), sourceSyntax) where
 
 import LawSpec.Common (Span(..), Location(..))
 import Data.Aeson (ToJSON(..), object, (.=))
@@ -15,13 +15,20 @@ data SyntaxNode = SyntaxNode
   deriving (Eq, Show)
 
 data SourceSyntax = SourceSyntax
-  { syntaxPath :: FilePath, syntaxUnit :: String, syntaxNodes :: [SyntaxNode] }
+  { syntaxPath :: FilePath, syntaxUnit :: String, syntaxNodes :: [SyntaxNode]
+  , syntaxBindings :: [SyntaxBinding] }
+  deriving (Eq, Show)
+
+-- Declaration/import namespace entries from Imports, in that resolver's
+-- portable naming convention. These are not lexical locals or typed terms.
+data SyntaxBinding = SyntaxBinding
+  { bindingNamespace :: String, bindingName :: String, bindingTarget :: String }
   deriving (Eq, Show)
 
 -- Nested location wrappers may describe the same syntactic expression. Keep
 -- its first record without changing the grammar's order of distinct nodes.
 sourceSyntax :: FilePath -> String -> [SyntaxNode] -> SourceSyntax
-sourceSyntax path unit nodes = SourceSyntax path unit (unique Set.empty nodes)
+sourceSyntax path unit nodes = SourceSyntax path unit (unique Set.empty nodes) []
   where
     unique _ [] = []
     unique seen (node:rest)
@@ -40,4 +47,9 @@ instance ToJSON SyntaxNode where
 instance ToJSON SourceSyntax where
   toJSON source = object
     [ "version" .= (1 :: Int), "path" .= syntaxPath source
-    , "unit" .= syntaxUnit source, "nodes" .= syntaxNodes source ]
+    , "unit" .= syntaxUnit source, "nodes" .= syntaxNodes source
+    , "bindings" .= syntaxBindings source ]
+
+instance ToJSON SyntaxBinding where
+  toJSON binding = object
+    ["namespace" .= bindingNamespace binding,"name" .= bindingName binding,"target" .= bindingTarget binding]

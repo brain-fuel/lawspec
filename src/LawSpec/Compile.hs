@@ -25,7 +25,7 @@ import qualified LawSpec.Core.Types as CoreTypes
 import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Scalar
 import LawSpec.Parser
-import LawSpec.Imports (resolveImportsByProfile)
+import LawSpec.Imports (resolveImportsByProfile,resolveImportsByProfileWithBindings)
 import LawSpec.Documentary (resolveDocumentaryReferences)
 import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Harness (elaborateHarness)
@@ -385,7 +385,9 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   documented <- resolveDocumentaryReferences referenceUnit visible parsedUnits
   let canonicalUnits = Set.fromList [name | source <- sources, Right name <- [sourceUnit source]]
-  imported' <- resolveImportsByProfile (\name -> canonical && name `Set.member` canonicalUnits) visible documented
+  let sourceProfile name = canonical && name `Set.member` canonicalUnits
+  (imported',sourceBindings) <- if capture then resolveImportsByProfileWithBindings sourceProfile visible documented
+    else (\units -> (units,[])) <$> resolveImportsByProfile sourceProfile visible documented
   -- Abilities, handlers and rows, once each unit has what it imports.
   abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
   -- The harness, once every law has its final name.
@@ -527,7 +529,8 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
   -- absent from that sparse table is pure; an unknown declaration is not.
   let sourceRows = [(unitName u,[(functionName d,maybe [] id (lookup (functionName d) (abilityRows u)))
                         | d <- functionDefinitions u]) | u <- us]
-      annotate syntax = syntax{syntaxNodes=map (node (syntaxUnit syntax)) (syntaxNodes syntax)}
+      annotate syntax = syntax{syntaxNodes=map (node (syntaxUnit syntax)) (syntaxNodes syntax),
+        syntaxBindings=maybe [] id (lookup (syntaxUnit syntax) sourceBindings)}
       node owner item
         | syntaxKind item == "declaration.definition", Just name <- syntaxName item,
           Just used <- lookup owner sourceRows >>= lookup name = item{syntaxUses=Just (map prettyType used)}

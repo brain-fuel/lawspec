@@ -204,9 +204,9 @@ test('case previews preserve nested selection, constructor bindings, recursion a
   }
 });
 
-test('a partial payload preview exposes canonical rejection separately from source planning and validation', async () => {
-  const content = 'unit payload\ntype Pair is Pair left :: Bool right :: Bool end\n'+
-    'definition left (pair :: Pair) :: Bool is match pair with | Pair a b -> a end end';
+test('an unfinished indexed payload preview exposes canonical rejection separately from planning and validation', async () => {
+  const content = 'unit payload\ntype Expr (a :: Type) is | Truth value :: Bool where a = Bool end\n'+
+    'definition eval (value :: Expr Bool) :: Bool is match value with | Truth flag -> flag end end';
   const report = await migrationReport(compiler,{version:1,targets:[]},{sources:[{path:'payload.lawspec',content}]});
   assert.deepEqual(report.diagnostics,[]);
   assert.deepEqual(report.sourcePreview.diagnostics,[]);
