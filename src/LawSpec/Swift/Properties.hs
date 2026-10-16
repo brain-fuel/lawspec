@@ -166,8 +166,23 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
         pure (test (name ++ "_example" ++ show i) (label ++ " example " ++ show i ++ ": " ++ C.exampleName example) False
           (setup (Do [inScope] (Raw "()"))))
       let cases = maybe (boundaryCases planned) id (finiteCases planned)
+          -- One enormous array expression exhausts Swift's type checker.
+          -- Construct bounded portions with the original symbol context,
+          -- then concatenate before the unchanged, independently indexed loop.
+          caseGroups = if length cases >= 1024 && C.harnessSkip harness == Nothing then groupsOf 64 cases else []
+          valuesName = "boundaries" ++ prefix ++ capitalFirst name
+          partName i = valuesName ++ "Part" ++ show i
+          caseValues values = ListOf (Ty "[[Value]]") [ListOf tValues (map (X.value X.symbolsVar) row) | row <- values]
+          caseHelpers = if null caseGroups then [] else
+            [function (partName i) [("symbols", tSymbols)] (Ty "[[Value]]") (caseValues values) | (i,values) <- zip [0::Int ..] caseGroups] ++
+            [D.text ("private func " ++ valuesName ++ "(_ symbols: SymbolContext) throws -> [[Value]] {") <>
+              D.nest 4 (D.hardline <> D.joinWith D.hardline
+                (D.text "var cases: [[Value]] = []" :
+                  [D.text ("cases.append(contentsOf: try " ++ partName i ++ "(symbols))") | i <- [0 .. length caseGroups - 1]] ++
+                  [D.text "return cases"])) <> D.hardline <> D.text "}"]
+          boundaryValues = if null caseGroups then caseValues cases else Call valuesName [X.symbolsVar]
           boundary = [ test (name ++ "_boundary") (label ++ " boundary") False (setup
-                         (call "Property" "boundaries" [Str label, ListOf (Ty "[[Value]]") [ListOf tValues (map (X.value X.symbolsVar) values) | values <- cases],
+                         (call "Property" "boundaries" [Str label, boundaryValues,
                            Lambda [("values", tValues)] tValue (invoke (Var "values"))]))
                      | not (null cases) ]
       random <- case finiteCases planned of
@@ -219,7 +234,9 @@ emitTests layout nativeGenerators plan = fmap concat $ forM (plannedUnits plan) 
                 ListOf (Ty "[() throws -> Void]") [Lambda [] tVoid (wrapHarness label d o harness b) | (_, d, o, b) <- ordinary]])]
             _ -> [Test n d (wrapHarness label d o harness b) | (n, d, o, b) <- ordinary]
       let described = metadataDocument 100 "//" planned <> bodyDoc
-      pure ((described, Helper) : (caseDoc, Helper) : [(mempty, t) | t <- tests])
+      pure ((described, Helper) : (caseDoc, Helper) : [(doc, Helper) | doc <- caseHelpers] ++ [(mempty, t) | t <- tests])
+    groupsOf _ [] = []
+    groupsOf count values = let (group,rest) = splitAt count values in group : groupsOf count rest
     test n display o body = (n, display, o, body)
     wrapHarness law display observations harness body
       | not observations && not (controlled harness) = body

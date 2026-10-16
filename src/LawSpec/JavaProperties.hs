@@ -207,12 +207,13 @@ emitTests Config{..} unit laws = do
       [ text "var seed = System.getenv(\"LAWSPEC_SEED\");"
       , text "return seed == null ? PropertyChecker.customized() : PropertyChecker.customized().withSeed(Long.parseLong(seed));" ])
     expr = expression
-    assertionDoc context proposition = case proposition of
-      AssertAll ps -> statements (map (assertionDoc context) ps)
+    assertionDoc context = contextualAssertion (quoted . (context ++))
+    contextualAssertion context proposition = case proposition of
+      AssertAll ps -> statements (map (contextualAssertion context) ps)
       AssertImplies guard body -> text "if (" <> truth (expr guard) <> text ") " <>
-        block (assertionDoc context body)
+        block (contextualAssertion context body)
       AssertEqual a b ->
-        let message = quoted (context ++ " | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b)
+        let message = context (" | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b)
         in statement (call "_lawspecAssert" ([message] ++ (if custom (expressionType a) then [reference (expressionType a),text "symbols"] else []) ++
           [lambda "()" (expr a),lambda "()" (expr b)]))
     -- A law's resources: each case acquires them, then runs, then releases
@@ -254,12 +255,28 @@ emitTests Config{..} unit laws = do
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
           [assertionDoc label (assertion e)])])) (zip [0::Int ..] (examples (original e)))
-      boundaryDocs <- mapM (\(i,vs) -> do
-        values <- mapM literal vs
-        pure $ testFunction (fn ++ "_boundary" ++ show i) $ statements
-          ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-          [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
-        (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
+      boundaryValues <- mapM (mapM literal) (maybe (boundaryCases e) id (finiteCases e))
+      -- Keep each JUnit method, input and failure context independent. Large
+      -- finite domains share only the case body: duplicating its assertion
+      -- lambdas thousands of times overflows the JVM class constant pool.
+      -- These arguments are already checked stored values, not computations.
+      let sharedBoundaries = length boundaryValues >= 1024
+          boundaryHelper = "_lawspecBoundary" ++ show index
+          boundarySetup values = [symbols] ++ handlerInstalls e ++
+            [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values]
+          boundaryNames = map inputId (inputs e) ++ [localName (C.binderId (C.resourceBinder resource)) | resource <- C.propertyResources (original e)]
+          boundaryCheck context = contextualAssertion context (assertion e)
+          argumentValues = text "new Value[] {" <> D.commaSep (map text boundaryNames) <> text "}"
+          boundaryDocs = [testFunction (fn ++ "_boundary" ++ show i)
+            (statements (boundarySetup values ++
+              [bracketed e [if sharedBoundaries then statement (call boundaryHelper [quoted context,text "symbols",argumentValues])
+               else boundaryCheck (quoted . (context ++))]]))
+            | (i,values) <- zip [0::Int ..] boundaryValues, let context=label ++ " boundary " ++ show i]
+          sharedBoundaryDocs = [text ("private void " ++ boundaryHelper ++ "(String _lawspecContext, Map<String, Object> symbols, Value[] _values)" ++
+              (if stripPrefix "harness:" fn /= Nothing then " throws Throwable " else " ")) <>
+            block (statements ([bind name (text ("_values[" ++ show i ++ "]")) | (i,name) <- zip [0::Int ..] boundaryNames] ++
+              [boundaryCheck (\suffix -> text "_lawspecContext + " <> quoted suffix)]))
+            | sharedBoundaries,C.harnessSkip h == Nothing]
       let descriptors = searchDescriptors e
           remembered doc = case descriptors of
             Nothing -> doc
@@ -291,7 +308,7 @@ emitTests Config{..} unit laws = do
               [check,returned (text "true")])]]
       let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
             ["_property" | not (null property)]
-      pure $ metadataDocument 98 "//" e <> separate (searchDocs ++ harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ property))
+      pure $ metadataDocument 98 "//" e <> separate (searchDocs ++ sharedBoundaryDocs ++ harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ property))
     structuralProperty fn e check = do
       strategies <- mapM (contextualStrategy (generation e)) (generationPlan e)
       let predicatesFor inp = concatMap conjuncts (inputRefinements inp)

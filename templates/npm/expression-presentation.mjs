@@ -1,5 +1,6 @@
 // Render checked terms, without evaluating them or changing their evidence.
 // Constructor(field = term) is presentation notation, not authoring syntax.
+import { positionalFields } from './positional-fields.mjs';
 export function createExpressionPresentation(result, { constructors, typeName, storageView, isStoredValue = () => false }) {
   const unavailable = Symbol('unavailable expression presentation');
   const values = new Map();
@@ -107,9 +108,33 @@ export function createExpressionPresentation(result, { constructors, typeName, s
     }
     return undefined;
   }
-  function constructed(tag, entries, scope) {
+  function freshComponent(base, scope, reserved) {
+    const used = new Set([...scope.values(), ...reserved, ...[...values.values()].map(value => value.name)]);
+    let name = base, suffix = 1;
+    while (used.has(name)) name = `${base}_${suffix++}`;
+    reserved.add(name);
+    return name;
+  }
+  function constructed(tag, entries, scope, reserved, stored = false) {
     const entry = constructors.get(tag);
     if (!entry) throw unavailable;
+    const positions = positionalFields(entry.declaration);
+    if (positions) {
+      const byName = new Map(entries);
+      if (entries.length !== positions.length || byName.size !== positions.length
+        || !positions.every(field => byName.has(field.name))) throw unavailable;
+      if (stored || positions.every((field, i) => field.name === entries[i][0]))
+        return resultText(`(${positions.map(field => byName.get(field.name).text).join(', ')})`, true);
+      // Canonical field order can differ from position order. Keep every
+      // computation in its actual order before presenting its tuple positions.
+      const used = new Set(reserved), bindings = new Map();
+      const lets = entries.map(([label, value]) => {
+        const name = freshComponent(`component${positions.findIndex(field => field.name === label) + 1}`, scope, used);
+        bindings.set(label, name);
+        return `let ${name} = ${value.text} in `;
+      });
+      return resultText(lets.join('') + `(${positions.map(field => bindings.get(field.name)).join(', ')})`);
+    }
     if (entry.declaration.structure?.kind === 'record')
       return resultText(`record{${entries.map(([label, value]) => `${label} = ${value.text}`).join(', ')}}`, true);
     const name = globalName(tag, scope);
@@ -122,7 +147,14 @@ export function createExpressionPresentation(result, { constructors, typeName, s
     if (!entry || entry.declaration.constructors.length !== 1
       || branch.binders.length !== entry.constructor.fields.length || branch.body.node?.kind !== 'local') return undefined;
     const index = branch.binders.findIndex(binder => binder.id === branch.body.node.id);
-    return index < 0 ? undefined : { value: node.value, label: entry.constructor.fields[index].name };
+    return index < 0 ? undefined : { value: node.value, entry, label: entry.constructor.fields[index].name };
+  }
+  function selectedField(entry, label, value, scope, reserved) {
+    const positions = positionalFields(entry.declaration);
+    if (!positions) return resultText(`${argument(value)}.${label}`, true);
+    const used = new Set(reserved), name = freshComponent('component', scope, used);
+    const pattern = positions.map(field => field.name === label ? name : '#any').join(', ');
+    return resultText(`first matching case of ${value.text}: when (${pattern}) then ${name} end case`);
   }
   function iterationCollection(expression) {
     const node = expression?.node;
@@ -178,7 +210,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
     }
     // Each strict binding occurs exactly once, only as its constructor field.
     // Entries stay in binding/evaluation order, independently of field order.
-    return constructed(node.constructor, entries, scope);
+    return constructed(node.constructor, entries, scope, reserved);
   }
   function render(expression, scope, reserved) {
     expression = unwrap(expression);
@@ -189,7 +221,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
     const list = listElements(expression);
     if (list !== undefined) return resultText(`[${list.map(value => go(value).text).join(', ')}]`, true);
     const select = projection(expression);
-    if (select) return resultText(`${argument(go(select.value))}.${select.label}`, true);
+    if (select) return selectedField(select.entry, select.label, go(select.value), scope, reserved);
     switch (node.kind) {
       case 'constant': return node.value?.type === 'Unit' ? resultText('()', true)
         : resultText(expression.text, /^(?:[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false)$/.test(expression.text) || expression.text.startsWith('"'));
@@ -202,7 +234,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         }
         const entry = constructors.get(node.constructor);
         if (!entry || entry.constructor.fields.length !== node.arguments.length) throw unavailable;
-        return constructed(node.constructor, node.arguments.map((value, i) => [entry.constructor.fields[i].name, go(value)]), scope);
+        return constructed(node.constructor, node.arguments.map((value, i) => [entry.constructor.fields[i].name, go(value)]), scope, reserved, isStoredValue(expression));
       }
       case 'let': {
         const member = membership(expression, scope, reserved);
@@ -213,13 +245,20 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         return resultText(`let ${bound.name} = ${go(node.value).text} in ${go(node.body, bound.scope).text}`);
       }
       case 'field': {
-        const field = constructors.get(node.constructor)?.constructor.fields[node.index];
+        const entry = constructors.get(node.constructor), field = entry?.constructor.fields[node.index];
         if (!field) throw unavailable;
-        return resultText(`${argument(go(node.value))}.${field.name}`, true);
+        return selectedField(entry, field.name, go(node.value), scope, reserved);
       }
       case 'update': {
-        const field = constructors.get(node.constructor)?.constructor.fields[node.index];
+        const entry = constructors.get(node.constructor), field = entry?.constructor.fields[node.index];
         if (!field) throw unavailable;
+        const positions = positionalFields(entry.declaration);
+        if (positions) {
+          const used = new Set(reserved), replacement = freshComponent('replacement', scope, used);
+          const names = positions.map((_, i) => freshComponent(`component${i + 1}`, scope, used));
+          const result = positions.map((position, i) => position.name === field.name ? replacement : names[i]);
+          return resultText(`let ${replacement} = ${go(node.field).text} in first matching case of ${go(node.value).text}: when (${names.join(', ')}) then (${result.join(', ')}) end case`);
+        }
         return resultText(`${argument(go(node.value))} with ${field.name} = ${go(node.field).text}`);
       }
       case 'call': {
@@ -253,7 +292,9 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         });
         const entry = constructors.get(branch.constructor);
         if (!entry || entry.constructor.fields.length !== names.length) throw unavailable;
-        const pattern = entry.declaration.structure?.kind === 'record'
+        const positions = positionalFields(entry.declaration);
+        const fieldNames = new Map(entry.constructor.fields.map((field, i) => [field.name, names[i]]));
+        const pattern = positions ? `(${positions.map(field => fieldNames.get(field.name)).join(', ')})` : entry.declaration.structure?.kind === 'record'
           ? `record{${names.map((name, i) => `${entry.constructor.fields[i].name} = ${name}`).join(', ')}}`
           : globalName(branch.constructor, scope) + (names.length ? `(${names.join(', ')})` : '');
         return `${pattern}: ${go(branch.body, bindings).text}`;

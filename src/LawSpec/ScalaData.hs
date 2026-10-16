@@ -8,7 +8,7 @@ import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames, caseInsensiti
 import LawSpec.Scalar (primitives, primitiveName)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
-import Data.List (nub, find, intercalate)
+import Data.List (nub, find, intercalate, isSuffixOf)
 import LawSpec.NativeBinding
 import Numeric (showHex)
 import Data.Aeson (encode)
@@ -204,7 +204,8 @@ emitScalaDataWithProfile bits layout declarations = do
                 else []
           declared <- forM (C.constructorFields variant) $ \field -> do
             ty <- typeDoc (handlesOf declarations) names scope (C.binderType field)
-            pure (D.text (escaped (C.binderName field) ++ ": ") <> ty)
+            let label=escaped (C.binderName field)
+            pure (D.text (label ++ if "_" `isSuffixOf` label then " : " else ": ") <> ty)
           let fields = declared ++ [D.text (S.witnessFieldName (length free) k ++ ": java.lang.String") | k <- [0 .. length free - 1]]
           implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc (handlesOf declarations) names scope) (lookup p equations)) parameters
           let inherits = if enumCase && gadt then D.text " extends " <> applied name implemented else mempty

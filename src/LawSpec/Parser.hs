@@ -197,7 +197,11 @@ typeAtom = sourceNode "type-atom" (Just . prettyType) $ anonymousRecordTypeP <|>
     n <- ident; annotationP; t <- typeP
     p <- optional (keyword "where" *> expr)
     pure (Refined n t p))
-  <|> parens typeP
+  <|> parens (do
+    first <- typeP
+    canonical <- canonicalP
+    rest <- if canonical then many (symbol "," *> typeP) else pure []
+    pure (if null rest then first else Record [RecordField label label ty | (label,ty) <- positionalFields (first:rest)]))
   -- _ leaves a type for the compiler to fill: a workflow's Either _ T asks
   -- for a generated error type.
   <|> (Variable "_" <$ try (lexeme (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
@@ -674,6 +678,7 @@ canonicalRecordP = do
 data SelectionPattern
   = SelectionConstructor String [SelectionPattern]
   | SelectionRecord [(String,SelectionPattern)]
+  | SelectionTuple [SelectionPattern]
   | SelectionLiteral Expr | SelectionCondition Expr
   | SelectionBinding String | SelectionAny
 
@@ -718,6 +723,15 @@ selectionBindings pattern = case pattern of
   SelectionBinding name -> [name]
   SelectionConstructor _ fields -> concatMap selectionBindings fields
   SelectionRecord fields -> concatMap (selectionBindings . snd) fields
+  SelectionTuple fields -> concatMap selectionBindings fields
+  _ -> []
+
+selectionAliases :: Expr -> SelectionPattern -> [(String,Expr)]
+selectionAliases value pattern = case pattern of
+  SelectionBinding name -> [(name,value)]
+  SelectionRecord fields -> concat [selectionAliases (Apply (Var (fieldAccessPrefix ++ label)) value) nested | (label,nested) <- fields]
+  SelectionTuple fields -> selectionAliases value (SelectionRecord (positionalFields fields))
+  SelectionConstructor _ _ -> [(name,selectionMatrix 0 [value] [SelectionRow [pattern] [] Nothing (Var name)]) | name <- selectionBindings pattern]
   _ -> []
 
 -- Ordered pattern-matrix specialization retains constructor branches in typed
@@ -732,21 +746,25 @@ selectionMatrix depth values rows@(SelectionRow patterns aliases guard body : re
       in maybe result (\condition -> select (replaceExprVars replacements condition) result
           (selectionMatrix (depth + 1) values remaining)) guard
   | otherwise = case selectedPattern of
-      SelectionRecord _ ->
+      pattern | recordPattern pattern ->
         let labels = nub [label | SelectionRow ps _ _ _ <- rows,
-              SelectionRecord fs <- [ps !! position], (label,_) <- fs]
+              Just fs <- [productFields (ps !! position)], (label,_) <- fs]
             names = freshNames (length labels)
             projections = [Apply (Var (fieldAccessPrefix ++ label)) selected | label <- labels]
-            specialize (SelectionRow ps as g b) = case ps !! position of
-              SelectionRecord fs -> SelectionRow (replaceAt position SelectionAny ps ++
+            specialize (SelectionRow ps as g b) = case productFields (ps !! position) of
+              Just fs -> SelectionRow (replaceAt position SelectionAny ps ++
                 [maybe SelectionAny id (lookup label fs) | label <- labels]) as g b
               _ -> SelectionRow (ps ++ replicate (length labels) SelectionAny) as g b
             result = selectionMatrix (depth + 1) (values ++ map Var names) (map specialize rows)
             ignored = head [name | suffix <- [0::Int ..],
               let name="_lawspecRecordPattern" ++ show depth ++ replicate suffix '_',name `notElem` exprVars result]
+            tupleChecks = nub [length fields | SelectionRow ps _ _ _ <- rows,SelectionTuple fields <- [ps !! position]]
+            tupleChecked = foldr (\arity rest -> MatchExpr (Apply (Apply (Var tuplePatternCheckName) selected) (Number (toInteger arity)))
+              [MatchBranch letTag [ignored] rest]) result tupleChecks
             checked = if null labels then MatchExpr (Apply (Var recordPatternCheckName) selected)
               [MatchBranch letTag [ignored] result] else result
-        in foldr (\(name,value) rest -> MatchExpr value [MatchBranch letTag [name] rest]) checked (zip names projections)
+            admitted = if null tupleChecks then checked else tupleChecked
+        in foldr (\(name,value) rest -> MatchExpr value [MatchBranch letTag [name] rest]) admitted (zip names projections)
       SelectionConstructor _ _ ->
         let constructors = nub [(tag,length fields) | SelectionRow ps _ _ _ <- rows,
               SelectionConstructor tag fields <- [ps !! position]]
@@ -792,7 +810,11 @@ selectionMatrix depth values rows@(SelectionRow patterns aliases guard body : re
       SelectionAny -> False; SelectionBinding _ -> False; _ -> True]
     position = head refutable
     selected = values !! position
-    selectedPattern = case [p | SelectionRow ps _ _ _ <- rows, p@(SelectionRecord _) <- [ps !! position]] of
+    productFields (SelectionRecord fields) = Just fields
+    productFields (SelectionTuple fields) = Just (positionalFields fields)
+    productFields _ = Nothing
+    recordPattern pattern = case productFields pattern of Just _ -> True; _ -> False
+    selectedPattern = case [p | SelectionRow ps _ _ _ <- rows, p <- [ps !! position],recordPattern p] of
       record:_ -> record
       [] -> patterns !! position
     splice fields xs = take position xs ++ fields ++ drop (position + 1) xs
@@ -805,8 +827,10 @@ selectionPatternP :: Bool -> P SelectionPattern
 selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> literal
   <|> try (parens (do
     pattern <- selectionPatternP True
-    case pattern of
-      SelectionBinding _ | not explicit -> empty
+    rest <- many (symbol "," *> selectionPatternP True)
+    case (pattern,rest) of
+      (_,first:others) -> pure (SelectionTuple (pattern:first:others))
+      (SelectionBinding _,[]) | not explicit -> empty
       _ -> pure pattern))
   <|> if explicit then binding else condition
   where
@@ -1153,7 +1177,7 @@ applicationAtom = atom
     -- if, then and else are keywords inside expressions.
     -- (e).logs reads a field of a parenthesized value, the dot adjacent.
     parenthesizedFields = do
-      e <- symbol "(" *> (do e <- expr; option e (Annotate e <$> (annotationP *> typeP))) <* char ')'
+      e <- symbol "(" *> parenthesizedValue <* char ')'
       fields <- many (try (char '.' *> fieldName))
       spaceP
       pure (foldl (\value field -> Apply (Var (fieldAccessPrefix ++ field)) value) e fields)
@@ -1337,7 +1361,15 @@ scalarP = ScalarLit <$> choice
       let value = case e of Number n -> SInteger "BigInt" n; DecimalNumber c p -> SDecimal c p; ScalarLit s -> s; _ -> SAbsent "invalid"
       either fail pure (convertScalar 64 t value)
 parenthesizedExpr :: P Expr
-parenthesizedExpr = parens (do e <- expr; option e (Annotate e <$> (annotationP *> typeP)))
+parenthesizedExpr = parens parenthesizedValue
+
+parenthesizedValue :: P Expr
+parenthesizedValue = do
+  first <- expr
+  canonical <- canonicalP
+  rest <- if canonical then many (symbol "," *> expr) else pure []
+  let value = if null rest then first else RecordLit (positionalFields (first:rest))
+  option value (Annotate value <$> (annotationP *> typeP))
 
 defP :: P Definition
 defP = do
@@ -1480,6 +1512,11 @@ literalP = sourceNode "literal" literalName $ setLiteral <|> namedRecordLiteral 
           (DecimalNumber c p,Named name) -> either fail (pure . ScalarLiteral) (convertScalar 64 name (SDecimal c p))
           (ScalarLit v,Named name) -> either fail (pure . ScalarLiteral) (convertScalar 64 name v)
           _ -> fail "expected concrete annotated literal"))
+  <|> try (do
+    canonical <- canonicalP
+    unless canonical empty
+    values <- parens ((:) <$> (literalP <* symbol ",") <*> (literalP `sepBy1` symbol ","))
+    pure (RecordLiteral (positionalFields values)))
   <|> parens literalP
   <|> (BoolLiteral <$> boolP) <|> (TextLiteral <$> str)
   <|> numericLiteral
@@ -1969,18 +2006,55 @@ definitionUsesP = do
     canonical <- canonicalP
     kind <- if canonical then ("function" <$ keyword "function") <|> ("procedure" <$ keyword "procedure") else "definition" <$ keyword "definition"
     name <- ident
-    arguments <- some param
-    result <- if canonical
+    written <- if canonical then some parameterPatternP else map (\(name,ty) -> (SelectionBinding name,ty,Nothing)) <$> some param
+    let bindings = concatMap (\(pattern,_,_) -> selectionBindings pattern) written
+    unless (length bindings == length (nub bindings)) (fail "repeated variable binding in parameters")
+    let named = zipWith (\index (pattern,ty,restriction) ->
+          (case pattern of SelectionBinding name -> name; _ -> "_lawspecParameter" ++ show index ++ "_",pattern,ty,restriction)) [1::Int ..] written
+        aliases = [case pattern of SelectionBinding _ -> []; _ -> selectionAliases (Var argument) pattern | (argument,pattern,_,_) <- named]
+        scopedAliases = tail (scanl (++) [] aliases)
+        arguments = [(name,maybe ty' (\predicate -> Refined name ty' (Just (replaceExprVars scope predicate))) restriction) |
+          ((name,_,ty,restriction),scope) <- zip named scopedAliases, let ty'=replaceTypeValueVars scope ty]
+        allAliases = concat aliases
+    writtenResult <- if canonical
       then (symbol "->" *> typeP) <|> (if kind == "procedure" then pure (Named "Unit") else fail "a function requires -> and a result type")
       else symbol "::" *> typeP
-    requirements <- constraintsP
+    writtenRequirements <- constraintsP
     used' <- optional (lookAhead (keyword "uses" <|> keyword "fails") *> usesP)
-    let used = if canonical && kind == "function" then Just [] else used'
+    let result = replaceTypeValueVars allAliases writtenResult
+        requirements = [Capability capability (replaceTypeValueVars allAliases ty) | Capability capability ty <- writtenRequirements]
+        used = if canonical && kind == "function" then Just [] else fmap (map (replaceTypeValueVars allAliases)) used'
     when (canonical && kind == "function" && maybe False (not . null) used')
       (fail "a function is pure; declare a procedure for ability operations")
-    body <- keyword "is" *> expr <* closeP kind
+    writtenBody <- keyword "is" *> expr <* closeP kind
+    let body=foldr (\(argument,pattern,_,_) rest -> case pattern of
+          SelectionBinding _ -> rest
+          _ -> selectionMatrix 0 [Var argument] [SelectionRow [pattern] [] Nothing rest]) writtenBody named
     pure (name, arguments, result, requirements, used, body)
   pure (FunctionDefinition name arguments result requirements body range, used)
+
+-- Structured parameters bind their components once. The ordinary single-row
+-- match audit proves irrefutability against the declared type; no parameter
+-- pattern can bypass the mandatory definition-contract checks.
+parameterPatternP :: P (SelectionPattern,Type,Maybe Expr)
+parameterPatternP = sourceNode "parameter" (\(pattern,_,_) -> case selectionBindings pattern of [name] -> Just name; _ -> Nothing) $ parens $ do
+  -- An identifier directly before its annotation keeps the existing binding
+  -- meaning, including uppercase locals that shadow prelude conversions. A
+  -- parenthesized payload-free constructor is an explicit pattern instead.
+  pattern <- try (SelectionBinding <$> ident <* lookAhead annotationP) <|> selectionPatternP True
+  unless (irrefutableShape pattern) (fail "a parameter pattern must be irrefutable")
+  annotationP
+  ty <- typeP
+  restriction <- optional (keyword "where" *> expr)
+  pure (pattern,ty,restriction)
+  where
+    irrefutableShape pattern = case pattern of
+      SelectionAny -> True
+      SelectionBinding _ -> True
+      SelectionRecord fields -> all (irrefutableShape . snd) fields
+      SelectionTuple fields -> all irrefutableShape fields
+      SelectionConstructor _ fields -> all irrefutableShape fields
+      _ -> False
 
 -- Typed constants lower to ordinary checked definitions. Exhaustive constructor
 -- coverage is admitted by the same compiler contract audit as hand-written code.

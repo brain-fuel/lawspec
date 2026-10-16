@@ -12,6 +12,7 @@ import qualified RecordNormalizeSpec
 import qualified SourceRecordScopeSpec
 import qualified SourceRecordInferenceSpec
 import qualified SourceRecordPayloadSpec
+import qualified SourceTupleSpec
 import qualified SourceRecordCanonicalSpec
 import qualified SourceRecordHarnessSpec
 import qualified SourceRecordUnitSpec
@@ -111,6 +112,7 @@ main = hspec $ do
   SourceRecordUnitSpec.test_recordUnitsCollectEveryOccurrence
   SourceRecordHarnessSpec.test_recordHarnessesUseOneTypedContext
   SourceRecordPayloadSpec.test_structuralNominalPayloads
+  SourceTupleSpec.test_positionalProducts
   SourceRecordCanonicalSpec.test_canonicalRecordsReachCheckedCore
   WitnessSpec.test_constructiveWitnessesPreserveScopedMeaning
   QuantifierDomainSpec.test_refinedIntegerDomainsAreComplete

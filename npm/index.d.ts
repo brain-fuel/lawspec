@@ -285,6 +285,7 @@ export interface StructuralRecord {
   kind: 'record';
   digest: string;
   descriptor: string;
+  positions?: string[];
   fields: {name: string; predicates: Expr[];}[];
 }
 

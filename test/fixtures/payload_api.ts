@@ -162,6 +162,8 @@ export function structuralRestrictions(declaration: DataTypeDeclaration): Expr[]
   const structure: StructuralRecord | undefined = declaration.structure;
   if (!structure) return [];
   const kind: 'record' = structure.kind;
+  const positions: string[] | undefined = structure.positions;
+  void positions;
   const identity: string = structure.digest;
   const descriptor: string = structure.descriptor;
   void kind; void identity; void descriptor;

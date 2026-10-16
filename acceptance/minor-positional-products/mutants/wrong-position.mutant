@@ -1,0 +1,18 @@
+rejected-at: generation
+expect: refuted
+@@ test/fixtures/canonical-positional-products.lawspec
+<<<<<<<
+function "|tenth component|
+  ((_, _, _, _, _, _, _, _, _, tenth, _)
+    of type (Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool))
+  -> Bool is
+  tenth
+end function
+=======
+function "|tenth component|
+  ((_, _, _, _, _, _, _, _, ninth, tenth, _)
+    of type (Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool))
+  -> Bool is
+  ninth
+end function
+>>>>>>>

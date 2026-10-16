@@ -255,7 +255,15 @@ emit target layout bindings plan = do
                 [E.binary label,E.array (map E.binary descriptors),E.lambda [values] guarded]]
           pure [searchTest]
       acquired <- bracket schema (raw schema (D.text "_LsValues"))
-      let ordinary = E.array (examples ++ boundaryTests ++ randomTests ++ searchTests)
+      let ordinaryItems = examples ++ boundaryTests ++ randomTests ++ searchTests
+          -- BEAM functions cannot keep more than 1024 closure values live
+          -- while building a list. Construct large suites in small helpers,
+          -- retaining one independently named test for every original case.
+          parts = if length ordinaryItems >= 1024 then groupsOf 64 ordinaryItems else []
+          partName i = name ++ "_tests_part_" ++ show i
+          partDocs = [E.function (partName i) [] [E.array items] | (i,items) <- zip [0::Int ..] parts]
+          ordinary = if null parts then E.array ordinaryItems else E.remote "lists" "append"
+            [E.array [E.call (partName i) [] | i <- [0 .. length parts - 1]]]
           tests = case C.harnessKnownFailing harness of
             Nothing -> ordinary
             Just reason ->
@@ -263,11 +271,14 @@ emit target layout bindings plan = do
                     E.lambda [] (E.remote "lawspec_beam_harness" "known_failing"
                       [E.binary label,E.binary (label ++ " known failing"),E.binary reason,ordinary])]
               in E.array [nativeTimeout expected]
-      pure [metadataDocument 100 "%%" planned <>
+      pure ([metadataDocument 100 "%%" planned <>
         E.function rawName ([schema,symbols,E.array (map (D.text . snd) aliases)] ++ resourceArguments) [body],
         E.function caseName [D.text "_LsBaseSchema",symbols,D.text "_LsValues"]
           [workflowScope (scoped (D.text "_LsBaseSchema") schema acquired)],
-        E.function (name ++ "_test_") [] [tests]]
+        E.function (name ++ "_test_") [] [tests]] ++ partDocs)
+
+    groupsOf _ [] = []
+    groupsOf count values = let (group,rest) = splitAt count values in group : groupsOf count rest
 
 observed :: C.LawHarness -> Bool
 observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify harness) && null (C.harnessLabels harness)) ||

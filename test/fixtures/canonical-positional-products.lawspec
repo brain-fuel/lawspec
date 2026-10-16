@@ -1,0 +1,131 @@
+unit products.positional
+
+type Orientation is one of
+  | Landscape
+  | Portrait
+  | Square
+end type
+
+type Picture is a record{
+  dimensions of type (Nat, Nat)
+}
+end type
+
+function "|picture orientation|
+  (record{dimensions = (width, height)} of type Picture) -> Orientation is
+  first matching case of width:
+    when it > height then Landscape
+    when it < height then Portrait
+    otherwise Square
+  end case
+end function
+
+function "|first component| ((left, _) of type (a, b)) -> a is
+  left
+end function
+
+type Packet is one of
+  | Missing
+  | Delivered of type (record{ready of type Bool}, (Bool, Bool))
+end type
+
+function "|packet accepted| (packet of type Packet) -> Bool is
+  first matching case of packet:
+    when Delivered (record{ready = true}, (authorized, _))
+      if authorized then true
+    when Delivered (_, (_, confirmed)) then confirmed
+    when Missing then false
+  end case
+end function
+
+function "|tenth component|
+  ((_, _, _, _, _, _, _, _, _, tenth, _)
+    of type (Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool))
+  -> Bool is
+  tenth
+end function
+
+type Tree is one of
+  | Leaf
+  | Branch of type (Tree, Tree)
+end type
+
+function "|leaf count| (tree of type Tree) -> Whole is
+  first matching case of tree:
+    when Leaf then 1
+    when Branch (left, right) then
+      "|leaf count| left + "|leaf count| right
+  end case
+end function
+
+law "|picture dimensions determine orientation| is
+  definition:
+    "|picture orientation| (Picture record{dimensions = (12, 8)}) must be Landscape
+      and "|picture orientation| (Picture record{dimensions = (8, 12)}) must be Portrait
+      and "|picture orientation| (Picture record{dimensions = (10, 10)}) must be Square
+  end
+end
+
+law "|generic tuples retain component types| is
+  definition:
+    "|first component| (7, false) must be 7
+      and "|first component| ("message", true) must be "message"
+      and prelude.compare (false, false, false, false, false, false, false, false, false, true, false)
+        (true, false, false, false, false, false, false, false, false, false, false) must be Less
+  end
+end
+
+law "|packet guards fall through in order| is
+  definition:
+    for all (packet of type Packet) =>
+      "|packet accepted| packet must be
+        (first matching case of packet:
+          when Missing then false
+          when Delivered (record{ready = ready}, (authorized, confirmed)) then
+            (ready and authorized) or confirmed
+        end case)
+    end
+  end
+
+  expect "|packet accepted| packet = expected
+  in table (packet, expected):
+    row Missing, false
+    row Delivered (record{ready = true}, (true, false)), true
+    row Delivered (record{ready = true}, (false, false)), false
+    row Delivered (record{ready = false}, (true, false)), false
+    row Delivered (record{ready = false}, (false, true)), true
+  end
+end
+
+law "|tuple position ten follows source position ten| is
+  definition:
+    for all
+      (first of type Bool) (second of type Bool) (third of type Bool)
+      (fourth of type Bool) (fifth of type Bool) (sixth of type Bool)
+      (seventh of type Bool) (eighth of type Bool) (ninth of type Bool)
+      (tenth of type Bool) (eleventh of type Bool) =>
+      "|tenth component| (first, second, third, fourth, fifth, sixth, seventh,
+        eighth, ninth, tenth, eleventh) must be tenth
+    end
+  end
+end
+
+law "|recursive tuple payloads retain their leaves| is
+  definition:
+    "|leaf count| (Branch (Leaf, Branch (Leaf, Leaf))) must be 3
+  end
+end
+
+law "|sets compare tuples by equality| is
+  definition:
+    prelude.size (#S{(true, false), (true, false), (false, true)}) must be 2
+      and (true, false) in #S{(true, false), (false, true)}
+  end
+end
+
+law "|tuple equality preserves IEEE NaN behavior| is
+  definition:
+    not ((float64Bits("7ff8000000000001"), false)
+      in [(float64Bits("7ff8000000000001"), false)])
+  end
+end

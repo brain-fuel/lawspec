@@ -1185,8 +1185,8 @@ fromNative env ty = case ty of
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromnative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = name ++ "_" ++ identifier (constructorName c)
-          | isProductType d = "&" ++ name ++ generic ++ "{" ++ intercalate ", " [cv ++ "(" ++ prefix ++ capitalize (binderName f) ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ "}"
-          | otherwise = "&" ++ variantType env d c ++ generic ++ "{" ++ intercalate ", " [cv ++ "(" ++ prefix ++ capitalize (binderName f) ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ "}"
+          | isProductType d = "&" ++ name ++ generic ++ "{" ++ intercalate ", " [cv ++ "(" ++ prefix ++ GoData.goFieldName (binderName f) ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ "}"
+          | otherwise = "&" ++ variantType env d c ++ generic ++ "{" ++ intercalate ", " [cv ++ "(" ++ prefix ++ GoData.goFieldName (binderName f) ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ "}"
     if isProduct d
       then let c = firstOf (dataConstructors d) in pure [D.text ("return " ++ made "n." c (firstOf converters))]
       else do

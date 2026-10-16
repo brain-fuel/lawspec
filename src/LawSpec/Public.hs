@@ -9,6 +9,7 @@ import qualified Data.Map.Strict as M
 import qualified LawSpec.Core.Eval as Eval
 import qualified LawSpec.Core.Types as Types
 import qualified LawSpec.Core.Value as Values
+import LawSpec.Core.Positional (positionalItems)
 import LawSpec.Core.Evidence (Obligation(..), statusName)
 import qualified LawSpec.Model as S
 import LawSpec.Common
@@ -202,14 +203,15 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
           , "origin" .= originView (C.constructorOrigin constructor)
           ] | constructor <- C.dataConstructors declaration]
       ] ++ ["structure" .= object
-        [ "kind" .= str "record", "digest" .= reverse (takeWhile (/= ':') (reverse (C.idText (C.dataId declaration))))
+        ([ "kind" .= str "record", "digest" .= reverse (takeWhile (/= ':') (reverse (C.idText (C.dataId declaration))))
         , "descriptor" .= C.structuralDescriptor structure
         , "fields" .= [object ["name" .= label,"predicates" .=
             [expressionView [(C.binderId field,C.binderName field) | field <- C.constructorFields constructor] predicate
               | index <- indexes,Just predicate <- [M.lookup index predicates]]]
           | (label,indexes) <- C.structuralPredicates structure
           , let predicates = M.fromList (zip [0..] (C.constructorPredicates constructor))]
-        ] | Just structure <- [C.dataStructural declaration],constructor <- take 1 (C.dataConstructors declaration)])
+        ] ++ ["positions" .= positions | Just positions <- [positionalItems [(C.binderName field,C.binderName field) | field <- C.constructorFields constructor]]])
+        | Just structure <- [C.dataStructural declaration],constructor <- take 1 (C.dataConstructors declaration)])
     -- Source ownership comes from parsing the declaring unit, never from an
     -- origin filename or the spelling of a specialized generated identifier.
     sourceView owner name = object (["unit" .= owner,"name" .= name] ++

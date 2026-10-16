@@ -16,6 +16,7 @@ import LawSpec.Model
 import qualified LawSpec.Core as Core
 import LawSpec.Inference
 import LawSpec.Refinement (planDomain, definitionContractFor)
+import LawSpec.TargetNames (phraseNativeName)
 
 data Instance = Instance String FunctionDefinition (Maybe Contract) Bool
 data Work = Work
@@ -225,7 +226,7 @@ specializeDefinitionsWithContext sourceTypes declarations bits satisfies units p
           used <- gets occupied
           let hash = foldl' (\value c -> (value `xor` fromIntegral (ord c)) * 1099511628211)
                 (14695981039346656037 :: Word64) (show ty)
-              base = "lawspec_" ++ name ++ "_" ++ showHex hash ""
+              base = "lawspec_" ++ phraseNativeName name ++ "_" ++ showHex hash ""
               candidate = head (filter (`Set.notMember` used) [base ++ replicate count '_' | count <- [0..]])
           modify (\state -> state{occupied=Set.insert candidate (occupied state)})
           pure candidate

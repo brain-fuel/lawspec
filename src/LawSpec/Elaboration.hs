@@ -382,6 +382,8 @@ lowerResolvedTree context projections dataTypes declared bits origin resolve typ
         _ -> Left "invalid typed unary operation"
       -- An empty record pattern retains an actual typed match. Its selected
       -- expression is evaluated once and no Eq evidence is required.
+      S.Apply (S.Apply (S.Var n) _) _ | n == S.tuplePatternCheckName, [value,_] <- operands ->
+        lower (old{S.expression=S.Apply (S.Var S.recordPatternCheckName) (S.expression value),S.operands=[value]})
       S.Apply (S.Var n) _ | n == S.recordPatternCheckName, [value] <- operands -> do
         subject <- lower value
         parent <- case C.expressionType subject of

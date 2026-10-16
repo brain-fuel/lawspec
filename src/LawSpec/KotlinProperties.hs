@@ -72,7 +72,9 @@ fromValues xs = statements [bind (inputId input) (text ("_values[" ++ show index
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
   let testNames = unitTestNames "kotlin" (map name laws)
-  bodies <- mapM (law testNames) (zip [0::Int ..] laws)
+  generated <- mapM (law testNames) (zip [0::Int ..] laws)
+  let bodies=map snd generated
+      sharedCases=concatMap fst generated
   let imports = sort $ ["io.kotest.core.spec.style.StringSpec", "io.kotest.property.checkAll",
         "io.kotest.property.Arb", "io.kotest.property.PropTestConfig", "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecSchema",
         "lawspec.runtime.LawSpecDataSchema", "lawspec.runtime.LawSpecDataCodecs",
@@ -83,7 +85,7 @@ emitTests Config{..} unit laws = do
     (if null packageName then mempty else text ("package " ++ packageName) <> D.hardline <> D.hardline) <>
     statements [text ("import " ++ name) | name <- imports] <> D.hardline <> D.hardline <>
     separate ([seedDoc, Helpers.assertionDoc, Helpers.dataHelpersDoc machineBits generator] ++
-      map contract (contracts unit)) <> D.hardline <> D.hardline <>
+      map contract (contracts unit) ++ sharedCases) <> D.hardline <> D.hardline <>
     text ("class " ++ className ++ "LawSpecTest : StringSpec(") <>
     -- Workflows wait on a virtual clock under test, and workflows and
     -- mailboxes read the Clock handler a law installs.
@@ -190,12 +192,13 @@ emitTests Config{..} unit laws = do
       text "private fun _lawspecConfig(iterations: Int): PropTestConfig =" <> D.nest 4 (D.hardline <>
       text "PropTestConfig(seed = System.getenv(\"LAWSPEC_SEED\")?.toLong(), iterations = iterations)")
     expr = expression
-    assertionDoc context proposition = case proposition of
-      AssertAll ps -> statements (map (assertionDoc context) ps)
+    assertionDoc context = contextualAssertion (quoted . (context ++))
+    contextualAssertion context proposition = case proposition of
+      AssertAll ps -> statements (map (contextualAssertion context) ps)
       AssertImplies guard body -> text "if (" <> truth (expr guard) <> text ") " <>
-        block (assertionDoc context body)
+        block (contextualAssertion context body)
       AssertEqual a b ->
-        let message = quoted (context ++ " | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b)
+        let message = context (" | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b)
             isData = structural (expressionType a)
         in call (if isData then "_lawspecDataAssert" else "_lawspecAssert")
           ([message] ++ (if isData then [reference (expressionType a),text "symbols"] else []) ++
@@ -237,12 +240,18 @@ emitTests Config{..} unit laws = do
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
           [assertionDoc label (assertion e)])])) (zip [0::Int ..] (examples (original e)))
-      boundaryDocs <- mapM (\(i,vs) -> do
-        values <- mapM literal vs
-        pure $ testFunction (fn ++ "_boundary" ++ show i) $ statements
-          ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-          [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
-        (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
+      boundaryValues <- mapM (mapM literal) (maybe (boundaryCases e) id (finiteCases e))
+      let sharedBoundaries=length boundaryValues >= 1024
+          helper="_lawspecBoundary"++show index
+          names=map inputId (inputs e) ++ [localName (C.binderId (C.resourceBinder resource)) | resource<-C.propertyResources (original e)]
+          valuesArray=call "arrayOf<LawSpecRuntime.Value>" (map text names)
+          boundaryDocs=[testFunction (fn ++ "_boundary" ++ show i) $ statements
+            ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
+            [bracketed e [if sharedBoundaries then call helper [quoted (label++" boundary "++show i),text "symbols",valuesArray]
+            else assertionDoc (label++" boundary "++show i) (assertion e)]]) | (i,values)<-zip [0::Int ..] boundaryValues]
+          sharedDocs=[text ("private suspend fun "++helper++"(_lawspecContext: String, symbols: MutableMap<String, Any>, _values: Array<LawSpecRuntime.Value>) ") <>
+            block (statements ([bind name (text ("_values["++show i++"]")) | (i,name)<-zip [0::Int ..] names] ++
+              [contextualAssertion (\suffix->text "_lawspecContext + "<>quoted suffix) (assertion e)])) | sharedBoundaries,C.harnessSkip h==Nothing]
       -- LawSpec's own search (LawSpec.Search): the failure database's
       -- inputs are replayed before the law's generated cases, a failing
       -- case's inputs are kept, and a law with `target maximize` climbs
@@ -279,7 +288,7 @@ emitTests Config{..} unit laws = do
           else pure [nativeProperty fn label e check]
       let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
             ["_property" | not (null property)]
-      pure $ metadataDocument 96 "//" e <> separate (searchBefore ++ harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter)
+      pure (sharedDocs,metadataDocument 96 "//" e <> separate (searchBefore ++ harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter))
     contextualProperty fn label e check = do
       let bindings xs = statements [text "val symbols = _inputs.symbols",
             text "val _values = _inputs.values",fromValues xs]

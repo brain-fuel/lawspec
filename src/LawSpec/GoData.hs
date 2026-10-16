@@ -1,7 +1,8 @@
 -- | Native sealed interfaces and variants follow Go+'s resolved enum lowering.
-module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
+module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goFieldName, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
 
 import LawSpec.DataNames (flatDataCandidatesWith, productConstructors, isProduct, caseInsensitiveCounts, ambiguous)
+import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.GoTypeRefs
 import qualified LawSpec.GoExpr as E
 import LawSpec.Core.Total (constructorProofContracts)
@@ -54,6 +55,9 @@ goProduct declarations declaration = isProduct declaration && not (cyclicLayout 
 capitalize :: String -> String
 capitalize [] = []
 capitalize (c:cs) = toUpper c:cs
+
+goFieldName :: String -> String
+goFieldName name = capitalize (maybe name id (positionalLabel name))
 
 -- | A data name must be a valid Go identifier, or the generated package would not
 -- compile.
@@ -189,7 +193,7 @@ emitGoData layout packageName declarations = do
         markerArguments <- if not (null existentials) then pure args else
           forM parameters $ \(p, v) -> maybe (pure v) (typeText names scope) (lookup p equations)
         fields <- forM (C.constructorFields variant) $ \field -> do
-          let fieldName = capitalize (C.binderName field)
+          let fieldName = goFieldName (C.binderName field)
           identifier fieldName
           fieldType <- if mentionsAny (map fst existentials) (C.binderType field) then pure "LawSpecValue"
             else typeText names scope (C.binderType field)
@@ -420,7 +424,7 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
           fieldType <- if existential (C.binderType field) then pure "LawSpecValue" else typeText names parameters (C.binderType field)
           let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
                 [c | m <- mappings,c <- resolvedConstructors m]
-              fieldName = maybe (capitalize (C.binderName field)) id
+              fieldName = maybe (goFieldName (C.binderName field)) id
                 (mapped >>= lookup (C.binderId field) . map (\(f,n) -> (C.binderId f,n)) . resolvedFields)
           pure (fieldName,C.binderName field,fieldType,expression)
         textCodec <- codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.Constructor "Text" [])

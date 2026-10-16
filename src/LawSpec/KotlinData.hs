@@ -2,6 +2,7 @@
 module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeTypeDoc) where
 
 import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames, caseInsensitiveCounts, ambiguous)
+import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.Scalar (nativeRepresentation, primitives, primitiveName)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
@@ -22,6 +23,10 @@ import qualified LawSpec.JavaData as JVM
 import qualified LawSpec.Code.Doc as D
 
 type Names = [(C.Id, String)]
+
+fieldIdentifier :: String -> Either String ()
+fieldIdentifier name | Just _ <- positionalLabel name = pure ()
+                     | otherwise = identifier name
 
 -- | A data name must be a valid Kotlin identifier, or the generated file would
 -- not compile.
@@ -177,7 +182,7 @@ emitKotlinDataWithProfile bits layout declarations = do
               own = if isProduct declaration || (null equations && null existentials) then arguments
                 else [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
           declared <- forM (C.constructorFields variant) $ \field -> do
-            identifier (C.binderName field)
+            fieldIdentifier (C.binderName field)
             ty <- typeDoc (handlesOf declarations) names scope (C.binderType field)
             pure (D.text ("val " ++ C.binderName field ++ ": ") <> ty)
           let fields = declared ++ [D.text ("val " ++ S.witnessFieldName (length free) k ++ ": String") | k <- [0 .. length free - 1]]

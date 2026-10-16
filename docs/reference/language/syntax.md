@@ -167,3 +167,45 @@ example      = "example" quoted-name "is" (name "=" literal)+
 
 Expression precedence and literals are described in
 [expressions and arithmetic](expressions-and-arithmetic.md).
+
+## Canonical positional products
+
+The authoring minor's explicit `1.0-rc.1` language profile adds tuple types,
+values and recursive patterns together. The profile identifier is a technical
+interface identifier; it does not designate a release candidate.
+
+```text
+function width ((width, _) of type (Nat, Nat)) -> Nat is
+  width
+end function
+
+function label (value of type (Integer, Bool)) -> Integer is
+  first matching case of value:
+    when (number, true) then number
+    when (_, false) then 0
+  end case
+end function
+```
+
+Tuple components are distinguished by position. A tuple has at least two
+components; `()` retains its Unit meaning, and `(value)` remains grouping.
+Arity and nesting are significant: `(A, B, C)` differs from `(A, (B, C))`.
+Tuples are closed structural products, distinct from the nominal prelude
+`Pair` and named records. There is no implicit nominal conversion.
+
+Components evaluate from left to right, once each. Tuple patterns require the
+same arity as their selected type, including when an earlier row makes the
+pattern unreachable. Records, tuples and alternative payloads may nest.
+
+Canonical functions and procedures also accept irrefutable record, tuple and
+constructor parameter patterns. An identifier directly before its annotation
+remains a binding, including uppercase locals; parenthesize a payload-free
+constructor to select a constructor pattern. The ordinary exhaustiveness checker rejects
+refutable constructors. Bindings may not repeat across parameters. Destructured
+names remain available in the parameter's `where` restriction, later parameter
+restrictions, the result contract and body. Automatic definition validation,
+including definedness and termination, remains mandatory.
+
+The current minor retains its existing law, section and quantifier endings.
+The following minor milestone requires named closers for every block and must
+reject bare `end`.

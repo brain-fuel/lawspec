@@ -660,6 +660,13 @@ jointLiteralType env a b left right = do
 -- state, such as checked's, so they are typed here.
 builtin :: Env -> String -> [Expr] -> C Type
 builtin env n args
+  | "prelude." ++ n == tuplePatternCheckName, [subject,count] <- args, Just arity <- patternArity count = do
+      ty <- infer env subject >>= resolve
+      case baseType ty of
+        Record fields | Just values <- positionalItems [(recordFieldLabel field,recordFieldType field) | field <- fields],
+            toInteger (length values) == arity -> checkRecordFields fields
+        _ -> throwC "a tuple pattern requires a structural tuple of the same arity"
+      pure (Named "Bool")
   | "prelude." ++ n == recordPatternCheckName, [subject] <- args = do
       ty <- infer env subject >>= resolve
       case baseType ty of
@@ -859,6 +866,11 @@ builtin env n args
       pure (Named "Text")
   | otherwise = throwC ("unknown helper or wrong arity: prelude." ++ n)
   where
+    patternArity value = case unlocated value of
+      Number n -> Just n
+      ScalarLit (SInteger _ n) -> Just n
+      Annotate inner _ -> patternArity inner
+      _ -> Nothing
     sequenceOnly name t = unless (t `elem` [Named "Text", Named "Bytes"] || case t of Applied "List" _ -> True; _ -> False)
       (throwC ("prelude." ++ name ++ " needs a Text, Bytes or List, not " ++ prettyType t))
 -- | The IR resolves every operation and the expected type of every adapter argument.

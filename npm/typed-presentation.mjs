@@ -4,6 +4,7 @@
 import { createExpressionPresentation } from './expression-presentation.mjs';
 import { builtinDataNames } from './builtin-data-names.mjs';
 import { showScalar } from './scalars.mjs';
+import { positionalFields } from './positional-fields.mjs';
 
 export function createTypePresentation(result) {
   const declarations = new Map([...builtinDataNames, ...(result.dataTypes ?? [])].map(d => [d.id, d]));
@@ -91,15 +92,19 @@ export function createTypePresentation(result) {
       if (argument?.kind === 'type') bindings.set(parameter, substitute(argument.type, substitutions));
     });
     const nested = new Set([...active, type.name]);
-    const locals = new Map(constructor.fields.map(f => [f.id, f.name]));
-    const fields = constructor.fields.map(field => {
+    const positions = positionalFields(declaration);
+    const ordered = positions ?? constructor.fields;
+    const locals = new Map(ordered.map((f, index) => [f.id, positions ? `component${index + 1}` : f.name]));
+    const fields = ordered.map(field => {
       const base = typeName(field.type, bindings, nested);
       const predicates = declaration.structure.fields.find(f => f.name === field.name)?.predicates ?? [];
+      const name = locals.get(field.id);
       const refined = predicates.length
-        ? `(${field.name} of type ${base} where ${predicates.map(p => expressionText(p, locals)).join(' and ')})`
+        ? `(${name} of type ${base} where ${predicates.map(p => expressionText(p, locals)).join(' and ')})`
         : base;
-      return `${field.name} of type ${refined}`;
+      return positions ? refined : `${field.name} of type ${refined}`;
     });
+    if (positions) return `(${fields.join(', ')})`;
     return `record{${fields.join(', ')}}`;
   }
   function substitute(type, bindings) {

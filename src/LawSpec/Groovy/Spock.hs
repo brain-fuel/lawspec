@@ -24,6 +24,10 @@ spockSpecification className title source =
   unlines (go (lines (typedLists (castLambdas (renamed source)))))
   where
     renamed = replaceWord className (specClassName className)
+    -- Thousands of dynamic feature call sites exceed Groovy's invokedynamic
+    -- machinery. The generated Java bodies are already statically typed;
+    -- keep every Spock feature while compiling large suites statically.
+    largeSuite = length [() | line <- lines source, Just _ <- [stripPrefix "@Test" (dropWhile (== ' ') line)]] >= 1024
     go ls = case ls of
       [] -> []
       l : rest
@@ -58,6 +62,7 @@ spockSpecification className title source =
     rewrite l
       | Just rest <- msum (map (`stripPrefix` l) ["public final class ", "public class ", "final class ", "class "])
       , takeWhile (/= ' ') rest == specClassName className =
+          (if largeSuite then "@groovy.transform.CompileStatic\n" else "") ++
           "class " ++ takeWhile (/= ' ') rest ++ " extends spock.lang.Specification" ++ dropWhile (/= ' ') rest
       -- Groovy has no bare array initializer: T[] x = { ... } is new T[] { ... }.
       | "= {" `isSuffixOf` l, (declared, _) <- break (== '=') (dropWhile (== ' ') l)

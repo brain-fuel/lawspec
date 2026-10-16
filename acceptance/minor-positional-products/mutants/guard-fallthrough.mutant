@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ test/fixtures/canonical-positional-products.lawspec
+<<<<<<<
+    when Delivered (_, (_, confirmed)) then confirmed
+=======
+    when Delivered (_, (_, confirmed)) then false
+>>>>>>>

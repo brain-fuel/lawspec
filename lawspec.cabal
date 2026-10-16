@@ -292,6 +292,7 @@ extra-source-files:
     test/fixtures/blake3-256.json
     test/fixtures/canonical-collection-membership.lawspec
     test/fixtures/canonical-empty-record-patterns.lawspec
+    test/fixtures/canonical-positional-products.lawspec
     test/fixtures/canonical-prelude-names.lawspec
     test/fixtures/canonical-set-domains.lawspec
     test/fixtures/canonical-set-generation.lawspec
@@ -521,6 +522,7 @@ library
       LawSpec.Core.PayloadPlan
       LawSpec.Core.PayloadTransport
       LawSpec.Core.Policy
+      LawSpec.Core.Positional
       LawSpec.Core.Program
       LawSpec.Core.Quantification
       LawSpec.Core.QuantifierDomain
@@ -925,6 +927,7 @@ test-suite lawspec-test
       SourceRecordUnitFixtures
       SourceRecordUnitSpec
       SourceSyntaxSpec
+      SourceTupleSpec
       StatefulModelSpec
       StructuralSpec
       TargetNamesSpec

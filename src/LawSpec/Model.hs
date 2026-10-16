@@ -6,6 +6,7 @@ module LawSpec.Model (module LawSpec.Model, module LawSpec.Common) where
 
 import LawSpec.Core.Policy (StagePolicy)
 import LawSpec.Core.Machine (Machine, Supervisor)
+import qualified LawSpec.Core.Positional as Positional
 import LawSpec.Common
 
 import Data.Aeson hiding (Number)
@@ -269,6 +270,18 @@ letTag = "prelude.Let"
 recordPatternCheckName :: String
 recordPatternCheckName = "prelude.record-pattern:"
 
+tuplePatternCheckName :: String
+tuplePatternCheckName = "prelude.tuple-pattern:"
+
+-- Positional products use structural fields that source identifiers cannot
+-- spell. Arity and nesting remain part of their structural identity; Pair and
+-- named records retain their nominal identities.
+positionalFields :: [a] -> [(String,a)]
+positionalFields = Positional.positionalFields
+
+positionalItems :: [(String,a)] -> Maybe [a]
+positionalItems = Positional.positionalItems
+
 -- Source-only admission of every authored pattern, including rows omitted by
 -- ordered specialization. Checks contain no branch bodies or guards, so this
 -- does not duplicate nested computations, effects, or executable syntax.
@@ -363,6 +376,8 @@ prettyType (Named n) = n
 prettyType (Variable n) = reverse (takeWhile (/= ':') (reverse n))
 prettyType (Applied n t) = n ++ " (" ++ prettyType t ++ ")"
 prettyType (Application n ts) = n ++ concatMap (\t -> " (" ++ prettyType t ++ ")") ts
+prettyType (Record fields) | Just values <- positionalItems [(recordFieldLabel field,recordFieldType field) | field <- fields] =
+  "(" ++ intercalate ", " (map prettyType values) ++ ")"
 prettyType (Record fields) = "record{" ++ intercalate ", "
   [recordFieldLabel field ++ " :: " ++ prettyType (recordFieldType field) | field <- fields] ++ "}"
 prettyType (Arrow a b) = atom a ++ " -> " ++ prettyType b where
@@ -386,6 +401,7 @@ prettyExpr (AllElementsExpr value binder predicate) = "allElements (" ++ prettyE
 prettyExpr (MatchExpr value branches) = "match " ++ prettyExpr value ++ " with " ++ concat
   ["| " ++ unwords (tag:names) ++ " -> " ++ prettyExpr body ++ " " | MatchBranch tag names body <- branches] ++ "end"
 prettyExpr (ListLit xs) = "[" ++ intercalate ", " (map prettyExpr xs) ++ "]"
+prettyExpr (RecordLit fields) | Just values <- positionalItems fields = "(" ++ intercalate ", " (map prettyExpr values) ++ ")"
 prettyExpr (RecordLit fields) = "record{" ++ intercalate ", "
   [label ++ " = " ++ prettyExpr value | (label,value) <- fields] ++ "}"
 prettyExpr (Binary op a b) = "(" ++ prettyExpr a ++ " " ++ op ++ " " ++ prettyExpr b ++ ")"
@@ -437,6 +453,7 @@ prettyLiteral :: Literal -> String
 prettyLiteral literal = case literal of
   SetLiteral _ items -> "#S{" ++ intercalate ", " (map prettyLiteral items) ++ "}"
   ListLiteral items -> "[" ++ intercalate ", " (map prettyLiteral items) ++ "]"
+  RecordLiteral fields | Just values <- positionalItems fields -> "(" ++ intercalate ", " (map prettyLiteral values) ++ ")"
   RecordLiteral fields -> "record{" ++ intercalate ", " [label ++ " = " ++ prettyLiteral value | (label,value) <- fields] ++ "}"
   ConstructorLiteral name fields -> unwords (name : map argument fields)
   _ -> prettyExpr (literalExpr literal)

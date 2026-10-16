@@ -1,6 +1,7 @@
 -- | Native algebraic declarations are rendered from resolved Core identities.
 module LawSpec.HaskellData (namesFor, requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellTypeReferenceDoc) where
 
+import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.DataNames (flatDataCandidates, productConstructors, caseInsensitiveCounts, ambiguous)
 import LawSpec.HaskellTypeRefs
 import qualified LawSpec.HaskellExpr as E
@@ -19,6 +20,10 @@ import LawSpec.Collections (collectionContainer)
 import qualified LawSpec.Code.Doc as D
 
 type Names = [(C.Id,String)]
+
+fieldIdentifier :: String -> Either String ()
+fieldIdentifier name | Just _ <- positionalLabel name = pure ()
+                     | otherwise = identifier name
 
 capitalize :: String -> String
 capitalize [] = []
@@ -148,7 +153,7 @@ emitHaskellData layout declarations = do
         let fieldNames = map (capitalize . C.binderName) (C.constructorFields variant)
         unless (length fieldNames == length (nub fieldNames)) (Left "Haskell constructor fields collide after naming")
         fields <- forM (C.constructorFields variant) $ \field -> do
-          identifier (C.binderName field)
+          fieldIdentifier (C.binderName field)
           native <- typeText "" names parameters (C.binderType field)
           selector <- maybe (Left "unplanned Haskell record selector") Right
             (lookup (C.constructorId variant, C.binderId field) selectors)
@@ -177,7 +182,7 @@ emitHaskellData layout declarations = do
         arguments <- forM parameters $ \(p, v) -> maybe (pure v) (fmap wrapped . typeText "" names scope)
           (lookup p (C.constructorEquations variant))
         fields <- forM (C.constructorFields variant ++ witnessBinders declaration variant) $ \field -> do
-          identifier (C.binderName field)
+          fieldIdentifier (C.binderName field)
           native <- typeText "" names scope (refine (C.binderType field))
           selector <- maybe (Left "unplanned Haskell record selector") Right
             (lookup (C.constructorId variant, C.binderId field) selectors)

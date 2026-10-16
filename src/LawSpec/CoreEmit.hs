@@ -54,9 +54,9 @@ import qualified LawSpec.Core as C
 import LawSpec.BuiltinDefaults (withBuiltinDefaults)
 import LawSpec.Builtins (defaultedUnits)
 import LawSpec.Scalar (primitive)
-import LawSpec.TargetNames (nativeName, allTargetKeywords)
+import LawSpec.TargetNames (nativeName, phraseNativeName, allTargetKeywords)
 import qualified LawSpec.Targets as Targets
-import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
+import Data.Char (toUpper, toLower, isAscii, isAlphaNum, isHexDigit)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import qualified Data.Map.Strict as M
 import Control.Monad (unless)
@@ -257,7 +257,18 @@ checkNames :: String -> C.Unit -> Either [Diagnostic] ()
 checkNames target unit = mapM_ collision (M.toList groups)
   where
     groups = M.fromListWith (++)
-      [(nativeName target (C.declarationName d), [C.declarationName d]) | d <- C.unitDeclarations unit]
+      [(nativeName target (candidate d), [C.declarationName d]) | d <- C.unitDeclarations unit]
+    -- Instance identities may acquire private allocator underscores. They
+    -- cannot silently resolve a collision in emitted names. Explicit native
+    -- overrides change the declaration name while retaining its identity.
+    candidate declaration
+      | Just (_,sourceName) <- C.declarationTemplate declaration,
+        Just original <- stripPrefix (C.idText (C.unitId unit) ++ "::") (C.idText (C.declarationId declaration)),
+        C.declarationName declaration == original,
+        Just suffix <- stripPrefix ("lawspec_" ++ phraseNativeName sourceName ++ "_") original,
+        let (hash,underscores)=span isHexDigit suffix,
+        not (null hash), all (=='_') underscores = take (length original-length underscores) original
+      | otherwise = C.declarationName declaration
     collision (native,written) = unless (length written <= 1)
       (Left [Diagnostic "native-name-collision"
         ("the public native name " ++ native ++ " on " ++ target ++ " is shared by " ++
