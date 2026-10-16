@@ -130,8 +130,9 @@ renderExpression declarations bits local external = render
       Let binder value body -> do
         argument <- render value
         inner <- render body
-        pure (D.group (D.text ("{ val " ++ local (binderId binder) ++ " = ") <> argument <> D.text ";" <>
-          D.nest 2 (D.softline <> inner) <> D.softline <> D.text "}"))
+        -- A block keeps a finite search in one JVM method. Reuse the shared
+        -- strict binding helper so callbacks compile into separate methods.
+        pure (runtime "let" [argument,lambda [(local (binderId binder),valueType)] inner])
       Constant value -> scalarLiteral (expressionType term) value >>= checked declarations bits (expressionType term)
       Construct tag args -> do
         values <- mapM render args
