@@ -1,0 +1,12 @@
+rejected-at: generation
+expect: refuted
+@@ test/fixtures/canonical-empty-record-patterns.lawspec
+<<<<<<<
+function emptyStructural (value of type record{}) -> Bool is
+  first matching case of value:
+    when record{} then true
+=======
+function emptyStructural (value of type record{}) -> Bool is
+  first matching case of value:
+    when record{} then false
+>>>>>>>

@@ -1,0 +1,180 @@
+unit records.emptyPatterns
+
+type EmptyRecord is a record{} end type
+
+type Box (a of type Type) is a record{
+  item of type a
+}
+end type
+
+type Packet is one of
+  | Missing
+  | Wrapped of type record{flag of type Bool}
+end type
+
+type Choice (a of type Type) is one of
+  | Choice
+  | Item of type a
+end type
+
+function makeNominal (ignored of type ()) -> EmptyRecord is
+  EmptyRecord record{}
+end function
+
+function makeStructural (ignored of type ()) -> record{} is
+  record{}
+end function
+
+function choicePopulated (value of type Choice a) -> Bool is
+  first matching case of value:
+    when Choice then false
+    when Item item then true
+  end case
+end function
+
+function emptyStructural (value of type record{}) -> Bool is
+  first matching case of value:
+    when record{} then true
+  end case
+end function
+
+function emptyNominal (value of type EmptyRecord) -> Bool is
+  first matching case of value:
+    when record{} then true
+  end case
+end function
+
+function populated (value of type record{flag of type Bool}) -> Bool is
+  first matching case of value:
+    when record{} if it.flag then true
+    when record{} then false
+  end case
+end function
+
+function genericNamed (value of type Box a) -> Bool is
+  first matching case of value:
+    when record{} then true
+  end case
+end function
+
+function genericStructural (value of type record{item of type a}) -> Bool is
+  first matching case of value:
+    when record{} then true
+  end case
+end function
+
+function nested (value of type Packet) -> Bool is
+  first matching case of value:
+    when Wrapped record{} then true
+    when Missing then false
+  end case
+end function
+
+function combined
+  (value of type record{inner of type record{flag of type Bool}}) -> Bool is
+  first matching case of value:
+    when record{inner = record{}} then it.inner.flag
+  end case
+end function
+
+law structuralEmpty is
+  definition:
+    for all (value of type record{}) =>
+      emptyStructural value must be true and emptyStructural (makeStructural ()) must be true
+    end
+  end
+  expect emptyStructural value = expected
+  in table (value, expected):
+    row record{}, true
+  end
+end
+
+law nominalEmpty is
+  definition:
+    for all (value of type EmptyRecord) =>
+      emptyNominal value must be true and emptyNominal (makeNominal ()) must be true
+    end
+  end
+  expect emptyNominal value = expected
+  in table (value, expected):
+    row EmptyRecord record{}, true
+  end
+end
+
+law guardOrder is
+  definition:
+    for all (value of type record{flag of type Bool}) =>
+      populated value must be value.flag
+    end
+  end
+  expect populated value = expected
+  in table (value, expected):
+    row record{flag = false}, false
+    row record{flag = true}, true
+  end
+end
+
+law genericFields is
+  definition:
+    for all
+      (named of type Box Bool)
+      (structural of type record{item of type Bool}) =>
+      genericNamed named must be true and genericStructural structural must be true
+    end
+  end
+  expect genericNamed named = true
+  expect genericStructural structural = true
+  in table (named, structural):
+    row Box record{item = false}, record{item = false}
+    row Box record{item = false}, record{item = true}
+    row Box record{item = true}, record{item = false}
+    row Box record{item = true}, record{item = true}
+  end
+end
+
+law nestedPayloads is
+  definition:
+    for all (value of type Packet) =>
+      first matching case of value:
+        when Missing then nested value = false
+        when Wrapped record{} then nested value = true
+      end case
+    end
+  end
+  expect nested value = expected
+  in table (value, expected):
+    row Missing, false
+    row Wrapped record{flag = false}, true
+    row Wrapped record{flag = true}, true
+  end
+end
+
+law nestedRecords is
+  definition:
+    for all (value of type record{inner of type record{flag of type Bool}}) =>
+      combined value must be value.inner.flag
+    end
+  end
+  expect combined value = expected
+  in table (value, expected):
+    row record{inner = record{flag = false}}, false
+    row record{inner = record{flag = true}}, true
+  end
+end
+
+law genericAlternatives is
+  definition:
+    for all (value of type Choice Bool) =>
+      first matching case of value:
+        when Choice then choicePopulated value = false
+        when Item item then choicePopulated value = true
+      end case
+    end
+  end
+  expect choicePopulated value = expected
+  in table (value, expected):
+    row Choice, false
+    row Item false, true
+    row Item true, true
+  end
+end

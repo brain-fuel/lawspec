@@ -291,6 +291,7 @@ extra-source-files:
     examples/rc1/nesting/uuu.lawspec
     test/fixtures/blake3-256.json
     test/fixtures/canonical-collection-membership.lawspec
+    test/fixtures/canonical-empty-record-patterns.lawspec
     test/fixtures/canonical-prelude-names.lawspec
     test/fixtures/canonical-set-domains.lawspec
     test/fixtures/canonical-set-generation.lawspec

@@ -1,0 +1,10 @@
+rejected-at: generation
+expect: refuted
+@@ test/fixtures/canonical-empty-record-patterns.lawspec
+<<<<<<<
+    when record{} if it.flag then true
+    when record{} then false
+=======
+    when record{} if it.flag then true
+    when record{} then true
+>>>>>>>

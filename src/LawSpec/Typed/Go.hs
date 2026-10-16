@@ -738,6 +738,11 @@ matchStatements env selfCall scope target value cases = do
       t <- fresh "matched"
       pure (s ++ [D.text (t ++ " := ") <> x], t)
   let caseOf tag = [c | c <- cases, idText (caseConstructor c) == tag]
+      productArm c accesses = do
+        body <- arm c accesses
+        -- Even an irrefutable match that discards every field evaluates its
+        -- subject. Keep that use after unused field bindings are omitted.
+        pure (prelude ++ [D.text ("_ = " ++ subject) | not (any (used c) (caseBinders c))] ++ body)
       two yesTag noTag condition yesAccess noAccess = do
         yes <- maybe (pure [D.text "panic(\"unreachable branch reached\")"]) (\c -> arm c yesAccess) (headMaybe (caseOf yesTag))
         no <- maybe (pure [D.text "panic(\"unreachable branch reached\")"]) (\c -> arm c noAccess) (headMaybe (caseOf noTag))
@@ -755,7 +760,7 @@ matchStatements env selfCall scope target value cases = do
                 pure ("lsfToList(" ++ subject ++ ", lsfEntryOf[" ++ kt ++ ", " ++ vt ++ "])")
               _ -> lift' (Left "typed Go: KeyVal arity")
             else pure ("lsfSetItems(" ++ subject ++ ")")
-          (prelude ++) <$> arm c [access]
+          productArm c [access]
     Constructor n args | Just d <- M.lookup n (envData env) -> do
       let name = envNames env M.! n
       witnesses <- lift' (mapM (goType env) [t | TypeArgument t <- args])
@@ -769,7 +774,7 @@ matchStatements env selfCall scope target value cases = do
           pure (prelude ++ [D.text ("switch " ++ subject ++ " ") <> D.block 8 (D.joinWith D.hardline (arms ++ [D.text "default:" <> D.nest 8 (D.hardline <> D.text "panic(\"unreachable branch reached\")")]))])
         else if isProductType d
         then case cases of
-          [c] -> (prelude ++) <$> arm c [subject ++ "." ++ fieldName f | f <- constructorFields (conOf c)]
+          [c] -> productArm c [subject ++ "." ++ fieldName f | f <- constructorFields (conOf c)]
           _ -> lift' (Left "typed Go: product match")
         else do
           m <- fresh "variant"

@@ -26,7 +26,7 @@ import qualified LawSpec.Core.Machine as C
 import LawSpec.Core.Validate (operationEvidenceWithRegistry)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import LawSpec.CapabilityCheck (checkCapability)
-import LawSpec.Core.Types (makeRegistry, builtinDataDeclarations)
+import LawSpec.Core.Types (makeRegistry, builtinDataDeclarations, constructorFieldsFor)
 import qualified LawSpec.Core.RecordIdentity as Records
 import LawSpec.Core.Semantics (convertValue)
 import LawSpec.Scalar
@@ -380,6 +380,23 @@ lowerResolvedTree context projections dataTypes declared bits origin resolve typ
           operator <- case op of "-" -> Right C.Negate; "!" -> Right C.Not; _ -> Left "unknown unary operation"
           node t . C.Unary operator <$> lower a
         _ -> Left "invalid typed unary operation"
+      -- An empty record pattern retains an actual typed match. Its selected
+      -- expression is evaluated once and no Eq evidence is required.
+      S.Apply (S.Var n) _ | n == S.recordPatternCheckName, [value] <- operands -> do
+        subject <- lower value
+        parent <- case C.expressionType subject of
+          C.Constructor name _ -> pure name
+          _ -> Left "an empty record pattern requires a known record type"
+        constructor <- case M.lookup parent (fst (S.dataIndex dataTypes)) of
+          Just [declaration] | [constructor] <- C.dataConstructors declaration -> pure constructor
+          _ -> Left "an empty record pattern requires one record constructor"
+        registry <- makeRegistry dataTypes
+        fields <- constructorFieldsFor registry (C.expressionType subject) (C.constructorId constructor)
+        let binders=[field{C.binderId=C.Id (C.idText origin ++ "::empty-record-pattern::" ++ show (length bound) ++ "::field" ++ show index),
+              C.binderName="_lawspecEmptyRecordField" ++ show index} |
+              (index,field)<-zip [0::Int ..] fields]
+        pure (node t (C.Match subject [C.MatchCase (C.constructorId constructor) binders
+          (node t (C.Constant (SBool True)))]))
       -- b.f and b with f = v (LawSpec.Inference keeps them as field nodes).
       S.Apply (S.Var n) _ | Just field <- stripPrefix S.fieldAccessPrefix n, [value] <- operands -> do
         subject <- lower value

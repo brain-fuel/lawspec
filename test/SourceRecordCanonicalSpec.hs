@@ -5,8 +5,11 @@ module SourceRecordCanonicalSpec (test_canonicalRecordsReachCheckedCore,recordSo
 
 import Test.Hspec
 import Control.Monad (forM_)
+import Control.Exception (evaluate)
+import Data.IORef
+import System.IO.Unsafe (unsafePerformIO)
 import Data.Either (isLeft,isRight)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf,isInfixOf)
 import qualified Data.ByteString.Lazy as BL
 import Data.Binary (encode,decode)
 import qualified Data.Aeson as A
@@ -18,7 +21,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCoreCanonical)
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Core.Types (makeRegistry)
-import LawSpec.Core.Definitions (prepareDefinitions)
+import LawSpec.Core.Definitions (prepareDefinitions,prepareHookedDefinitions)
 import LawSpec.Core.Eval (evaluateValue,evaluateValueProposition)
 import LawSpec.Core.Value (Value(..))
 import LawSpec.CoreEmit (emitPlan,targets)
@@ -31,8 +34,67 @@ import SourceRecordCanonicalFixtures (recordSource)
 compile body=compileCoreCanonical 64 S.defaultGeneration [S.Source "records.lawspec" ("unit example.records\n"++body)]
 checked source action=either (expectationFailure . show) action source
 
+observeField :: IORef [Bool] -> [Value] -> Either String Value
+observeField trace [value@(ScalarValue (SBool flag))]=unsafePerformIO $ do
+  modifyIORef' trace (++[flag])
+  pure (Right value)
+observeField _ _=Left "invalid observed field"
+{-# NOINLINE observeField #-}
+
 -- Canonical anonymous record syntax is not a nominal coercion.
 test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $ do
+  it "matches empty and nonempty structural products with typed empty record patterns" $
+    forM_ [32,64] $ \bits -> checked (compileCoreCanonical bits S.defaultGeneration [S.Source "empty-patterns.lawspec" (unlines
+      ["unit empty.patterns"
+      ,"function empty (value of type record{}) -> Bool is first matching case of value: when record{} then true end case end function"
+      ,"function populated (value of type record{count of type Integer}) -> Bool is first matching case of value: when record{} then true end case end function"
+      ,"law outcomes is definition: empty record{} = true and populated record{count = 7} = true end end"])]) $ \program -> do
+        validateProgram program `shouldBe` Right ()
+        case (makeRegistry (C.programDataDeclarations program),prepareDefinitions program) of
+          (Right registry,Right invoke) -> forM_ (concatMap C.unitProperties (C.programUnits program)) $ \law ->
+            evaluateValueProposition registry bits invoke [] (C.propertyBody law) `shouldBe` Right True
+          _ -> expectationFailure "empty record patterns did not admit"
+  it "retains nominal record types and generic fields without adding Eq requirements" $
+    compile (unlines
+      ["type Box (a of type Type) is a record{item of type a} end type"
+      ,"function selected (value of type Box a) -> Bool is first matching case of value: when record{} then true end case end function"
+      ,"function structural (value of type record{item of type a}) -> Bool is first matching case of value: when record{} then true end case end function"
+      ,"law outcomes is definition: selected (Box record{item = 3}) = true and structural record{item = true} = true end end"]) `shouldSatisfy` isRight
+  it "checks empty nested record patterns in their constructor payload scope" $
+    compile (unlines
+      ["type Packet is one of | Missing | Wrapped of type record{flag of type Bool} end type"
+      ,"function selected (value of type Packet) -> Bool is first matching case of value: when Wrapped record{} then true when Missing then false end case end function"
+      ,"law outcomes is definition: selected (Wrapped record{flag = false}) = true and selected Missing = false end end"]) `shouldSatisfy` isRight
+  it "keeps empty record guards ordered and does not turn a failed guard into exhaustive coverage" $ do
+    let source fallback=unlines
+          ["function selected (value of type record{flag of type Bool}) -> Bool is first matching case of value:"
+          ,"when record{} if value.flag then true",fallback,"end case end function"]
+    compile (source "otherwise false") `shouldSatisfy` isRight
+    compile (source "when record{} then false") `shouldSatisfy` isRight
+    compile (source "") `shouldSatisfy` isLeft
+    show (compile (source "")) `shouldSatisfy` isInfixOf "non-exhaustive match"
+  it "rejects scalar, collection, sum and unknown generic inputs to empty record patterns" $ do
+    forM_ ["Integer","Bool","List Bool","()","Maybe Bool","a"] $ \ty ->
+      compile ("function invalid (value of type "++ty++") -> Bool is first matching case of value: when record{} then true end case end function") `shouldSatisfy` isLeft
+    compile "type Packet is one of | Wrapped of type Bool end type\nfunction invalid (value of type Packet) -> Bool is first matching case of value: when record{} then true end case end function" `shouldSatisfy` isLeft
+  it "does not erase mandatory validation of a selected record construction or its refinements" $ do
+    compile "function invalid (value of type Integer) -> Bool is first matching case of record{field = 1 / value}: when record{} then true end case end function" `shouldSatisfy` isLeft
+    compile "law invalid is definition: (first matching case of (record{field = 0} :: record{field of type Nat}): when record{} then true end case) = true end end" `shouldSatisfy` isLeft
+  it "evaluates selected record fields once in source order before ignoring their bindings" $
+    checked (compile (unlines
+      ["ability Trace is mark :: Bool -> Bool end"
+      ,"procedure observed (flag of type Bool) -> Bool is"
+      ,"first matching case of record{last = mark flag, first = mark true}: when record{} then true end case"
+      ,"end procedure"])) $ \program -> do
+        trace<-newIORef []
+        invoke<-either (fail.show) pure (prepareHookedDefinitions program)
+        let hook _ identity
+              | C.idText identity=="example.records::ability::Trace::mark"=Just (observeField trace)
+              | otherwise=Nothing
+            answer=invoke hook (C.Id "example.records::observed") [ScalarValue (SBool False)]
+        _<-evaluate (length (show answer))
+        answer `shouldBe` Right (ScalarValue (SBool True))
+        readIORef trace `shouldReturn` [False,True]
   it "compiles real source, checked generic definitions and record-valued table rows" $
     forM_ [32,64] $ \bits -> checked (compileCoreCanonical bits S.defaultGeneration [S.Source "records.lawspec" recordSource]) $ \candidate -> do
       validateProgram candidate `shouldBe` Right ()

@@ -263,6 +263,12 @@ data HandlerChoice = ChooseProduction | ChooseSpec String | ChooseRecording Hand
 letTag :: String
 letTag = "prelude.Let"
 
+-- Parser-only marker: an empty record pattern still checks its selected type.
+-- The colon prevents this from being an authored prelude identifier. It lowers
+-- to an ordinary checked record match, with no runtime helper or new Core node.
+recordPatternCheckName :: String
+recordPatternCheckName = "prelude.record-pattern:"
+
 -- Field access and record update, as the parser writes them:
 -- `b.logs` is prelude.field:logs b, and `b with logs = v` is
 -- prelude.update:logs b v. Inference makes each a match on b's single

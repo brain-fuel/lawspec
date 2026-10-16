@@ -331,14 +331,14 @@ dataDoc env d = do
         then "public static final LawSpecFast.Codec<" ++ name ++ "> CODEC = codec();" ++ "\n\n" ++
              "private static LawSpecFast.Codec<" ++ name ++ "> codec() "
         else "public static " ++ generics ++ " LawSpecFast.Codec<" ++ name ++ generics ++ "> codec(" ++ intercalate ", " codecParams ++ ") "
-      variantClass c = if isProductType d then name else name ++ "." ++ variantName c
+      variantClass c = if isProductType d then name else name ++ "." ++ variantName env d c
       encodeArm c codecs = line ("case " ++ show (index c) ++ " -> ") <> D.block 2 (
         (if null (constructorFields c) then mempty else line ("var m = (" ++ variantClass c ++ generics ++ ") value;") <> D.hardline) <>
         line ("return LawSpecFast.value(key, " ++ tagOf c ++ concat [", " ++ codec ++ ".encode(m." ++ fieldName f ++ ")" | (f, codec) <- zip (constructorFields c) codecs] ++ ");"))
       decodeArm c codecs = line ("case " ++ tagOf c ++ " -> ") <> D.block 2 (line ("return " ++
         construction c [codec ++ ".decode(d.fields().get(" ++ show k ++ "))" | (k, codec) <- zip [0 :: Int ..] codecs] ++ ";"))
       construction c args
-        | fieldless d = name ++ "." ++ variantName c
+        | fieldless d = name ++ "." ++ variantName env d c
         | otherwise = "new " ++ variantClass c ++ (if null parameters then "" else "<>") ++ "(" ++ intercalate ", " args ++ ")"
       index c = length (takeWhile ((/= constructorId c) . constructorId) variants)
       codecDoc = line codecHead <> D.block 2 (D.joinWith D.hardline
@@ -347,7 +347,7 @@ dataDoc env d = do
           [ line "public String key() { return key; }"
           , line ("public LawSpecRuntime.Value encode(" ++ name ++ generics ++ " value) ") <> D.block 2
               (if fieldless d
-                then line ("return LawSpecFast.value(key, switch (value) { " ++ concat ["case " ++ variantName c ++ " -> " ++ tagOf c ++ "; " | c <- variants] ++ "});")
+                then line ("return LawSpecFast.value(key, switch (value) { " ++ concat ["case " ++ variantName env d c ++ " -> " ++ tagOf c ++ "; " | c <- variants] ++ "});")
                 else line ("switch (" ++ (if isProductType d then "0" else "value.tag") ++ ") ") <> D.block 2 (D.joinWith D.hardline
                   (zipWith encodeArm variants fieldCodecs ++ [line "default -> throw LawSpecFast.unreachable();"])))
           , line ("public " ++ name ++ generics ++ " decode(LawSpecRuntime.Value value) ") <> D.block 2 (
@@ -368,7 +368,7 @@ dataDoc env d = do
          [line "return 0;"]))
   pure $ header <> D.hardline <> if fieldless d
     then line ("public enum " ++ name ++ " implements LawSpecFast.Ordered ") <> D.block 2 (D.joinWith D.hardline
-      [ line (intercalate ", " [variantName c ++ "(" ++ show (rank c) ++ ")" | c <- variants] ++ ";")
+      [ line (intercalate ", " [variantName env d c ++ "(" ++ show (rank c) ++ ")" | c <- variants] ++ ";")
       , line "private final int rank;"
       , line (name ++ "(int rank) { this.rank = rank; }")
       , line ("public int compareWith(Object other) { return Integer.compare(rank, ((" ++ name ++ ") other).rank); }")
@@ -390,15 +390,18 @@ dataDoc env d = do
            , line ("var o = (" ++ name ++ generics ++ ") other;")
            , line "if (tag != o.tag) return Integer.compare(RANKS[tag], RANKS[o.tag]);"
            , line "return compareFields(other);" ]) ] ++
-       [ line ("public static final class " ++ variantName c ++ generics ++ " extends " ++ name ++ generics ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+       [ line ("public static final class " ++ variantName env d c ++ generics ++ " extends " ++ name ++ generics ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
            ([fieldsDoc c ts | not (null ts)] ++
-            [ constructorDoc (variantName c) c ts [line ("super(" ++ show (index c) ++ ");")]
-            , equalsDoc (variantName c) c, hashDoc c, compareFieldsDoc (variantName c) c
+            [ constructorDoc (variantName env d c) c ts [line ("super(" ++ show (index c) ++ ");")]
+            , equalsDoc (variantName env d c) c, hashDoc c, compareFieldsDoc (variantName env d c) c
             , line ("@Override public String toString() { return " ++ show (constructorName c) ++ " + java.util.List.of(" ++ intercalate ", " (map fieldName (constructorFields c)) ++ "); }") ]))
        | (c, ts) <- zip variants fieldTypes ] ++ [codecDoc]))
 
-variantName :: DataConstructor -> String
-variantName c = identifier (constructorName c)
+-- The typed representation is private, but its nested classes still obey
+-- Java's enclosing-type collision rule, as the public model already does.
+variantName :: Env -> DataDeclaration -> DataConstructor -> String
+variantName env d c = identifier (fromMaybe (constructorName c)
+  (lookup (constructorId c) (caseNames (envNames env M.! idText (dataId d)) (dataConstructors d))))
 
 entryHelpers :: Env -> [D.Doc]
 entryHelpers env = case M.lookup (collectionsUnit ++ "::type::Entry") (envNames env) of
@@ -800,9 +803,9 @@ construct env ty tag values _ = do
       Just (d, c) -> do
         let name = envPrefix env ++ envNames env M.! idText (dataId d)
             generic = if null witnesses then "" else witness
-        pure $ if fieldless d then D.text (name ++ "." ++ variantName c)
+        pure $ if fieldless d then D.text (name ++ "." ++ variantName env d c)
           else if isProductType d then D.text ("new " ++ name ++ generic ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
-          else D.text ("new " ++ name ++ "." ++ variantName c ++ generic ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
+          else D.text ("new " ++ name ++ "." ++ variantName env d c ++ generic ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
       Nothing -> lift' (Left ("typed Java: unknown constructor " ++ idText tag ++ " for " ++ boxed))
 
 intrinsicCall :: Env -> Intrinsic -> [(D.Doc, Type)] -> M D.Doc
@@ -865,7 +868,7 @@ matchStatements env selfCall scope target value cases = do
         then do
           arms <- forM cases $ \c -> do
             body <- arm c []
-            pure (D.text ("case " ++ variantName (conOf c) ++ " -> ") <> blockOf body)
+            pure (D.text ("case " ++ variantName env d (conOf c) ++ " -> ") <> blockOf body)
           pure (prelude ++ [D.text ("switch (" ++ subject ++ ") ") <> blockOf (arms ++ [D.text "default -> throw LawSpecFast.unreachable();"])])
         else if isProductType d
         then case cases of
@@ -875,7 +878,7 @@ matchStatements env selfCall scope target value cases = do
           arms <- forM cases $ \c -> do
             let con = conOf c
                 index = length (takeWhile ((/= constructorId con) . constructorId) (dataConstructors d))
-                cls = name ++ "." ++ variantName con ++ generic
+                cls = name ++ "." ++ variantName env d con ++ generic
             m <- fresh "case"
             body <- arm c [m ++ "." ++ fieldName f | f <- constructorFields con]
             let cast = [D.text ("final " ++ cls ++ " " ++ m ++ " = (" ++ cls ++ ") " ++ subject ++ ";") | not (null (constructorFields con))]
@@ -1045,13 +1048,13 @@ toNative env ty = case ty of
           | otherwise = "new " ++ nativeVariant env d c base ++ nativeGeneric ++ "(" ++ intercalate ", " [cv (prefix ++ fieldName f) | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if fieldless d
       then pure [ D.text "switch (x) " <> D.block 2 (D.joinWith D.hardline
-                    ([D.text ("case " ++ variantName c ++ " -> { return " ++ made "" c [] ++ "; }") | c <- dataConstructors d] ++
+                    ([D.text ("case " ++ variantName env d c ++ " -> { return " ++ made "" c [] ++ "; }") | c <- dataConstructors d] ++
                      [D.text "default -> throw LawSpecFast.unreachable();"])) ]
       else if isProductType d
         then let c = firstOf (dataConstructors d) in pure [D.text ("return " ++ made "x." c (firstOf converters) ++ ";")]
         else pure [ D.text "switch (x.tag) " <> D.block 2 (D.joinWith D.hardline
                       ([ D.text ("case " ++ show k ++ " -> ") <> D.block 2 (D.joinWith D.hardline
-                           ([D.text ("var y = (" ++ typedName ++ "." ++ variantName c ++ typedGeneric ++ ") x;") | not (null (constructorFields c))] ++
+                           ([D.text ("var y = (" ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ ") x;") | not (null (constructorFields c))] ++
                             [D.text ("return " ++ made "y." c cs ++ ";")]))
                        | (k, (c, cs)) <- zip [0 :: Int ..] (zip (dataConstructors d) converters) ] ++
                        [D.text "default -> throw LawSpecFast.unreachable();"])) ]
@@ -1119,9 +1122,9 @@ fromNative env ty = case ty of
           ScalaStyle -> binderName f ++ "()"
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
-          | fieldless d = typedName ++ "." ++ variantName c
+          | fieldless d = typedName ++ "." ++ variantName env d c
           | isProductType d = "new " ++ typedName ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
-          | otherwise = "new " ++ typedName ++ "." ++ variantName c ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ accessor f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if isProduct d
       then let c = firstOf (dataConstructors d) in pure [D.text ("return " ++ made "n." c (firstOf converters) ++ ";")]
       else pure ([ D.text ("if (n instanceof " ++ nativeVariant env d c base ++ ") ") <> D.block 2 (D.joinWith D.hardline
@@ -1225,12 +1228,12 @@ scalaToNative env ty = case ty of
           | otherwise = nativeCase c ++ (if isProduct d || null nativeArgs then "" else nativeGeneric) ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ ScalaData.escaped (fieldName f) ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
     if fieldless d
       then pure [ D.text "x match " <> D.block 2 (D.joinWith D.hardline
-                    [D.text ("case " ++ typedName ++ "." ++ variantName c ++ " => " ++ made "" c []) | c <- dataConstructors d]) ]
+                    [D.text ("case " ++ typedName ++ "." ++ variantName env d c ++ " => " ++ made "" c []) | c <- dataConstructors d]) ]
       else if isProductType d
         then let c = firstOf (dataConstructors d) in pure [D.text (made "x." c (firstOf converters))]
         else pure [ D.text "x.tag match " <> D.block 2 (D.joinWith D.hardline
                       ([ D.text ("case " ++ show k ++ " => ") <> D.block 2 (D.joinWith D.hardline
-                           ([D.text ("val y = x.asInstanceOf[" ++ typedName ++ "." ++ variantName c ++ typedGeneric ++ "]") | not (null (constructorFields c))] ++
+                           ([D.text ("val y = x.asInstanceOf[" ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "]") | not (null (constructorFields c))] ++
                             [D.text (made "y." c cs)]))
                        | (k, (c, cs)) <- zip [0 :: Int ..] (zip (dataConstructors d) converters) ] ++
                        [D.text "case _ => throw lawspec.runtime.LawSpecFast.unreachable()"])) ]
@@ -1288,9 +1291,9 @@ scalaFromNative env ty = case ty of
         field f = ScalaData.escaped (binderName f)
     converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromNative" (substituteIn table (binderType f))
     let made prefix c cs
-          | fieldless d = typedName ++ "." ++ variantName c
+          | fieldless d = typedName ++ "." ++ variantName env d c
           | isProductType d = "new " ++ typedName ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
-          | otherwise = "new " ++ typedName ++ "." ++ variantName c ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
+          | otherwise = "new " ++ typedName ++ "." ++ variantName env d c ++ typedGeneric ++ "(" ++ intercalate ", " [cv ++ "(" ++ prefix ++ field f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ ")"
         pattern c | singleton c = nativeCase c
                   | otherwise = "y: " ++ nativeCase c ++ (if isProduct d || null nativeArgs then "" else nativeGeneric ++ " @unchecked")
     if isProduct d

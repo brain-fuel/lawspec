@@ -196,6 +196,9 @@ auditCollected context declarations constructors bits unit templates = do
             let binder = C.Id (C.idText owner ++ "::let::" ++ show (index :: Int))
             inner <- proof owner integers (M.insert name binder scope) body
             pure (T.Match bound [([], T.substituteProof (M.singleton binder bound) inner)])
+        S.Apply (S.Var n) _ | n == S.recordPatternCheckName, [value] <- operands -> do
+          subject <- recur value
+          pure (T.Sequence [subject,T.Literal (SBool True)])
         -- b.f as a field node (LawSpec.Inference): the field, as an atom.
         S.Apply (S.Var n) _ | Just field <- stripPrefix S.fieldAccessPrefix n, [value] <- operands -> do
           scrutinee <- recur value

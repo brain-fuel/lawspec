@@ -654,6 +654,18 @@ jointLiteralType env a b left right = do
 -- state, such as checked's, so they are typed here.
 builtin :: Env -> String -> [Expr] -> C Type
 builtin env n args
+  | "prelude." ++ n == recordPatternCheckName, [subject] <- args = do
+      ty <- infer env subject >>= resolve
+      case baseType ty of
+        Record fields -> checkRecordFields fields
+        t -> do
+          let parent = case t of Named name -> name; Applied name _ -> name; Application name _ -> name; _ -> ""
+          known <- typesNamed parent
+          case known of
+            [declaration] | [constructor] <- Core.dataConstructors declaration,
+                Core.constructorName constructor == Core.dataName declaration -> pure ()
+            _ -> throwC "an empty record pattern requires a known record type"
+      pure (Named "Bool")
   | n == "checked", [a] <- args = do
       t <- infer env a >>= resolve
       when (case t of Arrow _ _ -> True; _ -> False) (throwC "checked requires an evaluated scalar result, not a function")
@@ -1531,6 +1543,11 @@ matchScopesWithResult env _ value branches = do
   let tags = [tag | MatchBranch tag _ _ <- branches]
   unless (distinct tags) (throwC "duplicate match constructor")
   resolved <- resolve ty
+  -- Structural record patterns have already selected their sole product
+  -- shape. An exhausted guarded matrix is incomplete, not an unknown type.
+  case resolved of
+    Record _ | null branches -> throwC "non-exhaustive match"
+    _ -> pure ()
   let parent = case resolved of Named n -> n; Applied n _ -> n; Application n _ -> n; _ -> ""
   declarations <- typesNamed parent
   declaration <- case declarations of

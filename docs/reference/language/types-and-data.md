@@ -209,3 +209,17 @@ end
 ```
 
 A recursive definition cannot be unfolded, and is refused there.
+
+## Typed empty record patterns
+
+In the canonical authoring profile, `when record{} then ...` omits every field
+of the selected record. It matches empty and populated structural products and
+named records. The selected value must still have a known record type; this
+pattern cannot stand for a scalar, collection, multi-constructor alternative,
+or unconstrained type variable. It also works inside a constructor's record payload.
+
+Matching does not require `Eq`. The selected expression and its field
+initializers retain their ordinary strict evaluation order. A failed guard
+continues to the next branch, and guarded patterns alone do not establish
+exhaustiveness. The [empty record pattern fixture](../../../test/fixtures/canonical-empty-record-patterns.lawspec)
+contains checked examples for empty records, generic fields and nested payloads.

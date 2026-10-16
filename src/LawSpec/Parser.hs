@@ -733,7 +733,11 @@ selectionMatrix depth values rows@(SelectionRow patterns aliases guard body : re
                 [maybe SelectionAny id (lookup label fs) | label <- labels]) as g b
               _ -> SelectionRow (ps ++ replicate (length labels) SelectionAny) as g b
             result = selectionMatrix (depth + 1) (values ++ map Var names) (map specialize rows)
-        in foldr (\(name,value) rest -> MatchExpr value [MatchBranch letTag [name] rest]) result (zip names projections)
+            ignored = head [name | suffix <- [0::Int ..],
+              let name="_lawspecRecordPattern" ++ show depth ++ replicate suffix '_',name `notElem` exprVars result]
+            checked = if null labels then MatchExpr (Apply (Var recordPatternCheckName) selected)
+              [MatchBranch letTag [ignored] result] else result
+        in foldr (\(name,value) rest -> MatchExpr value [MatchBranch letTag [name] rest]) checked (zip names projections)
       SelectionConstructor _ _ ->
         let constructors = nub [(tag,length fields) | SelectionRow ps _ _ _ <- rows,
               SelectionConstructor tag fields <- [ps !! position]]
@@ -823,8 +827,6 @@ selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> lit
     record = do
       try (keyword "record" <* lookAhead (symbol "{"))
       fields <- recordFields
-      unless (not (null fields))
-        (fail "bare empty record patterns require typed structural product support; use a named record pattern or a wildcard")
       pure (SelectionRecord fields)
     recordFields = do
       fields <- between (symbol "{") (symbol "}") (((,) <$> ident <* symbol "=" <*> selectionPatternP True) `sepBy` symbol ",")
