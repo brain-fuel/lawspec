@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createCompiler} from '../api.mjs';
 import {migrationReport} from '../migrate.mjs';
+import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 
 const compiler = await createCompiler();
 const options = {schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive','examples']}};
@@ -152,6 +154,42 @@ test('record and alternative payloads migrate through qualified imports, facades
     assert.ok(use.includes('when models.Result record{ first = first , second = second}'));
     assert.ok(shadow.includes('Pair record{ flag = value}'));
     assert.ok(shadow.includes('foreign.Pair record{ first = value , second = false}'));
+    assert.equal(report.validated,false);
+    assert.deepEqual(report.filesWritten,[]);
+  }
+});
+
+test('record constructor operands retain full arity in Boolean expressions and proposition equality',async()=>{
+  const content='unit records\n'+
+    'type Runs is Runs first :: List Bool second :: List Bool again :: List Bool end\n'+
+    'definition echo (value :: Bool) :: List Bool is [value] end\n'+
+    'definition same (value :: Bool) :: Bool is Runs (echo value) (echo false) [] == Runs (echo value) (echo false) [] end\n'+
+    'law `Boolean comparison` is definition is `for all` (value :: Bool) . same value = true end end\n'+
+    'law `proposition comparison` is definition is `for all` (value :: Bool) . '+
+      'Runs (echo value) (echo false) [] == Runs (echo value) (echo false) [] end end';
+  for(const machineBits of [32,64]) {
+    const {sources,report}=await migrate(content,machineBits);
+    assert.equal((sources[0].content.match(/Runs record\{/g)||[]).length,4);
+    const applications=report.baseline.sourceSyntax[0].nodes.filter(node=>node.kind==='application.constructor'&&node.name==='Runs');
+    assert.equal(applications.length,4);
+    assert.equal(report.sourcePreview.sources[0].edits.filter(edit=>edit.reason==='record construction opener').length,4);
+  }
+});
+
+test('the preserved Chapter 6 baseline retains every law and example while previewing all record applications',async()=>{
+  const content=await readFile(new URL('../../test/fixtures/migration-chap06-0.24.lawspec',import.meta.url),'utf8');
+  assert.equal(createHash('sha256').update(content).digest('hex'),'07d8116b847aa80e044ad3ea2cbc8317bc949a0c4fe07b560e513d6fa0bfaf06');
+  for(const machineBits of [32,64]) {
+    const report=await migrationReport(compiler,{version:1,targets:[]},{sources:[{path:'chap06.lawspec',content}],machineBits});
+    assert.deepEqual(report.diagnostics,[]);
+    assert.deepEqual(report.sourcePreview.diagnostics,[]);
+    assert.equal(report.baseline.laws.length,23);
+    assert.equal(report.baseline.definitions.length,25);
+    assert.equal(report.baseline.types.length,7);
+    assert.equal(report.baseline.laws.reduce((count,law)=>count+law.examples.length,0),66);
+    assert.equal(report.sourcePreview.sources.length,1);
+    assert.equal((report.sourcePreview.sources[0].content.match(/Runs record\{/g)||[]).length,4);
+    assert.notEqual(report.sourcePreview.canonicalCheck.status,'unavailable');
     assert.equal(report.validated,false);
     assert.deepEqual(report.filesWritten,[]);
   }

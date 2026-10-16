@@ -55,6 +55,19 @@ test_sourceSyntax = describe "checked migration source syntax" $ do
         result = inventory [source]
     fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
     names "operator.value-equality" (nodesOf result) `shouldBe` ["==","=="]
+  it "retains complete constructor applications on both sides of a comparison without changing expression origins" $ do
+    let source = Source "applications.lawspec" ("unit applications\n" ++
+          "type Runs is Runs first :: Bool second :: Bool again :: Bool end\n" ++
+          "definition same (value :: Bool) :: Bool is Runs value false value == Runs value false value end")
+        result = inventory [source]
+        selected = [node | node <- nodesOf result,syntaxKind node == "application.constructor"]
+    fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
+    map syntaxName selected `shouldBe` [Just "Runs",Just "Runs"]
+    forM_ selected $ \node -> do
+      let Span (Location _ startLine startColumn) (Location _ endLine endColumn) = syntaxSpan node
+      startLine `shouldBe` endLine
+      endColumn - startColumn `shouldSatisfy` (> length ("Runs " :: String))
+    fmap (\(units,properties,_) -> (units,properties)) result `shouldBe` compileWithSettings 64 defaultGeneration [source]
   it "keeps type and natural-index parameters with their actual declaration kinds" $ do
     let source = Source "parameters.lawspec" $ unlines
           [ "unit parameters"

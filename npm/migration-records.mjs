@@ -88,11 +88,11 @@ export function planLegacyRecords(document,source,shapes) {
   // Parenthesized nodes repeat their child's constructor role. Only the node
   // whose physical opener is that constructor owns the inserted record; the
   // enclosing parentheses and annotations stay exactly where they were.
-  const expressions = nodes.filter(node=>node.kind==='expression.constructor' && shapeOf(node.name)?.wrap && sourceTag(node));
+  const expressions = nodes.filter(node=>node.kind==='application.constructor' && shapeOf(node.name)?.wrap && sourceTag(node));
   for (const expression of expressions.filter(node=>!expressions.some(outer=>outer!==node && outer.start===node.start && outer.end>node.end))) {
     const shape = shapeOf(expression.name);
     const tag = sourceTag(expression);
-    wrap(tag,children(expression,node=>node.kind.startsWith('expression.')),shape,'record construction');
+    wrap(tag,children(expression,node=>node.kind.startsWith('expression.') || node.kind==='application' || node.kind==='application.constructor'),shape,'record construction');
   }
   for (const literal of nodes.filter(node=>node.kind==='literal' && shapeOf(node.name)?.wrap && sourceTag(node))) {
     const shape = shapeOf(literal.name);

@@ -941,7 +941,7 @@ operatorExpr = located $ makeExprParser application (higherOperators ++
   , [InfixL (Binary "||" <$ symbol "||")]
   ])
   where
-    application = do
+    application = sourceNodeBy applicationSyntax $ do
       -- A matcher word after an argument starts a matcher, so contains in
       -- xs contains x is not an argument; a function named contains is
       -- still called as contains xs x.
@@ -951,6 +951,12 @@ operatorExpr = located $ makeExprParser application (higherOperators ++
       pure $ case first : rest of
         start:others | ConstructLit name [] <- unlocated start -> ConstructLit name others
         terms -> foldl1 Apply terms
+    -- The enclosing operator expression may be a comparison. Retain the
+    -- actual operand application before precedence combines it, without
+    -- adding a Located node or changing the executable expression's origin.
+    applicationSyntax value = case unlocated value of
+      ConstructLit name _ -> ("application.constructor",Just name)
+      _ -> ("application",Nothing)
 
 -- A branch guard starts after its condition, rather than becoming an argument
 -- conditional. Parentheses keep ordinary conditional arguments explicit.

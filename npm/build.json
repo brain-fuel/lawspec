@@ -483,7 +483,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "32b40834ed6f58d5290af56b62037426cb5868b4d4fa2ee6de0aa541a494199f",
-    "lawspec.cabal": "2801e892b9e5e3e640eb87cf40464b1481d100f44c284cb8e398993037c451bf",
+    "lawspec.cabal": "45c6d879ced2044e8467e4aa17a4e3b41a435b08a9b9788a0cadf829e05a9836",
     "package.yaml": "8f340b6e338af7793afb1f13c4feab28eeddc4c3b2754bff181f9460406962f9",
     "runtime/LawSpecCodecs.hs": "4109ac35634ab4c226b5464e824b03b90014a6b44426b5c33e34c6608d0bea70",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
@@ -861,7 +861,7 @@
     "src/LawSpec/NativeRequest.hs": "eac42bc6c94fb5ea8d4552596869f41c2665d387b516532c9086739812b01fe7",
     "src/LawSpec/Network.hs": "b779c7ed8ffdb03cdd44b42534dc3b78ffa52d942aa4c03d941d0d7925a73878",
     "src/LawSpec/Packages.hs": "aaeeddc8f138a373243a099b8fff3587dce207e3d6d69804a4bcc4038a5b704d",
-    "src/LawSpec/Parser.hs": "00d838afe1567e8e9db405adc7944c2f9a062c35bc5089d92e9d4e23e7aadab1",
+    "src/LawSpec/Parser.hs": "dfec5b8bdfa9b976c1f3201543fa167c9e796388e11459e0eb27aa69e722c585",
     "src/LawSpec/Persist.hs": "93dee0b80e4aefd9a512b2e29dd229c3d7618ab5475d81a687066381892a7d8c",
     "src/LawSpec/PortableGenerator.hs": "e0fab6648d1b118b43415c5ff5ede10b790226349e89e74cdb7f182b9fdc9545",
     "src/LawSpec/PortableTestHelpers.hs": "1a60780525e70b2faf84c09750362ea5a9b2927225812378e6e210126aed6a45",
@@ -961,7 +961,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "737a716994cfe3e2ad5b6cc69231fdac4fb1d1b7a66d693f947565808db3a315",
+    "npm/core.wasm": "2585204953c1b667aa2c8c29aa8f882ce179beb813402d21ed8e3de512730c79",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "7dcaf99c6dc757863b075ebf7763edb988b128555e58742e36b0e33699e03957",
     "npm/index.d.ts": "e4dbb64f73d90d7b91eef2f9a96ff24d1f2260faccb24a679f51a78e335adc68"
