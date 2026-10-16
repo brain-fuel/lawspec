@@ -28,6 +28,10 @@ Legacy `==` edits use checked equality-expression operands and their source
 ranges, including Boolean values, IEEE values and refinement predicates.
 Occurrences inside comments or text literals keep their original spelling.
 
+Generic definitions and reusable law templates that have not been instantiated
+still need migration coverage from the frontend source syntax inventory. The
+concrete Core baseline omits those templates even when their source is valid.
+
 This preview is a step toward the complete project transformation. The report
 keeps `validated: false` and lists the remaining correspondence gates.
 `--write` reports `migration-incomplete` and writes nothing until the complete
