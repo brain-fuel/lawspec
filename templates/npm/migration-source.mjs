@@ -97,6 +97,23 @@ export class MigrationDocument {
     }
     this.edits.push({start, end, content, reason, identity, before: this.content.slice(start,end)});
   }
+  moveBefore(start, end, before, reason) {
+    if (before >= start || end <= start) throw new Error('Migration move must precede a nonempty source range');
+    // Render already checked child edits before relocating the range. The
+    // retained segments continue to point into the original document, rather
+    // than pretending that a moved expectation is newly authored source.
+    const inside = this.edits.filter(edit => edit.start >= start && edit.end <= end);
+    const fragment = new MigrationDocument({path:this.path,content:this.content.slice(start,end)});
+    for (const edit of inside) fragment.edit(edit.start-start,edit.end-start,edit.content,edit.reason,edit.identity);
+    const rendered = fragment.result();
+    this.edits = this.edits.filter(edit => !inside.includes(edit));
+    this.edit(start,end,'',reason + ' source');
+    this.edit(before,before,rendered.content,reason);
+    const insertion = this.edits.at(-1);
+    insertion.sourceSegments = rendered.segments.map(segment => ({...segment,
+      originalStart:segment.originalStart+start,originalEnd:segment.originalEnd+start}));
+    insertion.nestedEdits = inside;
+  }
   result() {
     const edits = this.edits.map((edit, order) => ({...edit, order})).sort((a,b) =>
       a.start - b.start || a.end - b.end || a.order - b.order);
@@ -107,7 +124,9 @@ export class MigrationDocument {
       const retained = this.content.slice(offset, edit.start);
       segments.push({start:output.length, end:output.length + retained.length, originalStart:offset, originalEnd:edit.start, retained:true});
       output += retained;
-      segments.push({start:output.length, end:output.length + edit.content.length, originalStart:edit.start, originalEnd:edit.end, retained:false, reason:edit.reason});
+      if (edit.sourceSegments) segments.push(...edit.sourceSegments.map(segment => ({...segment,
+        start:segment.start+output.length,end:segment.end+output.length})));
+      else segments.push({start:output.length, end:output.length + edit.content.length, originalStart:edit.start, originalEnd:edit.end, retained:false, reason:edit.reason});
       output += edit.content;
       offset = edit.end;
     }

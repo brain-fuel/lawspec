@@ -37,12 +37,36 @@ definitions. Nested conditionals and equality tokens use the actual parser's
 source ranges. The inventory also records law sections, constructor fields,
 patterns, table rows and closers for the remaining transformation stages.
 
+The preview also migrates quoted law and example names, law import/export
+markers, explicit reusable-law applications, law section delimiters, universal
+binder arrows and scopes, expectation-first tables, legacy case selections and
+payload-free alternatives. Moving expectations retains their comments, literal
+values and source-coordinate segments. Existing scenario and benchmark label
+syntax is preserved. A branch referring to an existing `it` requires an
+explicit rename before migration introduces a case's scoped `it`; names with
+edge whitespace and tables without expectations also require an authoring
+decision.
+
+`sourcePreview.canonicalCheck` separately reports whether the partial preview
+passes canonical compilation. This check selects no optional law verification
+and retains mandatory definition validation. An accepted preview still does
+not establish project correspondence. A rejected preview includes diagnostics
+for transformations that remain unfinished, such as record payloads.
+
+`domainPolicyChanges` records legacy nonempty input-domain handling versus
+canonical universal quantification. Empty and dependent domains require
+explicit correspondence checks before the migration can be validated; a
+successful recompile does not establish that correspondence.
+
 This preview is a step toward the complete project transformation. The report
 keeps `validated: false` and lists the remaining correspondence gates.
 `--write` reports `migration-incomplete` and writes nothing until the complete
 source, constructor and native-binding transformation passes project-wide
 semantic and generated-behavior validation. The current authoring syntax is
 specified in the [minor-version contract](../reference/language/rc1.md).
+That grammar still has plain law, section, quantifier and table endings. The
+immediately following minor milestone requires named endings for every block
+and rejects every bare `end`; this preview does not preempt that grammar change.
 
 ## Schema 2 to schema 3 (0.8.0)
 

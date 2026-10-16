@@ -1,7 +1,7 @@
 // Generated from templates/npm/migrate.mjs by lawspec-dev generate. Do not edit.
 // Migration starts from the typed legacy baseline. A report is not permission
 // to write an unvalidated transformation or silently alter native payload APIs.
-import {planLegacyComputationEdits} from './migration-source.mjs';
+import {planLegacySourceEdits} from './migration-laws.mjs';
 
 export const legacyLawLayers = ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model'];
 export async function migrationReport(compiler, config, input) {
@@ -22,20 +22,31 @@ export async function migrationReport(compiler, config, input) {
   })));
   let sourcePreview;
   try {
-    sourcePreview = {scope:'checked computation declarations, conditional closers, typed equality and reserved literal prefixes',
-      sources:planLegacyComputationEdits(input.sources,baseline,syntax.sourceSyntax),diagnostics:[]};
+    sourcePreview = {scope:'checked computations, cases, payload-free alternatives, laws, explicit universal scopes and expectation-first tables',
+      sources:planLegacySourceEdits(input.sources,baseline,syntax.sourceSyntax),diagnostics:[]};
   } catch (error) {
-    sourcePreview = {scope:'checked computation declarations, conditional closers, typed equality and reserved literal prefixes',sources:[],
+    sourcePreview = {scope:'checked computations, cases, payload-free alternatives, laws, explicit universal scopes and expectation-first tables',sources:[],
       diagnostics:[{code:'migration-source',message:error.message,at:null}]};
   }
+  if (!sourcePreview.diagnostics.length) {
+    const checked = await compiler.check({...input,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
+      sources:sourcePreview.sources.map(({path,content})=>({path,content}))});
+    sourcePreview.canonicalCheck = {status:checked.diagnostics.length?'rejected':'accepted',diagnostics:checked.diagnostics,
+      intrinsicDefinitionChecks:checked.verification?.intrinsicDefinitionChecks===true,
+      lawVerification:'no-selected-checks'};
+  } else sourcePreview.canonicalCheck = {status:'unavailable',diagnostics:sourcePreview.diagnostics};
   return {
     from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: [],
     proposedConfiguration: { ...config, version: 2, languageProfile: '1.0-rc.1', verification: { layers: [...legacyLawLayers] } },
     baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax },
     sourcePreview,
+    domainPolicyChanges: laws.map(law => ({law:law.id,from:law.inputDomain,to:'universal',
+      requirement:'Establish domain correspondence, including empty and dependent domains, before validating this migration.'})),
     constructorChanges: payloads,
     nativeBindings: config.targets.map(target => ({ target: target.language, bindings: target.nativeBindings ?? null })),
     blockers: ['Source and native binding transformations have not yet passed project-wide semantic and generated-behavior correspondence checks.',
+      ...(laws.length ? ['Legacy nonempty input-domain handling and canonical universal quantification require explicit correspondence checks; no empty-domain equivalence is assumed.'] : []),
+      ...(sourcePreview.canonicalCheck.status==='rejected' ? ['The partial preview does not yet pass canonical compilation; inspect sourcePreview.canonicalCheck.diagnostics.'] : []),
       ...sourcePreview.diagnostics.map(diagnostic => 'Source preview unavailable: ' + diagnostic.message)],
     filesWritten: [],
   };
