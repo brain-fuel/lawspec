@@ -22,7 +22,7 @@ Laws expose documentary scalars as `metadata: {id?: string, owner?: string}`.
 The top-level law `id` and `owner` continue to identify its declaration and unit;
 documentary metadata neither renames them nor establishes verification evidence.
 
-The compiler exposes five methods through `createCompiler()` in the `lawspec`
+The compiler exposes the following methods through `createCompiler()` in the `lawspec`
 package. Each takes a JSON request and returns a JSON result. The TypeScript
 declarations in `index.d.ts` describe the protocol exactly; this page explains
 it. For usage, see [Use the JavaScript API](../how-to/use-the-javascript-api.md).
@@ -32,6 +32,7 @@ interface Compiler {
   format(input: CheckRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
+  proofTasks(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
   migrationBaseline(input: MigrationRequest): Promise<Result>;
   migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
@@ -76,6 +77,8 @@ interface MigrationRequest extends CheckRequest {
   `planGeneration` also reports whether it can be executed: for example, a
   well-typed refinement whose finite domain is empty passes `check` but fails
   generation.
+- `proofTasks` prepares typed SMT tasks for selected law proofs. It requires
+  schema 5 and the technical profile, and does not execute a solver.
 - `generation` fields you omit keep their defaults (100, 10000, 1000, 4096).
 - `minify` selects compact output; see
   [formatting](formatting.md).
@@ -108,6 +111,29 @@ present, unless you set `schemaVersion` yourself. A non-empty `nativeBindings`
 with schema 3 is rejected, so a compiler that does not understand bindings can
 never ignore them. An explicit schema `2` receives a diagnostic. Results report
 the negotiated schema.
+
+### SMT tasks and solver execution
+
+With `verification.layers` containing `proof`, `proofTasks` returns optional
+`proofTasks` entries identified by owner, law, source location, checked-program
+fingerprint and machine width. A `ready` entry includes its SMT-LIB `script`,
+`taskFingerprint`, encoding version and trust boundary. An `unsupported` entry
+includes a reason. Mandatory definition validation runs before either result;
+an empty layer selection returns no tasks.
+
+Prepared tasks are separate from completed proof evidence. Preparation uses a
+separate cache namespace and does not run the existing optional law prover.
+Other selected verification layers retain their own evidence states.
+
+The Node-only `lawspec/proof` export provides
+`proveWithZ3(compiler, request, options)` and `proofTaskFingerprint(task)`.
+The host returns the compiler result with `solverEvidence`, retaining exact
+task and prover bindings, limits and raw output. Only successful completed
+`unsat` results establish the submitted law obligation. A `sat` model remains
+unvalidated; unknown, timeout, unavailable and unsupported outcomes do not
+establish a law. The default browser API remains independent of Node process
+facilities. See [proof with Z3](../explanation/smt-proof.md) for supported
+theories, configuration and trust, and `proof.d.ts` for host result types.
 
 ### Migration source inventory
 
@@ -239,6 +265,7 @@ interface Result {
   contracts?: {owner: string; contract: Contract}[];
   refinements?: Refinement[];
   evidence?: ObligationEvidence[];
+  proofTasks?: ProofTask[];                 // preparation, not completed evidence
   migrationSemantics?: MigrationSemanticSnapshot;
   migrationComparison?: MigrationPayloadComparison;
   attestation?: AttestationView;            // when the request has one
@@ -249,7 +276,9 @@ interface Result {
 }
 ```
 
-An empty `diagnostics` array means success.
+An empty `diagnostics` array means the request was admitted. Completed law
+verification is reported separately in `evidence`; prepared tasks alone are
+not completed proofs.
 
 `MigrationSemanticSnapshot` is either `{status: 'unavailable', reason: string}`
 or a version-1 SHA-256 comparison snapshot with `status: 'available'`,
