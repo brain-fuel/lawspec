@@ -11,6 +11,8 @@ import qualified Data.Aeson as A
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import Data.Foldable (toList)
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 
@@ -94,18 +96,22 @@ renderExpressionWithContext :: [DataDeclaration] -> D.Doc
 renderExpressionWithContext declarations width reference key outerLocal external root = render root
   where
     boundIds = collect root
+    boundSet = Set.fromList boundIds
     collect term = (case expressionNode term of
       AllElements _ binder _ -> [binderId binder]
       AllPayloads _ predicates -> map (binderId . fst) predicates
       Match _ cases -> concatMap (map binderId . caseBinders) cases
       Let binder _ _ -> [binderId binder]
       _ -> []) ++ concatMap collect (children term)
-    occupied = [outerLocal identity | term <- descendants root,
-      Local identity <- [expressionNode term], identity `notElem` boundIds]
+    occupied = Set.fromList [outerLocal identity | term <- descendants root,
+      Local identity <- [expressionNode term], identity `Set.notMember` boundSet]
     descendants term = term : concatMap descendants (children term)
-    names = zip boundIds (filter (`notElem` occupied)
-      ["_m" ++ show i | i <- [0 :: Int ..]])
-    local identity = maybe (outerLocal identity) id (lookup identity names)
+    -- Keep the original traversal and allocator gaps, including repeated
+    -- binder identities in disjoint finite-search branches. The first name
+    -- assigned to an identity remains authoritative, as with list lookup.
+    names = Map.fromListWith (\_ first -> first) (zip boundIds (filter (`Set.notMember` occupied)
+      ["_m" ++ show i | i <- [0 :: Int ..]]))
+    local identity = Map.findWithDefault (outerLocal identity) identity names
     runtime name = call ("ls." ++ name)
     schema name arguments = call ("_lawspec_schema." ++ name)
       (arguments ++ [D.text "symbols"])

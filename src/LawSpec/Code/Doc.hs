@@ -182,6 +182,11 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       Append a b -> layoutWork column ((indentation, mode, margin, a):(indentation, mode, margin, b):rest)
       Nest amount a -> layoutWork column ((indentation + amount, mode, margin, a):rest)
       WhenBroken a -> layoutWork column (if mode == Broken then (indentation, mode, margin, a):rest else rest)
+      -- Compact layout already fixes optional breaks to spaces. Hanging can
+      -- therefore neither change a line choice nor add block indentation;
+      -- avoid rescanning the remaining flat expression at each assignment.
+      Hang _ left right | initialMode == Flat ->
+        layoutWork column ((indentation, mode, margin, left <> text " " <> right):rest)
       Hang amount left right ->
         let canHang = singleLine right && fits (indentation + amount)
               ((indentation + amount, Flat, margin, right):rest)

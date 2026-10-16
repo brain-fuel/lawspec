@@ -98,6 +98,11 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
     let doc = D.delimitTrailing 2 "[" "]" [D.text "alpha", D.text "beta"]
     D.render (D.Pretty 8) doc `shouldBe` "[\n  alpha,\n  beta,\n]"
     D.render D.Compact doc `shouldBe` "[alpha, beta]"
+  it "keeps mandatory block indentation inside compact hanging assignments" $ do
+    let doc = D.block 8 (D.hang 4 (D.text "let value =")
+          (D.block 4 (D.text "return value;")) <> D.text ";")
+    D.render D.Compact doc `shouldBe` "{\n        let value = {\n            return value;\n        };\n}"
+    D.render D.CompactTabs doc `shouldBe` "{\n\tlet value = {\n\t    return value;\n\t};\n}"
   it "renders nested blocks with target indentation" $
     D.render (D.Pretty 80) (D.block 2 (D.block 2 (D.text "x")))
       `shouldBe` "{\n  {\n    x\n  }\n}"
