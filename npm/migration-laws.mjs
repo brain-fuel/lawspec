@@ -4,6 +4,7 @@
 // are superseded by the following milestone's all-named-ending requirement.
 import {MigrationDocument,planLegacyComputationEdits} from './migration-source.mjs';
 import {planLegacyCases} from './migration-cases.mjs';
+import {planLegacyRecords} from './migration-records.mjs';
 
 function phrase(name) {
   if (!name || name.trim() !== name || /[\r\n]/.test(name))
@@ -35,6 +36,7 @@ export function planLegacySourceEdits(sources, baseline, sourceSyntax) {
         return depth === 0 && token.text === word;
       });
     };
+    planLegacyRecords(document,nodes);
     planLegacyCases(document,nodes);
     for (const node of nodes) {
       if (node.kind === 'quoted-name') {
