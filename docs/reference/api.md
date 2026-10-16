@@ -46,6 +46,7 @@ interface CheckRequest {
   schemaVersion?: 3 | 4 | 5;
   languageProfile?: '1.0-rc.1';
   verification?: Verification;
+  migrationSnapshot?: boolean;             // schema 5; comparison metadata only
   machineBits?: 32 | 64;                    // default 64
   generation?: Partial<Generation>;         // cases, maxAttempts, maxShrinks, exhaustiveLimit
   nativeBindings?: NativeBindings;          // schema 4 or 5
@@ -77,6 +78,12 @@ interface MigrationRequest extends CheckRequest {
 - `generation` fields you omit keep their defaults (100, 10000, 1000, 4096).
 - `minify` selects compact output; see
   [formatting](formatting.md).
+- `migrationSnapshot: true` includes versioned `migrationSemantics` fingerprints
+  of complete checked concrete Core. `migrationBaseline` includes them
+  automatically. Snapshot generation retains mandatory definition checks and
+  does not select or complete law verification. See
+  [source migration](../explanation/api-migration.md#source-migration-from-024)
+  for the normalization scope and the separate correspondence gates.
 - `cacheDirectory` names a folder where the compiler keeps its work, so later
   requests reuse what did not change; results are identical either way. The
   folder is created as needed, and entries are tied to the compiler version.
@@ -159,6 +166,7 @@ interface Result {
   contracts?: {owner: string; contract: Contract}[];
   refinements?: Refinement[];
   evidence?: ObligationEvidence[];
+  migrationSemantics?: MigrationSemanticSnapshot;
   attestation?: AttestationView;            // when the request has one
   expansions?: string[];                    // expand and planGeneration
   files?: Artifact[];                       // planGeneration
@@ -168,6 +176,18 @@ interface Result {
 ```
 
 An empty `diagnostics` array means success.
+
+`MigrationSemanticSnapshot` is either `{status: 'unavailable', reason: string}`
+or a version-1 SHA-256 comparison snapshot with `status: 'available'`,
+`machineBits`, `scope`, `programDigest`, `definitionPlaneDigest`,
+`lawBodiesDigest`, `definitions`, `contracts`, `dataTypes` and `domainPolicies`.
+Part entries contain `{comparisonId, digest}`; policies contain
+`{comparisonId, policy: 'nonempty' | 'universal'}`. Comparison IDs are normalized
+identities for this projection. They do not replace source declaration IDs.
+The law-body digest excludes input-domain policy. Clients must check version,
+algorithm and machine width before comparing fingerprints. This metadata does
+not establish complete project migration, source-template correspondence,
+native binding correspondence, generated behavior or law verification.
 
 ### Diagnostics
 

@@ -213,7 +213,7 @@ declarations = joinWith (softbreak <> softbreak)
   , alias "VerificationLayer" (map quoted ["proof", "exhaustive", "property", "examples", "runtime", "model", "analysis"])
   , interface "Verification" [("layers?", text "VerificationLayer[]")]
   , interface "CheckRequest"
-      [("languageProfile?", quoted "1.0-rc.1"), ("verification?", text "Verification"),
+      [("languageProfile?", quoted "1.0-rc.1"), ("verification?", text "Verification"), ("migrationSnapshot?",text "boolean"),
        ("sources", text "Source[]"), ("schemaVersion?", union [text "3", text "4", text "5"]),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
@@ -221,12 +221,19 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , interface "MigrationRequest extends CheckRequest"
       [("schemaVersion?",text "5"),("languageProfile",quoted "1.0-rc.1"),("from",quoted "0.24")]
+  , alias "MigrationSemanticSnapshot"
+      [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),
+          ("machineBits",union [text "32",text "64"])] ++
+          fields [("scope","string"),("programDigest","string"),("definitionPlaneDigest","string"),("lawBodiesDigest","string")] ++
+          [(name,array (record (fields [("comparisonId","string"),("digest","string")]))) | name<-["definitions","contracts","dataTypes"]] ++
+          [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))]))])
+      , record [("status",quoted "unavailable"),("reason",text "string")]]
   , interface "Result"
       ([("schemaVersion", union [text "3", text "4", text "5"]), ("machineBits?", union [text "32", text "64"])] ++
        fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "Verification"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
-       [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]")] ++
+       [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("migrationSemantics?",text "MigrationSemanticSnapshot")] ++
        [("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])

@@ -85,6 +85,32 @@ and retains mandatory definition validation. An accepted preview still does
 not establish project correspondence. A rejected preview includes diagnostics
 for transformations that remain unfinished, such as record payloads.
 
+The report's `baseline.coreSnapshot` and
+`sourcePreview.canonicalCheck.coreSnapshot` contain versioned fingerprints of
+the compiler's complete checked concrete Core. They include nominal constructor
+restrictions, GADT equations, definition policies, model metadata and deferred
+runtime postconditions that the documentary API views omit. Source coordinates
+and origins are excluded; lexical binder identities and approved law-name
+delimiters are normalized. Two strict, once-only selector and record-construction
+let forms are normalized without reordering their initializers. Literal values,
+nominal identities, operand order and the actual input-domain policy remain.
+
+`correspondence` compares those fingerprints and lists changed, added and removed
+definition, contract and data-type comparison identities. A matching fingerprint
+covers that concrete Core projection only. Uninstantiated source templates,
+native bindings and generated behavior remain separate, unestablished gates;
+the overall result remains `not-established`. The law-body projection explicitly
+excludes input-domain policy and cannot justify changing that policy. Differing
+fingerprints report unestablished correspondence rather than a proof of
+inequivalence. Chapter 6 currently exposes real payload-shape changes in this
+comparison; the compiler does not silently erase its nominal boundaries.
+
+Schema-5 clients may request the same `migrationSemantics` metadata with
+`migrationSnapshot: true`. Explicit legacy `migrationBaseline` requests include
+it automatically. Ordinary compile responses do not include these fingerprints,
+and requesting them does not change mandatory checks or law evidence. Snapshot
+versions and machine widths must agree before comparison.
+
 `domainPolicyChanges` records legacy nonempty input-domain handling versus
 canonical universal quantification. Empty and dependent domains require
 explicit correspondence checks before the migration can be validated; a

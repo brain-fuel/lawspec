@@ -2,6 +2,7 @@
 // Migration starts from the typed legacy baseline. A report is not permission
 // to write an unvalidated transformation or silently alter native payload APIs.
 import {planLegacySourceEdits} from './migration-laws.mjs';
+import {compareMigrationSnapshots} from './migration-correspondence.mjs';
 
 export const legacyLawLayers = ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model'];
 export async function migrationReport(compiler, config, input) {
@@ -31,17 +32,19 @@ export async function migrationReport(compiler, config, input) {
       diagnostics:[{code:'migration-source',message:error.message,at:null}]};
   }
   if (!sourcePreview.diagnostics.length) {
-    const checked = await compiler.check({...input,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
+    const checked = await compiler.check({...input,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},migrationSnapshot:true,
       sources:sourcePreview.sources.map(({path,content})=>({path,content}))});
     sourcePreview.canonicalCheck = {status:checked.diagnostics.length?'rejected':'accepted',diagnostics:checked.diagnostics,
       intrinsicDefinitionChecks:checked.verification?.intrinsicDefinitionChecks===true,
-      lawVerification:'no-selected-checks'};
+      lawVerification:'no-selected-checks',coreSnapshot:checked.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'}};
   } else sourcePreview.canonicalCheck = {status:'unavailable',diagnostics:sourcePreview.diagnostics};
   return {
     from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: [],
     proposedConfiguration: { ...config, version: 2, languageProfile: '1.0-rc.1', verification: { layers: [...legacyLawLayers] } },
-    baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax },
+    baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax,
+      coreSnapshot:syntax.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'} },
     sourcePreview,
+    correspondence:compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot),
     domainPolicyChanges: laws.map(law => ({law:law.id,from:law.inputDomain,to:'universal',
       requirement:'Establish domain correspondence, including empty and dependent domains, before validating this migration.'})),
     constructorChanges: payloads,

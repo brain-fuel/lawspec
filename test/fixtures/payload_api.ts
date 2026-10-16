@@ -1,4 +1,24 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, CheckRequest} from '../../npm/index.js';
+
+export function migrationDigests(result: Result): string[] {
+  const snapshot: MigrationSemanticSnapshot | undefined = result.migrationSemantics;
+  if (!snapshot || snapshot.status === 'unavailable') return [];
+  const version: 1 = snapshot.version;
+  const algorithm: 'sha256' = snapshot.algorithm;
+  const machineBits: 32 | 64 = snapshot.machineBits;
+  const policy: ('nonempty' | 'universal')[] = snapshot.domainPolicies.map(item => item.policy);
+  void version; void algorithm; void machineBits; void policy;
+  return [snapshot.programDigest, snapshot.definitionPlaneDigest, snapshot.lawBodiesDigest,
+    ...snapshot.definitions.map(item => item.comparisonId + ':' + item.digest),
+    ...snapshot.contracts.map(item => item.digest), ...snapshot.dataTypes.map(item => item.digest)];
+}
+
+const captureRequest: CheckRequest = {schemaVersion: 5, languageProfile: '1.0-rc.1', sources: [], migrationSnapshot: true};
+// @ts-expect-error Snapshot capture requires an actual Boolean switch.
+const malformedCapture: CheckRequest = {sources: [], migrationSnapshot: 'yes'};
+// @ts-expect-error Unavailable snapshots cannot claim matching concrete Core.
+const malformedSnapshot: MigrationSemanticSnapshot = {status: 'unavailable', programDigest: 'digest'};
+void captureRequest; void malformedCapture; void malformedSnapshot;
 
 export function authoredNames(unit: Unit): string[] {
   return unit.declarations.flatMap(declaration => {

@@ -17,6 +17,7 @@ import LawSpec.Frontend (elaborate, elaborateCanonical)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), planTesting, planTestingWith)
 import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.Migration as Migration
 import LawSpec.Core.Evidence (Obligation)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
@@ -47,7 +48,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       Left response -> response
       Right ((us,es,core,bindings,evidence,described,_),syntax) ->
         let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-        in withMigrationSyntax syntax $ withAttestation attestation core obligations $ withVerification verification $
+        in withMigrationSemantics False us core $ withMigrationSyntax syntax $ withAttestation attestation core obligations $ withVerification verification $
           withPackages project described (programView settings us (map prettyExpanded es) [] obligations (C.lowerProgramFields core))
    else
    -- Compilation, evidence and the testing plan depend on neither the method
@@ -56,7 +57,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     Left response -> response
     Right (us,es,core,bindings,evidence,described,plan) ->
      let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-         result files = withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
+         result files = (if snapshotRequested then withMigrationSemantics True us core else id) $
+           withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
           "expand" -> result []
           "format" | verification /= Nothing -> case preparePackagesWithReferences project packages (map formatSource sources) of
@@ -75,6 +77,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     cacheDirectory = case decode bytes of
       Just (Object o) | Just (String d) <- KM.lookup "cacheDirectory" o -> Just (T.unpack d)
       _ -> Nothing
+    snapshotRequested = case decode bytes of
+      Just (Object o) -> KM.lookup "migrationSnapshot" o==Just (Bool True)
+      _ -> False
     responseVersion = case eitherDecode bytes >>= parseEither
         (withObject "request" (\o -> o .:? "schemaVersion" .!= (3 :: Int))) of
       Right 5 -> 5 :: Int
@@ -100,6 +105,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     request = withObject "request" $ \o -> do
       version <- o .:? "schemaVersion" .!= (3 :: Int)
       unless (version `elem` [3,4,5]) (fail "LawSpec requires API schemaVersion 3, 4 (migration) or 5; see docs/explanation/api-migration.md")
+      snapshot <- o .:? "migrationSnapshot" .!= False
+      unless (not snapshot || version==5) (fail "migrationSnapshot requires API schemaVersion 5 and languageProfile 1.0-rc.1")
       method <- o .:? "method" .!= "check"
       if method == ("migrationBaseline" :: String) then do
         unless (version == 5) (fail "migrationBaseline requires API schemaVersion 5")
@@ -144,6 +151,19 @@ withMigrationSyntax :: [SourceSyntax] -> Value -> Value
 withMigrationSyntax syntax (Object value) = Object
   (KM.insert "sourceLanguageProfile" (String "0.24") (KM.insert "sourceSyntax" (toJSON syntax) value))
 withMigrationSyntax _ value = value
+
+-- A comparison projection of the actual, fully admitted Core. Snapshot errors
+-- never weaken mandatory validation or change which programs compile.
+withMigrationSemantics :: Bool -> [Unit] -> C.Program -> Value -> Value
+withMigrationSemantics canonical units core (Object value) = Object
+  (KM.insert "migrationSemantics" snapshot value)
+  where
+    names=[(C.Id (unitName unit ++ "::law::" ++ lawName law),lawName law) | unit<-units,law<-laws unit]
+    snapshot=case Migration.migrationSnapshot canonical names core of
+      Left reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]
+      Right (Object fields) -> Object (KM.insert "status" (String "available") fields)
+      Right _ -> object ["status" .= ("unavailable"::String),"reason" .= ("invalid Core snapshot"::String)]
+withMigrationSemantics _ _ _ value = value
 
 -- Selected law checks are reported separately from completed evidence. This
 -- field never claims that an unrun native test passed.
@@ -218,7 +238,7 @@ stagesWithInput canonical capture project packages sources bits settings native 
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "migrationSnapshot"])))
   _ -> BC.unpack bytes
 
 -- | Two entries: each holds a whole compiled program and its plan.

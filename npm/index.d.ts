@@ -470,6 +470,7 @@ export interface Verification {
 export interface CheckRequest {
   languageProfile?: '1.0-rc.1';
   verification?: Verification;
+  migrationSnapshot?: boolean;
   sources: Source[];
   schemaVersion?: 3 | 4 | 5;
   machineBits?: 32 | 64;
@@ -495,6 +496,26 @@ export interface MigrationRequest extends CheckRequest {
   from: '0.24';
 }
 
+export type MigrationSemanticSnapshot =
+    {
+      status: 'available';
+      version: 1;
+      algorithm: 'sha256';
+      machineBits: 32 | 64;
+      scope: string;
+      programDigest: string;
+      definitionPlaneDigest: string;
+      lawBodiesDigest: string;
+      definitions: {comparisonId: string; digest: string;}[];
+      contracts: {comparisonId: string; digest: string;}[];
+      dataTypes: {comparisonId: string; digest: string;}[];
+      domainPolicies: {
+        comparisonId: string;
+        policy: 'nonempty' | 'universal';
+      }[];
+    } |
+    {status: 'unavailable'; reason: string;};
+
 export interface Result {
   schemaVersion: 3 | 4 | 5;
   machineBits?: 32 | 64;
@@ -513,6 +534,7 @@ export interface Result {
   formattedSources?: Source[];
   sourceLanguageProfile?: '0.24';
   sourceSyntax?: SourceSyntax[];
+  migrationSemantics?: MigrationSemanticSnapshot;
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;
   packages?: PackageView[];
