@@ -1,7 +1,7 @@
 -- | Source grammar inventory for migration and authoring tools. These nodes
 -- describe parsed syntax, not a second typed or executable representation.
 -- Clients receive them only after the ordinary compiler checks succeed.
-module LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), SyntaxBinding(..), sourceSyntax) where
+module LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), SyntaxBinding(..), SyntaxReference(..), sourceSyntax) where
 
 import LawSpec.Common (Span(..), Location(..))
 import Data.Aeson (ToJSON(..), object, (.=))
@@ -16,19 +16,27 @@ data SyntaxNode = SyntaxNode
 
 data SourceSyntax = SourceSyntax
   { syntaxPath :: FilePath, syntaxUnit :: String, syntaxNodes :: [SyntaxNode]
-  , syntaxBindings :: [SyntaxBinding] }
+  , syntaxBindings :: [SyntaxBinding], syntaxReferences :: [SyntaxReference] }
   deriving (Eq, Show)
 
 -- Declaration/import namespace entries from Imports, in that resolver's
 -- portable naming convention. These are not lexical locals or typed terms.
 data SyntaxBinding = SyntaxBinding
-  { bindingNamespace :: String, bindingName :: String, bindingTarget :: String }
+  { bindingNamespace :: String, bindingName :: String, bindingTarget :: String
+  , bindingDeclaration :: Maybe String }
+  deriving (Eq, Show)
+
+-- A free value occurrence observed by the existing import traversal with its
+-- actual lexical scope. Bound parameters, patterns and lets are excluded.
+data SyntaxReference = SyntaxReference
+  { referenceName :: String, referenceTarget :: String, referenceSpan :: Span
+  , referenceDeclaration :: Maybe String }
   deriving (Eq, Show)
 
 -- Nested location wrappers may describe the same syntactic expression. Keep
 -- its first record without changing the grammar's order of distinct nodes.
 sourceSyntax :: FilePath -> String -> [SyntaxNode] -> SourceSyntax
-sourceSyntax path unit nodes = SourceSyntax path unit (unique Set.empty nodes) []
+sourceSyntax path unit nodes = SourceSyntax path unit (unique Set.empty nodes) [] []
   where
     unique _ [] = []
     unique seen (node:rest)
@@ -48,8 +56,15 @@ instance ToJSON SourceSyntax where
   toJSON source = object
     [ "version" .= (1 :: Int), "path" .= syntaxPath source
     , "unit" .= syntaxUnit source, "nodes" .= syntaxNodes source
-    , "bindings" .= syntaxBindings source ]
+    , "bindings" .= syntaxBindings source,"references" .= syntaxReferences source ]
 
 instance ToJSON SyntaxBinding where
   toJSON binding = object
-    ["namespace" .= bindingNamespace binding,"name" .= bindingName binding,"target" .= bindingTarget binding]
+    (["namespace" .= bindingNamespace binding,"name" .= bindingName binding,"target" .= bindingTarget binding] ++
+     ["declaration" .= declaration | Just declaration <- [bindingDeclaration binding]])
+
+instance ToJSON SyntaxReference where
+  toJSON reference = object
+    (["name" .= referenceName reference,"target" .= referenceTarget reference,
+     "span" .= object ["start" .= spanStart (referenceSpan reference),"end" .= spanEnd (referenceSpan reference)]] ++
+     ["declaration" .= declaration | Just declaration <- [referenceDeclaration reference]])

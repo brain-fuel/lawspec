@@ -5,6 +5,7 @@
 import {MigrationDocument,planLegacyComputationEdits} from './migration-source.mjs';
 import {planLegacyCases} from './migration-cases.mjs';
 import {planLegacyRecords,legacyRecordShapes} from './migration-records.mjs';
+import {planLegacyCollectionNames} from './migration-collections.mjs';
 
 function phrase(name) {
   if (!name || name.trim() !== name || /[\r\n]/.test(name))
@@ -42,6 +43,7 @@ export function planLegacySourceEdits(sources, baseline, sourceSyntax) {
         return depth === 0 && token.text === word;
       });
     };
+    planLegacyCollectionNames(document,source);
     planLegacyRecords(document,source,shapes);
     planLegacyCases(document,nodes);
     for (const node of nodes) {

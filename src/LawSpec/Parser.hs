@@ -967,6 +967,12 @@ logicBoundary :: P ()
 logicBoundary = canonicalP >>= \canonical -> when canonical
   (notFollowedBy (keyword "and" <|> keyword "or" <|> keyword "implies"))
 
+-- At the outer level of a let initializer, `in` closes the binding. A
+-- delimited subexpression has its own boundary and may use membership.
+-- A nested let's body inherits the enclosing initializer's boundary.
+membershipScope :: P a -> P a
+membershipScope = local (M.delete "delimiter:let-in")
+
 -- The operator levels above the matchers, from the tightest.
 higherOperators :: [[Operator P Expr]]
 higherOperators =
@@ -991,7 +997,8 @@ higherOperators =
   where
     membership = do
       canonical <- canonicalP
-      unless canonical empty
+      initializer <- asks (M.member "delimiter:let-in")
+      unless (canonical && not initializer) empty
       keyword "in"
       pure (\value collection -> Apply (Apply (Var "prelude.member") value) collection)
     -- An operator never matches the start of a longer one: < is not <$>
@@ -1128,8 +1135,8 @@ patternTest = go (0 :: Int)
 applicationAtom :: P Expr
 applicationAtom = atom
   where
-    atom = located $ (ScalarLit (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> setValue <|> firstCaseP <|> recordValueP <|> temporalP <|> matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
-      <|> parenthesizedFields
+    atom = located $ (ScalarLit (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> membershipScope setValue <|> membershipScope firstCaseP <|> membershipScope recordValueP <|> temporalP <|> membershipScope matchP <|> membershipScope ifP <|> raiseP <|> callsP <|> letP <|> membershipScope handleP <|> regexP <|> membershipScope (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+      <|> membershipScope parenthesizedFields
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
     -- if, then and else are keywords inside expressions.
@@ -1159,7 +1166,7 @@ applicationAtom = atom
       name <- sourceNode "let-binding" Just ident
       unless (maybe False (isLower . fst) (uncons name)) (fail "a let binds a name starting with a lowercase letter")
       void (symbol "=")
-      value <- expr
+      value <- local (M.insert "delimiter:let-in" AliasHeader) expr
       keyword "in"
       body <- expr
       pure (MatchExpr value [MatchBranch letTag [name] body])
@@ -1193,7 +1200,7 @@ applicationAtom = atom
     callsP = do
       try (keyword "calls" *> keyword "of")
       op <- ident
-      arguments <- optional (keyword "with" *> parens (expr `sepBy1` symbol ","))
+      arguments <- optional (keyword "with" *> membershipScope (parens (expr `sepBy1` symbol ",")))
       pure (foldl Apply (Var "prelude.calls") (Var op : maybe [] id arguments))
     -- if c then a else b: only the branch c selects is evaluated (it is
     -- prelude.select, which elaborates to Core's If).
@@ -2088,7 +2095,7 @@ unitNameP = foldr1 (\a b -> a ++ "." ++ b) <$>
   (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')) `sepBy1` symbol ".")
 
 importP :: P Import
-importP = sourceNode "import" (Just . importUnit) $ do
+importP = sourceNode "import" (Just . importUnit) $ sourceNode "import-alias" (Just . importAlias) $ do
   ((target, alias, items), range) <- withSpan $ do
     keyword "import"
     target <- unitNameP
@@ -2100,7 +2107,7 @@ importP = sourceNode "import" (Just . importUnit) $ do
 -- Import retains its existing law marker internally; only the delimiters are
 -- synthetic. A backtick inside a phrase is part of the name.
 importItemP :: P String
-importItemP = do
+importItemP = sourceNode "import-item" Just $ do
   canonical <- canonicalP
   if canonical then ((\n -> "`" ++ n ++ "`") <$> (keyword "law" *> itemName)) <|> itemName
     else ((\n -> "`" ++ n ++ "`") <$> quoted) <|> ident
@@ -2119,7 +2126,7 @@ exportP = sourceNode "export" (const Nothing) $ do
     keyword "export"
     canonical <- canonicalP
     if canonical then importItemP `sepBy1` symbol ","
-      else (((\n -> "`" ++ n ++ "`") <$> quoted) <|> qualifiedExport) `sepBy1` symbol ","
+      else (sourceNode "export-item" Just (((\n -> "`" ++ n ++ "`") <$> quoted) <|> qualifiedExport)) `sepBy1` symbol ","
   pure (Import "" "" items range)
   where
     qualifiedExport = lexeme $ try $ do

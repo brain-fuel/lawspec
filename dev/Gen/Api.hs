@@ -68,8 +68,9 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "Location" (fields [("file", "string"), ("line", "number"), ("column", "number")])
   , interface "Span" (fields [("start", "Location"), ("end", "Location")])
   , interface "SourceSyntaxNode" (fields [("kind", "string"), ("name?", "string"), ("span", "Span"), ("uses?", "string[]")])
-  , interface "SourceSyntaxBinding" ([("namespace",union (map quoted ["type","constructor","refinement","value","law"]))] ++ fields [("name","string"),("target","string")])
-  , interface "SourceSyntax" ([("version",text "1")] ++ fields [("path", "string"), ("unit", "string"), ("nodes", "SourceSyntaxNode[]"),("bindings","SourceSyntaxBinding[]")])
+  , interface "SourceSyntaxBinding" ([("namespace",union (map quoted ["type","constructor","refinement","value","law"]))] ++ fields [("name","string"),("target","string"),("declaration?","string")])
+  , interface "SourceSyntaxReference" (fields [("name","string"),("target","string"),("span","Span"),("declaration?","string")])
+  , interface "SourceSyntax" ([("version",text "1")] ++ fields [("path", "string"), ("unit", "string"), ("nodes", "SourceSyntaxNode[]"),("bindings","SourceSyntaxBinding[]"),("references","SourceSyntaxReference[]")])
   , interface "Diagnostic" [("code", text "string"), ("message", text "string"), ("at", union [text "Location", text "null"])]
   , interface "Artifact"
       [("path", text "string"), ("content", text "string"),

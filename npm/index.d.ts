@@ -45,6 +45,14 @@ export interface SourceSyntaxBinding {
   namespace: 'type' | 'constructor' | 'refinement' | 'value' | 'law';
   name: string;
   target: string;
+  declaration?: string;
+}
+
+export interface SourceSyntaxReference {
+  name: string;
+  target: string;
+  span: Span;
+  declaration?: string;
 }
 
 export interface SourceSyntax {
@@ -53,6 +61,7 @@ export interface SourceSyntax {
   unit: string;
   nodes: SourceSyntaxNode[];
   bindings: SourceSyntaxBinding[];
+  references: SourceSyntaxReference[];
 }
 
 export interface Diagnostic {

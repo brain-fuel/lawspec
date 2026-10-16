@@ -616,6 +616,13 @@ collections. Native adapter coverage, broader unqualified prelude resolution
 and validated project-wide migration remain required. A finite example does not prove a law
 over all sets. The review packet tracks all remaining gates.
 
+In `let name = value in body`, the first `in` outside a delimited
+subexpression ends the initializer. Write membership in a parenthesized
+initializer, such as `let present = (value in members) in present`. Membership
+inside records, lists, sets, conditionals and cases retains its ordinary
+meaning. A nested let initializer has its own delimiter; its body remains
+within the enclosing initializer.
+
 The implemented syntax below describes the canonical frontend entry point.
 The review packet also specifies grammar still awaiting implementation,
 including the remaining generic structural-payload cases and broader witness evidence. The legacy grammar remains the migration input language.
