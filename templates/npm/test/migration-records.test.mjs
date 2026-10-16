@@ -21,6 +21,7 @@ async function migrate(content,machineBits=64) {
   for(const result of [before,after]) assert.ok(result.evidence.filter(item=>item.stage==='law').every(item=>item.status==='exhaustively-checked'));
   for(const file of report.sourcePreview.sources) for(const segment of file.segments.filter(segment=>segment.retained))
     assert.equal(file.content.slice(segment.start,segment.end),content.slice(segment.originalStart,segment.originalEnd));
+  assert.equal(report.correspondence.payloads.payloadShapes.status,'matched',JSON.stringify(report.correspondence.payloads));
   assert.equal(report.validated,false);
   assert.deepEqual(report.filesWritten,[]);
   return {before,after,report,sources:migrated};

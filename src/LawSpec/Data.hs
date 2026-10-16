@@ -1,6 +1,6 @@
 -- | Source data declarations are resolved once, before core validation. Target
 -- emitters only see qualified identities and specialized core field types.
-module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, elaborateDataDeclarationsWithContext, qualifyDataNames, inlineFieldDefinitions) where
+module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, elaborateDataDeclarationsWithContext, qualifyDataNames, inlineFieldDefinitions, migrationConstructorSources) where
 
 import Control.Monad (forM, unless)
 import Data.List (nub)
@@ -126,37 +126,50 @@ elaborateDataDeclarationsWithContext bits units = do
             [(C.idText identity ++ "::" ++ tag, c) | (tag, c) <- familyIndexConstructors i] }) (S.dataTypeIndex d)
       pure (C.MkDataDeclaration identity name (map parameter (S.dataTypeParameters d)) constructors (C.SourceSpan (S.dataTypeSpan d)) index
         (name `elem` S.handles u) Nothing Nothing)
+    constructorSources = constructorSourceEntries False
+    contextualOrigin origin = case origin of
+      C.SourceSpan range -> contextual range
+      _ -> either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
+    typeIdentity u name = C.Id (S.unitName u ++ "::type::" ++ name)
+    contextual range = either (Left . pure . (\message -> Diagnostic "data-type" message (Just (spanStart range)))) Right
+
+constructorSourceEntries :: Bool -> ((S.Unit,S.DataTypeDeclaration),C.DataDeclaration) -> [(C.Id,Source.SourceConstructor)]
+constructorSourceEntries includeOrdinary ((u,source),header) =
+  [(C.constructorId constructor,Source.SourceConstructor
+      (map (rewrite . snd) (S.dataConstructorFields original))
+      [(parameterName, rewrite ty) | (name,ty) <- S.dataConstructorEquations original,
+         Just parameterName <- [lookup name parameters]])
+  | (original,constructor) <- zip (S.dataTypeConstructors source) (C.dataConstructors header)
+  , includeOrdinary || any (containsRecord . snd) (S.dataConstructorFields original ++ S.dataConstructorEquations original)
+  , let parameters=zip (S.dataTypeParameters source) (C.dataParameters header)
+        existentialNames=nub [name | (_,ty) <- S.dataConstructorFields original ++ S.dataConstructorEquations original,
+          name <- S.typeVariableNames ty,name `notElem` S.dataTypeParameters source]
+        variables=parameters ++ zip existentialNames (C.constructorExistentials constructor)
+        typeNames=[(S.dataTypeName declaration,S.unitName u ++ "::type::" ++ S.dataTypeName declaration) | declaration <- S.dataTypes u]
+        rename name=maybe name id (lookup name typeNames)
+        rewrite=S.mapType change (S.mapExprTypes rewrite)
+        change ty=case ty of
+          S.Variable name -> S.Variable (maybe name C.idText (lookup name variables))
+          S.Named name -> S.Named (rename name)
+          S.Applied name argument -> S.Applied (rename name) argument
+          S.Application name arguments -> S.Application (rename name) arguments
+          other -> other]
+  where
     containsRecord ty = case S.baseType ty of
       S.Record _ -> True
       S.Applied _ a -> containsRecord a
       S.Application _ values -> any containsRecord values
       S.Arrow a b -> containsRecord a || containsRecord b
       _ -> False
-    constructorSources ((u,source),header) =
-      [(C.constructorId constructor,Source.SourceConstructor
-          (map (rewrite . snd) (S.dataConstructorFields original))
-          [(parameterName, rewrite ty) | (name,ty) <- S.dataConstructorEquations original,
-             Just parameterName <- [lookup name parameters]])
-      | (original,constructor) <- zip (S.dataTypeConstructors source) (C.dataConstructors header)
-      , any (containsRecord . snd) (S.dataConstructorFields original ++ S.dataConstructorEquations original)
-      , let parameters=zip (S.dataTypeParameters source) (C.dataParameters header)
-            existentialNames=nub [name | (_,ty) <- S.dataConstructorFields original ++ S.dataConstructorEquations original,
-              name <- S.typeVariableNames ty,name `notElem` S.dataTypeParameters source]
-            variables=parameters ++ zip existentialNames (C.constructorExistentials constructor)
-            typeNames=[(S.dataTypeName declaration,C.idText (typeIdentity u (S.dataTypeName declaration))) | declaration <- S.dataTypes u]
-            rename name=maybe name id (lookup name typeNames)
-            rewrite=S.mapType change (S.mapExprTypes rewrite)
-            change ty=case ty of
-              S.Variable name -> S.Variable (maybe name C.idText (lookup name variables))
-              S.Named name -> S.Named (rename name)
-              S.Applied name argument -> S.Applied (rename name) argument
-              S.Application name arguments -> S.Application (rename name) arguments
-              other -> other]
-    contextualOrigin origin = case origin of
-      C.SourceSpan range -> contextual range
-      _ -> either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
-    typeIdentity u name = C.Id (S.unitName u ++ "::type::" ++ name)
-    contextual range = either (Left . pure . (\message -> Diagnostic "data-type" message (Just (spanStart range)))) Right
+
+-- | Complete source field restrictions for comparison only. Normal inference
+-- keeps its established sparse structural context; capturing ordinary fields
+-- must not change how their definitions are checked or instantiated.
+migrationConstructorSources :: [S.Unit] -> [C.DataDeclaration] -> [(C.Id,Source.SourceConstructor)]
+migrationConstructorSources units declarations = concat
+  [constructorSourceEntries True ((unit,source),header) | unit<-units,source<-S.dataTypes unit,
+    Just header<-[M.lookup (C.Id (S.unitName unit ++ "::type::" ++ S.dataTypeName source)) known]]
+  where known=M.fromList [(C.dataId declaration,declaration) | declaration<-declarations]
 
 -- | Resolve local type and constructor names before generic law expansion. The
 -- qualified identities survive imported/reused law bodies without re-resolution.

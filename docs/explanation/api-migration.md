@@ -57,6 +57,14 @@ record fields retain their existing identities; grouped alternative fields
 still require native binding correspondence. Indexed/GADT payload conversions,
 dependency-package migration and validated project writing remain unfinished.
 
+When the canonical preview compiles, `correspondence.payloads` compares its
+checked constructor shapes with the original compiler input, including unused
+generic declarations. It derives grouped record identities through ordinary
+record elaboration, checks complete stored descriptors and restrictions, and
+records field permutations explicitly. This closes only the payload-shape
+gate. Computation transport, native field bindings, generated behavior and
+project-wide writing remain unestablished even when shapes match.
+
 The preview also converts actual legacy ordered `Set` types to `SortedSet`
 and their seven operations to the corresponding `sortedSet` names. Checked
 free-reference spans include original declaration identities through imports

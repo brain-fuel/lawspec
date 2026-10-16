@@ -496,6 +496,70 @@ export interface MigrationRequest extends CheckRequest {
   from: '0.24';
 }
 
+export interface MigrationComparisonRequest extends MigrationRequest {
+  migrated: CheckRequest & {schemaVersion?: 5; languageProfile: '1.0-rc.1'};
+}
+
+export interface MigrationPayloadField {
+  label: string;
+  fromIndex: number;
+  toIndex: number;
+  fromBinder: string;
+  toBinder: string;
+}
+
+export type MigrationPayloadConstructor =
+    {constructor: string; kind: 'unchanged';} |
+    {
+      constructor: string;
+      kind: 'single-payload';
+      fields: MigrationPayloadField[];
+    } |
+    {
+      constructor: string;
+      kind: 'record-payload';
+      fields: MigrationPayloadField[];
+      recordType: string;
+      recordConstructor: string;
+    };
+
+export type MigrationPayloadChange =
+    {
+      type: string;
+      status: 'matched';
+      constructors: MigrationPayloadConstructor[];
+    } |
+    {type: string; status: 'not-established'; reason: string;};
+
+export interface MigrationPending {
+  status: 'not-established';
+  reason: string;
+}
+
+export type MigrationPayloadComparison =
+    {
+      version: 1;
+      algorithm: 'sha256';
+      status: 'not-established';
+      machineBits: 32 | 64;
+      scope: string;
+      beforeDigest: string;
+      afterDigest: string;
+      payloadShapes: {
+        status: 'matched' | 'not-established';
+        unchangedTypes: number;
+        changes: MigrationPayloadChange[];
+        introducedRecords: string[];
+        unexplainedAddedTypes: string[];
+      };
+      executableTransport: MigrationPending;
+      dependencyBehavior: MigrationPending;
+      nativeBindings: MigrationPending;
+      lawVerification: 'not-established-by-payload-shapes';
+      validated: false;
+    } |
+    {status: 'unavailable'; reason: string;};
+
 export type MigrationInputDomain =
     {
       comparisonId: string;
@@ -609,6 +673,8 @@ export interface Result {
   sourceLanguageProfile?: '0.24';
   sourceSyntax?: SourceSyntax[];
   migrationSemantics?: MigrationSemanticSnapshot;
+  migrationComparison?: MigrationPayloadComparison;
+  migrationComparisonInput?: 'before' | 'migrated';
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;
   packages?: PackageView[];
@@ -669,6 +735,7 @@ export interface Compiler {
   expand(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
   migrationBaseline(input: MigrationRequest): Promise<Result>;
+  migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
 }
 
 export function createCompiler(): Promise<Compiler>;

@@ -34,6 +34,7 @@ interface Compiler {
   expand(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
   migrationBaseline(input: MigrationRequest): Promise<Result>;
+  migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
 }
 function createCompiler(): Promise<Compiler>;
 ```
@@ -141,6 +142,50 @@ reports `not-verified`. Spans count Unicode code points and eight-column tab
 stops, as other compiler spans do. Source-edit clients translate them to their
 own offset convention. See [source migration](../explanation/api-migration.md#source-migration-from-024).
 
+### Constructor payload comparison
+
+`migrationComparison` takes a `MigrationRequest` for the original source and a
+required `migrated` canonical check request. Both inputs require the technical
+profile `1.0-rc.1`, schema 5 (the nested schema defaults to 5), empty verification
+layers, and the same machine width. Sources, packages, dependencies, generation
+settings and native bindings are resolved independently on each side. Both
+inputs must pass the ordinary mandatory definition checks. Input failures
+identify `migrationComparisonInput: 'before' | 'migrated'`.
+
+```typescript
+interface MigrationComparisonRequest extends MigrationRequest {
+  migrated: CheckRequest & {
+    schemaVersion?: 5;
+    languageProfile: '1.0-rc.1';
+  };
+}
+```
+
+The optional `Result.migrationComparison` is either unavailable with a reason,
+or a version-1 comparison of complete checked constructor shapes before generic
+specialization. `beforeDigest` and `afterDigest` bind the report to the checked
+data declarations and source constructor contexts. `payloadShapes` records its
+status, unchanged type count, changed types and constructors, introduced
+structural records, and unexplained added types. Successful constructor entries
+have kind `unchanged`, `single-payload`, or `record-payload`; payload entries
+include each field's label, source/destination indexes and binder identities.
+Grouped payloads also identify the derived record type and constructor.
+
+A shape match preserves the nominal outer identity, exact field types, checked
+predicate terms, dependent relationships and full stored structural descriptor.
+Called definitions and dependencies behind nominal references still require
+whole-program correspondence.
+Unknown labels, additional fields, nominal substitutions and metadata changes
+do not establish correspondence. Changed indexed or existential payloads
+remain unsupported. Existing nominal products keep their fields directly.
+
+The enclosing status remains `not-established`, with `validated: false`.
+`executableTransport`, `dependencyBehavior` and `nativeBindings` remain separate
+unestablished gates;
+`lawVerification` is `not-established-by-payload-shapes`. This method does not
+compare computation bodies or execute native implementations. A successful
+payload-shape check cannot validate project migration or authorize writing.
+
 ### Packages
 
 - `dependencies`: the package names and version ranges the request's own
@@ -167,6 +212,7 @@ interface Result {
   refinements?: Refinement[];
   evidence?: ObligationEvidence[];
   migrationSemantics?: MigrationSemanticSnapshot;
+  migrationComparison?: MigrationPayloadComparison;
   attestation?: AttestationView;            // when the request has one
   expansions?: string[];                    // expand and planGeneration
   files?: Artifact[];                       // planGeneration

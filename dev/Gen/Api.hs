@@ -7,7 +7,7 @@ import LawSpec.Scalar
 import qualified LawSpec.Targets as Targets
 
 methods :: [(String, String)]
-methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest")]
+methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest"), ("migrationComparison", "MigrationComparisonRequest")]
 
 apiSources :: Layout -> [(FilePath, String)]
 apiSources layout = [("api.mjs", output api), ("index.d.ts", output declarations)]
@@ -221,6 +221,28 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , interface "MigrationRequest extends CheckRequest"
       [("schemaVersion?",text "5"),("languageProfile",quoted "1.0-rc.1"),("from",quoted "0.24")]
+  , interface "MigrationComparisonRequest extends MigrationRequest"
+      [("migrated",text "CheckRequest & {schemaVersion?: 5; languageProfile: '1.0-rc.1'}")]
+  , interface "MigrationPayloadField" (fields [("label","string"),("fromIndex","number"),("toIndex","number"),
+      ("fromBinder","string"),("toBinder","string")])
+  , alias "MigrationPayloadConstructor"
+      [record [("constructor",text "string"),("kind",quoted "unchanged")],
+       record [("constructor",text "string"),("kind",quoted "single-payload"),("fields",text "MigrationPayloadField[]")],
+       record ([("constructor",text "string"),("kind",quoted "record-payload"),("fields",text "MigrationPayloadField[]")] ++
+         fields [("recordType","string"),("recordConstructor","string")])]
+  , alias "MigrationPayloadChange"
+      [record [("type",text "string"),("status",quoted "matched"),("constructors",text "MigrationPayloadConstructor[]")],
+       record [("type",text "string"),("status",quoted "not-established"),("reason",text "string")]]
+  , interface "MigrationPending" [("status",quoted "not-established"),("reason",text "string")]
+  , alias "MigrationPayloadComparison"
+      [record ([("version",text "1"),("algorithm",quoted "sha256"),("status",quoted "not-established"),("machineBits",union [text "32",text "64"])] ++
+        fields [("scope","string"),("beforeDigest","string"),("afterDigest","string")] ++
+        [("payloadShapes",record ([("status",union (map quoted ["matched","not-established"]))] ++
+          fields [("unchangedTypes","number"),("changes","MigrationPayloadChange[]"),("introducedRecords","string[]"),
+            ("unexplainedAddedTypes","string[]")])),
+         ("executableTransport",text "MigrationPending"),("dependencyBehavior",text "MigrationPending"),
+         ("nativeBindings",text "MigrationPending"),("lawVerification",quoted "not-established-by-payload-shapes"),("validated",text "false")]),
+       record [("status",quoted "unavailable"),("reason",text "string")]]
   , let common=fields [("comparisonId","string"),("domainDigest","string"),("inputCount","number"),
           ("search","string"),("candidateChecks","number"),("searchLimit","number"),("finiteLimit","number"),("notes","string[]")]
     in alias "MigrationInputDomain"
@@ -253,7 +275,8 @@ declarations = joinWith (softbreak <> softbreak)
        fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "Verification"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
-       [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("migrationSemantics?",text "MigrationSemanticSnapshot")] ++
+       [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("migrationSemantics?",text "MigrationSemanticSnapshot"),
+        ("migrationComparison?",text "MigrationPayloadComparison"),("migrationComparisonInput?",union (map quoted ["before","migrated"]))] ++
        [("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])

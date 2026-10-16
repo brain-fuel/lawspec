@@ -10,7 +10,7 @@ import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpression
 import LawSpec.Model
 import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..),SyntaxReference(..))
 import LawSpec.MigrationTemplates (SourceTemplates(..),DefinitionTemplate)
-import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, inlineFieldDefinitions)
+import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, inlineFieldDefinitions, migrationConstructorSources)
 import LawSpec.Capabilities (satisfiedWithContext)
 import qualified LawSpec.SourceContext as Source
 import LawSpec.Inference
@@ -552,7 +552,7 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
     [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]],
     if capture then Just (SourceTemplates bits us checkedTemplates allExpanded dataTypes
       [(identity,Source.sourceFields constructor,Source.sourceEquations constructor) |
-        (identity,constructor)<-M.toAscList (Source.constructorSources sourceTypes)]) else Nothing)
+        (identity,constructor)<-migrationConstructorSources us dataTypes]) else Nothing)
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
 -- names it invokes, a superset of the ones expansion resolves.

@@ -618,6 +618,7 @@ library
       LawSpec.Matchers
       LawSpec.Memo
       LawSpec.MigrationDomains
+      LawSpec.MigrationPayloads
       LawSpec.MigrationTemplates
       LawSpec.Model
       LawSpec.ModelTests
@@ -888,6 +889,7 @@ test-suite lawspec-test
       InferenceSchemeSpec
       LanguageGapsSpec
       LawPrimitivesSpec
+      MigrationPayloadSpec
       MigrationSnapshotSpec
       MigrationTemplateSpec
       NativeBindingSpec

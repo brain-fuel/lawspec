@@ -1,4 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest, MigrationComparisonRequest, MigrationPayloadComparison} from '../../npm/index.js';
 
 export function migrationDigests(result: Result): string[] {
   const snapshot: MigrationSemanticSnapshot | undefined = result.migrationSemantics;
@@ -167,3 +167,32 @@ export function structuralRestrictions(declaration: DataTypeDeclaration): Expr[]
   void kind; void identity; void descriptor;
   return structure.fields.flatMap(field => field.predicates);
 }
+
+export function payloadFields(result: Result): string[] {
+  const value: MigrationPayloadComparison | undefined = result.migrationComparison;
+  if (!value || value.status === 'unavailable') return [];
+  const validated: false = value.validated;
+  const status: 'not-established' = value.executableTransport.status;
+  const dependencyStatus: 'not-established' = value.dependencyBehavior.status;
+  void validated; void status; void dependencyStatus;
+  return value.payloadShapes.changes.flatMap(change => {
+    if (change.status === 'not-established') return [change.reason];
+    return change.constructors.flatMap(constructor => {
+      if (constructor.kind === 'unchanged') return [];
+      if (constructor.kind === 'record-payload') {
+        const identity: string = constructor.recordType;
+        void identity;
+      }
+      return constructor.fields.map(field => field.label + ':' + field.fromIndex + '->' + field.toIndex);
+    });
+  });
+}
+const comparisonRequest: MigrationComparisonRequest = {schemaVersion: 5, languageProfile: '1.0-rc.1', from: '0.24',
+  sources: [], migrated: {languageProfile: '1.0-rc.1', sources: []}};
+// @ts-expect-error Each input requires an explicit profile; the legacy input cannot implicitly choose it for the canonical input.
+const missingComparisonProfile: MigrationComparisonRequest = {...comparisonRequest, migrated: {sources: []}};
+// @ts-expect-error The migrated input cannot request the old grammar schema.
+const wrongComparisonSchema: MigrationComparisonRequest = {...comparisonRequest, migrated: {languageProfile: '1.0-rc.1', sources: [], schemaVersion: 4}};
+// @ts-expect-error Unavailable comparisons cannot manufacture payload matches.
+const fabricatedComparison: MigrationPayloadComparison = {status: 'unavailable', payloadShapes: {status: 'matched'}};
+void comparisonRequest; void missingComparisonProfile; void wrongComparisonSchema; void fabricatedComparison;
