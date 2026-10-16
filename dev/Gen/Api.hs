@@ -212,6 +212,9 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "PackageView" (fields [("name", "string"), ("version", "string"), ("dependencies", "Record<string, string>"), ("units", "string[]")])
   , alias "VerificationLayer" (map quoted ["proof", "exhaustive", "property", "examples", "runtime", "model", "analysis"])
   , interface "Verification" [("layers?", text "VerificationLayer[]")]
+  , interface "VerificationSelection"
+      [("layers",text "VerificationLayer[]"),("selection",union (map quoted ["no-selected-checks","selected-checks"])),
+       ("intrinsicDefinitionChecks",text "true")]
   , interface "CheckRequest"
       [("languageProfile?", quoted "1.0-rc.1"), ("verification?", text "Verification"), ("migrationSnapshot?",text "boolean"),
        ("sources", text "Source[]"), ("schemaVersion?", union [text "3", text "4", text "5"]),
@@ -234,13 +237,23 @@ declarations = joinWith (softbreak <> softbreak)
       [record [("type",text "string"),("status",quoted "matched"),("constructors",text "MigrationPayloadConstructor[]")],
        record [("type",text "string"),("status",quoted "not-established"),("reason",text "string")]]
   , interface "MigrationPending" [("status",quoted "not-established"),("reason",text "string")]
+  , alias "MigrationCoreTransport"
+      [text "MigrationPending", record ([("status",union (map quoted ["matched","not-established"])),("version",text "1"),
+          ("algorithm",quoted "sha256"),("machineBits",union [text "32",text "64"]),("scope",text "string"),
+          ("copyValidated",text "true"),("originalsUnchanged",text "true"),("catalogOrdering",text "string"),("assumptions",text "string[]")] ++
+        [(name,record [("status",union (map quoted ["matched","not-established"])),("before",text "string"),("after",text "string")]) |
+          name<-["program","definitionPlane","lawBodies"]] ++
+        [("domainPolicies",record [("status",union (map quoted ["matched","not-established"])),
+            ("before",text "{comparisonId: string; policy: 'nonempty' | 'universal'}[]"),
+            ("after",text "{comparisonId: string; policy: 'nonempty' | 'universal'}[]")])] ++
+        [(name,text "MigrationSemanticSnapshot & {status: 'available'}") | name<-["before","after"]])]
   , alias "MigrationPayloadComparison"
       [record ([("version",text "1"),("algorithm",quoted "sha256"),("status",quoted "not-established"),("machineBits",union [text "32",text "64"])] ++
         fields [("scope","string"),("beforeDigest","string"),("afterDigest","string")] ++
         [("payloadShapes",record ([("status",union (map quoted ["matched","not-established"]))] ++
           fields [("unchangedTypes","number"),("changes","MigrationPayloadChange[]"),("introducedRecords","string[]"),
             ("unexplainedAddedTypes","string[]")])),
-         ("executableTransport",text "MigrationPending"),("dependencyBehavior",text "MigrationPending"),
+         ("executableTransport",text "MigrationCoreTransport"),("dependencyBehavior",text "MigrationPending"),
          ("nativeBindings",text "MigrationPending"),("lawVerification",quoted "not-established-by-payload-shapes"),("validated",text "false")]),
        record [("status",quoted "unavailable"),("reason",text "string")]]
   , let common=fields [("comparisonId","string"),("domainDigest","string"),("inputCount","number"),
@@ -272,7 +285,7 @@ declarations = joinWith (softbreak <> softbreak)
       , record [("status",quoted "unavailable"),("reason",text "string")]]
   , interface "Result"
       ([("schemaVersion", union [text "3", text "4", text "5"]), ("machineBits?", union [text "32", text "64"])] ++
-       fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "Verification"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
+       fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
        [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("migrationSemantics?",text "MigrationSemanticSnapshot"),

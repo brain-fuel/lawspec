@@ -61,9 +61,22 @@ When the canonical preview compiles, `correspondence.payloads` compares its
 checked constructor shapes with the original compiler input, including unused
 generic declarations. It derives grouped record identities through ordinary
 record elaboration, checks complete stored descriptors and restrictions, and
-records field permutations explicitly. This closes only the payload-shape
-gate. Computation transport, native field bindings, generated behavior and
-project-wide writing remain unestablished even when shapes match.
+records field permutations explicitly. A separate `executableTransport`
+component compares a copy of the complete checked Core after transporting
+constructions, matches, projections and updates. Ordinary record normalization
+and mandatory validation must admit that copy. Definition and law-body
+matches remain separate from changed population policies, unused source
+schemes, native field bindings, generated behavior and project-wide writing.
+Intrinsic sorted-set and keyed-map order, comparison, recording, concurrency
+and payload traversal can observe the
+representation change; affected cases report their limits until explicit
+behavior-preserving migrations exist. No native execution or law proof is
+claimed by a body match.
+
+Canonical law recordings now retain the existing `value = recorded "name"`
+meaning under all valid equality wording, including `must be`. Recording keys
+still obey the same name rules; recordings still belong to concrete laws or
+examples, rather than one recording for every quantified input.
 
 The preview also converts actual legacy ordered `Set` types to `SortedSet`
 and their seven operations to the corresponding `sortedSet` names. Checked

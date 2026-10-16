@@ -179,12 +179,40 @@ Unknown labels, additional fields, nominal substitutions and metadata changes
 do not establish correspondence. Changed indexed or existential payloads
 remain unsupported. Existing nominal products keep their fields directly.
 
+`executableTransport` is either an unestablished check with a `reason`, or a
+version-1 SHA-256 comparison with `copyValidated: true`, `originalsUnchanged:
+true`, `machineBits`, `scope`, `catalogOrdering`, `assumptions`, and complete
+`before`/`after` Core snapshots. Its `program`, `definitionPlane` and `lawBodies`
+entries contain `{status, before, after}` fingerprints. The status is `matched`
+when definitions and law bodies correspond; the law-body comparison excludes
+input-domain policies. `program` still includes those policies, and
+`domainPolicies` reports both policy arrays and their separate matching status.
+Matching obligations does not verify their truth.
+
+The transport changes a comparison copy of the old program and runs ordinary
+record normalization and mandatory Core validation. Construction evaluates
+fields once in original source order. Patterns bind fields through checked
+projections; updates still evaluate the replacement before the subject.
+Contracts, deferred runtime postconditions, harness expressions and model
+metadata participate in the full traversal and fingerprints. Type catalog
+ordering can align by checked identity when the identity sets agree; field and
+predicate order are retained. The canonical Core fingerprints agree with those returned by an explicit
+canonical snapshot request.
+
+Affected key ordering, recorded rendering, concurrent construction and
+payload-predicate visitation require explicit behavior-preserving migration.
+The type traversal also checks intrinsic sortedness of sorted-set elements
+and keyed-map keys; changed map values do not themselves change key order.
+They currently report a limit instead of treating unchanged operation nodes
+as evidence of equivalence. Dependency analysis is conservative. External
+adapters and handlers must respect the value transport; native conformance
+remains a separate gate.
+
 The enclosing status remains `not-established`, with `validated: false`.
-`executableTransport`, `dependencyBehavior` and `nativeBindings` remain separate
-unestablished gates;
-`lawVerification` is `not-established-by-payload-shapes`. This method does not
-compare computation bodies or execute native implementations. A successful
-payload-shape check cannot validate project migration or authorize writing.
+`dependencyBehavior` still requires unused source-template correspondence;
+`nativeBindings` remains separate. `lawVerification` is
+`not-established-by-payload-shapes`. The method does not execute native
+implementations or authorize project writing.
 
 ### Packages
 

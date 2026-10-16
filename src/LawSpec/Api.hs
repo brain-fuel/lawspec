@@ -20,7 +20,8 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Migration as Migration
 import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
 import LawSpec.MigrationDomains (domainSnapshot)
-import LawSpec.MigrationPayloads (payloadCorrespondence)
+import LawSpec.MigrationPayloads (payloadCorrespondenceWithPlan)
+import LawSpec.Core.PayloadTransport (transportComparison)
 import LawSpec.Core.Evidence (Obligation)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
@@ -101,13 +102,21 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
             else case memoized syntaxStagesTable ("comparison-before:" ++ sharedRequest bytes)
                 (stagesWithInput False True beforeProject beforePackages beforeSources beforeBits beforeSettings beforeNative beforeVerification) of
               Left response -> comparisonFailure "before" response
-              Right ((_,_,_,_,_,_,_,beforeTemplates),_) ->
+              Right ((beforeUnits,_,beforeCore,_,_,_,_,beforeTemplates),_) ->
                 case memoized syntaxStagesTable ("canonical:" ++ sharedRequest (encode made))
                     (stagesWithInput True True afterProject afterPackages afterSources afterBits afterSettings afterNative afterVerification) of
                   Left response -> comparisonFailure "migrated" response
-                  Right ((_,_,_,_,_,_,_,afterTemplates),_) ->
+                  Right ((afterUnits,_,afterCore,_,_,_,_,afterTemplates),_) ->
                     let result=case (beforeTemplates,afterTemplates) of
-                          (Just previous,Just next) -> either unavailable id (payloadCorrespondence previous next)
+                          (Just previous,Just next) -> case payloadCorrespondenceWithPlan previous next of
+                            Left reason -> unavailable reason
+                            Right (view,Nothing) -> view
+                            Right (Object fields,Just plan) ->
+                              let names units=[(C.Id (unitName unit ++ "::law::" ++ lawName law),lawName law) | unit<-units,law<-laws unit]
+                                  transported=either (\reason -> object ["status" .= ("not-established"::String),"reason" .= reason]) id
+                                    (transportComparison plan (names beforeUnits) beforeCore (names afterUnits) afterCore)
+                              in Object (KM.insert "executableTransport" transported fields)
+                            Right (view,_) -> view
                           _ -> unavailable "checked source templates were not captured for both inputs"
                     in withVerification (Just V.noVerification) (object ["diagnostics" .= ([]::[Diagnostic]),
                       "machineBits" .= beforeBits,"migrationComparison" .= result])

@@ -467,6 +467,12 @@ export interface Verification {
   layers?: VerificationLayer[];
 }
 
+export interface VerificationSelection {
+  layers: VerificationLayer[];
+  selection: 'no-selected-checks' | 'selected-checks';
+  intrinsicDefinitionChecks: true;
+}
+
 export interface CheckRequest {
   languageProfile?: '1.0-rc.1';
   verification?: Verification;
@@ -536,6 +542,42 @@ export interface MigrationPending {
   reason: string;
 }
 
+export type MigrationCoreTransport =
+    MigrationPending |
+    {
+      status: 'matched' | 'not-established';
+      version: 1;
+      algorithm: 'sha256';
+      machineBits: 32 | 64;
+      scope: string;
+      copyValidated: true;
+      originalsUnchanged: true;
+      catalogOrdering: string;
+      assumptions: string[];
+      program: {
+        status: 'matched' | 'not-established';
+        before: string;
+        after: string;
+      };
+      definitionPlane: {
+        status: 'matched' | 'not-established';
+        before: string;
+        after: string;
+      };
+      lawBodies: {
+        status: 'matched' | 'not-established';
+        before: string;
+        after: string;
+      };
+      domainPolicies: {
+        status: 'matched' | 'not-established';
+        before: {comparisonId: string; policy: 'nonempty' | 'universal'}[];
+        after: {comparisonId: string; policy: 'nonempty' | 'universal'}[];
+      };
+      before: MigrationSemanticSnapshot & {status: 'available'};
+      after: MigrationSemanticSnapshot & {status: 'available'};
+    };
+
 export type MigrationPayloadComparison =
     {
       version: 1;
@@ -552,7 +594,7 @@ export type MigrationPayloadComparison =
         introducedRecords: string[];
         unexplainedAddedTypes: string[];
       };
-      executableTransport: MigrationPending;
+      executableTransport: MigrationCoreTransport;
       dependencyBehavior: MigrationPending;
       nativeBindings: MigrationPending;
       lawVerification: 'not-established-by-payload-shapes';
@@ -658,7 +700,7 @@ export interface Result {
   schemaVersion: 3 | 4 | 5;
   machineBits?: 32 | 64;
   languageProfile?: "1.0-rc.1";
-  verification?: Verification;
+  verification?: VerificationSelection;
   generation?: Generation;
   units?: Unit[];
   dataTypes?: DataTypeDeclaration[];

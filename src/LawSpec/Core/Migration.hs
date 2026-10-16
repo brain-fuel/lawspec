@@ -3,7 +3,7 @@
 -- Generic traversal retains fields that the documentary public JSON omits,
 -- including constructor predicates, GADT equations and runtime contracts.
 module LawSpec.Core.Migration
-  ( migrationSnapshot, normalizedProgram
+  ( migrationSnapshot, normalizedProgram, transformProgram, transformProgramWithTypes
   , Project(..), GenericProject(..), Context(..), semanticName ) where
 
 import Control.Monad (unless)
@@ -25,7 +25,12 @@ data Context = Context
   { canonicalSource :: Bool, omitDomainPolicy :: Bool
   , globalIds :: M.Map C.Id C.Id, localIds :: M.Map C.Id C.Id
   , traceNames :: M.Map String String
-  , ownerId :: C.Id, nextBinder :: Int }
+  , ownerId :: C.Id, nextBinder :: Int
+  , preserveSyntax :: Bool
+  , rewriteExpression :: C.Expr -> Either String C.Expr
+  , rewriteDeclaration :: C.DataDeclaration -> Either String C.DataDeclaration
+  , structuralConstructors :: S.Set C.Id
+  , rewriteType :: C.Type -> Either String C.Type }
 
 class Project a where
   project :: Context -> a -> Either String a
@@ -73,10 +78,17 @@ instance (Ord a,Project a) => Project (S.Set a) where
     unless (S.size made==S.size values) (Left "migration normalization collides set identities")
     pure made
 
-instance Project Common.Location where project _ _ = Right (Common.Location "<comparison>" 1 1)
+instance Project Common.Location where
+  project context value = Right (if preserveSyntax context then value else Common.Location "<comparison>" 1 1)
 instance Project Common.Span where
   project context (Common.Span start end) = Common.Span <$> project context start <*> project context end
-instance Project C.Origin where project _ _ = Right (C.GeneratedFrom (C.Id "<comparison>"))
+instance Project C.Origin where
+  project context value = Right (if preserveSyntax context then value else C.GeneratedFrom (C.Id "<comparison>"))
+instance Project C.Type where
+  project context original = do
+    value <- rewriteType context original
+    to <$> genericProject context (from value)
+
 instance Project C.Id where
   project context identity = pure $ case M.lookup identity (localIds context) of
     Just made -> made
@@ -101,6 +113,9 @@ scope :: Context -> C.Id -> Context
 scope context owner = context{ownerId=owner,localIds=M.empty,nextBinder=0}
 
 bind :: Bool -> Context -> C.Binder -> Either String (C.Binder,Context)
+bind _ context binder | preserveSyntax context = do
+  made <- project context binder
+  pure (made,context)
 bind keepName context binder = do
   let index=nextBinder context
       identity=C.Id (C.idText (ownerId context) ++ "::bound::" ++ show index)
@@ -168,11 +183,12 @@ instance Project C.Example where
     pure made{C.exampleName=semanticName (canonicalSource context) (C.exampleName value)}
 
 instance Project C.DataDeclaration where
-  project context value = do
+  project context original = do
+    value <- rewriteDeclaration context original
     made <- to <$> genericProject context (from value)
     -- The library identity and implementation stay the legacy ordered set.
     -- Its canonical public spelling is a documented migration, not a new type.
-    pure (if C.dataId value==C.Id "lawspec.collections::type::Set"
+    pure (if not (preserveSyntax context) && C.dataId value==C.Id "lawspec.collections::type::Set"
       then made{C.dataName="Set"} else made)
 
 instance Project C.Draw where
@@ -193,14 +209,15 @@ instance Project C.Proposition where
     C.Quantified kind quantifier body -> do
       (made,inner) <- quantify context quantifier
       C.Quantified kind made <$> project inner body
-    C.Conjunction items -> C.Conjunction . concatMap flatten <$> project context items
+    C.Conjunction items | not (preserveSyntax context) -> C.Conjunction . concatMap flatten <$> project context items
     _ -> to <$> genericProject context (from value)
     where flatten (C.Conjunction xs) = concatMap flatten xs
           flatten other = [other]
 
 instance Project C.Expr where
   project context original = do
-    let value=reduce original
+    rewritten <- rewriteExpression context original
+    let value=if preserveSyntax context then rewritten else reduce context rewritten
     ty <- project context (C.expressionType value)
     origin <- project context (C.expressionOrigin value)
     node <- case C.expressionNode value of
@@ -231,10 +248,23 @@ instance Project C.Expr where
         body <- project inner (C.caseBody value)
         pure value{C.caseConstructor=tag,C.caseBinders=binders,C.caseBody=body}
 
--- These two identities preserve strict, once-only evaluation, including
+-- These identities preserve strict, once-only evaluation, including
 -- effects. No arbitrary let substitution or reordering is permitted.
-reduce :: C.Expr -> C.Expr
-reduce expression = case C.expressionNode expression of
+reduce :: Context -> C.Expr -> C.Expr
+reduce context expression = case C.expressionNode expression of
+  -- Strict identity binding evaluates the initializer exactly once. Dependent
+  -- type occurrences count as uses, so eliminating it cannot unbind an index.
+  C.Let binder initializer body | C.expressionNode body==C.Local (C.binderId binder),
+    uses (C.binderId binder) initializer==0,uses (C.binderId binder) body==1,
+    C.binderType binder==C.expressionType initializer,
+    C.expressionType body==C.expressionType initializer,
+    C.expressionType expression==C.expressionType initializer -> initializer
+  -- A projection of an already checked structural value is total and pure.
+  -- Do not generalize this to arbitrary unused initializers or nominal reads.
+  C.Let binder initializer body | C.Project tag _ selected <- C.expressionNode initializer,
+    C.Local{} <- C.expressionNode selected,tag `S.member` structuralConstructors context,
+    C.binderType binder==C.expressionType initializer,
+    uses (C.binderId binder) body==0,C.expressionType expression==C.expressionType body -> body
   C.Let binder value body | C.Match selected branches <- C.expressionNode body,
     C.Local identity <- C.expressionNode selected,identity==C.binderId binder,
     uses identity body==1,C.expressionType expression==C.expressionType body ->
@@ -289,7 +319,22 @@ normalizedProgram canonical bodyOnly names program = do
       | otherwise = identity
     owner identity name=take (length (C.idText identity)-length name) (C.idText identity)
     traces=M.fromList [(name,semanticName canonical name) | (_,name)<-names++properties]
-    context=Context canonical bodyOnly targets M.empty traces (C.Id "program") 0
+    context=Context canonical bodyOnly targets M.empty traces (C.Id "program") 0 False Right Right
+      (S.fromList [C.constructorId constructor | declaration<-C.programDataDeclarations program,
+        C.dataStructural declaration/=Nothing,constructor<-C.dataConstructors declaration]) Right
+
+-- | Traverse the complete typed representation without normalization, alpha
+-- renaming, origin erasure or execution. Only the supplied checked transport
+-- rules change terms. The resulting copy must pass ordinary Core validation.
+transformProgram :: M.Map C.Id C.Id -> (C.Expr -> Either String C.Expr)
+  -> (C.DataDeclaration -> Either String C.DataDeclaration) -> C.Program -> Either String C.Program
+transformProgram names expressions declarations = transformProgramWithTypes names Right expressions declarations
+
+transformProgramWithTypes :: M.Map C.Id C.Id -> (C.Type -> Either String C.Type)
+  -> (C.Expr -> Either String C.Expr) -> (C.DataDeclaration -> Either String C.DataDeclaration)
+  -> C.Program -> Either String C.Program
+transformProgramWithTypes names types expressions declarations = project
+  (Context False False names M.empty M.empty (C.Id "transport") 0 True expressions declarations S.empty types)
 
 migrationSnapshot :: Bool -> [(C.Id,String)] -> C.Program -> Either String Value
 migrationSnapshot canonical names program = do

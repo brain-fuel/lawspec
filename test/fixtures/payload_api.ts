@@ -172,7 +172,12 @@ export function payloadFields(result: Result): string[] {
   const value: MigrationPayloadComparison | undefined = result.migrationComparison;
   if (!value || value.status === 'unavailable') return [];
   const validated: false = value.validated;
-  const status: 'not-established' = value.executableTransport.status;
+  const status: 'matched' | 'not-established' = value.executableTransport.status;
+  if ('copyValidated' in value.executableTransport) {
+    const validatedCopy: true = value.executableTransport.copyValidated;
+    const digest: string = value.executableTransport.after.programDigest;
+    void validatedCopy; void digest;
+  }
   const dependencyStatus: 'not-established' = value.dependencyBehavior.status;
   void validated; void status; void dependencyStatus;
   return value.payloadShapes.changes.flatMap(change => {
@@ -196,3 +201,11 @@ const wrongComparisonSchema: MigrationComparisonRequest = {...comparisonRequest,
 // @ts-expect-error Unavailable comparisons cannot manufacture payload matches.
 const fabricatedComparison: MigrationPayloadComparison = {status: 'unavailable', payloadShapes: {status: 'matched'}};
 void comparisonRequest; void missingComparisonProfile; void wrongComparisonSchema; void fabricatedComparison;
+
+export function verificationSelection(result: Result): string | undefined {
+  if (!result.verification) return undefined;
+  const intrinsic: true = result.verification.intrinsicDefinitionChecks;
+  const selected: 'no-selected-checks' | 'selected-checks' = result.verification.selection;
+  void intrinsic;
+  return selected;
+}

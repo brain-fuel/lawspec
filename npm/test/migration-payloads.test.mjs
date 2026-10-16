@@ -23,7 +23,9 @@ test('compiler-side payload comparison certifies both widths with an explicit fi
     assert.equal(value.validated,false);
     assert.equal(value.algorithm,'sha256');
     assert.equal(value.dependencyBehavior.status,'not-established');
-    assert.equal(value.executableTransport.status,'not-established');
+    assert.equal(value.executableTransport.status,'matched');
+    assert.equal(value.executableTransport.copyValidated,true);
+    assert.equal(value.executableTransport.definitionPlane.status,'matched');
     assert.equal(value.nativeBindings.status,'not-established');
     assert.equal(value.lawVerification,'not-established-by-payload-shapes');
     const fields=value.payloadShapes.changes.flatMap(type=>type.constructors??[]).flatMap(ctor=>ctor.fields??[]);

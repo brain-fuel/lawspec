@@ -518,6 +518,7 @@ library
       LawSpec.Core.Migration
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
+      LawSpec.Core.PayloadTransport
       LawSpec.Core.Policy
       LawSpec.Core.Program
       LawSpec.Core.Quantification
@@ -896,6 +897,7 @@ test-suite lawspec-test
       NativeRequestSpec
       PayloadProofSpec
       PayloadSpec
+      PayloadTransportSpec
       PreludeResolutionSpec
       QuantifierDomainSpec
       RailwaySpec

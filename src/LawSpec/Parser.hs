@@ -1368,7 +1368,14 @@ canonicalDefinition = do
       pure (\body -> foldr ($) body modifiers)
     comparisonDefinition = do
       a <- canonicalComparison
-      pure (case unlocated a of Binary "==" left right -> Equal left right; _ -> Holds a)
+      case unlocated a of
+        Binary "==" left right | Apply callable argument <- unlocated right,
+            Var "recorded" <- unlocated callable,StringLit name <- unlocated argument -> do
+          checkRecordingName name
+          let recording=Apply (Apply (Var "prelude.recorded") argument) left
+          pure (Holds (case a of Located range _ -> Located range recording; _ -> recording))
+        Binary "==" left right -> pure (Equal left right)
+        _ -> pure (Holds a)
     implication a b = case booleanDefinition a of
       Just guard -> Implies guard b
       Nothing -> Not (And a (Not b))
@@ -1765,8 +1772,12 @@ recordedP :: Expr -> P Expr
 recordedP value = do
   keyword "recorded"
   name <- str
-  unless (validName name) (fail ("a recording's name is letters, digits, spaces, - _ and ., and does not start with . or a space: " ++ show name))
+  checkRecordingName name
   pure (Apply (Apply (Var "prelude.recorded") (StringLit name)) value)
+
+checkRecordingName :: String -> P ()
+checkRecordingName name = unless (validName name)
+  (fail ("a recording's name is letters, digits, spaces, - _ and ., and does not start with . or a space: " ++ show name))
   where
     validName n = not (null n) && take 1 n `notElem` [".", " "] &&
       all (\c -> isAlphaNum c || c `elem` (" -_." :: String)) n
@@ -2464,7 +2475,11 @@ literalHeaders source initial = case runReader (runParserT scan "constructor hea
       | Just d <- declarations, [c] <- [dataTypeConstructors d], dataConstructorName c == dataTypeName d,
         not (M.member "profile:canonical" initial) || dataConstructorSpan c == dataTypeSpan d] ++
     [("constructor:" ++ dataConstructorName c, DataHeader (replicate (length (dataConstructorFields c)) True))
-      | Just d <- declarations, c <- dataTypeConstructors d])) initial
+      | Just d <- declarations, c <- dataTypeConstructors d]))
+    -- A local alternative constructor shadows an imported record constructor
+    -- in the same value namespace, including the implicit prelude's Pair.
+    (foldr M.delete initial ["record:" ++ dataConstructorName c |
+      Just d <- declarations,c <- dataTypeConstructors d])
   where
     -- A wrapper's constructor shares its name and takes the single value field.
     wrapped w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)

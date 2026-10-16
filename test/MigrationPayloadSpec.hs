@@ -35,12 +35,12 @@ groupOld="type Variant is | Empty | Item last :: Bool first :: UInt8 end"
 groupNew="type Variant is one of | Empty | Item of type record{last :: Bool first :: UInt8} end type"
 
 test_migrationPayloads=describe "checked constructor payload shape correspondence" $ do
-  it "checks single-payload field renaming without claiming executable or native correspondence" $ do
+  it "checks single-payload field renaming while keeping native correspondence separate" $ do
     result<-shapesMatch singleOld singleNew
     (comparison result >>= field "validated") `shouldBe` Just (Bool False)
     (comparison result >>= field "lawVerification") `shouldBe` Just (String "not-established-by-payload-shapes")
     mapM_ (\key -> (comparison result >>= field key >>= field "status") `shouldBe` Just (String "not-established"))
-      ["executableTransport","dependencyBehavior","nativeBindings"]
+      ["dependencyBehavior","nativeBindings"]
   it "derives the complete grouped descriptor and records the field permutation" $ do
     result<-shapesMatch groupOld groupNew
     let changes=maybe [] (rows "changes") (shape result)

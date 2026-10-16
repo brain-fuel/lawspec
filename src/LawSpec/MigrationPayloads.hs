@@ -1,7 +1,7 @@
 -- | Certify representation shapes from both admitted frontends, including
 -- unused generic declarations. This is a prerequisite for executable transport,
 -- never permission to rewrite, unwrap nominal data, or change native bindings.
-module LawSpec.MigrationPayloads (payloadCorrespondence) where
+module LawSpec.MigrationPayloads (payloadCorrespondence, payloadCorrespondenceWithPlan) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value,object,(.=))
@@ -12,6 +12,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import qualified LawSpec.Core as C
 import LawSpec.Core.Migration (Project(..),Context(..))
+import LawSpec.Core.PayloadTransport (PayloadPlan(..))
 import LawSpec.Core.RecordIdentity (validateRecordDeclaration)
 import LawSpec.Core.Types (makeRegistry,constructorFieldsFor,constructorPredicatesFor)
 import LawSpec.Digest (digest,digestHex)
@@ -21,7 +22,10 @@ import qualified LawSpec.Model as S
 import LawSpec.SourceContext (SourceContext(..),SourceConstructor(..))
 
 payloadCorrespondence :: SourceTemplates -> SourceTemplates -> Either String Value
-payloadCorrespondence before after = do
+payloadCorrespondence before after = fst <$> payloadCorrespondenceWithPlan before after
+
+payloadCorrespondenceWithPlan :: SourceTemplates -> SourceTemplates -> Either String (Value,Maybe PayloadPlan)
+payloadCorrespondenceWithPlan before after = do
   unless (templateMachineBits before == templateMachineBits after)
     (Left "payload comparison requires matching machine widths")
   original <- catalogue (templateDataDeclarations before)
@@ -51,17 +55,19 @@ payloadCorrespondence before after = do
           templateMachineBits captured,declarations,constructors)))))
   previousDigest <- fingerprint before
   nextDigest <- fingerprint after
+  let plan=if matched then Just (PayloadPlan [(previous,next) | (identity,previous)<-changes,Just next<-[M.lookup identity migrated]]
+        [record | identity<-Set.toAscList authorized,Just record<-[M.lookup identity migrated]]) else Nothing
   pure (object ["version" .= (1::Int),"algorithm" .= ("sha256"::String),"status" .= ("not-established"::String),
     "machineBits" .= templateMachineBits before,
     "scope" .= ("checked pre-specialization constructor payload shapes only"::String),
     "beforeDigest" .= previousDigest,"afterDigest" .= nextDigest,
     "payloadShapes" .= object ["status" .= (if matched then "matched" else "not-established"::String),
       "unchangedTypes" .= (M.size original-length changes),"changes" .= [row | (_,_,row)<-checked],
-      "introducedRecords" .= map C.idText (Set.toAscList authorized),"unexplainedAddedTypes" .= map C.idText unexplained],
+      "introducedRecords" .= map C.idText [identity | identity<-Set.toAscList authorized,identity `elem` added],"unexplainedAddedTypes" .= map C.idText unexplained],
     "executableTransport" .= pending "Typed constructions, matches, projections and updates still require executable transport correspondence.",
     "dependencyBehavior" .= pending "Called definition behavior and transitive nominal dependencies require whole-program correspondence.",
     "nativeBindings" .= pending "Payload field and representation bindings require separate native correspondence.",
-    "lawVerification" .= ("not-established-by-payload-shapes"::String),"validated" .= False])
+    "lawVerification" .= ("not-established-by-payload-shapes"::String),"validated" .= False],plan)
   where
     catalogue declarations=uniqueMap "data declaration" [(C.dataId value,value) | value<-declarations]
     pending reason=object ["status" .= ("not-established"::String),"reason" .= (reason::String)]
@@ -144,7 +150,7 @@ payloadCorrespondence before after = do
       "fromBinder" .= C.idText (C.binderId a),"toBinder" .= C.idText (C.binderId b)]
 
 plain :: Context
-plain = Context False False M.empty M.empty M.empty (C.Id "payload-shapes") 0
+plain = Context False False M.empty M.empty M.empty (C.Id "payload-shapes") 0 False Right Right Set.empty Right
 
 uniqueMap :: Ord key => String -> [(key,value)] -> Either String (M.Map key value)
 uniqueMap label values = do

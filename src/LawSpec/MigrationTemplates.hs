@@ -114,7 +114,7 @@ templateSnapshot canonical captured = do
   where
     names=[S.lawName law | unit<-templateUnits captured,law<-S.laws unit]
     context=Context canonical False M.empty M.empty
-      (M.fromList [(name,semanticName canonical name) | name<-names]) (C.Id "source-templates") 0
+      (M.fromList [(name,semanticName canonical name) | name<-names]) (C.Id "source-templates") 0 False Right Right Set.empty Right
     unique (owner,labels) = unless (Set.size (Set.fromList labels)==length labels)
       (Left ("migration template normalization collides law identities in " ++ owner))
     fingerprint value=digestHex (digest (BL.toStrict (encode (("checked-source-templates-v1"::String),value))))
