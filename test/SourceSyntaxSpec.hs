@@ -71,6 +71,48 @@ test_sourceSyntax = describe "checked migration source syntax" $ do
     fmap (\(_,_,sources) -> map syntaxPath sources) result `shouldBe` Right ["templates.lawspec"]
     let nodes = nodesOf result
     length nodes `shouldBe` length (nub nodes)
+  it "retains the resolver's declaration identities through aliases and facade re-exports" $ do
+    let sources =
+          [ Source "base.lawspec" "unit base\ntype Pair (a :: Type) is Pair first :: a second :: a end"
+          , Source "facade.lawspec" "unit facade\nimport base as original (Pair)\nexport Pair"
+          , Source "use.lawspec" ("unit use\nimport facade as exposed (Pair)\n" ++
+              "definition pair (first :: a) (second :: a) :: exposed.Pair a is exposed.Pair first second end") ]
+        result = inventory sources
+        bindings owner = case result of Right (_,_,syntax) -> concatMap syntaxBindings (filter ((== owner) . syntaxUnit) syntax); _ -> []
+    fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
+    bindings "base" `shouldContain` [SyntaxBinding "type" "Pair" "base::type::Pair",SyntaxBinding "constructor" "Pair" "base::type::Pair::Pair"]
+    bindings "facade" `shouldContain` [SyntaxBinding "constructor" "original.Pair" "base::type::Pair::Pair"]
+    forM_ [SyntaxBinding "type" "exposed.Pair" "base::type::Pair",SyntaxBinding "constructor" "exposed.Pair" "base::type::Pair::Pair"] $ \binding ->
+      bindings "use" `shouldContain` [binding]
+    bindings "use" `shouldContain` [SyntaxBinding "constructor" "Pair" "base::type::Pair::Pair"]
+    fmap (\(units,properties,_) -> (units,properties)) result `shouldBe` compileWithSettings 64 defaultGeneration sources
+  it "distinguishes a local type from a same-spelled qualified imported type" $ do
+    let sources =
+          [ Source "base.lawspec" "unit base\ntype Choice is First | Second end"
+          , Source "local.lawspec" "unit local\nimport base as original\ntype Choice is Local end\nf :: Choice -> original.Choice" ]
+        result = inventory sources
+        bindings = case result of Right (_,_,syntax) -> concatMap syntaxBindings (filter ((== "local") . syntaxUnit) syntax); _ -> []
+    fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
+    bindings `shouldContain` [SyntaxBinding "type" "Choice" "local::type::Choice",SyntaxBinding "type" "original.Choice" "base::type::Choice"]
+    bindings `shouldContain` [SyntaxBinding "constructor" "Local" "local::type::Choice::Local",SyntaxBinding "constructor" "original.First" "base::type::Choice::First"]
+  it "distinguishes a shadowing refinement and a local collection type from built-in spellings" $ do
+    let source = Source "shadow.lawspec" ("unit shadow\nrefinement BigUInt is UInt8 end\n" ++
+          "type Set is Custom end\ndefinition identity (value :: BigUInt) :: BigUInt is value end\nf :: Set -> Set")
+        result = inventory [source]
+        bindings = case result of Right (_,_,syntax) -> concatMap syntaxBindings syntax; _ -> []
+    fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
+    forM_ [SyntaxBinding "refinement" "BigUInt" "shadow::BigUInt",SyntaxBinding "type" "Set" "shadow::type::Set"] $ \binding ->
+      bindings `shouldContain` [binding]
+    bindings `shouldNotContain` [SyntaxBinding "type" "Set" "lawspec.collections::type::Set"]
+  it "publishes deterministic namespace bindings separately from source-node spans" $ do
+    case response "migrationBaseline" (Just "0.24") templates of
+      Left message -> expectationFailure message
+      Right value -> case field "sourceSyntax" value of
+        Just (Array syntax) -> case toList syntax of
+          [source] -> field "bindings" source `shouldBe` Just (toJSON
+            [SyntaxBinding "value" "identity" "templatesIdentity",SyntaxBinding "law" "same" "same (templates)"])
+          _ -> expectationFailure "expected one supplied source syntax inventory"
+        _ -> expectationFailure "expected a checked source syntax inventory"
   it "does not invent blocks from contextual function names or documentary words" $ do
     let source = Source "words.lawspec" $ unlines
           [ "unit words"

@@ -745,7 +745,7 @@
     "src/LawSpec/Code/JavaScript.hs": "20e9536ba253a43fbbca96a8c20c3fd7c87b8fcacc065b5c5f4a1741f321b843",
     "src/LawSpec/Collections.hs": "318c6e8a526015f84baa8b6ab01c3fc112acecd9754a22388874aeca035bb34f",
     "src/LawSpec/Common.hs": "a3610f7f2e50c32a6b304953eaad601311bfda4dcc5c49cf8555a845690e3864",
-    "src/LawSpec/Compile.hs": "8571eb94f0207ef6377fcf495cd6c313c40479d1f114636d094dcd8ff7589583",
+    "src/LawSpec/Compile.hs": "6d9ee1d7ed1da52ee95e4591f50679be7ba5635414a42cfc41199f85daddf03c",
     "src/LawSpec/Core.hs": "f2761b12a730ce80cb824389cf7618c75d5d5d89be418ad5f575d8d5b6c61de9",
     "src/LawSpec/Core/DefinitionContracts.hs": "62b3c10c29ff6abf3b89eb3b28e765c81f9fe57507207ff8a1b2dee4d0655b4b",
     "src/LawSpec/Core/Definitions.hs": "cbe7d4140dcd56a086c14f4fbe5f375927d00879ecd6b3623ab0d802517301f0",
@@ -835,7 +835,7 @@
     "src/LawSpec/HaskellProperties.hs": "acc655865d9d15cca14c5291bd34f8bf5725d3a54367e2dccb7bb663b6c79b92",
     "src/LawSpec/HaskellTestHelpers.hs": "59d0fb15fc56059a434bb11f841c5762bee21fbb04ec7370d025ab52d3e7169a",
     "src/LawSpec/HaskellTypeRefs.hs": "b0a2cdbc3985bcf419934a81c38e71cceaf43d58addfe1e062a2e6d8e4ed172c",
-    "src/LawSpec/Imports.hs": "1410b0ed5e902b140c2247ad57bea54cf887cef024469db5268828bb52f02689",
+    "src/LawSpec/Imports.hs": "d257213c6b59f2526fd97a89823ce7330cc290e985453b7d9d85c8226d2faf66",
     "src/LawSpec/IndexTerm.hs": "e57c02fe8520b659379cc4d9c16a8a55342ef0ee1cfd5a7054a68baee982fa5e",
     "src/LawSpec/Indexed.hs": "57a8f49f679a4c94af071314ff531588fcf1a315c8171c7d03cc2cfd0b464ad4",
     "src/LawSpec/Inference.hs": "265f228a109475d6c8f64d87dddfd052c934517084bd98d1784af75804eef6c3",
@@ -909,7 +909,7 @@
     "src/LawSpec/Sha3.hs": "80ed3eb8884bcd51a879dd61be17c24e59a86f1c3831d6a37113659c2f9215ca",
     "src/LawSpec/SourceContext.hs": "9c7b916e6331ca588f62a182cd0f467f1ef691641011626feec4ba76fa0be54a",
     "src/LawSpec/SourceRecords.hs": "980577f1c7a233a2f03698ef4fdcbcc283cf8ae4aa882baac09938699254bd5d",
-    "src/LawSpec/SourceSyntax.hs": "f498424f81697624ab780d5781d85d4f26e492157c4a3e593c67cf9f37b74331",
+    "src/LawSpec/SourceSyntax.hs": "71c2b5b846339fc9c454cffd681d9471ffca44c518302c041d6fe2f4b6634401",
     "src/LawSpec/SourceText.hs": "d1c1ad8375e0848259456738c3744058adfb7dc7acb00db0473693d247c2a9a2",
     "src/LawSpec/SpecializeDefinitions.hs": "e42103494cdc3cff5262c345d3311ca69c2052271d5f514030421179ba2fa388",
     "src/LawSpec/StatefulModel.hs": "68747db7ed33ff360a8199c2e5ed74d60485ea9a2d3deb3a262023db7bac144a",
@@ -961,9 +961,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "e144a866a92c81b9c28189cddb38a069cc344b1c254d25bf0df9bc224c7da9e1",
+    "npm/core.wasm": "737a716994cfe3e2ad5b6cc69231fdac4fb1d1b7a66d693f947565808db3a315",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "7dcaf99c6dc757863b075ebf7763edb988b128555e58742e36b0e33699e03957",
-    "npm/index.d.ts": "12a36a9d65285c9f14b84b88e765b5a0908c6e3a2757258842ac198b05587434"
+    "npm/index.d.ts": "e4dbb64f73d90d7b91eef2f9a96ff24d1f2260faccb24a679f51a78e335adc68"
   }
 }

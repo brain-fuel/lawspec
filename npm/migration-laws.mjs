@@ -4,7 +4,7 @@
 // are superseded by the following milestone's all-named-ending requirement.
 import {MigrationDocument,planLegacyComputationEdits} from './migration-source.mjs';
 import {planLegacyCases} from './migration-cases.mjs';
-import {planLegacyRecords} from './migration-records.mjs';
+import {planLegacyRecords,legacyRecordShapes} from './migration-records.mjs';
 
 function phrase(name) {
   if (!name || name.trim() !== name || /[\r\n]/.test(name))
@@ -16,11 +16,17 @@ export function planLegacySourceEdits(sources, baseline, sourceSyntax) {
   const computations = planLegacyComputationEdits(sources,baseline,sourceSyntax);
   const documents = new Map(sources.map(source => [source.path,new MigrationDocument(source)]));
   for (const source of computations) documents.get(source.path).edits.push(...source.edits);
-  for (const source of sourceSyntax) {
+  const indexed=sourceSyntax.filter(source=>documents.has(source.path)).map(source=>{
+    const document=documents.get(source.path);
+    const nodes=source.nodes.map(node=>({...node,...document.range({kind:'source',span:node.span})}));
+    if (nodes.some(node=>!Number.isInteger(node.start))) throw new Error('Source inventory belongs to a different migration document');
+    return {...source,nodes};
+  });
+  const shapes=legacyRecordShapes(indexed);
+  for (const source of indexed) {
     const document = documents.get(source.path);
     if (!document) continue;
-    const nodes = source.nodes.map(node => ({...node,...document.range({kind:'source',span:node.span})}));
-    if (nodes.some(node => !Number.isInteger(node.start))) throw new Error('Source inventory belongs to a different migration document');
+    const nodes=source.nodes;
     const contains = (outer,inner) => outer.start <= inner.start && inner.end <= outer.end;
     const code = node => document.code(node.start,node.end);
     const first = node => code(node)[0];
@@ -36,7 +42,7 @@ export function planLegacySourceEdits(sources, baseline, sourceSyntax) {
         return depth === 0 && token.text === word;
       });
     };
-    planLegacyRecords(document,nodes);
+    planLegacyRecords(document,source,shapes);
     planLegacyCases(document,nodes);
     for (const node of nodes) {
       if (node.kind === 'quoted-name') {

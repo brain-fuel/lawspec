@@ -113,3 +113,46 @@ test('unused generic nominal records migrate before specialization and retain co
     assert.equal(after.laws.length,1);
   }
 });
+
+test('record and alternative payloads migrate through qualified imports, facades and same-spelled local constructors',async()=>{
+  const sources=[
+    {path:'model.lawspec',content:'unit model\ntype Pair is Pair first :: Bool second :: Bool end\n'+
+      'type Output is | None | Result first :: Bool second :: Bool end'},
+    {path:'facade.lawspec',content:'unit facade\nimport model as original (Pair, Output)\nexport Pair, Output'},
+    {path:'use.lawspec',content:'unit use\nimport facade as models (Pair, Output)\n'+
+      'definition make (value :: Bool) :: models.Pair is models.Pair value false end\n'+
+      'definition read (value :: Pair) :: Bool is match value with | models.Pair first second -> first end end\n'+
+      'definition answer (value :: Bool) :: Output is Result value false end\n'+
+      'definition unpack (value :: Output) :: Bool is match value with | None -> false | models.Result first second -> first end end\n'+
+      'law `pair` is definition is `for all` (value :: Bool) . read (make value) = value end '+
+        'table (value, expected) is row false, (models.Pair false false) row true, Pair true false expect make value = expected end end\n'+
+      'law `answer` is definition is `for all` (value :: Bool) . unpack (answer value) = value end end'},
+    {path:'shadow.lawspec',content:'unit shadow\nimport facade as foreign\n'+
+      'type Pair is Pair flag :: Bool end\n'+
+      'definition local (value :: Bool) :: Pair is Pair value end\n'+
+      'definition remote (value :: Bool) :: foreign.Pair is foreign.Pair value false end\n'+
+      'definition remoteFirst (value :: foreign.Pair) :: Bool is match value with | foreign.Pair first second -> first end end\n'+
+      'law `both` is definition is `for all` (value :: Bool) . local value = Pair value and remoteFirst (remote value) = value end end'},
+  ];
+  for(const machineBits of [32,64]) {
+    const input=machineBits===32?[...sources].reverse():sources;
+    const before=await compiler.migrationBaseline({...options,from:'0.24',sources:input,machineBits});
+    assert.deepEqual(before.diagnostics,[]);
+    const report=await migrationReport(compiler,{version:1,targets:[]},{sources:input,machineBits});
+    assert.deepEqual(report.sourcePreview.diagnostics,[]);
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted',JSON.stringify(report.sourcePreview.canonicalCheck));
+    const migrated=report.sourcePreview.sources.map(({path,content})=>({path,content}));
+    const after=await compiler.check({...options,sources:migrated,machineBits});
+    assert.deepEqual(after.diagnostics,[]);
+    assert.equal(after.laws.length,3);
+    assert.ok(after.evidence.filter(item=>item.stage==='law').every(item=>item.status==='exhaustively-checked'));
+    const use=migrated.find(source=>source.path==='use.lawspec').content;
+    const shadow=migrated.find(source=>source.path==='shadow.lawspec').content;
+    assert.ok(use.includes('models.Pair record{ first = value , second = false}'));
+    assert.ok(use.includes('when models.Result record{ first = first , second = second}'));
+    assert.ok(shadow.includes('Pair record{ flag = value}'));
+    assert.ok(shadow.includes('foreign.Pair record{ first = value , second = false}'));
+    assert.equal(report.validated,false);
+    assert.deepEqual(report.filesWritten,[]);
+  }
+});

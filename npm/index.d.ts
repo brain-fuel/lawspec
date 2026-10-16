@@ -41,11 +41,18 @@ export interface SourceSyntaxNode {
   uses?: string[];
 }
 
+export interface SourceSyntaxBinding {
+  namespace: 'type' | 'constructor' | 'refinement' | 'value' | 'law';
+  name: string;
+  target: string;
+}
+
 export interface SourceSyntax {
   version: 1;
   path: string;
   unit: string;
   nodes: SourceSyntaxNode[];
+  bindings: SourceSyntaxBinding[];
 }
 
 export interface Diagnostic {

@@ -109,12 +109,22 @@ schema-5 check, formatting and generation requests keep canonical parsing.
 Migration and normal requests use separate compilation caches.
 
 The result includes `sourceLanguageProfile: '0.24'` and `sourceSyntax`, an
-array of version-1 inventories with `path`, `unit` and `nodes`. Nodes contain
+array of version-1 inventories with `path`, `unit`, `nodes` and `bindings`. Nodes contain
 `kind`, optional `name` and a parser `span`. They identify actual declarations,
 sections, binders, types, expressions, patterns, literals, tables and closers.
 The inventory retains unused generic definitions and reusable law templates
 before elaboration and specialization. Definition nodes also carry their
 checked `uses` row, including an empty array for a pure definition.
+
+`bindings` records declaration/import namespace entries from the same checked
+resolver that compiles the program. Each entry has `namespace` (`type`,
+`constructor`, `refinement`, `value` or `law`), source `name` and resolver
+`target`. Alias-qualified and unqualified imports retain their actual targets
+through facade re-exports. Type and constructor targets identify their nominal
+declarations; value and law targets use the resolver's existing portable
+naming convention. These entries are not native binding overrides or a map of
+lexically bound variables. In particular, a migration client must not treat a
+same-spelled function parameter as a free imported value.
 
 These are source syntax and checked declaration context, rather than another
 executable representation. The same type, capability, effect, totality and

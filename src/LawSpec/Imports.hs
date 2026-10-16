@@ -8,9 +8,10 @@
 -- under names derived from the declaring unit, so two units may declare the
 -- same names. Adapter signatures and concrete laws belong to their unit and
 -- are not importable.
-module LawSpec.Imports (resolveImports, resolveImportsWithProfile, resolveImportsByProfile, importedDefinitionName) where
+module LawSpec.Imports (resolveImports, resolveImportsWithProfile, resolveImportsByProfile, resolveImportsByProfileWithBindings, importedDefinitionName) where
 
 import LawSpec.Model
+import LawSpec.SourceSyntax (SyntaxBinding(..))
 import LawSpec.Indexed (naturalRefinementName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, canonicalCollectionOperation, canonicalCollectionTypes, canonicalCollectionValues, internalConstructor, boundedArithmeticDefinitions)
 import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
@@ -76,7 +77,8 @@ data Exports = Exports
   , exportAbilities :: M.Map String String
   , exportOperations :: M.Map String String }
 
-data Resolved = Resolved { resolvedUnit :: Unit, resolvedExports :: Exports, portable :: Unit }
+data Resolved = Resolved { resolvedUnit :: Unit, resolvedExports :: Exports, portable :: Unit
+  , resolvedBindings :: [SyntaxBinding] }
 
 -- | visible importer imported: Nothing when the import is allowed, or the reason
 -- it is not (package boundaries).
@@ -89,7 +91,16 @@ resolveImportsWithProfile canonical = resolveImportsByProfile (const canonical)
 -- | A built-in provider retains its versioned semantics while a canonical
 -- importer gets canonical name resolution. Profiles come from the compiler.
 resolveImportsByProfile :: (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit, [Import])] -> Either [Diagnostic] [Unit]
-resolveImportsByProfile canonical visible units = mapM (\(u, _) -> resolvedUnit <$> table Lazy.! unitName u) units
+resolveImportsByProfile canonical visible units = map resolvedUnit <$> resolveUnits canonical visible units
+
+resolveImportsByProfileWithBindings :: (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit,[Import])]
+  -> Either [Diagnostic] ([Unit],[(String,[SyntaxBinding])])
+resolveImportsByProfileWithBindings canonical visible units = do
+  resolved <- resolveUnits canonical visible units
+  pure (map resolvedUnit resolved,[(unitName (resolvedUnit unit),resolvedBindings unit) | unit <- resolved])
+
+resolveUnits :: (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit,[Import])] -> Either [Diagnostic] [Resolved]
+resolveUnits canonical visible units = mapM (\(u, _) -> table Lazy.! unitName u) units
   where
     -- Lazy in import order; LawSpec.Parser rejects import cycles.
     table = Lazy.fromList [(unitName u, resolveUnit (canonical (unitName u)) visible table u imports) | (u, imports) <- units]
@@ -231,8 +242,20 @@ resolveUnit canonical visible table u allImports = do
         , exportRefinements = M.union (exportRefinements own) (M.fromList [(n, t) | (RefinementName, n, t) <- reexported])
         , exportDefinitions = M.union (exportDefinitions own) (M.fromList [(n, t) | (ValueName, n, t) <- reexported])
         , exportLaws = M.union (exportLaws own) (M.fromList [(unquote n, t) | (LawName, n, t) <- reexported]) }
-  pure (Resolved resolved exports (portableUnit exports resolved))
+      -- Use the same checked import scope and the same local declaration
+      -- exports as resolution itself. Do not resolve source spellings again
+      -- in a migration client, especially through facades and aliases.
+      local = unitExports S.empty u
+      localScope = M.fromList (concat
+        [ [((kind,name),target) | (name,target) <- M.toList names]
+        | (kind,names) <- [(TypeName,exportTypes local),(ConstructorName,exportConstructors local),
+            (RefinementName,exportRefinements local),(ValueName,exportDefinitions local),(LawName,exportLaws local)] ])
+      importedScope = M.mapMaybe (\targets -> case targets of target:_ -> Just target; [] -> Nothing) scope
+      bindings = [SyntaxBinding (namespace kind) name target | ((kind,name),target) <- M.toAscList (M.union localScope importedScope)]
+  pure (Resolved resolved exports (portableUnit exports resolved) bindings)
   where
+    namespace kind = case kind of
+      TypeName -> "type"; ConstructorName -> "constructor"; RefinementName -> "refinement"; ValueName -> "value"; LawName -> "law"
     isPrefixOf' prefix s = take (length prefix) s == prefix
     nubOn key = foldr (\x acc -> if key x `elem` map key acc then acc else x : acc) []
     unquote = unquoteLaw
