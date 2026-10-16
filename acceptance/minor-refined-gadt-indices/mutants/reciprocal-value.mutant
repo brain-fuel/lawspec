@@ -1,0 +1,6 @@
+@@ test/fixtures/canonical-refined-gadt-indices.lawspec
+<<<<<<<
+    when Reading payload then 1 / payload.value
+=======
+    when Reading payload then 1 / (payload.value + 1)
+>>>>>>>

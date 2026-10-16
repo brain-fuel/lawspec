@@ -13,6 +13,7 @@ import qualified SourceRecordScopeSpec
 import qualified SourceRecordInferenceSpec
 import qualified ContainerRecordViewsSpec
 import qualified SourceGadtIndicesSpec
+import qualified SourceGadtRefinementsSpec
 import qualified SourceRecordPayloadSpec
 import qualified SourceTupleSpec
 import qualified SelectionAdmissionSpec
@@ -116,6 +117,7 @@ main = hspec $ do
   SourceRecordHarnessSpec.test_recordHarnessesUseOneTypedContext
   ContainerRecordViewsSpec.test_containerRecordViews
   SourceGadtIndicesSpec.test_sourceGadtPayloadIndices
+  SourceGadtRefinementsSpec.test_sourceGadtRefinements
   SourceRecordPayloadSpec.test_structuralNominalPayloads
   SourceTupleSpec.test_positionalProducts
   SelectionAdmissionSpec.test_selectionAdmission

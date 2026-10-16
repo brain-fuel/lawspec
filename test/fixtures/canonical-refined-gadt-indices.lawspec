@@ -1,0 +1,117 @@
+unit authoring.positiveReadings
+
+type Reading (a of type Type) is one of
+  | Reading of type a
+      where a = record{value of type (n of type UInt8 where n > 0)}
+end type
+
+type Interval (a of type Type) is one of
+  | Interval of type a
+      where a = record{
+        lower of type UInt8
+        upper of type (n of type UInt8 where n > lower)
+      }
+end type
+
+function projectedReciprocal (reading of type Reading a) -> Rational is
+  first matching case of reading:
+    when Reading payload then 1 / payload.value
+  end case
+end function
+
+function matchedReciprocal (reading of type Reading a) -> Rational is
+  first matching case of reading:
+    when Reading record{value = value} then 1 / value
+  end case
+end function
+
+function plainReciprocal
+  (reading of type record{value of type (n of type UInt8 where n > 0)})
+  -> Rational is
+  1 / reading.value
+end function
+
+function intervalReciprocal (interval of type Interval a) -> Rational is
+  first matching case of interval:
+    when Interval payload then 1 / (payload.upper - payload.lower)
+  end case
+end function
+
+function nestedReciprocal
+  (reading of type record{inner of type record{value of type Nat}})
+  -> Rational is
+  1 / reading.inner.value
+end function
+
+law "|positive readings have an exact reciprocal| is
+  definition:
+    for all (value of type UInt8 where value > 0) =>
+      projectedReciprocal (Reading record{value = value}) must be 1 / value
+    end
+  end
+
+  expect projectedReciprocal (Reading record{value = value}) = expected
+  in table (value, expected):
+    row 1, 1
+    row 2, rational(1, 2)
+    row 255, rational(1, 255)
+  end
+end
+
+law "|matching and projection preserve the same stored restriction| is
+  definition:
+    for all (value of type UInt8 where value > 0) =>
+      matchedReciprocal (Reading record{value = value}) must be
+        projectedReciprocal (Reading record{value = value})
+    end
+  end
+end
+
+law "|ordinary records preserve their positive field restriction| is
+  definition:
+    for all (value of type UInt8 where value > 0) =>
+      plainReciprocal record{value = value} must be 1 / value
+    end
+  end
+
+  expect plainReciprocal record{value = value} = expected
+  in table (value, expected):
+    row 1, 1
+    row 2, rational(1, 2)
+    row 255, rational(1, 255)
+  end
+end
+
+law "|intervals have a strictly positive width| is
+  definition:
+    for all
+      (lower of type UInt8 where lower < 4)
+      (upper of type UInt8 where upper > lower and upper <= 4) =>
+      intervalReciprocal (Interval record{upper = upper, lower = lower})
+        must be 1 / (upper - lower)
+    end
+  end
+
+  expect intervalReciprocal (Interval record{lower = lower, upper = upper})
+    = expected
+  in table (lower, upper, expected):
+    row 0, 1, 1
+    row 0, 4, rational(1, 4)
+    row 3, 4, 1
+  end
+end
+
+law "|nested positive whole numbers retain their domain| is
+  definition:
+    for all (value of type Nat where value <= 255) =>
+      nestedReciprocal record{inner = record{value = value}} must be 1 / value
+    end
+  end
+
+  expect nestedReciprocal record{inner = record{value = value}} = expected
+  in table (value, expected):
+    row 1, 1
+    row 2, rational(1, 2)
+    row 255, rational(1, 255)
+  end
+end

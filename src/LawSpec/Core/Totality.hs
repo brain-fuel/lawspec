@@ -706,10 +706,12 @@ dataBranches scope facts value branches = case known of
               candidate == tag, length parameters == length fields]
       in (local,siblingFacts (foldl (flip (assume True)) (payloadConstructorFacts (constructorFacts tracked tag fields) value tag fields) (conditions ++ projected)) tag fields,renamed)
 
+-- Use the common entailment path so a denominator receives the same admitted
+-- field domains, constructor predicates and checked-call guarantees as other
+-- obligations. The walk still audits the denominator itself independently.
 knownNonzero :: Facts -> Proof -> Bool
-knownNonzero facts expression = direct || case linear expression of
-  Just value -> R.prove 10000 (constraints facts) (R.Compare R.NotEqualTo value (R.constant 0)) == R.Proven
-  Nothing -> False
+knownNonzero facts expression = direct || entails facts
+  (ExactComparison NotEqual expression (Literal (SInteger "Integer" 0)))
   where
     direct = case expression of
       Integral value -> knownNonzero facts value

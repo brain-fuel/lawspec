@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: total
+@@ test/fixtures/canonical-refined-gadt-indices.lawspec
+<<<<<<<
+      where a = record{value of type (n of type UInt8 where n > 0)}
+=======
+      where a = record{value of type (n of type UInt8 where n >= 0)}
+>>>>>>>
