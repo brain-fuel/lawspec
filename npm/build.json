@@ -755,7 +755,7 @@
     "src/LawSpec/Code/JavaScript.hs": "20e9536ba253a43fbbca96a8c20c3fd7c87b8fcacc065b5c5f4a1741f321b843",
     "src/LawSpec/Collections.hs": "318c6e8a526015f84baa8b6ab01c3fc112acecd9754a22388874aeca035bb34f",
     "src/LawSpec/Common.hs": "a3610f7f2e50c32a6b304953eaad601311bfda4dcc5c49cf8555a845690e3864",
-    "src/LawSpec/Compile.hs": "da0238c0b9b306b1714f005570747951539a81ea3897ba61da1bcf3fc67f18b9",
+    "src/LawSpec/Compile.hs": "c48ac3ac24f6ad9ddc7ea5f0fa2f6a18ab5cbb5262deb1e8671fae3709485047",
     "src/LawSpec/Core.hs": "f2761b12a730ce80cb824389cf7618c75d5d5d89be418ad5f575d8d5b6c61de9",
     "src/LawSpec/Core/DefinitionContracts.hs": "62b3c10c29ff6abf3b89eb3b28e765c81f9fe57507207ff8a1b2dee4d0655b4b",
     "src/LawSpec/Core/Definitions.hs": "cbe7d4140dcd56a086c14f4fbe5f375927d00879ecd6b3623ab0d802517301f0",
@@ -981,7 +981,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "613280ad875b617f90fa8611fb0283a806d0bebfafa1bda0607ac0bb213b0b0c",
+    "npm/core.wasm": "c44944a8ff76b7d7fe64759d10329a8bcb71afc789211190365400e499f304b1",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "2f096a7317ee46006605a2007f3583d47d0fb478c0498a6b8d86d017dc574034",
     "npm/index.d.ts": "7f0fccf25f8698aa5ff7aef615332ab957235f03232ca944f85fdaed01d11f3a"

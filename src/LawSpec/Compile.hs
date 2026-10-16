@@ -452,7 +452,7 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
     pure (unitName u,filter (\(definition,_,_,_)->functionName definition `elem` originalNames) templates)
   let table = M.fromList [((unitName u,lawName l),l) | u <- us, l <- laws u]
       signatures u = [ (functionName d, functionArguments d, functionResult d, functionRequirements d) | d <- functionDefinitions u ]
-      expansionKey u l = key (show (canonical, bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))
+      expansionKey u l = key (show (sourceProfile (unitName u), bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))
       typedChecked environment expression = do
         (tree, requirements) <- typedExpressionWithSchemesContext sourceTypes dataTypes bits environment expression
         forM_ requirements $ \requirement -> unless (satisfiedWithContext sourceTypes dataTypes bits [] requirement)
@@ -469,7 +469,10 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
           -- A law's resources are values its body may use, like inputs it
           -- does not quantify over.
           env = M.union (monoEnvironment ([(n,rigid t) | (n,t) <- parameters l] ++ lawResources l)) (definitionEnvironment u)
-      (bs0,body0,tr,argumentChecks0) <- (if canonical then expandCanonical else expand)
+      -- Compiler-provided versioned sources are parsed in their own profile.
+      -- Their reusable templates keep that profile too; applying one in a
+      -- canonical caller still expands the caller with canonical semantics.
+      (bs0,body0,tr,argumentChecks0) <- (if sourceProfile (unitName u) then expandCanonical else expand)
         (map functionName (functionDefinitions u)) table (unitName u) env [] l (map (Var . fst) (parameters l))
       bs <- mapM (\i -> do ps <- mapM resolveExpr (inputRefinements i); pure i{inputRefinements=ps}) bs0
       body <- resolveAssertion body0
@@ -528,7 +531,7 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
         pure ex{bindings=bs',expectations=checks'}
       let resolvedInputs = [inp{inputRefinements=map (mapExprTypes resolveKnown) (inputRefinements inp)} | inp <- checkedInputs]
           resolveKnown t = t
-      pure (Expanded (unitName u) (lawName l) resolvedInputs a b gs body tr l{examples=normalized} ir (if take 9 (lawName l) == "contract " then "contract" else "law") settings (map (planDomain [(inputId i,inputType i) | i <- resolvedInputs]) resolvedInputs) argumentChecks (if canonical then UniversalDomain else NonemptyDomain))
+      pure (Expanded (unitName u) (lawName l) resolvedInputs a b gs body tr l{examples=normalized} ir (if take 9 (lawName l) == "contract " then "contract" else "law") settings (map (planDomain [(inputId i,inputType i) | i <- resolvedInputs]) resolvedInputs) argumentChecks (if sourceProfile (unitName u) then UniversalDomain else NonemptyDomain))
       ) (withSourceContext sourceTypes (withDataDeclarations dataTypes (initialState bits)))
   mapM_ (validateContracts sourceTypes dataTypes bits) us
   witnessed <- prepareHarnessWitnesses (filter ((/= "prelude") . unitName) us)

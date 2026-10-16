@@ -46,22 +46,34 @@ export async function migrationReport(compiler, config, input) {
     payloadComparison=compared.migrationComparison??{status:'unavailable',
       reason:'The compiler did not admit both inputs for payload comparison.',diagnostics:compared.diagnostics};
   }
+  const correspondence={...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,payloadComparison.executableTransport),
+    payloads:payloadComparison};
+  const pending=[
+    ['program','Complete checked Core correspondence has not been established.'],
+    ['definitionPlane','Checked definition and contract correspondence has not been established.'],
+    ['lawBodies','Complete policy-erased Core correspondence has not been established.'],
+    ['sourceTemplates','Complete checked source-template correspondence has not been established.'],
+    ['nativeBindings','Native constructor, field and representation bindings require project-wide correspondence.'],
+    ['generatedBehavior','Generated plans and native behavior require target validation.'],
+  ];
+  const domainPending=correspondence.domainPolicies.status!=='matched'||
+    correspondence.sourceTemplates.domainPolicies?.status==='not-established';
   return {
     from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: [],
     proposedConfiguration: { ...config, version: 2, languageProfile: '1.0-rc.1', verification: { layers: [...legacyLawLayers] } },
     baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax,
       coreSnapshot:syntax.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'} },
     sourcePreview,
-    correspondence:{...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,payloadComparison.executableTransport),
-      payloads:payloadComparison},
+    correspondence,
     domainPolicyChanges: laws.map(law => ({law:law.id,from:law.inputDomain,to:'universal',
-      requirement:'Establish domain correspondence, including empty and dependent domains, before validating this migration.'})),
+      requirement:'Preserve domain correspondence, including empty and dependent domains, when validating this migration.'})),
     constructorChanges: payloads,
     nativeBindings: config.targets.map(target => ({ target: target.language, bindings: target.nativeBindings ?? null })),
-    blockers: ['Source and native binding transformations have not yet passed project-wide semantic and generated-behavior correspondence checks.',
-      ...(laws.length ? ['Legacy nonempty input-domain handling and canonical universal quantification require explicit correspondence checks; no empty-domain equivalence is assumed.'] : []),
+    blockers: [...pending.filter(([name])=>correspondence[name].status!=='matched').map(([,reason])=>reason),
+      ...(domainPending ? ['Legacy nonempty input-domain handling and canonical universal quantification require explicit correspondence checks; no empty-domain equivalence is assumed.'] : []),
       ...(sourcePreview.canonicalCheck.status==='rejected' ? ['The partial preview does not yet pass canonical compilation; inspect sourcePreview.canonicalCheck.diagnostics.'] : []),
-      ...sourcePreview.diagnostics.map(diagnostic => 'Source preview unavailable: ' + diagnostic.message)],
+      ...sourcePreview.diagnostics.map(diagnostic => 'Source preview unavailable: ' + diagnostic.message),
+      'Validated project-wide writing has not been implemented.'],
     filesWritten: [],
   };
 }

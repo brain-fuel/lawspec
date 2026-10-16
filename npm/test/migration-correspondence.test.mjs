@@ -19,7 +19,7 @@ const domain={comparisonId:'unit::law::same',domainDigest:'a'.repeat(64),inputCo
   witness:[{binder:'unit::law::same::bound::0',value:{type:'Bool',value:false}}]};
 const domainSnapshot=entry=>({status:'available',version:1,algorithm:'sha256',machineBits:64,lawBodiesEvaluated:false,domains:[entry]});
 
-test('verified inhabited input domains justify only the changed population policy',()=>{
+test('matching complete Core bodies and verified domains establish Core correspondence without verifying laws',()=>{
   const before={...snapshot,inputDomains:domainSnapshot(domain)};
   const after={...snapshot,programDigest:'b'.repeat(64),domainPolicies:[{comparisonId:'unit::law::same',policy:'universal'}],
     inputDomains:domainSnapshot(domain)};
@@ -27,7 +27,8 @@ test('verified inhabited input domains justify only the changed population polic
   assert.equal(compared.domainPolicies.status,'matched');
   assert.equal(compared.domainPolicies.domains[0].basis,'matching-domain-dependencies-and-verified-input-witnesses');
   assert.equal(compared.domainPolicies.lawVerification,'not-established-by-domain-evidence');
-  assert.equal(compared.program.status,'not-established');
+  assert.equal(compared.program.status,'matched');
+  assert.equal(compared.program.basis,'matching-policy-erased-complete-Core-and-verified-input-domains');
   assert.equal(compared.status,'not-established');
 });
 
@@ -179,7 +180,7 @@ test('actual verified input witnesses keep populated policy correspondence separ
   assert.equal(report.correspondence.lawBodies.status,'matched');
   assert.equal(report.correspondence.domainPolicies.status,'matched');
   assert.equal(report.correspondence.domainPolicies.lawVerification,'not-established-by-domain-evidence');
-  assert.equal(report.correspondence.program.status,'not-established');
+  assert.equal(report.correspondence.program.status,'matched');
   assert.deepEqual(report.correspondence.domainPolicies.before,[{comparisonId:'domain::law::same',policy:'nonempty'}]);
   assert.deepEqual(report.correspondence.domainPolicies.after,[{comparisonId:'domain::law::same',policy:'universal'}]);
   assert.equal(report.baseline.coreSnapshot.inputDomains.domains[0].status,'inhabited');
@@ -204,12 +205,13 @@ test('actual nominal restrictions and GADT equations participate in full-Core fi
   }
 });
 
-test('Chapter 6 retains raw shape differences and establishes transported concrete input domains at both widths',async()=>{
+test('Chapter 6 retains raw shape differences while establishing transported Core and input domains at both widths',async()=>{
   const content=await readFile(new URL('../../test/fixtures/migration-chap06-0.24.lawspec',import.meta.url),'utf8');
   for(const machineBits of [32,64]) {
   const report=await migrationReport(compiler,{version:1,targets:[]},{machineBits,sources:[{path:'chap06.lawspec',content}]});
   assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
-  assert.equal(report.correspondence.program.status,'not-established');
+  assert.equal(report.correspondence.program.status,'matched');
+  assert.equal(report.correspondence.program.basis,'matching-complete-Core-after-validated-payload-transport-and-input-domain-correspondence');
   assert.equal(report.correspondence.nativeBindings.status,'not-established');
   assert.deepEqual(report.correspondence.differences.dataTypes.changed,['nand2tetris.chap06::type::Predefined','nand2tetris.chap06::type::Line']);
   assert.equal(report.correspondence.differences.dataTypes.added.length,1);
@@ -390,9 +392,13 @@ test('actual reusable source domains report uniform, dependent and generic limit
     }
     const compared=templateComparison(a,b);
     assert.equal(compared.domainPolicies.domains.find(row=>row.comparisonId==='uniform::law::domain').status,'matched');
-    // Generic prelude laws remain visible; no blanket assumption of inhabitance.
-    assert.equal(compared.status,'not-established');
-    assert.ok(compared.domainPolicies.domains.some(row=>row.status==='not-established'));
+    // Versioned prelude policies are unchanged. Their unsupported domains
+    // remain visible without requiring or assuming a uniform inhabitant.
+    assert.equal(compared.status,'matched');
+    assert.ok(a.inputDomains.domains.some(row=>row.comparisonId.startsWith('prelude::law::')&&row.status==='unsupported'));
+    assert.ok(compared.domainPolicies.domains.every(row=>row.status==='matched'));
+    assert.deepEqual(a.domainPolicies.filter(row=>row.comparisonId.startsWith('prelude::law::')),
+      b.domainPolicies.filter(row=>row.comparisonId.startsWith('prelude::law::')));
     assert.equal(old.migrationSemantics.domainPolicies.length,0);
     for(const [content,expected] of [
       [newSource.replace('(operation :: Bool -> Bool)','(required :: Bool)').replace('(value :: Bool)','(value :: Bool where required)').replace('operation value must be value','true'),'unsupported'],

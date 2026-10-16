@@ -104,7 +104,9 @@ async function migrate(sources,machineBits=64) {
   }
   assert.equal(report.validated,false);
   assert.equal(report.domainPolicyChanges.length,before.laws.length);
-  if (before.laws.length) assert.ok(report.blockers.some(blocker=>blocker.includes('empty-domain')));
+  const domainPending=report.correspondence.domainPolicies.status!=='matched'||
+    report.correspondence.sourceTemplates.domainPolicies?.status==='not-established';
+  assert.equal(report.blockers.some(blocker=>blocker.includes('empty-domain')),domainPending);
   assert.deepEqual(report.filesWritten,[]);
   return {before,after,report,sources:migrated};
 }

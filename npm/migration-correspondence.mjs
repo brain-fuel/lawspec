@@ -92,18 +92,21 @@ function compareDomainPolicies(before,after) {
     before:original,after:migrated,domains:rows,lawVerification:'not-established-by-domain-evidence'};
 }
 
-function compareTransportedDomains(before,after,transport,direct) {
-  if(direct.status==='matched'||!transport) return direct;
+function anchoredTransport(before,after,transport) {
+  if(!transport) return false;
   // Bind the comparison copy to both actual admitted programs. A shape match,
   // a body match, or an unanchored witness is not an input-domain certificate.
-  const anchored=['matched','not-established'].includes(transport.status)&&transport.version===1&&transport.algorithm==='sha256'&&
+  return ['matched','not-established'].includes(transport.status)&&transport.version===1&&transport.algorithm==='sha256'&&
     transport.machineBits===before.machineBits&&transport.copyValidated===true&&transport.originalsUnchanged===true&&
     transport.sourceBeforeDigest===before.programDigest&&available(transport.before)&&available(transport.after)&&
     transport.before.machineBits===before.machineBits&&transport.after.machineBits===after.machineBits&&
     transport.after.programDigest===after.programDigest&&
     JSON.stringify(transport.before.domainPolicies)===JSON.stringify(before.domainPolicies)&&
     JSON.stringify(transport.after.domainPolicies)===JSON.stringify(after.domainPolicies);
-  if(!anchored) return direct;
+}
+
+function compareTransportedDomains(before,after,transport,direct) {
+  if(direct.status==='matched'||!anchoredTransport(before,after,transport)) return direct;
   const compared=compareDomainPolicies(transport.before,transport.after);
   const candidates=new Map((compared.domains??[]).map(row=>[row.comparisonId,row]));
   const domains=direct.domains.map(row=>{
@@ -118,6 +121,20 @@ function compareTransportedDomains(before,after,transport,direct) {
     ...(matched?{basis:'verified-input-domain-correspondence',reason:undefined}:{}),
     transport:{status:'available',sourceBeforeDigest:transport.sourceBeforeDigest,
       copyValidated:true,originalsUnchanged:true}};
+}
+
+// A domain certificate alone cannot justify a body transformation. Require
+// the compiler's complete validated-copy fingerprints and their pair claims,
+// anchored to both admitted programs. The comparison copy is never executed.
+function checkedTransportBodies(before,after,transport) {
+  if(!anchoredTransport(before,after,transport)||transport.status!=='matched') return false;
+  const pair=(name,field,equal)=>{
+    const claim=transport[name],old=transport.before[field],made=transport.after[field];
+    return claim?.before===old&&claim?.after===made&&
+      claim.status===(old===made?'matched':'not-established')&&(!equal||old===made);
+  };
+  return pair('program','programDigest',false)&&pair('definitionPlane','definitionPlaneDigest',true)&&
+    pair('lawBodies','lawBodiesDigest',true);
 }
 
 export function compareMigrationSnapshots(before,after,transport) {
@@ -136,8 +153,23 @@ export function compareMigrationSnapshots(before,after,transport) {
   }
   const checks=Object.fromEntries(components.map(([field,component])=>[component,
     before[field]===after[field]?{status:'matched',basis:'matching-full-Core-fingerprints'}:incomplete('The normalized '+component+' fingerprints differ; correspondence has not been established.')]));
+  const domainPolicies=compareTransportedDomains(before,after,transport,compareDomainPolicies(before,after));
+  const transported=checkedTransportBodies(before,after,transport);
+  if(transported) for(const component of ['definitionPlane','lawBodies']) {
+    if(checks[component].status!=='matched') checks[component]={status:'matched',
+      basis:'matching-complete-Core-fingerprints-after-validated-payload-transport'};
+  }
+  // lawBodiesDigest covers the entire normalized Core, with only root input
+  // population policies erased. Equal bodies plus verified policy equivalence
+  // establish Core correspondence; they do not establish any law's truth.
+  if(checks.program.status!=='matched'&&checks.definitionPlane.status==='matched'&&
+      checks.lawBodies.status==='matched'&&domainPolicies.status==='matched') {
+    checks.program={status:'matched',basis:transported?
+      'matching-complete-Core-after-validated-payload-transport-and-input-domain-correspondence':
+      'matching-policy-erased-complete-Core-and-verified-input-domains'};
+  }
   return {status:'not-established',scope:'checked concrete Core',...checks,
     differences:differences(before,after,parts),
     lawBodies:{...checks.lawBodies,includesDomainPolicy:false},
-    domainPolicies:compareTransportedDomains(before,after,transport,compareDomainPolicies(before,after)),...unproved};
+    domainPolicies,...unproved};
 }

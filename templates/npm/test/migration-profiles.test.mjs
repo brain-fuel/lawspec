@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {createCompiler} from '../api.mjs';
+import {migrationReport} from '../migrate.mjs';
+
+const compiler=await createCompiler();
+const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]}};
+const policies=snapshot=>snapshot.sourceTemplates.domainPolicies;
+
+test('migration keeps versioned dependency templates while comparing monomorphic authored sources',async()=>{
+  for(const machineBits of [32,64])for(const law of [false,true]){
+    const sources=[{path:'migration.lawspec',content:'unit migration\n'+
+      'definition same (value :: Bool) :: Bool is value end\n'+
+      (law?'law `kept` is definition is `for all` (value :: Bool) . same value = value end end':'')}];
+    const report=await migrationReport(compiler,{version:1,targets:[]},{sources,machineBits});
+    assert.deepEqual(report.diagnostics,[]);
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
+    assert.equal(report.correspondence.sourceTemplates.status,'matched',JSON.stringify(report.correspondence.sourceTemplates));
+    assert.equal(report.correspondence.program.status,'matched');
+    assert.ok(!report.blockers.some(reason=>reason.includes('empty-domain')||reason.includes('source-template')));
+    assert.ok(report.blockers.some(reason=>reason.includes('Native constructor')));
+    assert.ok(report.blockers.some(reason=>reason.includes('native behavior')));
+    assert.ok(report.blockers.some(reason=>reason.includes('writing has not been implemented')));
+    const before=report.baseline.coreSnapshot,after=report.sourcePreview.canonicalCheck.coreSnapshot;
+    const dependency=row=>row.comparisonId.startsWith('prelude::law::');
+    assert.ok(policies(before).some(dependency));
+    assert.deepEqual(policies(before).filter(dependency),policies(after).filter(dependency));
+    assert.ok(policies(after).filter(dependency).every(row=>row.policy==='nonempty'));
+    if(law){
+      assert.equal(policies(before).find(row=>row.comparisonId==='migration::law::kept').policy,'nonempty');
+      assert.equal(policies(after).find(row=>row.comparisonId==='migration::law::kept').policy,'universal');
+    }
+    assert.equal(report.validated,false,'Template agreement does not validate native bindings or generated behavior');
+    assert.deepEqual(report.filesWritten,[]);
+  }
+});
+
+test('an authored generic population-policy change remains unestablished',async()=>{
+  for(const machineBits of [32,64]){
+    const sources=[{path:'generic.lawspec',content:'unit generic\n'+
+      'law `kept` (operation :: a -> a) requires Eq a is '+
+      'definition is `for all` (value :: a) . operation value = value end end'}];
+    const report=await migrationReport(compiler,{version:1,targets:[]},{sources,machineBits});
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
+    assert.equal(report.correspondence.sourceTemplates.lawBodies.status,'matched');
+    assert.equal(report.correspondence.sourceTemplates.domainPolicies.status,'not-established');
+    assert.equal(report.correspondence.sourceTemplates.status,'not-established');
+    assert.ok(report.blockers.some(reason=>reason.includes('empty-domain')));
+    assert.ok(report.correspondence.sourceTemplates.domainPolicies.domains.some(row=>
+      row.comparisonId==='generic::law::kept'&&row.status==='not-established'));
+    assert.equal(report.validated,false);
+  }
+});
+
+test('canonical callers of the versioned prelude retain universal empty-domain semantics',async()=>{
+  for(const machineBits of [32,64])for(const [declaration,type] of [
+    ['','Bool'],['type Empty is one of end type\n','Empty']]){
+    const result=await compiler.check({...options,machineBits,migrationSnapshot:true,sources:[{
+      path:'caller.lawspec',content:'unit caller\n'+declaration+
+        `operation :: ${type} -> ${type}\nlaw kept is definition: apply law prelude."|idempotent| operation end end`,
+    }]});
+    assert.deepEqual(result.diagnostics,[]);
+    assert.equal(result.laws.find(law=>law.owner==='caller').inputDomain,'universal');
+    assert.equal(result.evidence.find(row=>row.stage==='law'&&row.owner==='caller').status,'not-verified');
+    assert.ok(policies(result.migrationSemantics).filter(row=>row.comparisonId.startsWith('prelude::law::'))
+      .every(row=>row.policy==='nonempty'));
+  }
+});

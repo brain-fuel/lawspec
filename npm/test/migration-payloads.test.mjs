@@ -80,12 +80,14 @@ test('both comparison inputs retain mandatory validation and explicit schema/pro
   assert.equal(ordinary.migrationComparison,undefined);
 });
 
-test('the read-only migration report includes payload shapes without enabling writing or overriding behavior differences',async()=>{
+test('the read-only report establishes checked payload Core while leaving native behavior and writing unvalidated',async()=>{
   const report=await migrationReport(compiler,{version:1,targets:[]},{sources:sources(old)});
   assert.deepEqual(report.diagnostics,[]);
   assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
   assert.equal(report.correspondence.payloads.payloadShapes.status,'matched');
-  assert.equal(report.correspondence.program.status,'not-established');
+  assert.equal(report.correspondence.program.status,'matched');
+  assert.equal(report.correspondence.nativeBindings.status,'not-established');
+  assert.equal(report.correspondence.generatedBehavior.status,'not-established');
   assert.equal(report.correspondence.status,'not-established');
   assert.equal(report.validated,false);
   assert.deepEqual(report.filesWritten,[]);

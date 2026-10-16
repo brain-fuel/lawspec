@@ -14,6 +14,10 @@ capture sources = either fail pure (eitherDecode (dispatch (encode (object
   ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
    "method" .= ("migrationBaseline"::String),"from" .= ("0.24"::String),
    "verification" .= object ["layers" .= ([]::[String])],"sources" .= sources]))) :: Either String Value)
+canonicalCapture sources = either fail pure (eitherDecode (dispatch (encode (object
+  ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+   "migrationSnapshot" .= True,"verification" .= object ["layers" .= ([]::[String])],
+   "sources" .= sources]))) :: Either String Value)
 source body = [Source "templates.lawspec" ("unit templates\n" ++ body)]
 core result = field "migrationSemantics" result
 templates result = core result >>= field "sourceTemplates"
@@ -28,6 +32,41 @@ rows key result = case templates result >>= field key of
   _ -> []
 
 test_migrationTemplates = describe "checked source template migration capture" $ do
+  it "keeps compiler-provided template policies stable for a monomorphic project with no laws" $ do
+    before <- accepted (source "definition same (value :: Bool) :: Bool is value end")
+    after <- canonicalCapture (source "function same (value :: Bool) -> Bool is value end function")
+    field "diagnostics" after `shouldBe` Just (Array mempty)
+    mapM_ (\key -> digest key before `shouldBe` digest key after)
+      ["declarationsDigest","definitionTemplatesDigest","lawTemplatesDigest","lawBodiesDigest"]
+    let policies result = maybe [] (\value -> case field "domainPolicies" value of
+          Just (Array entries) -> V.toList entries
+          _ -> []) (templates result)
+    policies before `shouldSatisfy` (not . null)
+    policies before `shouldBe` policies after
+    map (field "policy") (policies after) `shouldSatisfy` all (== Just (String "nonempty"))
+  it "changes the authored law policy while retaining every versioned dependency policy" $ do
+    before <- accepted (source "law `kept` is definition is `for all` (value :: Bool) . value = value end end")
+    after <- canonicalCapture (source "law \"|kept| is definition: for all (value :: Bool) => value = value end end end")
+    field "diagnostics" after `shouldBe` Just (Array mempty)
+    let policies result = case templates result >>= field "domainPolicies" of
+          Just (Array entries) -> V.toList entries
+          _ -> []
+        authored row = field "comparisonId" row == Just (String "templates::law::kept")
+    map (field "policy") (filter authored (policies before)) `shouldBe` [Just (String "nonempty")]
+    map (field "policy") (filter authored (policies after)) `shouldBe` [Just (String "universal")]
+    filter (not . authored) (policies before) `shouldBe` filter (not . authored) (policies after)
+    digest "lawBodiesDigest" before `shouldBe` digest "lawBodiesDigest" after
+    digest "lawTemplatesDigest" before `shouldNotBe` digest "lawTemplatesDigest" after
+  it "keeps canonical prelude applications universal even when their concrete input type is empty" $ do
+    mapM_ (\(declaration,ty) -> do
+      result <- canonicalCapture (source (declaration ++ "operation :: " ++ ty ++ " -> " ++ ty ++ "\n" ++
+        "law kept is definition: apply law prelude.\"|idempotent| operation end end"))
+      field "diagnostics" result `shouldBe` Just (Array mempty)
+      let properties = case field "laws" result of
+            Just (Array entries) -> filter (\row -> field "owner" row == Just (String "templates")) (V.toList entries)
+            _ -> []
+      map (field "inputDomain") properties `shouldBe` [Just (String "universal")])
+      [("","Bool"),("type Empty is one of end type\n","Empty")]
   it "matches the same unused generic definition across the explicit language profiles" $ do
     before <- accepted (source "definition same (value :: a) :: a is value end")
     after <- either fail pure (eitherDecode (dispatch (encode (object

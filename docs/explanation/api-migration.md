@@ -121,11 +121,20 @@ definition, contract and data-type comparison identities. A matching fingerprint
 covers that concrete Core projection only. Checked source templates,
 native bindings and generated behavior remain separate gates;
 the overall result remains `not-established` while native bindings and generated
-behavior lack correspondence evidence. The law-body projection explicitly
-excludes input-domain policy and cannot justify changing that policy. Differing
-fingerprints report unestablished correspondence rather than a proof of
-inequivalence. Chapter 6 currently exposes real payload-shape changes in this
-comparison; the compiler does not silently erase its nominal boundaries.
+behavior lack correspondence evidence. The law-body fingerprint covers the
+complete Core with only root population policies erased. Matching that body
+and independently establishing the input-domain correspondence can establish
+Core correspondence. A body match alone cannot justify a policy change.
+
+When a payload representation changes, the compiler must supply an admitted
+comparison copy anchored to both actual programs. Its definition, body and
+whole-program fingerprint pairs must be consistent. Verified domain evidence
+then accounts for changed population policies. This establishes correspondence
+within the checked Core under the recorded value transport; native adapters
+must separately respect that transport. Chapter 6 retains its raw shape and
+definition differences while its transported concrete Core corresponds.
+Missing or inconsistent certificates, changed bodies and unestablished domains
+remain explicit. None of these matches establishes a law's truth.
 
 Schema-5 clients may request the same `migrationSemantics` metadata with
 `migrationSnapshot: true`. Explicit legacy `migrationBaseline` requests include
@@ -144,8 +153,12 @@ template cache has a bounded node budget.
 `correspondence.sourceTemplates` compares declaration, typed-definition and
 expanded-law fingerprints, lists changed unit/definition/law identities, and
 keeps actual law-domain policies separate from the projection excluding those
-policies. This includes unused versioned prelude laws; their policy changes do
-not disappear merely because no concrete test instantiates them. Literal
+policies. This includes unused versioned prelude laws. Compiler-provided
+templates retain the language profile in which their versioned source was
+parsed, including its population policy. Applying one in a canonical caller
+still gives the caller universal semantics. Unchanged dependency policies can
+correspond while their generic input domains remain explicitly unsupported.
+Changed authored policies still require the independent evidence below. Literal
 values, capability requirements, effects, refinements, parameter relationships
 and nonempty effect annotations remain. Comments and coordinates are excluded.
 Explicit empty effect rows on checked pure definitions agree with inferred
@@ -165,9 +178,9 @@ remain explicit blockers. Matching domain dependencies and verified uniform
 input witnesses can justify an individual population-policy change; the full
 policy-erased template must still match before its laws correspond. Complete
 empty domains, bounded misses and unavailable searches cannot justify the
-change. Unused generic prelude laws remain visible, so one matched concrete or
-reusable domain does not clear the entire source-template gate. The migration
-writer remains unvalidated.
+change. Every unused authored reusable law remains visible, so one matched
+concrete or reusable domain does not clear the entire source-template gate.
+The migration writer remains unvalidated.
 
 `domainPolicyChanges` records legacy nonempty input-domain handling versus
 canonical universal quantification. Empty and dependent domains require

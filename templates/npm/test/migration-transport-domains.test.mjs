@@ -17,12 +17,50 @@ const transport={status:'matched',version:1,algorithm:'sha256',machineBits:64,co
   after:{...after,inputDomains:facts(domain)}};
 const policy=(value=transport)=>compareMigrationSnapshots(before,after,value).domainPolicies;
 
-test('anchored transport evidence clears only the concrete input policy and labels witness representation',()=>{
+const changedBefore={...before,definitionPlaneDigest:'c'.repeat(64),lawBodiesDigest:'d'.repeat(64)};
+const bodyCertificate=()=>({...transport,
+  program:{status:'not-established',before:transport.before.programDigest,after:transport.after.programDigest},
+  definitionPlane:{status:'matched',before:transport.before.definitionPlaneDigest,after:transport.after.definitionPlaneDigest},
+  lawBodies:{status:'matched',before:transport.before.lawBodiesDigest,after:transport.after.lawBodiesDigest}});
+
+test('complete validated-copy body and domain certificates establish Core correspondence only',()=>{
+  const compared=compareMigrationSnapshots(changedBefore,after,bodyCertificate());
+  for(const name of ['program','definitionPlane','lawBodies','domainPolicies']) assert.equal(compared[name].status,'matched');
+  assert.equal(compared.program.basis,'matching-complete-Core-after-validated-payload-transport-and-input-domain-correspondence');
+  for(const name of ['sourceTemplates','nativeBindings','generatedBehavior']) assert.equal(compared[name].status,'not-established');
+  assert.equal(compared.status,'not-established');
+  assert.equal(compared.domainPolicies.lawVerification,'not-established-by-domain-evidence');
+});
+
+test('input-domain evidence alone cannot clear changed complete-Core bodies',()=>{
+  const compared=compareMigrationSnapshots(changedBefore,after,transport);
+  assert.equal(compared.domainPolicies.status,'matched');
+  for(const name of ['program','definitionPlane','lawBodies']) assert.equal(compared[name].status,'not-established');
+});
+
+test('missing, stale or inconsistent validated-copy body pairs cannot establish changed Core',()=>{
+  const certificate=bodyCertificate();
+  for(const invalid of [undefined,{...certificate,status:'not-established'},
+    {...certificate,copyValidated:false},{...certificate,sourceBeforeDigest:'e'.repeat(64)},
+    {...certificate,after:{...certificate.after,programDigest:'f'.repeat(64)}},
+    {...certificate,before:{...certificate.before,programDigest:'e'.repeat(64)}},
+    {...certificate,program:undefined},{...certificate,definitionPlane:undefined},{...certificate,lawBodies:undefined},
+    {...certificate,program:{...certificate.program,status:'matched'}},
+    {...certificate,definitionPlane:{...certificate.definitionPlane,before:'e'.repeat(64)}},
+    {...certificate,lawBodies:{...certificate.lawBodies,after:'e'.repeat(64)}},
+    {...certificate,lawBodies:{...certificate.lawBodies,status:'not-established'}},
+    {...certificate,after:{...certificate.after,inputDomains:{status:'unavailable'}}}]){
+    assert.equal(compareMigrationSnapshots(changedBefore,after,invalid).program.status,'not-established',JSON.stringify(invalid));
+  }
+});
+
+test('anchored input evidence pairs with already matching complete bodies without validating a migration',()=>{
   assert.equal(policy().status,'matched');
   assert.equal(policy().domains[0].valueRepresentation,'transported-before-and-canonical-after');
   assert.equal(policy().lawVerification,'not-established-by-domain-evidence');
   const report=compareMigrationSnapshots(before,after,transport);
-  for(const key of ['status','program','sourceTemplates','nativeBindings','generatedBehavior']) {
+  assert.equal(report.program.status,'matched');
+  for(const key of ['status','sourceTemplates','nativeBindings','generatedBehavior']) {
     assert.equal(key==='status'?report.status:report[key].status,'not-established',key);
   }
 });
@@ -92,6 +130,9 @@ test('actual checked transport evaluates valid input tuples on both sides withou
   }
   assert.equal(compared.domainPolicies.status,'matched');
   assert.equal(compared.domainPolicies.domains[0].valueRepresentation,'transported-before-and-canonical-after');
+  assert.equal(compared.program.status,'matched');
+  assert.equal(compared.definitionPlane.status,'matched');
+  assert.equal(compared.lawBodies.status,'matched');
   assert.equal(compared.status,'not-established');
 });
 
@@ -100,14 +141,17 @@ test('actual changed transitive predicates and complete empty domains remain une
     'function allowed (value :: Capsule) -> Bool is not value.value.last end function\n',' where allowed value');
   for(const side of ['before','after']) assert.equal(changed.transport[side].inputDomains.domains[0].status,'inhabited');
   assert.equal(changed.compared.domainPolicies.status,'not-established');
+  assert.equal(changed.compared.program.status,'not-established');
   const empty=await compare('','',' where false');
   for(const side of ['before','after']) assert.equal(empty.transport[side].inputDomains.domains[0].status,'empty');
   assert.equal(empty.compared.domainPolicies.status,'not-established');
+  assert.equal(empty.compared.program.status,'not-established');
 });
 
 test('input evidence for a false canonical law cannot establish its body or migration',async()=>{
   const {transport,compared}=await compare('','','','false');
   assert.equal(transport.lawBodies.status,'not-established');
   assert.equal(compared.domainPolicies.status,'matched');
+  assert.equal(compared.program.status,'not-established');
   assert.equal(compared.status,'not-established');
 });
