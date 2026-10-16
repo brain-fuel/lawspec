@@ -185,12 +185,18 @@ test('the preserved Chapter 6 baseline retains every law and example while previ
     assert.deepEqual(report.diagnostics,[]);
     assert.deepEqual(report.sourcePreview.diagnostics,[]);
     assert.equal(report.baseline.laws.length,23);
+    const nodes=report.baseline.sourceSyntax[0].nodes;
+    assert.equal(nodes.filter(node=>node.kind==='declaration.refinement').length,2);
+    assert.equal(nodes.filter(node=>node.kind==='table-row').length,65);
+    assert.equal(nodes.filter(node=>node.kind==='example').length,1);
     assert.equal(report.baseline.definitions.length,25);
     assert.equal(report.baseline.types.length,7);
     assert.equal(report.baseline.laws.reduce((count,law)=>count+law.examples.length,0),66);
     assert.equal(report.sourcePreview.sources.length,1);
     assert.equal((report.sourcePreview.sources[0].content.match(/Runs record\{/g)||[]).length,4);
-    assert.notEqual(report.sourcePreview.canonicalCheck.status,'unavailable');
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted',JSON.stringify(report.sourcePreview.canonicalCheck));
+    assert.equal(report.sourcePreview.canonicalCheck.intrinsicDefinitionChecks,true);
+    assert.equal(report.sourcePreview.canonicalCheck.lawVerification,'no-selected-checks');
     assert.equal(report.validated,false);
     assert.deepEqual(report.filesWritten,[]);
   }

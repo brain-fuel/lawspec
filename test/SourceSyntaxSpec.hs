@@ -93,11 +93,11 @@ test_sourceSyntax = describe "checked migration source syntax" $ do
         result = inventory sources
         bindings owner = case result of Right (_,_,syntax) -> concatMap syntaxBindings (filter ((== owner) . syntaxUnit) syntax); _ -> []
     fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
-    bindings "base" `shouldContain` [SyntaxBinding "type" "Pair" "base::type::Pair",SyntaxBinding "constructor" "Pair" "base::type::Pair::Pair"]
-    bindings "facade" `shouldContain` [SyntaxBinding "constructor" "original.Pair" "base::type::Pair::Pair"]
-    forM_ [SyntaxBinding "type" "exposed.Pair" "base::type::Pair",SyntaxBinding "constructor" "exposed.Pair" "base::type::Pair::Pair"] $ \binding ->
+    bindings "base" `shouldContain` [SyntaxBinding "type" "Pair" "base::type::Pair" Nothing,SyntaxBinding "constructor" "Pair" "base::type::Pair::Pair" Nothing]
+    bindings "facade" `shouldContain` [SyntaxBinding "constructor" "original.Pair" "base::type::Pair::Pair" Nothing]
+    forM_ [SyntaxBinding "type" "exposed.Pair" "base::type::Pair" Nothing,SyntaxBinding "constructor" "exposed.Pair" "base::type::Pair::Pair" Nothing] $ \binding ->
       bindings "use" `shouldContain` [binding]
-    bindings "use" `shouldContain` [SyntaxBinding "constructor" "Pair" "base::type::Pair::Pair"]
+    bindings "use" `shouldContain` [SyntaxBinding "constructor" "Pair" "base::type::Pair::Pair" Nothing]
     fmap (\(units,properties,_) -> (units,properties)) result `shouldBe` compileWithSettings 64 defaultGeneration sources
   it "distinguishes a local type from a same-spelled qualified imported type" $ do
     let sources =
@@ -106,26 +106,71 @@ test_sourceSyntax = describe "checked migration source syntax" $ do
         result = inventory sources
         bindings = case result of Right (_,_,syntax) -> concatMap syntaxBindings (filter ((== "local") . syntaxUnit) syntax); _ -> []
     fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
-    bindings `shouldContain` [SyntaxBinding "type" "Choice" "local::type::Choice",SyntaxBinding "type" "original.Choice" "base::type::Choice"]
-    bindings `shouldContain` [SyntaxBinding "constructor" "Local" "local::type::Choice::Local",SyntaxBinding "constructor" "original.First" "base::type::Choice::First"]
+    bindings `shouldContain` [SyntaxBinding "type" "Choice" "local::type::Choice" Nothing,SyntaxBinding "type" "original.Choice" "base::type::Choice" Nothing]
+    bindings `shouldContain` [SyntaxBinding "constructor" "Local" "local::type::Choice::Local" Nothing,SyntaxBinding "constructor" "original.First" "base::type::Choice::First" Nothing]
   it "distinguishes a shadowing refinement and a local collection type from built-in spellings" $ do
     let source = Source "shadow.lawspec" ("unit shadow\nrefinement BigUInt is UInt8 end\n" ++
           "type Set is Custom end\ndefinition identity (value :: BigUInt) :: BigUInt is value end\nf :: Set -> Set")
         result = inventory [source]
         bindings = case result of Right (_,_,syntax) -> concatMap syntaxBindings syntax; _ -> []
     fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
-    forM_ [SyntaxBinding "refinement" "BigUInt" "shadow::BigUInt",SyntaxBinding "type" "Set" "shadow::type::Set"] $ \binding ->
+    forM_ [SyntaxBinding "refinement" "BigUInt" "shadow::BigUInt" Nothing,SyntaxBinding "type" "Set" "shadow::type::Set" Nothing] $ \binding ->
       bindings `shouldContain` [binding]
-    bindings `shouldNotContain` [SyntaxBinding "type" "Set" "lawspec.collections::type::Set"]
+    bindings `shouldNotContain` [SyntaxBinding "type" "Set" "lawspec.collections::type::Set" Nothing]
   it "publishes deterministic namespace bindings separately from source-node spans" $ do
     case response "migrationBaseline" (Just "0.24") templates of
       Left message -> expectationFailure message
       Right value -> case field "sourceSyntax" value of
         Just (Array syntax) -> case toList syntax of
           [source] -> field "bindings" source `shouldBe` Just (toJSON
-            [SyntaxBinding "value" "identity" "templatesIdentity",SyntaxBinding "law" "same" "same (templates)"])
+            [SyntaxBinding "value" "identity" "templatesIdentity" (Just "templates::identity"),SyntaxBinding "law" "same" "same (templates)" Nothing])
           _ -> expectationFailure "expected one supplied source syntax inventory"
         _ -> expectationFailure "expected a checked source syntax inventory"
+  it "records imported value occurrences while excluding parameter, let, case and quantifier shadows" $ do
+    let source = Source "references.lawspec" $ unlines
+          [ "unit references"
+          , "import lawspec.collections as collections (setOf)"
+          , "type Flag is Flag value :: Bool end"
+          , "definition fromItems (items :: List Bool) :: Set Bool is setOf items end"
+          , "definition fromQualified (items :: List Bool) :: Set Bool is collections.setOf items end"
+          , "definition parameter (setOf :: Bool) :: Bool is setOf end"
+          , "definition local (value :: Bool) :: Bool is let setOf = value in setOf end"
+          , "definition branch (flag :: Flag) :: Bool is match flag with | Flag setOf -> setOf end end"
+          , "law `shadow` is definition is `for all` (setOf :: Bool) (next :: Bool where next == setOf) . next = setOf end end" ]
+        result = inventory [source]
+        references = case result of Right (_,_,syntax) -> concatMap syntaxReferences syntax; _ -> []
+        imported = [reference | reference <- references,referenceName reference `elem` ["setOf","collections.setOf"]]
+    fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
+    map referenceName imported `shouldBe` ["setOf","collections.setOf"]
+    map referenceTarget imported `shouldBe` replicate 2 "lawspecCollectionsSetOf"
+    map referenceDeclaration imported `shouldBe` replicate 2 (Just "lawspec.collections::setOf")
+    map (line . spanStart . referenceSpan) imported `shouldBe` [4,5]
+    fmap (\(units,properties,_) -> (units,properties)) result `shouldBe` compileWithSettings 64 defaultGeneration [source]
+  it "records actual import/export item ranges without treating documentary words as items" $ do
+    let sources =
+          [ Source "model.lawspec" "unit model\ntype Flag is Flag value :: Bool end"
+          , Source "facade.lawspec" "unit facade\n-- export fake\nimport model as original (Flag)\nexport original.Flag" ]
+        result = inventory sources
+    fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
+    names "import-item" (nodesOf result) `shouldBe` ["Flag"]
+    names "import-alias" (nodesOf result) `shouldBe` ["original"]
+    names "export-item" (nodesOf result) `shouldBe` ["original.Flag"]
+  it "retains source declaration identity through facades and distinguishes a same-spelled user function" $ do
+    let sources =
+          [ Source "model.lawspec" "unit model\ndefinition setOf (value :: Bool) :: List Bool is [value] end"
+          , Source "facade.lawspec" "unit facade\nimport model as original (setOf)\nexport setOf"
+          , Source "consumer.lawspec" ("unit consumer\nimport facade as custom\nimport lawspec.collections as collections (setOf)\n" ++
+              "definition customItems (value :: Bool) :: List Bool is custom.setOf value end\n" ++
+              "definition orderedItems (values :: List Bool) :: Set Bool is (setOf) values end") ]
+        result = inventory sources
+        references = case result of Right (_,_,syntax) -> concatMap syntaxReferences (filter ((== "consumer") . syntaxUnit) syntax); _ -> []
+        relevant = [reference | reference <- references,referenceName reference `elem` ["custom.setOf","setOf"]]
+    fmap (\(_,_,_) -> ()) result `shouldBe` Right ()
+    map referenceName relevant `shouldBe` ["custom.setOf","setOf"]
+    map referenceDeclaration relevant `shouldBe` [Just "model::setOf",Just "lawspec.collections::setOf"]
+    let bindings = case result of Right (_,_,syntax) -> concatMap syntaxBindings (filter ((== "consumer") . syntaxUnit) syntax); _ -> []
+    [bindingDeclaration binding | binding <- bindings,bindingName binding=="custom.setOf"] `shouldBe` [Just "model::setOf"]
+    fmap (\(units,properties,_) -> (units,properties)) result `shouldBe` compileWithSettings 64 defaultGeneration sources
   it "does not invent blocks from contextual function names or documentary words" $ do
     let source = Source "words.lawspec" $ unlines
           [ "unit words"

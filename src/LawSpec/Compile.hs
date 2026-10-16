@@ -8,7 +8,7 @@ module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWi
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
 import LawSpec.Model
-import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..))
+import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..),SyntaxReference(..))
 import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, inlineFieldDefinitions)
 import LawSpec.Capabilities (satisfiedWithContext)
 import qualified LawSpec.SourceContext as Source
@@ -529,8 +529,10 @@ compileWithParserInventory capture canonical referenceUnit visible bits settings
   -- absent from that sparse table is pure; an unknown declaration is not.
   let sourceRows = [(unitName u,[(functionName d,maybe [] id (lookup (functionName d) (abilityRows u)))
                         | d <- functionDefinitions u]) | u <- us]
-      annotate syntax = syntax{syntaxNodes=map (node (syntaxUnit syntax)) (syntaxNodes syntax),
-        syntaxBindings=maybe [] id (lookup (syntaxUnit syntax) sourceBindings)}
+      annotate syntax = let (bindings,references)=maybe ([],[]) id (lookup (syntaxUnit syntax) sourceBindings)
+        in syntax{syntaxNodes=map (node (syntaxUnit syntax)) (syntaxNodes syntax),syntaxBindings=bindings,
+          syntaxReferences=[reference | reference <- references,let Span start end=referenceSpan reference,
+            file start==syntaxPath syntax,file end==syntaxPath syntax]}
       node owner item
         | syntaxKind item == "declaration.definition", Just name <- syntaxName item,
           Just used <- lookup owner sourceRows >>= lookup name = item{syntaxUses=Just (map prettyType used)}

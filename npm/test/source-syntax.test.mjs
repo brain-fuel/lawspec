@@ -21,9 +21,10 @@ test('migration syntax inventories unused templates without inventing executable
     assert.equal(result.sourceSyntax.length,1);
     assert.equal(result.sourceSyntax[0].version,1);
     assert.deepEqual(result.sourceSyntax[0].bindings,[
-      {namespace:'value',name:'identity',target:'templatesIdentity'},
+      {namespace:'value',name:'identity',target:'templatesIdentity',declaration:'templates::identity'},
       {namespace:'law',name:'same',target:'same (templates)'},
     ]);
+    assert.deepEqual(result.sourceSyntax[0].references,[]);
     const nodes = result.sourceSyntax[0].nodes;
     assert.ok(nodes.some(node => node.kind === 'declaration.definition' && node.name === 'identity' && node.uses.length === 0));
     assert.ok(nodes.some(node => node.kind === 'declaration.law' && node.name === 'same'));

@@ -24,10 +24,10 @@ export async function migrationReport(compiler, config, input) {
   })));
   let sourcePreview;
   try {
-    sourcePreview = {scope:'checked computations, local records and alternative payloads, cases, laws, explicit universal scopes and expectation-first tables',
+    sourcePreview = {scope:'checked computations, nominal records and alternative payloads, ordered collection names, unsigned integers, cases, laws, explicit universal scopes and expectation-first tables',
       sources:planLegacySourceEdits(input.sources,baseline,syntax.sourceSyntax),diagnostics:[]};
   } catch (error) {
-    sourcePreview = {scope:'checked computations, local records and alternative payloads, cases, laws, explicit universal scopes and expectation-first tables',sources:[],
+    sourcePreview = {scope:'checked computations, nominal records and alternative payloads, ordered collection names, unsigned integers, cases, laws, explicit universal scopes and expectation-first tables',sources:[],
       diagnostics:[{code:'migration-source',message:error.message,at:null}]};
   }
   if (!sourcePreview.diagnostics.length) {

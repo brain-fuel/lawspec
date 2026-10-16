@@ -72,6 +72,34 @@ test_canonicalCollections = describe "canonical collections" $ do
     body "function inside (insideValue :: Integer) -> Bool is insideValue in [1, 2] end function" `shouldSatisfy` isRight
     body "law invalid is definition: 1 in [1] in [true] end end" `shouldSatisfy` isLeft
     body "law invalid is definition: 1 = in [1] end end" `shouldSatisfy` isLeft
+  it "ends let initializers at their own in while retaining membership in the body" $ do
+    let source = "unit collections\nlaw bindings is definition: for all (value :: Bool) => " ++
+          "let first = value in let second = not value in " ++
+          "first in [value] and second in [not value] and first != second end end end"
+    forM_ [32,64] $ \bits -> case compile bits source of
+      Left ds -> expectationFailure (show ds)
+      Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
+        (dischargeEvidenceWith (Verification [Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
+  it "scopes the in delimiter through nested initializers and delimited membership expressions" $ do
+    let initializers =
+          [ "(value in [value])"
+          , "let inner = value in (inner in [value])"
+          , "if value in [true] then true in [value] else false in [value] end if"
+          , "first matching case of value: when true then true in [value] otherwise false in [value] end case"
+          , "(record{present = value in [value]}).present"
+          , "prelude.any affirmative [value in [value]]"
+          , "prelude.any affirmative #S{value in [value]}" ]
+    forM_ initializers $ \initializer -> case body
+      ("function affirmative (value :: Bool) -> Bool is value end function\n" ++
+       "law binding is definition: for all (value :: Bool) => let present = " ++
+       initializer ++ " in present = true end end end") of
+      Left ds -> expectationFailure (initializer ++ ": " ++ show ds)
+      Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
+        (dischargeEvidenceWith (Verification [Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
+    body "law binding is definition: let outer = let inner = true in inner in outer = true end end" `shouldSatisfy` isRight
+  it "does not consume an enclosing let delimiter after closing a membership scope" $ do
+    body "law invalid is definition: let present = (true in [true]) in end end" `shouldSatisfy` isLeft
+    body "function unsafe (value :: Integer) -> Integer is let divisor = value in 1 / divisor end function" `shouldSatisfy` isLeft
   it "requires explicit map selections and keeps substring matching separate" $ do
     forM_ ["prelude.member 1 (prelude.keyValOf [Entry 1 2])",
       "prelude.any affirmative (prelude.keyValOf [Entry false 1])",

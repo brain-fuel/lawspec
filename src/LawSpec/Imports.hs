@@ -11,7 +11,7 @@
 module LawSpec.Imports (resolveImports, resolveImportsWithProfile, resolveImportsByProfile, resolveImportsByProfileWithBindings, importedDefinitionName) where
 
 import LawSpec.Model
-import LawSpec.SourceSyntax (SyntaxBinding(..))
+import LawSpec.SourceSyntax (SyntaxBinding(..),SyntaxReference(..))
 import LawSpec.Indexed (naturalRefinementName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, canonicalCollectionOperation, canonicalCollectionTypes, canonicalCollectionValues, internalConstructor, boundedArithmeticDefinitions)
 import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
@@ -24,6 +24,8 @@ import LawSpec.Scalar (isNumeric)
 import LawSpec.Railway (railwayExprWithShadowed)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
+import Control.Monad.Writer.Strict (WriterT,runWriterT,tell)
+import Control.Monad.Trans.Class (lift)
 import LawSpec.Common (importedDefinitionName)
 import Data.Functor.Identity (Identity(..))
 import Data.List (intercalate, isSuffixOf, isPrefixOf, nub, stripPrefix, isInfixOf)
@@ -37,7 +39,8 @@ data Names m = Names
   , onRefinement :: String -> m String, onValue :: String -> m String
   , onLaw :: String -> m String
   , contextualArticles :: Bool, restrictionExpression :: Bool
-  , declaredValue :: String -> Bool, declaredConstructor :: String -> Bool }
+  , declaredValue :: String -> Bool, declaredConstructor :: String -> Bool
+  , observeExpression :: Span -> [String] -> Expr -> Expr -> m () }
 
 data Kind = TypeName | ConstructorName | RefinementName | ValueName | LawName
   deriving (Eq, Ord, Show)
@@ -68,6 +71,7 @@ data Exports = Exports
   , exportOwners :: M.Map String [String]
   , exportRefinements :: M.Map String String
   , exportDefinitions :: M.Map String String
+  , exportDefinitionIdentities :: M.Map String String
   , exportLaws :: M.Map String String
   , exportConcreteLaws :: [String]
   , exportAdapters :: [String]
@@ -78,7 +82,7 @@ data Exports = Exports
   , exportOperations :: M.Map String String }
 
 data Resolved = Resolved { resolvedUnit :: Unit, resolvedExports :: Exports, portable :: Unit
-  , resolvedBindings :: [SyntaxBinding] }
+  , resolvedBindings :: [SyntaxBinding], resolvedReferences :: [SyntaxReference] }
 
 -- | visible importer imported: Nothing when the import is allowed, or the reason
 -- it is not (package boundaries).
@@ -91,23 +95,23 @@ resolveImportsWithProfile canonical = resolveImportsByProfile (const canonical)
 -- | A built-in provider retains its versioned semantics while a canonical
 -- importer gets canonical name resolution. Profiles come from the compiler.
 resolveImportsByProfile :: (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit, [Import])] -> Either [Diagnostic] [Unit]
-resolveImportsByProfile canonical visible units = map resolvedUnit <$> resolveUnits canonical visible units
+resolveImportsByProfile canonical visible units = map resolvedUnit <$> resolveUnits False canonical visible units
 
 resolveImportsByProfileWithBindings :: (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit,[Import])]
-  -> Either [Diagnostic] ([Unit],[(String,[SyntaxBinding])])
+  -> Either [Diagnostic] ([Unit],[(String,([SyntaxBinding],[SyntaxReference]))])
 resolveImportsByProfileWithBindings canonical visible units = do
-  resolved <- resolveUnits canonical visible units
-  pure (map resolvedUnit resolved,[(unitName (resolvedUnit unit),resolvedBindings unit) | unit <- resolved])
+  resolved <- resolveUnits True canonical visible units
+  pure (map resolvedUnit resolved,[(unitName (resolvedUnit unit),(resolvedBindings unit,resolvedReferences unit)) | unit <- resolved])
 
-resolveUnits :: (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit,[Import])] -> Either [Diagnostic] [Resolved]
-resolveUnits canonical visible units = mapM (\(u, _) -> table Lazy.! unitName u) units
+resolveUnits :: Bool -> (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit,[Import])] -> Either [Diagnostic] [Resolved]
+resolveUnits capture canonical visible units = mapM (\(u, _) -> table Lazy.! unitName u) units
   where
     -- Lazy in import order; LawSpec.Parser rejects import cycles.
-    table = Lazy.fromList [(unitName u, resolveUnit (canonical (unitName u)) visible table u imports) | (u, imports) <- units]
+    table = Lazy.fromList [(unitName u, resolveUnit capture (canonical (unitName u)) visible table u imports) | (u, imports) <- units]
 
-resolveUnit :: Bool -> (String -> String -> Maybe String) -> M.Map String (Either [Diagnostic] Resolved)
+resolveUnit :: Bool -> Bool -> (String -> String -> Maybe String) -> M.Map String (Either [Diagnostic] Resolved)
   -> Unit -> [Import] -> Either [Diagnostic] Resolved
-resolveUnit canonical visible table u allImports = do
+resolveUnit capture canonical visible table u allImports = do
   let imports = [i | i <- allImports, not (null (importUnit i))]
       exportLines = [i | i <- allImports, null (importUnit i)]
       at i = Just (spanStart (importSpan i))
@@ -132,6 +136,14 @@ resolveUnit canonical visible table u allImports = do
   forM_ (M.toList scope) $ \((_, name), targets) ->
     when (length (nub targets) > 1) $ Left [Diagnostic "import"
       (name ++ " is imported from more than one unit; use a qualified name") Nothing]
+  -- Project declaration identity through the exact same import rules. This
+  -- metadata never substitutes generated portable names for source identity.
+  identityScopes <- if capture then forM sources (\(i,source) -> importScope u i
+      ((resolvedExports source){exportDefinitions=exportDefinitionIdentities (resolvedExports source),exportOperations=M.empty}))
+    else pure []
+  let identityScope = M.unionsWith (++) [M.map pure (M.filterWithKey (\(kind,_) _ -> kind==ValueName) scoped) | scoped <- identityScopes]
+      uniqueIdentity values = case nub values of [value] -> Just value; _ -> Nothing
+      importedIdentity name = M.lookup (ValueName,name) identityScope >>= uniqueIdentity
   let aliasUnits = M.fromList [(importAlias i, (importUnit i, resolvedExports source)) | (i, source) <- sources]
       lookupName kind name = case M.lookup (kind, name) scope of
         Just (target : _) -> Right target
@@ -139,13 +151,19 @@ resolveUnit canonical visible table u allImports = do
           (alias, '.' : rest) | Just (unit, exports) <- M.lookup alias aliasUnits ->
             Left [Diagnostic "import" (missing unit exports kind rest) Nothing]
           _ -> Right name
-      names = Names (lookupName TypeName) (lookupName ConstructorName)
-        (lookupName RefinementName) (lookupName ValueName) (lookupName LawName)
+      names :: Monad m => (Either [Diagnostic] String -> m String) -> (Span -> [String] -> Expr -> Expr -> m ()) -> Names m
+      names liftName observe = Names (liftName . lookupName TypeName) (liftName . lookupName ConstructorName)
+        (liftName . lookupName RefinementName) (liftName . lookupName ValueName) (liftName . lookupName LawName)
         canonical False (\n -> n `elem` map fst (functions u) || n `elem` map functionName (functionDefinitions u) ||
           n `elem` operationNames u || M.member (ValueName,n) scope)
         (\n -> n `elem` [dataConstructorName c | d <- dataTypes u,c <- dataTypeConstructors d] ||
-          M.member (ConstructorName,n) scope)
-  renamed <- walkUnit names u
+          M.member (ConstructorName,n) scope) observe
+      observe :: Span -> [String] -> Expr -> Expr -> WriterT [SyntaxReference] (Either [Diagnostic]) ()
+      observe range bound before after = case (before,unlocated after) of
+        (Var name,Var target) | name `notElem` bound -> tell [SyntaxReference name target range Nothing]
+        _ -> pure ()
+  (renamed,references) <- if capture then runWriterT (walkUnit (names lift observe) u)
+    else (\unit -> (unit,[])) <$> walkUnit (names id (\_ _ _ _ -> pure ())) u
   -- Copy what the renamed unit uses, and what that uses in turn.
   let origins = [(resolvedUnit source, portable source) | (_, source) <- sources]
       -- Arithmetic on durations elaborates to the time unit's definitions
@@ -177,8 +195,9 @@ resolveUnit canonical visible table u allImports = do
           else concatMap resolvedAs [TypeName, ConstructorName, RefinementName, ValueName] ++
             [(RefinementName, base ++ "@index", t) | Just (t : _) <- [M.lookup (RefinementName, item ++ "@index") scope]]
     when (null found) (failAt i ("export names " ++ unquote item ++ ", which " ++ unitName u ++ " does not import"))
-    pure found
-  let reexported = concat reexports
+    pure (found,[(base,identity) | not law,any (\(kind,_,_) -> kind==ValueName) found,Just identity <- [importedIdentity item]])
+  let reexported = concatMap fst reexports
+      reexportIdentities = M.fromList (concatMap snd reexports)
       reexportNames = nub [n | (_, n, _) <- reexported]
   forM_ reexportNames $ \n -> when (length (nub [t | (k, m, t) <- reexported, m == n, k /= ConstructorName]) > 1)
     (Left [Diagnostic "import" ("export lists " ++ unquote n ++ " twice, from different units") Nothing])
@@ -241,6 +260,7 @@ resolveUnit canonical visible table u allImports = do
         , exportOwners = M.union (exportOwners own) (M.fromList [(n, ownersOf t) | (TypeName, n, t) <- reexported])
         , exportRefinements = M.union (exportRefinements own) (M.fromList [(n, t) | (RefinementName, n, t) <- reexported])
         , exportDefinitions = M.union (exportDefinitions own) (M.fromList [(n, t) | (ValueName, n, t) <- reexported])
+        , exportDefinitionIdentities = M.union (exportDefinitionIdentities own) reexportIdentities
         , exportLaws = M.union (exportLaws own) (M.fromList [(unquote n, t) | (LawName, n, t) <- reexported]) }
       -- Use the same checked import scope and the same local declaration
       -- exports as resolution itself. Do not resolve source spellings again
@@ -251,8 +271,17 @@ resolveUnit canonical visible table u allImports = do
         | (kind,names) <- [(TypeName,exportTypes local),(ConstructorName,exportConstructors local),
             (RefinementName,exportRefinements local),(ValueName,exportDefinitions local),(LawName,exportLaws local)] ])
       importedScope = M.mapMaybe (\targets -> case targets of target:_ -> Just target; [] -> Nothing) scope
-      bindings = [SyntaxBinding (namespace kind) name target | ((kind,name),target) <- M.toAscList (M.union localScope importedScope)]
-  pure (Resolved resolved exports (portableUnit exports resolved) bindings)
+      localIdentities = M.fromList [(name,unitName u ++ "::" ++ name) |
+        name <- nub (map fst (functions u) ++ map functionName (functionDefinitions u)),name `notElem` operationNames u]
+      identity name = case M.lookup name localIdentities of Just value -> Just value; _ -> importedIdentity name
+      bindings = [SyntaxBinding (namespace kind) name target (if kind==ValueName then identity name else Nothing) |
+        ((kind,name),target) <- M.toAscList (M.union localScope importedScope)]
+      targetIdentities target = [declaration | binding <- bindings,bindingNamespace binding=="value",bindingTarget binding==target,
+        Just declaration <- [bindingDeclaration binding]]
+      resolvedReference reference = reference{referenceDeclaration=case identity (referenceName reference) of
+        Just declaration -> Just declaration
+        Nothing -> uniqueIdentity (targetIdentities (referenceTarget reference))}
+  pure (Resolved resolved exports (portableUnit exports resolved) bindings (map resolvedReference (nub references)))
   where
     namespace kind = case kind of
       TypeName -> "type"; ConstructorName -> "constructor"; RefinementName -> "refinement"; ValueName -> "value"; LawName -> "law"
@@ -326,6 +355,8 @@ canonicalCollections exports = exports
   { exportTypes = renamed canonicalCollectionTypes ["EqSet"] (exportTypes exports)
   , exportDefinitions = renamed canonicalCollectionValues
       [name | name <- M.keys (exportDefinitions exports), "eqSet" `isPrefixOf` name] (exportDefinitions exports)
+  , exportDefinitionIdentities = renamed canonicalCollectionValues
+      [name | name <- M.keys (exportDefinitionIdentities exports), "eqSet" `isPrefixOf` name] (exportDefinitionIdentities exports)
   , exportConstructors = foldr M.delete (exportConstructors exports) ["SetItems","EqSetItems"]
   , exportOwners = renamed [(name,internal) | (name,internal) <- canonicalCollectionTypes] ["EqSet"]
       (M.mapWithKey (\name constructors -> if name `elem` ["Set","EqSet"] then [] else constructors) (exportOwners exports)) }
@@ -353,6 +384,9 @@ unitExports copied u = Exports
   , exportDefinitions = M.fromList
       [ (functionName d, importedDefinitionName (unitName u) (functionName d))
       | d <- functionDefinitions u, not (functionName d `S.member` copied) ]
+  , exportDefinitionIdentities = M.fromList
+      [ (functionName d,unitName u ++ "::" ++ functionName d)
+      | d <- functionDefinitions u,not (functionName d `S.member` copied) ]
   , exportLaws = M.fromList
       [ (lawName l, importedLawName (unitName u) (lawName l))
       | l <- laws u, not (null (parameters l)), not (lawName l `S.member` copied) ]
@@ -371,7 +405,7 @@ portableUnit exports u = runIdentity $ do
   let rename table n = Identity (M.findWithDefault n n table)
       names = Names (rename (exportTypes exports)) (rename (exportConstructors exports))
         (rename (exportRefinements exports)) (rename (exportDefinitions exports)) (rename (exportLaws exports))
-        False False (const False) (const False)
+        False False (const False) (const False) (\_ _ _ _ -> pure ())
       declared table n = M.findWithDefault n n table
   walked <- walkUnit names u
   pure walked
@@ -434,7 +468,7 @@ lawReferences l = collect (walkLaw collector l)
 
 collector :: Names (State (S.Set (Kind, String)))
 collector = Names (record TypeName) (record ConstructorName) (record RefinementName) (record ValueName) (record LawName)
-  False False (const False) (const False)
+  False False (const False) (const False) (\_ _ _ _ -> pure ())
   where
     record :: Kind -> String -> State (S.Set (Kind, String)) String
     record kind n = modify (S.insert (kind, n)) >> pure n
@@ -663,7 +697,10 @@ walkExpr names scope e
   | contextualArticles names,Just resolved <- preludeHead e = walkExpr names scope resolved
   | otherwise = case e of
   Located _ inner | Just value <- articleOperand inner -> walkExpr names scope value
-  Located range inner -> Located range <$> walkExpr names scope inner
+  Located range inner -> do
+    value <- walkExpr names scope inner
+    observeExpression names range scope inner value
+    pure (Located range value)
   Apply _ _ | Just value <- articleOperand e -> walkExpr names scope value
   Apply prefix value
     | Apply function article <- unlocated prefix, articleWord article, boundReference value ->
