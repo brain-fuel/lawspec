@@ -31,9 +31,32 @@ test('formal populations require uniform evidence in the same parameter scope',(
     {...witness,uniformity:'sampled-parameter'}, {...witness,status:'unsupported',complete:false}]) {
     assert.equal(compare(invalid).status,'not-established');
   }
+  const differentScope=scoped(after,'nonempty',{...witness,formalParameterCount:2});
+  differentScope.domainPolicies[0].formalParameterCount=2;
+  assert.equal(compareMigrationSnapshots(original,differentScope).domainPolicies.status,'not-established');
 });
 
 const changedBefore={...before,definitionPlaneDigest:'c'.repeat(64),lawBodiesDigest:'d'.repeat(64)};
+test('complete finite parameter cases justify uniform populations while partial and empty-input cases do not',()=>{
+  const input=value=>[{binder:'domain::law::same::input',value:{type:'Bool',value}}];
+  const parameter=value=>[{binder:'domain::law::same::formal',value:{type:'Bool',value}}];
+  const finite={...domain,status:'uniformly-inhabited',formalParameterCount:1,complete:true,
+    uniformity:'complete-finite-parameters',parameterCases:[false,true].map(value=>({parameters:parameter(value),witness:input(value)}))};
+  delete finite.witness;
+  const scoped=(snapshot,policy,row)=>({...snapshot,
+    domainPolicies:[{comparisonId:domain.comparisonId,policy,formalParameterCount:1}],inputDomains:facts(row)});
+  const compare=row=>compareMigrationSnapshots(scoped(before,'nonempty',finite),scoped(after,'universal',row)).domainPolicies;
+  assert.equal(compare(finite).status,'matched');
+  for(const invalid of [{...finite,complete:false},{...finite,uniformity:'sampled-parameter'},
+    {...finite,formalParameterCount:2},{...finite,parameterCases:[]},
+    {...finite,parameterCases:[finite.parameterCases[0],finite.parameterCases[0]]},
+    {...finite,parameterCases:[{parameters:[],witness:input(false)}]},
+    {...finite,parameterCases:[{parameters:parameter(false),witness:[]}]},
+    {...finite,status:'parameter-counterexample',parameters:parameter(false)},
+    {...finite,status:'incomplete',complete:false}]) assert.equal(compare(invalid).status,'not-established');
+  const empty={...finite,status:'empty-parameters'};delete empty.parameterCases;delete empty.uniformity;
+  assert.equal(compareMigrationSnapshots(scoped(before,'nonempty',empty),scoped(after,'universal',empty)).domainPolicies.status,'matched');
+});
 const bodyCertificate=()=>({...transport,
   program:{status:'not-established',before:transport.before.programDigest,after:transport.after.programDigest},
   definitionPlane:{status:'matched',before:transport.before.definitionPlaneDigest,after:transport.after.definitionPlaneDigest},

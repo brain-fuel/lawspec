@@ -395,11 +395,32 @@ nonzero. A witness that does not depend on any formal value carries
 scope and this explicit uniformity evidence before using that witness to
 justify a population-policy change. This establishes legal inputs for every
 admissible parameter tuple; it does not establish that the parameter types are
-inhabited or that the law is true. Parameter-dependent populations currently
-report `unsupported-uniform-input-search`, without sampling a parameter tuple
-or claiming nonexistence. Complete finite parameter analysis and constructive
-uniform witnesses remain required work. Raw typed-Core fingerprints change
-with the stored formal scope; previous response pairs remain separate evidence.
+inhabited or that the law is true.
+
+Parameter-dependent populations use complete finite analysis when the existing
+logical-domain engine supplies complete covers. `uniformly-inhabited` records
+a `parameterCases` entry containing formal bindings and a checked input witness
+for every admissible parameter tuple, with `complete: true` and
+`uniformity: 'complete-finite-parameters'`. `empty-parameters` records a
+complete empty formal domain; it does not claim that parameter values exist.
+`parameter-counterexample` records an admissible parameter tuple with a complete
+empty input domain; it makes no claim about the law body. SDK policy comparison
+accepts matching complete finite populations, including matching empty formal
+domains, while retaining source and dependency anchors. It rejects partial,
+sampled and empty-input evidence.
+
+Enumeration reuses the existing logical covers, closed evaluator and ordinary
+value/refinement validation. Each binder sees earlier concrete values; every
+restriction is rechecked. The combined candidate budget bounds the analysis.
+Unsupported covers, evaluation failures and exhausted limits retain explicit
+unsupported or incomplete results. Source domains with extra parameter
+admissibility checks or resource dependencies remain unsupported.
+Unbounded constructive uniform witnesses remain required work. The precedent is
+[Mathlib's `Fintype` complete enumeration and decidable quantifiers](https://github.com/leanprover-community/mathlib4/blob/master/Mathlib/Data/Fintype/Defs.lean).
+LawSpec trusts its cover generator, evaluator and admission boundary; this does
+not produce a Lean certificate or invoke a new solver. Raw typed-Core
+fingerprints change with the stored formal scope; previous response pairs
+remain separate evidence.
 
 Declared generic `Eq` requirements now provide lexical operation-typing evidence.
 They do not provide `Keyed`, generators or a law of reflexivity. The normal
@@ -417,12 +438,13 @@ instances. All four surrounding source-template digests anchor the evidence.
 The compiler reuses concrete input tuples where available and otherwise lowers
 a domain-only copy through its ordinary specialization and mandatory checks.
 It does not evaluate a law body or choose one sample function for a law
-parameter. Parameter-dependent restrictions and unsupported generic domains
-remain explicit blockers. Matching domain dependencies and verified uniform
+parameter. Parameter-dependent restrictions without complete coverage and
+unsupported generic domains remain explicit blockers. Matching domain dependencies and verified uniform
 input witnesses can justify an individual population-policy change; the full
 policy-erased template must still match before its laws correspond. Complete
-empty domains, bounded misses and unavailable searches cannot justify the
-change. Every unused authored reusable law remains visible, so one matched
+empty input domains, bounded misses and unavailable searches cannot justify the
+change. A complete empty formal domain records vacuous uniformity separately
+from evidence of inhabited parameter types. Every unused authored reusable law remains visible, so one matched
 concrete or reusable domain does not clear the entire source-template gate.
 An unresolved source-template or domain gate blocks writing.
 

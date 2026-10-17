@@ -32,6 +32,14 @@ export function migrationDigests(result: Result): string[] {
         const uniformity: 'parameter-independent' | undefined = domain.uniformity;
         const formalCount: number | undefined = domain.formalParameterCount;
         void values; void uniformity; void formalCount;
+      } else if (domain.status === 'uniformly-inhabited') {
+        const complete: true = domain.complete;
+        const cases = domain.parameterCases.map(row => [row.parameters, row.witness]);
+        const uniformity: 'complete-finite-parameters' = domain.uniformity;
+        void complete; void cases; void uniformity;
+      } else if (domain.status === 'empty-parameters' || domain.status === 'parameter-counterexample') {
+        const complete: true = domain.complete;
+        void complete;
       } else if (domain.status === 'empty') {
         const complete: true = domain.complete;
         void complete;

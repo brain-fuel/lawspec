@@ -100,6 +100,62 @@ test('independent law inputs have a uniform witness without binding their formal
   }
 });
 
+test('finite dependent source populations retain complete parameter cases separately from law truth',async()=>{
+  for(const machineBits of [32,64]) {
+    const content='unit symbolic\nlaw "|dependent| (choice of type Bool) is definition: '+
+      'for all (value of type Bool where value = choice) => false end end end';
+    const result=await compiler.check({...options,machineBits,migrationSnapshot:true,sources:[{path:'symbolic.lawspec',content}]});
+    assert.deepEqual(result.diagnostics,[]);
+    assert.equal(result.verification.selection,'no-selected-checks');
+    const snapshot=result.migrationSemantics.sourceTemplates;
+    const domain=snapshot.inputDomains.domains.find(row=>row.comparisonId==='symbolic::law::dependent');
+    assert.equal(domain.status,'uniformly-inhabited');
+    assert.equal(domain.complete,true);
+    assert.equal(domain.formalParameterCount,1);
+    assert.equal(domain.uniformity,'complete-finite-parameters');
+    assert.deepEqual(domain.parameterCases.map(row=>[row.parameters[0].value.value,row.witness[0].value.value]),[[false,false],[true,true]]);
+    assert.equal(domain.witness,undefined);
+    assert.equal(snapshot.inputDomains.lawBodiesEvaluated,false);
+    const changed=structuredClone(snapshot);
+    changed.domainPolicies.find(row=>row.comparisonId===domain.comparisonId).policy='nonempty';
+    const compared=compareMigrationSnapshots({...core,machineBits,sourceTemplates:changed},{...core,machineBits,sourceTemplates:snapshot});
+    assert.equal(compared.sourceTemplates.domainPolicies.domains.find(row=>row.comparisonId===domain.comparisonId).status,'matched');
+    assert.equal(compared.status,'not-established');
+    const limited=await compiler.check({...options,machineBits,migrationSnapshot:true,generation:{exhaustiveLimit:3},
+      sources:[{path:'symbolic.lawspec',content}]});
+    assert.deepEqual(limited.diagnostics,[]);
+    const miss=limited.migrationSemantics.sourceTemplates.inputDomains.domains.find(row=>row.comparisonId===domain.comparisonId);
+    assert.equal(miss.status,'incomplete');
+    assert.equal(miss.complete,false);
+    assert.equal(miss.parameterCases,undefined);
+  }
+});
+
+test('source population analysis retains formal restrictions, vacuity and complete counterexamples',async()=>{
+  for(const machineBits of [32,64]) for(const [parameters,input,status,count,values] of [
+    ['(choice of type (c of type Bool where c))','(value of type Bool where value = choice)','uniformly-inhabited',1,[[true]]],
+    ['(choice of type (c of type Bool where false))','(value of type Bool where value = choice)','empty-parameters',1,undefined],
+    ['(choice of type (c of type Whole where c <= 1))','(value of type Whole where value = choice)','uniformly-inhabited',1,[['0'],['1']]],
+    ['(choice of type Bool) (other of type (o of type Bool where o = choice))','(value of type Bool where value = other)','uniformly-inhabited',2,[[false,false],[true,true]]],
+    ['(choice of type Bool)','(value of type Bool where choice and value)','parameter-counterexample',1,undefined],
+    ['(choice of type Whole)','(value of type Whole where value = choice)','unsupported',1,undefined],
+  ]) {
+    const content=`unit symbolic\nlaw dependent ${parameters} is definition: for all ${input} => false end end end`;
+    const result=await compiler.check({...options,machineBits,migrationSnapshot:true,sources:[{path:'symbolic.lawspec',content}]});
+    assert.deepEqual(result.diagnostics,[]);
+    const domain=result.migrationSemantics.sourceTemplates.inputDomains.domains.find(row=>row.comparisonId==='symbolic::law::dependent');
+    assert.equal(domain.status,status);
+    assert.equal(domain.formalParameterCount,count);
+    if(status==='uniformly-inhabited') assert.deepEqual(domain.parameterCases.map(row=>row.parameters.map(binding=>binding.value.value)),values);
+    else assert.equal(domain.parameterCases,undefined);
+    if(status==='parameter-counterexample') {
+      assert.deepEqual(domain.parameters.map(binding=>binding.value.value),[false]);
+      assert.equal(domain.complete,true);
+    }
+    if(status==='unsupported') assert.equal(domain.complete,false);
+  }
+});
+
 test('unused generic laws keep symbolic parameters, their Eq scope and separate population policies',async()=>{
   for(const machineBits of [32,64])for(const name of ['same','same%:policy']) {
     const before='law `'+name+'` (operation :: a -> a) requires Eq a is definition is `for all` (value :: a) . operation value = value end end';

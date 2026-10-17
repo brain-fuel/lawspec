@@ -142,27 +142,47 @@ function compareDomainPolicies(before,after) {
   const valid=sample=>sample?.status==='available'&&sample.version===1&&sample.algorithm==='sha256'&&
     sample.machineBits===before.machineBits&&sample.lawBodiesEvaluated===false&&Array.isArray(sample.domains)&&
     sample.domains.every(row=>row&&typeof row.comparisonId==='string'&&typeof row.domainDigest==='string'&&digest.test(row.domainDigest)&&
-      ['inhabited','empty','incomplete','unsupported'].includes(row.status))&&
+      ['inhabited','empty','uniformly-inhabited','empty-parameters','parameter-counterexample','incomplete','unsupported'].includes(row.status))&&
     new Set(sample.domains.map(row=>row.comparisonId)).size===sample.domains.length;
   const evidenceAvailable=valid(before.inputDomains)&&valid(after.inputDomains);
   const oldDomains=new Map(evidenceAvailable?before.inputDomains.domains.map(row=>[row.comparisonId,row]):[]);
   const newDomains=new Map(evidenceAvailable?after.inputDomains.domains.map(row=>[row.comparisonId,row]):[]);
-  const validWitness=(row,policy)=>row?.status==='inhabited'&&Number.isSafeInteger(row.inputCount)&&row.inputCount>=0&&
-    (row.formalParameterCount??0)===(policy.formalParameterCount??0)&&
-    (!(policy.formalParameterCount>0)||row.uniformity==='parameter-independent')&&
-    Array.isArray(row.witness)&&row.witness.length===row.inputCount&&
-    row.witness.every(binding=>binding&&typeof binding.binder==='string'&&binding.value&&typeof binding.value==='object')&&
-    new Set(row.witness.map(binding=>binding.binder)).size===row.witness.length;
+  const validBindings=(bindings,count)=>Array.isArray(bindings)&&bindings.length===count&&
+    bindings.every(binding=>binding&&typeof binding.binder==='string'&&binding.value&&typeof binding.value==='object')&&
+    new Set(bindings.map(binding=>binding.binder)).size===bindings.length;
+  const binderNames=bindings=>JSON.stringify(bindings.map(binding=>binding.binder));
+  const validWitness=(row,policy)=>{
+    if(!row||!Number.isSafeInteger(row.inputCount)||row.inputCount<0||
+      (row.formalParameterCount??0)!==(policy.formalParameterCount??0)) return false;
+    if(row.status==='inhabited') return (!(policy.formalParameterCount>0)||row.uniformity==='parameter-independent')&&
+      validBindings(row.witness,row.inputCount);
+    if(!(policy.formalParameterCount>0)||row.complete!==true) return false;
+    if(row.status==='empty-parameters') return true;
+    if(row.status!=='uniformly-inhabited'||row.uniformity!=='complete-finite-parameters'||
+      !Array.isArray(row.parameterCases)||row.parameterCases.length===0) return false;
+    const cases=row.parameterCases;
+    return cases.every(item=>item&&validBindings(item.parameters,policy.formalParameterCount)&&
+      validBindings(item.witness,row.inputCount)&&
+      binderNames(item.parameters)===binderNames(cases[0].parameters)&&
+      binderNames(item.witness)===binderNames(cases[0].witness)&&
+      !item.parameters.some(parameter=>item.witness.some(input=>input.binder===parameter.binder)))&&
+      new Set(cases.map(item=>JSON.stringify(item.parameters))).size===cases.length;
+  };
+  const inputNames=row=>row.status==='empty-parameters'?null:
+    binderNames(row.status==='inhabited'?row.witness:row.parameterCases[0].witness);
+  const witnessView=row=>row.status==='inhabited'?row.witness:
+    row.status==='empty-parameters'?{status:row.status}:{parameterCases:row.parameterCases};
   const rows=original.map(row=>{
     const next=migrated.find(item=>item.comparisonId===row.comparisonId);
     if(!next) return {comparisonId:row.comparisonId,status:'not-established',reason:'The migrated input domain is missing.'};
+    if((row.formalParameterCount??0)!==(next.formalParameterCount??0)) return {
+      comparisonId:row.comparisonId,status:'not-established',reason:'The formal parameter scopes differ.'};
     if(row.policy===next.policy) return {comparisonId:row.comparisonId,status:'matched',basis:'unchanged-domain-policy'};
     const old=oldDomains.get(row.comparisonId),changed=newDomains.get(row.comparisonId);
     if(validWitness(old,row)&&validWitness(changed,next)&&old.domainDigest===changed.domainDigest&&
-      old.inputCount===changed.inputCount&&
-      JSON.stringify(old.witness.map(binding=>binding.binder))===JSON.stringify(changed.witness.map(binding=>binding.binder))) return {
+      old.inputCount===changed.inputCount&&inputNames(old)===inputNames(changed)) return {
       comparisonId:row.comparisonId,status:'matched',basis:'matching-domain-dependencies-and-verified-input-witnesses',
-      before:old.witness,after:changed.witness};
+      before:witnessView(old),after:witnessView(changed)};
     return {comparisonId:row.comparisonId,status:'not-established',reason:
       'The changed population policy needs matching domain dependencies and verified input witnesses; empty or incomplete searches do not justify it.'};
   });

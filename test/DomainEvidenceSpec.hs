@@ -117,6 +117,53 @@ test_domainEvidence = describe "checked input-domain evidence" $ do
     a<-domainDigest (formalPrefix 1 first)
     b<-domainDigest (formalPrefix 1 changed)
     a `shouldNotBe` b
+  it "checks every finite formal tuple and records its dependent input witness without evaluating the law" $ do
+    original<-checked defaultGeneration (law "for all (choice :: Bool) (value :: Bool where value = choice) => false end")
+    result<-evaluateDomain (formalPrefix 1 original)
+    let boolean=ScalarValue . SBool
+    domainStatus result `shouldBe` VerifiedFiniteParameterInputs
+      [([boolean False],[boolean False]),([boolean True],[boolean True])]
+    domainSearch result `shouldBe` "complete-finite-parameter-input-domains"
+    domainCandidateChecks result `shouldBe` 6
+    snapshot<-either fail pure (domainSnapshot True [] (formalPrefix 1 original))
+    case snapshot of
+      A.Object fields | Just (A.Array rows)<-KM.lookup "domains" fields,
+        [A.Object row]<-V.toList rows -> do
+          KM.lookup "status" row `shouldBe` Just (A.String "uniformly-inhabited")
+          KM.lookup "complete" row `shouldBe` Just (A.Bool True)
+          KM.lookup "uniformity" row `shouldBe` Just (A.String "complete-finite-parameters")
+      _->expectationFailure "missing finite parameter-domain evidence"
+  it "distinguishes an admissible formal counterexample from a refuted law" $ do
+    original<-checked defaultGeneration (law "for all (choice :: Bool) (value :: Bool where choice and value) => true end")
+    result<-evaluateDomain (formalPrefix 1 original)
+    domainStatus result `shouldBe` CompleteEmptyInputForParameter [ScalarValue (SBool False)]
+  it "filters formal restrictions and keeps dependent formal scopes left to right" $ do
+    original<-checked defaultGeneration (law "for all (choice :: Bool where choice) (other :: Bool where other = choice) (value :: Bool where value = other) => false end")
+    result<-evaluateDomain (formalPrefix 2 original)
+    let yes=ScalarValue (SBool True)
+    domainStatus result `shouldBe` VerifiedFiniteParameterInputs [([yes,yes],[yes])]
+  it "keeps complete empty parameter domains distinct from inhabited populations" $ do
+    original<-checked defaultGeneration (law "for all (choice :: Bool where false) (value :: Bool where value = choice) => false end")
+    result<-evaluateDomain (formalPrefix 1 original)
+    domainStatus result `shouldBe` CompleteEmptyParameterDomain
+    domainCandidateChecks result `shouldBe` 2
+  it "closes exact earlier values before deriving a complete unsigned input cover" $ do
+    original<-checked defaultGeneration (law "for all (choice :: Whole where choice <= 1) (value :: Whole where value = choice) => false end")
+    result<-evaluateDomain (formalPrefix 1 original)
+    let whole=ScalarValue . SInteger "BigUInt"
+    domainStatus result `shouldBe` VerifiedFiniteParameterInputs [([whole 0],[whole 0]),([whole 1],[whole 1])]
+  it "reports an exhausted combined finite budget without asserting uniformity or absence" $ do
+    original<-checked defaultGeneration{exhaustiveLimit=3}
+      (law "for all (choice :: Bool) (value :: Bool where value = choice) => false end")
+    result<-evaluateDomain (formalPrefix 1 original)
+    domainStatus result `shouldSatisfy` (\status->case status of InconclusiveDomain _->True;_->False)
+    domainCandidateChecks result `shouldBe` 3
+  it "does not turn a failing dependent restriction evaluation into a parameter counterexample" $ do
+    original<-checked defaultGeneration
+      (law "for all (choice :: Bool) (value :: Bool where value = choice and (1 / 0 :: Integer) = 0) => true end")
+    result<-evaluateDomain (formalPrefix 1 original)
+    domainStatus result `shouldSatisfy` (\status->case status of InconclusiveDomain _->True;_->False)
+    domainNotes result `shouldSatisfy` (not.null)
   it "establishes a populated domain without executing a false law body" $ do
     result <- evidence defaultGeneration (law "for all (value :: Bool) => false end")
     domainStatus result `shouldBe` VerifiedInputTuple [ScalarValue (SBool False)]

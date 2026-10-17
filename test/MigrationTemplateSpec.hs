@@ -183,11 +183,17 @@ test_migrationTemplates = describe "checked source template migration capture" $
     it "does not execute an undefined reusable-law body" $ do
       result <- accepted (reusable "(value :: Bool)" "(1 / 0 :: Integer) = 0")
       status result `shouldReturn` Just (String "inhabited")
-    it "requires a uniform witness when input restrictions depend on a law parameter" $ do
+    it "records a complete population counterexample when a formal value admits no legal inputs" $ do
       result <- accepted (source "law `domain` (required :: Bool) is definition is `for all` (value :: Bool where required) . true end end")
-      status result `shouldReturn` Just (String "unsupported")
+      status result `shouldReturn` Just (String "parameter-counterexample")
       row <- selected result
-      field "complete" row `shouldBe` Just (Bool False)
+      field "complete" row `shouldBe` Just (Bool True)
+      field "formalParameterCount" row `shouldBe` Just (Number 1)
+      field "witness" row `shouldBe` Nothing
+      case field "parameters" row of
+        Just (Array values) | [binding]<-V.toList values ->
+          (field "value" binding >>= field "value") `shouldBe` Just (Bool False)
+        _->expectationFailure "missing admissible formal-value counterexample"
     it "keeps a generic element domain unsupported rather than inventing a value" $ do
       result <- accepted (source "law `domain` (operation :: a -> a) requires Eq a is definition is `for all` (value :: a) . operation value = value end end")
       status result `shouldReturn` Just (String "unsupported")

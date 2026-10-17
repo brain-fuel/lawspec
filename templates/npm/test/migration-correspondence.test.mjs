@@ -401,7 +401,7 @@ test('actual reusable source domains report uniform, dependent and generic limit
       b.domainPolicies.filter(row=>row.comparisonId.startsWith('prelude::law::')));
     assert.equal(old.migrationSemantics.domainPolicies.length,0);
     for(const [content,expected] of [
-      [newSource.replace('(operation :: Bool -> Bool)','(required :: Bool)').replace('(value :: Bool)','(value :: Bool where required)').replace('operation value must be value','true'),'unsupported'],
+      [newSource.replace('(operation :: Bool -> Bool)','(required :: Bool)').replace('(value :: Bool)','(value :: Bool where required)').replace('operation value must be value','true'),'parameter-counterexample'],
       [newSource.replace('(operation :: Bool -> Bool)','(operation :: a -> a) requires Eq a').replace('(value :: Bool)','(value :: a)'),'unsupported'],
       [newSource.replace('(value :: Bool)','(value :: Bool where false)'),'empty'],
       [newSource.replace('(value :: Bool)','(value :: Integer where value * value = -1)').replace('operation value must be value','false'),'incomplete'],

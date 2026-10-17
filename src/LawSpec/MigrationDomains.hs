@@ -74,6 +74,8 @@ domainSnapshotWithScopes scopes canonical names program = do
       entry (property,made) = do
         let evidence=inputDomainEvidence registry bits invoke definitions property
             fingerprint=digestFor made
+            bindings qs values=sequence [object . (\value -> ["binder" .= C.idText (C.binderId (C.quantifiedBinder q)),"value" .= value])
+              <$> valueView value | (q,value)<-zip qs values]
             fields=["comparisonId" .= C.idText (C.propertyId made),"domainDigest" .= fingerprint,"inputCount" .= length (C.propertyInputs made),
               "search" .= domainSearch evidence,"candidateChecks" .= domainCandidateChecks evidence,
               "searchLimit" .= domainSearchLimit evidence,"finiteLimit" .= domainFiniteLimit evidence,
@@ -83,12 +85,23 @@ domainSnapshotWithScopes scopes canonical names program = do
                  "parameterInterpretation" .= ("input evidence must hold uniformly over admissible formal values; they are not sampled inputs"::String)])
         case domainStatus evidence of
           VerifiedInputTuple values -> do
-            bindings <- sequence [object . (\value -> ["binder" .= C.idText (C.binderId (C.quantifiedBinder q)),"value" .= value])
-              <$> valueView value | (q,value)<-zip (C.propertyInputs made) values]
+            witness <- bindings (C.propertyInputs made) values
             -- The checker returns a tuple with formals present only after
             -- establishing that their values cannot affect the population.
-            pure (object (fields++["status" .= ("inhabited"::String),"witness" .= bindings]++
+            pure (object (fields++["status" .= ("inhabited"::String),"witness" .= witness]++
               ["uniformity" .= ("parameter-independent"::String) | not (null (C.propertyParameters made))]))
+          VerifiedFiniteParameterInputs tuples -> do
+            cases<-mapM (\(parameters,inputs)->do
+              supplied<-bindings (C.propertyParameters made) parameters
+              witness<-bindings (C.propertyInputs made) inputs
+              pure (object ["parameters" .= supplied,"witness" .= witness])) tuples
+            pure (object (fields++["status" .= ("uniformly-inhabited"::String),"complete" .= True,
+              "uniformity" .= ("complete-finite-parameters"::String),"parameterCases" .= cases]))
+          CompleteEmptyParameterDomain->pure (object (fields++["status" .= ("empty-parameters"::String),"complete" .= True]))
+          CompleteEmptyInputForParameter values->do
+            parameters<-bindings (C.propertyParameters made) values
+            pure (object (fields++["status" .= ("parameter-counterexample"::String),"complete" .= True,
+              "parameters" .= parameters,"reason" .= ("this admissible formal tuple has a complete empty input domain; no law-body claim is made"::String)]))
           CompleteEmptyDomain -> pure (object (fields++["status" .= ("empty"::String),"complete" .= True]))
           InconclusiveDomain reason -> pure (object (fields++["status" .= ("incomplete"::String),"reason" .= reason,"complete" .= False]))
           UnsupportedInputDomain reason -> pure (object (fields++["status" .= ("unsupported"::String),"reason" .= reason,"complete" .= False]))

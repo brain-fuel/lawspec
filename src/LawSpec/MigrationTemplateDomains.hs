@@ -14,7 +14,8 @@ import LawSpec.Common (Diagnostic,message)
 import LawSpec.Core.Migration (semanticName)
 import LawSpec.Digest (digestHex,digestString)
 import LawSpec.Frontend (elaborateWithSourceDeclarations)
-import LawSpec.MigrationDomains (domainSnapshot)
+import LawSpec.MigrationDomains (domainSnapshot,domainSnapshotWithScopes)
+import LawSpec.MigrationLawTransport (symbolicLawTemplates)
 import LawSpec.MigrationTemplates (SourceTemplates(..),formalValueParameters)
 import LawSpec.SpecializeDefinitions (specializeDefinitionsWithContext)
 import LawSpec.CapabilityCheck (checkCapability)
@@ -74,8 +75,13 @@ withTemplateInputDomains canonical captured core concrete (Object fields) =
       map (C.binderName . C.quantifiedBinder) (C.propertyInputs property)==map S.inputName (S.inputs law)]
     row law
       | null (S.parameters (S.original law)), [value]<-existing law = attach law value
+      | not (null dependent), all (`elem` map fst (formalValueParameters (S.original law))) dependent,
+        null resourceDependencies,
+        null (S.refinementArgumentChecks law) = case symbolicDomain law of
+          Left reason->unsupported law reason
+          Right value->value
       | not (null dependent) = unsupported law
-          ("The input domain depends on reusable-law parameters or resources: "++unwords dependent++". No uniform input witness was established.")
+          ("The input domain depends on reusable-law parameters or resources with additional admissibility checks: "++unwords dependent++". No uniform input witness was established.")
       | otherwise = case materialize law of
           Left reason -> unsupported law reason
           Right program -> case domainSnapshot canonical names program of
@@ -88,6 +94,20 @@ withTemplateInputDomains canonical captured core concrete (Object fields) =
         free=concat [S.typeValueVars (S.inputType input)++concatMap S.exprVars (S.inputRefinements input) | input<-S.inputs law]++
           concat [S.exprVars value | plan<-S.generationPlan law,(_,value)<-S.domainBounds plan]
         dependent=[name | (name,_)<-S.parameters (S.original law)++S.lawResources (S.original law),name `elem` free]
+        resourceDependencies=[name | (name,_)<-S.lawResources (S.original law),name `elem` free]
+    symbolicDomain law=do
+      let truth=S.BoolLit True
+          copy=law{S.left=truth,S.right=truth,S.guards=[],S.assertion=S.AssertEqual truth truth,
+            S.typedExpressions=[],S.original=(S.original law){S.definition=S.Holds truth,
+              S.examples=[],S.lawResources=[],S.references=[]}}
+      (program,scopes)<-symbolicLawTemplates canonical captured{templateUnits=units,templateLaws=[copy]}
+      snapshot<-domainSnapshotWithScopes scopes canonical names program
+      case snapshot of
+        Object values | Just (Array rows)<-KM.lookup "domains" values,[Object row]<-toList rows->
+          -- Keep the checked formal population and its complete-case evidence;
+          -- attaching an independent-witness marker would erase its meaning.
+          pure (Object (KM.insert "comparisonId" (String (T.pack (identity law))) row))
+        _->Left "The symbolic domain-only program did not return exactly one input domain."
     materialize law = either (Left . unlines . map message) Right $ memoized programs
       (digestHex (digestString (show (canonical,bits,sourceTypes,templateDataDeclarations captured,units,copy)))) $ do
         (specialized,properties)<-specializeDefinitionsWithContext sourceTypes (templateDataDeclarations captured) bits

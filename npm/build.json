@@ -772,7 +772,7 @@
     "src/LawSpec/Core/CapabilityScope.hs": "0f419bc299253e04684dfda7b127d9731032512fec78090892684a7b50004b52",
     "src/LawSpec/Core/DefinitionContracts.hs": "62b3c10c29ff6abf3b89eb3b28e765c81f9fe57507207ff8a1b2dee4d0655b4b",
     "src/LawSpec/Core/Definitions.hs": "814c5ae73bc10da9b9873eadbc2e2e3376a3947c2c1a781b44b0224c0ff18f15",
-    "src/LawSpec/Core/DomainEvidence.hs": "fb4fff5ff83cf53fbde0fcdde52122ea809d09e74a97680774d9734dacdb99e7",
+    "src/LawSpec/Core/DomainEvidence.hs": "825e7f2b76f9d5ec6cdce5e06152126a3e22543b5db685d00b21ab23d46cbad5",
     "src/LawSpec/Core/EqSet.hs": "bb1a82176ff5ecb235aa3c253f6cc53da8518d1858212d7860e23d6d617bfaa8",
     "src/LawSpec/Core/Eval.hs": "842171f9ef7bda2fab8cc40aebc4486fb4d3befc6ab58f5e6e75c93c62e0ee63",
     "src/LawSpec/Core/Evidence.hs": "47bd81763ee01b39c90fe0a787a27b08e1f177d23a70e51326850c2735a472fa",
@@ -887,14 +887,14 @@
     "src/LawSpec/MigrationBindings.hs": "e204bcbc4d27b9c567e7cad4d5debf9dbed7a658cdc43d4b06769cc20a48c4b2",
     "src/LawSpec/MigrationBoundary.hs": "0cfb59fcfcab8e7d42ad2be145f99955b2b396d937ae75d9c680c219ea795157",
     "src/LawSpec/MigrationDefinitionTransport.hs": "b2dcf6828de28e0011cfab6952d7ba5f1a110c35f6717c5e667c1e706eaf6c96",
-    "src/LawSpec/MigrationDomains.hs": "c9683cd84564143a9cc8f497db51ef03abd6a9840b5f71c6bd9434d7ccc59eb3",
+    "src/LawSpec/MigrationDomains.hs": "2dd606e4fd18b53a149c999e8f26eeba36a6a7102c84aabb4990120641f92c32",
     "src/LawSpec/MigrationElaboration.hs": "d5fae153b083d2aa8f606a6a94647744ac258e088f9f42916264b5b8a4b684d5",
     "src/LawSpec/MigrationFields.hs": "c96949e9bb3feef141dca3c2570b08c9dbcf72041a831d27907214ad005d3127",
     "src/LawSpec/MigrationGeneration.hs": "2da916eb5d0a9b44c39187308ff88196f93bcdc69ce07c72558f8a2426a179d9",
-    "src/LawSpec/MigrationLawTransport.hs": "32c6c0abd884ff7b53168d1fa879586f0fba4aa985641d29b42d20892739e040",
+    "src/LawSpec/MigrationLawTransport.hs": "8a6533ac107cf1e062087fd3f34c2952a9482e575ef267249e1fd1c229c10547",
     "src/LawSpec/MigrationPayloads.hs": "15caf0932d4477b8583a24d332389df68f46d550ec5400aea4d1d6dd6c8eb1db",
     "src/LawSpec/MigrationScopes.hs": "d3217dcf6c1e00ba34fc3726a1282581374f53ce927de17253e32069ccd25c58",
-    "src/LawSpec/MigrationTemplateDomains.hs": "66b67034db2a7b003987f09dbfea775b56e0ffe8e19156c154da616497563b46",
+    "src/LawSpec/MigrationTemplateDomains.hs": "d651982c2e537b19ecac559de4c45a883508ffe3e6d1f694b3d1a475cb80f45d",
     "src/LawSpec/MigrationTemplates.hs": "6999b363380fba2d0b285e70a2e4b6d348569963adf3002af6a9f78372c55d05",
     "src/LawSpec/MigrationUnitTransport.hs": "4ec098a1f3c71fa5006d0a7c02e27c795af8bd6be60753136d27d7ed0f39f064",
     "src/LawSpec/Model.hs": "e74f4991444db09b772d913012913de42e4f62830cb19840ba8b6356519dd8b9",
@@ -1005,9 +1005,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "dda8af7e65102583d9c3e79d2f2166364b5b9cd2a5d3471d0d9e75e9415c8cd5",
+    "npm/core.wasm": "d6bb22aae751fe2c997dd61f30b6e7613b9f35729cb6db86000fa6649e7b76ec",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "2e56d49a5c8e5acafec9139f5445413732404cdc3cff4753cb27e31f8ac5aa4e",
-    "npm/index.d.ts": "dbeac6736e080cf590fd0f464e4cff0e314d53d21c933412bcd04937b5215c3f"
+    "npm/index.d.ts": "8356270aec54ac746fb1079a848ebbdaef007cbede1fe2ab481eeb07b4345286"
   }
 }

@@ -848,6 +848,16 @@ export type MigrationPayloadComparison =
     } |
     {status: 'unavailable'; reason: string;};
 
+export interface MigrationDomainBinding {
+  binder: string;
+  value: DataValue;
+}
+
+export interface MigrationParameterInputCase {
+  parameters: MigrationDomainBinding[];
+  witness: MigrationDomainBinding[];
+}
+
 export type MigrationInputDomain =
     {
       comparisonId: string;
@@ -877,6 +887,52 @@ export type MigrationInputDomain =
       parameterInterpretation?: string;
       status: 'empty';
       complete: true;
+    } |
+    {
+      comparisonId: string;
+      domainDigest: string;
+      inputCount: number;
+      search: string;
+      candidateChecks: number;
+      searchLimit: number;
+      finiteLimit: number;
+      notes: string[];
+      formalParameterCount?: number;
+      parameterInterpretation?: string;
+      status: 'uniformly-inhabited';
+      complete: true;
+      uniformity: 'complete-finite-parameters';
+      parameterCases: MigrationParameterInputCase[];
+    } |
+    {
+      comparisonId: string;
+      domainDigest: string;
+      inputCount: number;
+      search: string;
+      candidateChecks: number;
+      searchLimit: number;
+      finiteLimit: number;
+      notes: string[];
+      formalParameterCount?: number;
+      parameterInterpretation?: string;
+      status: 'empty-parameters';
+      complete: true;
+    } |
+    {
+      comparisonId: string;
+      domainDigest: string;
+      inputCount: number;
+      search: string;
+      candidateChecks: number;
+      searchLimit: number;
+      finiteLimit: number;
+      notes: string[];
+      formalParameterCount?: number;
+      parameterInterpretation?: string;
+      status: 'parameter-counterexample';
+      complete: true;
+      parameters: MigrationDomainBinding[];
+      reason: string;
     } |
     {
       comparisonId: string;

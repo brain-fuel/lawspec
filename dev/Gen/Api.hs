@@ -339,6 +339,8 @@ declarations = joinWith (softbreak <> softbreak)
          ("lawTemplates?",text "MigrationLawTransport"),("sourceUnits?",text "MigrationUnitTransport"),("dependencyBehavior",text "MigrationPending"),
          ("nativeBindings",text "MigrationPending"),("lawVerification",quoted "not-established-by-payload-shapes"),("validated",text "false")]),
        record [("status",quoted "unavailable"),("reason",text "string")]]
+  , interface "MigrationDomainBinding" (fields [("binder","string"),("value","DataValue")])
+  , interface "MigrationParameterInputCase" (fields [("parameters","MigrationDomainBinding[]"),("witness","MigrationDomainBinding[]")])
   , let common=fields [("comparisonId","string"),("domainDigest","string"),("inputCount","number"),
           ("search","string"),("candidateChecks","number"),("searchLimit","number"),("finiteLimit","number"),("notes","string[]"),
           ("formalParameterCount?","number"),("parameterInterpretation?","string")]
@@ -346,6 +348,11 @@ declarations = joinWith (softbreak <> softbreak)
       [ record (common++[("status",quoted "inhabited"),("witness",array (record (fields [("binder","string"),("value","DataValue")]))),
           ("uniformity?",quoted "parameter-independent")]),
         record (common++[("status",quoted "empty"),("complete",text "true")]),
+        record (common++[("status",quoted "uniformly-inhabited"),("complete",text "true"),
+          ("uniformity",quoted "complete-finite-parameters"),("parameterCases",text "MigrationParameterInputCase[]")]),
+        record (common++[("status",quoted "empty-parameters"),("complete",text "true")]),
+        record (common++[("status",quoted "parameter-counterexample"),("complete",text "true"),
+          ("parameters",text "MigrationDomainBinding[]"),("reason",text "string")]),
         record (common++[("status",union (map quoted ["incomplete","unsupported"])),("complete",text "false"),("reason",text "string")]) ]
   , alias "MigrationDomainSnapshot"
       [ record ([("status",quoted "available"),("version",text "1"),("algorithm",quoted "sha256"),

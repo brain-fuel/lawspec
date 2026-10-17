@@ -9,6 +9,9 @@ import LawSpec.Core.Value
 import LawSpec.Core.Types (TypeRegistry,registryDeclarations,freeExistentials)
 import LawSpec.Core.Eval (evaluateValue)
 import LawSpec.Core.Search (Candidate(..),applyCandidate)
+import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms)
+import Control.Monad.State.Strict
+import Control.Monad (forM,unless)
 import qualified LawSpec.Testing as T
 import qualified LawSpec.Dependencies as Dependencies
 import qualified Data.Set as Set
@@ -17,6 +20,8 @@ import LawSpec.Common (Generation(..))
 import Data.List (nub)
 
 data DomainStatus = VerifiedInputTuple [Value] | CompleteEmptyDomain
+  | VerifiedFiniteParameterInputs [([Value],[Value])]
+  | CompleteEmptyParameterDomain | CompleteEmptyInputForParameter [Value]
   | InconclusiveDomain String | UnsupportedInputDomain String deriving (Eq,Show)
 data DomainEvidence = DomainEvidence
   { domainStatus :: DomainStatus, domainSearch :: String
@@ -24,12 +29,12 @@ data DomainEvidence = DomainEvidence
   , domainFiniteLimit :: Int, domainNotes :: [String]
   } deriving (Eq,Show)
 
+type ParameterSearch a = StateT Int (Either (DomainStatus,Int,String)) a
+
 inputDomainEvidence :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value)
   -> [Definition] -> Property -> DomainEvidence
 inputDomainEvidence registry bits invoke definitions property
-  | parameterDependent = result (UnsupportedInputDomain
-      "the input population depends on formal law values; a uniform witness or complete parameter analysis is required, and one sampled parameter tuple is insufficient")
-      "unsupported-uniform-input-search" 0 []
+  | parameterDependent = finiteParameters
   | otherwise =
   case firstExample 0 [] (take budget (propertyExamples property)) of
     (Just tuple,checks,notes) -> result (VerifiedInputTuple tuple) "example-input" checks notes
@@ -63,6 +68,67 @@ inputDomainEvidence registry bits invoke definitions property
     origin=GeneratedFrom (propertyId property)
     result status mode checks notes=DomainEvidence status mode checks budget finiteLimit (take 4 (nub notes))
     valid qs= T.validTupleWithDefinitions registry bits invoke qs
+    -- Complete finite forall-parameters / exists-inputs analysis, reusing the
+    -- logical cover, evaluator and tuple checker. The law body is irrelevant.
+    -- Every cover is obtained in its actual earlier-value environment; all
+    -- restrictions are then rechecked. Errors and limits never prove absence.
+    finiteParameters=case runStateT analyze 0 of
+      Right (status,checks)->result status "complete-finite-parameter-input-domains" checks []
+      Left (status,checks,message)->result status (case status of
+        UnsupportedInputDomain _->"unsupported-uniform-input-search"
+        _->"incomplete-parameter-input-domains") checks [message]
+    analyze=do
+      tuples<-enumerate (propertyParameters property) []
+      if null tuples then pure CompleteEmptyParameterDomain else witnesses [] tuples
+    witnesses found []=pure (VerifiedFiniteParameterInputs (reverse found))
+    witnesses found (parameters':rest)=do
+      tuples<-enumerate quantifiers parameters'
+      case tuples of
+        []->pure (CompleteEmptyInputForParameter (map snd parameters'))
+        tuple:_->witnesses ((map snd parameters',map snd (drop (length parameters') tuple)):found) rest
+    failure :: DomainStatus -> String -> ParameterSearch a
+    failure status message=do
+      checks<-get
+      lift (Left (status,checks,message))
+    checked :: Either String a -> ParameterSearch a
+    checked action=case action of
+      Right value->pure value
+      Left message->failure (InconclusiveDomain
+        "parameter-domain candidate evaluation failed; uniform population and nonexistence are not established") message
+    enumerate :: [Quantifier] -> [(Id,Value)] -> ParameterSearch [[(Id,Value)]]
+    enumerate [] prefix=pure [prefix]
+    enumerate (q:rest) prefix=do
+      let ty=binderType (quantifiedBinder q)
+      unless (closedType ty && not (opaque ty)) $ failure (UnsupportedInputDomain
+        "complete parameter analysis requires closed types and indices without opaque handles or existential witness pools")
+        "the parameter/input type has no supported complete finite cover"
+      predicates<-checked (mapM (close prefix) (quantifiedPredicates q))
+      cover<-case finiteQuantifierTerms bits finiteLimit (T.finiteValuesWithRegistry registry bits finiteLimit)
+          q{quantifiedPredicates=predicates} of
+        Right (Just terms)->pure terms
+        outcome->failure (UnsupportedInputDomain
+          "a uniform witness or complete parameter analysis is required; one sampled parameter tuple is insufficient")
+          (case outcome of Left message->message;_->"no complete finite parameter/input cover within the configured limit")
+      fmap concat $ forM cover $ \term->do
+        checks<-get
+        unless (checks<finiteLimit) $ failure (InconclusiveDomain
+          "complete parameter analysis exceeded its candidate limit; uniform population and nonexistence are not established")
+          "the combined parameter/input enumeration exhausted its finite limit"
+        put (checks+1)
+        value<-checked (evaluateValue registry bits invoke prefix term)
+        let next=prefix++[(binderId (quantifiedBinder q),value)]
+            allQuantifiers=propertyParameters property++quantifiers
+        accepted<-checked (valid (take (length next) allQuantifiers) (map snd next))
+        if accepted then enumerate rest next else pure []
+    -- Core admission prohibits a nested binder from reusing an in-scope ID.
+    -- Replacements are closed values, so this cannot capture another binder.
+    close prefix expression=case expressionNode expression of
+      Local name | Just value<-lookup name prefix->do
+        term<-valueTerm value
+        if expressionType term==expressionType expression
+          then pure term{expressionOrigin=expressionOrigin expression}
+          else Left "formal-domain substitution has inconsistent local types"
+      _->traverseChildren (close prefix) expression
     firstExample checks notes []=(Nothing,checks,notes)
     firstExample checks notes (example:rest)=case do
       bindings <- mapM (\(name,value) -> (,) name <$> evaluateValue registry bits invoke [] value) (exampleBindings example)
