@@ -8,7 +8,12 @@ import Data.Foldable (toList)
 import Data.Aeson (Value(..), object, (.=), eitherDecode, encode, toJSON)
 import qualified Data.Aeson.KeyMap as KM
 import LawSpec.Api (dispatch)
-import LawSpec.Compile (compileWithSourceSyntax,compileWithSettings)
+import LawSpec.Compile (compileWithSourceSyntax,compileWithSettings,compileWithSourceOrigins)
+import LawSpec.Packages (Package(..),Project(..),preparePackagesWithOrigins)
+import LawSpec.SourceOrigins (insertSourceNames,originalLocation)
+import LawSpec.Frontend (elaborate)
+import LawSpec.Discharge (dischargeEvidence)
+import qualified Data.Map.Strict as M
 import LawSpec.Model
 import LawSpec.SourceSyntax
 
@@ -26,7 +31,107 @@ field _ _ = Nothing
 clean result = case result of Right value -> field "diagnostics" value == Just (toJSONEmpty); _ -> False
   where toJSONEmpty = toJSON ([]::[String])
 
+packageVersions package versions =
+  let multiple=length versions>1
+      bridge=Package "shop.consumer" "1.0.0" (M.singleton "shop.tax" "^1.0.0")
+        [Source "bridge.lawspec" "unit shop.consumer\nimport shop.tax.api"]
+      dependencies=M.fromList ([ ("shop.tax","^2.0.0") ]++[("shop.consumer","^1.0.0") | multiple])
+  in (Project Nothing dependencies,map package versions++[bridge | multiple])
+
 test_sourceSyntax = describe "checked migration source syntax" $ do
+  it "retains original parser and intrinsic-definition error positions after namespace insertion" $ do
+    let package version=Package "shop.tax" version M.empty
+          [Source (version++".lawspec") "unit shop.tax.api\ntype Band is Low | High end"]
+        run body versions=do
+          let source=Source "invalid.lawspec" ("unit caller import shop.tax.api (Band) "++body)
+              (project,packages)=packageVersions package versions
+          (prepared,origins,visible,referenceUnit,_)<-preparePackagesWithOrigins False
+            project packages [source]
+          compileWithSourceOrigins origins True False referenceUnit visible 64 defaultGeneration prepared
+    forM_ ["definition unsafe (value :: Integer) :: Integer is 1 / value end",
+           "definition broken (value :: Integer) :: Integer is 1 + end"] $ \body ->
+      case (run body ["2.0.0"],run body ["1.0.0","2.0.0"]) of
+        (Left plain,Left mapped) -> map (\diagnostic->(code diagnostic,at diagnostic)) mapped
+          `shouldBe` map (\diagnostic->(code diagnostic,at diagnostic)) plain
+        _ -> expectationFailure "expected both versions to reject the authored definition"
+  it "retains authored spans through package qualifiers, implicit aliases, tabs and CRLF" $ do
+    forM_ [False,True] $ \canonical -> forM_ [False,True] $ \explicit -> do
+      let lawName=if canonical then "law same" else "`same`"
+          pkgText=map (\character->if character=='\n' then ' ' else character) ("unit shop.tax.api\n"++
+            (if canonical then "type Band is one of | Low | High end type\nfunction keep (value :: a) -> a is value end function\nlaw same (value :: Bool) is definition: value = value end end"
+             else "type Band is | Low | High end\ndefinition keep (value :: a) :: a is value end\nlaw `same` (value :: Bool) is definition is value = value end end"))
+          package version=Package "shop.tax" version M.empty [Source ("tax-"++version++".lawspec") pkgText]
+          alias=if explicit then " as chosen" else ""
+          selected=if explicit then "chosen" else "api"
+          text="-- 😀 original coordinates\r\n\tunit caller\r\n\timport\tshop . tax . api"++alias++" (Band, keep, "++lawName++")\r\n"++
+            (if canonical then "function echo (value :: Band) -> Band is "++selected++".keep value end function"
+             else "definition echo (value :: Band) :: Band is "++selected++".keep value end")
+          source=Source "caller.lawspec" text
+          run versions=do
+            let (project,packages)=packageVersions package versions
+            (prepared,origins,visible,referenceUnit,_)<-preparePackagesWithOrigins canonical
+              project packages [source]
+            (units,properties,syntax,_)<-compileWithSourceOrigins origins True canonical referenceUnit visible 64 defaultGeneration prepared
+            pure (units,properties,[node | input<-syntax,syntaxPath input=="caller.lawspec",node<-syntaxNodes input],
+              [reference | input<-syntax,syntaxPath input=="caller.lawspec",reference<-syntaxReferences input],
+              ([(syntaxKind node,syntaxSpan node) | input<-syntax,syntaxPath input=="tax-2.0.0.lawspec",node<-syntaxNodes input],
+               [location law | unit<-units,law<-laws unit,file (location law)=="tax-2.0.0.lawspec"]))
+      case (run ["2.0.0"],run ["1.0.0","2.0.0"]) of
+        (Right (_,_,plain,plainReferences,plainPackage),Right (units,_,versioned,versionedReferences,versionedPackage)) -> do
+          map (\node->(syntaxKind node,syntaxSpan node)) versioned `shouldBe` map (\node->(syntaxKind node,syntaxSpan node)) plain
+          map referenceSpan versionedReferences `shouldBe` map referenceSpan plainReferences
+          map referenceName versionedReferences `shouldContain` [selected++".keep"]
+          versionedPackage `shouldBe` plainPackage
+          [unitName unit | unit<-units] `shouldContain` ["shop.tax.v2x0x0.api"]
+          [syntaxName node | node<-versioned,syntaxKind node=="import-item"] `shouldContain` [Just "Band"]
+        result -> expectationFailure (show result)
+  it "inserts qualifiers without changing body text, whitespace or a missing final newline" $ do
+    let literal="unchanged\nimport shop.tax.api\nunit shop.tax.fake"
+        text="-- unit shop.tax.fake\r\n\tunit\tshop . tax . api\r\n"++
+          "definition message (unused :: Bool) :: Text is \"unchanged\nimport shop.tax.api\nunit shop.tax.fake\" end"
+        package version=Package "shop.tax" version M.empty [Source (version++".lawspec") text]
+        (project,packages)=packageVersions package ["1.0.0","2.0.0"]
+        caller=Source "caller.lawspec" ("unit caller\nimport shop.tax.api\n"++
+          "law `literal unchanged` is definition is api.message true = "++show literal++" end end")
+    case preparePackagesWithOrigins False project packages [caller] of
+      Left ds -> expectationFailure (show ds)
+      Right (prepared,origins,visible,referenceUnit,_) -> do
+        let expected="-- unit shop.tax.fake\r\n\tunit\tshop . tax.v2x0x0 . api\r\n"++
+              "definition message (unused :: Bool) :: Text is \"unchanged\nimport shop.tax.api\nunit shop.tax.fake\" end"
+        [content source | source<-prepared,path source=="2.0.0.lawspec"] `shouldBe` [expected]
+        case compileWithSourceOrigins origins True False referenceUnit visible 64 defaultGeneration prepared of
+          Left ds -> expectationFailure (show ds)
+          Right (units,properties,_,_) -> case elaborate 64 units properties >>= dischargeEvidence of
+            Left ds -> expectationFailure (show ds)
+            Right _ -> pure ()
+  it "qualifies separately supplied harness targets and retains their authored ranges" $ do
+    let harness="harness checks for shop.tax.api is end"
+        package version=Package "shop.tax" version M.empty
+          [Source (version++".lawspec") "unit shop.tax.api",
+           Source (version++".harness.lawspec") harness]
+        (project,packages)=packageVersions package ["1.0.0","2.0.0"]
+    case preparePackagesWithOrigins False project packages [Source "caller.lawspec" "unit caller\nimport shop.tax.api"] of
+      Left ds -> expectationFailure (show ds)
+      Right (prepared,origins,visible,referenceUnit,_) ->
+        case compileWithSourceOrigins origins True False referenceUnit visible 64 defaultGeneration prepared of
+          Left ds -> expectationFailure (show ds)
+          Right (units,_,_,_) -> do
+            let harnesses=[value | unit<-units,value<-maybe [] pure (unitHarness unit)]
+            map harnessFor harnesses `shouldMatchList` ["shop.tax.v1x0x0.api","shop.tax.v2x0x0.api"]
+            forM_ harnesses $ \value -> do
+              let Span start end=harnessSpan value
+              (line start,column start) `shouldBe` (1,1)
+              (line end,column end) `shouldBe` (1,length harness+1)
+  it "maps generated characters to their insertion site and retained Unicode/tab positions exactly" $ do
+    let source=Source "coordinates.lawspec" "a😀\tb\r\nc"
+    case insertSourceNames source [(1,".version"),(1," as original")] of
+      Left reason -> expectationFailure reason
+      Right (prepared,Just origins) -> do
+        content prepared `shouldBe` "a.version as original😀\tb\r\nc"
+        map (originalLocation origins) [1,9,21] `shouldBe` replicate 3 (Just (Location "coordinates.lawspec" 1 2))
+        originalLocation origins 23 `shouldBe` Just (Location "coordinates.lawspec" 1 9)
+        originalLocation origins (length (content prepared)) `shouldBe` Just (Location "coordinates.lawspec" 2 2)
+      _ -> expectationFailure "expected an origin map"
   let templates = Source "templates.lawspec" $ unlines
         [ "unit templates"
         , "definition identity (value :: a) :: a is value end"

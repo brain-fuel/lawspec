@@ -5,12 +5,13 @@
 -- dependencies. Each range selects the highest supplied version it accepts,
 -- and a package may be supplied in several versions (see preparePackages).
 module LawSpec.Packages
-  ( Package(..), Project(..), emptyProject, preparePackages, preparePackagesWithReferences, packagesView, versionedDiagnostics
+  ( Package(..), Project(..), emptyProject, preparePackages, preparePackagesWithReferences, preparePackagesWithOrigins, packagesView, versionedDiagnostics
   , Version, parseVersion, parseRange, satisfies
   ) where
 
 import LawSpec.Common
-import LawSpec.Parser (sourceUnit)
+import LawSpec.Parser (sourceUnit,sourcePackageTargets)
+import LawSpec.SourceOrigins
 import Control.Monad (forM, forM_, unless, when)
 import Data.Aeson
 import Data.Aeson.Key (Key)
@@ -60,9 +61,15 @@ preparePackages project packages sources = do
 -- rewriting body text or moving the reference's original source span.
 preparePackagesWithReferences :: Project -> [Package] -> [Source] -> Either [Diagnostic]
   ([Source], String -> String -> Maybe String, String -> String -> String, [(Package, [String])])
-preparePackagesWithReferences project packages sources
+preparePackagesWithReferences project packages sources = do
+  (prepared,_,visible,referenceUnit,described)<-preparePackagesWithOrigins False project packages sources
+  pure (prepared,visible,referenceUnit,described)
+
+preparePackagesWithOrigins :: Bool -> Project -> [Package] -> [Source] -> Either [Diagnostic]
+  ([Source],[SourceOriginMap],String -> String -> Maybe String,String -> String -> String,[(Package,[String])])
+preparePackagesWithOrigins canonical project packages sources
   | null packages && M.null (projectDependencies project) && projectPackage project == Nothing =
-      pure (sources, \_ _ -> Nothing, \_ name -> name, [])
+      pure (sources, [], \_ _ -> Nothing, \_ name -> name, [])
   | otherwise = do
       let root = maybe "" fst (projectPackage project)
           rootKey = (root, "")
@@ -129,20 +136,41 @@ preparePackagesWithReferences project packages sources
         forM_ (projectPackage project) $ \(name, _) -> unless (within name u)
           (failure ("unit " ++ u ++ " of package " ++ name ++ " must be named " ++ name ++ " or " ++ name ++ ".<name>"))
       -- The names a package's units are compiled under.
-      let rename (n, v) u
-            | several n && within n u = n ++ "." ++ versionSegment v ++ drop (length n) u
-            | otherwise = u
+      let qualification (n,v) u
+            | several n && within n u = Just (n,versionSegment v)
+            | otherwise = Nothing
+          rename key u = case qualification key u of
+            Just (n,segment)->n++"."++segment++drop (length n) u
+            Nothing->u
           -- An import from a package's unit names its own package or one of
           -- its dependencies; the longest package name that holds it wins.
-          retarget k u = case sortOn (negate . length . fst) [d | d <- k : edges k, not (null (fst d)), within (fst d) u] of
-            d : _ -> rename d u
-            [] -> u
+          targetKey k u = case sortOn (negate . length . fst) [d | d <- k : edges k, not (null (fst d)), within (fst d) u] of
+            d : _ -> Just d
+            [] -> Nothing
+          retarget k u = maybe u (\key->rename key u) (targetKey k u)
+          targetQualification k u = targetKey k u >>= (\key->qualification key u)
           rewrite k source
-            | all (not . several) (fst k : map fst (edges k)) = source
-            | otherwise = source { content = rewriteUnit (rename k) (retarget k) (content source) }
-          compiled = [(k, rewrite k source) | p <- packages, let k = keyOf p, source <- packageSources p] ++
-            [(rootKey, rewrite rootKey source) | source <- sources]
-          renamedUnits = [(p, map (rename (keyOf p)) units) | (p, units) <- packageUnits]
+            | all (not . several) (fst k : map fst (edges k)) = pure (source,Nothing)
+            | otherwise = do
+                (declared,targets)<-sourcePackageTargets canonical source
+                declaredEdits<-insertQualifier (qualification k) declared
+                importedEdits<-concat <$> forM targets (\(parts,alias)->do
+                  inserted<-insertQualifier (targetQualification k) parts
+                  let aliasEdit=case (inserted,alias,reverse parts) of
+                        (_:_,Just name,(_,(_,end)):_)->[(end," as "++name)]
+                        _->[]
+                  pure (inserted++aliasEdit))
+                either failure pure (insertSourceNames source (declaredEdits++importedEdits))
+          insertQualifier qualify parts = case qualify (intercalate "." (map fst parts)) of
+            Nothing->pure []
+            Just (prefix,segment)->
+              let count=1+length (filter (=='.') prefix)
+              in case drop (count-1) parts of
+                (_,(_,end)):_ | intercalate "." (map fst (take count parts))==prefix -> pure [(end,"."++segment)]
+                _->failure "package qualifier does not match the parsed source name"
+      compiled <- mapM (uncurry rewrite)
+        ([(keyOf p,source) | p<-packages,source<-packageSources p]++[(rootKey,source) | source<-sources])
+      let renamedUnits = [(p, map (rename (keyOf p)) units) | (p, units) <- packageUnits]
           owner = M.fromList ([(u, rootKey) | u <- rootUnits] ++ [(u, keyOf p) | (p, units) <- renamedUnits, u <- units])
           visible importer imported = case (M.lookup importer owner, M.lookup imported owner) of
             (Just from, Just to)
@@ -154,7 +182,7 @@ preparePackagesWithReferences project packages sources
             | M.member imported owner = imported
             | Just key <- M.lookup importer owner = retarget key imported
             | otherwise = imported
-      pure (map snd compiled, visible, referenceUnit, renamedUnits)
+      pure (map fst compiled,[origin | (_,Just origin)<-compiled],visible,referenceUnit,renamedUnits)
   where
     failure message = Left [Diagnostic "package" message Nothing]
     keyOf p = (packageName p, packageVersion p)
@@ -206,28 +234,6 @@ segmentClash versions = case [(a, b) | (i, a) <- numbered, (j, b) <- numbered, i
   [] -> Nothing
   where numbered = zip [0 :: Int ..] versions
         folded = map toLower . filter (/= '_') . versionSegment
-
--- | Renames the unit line and the targets of the import lines of a source,
--- giving each rewritten import its old alias explicitly.
-rewriteUnit :: (String -> String) -> (String -> String) -> String -> String
-rewriteUnit renameUnit retarget = unlines . go False . lines
-  where
-    go _ [] = []
-    go named (line : rest) = case words' line of
-      Just ("unit", indent, name, after) | not named -> (indent ++ "unit " ++ renameUnit name ++ after) : go True rest
-      Just ("import", indent, name, after)
-        | retarget name /= name ->
-            let alias = if take 3 (dropWhile (== ' ') after) == "as " then "" else " as " ++ baseOf name
-            in (indent ++ "import " ++ retarget name ++ alias ++ after) : go named rest
-      _ -> line : go named rest
-    words' line =
-      let (indent, body) = span (== ' ') line
-          (keyword, afterKeyword) = span isAlpha body
-          (gap, afterGap) = span (== ' ') afterKeyword
-          (name, after) = span (\c -> isAlphaNum c || c == '_' || c == '.') afterGap
-      in if keyword `elem` ["unit", "import"] && not (null gap) && not (null name)
-           then Just (keyword, indent, name, after) else Nothing
-    baseOf name = reverse (takeWhile (/= '.') (reverse name))
 
 qualifiedName :: String -> Bool
 qualifiedName name = not (null parts) && all segment parts

@@ -697,6 +697,7 @@ library
       LawSpec.Sessions.Web
       LawSpec.Sha3
       LawSpec.SourceContext
+      LawSpec.SourceOrigins
       LawSpec.SourceRecords
       LawSpec.SourceSyntax
       LawSpec.SourceText

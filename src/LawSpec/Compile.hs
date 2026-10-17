@@ -3,11 +3,12 @@
 -- testing plan needs. It stops at the surface; LawSpec.Frontend turns its
 -- result into typed Core, so the eight emitters never see source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithMigrationCapture, validateDefinitionTypes, validateDefinitionTotality) where
+module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithMigrationCapture, compileWithSourceOrigins, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
 import LawSpec.Model
+import LawSpec.SourceOrigins (SourceOriginMap)
 import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..),SyntaxReference(..))
 import LawSpec.MigrationTemplates (SourceTemplates(..),DefinitionTemplate)
 import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, dataDeclarationHeaders, inlineFieldDefinitions, fieldDefinitionChecks, fieldDefinitionDependencies, migrationConstructorSources)
@@ -339,15 +340,20 @@ compileWithMigrationCapture :: Bool -> (String -> String -> String) -> (String -
 compileWithMigrationCapture = compileWithParserInventory True
 
 compileWithParserInventory :: Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
-compileWithParserInventory = compileWithCollectionDemand Nothing
+compileWithParserInventory = compileWithSourceOrigins []
+
+compileWithSourceOrigins :: [SourceOriginMap] -> Bool -> Bool -> (String -> String -> String)
+  -> (String -> String -> Maybe String) -> Int -> Generation -> [Source]
+  -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
+compileWithSourceOrigins = compileWithCollectionDemand Nothing
 
 -- Provider refinement reparses the unchanged document with a strictly smaller
 -- compiler catalogue. All ordinary admission, contracts and totality checks run
 -- on the resulting complete program, independently of optional law layers.
-compileWithCollectionDemand :: Maybe (Bool,[String]) -> Bool -> Bool -> (String -> String -> String)
+compileWithCollectionDemand :: Maybe (Bool,[String]) -> [SourceOriginMap] -> Bool -> Bool -> (String -> String -> String)
   -> (String -> String -> Maybe String) -> Int -> Generation -> [Source]
   -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
-compileWithCollectionDemand selected capture canonical referenceUnit visible bits settings sources = do
+compileWithCollectionDemand selected origins capture canonical referenceUnit visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Reserved Core identities belong to compiler-provided versioned sources.
@@ -396,9 +402,7 @@ compileWithCollectionDemand selected capture canonical referenceUnit visible bit
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.
         [("lawspec.host", "lawspecHost", [], \text -> usesResources text && not (importsBuiltin "lawspec.host" text)) | resources]
-  (parsedUnits,sourceSyntax) <- if capture
-    then parseSourcesWithBuiltinsAndSyntax canonical collections implicit builtins sources
-    else (\units -> (units,[])) <$> parseSourcesWithBuiltins canonical collections implicit builtins sources
+  (parsedUnits,sourceSyntax) <- parseSourcesWithOrigins origins capture canonical collections implicit builtins sources
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   documented <- resolveDocumentaryReferences referenceUnit visible parsedUnits
   let canonicalUnits = Set.fromList [name | source <- sources, Right name <- [sourceUnit source]]
@@ -423,7 +427,7 @@ compileWithCollectionDemand selected capture canonical referenceUnit visible bit
       -- Removing the last false-positive provider must also remove its
       -- implicit unit. Explicit imports retain a deliberately empty unit.
   if refined/=collections then
-    compileWithCollectionDemand (Just (explicitCollection||not (null refined),refined)) capture canonical referenceUnit visible bits settings sources
+    compileWithCollectionDemand (Just (explicitCollection||not (null refined),refined)) origins capture canonical referenceUnit visible bits settings sources
   else do
    -- Abilities, handlers and rows, once each unit has what it imports.
    abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')

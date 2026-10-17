@@ -1,7 +1,7 @@
 -- | The concrete syntax of LawSpec, keywords first with symbols as aliases, so a
 -- specification reads as prose to someone who is not a mathematician.
 -- ref:DEC-readable-notation
-module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, parseSourceCanonical, parseSourcesWithCanonical, parseSourcesWithBuiltins, parseSourcesWithBuiltinsAndSyntax, sourceUnit) where
+module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, parseSourceCanonical, parseSourcesWithCanonical, parseSourcesWithBuiltins, parseSourcesWithBuiltinsAndSyntax, parseSourcesWithOrigins, sourcePackageTargets, sourceUnit) where
 
 import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
 import LawSpec.Resilience (resilienceName)
@@ -15,6 +15,7 @@ import Control.Monad.Trans.Class (lift)
 import qualified Data.List.NonEmpty as NE
 import LawSpec.Model
 import LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), sourceSyntax)
+import LawSpec.SourceOrigins
 import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
 import LawSpec.PreludeNames (preludeValueName)
@@ -46,10 +47,32 @@ type RawP = ParsecT Void String (Reader (M.Map String Header))
 -- State sits outside Parsec, so a failed alternative cannot retain syntax
 -- records from a branch the real grammar rejected. Ordinary parsing uses
 -- Nothing and does not build the inventory.
-type P = StateT (Maybe [SyntaxNode]) RawP
+data ParseContext = ParseContext
+  { recordedSyntax :: Maybe [SyntaxNode], sourceCoordinates :: Maybe SourceOriginMap }
+type P = StateT ParseContext RawP
 
 runParserT :: P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
-runParserT parser = MP.runParserT (evalStateT parser Nothing)
+runParserT = runParserWithCoordinates Nothing
+
+runParserWithCoordinates :: Maybe SourceOriginMap -> P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
+runParserWithCoordinates coordinates parser = MP.runParserT (evalStateT parser (ParseContext Nothing coordinates))
+
+runParserAt :: [SourceOriginMap] -> P a -> Source -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
+runParserAt origins parser source = runParserWithCoordinates (sourceOriginFor origins source) parser (path source) (content source)
+
+sourceLocation :: P Location
+sourceLocation = do
+  coordinates <- sourceCoordinates <$> get
+  case coordinates of
+    Nothing -> do
+      position <- getSourcePos
+      pure (Location (sourceName position) (unPos (sourceLine position)) (unPos (sourceColumn position)))
+    Just origin -> do
+      offset <- getOffset
+      maybe (fail "source origin offset is outside the prepared source") pure (originalLocation origin offset)
+
+recordNode :: SyntaxNode -> P ()
+recordNode node = modify' (\context -> context{recordedSyntax=fmap (node:) (recordedSyntax context)})
 
 lookAhead :: P a -> P a
 lookAhead parser = StateT $ \inventory -> do
@@ -61,13 +84,13 @@ sourceNode kind describe = sourceNodeBy (\value -> (kind,describe value))
 
 sourceNodeBy :: (a -> (String,Maybe String)) -> P a -> P a
 sourceNodeBy describe parser = do
-  inventory <- get
+  inventory <- recordedSyntax <$> get
   case inventory of
     Nothing -> parser
     Just _ -> do
       (value,range) <- withSpan parser
       let (kind,name) = describe value
-      modify' (fmap (SyntaxNode kind name range Nothing :))
+      recordNode (SyntaxNode kind name range Nothing)
       pure value
 spaceP :: P ()
 spaceP = L.space space1 (L.skipLineComment "--") empty
@@ -1305,7 +1328,7 @@ located :: P Expr -> P Expr
 located parser = do
   (value,range) <- withSpan parser
   let (kind,name) = expressionSyntax value
-  modify' (fmap (SyntaxNode ("expression." ++ kind) name range Nothing :))
+  recordNode (SyntaxNode ("expression." ++ kind) name range Nothing)
   pure (Located range value)
 
 expressionSyntax :: Expr -> (String,Maybe String)
@@ -1331,11 +1354,10 @@ expressionSyntax expression = case expression of
   TypeBound bound _ -> ("type-bound",Just bound)
 withSpan :: P a -> P (a,Span)
 withSpan parser = do
-  start <- getSourcePos
+  start <- sourceLocation
   value <- parser
-  end <- getSourcePos
-  let position p = Location (sourceName p) (unPos (sourceLine p)) (unPos (sourceColumn p))
-  pure (value,Span (position start) (position end))
+  end <- sourceLocation
+  pure (value,Span start end)
 numeric :: P Expr
 numeric = lexeme (try based <|> decimal)
   where
@@ -1599,7 +1621,7 @@ lawP = fst <$> lawUsingP
 -- law `name` params [requires ...] [using h, recording A, ...] is ... end
 lawUsingP :: P (Law, [HandlerUse])
 lawUsingP = sourceNode "law" (Just . lawName . fst) $ do
-  pos <- getSourcePos
+  pos <- sourceLocation
   keyword "law"
   n <- lawNameP
   ps <- many param
@@ -1627,7 +1649,7 @@ lawUsingP = sourceNode "law" (Just . lawName . fst) $ do
           then (k + 1, acc ++ [e { exampleName = (if tables > 1 then "table " ++ show k ++ ", " else "") ++
             drop (length ("table " :: String)) (exampleName e) } | e <- rows])
           else (k, acc ++ rows)) (1 :: Int, []) written)
-  pure (Law n ps req d desc why (numbered ++ documented) refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))) resources metadata, using)
+  pure (Law n ps req d desc why (numbered ++ documented) refs pos resources metadata, using)
   where
     isPrefixOf' prefix text = take (length prefix) text == prefix
 
@@ -2216,18 +2238,30 @@ memberSyntax member = ("declaration." ++ kind,name)
       HandlerSetMember h -> ("handlers",Just (handlerSetName h))
 
 unitNameP :: P String
-unitNameP = foldr1 (\a b -> a ++ "." ++ b) <$>
-  (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')) `sepBy1` symbol ".")
+unitNameP = nameOf <$> unitNamePartsP
 
-importP :: P Import
-importP = sourceNode "import" (Just . importUnit) $ sourceNode "import-alias" (Just . importAlias) $ do
-  ((target, alias, items), range) <- withSpan $ do
+type NameParts = [(String,(Int,Int))]
+nameOf :: NameParts -> String
+nameOf = intercalate "." . map fst
+unitNamePartsP :: P NameParts
+unitNamePartsP = lexeme part `sepBy1` symbol "."
+  where
+    part = do
+      start <- getOffset
+      name <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
+      end <- getOffset
+      pure (name,(start,end))
+
+importWithTargetP :: P (Import,NameParts,Bool)
+importWithTargetP = sourceNode "import" (\(item,_,_)->Just (importUnit item)) $ sourceNode "import-alias" (\(item,_,_)->Just (importAlias item)) $ do
+  ((parts, alias, items), range) <- withSpan $ do
     keyword "import"
-    target <- unitNameP
+    parts <- unitNamePartsP
     alias <- optional (keyword "as" *> ident)
     items <- option [] (parens (importItemP `sepBy1` symbol ","))
-    pure (target, alias, items)
-  pure (Import target (maybe (baseName target) id alias) items range)
+    pure (parts, alias, items)
+  let target=nameOf parts
+  pure (Import target (maybe (baseName target) id alias) items range,parts,maybe False (const True) alias)
 
 -- Import retains its existing law marker internally; only the delimiters are
 -- synthetic. A backtick inside a phrase is part of the name.
@@ -2266,11 +2300,31 @@ isExport i = null (importUnit i)
 -- | The unit header and its imports, read before the full parse so that imported
 -- declaration arities are known.
 preambleP :: P (String, [Import])
-preambleP = do
+preambleP = (\(parts,imports)->(nameOf parts,[item | (item,_,_)<-imports])) <$> preambleWithTargetsP
+
+preambleWithTargetsP :: P (NameParts,[(Import,NameParts,Bool)])
+preambleWithTargetsP = do
   spaceP; keyword "unit"
-  n <- unitNameP
-  imports <- many (try importP <|> try exportP)
+  n <- unitNamePartsP
+  imports <- many (try importWithTargetP <|> ((\item->(item,[],True)) <$> try exportP))
   pure (n, imports)
+
+-- Package preparation uses the same header grammar, retaining original name
+-- piece offsets rather than rebuilding lines or scanning the body's text.
+sourcePackageTargets :: Bool -> Source -> Either [Diagnostic] (NameParts,[(NameParts,Maybe String)])
+sourcePackageTargets canonical source = either (Left . pure . parseDiagnostic [] source) Right $
+  runReader (runParserAt [] parser source) (if canonical then M.singleton "profile:canonical" AliasHeader else M.empty)
+  where
+    parser = try harness <|> do
+      (declared,imports) <- preambleWithTargetsP
+      pure (declared,[(parts,if explicit then Nothing else Just (importAlias item)) |
+        (item,parts,explicit)<-imports,not (isExport item)])
+    harness = do
+      spaceP; keyword "harness"
+      declared <- unitNamePartsP
+      keyword "for"
+      served <- unitNamePartsP
+      pure (declared,[(served,Nothing)])
 
 unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow], [ModelDeclaration], ([Protocol], [Scenario]))
 unitP = do
@@ -2354,13 +2408,16 @@ parseSourcesWithCanonical collections implicit = parseSourcesWithBuiltins True c
 -- path (including one starting with '<') never chooses a language profile.
 parseSourcesWithBuiltins :: Bool -> [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
 parseSourcesWithBuiltins canonical collections builtins versioned userSources =
-  fst <$> parseSourcesWithInventory False canonical collections builtins versioned userSources
+  fst <$> parseSourcesWithInventory [] False canonical collections builtins versioned userSources
 
 parseSourcesWithBuiltinsAndSyntax :: Bool -> [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> [Source] -> Either [Diagnostic] ([(Unit, [Import])],[SourceSyntax])
-parseSourcesWithBuiltinsAndSyntax = parseSourcesWithInventory True
+parseSourcesWithBuiltinsAndSyntax = parseSourcesWithInventory [] True
 
-parseSourcesWithInventory :: Bool -> Bool -> [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> [Source] -> Either [Diagnostic] ([(Unit, [Import])],[SourceSyntax])
-parseSourcesWithInventory capture canonical collections builtins versioned userSources = do
+parseSourcesWithOrigins :: [SourceOriginMap] -> Bool -> Bool -> [String] -> [(String,String,[String],String->Bool)] -> [Source] -> [Source] -> Either [Diagnostic] ([(Unit,[Import])],[SourceSyntax])
+parseSourcesWithOrigins = parseSourcesWithInventory
+
+parseSourcesWithInventory :: [SourceOriginMap] -> Bool -> Bool -> [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> [Source] -> Either [Diagnostic] ([(Unit, [Import])],[SourceSyntax])
+parseSourcesWithInventory origins capture canonical collections builtins versioned userSources = do
   forM_ harnessSources $ \(Source path _, header) -> case header of
     Left message -> Left [Diagnostic "parse" message Nothing]
     Right (name, served) -> unless (served `elem` [n | (_, n, _) <- preambles])
@@ -2370,7 +2427,7 @@ parseSourcesWithInventory capture canonical collections builtins versioned userS
   forM_ names $ \n -> when (length (filter (== n) names) > 1)
     (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   parsed <- mapM (\source -> either
-    (const ((\((unit,_),syntax) -> (unit,syntax)) <$> parseWithProfilesInventory capture profile (imported source) [] [] source))
+    (const ((\((unit,_),syntax) -> (unit,syntax)) <$> parseWithProfilesInventory origins capture profile (imported source) [] [] source))
     (\(n, imports) -> (\(((u,_),_),syntax) -> ((u,imports),syntax)) <$> results Lazy.! n) (preamble source)) sources
   pure (map fst parsed,concatMap snd parsed)
   where
@@ -2380,13 +2437,13 @@ parseSourcesWithInventory capture canonical collections builtins versioned userS
     harnessesOf n = [source | (source, Right (_, served)) <- harnessSources, served == n]
     -- Parsed lazily in import order, so a unit sees its imports' indexed
     -- families under the names it uses for them.
-    results = Lazy.fromList [(n, parseWithProfilesInventory capture profile (imported s) (families imports) (harnessesOf n) s) | (s, n, imports) <- preambles]
+    results = Lazy.fromList [(n, parseWithProfilesInventory origins capture profile (imported s) (families imports) (harnessesOf n) s) | (s, n, imports) <- preambles]
     families imports = concat
       [ [f{familyName = importAlias i ++ "." ++ familyName f} | f <- declared] ++
         [f | f <- declared, familyName f `elem` importItems i]
       | i <- imports, Just (Right ((_, declared),_)) <- [Lazy.lookup (importUnit i) results] ]
     preambles = [(s, n, imports) | s <- sources, Right (n, imports) <- [preamble s]]
-    preamble source@(Source p s) = implicit source s <$> runReader (runParserT preambleP p s) (profile source M.empty)
+    preamble source@(Source _ s) = implicit source s <$> runReader (runParserAt origins preambleP source) (profile source M.empty)
     implicit source s (n, imports)
       | n `elem` ("prelude" : collectionsUnit : [unit | (unit, _, _, _) <- builtins]) = (n, imports)
       | otherwise =
@@ -2403,7 +2460,7 @@ parseSourcesWithInventory capture canonical collections builtins versioned userS
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.
-    exports = Lazy.fromList [(n, reexported s imports (sourceExports (imported s) s)) | (s, n, imports) <- preambles]
+    exports = Lazy.fromList [(n, reexported s imports (sourceExports origins (imported s) s)) | (s, n, imports) <- preambles]
     -- A unit's export line offers the arities of the names it lists, from the
     -- units it imports them from, and a listed type's constructors with it.
     reexported source imports (table, owners) =
@@ -2469,9 +2526,9 @@ sourceUnit source@(Source p s) = case partitionHarnessSources [source] of
 
 -- | The headers a unit exports: its type, wrapper and refinement arities and its
 -- constructor arities, with each data type's constructors.
-sourceExports :: M.Map String Header -> Source -> (M.Map String Header, [(String, [String])])
-sourceExports extra (Source _ s) =
-  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)),
+sourceExports :: [SourceOriginMap] -> M.Map String Header -> Source -> (M.Map String Header, [(String, [String])])
+sourceExports origins extra source@(Source _ s) =
+  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders (sourceOriginFor origins source) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)),
    constructorOwners extra s)
 
 parseWith :: M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
@@ -2479,22 +2536,20 @@ parseWith = parseWithProfiles (\_ env -> env)
 
 parseWithProfiles :: (Source -> M.Map String Header -> M.Map String Header) -> M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
 parseWithProfiles profile extra importedFamilies harnessFiles source =
-  fst <$> parseWithProfilesInventory False profile extra importedFamilies harnessFiles source
+  fst <$> parseWithProfilesInventory [] False profile extra importedFamilies harnessFiles source
 
-parseWithProfilesInventory :: Bool -> (Source -> M.Map String Header -> M.Map String Header) -> M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] (((Unit, [Import]), [IndexedFamily]),[SourceSyntax])
-parseWithProfilesInventory capture profile extra importedFamilies harnessFiles (Source p s) =
- case runReader (MP.runParserT (runStateT unitP initialInventory) p s) environment of
-  Left e -> let offset = errorOffset (NE.head (bundleErrors e))
-                (_,state) = reachOffset offset (bundlePosState e)
-                pos = pstateSourcePos state
-            in Left [Diagnostic "parse" (errorBundlePretty e)
-                 (Just (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))))]
+parseWithProfilesInventory :: [SourceOriginMap] -> Bool -> (Source -> M.Map String Header -> M.Map String Header) -> M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] (((Unit, [Import]), [IndexedFamily]),[SourceSyntax])
+parseWithProfilesInventory origins capture profile extra importedFamilies harnessFiles source@(Source p s) =
+ case runReader (MP.runParserT (runStateT unitP (initialContext source)) p s) environment of
+  Left e -> Left [parseDiagnostic origins source e]
   Right ((parsed, imports, families, wrappers, workflows, models, (protocols, scenarios)),recorded) -> do
     let u0 = parsed { functionDefinitions =
           [d { functionSource = Just (unitName parsed,functionName d) } | d <- functionDefinitions parsed] }
     -- A harness file is read with the names of the unit it serves.
-    separate <- mapM (\harness@(Source hp hs) -> either (\e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]) Right
-      (runReader (MP.runParserT (runStateT harnessFileP initialInventory) hp hs) (profile harness environment))) harnessFiles
+    separate <- mapM (\harness@(Source hp hs) -> either (\e -> Left [case sourceOriginFor origins harness of
+        Nothing -> Diagnostic "parse" (errorBundlePretty e) Nothing
+        Just _ -> parseDiagnostic origins harness e]) Right
+      (runReader (MP.runParserT (runStateT harnessFileP (initialContext harness)) hp hs) (profile harness environment))) harnessFiles
     u <- case (unitHarness u0, map fst separate) of
       (_, []) -> pure u0
       (Nothing, [h]) -> pure u0 { unitHarness = Just h }
@@ -2516,14 +2571,27 @@ parseWithProfilesInventory capture profile extra importedFamilies harnessFiles (
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
       (elaborateFamiliesWith importedFamilies families' flowed)
     let inventory = if capture then
-          sourceSyntax p (unitName parsed) (maybe [] reverse recorded) :
-          [sourceSyntax hp (harnessFor harness) (maybe [] reverse nodes)
+          sourceSyntax p (unitName parsed) (maybe [] reverse (recordedSyntax recorded)) :
+          [sourceSyntax hp (harnessFor harness) (maybe [] reverse (recordedSyntax nodes))
             | (Source hp _,(harness,nodes)) <- zip harnessFiles separate]
           else []
     pure (((elaborated, imports), families'),inventory)
   where
-    initialInventory = if capture then Just [] else Nothing
-    environment = literalHeaders s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)
+    initialContext input = ParseContext (if capture then Just [] else Nothing) (sourceOriginFor origins input)
+    environment = literalHeaders (sourceOriginFor origins source) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)
+
+parseDiagnostic :: [SourceOriginMap] -> Source -> ParseErrorBundle String Void -> Diagnostic
+parseDiagnostic origins source bundle =
+  let err=NE.head (bundleErrors bundle)
+      offset=errorOffset err
+      (_,state)=reachOffset offset (bundlePosState bundle)
+      position=pstateSourcePos state
+      raw=Location (sourceName position) (unPos (sourceLine position)) (unPos (sourceColumn position))
+  in case sourceOriginFor origins source of
+    Nothing -> Diagnostic "parse" (errorBundlePretty bundle) (Just raw)
+    Just coordinates -> case originalLocation coordinates offset of
+      Just location -> Diagnostic "parse" (parseErrorTextPretty err) (Just location)
+      Nothing -> Diagnostic "source-origin" "parser error offset is outside the prepared source" Nothing
 
 -- Sources that hold a harness rather than a unit, each with its header.
 partitionHarnessSources :: [Source] -> ([(Source, Either String (String, String))], [Source])
@@ -2581,8 +2649,8 @@ constructorOwners extra source = either (const []) id $
 -- | Reuse the declaration parser to discover fixture constructor arities. This
 -- pass skips other tokens atomically; the full parse remains authoritative for
 -- errors and source ranges, including malformed declarations.
-literalHeaders :: String -> M.Map String Header -> M.Map String Header
-literalHeaders source initial = case runReader (runParserT scan "constructor headers" source) initial of
+literalHeaders :: Maybe SourceOriginMap -> String -> M.Map String Header -> M.Map String Header
+literalHeaders coordinates source initial = case runReader (runParserWithCoordinates coordinates scan "constructor headers" source) initial of
   Left _ -> initial
   Right declarations -> M.union (M.fromList (
     [("record:" ++ dataTypeName d, RecordHeader (dataConstructorFields c))

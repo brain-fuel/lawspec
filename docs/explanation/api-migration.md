@@ -37,6 +37,15 @@ definitions. Nested conditionals and equality tokens use the actual parser's
 source ranges. The inventory also records law sections, constructor fields,
 patterns, table rows and closers for the remaining transformation stages.
 
+When version resolution inserts package qualifiers, source positions continue
+to refer to the authored text. The compiler uses its header parser to identify
+namespace insertion points and carries an origin map through parsing,
+diagnostics, typed declarations and references. Comments, literal contents,
+whitespace, implicit aliases and line endings retain their original contents.
+This corrects the orders example's shifted import spans; its still-legacy
+dependencies require separate migration before a canonical project preview can
+be admitted.
+
 The preview also migrates quoted law and example names, law import/export
 markers, explicit reusable-law applications, law section delimiters, universal
 binder arrows and scopes, expectation-first tables, legacy case selections and

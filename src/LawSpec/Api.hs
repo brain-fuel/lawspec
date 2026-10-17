@@ -105,9 +105,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                 Object response -> Object (KM.insert "proofTasks" (toJSON ([] :: [Smt.ProofTask])) response)
                 response -> response
           "proofTasks" -> failure [Diagnostic "language-profile" "proofTasks requires API schema 5 and languageProfile 1.0-rc.1" Nothing]
-          "format" | verification /= Nothing -> case preparePackagesWithReferences project packages (map formatSource sources) of
+          "format" | verification /= Nothing -> case preparePackagesWithOrigins True project packages (map formatSource sources) of
             Left ds -> failure ds
-            Right (formatted,visible,referenceUnit,_) -> case compileCanonicalWithReferenceUnits referenceUnit visible bits settings formatted of
+            Right (formatted,origins,visible,referenceUnit,_) -> case compileWithSourceOrigins origins False True referenceUnit visible bits settings formatted of
               Left ds -> failure ds
               Right _ -> withSources (map formatSource sources) (result [])
           "format" -> failure [Diagnostic "language-profile" "format requires API schema 5 and languageProfile 1.0-rc.1" Nothing]
@@ -368,12 +368,10 @@ stages project packages sources bits settings native verification =
   fst <$> stagesWithInput (verification /= Nothing) False project packages sources bits settings native verification
 
 stagesWithInput :: Bool -> Bool -> Project -> [Package] -> [Source] -> Int -> Generation -> NativeRequest -> Maybe V.Verification -> Either Value (Stages,[SourceSyntax])
-stagesWithInput canonical capture project packages sources bits settings native verification = case preparePackagesWithReferences project packages sources of
+stagesWithInput canonical capture project packages sources bits settings native verification = case preparePackagesWithOrigins canonical project packages sources of
   Left ds -> Left (failure ds)
-  Right (allSources,visible,referenceUnit,described) -> case
-    (if capture then compileWithMigrationCapture canonical referenceUnit visible bits settings allSources
-      else (\(units,properties) -> (units,properties,[],Nothing)) <$>
-        (if canonical then compileCanonicalWithReferenceUnits referenceUnit visible else compileWithImports visible) bits settings allSources) of
+  Right (allSources,origins,visible,referenceUnit,described) -> case
+    compileWithSourceOrigins origins capture canonical referenceUnit visible bits settings allSources of
     Left ds -> Left (failure (versionedDiagnostics described ds))
     Right (us,es,syntax,templates) -> case (if canonical then elaborateCanonical else elaborate) bits us es of
       Left ds -> Left (failure (versionedDiagnostics described ds))
