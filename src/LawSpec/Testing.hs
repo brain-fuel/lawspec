@@ -928,8 +928,11 @@ familyEquations declarations root = do
           children <- fmap concat $ mapM (\c -> do
             ConstructorIndex terms guards <- lookup (idText (constructorId c)) (familyIndexConstructors index)
             let positions = nub (concatMap termFields (terms ++ concat [[a, b] | IndexGuard _ a b <- guards]))
-            unless' (length positions <= 3 && all ((== 0) . snd) positions)
-            mapM (\(position, _) -> case binderType <$> drop position (constructorFields c) of
+            -- The direct index generator solves root-field indices. Nested
+            -- projections use the ordinary checked generator until that solver
+            -- can construct the intervening structural records as well.
+            unless' (length positions <= 3 && all (\(path, i) -> length path == 1 && i == 0) positions)
+            mapM (\(path, _) -> let position = head path in case binderType <$> drop position (constructorFields c) of
               Constructor child _ : _ -> Just (Id child)
               _ -> Nothing) positions) (dataConstructors d)
           reach (d : seen) (rest ++ children)

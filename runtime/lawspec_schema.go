@@ -753,8 +753,8 @@ func (s *lawSpecSchema) checkIndices(constructor lawSpecConstructorSchema, field
 		}
 		left, next := lsParseSchemaIndex(tokens, 1)
 		right, _ := lsParseSchemaIndex(tokens, next)
-		field := func(position, index int) *big.Int {
-			return s.indexOf(constructor.fields[position].typeRef, fields[position], index)
+		field := func(path []int, index int) *big.Int {
+			return s.indexAtPath(constructor.fields, fields, path, index)
 		}
 		x, y := lsEvalSchemaIndex(left, field), lsEvalSchemaIndex(right, field)
 		if x == nil || y == nil || (tokens[0] == "==" && x.Cmp(y) != 0) || (tokens[0] == ">=" && x.Cmp(y) < 0) {
@@ -780,20 +780,41 @@ func (s *lawSpecSchema) indexOf(t lawSpecTypeRef, value LawSpecValue, index int)
 			panic("no index for " + t.key())
 		}
 		term, _ := lsParseSchemaIndex(strings.Fields(terms[index]), 0)
-		return lsEvalSchemaIndex(term, func(position, child int) *big.Int {
-			return s.indexOf(constructor.fields[position].typeRef, data.fields[position], child)
+		return lsEvalSchemaIndex(term, func(path []int, child int) *big.Int {
+			return s.indexAtPath(constructor.fields, data.fields, path, child)
 		})
 	}
 	panic("unknown constructor " + data.tag)
 }
 
+func (s *lawSpecSchema) indexAtPath(types []lawSpecFieldSchema, values []LawSpecValue, path []int, index int) *big.Int {
+	if len(path) == 0 || path[0] < 0 || path[0] >= len(types) || path[0] >= len(values) {
+		panic("invalid index field path")
+	}
+	position := path[0]
+	t, value := types[position].typeRef, values[position]
+	if len(path) == 1 {
+		return s.indexOf(t, value, index)
+	}
+	if !strings.HasPrefix(t.name, "lawspec::structural::record::") {
+		panic("index field path must traverse a structural record")
+	}
+	constructors, _ := s.constructors(t)
+	data := value.Data.(lawSpecData)
+	if len(constructors) != 1 || constructors[0].tag != data.tag {
+		panic("invalid structural record in index field path")
+	}
+	return s.indexAtPath(constructors[0].fields, data.fields, path[1:], index)
+}
+
 // lawSpecSchemaIndex is a prefix index term: c<n>, f<field>[.<index>] or an
 // operator applied to two terms.
 type lawSpecSchemaIndex struct {
-	op              string
-	value           *big.Int
-	position, index int
-	left, right     *lawSpecSchemaIndex
+	op          string
+	value       *big.Int
+	path        []int
+	index       int
+	left, right *lawSpecSchemaIndex
 }
 
 func lsParseSchemaIndex(tokens []string, at int) (*lawSpecSchemaIndex, int) {
@@ -808,17 +829,28 @@ func lsParseSchemaIndex(tokens []string, at int) (*lawSpecSchemaIndex, int) {
 			panic("malformed index term")
 		}
 		return &lawSpecSchemaIndex{op: "c", value: value}, at + 1
-	case token[0] == 'f':
+	case token[0] == 'f' || token[0] == 'p':
 		parts := strings.SplitN(token[1:], ".", 2)
-		position, err := strconv.Atoi(parts[0])
+		path := []int{}
+		for _, part := range strings.Split(parts[0], "/") {
+			position, err := strconv.Atoi(part)
+			if err != nil || position < 0 {
+				panic("malformed index field path")
+			}
+			path = append(path, position)
+		}
 		index := 0
-		if err == nil && len(parts) == 2 {
+		if len(parts) == 2 {
+			var err error
 			index, err = strconv.Atoi(parts[1])
+			if err != nil || index < 0 {
+				panic("malformed index term")
+			}
 		}
-		if err != nil {
-			panic("malformed index term")
+		if token[0] == 'f' && len(path) != 1 {
+			panic("malformed index field path")
 		}
-		return &lawSpecSchemaIndex{op: "f", position: position, index: index}, at + 1
+		return &lawSpecSchemaIndex{op: "f", path: path, index: index}, at + 1
 	}
 	left, next := lsParseSchemaIndex(tokens, at+1)
 	right, end := lsParseSchemaIndex(tokens, next)
@@ -827,12 +859,12 @@ func lsParseSchemaIndex(tokens []string, at int) (*lawSpecSchemaIndex, int) {
 
 // lsEvalSchemaIndex is natural index arithmetic; nil when an operation has no
 // natural value.
-func lsEvalSchemaIndex(term *lawSpecSchemaIndex, field func(int, int) *big.Int) *big.Int {
+func lsEvalSchemaIndex(term *lawSpecSchemaIndex, field func([]int, int) *big.Int) *big.Int {
 	switch term.op {
 	case "c":
 		return term.value
 	case "f":
-		return field(term.position, term.index)
+		return field(term.path, term.index)
 	}
 	x, y := lsEvalSchemaIndex(term.left, field), lsEvalSchemaIndex(term.right, field)
 	if x == nil || y == nil {

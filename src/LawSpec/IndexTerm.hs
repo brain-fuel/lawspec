@@ -11,7 +11,7 @@ module LawSpec.IndexTerm
   ) where
 
 import GHC.Generics (Generic)
-import Data.List (nub)
+import Data.List (intercalate, nub)
 
 -- | The arithmetic an index may use; each runtime implements exactly these.
 -- ref:DEC-gadts-and-index-arithmetic
@@ -19,11 +19,13 @@ data IndexOperation = IndexAdd | IndexSubtract | IndexMultiply | IndexQuotient |
   deriving (Eq, Ord, Show, Enum, Bounded, Generic)
 
 -- | A field reference names a field position and the position of the index
--- within that field's own family.
+-- within that field's own family. IndexPath starts at a constructor field and
+-- traverses only closed structural records; it never unwraps a nominal type.
 data IndexTerm
   = IndexConstant Integer
   | IndexField Int Int
   | IndexApply IndexOperation IndexTerm IndexTerm
+  | IndexPath [Int] Int
   deriving (Eq, Ord, Show, Generic)
 
 -- | An index guard states equality or a lower bound, which is what
@@ -59,10 +61,11 @@ indexOperationName op = case op of
 
 -- | Natural semantics: subtraction below zero, division by zero and a negative
 -- exponent have no value. Callers treat Nothing as "no such index".
-evaluateIndex :: (Int -> Int -> Maybe Integer) -> IndexTerm -> Maybe Integer
+evaluateIndex :: ([Int] -> Int -> Maybe Integer) -> IndexTerm -> Maybe Integer
 evaluateIndex field term = case term of
   IndexConstant n -> Just n
-  IndexField position index -> field position index
+  IndexField position index -> field [position] index
+  IndexPath path index -> field path index
   IndexApply op a b -> do
     x <- evaluateIndex field a
     y <- evaluateIndex field b
@@ -80,7 +83,7 @@ evaluateIndex field term = case term of
 
 -- | A guard whose fields cannot be read does not hold, so a malformed value is
 -- refused rather than accepted.
-guardHolds :: (Int -> Int -> Maybe Integer) -> IndexGuard -> Bool
+guardHolds :: ([Int] -> Int -> Maybe Integer) -> IndexGuard -> Bool
 guardHolds field (IndexGuard relation a b) = case (evaluateIndex field a, evaluateIndex field b) of
   (Just x, Just y) -> case relation of
     IndexEqual -> x == y
@@ -88,12 +91,14 @@ guardHolds field (IndexGuard relation a b) = case (evaluateIndex field a, evalua
   _ -> False
 
 -- | Runtimes receive terms and guards in prefix notation: c<n> is a literal,
--- f<i> the first index of field i (f<i>.<j> its index j), then operators.
+-- f<i> the first index of field i (f<i>.<j> its index j). A nested
+-- structural projection is p<i>/<j>/... .<index> (without the space).
 indexTermText :: IndexTerm -> String
 indexTermText term = case term of
   IndexConstant n -> "c" ++ show n
   IndexField position 0 -> "f" ++ show position
   IndexField position index -> "f" ++ show position ++ "." ++ show index
+  IndexPath path index -> "p" ++ intercalate "/" (map show path) ++ "." ++ show index
   IndexApply op a b -> unwords [indexOperationName op, indexTermText a, indexTermText b]
 
 -- | Guards are exchanged with runtimes as text that each parses identically.
@@ -106,10 +111,11 @@ constructorIndexTexts :: ConstructorIndex -> [String]
 constructorIndexTexts (ConstructorIndex terms guards) = map indexTermText terms ++ map indexGuardText guards
 
 -- | A term's field references decide which fields must be built first.
-termFields :: IndexTerm -> [(Int, Int)]
+termFields :: IndexTerm -> [([Int], Int)]
 termFields term = nub $ case term of
   IndexConstant _ -> []
-  IndexField position index -> [(position, index)]
+  IndexField position index -> [([position], index)]
+  IndexPath path index -> [(path, index)]
   IndexApply _ a b -> termFields a ++ termFields b
 
 -- | Each subtraction requires its left operand to be at least its right one,

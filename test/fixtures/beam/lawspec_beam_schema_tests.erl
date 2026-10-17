@@ -305,3 +305,26 @@ schema_audit_test() ->
         definition(<<"Bad">>, 0, [ctor(<<"Bad::Bad">>, bad, [{<<"value">>, {parameter, 0}}])])])),
     ?assertError({lawspec, {unknown_type_or_arity, <<"List">>}},
         lawspec_beam_schema:check_type({<<"List">>, []}, schema([]))).
+
+%% Closed records may carry indexed children; their sibling constraints still
+%% reject native values even when the record introduces two projections.
+index_record_paths_test() ->
+    Chain = <<"PathChain">>, Inner = <<"lawspec::structural::record::inner">>,
+    Outer = <<"lawspec::structural::record::outer">>, Wrapper = <<"PathWrapper">>,
+    Zero = (ctor(<<"Stop">>, stop, []))#{indices => [<<"c0">>, <<"c10">>]},
+    Next = (ctor(<<"Next">>, next, [{<<"tail">>, {Chain, []}}]))#{indices => [<<"+ f0 c1">>, <<"+ f0.1 c1">>]},
+    Wrap = (ctor(<<"Wrap">>, wrap, [{<<"payload">>, {Outer, []}}]))#{indices =>
+        [<<"p0/0/0.0">>, <<"p0/0/0.1">>, <<"== p0/0/0.1 + p0/1.0 c10">>, <<"== p0/0/0.0 p0/1.0">>, <<">= p0/0/0.0 c1">>]},
+    Definitions = [definition(Chain, 0, [Zero, Next]),
+        definition(Inner, 0, [ctor(<<"Inner">>, inner, [{<<"rest">>, {Chain, []}}])]),
+        definition(Outer, 0, [ctor(<<"Outer">>, outer, [{<<"child">>, {Inner, []}}, {<<"sibling">>, {Chain, []}}])]),
+        definition(Wrapper, 0, [Wrap])],
+    lists:foreach(fun(Bits) ->
+        S = lawspec_beam_schema:new(Definitions, [], Bits),
+        Good = lawspec_beam_schema:from_native({wrap, {outer, {inner, {next, {next, stop}}}, {next, {next, stop}}}}, Wrapper, S),
+        ?assertEqual(2, lawspec_beam_schema:index(Good, Wrapper, 0, S)),
+        ?assertEqual(12, lawspec_beam_schema:index(Good, Wrapper, 1, S)),
+        lists:foreach(fun(Bad) ->
+            ?assertException(error, {lawspec, {refinement_violation, _}}, lawspec_beam_schema:from_native(Bad, Wrapper, S))
+        end, [{wrap, {outer, {inner, {next, stop}}, stop}}, {wrap, {outer, {inner, stop}, stop}}])
+    end, [32,64]).

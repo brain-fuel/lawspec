@@ -120,32 +120,36 @@ public final class LawSpecSchema {
 
   /** A prefix index term: kind is "c", "f" or an operator. */
   private record IndexTerm(
-      String kind, BigInteger value, int position, int index, IndexTerm left, IndexTerm right) {
+      String kind, BigInteger value, List<Integer> path, int index, IndexTerm left, IndexTerm right) {
     static IndexTerm parse(String[] tokens, int[] at) {
       if (at[0] >= tokens.length) throw new IllegalArgumentException("malformed index term");
       String token = tokens[at[0]++];
       if (token.startsWith("c")) {
-        return new IndexTerm("c", new BigInteger(token.substring(1)), 0, 0, null, null);
+        return new IndexTerm("c", new BigInteger(token.substring(1)), List.of(), 0, null, null);
       }
-      if (token.startsWith("f")) {
+      if (token.startsWith("f") || token.startsWith("p")) {
+        if (!token.matches("[fp][0-9]+(?:/[0-9]+)*(?:\\.[0-9]+)?")
+            || (token.startsWith("f") && token.contains("/"))) {
+          throw new IllegalArgumentException("malformed index field path");
+        }
         var parts = token.substring(1).split("\\.");
         return new IndexTerm(
             "f",
             null,
-            Integer.parseInt(parts[0]),
+            java.util.Arrays.stream(parts[0].split("/")).map(Integer::parseInt).toList(),
             parts.length > 1 ? Integer.parseInt(parts[1]) : 0,
             null,
             null);
       }
       var left = parse(tokens, at);
       var right = parse(tokens, at);
-      return new IndexTerm(token, null, 0, 0, left, right);
+      return new IndexTerm(token, null, List.of(), 0, left, right);
     }
 
     /** Natural index arithmetic; null when an operation has no natural value. */
-    BigInteger evaluate(java.util.function.BiFunction<Integer, Integer, BigInteger> field) {
+    BigInteger evaluate(java.util.function.BiFunction<List<Integer>, Integer, BigInteger> field) {
       if (kind.equals("c")) return value;
-      if (kind.equals("f")) return field.apply(position, index);
+      if (kind.equals("f")) return field.apply(path, index);
       var x = left.evaluate(field);
       var y = right.evaluate(field);
       if (x == null || y == null) return null;
@@ -173,8 +177,8 @@ public final class LawSpecSchema {
       var at = new int[] {1};
       var left = IndexTerm.parse(tokens, at);
       var right = IndexTerm.parse(tokens, at);
-      java.util.function.BiFunction<Integer, Integer, BigInteger> field =
-          (position, index) -> indexOf((Named) types.get(position).type(), fields.get(position), index);
+      java.util.function.BiFunction<List<Integer>, Integer, BigInteger> field =
+          (path, index) -> indexAtPath(types, fields, path, index);
       var x = left.evaluate(field);
       var y = right.evaluate(field);
       boolean holds =
@@ -197,8 +201,26 @@ public final class LawSpecSchema {
     var types = fields(type, data.tag());
     return IndexTerm.parse(terms.get(index).split(" "), new int[] {0})
         .evaluate(
-            (position, child) ->
-                indexOf((Named) types.get(position).type(), data.fields().get(position), child));
+            (path, child) -> indexAtPath(types, data.fields(), path, child));
+  }
+
+  private BigInteger indexAtPath(List<Field> types, List<Value> values, List<Integer> path, int index) {
+    if (path.isEmpty() || path.get(0) < 0 || path.get(0) >= types.size() || path.get(0) >= values.size()) {
+      throw new IllegalArgumentException("invalid index field path");
+    }
+    int position = path.get(0);
+    var type = (Named) types.get(position).type();
+    var value = values.get(position);
+    if (path.size() == 1) return indexOf(type, value, index);
+    if (!type.name().startsWith("lawspec::structural::record::")) {
+      throw new IllegalArgumentException("index field path must traverse a structural record");
+    }
+    var data = (Data) value.data();
+    var definition = definitions.get(type.name());
+    if (definition.constructors().size() != 1 || !definition.constructors().get(0).tag().equals(data.tag())) {
+      throw new IllegalArgumentException("invalid structural record in index field path");
+    }
+    return indexAtPath(fields(type, data.tag()), data.fields(), path.subList(1, path.size()), index);
   }
 
   /** A handle (handle == true) has no constructors: its values carry adapters' native objects. */

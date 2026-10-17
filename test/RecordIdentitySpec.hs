@@ -30,6 +30,8 @@ import LawSpec.Public (programView)
 import qualified LawSpec.Testing as Testing
 import RecordIdentityFixtures (recordSmokeProgram)
 import LawSpec.Scalar
+import LawSpec.IndexTerm
+import qualified LawSpec.Core.Totality as Totality
 
 origin :: Origin
 origin = GeneratedFrom (Id "records")
@@ -53,6 +55,56 @@ record fields = fst (either error id (makeRecordDeclaration [] fields origin))
 
 test_recordIdentitiesPreserveSemantics :: Spec
 test_recordIdentitiesPreserveSemantics = describe "closed structural record identities" $ do
+  it "reads family indices through nested structural records and retains sibling guards" $ do
+    let chainType = Constructor "PathChain" []
+        chainTag tag = Id ("PathChain::" ++ tag)
+        ctor tag fields = DataConstructor (chainTag tag) tag fields [] origin [] []
+        chain = (DataDeclaration (Id "PathChain") "PathChain" []
+          [ctor "Stop" [],ctor "Next" [Binder (Id "tail") "tail" chainType]] origin Nothing)
+          {dataIndex=Just (FamilyIndex ["n"]
+            [("PathChain::Stop",ConstructorIndex [IndexConstant 0] []),
+             ("PathChain::Next",ConstructorIndex [IndexApply IndexAdd (IndexField 0 0) (IndexConstant 1)] [])])}
+        inner = record [field "rest" chainType]
+        innerType = Constructor (idText (dataId inner)) []
+        outer = record [field "child" innerType,field "sibling" chainType]
+        outerType = Constructor (idText (dataId outer)) []
+        guard = IndexGuard IndexEqual (IndexPath [0,0,0] 0) (IndexPath [0,1] 0)
+        wrapper = (DataDeclaration (Id "PathWrapper") "PathWrapper" []
+          [DataConstructor (Id "PathWrapper::Wrap") "Wrap" [Binder (Id "payload") "payload" outerType] [] origin [] []]
+          origin Nothing){dataIndex=Just (FamilyIndex ["n"]
+            [("PathWrapper::Wrap",ConstructorIndex [IndexPath [0,0,0] 0] [guard])])}
+        declarations = [chain,inner,outer,wrapper]
+        registry = either error id (makeRegistry declarations)
+        stop = DataValue chainType (chainTag "Stop") []
+        next = DataValue chainType (chainTag "Next") [stop]
+        product declaration values = DataValue (Constructor (idText (dataId declaration)) [])
+          (constructorId (head (dataConstructors declaration))) values
+        wrapped left right = DataValue (Constructor "PathWrapper" []) (Id "PathWrapper::Wrap")
+          [product outer [product inner [left],right]]
+        good = wrapped next next
+        bad = wrapped next stop
+    constructorIndexTexts (ConstructorIndex [IndexPath [0,0,0] 0] [guard])
+      `shouldBe` ["p0/0/0.0","== p0/0/0.0 p0/1.0"]
+    valueIndex registry good 0 `shouldBe` Just 1
+    forM_ [32,64] $ \bits -> do
+      validateValue registry bits (valueType good) good `shouldBe` Right good
+      validateValue registry bits (valueType bad) bad `shouldSatisfy` isLeft
+      case constructorProofContracts bits declarations of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right contracts -> do
+          let mappings = [references | contract <- contracts,
+                Totality.constructorOwner contract == Id "PathWrapper::Wrap",
+                (_,references) <- Totality.constructorIndexGuards contract]
+          mappings `shouldBe` [[
+            (([0,0,0],0),("nOfPathChain",[(constructorId (head (dataConstructors outer)),0),
+              (constructorId (head (dataConstructors inner)),0)])),
+            (([0,1],0),("nOfPathChain",[(constructorId (head (dataConstructors outer)),1)]))]]
+    let invalid path = wrapper{dataIndex=Just (FamilyIndex ["n"]
+          [("PathWrapper::Wrap",ConstructorIndex [IndexPath path 0] [])])}
+    forM_ [[],[-1],[0,-1],[0,2],[0,0,1],[0,1,0]] $ \path ->
+      isLeft (makeRegistry [chain,inner,outer,invalid path]) `shouldBe` True
+    -- The last invalid path attempts to traverse the nominal PathChain.
+    indexTermText (IndexField 0 1) `shouldBe` "f0.1"
   it "uses versioned array descriptors and a full 256-bit digest" $ do
     let d = descriptor [field "amount" integerType]
         arrays (A.Object _) = False

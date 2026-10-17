@@ -508,10 +508,28 @@ eval_index([<<"f", Field/binary>> | Rest], C, Values, S) ->
     end,
     {_, T} = lists:nth(P + 1, maps:get(fields, C)),
     {index(lists:nth(P + 1, Values), T, I, S), Rest};
+eval_index([<<"p", Path/binary>> | Rest], C, Values, S) ->
+    [Positions, Inner] = binary:split(Path, <<".">>),
+    Fields = [binary_to_integer(P) || P <- binary:split(Positions, <<"/">>, [global])],
+    {index_at_path(maps:get(fields, C), Values, Fields, binary_to_integer(Inner), S), Rest};
 eval_index([Op | Rest], C, Values, S) ->
     {A, Next} = eval_index(Rest, C, Values, S),
     {B, After} = eval_index(Next, C, Values, S),
     {index_binary(Op, A, B), After}.
+index_at_path(Types, Values, [P | Rest], Inner, S) when P >= 0, P < length(Types), P < length(Values), Inner >= 0 ->
+    {_, T} = lists:nth(P + 1, Types),
+    Value = lists:nth(P + 1, Values),
+    case Rest of
+        [] -> index(Value, T, Inner, S);
+        _ ->
+            {<<"lawspec::structural::record::", _/binary>>, _} = T,
+            {ls_data, Tag, Fields} = Value,
+            [C] = constructors(T, S),
+            require(maps:get(tag, C) =:= Tag, invalid_index_path),
+            index_at_path(maps:get(fields, C), Fields, Rest, Inner, S)
+    end;
+index_at_path(_, _, _, _, _) -> fail(invalid_index_path).
+
 index_binary(_, undefined, _) -> undefined;
 index_binary(_, _, undefined) -> undefined;
 index_binary(<<"+">>, A, B) -> A + B;

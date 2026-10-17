@@ -16,7 +16,8 @@ module LawSpecSchema
   ) where
 
 import Control.Monad (unless, forM_, zipWithM, foldM)
-import Data.List (find, nub)
+import Data.List (find, isPrefixOf, nub)
+import Text.Read (readMaybe)
 import qualified LawSpecRuntime as LS
 
 -- | A payload type's first argument (List, Maybe, Nullable and Optional have
@@ -252,7 +253,7 @@ failureContext label = either (Left . decorate) Right
       EvaluationFailure (label ++ ": " ++ message)
 
 -- | Prefix index terms: c<n>, f<field>[.<index>] and natural operators.
-data IndexTerm = IndexConstant Integer | IndexField Int Int | IndexOp String IndexTerm IndexTerm
+data IndexTerm = IndexConstant Integer | IndexField [Int] Int | IndexOp String IndexTerm IndexTerm
 
 isIndexGuard :: String -> Bool
 isIndexGuard text = take 1 (words text) `elem` [["=="], [">="]]
@@ -263,9 +264,18 @@ fieldTypes fields = [ty | Field _ ty <- fields]
 parseIndexTerm :: [String] -> Either String (IndexTerm, [String])
 parseIndexTerm tokens = case tokens of
   ('c' : digits) : rest -> Right (IndexConstant (read digits), rest)
-  ('f' : digits) : rest -> case break (== '.') digits of
-    (position, '.' : index) -> Right (IndexField (read position) (read index), rest)
-    (position, _) -> Right (IndexField (read position) 0, rest)
+  (kind : digits) : rest | kind `elem` "fp" -> do
+    let (positions, suffix) = break (== '.') digits
+        split [] = [""]
+        split text = case break (== '/') text of
+          (part, []) -> [part]
+          (part, _ : more) -> part : split more
+    path <- maybe (Left "malformed index field path") Right (mapM readMaybe (split positions))
+    index <- case suffix of
+      [] -> Right 0
+      _ : text -> maybe (Left "malformed index term") Right (readMaybe text)
+    unless (all (>= 0) path && index >= 0 && (kind /= 'f' || length path == 1)) (Left "malformed index field path")
+    Right (IndexField path index, rest)
   op : rest | op `elem` ["+", "-", "*", "div", "mod", "^"] -> do
     (a, afterA) <- parseIndexTerm rest
     (b, afterB) <- parseIndexTerm afterA
@@ -273,7 +283,7 @@ parseIndexTerm tokens = case tokens of
   _ -> Left "malformed index term"
 
 -- | Natural arithmetic; Nothing when an operation has no natural value.
-evalIndexTerm :: (Int -> Int -> Either String Integer) -> IndexTerm -> Either String (Maybe Integer)
+evalIndexTerm :: ([Int] -> Int -> Either String Integer) -> IndexTerm -> Either String (Maybe Integer)
 evalIndexTerm field term = case term of
   IndexConstant n -> Right (Just n)
   IndexField position index -> Just <$> field position index
@@ -292,7 +302,7 @@ evalIndexTerm field term = case term of
         "^" | y >= 0 && y <= 64 -> Just (x ^ y)
         _ -> Nothing
 
-indexGuard :: (Int -> Int -> Either String Integer) -> String -> Either String Bool
+indexGuard :: ([Int] -> Int -> Either String Integer) -> String -> Either String Bool
 indexGuard field text = case words text of
   relation : rest -> do
     (a, afterA) <- parseIndexTerm rest
@@ -315,9 +325,24 @@ indexOf schema@(Schema _ _ _ indices _ _) typeRef value index = case value of
     let terms = filter (not . isIndexGuard) (maybe [] id (lookup tag indices))
     text <- if index < length terms then Right (terms !! index) else Left ("no index for " ++ show typeRef)
     (term, _) <- parseIndexTerm (words text)
-    result <- evalIndexTerm (\position child -> indexOf schema (fieldTypes expected !! position) (children !! position) child) term
+    result <- evalIndexTerm (indexAtPath schema expected children) term
     maybe (Left ("index of " ++ tag ++ " has no natural value")) Right result
   _ -> Left ("no index for " ++ show typeRef)
+
+-- Projection paths may traverse structural records, never nominal wrappers.
+indexAtPath :: Schema -> [Field] -> [LS.Scalar] -> [Int] -> Int -> Either String Integer
+indexAtPath schema types values path index = case path of
+  position : rest | position >= 0 && position < length types && position < length values -> do
+    let ty = fieldTypes types !! position
+        value = values !! position
+    if null rest then indexOf schema ty value index else case (ty, value) of
+      (Named name _, LS.SData tag children) | "lawspec::structural::record::" `isPrefixOf` name -> do
+        choices <- constructors schema ty
+        case choices of
+          Just [Constructor expected fields] | expected == tag -> indexAtPath schema fields children rest index
+          _ -> Left "invalid structural record in index field path"
+      _ -> Left "index field path must traverse a structural record"
+  _ -> Left "invalid index field path"
 
 validateChecked :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int
                 -> LS.Scalar -> Either ValidationFailure LS.Scalar
@@ -380,7 +405,7 @@ validateChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits val
               unless accepted
                 (Left (Rejected "constructor field contract rejected"))
           forM_ [text | text <- maybe [] id (lookup tag indices), isIndexGuard text] $ \text -> do
-            let field position index = indexOf schema (fieldTypes expected !! position) (checked !! position) index
+            let field = indexAtPath schema expected checked
             holds <- fromEvaluation (indexGuard field text)
             unless holds (Left (Rejected (tag ++ ": index guard " ++ text ++ " failed")))
           checkEqSet typeRef checked
@@ -500,7 +525,7 @@ shallowChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits valu
             accepted <- fromEvaluation (predicate schema arguments fields bits scope)
             unless accepted (Left (Rejected "constructor field contract rejected"))
         forM_ [text | text <- maybe [] id (lookup tag indices), isIndexGuard text] $ \text -> do
-          let field position index = indexOf schema (fieldTypes expected !! position) (fields !! position) index
+          let field = indexAtPath schema expected fields
           holds <- fromEvaluation (indexGuard field text)
           unless holds (Left (Rejected (tag ++ ": index guard " ++ text ++ " failed")))
         checkEqSet typeRef fields

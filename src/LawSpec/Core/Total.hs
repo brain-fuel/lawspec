@@ -214,12 +214,13 @@ constructorProofContracts bits dataDeclarations = do
             measures = [((p, i), name) | (p, i) <- references, Just name <- [measureNameAt c p i]]
       , length measures == length references ]
     measureNameAt c p i = do
-      field <- case drop p (constructorFields c) of f : _ -> Just f; [] -> Nothing
-      Constructor familyName _ <- Just (binderType field)
+      registry <- either (const Nothing) Just (Types.makeRegistry dataDeclarations)
+      (Constructor familyName _, steps) <- either (const Nothing) Just
+        (Types.constructorFieldPath registry (constructorFields c) p)
       family <- case [f | f <- dataDeclarations, dataId f == Id familyName] of f : _ -> Just f; [] -> Nothing
       familyIndex <- dataIndex family
       indexName <- case drop i (familyIndexNames familyIndex) of n : _ -> Just n; [] -> Nothing
-      Just (indexName ++ "Of" ++ dataName family)
+      Just (indexName ++ "Of" ++ dataName family, steps)
     diagnostic at = either (Left . pure . (\message -> Diagnostic "total" message at)) Right
     prefix name = either (Left . ((name ++ ": ") ++)) Right
 

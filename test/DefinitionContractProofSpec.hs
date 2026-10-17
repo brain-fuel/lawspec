@@ -22,6 +22,7 @@ import LawSpec.Frontend (elaborate, compileCore)
 import LawSpec.Common (Source(..), Location(..), defaultGeneration, InputDomain(..), emptyLawMetadata)
 import qualified LawSpec.Core.Totality as T
 import LawSpec.Scalar (Scalar(..))
+import LawSpec.IndexTerm
 
 origin :: Origin
 origin = GeneratedFrom (Id "contract-proof")
@@ -118,6 +119,45 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
       audit [invariant{T.constructorParameters=[]}] `shouldSatisfy` isLeft
       audit [invariant{T.constructorConditions=[T.Call (Id "predicate") [T.Variable field]]}]
         `shouldSatisfy` isLeft
+
+  describe "indexed projections through structural products" $ do
+    let measure=Id "measure"; input=Id "input"; tail=Id "tail"
+        stop=Id "Stop"; next=Id "Next"; product=Id "Record"; wrapper=Id "Wrap"
+        payload=Id "payload"; result=Id "result"; use=Id "use"
+        n=T.Literal . SInteger "Integer"
+        measured value=T.Call measure [value]
+        project position value=T.Field product position (Nothing,Nothing) value
+        left value=measured (project 0 value)
+        right value=measured (project 1 value)
+        same a b=T.ExactComparison Equal a b
+        guard=IndexGuard IndexEqual (IndexPath [0,0] 0) (IndexPath [0,1] 0)
+        invariant=T.ProofConstructorContract wrapper [payload] [] [(guard,
+          [(([0,0],0),("nOfChain",[(product,0)])),(([0,1],0),("nOfChain",[(product,1)]))])]
+        count=T.ProofDefinition measure "nOfChain" Nothing [input]
+          (T.DataMatch (T.Variable input) [(stop,[],n 0),(next,[tail],
+            T.ExactArithmetic Add (n 1) (measured (T.Variable tail)))]) []
+        function body=T.ProofDefinition use "use" Nothing [input] body []
+        check contracts body=T.auditWithConstructorContracts [invariant] contracts [count,function body]
+        zero=T.Construct stop []
+        one=T.Construct next [zero]
+        construct a b=T.Construct wrapper [T.Construct product [a,b]]
+    it "proves nested index guards at construction and rejects mismatched siblings" $ do
+      check [] (construct one one) `shouldBe` Right ()
+      check [] (construct one zero) `shouldSatisfy` isLeft
+      check [] (construct (T.Variable input) zero) `shouldSatisfy` isLeft
+    it "carries sibling index facts into the selected match branch" $ do
+      let pair=T.Variable payload
+          body=T.DataMatch (T.Variable input) [(wrapper,[payload],left pair)]
+          post=T.ProofContract use result [] [same (T.Variable result)
+            (right (T.Field wrapper 0 (Nothing,Nothing) (T.Variable input)))]
+      check [post] body `shouldBe` Right ()
+    it "retains structural descent through a record projection for checked recursion" $ do
+      let copy=Id "copy"
+          definition=T.ProofDefinition copy "copy" Nothing [input]
+            (T.DataMatch (T.Variable input) [(stop,[],zero),(next,[payload],
+              T.Call copy [project 0 (T.Variable payload)])]) []
+      T.audit [definition] `shouldBe` Right ()
+      T.audit [definition{T.proofBody=T.Call copy [T.Variable input]}] `shouldSatisfy` isLeft
 
   describe "known product projections" $ do
     let tag=Id "Product"

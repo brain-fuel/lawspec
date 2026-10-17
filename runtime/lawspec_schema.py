@@ -38,9 +38,13 @@ def parse_index_term(tokens, at):
     token = tokens[at]
     if token[0] == 'c':
         return ('c', int(token[1:])), at + 1
-    if token[0] == 'f':
-        position, _, index = token[1:].partition('.')
-        return ('f', int(position), int(index or 0)), at + 1
+    if token[0] in ('f', 'p'):
+        positions, _, index = token[1:].partition('.')
+        path = tuple(int(position) for position in positions.split('/'))
+        index = int(index or 0)
+        if (token[0] == 'f' and len(path) != 1) or min(path) < 0 or index < 0:
+            raise ValueError('malformed index field path')
+        return ('f', path, index), at + 1
     if token in ('+', '-', '*', 'div', 'mod', '^'):
         left, at = parse_index_term(tokens, at + 1)
         right, at = parse_index_term(tokens, at)
@@ -587,9 +591,8 @@ class Schema:
             left, at = parse_index_term(tokens, 1)
             right, _ = parse_index_term(tokens, at)
 
-            def field(position, index):
-                return self._index_of(constructor.fields[position].type,
-                                      fields[position], index)
+            def field(path, index):
+                return self._index_at_path(constructor.fields, fields, path, index)
             x = eval_index_term(left, field)
             y = eval_index_term(right, field)
             if x is None or y is None or (
@@ -606,8 +609,22 @@ class Schema:
         if index >= len(terms):
             raise ValueError("no index for " + reference.name)
         term, _ = parse_index_term(terms[index].split(), 0)
-        return eval_index_term(term, lambda position, child: self._index_of(
-            constructor.fields[position].type, value.fields[position], child))
+        return eval_index_term(term, lambda path, child: self._index_at_path(
+            constructor.fields, value.fields, path, child))
+
+    def _index_at_path(self, types, values, path, index):
+        if not path or path[0] < 0 or path[0] >= len(types) or path[0] >= len(values):
+            raise ValueError('invalid index field path')
+        position, *rest = path
+        reference, value = types[position].type, values[position]
+        if not rest:
+            return self._index_of(reference, value, index)
+        if not getattr(reference, 'name', '').startswith('lawspec::structural::record::'):
+            raise ValueError('index field path must traverse a structural record')
+        constructors = self.constructors(reference) or ()
+        if len(constructors) != 1 or constructors[0].tag != value.tag:
+            raise ValueError('invalid structural record in index field path')
+        return self._index_at_path(constructors[0].fields, value.fields, rest, index)
 
     def validate(self, reference, value, bits=64, symbols=None):
         """Rejects a value outside the declared type, refinements included,

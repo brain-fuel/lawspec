@@ -9,10 +9,10 @@ import GHC.Generics (Generic)
 import Control.Monad (unless, zipWithM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, DataDeclaration(..), DataConstructor(..), binderId, binderType)
+import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, Binder, DataDeclaration(..), DataConstructor(..), binderId, binderType)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Core.EqSet as EqSet
-import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsAt, constructorPredicatesFor, lookupData, freeExistentials, matchType, substitute)
+import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsAt, constructorPredicatesFor, lookupData, constructorFieldPath, freeExistentials, matchType, substitute)
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), evaluateIndex, guardHolds)
 import LawSpec.Core.Semantics (binaryValue)
 import LawSpec.Scalar
@@ -99,9 +99,7 @@ checkValueWith evaluate registry bits expected value =
               ScalarValue (SBool True) -> pure ()
               ScalarValue (SBool False) -> throwE (idText tag ++ ": field refinement failed")
               _ -> lift (Left (idText tag ++ ": field refinement did not produce Bool"))) predicates
-          let field position index = case drop position checked of
-                child : _ -> valueIndex registry child index
-                [] -> Nothing
+          let field path index = valueAtPath registry fields checked path >>= \child -> valueIndex registry child index
           unless (all (guardHolds field) (indexGuards actual tag))
             (throwE (idText tag ++ ": index guard failed"))
           canonicalCollection actual checked
@@ -174,10 +172,25 @@ valueIndex registry value index = case value of
     term <- case drop index terms of
       t : _ -> Just t
       [] -> Nothing
-    evaluateIndex (\position child -> case drop position fields of
-      v : _ -> valueIndex registry v child
-      [] -> Nothing) term
+    binders <- either (const Nothing) Just (constructorFieldsAt registry (valueType value) tag (map valueType fields))
+    evaluateIndex (\path child -> valueAtPath registry binders fields path >>= \v -> valueIndex registry v child) term
   _ -> Nothing
+
+-- The registry resolves the same path for type checking and value reading.
+-- A matching payload shape alone never authorizes a nominal projection.
+valueAtPath :: TypeRegistry -> [Binder] -> [Value] -> [Int] -> Maybe Value
+valueAtPath registry binders fields path = do
+  (_, steps) <- either (const Nothing) Just (constructorFieldPath registry binders path)
+  position <- case path of p : _ -> Just p; [] -> Nothing
+  root <- at position fields
+  foldSteps root steps
+  where
+    at n values | n >= 0 = case drop n values of v : _ -> Just v; [] -> Nothing
+                | otherwise = Nothing
+    foldSteps value [] = Just value
+    foldSteps (DataValue _ tag values) ((expected, position) : rest)
+      | tag == expected = at position values >>= \child -> foldSteps child rest
+    foldSteps _ _ = Nothing
 
 -- | Do not use derived Eq for language equality: float NaNs and Symbol identity
 -- retain their scalar semantics inside any number of constructors or wrappers.

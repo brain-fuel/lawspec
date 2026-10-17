@@ -3,6 +3,7 @@
 module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations, assumingCapabilities
   , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements, keyedRequirements, keyedPrimitive
+  , constructorFieldPath
   , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, freeExistentials, typeVariables, witnessPool
   ) where
 
@@ -17,6 +18,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified LawSpec.Core.EqSet as EqSet
 import LawSpec.Core
+import LawSpec.IndexTerm
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Scalar (primitiveName, primitives)
 
@@ -114,6 +116,20 @@ buildRegistry userDeclarations = do
       unique "type parameter" (dataParameters d)
       unique "constructor name" (map constructorName (dataConstructors d))
       mapM_ (validateConstructor registry (dataParameters d)) (dataConstructors d)
+      case dataIndex d of
+        Nothing -> pure ()
+        Just family -> forM_ (familyIndexConstructors family) $ \(tag, ConstructorIndex terms guards) -> do
+          constructor <- maybe (Left "index table names an unknown constructor") Right
+            (lookup tag [(idText (constructorId c), c) | c <- dataConstructors d])
+          forM_ (concatMap termFields (terms ++ concat [[a,b] | IndexGuard _ a b <- guards])) $ \(path, index) -> do
+            (leaf, _) <- constructorFieldPath registry (constructorFields constructor) path
+            case leaf of
+              Constructor name _ -> do
+                child <- lookupData registry (Id name)
+                case dataIndex child of
+                  Just childFamily | index >= 0 && index < length (familyIndexNames childFamily) -> pure ()
+                  _ -> Left "index field path does not select a family index"
+              _ -> Left "index field path does not select a family index"
     validateConstructor registry parameters c = do
       unique "field identity" (map binderId (constructorFields c))
       unique "field name" (map binderName (constructorFields c))
@@ -192,6 +208,35 @@ constructorFieldsFor registry ty tag = do
       let substitutions = M.union (M.fromList (zip (dataParameters declaration) [t | TypeArgument t <- arguments])) existentials
       pure [field {binderType = substitute substitutions (binderType field)} | field <- constructorFields constructor]
     _ -> Left "data construction requires an applied data type"
+
+-- | Resolve an index projection through closed structural records. The root
+-- position still refers to the constructor's original fields. Nominal products
+-- are deliberately opaque; a path is not a new implicit unwrapping operation.
+-- The returned constructor identities make proof projections typed as well.
+constructorFieldPath :: TypeRegistry -> [Binder] -> [Int] -> Either String (Type, [(Id, Int)])
+constructorFieldPath registry fields path = case path of
+  position : rest -> do
+    field <- at position fields
+    descend (binderType field) rest
+  [] -> Left "empty index field path"
+  where
+    at n values
+      | n < 0 = Left "negative index field position"
+      | otherwise = case drop n values of
+          value : _ -> Right value
+          [] -> Left "index field path is out of bounds"
+    descend ty [] = Right (ty, [])
+    descend ty (position : rest) = case ty of
+      Constructor name _ -> do
+        declaration <- lookupData registry (Id name)
+        case (dataStructural declaration, dataConstructors declaration) of
+          (Just _, [constructor]) -> do
+            fields' <- constructorFieldsFor registry ty (constructorId constructor)
+            field <- at position fields'
+            (leaf, steps) <- descend (binderType field) rest
+            pure (leaf, (constructorId constructor, position) : steps)
+          _ -> Left "index field path must traverse a structural record"
+      _ -> Left "index field path must traverse a structural record"
 
 -- | A field-only existential is not determined by the type: its type comes from
 -- the constructor's arguments (or a value's fields), matched against the

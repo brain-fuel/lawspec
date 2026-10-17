@@ -224,15 +224,29 @@ public struct Schema: Sendable {
             guard let n = BigInt(String(term.dropFirst())) else { throw fail("InvalidIndexTerm", term) }
             return (n, rest)
         }
-        if term.hasPrefix("f") {
-            let parts = term.dropFirst().split(separator: ".")
-            guard let position = Int(parts.first ?? ""), position < c.fields.count, position < values.count else { throw fail("InvalidIndexTerm", term) }
-            let inner = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
-            return (try index(values[position], c.fields[position].1, inner, schema), rest)
+        if term.hasPrefix("f") || term.hasPrefix("p") {
+            let parts = term.dropFirst().split(separator: ".", omittingEmptySubsequences: false)
+            guard parts.count <= 2, let positions = parts.first else { throw fail("InvalidIndexTerm", term) }
+            let path = positions.split(separator: "/", omittingEmptySubsequences: false).map { Int($0) }
+            guard path.allSatisfy({ $0 != nil && $0! >= 0 }), !path.isEmpty,
+                  !term.hasPrefix("f") || path.count == 1 else { throw fail("InvalidIndexTerm", term) }
+            let inner = parts.count == 2 ? Int(parts[1]) : 0
+            guard let inner, inner >= 0 else { throw fail("InvalidIndexTerm", term) }
+            return (try indexAtPath(c.fields, values, path.map { $0! }[...], inner, schema), rest)
         }
         let (a, next) = try evalIndex(rest, c, values, schema)
         let (b, after) = try evalIndex(next, c, values, schema)
         return (indexBinary(term, a, b), after)
+    }
+
+    private static func indexAtPath(_ types: [(String, TypeRef)], _ values: [Value], _ path: ArraySlice<Int>, _ inner: Int, _ schema: Schema) throws -> BigInt {
+        guard let position = path.first, position >= 0, position < types.count, position < values.count else { throw fail("InvalidIndexPath") }
+        let (type, value) = (types[position].1, values[position])
+        if path.count == 1 { return try index(value, type, inner, schema) }
+        guard case .named(let name, _) = type, name.hasPrefix("lawspec::structural::record::"),
+              case .data(let tag, let fields) = value, let constructors = try constructors(type, schema),
+              constructors.count == 1, constructors[0].tag == tag else { throw fail("InvalidIndexPath") }
+        return try indexAtPath(constructors[0].fields, fields, path.dropFirst(), inner, schema)
     }
 
     /// The index at a position of an indexed family's value.

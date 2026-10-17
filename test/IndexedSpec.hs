@@ -222,8 +222,18 @@ arithmeticSpec = describe "index arithmetic and sibling indices" $ do
         texts "Rest" `shouldBe` [("Rest", ["- f0 c1", ">= f0 c1"])]
         texts "Bits" `shouldBe` [("Bits", ["^ c2 f0"])]
         texts "Pairs" `shouldBe` [("Pairs", ["+ div f0 c2 mod f0 c2", ">= c2 c1", ">= c2 c1"])]
+  it "keeps nested paths distinct from direct field and index positions" $ do
+    let term = IndexApply IndexSubtract (IndexPath [0,2,1] 1) (IndexConstant 2)
+        field path index = lookup (path,index) [(([0,2,1],1),5)]
+    termFields term `shouldBe` [([0,2,1],1)]
+    evaluateIndex field term `shouldBe` Just 3
+    evaluateIndex field (IndexField 0 1) `shouldBe` Nothing
+    guardHolds field (IndexGuard IndexAtLeast (IndexPath [0,2,1] 1) (IndexConstant 6)) `shouldBe` False
+    indexTermText term `shouldBe` "- p0/2/1.1 c2"
   it "evaluates index terms with natural semantics" $ do
-    let field values position index = lookup (position, index) values
+    let field values path index = case path of
+          [position] -> lookup (position, index) values
+          _ -> Nothing
         term = IndexApply IndexSubtract (IndexField 0 0) (IndexConstant 1)
     evaluateIndex (field [((0, 0), 3)]) term `shouldBe` Just 2
     evaluateIndex (field [((0, 0), 0)]) term `shouldBe` Nothing

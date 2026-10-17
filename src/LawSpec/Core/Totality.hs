@@ -85,7 +85,7 @@ data ProofContract = ProofContract
 data ProofConstructorContract = ProofConstructorContract
   { constructorOwner :: Id, constructorParameters :: [Id]
   , constructorConditions :: [Proof]
-  , constructorIndexGuards :: [(IndexGuard, [((Int, Int), String)])]
+  , constructorIndexGuards :: [(IndexGuard, [(([Int], Int), (String, [(Id, Int)]))])]
   } deriving (Eq, Show)
 
 -- | The audit for programs with no contracts.
@@ -372,22 +372,25 @@ indexGuardConditions :: Facts -> ProofConstructorContract -> [Proof] -> [(Bool, 
 indexGuardConditions facts contract fields =
   [ (all ((== 1) . length) choices, condition)
   | (IndexGuard relation left right, measures) <- constructorIndexGuards contract
-  , let names = nub (map snd measures)
+  , let names = nub (map (fst . snd) measures)
         choices = [M.findWithDefault [] name (measureIds facts) | name <- names]
   , chosen <- sequence choices
   , let instance' = M.fromList (zip names chosen)
-        field position index = do
-          name <- lookup (position, index) measures
+        field path index = do
+          (name, steps) <- lookup (path, index) measures
           measure <- M.lookup name instance'
-          value <- case drop position fields of v : _ -> Just v; [] -> Nothing
-          Just (Call measure [value])
+          position <- case path of p : _ -> Just p; [] -> Nothing
+          value <- if position < 0 then Nothing else case drop position fields of v : _ -> Just v; [] -> Nothing
+          let projected = foldl (\value (tag, offset) -> Field tag offset (Nothing, Nothing) value) value steps
+          Just (Call measure [projected])
   , Just a <- [indexProof field left], Just b <- [indexProof field right]
   , let condition = ExactComparison (case relation of IndexEqual -> Equal; IndexAtLeast -> GreaterEqual) a b ]
 
-indexProof :: (Int -> Int -> Maybe Proof) -> IndexTerm -> Maybe Proof
+indexProof :: ([Int] -> Int -> Maybe Proof) -> IndexTerm -> Maybe Proof
 indexProof field term = case term of
   IndexConstant n -> Just (Literal (SInteger "Integer" n))
-  IndexField position index -> field position index
+  IndexField position index -> field [position] index
+  IndexPath path index -> field path index
   IndexApply op a b -> do
     x <- indexProof field a
     y <- indexProof field b
@@ -947,8 +950,14 @@ derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap un
         let substitution = M.fromList ((result, Call callee arguments) : zip parameters arguments)
         in map (substituteProof substitution) conditions
       _ -> []
-    -- A call on a known constructor equals the selected branch.
-    unfolded (callee, arguments) = [ExactComparison Equal (Call callee arguments) value | Just value <- [unfold facts callee arguments]]
+    -- A checked projection may select a field from a constructed product or
+    -- a constructor already matched in this branch. Pure calls on those same
+    -- fields denote the same result, including when the leaf is still unknown.
+    -- The strict walk audits every field before these equations are used.
+    unfolded (callee, arguments) =
+      [ExactComparison Equal (Call callee arguments) (Call callee projected)
+        | let projected = map (expandKnown facts) arguments, projected /= arguments] ++
+      [ExactComparison Equal (Call callee arguments) value | Just value <- [unfold facts callee arguments]]
     integer n = Literal (SInteger "Integer" n)
     -- Quotient operands are integers, so a positive divisor is at least one.
     bound (a, b)
@@ -1317,7 +1326,8 @@ abstractCall call replacement = go
 unfold :: Facts -> Id -> [Proof] -> Maybe Proof
 unfold facts callee arguments = do
   (parameter,branches) <- M.lookup callee (unfoldings facts)
-  [argument] <- pure arguments
+  [source] <- pure arguments
+  let argument = expandKnown facts source
   (tag,fields) <- case argument of
     Construct tag fields -> Just (tag,fields)
     _ -> variableIdentity argument >>= (`M.lookup` constructorValues facts)
@@ -1331,6 +1341,15 @@ unfold facts callee arguments = do
 -- arithmetic and logic that the linear prover reads.
 expandKnown :: Facts -> Proof -> Proof
 expandKnown facts term = case term of
+  Field tag position bounds value ->
+    let expanded = expand value
+        known = knownResult expanded
+        constructor = case known of
+          Construct actual fields -> Just (actual,fields)
+          _ -> variableIdentity known >>= (`M.lookup` constructorValues facts)
+    in case constructor of
+      Just (actual,fields) | actual == tag,position >= 0,selected:_ <- drop position fields -> expand selected
+      _ -> Field tag position bounds expanded
   Call name values | Just unfolded <- unfold facts name (map expand values) -> unfolded
   Call name values -> Call name (map expand values)
   ExactArithmetic op a b -> ExactArithmetic op (expand a) (expand b)

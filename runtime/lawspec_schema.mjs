@@ -34,14 +34,23 @@ export class Field {
   }
 }
 
-// A prefix index term: c<n>, f<field>[.<index>] or an operator.
+// Prefix indices: c<n>, f<field>[.<index>], p<field>/<record-field>.<index>, or an operator.
 function parseIndexTerm(tokens, at) {
   const token = tokens[at];
   if (token === undefined) throw new TypeError('malformed index term');
   if (token[0] === 'c') return [['c', Number(token.slice(1))], at + 1];
-  if (token[0] === 'f') {
-    const [position, index = '0'] = token.slice(1).split('.');
-    return [['f', Number(position), Number(index)], at + 1];
+  if (token[0] === 'f' || token[0] === 'p') {
+    if (!/^[fp][0-9]+(?:\/[0-9]+)*(?:\.[0-9]+)?$/.test(token)) {
+      throw new TypeError('malformed index field path');
+    }
+    const [positions, index = '0'] = token.slice(1).split('.');
+    const path = positions.split('/').map(Number);
+    if ((token[0] === 'f' && path.length !== 1) ||
+        !path.every((p) => Number.isSafeInteger(p) && p >= 0) ||
+        !Number.isSafeInteger(Number(index)) || Number(index) < 0) {
+      throw new TypeError('malformed index field path');
+    }
+    return [['f', path, Number(index)], at + 1];
   }
   if (['+', '-', '*', 'div', 'mod', '^'].includes(token)) {
     const [left, afterLeft] = parseIndexTerm(tokens, at + 1);
@@ -622,8 +631,8 @@ export class Schema {
       if (tokens[0] !== '==' && tokens[0] !== '>=') continue;
       const [left, at] = parseIndexTerm(tokens, 1);
       const [right] = parseIndexTerm(tokens, at);
-      const field = (position, index) =>
-        this.#indexOf(constructor.fields[position].type, fields[position], index);
+      const field = (path, index) =>
+        this.#indexAtPath(constructor.fields, fields, path, index);
       const x = evalIndexTerm(left, field);
       const y = evalIndexTerm(right, field);
       if (x === null || y === null || (tokens[0] === '==' ? x !== y : x < y)) {
@@ -642,8 +651,27 @@ export class Schema {
       throw new TypeError(`no index for ${type.name}`);
     }
     const [term] = parseIndexTerm(terms[index].split(' '), 0);
-    return evalIndexTerm(term, (position, child) =>
-      this.#indexOf(constructor.fields[position].type, value.fields[position], child));
+    return evalIndexTerm(term, (path, child) =>
+      this.#indexAtPath(constructor.fields, value.fields, path, child));
+  }
+
+  #indexAtPath(types, values, path, index) {
+    const [position, ...rest] = path;
+    if (!Number.isSafeInteger(position) || position < 0 ||
+        position >= types.length || position >= values.length) {
+      throw new TypeError('invalid index field path');
+    }
+    const type = types[position].type;
+    const value = values[position];
+    if (rest.length === 0) return this.#indexOf(type, value, index);
+    if (!type.name?.startsWith('lawspec::structural::record::')) {
+      throw new TypeError('index field path must traverse a structural record');
+    }
+    const constructors = this.constructors(type) ?? [];
+    if (constructors.length !== 1 || constructors[0].tag !== value.tag) {
+      throw new TypeError('invalid structural record in index field path');
+    }
+    return this.#indexAtPath(constructors[0].fields, value.fields, rest, index);
   }
 
   /**

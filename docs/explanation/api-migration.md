@@ -194,6 +194,24 @@ own checked transport. In particular, natural-index measures do not yet follow
 a family through an anonymous record payload; a preview of that form is rejected
 by canonical admission and cannot authorize writing.
 
+Core now represents an index projection through a structural record explicitly.
+The schema term `p0/1/2.0` reads index 0 of the value reached by constructor
+field 0, then structural record fields 1 and 2. Existing `f0.1` still reads
+index 1 of constructor field 0. Positions follow canonical record labels;
+source evaluation order remains independent. Registry admission rejects empty,
+negative, out-of-bounds and nominal-crossing paths, and checks the leaf index.
+The interpreter and native schemas use the same path meaning for mandatory
+index guards. The proof projection retains the intermediate constructor
+identities, and checked product projections preserve pure-call facts without
+skipping strict evaluation or termination admission.
+
+This is infrastructure for grouped indexed payloads. Source elaboration and
+migration remain unavailable for that case until record descriptors preserve
+all dependent relationships. The direct index generator does not receive nested
+paths; those values use ordinary generation with the existing checked candidate
+and shrinking filters. A bounded search does not become complete verification
+because a path can be evaluated.
+
 The distinction between uniform parameters and varying indices follows the
 [Lean reference](https://lean-lang.org/doc/reference/latest/The-Type-System/Inductive-Types/).
 The [Idris dependent-record examples](https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#dependent-records)
