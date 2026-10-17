@@ -71,10 +71,10 @@ not carry over to another branch.
 The checker also knows:
 
 - what a guard says about a call, a field or a length: checked definitions
-  are pure, so `if count xs <= 100 then prelude.Int32 (count xs) else 100`
+  are pure, so `if count xs <= 100 then prelude.Int32 (count xs) else 100 end if`
   narrows safely, and so do `b.size` and `prelude.length xs` under a guard;
 - that a call's result lies in its result type's range, so
-  `let m = dec n in if m >= 1 then prelude.Int32 (m - 1) else 0` narrows;
+  `let m = dec n in if m >= 1 then prelude.Int32 (m - 1) else 0 end if` narrows;
 - that `prelude.length` and `prelude.size` are never negative;
 - that `prelude.rem a b` has `a`'s sign and is smaller than `b`: for
   `a >= 0` and `b >= 1` it lies from 0 to `b - 1`, and
@@ -83,10 +83,10 @@ The checker also knows:
 ## Recursion on integers
 
 A recursive call may make an integer argument smaller, as long as the
-argument stays at or above the parameter's least value (0 for a `Natural`, the
-type's least value for a bounded integer, or a guard's), or larger, as long as
-it stays at or below the type's greatest value or another parameter passed on
-unchanged:
+argument stays at or above the parameter's lower bound: 0 for `Whole`, 1 for
+`Nat`, the type's minimum for a bounded integer, or a guard's bound. It may
+instead make the argument larger while staying at or below the type's maximum
+or another parameter passed on unchanged:
 
 ```lawspec
 unit guide.integer_recursion

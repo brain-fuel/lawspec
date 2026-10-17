@@ -97,7 +97,7 @@ end
   [Failing](#failing)). A clause that fails with a failure its operation does
   not name is an error.
 - The `laws` section is optional. Its laws are written as usual, and must be
-  closed: quantify their values with `` `for all` ``.
+  closed: quantify their values with `for all (...) => ... end`.
 
 An ability's native handlers may share a resource, written after its name:
 `ability Broker with Cluster is ... end`. Each case that runs a native
@@ -176,12 +176,12 @@ Application code that throws its own exceptions can keep them: `failures` in
 A definition orders the operations it performs:
 
 ```lawspec fragment
-definition buy (cents :: Int32) :: Bool uses Gateway, Log is
+procedure buy (cents :: Int32) -> Bool uses Gateway, Log is
   note "buying";
   let approved = checkout cents in
   note "bought";
   approved
-end
+end procedure
 ```
 
 - `a; b` runs `a`, then gives `b`. An operation that gives `Unit`, such as

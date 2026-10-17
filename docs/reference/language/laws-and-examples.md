@@ -28,19 +28,28 @@ A law's `definition` block holds a proposition:
 
 | Form | Meaning |
 | --- | --- |
-| `` `for all` (x :: T) (y :: U) . p `` | `p` holds for every input. Later inputs may depend on earlier ones. |
-| `a = b` | An assertion that two values are equal. |
-| `c implies p` | `p` is checked only when the Boolean `c` is true. |
+| `for all (x :: T) (y :: U) => p end` | `p` holds for every input. Later inputs may depend on earlier ones. |
+| `there exists (x :: T) such that p end` | A witness of type `T` satisfies `p`. |
+| `a must be b`, `a is b`, `a = b` | The same typed equality obligation. |
+| `c implies p` | `p` must hold whenever the Boolean `c` is true. |
 | `p and q` | Both hold. |
-| `` `law name` arguments `` | Apply a reusable law. |
+| `must p`, `must not p` | Require `p`, or its logical negation. |
+| `apply law template arguments` | Apply a reusable law. |
 | A Boolean expression | The expression must be `true`. |
 
-Quantifiers and `implies` extend over a following `and`. The semantics of
-`implies`, `and` and expected results are specified in the
-[prelude reference](../prelude-algebra.md).
+A quantifier scopes its body through its own closing `end`. Conjunction binds
+more tightly than disjunction; `implies` binds least tightly and associates to
+the right. See the [prelude reference](../prelude-algebra.md) for the expanded
+obligations. Line breaks do not combine requirements.
 
-Assertion `=` is different from Boolean `==`: `=` states a law's conclusion,
-`==` computes a `Bool`.
+Equality is type-directed: `=` produces a `Bool` in a value context and an
+equality obligation in a law's proposition context. `==` remains available as
+a value comparison. All equality spellings retain the operand type's `Eq`
+requirement and IEEE floating-point behavior, including non-reflexive NaN.
+Enums and records whose fields support equality supply `Eq`; a generic
+declaration requests it with `requires Eq a`.
+`must be` is preferred wording for an equality requirement; it adds no stronger
+modality or verification claim.
 
 ## Reusable laws
 
@@ -172,7 +181,7 @@ A law's description may hold examples, fenced with `example`. Each becomes
 an example of the law, so the documentation is checked like any example:
 
 ````lawspec fragment
-description is
+description:
   "Every label starts with the word parcel and the parcel's number.
 
   ```example
@@ -197,16 +206,20 @@ A recorded value is stored in the project, under
 `recorded/<unit>/<name>` beside `lawspec.json`. It is spec data: commit it.
 
 ```lawspec fragment
-law `the first label is recorded` is
-  definition is
-    label 1 = recorded "first label"
+law "|the first label is recorded| is
+  definition:
+    label 1 must be recorded "first label"
   end
 end
+```
 
-example `parcel 42` is
-  parcel = 42
-  expect label parcel = recorded "parcel 42"
-end
+Inside a law with a `parcel` input, a named example can use another recording:
+
+```lawspec fragment
+  example "|parcel 42|:
+    parcel = 42
+    expect label parcel = recorded "parcel 42"
+  end
 ```
 
 - The value is compared by its portable rendering, which is the same on
@@ -254,15 +267,15 @@ the same; fields containing extended scalars use the forms above.
 ## Descriptions, rationales and references
 
 ```lawspec fragment
-description is
+description:
   "converting an Int32 to Text with {itoa} and then back with {atoi} yields the original Int32"
 end
 
-rationale is
+rationale:
   "representing an Int32 as Text must not change its value"
 end
 
-references are
+references:
   "left inverse"
   "round-trip property"
 end
@@ -270,3 +283,4 @@ end
 
 These blocks document the law. The compiler API reports them as the law's
 `description`, `rationale` and `references`. `{name}` refers to a function.
+Documentary references do not discharge the definition's obligation.

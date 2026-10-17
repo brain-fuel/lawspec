@@ -85,9 +85,9 @@ end
 
 A law lists its resources after its handlers, before `is`:
 
-```lawspec fragment
-law `a note reads back` for dir :: TemporaryDirectory is ... end
-law `two stores` using Gateway for a :: Store, b :: Store is ... end
+```text
+law "|a note reads back| for dir :: TemporaryDirectory is ... end
+law "|two stores| using Gateway for a :: Store, b :: Store is ... end
 ```
 
 - The law's definition and examples use each resource by its name, like an

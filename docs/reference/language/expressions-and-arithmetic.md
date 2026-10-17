@@ -21,37 +21,46 @@ means `(f x) y`. The other operators, from highest to lowest precedence:
 | `>>=` | Left |
 | `<\|>`, `??` | Left |
 | `\|>` | Left |
-| `==`, `!=`, `<`, `<=`, `>`, `>=` | Do not chain |
+| Named infix application | Do not chain without parentheses |
+| `==`, `!=`, `<`, `<=`, `>`, `>=`, `in` | Do not chain |
 | [Matchers](matchers.md): `has same items as`, `contains`, `matches`, ... | Do not chain |
-| `&&` | Left |
-| `\|\|` | Left |
+| `=`, `is`, `must be`, `must =` | Do not chain |
+| Worded `not` | |
+| `and`, `&&` | Left |
+| `or`, `\|\|` | Left |
+| `implies` | Right |
 
 A sign directly before a number is part of it: `f -42` applies `f` to negative
 42. Write `x - 42` to subtract, and parenthesize arithmetic arguments:
 `f (x - 42)`.
 
-`&&`, `||` and `implies` short-circuit. Assertion `=` is different from Boolean
-`==`; `and` combines assertions, and parentheses set the scope of a shared
-guard. See [the prelude reference](../prelude-algebra.md#conjunction) for
-`and` and `implies`.
+`and`/`&&`, `or`/`||` and `implies` short-circuit. Equality is type-directed:
+`=` gives a `Bool` in a value context and an equality obligation in a
+proposition context.
+`is`, `must be` and `must =` express the same equality; `==` retains its
+existing comparison precedence. Every spelling preserves `Eq` requirements
+and IEEE behavior. Parentheses make the intended grouping explicit. See
+[the prelude reference](../prelude-algebra.md#conjunction) for expanded logic.
 
 ## Conditionals
 
-`if c then a else b` is `a` when `c` holds, and `b` otherwise. Only the
+`if c then a else b end if` is `a` when `c` holds, and `b` otherwise. Only the
 branch `c` selects is evaluated, and the totality audit checks each branch
 knowing which way `c` went:
 
 ```lawspec fragment
-definition share (total :: Int32 where total >= 0 && total <= 1000) (n :: Int32 where n >= 0 && n <= 10) :: Int32 is
-  if n > 0 then prelude.quot total n else 0
-end
+function share
+  (total :: Int32 where total >= 0 and total <= 1000)
+  (n :: Int32 where n >= 0 and n <= 10) -> Int32 is
+  if n > 0 then prelude.quot total n else 0 end if
+end function
 ```
 
 The division is proved safe because it runs only when `n > 0`. Both branches
 take the expression's type; each converts to it on its own. `if`, `then` and
 `else` are keywords inside expressions. `prelude.select c a b` means the same.
 An `if` reaches as far right as it can, so parenthesize one used as an
-argument: `f (if c then a else b)`.
+argument: `f (if c then a else b end if)`.
 
 ## Railway combinators
 

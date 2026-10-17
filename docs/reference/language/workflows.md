@@ -67,7 +67,9 @@ takes the same state. `combine f` receives their results in the order the steps
 are declared, so `combine` takes one argument per step:
 
 ```lawspec fragment
-definition firstName (a :: Signup) (b :: Signup) :: Text is nameOf a end
+function firstName (a :: Signup) (b :: Signup) -> Text is
+  nameOf a
+end function
 
 workflow vet :: Signup -> Either _ Text is
   all accumulate

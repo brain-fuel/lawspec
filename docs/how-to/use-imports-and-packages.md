@@ -16,21 +16,21 @@ them in parentheses to use them unqualified:
 
 ```lawspec fragment
 unit shop.orders
-import shop.domain as domain (Money, Cents, `commutative`)
+import shop.domain as domain (Money, Cents, law "|commutative|)
 
-type Currency is | Usd | Gbp end
+type Currency is one of | Usd | Gbp end type
 settlement :: Currency -> domain.Currency
 cheaper :: Int64 -> Int64 -> Int64
 
-law `dollars settle in dollars` is
-  definition is
-    settlement Usd = domain.Usd
+law "|dollars settle in dollars| is
+  definition:
+    settlement Usd must be domain.Usd
   end
 end
 
-law `the cheaper price does not depend on order` is
-  definition is
-    `commutative` cheaper
+law "|the cheaper price does not depend on order| is
+  definition:
+    apply law "|commutative| cheaper
   end
 end
 ```

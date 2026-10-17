@@ -46,8 +46,9 @@ Floating representations are rejected even when their value is integral.
 Add `where` to a quantified input, function argument or function result:
 
 ```lawspec fragment
-`for all` (x :: Int8) (y :: Int8 where y > Int8.max - x) .
-  add x y = x + y
+for all (x :: Int8) (y :: Int8 where y > Int8.max - x) =>
+  add x y must be x + y
+end
 ```
 
 A predicate can refer to its own value and to earlier inputs. A result

@@ -11,6 +11,9 @@ and expected results.
 
 ## Prelude laws
 
+The tables give template names and arguments. Apply a template with explicit
+syntax such as `apply law "|left inverse| decode encode`.
+
 ### Functions and round trips
 
 | Law and arguments | Checks, for every input | Requires |

@@ -78,11 +78,11 @@ A counterexample is a compile error with code `refuted`. This law, over `Int8`,
 is rejected:
 
 ```lawspec fragment
-definition twice (x :: Int8) :: BigInt is x + x end
+function twice (x :: Int8) -> Integer is x + x end function
 
-law `always positive` is
-  definition is
-    `for all` (x :: Int8) . twice x > 0
+law "|always positive| is
+  definition:
+    for all (x :: Int8) => twice x > 0 end
   end
 end
 ```

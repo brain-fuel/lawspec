@@ -101,8 +101,8 @@ Items:
 | Item | Meaning |
 | --- | --- |
 | `strategy name :: T is gen end` | A way to draw values of `T`. |
-| `for law \`a\`` | Settings for one law, on the lines after it. |
-| `for laws \`a\`, \`b\`` | Settings for a group of laws. |
+| `for law name` | Settings for one law, on the lines after it. |
+| `for laws first, second` | Settings for a group of laws. |
 | any setting below, before the first `for` | The setting for every law of the unit. |
 | `share R per group \| unit \| run` | Share a resource between laws. |
 | `benchmark \`name\` is e end` | Measure an expression. |
@@ -153,7 +153,7 @@ strategy digits :: (n :: Int32 where n >= 0 && n <= 9) is any end
 A strategy is used for one input of one law:
 
 ```lawspec fragment
-for law `a discount is never more than the total`
+for law "|a discount is never more than the total|
   use orders for order
 ```
 

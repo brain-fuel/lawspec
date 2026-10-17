@@ -29,7 +29,7 @@ end
 ## Log
 
 ```lawspec fragment
-type LogLevel is | Debug | Info | Warning | Error end
+type LogLevel is one of | Debug | Info | Warning | Error end type
 
 ability Log is
   logMessage :: LogLevel -> Text -> Unit

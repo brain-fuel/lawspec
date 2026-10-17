@@ -53,13 +53,13 @@ to an earlier one is no time at all.
 
 ## The Clock ability
 
-```lawspec fragment
+```text
 ability Clock is
   now :: Instant
   sleep :: Duration -> Unit
 laws
-  law `time does not go back` is ... end
-  law `sleeping lets at least that long pass` is ... end
+  law "|time does not go back| is ... end
+  law "|sleeping lets at least that long pass| is ... end
 end
 ```
 

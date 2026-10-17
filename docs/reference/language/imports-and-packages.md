@@ -11,14 +11,14 @@ A unit may import other units after its `unit` line:
 
 ```lawspec fragment
 unit shop.orders
-import shop.domain as domain (Money, Cents, `commutative`)
+import shop.domain as domain (Money, Cents, law "|commutative|)
 
-type Currency is | Usd | Gbp end
+type Currency is one of | Usd | Gbp end type
 settlement :: Currency -> domain.Currency
 
-law `dollars settle in dollars` is
-  definition is
-    settlement Usd = domain.Usd
+law "|dollars settle in dollars| is
+  definition:
+    settlement Usd must be domain.Usd
   end
 end
 ```
@@ -28,8 +28,8 @@ end
   gives `domain`); `as` chooses another.
 - A parenthesized list also makes the listed names available unqualified.
   Listing a data type or wrapper brings its constructors and generated
-  functions (`valueOf<Name>`, indexed-family measures) with it. List a law by
-  its quoted name.
+  functions (`valueOf<Name>`, indexed-family measures) with it. List a generic
+  law with an explicit selector, such as `law "|commutative|`.
 - Qualified names have no spaces around the dot (`domain.Usd`). Write `f . g`
   with spaces to compose a function whose name is also an alias.
 
@@ -39,7 +39,7 @@ end
 - refinements;
 - checked definitions;
 - generic laws, that is, laws with parameters, which the importer applies to
-  its own adapters (`` `commutative` total ``).
+  its own adapters (`apply law "|commutative| total`).
 
 Adapter signatures and laws without parameters belong to their unit. They are
 that unit's contract with its native code, and are tested there. Referring to
@@ -95,7 +95,7 @@ export Band, rates.rateOf
 
 - An `export` line lists names the unit imports: unqualified names from an
   import's list (`Band`), qualified names through an alias (`rates.rateOf`),
-  and generic laws by their quoted name.
+  and generic laws with `law` followed by their name.
 - An importer of `shop.tax.api` sees `Band` and `rateOf` as if
   `shop.tax.api` declared them (`import shop.tax.api (Band, rateOf)`, or
   `api.Band`). They are the original declarations, not copies: `Band` is

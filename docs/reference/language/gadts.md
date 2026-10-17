@@ -40,11 +40,11 @@ end
 
 ## Refinement
 
-- In the `Number` branch, `a` is `BigInt`, so `v` is a value of `a`.
+- In the `Number` branch, `a` is `Integer`, so `v` is a value of `a`.
 - A constructor that cannot build a type is no value of it: `Expr Bool` has
   only `Truth` and `Same`. A match at that type needs no other branch, and a
   construction at the wrong type is an error.
-- `eval` calls itself at other instances (`eval l` is at `Expr BigInt` inside
+- `eval` calls itself at other instances (`eval l` is at `Expr Integer` inside
   `Same`). Each instance it is used at becomes a checked instance, up to 64 per
   definition.
 
@@ -71,9 +71,9 @@ only through its value's witness.
 A type variable in a constructor that is not a parameter is existential.
 
 - In `Both`, `b` and `c` are determined by the type: `Expr (Pair b c)`.
-- A variable that only a field mentions is fixed by each value, as in
-  `type Shown is | Shown value :: b end`. Each value carries its type as a
-  **witness**: a trailing `witness` field holding the type's name, such as
+- A variable that only a field mentions is fixed by each value.
+  For example, `type Shown is one of | Shown of type b end type`.
+  Each value carries its type as a **witness**: a trailing `witness` field holding the type's name, such as
   `"Int32"` or `"(Pair Bool Int32)"`. Generated values take their witness from
   `Bool` and `Int32`. A definition cannot match such a constructor; adapters
   read the witness natively. A field of such a constructor cannot itself be

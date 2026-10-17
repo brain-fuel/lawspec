@@ -54,13 +54,19 @@ A function with several flow parameters takes a state for each, and the call
 rebinds each one:
 
 ```lawspec fragment
-definition pushBoth (x :: Int8) (a :: Stack n / Stack (n + 1)) (b :: Stack m / Stack (m + 1)) :: Unit is
-  ~a := Push x a; ~b := Push x b
-end
+function pushBoth
+  (x :: Int8)
+  (a :: Stack n / Stack (n + 1))
+  (b :: Stack m / Stack (m + 1)) -> Unit is
+  ~a := Push record{top = x, rest = a};
+  ~b := Push record{top = x, rest = b}
+end function
 
-law `both stacks get the value` is
-  definition is
-    `for all` (x :: Int8) (a :: Stack n) (b :: Stack m) . (pushBoth x ~a ~b; pop ~a; pop ~b) = x
+law "|both stacks get the value| is
+  definition:
+    for all (x :: Int8) (a :: Stack n) (b :: Stack m) =>
+      (pushBoth x ~a ~b; pop ~a; pop ~b) must be x
+    end
   end
 end
 ```
@@ -75,10 +81,12 @@ A flow call may sit in a branch of an `if` or a `match`. Only the branch taken
 runs, and the state continues from whichever branch ran:
 
 ```lawspec fragment
-law `a push in each branch` is
-  definition is
-    `for all` (x :: Int8) (s :: Stack n) .
-      ((if x > 0 then push x ~s else push 0 ~s); pop ~s) = (if x > 0 then x else 0)
+law "|a push in each branch| is
+  definition:
+    for all (x :: Int8) (s :: Stack n) =>
+      ((if x > 0 then push x ~s else push 0 ~s end if); pop ~s)
+        must be (if x > 0 then x else 0 end if)
+    end
   end
 end
 ```

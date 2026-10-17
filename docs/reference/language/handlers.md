@@ -123,9 +123,9 @@ end
 ## Handling part of a definition
 
 ```lawspec fragment
-definition trial (cents :: Int32) :: Bool is
+function trial (cents :: Int32) -> Bool is
   handle checkout cents with fakeGateway end
-end
+end function
 ```
 
 - `handle e with h end` runs `e` with the spec handler `h` answering its
@@ -139,9 +139,9 @@ end
 **A law says what must hold for every lawful handler.** A law names a
 handler with `using` only when the handler is part of the claim.
 
-```lawspec fragment
-law `checkout captures once` using recording Gateway is ... end
-law `large payments fail` using fakeGateway is ... end
+```text
+law "|checkout captures once| using recording Gateway is ... end
+law "|large payments fail| using fakeGateway is ... end
 ```
 
 `using` takes a list:
@@ -175,10 +175,15 @@ A law's conjuncts run in order, so a count sees the calls the conjuncts
 before it made:
 
 ```lawspec fragment
-law `checkout captures once, when it succeeds` using recording Gateway is
-  definition is
-    `for all` (cents :: Int32) .
-      (if checkout cents then calls of capture with (cents) == 1 else calls of capture == 0) = true
+law "|checkout captures once, when it succeeds| using recording Gateway is
+  definition:
+    for all (cents :: Int32) =>
+      (if checkout cents then
+        calls of capture with (cents) = 1
+      else
+        calls of capture = 0
+      end if) must be true
+    end
   end
 end
 ```

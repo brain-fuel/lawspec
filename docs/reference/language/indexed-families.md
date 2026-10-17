@@ -5,8 +5,8 @@ title: Indexed families
 ---
 # Indexed families
 
-A data type can be indexed by natural numbers, such as a vector indexed by its
-length or a tree indexed by its size. Each constructor states how it determines
+A data type can be indexed by non-negative whole numbers, such as a vector
+indexed by its length or a tree indexed by its size. Each constructor states how it determines
 the index.
 
 ## Declaring a family
@@ -49,7 +49,7 @@ end type
 
 Rules:
 
-- Index expressions use natural arithmetic: literals, index variables, `+`,
+- Index expressions use non-negative integer arithmetic: literals, index variables, `+`,
   `-`, `*`, `div`, `mod` and `^`. `^` binds tightest and needs a literal base
   or a literal exponent.
 - A variable such as `m` is bound by the field whose type mentions it.
@@ -155,7 +155,7 @@ The proof uses exact linear arithmetic over the measures:
 - Inside a match branch, the scrutinee's constructor is known.
 - Calls of checked definitions are pure, so equal calls have equal results.
 - A recursive call contributes its own signature as the induction hypothesis.
-- Natural measures are non-negative.
+- Measures are non-negative.
 
 A definition whose result index does not follow is rejected with
 `definition result refinement could not be proved`.

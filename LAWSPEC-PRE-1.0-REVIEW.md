@@ -28,8 +28,9 @@ Validated project migration writes and the first canonical Chapter 6 pass shippe
 The human readability exercise remains user-deferred. Completing all named endings belongs to the immediately following minor. The larger demonstration portfolio, advanced verification and external Linguist acceptance remain pre-final-1.0 requirements. None of these statuses authorizes an RC designation or a tag.
 
 The dated implementation receipts below preserve historical statuses. The
-latest verified increment is **Refinement payloads through product storage**;
-it supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
+latest verified increments are **Refinement payloads through product storage**
+and **Canonical reference fragments and equality guidance**. The former
+supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
 
 ### Indexed payload migration increment — 17 October 2026
@@ -344,6 +345,44 @@ archived-export run is still in progress against its frozen `9b76bd54`
 snapshot. The minor acceptance checklist and remaining migration, automatic
 exception mapping, documentation and Chapter 6 authoring work stay open;
 no RC designation, completion or tag is implied.
+
+### Canonical reference fragments and equality guidance — 17 October 2026
+
+The reference and how-to pages now use canonical function/procedure headers,
+explicit record payloads, phrase names, quantifier endings, named conditional
+endings and section colons in the 19 fences flagged by the legacy-syntax
+audit. Three header sketches with omitted bodies are explicitly plain text.
+Generic law imports use `law` selectors, and template applications use
+`apply law`. A recorded-value example is shown as a section of a law with the
+corresponding input, rather than as an apparent unit-level example.
+Description literal contents and recording names remain intact.
+
+The equality guidance now distinguishes value and proposition contexts,
+retains `Eq` and IEEE behavior, and explains that `must be` adds no stronger
+modality. The precedence table matches the parser's named-infix, comparison,
+matcher, equality and worded-logic layers. Explanations use `Integer`, `Whole`
+and `Nat` consistently; zero-inclusive indices remain whole-number indices.
+The explicitly labeled historical grammar and ordered-collection material
+remain history.
+
+Validation passes 18 complete contexts for the affected fragments and the
+field-only existential spelling. The deliberately false positive-output law
+still yields 129 `refuted` diagnostics under exhaustive checking. The
+published documentation check passes 119 pages and 114 complete snippets,
+with links resolving. The selected legacy-marker audit reports no remaining
+matches in LawSpec fences, including four-backtick description examples.
+This is manual documentation adoption and contextual compilation, not a
+certificate permitting project migration writes or a claim that native
+adapters have been verified.
+
+Native compiler and WASM bytes, version 0.24.0, distribution fingerprints and
+Chapter 6's original digest are unchanged from `585631dd`. That checkpoint's
+full compiler and SDK results remain the regression baseline; no new full
+regression run is claimed for these documentation edits. The archived export
+continues independently against `9b76bd54`. Remaining migration, native
+exception mapping, Chapter 6 authoring and full minor acceptance remain open.
+Human readability remains user-deferred; all-named endings belong to the
+following minor. No RC designation or tag is authorized.
 
 ## Latest approved milestone direction — 15 October 2026
 
