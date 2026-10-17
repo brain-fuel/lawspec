@@ -70,9 +70,21 @@ assert.equal(migration.baseline.types.length,7);
 const nodes=migration.baseline.sourceSyntax[0].nodes;
 for(const [kind,count] of [['table-row',65],['example',1],['declaration.refinement',2]])
   assert.equal(nodes.filter(node=>node.kind===kind).length,count);
-const canonical=[{path:'chap06.lawspec',content:await readFile(path.join(directory,'chap06.lawspec'),'utf8')}];
-assert.equal(canonical[0].content,migration.sourcePreview.sources[0].content);
-await writeFile(path.join(directory,'chap06-preview.lawspec'),canonical[0].content);
+const migrated=await readFile(path.join(directory,'chap06.lawspec'),'utf8');
+assert.equal(migrated,migration.sourcePreview.sources[0].content);
+await writeFile(path.join(directory,'chap06-preview.lawspec'),migrated);
+// Authoring follows the validated semantic migration as a separate adoption.
+// Its mappings and names do not claim unchanged complete-source fingerprints.
+const authored=await readFile(path.join(root,'examples/chap06/assembler.lawspec'),'utf8');
+assert.equal(authored.match(/^(function|mapping) /gm).length,25);
+assert.equal(authored.match(/^mapping /gm).length,6);
+assert.equal(authored.match(/^type /gm).length,7);
+assert.equal(authored.match(/^refinement /gm).length,2);
+assert.equal(authored.match(/^  description:/gm).length,23);
+assert.equal(authored.match(/^\s+example /gm).length,1);
+assert.equal(authored.replace(/^mapping .*?^end mapping\n/gms,'').match(/^\s+row /gm).length,65);
+const canonical=[{path:'chap06.lawspec',content:authored}];
+await writeFile(path.join(directory,'chap06.lawspec'),authored);
 const layers=args[0]==='--property'?['property','examples']:['examples'];
 const request={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers},machineBits:bits,minify,target:'python',sources:canonical};
 const plan=await compiler.planGeneration(request);
@@ -148,7 +160,7 @@ for(const mutant of mutants) {
   assert.ok(result.output.includes(mutant.diagnostic),result.output);
   rejected.push({name:mutant.name,suite:mutant.suite,diagnostic:mutant.diagnostic});
 }
-const before='when CZero then 42',after='when CZero then 43';
+const before='row CZero, 42',after='row CZero, 43';
 assert.equal(canonical[0].content.split(before).length,2,'Checked computation-table mutant must change exactly one row');
 const altered=await compiler.planGeneration({...request,verification:{layers:[]},
   sources:canonical.map(source=>({...source,content:source.content.replace(before,after)}))});
@@ -163,9 +175,11 @@ assert.match(wrongOracle.output,/ORACLE_C:.*checked computeWord/,
   'The external vectors must reject the changed checked specification independently of the correct native assembler');
 rejected.push({name:'checked-computation-table',suite:'c',diagnostic:'ORACLE_C',subject:'checked-specification',lawVerification:'no-selected-checks'});
 const result={version:1,target:'python',machineBits:bits,minify,compiler:environment.LAWSPEC_CORE?'native':'wasm',
-  sourceSha256,candidateSha256:digest(candidate),
+  sourceSha256,migratedSourceSha256:digest(migrated),authoredSourceSha256:digest(authored),candidateSha256:digest(candidate),
   compilerSha256:digest(await readFile(environment.LAWSPEC_CORE??path.join(root,'npm/core.wasm'))),
   seed,generation:plan.generation,verificationLayers:layers,generated,nativeCliPrograms:2,oracle:evidence,mutants:rejected,
-  migrationValidated:migration.validated,migrationValidation:migration.validation,scope:'Python native conformance and emitted checked codecs after project migration under existing assumptions; remaining native targets are separate gates'};
+  migrationValidated:migration.validated,migrationValidation:migration.validation,
+  authoredInventory:{laws:23,tableRows:65,namedExamples:1,definitions:25,mappings:6,dataTypes:7,refinements:2},
+  scope:'Python native conformance and emitted checked codecs of the published authoring pass; validated project migration is recorded separately; remaining native targets are separate gates'};
 await writeFile(path.join(directory,'evidence.json'),JSON.stringify(result,null,2)+'\n');
 console.log(JSON.stringify({...result,directory}));

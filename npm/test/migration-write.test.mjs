@@ -274,12 +274,15 @@ test('the published canonical Chapter 6 specification retains its authored inven
   assert.equal(checked.laws.filter(law=>owned(law.id)).length,23);
   assert.equal(checked.laws.filter(law=>owned(law.id)).flatMap(law=>law.examples).length,66);
   assert.equal(checked.dataTypes.filter(type=>owned(type.id)).length,7);
-  // These are authored declaration lines in the compiler-accepted canonical
-  // fixture; lowered field helpers are additional implementation definitions.
-  assert.equal(content.match(/^function /gm).length,25);
+  // Mappings are authored definitions; their derived inverse/preimage helpers
+  // and lowered record helpers are additional implementation definitions.
+  assert.equal(content.match(/^(function|mapping) /gm).length,25);
+  assert.equal(content.match(/^mapping /gm).length,6);
+  assert.equal(content.match(/^  description:/gm).length,23);
   assert.equal(content.match(/^refinement /gm).length,2);
   assert.equal(content.match(/^\s+example /gm).length,1);
-  assert.equal(content.match(/^\s+row /gm).length,65);
+  const expectations=content.replace(/^mapping .*?^end mapping\n/gms,'');
+  assert.equal(expectations.match(/^\s+row /gm).length,65);
   const formatted=await compiler.format({...options,sources});assert.deepEqual(formatted.diagnostics,[]);
   assert.equal(formatted.formattedSources[0].content,content);
   assert.equal(checked.verification.selection,'no-selected-checks');

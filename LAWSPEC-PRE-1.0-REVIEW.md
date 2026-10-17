@@ -22,7 +22,7 @@ Validated project migration writes and the first canonical Chapter 6 pass shippe
 - [x] Verify scoped collection-provider discovery and ordered-set migration, including complete source correspondence, all 17 configured target emissions, native/WASM parity and regression checks. Opaque dependency fields retain conservative discovery.
 - [ ] Resolve or explicitly account for the remaining migration acceptance cases, including indexed/existential payloads, generic populations, dependency changes and opaque hooks. Missing correspondence must continue to block writes.
 - [ ] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration. Ordinary requests now require schema 5 and the canonical profile; configuration requires version 2. Archived source uses explicit migration entry points. The cutover is implemented; final consumer and acceptance checks remain open.
-- [ ] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract.
+- [ ] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract. The authoring pass and its oracle/generation checks are complete; the wider coverage audit remains required.
 - [ ] Run the final compiler, target, generation, boundary, editor, documentation, parity and complete release checks on the final implementation; record failures and limits before claiming completion.
 
 The human readability exercise remains user-deferred. Completing all named endings belongs to the immediately following minor. The larger demonstration portfolio, advanced verification and external Linguist acceptance remain pre-final-1.0 requirements. None of these statuses authorizes an RC designation or a tag.
@@ -30,10 +30,58 @@ The human readability exercise remains user-deferred. Completing all named endin
 The dated implementation receipts below preserve historical statuses. The
 latest verified increments include **Refinement payloads through product storage**,
 **Canonical reference fragments and equality guidance**, **Native exception
-messages and checked input ranges**, and **Symbolic helper types in typed-failure
-migration**. The product-storage increment
+messages and checked input ranges**, **Symbolic helper types in typed-failure
+migration**, and the verified oracle runs of **Chapter 6 authoring**. The product-storage increment
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
+
+### Chapter 6 authoring — 17 October 2026
+
+The published specification now uses six checked mappings for computation,
+destination and jump spellings and bits. Its source and reference functions use
+phrase names, every law has a domain description, and `AssemblyRuns` names its
+first, second and repeated-first output fields. The adapter remains
+`assemble :: Text -> List Text`. Explanations of physical output and the
+independent structured reference live in the accompanying README.
+
+The inventory remains **23 laws, 65 expectation-table rows, one named example,
+25 authored definitions, seven ADTs and two refinements**. Six of those 25
+definitions are mappings; their inverse/preimage helpers are additional lowered
+definitions. The 88 mapping rows are separate from the 65 expectation rows.
+The source passes ordinary admission and idempotent formatting. No compiler,
+solver, evaluator or trust boundary changed for this authoring pass.
+
+The oracle runner first validates and writes the original semantic migration,
+preserving its source separately. It then adopts the published authoring pass
+and records its different source hash explicitly. It does not claim unchanged
+complete-source fingerprints for the manually improved authoring. The original
+Chapter 6 source and its fixture retain SHA-256
+`07d8116b847aa80e044ad3ea2cbc8317bc949a0c4fe07b560e513d6fa0bfaf06`.
+
+Four independent runs pass: native and WASM compilation at 64-bit readable and
+32-bit compact output. Each exercises all 23 laws through **16 property tests,
+453 boundary checks and 66 examples**, with ten replay hooks recorded separately.
+Each compares **32,768 A addresses, 1,792 C combinations and thirteen stateful
+programs** with independent oracles and rejects all six mutants, including the
+changed checked computation table. Repeated calls remain independent, and the
+symbol-table-leak mutant is rejected. These are finite codec and Python native
+conformance receipts, not proofs of the unbounded laws or implementations in the
+other sixteen languages.
+
+Native/WASM parity agrees on **72 complete responses**, including **68 generation
+requests across all 17 targets, both machine widths and both output layouts**.
+Repeated checking after those generations returns the same complete response.
+Documentation checks pass for 119 pages and 114 snippets; all 128 generated files, 233 module
+boundaries, artifact integrity and version consistency pass. The compiler bytes
+are unchanged from the typed-failure checkpoint, whose 2,171-test compiler and
+SDK/native receipts remain the implementation baseline. Evidence is under
+`.artifacts/chapter6-authoring/` in the Chapter 6 authoring worktree.
+
+The remaining coverage audit, migration acceptance cases and complete iteration
+release check remain open. Human readability remains user-deferred, complete
+named endings belong to the following minor, and the larger Chapter 6 portfolio
+across all 17 languages remains pre-final-1.0. Version 0.24.0 has no RC designation
+or tag.
 
 ### Symbolic helper types in typed-failure migration — 17 October 2026
 

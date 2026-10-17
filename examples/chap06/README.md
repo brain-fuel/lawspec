@@ -1,9 +1,19 @@
 # Chapter 6 assembler conformance
 
 [assembler.lawspec](assembler.lawspec) is the formatted canonical specification.
-Its first semantic migration pass retains all authored laws, examples, types,
-refinements and computations. Further authoring improvements remain in the
-review packet; the byte-preserved 0.24 fixture remains migration input.
+Its authoring pass uses six checked mappings for computation, destination and
+jump encodings, readable assembly-source and reference-assembly function names,
+and descriptions for all 23 laws. `AssemblyRuns` names the first, second and
+repeated first output separately so repeated calls remain observable. The
+byte-preserved 0.24 fixture remains migration input.
+
+The `assemble` adapter takes assembly text and returns physical `.hack` lines
+as `List Text`, with `[]` for an empty output file. A command-line adapter runs
+`Program.asm` and reads its sibling `Program.hack`. Split LF/CRLF and remove
+only the final split artifact of a trailing newline. Preserve all other output:
+trimming, decoding, padding or filtering would conceal implementation defects.
+The checked structured reference has no assembly-text parser and never calls
+the native assembler under test.
 
 [python/hack_assembler.py](python/hack_assembler.py) implements the valid-program
 contract for the [Nand to Tetris assembler project](https://www.nand2tetris.org/project06).
@@ -32,11 +42,15 @@ actual WASM package; `LAWSPEC_CORE` selects a native compiler executable.
 Each invocation preserves a fresh project, logs and `evidence.json` under
 `.artifacts/chapter6-oracles/`.
 
-The harness reads the byte-preserved 0.24 Chapter 6 fixture, creates the current
-canonical source and version-2 configuration using the validated project writer,
-and checks its 23 laws, 65 table rows, one named example,
-25 definitions, seven ADTs and two refinements. It runs the 66 generated examples
-against the Python assembler. Independent checks cover all 32,768 A-instruction
+The harness first migrates the byte-preserved 0.24 Chapter 6 fixture and its
+configuration using the validated project writer. It records that semantic
+migration separately, then adopts and checks the published authoring pass.
+Both retain 23 laws, 65 expectation-table rows, one named example,
+25 authored definitions, seven ADTs and two refinements. Six of the authored
+definitions are mappings; compiler-derived inverse/preimage and field helpers
+are additional lowered definitions. Mapping rows are counted separately from
+expectation-table rows. It runs the 66 generated examples against the Python
+assembler. Independent checks cover all 32,768 A-instruction
 addresses and all 1,792 canonical C-instructions, against both the assembler and
 the emitted checked codec functions. Thirteen further programs check symbols,
 labels, comments, whitespace and independent repeated calls. File-interface
@@ -66,8 +80,9 @@ versioned vectors offline. The reference command fetches only the pinned
 upstream source and checks its exact digests before compiling the decoder.
 
 These checks establish finite codec coverage and Python conformance for the
-executed programs. Migration validation separately checks source and configured
-interface preservation under the existing compiler/native assumptions. Neither
+executed programs. Migration validation separately checks the first semantic
+pass under the existing compiler/native assumptions; the subsequent authoring
+pass has deliberately different source and generated helper identities. Neither
 that validation nor these finite tests prove the unbounded program laws or
 establish implementations in the other 16 languages.
 `--property` additionally selects property testing and generated boundary cases
