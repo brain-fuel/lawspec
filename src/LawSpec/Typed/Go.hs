@@ -154,7 +154,12 @@ emitGoTyped declarations units = do
     , goTypedTo = \t -> pure (helperName "to" t)
     , goTypedValue = \e -> do
         ((statements, value), _) <- runStateT (cexpr env [] e) (St 0 M.empty S.empty)
-        if null statements then pure (D.render D.Compact value) else Left "a typed start value needs statements"
+        if null statements then pure (D.render D.Compact value) else do
+          result <- goType env (expressionType e)
+          -- An immediately invoked function keeps the existing statement
+          -- lowering and evaluates this closed initializer exactly once.
+          pure (D.render D.Compact (D.text ("func() "++result++" ") <>
+            block (statements++[D.text "return "<>value]) <> D.text "()"))
     , goTypedNative = \t -> if nativeDirect env S.empty t then Just (helperName "fromnative" t, helperName "tonative" t) else Nothing
     , goTypedPlan = plan }
   where

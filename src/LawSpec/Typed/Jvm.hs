@@ -167,9 +167,9 @@ emitJvmTyped style declarations units = do
                  , Just (t, e) <- [handlerState h] ]
   startDocs <- forM starting $ \(_, name, t, e) -> do
     jt <- javaType env True t
-    ((statements, value), _) <- runStateT (cexpr env [] e) initial
-    if not (null statements) then Left "a typed start value needs statements" else
-      pure (D.text ("public static " ++ jt ++ " " ++ name ++ "(java.util.Map<String, Object> symbols) ") <> D.block 2 (D.text "return " <> value <> D.text ";"))
+    (body, _) <- runStateT (cstmt env Nothing [] Return e) initial
+    pure (D.text ("public static " ++ jt ++ " " ++ name ++ "(java.util.Map<String, Object> symbols) ") <>
+      D.block 2 (D.joinWith D.hardline body))
   let boundaryNames = M.fromList [ (show t, "C" ++ show i) | (i, (t, _)) <- zip [0 :: Int ..] boundary ]
       codecDocs = [ D.text ("public static final LawSpecFast.Codec<" ++ either (const "?") id (javaType env True t) ++ "> " ++ boundaryNames M.! show t ++ " =") <>
                     D.nest 8 (D.hardline <> D.text (expr ++ ";")) | (t, expr) <- boundary ]

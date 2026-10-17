@@ -6,6 +6,55 @@ import {migrationReport} from '../migrate.mjs';
 
 const compiler=await createCompiler();
 const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive','examples']}};
+
+test('legacy exact numeric names produce checked previews without claiming unproved representation correspondence',async()=>{
+  for(const machineBits of [32,64])for(const [oldName,newName] of [['BigInt','Integer'],['Natural','Whole']]) {
+    const content='unit numeric\n-- BigInt Natural BigUInt remain documentary text.\n'+
+      'definition same (input :: '+oldName+') :: '+oldName+' is input end\n'+
+      'definition label (input :: Bool) :: Text is "BigInt Natural BigUInt" end\n'+
+      'law `same` is definition is `for all` (input :: '+oldName+') . same input = input end end';
+    const report=await migrationReport(compiler,{version:1,targets:[{language:'java',root:'.'}]},
+      {sources:[{path:'numeric.lawspec',content}],machineBits});
+    assert.deepEqual(report.diagnostics,[]);
+    assert.deepEqual(report.sourcePreview.diagnostics,[]);
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted',JSON.stringify(report.sourcePreview.canonicalCheck.diagnostics));
+    const preview=report.sourcePreview.sources[0];
+    assert.ok(preview.content.includes('(input :: '+newName+') -> '+newName));
+    assert.ok(preview.content.includes('-- BigInt Natural BigUInt remain documentary text.'));
+    assert.ok(preview.content.includes('"BigInt Natural BigUInt"'));
+    assert.equal(report.validated,false,'A spelling preview must not certify changed mathematical/native types');
+    assert.equal(report.validation.nativeConformance,'not-established');
+    assert.ok(report.blockers.length);
+    assert.deepEqual(report.filesWritten,[]);
+    for(const segment of preview.segments.filter(segment=>segment.retained))
+      assert.equal(preview.content.slice(segment.start,segment.end),content.slice(segment.originalStart,segment.originalEnd));
+  }
+});
+
+test('zero-inclusive index kinds and bounded nonzero refinements retain their original restrictions',async()=>{
+  const sources=[{path:'indices.lawspec',content:'unit indices\n'+
+    'type Token (n :: Natural) is | Zero where n = 0 end\n'+
+    'refinement PositiveByte is (value :: UInt8 where value > 0 && value < 10) end\n'+
+    'consume :: Token 0 -> PositiveByte -> Bool'}];
+  const report=await migrationReport(compiler,{version:1,targets:[]},{sources});
+  assert.deepEqual(report.diagnostics,[]);
+  assert.deepEqual(report.sourcePreview.diagnostics,[]);
+  assert.equal(report.sourcePreview.canonicalCheck.status,'accepted',JSON.stringify(report.sourcePreview.canonicalCheck.diagnostics));
+  const preview=report.sourcePreview.sources[0].content;
+  assert.ok(preview.includes('(n :: Whole) is one of | Zero where n = 0 end type'));
+  assert.ok(preview.includes('value :: UInt8 where value > 0 && value < 10'));
+  assert.ok(preview.includes('Token 0'));
+  assert.ok(!preview.includes(':: Nat)'));
+});
+
+test('ambiguous legacy Natural declarations remain compiler errors before any preview',async()=>{
+  const content='unit custom\nrefinement Natural is (value :: UInt8 where value > 0 && value < 10) end\n'+
+    'definition same (input :: Natural) :: Natural is input end';
+  const report=await migrationReport(compiler,{version:1,targets:[]},{sources:[{path:'custom.lawspec',content}]});
+  assert.ok(report.diagnostics.some(item=>item.code==='refinement'&&/duplicate/.test(item.message)));
+  assert.equal(report.validated,false);
+  assert.equal(report.sourcePreview,undefined);
+});
 async function migrate(sources,machineBits=64) {
   const before=await compiler.migrationBaseline({...options,from:'0.24',sources,machineBits});
   assert.deepEqual(before.diagnostics,[]);

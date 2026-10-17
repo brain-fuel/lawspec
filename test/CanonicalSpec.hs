@@ -48,8 +48,107 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       ["filename.lawspec","<filename>","<lawspec.collections>"]
   it "keeps compiler-provided collections in their versioned grammar" $
     core "function values (x :: Integer) -> Queue Integer is prelude.queueOf [x] end function" `shouldSatisfy` isRight
+  it "separates a handler's initial state from its clauses without restricting nested expressions" $ do
+    let header initial = unlines
+          [ "ability Signal is signal of type Bool -> Bool end"
+          , "handler echo for Signal with state previous :: Bool start " ++ initial ++ " is"
+          , "  signal value is value end"
+          , "end" ]
+    mapM_ (\initial -> core (header initial) `shouldSatisfy` isRight)
+      [ "false", "not false and true", "(true is true)"
+      , "if true is true then false else true end if"
+      , "let initial = true in initial"
+      , "let initial = (true is true) in not initial" ]
+    core (unlines
+      [ "ability Signal is signal of type Bool -> Bool end"
+      , "function identity (value :: Bool) (previous :: List Bool) -> Pair Bool (List Bool) is"
+      , "  Pair record{first = value, second = previous} end function"
+      , "handler echo for Signal with state previous :: List Bool start [] is"
+      , "  signal by identity"
+      , "end" ]) `shouldSatisfy` isRight
+  it "does not leak handler-header delimiters into later worded equalities" $
+    core (unlines
+      [ "ability Signal is signal of type Bool -> Bool end"
+      , "handler echo for Signal with state previous :: Bool start false is signal value is value end end"
+      , "function same (value :: Bool) -> Bool is value is true end function"
+      , "law sameResult is definition: for all (value :: Bool) => same value must be value end end end" ])
+      `shouldSatisfy` isRight
+  it "emits compound handler initializers through every target's ordinary checked-code path" $ do
+    mapM_ (\initial -> case core (unlines
+      [ "ability Signal is signal :: Bool -> Bool end"
+      , "handler echo for Signal with state previous :: Bool start "++initial++" is signal value is value end end"
+      , "law same using echo is definition: for all (value :: Bool) => signal value = value end end end" ]) of
+        Left ds -> expectationFailure (show ds)
+        Right program -> case planTestingWith (V.Verification [V.Exhaustive,V.Examples]) program of
+          Left ds -> expectationFailure (show ds)
+          Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets)
+      [ "let initial = false in initial"
+      , "if true then false else true end if"
+      , "first matching case of true: when true then false when false then true end case" ]
+  it "checks and emits sole, mixed and absent unit operation arguments" $ do
+    text <- readFile "test/fixtures/canonical-stateful-initializers.lawspec"
+    case compileCoreCanonical 64 defaultGeneration [Source "unit-arguments.lawspec" text] of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        -- Explicit handler scopes await native execution. Their finite
+        -- input types alone must not become completed compiler evidence.
+        fmap (map obligationStatus . filter ((== "law") . obligationStage))
+          (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program)
+          `shouldBe` Right
+            [ Planned, ExhaustivelyChecked, Planned, ExhaustivelyChecked
+            , Planned, ExhaustivelyChecked, ExhaustivelyChecked
+            , Planned, Planned, Planned, ExhaustivelyChecked, ExhaustivelyChecked ]
+        case planTestingWith (V.Verification [V.Exhaustive,V.Examples]) program of
+          Left ds -> expectationFailure (show ds)
+          Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
+  it "preserves state updates, worded Boolean operands and explicit sequencing" $ do
+    let checked expected = core (unlines
+          [ "ability Signal is signal of type Bool -> Bool end"
+          , "handler remembering for Signal with state previous :: Bool start false is"
+          , "  signal value is ~previous := not previous and value; previous end"
+          , "end"
+          , "law twice using remembering is definition: (signal true; signal true) must be " ++ expected ++ " end end" ])
+    case checked "false" of
+      Left ds -> expectationFailure (show ds)
+      Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
+        (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
+    case checked "true" of
+      Left ds -> expectationFailure (show ds)
+      Right program -> case dischargeEvidenceWith (V.Verification [V.Exhaustive]) program of
+        Left ds -> map LawSpec.Model.code ds `shouldContain` ["refuted"]
+        Right evidence -> expectationFailure (show evidence)
   it "retains intrinsic checking on pure functions with no verification layers" $
     core "function double (x of type Integer) -> Integer is x + x end function" `shouldSatisfy` isRight
+  it "keeps performance budgets in law bodies and independent table expectations" $
+    core (unlines
+      [ "import lawspec.time"
+      , "measure of type Bool -> Integer"
+      , "law quick is definition: for all (flag :: Bool) => measure flag takes at most 500ms end end"
+      , "example short: flag = false expect measure flag takes at most 500ms end"
+      , "expect measure flag takes at most 500ms"
+      , "in table (flag): row false row true end end" ]) `shouldSatisfy` isRight
+  it "keeps equality above symbolic conjunction and worded negation" $ do
+    mapM_ (\expression -> case core (unlines
+      [ "function selected (left :: Bool) (right :: Bool) -> Bool is "++expression++" end function"
+      , "law agreement is definition: for all (left :: Bool) (right :: Bool) =>"
+      , "  selected left right must be (left and not right) end end end" ]) of
+        Left ds -> expectationFailure (show ds)
+        Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
+          (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked])
+      [ "left = true && right = false"
+      , "left is true && right must be false"
+      , "left must = true and right = false"
+      , "not left = false && right = false"
+      , "left == true && right != true" ]
+  it "combines symbolic obligations with nested quantifiers and preserves table separators" $
+    core (unlines
+      [ "function same (value :: Bool) -> Bool is value end function"
+      , "law agreement is definition: for all (left :: Bool) (right :: Bool) =>"
+      , "  left = left && right = right and there exists (witness :: Bool) such that witness = left end"
+      , "end end"
+      , "expect same (left = right) = expected"
+      , "in table (left,right,expected): row false,false,true row true,false,false end end" ])
+      `shouldSatisfy` isRight
   it "rejects an unsafe denominator before any optional law check" $
     core "function unsafe (x of type Integer) -> Integer is prelude.quot x 0 end function" `shouldSatisfy` isLeft
   it "rejects a recursive function without a decreasing argument" $

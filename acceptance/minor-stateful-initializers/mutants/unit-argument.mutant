@@ -1,0 +1,7 @@
+expect-any: argumentIsEvaluatedBeforeFlip | ArgumentIsEvaluatedBeforeFlip | argument_is_evaluated_before_flip | argument-is-evaluated-before-flip
+@@ test/fixtures/canonical-stateful-initializers.lawspec
+<<<<<<<
+  handle (remember () true (); flip (clear ())) with binding end
+=======
+  handle (remember () true (); flip ()) with binding end
+>>>>>>>

@@ -5,7 +5,77 @@ title: Syntax
 ---
 # Syntax
 
-## Units
+The current authoring profile is `1.0-rc.1`, through API schema 5 and
+configuration version 2. The identifier is technical; the current authoring
+milestone is a minor version, not a release candidate. The
+[authoring contract](rc1.md) records its semantics and remaining gates.
+
+## Grammar
+
+These are the main canonical forms. Existing workflow, ability, handler,
+resource, model, actor, scenario and harness declarations retain their forms;
+their computations use the same canonical expressions. The legacy grammar
+below is migration input, not an alternative normal parser.
+
+```text
+source       = "unit" qualified-name import* declaration*
+annotation   = ("of" "type" | "::") type
+signature    = name annotation requirements? effects?
+function     = "function" name parameter+ "->" type requirements?
+               "is" expression "end" "function"
+procedure    = "procedure" name parameter+ ["->" type] requirements? effects?
+               "is" expression "end" "procedure"
+parameter    = "(" pattern annotation ["where" expression] ")"
+record       = "type" name type-parameter* "is" "a" "record" "{"
+               (name annotation [","])* "}" "end" "type"
+alternatives = "type" name type-parameter* "is" "one" "of"
+               (["|"] name [annotation] equations?)+ "end" "type"
+case         = "first" "matching" "case" "of" expression ":"
+               ("when" (pattern | "it" "matches" pattern | expression)
+                ["if" expression] "then" expression)+
+               ["otherwise" expression] "end" "case"
+conditional  = "if" expression "then" expression "else" expression "end" "if"
+universal    = "for" "all" parameter+ "=>" proposition "end"
+existential  = "there" ["must"] "exist" parameter+ "such" "that" proposition "end"
+             | "there" "exists" parameter+ "such" "that" proposition "end"
+table        = ("expect" expression ["=" expected])+
+               "in" "table" "(" name ("," name)* ")" ":"
+               ("row" constant ("," constant)*)+ "end"
+mapping      = "mapping" name annotation "is"
+               ("row" constant "," constant)+ ["otherwise" constant]
+               "end" "mapping"
+```
+
+A law uses `law name is`, optional scalar metadata, its sections and examples,
+then `end`. Every ordinary law has exactly one `definition:` section.
+`description:`, `rationale:` and `references:` are optional singleton sections;
+named examples and expectation tables may repeat. Every section has its own
+`end`; scalar metadata has none. Formatting preserves section order.
+
+Function results use `->`; a procedure returning `()` may omit its result.
+Alternatives have no payload or one explicitly annotated payload; records and
+tuples group multiple components. Named records construct as `Name record{...}`;
+record values and patterns use comma-separated `field = value` entries.
+
+Phrase names start with `"|` and end with `|`, without a closing quote. Named
+infix application starts with a backtick and optionally uses pipe delimiters.
+Prefix and infix calls share resolution and one function namespace. Comparisons
+and matchers bind above canonical equality, then worded `not`, conjunction,
+disjunction and right-associative `implies`. Existing symbolic operator order
+stays intact; `a = b && c = d` compares both pairs. Named-infix chains and
+equality chains require parentheses where they would be ambiguous.
+
+The current minor still has plain endings for laws, sections, quantifiers and
+other existing blocks. The following minor requires named endings for every
+block and must reject bare `end`.
+
+## Legacy 0.24 syntax
+
+The following reference preserves the prior forms for explicit migration.
+See [source migration](../../explanation/api-migration.md#source-migration-from-024)
+for checked previews, correspondence limits and project writes.
+
+### Units
 
 A source file declares one unit, named on its first line. The unit's imports
 follow, then its declarations in any order:
@@ -34,7 +104,7 @@ end
 The qualified unit name determines the module or package path on every target.
 Names are scoped to their unit.
 
-## Declarations
+### Declarations
 
 A unit can contain:
 
@@ -52,7 +122,7 @@ A unit can contain:
 Function signatures are curried: `a -> b -> c` takes two inputs and returns a
 `c`. Functions are synchronous. They can take any positive number of arguments.
 
-## Lexical rules
+### Lexical rules
 
 - `--` starts a comment that runs to the end of the line.
 - Law and example names are quoted with backticks: `` `round trip` ``.
@@ -82,7 +152,7 @@ implies and true false references are Eq where refinement type match with
 
 `import`, `as`, `wrapper` and `workflow` begin imports and declarations.
 
-## Law blocks
+### Law blocks
 
 A law's blocks come in this order:
 
@@ -92,7 +162,7 @@ A law's blocks come in this order:
 4. any number of `example` blocks;
 5. `references are "..." "..." end` (optional).
 
-## Grammar
+### Legacy grammar
 
 This grammar summarizes the main forms. The parser and the compiler's tests
 specify the lexical details.

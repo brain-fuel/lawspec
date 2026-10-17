@@ -692,6 +692,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | Nothing <- nativeRepresentation target (key ty) = GoExpr.call "lsClone" [goChecked ty value]
       | otherwise = GoExpr.call "lsToNative" [GoExpr.quoted (key ty),value,Doc.text (show bits)] <>
           Doc.text (".(" ++ nativeArg ty ++ ")")
+    -- Ability interfaces take concrete native units. Unbound adapter stubs
+    -- retain their existing logical-unit parameter convention.
+    goAbilityArgument ty value
+      | ty == Named "Unit" = GoExpr.call (goCodec ty ++ ".toNative") [value]
+      | otherwise = goNativeArgument ty value
     goNativeResult ty invocation
       | goCustom ty = GoExpr.call (goCodec ty ++ ".fromNative") [invocation]
       | ty == Named "Unit" = Doc.text "func() LawSpecValue " <> Doc.block 8
@@ -823,7 +828,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       C.Perform op args ->
         let typed = zip (map expressionType args) values
         in Right (goFailingAs (operationFailure op) (goNativeResult (expressionType term) (GoExpr.call (Doc.render Doc.Compact (goHandler (C.operationAbility op)) ++ "." ++ GoAbilities.methodName (C.operationName op))
-          [goNativeArgument ty v | (ty,v) <- typed])))
+          [goAbilityArgument ty v | (ty,v) <- typed])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
           let side tag ty = Doc.text "func(_value LawSpecValue) LawSpecValue " <> Doc.block 8

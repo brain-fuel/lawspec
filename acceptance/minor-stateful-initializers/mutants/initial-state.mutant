@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: refuted
+@@ test/fixtures/canonical-stateful-initializers.lawspec
+<<<<<<<
+  start let initiallyDisabled = false in initiallyDisabled is
+=======
+  start let initiallyDisabled = true in initiallyDisabled is
+>>>>>>>

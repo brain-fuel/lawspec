@@ -1,0 +1,7 @@
+expect-any: unitsSurroundRememberedValue | UnitsSurroundRememberedValue | units_surround_remembered_value | units-surround-remembered-value
+@@ test/fixtures/canonical-stateful-initializers.lawspec
+<<<<<<<
+  handle remember () flag () with binding end
+=======
+  handle remember () (not flag) () with binding end
+>>>>>>>

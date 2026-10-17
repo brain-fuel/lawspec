@@ -49,23 +49,29 @@ emitHandlers layout bits typed declarations units = do
           stateful = C.handlerState h /= Nothing
       operations <- fmap concat $ forM answered $ \a -> forM (C.abilityOperations a) $ \(op, ty) -> do
         signature <- Abilities.operationSignature bits names a (op, ty)
-        pure (a, op, signature)
+        pure (a, op, ty, signature)
       stateCodec <- traverse (Data.codec bits names [] . fst) (C.handlerState h)
       stateType <- traverse (Data.nativeType bits names [] . fst) (C.handlerState h)
       let method op (ps, r, e) = "public func " ++ Effects.operationMember op ++ "(" ++ intercalate ", " ["_ " ++ p ++ ": " ++ t | (p, t) <- ps] ++ ")" ++
             maybe "" (\x -> " throws(" ++ x ++ ")") e ++ (if r == "Void" then "" else " -> " ++ r)
           typedClauses = isTypedHandler (swiftTypedPlan typed) h
       if typedClauses then do
-        clauses <- forM operations $ \(a, op, signature@(ps, r, e)) -> do
+        clauses <- forM operations $ \(a, op, ty, signature@(ps, r, e)) -> do
           clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
           function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (swiftTypedFunction typed clause)
           failure <- case lookup op (C.abilityFailures a) of
             Just failing@(C.AbilityRef _ [failureType]) -> (\c -> Just (C.abilityKey failing, c)) <$> Data.codec bits names [] failureType
             _ -> pure Nothing
+          let (args, _) = C.functionType ty
+              restoreUnits [] [] = Right []
+              restoreUnits (t : ts) ns
+                | t == C.Constructor "Unit" [] = ("Unit()" :) <$> restoreUnits ts ns
+                | n : rest <- ns = (n :) <$> restoreUnits ts rest
+              restoreUnits _ _ = Left ("Swift handler parameter mismatch: " ++ C.handlerName h ++ "." ++ op)
+          clauseArgs <- restoreUnits args (map fst ps)
           let contextual = swiftTypedContextual typed clause
-              noArgs = null ps
               arguments = concat [["self.schema", "self.symbols"] | contextual] ++ ["self.stateValue" | stateful] ++
-                (if noArgs && not stateful then ["Unit()"] else map fst ps)
+                (if null args && not stateful then ["Unit()"] else clauseArgs)
               invoke = "try " ++ function ++ "(" ++ intercalate ", " arguments ++ ")"
               returned value = if r == "Void" then "_ = " ++ value else "return " ++ value
               body = if stateful
@@ -122,7 +128,7 @@ emitHandlers layout bits typed declarations units = do
               [ D.text ("/// " ++ op ++ ".") <> D.hardline <> D.text (method op signature ++ " {") <> D.nest 4 (D.hardline <>
                   D.text ((case e of Just _ -> "try "; Nothing -> "") ++ field a ++ "." ++ Effects.operationMember op ++ "(" ++ intercalate ", " (map fst ps) ++ ")")) <>
                   D.hardline <> D.text "}"
-              | (a, op, signature@(ps, _, e)) <- operations ]
+              | (a, op, _, signature@(ps, _, e)) <- operations ]
         pure (D.text ("/// " ++ summary ++ " A new one starts from the handler's start state.") <> D.hardline <>
           D.text ("public final class " ++ cls ++ ": " ++ intercalate ", " protocols ++ ", @unchecked Sendable {") <>
           D.nest 4 (D.hardline <> D.joinWith (D.hardline <> D.hardline) members) <> D.hardline <> D.text "}")

@@ -48,7 +48,8 @@ type RawP = ParsecT Void String (Reader (M.Map String Header))
 -- records from a branch the real grammar rejected. Ordinary parsing uses
 -- Nothing and does not build the inventory.
 data ParseContext = ParseContext
-  { recordedSyntax :: Maybe [SyntaxNode], sourceCoordinates :: Maybe SourceOriginMap }
+  { recordedSyntax :: Maybe [SyntaxNode], sourceCoordinates :: Maybe SourceOriginMap
+  , handlerInitialExpression :: Bool }
 type P = StateT ParseContext RawP
 
 runParserT :: P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
@@ -56,7 +57,7 @@ runParserT = runParserWithCoordinates Nothing
 
 runParserWithCoordinates :: Maybe SourceOriginMap -> P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
 runParserWithCoordinates coordinates parser name text = MP.runParserT
-  (evalStateT parser (ParseContext Nothing (Just positions))) name text
+  (evalStateT parser (ParseContext Nothing (Just positions) False)) name text
   where positions = maybe (sourceCoordinatesFor [] (Source name text)) id coordinates
 
 runParserAt :: [SourceOriginMap] -> P a -> Source -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
@@ -987,7 +988,7 @@ indexExpr = located $ makeExprParser indexAtom
 expr :: P Expr
 expr = do
   canonical <- canonicalP
-  first <- if canonical then canonicalBoolExpr else statement
+  first <- statement canonical
   option first (located (sequenced first <$> (symbol ";" *> expr)))
   where
     -- `a; b` orders two expressions: a is evaluated for its effects, then b
@@ -997,10 +998,11 @@ expr = do
       | flowing first = Binary ";" first rest
       | otherwise = MatchExpr first [MatchBranch letTag ["lawspecIgnored"] rest]
     flowing e = any (`isInfixOf` show e) ["Var \"~", "Binary \":=\""]
-    statement = do
-      e <- updatedExpr
+    statement canonical = do
+      let value = if canonical then canonicalBoolExpr else updatedExpr
+      e <- value
       e' <- option e (budgetSuffix e)
-      option e' (located (Binary ":=" e' <$> (symbol ":=" *> updatedExpr)))
+      option e' (located (Binary ":=" e' <$> (symbol ":=" *> value)))
 
 -- | A value, and optionally a copy of it with some fields replaced:
 -- `b with logs = l, topics = t`. The type of b must have one constructor;
@@ -1021,15 +1023,26 @@ updatedExpr = do
     update record (name, value) = Apply (Apply (Var (fieldUpdatePrefix ++ name)) record) value
 
 operatorExpr :: P Expr
-operatorExpr = located $ makeExprParser application (higherOperators ++
-  -- Matchers (xs has same items as ys, t starts with "a", ...) bind below
-  -- the comparisons and above && (see matcherSuffix). Their operands bind
-  -- tighter than the comparisons.
-  [ [Postfix (matcherSuffix (located (makeExprParser application (init higherOperators))))]
-  , [InfixL (Binary "&&" <$ symbol "&&")]
-  , [InfixL (Binary "||" <$ symbol "||")]
-  ])
+operatorExpr = do
+  canonical <- canonicalP
+  if canonical then located $ makeExprParser
+    (located $ makeExprParser (located higher) [[InfixN canonicalEqualityP]])
+    [ [Prefix (Unary "!" <$ canonicalLogical "not")]
+    , [InfixL (Binary "&&" <$ logicalOperator "&&" "and")]
+    , [InfixL (Binary "||" <$ logicalOperator "||" "or")]
+    , [InfixR ((\a b -> Binary "||" (Unary "!" a) b) <$ canonicalLogical "implies")]
+    ]
+  else located $ makeExprParser application (higherOperators ++ matchers ++
+    [[InfixL (Binary "&&" <$ symbol "&&")],[InfixL (Binary "||" <$ symbol "||")]])
   where
+    -- Preserve operand spans independently of the lower equality/logic layers.
+    higher = makeExprParser application (higherOperators ++ matchers)
+    matchers = [[Postfix (matcherSuffix (located (makeExprParser application (init higherOperators))))]]
+    logicalOperator symbolic word = do
+      canonical <- canonicalP
+      proposition <- asks (M.member "delimiter:proposition-logic")
+      when (canonical && proposition) empty
+      void (symbol symbolic) <|> canonicalLogical word
     application = sourceNodeBy applicationSyntax $ do
       -- A matcher word after an argument starts a matcher, so contains in
       -- xs contains x is not an argument; a function named contains is
@@ -1056,11 +1069,17 @@ logicBoundary :: P ()
 logicBoundary = canonicalP >>= \canonical -> when canonical
   (notFollowedBy (keyword "and" <|> keyword "or" <|> keyword "implies"))
 
--- At the outer level of a let initializer, `in` closes the binding. A
--- delimited subexpression has its own boundary and may use membership.
--- A nested let's body inherits the enclosing initializer's boundary.
+-- Delimited value expressions own their logical and equality boundaries.
+-- A nested let's body inherits its enclosing expression's boundaries.
 membershipScope :: P a -> P a
-membershipScope = local (M.delete "delimiter:let-in")
+membershipScope = local (M.delete "delimiter:let-in" . M.delete "delimiter:expectation-equals" . M.delete "delimiter:proposition-logic")
+
+canonicalLogical :: String -> P ()
+canonicalLogical word = do
+  canonical <- canonicalP
+  proposition <- asks (M.member "delimiter:proposition-logic")
+  unless (canonical && not proposition) empty
+  keyword word
 
 -- The operator levels above the matchers, from the tightest.
 higherOperators :: [[Operator P Expr]]
@@ -1255,9 +1274,9 @@ applicationAtom = atom
       name <- sourceNode "let-binding" Just ident
       unless (maybe False (isLower . fst) (uncons name)) (fail "a let binds a name starting with a lowercase letter")
       void (symbol "=")
-      value <- local (M.insert "delimiter:let-in" AliasHeader) expr
+      value <- local (M.insert "delimiter:let-in" AliasHeader . M.delete "delimiter:expectation-equals" . M.delete "delimiter:proposition-logic") expr
       keyword "in"
-      body <- expr
+      body <- local (M.delete "delimiter:proposition-logic") expr
       pure (MatchExpr value [MatchBranch letTag [name] body])
     -- handle e with h end: e runs with the spec handler h for h's ability.
     handleP = sourceNode "handle" (const Nothing) $ do
@@ -1448,8 +1467,8 @@ canonicalDefinition = do
   unless canonical empty
   makeExprParser atom
     [ [Prefix prefixes]
-    , [InfixL (And <$ keyword "and")]
-    , [InfixL ((\a b -> Not (And (Not a) (Not b))) <$ keyword "or")]
+    , [InfixL (And <$ (keyword "and" <|> void (symbol "&&")))]
+    , [InfixL ((\a b -> Not (And (Not a) (Not b))) <$ (keyword "or" <|> void (symbol "||")))]
     , [InfixR (implication <$ keyword "implies")]
     ]
   where
@@ -1463,7 +1482,8 @@ canonicalDefinition = do
       modifiers <- some ((Not <$ keyword "not") <|> (id <$ keyword "must"))
       pure (\body -> foldr ($) body modifiers)
     comparisonDefinition = do
-      a <- canonicalComparison
+      value <- canonicalComparison
+      a <- option value (budgetSuffix value)
       case unlocated a of
         Binary "==" left right | Apply callable argument <- unlocated right,
             Var "recorded" <- unlocated callable,StringLit name <- unlocated argument -> do
@@ -1519,23 +1539,38 @@ canonicalDefinition = do
 -- The proposition parser and value parser share type-directed equality: a
 -- Boolean equality becomes the same Eq obligation when used as a law body.
 canonicalBoolExpr :: P Expr
-canonicalBoolExpr = located $ makeExprParser canonicalComparison
-  [ [Prefix (Unary "!" <$ keyword "not")]
-  , [InfixL (Binary "&&" <$ keyword "and")]
-  , [InfixL (Binary "||" <$ keyword "or")]
-  , [InfixR ((\a b -> Binary "||" (Unary "!" a) b) <$ keyword "implies")]
-  ]
+canonicalBoolExpr = updatedExpr
 
 canonicalComparison :: P Expr
-canonicalComparison = located $ do
-  a <- updatedExpr
-  option a (do
-    wording <- (True <$ try (keyword "must" *> keyword "be"))
-      <|> (False <$ try (keyword "must" *> void (symbol "=")))
-      <|> (True <$ keyword "is") <|> (False <$ try (symbol "=" <* notFollowedBy (char '=')))
-    membership <- if wording then optional (keyword "in") else pure Nothing
-    b <- updatedExpr
-    pure (case membership of Just _ -> Apply (Apply (Var "prelude.member") a) b; _ -> Binary "==" a b))
+canonicalComparison = local (M.insert "delimiter:proposition-logic" AliasHeader) updatedExpr
+
+-- Equality binds below existing symbolic comparisons and matchers, above
+-- negation and conjunction. Examples reserve their outer = as a separator.
+canonicalEqualityP :: P (Expr -> Expr -> Expr)
+canonicalEqualityP = do
+  canonical <- canonicalP
+  unless canonical empty
+  wording <- (True <$ try (keyword "must" *> keyword "be"))
+    <|> (False <$ try (keyword "must" *> void (symbol "=")))
+    <|> wordedIs <|> plainEquals
+  membership <- if wording then optional (keyword "in") else pure Nothing
+  pure (case membership of
+    Just _ -> \a b -> Apply (Apply (Var "prelude.member") a) b
+    _ -> Binary "==")
+  where
+    plainEquals = do
+      delimited <- asks (M.member "delimiter:expectation-equals")
+      when delimited empty
+      False <$ try (symbol "=" <* notFollowedBy (oneOf ("=>" :: String)))
+    wordedIs = do
+      initial <- handlerInitialExpression <$> get
+      -- A handler's declaration delimiter is followed by a clause header (or
+      -- its close), not the right operand of an equality. Look ahead with the
+      -- real clause grammar, including phrase names and delegated operations.
+      -- Keeping this context through nested expressions also handles a let body.
+      when initial (notFollowedBy (lookAhead
+        (keyword "is" *> (void handlerClauseIntroP <|> plainCloseP "handler"))))
+      True <$ keyword "is"
 
 boolP :: P Bool
 boolP = (keyword "true" *> pure True) <|> (keyword "false" *> pure False)
@@ -1814,8 +1849,7 @@ tableP = sourceNode "table" (const Nothing) $ do
 tableExpectationP :: P (Expr, Maybe (Either String (Either Literal String)))
 tableExpectationP = sourceNode "table-expectation" (const Nothing) $ do
   keyword "expect"
-  canonical <- canonicalP
-  left <- if canonical then updatedExpr else expr
+  left <- expectationActualP
   right <- optional (symbol "=" *> ((Left <$> (keyword "recorded" *> str)) <|> (Right . Left <$> try (lookAhead (keyword "record" *> symbol "{") *> literalP)) <|> (Right . Right <$> try ident) <|> (Right . Left <$> literalP)))
   pure (left,right)
 
@@ -1860,11 +1894,20 @@ descriptionExamples description = do
 expectationP :: P Expectation
 expectationP = sourceNode "expectation" (const Nothing) $ do
   keyword "expect"
-  canonical <- canonicalP
-  actual' <- if canonical then updatedExpr else expr
+  actual' <- expectationActualP
   option (Expectation actual' (BoolLiteral True)) $ do
     void (symbol "=")
     ((`Expectation` BoolLiteral True) <$> recordedP actual') <|> (Expectation actual' <$> literalP)
+
+-- Keep the expectation's equals delimiter separate from value equality while
+-- retaining performance budgets in both named examples and expectation tables.
+expectationActualP :: P Expr
+expectationActualP = do
+  canonical <- canonicalP
+  if canonical then local (M.insert "delimiter:expectation-equals" AliasHeader) $ do
+    actual <- updatedExpr
+    option actual (budgetSuffix actual)
+  else expr
 
 -- recorded "name": the value stored under recorded/<unit>/<name>, compared
 -- by its portable rendering when the law runs; a Bool, prelude.recorded.
@@ -2000,6 +2043,13 @@ handlerSetP = do
   pure (HandlerSet name members range)
 
 -- handler name for Ability [with state s :: S start e] is (op x* is e end)* end
+handlerClauseIntroP :: P (String, Either String [String])
+handlerClauseIntroP = do
+  op <- ident
+  body <- try (Left <$> (keyword "by" *> qualifiedName <* notFollowedBy (keyword "is")))
+    <|> (Right <$> (many ident <* keyword "is"))
+  pure (op,body)
+
 handlerP :: P HandlerDeclaration
 handlerP = do
   ((name, ability, state, clauses), range) <- withSpan $ do
@@ -2015,24 +2065,23 @@ handlerP = do
       annotationP
       ty <- typeP
       keyword "start"
+      previous <- handlerInitialExpression <$> get
+      modify' (\context -> context{handlerInitialExpression=True})
       start <- expr
+      modify' (\context -> context{handlerInitialExpression=previous})
       pure (s, ty, start)
     keyword "is"
     clauses <- many $ sourceNode "handler-operation" (Just . clauseOperation) $ do
       ((op, parameters, body), at) <- withSpan $ do
-        op <- ident
+        (op,intro) <- handlerClauseIntroP
         -- op by f: the clause is f, applied to the operation's values (and
         -- the state), as a model's or an actor's `on op by f` is.
-        let byClause = do
-              f <- try (keyword "by" *> qualifiedName <* notFollowedBy (keyword "is"))
-              pure (op, [], Apply (Var clauseBy) (Var f))
-            written = do
-              parameters <- many ident
-              keyword "is"
-              body <- expr
-              plainCloseP "operation"
-              pure (op, parameters, body)
-        byClause <|> written
+        case intro of
+          Left function -> pure (op, [], Apply (Var clauseBy) (Var function))
+          Right parameters -> do
+            body <- expr
+            plainCloseP "operation"
+            pure (op, parameters, body)
       pure (HandlerClause op parameters body at)
     plainCloseP "handler"
     pure (name, (ability, also), state, clauses)
@@ -2577,7 +2626,7 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
           else []
     pure (((elaborated, imports), families'),inventory)
   where
-    initialContext input = ParseContext (if capture then Just [] else Nothing) (Just (sourceCoordinatesFor origins input))
+    initialContext input = ParseContext (if capture then Just [] else Nothing) (Just (sourceCoordinatesFor origins input)) False
     environment = literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)
 
 parseDiagnostic :: [SourceOriginMap] -> Source -> ParseErrorBundle String Void -> Diagnostic

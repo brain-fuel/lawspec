@@ -17,11 +17,16 @@ export function planLegacySourceEdits(sources, baseline, sourceSyntax, sourceFie
   const computations = planLegacyComputationEdits(sources,baseline,sourceSyntax);
   const documents = new Map(sources.map(source => [source.path,new MigrationDocument(source)]));
   for (const source of computations) documents.get(source.path).edits.push(...source.edits);
+  // The legacy resolver uses the bare target Natural for its implicit
+  // refinement and same-spelled user refinements. Do not assume the builtin
+  // meaning if any admitted source explicitly declares that refinement.
+  const builtinNatural=!sourceSyntax.some(source=>source.nodes.some(node=>
+    node.kind==='declaration.refinement'&&node.name==='Natural'));
   const indexed=sourceSyntax.filter(source=>documents.has(source.path)).map(source=>{
     const document=documents.get(source.path);
     const nodes=source.nodes.map(node=>({...node,...document.range({kind:'source',span:node.span})}));
     if (nodes.some(node=>!Number.isInteger(node.start))) throw new Error('Source inventory belongs to a different migration document');
-    return {...source,nodes,fieldUses:sourceFields?.status==='available' ? sourceFields.uses.filter(use=>use.span.start.file===source.path) : null};
+    return {...source,nodes,builtinNatural,fieldUses:sourceFields?.status==='available' ? sourceFields.uses.filter(use=>use.span.start.file===source.path) : null};
   });
   const shapes=legacyRecordShapes(indexed);
   for (const source of indexed) {

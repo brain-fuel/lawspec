@@ -86,7 +86,7 @@ emitHandlers lang layout bits typed declarations units = do
               operation (a, m, ps, r, _) = case [o | o@(op, _, _, _, _) <- ops, Effects.operationMember op == m] of
                 (_, function, contextual, failure, noArgs) : _ ->
                   let arguments = ["schema symbols" | contextual] ++ ["state" | stateful] ++
-                        (if noArgs && not stateful then ["()"] else map fst ps)
+                        (if noArgs && not stateful then ["()"] else fsArguments ps)
                       invoke = function ++ " " ++ unwords arguments
                       computed = if stateful
                         then [ D.text ("let pair = " ++ invoke), D.text "state <- pair.Second", D.text (wrap "pair.First") ]
@@ -97,7 +97,7 @@ emitHandlers lang layout bits typed declarations units = do
                           D.text ("with :? RaisedFailure as failure when failure.Ability = \"" ++ key ++ "\" -> Error(" ++ codec ++ ".ToNative failure.Failure)")
                         Nothing -> D.joinWith D.hardline computed
                   in D.text ("/// " ++ m ++ (if "Result<" `isPrefix` r then ": its failure as a Result." else ".")) <> D.hardline <>
-                     D.text ("member _." ++ m ++ "(" ++ intercalate ", " [v ++ ": " ++ t | (v, t) <- ps] ++ ") : " ++ r ++ " =") <>
+                     D.text ("member _." ++ m ++ "(" ++ intercalate ", " [v ++ ": " ++ t | (v, t) <- fsParameters ps] ++ ") : " ++ r ++ " =") <>
                      D.nest 4 (D.hardline <> D.text "lock gate (fun () ->" <> D.nest 4 (D.hardline <> body) <> D.text ")")
                   where _ = a
                 [] -> mempty
@@ -111,7 +111,7 @@ emitHandlers lang layout bits typed declarations units = do
                 | stateful, Just t <- [stateType] ] ++
                 map operation operations ++
                 [ D.text ("interface " ++ Effects.interfaceType a ++ " with") <> D.nest 4 (D.hardline <> D.joinWith D.hardline
-                    [ D.text ("member this." ++ m ++ "(" ++ intercalate ", " (map fst ps) ++ ") = this." ++ m ++ "(" ++ intercalate ", " (map fst ps) ++ ")")
+                    [ D.text ("member this." ++ m ++ "(" ++ intercalate ", " (map fst (fsParameters ps)) ++ ") = this." ++ m ++ "(" ++ intercalate ", " (map fst (fsParameters ps)) ++ ")")
                     | (a', m, ps, _, _) <- operations, C.abilityInstance a' == C.abilityInstance a ])
                 | a <- answered ]
           in header <> D.nest 4 (D.hardline <> D.joinWith D.hardline lets <> D.hardline <> D.hardline <>
@@ -124,8 +124,11 @@ emitHandlers lang layout bits typed declarations units = do
               csResult r = if r == "Unit" then "void" else r
               operation (_, m, ps, r, _) = case [o | o@(op, _, _, _, _) <- ops, Effects.operationMember op == m] of
                 (_, function, contextual, failure, noArgs) : _ ->
-                  let values = [v | (v, t) <- ps, t /= "Unit"]
-                      arguments = concat [["schema", "symbols"] | contextual] ++ ["state" | stateful] ++ (if noArgs && not stateful then ["default(Unit)"] else values)
+                  let values = if map snd ps == ["Unit"] then ["default(Unit)"] else map fst ps
+                      clauseArgs = if noArgs && not stateful then ["default(Unit)"] else values
+                      -- Named unit parameters remain in the checked module
+                      -- functions, including a dummy for zero-arity clauses.
+                      arguments = concat [["schema", "symbols"] | contextual] ++ ["state" | stateful] ++ clauseArgs
                       invoke = function ++ "(" ++ intercalate ", " arguments ++ ")"
                       okValue x = case failure of
                         Just _ -> "return " ++ r ++ ".NewOk(" ++ x ++ ");"
@@ -139,7 +142,7 @@ emitHandlers lang layout bits typed declarations units = do
                           , D.text ("catch (RaisedFailure failure) when (failure.Ability == " ++ show key ++ ")") <> D.hardline <>
                             D.block 4 (D.text ("return " ++ r ++ ".NewError(" ++ codec ++ ".ToNative.Invoke(failure.Failure));")) ]
                         Nothing -> map D.text (filter (not . null) computed)
-                  in D.text ("public " ++ csResult r ++ " " ++ m ++ "(" ++ intercalate ", " [t ++ " " ++ v | (v, t) <- ps, t /= "Unit"] ++ ")") <> D.hardline <>
+                  in D.text ("public " ++ csResult r ++ " " ++ m ++ "(" ++ intercalate ", " [t ++ " " ++ v | (v, t) <- ps, map snd ps /= ["Unit"]] ++ ")") <> D.hardline <>
                      D.block 4 (D.text "lock (gate)" <> D.hardline <> D.block 4 (D.joinWith D.hardline body))
                 [] -> mempty
               members =
@@ -175,11 +178,11 @@ emitHandlers lang layout bits typed declarations units = do
                     D.text ("and set (state: " ++ t ++ ") = Effects.setHandlerState " ++ field first ++ " (" ++ c ++ ".FromNative state)"))
                 | Just c <- [stateCodec], Just t <- [stateType] ] ++
                 [ D.text ("/// " ++ m ++ (if "Result<" `isPrefix` r then ": its failure as a Result." else ".")) <> D.hardline <>
-                  D.text ("member _." ++ m ++ "(" ++ intercalate ", " [v ++ ": " ++ t | (v, t) <- ps] ++ ") : " ++ r ++ " = " ++
-                    field a ++ "." ++ m ++ "(" ++ intercalate ", " (map fst ps) ++ ")")
+                  D.text ("member _." ++ m ++ "(" ++ intercalate ", " [v ++ ": " ++ t | (v, t) <- fsParameters ps] ++ ") : " ++ r ++ " = " ++
+                    field a ++ "." ++ m ++ "(" ++ intercalate ", " (map fst (fsParameters ps)) ++ ")")
                 | (a, m, ps, r, _) <- operations ] ++
                 [ D.text ("interface " ++ Effects.interfaceType a ++ " with") <> D.nest 4 (D.hardline <> D.joinWith D.hardline
-                    [ D.text ("member this." ++ m ++ "(" ++ intercalate ", " (map fst ps) ++ ") = this." ++ m ++ "(" ++ intercalate ", " (map fst ps) ++ ")")
+                    [ D.text ("member this." ++ m ++ "(" ++ intercalate ", " (map fst (fsParameters ps)) ++ ") = this." ++ m ++ "(" ++ intercalate ", " (map fst (fsParameters ps)) ++ ")")
                     | (a', m, ps, _, _) <- operations, C.abilityInstance a' == C.abilityInstance a ])
                 | a <- answered ]
           in header <> D.nest 4 (D.hardline <> D.joinWith D.hardline lets <> D.hardline <> D.hardline <>
@@ -204,9 +207,11 @@ emitHandlers lang layout bits typed declarations units = do
                   D.block 4 (D.text ("get => " ++ c ++ ".ToNative.Invoke(Effects.HandlerState(" ++ field first ++ ").Item2);") <> D.hardline <>
                     D.text ("set => Effects.SetHandlerState(" ++ field first ++ ", " ++ c ++ ".FromNative.Invoke(value));"))
                 | Just c <- [stateCodec], Just t <- [stateType] ] ++
-                [ D.text ("public " ++ csResult r ++ " " ++ m ++ "(" ++ intercalate ", " [t ++ " " ++ v | (v, t) <- ps, t /= "Unit"] ++ ") => " ++
-                    field a ++ "." ++ m ++ "(" ++ intercalate ", " [v | (v, t) <- ps, t /= "Unit"] ++ ");")
+                [ D.text ("public " ++ csResult r ++ " " ++ m ++ "(" ++ intercalate ", " [t ++ " " ++ v | (v, t) <- ps, map snd ps /= ["Unit"]] ++ ") => " ++
+                    field a ++ "." ++ m ++ "(" ++ intercalate ", " [v | (v, _) <- ps, map snd ps /= ["Unit"]] ++ ");")
                 | (a, m, ps, r, _) <- operations ]
           in header <> D.hardline <> D.block 4 (D.joinWith (D.hardline <> D.hardline) members)
+    fsParameters ps = if map snd ps == ["unit"] then [] else ps
+    fsArguments ps = if map snd ps == ["unit"] then ["()"] else map fst ps
     operationSignatureOf names a op = Abilities.operationSignatureFor lang bits names a op
     isPrefix p s = take (length p) s == p

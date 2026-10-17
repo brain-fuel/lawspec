@@ -160,11 +160,19 @@ parameters, lets, patterns and quantifiers; a user function named `setOf` does
 not become a collection operation. Import and export lists change together
 with their uses.
 
-Primitive `BigUInt` annotations become `Whole`, retaining bounds, predicates
-and the existing native representation. A user refinement named `BigUInt`
-stays intact; the current canonical grammar's conflict with that spelling
-remains an explicit compilation diagnostic. General `Natural`/positive-number
-and `BigInt`/native-representation migration remain unfinished.
+Checked primitive `BigUInt` and zero-inclusive `Natural` annotations preview as
+`Whole`; primitive `BigInt` previews as `Integer`. A `Natural` index kind previews
+as `Whole`, retaining zero equations and payload-free alternative declarations.
+These source edits do not establish complete semantic or native representation
+correspondence. In particular, a checked numeric preview can still have different
+Core, template or domain fingerprints and cannot authorize writing. Preserving a
+`BigInt` application's native representation remains separate work.
+
+User type/refinement bindings are not renamed by spelling. A refinement named
+`BigUInt` stays intact; the canonical grammar's conflict with that spelling remains
+an explicit diagnostic. Bounded nonzero refinements retain their original base
+type and bounds rather than silently becoming an unbounded `Nat`. Payload-bearing
+indexed families and general positive-number migration retain their explicit limits.
 
 The preserved Chapter 6 preview now passes canonical compilation at both
 machine widths while retaining all 23 laws, 65 table rows, one named example,

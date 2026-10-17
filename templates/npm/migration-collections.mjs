@@ -3,6 +3,7 @@
 const orderedSet='lawspec.collections::type::Set';
 const operations=new Map(['Of','Member','Insert','Remove','Union','Intersection','Difference']
   .map(suffix=>['lawspec.collections::set'+suffix,'sortedSet'+suffix]));
+const numericNames=new Map([['BigUInt','Whole'],['Natural','Whole'],['BigInt','Integer']]);
 
 export function planLegacyCollectionNames(document,source) {
   const {nodes,bindings,references}=source;
@@ -18,13 +19,17 @@ export function planLegacyCollectionNames(document,source) {
     document.edit(last.start,last.end,replacement,reason);
   };
   for (const node of nodes.filter(node=>node.kind==='type-name')) {
-    if (node.name==='BigUInt' && !lookup('type',node.name) && !lookup('refinement',node.name))
-      rename(node,node.name,'Whole','exact unsigned type name');
+    const refinement=lookup('refinement',node.name);
+    const builtinNatural=node.name==='Natural'&&source.builtinNatural&&refinement?.target==='Natural';
+    if (numericNames.has(node.name) && !lookup('type',node.name) && (!refinement||builtinNatural))
+      rename(node,node.name,numericNames.get(node.name),'exact numeric type name');
     if (lookup('type',node.name)?.target===orderedSet) {
       if (lookup('refinement',node.name)) throw new Error('A collection type and refinement share a source spelling: '+node.name);
       rename(node,node.name,'SortedSet','ordered set type name');
     }
   }
+  for (const node of nodes.filter(node=>node.kind==='type-parameter-kind'&&node.name==='Natural'))
+    rename(node,node.name,'Whole','zero-inclusive index kind');
   for (const reference of references) {
     const replacement=operations.get(reference.declaration);
     if (!replacement) continue;

@@ -103,7 +103,9 @@ emitBridges FSharp layout bits declarations units
           className = pascal (Effects.bridgeName a "Bridge")
       members <- forM (C.abilityOperations a) $ \(op, ty) -> do
         let (args, result) = C.functionType ty
-            values = ["value" ++ show i | (i, _) <- zip [0 :: Int ..] args]
+            unitOnly = args == [C.Constructor "Unit" []]
+            parameters = ["value" ++ show i | (i, _) <- zip [0 :: Int ..] args, not unitOnly]
+            values = if unitOnly then ["()"] else parameters
         codecs <- mapM (Data.codec FSharp bits names []) args
         out <- Data.codec FSharp bits names [] result
         let logical = "Effects.invoke handler schema " ++ stringLiteral FSharp op ++ " [ " ++
@@ -114,15 +116,19 @@ emitBridges FSharp layout bits declarations units
           Just failure -> do
             fc <- Data.codec FSharp bits names [] failure
             pure ("Effects.nativeTry " ++ stringLiteral FSharp (failingKey a op) ++ " " ++ fc ++ ".ToNative (fun () -> " ++ converted ++ ")")
-        pure (D.text ("member _." ++ Effects.operationMember op ++ "(" ++ intercalate ", " values ++ ") =") <>
+        pure (D.text ("member _." ++ Effects.operationMember op ++ "(" ++ intercalate ", " parameters ++ ") =") <>
           D.nest 4 (D.hardline <> D.text body))
       clauses <- forM (C.abilityOperations a) $ \(op, ty) -> do
         let (args, result) = C.functionType ty
         codecs <- mapM (Data.codec FSharp bits names []) args
         out <- Data.codec FSharp bits names [] result
         ref <- X.typeRef result
-        let call' = "native." ++ Effects.operationMember op ++ "(" ++
-              intercalate ", " [c ++ ".ToNative (Runtime.item " ++ show i ++ " arguments)" | (i, c) <- zip [0 :: Int ..] codecs] ++ ")"
+        let converted = [c ++ ".ToNative (Runtime.item " ++ show i ++ " arguments)" | (i, c) <- zip [0 :: Int ..] codecs]
+            -- A sole unit method parameter becomes a zero-argument CLI
+            -- member. Validate the logical argument before invoking it.
+            unitOnly = args == [C.Constructor "Unit" []]
+            invoked = "native." ++ Effects.operationMember op ++ "(" ++ intercalate ", " [v | v <- converted, not unitOnly] ++ ")"
+            call' = if unitOnly then "(" ++ head converted ++ "; " ++ invoked ++ ")" else invoked
         unwrapped <- case failureOf a op of
           Nothing -> pure call'
           Just failure -> do
@@ -229,7 +235,7 @@ productionStubs CSharp bits declarations unit = do
   fmap concat $ forM [a | a <- N.ownAbilities unit, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)] $ \a -> do
     members <- forM (C.abilityOperations a) $ \(op, ty) -> do
       (ps, r) <- operationSignature CSharp bits names a (op, ty)
-      let params = [p ++ " value" ++ show i | (i, p) <- zip [0 :: Int ..] ps, p /= "Unit"]
+      let params = [p ++ " value" ++ show i | (i, p) <- zip [0 :: Int ..] ps, ps /= ["Unit"]]
           message = "not implemented: " ++ C.abilityKey (C.abilityInstance a) ++ "." ++ op
       pure (D.text ("public " ++ (if r == "Unit" then "void" else r) ++ " " ++ Effects.operationMember op ++ "(" ++ intercalate ", " params ++ ") =>") <>
         D.nest 4 (D.hardline <> D.text ("throw new NotImplementedException(" ++ stringLiteral CSharp message ++ ");")))
@@ -246,7 +252,7 @@ productionStubs lang bits declarations unit = do
   forM [a | a <- N.ownAbilities unit, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)] $ \a -> do
     members <- forM (C.abilityOperations a) $ \(op, ty) -> do
       (ps, _) <- operationSignature lang bits names a (op, ty)
-      let values = ["value" ++ show i | (i, _) <- zip [0 :: Int ..] ps]
+      let values = ["value" ++ show i | (i, _) <- zip [0 :: Int ..] ps, ps /= ["unit"]]
           message = "not implemented: " ++ C.abilityKey (C.abilityInstance a) ++ "." ++ op
       pure (D.text ("member _." ++ Effects.operationMember op ++ "(" ++ intercalate ", " [if null ps then "" else v | v <- values] ++ ") = failwith " ++ stringLiteral FSharp message))
     resource <- traverse (Data.nativeType lang bits names []) (C.abilityResource a)

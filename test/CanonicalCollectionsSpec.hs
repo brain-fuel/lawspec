@@ -19,6 +19,41 @@ compile bits text = compileCoreCanonical bits defaultGeneration [Source "canonic
 body text = compile 64 ("unit collections\n" ++ text)
 
 test_canonicalCollections = describe "canonical collections" $ do
+  it "keeps ordered and equality-based collection models on their checked reference operations" $ do
+    forM_ [("SortedSet","Int8","Set","setInsert"),("Set","Bool","EqSet","eqSetInsert")] $
+      \(kind,element,internal,insert) -> do
+        let source = unlines
+              [ "type Storage is a record{marker :: Bool} end type"
+              , "create :: Unit -> Storage"
+              , "add :: Storage -> "++element++" -> Bool"
+              , "remove :: Storage -> "++element++" -> Bool"
+              , "contains :: Storage -> "++element++" -> Bool"
+              , "model tags :: shared Storage behaves like "++kind++" "++element++" is"
+              , "  start create"
+              , "  add as add"
+              , "  remove as remove"
+              , "  contains as contains"
+              , "end" ]
+        case body source of
+          Left ds -> expectationFailure (show ds)
+          Right program -> do
+            length [machine | unit<-C.programUnits program,machine<-C.unitMachines unit] `shouldBe` 1
+            map (C.idText . C.dataId) (C.programDataDeclarations program)
+              `shouldContain` ["lawspec.collections::type::"++internal]
+            let references = [definition | unit<-C.programUnits program,definition<-C.unitDefinitions unit,
+                  C.declarationName (C.definitionDeclaration definition)=="tagsAddReference"]
+                calls expression = case C.expressionNode expression of
+                  C.ExternalCall identity arguments -> identity : concatMap calls arguments
+                  _ -> concatMap calls (C.children expression)
+                sources = [(C.declarationId declaration,C.declarationSource declaration) |
+                  unit<-C.programUnits program,declaration<-C.unitDeclarations unit]
+                calledSources = [original | identity<-concatMap (calls . C.definitionBody) references,
+                  Just (Just original)<-[lookup identity sources]]
+            references `shouldNotBe` []
+            calledSources `shouldContain` [("lawspec.collections",insert)]
+            case planTestingWith (Verification [Model]) program of
+              Left ds -> expectationFailure (show ds)
+              Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
   it "emits ordered set matching without an unrelated map Entry declaration" $ do
     case body "function ordered (values :: SortedSet Integer) -> List Integer is prelude.toList values end function" of
       Left ds -> expectationFailure (show ds)

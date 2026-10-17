@@ -29,10 +29,11 @@ export function planLegacyCases(document,nodes) {
       replace(arrow,'then','case branch delimiter');
     }
   }
-  // Payload-free alternatives need no ABI or field correspondence change.
-  // Payload-bearing and indexed declarations remain separate migration work.
+  // Payload-free alternatives keep their parameters and index equations.
+  // Their header/closer edits do not establish semantic or native correspondence;
+  // the compiler still has to admit and compare both complete inputs.
   for (const type of nodes.filter(node=>node.kind==='declaration.type')) {
-    if (nodes.some(node=>['constructor-field','type-equation','type-parameter'].includes(node.kind) && contains(type,node))) continue;
+    if (nodes.some(node=>node.kind==='constructor-field' && contains(type,node))) continue;
     const tokens = document.code(type.start,type.end);
     const delimiter = tokens.find(token=>token.text==='is');
     if (tokens[0]?.text!=='type' || !delimiter || tokens.at(-1)?.text!=='end')

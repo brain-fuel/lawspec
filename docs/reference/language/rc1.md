@@ -25,6 +25,34 @@ contracts stay intrinsic. A pure `function` has no ability operations; a
 checks, and does not constitute verification success. Deferred definition
 postconditions still run at native boundaries.
 
+Canonical expressions retain explicit `;` sequencing, `~state := value` updates
+and performance budgets. A stateful handler's declaration `is` ends its initial
+state expression before the first operation clause, including a delegated `by`
+clause. Initializers may contain conditionals, Boolean wording and `let` bindings;
+parentheses distinguish an initial worded equality from the declaration boundary.
+Performance budgets in laws, named examples and tables use the existing clock
+ability, which must be imported with `import lawspec.time`.
+
+Native ability boundaries preserve every logical argument and its evaluation.
+Swift protocols omit unit parameters, and checked handler calls restore them in
+their original positions. F# methods use `()` for a sole unit parameter while
+retaining units in mixed parameter tuples; the checked module functions still
+receive their named unit arguments. C# follows that shared F# model. Go ability
+methods receive native unit values through the ordinary codec. These boundary
+conventions do not remove an argument's computation or change a handler's state.
+
+Canonical `=`, `is`, `must be` and `must =` equality binds above worded `not`,
+symbolic/worded conjunction, disjunction and right-associative `implies`.
+Existing symbolic comparisons and matcher precedence stay intact. In particular,
+`a = b && c = d` compares both pairs. Expectations reserve their outer `=` as
+the expected-value separator; delimited expressions such as `expect same (a = b)
+= expected` retain ordinary Boolean equality.
+
+Collection models may use `behaves like SortedSet T` to retain the existing
+ordered-set reference operations. Canonical `Set T` uses the equality-based set
+operations. The compiler generates ordinary checked reference functions; preparing
+or emitting a model does not establish that an application conforms to it.
+
 ```text
 unit example.identity
 

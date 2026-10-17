@@ -1,0 +1,162 @@
+unit signals.initializers
+
+ability Signal is
+  flip of type () -> Bool
+  remember of type () -> Bool -> () -> Bool
+  clear of type () -> ()
+  current of type Bool
+end
+
+handler binding for Signal with state enabled of type Bool
+  start let initiallyDisabled = false in initiallyDisabled is
+  flip ignored is ~enabled := not enabled; enabled end
+  remember before value after is ~enabled := value; enabled end
+  clear ignored is ~enabled := false; () end
+  current is enabled end
+end
+
+handler conditional for Signal with state enabled of type Bool
+  start if true then false else true end if is
+  flip ignored is ~enabled := not enabled; enabled end
+  remember before value after is ~enabled := value; enabled end
+  clear ignored is ~enabled := false; () end
+  current is enabled end
+end
+
+handler matching for Signal with state enabled of type Bool
+  start first matching case of true:
+    when true then false
+    when false then true
+  end case is
+  flip ignored is ~enabled := not enabled; enabled end
+  remember before value after is ~enabled := value; enabled end
+  clear ignored is ~enabled := false; () end
+  current is enabled end
+end
+
+procedure twice (ignored of type ()) -> Bool uses Signal is
+  flip ignored; flip ignored
+end procedure
+
+function bindingFirstFlip (ignored of type ()) -> Bool is
+  handle flip ignored with binding end
+end function
+
+function conditionalFirstFlip (ignored of type ()) -> Bool is
+  handle flip ignored with conditional end
+end function
+
+function matchingFirstFlip (ignored of type ()) -> Bool is
+  handle flip ignored with matching end
+end function
+
+law bindingFirst is
+  description: "The first flip enables a signal initialized by a binding." end
+  definition: for all (ignored of type ()) => bindingFirstFlip ignored must be true end end
+  expect bindingFirstFlip ignored = expected
+  in table (ignored, expected): row (), true end
+end
+
+law bindingTwice using binding is
+  definition: for all (ignored of type ()) => twice ignored must be false end end
+  expect twice ignored = expected
+  in table (ignored, expected): row (), false end
+end
+
+law conditionalFirst is
+  description: "The first flip enables a signal initialized by a conditional." end
+  definition: for all (ignored of type ()) => conditionalFirstFlip ignored must be true end end
+  expect conditionalFirstFlip ignored = expected
+  in table (ignored, expected): row (), true end
+end
+
+law conditionalTwice using conditional is
+  definition: for all (ignored of type ()) => twice ignored must be false end end
+  expect twice ignored = expected
+  in table (ignored, expected): row (), false end
+end
+
+law matchingFirst is
+  description: "The first flip enables a signal initialized by a case." end
+  definition: for all (ignored of type ()) => matchingFirstFlip ignored must be true end end
+  expect matchingFirstFlip ignored = expected
+  in table (ignored, expected): row (), true end
+end
+
+law matchingTwice using matching is
+  definition: for all (ignored of type ()) => twice ignored must be false end end
+  expect twice ignored = expected
+  in table (ignored, expected): row (), false end
+end
+
+function selected (left of type Bool) (right of type Bool) -> Bool is
+  not left = false && right = false
+end function
+
+law selection is
+  definition:
+    for all (left of type Bool) (right of type Bool) =>
+      selected left right must be (left and not right)
+    end
+  end
+  expect selected left right = expected
+  in table (left, right, expected):
+    row false, false, false
+    row false, true, false
+    row true, false, true
+    row true, true, false
+  end
+end
+
+handler fixed for Signal is
+  flip ignored is true end
+  remember before value after is value end
+  clear ignored is () end
+  current is true end
+end
+
+function remembered (flag of type Bool) -> Bool is
+  handle remember () flag () with binding end
+end function
+
+function clearedBeforeFlip (ignored of type ()) -> Bool is
+  handle (remember () true (); flip (clear ())) with binding end
+end function
+
+function currentAfterRemembering (flag of type Bool) -> Bool is
+  handle (remember () flag (); current) with matching end
+end function
+
+law unitsSurroundRememberedValue is
+  definition: for all (flag of type Bool) => remembered flag must be flag end end
+  expect remembered flag = expected
+  in table (flag, expected): row false, false row true, true end
+end
+
+law argumentIsEvaluatedBeforeFlip is
+  definition: for all (ignored of type ()) => clearedBeforeFlip ignored must be true end end
+  expect clearedBeforeFlip ignored = expected
+  in table (ignored, expected): row (), true end
+end
+
+law operationWithoutArguments is
+  definition: for all (flag of type Bool) => currentAfterRemembering flag must be flag end end
+  expect currentAfterRemembering flag = expected
+  in table (flag, expected): row false, false row true, true end
+end
+
+law statelessArguments using fixed is
+  definition: for all (flag of type Bool) => remember () flag () must be flag end end
+  expect remember () flag () = expected
+  in table (flag, expected): row false, false row true, true end
+end
+
+function unitTruth (ignored of type ()) -> Bool is
+  true
+end function
+
+law pureUnitArgument is
+  definition: for all (ignored of type ()) => unitTruth ignored must be true end end
+  expect unitTruth ignored = expected
+  in table (ignored, expected): row (), true end
+end

@@ -361,7 +361,7 @@ behaviour u m
         (failing ("command " ++ modelCommand c ++ " uses `as`, which needs `behaves like` a collection"))
       pure (m, [], [])
   | otherwise = do
-      (kind, elements) <- maybe (failing ("behaves like needs Set, KeyVal, Queue, Stack or Deque, not " ++ prettyType (modelBy m))) pure
+      (kind, elements) <- maybe (failing ("behaves like needs Set, SortedSet, KeyVal, Queue, Stack or Deque, not " ++ prettyType (modelBy m))) pure
         (collection (modelBy m))
       generated <- forM (modelCommands m) $ \c -> do
         unless (modelAs c) (failing ("command " ++ modelCommand c ++ " must name the " ++ kind ++ " operation it implements with `as`"))
@@ -386,14 +386,15 @@ behaviour u m
 -- | A collection type's kind and element types.
 collection :: Type -> Maybe (String, [Type])
 collection ty = case unrefinedType ty of
-  Applied n t | n `elem` ["Set", "Queue", "Stack", "Deque"] -> Just (n, [t])
+  Applied n t | n `elem` ["Set", "SortedSet", "Queue", "Stack", "Deque"] -> Just (n, [t])
   Application n [k, v] | n == "KeyVal" -> Just (n, [k, v])
-  Application n [t] | n `elem` ["Set", "Queue", "Stack", "Deque"] -> Just (n, [t])
+  Application n [t] | n `elem` ["Set", "SortedSet", "Queue", "Stack", "Deque"] -> Just (n, [t])
   _ -> Nothing
 
 constructorOf :: String -> String
 constructorOf kind = case kind of
   "Set" -> "setOf"
+  "SortedSet" -> "sortedSetOf"
   "KeyVal" -> "keyValOf"
   "Queue" -> "queueOf"
   "Stack" -> "stackOf"
@@ -404,13 +405,15 @@ operations kind = case kind of
   "Queue" -> ["offer", "poll", "peek", "size", "isEmpty"]
   "Stack" -> ["push", "pop", "peek", "size", "isEmpty"]
   "Deque" -> ["pushFront", "pushBack", "popFront", "popBack", "peekFront", "peekBack", "size", "isEmpty"]
-  "Set" -> ["add", "remove", "contains", "size", "isEmpty"]
+  "Set" -> setOperations
+  "SortedSet" -> setOperations
   _ -> ["put", "get", "remove", "putIfAbsent", "containsKey", "size", "isEmpty"]
+  where setOperations = ["add", "remove", "contains", "size", "isEmpty"]
 
 -- | An operation's other arguments, its result (Nothing for Unit), its body
 -- over `state` and `argument<i>`, and which argument is its key.
 operation :: String -> [Type] -> String -> Maybe ([Type], Maybe Type, Expr, Maybe Int)
-operation kind elements op = case (kind, elements, op) of
+operation kind elements op = case (if kind=="SortedSet" then "Set" else kind, elements, op) of
   (_, _, "size") -> Just ([], Just (Named "Integer"), pair (call "size" [s]) s, Nothing)
   (_, _, "isEmpty") -> Just ([], Just (Named "Bool"), pair (call "isEmpty" [s]) s, Nothing)
   ("Queue", [t], "offer") -> Just ([t], Nothing, call "enqueue" [a 0, s], Nothing)
@@ -439,7 +442,13 @@ operation kind elements op = case (kind, elements, op) of
   where
     s = Var "state"
     a i = Var ("argument" ++ show (i :: Int))
-    call f args = foldl Apply (Var ("prelude." ++ f)) args
+    call f args = foldl Apply (Var ("prelude." ++ reference f)) args
+    reference f | kind=="SortedSet" = case f of
+      "member" -> "sortedSetMember"
+      "insert" -> "sortedSetInsert"
+      "remove" -> "sortedSetRemove"
+      _ -> f
+    reference f = f
     pair x y = ConstructLit "Pair" [x, y]
     maybeOf t = Applied "Maybe" t
     -- The first value when the key is absent, the second when present.

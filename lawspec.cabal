@@ -304,6 +304,7 @@ extra-source-files:
     test/fixtures/canonical-set-literals.lawspec
     test/fixtures/canonical-sets.lawspec
     test/fixtures/canonical-smt-arithmetic.lawspec
+    test/fixtures/canonical-stateful-initializers.lawspec
     test/fixtures/constructor_boundaries.lawspec
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec

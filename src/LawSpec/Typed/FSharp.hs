@@ -318,13 +318,16 @@ cexpr env scope e = case expressionNode e of
     a <- lift' (maybe (Left ("typed F#: unknown ability " ++ abilityKey (operationAbility op))) Right (N.abilityOf (envUnits env) (operationAbility op)))
     let native = "(LawSpec.Generated.Abilities." ++ Effects.bridgeName a "ToNative" ++ " schema symbols (Effects.handler schema " ++
           stringLiteral FSharp (abilityKey (operationAbility op)) ++ "))"
-        call = D.text ("(" ++ native ++ "." ++ Effects.operationMember (operationName op) ++ "(") <> D.joinWith (D.text ", ") (map snd parts) <> D.text "))"
+        unitOnly = map expressionType args == [Constructor "Unit" []]
+        call = D.text ("(" ++ native ++ "." ++ Effects.operationMember (operationName op) ++ "(") <>
+          D.joinWith (D.text ", ") [v | (_, v) <- parts, not unitOnly] <> D.text "))"
+        evaluated = concatMap fst parts ++ [D.text "let () = " <> v | (_, v) <- parts, unitOnly]
     invocation <- case performedFailure (envUnits env) op of
       Just failing@(AbilityRef _ [failureType]) -> do
         c <- lift' (codecOf env failureType)
         pure (D.text ("(Typed.performed " ++ stringLiteral FSharp (abilityKey failing) ++ " " ++ c ++ ".FromNative ") <> call <> D.text ")")
       _ -> pure call
-    bindAtom (concatMap fst parts) invocation
+    bindAtom evaluated invocation
   Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, _] <- expressionType e -> do
     c <- lift' (codecOf env failure)
     lines' <- cstmt env scope body

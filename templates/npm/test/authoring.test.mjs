@@ -4,6 +4,45 @@ import { PassThrough } from 'node:stream';
 import { serveLanguage, utf16Position } from '../lsp.mjs';
 import { explainLaw } from '../explain.mjs';
 
+test('canonical stateful procedures preserve state, sequencing and equality precedence through the SDK',async()=>{
+  const {createCompiler}=await import('../api.mjs');
+  const compiler=await createCompiler();
+  const content='unit remembered\n'+
+    'ability Signal is signal of type Bool -> Bool end\n'+
+    'handler remembering for Signal with state previous :: Bool start let initial = false in initial is\n'+
+    ' signal value is ~previous := not previous and value; previous end\nend\n'+
+    'procedure twice (value :: Bool) -> Bool uses Signal is signal value; signal value end procedure\n'+
+    'function selected (left :: Bool) (right :: Bool) -> Bool is not left = false && right = false end function\n'+
+    'law twice using remembering is definition: for all (value :: Bool) => twice value must be false end end\n'+
+    'expect twice value = expected in table (value,expected): row false,false row true,false end end\n'+
+    'law selected is definition: for all (left :: Bool) (right :: Bool) => selected left right must be (left and not right) end end end';
+  const options={schemaVersion:5,languageProfile:'1.0-rc.1'};
+  for(const machineBits of [32,64]) {
+    const input={...options,machineBits,sources:[{path:'remembered.lawspec',content}]};
+    const unchecked=await compiler.check({...input,verification:{layers:[]}});
+    assert.deepEqual(unchecked.diagnostics,[]);
+    assert.equal(unchecked.verification.selection,'no-selected-checks');
+    assert.equal(unchecked.evidence.filter(item=>item.stage==='law').length,2);
+    assert.ok(unchecked.evidence.filter(item=>item.stage==='law').every(item=>item.status==='not-verified'));
+    const checked=await compiler.check({...input,verification:{layers:['exhaustive','examples']}});
+    assert.deepEqual(checked.diagnostics,[]);
+    assert.equal(checked.evidence.filter(item=>item.stage==='law').length,2);
+    assert.ok(checked.evidence.filter(item=>item.stage==='law').every(item=>item.status==='exhaustively-checked'));
+    for(const mutant of [content.replace('initial = false','initial = true'),
+      content.replace('not previous and value','previous or value'),
+      content.replace('signal value; signal value','signal value'),
+      content.replace('&& right = false','|| right = false')]) {
+      const result=await compiler.check({...input,sources:[{path:'remembered.lawspec',content:mutant}],verification:{layers:['exhaustive']}});
+      assert.ok(result.diagnostics.some(item=>item.code==='refuted'),JSON.stringify(result.diagnostics));
+    }
+    const formatted=await compiler.format({...input,verification:{layers:[]}});
+    assert.deepEqual(formatted.diagnostics,[]);
+    const repeated=await compiler.format({...input,sources:formatted.formattedSources,verification:{layers:[]}});
+    assert.deepEqual(repeated.diagnostics,[]);
+    assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
+  }
+});
+
 const law = { id: 'shop::law::identity', inputs: [{ name: 'amount', type: { kind: 'constructor', name: 'Integer', arguments: [] }, predicates: [] }],
   assertion: { kind: 'equal', left: { text: 'refund amount' }, right: { text: 'Approved' } },
   location: { file: 'shop.lawspec', line: 1, column: 1 }, trace: [], examples: [], description: 'A captured amount may be refunded.', rationale: '' };
