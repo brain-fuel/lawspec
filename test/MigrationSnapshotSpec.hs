@@ -9,6 +9,8 @@ import LawSpec.Frontend (compileCore,compileCoreCanonical)
 import LawSpec.Model (Source(..),defaultGeneration)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Api (dispatch)
+import LawSpec.CoreEmit (targets)
+import Control.Monad (forM_)
 
 checked canonical text = either (fail . show) pure $
   (if canonical then compileCoreCanonical else compileCore) 64 defaultGeneration [Source "migration.lawspec" ("unit migration\n" ++ text)]
@@ -28,6 +30,34 @@ canonicalFields text=["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.
   "sources" .= [Source "wire.lawspec" ("unit wire\n" ++ text)]]
 
 test_migrationSnapshot = describe "full Core migration comparison snapshots" $ do
+  it "previews complete legacy generation only through an explicit migration request" $ do
+    let input=canonicalFields "definition same (value :: Bool) :: Bool is value end"
+        baseline extra=response (["method" .= ("migrationBaseline"::String),"from" .= ("0.24"::String)]++extra++input)
+    ordinary <- baseline []
+    field "files" ordinary `shouldBe` Just (Array mempty)
+    field "baselineGeneration" ordinary `shouldBe` Nothing
+    forM_ targets $ \target -> forM_ [False,True] $ \minify -> do
+      preview <- baseline ["includeGeneration" .= True,"target" .= target,"minify" .= minify]
+      field "diagnostics" preview `shouldBe` Just (Array mempty)
+      field "files" preview `shouldNotBe` Just (Array mempty)
+      (field "baselineGeneration" preview >>= field "planning") `shouldBe` Just (String "legacy-harnesses")
+      (field "baselineGeneration" preview >>= field "execution") `shouldBe` Just (String "not-run")
+      field "sourceLanguageProfile" preview `shouldBe` Just (String "0.24")
+      field "migrationSemantics" preview `shouldBe` field "migrationSemantics" ordinary
+    repeated <- baseline []
+    repeated `shouldBe` ordinary
+  it "rejects invalid generation previews and retains mandatory definition admission" $ do
+    let input=canonicalFields "definition unsafe (value :: Integer) :: Integer is 1 / value end"
+    invalid <- response (["method" .= ("migrationBaseline"::String),"from" .= ("0.24"::String),
+      "includeGeneration" .= True,"target" .= ("python"::String)]++input)
+    field "diagnostics" invalid `shouldNotBe` Just (Array mempty)
+    field "files" invalid `shouldBe` Nothing
+    forM_ [ ["method" .= ("check"::String),"includeGeneration" .= True]
+          , ["method" .= ("migrationBaseline"::String),"from" .= ("0.24"::String),"includeGeneration" .= True]
+          , ["method" .= ("migrationBaseline"::String),"from" .= ("0.24"::String),"includeGeneration" .= ("yes"::String)]
+          ] $ \extra -> do
+      result <- response (extra++canonicalFields "")
+      field "diagnostics" result `shouldNotBe` Just (Array mempty)
   it "matches checked computation syntax without weakening law policy" $ do
     before <- checked False "definition double (value :: Integer) :: Integer is value + value end"
     after <- checked True "function double (value :: Integer) -> Integer is value + value end function"

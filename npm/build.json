@@ -731,7 +731,7 @@
     "src/LawSpec/Actors/Scala.hs": "6a034fb96983fd11b8714d5c6b8c09b5cb24ceb06977b52010c2424a51b60f38",
     "src/LawSpec/Actors/Types.hs": "09f764a8da926f00817a0de0f17a03d48194c819a3c64aca78c96b19d38ac823",
     "src/LawSpec/Actors/Web.hs": "b8a63be30754569d7b150d454e656b4089a63e2f913bb2276ba722e2529e185d",
-    "src/LawSpec/Api.hs": "41ea7568928152be46a1895b47cb81f3688064dd6b3f58d095c2e81d743cb694",
+    "src/LawSpec/Api.hs": "6cf24f02541be07e487a5b9b740473c1198db1f435b18793c8ada7cf80d34f54",
     "src/LawSpec/Attestation.hs": "55ac5bca528ef22cd29762cf2b3c226c2b4e18a50a667aac6d74a36be78bd62c",
     "src/LawSpec/Backend.hs": "2b707ebc5a9ad32e7783caa7041ebfdd4fe22bd73cbff136dc5344cff33d59d5",
     "src/LawSpec/BeamAbilities.hs": "958d34b7a8808dbe4f5fad6a5b6b922651ac1659f2dc6bcf7189732dc4e2d823",
@@ -1003,9 +1003,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "6f7ce173d258ec43f5330e8116f5a891d0c5367015cf5fe451b34a167d888d53",
+    "npm/core.wasm": "626e3cea53dd15db32b62f78449955cf6f063632491c473bff2c0493088ec183",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "2e56d49a5c8e5acafec9139f5445413732404cdc3cff4753cb27e31f8ac5aa4e",
-    "npm/index.d.ts": "a6ebe53561714f9fa4502799b379fb82491a219403a0ee9e81b2fb23c010fee2"
+    "npm/index.d.ts": "c15e362d9fc1ef00c113afd8e3ce4e9cb46848fd6c861109d368258e2507c0d4"
   }
 }

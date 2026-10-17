@@ -538,6 +538,14 @@ export interface MigrationRequest extends CheckRequest {
   from: '0.24';
 }
 
+export interface MigrationBaselineRequest extends MigrationRequest {
+  includeGeneration?: boolean;
+  target?: Target;
+  sourceDir?: string;
+  testDir?: string;
+  minify?: boolean;
+}
+
 export interface MigrationComparisonRequest extends MigrationRequest {
   migrated: CheckRequest & {schemaVersion?: 5; languageProfile: '1.0-rc.1'};
 }
@@ -974,6 +982,13 @@ export interface Result {
   expansions?: string[];
   files?: Artifact[];
   formattedSources?: Source[];
+  baselineGeneration?: {
+    status: 'generated';
+    planning: 'legacy-harnesses';
+    execution: 'not-run';
+    nativeConformance: 'not-established';
+    lawVerification: 'not-established-by-generation';
+  };
   sourceLanguageProfile?: '0.24';
   sourceSyntax?: SourceSyntax[];
   sourceFields?: MigrationSourceFields;
@@ -1043,7 +1058,7 @@ export interface Compiler {
   expand(input: CheckRequest): Promise<Result>;
   proofTasks(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
-  migrationBaseline(input: MigrationRequest): Promise<Result>;
+  migrationBaseline(input: MigrationBaselineRequest): Promise<Result>;
   migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
   migrationBindings(input: MigrationBindingRequest): Promise<Result>;
   migrationGeneration(input: MigrationGenerationRequest): Promise<Result>;

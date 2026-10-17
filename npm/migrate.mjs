@@ -11,11 +11,10 @@ export async function migrationReport(compiler, config, input) {
   if(config?.version!==1||!Array.isArray(config.targets))return {from:'0.24',to:'1.0-rc.1',validated:false,
     diagnostics:[{code:'migration-configuration',message:'Migration requires a version 1 configuration with a targets array.',at:null}]};
   const {nativeBindings:inputBindings,...sourceInput}=input;
-  const baseline = await compiler.check({ ...sourceInput, schemaVersion: 3 });
+  const legacyInput={...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24'};
+  const baseline = await compiler.migrationBaseline({...legacyInput,verification:{layers:[...legacyLawLayers]}});
   if (baseline.diagnostics?.length) return { from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: baseline.diagnostics };
-  const syntax = await compiler.migrationBaseline({...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',verification:{layers:[]}});
-  if (syntax.diagnostics?.length) return {from:'0.24',to:'1.0-rc.1',validated:false,diagnostics:syntax.diagnostics};
-  if (!Array.isArray(syntax.sourceSyntax)) throw new Error('The compiler did not return the checked source syntax inventory');
+  if (!Array.isArray(baseline.sourceSyntax)) throw new Error('The compiler did not return the checked source syntax inventory');
   const files = new Set(input.sources.map(s => s.path));
   const owned = origin => origin?.kind === 'source' && files.has(origin.span.start.file);
   const declarations = baseline.units.flatMap(unit => unit.declarations.filter(d => owned(d.origin)).map(d => ({ unit: unit.id, ...d })));
@@ -31,7 +30,7 @@ export async function migrationReport(compiler, config, input) {
   let sourcePreview;
   try {
     sourcePreview = {scope:'checked computations, nominal records and alternative payloads, ordered collection names, unsigned integers, cases, laws, explicit universal scopes and expectation-first tables',
-      sources:planLegacySourceEdits(input.sources,baseline,syntax.sourceSyntax,syntax.sourceFields),diagnostics:[]};
+      sources:planLegacySourceEdits(input.sources,baseline,baseline.sourceSyntax,baseline.sourceFields),diagnostics:[]};
   } catch (error) {
     sourcePreview = {scope:'checked computations, nominal records and alternative payloads, ordered collection names, unsigned integers, cases, laws, explicit universal scopes and expectation-first tables',sources:[],
       diagnostics:[{code:'migration-source',message:error.message,at:null}]};
@@ -51,19 +50,19 @@ export async function migrationReport(compiler, config, input) {
     payloadComparison=compared.migrationComparison??{status:'unavailable',
       reason:'The compiler did not admit both inputs for payload comparison.',diagnostics:compared.diagnostics};
   }
-  const correspondence={...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,
+  const correspondence={...compareMigrationSnapshots(baseline.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,
     payloadComparison.executableTransport,payloadComparison.definitionTemplates,payloadComparison.lawTemplates,payloadComparison.sourceUnits),
     payloads:payloadComparison};
   const bindingPreview=sourcePreview.canonicalCheck.status==='accepted' ?
     await planNativeBindings(compiler,config,input,sourcePreview.sources.map(({path,content})=>({path,content})),
-      syntax.migrationSemantics,sourcePreview.canonicalCheck.coreSnapshot) :
+      baseline.migrationSemantics,sourcePreview.canonicalCheck.coreSnapshot) :
     {status:'not-established',scope:'explicit native binding configuration',
       configurationCount:config.targets.length+(input.nativeBindings!==undefined?1:0),targets:[],
       proposedTargets:config.targets,reason:'Native binding planning requires an admitted canonical source preview.'};
   correspondence.nativeBindings={status:bindingPreview.status,scope:bindingPreview.scope,
     configurationCount:bindingPreview.configurationCount};
   const generationPreview=await planMigrationGeneration(compiler,config,{...input,generation:baseline.generation},
-    sourcePreview.sources.map(({path,content})=>({path,content})),syntax.migrationSemantics,
+    sourcePreview.sources.map(({path,content})=>({path,content})),baseline.migrationSemantics,
     sourcePreview.canonicalCheck.coreSnapshot,bindingPreview);
   correspondence.targetGeneration={status:generationPreview.status,scope:generationPreview.scope,
     configurationCount:generationPreview.configurationCount};
@@ -102,8 +101,8 @@ export async function migrationReport(compiler, config, input) {
       scope:'all supplied project sources, configuration and configured targets',assumptions,
       nativeConformance:'not-established',lawVerification:'not-established-by-migration'},
     proposedConfiguration: { ...config, targets:bindingPreview.proposedTargets, version: 2, languageProfile: '1.0-rc.1', verification: { layers: [...legacyLawLayers] } },
-    baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax,sourceFields:syntax.sourceFields,
-      coreSnapshot:syntax.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'} },
+    baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:baseline.sourceSyntax,sourceFields:baseline.sourceFields,
+      coreSnapshot:baseline.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'} },
     sourcePreview,
     correspondence,
     domainPolicyChanges: laws.map(law => ({law:law.id,from:law.inputDomain,to:'universal',

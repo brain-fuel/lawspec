@@ -142,10 +142,11 @@ for(const target of ['python','javascript'])test(`${target} old and migrated bri
       Object.assign(input.migrated,{machineBits,minify});
       const evidence=await receipt(input);assert.equal(evidence.nativeBoundary.status,'matched');
       for(const side of ['before','after']){
-        const generationInput=side==='before'?{schemaVersion:4,target,machineBits,minify,generation,
+        const generationInput=side==='before'?{...options,from:'0.24',includeGeneration:true,target,machineBits,minify,generation,
           sources:input.sources,nativeBindings:input.nativeBindings}:{...input.migrated,
           nativeBindings:evidence.bindingProposal.proposedNativeBindings};
-        const result=await compiler.planGeneration(generationInput);assert.deepEqual(result.diagnostics,[]);
+        const result=side==='before'?await compiler.migrationBaseline(generationInput):await compiler.planGeneration(generationInput);
+        assert.deepEqual(result.diagnostics,[]);
         const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-migration-boundary-'));
         try{
           for(const file of result.files.filter(file=>file.placement==='source')){
@@ -215,8 +216,9 @@ test('Java migration retains positional constructor types in compiled native bri
     const evidence=await receipt(input);assert.equal(evidence.nativeBoundary.status,'matched');
     for(const side of ['before','after']){
       const nativeBindings=side==='before'?input.nativeBindings:evidence.bindingProposal.proposedNativeBindings;
-      const result=await compiler.planGeneration(side==='before'?{schemaVersion:4,target:'java',machineBits,minify,
-        generation,sources:input.sources,nativeBindings}:{...input.migrated,nativeBindings});
+      const result=side==='before'?await compiler.migrationBaseline({...options,from:'0.24',includeGeneration:true,
+        target:'java',machineBits,minify,generation,sources:input.sources,nativeBindings}):
+        await compiler.planGeneration({...input.migrated,nativeBindings});
       assert.deepEqual(result.diagnostics,[]);
       const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-java-migration-boundary-'));
       try{

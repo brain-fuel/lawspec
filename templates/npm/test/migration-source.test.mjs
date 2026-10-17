@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {migrationTokens, migrationOffset, MigrationDocument, planLegacyComputationEdits} from '../migration-source.mjs';
 import {createCompiler} from '../api.mjs';
-import {migrationReport} from '../migrate.mjs';
+import {migrationReport,legacyLawLayers} from '../migrate.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {mkdtemp, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+const legacyOptions={schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',verification:{layers:legacyLawLayers}};
 
 test('migration tokens retain comments, quoted names, literal escapes and Unicode exactly', () => {
   const text = 'unit sample\r\n-- end "text"\r\n`a law` "end \\" | 😀" + \'\'\t:: ->\n';
@@ -62,7 +63,7 @@ test('typed migration preserves nested conditional bodies, Unicode comments and 
     '  (if enabled then "|123" else (if enabled then "-- end" else "\\\\end")) -- after body\nend\n';
   for (const machineBits of [32,64]) {
     const source = {path:'sample.lawspec',content};
-    const before = await compiler.check({schemaVersion:4,machineBits,sources:[source]});
+    const before = await compiler.migrationBaseline({...legacyOptions,machineBits,sources:[source]});
     assert.deepEqual(before.diagnostics, []);
     const [planned] = planLegacyComputationEdits([source], before);
     assert.match(planned.content, /^function choose/m);
@@ -86,7 +87,7 @@ test('effectful definitions migrate to procedures using the checked effect row',
     'definition tickOnce (value :: Bool) :: Bool uses Clock is tick value end\n'};
   for (const content of [source.content,source.content.replace('uses Clock ','')]) {
     const original = {...source,content};
-    const before = await compiler.check({schemaVersion:4,sources:[original]});
+    const before = await compiler.migrationBaseline({...legacyOptions,sources:[original]});
     assert.deepEqual(before.diagnostics, []);
     const [planned] = planLegacyComputationEdits([original], before);
     assert.match(planned.content, /procedure tickOnce/);
@@ -107,7 +108,7 @@ test('equality edits come from typed Boolean, IEEE and refinement expressions wh
     'definition same (value :: Int8) :: (result :: Int8 where result == value) is value end\n' +
     'definition text (unused :: Bool) :: Text is "==" end\n'};
   for (const machineBits of [32,64]) {
-    const before = await compiler.check({schemaVersion:4,machineBits,sources:[source]});
+    const before = await compiler.migrationBaseline({...legacyOptions,machineBits,sources:[source]});
     assert.deepEqual(before.diagnostics, []);
     const [planned] = planLegacyComputationEdits([source],before);
     assert.equal(planned.edits.filter(edit => edit.reason === 'typed equality').length, 3);
@@ -128,7 +129,7 @@ test('typed equality remains discoverable after intrinsic calls and nullary cons
     'definition even (value :: UInt8) :: Bool is prelude.rem value 2 == 0 end\n' +
     'definition choose (value :: UInt8) :: Bool is if prelude.rem value 2 == 0 then true else false end\n'};
   for (const machineBits of [32,64]) {
-    const before = await compiler.check({schemaVersion:4,machineBits,sources:[source]});
+    const before = await compiler.migrationBaseline({...legacyOptions,machineBits,sources:[source]});
     assert.deepEqual(before.diagnostics, []);
     const [planned] = planLegacyComputationEdits([source],before);
     assert.equal(planned.edits.filter(edit => edit.reason === 'typed equality').length, 3);
@@ -175,7 +176,7 @@ test('source inventory migrates unused generic computation bodies before concret
   assert.match(planned.content,/function same/);
   assert.equal(planned.edits.filter(edit => edit.reason === 'typed equality').length,2);
   assert.equal(planned.edits.filter(edit => edit.reason === 'conditional closer').length,1);
-  const before = await compiler.check({schemaVersion:4,sources:[source,{path:'use.lawspec',content:
+  const before = await compiler.migrationBaseline({...legacyOptions,sources:[source,{path:'use.lawspec',content:
     'unit use\nimport generic as generic (same)\nlaw `truth` is definition is `for all` (a :: Bool) (b :: Bool) . generic.same a b = (a == b) end end'}]});
   const after = await compiler.check({schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive']},sources:[
     {path:source.path,content:planned.content},{path:'use.lawspec',content:

@@ -2,11 +2,43 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createCompiler} from '../api.mjs';
-import {migrationReport} from '../migrate.mjs';
+import {migrationReport,legacyLawLayers} from '../migrate.mjs';
 
 const compiler=await createCompiler();
 const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]}};
 const policies=snapshot=>snapshot.sourceTemplates.domainPolicies;
+
+test('migration coordination needs only explicit legacy entry points and canonical ordinary requests',async()=>{
+  const requests=[];
+  const strict={...compiler,
+    check:input=>{
+      assert.equal(input.schemaVersion,5);assert.equal(input.languageProfile,'1.0-rc.1');
+      return compiler.check(input);
+    },
+    migrationBaseline:input=>{
+      assert.equal(input.schemaVersion,5);assert.equal(input.from,'0.24');
+      requests.push(input);return compiler.migrationBaseline(input);
+    },
+  };
+  const sources=[{path:'explicit.lawspec',content:'unit explicit\n'+
+    'definition same (value :: Bool) :: Bool is value end\n'+
+    'law `identity` is definition is `for all` (value :: Bool) . same value = value end end'}];
+  const report=await migrationReport(strict,{version:1,targets:[]},{sources});
+  assert.equal(report.validated,true,JSON.stringify(report.blockers));
+  assert.deepEqual(requests.map(request=>request.verification.layers),[legacyLawLayers]);
+  const independent=await compiler.migrationBaseline({...options,from:'0.24',sources});
+  assert.deepEqual(report.baseline.coreSnapshot,independent.migrationSemantics);
+  assert.equal(report.validation.lawVerification,'not-established-by-migration');
+  for(const content of [
+    'definition unsafe (value :: Integer) :: Integer is 1 / value end',
+    'type Flag is | Off | On end\ndefinition unsafe (value :: Flag) :: Bool is match value with | Off -> true end end',
+    'law `false` is definition is true = false end end',
+  ]){
+    const rejected=await migrationReport(strict,{version:1,targets:[]},{sources:[{path:'invalid.lawspec',content:'unit invalid\n'+content}]});
+    assert.equal(rejected.validated,false);assert.ok(rejected.diagnostics.length);
+    assert.ok(rejected.diagnostics.every(diagnostic=>!['request','parse'].includes(diagnostic.code)));
+  }
+});
 
 test('migration keeps versioned dependency templates while comparing monomorphic authored sources',async()=>{
   for(const machineBits of [32,64])for(const law of [false,true]){

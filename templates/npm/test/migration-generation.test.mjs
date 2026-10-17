@@ -44,7 +44,8 @@ test('receipt manifests match independently requested legacy and canonical gener
   for(const machineBits of [32,64])for(const minify of [false,true]){
     const input=request('python',machineBits,minify);
     const checked=await compiler.migrationGeneration(input);assert.deepEqual(checked.diagnostics,[]);
-    const before=await compiler.planGeneration({schemaVersion:4,target:input.target,machineBits,minify,generation,sources:input.sources});
+    const before=await compiler.migrationBaseline({...options,from:'0.24',includeGeneration:true,
+      target:input.target,machineBits,minify,generation,sources:input.sources});
     const after=await compiler.planGeneration({...input.migrated,verification:{layers:legacyLawLayers}});
     assert.deepEqual(before.diagnostics,[]);assert.deepEqual(after.diagnostics,[]);
     assert.deepEqual(checked.migrationGeneration.before.files,manifest(before));

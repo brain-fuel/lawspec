@@ -34,7 +34,7 @@ interface Compiler {
   expand(input: CheckRequest): Promise<Result>;
   proofTasks(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
-  migrationBaseline(input: MigrationRequest): Promise<Result>;
+  migrationBaseline(input: MigrationBaselineRequest): Promise<Result>;
   migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
   migrationBindings(input: MigrationBindingRequest): Promise<Result>;
   migrationGeneration(input: MigrationGenerationRequest): Promise<Result>;
@@ -72,6 +72,14 @@ interface MigrationRequest extends CheckRequest {
   schemaVersion?: 5;
   languageProfile: '1.0-rc.1';
   from: '0.24';
+}
+
+interface MigrationBaselineRequest extends MigrationRequest {
+  includeGeneration?: boolean;
+  target?: Target;                          // required with includeGeneration
+  sourceDir?: string;
+  testDir?: string;
+  minify?: boolean;
 }
 ```
 
@@ -143,6 +151,15 @@ theories, configuration and trust, and `proof.d.ts` for host result types.
 It requires schema 5 and the current technical language profile; normal
 schema-5 check, formatting and generation requests keep canonical parsing.
 Migration and normal requests use separate compilation caches.
+
+`includeGeneration: true` with a target adds the legacy source's generated
+artifacts to the read-only baseline. It uses the existing target emitters and
+legacy harness plan, allowing independent inspection and execution of migration
+fixtures without requesting legacy ordinary generation. `baselineGeneration`
+records `planning: 'legacy-harnesses'` and `execution: 'not-run'`; generation
+does not establish native conformance or law verification. Mandatory definition
+validation still applies. The flag is available only on `migrationBaseline`,
+which requires `from: '0.24'`. Omitting it retains the inventory-only response.
 
 The result includes `sourceLanguageProfile: '0.24'` and `sourceSyntax`, an
 array of version-1 inventories with `path`, `unit`, `nodes` and `bindings`. Nodes contain

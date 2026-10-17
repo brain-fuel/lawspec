@@ -100,8 +100,10 @@ test('BigUInt becomes Whole without changing bounded predicates',async()=>{
     assert.ok(numeric.includes('n :: Whole where n <= 7'));
     assert.ok(numeric.includes('(value :: Whole) -> Whole'));
     for(const input of [sources,migrated.sources]) {
-      const rejected=await compiler.check({...options,schemaVersion:input===migrated.sources?5:3,machineBits:bits,
-        sources:input.map(source=>({...source,content:source.content.replace('limited 7 = 7','limited 8 = 8')}))});
+      const request={...options,machineBits:bits,
+        sources:input.map(source=>({...source,content:source.content.replace('limited 7 = 7','limited 8 = 8')}))};
+      const rejected=input===migrated.sources?await compiler.check(request):
+        await compiler.migrationBaseline({...request,from:'0.24'});
       assert.ok(rejected.diagnostics.some(diagnostic=>diagnostic.code==='refuted'&&diagnostic.message.includes('precondition failed')),
         'The original upper bound must still reject 8 at the checked function boundary');
     }

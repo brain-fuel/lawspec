@@ -1,4 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest, MigrationComparisonRequest, MigrationPayloadComparison, ObligationEvidence, MigrationBindingRequest, NativeFieldBinding} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest, MigrationBaselineRequest, MigrationComparisonRequest, MigrationPayloadComparison, ObligationEvidence, MigrationBindingRequest, NativeFieldBinding} from '../../npm/index.js';
 
 export function migrationDigests(result: Result): string[] {
   const snapshot: MigrationSemanticSnapshot | undefined = result.migrationSemantics;
@@ -301,3 +301,9 @@ const missingPosition: NativeFieldBinding = {field:'value',path:['first'],native
 // @ts-expect-error A native argument position needs an explicit structural path.
 const missingPath: NativeFieldBinding = {field:'value',argument:0,native:'head'};
 void nativeLeaf; void missingPosition; void missingPath;
+
+const baselinePreview: MigrationBaselineRequest = {schemaVersion: 5, languageProfile: '1.0-rc.1',
+  from: '0.24', sources: [], includeGeneration: true, target: 'python'};
+// @ts-expect-error Legacy artifact inspection is confined to the migration entry point.
+const ordinaryPreview: CheckRequest = {sources: [], includeGeneration: true};
+void baselinePreview; void ordinaryPreview;

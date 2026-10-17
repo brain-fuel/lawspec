@@ -61,8 +61,14 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       Left response -> response
       Right ((us,es,core,bindings,evidence,described,_,templates),syntax) ->
         let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-        in withMigrationSemantics False us core templates $ withMigrationSyntax templates syntax $ withAttestation attestation core obligations $ withVerification verification $
-          withPackages project described (programView settings us (map prettyExpanded es) [] obligations (C.lowerProgramFields core))
+            legacyPlan = planTesting core
+            result files = withMigrationSemantics False us core templates $ withMigrationSyntax templates syntax $ withAttestation attestation core obligations $ withVerification verification $
+              withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core))
+        in if baselineGenerationRequested then either failure
+             (withBaselineGeneration . withBenchmarks (benchmarkManifest target testDir core) .
+              withTests (testManifest target testDir (plannedCore core legacyPlan)) . result)
+             ((++ networkArtifacts native) <$> (legacyPlan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
+           else result []
    else
    -- Typed compilation is shared across targets. SMT task preparation has a
    -- separate key because it prepares, rather than executes, optional proofs.
@@ -118,6 +124,14 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     snapshotRequested = case decode bytes of
       Just (Object o) -> KM.lookup "migrationSnapshot" o==Just (Bool True)
       _ -> False
+    baselineGenerationRequested = case decode bytes of
+      Just (Object o) -> KM.lookup "includeGeneration" o==Just (Bool True)
+      _ -> False
+    withBaselineGeneration (Object fields) = Object (KM.insert "baselineGeneration"
+      (object ["status" .= ("generated"::String),"planning" .= ("legacy-harnesses"::String),
+        "execution" .= ("not-run"::String),"nativeConformance" .= ("not-established"::String),
+        "lawVerification" .= ("not-established-by-generation"::String)]) fields)
+    withBaselineGeneration value = value
     comparison bindingOnly generationCheck Nothing = failure [Diagnostic "request" ((if generationCheck then "migrationGeneration" else if bindingOnly then "migrationBindings" else "migrationComparison") ++ " requires migrated") Nothing]
     comparison bindingOnly generationCheck (Just made) = case parseEither request made of
       Left reason -> failure [Diagnostic "request" ("migrated: " ++ reason) Nothing]
@@ -213,6 +227,12 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       snapshot <- o .:? "migrationSnapshot" .!= False
       unless (not snapshot || version==5) (fail "migrationSnapshot requires API schemaVersion 5 and languageProfile 1.0-rc.1")
       method <- o .:? "method" .!= "check"
+      includeGeneration <- o .:? "includeGeneration" .!= False
+      unless (not (KM.member "includeGeneration" o) || method=="migrationBaseline")
+        (fail "includeGeneration is only supported by migrationBaseline --from 0.24")
+      generationTarget <- o .:? "target" .!= (""::String)
+      unless (not includeGeneration || not (null generationTarget))
+        (fail "includeGeneration requires a nonempty target")
       if method `elem` (["migrationBaseline","migrationComparison","migrationBindings","migrationGeneration"] :: [String]) then do
         unless (version == 5) (fail (method ++ " requires API schemaVersion 5"))
         from <- o .: "from"
@@ -367,7 +387,7 @@ stagesWithInput canonical capture project packages sources bits settings native 
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "migrationSnapshot"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "migrationSnapshot", "includeGeneration"])))
   _ -> BC.unpack bytes
 
 -- | Two entries: each holds a whole compiled program and its plan.

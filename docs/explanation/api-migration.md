@@ -65,10 +65,11 @@ owned project sources and configuration; dependency packages retain their checke
 versioned source and must remain unchanged while writing.
 
 Each configured target now has a separate `bindingPreview` entry. The source
-baseline is compiled independently of target bindings; the compiler then checks
+baseline is compiled through schema 5's explicit `migrationBaseline` request with
+`from: '0.24'`, independently of target bindings; the compiler then checks
 each actual native request against the legacy source and derives a destination
 proposal. API-supplied bindings are checked in the same way, rather than being
-sent to the binding-blind schema-3 request. They have a separate input entry
+sent to the source-only baseline. They have a separate input entry
 and never replace target configurations or become implicit target defaults.
 A binding error in one target keeps project-wide binding correspondence
 unestablished.
