@@ -491,7 +491,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               <> Doc.text (" -> " ++ resultType ++ " ")
         body <- case nativeCall d of
           Nothing -> pure (invoke "todo!" [string (idText (declarationId d))])
-          Just native -> RB.emitCall planDataDeclarations bindings [handlerName ability | ability <- declarationUses d, not (isFail ability)] d native
+          Just native -> RB.emitCall planMachineBits planDataDeclarations bindings [handlerName ability | ability <- declarationUses d, not (isFail ability)] d native
         pure (Doc.lineComment 100 "// " ("LawSpec: " ++ Presentation.prettyType (declarationType d)) <>
           signature <> block body)
       wrappers <- forM adapters $ \d -> do

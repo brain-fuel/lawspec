@@ -3,7 +3,7 @@
 module LawSpec.RustNativeBinding (emitConversions, emitCall, rustReference, nativeTypeFor, nativeTypeWithParameters, convertExpression) where
 
 import Control.Monad (forM, unless)
-import Data.List (find, intercalate)
+import Data.List (find, intercalate, sortOn)
 import Data.Maybe (listToMaybe)
 import qualified LawSpec.Core as C
 import qualified LawSpec.RustExpr as E
@@ -136,20 +136,23 @@ emitConversions declarations plan = do
         -- A product's canonical form is a struct, so its path has no variant.
         let canonicalTag = if length (C.dataConstructors declaration) == 1 then canonicalName else canonicalName ++ "::" ++ tag
             fields = resolvedFields constructor
-        names <- forM (zip [0::Int ..] fields) $ \(i,(field,nativeFieldName)) -> do
-          canonicalField <- rustReference (NativeRef [C.binderName field])
-          nativeField <- rustReference (NativeRef [nativeFieldName])
-          transformed <- convert env parameters (Just (C.dataId declaration)) outward (C.binderType field) (D.text ("_field" ++ show i))
-          pure (if outward then canonicalField else nativeField,
-                if outward then nativeField else canonicalField, i, transformed)
-        let construct isNative name items = D.text name <> if null items
-              then if isNative && resolvedConstructorStyle constructor == RecordConstructor then D.text " {}" else mempty
-              else D.text " " <> D.block 4 (D.joinWith D.hardline (map (<> D.text ",") items))
-            patternDoc = construct (not outward) (if outward then canonicalTag else nativeTag)
-              [D.text (source ++ ": _field" ++ show i) | (source,_,i,_) <- names]
-            body = construct outward (if outward then nativeTag else canonicalTag)
-              [D.text (destination ++ ": ") <> value | (_,destination,_,value) <- names]
-        pure (patternDoc <> D.text " => " <> body <> D.text ",")
+        case resolvedFieldLayout constructor of
+          Just tree->emitLayoutBranch env parameters declaration constructor outward canonicalTag nativeTag tree
+          Nothing->do
+            names <- forM (zip [0::Int ..] fields) $ \(i,(field,nativeFieldName)) -> do
+              canonicalField <- rustReference (NativeRef [C.binderName field])
+              nativeField <- rustReference (NativeRef [nativeFieldName])
+              transformed <- convert env parameters (Just (C.dataId declaration)) outward (C.binderType field) (D.text ("_field" ++ show i))
+              pure (if outward then canonicalField else nativeField,
+                    if outward then nativeField else canonicalField, i, transformed)
+            let construct isNative name items = D.text name <> if null items
+                  then if isNative && resolvedConstructorStyle constructor == RecordConstructor then D.text " {}" else mempty
+                  else D.text " " <> D.block 4 (D.joinWith D.hardline (map (<> D.text ",") items))
+                patternDoc = construct (not outward) (if outward then canonicalTag else nativeTag)
+                  [D.text (source ++ ": _field" ++ show i) | (source,_,i,_) <- names]
+                body = construct outward (if outward then nativeTag else canonicalTag)
+                  [D.text (destination ++ ": ") <> value | (_,destination,_,value) <- names]
+            pure (patternDoc <> D.text " => " <> body <> D.text ",")
       let callbacks = [converter ++ ": &dyn Fn(" ++
             (if outward then canonicalParameter else nativeParameter) ++ ") -> " ++
             (if outward then nativeParameter else canonicalParameter) |
@@ -171,10 +174,72 @@ emitConversions declarations plan = do
     pure (D.joinWith (D.hardline <> D.hardline) functions)
   pure (D.joinWith (D.hardline <> D.hardline) definitions)
 
+-- | Structural packing is checked by the resolver. Rust moves through typed
+-- locals so record sorting cannot reorder native conversions. Boxes belong to
+-- the actual canonical parent and native constructor independently.
+emitLayoutBranch :: Environment -> Parameters -> C.DataDeclaration -> ResolvedConstructorBinding
+  -> Bool -> String -> String -> [NativeLayout] -> Either String D.Doc
+emitLayoutBranch env@(declarations,_) parameters declaration binding outward canonicalTag nativeTag tree = do
+  let owner=C.dataId declaration
+      structure name entries=D.text name<>D.text " "<>D.block 4
+        (D.joinWith D.hardline [D.text (label++": ")<>value<>D.text "," | (label,value)<-entries])
+      fieldName field=rustReference (NativeRef [C.binderName field])
+      boxed parent field=rustFieldBoxed declarations parent (C.binderType field)
+      open parent field value=if boxed parent field then D.text "*"<>value else value
+      close parent field value=if boxed parent field then call "Box::new" [value] else value
+      recordName field=case C.binderType field of
+        C.Constructor name _->do
+          base<-canonicalType env [] (C.Constructor name [])
+          pure (C.Id name,base)
+        _->Left "checked native layout record lost its applied type"
+      locations parent=concatMap (\case
+        NativeLeaf field index->[(index,(field,parent))]
+        NativeRecord field _ children->case C.binderType field of
+          C.Constructor name _->locations (C.Id name) children
+          _->[])
+      unpack parent prefix nodes= fmap concat $ forM (zip [0::Int ..] nodes) $ \(index,node)->do
+        let variable=D.text (prefix++show index)
+        case node of
+          NativeLeaf _ argument->pure [D.text ("let _field"++show argument++" = ")<>variable<>D.text ";"]
+          NativeRecord field _ children->do
+            (childOwner,name)<-recordName field
+            let next=prefix++show index++"_"
+            entries<-forM (zip [0::Int ..] children) $ \(child,nested)->do
+              label<-fieldName (case nested of NativeLeaf value _->value;NativeRecord value _ _->value)
+              pure (label,D.text (next++show child))
+            rest<-unpack childOwner next children
+            pure (D.text "let "<>structure name entries<>D.text " = "<>
+              open parent field variable<>D.text ";":rest)
+      pack parent=mapM (\case
+        NativeLeaf _ index->pure (D.text ("_converted"++show index))
+        NativeRecord field _ children->do
+          (childOwner,name)<-recordName field
+          values<-pack childOwner children
+          labels<-mapM (fieldName . (\case NativeLeaf value _->value;NativeRecord value _ _->value)) children
+          pure (close parent field (structure name (zip labels values))))
+  converted<-forM (sortOn fst (locations owner tree)) $ \(index,(field,parent))->do
+    let canonicalBox=boxed parent field
+        nativeBox=boxed owner field
+        input=D.text ("_field"++show index)
+        opened=if (if outward then canonicalBox else nativeBox) then D.text "*"<>input else input
+    value<-convert env parameters Nothing outward (C.binderType field) opened
+    let closed=if (if outward then nativeBox else canonicalBox) then call "Box::new" [value] else value
+    pure (D.text ("let _converted"++show index++" = ")<>closed<>D.text ";")
+  nativeLabels<-mapM (rustReference . NativeRef . pure . snd) (resolvedFields binding)
+  canonicalLabels<-mapM fieldName (C.constructorFields (resolvedConstructor binding))
+  let nativePattern=structure nativeTag [(label,D.text ("_field"++show index)) | (index,label)<-zip [0::Int ..] nativeLabels]
+      canonicalPattern=structure canonicalTag [(label,D.text ("_logical"++show index)) | (index,label)<-zip [0::Int ..] canonicalLabels]
+      nativeValue=structure nativeTag [(label,D.text ("_converted"++show index)) | (index,label)<-zip [0::Int ..] nativeLabels]
+  opened<-if outward then unpack owner "_logical" tree else pure []
+  values<-pack owner tree
+  let canonicalValue=structure canonicalTag (zip canonicalLabels values)
+  pure ((if outward then canonicalPattern else nativePattern)<>D.text " => "<>
+    D.block 4 (D.joinWith D.hardline (opened++converted++[if outward then nativeValue else canonicalValue]))<>D.text ",")
+
 -- | A bound adapter calls the user's function directly, converting arguments in
 -- and the result out. ref:DEC-native-bindings-typed-identity
-emitCall :: [C.DataDeclaration] -> BindingPlan -> [String] -> C.Declaration -> NativeCall -> Either String D.Doc
-emitCall declarations plan handlers declaration native = do
+emitCall :: Int -> [C.DataDeclaration] -> BindingPlan -> [String] -> C.Declaration -> NativeCall -> Either String D.Doc
+emitCall bits declarations plan handlers declaration native = do
   let env = environment declarations plan
       (arguments,result) = C.functionType (C.declarationType declaration)
       context = C.idText (C.declarationId declaration)
@@ -184,6 +249,29 @@ emitCall declarations plan handlers declaration native = do
         C.Constructor name [] -> find ((== C.Id name) . C.dataId) declarations >>= \d -> if C.dataHandle d then Just d else Nothing
         _ -> Nothing
       boundHandle d = snd <$> findBinding env (C.idText (C.dataId d))
+  let layoutTypes=[C.dataId (resolvedDeclaration binding) |
+        binding<-resolvedTypes (bindingRepresentations plan),
+        any ((/=Nothing) . resolvedFieldLayout) (resolvedConstructors binding)]
+      reachesLayout seen ty=case ty of
+        C.Constructor name arguments-> C.Id name `elem` layoutTypes ||
+          any (\case C.TypeArgument child->reachesLayout seen child;_->False) arguments ||
+          (name `notElem` seen && any (reachesLayout (name:seen) . C.binderType)
+            [field | dataType<-declarations,C.dataId dataType==C.Id name,
+              constructor<-C.dataConstructors dataType,field<-C.constructorFields constructor])
+        _->False
+      checked label ty value | not (reachesLayout [] ty)=Right value
+        | otherwise=do
+            reference<-E.reference ty
+            let raw=call "ls::IntoValue::into_value" [value]
+                validation=D.text "crate::lawspec_schema::schema().and_then(|schema| "<>
+                  call "schema.validate" [raw,D.text "&"<>reference,D.text (show bits)]<>D.text ")"
+            pure (validation<>D.text ".and_then(ls::FromValue::from_value)"<>
+              D.text ".unwrap_or_else(|error| panic!(\"{}: {}\", "<>
+              E.stringLiteral ("native binding "++context++" "++label)<>D.text ", error))")
+  checkedArguments<-forM indexed $ \(index,ty)->if not (reachesLayout [] ty) then pure [] else do
+    value<-checked ("argument "++show index) ty (D.text ("value"++show index))
+    canonical<-canonicalType env [] ty
+    pure [D.text ("let value"++show index++": "++canonical++" = ")<>value<>D.text ";"]
   -- The native function, and the adapter's arguments it takes.
   (receiving, target, passed) <- case native of
     StaticCall reference -> (\destination -> ([], D.text destination, indexed)) <$> rustReference reference
@@ -203,7 +291,7 @@ emitCall declarations plan handlers declaration native = do
         D.text ("_native_self." ++ method), [a | a@(i,_) <- indexed, i /= receiver])
   values <- mapM (\(i,ty) -> convert env [] Nothing True ty (D.text ("value" ++ show i))) passed
   types <- mapM (nativeTypeName env [] . snd) passed
-  let locals = receiving ++ [D.text ("let _native_arg" ++ show i ++ ": " ++ ty ++ " = ") <> value <> D.text ";" |
+  let locals = concat checkedArguments ++ receiving ++ [D.text ("let _native_arg" ++ show i ++ ": " ++ ty ++ " = ") <> value <> D.text ";" |
         ((i,_),(ty,value)) <- zip passed (zip types values)]
       static = case native of StaticCall _ -> True; _ -> False
       -- An async adapter awaits its native future; a constructor is called at once.
@@ -223,8 +311,9 @@ emitCall declarations plan handlers declaration native = do
       | otherwise -> do
           nativeResult <- nativeTypeName env [] result
           converted <- convert env [] Nothing False result (D.text "_native_result")
+          validated <- checked "result" result converted
           pure (D.joinWith D.hardline (locals ++
-            [D.text ("let _native_result: " ++ nativeResult ++ " = ") <> invoked <> D.text ";", converted]))
+            [D.text ("let _native_result: " ++ nativeResult ++ " = ") <> invoked <> D.text ";", validated]))
 
 -- | Framework helpers reuse the same source-side codecs; validation remains in
 -- the schema runtime on both sides of a native generator or adapter call.

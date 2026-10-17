@@ -365,22 +365,51 @@ emitBindings minify plan testing files = do
         let mapped = mapping d >>= \m -> find ((== C.constructorId c) . C.constructorId . resolvedConstructor) (resolvedConstructors m)
         base <- maybe (J.javaConstructorClass declarations d c)
           (Right . reference . resolvedNativeConstructor) mapped
-        codecs <- mapM (codec ps (D.text "schema") (D.text "bits") . C.binderType) (C.constructorFields c)
-        let unit = maybe False ((== UnitConstructor) . resolvedConstructorStyle) mapped
-            nativeFields = maybe (map C.binderName (C.constructorFields c)) (map snd . resolvedFields) mapped
-            -- Generated types are records, like mapped native types: accessors.
-            access field = D.text ("item." ++ field ++ "()")
-            encoded = [call "LawSpecSchema.encodeField" [bridge,access field,
-              E.quoted (C.idText (C.constructorId c) ++ "." ++ C.binderName logical)] |
-                (bridge,field,logical) <- zip3 codecs nativeFields (C.constructorFields c)]
-            encode = D.text "if (" <> (if unit then D.text ("value == " ++ base)
-              else D.text ("value.getClass() == " ++ base ++ ".class")) <> D.text ") " <>
-              D.block 2 ((if unit then mempty else D.text "var item = (" <> applied base args <> D.text ") value;" <> D.hardline) <>
-                D.text "return " <> call "schema.construct" [D.text "type",E.quoted (C.idText (C.constructorId c)),call "java.util.List.of" encoded,D.text "bits",D.text "symbols"] <> D.text ";")
-            decoded = [method bridge "decode" [D.text ("data.fields().get(" ++ show n ++ ")")] | (n,bridge) <- zip [0::Int ..] codecs]
-            decode = D.group (D.text "case " <> E.quoted (C.idText (C.constructorId c)) <> D.text " ->" <>
-              D.nest 4 (D.softline <> (if unit then D.text base else call ("new " ++ base ++ if null ps then "" else "<>") decoded)) <> D.text ";")
-        pure (encode,decode)
+        case mapped >>= resolvedFieldLayout of
+          Just tree -> do
+            let fields=maybe [] resolvedFields mapped
+                paths=nativeLayoutPaths tree
+            codecs<-mapM (codec ps (D.text "schema") (D.text "bits") . C.binderType . fst) fields
+            packed<-foldNativeLayoutM (Right . D.text . ("nativeField"++) . show)
+              (\field constructor children->do
+                ty<-ref ps (C.binderType field)
+                pure (call "schema.construct" [ty,E.quoted (C.idText (C.constructorId constructor)),
+                  call "java.util.List.of" children,D.text "bits",D.text "symbols"])) tree
+            let locals=[D.text ("var nativeField"++show index++" = ") <>
+                  call "LawSpecSchema.encodeField" [bridge,D.text ("item."++native++"()"),
+                    E.quoted (C.idText (C.constructorId c)++"."++intercalate "." path)]<>D.text ";" |
+                    (index,((bridge,(_,native)),path))<-zip [0::Int ..]
+                      (zip (zip codecs fields) (maybe [] id (mapped >>= resolvedFieldPaths)))]
+                root=call "schema.construct" [D.text "type",E.quoted (C.idText (C.constructorId c)),
+                  call "java.util.List.of" packed,D.text "bits",D.text "symbols"]
+                encode=D.text ("if (value.getClass() == "++base++".class) ")<>D.block 2
+                  (D.text "var item = ("<>applied base args<>D.text ") value;"<>D.hardline<>
+                   D.joinWith D.hardline (locals++[D.text "return "<>root<>D.text ";"]))
+                project []=D.text "value"
+                project (index:rest)=foldl (\value child->D.text "((LawSpecRuntime.Data) "<>value<>
+                  D.text (".data()).fields().get("++show child++")"))
+                  (D.text ("data.fields().get("++show index++")")) rest
+                decoded=[method bridge "decode" [project path] | (bridge,path)<-zip codecs paths]
+                decode=D.group (D.text "case "<>E.quoted (C.idText (C.constructorId c))<>D.text " ->"<>
+                  D.nest 4 (D.softline<>call ("new "++base++if null ps then "" else "<>") decoded)<>D.text ";")
+            pure (encode,decode)
+          Nothing -> do
+            codecs <- mapM (codec ps (D.text "schema") (D.text "bits") . C.binderType) (C.constructorFields c)
+            let unit = maybe False ((== UnitConstructor) . resolvedConstructorStyle) mapped
+                nativeFields = maybe (map C.binderName (C.constructorFields c)) (map snd . resolvedFields) mapped
+                -- Generated types are records, like mapped native types: accessors.
+                access field = D.text ("item." ++ field ++ "()")
+                encoded = [call "LawSpecSchema.encodeField" [bridge,access field,
+                  E.quoted (C.idText (C.constructorId c) ++ "." ++ C.binderName logical)] |
+                    (bridge,field,logical) <- zip3 codecs nativeFields (C.constructorFields c)]
+                encode = D.text "if (" <> (if unit then D.text ("value == " ++ base)
+                  else D.text ("value.getClass() == " ++ base ++ ".class")) <> D.text ") " <>
+                  D.block 2 ((if unit then mempty else D.text "var item = (" <> applied base args <> D.text ") value;" <> D.hardline) <>
+                    D.text "return " <> call "schema.construct" [D.text "type",E.quoted (C.idText (C.constructorId c)),call "java.util.List.of" encoded,D.text "bits",D.text "symbols"] <> D.text ";")
+                decoded = [method bridge "decode" [D.text ("data.fields().get(" ++ show n ++ ")")] | (n,bridge) <- zip [0::Int ..] codecs]
+                decode = D.group (D.text "case " <> E.quoted (C.idText (C.constructorId c)) <> D.text " ->" <>
+                  D.nest 4 (D.softline <> (if unit then D.text base else call ("new " ++ base ++ if null ps then "" else "<>") decoded)) <> D.text ";")
+            pure (encode,decode)
       let failure = D.text "throw new IllegalArgumentException(\"invalid native constructor\");"
           encoder = D.text "value -> " <> D.block 2 (D.text "java.util.Objects.requireNonNull(value);" <> D.hardline <>
             D.joinWith D.hardline (map fst arms ++ [failure]))

@@ -449,6 +449,9 @@ stepKey repository (Step name env command) (Inputs keep drop' probes) = do
 targetSteps :: String -> [Step]
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
+  [ Step (target ++ "-native-record-layouts") [("LAWSPEC_NATIVE_LAYOUT_TARGET",target)]
+      ["node","--test","--test-name-pattern=^" ++ target ++ " native layouts", "npm/test/native-static-layouts.test.mjs"]
+  | target `elem` ["java","kotlin","scala","groovy","rust"] ] ++
   [ step (target ++ "-recorded-runtime") ["node", "test/fixtures/recorded-web.mjs"]
   | target `elem` ["javascript", "typescript"] ] ++
   [ step "python-recorded-runtime" [".integration/python/.venv/bin/python", "-B", "test/fixtures/recorded_python.py"]

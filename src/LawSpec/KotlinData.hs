@@ -472,6 +472,35 @@ emitCodecs mappings owner layout declarations = do
         D.text ("val field" ++ show (n + k) ++ " = ") <> text) | k <- [0 .. witnessCount variant - 1]])
     nativeKeys variant = call "listOf" [D.text ("value." ++ S.witnessFieldName (witnessCount variant) k) | k <- [0 .. witnessCount variant - 1]]
     dataKeys variant = call "LawSpecSchema.witnessKeys" [D.text "data.fields()", D.text (show (witnessCount variant))]
+    layoutCodecs names parameters bound=mapM
+      (codecDocUsingOwner owner (Just (D.text "symbols")) names parameters . C.binderType . fst)
+      (resolvedFields bound)
+    packLayout parameters=foldNativeLayoutM (Right . D.text . ("nativeField"++) . show)
+      (\field constructor children->do
+        ty<-referenceDoc parameters (C.binderType field)
+        pure (call "schema.construct" [ty,quoted (C.idText (C.constructorId constructor)),
+          call "listOf" children,D.text "bits",D.text "symbols"]))
+    projectLayout []=D.text "value"
+    projectLayout (index:rest)=foldl (\value child->D.text "("<>value<>
+      D.text (".data() as LawSpecRuntime.Data).fields()["++show child++"]"))
+      (D.text ("data.fields()["++show index++"]")) rest
+    encodeArm names parameters dataOwner variant
+      | Just bound<-constructorMapping variant,Just tree<-resolvedFieldLayout bound = do
+          bridges<-layoutCodecs names parameters bound
+          packed<-packLayout parameters tree
+          let base=constructorName dataOwner variant
+              condition="value is "++base++if null parameters then "" else
+                "<"++intercalate ", " (replicate (length parameters) "*")++">"
+              access native=call "LawSpecSchema.cast" [D.text ("value."++native)]
+              locals=[D.text ("val nativeField"++show index++" = ")<>
+                call "LawSpecSchema.encodeField" [bridge,access native,
+                  quoted (C.idText (C.constructorId variant)++"."++intercalate "." path)] |
+                  (index,((bridge,(_,native)),path))<-zip [0::Int ..]
+                    (zip (zip bridges (resolvedFields bound)) (maybe [] id (resolvedFieldPaths bound)))]
+              identity=call "require" [D.text ("value.javaClass == "++base++"::class.java")]
+              construct=call "schema.construct" [D.text "type",quoted (C.idText (C.constructorId variant)),
+                call "listOf" packed,D.text "bits",D.text "symbols"]
+          pure (condition,D.joinWith D.hardline (identity:locals++[construct]))
     encodeArm names parameters dataOwner variant = do
       bindings <- fields names parameters (nativeKeys variant) variant
       let n = length (C.constructorFields variant)
@@ -498,6 +527,15 @@ emitCodecs mappings owner layout declarations = do
       in case drop index (C.constructorFields variant) of
         field:_ | nativeFieldChanged variant field -> call "LawSpecSchema.cast" [term]
         _ -> term
+    decodeArm names parameters dataOwner variant
+      | Just bound<-constructorMapping variant,Just tree<-resolvedFieldLayout bound = do
+          bridges<-layoutCodecs names parameters bound
+          let payload=[call (D.render D.Compact bridge++".decode") [projectLayout path] |
+                (bridge,path)<-zip bridges (nativeLayoutPaths tree)]
+              constructor=D.render D.Compact (applied (constructorName dataOwner variant)
+                [D.text t | (_,(t,_))<-parameters])
+          pure (quoted (C.idText (C.constructorId variant))<>D.text " -> "<>
+            D.block 4 (call constructor payload))
     decodeArm names parameters owner variant = do
       bindings <- fields names parameters (dataKeys variant) variant
       let decoded i local = D.text (local ++ ".decode(data.fields()[" ++ show i ++ "])")

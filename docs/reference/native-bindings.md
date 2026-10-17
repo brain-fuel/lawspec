@@ -96,9 +96,14 @@ not change constructor argument order. A path may stop at a whole typed field;
 its existing native conversion still applies.
 
 The migration report derives these layouts from the original checked constructor
-order. Python, JavaScript and TypeScript bridges currently pack and unpack them
-through their ordinary schema conversions. Scalar, nested record and enclosing
-constructor validation remains mandatory. Other target emitters report an
+order. Python, JavaScript, TypeScript, Java, Kotlin, Scala, Rust and the Groovy
+Java bridge currently pack and unpack them. JVM codecs use the resolver's
+packing tree and ordinary schema construction. Rust derives typed moves and
+recursive boxing from that same tree; adapter arguments and results reaching a
+nested layout pass the existing schema validator at the selected machine width.
+Conversion locals preserve native argument order independently of record order.
+Scalar, nested record and enclosing constructor validation remains mandatory.
+Other target emitters report an
 explicit unsupported-layout diagnostic; target-independent configuration
 correspondence does not establish target generation or native behavior.
 Indexed and existential constructor layouts remain unsupported.

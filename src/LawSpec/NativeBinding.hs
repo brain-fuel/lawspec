@@ -4,6 +4,7 @@ module LawSpec.NativeBinding
   ( NativeRef(..), ConstructorStyle(..), FieldBinding(..), ConstructorBinding(..)
   , TypeBinding(..), CodecBinding(..), GeneratorBinding(..), Bindings(..), emptyBindings
   , ResolvedBindings(..), ResolvedTypeBinding(..), ResolvedConstructorBinding(..)
+  , NativeLayout(..), nativeLayoutPaths, foldNativeLayoutM
   , ResolvedGeneratorBinding(..), resolveBindings, usesMachineRepresentation, reachableGeneratorTypes
   ) where
 
@@ -83,7 +84,33 @@ data ResolvedConstructorBinding = ResolvedConstructorBinding
   , resolvedNativeConstructor :: NativeRef, resolvedConstructorStyle :: ConstructorStyle
   , resolvedFields :: [(C.Binder, String)]
   , resolvedFieldPaths :: Maybe [[String]]
+  , resolvedFieldLayout :: Maybe [NativeLayout]
   } deriving (Eq, Show)
+-- | Checked packing structure. Leaves are in logical record order and refer
+-- to native arguments by index; every record retains its applied field type.
+-- Emitters choose target syntax, never independently resolve record layouts.
+data NativeLayout
+  = NativeLeaf C.Binder Int
+  | NativeRecord C.Binder C.DataConstructor [NativeLayout]
+  deriving (Eq, Show)
+
+-- | Runtime field offsets in native argument order, derived from the same tree
+-- used to pack values. No emitter reconstructs paths from field spellings.
+nativeLayoutPaths :: [NativeLayout] -> [[Int]]
+nativeLayoutPaths = map snd . sortOn fst . walk []
+  where
+    walk prefix nodes=concat [case node of
+      NativeLeaf _ argument->[(argument,prefix++[index])]
+      NativeRecord _ _ children->walk (prefix++[index]) children |
+        (index,node)<-zip [0..] nodes]
+
+foldNativeLayoutM :: Monad m => (Int -> m a)
+  -> (C.Binder -> C.DataConstructor -> [a] -> m a) -> [NativeLayout] -> m [a]
+foldNativeLayoutM leaf record=mapM go
+  where
+    go (NativeLeaf _ index)=leaf index
+    go (NativeRecord field constructor children)=mapM go children >>= record field constructor
+
 -- | As GeneratorBinding, with the number of type parameters the factory takes,
 -- one child generator each.
 data ResolvedGeneratorBinding = ResolvedGeneratorBinding
@@ -146,14 +173,14 @@ resolveBindings declarations Bindings{..} = do
         (Left "record representation requires exactly one constructor")
       unless (constructorStyle /= UnitConstructor || null fields)
         (Left "unit constructor cannot have fields")
-      (mapped,paths) <- if all flat boundFields then do
+      (mapped,paths,layout) <- if all flat boundFields then do
         unique "field mapping" (map boundField boundFields)
         exact "fields" (map C.binderName fields) (map boundField boundFields)
         mapped <- forM fields $ \field -> do
           name <- maybe (Left "missing field mapping") (Right . nativeField)
             (find ((== C.binderName field) . boundField) boundFields)
           pure (field,name)
-        pure (mapped,Nothing)
+        pure (mapped,Nothing,Nothing)
         else do
           unless (all (not . flat) boundFields)
             (Left "nested field layouts require an explicit path and argument for every native field")
@@ -164,41 +191,44 @@ resolveBindings declarations Bindings{..} = do
           unique "field path" paths
           unless (null (C.constructorExistentials constructor) && null (C.constructorEquations constructor))
             (Left "nested native layouts for indexed or existential constructors are unsupported")
-          leaves<-cover fields paths
-          mapped<-forM (zip ordered paths) $ \(item,path)->do
-            field<-maybe (Left "missing native field path") Right (lookup path leaves)
+          tree<-cover fields (zip [0..] paths)
+          let leaves=leafFields tree
+          mapped<-forM (zip [0..] ordered) $ \(index,item)->do
+            field<-maybe (Left "missing native field path") Right (lookup index leaves)
             pure (field,nativeField item)
-          pure (mapped,Just paths)
-      pure (ResolvedConstructorBinding constructor nativeConstructor constructorStyle mapped paths)
+          pure (mapped,Just paths,Just tree)
+      pure (ResolvedConstructorBinding constructor nativeConstructor constructorStyle mapped paths layout)
     flat FieldBinding{}=True
     flat NestedFieldBinding{}=False
     -- A layout must cover the entire product, with neither overlap nor width
     -- subtyping. Only anonymous records may be opened by a path.
+    leafFields=concatMap (\case NativeLeaf field index->[(index,field)];NativeRecord _ _ children->leafFields children)
     cover fields paths = do
-      exact "field paths" (map C.binderName fields) (map head paths)
-      fmap concat $ forM fields $ \field -> do
+      exact "field paths" (map C.binderName fields) [name | (_,name:_)<-paths]
+      forM fields $ \field -> do
         let label=C.binderName field
-            tails=[rest | (name:rest)<-paths,name==label]
-        if [] `elem` tails then do
-          unless (tails==[[]]) (Left "overlapping native field paths")
-          pure [([label],field)]
-        else do
-          (declaration,arguments)<-case C.binderType field of
-            C.Constructor name arguments -> do
-              declaration<-maybe (Left "native field path must enter an anonymous record") Right
-                (find ((==C.Id name) . C.dataId) declarations)
-              pure (declaration,arguments)
-            _->Left "native field path must enter an anonymous record"
-          unless (C.dataStructural declaration/=Nothing)
-            (Left "native field path cannot unwrap a nominal type")
-          constructor<-case C.dataConstructors declaration of
-            [value]->Right value
-            _->Left "native field path requires one record constructor"
-          let substitutions=M.fromList (zip (C.dataParameters declaration) [ty | C.TypeArgument ty<-arguments])
-              children=[child{C.binderType=substitute substitutions (C.binderType child)} |
-                child<-C.constructorFields constructor]
-          nested<-cover children tails
-          pure [(label:path,child) | (path,child)<-nested]
+            tails=[(index,rest) | (index,name:rest)<-paths,name==label]
+        case [index | (index,[])<-tails] of
+          index:_ -> do
+            unless (length tails==1) (Left "overlapping native field paths")
+            pure (NativeLeaf field index)
+          [] -> do
+            (declaration,arguments)<-case C.binderType field of
+              C.Constructor name arguments -> do
+                declaration<-maybe (Left "native field path must enter an anonymous record") Right
+                  (find ((==C.Id name) . C.dataId) declarations)
+                pure (declaration,arguments)
+              _->Left "native field path must enter an anonymous record"
+            unless (C.dataStructural declaration/=Nothing)
+              (Left "native field path cannot unwrap a nominal type")
+            constructor<-case C.dataConstructors declaration of
+              [value]->Right value
+              _->Left "native field path requires one record constructor"
+            let substitutions=M.fromList (zip (C.dataParameters declaration) [ty | C.TypeArgument ty<-arguments])
+                children=[child{C.binderType=substitute substitutions (C.binderType child)} |
+                  child<-C.constructorFields constructor]
+            nested<-cover children tails
+            pure (NativeRecord field constructor nested)
     resolveGenerator GeneratorBinding{..} = contextual (C.idText generatorType) $ do
       reference generatorFactory
       count <- case find ((== generatorType) . C.dataId) declarations of

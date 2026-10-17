@@ -8,7 +8,7 @@ import qualified LawSpec.HaskellData as Haskell
 import qualified LawSpec.Code.Doc as Doc
 import qualified LawSpec.Core as C
 import LawSpec.Common
-import LawSpec.Frontend (compileCore)
+import LawSpec.Frontend (compileCore,compileCoreCanonical)
 import LawSpec.NativeBinding
 
 source :: String
@@ -79,6 +79,29 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
         C.dataId (resolvedDeclaration mapped) `shouldBe` C.Id "domain::type::Money"
         map (C.binderName . fst) fields `shouldBe` ["amount","currency"]
         map snd fields `shouldBe` ["major","unit"]
+  it "shares instantiated packing and projection trees with every emitter" $ do
+    let source="unit domain\ntype Parcel (a :: Type) is one of Packed of type record{last :: a first :: record{count :: UInt8 flag :: Bool}} end type"
+        binding=TypeBinding (C.Id "domain::type::Parcel") (ref "Parcel")
+          [ConstructorBinding "Packed" (ref "Packed") VariantConstructor
+            [NestedFieldBinding "value" "quantity" ["first","count"] 2,
+             NestedFieldBinding "value" "tail" ["last"] 0,
+             NestedFieldBinding "value" "enabled" ["first","flag"] 1]] Nothing Nothing
+    case compileCoreCanonical 64 defaultGeneration [Source "native" source] of
+      Left diagnostics->expectationFailure (show diagnostics)
+      Right program->case resolveBindings (C.programDataDeclarations program) (Bindings [binding] []) of
+        Left message->expectationFailure message
+        Right resolved->do
+          let [mapped]=resolvedTypes resolved
+              [constructor]=resolvedConstructors mapped
+              Just tree=resolvedFieldLayout constructor
+              leaves=concatMap (\case NativeLeaf field index->[(index,C.binderType field)];NativeRecord _ _ children->leaves children)
+          nativeLayoutPaths tree `shouldBe` [[0,1],[0,0,1],[0,0,0]]
+          map (C.binderName . fst) (resolvedFields constructor) `shouldBe` ["last","flag","count"]
+          lookup 0 (leaves tree) `shouldBe` Just (C.TypeVariable (head (C.dataParameters (resolvedDeclaration mapped))))
+          lookup 1 (leaves tree) `shouldBe` Just (C.scalarType "Bool")
+          lookup 2 (leaves tree) `shouldBe` Just (C.scalarType "UInt8")
+          foldNativeLayoutM (Right . pure) (\_ _ children->Right (concat children)) tree
+            `shouldBe` (Right [[2,1,0]]::Either String [[Int]])
   it "resolves generic generator factories with argument arities" $
     case resolve (Bindings []
       [GeneratorBinding (C.Id "domain::type::Box") (ref "boxes") False,
