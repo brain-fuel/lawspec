@@ -635,6 +635,7 @@ library
       LawSpec.MigrationDomains
       LawSpec.MigrationElaboration
       LawSpec.MigrationFields
+      LawSpec.MigrationGeneration
       LawSpec.MigrationLawTransport
       LawSpec.MigrationPayloads
       LawSpec.MigrationScopes

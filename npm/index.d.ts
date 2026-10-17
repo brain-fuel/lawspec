@@ -546,6 +546,55 @@ export interface MigrationBindingRequest extends MigrationComparisonRequest {
   target?: Target;
 }
 
+export interface MigrationGenerationRequest extends MigrationBindingRequest {
+  target: Target;
+  sourceDir?: string;
+  testDir?: string;
+  minify?: boolean;
+  migrated: GenerationRequest &
+  {schemaVersion?: 5; languageProfile: '1.0-rc.1';};
+}
+
+export interface MigrationArtifact {
+  path: string;
+  ownership: 'user' | 'generated';
+  placement: 'source' | 'test';
+  contentDigest: string;
+  adapterReferenceDigest?: string;
+}
+
+export type MigrationGenerationSide =
+    {
+      status: 'accepted';
+      artifactDigest: string;
+      files: MigrationArtifact[];
+      diagnostics: Diagnostic[];
+    } |
+    {status: 'rejected'; diagnostics: Diagnostic[];} |
+    {status: 'not-established'; reason: string;};
+
+export type MigrationGenerationReceipt =
+    {
+      version: 1;
+      algorithm: 'sha256';
+      status: 'accepted' | 'not-established';
+      scope: string;
+      target: Target;
+      machineBits: 32 | 64;
+      sourceDir: string | null;
+      testDir: string | null;
+      minify: boolean;
+      generation: Generation;
+      planning: 'legacy-harnesses';
+      sourceInputs: {before: string; after: string};
+      bindingProposal: MigrationBindingProposal;
+      before: MigrationGenerationSide;
+      after: MigrationGenerationSide;
+      nativeConformance: 'not-established';
+      lawVerification: 'not-established-by-generation';
+    } |
+    {status: 'unavailable'; reason: string;};
+
 export interface MigrationPayloadField {
   label: string;
   fromIndex: number;
@@ -913,6 +962,7 @@ export interface Result {
   migrationSemantics?: MigrationSemanticSnapshot;
   migrationComparison?: MigrationPayloadComparison;
   migrationBindings?: MigrationBindingProposal;
+  migrationGeneration?: MigrationGenerationReceipt;
   migrationComparisonInput?: 'before' | 'migrated';
   proofTasks?: ProofTask[];
   evidence?: ObligationEvidence[];
@@ -978,6 +1028,7 @@ export interface Compiler {
   migrationBaseline(input: MigrationRequest): Promise<Result>;
   migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
   migrationBindings(input: MigrationBindingRequest): Promise<Result>;
+  migrationGeneration(input: MigrationGenerationRequest): Promise<Result>;
 }
 
 export function createCompiler(): Promise<Compiler>;

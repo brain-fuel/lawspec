@@ -87,6 +87,19 @@ validation while implementation correspondence remains unknown. Binding facts
 retain the existing runtime-enforcement and assumption classifications and do
 not establish native execution, target generation, or law truth.
 
+`generationPreview` separately invokes the compiler's
+[`migrationGeneration`](../reference/api.md#migration-target-generation) for
+each configured target whose binding proposal matches. It checks both the
+legacy and canonical emitter plans, including the original harnesses, output
+directories and requested layout. The JSON report retains each side's
+diagnostics and complete artifact digest manifest. `correspondence.targetGeneration`
+records this gate; zero configured targets report `not-requested`. The plain
+report also shows how many target configurations were accepted.
+
+Generation acceptance does not establish native implementation correspondence
+or execute laws. `correspondence.generatedBehavior` and project-wide writing
+remain unestablished until their remaining checks are satisfied.
+
 When the canonical preview compiles, `correspondence.payloads` compares its
 checked constructor shapes with the original compiler input, including unused
 generic declarations. It derives grouped record identities through ordinary

@@ -4,6 +4,7 @@
 import {planLegacySourceEdits} from './migration-laws.mjs';
 import {compareMigrationSnapshots} from './migration-correspondence.mjs';
 import {planNativeBindings} from './migration-bindings.mjs';
+import {planMigrationGeneration} from './migration-generation.mjs';
 
 export const legacyLawLayers = ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model'];
 export async function migrationReport(compiler, config, input) {
@@ -59,13 +60,18 @@ export async function migrationReport(compiler, config, input) {
       proposedTargets:config.targets,reason:'Native binding planning requires an admitted canonical source preview.'};
   correspondence.nativeBindings={status:bindingPreview.status,scope:bindingPreview.scope,
     configurationCount:bindingPreview.configurationCount};
+  const generationPreview=await planMigrationGeneration(compiler,config,{...input,generation:baseline.generation},
+    sourcePreview.sources.map(({path,content})=>({path,content})),syntax.migrationSemantics,
+    sourcePreview.canonicalCheck.coreSnapshot,bindingPreview);
+  correspondence.targetGeneration={status:generationPreview.status,scope:generationPreview.scope,
+    configurationCount:generationPreview.configurationCount};
   const pending=[
     ['program','Complete checked Core correspondence has not been established.'],
     ['definitionPlane','Checked definition and contract correspondence has not been established.'],
     ['lawBodies','Complete policy-erased Core correspondence has not been established.'],
     ['sourceTemplates','Complete checked source-template correspondence has not been established.'],
     ['nativeBindings','Native constructor, field and representation bindings require project-wide correspondence.'],
-    ['generatedBehavior','Generated plans and native behavior require target validation.'],
+    ['generatedBehavior','Native implementation behavior correspondence has not been established.'],
   ];
   const domainPending=correspondence.domainPolicies.status!=='matched'||
     correspondence.sourceTemplates.domainPolicies?.status==='not-established';
@@ -81,8 +87,10 @@ export async function migrationReport(compiler, config, input) {
     constructorChanges: payloads,
     nativeBindings: config.targets.map(target => ({ target: target.language, bindings: target.nativeBindings ?? null })),
     bindingPreview,
+    generationPreview,
     blockers: [...pending.filter(([name])=>correspondence[name].status!=='matched').map(([,reason])=>reason),
       ...bindingPreview.targets.filter(target=>target.status!=='matched').map(target=>'Native bindings for '+(target.target||'input')+': '+target.reason),
+      ...generationPreview.targets.filter(target=>target.status!=='accepted').map(target=>'Target generation for '+(target.target||'input')+': '+target.reason),
       ...(domainPending ? ['Legacy nonempty input-domain handling and canonical universal quantification require explicit correspondence checks; no empty-domain equivalence is assumed.'] : []),
       ...(sourcePreview.canonicalCheck.status==='rejected' ? ['The partial preview does not yet pass canonical compilation; inspect sourcePreview.canonicalCheck.diagnostics.'] : []),
       ...sourcePreview.diagnostics.map(diagnostic => 'Source preview unavailable: ' + diagnostic.message),

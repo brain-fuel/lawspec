@@ -24,7 +24,8 @@ import LawSpec.MigrationTemplateDomains (withTemplateInputDomains)
 import LawSpec.MigrationDomains (domainSnapshot,withTransportDomains)
 import LawSpec.MigrationPayloads (payloadCorrespondenceWithPlan)
 import LawSpec.MigrationUnitTransport (sourceTransport)
-import LawSpec.MigrationBindings (bindingProposal)
+import LawSpec.MigrationBindings (bindingProposalWithRequest)
+import LawSpec.MigrationGeneration (generationReceipt)
 import qualified LawSpec.MigrationFields as MigrationFields
 import LawSpec.Core.PayloadTransport (transportComparisonWithProgram)
 import LawSpec.Core.Evidence (Obligation(..), Status(..))
@@ -51,8 +52,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
   Left err -> failure [Diagnostic "request" err Nothing]
   Right (_, _, Left err, _) -> failure [Diagnostic "attestation" err Nothing]
   Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native,verification),(project,packages),Right attestation,migrated) ->
-   if method == "migrationComparison" then comparison False migrated
-   else if method == "migrationBindings" then comparison True migrated
+   if method == "migrationComparison" then comparison False False migrated
+   else if method == "migrationBindings" then comparison True False migrated
+   else if method == "migrationGeneration" then comparison True True migrated
    else if method == "migrationBaseline" then
     case memoized syntaxStagesTable (sharedRequest bytes)
       (stagesWithInput False True project packages sources bits settings native verification) of
@@ -116,18 +118,21 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     snapshotRequested = case decode bytes of
       Just (Object o) -> KM.lookup "migrationSnapshot" o==Just (Bool True)
       _ -> False
-    comparison bindingOnly Nothing = failure [Diagnostic "request" ((if bindingOnly then "migrationBindings" else "migrationComparison") ++ " requires migrated") Nothing]
-    comparison bindingOnly (Just made) = case parseEither request made of
+    comparison bindingOnly generationCheck Nothing = failure [Diagnostic "request" ((if generationCheck then "migrationGeneration" else if bindingOnly then "migrationBindings" else "migrationComparison") ++ " requires migrated") Nothing]
+    comparison bindingOnly generationCheck (Just made) = case parseEither request made of
       Left reason -> failure [Diagnostic "request" ("migrated: " ++ reason) Nothing]
       Right (_,_,Left reason,_) -> failure [Diagnostic "attestation" ("migrated: " ++ reason) Nothing]
-      Right ((_,afterSources,_,_,_,afterBits,afterSettings,_,afterNative,afterVerification),
+      Right ((_,afterSources,afterTarget,afterSourceDir,afterTestDir,afterBits,afterSettings,afterMinify,afterNative,afterVerification),
           (afterProject,afterPackages),Right _,_) ->
         if maybe False (not . null . V.verificationLayers) afterVerification then
           failure [Diagnostic "request" "migrationComparison requires verification.layers [] on both inputs" Nothing]
         else case eitherDecode bytes >>= parseEither request of
-          Right ((_,beforeSources,_,_,_,beforeBits,beforeSettings,_,beforeNative,beforeVerification),
+          Right ((_,beforeSources,beforeTarget,beforeSourceDir,beforeTestDir,beforeBits,beforeSettings,beforeMinify,beforeNative,beforeVerification),
               (beforeProject,beforePackages),Right _,_) ->
             if beforeBits/=afterBits then failure [Diagnostic "request" "migrationComparison requires matching machine widths" Nothing]
+            else if generationCheck && (null beforeTarget || beforeTarget/=afterTarget ||
+                beforeSourceDir/=afterSourceDir || beforeTestDir/=afterTestDir || beforeMinify/=afterMinify || beforeSettings/=afterSettings)
+              then failure [Diagnostic "request" "migrationGeneration requires matching nonempty targets, output directories, layouts and generation limits" Nothing]
             else case memoized syntaxStagesTable ("comparison-before:" ++ sharedRequest bytes)
                 (stagesWithInput False True beforeProject beforePackages beforeSources beforeBits beforeSettings beforeNative beforeVerification) of
               Left response -> comparisonFailure "before" response
@@ -150,7 +155,13 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                                   targetName=case decode bytes of
                                     Just (Object input) | Just (String target)<-KM.lookup "target" input->T.unpack target
                                     _->""
-                              in either unavailable id (bindingProposal targetName requested plan previous next beforeCore afterCore beforeNative explicit)
+                              in case bindingProposalWithRequest targetName requested plan previous next beforeCore afterCore beforeNative explicit of
+                                Left reason -> unavailable reason
+                                Right (proposal,selected) -> if generationCheck then
+                                  generationReceipt beforeTarget beforeSourceDir beforeTestDir beforeMinify beforeSettings
+                                    proposal (sourceInputs (maybe Null id (decode bytes))) (sourceInputs made)
+                                    beforeCore afterCore beforeNative selected
+                                  else proposal
                             Right (Object fields,Just plan) ->
                               let names units=[(sourcePropertyId (unitName unit) (lawName law),lawName law) | unit<-units,law<-laws unit]
                                   transported=either (\reason -> object ["status" .= ("not-established"::String),"reason" .= reason]) id
@@ -166,8 +177,11 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                             Right (view,_) -> view
                           _ -> unavailable "checked source templates were not captured for both inputs"
                     in withVerification (Just V.noVerification) (object ["diagnostics" .= ([]::[Diagnostic]),
-                      "machineBits" .= beforeBits,(if bindingOnly then "migrationBindings" else "migrationComparison") .= result])
+                      "machineBits" .= beforeBits,(if generationCheck then "migrationGeneration" else if bindingOnly then "migrationBindings" else "migrationComparison") .= result])
           _ -> failure [Diagnostic "request" "invalid migrationComparison input" Nothing]
+    sourceInputs (Object fields)=Object (KM.filterWithKey (\key _ -> key `elem`
+      ["sources","packages","package","dependencies"]) fields)
+    sourceInputs _=Null
     comparisonFailure side (Object fields) = Object (KM.insert "migrationComparisonInput" (String side) fields)
     comparisonFailure _ value = value
     unavailable reason = object ["status" .= ("unavailable"::String),"reason" .= (reason::String)]
@@ -199,7 +213,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       snapshot <- o .:? "migrationSnapshot" .!= False
       unless (not snapshot || version==5) (fail "migrationSnapshot requires API schemaVersion 5 and languageProfile 1.0-rc.1")
       method <- o .:? "method" .!= "check"
-      if method `elem` (["migrationBaseline","migrationComparison","migrationBindings"] :: [String]) then do
+      if method `elem` (["migrationBaseline","migrationComparison","migrationBindings","migrationGeneration"] :: [String]) then do
         unless (version == 5) (fail (method ++ " requires API schemaVersion 5"))
         from <- o .: "from"
         unless (from == ("0.24" :: String)) (fail (method ++ " requires from 0.24"))
@@ -224,7 +238,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       -- evidence and never changes what is compiled or how a law is
       -- discharged. ref:DEC-environment-attestation
       attestation <- traverse parseAttestation <$> o .:? "attestation"
-      migrated <- if method `elem` (["migrationComparison","migrationBindings"]::[String]) then do
+      migrated <- if method `elem` (["migrationComparison","migrationBindings","migrationGeneration"]::[String]) then do
         unless (maybe True (null . V.verificationLayers) verification)
           (fail (method ++ " requires verification.layers [] on both inputs"))
         raw <- o .: "migrated"

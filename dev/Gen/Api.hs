@@ -7,7 +7,7 @@ import LawSpec.Scalar
 import qualified LawSpec.Targets as Targets
 
 methods :: [(String, String)]
-methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("proofTasks", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest"), ("migrationComparison", "MigrationComparisonRequest"), ("migrationBindings", "MigrationBindingRequest")]
+methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("proofTasks", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest"), ("migrationComparison", "MigrationComparisonRequest"), ("migrationBindings", "MigrationBindingRequest"), ("migrationGeneration", "MigrationGenerationRequest")]
 
 apiSources :: Layout -> [(FilePath, String)]
 apiSources layout = [("api.mjs", output api), ("index.d.ts", output declarations)]
@@ -239,6 +239,23 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "MigrationComparisonRequest extends MigrationRequest"
       [("migrated",text "CheckRequest & {schemaVersion?: 5; languageProfile: '1.0-rc.1'}")]
   , interface "MigrationBindingRequest extends MigrationComparisonRequest" [("target?",text "Target")]
+  , interface "MigrationGenerationRequest extends MigrationBindingRequest"
+      [("target",text "Target"),("sourceDir?",text "string"),("testDir?",text "string"),("minify?",text "boolean"),
+       ("migrated",group (text "GenerationRequest &" <> softline <>
+         record [("schemaVersion?",text "5"),("languageProfile",quoted "1.0-rc.1")]))]
+  , interface "MigrationArtifact" (fields [("path","string"),("ownership","'user' | 'generated'"),
+      ("placement","'source' | 'test'"),("contentDigest","string"),("adapterReferenceDigest?","string")])
+  , alias "MigrationGenerationSide"
+      [record (fields [("status","'accepted'"),("artifactDigest","string"),("files","MigrationArtifact[]"),("diagnostics","Diagnostic[]")]),
+       record (fields [("status","'rejected'"),("diagnostics","Diagnostic[]")]),
+       record (fields [("status","'not-established'"),("reason","string")])]
+  , alias "MigrationGenerationReceipt"
+      [record (fields [("version","1"),("algorithm","'sha256'"),("status","'accepted' | 'not-established'"),
+        ("scope","string"),("target","Target"),("machineBits","32 | 64"),("sourceDir","string | null"),
+        ("testDir","string | null"),("minify","boolean"),("generation","Generation"),("planning","'legacy-harnesses'"),
+        ("sourceInputs","{before: string; after: string}"),("bindingProposal","MigrationBindingProposal"),("before","MigrationGenerationSide"),("after","MigrationGenerationSide"),
+        ("nativeConformance","'not-established'"),("lawVerification","'not-established-by-generation'")]),
+       record (fields [("status","'unavailable'"),("reason","string")])]
   , interface "MigrationPayloadField" (fields [("label","string"),("fromIndex","number"),("toIndex","number"),
       ("fromBinder","string"),("toBinder","string")])
   , alias "MigrationPayloadConstructor"
@@ -355,7 +372,7 @@ declarations = joinWith (softbreak <> softbreak)
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
        [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("sourceFields?",text "MigrationSourceFields"),("migrationSemantics?",text "MigrationSemanticSnapshot"),
-        ("migrationComparison?",text "MigrationPayloadComparison"),("migrationBindings?",text "MigrationBindingProposal"),("migrationComparisonInput?",union (map quoted ["before","migrated"]))] ++
+        ("migrationComparison?",text "MigrationPayloadComparison"),("migrationBindings?",text "MigrationBindingProposal"),("migrationGeneration?",text "MigrationGenerationReceipt"),("migrationComparisonInput?",union (map quoted ["before","migrated"]))] ++
        [("proofTasks?",text "ProofTask[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])

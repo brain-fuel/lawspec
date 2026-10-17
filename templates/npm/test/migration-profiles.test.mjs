@@ -21,7 +21,7 @@ test('migration keeps versioned dependency templates while comparing monomorphic
     assert.equal(report.correspondence.nativeBindings.status,'matched');
     assert.equal(report.correspondence.nativeBindings.configurationCount,0);
     assert.equal(report.correspondence.generatedBehavior.status,'not-established');
-    assert.ok(report.blockers.some(reason=>reason.includes('native behavior')));
+    assert.ok(report.blockers.some(reason=>/native.*behavior/i.test(reason)));
     assert.ok(report.blockers.some(reason=>reason.includes('writing has not been implemented')));
     const before=report.baseline.coreSnapshot,after=report.sourcePreview.canonicalCheck.coreSnapshot;
     const dependency=row=>row.comparisonId.startsWith('prelude::law::');

@@ -1,7 +1,7 @@
 -- | Binding proposals are obtained from admitted source payload plans and the
 -- existing native resolver. Matching this configuration does not verify any
 -- external implementation, codec, generator, handler or target executable.
-module LawSpec.MigrationBindings (bindingProposal,nativeRequestView) where
+module LawSpec.MigrationBindings (bindingProposal,bindingProposalWithRequest,nativeRequestView) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value(..),object,(.=),encode,toJSON)
@@ -26,7 +26,14 @@ import LawSpec.NativeRequest
 -- prepared for another target configuration without reimplementing resolution.
 bindingProposal :: String -> Value -> PayloadPlan -> SourceTemplates -> SourceTemplates
   -> C.Program -> C.Program -> NativeRequest -> Maybe NativeRequest -> Either String Value
-bindingProposal target requested plan previous next before after original override = do
+bindingProposal target requested plan previous next before after original override =
+  fst <$> bindingProposalWithRequest target requested plan previous next before after original override
+
+-- Return the same admitted destination as typed data to compiler consumers.
+-- They must not reconstruct a native request from a documentary JSON receipt.
+bindingProposalWithRequest :: String -> Value -> PayloadPlan -> SourceTemplates -> SourceTemplates
+  -> C.Program -> C.Program -> NativeRequest -> Maybe NativeRequest -> Either String (Value,Maybe NativeRequest)
+bindingProposalWithRequest target requested plan previous next before after original override = do
   unless (null target || target `elem` Targets.targets) (Left ("unknown binding migration target: "++target))
   unless (C.programMachineBits before==C.programMachineBits after)
     (Left "native binding migration requires matching machine widths")
@@ -65,7 +72,8 @@ bindingProposal target requested plan previous next before after original overri
       "before" .= map (obligationView []) oldObligations,"after" .= either (const Null) (toJSON . map (obligationView [])) newObligations],
     "proposedNativeBindings" .= candidate,"changes" .= changes,"requirements" .= reasons,
     "proposalComplete" .= null limits,"nativeConformance" .= ("not-established"::String),
-    "targetGeneration" .= ("not-established"::String),"lawVerification" .= ("not-established-by-binding-correspondence"::String)])
+    "targetGeneration" .= ("not-established"::String),"lawVerification" .= ("not-established-by-binding-correspondence"::String)],
+    case selectedPlan of Right checked | status=="matched" -> Just (normalizedRequest selected checked); _ -> Nothing)
   where
     orderedEvidence=sortOn (\item -> (obligationUnit item,obligationDeclaration item,obligationStage item)) . bindingEvidence
     fingerprint=digestHex . digest . BL.toStrict . encode
@@ -136,7 +144,10 @@ typeNames (C.Constructor name arguments)=C.Id name:concat [typeNames ty | C.Type
 -- Normalize only orders already made irrelevant by the existing resolver.
 -- In particular native constructor arguments follow declaration order.
 normalized :: NativeRequest -> BindingPlan -> Value
-normalized request resolved=nativeRequestView request{requestBindings=Bindings types generators,
+normalized request resolved=nativeRequestView (normalizedRequest request resolved)
+
+normalizedRequest :: NativeRequest -> BindingPlan -> NativeRequest
+normalizedRequest request resolved=request{requestBindings=Bindings types generators,
   requestFunctions=sortOn functionDeclaration (requestFunctions request),requestNames=sortOn nameDeclaration (requestNames request),
   requestHandlers=sortOn boundAbility (requestHandlers request),requestFailures=sortOn (referenceParts . mappedNative) (requestFailures request),
   requestGoImports=sortOn goImportAlias (requestGoImports request)}

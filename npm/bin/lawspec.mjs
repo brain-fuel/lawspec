@@ -147,7 +147,7 @@ async function migrateCommand() {
   const compiler = await createCompiler();
   const report = await migrationReport(compiler, config, {
     sources: await sources(config), ...(await packageInput(config, configRoot)),
-    generation: config.generation, machineBits: config.machineBits ?? 64,
+    generation: config.generation, machineBits: config.machineBits ?? 64, minify: options.minify === true,
   });
   diagnostics(report);
   if (options.write && !report.validated) throw Object.assign(new Error(
@@ -157,7 +157,9 @@ async function migrateCommand() {
   const bindingChecked=report.bindingPreview.targets.filter(target=>target.evidence?.beforeValidated===true).length;
   const bindingMatched=report.bindingPreview.targets.filter(target=>target.status==='matched').length;
   const bindingSummary=`Native binding preview: ${bindingChecked} of ${report.bindingPreview.configurationCount} original configurations checked; ${bindingMatched} proposals match; ${bindingChanges} field changes.\n`;
-  output(options.json ? report : `Read-only migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` + bindingSummary +
+  const generationAccepted=report.generationPreview.targets.filter(target=>target.status==='accepted').length;
+  const generationSummary=`Target generation preview: ${generationAccepted} of ${report.generationPreview.configurationCount} configurations accepted. Native implementation conformance remains unestablished.\n`;
+  output(options.json ? report : `Read-only migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` + bindingSummary + generationSummary +
     report.blockers.join("\n") + "\nNo files were written. Use --json to review the typed baseline, source-edit preview and proposed configuration. The source preview is not a validated project migration.");
 }
 

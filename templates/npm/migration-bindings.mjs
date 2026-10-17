@@ -7,7 +7,7 @@ const fingerprints=['programDigest','definitionPlaneDigest','lawBodiesDigest'];
 const templates=['declarationsDigest','definitionTemplatesDigest','lawTemplatesDigest','lawBodiesDigest'];
 const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'
   ?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
-const bindingDigest=value=>createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+export const bindingDigest=value=>createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 const digest=value=>typeof value==='string'&&/^[0-9a-f]{64}$/.test(value);
 const equal=(a,b)=>{
   if(a===b)return true;

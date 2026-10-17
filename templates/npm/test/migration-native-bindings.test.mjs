@@ -61,7 +61,7 @@ test('project reports check each actual target and expose explicit proposed bind
   assert.deepEqual(report.filesWritten,[]);
   assert.equal(report.validated,false);
   assert.equal(report.correspondence.generatedBehavior.status,'not-established');
-  assert.ok(report.blockers.some(reason=>reason.includes('Generated plans')));
+  assert.ok(report.blockers.some(reason=>reason.includes('Native implementation behavior')));
 });
 
 test('API-supplied legacy native bindings no longer enter the binding-blind schema-3 request',async()=>{

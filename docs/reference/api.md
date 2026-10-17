@@ -37,6 +37,7 @@ interface Compiler {
   migrationBaseline(input: MigrationRequest): Promise<Result>;
   migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
   migrationBindings(input: MigrationBindingRequest): Promise<Result>;
+  migrationGeneration(input: MigrationGenerationRequest): Promise<Result>;
 }
 function createCompiler(): Promise<Compiler>;
 ```
@@ -297,6 +298,36 @@ The shared compiler resolver remains the authority. This follows the explicit
 external-contract boundary described by [SPARK's imported-subprogram
 contracts](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html#writing-contracts-on-imported-subprograms):
 checking callers or interfaces does not verify an imported implementation.
+
+### Migration target generation
+
+`migrationGeneration` takes a `MigrationGenerationRequest`: a binding-migration
+source pair with the same concrete target, width, output directories, layout
+and generation limits on both sides. Both inputs use schema 5 and
+`verification.layers: []`; the original source explicitly selects `from: '0.24'`.
+Canonical source and intrinsic definition validation remain mandatory.
+
+The compiler retains the admitted destination binding request as typed data,
+then runs the existing harness planner and target emitter on both programs.
+`planning: 'legacy-harnesses'` means it generates the old project's full harness
+plans; it does not execute optional law checks. An incomplete binding proposal
+prevents destination emission from being accepted.
+
+`Result.migrationGeneration` contains a version-1 `MigrationGenerationReceipt`,
+or an unavailable result with a reason. Each side independently reports
+`accepted`, `rejected` with diagnostics, or `not-established`. Accepted sides
+include a complete artifact manifest with paths, ownership, placement,
+SHA-256 content digests, optional adapter-reference digests and an aggregate
+manifest digest. The receipt also carries the checked binding proposal and
+digests of the exact source/dependency inputs, including source paths and text.
+The coordinator checks those inputs, target options and complete manifests.
+
+Acceptance establishes emitter generation only. The receipt keeps
+`nativeConformance: 'not-established'` and
+`lawVerification: 'not-established-by-generation'`. No target compiler, native
+implementation or generated law harness has run. This distinction follows
+[SPARK's proof and test boundary](https://docs.adacore.com/live/wave/spark2014/html/spark2014_ug/en/usage_scenarios.html#between-proof-and-unit-testing)
+and [Lean's separation of checking and compilation](https://lean-lang.org/doc/reference/latest/Elaboration-and-Compilation/).
 
 ### Packages
 

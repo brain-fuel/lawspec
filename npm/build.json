@@ -386,6 +386,7 @@
     "src/LawSpec/MigrationDomains.hs",
     "src/LawSpec/MigrationElaboration.hs",
     "src/LawSpec/MigrationFields.hs",
+    "src/LawSpec/MigrationGeneration.hs",
     "src/LawSpec/MigrationLawTransport.hs",
     "src/LawSpec/MigrationPayloads.hs",
     "src/LawSpec/MigrationScopes.hs",
@@ -501,7 +502,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "32b40834ed6f58d5290af56b62037426cb5868b4d4fa2ee6de0aa541a494199f",
-    "lawspec.cabal": "e597b70f7fa92107489e03e6f90845f9bbb0c5728de62b6d9c446b7b71bca197",
+    "lawspec.cabal": "20cc443510fc27a6952cb4c480674c5ecb945294ddd1f885127f912e554b6a2f",
     "package.yaml": "8f340b6e338af7793afb1f13c4feab28eeddc4c3b2754bff181f9460406962f9",
     "runtime/LawSpecCodecs.hs": "4109ac35634ab4c226b5464e824b03b90014a6b44426b5c33e34c6608d0bea70",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
@@ -728,7 +729,7 @@
     "src/LawSpec/Actors/Scala.hs": "6a034fb96983fd11b8714d5c6b8c09b5cb24ceb06977b52010c2424a51b60f38",
     "src/LawSpec/Actors/Types.hs": "09f764a8da926f00817a0de0f17a03d48194c819a3c64aca78c96b19d38ac823",
     "src/LawSpec/Actors/Web.hs": "b8a63be30754569d7b150d454e656b4089a63e2f913bb2276ba722e2529e185d",
-    "src/LawSpec/Api.hs": "bc00a866e2edde14d194c9274dcb016db6c1f5bdcfa5e23dd5c7f3f302653d4b",
+    "src/LawSpec/Api.hs": "41ea7568928152be46a1895b47cb81f3688064dd6b3f58d095c2e81d743cb694",
     "src/LawSpec/Attestation.hs": "55ac5bca528ef22cd29762cf2b3c226c2b4e18a50a667aac6d74a36be78bd62c",
     "src/LawSpec/Backend.hs": "2b707ebc5a9ad32e7783caa7041ebfdd4fe22bd73cbff136dc5344cff33d59d5",
     "src/LawSpec/BeamAbilities.hs": "958d34b7a8808dbe4f5fad6a5b6b922651ac1659f2dc6bcf7189732dc4e2d823",
@@ -880,11 +881,12 @@
     "src/LawSpec/Mailboxes.hs": "b0e9152adf484d4c1810586e3a6137d1b8091ea182804502ab49a655d3913786",
     "src/LawSpec/Matchers.hs": "f67dfc877e4e02329e283984724cbc567dec803dc8bdfce110ff56d3d04e484e",
     "src/LawSpec/Memo.hs": "82b1ef6e0472f5df641f9860abc6d8eb1e3834b4c5a54a6f2ec8abfda43d4a15",
-    "src/LawSpec/MigrationBindings.hs": "c73906b6558e6a2ad999310b4b539f3085a616df13280abd6082feb6b5b117b9",
+    "src/LawSpec/MigrationBindings.hs": "a2bec9dfb41255d5ae3ec9e892e612192ecc616d8dc70ac4bc35f0c371d34a9f",
     "src/LawSpec/MigrationDefinitionTransport.hs": "b2dcf6828de28e0011cfab6952d7ba5f1a110c35f6717c5e667c1e706eaf6c96",
     "src/LawSpec/MigrationDomains.hs": "f6b45b2b7060ae3ac8863e942b261933833dd6edf11dc5d942ac5de2943f4741",
     "src/LawSpec/MigrationElaboration.hs": "425f4ebb9140fd51b4eb8489d3a0422159c3a463223c9619155fd212a6e3390b",
     "src/LawSpec/MigrationFields.hs": "7cae44d056de0d9b216091f2b7ec3e6a29d01ae0251da7652677cc4453e49562",
+    "src/LawSpec/MigrationGeneration.hs": "0c265dea24adc23dfeaea988c15395b164190fc49a663376f33798857369550d",
     "src/LawSpec/MigrationLawTransport.hs": "7908bfed3cf352deafebfbe18d9d2bb6180a2921b59545c9b14f4f88f208bc1a",
     "src/LawSpec/MigrationPayloads.hs": "cca61101e49a2ed5627cc39499cde1ce41c3cd445bcf94aba4f7f7ba52fb09b2",
     "src/LawSpec/MigrationScopes.hs": "d3217dcf6c1e00ba34fc3726a1282581374f53ce927de17253e32069ccd25c58",
@@ -997,9 +999,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "2d526d210932cfe353c2629c305c4eed7fc06657e7a74c8dbc9dd611d9b28345",
+    "npm/core.wasm": "9a2f062f7be46c8cf1ba6ad987634e7cf56c9793f0238e718d0a06fb0e996621",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
-    "npm/api.mjs": "e34b814a3929b9f357365d93bf337989768e5914124e1c4adf7045996bfd4bc0",
-    "npm/index.d.ts": "b5aa33c2ca2adbdacf4744cf8c4495310918421432a791eebc4e4e2cd53d1720"
+    "npm/api.mjs": "2e56d49a5c8e5acafec9139f5445413732404cdc3cff4753cb27e31f8ac5aa4e",
+    "npm/index.d.ts": "ada2def4d528ed68cf576939f4e8495e7cb388d7bb836de31356e10a04b77e59"
   }
 }
