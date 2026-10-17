@@ -10,7 +10,7 @@ import Data.List (isPrefixOf, nub, sortOn, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Common
-import LawSpec.Core (Id(..), BinaryOp(..), LogicalOp(..))
+import LawSpec.Core (Id(..), Type(..), BinaryOp(..), LogicalOp(..))
 import LawSpec.Scalar (Scalar(..), exactValue, integerBounds, isInteger)
 import qualified LawSpec.Core.RefinementProof as R
 import Data.Ratio (denominator)
@@ -642,7 +642,7 @@ resultCases signatures contracts scope facts expression = case expression of
   Logical op left right -> concat
     [ (s,assume (op /= And) value known,Literal (SBool (op /= And))) :
         recur s (assume (op == And) value known) right
-    | (s,known,value) <- recur scope facts left]
+    | (s,known,value) <- recur scope (projectionPayloadFacts facts left) left]
   Conditional condition yes no -> concat
     [ recur s (assume True value known) yes ++ recur s (assume False value known) no
     | (s,known,value) <- recur scope facts condition]
@@ -657,7 +657,7 @@ conditionBranches signatures contracts scope facts truth condition
   | Just value <- literalTruth condition, value /= truth = []
   -- Keep ordinary predicates symbolic. Only evaluated call binders add
   -- contracts that must follow the selected short-circuit path.
-  | not (hasCallBindings condition) = [(scope,assume truth condition facts)]
+  | not (hasCallBindings condition) = [(scope,assume truth condition (projectionPayloadFacts facts condition))]
   | otherwise = case condition of
       LetCall result callee arguments body ->
         recur (M.delete result scope) (callResultFacts signatures contracts facts result callee arguments) truth body
@@ -699,7 +699,7 @@ provesResult :: M.Map Id [Id] -> M.Map Id ProofContract -> Provenance -> Facts -
 provesResult signatures contracts scope facts expression =
   all prove (resultCases signatures contracts scope facts expression)
   where
-    prove (local,known,value) = case value of
+    prove (local,before,value) = let known = projectionPayloadFacts before value in case value of
       AllPayloads schema name source predicates ->
         provePayload (\facts body -> provesResult signatures contracts local facts body)
           (M.keys local) known schema name source predicates
@@ -918,6 +918,10 @@ predicate expression = case expression of
   Match _ [([],body)] -> predicate body
   Literal (SBool value) -> Just (R.Truth value)
   Variable name -> Just (R.Atom name)
+  Field tag index _ value
+    | Construct actual fields <- knownResult value,actual==tag,index>=0,
+      selected:_ <- drop index fields -> predicate (knownResult selected)
+    | faithful value -> Just (R.Atom (projectionAtom (unwrapped value) tag index))
   ExactComparison op a b -> do
     relation <- lookup op [(Equal,R.EqualTo),(NotEqual,R.NotEqualTo),(Less,R.LessThan),
       (LessEqual,R.AtMost),(Greater,R.GreaterThan),(GreaterEqual,R.AtLeast)]
@@ -944,7 +948,7 @@ variableIdentity _ = Nothing
 
 
 entails :: Facts -> Proof -> Bool
-entails facts expression
+entails initial expression
   | faithful expression && expression `S.member` truthSet facts = True
   | otherwise = case expression of
     AllPayloads schema name value predicates ->
@@ -964,6 +968,8 @@ entails facts expression
     _ -> case predicate expression of
       Just condition -> R.prove 10000 (constraints (foldl (flip (assumeOnce True)) facts (derivedFacts facts expression))) condition == R.Proven
       Nothing -> False
+
+  where facts = projectionPayloadFacts initial expression
 
 -- | Facts that hold of the terms an expression mentions, whatever it asserts:
 -- a call satisfies its definition's postconditions (checked definitions are
@@ -1206,7 +1212,7 @@ allVariables term = case term of
 
 -- | A universal fact says nothing about an arbitrary outer value, nor that the
 -- list is inhabited. Instantiate it only while proving a property of a fresh,
--- hypothetical member of that exact list variable.
+-- hypothetical member of that same stored list.
 freshElement :: [Id] -> Facts -> Proof -> Id -> Proof -> (Id,Proof)
 freshElement scope facts value binder body =
   let used = S.unions [usedVariables facts,S.fromList (scope ++ allVariables value ++ allVariables body)]
@@ -1218,7 +1224,7 @@ elementFacts :: Facts -> Proof -> Id -> Facts
 elementFacts facts value member = foldl (flip (assume True)) facts
   [substituteProof (M.singleton binder (Variable member)) body
     | (source,binder,body) <- universal facts,
-      Just identity <- [variableIdentity value], variableIdentity source == Just identity]
+      samePayloadSource (knownResult (expandKnown facts value)) (knownResult (expandKnown facts source))]
 
 -- | Only remember Boolean expressions whose proof view preserves their identity.
 -- Sequence/Match and IEEE division are deliberately excluded: the proof
@@ -1272,7 +1278,7 @@ consFacts facts value headName tailName = foldl (flip (assume True))
   (elementFacts facts value headName)
   [AllElements (Variable tailName) binder body
     | (source,binder,body) <- universal facts,
-      Just identity <- [variableIdentity value], variableIdentity source == Just identity]
+      samePayloadSource (knownResult (expandKnown facts value)) (knownResult (expandKnown facts source))]
 
 
 -- | Calls are evaluated before the enclosing strict operation. Branch-local and
@@ -1342,8 +1348,8 @@ normalizeCalls scope expression = evalState (go expression pure)
         continuation (Conditional condition' yes' no')
       TypedDomain domains body -> do
         domains' <- mapM (\value -> go value pure) domains
-        body' <- go body pure
-        continuation (TypedDomain domains' body')
+        body' <- go body continuation
+        pure (TypedDomain domains' body')
       RecordType tag value -> go value (continuation . RecordType tag)
       Sequence terms -> values terms (continuation . Sequence)
       ListCons first rest -> pair ListCons first rest continuation
@@ -1559,7 +1565,10 @@ payloadMemberFacts facts schema name value index member = foldl (flip (assume Tr
 payloadConditions :: P.Schema -> String -> Id -> [Proof] -> [(Id,Proof)]
   -> Either String [Proof]
 payloadConditions schema name tag values predicates = do
-  plans <- P.fields schema name tag (map P.Parameter [0 .. length predicates - 1])
+  let expected = case P.recordTag schema (Constructor name []) of
+        Just generic | Records.projects (P.recordInstances schema) generic tag -> generic
+        _ -> tag
+  plans <- P.fields schema name expected (map P.Parameter [0 .. length predicates - 1])
   unless (length plans == length values) (Left "payload constructor field arity mismatch")
   pure (zipWith (\plan value -> payloadPredicate schema plan predicates value) plans values)
 
@@ -1568,9 +1577,38 @@ payloadConstructorFacts facts value tag values = foldl (flip (assume True)) fact
   (concat [either (const []) id (payloadConditions schema name tag values predicates)
     | (schema,name,source,predicates) <- payloads facts, samePayloadSource value source])
 
+-- Eliminate an already assumed payload predicate through a checked product
+-- projection. The shared recipe chooses the parameter positions; full record
+-- instantiation must agree before a generic recipe can read a concrete tag.
+-- This does not borrow constructor contracts or assert that a domain is
+-- inhabited. Visit inner fields first so nested projections retain their facts.
+projectionPayloadFacts :: Facts -> Proof -> Facts
+projectionPayloadFacts initial expression
+  | null (payloads initial) = initial
+  | otherwise = foldl project initial (reverse (fields expression))
+  where
+    fields term = [term | Field _ _ _ _ <- [term]] ++ case term of
+      -- Derive branch/member facts only after their binders are fresh and
+      -- their own premises are in scope, never while visiting an outer goal.
+      AllElements value _ _ -> fields value
+      AllPayloads _ _ value _ -> fields value
+      DataMatch value _ -> fields value
+      ListMatch value nil _ _ _ -> fields value ++ fields nil
+      Match value branches -> fields value ++ concat [fields body | ([],body)<-branches]
+      LetCall _ _ arguments _ -> concatMap fields arguments
+      _ -> concatMap fields (children term)
+    project known field@(Field actual index _ value) = foldl (flip (assume True)) known
+      [payloadPredicate schema plan predicates field
+        | (schema,name,source,predicates) <- payloads known, samePayloadSource value source,
+          Just expected <- [P.recordTag schema (Constructor name [])],
+          Records.projects (P.recordInstances schema) expected actual,
+          Right plans <- [P.fields schema name expected (map P.Parameter [0 .. length predicates - 1])],
+          index >= 0, plan <- take 1 (drop index plans)]
+    project known _ = known
+
 provePayload :: (Facts -> Proof -> Bool) -> [Id] -> Facts -> P.Schema -> String
   -> Proof -> [(Id,Proof)] -> Bool
-provePayload prove scope facts schema name value predicates =
+provePayload prove scope facts schema name original predicates =
   case P.arity schema name of
     Right count | count == length predicates -> case known of
       Just (tag,values) -> either (const False) (all (prove facts))
@@ -1583,6 +1621,7 @@ provePayload prove scope facts schema name value predicates =
           in prove (payloadMemberFacts facts schema name value index fresh) renamed) positions
     _ -> False
   where
+    value = knownResult (expandKnown facts original)
     known = case value of
       Construct tag values -> Just (tag,values)
       _ -> variableIdentity value >>= (`M.lookup` constructorValues facts)

@@ -92,6 +92,28 @@ test_recordIdentitiesPreserveSemantics = describe "closed structural record iden
         tag declaration=constructorId (head (dataConstructors declaration))
     registry<-either fail pure (makeRegistry [generic,restricted])
     Instances.projects (Instances.fromRegistry registry) (tag generic) (tag restricted) `shouldBe` False
+  it "normalizes nested product instances without weakening restrictions or nominal identities" $ do
+    let a=Id "a"
+        make parameters fields=fst (either error id (makeRecordDeclaration parameters fields origin))
+        nested declaration arguments=Constructor (idText (dataId declaration)) (map TypeArgument arguments)
+        inner=make [a] [field "value" (TypeVariable a)]
+        outer=make [a] [field "child" (nested inner [TypeVariable a]),field "other" (TypeVariable a)]
+        concrete=fst (either error id (instantiateRecordDeclaration inner [scalarType "Int8"] origin))
+        actual=record [field "child" (nested concrete []),field "other" (scalarType "Int8")]
+        booleans=fst (either error id (instantiateRecordDeclaration inner [boolean] origin))
+        mixed=record [field "child" (nested booleans []),field "other" (scalarType "Int8")]
+        selected=Binder (Id "field::value") "value" (scalarType "Int8")
+        zero=Expr (scalarType "Int8") (Constant (SInteger "Int8" 0)) origin
+        restricted=record [RecordField selected [comparison Greater (local selected) zero]]
+        stronger=record [field "child" (nested restricted []),field "other" (scalarType "Int8")]
+        nominal=DataDeclaration (Id "NominalInner") "NominalInner" []
+          [DataConstructor (Id "NominalInner::Make") "Make" [selected] [] origin [] []] origin Nothing
+        opaque=record [field "child" (nested nominal []),field "other" (scalarType "Int8")]
+        tag declaration=constructorId (head (dataConstructors declaration))
+    registry<-either fail pure (makeRegistry [inner,outer,concrete,actual,booleans,mixed,restricted,stronger,nominal,opaque])
+    let links=Instances.fromRegistry registry
+    Instances.projects links (tag outer) (tag actual) `shouldBe` True
+    forM_ [mixed,stronger,opaque] $ \invalid -> Instances.projects links (tag outer) (tag invalid) `shouldBe` False
   it "reads family indices through nested structural records and retains sibling guards" $ do
     let chainType = Constructor "PathChain" []
         chainTag tag = Id ("PathChain::" ++ tag)

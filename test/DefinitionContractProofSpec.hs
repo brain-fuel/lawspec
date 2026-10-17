@@ -665,6 +665,10 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
           [T.ExactComparison Equal (T.Variable x) (n actual)]
     T.audit [definition 2] `shouldBe` Right ()
     T.audit [definition 3] `shouldSatisfy` isLeft
+    let wrapped actual=(definition actual){T.proofBody=T.Division False Quotient (n 1)
+          (T.ExactArithmetic Subtract (T.TypedDomain [T.ExactComparison GreaterEqual (T.Variable x) (n 0)] selected) (T.Variable x))}
+    T.audit [wrapped 2] `shouldBe` Right ()
+    T.audit [wrapped 3] `shouldSatisfy` isLeft
   it "does not capture outer facts when introducing a hypothetical List member" $ do
     let xs = Id "xs"
         x = Id "x"

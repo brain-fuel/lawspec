@@ -27,6 +27,11 @@ Validated project migration writes and the first canonical Chapter 6 pass shippe
 
 The human readability exercise remains user-deferred. Completing all named endings belongs to the immediately following minor. The larger demonstration portfolio, advanced verification and external Linguist acceptance remain pre-final-1.0 requirements. None of these statuses authorizes an RC designation or a tag.
 
+The dated implementation receipts below preserve historical statuses. The
+latest verified increment is **Refinement payloads through product storage**;
+it supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
+acceptance items in this checklist remain authoritative.
+
 ### Indexed payload migration increment — 17 October 2026
 
 Grouped natural-index payloads now have a checked field-to-record-path correspondence. It preserves the full index path, the final index selector, constructor equations and definedness guards. The candidate product's shared-index equalities must follow from the original constructor guards; field types, refinements and the complete structural descriptor are independently rebuilt from the original checked source. Equality-class normalization retains every required index read. Changed equations, missing equalities, exchanged selectors and stronger product restrictions remain unestablished.
@@ -242,13 +247,103 @@ receipts are retained under `.artifacts/minor-public-interface-cutover/`.
 All 80 complete indexed native/WASM responses agree, including 68 generation
 requests across all 17 targets, both machine widths and both output layouts.
 The ten negative checks retain mandatory-admission failures, including the
-known positive-refinement regression. The broad SDK and archived export runs
-are in progress at this point. Native execution across all 17 targets is not
+known positive-refinement regression. The broad SDK run passes 458 tests with zero failures and two environment
+skips; the Rust and Haskell native-layout checks then pass explicitly without
+skips, covering all 460 SDK tests. The typed-failure parity rerun adds 106
+complete matching responses on these same compiler artifacts, bringing this
+checkpoint to 186 audited response pairs. The archived export run is still
+in progress. Native execution across all 17 targets is not
 claimed for this increment. Automatic exception-to-record mapping, symbolic
 `attempt` migration correspondence, the remaining documentation fragments,
 Chapter 6's second authoring pass and the full minor acceptance checklist remain
 open. Readability is user-deferred, all-named endings belong to the following
 minor, and this remains version 0.24.0 without an RC designation or tag.
+
+### Refinement payloads through product storage — 17 October 2026
+
+The preceding checkpoint's positive-element regression is repaired in the
+isolated refinement increment. Indexed concatenation, a stored positive head,
+and recursive conversion to a list now pass ordinary mandatory admission.
+The proof view eliminates an already assumed payload predicate through the
+existing shared parameter recipe, including nested record and list fields.
+The recipe retains which type parameter owns each payload; a positive first
+parameter does not strengthen a second parameter with the same erased scalar
+type, a fixed field or an unrelated argument. List facts concern hypothetical
+members of the same stored list and do not assert that an empty list is
+inhabited.
+
+Checked product-instance comparison now follows nested structural type
+instantiation before rebuilding and comparing the complete descriptor. It
+uses the existing rigid actual-type matcher, substitution and record builder.
+Only structural products can be opened; nominal identities stay opaque,
+repeated parameters retain one substitution, and actual variables remain
+rigid. Nested constraints remain in the descriptor. If a changed nested field
+type would require normalizing a stored predicate expression, this comparison
+still reports no link rather than removing that predicate. Completing those
+cases remains an explicit limit.
+
+Single-result normalization keeps a product conversion's consumer inside its
+typed domain and fresh constructor scope. Pure Boolean projections use the
+same stored-field identity as numeric projections; known constructed fields
+reduce to their checked contents. Short-circuit proof paths retain their
+applicable payload facts. Hypothetical member and branch bodies are visited
+only after their binders are fresh and their premises are in scope. Strict
+argument, unused-field, definedness, recursion and deferred-postcondition
+checks remain separate and mandatory.
+
+The precedent remains typed projection and constructor elimination in
+[Why3](https://why3.org/doc/syntaxref.html#type-declarations) and
+[Lean](https://lean-lang.org/doc/reference/latest/The-Type-System/Inductive-Types/).
+This extends compiler-trusted type instantiation and obligation translation;
+it introduces no new solver, Why3 backend, Z3 binding or independently checked
+proof certificate. Optional law verification remains a separate selection.
+
+Focused verification passes 50 canonical predicate-fact examples and 37
+record-identity examples, including Boolean, bounded positive, nested and list
+refinements, unrelated arguments, parameter positions, nominal boundaries,
+stronger nested restrictions, zero divisors, bad recursion, capture and IEEE
+behavior. The independent concatenation oracle covers all 49 pairs of vectors
+of length at most two over two element values, at both machine widths, for
+both ordinary and positive elements.
+
+The new SDK regression has passed through the native compiler API: 49 ground
+outcome obligations are completely evaluated at each width, a changed
+expectation is refuted, and checked definitions generate across all 17 targets,
+both widths and both layouts. Actual JavaScript execution passes all 49 ground
+checks, fails the changed expectation and passes after restoration. These
+ground checks do not establish a universal law over arbitrary vectors.
+The full compiler run passes **2,159 tests with zero failures**. The broad SDK
+run passes 462 tests with zero failures and two environment skips; both Rust
+and Haskell native-layout checks then pass explicitly without skips. A new
+wrapper-proof regression was added afterward and passes independently,
+covering all 465 SDK tests overall rather than claiming one uninterrupted
+465-test run. The rebuilt-WASM refinement suite also passes all four tests.
+All 127 generated outputs, 233 module boundaries, six editor tests,
+119 documentation pages with 114 compiled snippets, version and artifact
+integrity checks pass. Chapter 6 retains its recorded digest.
+
+All 272 complete parity responses agree between native and WASM compilation,
+including 68 new generation requests across all 17 targets, widths and layouts.
+Of the 186 preceding responses, 184 are identical; the two former `Nat`
+admission errors now accept. Another 22 paired responses audit proof selection
+and boundary counterexamples. Every saved parity payload hash is checked.
+A complete 65-source JavaScript catalog comparison retains all 232 emitted
+files and all other response fields. Only the evidence for the law asserting
+`UnitQuantity`'s 1–1,000 bounds strengthens from planned tests to a static proof.
+That proof follows the admitted wrapper constraints. Tightening either law
+bound or weakening the constructor's lower bound does not acquire a proof;
+explicit valid boundary values refute the corresponding ground obligations.
+Selecting no law layers reports not verified. Selecting examples alone reports
+planned execution, not completed verification. The model proof does not
+establish native implementation conformance. Actual execution of the new
+concatenation example is established in JavaScript; all-target generation is
+not an all-target native execution claim.
+
+Evidence is retained under `.artifacts/refined-products/`. The preceding
+archived-export run is still in progress against its frozen `9b76bd54`
+snapshot. The minor acceptance checklist and remaining migration, automatic
+exception mapping, documentation and Chapter 6 authoring work stay open;
+no RC designation, completion or tag is implied.
 
 ## Latest approved milestone direction — 15 October 2026
 
