@@ -1,0 +1,107 @@
+unit example.payments
+
+-- Executable acceptance model for canonical native domain bindings.
+-- Applications may call Money "Price", amount "major", and currency "unit";
+-- those representation choices must not alter these laws.
+type Currency is one of
+  | USD
+  | EUR
+  | GBP
+end type
+
+type Money is a record{
+  amount of type Decimal
+  currency of type Currency
+}
+end type
+
+type Payment is one of
+  | Paid of type Money
+  | Declined of type Text
+end type
+
+addFee of type Money -> Money
+roundTrip of type Payment -> Payment
+archive of type List (Maybe Payment) -> List (Maybe Payment)
+
+function feeModel (money of type Money) -> Money is
+  first matching case of money:
+    when Money record{amount = amount, currency = currency} then
+      Money record{amount = amount + 0.2, currency = currency}
+  end case
+end function
+
+law "|fees preserve currency and exact decimal value| is
+  definition:
+    for all (money of type Money) =>
+      addFee money must be feeModel money
+    end
+  end
+
+  example "|decimal tenths|:
+    money = Money record{amount = 0.1, currency = USD}
+    expect addFee money = Money record{amount = 0.3, currency = USD}
+  end
+
+  example "|small amount is not rounded away|:
+    money = Money record{
+      amount = 0.000000000000000000000000000001, currency = EUR
+    }
+    expect addFee money = Money record{
+      amount = 0.200000000000000000000000000001, currency = EUR
+    }
+  end
+
+  example "|beyond binary floating precision|:
+    money = Money record{amount = 9007199254740993.1, currency = GBP}
+    expect addFee money = Money record{
+      amount = 9007199254740993.3, currency = GBP
+    }
+  end
+end
+
+law "|payment variants and payloads survive native conversion| is
+  definition:
+    for all (payment of type Payment) =>
+      roundTrip payment must be payment
+    end
+  end
+
+  example "|successful payment|:
+    payment = Paid (Money record{amount = 12.34, currency = EUR})
+    expect roundTrip payment = Paid (Money record{
+      amount = 12.34, currency = EUR
+    })
+  end
+
+  example "|declined payment|:
+    payment = Declined "card declined"
+    expect roundTrip payment = Declined "card declined"
+  end
+end
+
+law "|archives preserve order duplicates and absence| is
+  definition:
+    for all (payments of type List (Maybe Payment)) =>
+      archive payments must be payments
+    end
+  end
+
+  example "|empty archive|:
+    payments = []
+    expect archive payments = []
+  end
+
+  example "|missing is different from a declined payment|:
+    payments = [
+    Nothing, Just (Declined ""),
+    Just (Paid (Money record{amount = 0.1, currency = USD})),
+    Just (Paid (Money record{amount = 0.1, currency = USD}))
+    ]
+    expect archive payments = [
+    Nothing, Just (Declined ""),
+    Just (Paid (Money record{amount = 0.1, currency = USD})),
+    Just (Paid (Money record{amount = 0.1, currency = USD}))
+    ]
+  end
+end

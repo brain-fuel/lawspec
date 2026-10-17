@@ -245,8 +245,12 @@ them.
   the `--exclude-tag` ones. Each may be repeated or list several: `--tag a,b`.
 - `--report junit=<path>`: write one JUnit XML report for every target's run,
   each suite identified by its target language and project root. Runners without a JUnit report of their
-  own (Go, Rust, Haskell, Erlang, Elixir and Gleam) contribute their tests,
+  own (JavaScript, TypeScript, Go, Rust, Haskell, Erlang, Elixir and Gleam) contribute their tests,
   passed or failed. BEAM reports retain native failure details and durations.
+  JavaScript and TypeScript use [Node's structured reporter API](https://nodejs.org/api/test.html#custom-reporters)
+  to preserve exact phrase names, including quotes and literal XML entities.
+  Skipped tests do not count as passes. Missing, stale or incomplete structured
+  reports do not establish that the selected laws ran.
 - `--coverage`: measure code coverage with each target's tool, into
   `.lawspec/coverage/<target>/<project-hash>`: coverage.py (Python), c8 (JavaScript and
   TypeScript), `go test -cover`, JaCoCo (Java, through Maven), Kover (Kotlin, if

@@ -22,11 +22,15 @@ test('native payment exports cover all targets and preserve application and gene
     for(const project of projects) {
       assert.ok(project.files.every(file=>file.ownership==='user'));
       const config=JSON.parse(await readFile(path.join(project.directory,'lawspec.json'),'utf8'));
+      assert.equal(config.version,2);
+      assert.equal(config.languageProfile,'1.0-rc.1');
+      assert.deepEqual(config.verification.layers,['proof','exhaustive','property','examples','runtime','model']);
       assert.equal(config.machineBits,32);
       assert.equal(config.targets[0].language,project.target);
       assert.ok(config.targets[0].nativeBindings.generators.length);
       await exec(process.execPath,[cli,'check'],{cwd:project.directory});
-      const result=await compiler.planGeneration({target:project.target,machineBits:32,
+      const result=await compiler.planGeneration({schemaVersion:5,languageProfile:config.languageProfile,
+        verification:config.verification,target:project.target,machineBits:32,
         sources:[{path:'laws/payments.lawspec',content:await readFile(path.join(project.directory,'laws/payments.lawspec'),'utf8')}],
         nativeBindings:config.targets[0].nativeBindings});
       assert.deepEqual(result.diagnostics,[]);

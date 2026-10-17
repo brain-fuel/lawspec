@@ -118,6 +118,7 @@ stagedCopies :: IO ()
 stagedCopies = do
   specs <- filter (".lawspec" `isSuffixOf`) . sort <$> listDirectory "examples/specs"
   payments <- walkAll "examples/native-payments"
+  canonical <- walkAll "examples/rc1"
   packages <- walkAll "examples/packages"
   -- The license is staged; README.md and CHANGELOG.md are copied afresh by
   -- npm's prepack on every pack, so a copy left from an earlier pack is not
@@ -126,7 +127,8 @@ stagedCopies = do
   let pairs = ("examples/specs/atoi_codec.lawspec", "npm/starter.lawspec") :
         [(d, "npm/" ++ d) | d <- documents] ++
         [("examples/specs/" ++ f, "npm/examples/specs/" ++ f) | f <- specs] ++
-        [(f, "npm/" ++ f) | f <- payments ++ packages]
+        [("examples/rc1-authoring.lawspec", "npm/examples/rc1-authoring.lawspec")] ++
+        [(f, "npm/" ++ f) | f <- payments ++ canonical ++ packages]
   forM_ pairs $ \(source, copy) -> do
     exists <- doesFileExist copy
     same <- if exists then (==) <$> B.readFile source <*> B.readFile copy else pure False

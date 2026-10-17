@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "sources": [
     "laws"
   ],
@@ -97,7 +97,7 @@
                 "style": "variant",
                 "fields": [
                   {
-                    "field": "reason",
+                    "field": "value",
                     "native": "explanation"
                   }
                 ]
@@ -144,5 +144,16 @@
         ]
       }
     }
-  ]
+  ],
+  "languageProfile": "1.0-rc.1",
+  "verification": {
+    "layers": [
+      "proof",
+      "exhaustive",
+      "property",
+      "examples",
+      "runtime",
+      "model"
+    ]
+  }
 }

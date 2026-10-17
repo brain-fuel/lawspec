@@ -260,16 +260,19 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
     const pattern = (e) => `^${regex(e.label)}( example: .*| property| known failing| skipped| replay| search)?$`;
     const files = [...new Set(entries.map((e) => language === "typescript"
       ? `dist/${without(e.file, ".ts")}.js` : e.file))];
-    const report = path.join(scratch, "node.xml");
+    const file = path.join(scratch, "node-events.jsonl");
+    const runId=randomUUID();
     // parallel: test files run at the same time too.
     const node = ["--test", ...(entries.some((e) => e.parallel) ? ["--test-concurrency=" + Math.max(2, (globalThis.navigator?.hardwareConcurrency ?? 2))] : []),
       `--test-name-pattern=(${entries.map(pattern).join("|")})`,
       "--test-reporter=spec", "--test-reporter-destination=stdout",
-      "--test-reporter=junit", `--test-reporter-destination=${report}`, ...files];
+      `--test-reporter=${new URL('./node-events-reporter.mjs',import.meta.url).href}`,
+      `--test-reporter-destination=${file}`, ...files];
     const run = { laws: entries, command: coverage ? "npx" : process.execPath,
       args: coverage ? ["--no-install", "c8", "--reporter=text", `--reports-dir=${coverage}`, process.execPath, ...node] : node,
-      report: { kind: "junit", files: [report] },
-      ran: (test) => entries.filter((e) => new RegExp(pattern(e)).test(test.name)) };
+      // A CLI launched from node:test must start an independent native run.
+      env:{LAWSPEC_NODE_RUN:runId,NODE_TEST_CONTEXT:undefined},report: { kind: "node-events", file, run:runId },
+      ran: (test) => test.status==='passed'?entries.filter((e) => new RegExp(pattern(e)).test(test.name)):[] };
     return language === "typescript"
       ? [{ laws: [], command: "npm", args: ["exec", "--", "tsc", "-p", "tsconfig.json"] }, run]
       : [run];
@@ -317,7 +320,7 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
       const measured = coverage ? ["-O", `-coverage-out:${path.resolve(coverage, "data")}`,
         "-O", `-coverage-exclude-files:.*/${testRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/.*`] : [];
       return { laws, command: target.scala || "scala",
-        args: ["test", ".", ...(offline ? ["--offline"] : []), ...measured, "--test-only", name, "--",
+        args: ["test", ".", ...(offline ? ["--power","--offline"] : []), ...measured, "--test-only", name, "--",
           ...laws.flatMap((e) => ["-z", `${e.name}_`]), "-u", directory],
         report: { kind: "junit", directory: path.relative(root, directory) || "." },
         ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
@@ -502,6 +505,20 @@ export async function harnessStatistics(directory) {
 // The tests a run executed, as {name, classname}, from the runner's report or
 // output. Skipped tests are not counted.
 export async function executedTests(report, output, root, since) {
+  if(report?.kind==='node-events') {
+    const raw=await readFile(path.resolve(root,report.file),'utf8').catch(()=>'');
+    let rows;
+    try {rows=raw.trim().split('\n').map(line=>JSON.parse(line));}catch{return [];}
+    if(rows.length<2||rows[0]?.event!=='start'||rows.at(-1)?.event!=='end'||
+      rows.some(row=>row?.version!==1||row?.run!==report.run)||
+      rows.at(-1).count!==rows.length-2) return [];
+    const tests=rows.slice(1,-1);
+    if(tests.some(row=>row?.event!=='test'||typeof row.name!=='string'||typeof row.classname!=='string'||
+      !['passed','failed','skipped'].includes(row.status)||
+      (row.time!==undefined&&(!Number.isFinite(row.time)||row.time<0))||
+      (row.failure!==undefined&&typeof row.failure!=='string')))return [];
+    return tests;
+  }
   if (report?.kind === "beam-events") {
     // A native listener seals the invocation after its final event. Missing,
     // stale, malformed or interrupted reports are not execution evidence.

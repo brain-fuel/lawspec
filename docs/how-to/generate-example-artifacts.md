@@ -45,17 +45,23 @@ npx lawspec generate
 cargo test
 ```
 
-Omit `--target` to export all eleven targets. The default output directory is
+Omit `--target` to export all 17 targets. The default output directory is
 `native_payments`.
 
 Each project contains:
 
-- the shared [payment specification](../../examples/specs/payments.lawspec);
+- the canonical [payment specification](../../examples/rc1/native-payments.lawspec);
 - application-owned domain types and functions, with different names from the
   specification (`Price` for `Money`, `major` for `amount`);
 - a native price generator;
 - `lawspec.json` with the [native bindings](bind-native-types.md) that connect them;
 - build files and a README with the target's commands.
+
+Exported projects use configuration version 2, the explicit `1.0-rc.1` language
+profile and explicit verification layers preserving the example's previous
+checks. This profile identifier does not designate a release candidate. C# and
+Clojure use generated model data with application-owned functions and
+generators; the other targets bind application-owned domain types.
 
 The price generator deliberately produces only EUR amounts between 1.00 and
 2.00. The explicit USD, GBP and exact-decimal examples still run, which shows

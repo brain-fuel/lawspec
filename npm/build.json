@@ -505,7 +505,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "32b40834ed6f58d5290af56b62037426cb5868b4d4fa2ee6de0aa541a494199f",
-    "lawspec.cabal": "b0fbd3f0b275ee09f81e5eaf45453f7bdc8c4a755bb995ac2201a4503370eeed",
+    "lawspec.cabal": "fd382fadc44896d40e5f05a4099f58ab8d1b90005149d203ad96273fb9a70cbb",
     "package.yaml": "8f340b6e338af7793afb1f13c4feab28eeddc4c3b2754bff181f9460406962f9",
     "runtime/LawSpecCodecs.hs": "4109ac35634ab4c226b5464e824b03b90014a6b44426b5c33e34c6608d0bea70",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",

@@ -138,7 +138,7 @@ const commands = {
   gleam: ['gleam', ['test']],
   fsharp: ['dotnet', ['test']],
   csharp: ['dotnet', ['test']],
-  scala: [config.targets[0].scala || 'scala', ['test', '.', ...(offline ? ['--offline'] : [])]],
+  scala: [config.targets[0].scala || 'scala', ['test', '.', ...(offline ? ['--power','--offline'] : [])]],
   swift: ['swift', ['test']],
 };
 const [command, args] = commands[target];
@@ -172,7 +172,7 @@ try {
 // law that calls no adapter does not depend on the adapter's code.
 const specification = path.join(directory, 'laws/payments.lawspec');
 await writeFile(specification, (await readFile(specification, 'utf8')) +
-  '\nlaw `integers equal themselves` is definition is `for all` (x :: Int8) . x = x end end\n');
+  '\nlaw "|integers equal themselves| is definition: for all (x of type Int8) => x must be x end end end\n');
 await run(process.execPath, [cli, 'generate', ...(minify ? ['--minify'] : [])], directory);
 const lawspecTest = async (flags = [], pass = true) => {
   const printed = await run(process.execPath, [cli, 'test', '--json', ...(minify ? ['--minify'] : []), ...flags], directory, pass);
@@ -180,11 +180,16 @@ const lawspecTest = async (flags = [], pass = true) => {
 };
 const first = await lawspecTest();
 assert.ok(first.ok && first.ran.length > 0 && first.unchanged === 0, JSON.stringify(first));
+const independentLaws=first.ran.filter(law=>law.includes('integers equal themselves'));
+const feeLaws=first.ran.filter(law=>law.includes('fees preserve currency and exact decimal value'));
+assert.equal(independentLaws.length,1,'Identify the added independent law from its returned identity');
+assert.equal(feeLaws.length,1,'Identify the fee law from its returned identity');
+const [independentLaw]=independentLaws,[feeLaw]=feeLaws;
 assert.deepEqual((await lawspecTest()).ran, [], 'An unchanged project runs no tests');
 const comment = {python: '#', haskell: '--', erlang: '%', elixir: '#', clojure: ';;'}[target] ?? '//';
 await editDomain(original + `\n${comment} edited\n`);
 const edited = await lawspecTest();
-assert.deepEqual(edited.ran, first.ran.filter((law) => !law.endsWith('::integers equal themselves')),
+assert.deepEqual(edited.ran, first.ran.filter((law) => law!==independentLaw),
   `An adapter edit reruns the laws that call adapters, and only those: ${JSON.stringify(edited)}`);
 await editDomain(original);
 await lawspecTest();
@@ -202,7 +207,7 @@ try {
 // Even when reverting restores an older passing key, a recent failure must be
 // replayed. Only a newly completed pass can clear that failure.
 const repaired = await lawspecTest();
-assert.ok(repaired.ok && repaired.ran.some(law => law.endsWith('::fees preserve currency and exact decimal value')),
+assert.ok(repaired.ok && repaired.ran.includes(feeLaw),
   `A repaired adapter replays the failed fee law: ${JSON.stringify(repaired)}`);
 assert.deepEqual((await lawspecTest()).ran, [], 'A successful replay can be cached');
 const manifest = await readFile(path.join(directory, '.lawspec/generated.json'), 'utf8');

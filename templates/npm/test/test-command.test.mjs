@@ -239,9 +239,47 @@ test("counts only the tests a runner reports as run", async () => {
   const java = [law(2, "src/test/java/example/UnitLawSpecTest.java", undefined, "java")];
   assert.deepEqual(await ranLaws({ language: "java" }, java,
     '<testsuite><testcase name="lawLaw2_example0()" classname="example.UnitLawSpecTest"/></testsuite>'), [2]);
-  const js = [law(0, "test/u.lawspec.test.mjs", "example.unit::a & b")];
-  assert.deepEqual(await ranLaws({ language: "javascript" }, js,
-    '<testsuites><testcase name="example.unit::a &amp; b property" classname="test"/></testsuites>'), [0]);
+});
+
+test('Node structured reports preserve phrase names and literal XML entities without confusing identities',async()=>{
+  const {spawnSync}=await import('node:child_process');
+  const {readFile}=await import('node:fs/promises');
+  const scratch=await mkdtemp(path.join(os.tmpdir(),'lawspec-node-events-'));
+  try {
+    const labels=['example.unit::"|a " & 雪|','example.unit::"|a &quot; & 雪|',
+      'example.unit::"|skipped|','example.unit::"|todo|','example.unit::"|failed|'];
+    const file=path.join(scratch,'native.test.mjs');
+    await writeFile(file,"import {test} from 'node:test';\n"+
+      `test(${JSON.stringify(labels[0])},()=>{});\n`+
+      `test(${JSON.stringify(labels[1])},()=>{});\n`+
+      `test.skip(${JSON.stringify(labels[2])},()=>{});\n`+
+      `test.todo(${JSON.stringify(labels[3])});\n`+
+      `test(${JSON.stringify(labels[4])},()=>{throw new Error('native <failure>')});\n`);
+    const entries=labels.map((label,index)=>law(index,file,label));
+    const [run]=invocations({language:'javascript'},entries,{scratch});
+    assert.equal(run.report.kind,'node-events');
+    const child=spawnSync(run.command,run.args,{env:{...process.env,...run.env},encoding:'utf8'});
+    assert.equal(child.status,1,'The deliberately failing native test must fail\n'+child.stdout+child.stderr);
+    const tests=await executedTests(run.report,child.stdout+child.stderr,scratch,0);
+    assert.deepEqual(tests.map(test=>test.name),labels);
+    assert.deepEqual(tests.map(test=>test.status),['passed','passed','skipped','skipped','failed']);
+    assert.deepEqual(tests.flatMap(run.ran).map(entry=>entry.index),[0,1]);
+    const xmlFile=path.join(scratch,'projected.xml');
+    await writeFile(xmlFile,junitFromTests(tests));
+    const xml=await executedTests({kind:'junit',files:[xmlFile]},'',scratch,0);
+    assert.deepEqual(xml.map(test=>test.name),[labels[0],labels[1],labels[4]]);
+    const rows=(await readFile(run.report.file,'utf8')).trim().split('\n').map(line=>JSON.parse(line));
+    for(const invalid of [rows.slice(0,-1),rows.slice(1),rows.map(row=>({...row,run:'old'})),
+      rows.map(row=>({...row,version:2})),[rows[0],{...rows[1],time:-1},rows.at(-1)],
+      [...rows.slice(0,-1),{...rows.at(-1),count:0}]]) {
+      await writeFile(run.report.file,invalid.map(row=>JSON.stringify(row)).join('\n'));
+      assert.deepEqual(await executedTests(run.report,'',scratch,0),[]);
+    }
+    await writeFile(run.report.file,rows.map(row=>JSON.stringify(row)).join('\n'));
+    const [next]=invocations({language:'javascript'},entries,{scratch});
+    assert.notEqual(next.report.run,run.report.run);
+    assert.deepEqual(await executedTests(next.report,'',scratch,0),[],'A previous report is not fresh execution evidence');
+  } finally {await rm(scratch,{recursive:true,force:true});}
 });
 
 test("reads Go events, Rust results and hspec examples", async () => {

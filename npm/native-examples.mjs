@@ -19,7 +19,7 @@ async function projectFiles(directory, prefix = '') {
 export async function exportNativePayments(options, selected) {
   const root = await safePath(process.cwd(), options.output || 'native_payments');
   await mkdir(root, {recursive: true});
-  const law = await readFile(new URL('./examples/specs/payments.lawspec', import.meta.url), 'utf8');
+  const law = await readFile(new URL('./examples/rc1/native-payments.lawspec', import.meta.url), 'utf8');
   const plans = [];
   const results = [];
   for (const target of selected) {
@@ -31,6 +31,8 @@ export async function exportNativePayments(options, selected) {
       'laws/payments.lawspec': law,
     };
     const config = JSON.parse(files['lawspec.json']);
+    if(config.version!==2||config.languageProfile!=='1.0-rc.1')
+      throw new Error(`Bundled native payments configuration for ${target} must use version 2 and languageProfile 1.0-rc.1`);
     config.machineBits = options.machineBits ?? 64;
     files['lawspec.json'] = JSON.stringify(config, null, options.minify ? undefined : 2) + '\n';
     const instructions = target === 'gleam' ? setup[target].replace(
@@ -41,6 +43,11 @@ export async function exportNativePayments(options, selected) {
 This project checks application-owned payment types against the shared LawSpec
 model. Money maps to Price, currency variants have application names, and the
 archive preserves distinct present and absent payments.
+
+The specification uses the canonical language profile. The version 2 project
+configuration selects its verification layers explicitly. Most targets bind
+application-owned domain types; C# and Clojure use the generated model data
+and bind the application's functions and generators.
 
 ## Run
 

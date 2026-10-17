@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "sources": [
     "laws"
   ],
@@ -47,5 +47,16 @@
         ]
       }
     }
-  ]
+  ],
+  "languageProfile": "1.0-rc.1",
+  "verification": {
+    "layers": [
+      "proof",
+      "exhaustive",
+      "property",
+      "examples",
+      "runtime",
+      "model"
+    ]
+  }
 }

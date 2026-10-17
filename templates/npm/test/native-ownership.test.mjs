@@ -121,11 +121,15 @@ for (const [target, sourceRoot, generator] of [
 ]) {
   test(`${target}: adopting and removing native bindings preserves application files`, async () => {
     const example = new URL(`../examples/native-payments/${target}/`, import.meta.url);
-    const nativeBindings = JSON.parse(await readFile(new URL('lawspec.json', example), 'utf8')).targets[0].nativeBindings;
+    const configuration = JSON.parse(await readFile(new URL('lawspec.json', example), 'utf8'));
+    const nativeBindings = configuration.targets[0].nativeBindings;
+    const sources = [{path:'payments.lawspec',content:await readFile(
+      new URL('../examples/rc1/native-payments.lawspec',import.meta.url),'utf8')}];
     const directory = await mkdtemp(path.join(os.tmpdir(), `lawspec-${target}-ownership-`));
     const sourceDir = target === 'gleam' ? 'src' : 'library/native';
     const testDir = target === 'gleam' ? 'test' : 'checks/native';
-    const base = {sources, target, sourceDir, testDir, machineBits: 32, minify: false};
+    const base = {schemaVersion:5,languageProfile:configuration.languageProfile,
+      verification:configuration.verification,sources, target, sourceDir, testDir, machineBits: 32, minify: false};
     const get = relative => readFile(path.join(directory, relative), 'utf8');
     async function put(relative, content) {
       const file = path.join(directory, relative);
