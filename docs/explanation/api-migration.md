@@ -59,8 +59,10 @@ planner indexes all supplied source declarations before applying uses, so
 source-file order does not decide which record a constructor denotes. Nominal
 record fields retain their existing identities. Grouped alternative fields
 receive checked native field paths and original argument positions; generation
-support for those layouts remains target-specific. Indexed/GADT payload conversions,
-dependency-package migration and validated project writing remain unfinished.
+support for those layouts remains target-specific. Indexed/GADT payload conversions
+and dependency-package migration retain their explicit limits. The writer changes
+owned project sources and configuration; dependency packages retain their checked
+versioned source and must remain unchanged while writing.
 
 Each configured target now has a separate `bindingPreview` entry. The source
 baseline is compiled independently of target bindings; the compiler then checks
@@ -78,8 +80,8 @@ configuration and files stay unchanged. No explicit bindings means there is no
 binding configuration to adapt, rather than evidence that generated application
 interfaces have been verified. The report records the configuration count.
 
-Grouped native payloads still require a checked layout preserving every native
-field and positional constructor argument; their pending proposal records both
+Grouped native payloads require a checked layout preserving every native
+field and positional constructor argument; their admitted proposal records both
 the original argument positions and destination record paths. Opaque codecs
 receiving changed logical data and factories over changed generated types need
 independent correspondence checks. Their destination configuration may pass
@@ -106,9 +108,18 @@ The plain report shows how many boundary comparisons match. Existing explicit
 native argument positions survive payload grouping, and native exception
 mappings retain their original first-match order.
 
-Generation acceptance does not establish native implementation correspondence
-or execute laws. `correspondence.generatedBehavior` and project-wide writing
-remain unestablished until their remaining checks are satisfied.
+Generation acceptance alone does not validate a migration. The report combines
+complete Core and source-template correspondence, domain evidence, binding
+proposals, generation receipts and resolved native interfaces. Only when all
+required components match does it report `validated: true` with
+`validation.status: 'validated-under-existing-assumptions'`.
+`correspondence.generatedBehavior` then reports
+`matched-under-existing-assumptions` for configured targets. It assumes the
+existing compiler passes/emitters and unchanged native implementations under
+their original binding assumptions. Native implementation conformance remains
+`not-established`; no native execution or law verification is implied. With no
+configured targets, generation, native boundaries and generated behavior stay
+`not-requested`; source-only migration validation does not claim those checks ran.
 
 When the canonical preview compiles, `correspondence.payloads` compares its
 checked constructor shapes with the original compiler input, including unused
@@ -262,7 +273,7 @@ policy-erased template must still match before its laws correspond. Complete
 empty domains, bounded misses and unavailable searches cannot justify the
 change. Every unused authored reusable law remains visible, so one matched
 concrete or reusable domain does not clear the entire source-template gate.
-The migration writer remains unvalidated.
+An unresolved source-template or domain gate blocks writing.
 
 `domainPolicyChanges` records legacy nonempty input-domain handling versus
 canonical universal quantification. Empty and dependent domains require
@@ -301,11 +312,25 @@ population policy. The report retains independent direct matches when transport
 evidence is unavailable. These domain facts do not discharge Chapter 6's laws,
 unused reusable-law schemes, native bindings or complete migration.
 
-This preview is a step toward the complete project transformation. The report
-keeps `validated: false` and lists the remaining correspondence gates.
-`--write` reports `migration-incomplete` and writes nothing until the complete
-source, constructor and native-binding transformation passes project-wide
-semantic and generated-behavior validation. The current authoring syntax is
+The report is read-only by default. `--write` obtains a fresh report and applies
+only validated source and configuration replacements. It preserves prior law
+layers explicitly in configuration version 2 and writes admitted native-binding
+changes. It leaves native application code and existing generated artifacts
+alone; subsequent generation uses the new sources and bindings. An incomplete
+report returns `migration-incomplete` without replacing project files.
+
+Writing uses the configured targets, machine width and generation settings;
+one-off API bindings cannot replace persisted target bindings. It checks the
+full declared source inventory, exact original file text,
+configuration and package inputs before committing. Replacements are staged,
+file permissions retained, originals kept for rollback, and configuration
+committed last. Ordinary commit failures restore earlier replacements. A newer
+editor value is preserved if rollback encounters another change; remaining
+recovery paths are reported. A process or operating-system crash is not an
+atomic multi-file transaction and can leave a lock and recovery files. Symbolic
+links and destinations outside the configuration directory are rejected for
+writing. These filesystem checks do not turn migration validation into law
+verification. The current authoring syntax is
 specified in the [minor-version contract](../reference/language/rc1.md).
 That grammar still has plain law, section, quantifier and table endings. The
 immediately following minor milestone requires named endings for every block

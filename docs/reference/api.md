@@ -259,7 +259,9 @@ The enclosing status remains `not-established`, with `validated: false`.
 `dependencyBehavior`, native bindings and generated behavior remain separate
 project-wide gates. `lawVerification` is
 `not-established-by-payload-shapes`. The method does not execute native
-implementations or authorize project writing.
+implementations or authorize project writing. The project migration coordinator
+combines these isolated receipts with all remaining source, domain, binding and
+target gates before validating a complete transformation.
 
 ### Native binding migration proposals
 

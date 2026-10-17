@@ -53,7 +53,7 @@ test('receipt manifests match independently requested legacy and canonical gener
   }
 });
 
-test('the report checks configured output directories and keeps native behavior and writing unvalidated',async()=>{
+test('the report validates configured output directories under retained native assumptions',async()=>{
   const config={version:1,targets:[{language:'python',root:'python',sourceDir:'app',testDir:'checks'}]};
   const report=await migrationReport(compiler,config,{sources:sources(old),machineBits:32,minify:true});
   assert.deepEqual(report.diagnostics,[]);assert.equal(report.generationPreview.status,'accepted',JSON.stringify(report.generationPreview));
@@ -62,8 +62,8 @@ test('the report checks configured output directories and keeps native behavior 
   assert.ok(row.evidence.after.files.some(file=>file.path.startsWith('app/')));
   assert.ok(row.evidence.after.files.some(file=>file.path.startsWith('checks/')));
   assert.equal(report.correspondence.targetGeneration.status,'accepted');
-  assert.equal(report.correspondence.generatedBehavior.status,'not-established');
-  assert.equal(report.validated,false);assert.deepEqual(report.filesWritten,[]);
+  assert.equal(report.correspondence.generatedBehavior.status,'matched-under-existing-assumptions');
+  assert.equal(report.validated,true);assert.deepEqual(report.filesWritten,[]);
 });
 
 test('the report makes zero configured generation checks explicit',async()=>{
@@ -71,7 +71,8 @@ test('the report makes zero configured generation checks explicit',async()=>{
   assert.equal(report.generationPreview.status,'not-requested');
   assert.equal(report.correspondence.nativeBoundary.status,'not-requested');
   assert.equal(report.generationPreview.configurationCount,0);assert.deepEqual(report.generationPreview.targets,[]);
-  assert.equal(report.validated,false);
+  assert.equal(report.validated,true);
+  assert.equal(report.correspondence.generatedBehavior.status,'not-requested');
 });
 
 test('generation receipt guards reject stale inputs, forged outcomes and malformed artifact inventories',async()=>{

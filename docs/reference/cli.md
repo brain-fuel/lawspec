@@ -6,11 +6,14 @@ title: CLI
 # CLI
 
 ```text
+lawspec fmt [paths...] [--check] [--json] [--config <path>]
+lawspec migrate --from 0.24 [--write] [--json] [--config <path>]
+lawspec lsp --stdio
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec check [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec explain [<unit>::<law>] [--view developer|business|formal|evidence] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
 lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
@@ -21,7 +24,8 @@ lawspec help
 ```
 
 Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
-`python`, `javascript`, `typescript`, `go`, `haskell`, `kotlin` or `rust`.
+`python`, `javascript`, `typescript`, `go`, `haskell`, `kotlin`, `rust`, `erlang`,
+`elixir`, `gleam`, `fsharp`, `csharp`, `scala`, `groovy`, `clojure` or `swift`.
 
 ## Common options
 
@@ -33,6 +37,28 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
 | `--minify` | Compact output. Accepted only by `init`, `generate` and `examples`. |
 | `--no-cache` | Do not read or write the compiler cache for this command. |
+
+## `migrate`
+
+`migrate --from 0.24` reads a version-1 project and reports its proposed canonical
+source, version-2 configuration, native bindings and correspondence evidence.
+It writes nothing by default. Add `--write` to apply a validated migration to
+all declared project sources and configuration. Existing native application code
+and generated artifacts are preserved. `--write` and `--dry-run` cannot be
+combined.
+
+`validated: true` means the migration preserves the checked source semantics
+and configured native interfaces under existing compiler and native binding
+assumptions. It does not claim native implementation conformance or law
+verification. With no configured targets, target checks remain `not-requested`.
+Missing source/domain evidence, changed native interfaces and unsupported
+adaptations block writing with `migration-incomplete`.
+
+The writer rechecks inputs, stages replacements and commits configuration last.
+Ordinary filesystem errors roll back earlier replacements; reported recovery
+paths retain originals when another edit or filesystem error prevents rollback.
+See [API migration](../explanation/api-migration.md#source-migration-from-024)
+for its trust boundary and limits.
 
 ## The compiler cache
 

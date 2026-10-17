@@ -154,8 +154,8 @@ test('actual compiler snapshots compare migrated computation and preserve the no
     assert.equal(report.correspondence.program.status,'matched');
     assert.equal(report.correspondence.definitionPlane.status,'matched');
     assert.deepEqual(report.correspondence.differences.definitions,{added:[],removed:[],changed:[]});
-    assert.equal(report.correspondence.status,'not-established');
-    assert.equal(report.validated,false);
+    assert.equal(report.correspondence.status,'matched-under-existing-assumptions');
+    assert.equal(report.validated,true,JSON.stringify(report.blockers));
     assert.deepEqual(report.filesWritten,[]);
     const canonical={...options,machineBits,sources:report.sourcePreview.sources.map(({path,content})=>({path,content}))};
     const ordinary=await compiler.check(canonical);
@@ -227,7 +227,7 @@ test('Chapter 6 retains raw shape differences while establishing transported Cor
   assert.equal(report.correspondence.domainPolicies.domains.filter(domain=>domain.status==='matched').length,23);
   assert.equal(report.correspondence.domainPolicies.domains.filter(domain=>domain.valueRepresentation==='transported-before-and-canonical-after').length,6);
   assert.equal(report.correspondence.domainPolicies.lawVerification,'not-established-by-domain-evidence');
-  assert.equal(report.validated,false);
+  assert.equal(report.validated,true,JSON.stringify(report.blockers));
   assert.deepEqual(report.filesWritten,[]);
   }
 });

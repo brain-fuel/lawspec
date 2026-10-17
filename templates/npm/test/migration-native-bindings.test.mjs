@@ -61,7 +61,7 @@ test('project reports check each actual target and expose explicit proposed bind
   assert.deepEqual(report.filesWritten,[]);
   assert.equal(report.validated,false);
   assert.equal(report.correspondence.generatedBehavior.status,'not-established');
-  assert.ok(report.blockers.some(reason=>reason.includes('Native implementation behavior')));
+  assert.ok(report.generationPreview.targets.some(row=>row.status!=='accepted'||row.nativeBoundary.status!=='matched'));
 });
 
 test('API-supplied legacy native bindings no longer enter the binding-blind schema-3 request',async()=>{
@@ -96,7 +96,7 @@ test('grouped native payloads derive a checked layout preserving original argume
   ]);
   assert.equal(row.evidence.nativeConformance,'not-established');
   assert.equal(row.evidence.targetGeneration,'not-established');
-  assert.equal(report.validated,false);
+  assert.equal(report.validated,true);
 });
 
 test('opaque codecs and factories over changed generated representations remain unresolved',async()=>{
@@ -194,11 +194,15 @@ test('CLI previews bound projects without changing sources, configuration or app
   assert.equal(report.bindingPreview.status,'matched');
   assert.deepEqual(report.filesWritten,[]);
   assert.match(run([]),/Native binding preview: 1 of 1 original configurations checked; 1 proposals match; 1 field changes/);
-  const rejected=spawnSync(process.execPath,[cli,'migrate','--from','0.24','--write','--json'],{cwd:directory,encoding:'utf8'});
-  assert.notEqual(rejected.status,0);
-  assert.match(rejected.stdout+rejected.stderr,/migration-incomplete/);
   assert.equal(await readFile(path.join(directory,'lawspec.json'),'utf8'),config);
   assert.equal(await readFile(path.join(directory,'bindings.lawspec'),'utf8'),old);
+  const written=spawnSync(process.execPath,[cli,'migrate','--from','0.24','--write','--json'],{cwd:directory,encoding:'utf8'});
+  assert.equal(written.status,0,written.stdout+written.stderr);
+  assert.equal(JSON.parse(written.stdout).validated,true);
+  const made=JSON.parse(await readFile(path.join(directory,'lawspec.json'),'utf8'));
+  assert.equal(made.version,2);
+  assert.deepEqual(made.targets[0].nativeBindings.types[0].constructors[0].fields,[{field:'value',native:'stored'}]);
+  assert.equal(await readFile(path.join(directory,'bindings.lawspec'),'utf8'),report.sourcePreview.sources[0].content);
   await assert.rejects(stat(path.join(directory,'python')),error=>error.code==='ENOENT');
 });
 

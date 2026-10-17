@@ -102,7 +102,7 @@ async function migrate(sources,machineBits=64) {
     for (const segment of source.segments.filter(segment=>segment.retained))
       assert.equal(source.content.slice(segment.start,segment.end),original.slice(segment.originalStart,segment.originalEnd));
   }
-  assert.equal(report.validated,false);
+  assert.equal(report.validation.lawVerification,'not-established-by-migration');
   assert.equal(report.domainPolicyChanges.length,before.laws.length);
   const domainPending=report.correspondence.domainPolicies.status!=='matched'||
     report.correspondence.sourceTemplates.domainPolicies?.status==='not-established';

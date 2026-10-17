@@ -465,3 +465,29 @@ test('developer explanations retain concrete table inputs and every typed expect
   assert.equal((text.match(/  expect /g) ?? []).length, 6);
   assert.equal(result.evidence.filter(item => item.stage === 'law')[0].status, 'not-verified');
 });
+
+
+test('fmt explicit paths use the working directory even when a different configuration directory is supplied',async()=>{
+  const {mkdtemp,mkdir,writeFile,readFile,rm}=await import('node:fs/promises');
+  const {spawnSync}=await import('node:child_process');
+  const {default:path}=await import('node:path');const {default:os}=await import('node:os');
+  const outer=await mkdtemp(path.join(os.tmpdir(),'lawspec-fmt-root-'));
+  try{
+    const root=path.join(outer,'project');await mkdir(path.join(root,'config'),{recursive:true});
+    const source='unit sample\nfunction same (value :: Bool) -> Bool is\nvalue\nend function\n';
+    await writeFile(path.join(root,'sample.lawspec'),source);
+    await writeFile(path.join(outer,'sample.lawspec'),'unrelated sibling file\n');
+    await writeFile(path.join(root,'config/lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.1',
+      sources:['../sample.lawspec'],targets:[],verification:{layers:[]}}));
+    const cli=new URL('../bin/lawspec.mjs',import.meta.url).pathname;
+    const run=args=>spawnSync(process.execPath,[cli,'fmt','sample.lawspec','--config','config/lawspec.json','--json',...args],
+      {cwd:root,encoding:'utf8'});
+    const needed=run(['--check']);assert.equal(needed.status,1,needed.stdout+needed.stderr);
+    assert.deepEqual(JSON.parse(needed.stdout).changed,['sample.lawspec']);
+    const written=run([]);assert.equal(written.status,0,written.stdout+written.stderr);
+    assert.notEqual(await readFile(path.join(root,'sample.lawspec'),'utf8'),source);
+    assert.equal(await readFile(path.join(outer,'sample.lawspec'),'utf8'),'unrelated sibling file\n');
+    const checked=run(['--check']);assert.equal(checked.status,0,checked.stdout+checked.stderr);
+    assert.deepEqual(JSON.parse(checked.stdout).changed,[]);
+  }finally{await rm(outer,{recursive:true,force:true});}
+});

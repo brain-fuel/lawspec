@@ -22,7 +22,7 @@ async function migrate(content,machineBits=64) {
   for(const file of report.sourcePreview.sources) for(const segment of file.segments.filter(segment=>segment.retained))
     assert.equal(file.content.slice(segment.start,segment.end),content.slice(segment.originalStart,segment.originalEnd));
   assert.equal(report.correspondence.payloads.payloadShapes.status,'matched',JSON.stringify(report.correspondence.payloads));
-  assert.equal(report.validated,false);
+  assert.equal(report.validation.lawVerification,'not-established-by-migration');
   assert.deepEqual(report.filesWritten,[]);
   return {before,after,report,sources:migrated};
 }
@@ -155,7 +155,7 @@ test('record and alternative payloads migrate through qualified imports, facades
     assert.ok(use.includes('when models.Result record{ first = first , second = second}'));
     assert.ok(shadow.includes('Pair record{ flag = value}'));
     assert.ok(shadow.includes('foreign.Pair record{ first = value , second = false}'));
-    assert.equal(report.validated,false);
+    assert.equal(report.validated,true,JSON.stringify(report.blockers));
     assert.deepEqual(report.filesWritten,[]);
   }
 });
@@ -197,7 +197,7 @@ test('the preserved Chapter 6 baseline retains every law and example while previ
     assert.equal(report.sourcePreview.canonicalCheck.status,'accepted',JSON.stringify(report.sourcePreview.canonicalCheck));
     assert.equal(report.sourcePreview.canonicalCheck.intrinsicDefinitionChecks,true);
     assert.equal(report.sourcePreview.canonicalCheck.lawVerification,'no-selected-checks');
-    assert.equal(report.validated,false);
+    assert.equal(report.validated,true,JSON.stringify(report.blockers));
     assert.deepEqual(report.filesWritten,[]);
   }
 });
@@ -251,7 +251,7 @@ test('nested payload projections and updates preserve values through imported co
     const text=migrated.find(source=>source.path==='use.lawspec').content;
     assert.ok(text.includes('input.value.inner.value.flag'),text);
     assert.ok(text.includes('with flag = !input.value.inner.value.flag'),text);
-    assert.equal(report.validated,false);
+    assert.equal(report.validated,true,JSON.stringify(report.blockers));
   }
 });
 

@@ -79,7 +79,7 @@ test('both comparison inputs retain mandatory validation and explicit schema/pro
   assert.equal(ordinary.migrationComparison,undefined);
 });
 
-test('the read-only report establishes checked payload Core while leaving native behavior and writing unvalidated',async()=>{
+test('the read-only report validates checked payload migration without selecting target execution',async()=>{
   const report=await migrationReport(compiler,{version:1,targets:[]},{sources:sources(old)});
   assert.deepEqual(report.diagnostics,[]);
   assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
@@ -87,8 +87,8 @@ test('the read-only report establishes checked payload Core while leaving native
   assert.equal(report.correspondence.program.status,'matched');
   assert.equal(report.correspondence.nativeBindings.status,'matched');
   assert.equal(report.correspondence.nativeBindings.configurationCount,0);
-  assert.equal(report.correspondence.generatedBehavior.status,'not-established');
-  assert.equal(report.correspondence.status,'not-established');
-  assert.equal(report.validated,false);
+  assert.equal(report.correspondence.generatedBehavior.status,'not-requested');
+  assert.equal(report.correspondence.status,'matched-under-existing-assumptions');
+  assert.equal(report.validated,true,JSON.stringify(report.blockers));
   assert.deepEqual(report.filesWritten,[]);
 });

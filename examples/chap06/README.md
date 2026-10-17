@@ -1,5 +1,10 @@
 # Chapter 6 assembler conformance
 
+[assembler.lawspec](assembler.lawspec) is the formatted canonical specification.
+Its first semantic migration pass retains all authored laws, examples, types,
+refinements and computations. Further authoring improvements remain in the
+review packet; the byte-preserved 0.24 fixture remains migration input.
+
 [python/hack_assembler.py](python/hack_assembler.py) implements the valid-program
 contract for the [Nand to Tetris assembler project](https://www.nand2tetris.org/project06).
 It returns physical binary lines from `assemble(source)` and supports the course's
@@ -28,7 +33,8 @@ Each invocation preserves a fresh project, logs and `evidence.json` under
 `.artifacts/chapter6-oracles/`.
 
 The harness reads the byte-preserved 0.24 Chapter 6 fixture, creates the current
-canonical preview, and checks its 23 laws, 65 table rows, one named example,
+canonical source and version-2 configuration using the validated project writer,
+and checks its 23 laws, 65 table rows, one named example,
 25 definitions, seven ADTs and two refinements. It runs the 66 generated examples
 against the Python assembler. Independent checks cover all 32,768 A-instruction
 addresses and all 1,792 canonical C-instructions, against both the assembler and
@@ -60,8 +66,10 @@ versioned vectors offline. The reference command fetches only the pinned
 upstream source and checks its exact digests before compiling the decoder.
 
 These checks establish finite codec coverage and Python conformance for the
-executed programs. They do not prove the unbounded program laws, validate the
-project-wide migration, or establish implementations in the other 16 languages.
+executed programs. Migration validation separately checks source and configured
+interface preservation under the existing compiler/native assumptions. Neither
+that validation nor these finite tests prove the unbounded program laws or
+establish implementations in the other 16 languages.
 `--property` additionally selects property testing and generated boundary cases
 for all 23 laws. The evidence counts actual properties, boundaries, examples
 and replay hooks separately; a replay hook alone does not establish that a law

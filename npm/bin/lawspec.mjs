@@ -7,6 +7,7 @@ import { createCompiler } from "../api.mjs";
 import { targets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
 import { migrationReport } from "../migrate.mjs";
+import { writeMigration } from "../migration-write.mjs";
 import { proveWithZ3 } from "../proof.mjs";
 import { serveLanguage } from "../lsp.mjs";
 import { explainLaw, explanationViews } from "../explain.mjs";
@@ -24,6 +25,7 @@ import {
   applyWrites,
   atomicWrite,
   safePath,
+  collectSources,
 } from "../files.mjs";
 const VERSION = "0.24.0";
 const args = process.argv.slice(2);
@@ -89,24 +91,7 @@ function diagnostics(result) {
 async function sources(config) {
   return lawspecFiles(configRoot, config.sources);
 }
-async function lawspecFiles(root, entries) {
-  const files = [];
-  async function visit(file) {
-    const info = await stat(file);
-    if (info.isDirectory())
-      for (const entry of (await readdir(file)).sort())
-        await visit(path.join(file, entry));
-    else if (file.endsWith(".lawspec")) files.push(file);
-  }
-  for (const source of entries) await visit(path.resolve(root, source));
-  if (!files.length) throw new Error("No .lawspec source files found");
-  return Promise.all(
-    [...new Set(files)].sort().map(async (file) => ({
-      path: path.relative(configRoot, file).split(path.sep).join("/"),
-      content: await readFile(file, "utf8"),
-    })),
-  );
-}
+async function lawspecFiles(root,entries){return collectSources(root,entries,configRoot);}
 // A package directory holds lawspec-package.json: its name, version, source
 // directories and dependency ranges. The compiler checks names, versions,
 // namespaces and which units may import which.
@@ -141,18 +126,25 @@ async function packageInput(owner, root) {
   };
 }
 async function migrateCommand() {
+  if(options.write&&options["dry-run"])throw new Error("--write and --dry-run cannot be combined");
   if (options.from !== "0.24") throw new Error("migrate requires --from 0.24");
-  const config = JSON.parse(await readFile(configFile, "utf8"));
+  const configurationText=await readFile(configFile,"utf8");
+  const config = JSON.parse(configurationText);
   if (config.version !== 1) throw new Error("migrate --from 0.24 requires configuration version 1");
   const compiler = await createCompiler();
-  const report = await migrationReport(compiler, config, {
+  const input={
     sources: await sources(config), ...(await packageInput(config, configRoot)),
     generation: config.generation, machineBits: config.machineBits ?? 64, minify: options.minify === true,
-  });
+  };
+  const recheck=async()=>{
+    const current={sources:await sources(config),...(await packageInput(config,configRoot))};
+    const original={sources:input.sources,...Object.fromEntries(['packages','dependencies']
+      .filter(key=>input[key]!==undefined).map(key=>[key,input[key]]))};
+    if(JSON.stringify(current)!==JSON.stringify(original))throw new Error('Project sources or package dependencies changed during migration.');
+  };
+  const report=options.write?await writeMigration(compiler,configRoot,path.basename(configFile),configurationText,input,{recheck}):
+    await migrationReport(compiler,config,input);
   diagnostics(report);
-  if (options.write && !report.validated) throw Object.assign(new Error(
-    "migration-incomplete: writing requires validated source, constructor and native binding transformations; no files were written"),
-    { diagnostics: [{ code: "migration-incomplete", message: report.blockers.join(" "), at: null }] });
   const bindingChanges=report.bindingPreview.targets.flatMap(target=>target.evidence?.changes??[]).length;
   const bindingChecked=report.bindingPreview.targets.filter(target=>target.evidence?.beforeValidated===true).length;
   const bindingMatched=report.bindingPreview.targets.filter(target=>target.status==='matched').length;
@@ -161,14 +153,15 @@ async function migrateCommand() {
   const generationSummary=`Target generation preview: ${generationAccepted} of ${report.generationPreview.configurationCount} configurations accepted. Native implementation conformance remains unestablished.\n`;
   const boundaryMatched=report.generationPreview.targets.filter(target=>target.nativeBoundary.status==='matched').length;
   const boundarySummary=`Native boundary comparison: ${boundaryMatched} of ${report.generationPreview.configurationCount} configurations match under their existing native implementation assumptions.\n`;
-  output(options.json ? report : `Read-only migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` + bindingSummary + generationSummary + boundarySummary +
-    report.blockers.join("\n") + "\nNo files were written. Use --json to review the typed baseline, source-edit preview and proposed configuration. The source preview is not a validated project migration.");
+  output(options.json ? report : `${options.write?"Written":"Read-only"} migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` + bindingSummary + generationSummary + boundarySummary +
+    report.blockers.join("\n") + (options.write?`\n${report.filesWritten.length} files written. Existing native implementation assumptions are retained; no law verification is claimed.`:
+      `\nNo files were written. ${report.validated?'The migration is validated under its existing compiler and native implementation assumptions. Use --write to apply it.':'Migration remains incomplete.'} Use --json to inspect the complete report.`));
 }
 
 async function formatCommand() {
   const config = positional.length ? null : JSON.parse(await readFile(configFile, "utf8"));
   const root = positional.length ? process.cwd() : configRoot;
-  const files = await lawspecFiles(root, positional.length ? positional : config.sources);
+  const files = await collectSources(root, positional.length ? positional : config.sources);
   const compiler = await createCompiler();
   const result = diagnostics(await compiler.format({
     sources: files, ...(config ? await packageInput(config, configRoot) : {}),

@@ -20,7 +20,7 @@ async function migrate(sources,machineBits=64) {
     assert.equal(law.status,'exhaustively-checked');
   for(const source of report.sourcePreview.sources) for(const segment of source.segments.filter(segment=>segment.retained))
     assert.equal(source.content.slice(segment.start,segment.end),sources.find(input=>input.path===source.path).content.slice(segment.originalStart,segment.originalEnd));
-  assert.equal(report.validated,false);
+  assert.equal(report.validation.lawVerification,'not-established-by-migration');
   assert.deepEqual(report.filesWritten,[]);
   return {before,after,report,sources:migrated};
 }

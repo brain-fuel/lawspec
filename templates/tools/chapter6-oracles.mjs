@@ -6,7 +6,7 @@ import {existsSync} from 'node:fs';
 import {mkdir,mkdtemp,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {createCompiler} from '../npm/api.mjs';
-import {migrationReport} from '../npm/migrate.mjs';
+import {writeMigration} from '../npm/migration-write.mjs';
 import {templates} from '../npm/templates.mjs';
 import {safePath,planWrites,applyWrites} from '../npm/files.mjs';
 import {executedTests} from '../npm/test-command.mjs';
@@ -44,28 +44,34 @@ function native(method,request) {
   assert.equal(process.status,0,process.stderr);
   return JSON.parse(process.stdout);
 }
-const compiler=environment.LAWSPEC_CORE?{
-  check:async request=>native('check',request),
-  migrationBaseline:async request=>native('migrationBaseline',request),
-  planGeneration:async request=>native('planGeneration',request),
-}:await createCompiler();
+const compiler=environment.LAWSPEC_CORE?Object.fromEntries(
+  ['check','migrationBaseline','migrationComparison','migrationBindings','migrationGeneration','planGeneration']
+    .map(method=>[method,async request=>native(method,request)])):await createCompiler();
 const original=await readFile(path.join(root,'test/fixtures/migration-chap06-0.24.lawspec'),'utf8');
 const sourceSha256=digest(original);
 assert.equal(sourceSha256,'07d8116b847aa80e044ad3ea2cbc8317bc949a0c4fe07b560e513d6fa0bfaf06');
 const sources=[{path:'chap06.lawspec',content:original}];
-const migration=await migrationReport(compiler,{version:1,targets:[]},{sources,machineBits:bits});
+const configurationText=JSON.stringify({version:1,sources:['chap06.lawspec'],
+  targets:[{language:'python',root:'project'}],machineBits:bits},null,2)+'\n';
+await writeFile(path.join(directory,'chap06.lawspec'),original);
+await writeFile(path.join(directory,'lawspec.json'),configurationText);
+const migration=await writeMigration(compiler,directory,'lawspec.json',configurationText,{sources,machineBits:bits});
 assert.deepEqual(migration.diagnostics,[]);
 assert.deepEqual(migration.sourcePreview.diagnostics,[]);
 assert.equal(migration.sourcePreview.canonicalCheck.status,'accepted');
 assert.equal(migration.sourcePreview.canonicalCheck.intrinsicDefinitionChecks,true);
-assert.equal(migration.validated,false,'Independent tests do not replace project migration correspondence');
+assert.equal(migration.validated,true);
+assert.equal(migration.validation.status,'validated-under-existing-assumptions');
+assert.equal(migration.validation.lawVerification,'not-established-by-migration');
+assert.deepEqual(migration.filesWritten,['chap06.lawspec','lawspec.json']);
 assert.equal(migration.baseline.laws.length,23);
 assert.equal(migration.baseline.definitions.length,25);
 assert.equal(migration.baseline.types.length,7);
 const nodes=migration.baseline.sourceSyntax[0].nodes;
 for(const [kind,count] of [['table-row',65],['example',1],['declaration.refinement',2]])
   assert.equal(nodes.filter(node=>node.kind===kind).length,count);
-const canonical=migration.sourcePreview.sources.map(({path,content})=>({path,content}));
+const canonical=[{path:'chap06.lawspec',content:await readFile(path.join(directory,'chap06.lawspec'),'utf8')}];
+assert.equal(canonical[0].content,migration.sourcePreview.sources[0].content);
 await writeFile(path.join(directory,'chap06-preview.lawspec'),canonical[0].content);
 const layers=args[0]==='--property'?['property','examples']:['examples'];
 const request={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers},machineBits:bits,minify,target:'python',sources:canonical};
@@ -160,6 +166,6 @@ const result={version:1,target:'python',machineBits:bits,minify,compiler:environ
   sourceSha256,candidateSha256:digest(candidate),
   compilerSha256:digest(await readFile(environment.LAWSPEC_CORE??path.join(root,'npm/core.wasm'))),
   seed,generation:plan.generation,verificationLayers:layers,generated,nativeCliPrograms:2,oracle:evidence,mutants:rejected,
-  migrationValidated:false,scope:'Python native conformance and emitted checked codecs; remaining targets and project-wide migration correspondence are separate gates'};
+  migrationValidated:migration.validated,migrationValidation:migration.validation,scope:'Python native conformance and emitted checked codecs after project migration under existing assumptions; remaining native targets are separate gates'};
 await writeFile(path.join(directory,'evidence.json'),JSON.stringify(result,null,2)+'\n');
 console.log(JSON.stringify({...result,directory}));

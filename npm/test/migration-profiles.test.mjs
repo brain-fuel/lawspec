@@ -21,9 +21,8 @@ test('migration keeps versioned dependency templates while comparing monomorphic
     assert.ok(!report.blockers.some(reason=>reason.includes('empty-domain')||reason.includes('source-template')));
     assert.equal(report.correspondence.nativeBindings.status,'matched');
     assert.equal(report.correspondence.nativeBindings.configurationCount,0);
-    assert.equal(report.correspondence.generatedBehavior.status,'not-established');
-    assert.ok(report.blockers.some(reason=>/native.*behavior/i.test(reason)));
-    assert.ok(report.blockers.some(reason=>reason.includes('writing has not been implemented')));
+    assert.equal(report.correspondence.generatedBehavior.status,'not-requested');
+    assert.deepEqual(report.blockers,[]);
     const before=report.baseline.coreSnapshot,after=report.sourcePreview.canonicalCheck.coreSnapshot;
     const dependency=row=>row.comparisonId.startsWith('prelude::law::');
     assert.ok(policies(before).some(dependency));
@@ -33,7 +32,8 @@ test('migration keeps versioned dependency templates while comparing monomorphic
       assert.equal(policies(before).find(row=>row.comparisonId==='migration::law::kept').policy,'nonempty');
       assert.equal(policies(after).find(row=>row.comparisonId==='migration::law::kept').policy,'universal');
     }
-    assert.equal(report.validated,false,'Template agreement does not validate native bindings or generated behavior');
+    assert.equal(report.validated,true);
+    assert.equal(report.validation.lawVerification,'not-established-by-migration');
     assert.deepEqual(report.filesWritten,[]);
   }
 });

@@ -147,11 +147,11 @@ test('migration requires a checked baseline and refuses inconsistent source iden
   assert.throws(() => document.range({kind:'source',span:{start:{file:'a',line:1,column:3},end:{file:'a',line:1,column:2}}}), /Reversed/);
 });
 
-test('read-only migration exposes original spans and edits without claiming a validated project or writing', async () => {
+test('read-only migration exposes validated original spans and edits without writing', async () => {
   const compiler = await createCompiler();
   const source = {path:'report.lawspec',content:'unit report\ndefinition identity (value :: Bool) :: Bool is value end\n'};
   const report = await migrationReport(compiler,{version:1,targets:[]},{sources:[source],machineBits:64});
-  assert.equal(report.validated, false);
+  assert.equal(report.validated, true);
   assert.deepEqual(report.filesWritten, []);
   assert.deepEqual(report.sourcePreview.diagnostics, []);
   assert.equal(report.baseline.definitions.length, 1);
@@ -159,7 +159,7 @@ test('read-only migration exposes original spans and edits without claiming a va
   assert.equal(report.sourcePreview.sources[0].edits.length, 3);
   assert.equal(report.sourcePreview.sources[0].content, 'unit report\nfunction identity (value :: Bool) -> Bool is value end function\n');
   assert.equal(source.content, 'unit report\ndefinition identity (value :: Bool) :: Bool is value end\n');
-  assert.ok(report.blockers.length > 0);
+  assert.deepEqual(report.blockers,[]);
 });
 
 test('source inventory migrates unused generic computation bodies before concrete specialization exists', async () => {
@@ -184,7 +184,7 @@ test('source inventory migrates unused generic computation bodies before concret
   assert.deepEqual(after.diagnostics, []);
   assert.deepEqual(semantic(after.definitions),semantic(before.definitions));
   assert.equal(after.evidence.find(item => item.stage === 'law').status,'exhaustively-checked');
-  assert.equal(report.validated,false);
+  assert.equal(report.validated,true,JSON.stringify(report.blockers));
 });
 
 test('source inventory preserves inferred effects when an unused generic procedure has no Core instance', async () => {
@@ -203,7 +203,7 @@ test('source inventory preserves inferred effects when an unused generic procedu
   assert.equal(checked.verification.intrinsicDefinitionChecks,true);
 });
 
-test('the migration CLI reports the computation preview and keeps --write blocked before project validation', async () => {
+test('the migration CLI reports the computation preview and writes only on explicit request', async () => {
   const directory = await mkdtemp(join(tmpdir(),'lawspec-source-migration-'));
   try {
     const configPath = join(directory,'lawspec.json');
@@ -216,14 +216,14 @@ test('the migration CLI reports the computation preview and keeps --write blocke
     const run = promisify(execFile);
     const result = await run(process.execPath,args,{cwd:directory});
     const report = JSON.parse(result.stdout);
-    assert.equal(report.validated, false);
+    assert.equal(report.validated, true);
     assert.deepEqual(report.sourcePreview.diagnostics, []);
     assert.match(report.sourcePreview.sources[0].content,/function identity/);
-    await assert.rejects(run(process.execPath,[...args,'--write'],{cwd:directory}), error => {
-      assert.equal(JSON.parse(error.stdout).diagnostics[0].code,'migration-incomplete');
-      return true;
-    });
     assert.equal(await readFile(configPath,'utf8'),config);
     assert.equal(await readFile(sourcePath,'utf8'),source);
+    const written=JSON.parse((await run(process.execPath,[...args,'--write'],{cwd:directory})).stdout);
+    assert.deepEqual(written.filesWritten,['sample.lawspec','lawspec.json']);
+    assert.equal(JSON.parse(await readFile(configPath,'utf8')).version,2);
+    assert.equal(await readFile(sourcePath,'utf8'),report.sourcePreview.sources[0].content);
   } finally { await rm(directory,{recursive:true,force:true}); }
 });

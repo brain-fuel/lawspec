@@ -1,6 +1,8 @@
 // Generated from templates/npm/files.mjs by lawspec-dev generate. Do not edit.
 import {
   readFile,
+  readdir,
+  stat,
   mkdir,
   writeFile,
   rename,
@@ -13,6 +15,20 @@ import path from "node:path";
 import crypto from "node:crypto";
 export const digest = (text) =>
   crypto.createHash("sha256").update(text).digest("hex");
+// Keep source discovery identical for CLI checking and migration revalidation.
+export async function collectSources(root,entries,relativeTo=root){
+  const files=[];
+  async function visit(file){
+    const info=await stat(file);
+    if(info.isDirectory())for(const entry of (await readdir(file)).sort())await visit(path.join(file,entry));
+    else if(file.endsWith('.lawspec'))files.push(file);
+  }
+  if(!Array.isArray(entries)||entries.some(entry=>typeof entry!=='string'))throw new Error('sources must be an array of paths');
+  for(const source of entries)await visit(path.resolve(root,source));
+  if(!files.length)throw new Error('No .lawspec source files found');
+  return Promise.all([...new Set(files)].sort().map(async file=>({
+    path:path.relative(relativeTo,file).split(path.sep).join('/'),content:await readFile(file,'utf8')})));
+}
 export async function readOptional(file) {
   try {
     return await readFile(file, "utf8");

@@ -8,6 +8,8 @@ import {planMigrationGeneration} from './migration-generation.mjs';
 
 export const legacyLawLayers = ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model'];
 export async function migrationReport(compiler, config, input) {
+  if(config?.version!==1||!Array.isArray(config.targets))return {from:'0.24',to:'1.0-rc.1',validated:false,
+    diagnostics:[{code:'migration-configuration',message:'Migration requires a version 1 configuration with a targets array.',at:null}]};
   const {nativeBindings:inputBindings,...sourceInput}=input;
   const baseline = await compiler.check({ ...sourceInput, schemaVersion: 3 });
   if (baseline.diagnostics?.length) return { from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: baseline.diagnostics };
@@ -72,12 +74,33 @@ export async function migrationReport(compiler, config, input) {
     ['lawBodies','Complete policy-erased Core correspondence has not been established.'],
     ['sourceTemplates','Complete checked source-template correspondence has not been established.'],
     ['nativeBindings','Native constructor, field and representation bindings require project-wide correspondence.'],
-    ['generatedBehavior','Native implementation behavior correspondence has not been established.'],
   ];
   const domainPending=correspondence.domainPolicies.status!=='matched'||
-    correspondence.sourceTemplates.domainPolicies?.status==='not-established';
+    correspondence.sourceTemplates.domainPolicies?.status!=='matched';
+  const sourceMatched=sourcePreview.canonicalCheck.status==='accepted'&&
+    sourcePreview.canonicalCheck.intrinsicDefinitionChecks===true&&sourcePreview.diagnostics.length===0&&
+    !domainPending&&pending.every(([name])=>correspondence[name].status==='matched');
+  const count=generationPreview.configurationCount;
+  const targetsMatched=count===0 ? generationPreview.status==='not-requested'&&
+    generationPreview.nativeBoundary.status==='not-requested'&&generationPreview.targets.length===0 :
+    generationPreview.status==='accepted'&&generationPreview.nativeBoundary.status==='matched'&&
+    generationPreview.targets.length===count&&generationPreview.targets.every(row=>row.status==='accepted'&&
+      row.nativeBoundary.status==='matched');
+  const validated=sourceMatched&&targetsMatched&&bindingPreview.configurationCount===count;
+  const assumptions=['existing compiler validation, transport and target emitters',
+    'unchanged native implementations under their original binding assumptions'];
+  correspondence.generatedBehavior={status:count===0?'not-requested':validated?
+    'matched-under-existing-assumptions':'not-established',
+    scope:'preservation of checked source semantics and configured native interfaces; no native execution',
+    assumptions,nativeExecution:'not-performed',nativeConformance:'not-established',
+    lawVerification:'not-established-by-migration'};
+  correspondence.status=validated?'matched-under-existing-assumptions':'not-established';
+  correspondence.scope='complete checked source migration and configured target interfaces';
   return {
-    from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: [],
+    from: '0.24', to: '1.0-rc.1', validated, diagnostics: [],
+    validation:{status:validated?'validated-under-existing-assumptions':'not-established',
+      scope:'all supplied project sources, configuration and configured targets',assumptions,
+      nativeConformance:'not-established',lawVerification:'not-established-by-migration'},
     proposedConfiguration: { ...config, targets:bindingPreview.proposedTargets, version: 2, languageProfile: '1.0-rc.1', verification: { layers: [...legacyLawLayers] } },
     baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax,sourceFields:syntax.sourceFields,
       coreSnapshot:syntax.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'} },
@@ -97,7 +120,7 @@ export async function migrationReport(compiler, config, input) {
       ...(domainPending ? ['Legacy nonempty input-domain handling and canonical universal quantification require explicit correspondence checks; no empty-domain equivalence is assumed.'] : []),
       ...(sourcePreview.canonicalCheck.status==='rejected' ? ['The partial preview does not yet pass canonical compilation; inspect sourcePreview.canonicalCheck.diagnostics.'] : []),
       ...sourcePreview.diagnostics.map(diagnostic => 'Source preview unavailable: ' + diagnostic.message),
-      'Validated project-wide writing has not been implemented.'],
+      ...(!sourcePreview.canonicalCheck.intrinsicDefinitionChecks?['Mandatory definition validation was not established.']:[])],
     filesWritten: [],
   };
 }
