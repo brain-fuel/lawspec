@@ -73,8 +73,9 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "SourceSyntax" ([("version",text "1")] ++ fields [("path", "string"), ("unit", "string"), ("nodes", "SourceSyntaxNode[]"),("bindings","SourceSyntaxBinding[]"),("references","SourceSyntaxReference[]")])
   , interface "SourceFieldUse" ([("kind",union (map quoted ["field-access","field-update"]))] ++
       fields [("constructor","string"),("field","string"),("index","number"),("span","Span"),("base?","Span"),("expression?","Span")])
+  , interface "SourceConstructorShape" (fields [("constructor","string"),("nominalRecord","boolean")])
   , alias "MigrationSourceFields"
-      [record [("status",quoted "available"),("version",text "1"),("uses",text "SourceFieldUse[]")],
+      [record [("status",quoted "available"),("version",text "1"),("uses",text "SourceFieldUse[]"),("constructors",text "SourceConstructorShape[]")],
        record [("status",quoted "unavailable"),("reason",text "string")]]
   , interface "Diagnostic" [("code", text "string"), ("message", text "string"), ("at", union [text "Location", text "null"])]
   , interface "Artifact"

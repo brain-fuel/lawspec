@@ -35,6 +35,19 @@ groupOld="type Variant is | Empty | Item last :: Bool first :: UInt8 end"
 groupNew="type Variant is one of | Empty | Item of type record{last :: Bool first :: UInt8} end type"
 
 test_migrationPayloads=describe "checked constructor payload shape correspondence" $ do
+  it "retains indexed and GADT equations when renaming one payload formal" $ do
+    mapM_ (\(before,after) -> do
+      result<-shapesMatch before after
+      (comparison result >>= field "executableTransport" >>= field "status") `shouldBe` Just (String "matched")
+      (comparison result >>= field "executableTransport" >>= field "copyValidated") `shouldBe` Just (Bool True))
+      [("type Expr (a :: Type) is | Truth flag :: Bool where a = Bool end",
+        "type Expr (a :: Type) is one of | Truth of type Bool where a = Bool end type"),
+       ("type Chain (n :: Natural) is | Stop where n = 0 | Next link :: Chain m where n = m + 1 end",
+        "type Chain (n :: Whole) is one of | Stop where n = 0 | Next of type Chain m where n = m + 1 end type"),
+       ("type Box (a :: Type) is Box held :: Bool where a = Bool end",
+        "type Box (a :: Type) is one of Box of type Bool where a = Bool end type"),
+       ("type Shown is Shown held :: a end",
+        "type Shown is one of Shown of type a end type")]
   it "compares unused generic law parameters without choosing implementations" $ do
     result<-shapesMatch "law `same` (operation :: a -> a) requires Eq a is definition is `for all` (value :: a) . operation value = value end end"
       "law \"|same| (operation :: a -> a) requires Eq a is definition: for all (value :: a) => operation value must be value end end end"
@@ -153,7 +166,7 @@ test_migrationPayloads=describe "checked constructor payload shape correspondenc
     removed<-accepted groupOld ""
     added<-accepted singleOld (singleNew++"\ntype Extra is one of | Extra end type")
     mapM_ (\result -> (shape result >>= field "status") `shouldBe` Just (String "not-established")) [removed,added]
-  it "keeps changed GADT equations and indexed transport unestablished" $ do
+  it "keeps changed GADT equations unestablished" $ do
     result<-accepted "type Term (a :: Type) is | Number value :: Integer where a = Integer end"
       "type Term (a :: Type) is one of | Number of type Integer where a = Bool end type"
     (shape result >>= field "status") `shouldBe` Just (String "not-established")

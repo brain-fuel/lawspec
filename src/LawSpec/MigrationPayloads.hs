@@ -17,7 +17,7 @@ import LawSpec.Core.RecordIdentity (validateRecordDeclaration)
 import LawSpec.Core.Types (makeRegistry,constructorFieldsFor,constructorPredicatesFor)
 import LawSpec.Digest (digest,digestHex)
 import LawSpec.Elaboration (coreTypeWithSourceRecords)
-import LawSpec.MigrationTemplates (SourceTemplates(..))
+import LawSpec.MigrationTemplates (SourceTemplates(..),legacyNominalRecord)
 import qualified LawSpec.Model as S
 import LawSpec.SourceContext (SourceContext(..),SourceConstructor(..))
 
@@ -88,14 +88,15 @@ payloadCorrespondenceWithPlan before after = do
       else do
         -- A named record already is a nominal product, not an alternative
         -- whose fields can be wrapped in another product.
-        unless (not (length (C.dataConstructors owner)==1 && C.constructorName old==C.dataName owner))
+        unless (not (legacyNominalRecord owner old))
           (Left "named-record fields and restrictions must be preserved")
         same "constructor metadata, GADT equations or existential binders changed"
           old{C.constructorFields=[],C.constructorPredicates=[]} new{C.constructorFields=[],C.constructorPredicates=[]}
-        unless (C.dataIndex owner==Nothing && null (C.constructorEquations old) && null (C.constructorExistentials old))
-          (Left "changed indexed or existential constructor payloads need a separately checked transport")
         case (C.constructorFields old,C.constructorFields new) of
           ([field],[payload]) -> do
+            -- Only the formal field name changes. The complete constructor
+            -- metadata above retains index equations and existential scope;
+            -- the existing transport renames this formal and validates Core.
             unless (C.binderName payload=="value" && C.binderType field==C.binderType payload)
               (Left "a single payload must retain its exact type and use the canonical value field")
             predicates (M.singleton (C.binderId field) (C.binderId payload))
@@ -103,6 +104,8 @@ payloadCorrespondenceWithPlan before after = do
             pure ([],object ["constructor" .= C.idText (C.constructorId old),"kind" .= ("single-payload"::String),
               "fields" .= [fieldEntry 0 0 field payload]])
           (fields,[payload]) | length fields>1 -> do
+            unless (C.dataIndex owner==Nothing && null (C.constructorEquations old) && null (C.constructorExistentials old))
+              (Left "grouped indexed or existential payloads need a separately checked transport")
             unless (C.binderName payload=="value" && null (C.constructorPredicates new))
               (Left "a grouped payload must use value and introduce no outer constructor restrictions")
             SourceConstructor types _ <- maybe (Left "the checked source constructor context is missing") Right

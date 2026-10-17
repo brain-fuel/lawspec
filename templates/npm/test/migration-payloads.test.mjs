@@ -11,6 +11,61 @@ const canonical='type Variant is one of | Empty | Item of type record{last :: Bo
 const compare=(before,after,bits=64)=>compiler.migrationComparison({...options,from:'0.24',sources:sources(before),machineBits:bits,
   migrated:{...options,sources:sources(after),machineBits:bits}});
 
+test('single indexed and existential payload formals retain their exact checked metadata',async()=>{
+  for(const machineBits of [32,64])for(const [before,after] of [
+    ['type Expr (a :: Type) is | Truth flag :: Bool where a = Bool end',
+      'type Expr (a :: Type) is one of | Truth of type Bool where a = Bool end type'],
+    ['type Chain (n :: Natural) is | Stop where n = 0 | Next link :: Chain m where n = m + 1 end',
+      'type Chain (n :: Whole) is one of | Stop where n = 0 | Next of type Chain m where n = m + 1 end type'],
+    ['type Box (a :: Type) is Box held :: Bool where a = Bool end',
+      'type Box (a :: Type) is one of Box of type Bool where a = Bool end type'],
+    ['type Shown is Shown held :: a end','type Shown is one of Shown of type a end type']
+  ]){
+    const result=await compare(before,after,machineBits);
+    assert.deepEqual(result.diagnostics,[]);
+    assert.equal(result.migrationComparison.payloadShapes.status,'matched');
+    assert.equal(result.migrationComparison.executableTransport.status,'matched');
+    assert.equal(result.migrationComparison.executableTransport.copyValidated,true);
+    assert.equal(result.migrationComparison.validated,false);
+  }
+  const changed=await compare('type Expr (a :: Type) is Truth flag :: Bool where a = Bool end',
+    'type Expr (a :: Type) is one of Truth of type Bool where a = UInt8 end type');
+  assert.deepEqual(changed.diagnostics,[]);
+  assert.equal(changed.migrationComparison.payloadShapes.status,'not-established');
+});
+
+test('checked constructor classification keeps a same-named existential constructor out of nominal record migration',async()=>{
+  for(const machineBits of [32,64])for(const [before,nominal] of [
+    ['type Shown is Shown held :: a end',false],
+    ['type Box (a :: Type) is Box held :: Bool where a = Bool end',false],
+    ['type Box (a :: Type) is Box held :: a end',true]
+  ]){
+    const report=await migrationReport(compiler,{version:1,targets:[]},{sources:sources(before),machineBits});
+    assert.deepEqual(report.diagnostics,[]);
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
+    const facts=report.baseline.sourceFields;
+    assert.equal(facts.status,'available');
+    const name=before.includes('Shown')?'Shown':'Box';
+    assert.equal(facts.constructors.find(value=>value.constructor==='payloads::type::'+name+'::'+name)?.nominalRecord,nominal);
+    const content=report.sourcePreview.sources[0].content;
+    assert.ok(content.includes(nominal?'is a record{':'is one of'),content);
+  }
+});
+
+test('missing checked constructor classification blocks a same-named record preview rather than guessing',async()=>{
+  const incomplete={...compiler,migrationBaseline:async input=>{
+    const result=structuredClone(await compiler.migrationBaseline(input));
+    assert.equal(result.sourceFields.status,'available');
+    delete result.sourceFields.constructors;
+    return result;
+  }};
+  const report=await migrationReport(incomplete,{version:1,targets:[]},
+    {sources:sources('type Box is Box held :: Bool end')});
+  assert.equal(report.validated,false);
+  assert.ok(report.sourcePreview.diagnostics.some(value=>/checked constructor classification/.test(value.message)));
+  assert.deepEqual(report.filesWritten,[]);
+});
+
 test('compiler-side payload comparison certifies both widths with an explicit field permutation',async()=>{
   for(const bits of [32,64]) {
     const result=await compare(old,canonical,bits);

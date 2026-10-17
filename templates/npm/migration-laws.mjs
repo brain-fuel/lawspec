@@ -25,7 +25,9 @@ export function planLegacySourceEdits(sources, baseline, sourceSyntax, sourceFie
     const document=documents.get(source.path);
     const nodes=source.nodes.map(node=>({...node,...document.range({kind:'source',span:node.span})}));
     if (nodes.some(node=>!Number.isInteger(node.start))) throw new Error('Source inventory belongs to a different migration document');
-    return {...source,nodes,builtinNatural,fieldUses:sourceFields?.status==='available' ? sourceFields.uses.filter(use=>use.span.start.file===source.path) : null};
+    return {...source,nodes,builtinNatural,
+      constructorShapes:sourceFields?.status==='available' ? sourceFields.constructors : null,
+      fieldUses:sourceFields?.status==='available' ? sourceFields.uses.filter(use=>use.span.start.file===source.path) : null};
   });
   const shapes=legacyRecordShapes(indexed);
   for (const source of indexed) {

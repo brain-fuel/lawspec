@@ -4,7 +4,8 @@
 -- generic definitions and reusable laws leave the concrete executable program.
 -- No syntax here is executed or admitted by a separate checking mechanism.
 module LawSpec.MigrationTemplates
-  ( SourceTemplates(..), DefinitionTemplate, templateSnapshot, templateContext ) where
+  ( SourceTemplates(..), DefinitionTemplate, templateSnapshot, templateContext
+  , legacyNominalRecord ) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value,object,(.=))
@@ -34,6 +35,15 @@ data SourceTemplates = SourceTemplates
   , templateConstructors :: [(C.Id,[S.Type],[(C.Id,S.Type)])]
   } deriving (Eq,Show)
 
+-- The legacy same-name convention denotes record syntax only when no
+-- indexed or existential constructor scope changes that interpretation.
+-- Both source edits and their checked correspondence use this decision.
+legacyNominalRecord :: C.DataDeclaration -> C.DataConstructor -> Bool
+legacyNominalRecord declaration tag =
+  C.dataStructural declaration==Nothing && C.dataIndex declaration==Nothing &&
+  length (C.dataConstructors declaration)==1 && C.constructorName tag==C.dataName declaration &&
+  null (C.constructorEquations tag) && null (C.constructorExistentials tag)
+
 instance Project S.Expr where
   project context (S.Located _ value) = project context value
   project context value = to <$> genericProject context (from value)
@@ -46,8 +56,12 @@ instance Project S.Unit where
     -- Keep nonempty annotations and every adapter annotation verbatim.
     let pureDefinition name = name `elem` map S.functionName (S.functionDefinitions value) &&
           null (M.findWithDefault [] name (M.fromList (S.abilityRows value)))
+        lawLinks entries = [(rename context name,settings) | (name,settings)<-entries]
     pure made{S.declaredUses=[entry | entry@(name,row)<-S.declaredUses made,
-      not (null row && pureDefinition name)]}
+      not (null row && pureDefinition name)],
+      S.lawHandlers=lawLinks (S.lawHandlers made),
+      S.lawAssignments=lawLinks (S.lawAssignments made),
+      S.lawHarness=lawLinks (S.lawHarness made)}
 
 -- Only fields that actually denote names receive delimiter normalization.
 -- In particular StringLit, Symbol IDs, descriptions, labels and opaque text
@@ -61,6 +75,13 @@ instance Project S.Example where
   project context value = do
     made <- to <$> genericProject context (from value)
     pure made{S.exampleName=semanticName (canonicalSource context) (S.exampleName value)}
+
+instance Project S.HarnessItem where
+  project context value = do
+    made <- to <$> genericProject context (from value)
+    pure (case made of
+      S.HarnessFor names settings range -> S.HarnessFor (map (rename context) names) settings range
+      other -> other)
 
 instance Project S.Definition where
   project context value = case value of

@@ -889,13 +889,13 @@
     "src/LawSpec/MigrationDefinitionTransport.hs": "b2dcf6828de28e0011cfab6952d7ba5f1a110c35f6717c5e667c1e706eaf6c96",
     "src/LawSpec/MigrationDomains.hs": "f6b45b2b7060ae3ac8863e942b261933833dd6edf11dc5d942ac5de2943f4741",
     "src/LawSpec/MigrationElaboration.hs": "425f4ebb9140fd51b4eb8489d3a0422159c3a463223c9619155fd212a6e3390b",
-    "src/LawSpec/MigrationFields.hs": "7cae44d056de0d9b216091f2b7ec3e6a29d01ae0251da7652677cc4453e49562",
+    "src/LawSpec/MigrationFields.hs": "c96949e9bb3feef141dca3c2570b08c9dbcf72041a831d27907214ad005d3127",
     "src/LawSpec/MigrationGeneration.hs": "2da916eb5d0a9b44c39187308ff88196f93bcdc69ce07c72558f8a2426a179d9",
     "src/LawSpec/MigrationLawTransport.hs": "7908bfed3cf352deafebfbe18d9d2bb6180a2921b59545c9b14f4f88f208bc1a",
-    "src/LawSpec/MigrationPayloads.hs": "cca61101e49a2ed5627cc39499cde1ce41c3cd445bcf94aba4f7f7ba52fb09b2",
+    "src/LawSpec/MigrationPayloads.hs": "ffbe0f6421bd6d2e0b9cd2327fea5c7a76674062eb9c3262aa89b3f0b077a15c",
     "src/LawSpec/MigrationScopes.hs": "d3217dcf6c1e00ba34fc3726a1282581374f53ce927de17253e32069ccd25c58",
     "src/LawSpec/MigrationTemplateDomains.hs": "dee92d5642f24449275cc4cb3570e58c5b2a7f61b75928e4c3831a28b2b20287",
-    "src/LawSpec/MigrationTemplates.hs": "02c3b8b5f1e8a5b44f6d675c6c6b5d083722cc93f26b67751e44f4771b4df66f",
+    "src/LawSpec/MigrationTemplates.hs": "0623c291ec30b75c34b85ee9dbd9c3093734f49ac6c0e3b5debeb388e713e106",
     "src/LawSpec/MigrationUnitTransport.hs": "4ec098a1f3c71fa5006d0a7c02e27c795af8bd6be60753136d27d7ed0f39f064",
     "src/LawSpec/Model.hs": "d5df3c2e7b738cb504f46e1c4232dadef0e9a08ba38b28880dce92112f86cfd1",
     "src/LawSpec/ModelTests.hs": "8385c70983780cdcf30e38f9ac4d3c348fb92b3d979985dab88520b4a07e4ede",
@@ -1005,9 +1005,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "7778c9400692f5a99acf1e371bd63fe46c748191562155ea995c7569a8ca3bf0",
+    "npm/core.wasm": "3c282d5aa14bc2131d384eb48c649a54fceb7937399b12621f1c638a20bfeb17",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "2e56d49a5c8e5acafec9139f5445413732404cdc3cff4753cb27e31f8ac5aa4e",
-    "npm/index.d.ts": "c15e362d9fc1ef00c113afd8e3ce4e9cb46848fd6c861109d368258e2507c0d4"
+    "npm/index.d.ts": "d392c415a0792791e17f42141ce3eecf6036245d545c9687142f935cb43da9a0"
   }
 }

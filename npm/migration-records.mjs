@@ -2,20 +2,30 @@
 // Declarations supply shapes; the checked resolver supplies identities across
 // imports and re-exports. No client-side import resolver is used here.
 const contains = (outer,inner) => outer.start<=inner.start && inner.end<=outer.end;
-function declarations(nodes) {
+function declarations(source) {
+  const {nodes}=source;
   return nodes.filter(node=>node.kind==='declaration.type').flatMap(type=>{
-    if (nodes.some(node=>contains(type,node) && (node.kind==='type-equation' ||
-        node.kind==='type-parameter-kind' && node.name!=='Type'))) return [];
+    // Parameters and constructor equations stay in place. Admission and the
+    // compiler's checked transport decide whether this preview is equivalent.
     const constructors=nodes.filter(node=>node.kind==='constructor' && contains(type,node));
     const declared=constructors.map(constructor=>({...constructor,fields:nodes.filter(node=>node.kind==='constructor-field' && contains(constructor,node))}));
-    return declared.some(constructor=>constructor.fields.length) ? [{type,declared,nominal:declared.length===1 && declared[0].name===type.name}] : [];
+    if (!declared.some(constructor=>constructor.fields.length)) return [];
+    let nominal=false;
+    if (declared.length===1 && declared[0].name===type.name) {
+      const binding=source.bindings.find(binding=>binding.namespace==='constructor' && binding.name===declared[0].name);
+      const shape=source.constructorShapes?.find(shape=>shape.constructor===binding?.target);
+      if (typeof shape?.nominalRecord!=='boolean')
+        throw new Error('Nominal record migration requires checked constructor classification: '+declared[0].name);
+      nominal=shape.nominalRecord;
+    }
+    return [{type,declared,nominal}];
   });
 }
 export function legacyRecordShapes(sources) {
   const shapes=new Map();
   for (const source of sources) {
     if (!Array.isArray(source.bindings)) throw new Error('Record migration requires checked namespace bindings');
-    for (const {declared,nominal} of declarations(source.nodes)) for (const constructor of declared) {
+    for (const {declared,nominal} of declarations(source)) for (const constructor of declared) {
       const binding=source.bindings.find(binding=>binding.namespace==='constructor' && binding.name===constructor.name);
       if (!binding) throw new Error('Checked constructor has no resolver identity: '+constructor.name);
       if (shapes.has(binding.target)) throw new Error('Duplicate checked constructor identity: '+binding.target);
@@ -78,7 +88,7 @@ export function planLegacyRecords(document,source,shapes) {
     return tokens.slice(0,count).map(token=>token.text).join('')===node.name
       ? {start:tokens[0].start,end:tokens[count-1].end} : null;
   };
-  for (const {type,declared,nominal} of declarations(nodes)) {
+  for (const {type,declared,nominal} of declarations(source)) {
     const tokens = code(type);
     const delimiter = tokens.find(token=>token.text==='is');
     if (tokens[0]?.text!=='type' || !delimiter || tokens.at(-1)?.text!=='end')

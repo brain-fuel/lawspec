@@ -162,7 +162,7 @@ with their uses.
 
 Checked primitive `BigUInt` and zero-inclusive `Natural` annotations preview as
 `Whole`; primitive `BigInt` previews as `Integer`. A `Natural` index kind previews
-as `Whole`, retaining zero equations and payload-free alternative declarations.
+as `Whole`, retaining zero equations and constructor equations.
 These source edits do not establish complete semantic or native representation
 correspondence. In particular, a checked numeric preview can still have different
 Core, template or domain fingerprints and cannot authorize writing. Preserving a
@@ -171,8 +171,36 @@ Core, template or domain fingerprints and cannot authorize writing. Preserving a
 User type/refinement bindings are not renamed by spelling. A refinement named
 `BigUInt` stays intact; the canonical grammar's conflict with that spelling remains
 an explicit diagnostic. Bounded nonzero refinements retain their original base
-type and bounds rather than silently becoming an unbounded `Nat`. Payload-bearing
-indexed families and general positive-number migration retain their explicit limits.
+type and bounds rather than silently becoming an unbounded `Nat`. General
+positive-number migration retains its explicit limits.
+
+Handler selections and single-law harness targets follow the same checked law
+identity as their declarations. Only those name fields lose their phrase
+delimiters during comparison; handler choices, harness settings and literal
+labels remain authoritative. A changed selection or setting still prevents
+matching source-unit metadata. Successful correspondence does not verify laws.
+
+`baseline.sourceFields.constructors` classifies checked constructors for source
+migration. A same-named constructor with indexed equations or existential scope
+is an alternative, even when its spelling resembles a legacy nominal record.
+The planner consumes these compiler facts rather than inferring that distinction
+from names. Ordinary nominal records retain their labeled fields and braces.
+
+A single explicit payload may rename its formal field to `value` while retaining
+the exact checked payload type, constructor equations and existential binders.
+The existing copier follows the formal's identity and validates the complete
+transported Core. Grouped indexed and existential payloads still require their
+own checked transport. In particular, natural-index measures do not yet follow
+a family through an anonymous record payload; a preview of that form is rejected
+by canonical admission and cannot authorize writing.
+
+The distinction between uniform parameters and varying indices follows the
+[Lean reference](https://lean-lang.org/doc/reference/latest/The-Type-System/Inductive-Types/).
+The [Idris dependent-record examples](https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#dependent-records)
+also retain relationships between a record's fields and its type parameters.
+For LawSpec, grouping fields must preserve those relationships through checked
+projections and measures. These precedents guide the unfinished transport; they
+do not constitute a Lean/Idris proof integration or an implemented new solver.
 
 The preserved Chapter 6 preview now passes canonical compilation at both
 machine widths while retaining all 23 laws, 65 table rows, one named example,
@@ -186,7 +214,8 @@ input-domain or project-wide migration correspondence.
 passes canonical compilation. This check selects no optional law verification
 and retains mandatory definition validation. An accepted preview still does
 not establish project correspondence. A rejected preview includes diagnostics
-for transformations that remain unfinished, such as record payloads.
+for transformations that remain unfinished, such as grouped natural-index
+payloads.
 
 The report's `baseline.coreSnapshot` and
 `sourcePreview.canonicalCheck.coreSnapshot` contain versioned fingerprints of

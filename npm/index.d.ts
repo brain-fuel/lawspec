@@ -74,8 +74,18 @@ export interface SourceFieldUse {
   expression?: Span;
 }
 
+export interface SourceConstructorShape {
+  constructor: string;
+  nominalRecord: boolean;
+}
+
 export type MigrationSourceFields =
-    {status: 'available'; version: 1; uses: SourceFieldUse[];} |
+    {
+      status: 'available';
+      version: 1;
+      uses: SourceFieldUse[];
+      constructors: SourceConstructorShape[];
+    } |
     {status: 'unavailable'; reason: string;};
 
 export interface Diagnostic {

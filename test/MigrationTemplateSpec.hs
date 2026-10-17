@@ -32,6 +32,30 @@ rows key result = case templates result >>= field key of
   _ -> []
 
 test_migrationTemplates = describe "checked source template migration capture" $ do
+  it "normalizes handler-association law keys while preserving the selected handler" $ do
+    let declarations = "ability Signal is signal :: Bool -> Bool end\n" ++
+          "handler remembering for Signal with state previous :: Bool start false is signal value is ~previous := !previous && value; previous end end\n" ++
+          "handler other for Signal with state previous :: Bool start false is signal value is ~previous := !previous && value; previous end end\n"
+        beforeBody = declarations ++ "law `twice` using remembering is definition is (signal true; signal true) = false end end"
+        afterBody handler = declarations ++ "law \"|twice| using " ++ handler ++ " is definition: (signal true; signal true) must be false end end"
+    before <- accepted (source beforeBody)
+    after <- canonicalCapture (source (afterBody "remembering"))
+    changed <- canonicalCapture (source (afterBody "other"))
+    mapM_ (\result -> field "diagnostics" result `shouldBe` Just (Array mempty)) [after,changed]
+    digest "declarationsDigest" before `shouldBe` digest "declarationsDigest" after
+    digest "lawBodiesDigest" before `shouldBe` digest "lawBodiesDigest" after
+    digest "declarationsDigest" before `shouldNotBe` digest "declarationsDigest" changed
+  it "normalizes a harness law target without changing its settings or literal labels" $ do
+    let beforeBody = "law `kept` is definition is true end end\n" ++
+          "harness configured for templates is\nfor law `kept`\nrepeat 2\nlabel \"kept\"\nend"
+        afterBody repetitions = "law \"|kept| is definition: true end end\n" ++
+          "harness configured for templates is\nfor law \"|kept|\nrepeat " ++ show repetitions ++ "\nlabel \"kept\"\nend"
+    before <- accepted (source beforeBody)
+    after <- canonicalCapture (source (afterBody (2::Int)))
+    changed <- canonicalCapture (source (afterBody (3::Int)))
+    mapM_ (\result -> field "diagnostics" result `shouldBe` Just (Array mempty)) [after,changed]
+    digest "declarationsDigest" before `shouldBe` digest "declarationsDigest" after
+    digest "declarationsDigest" before `shouldNotBe` digest "declarationsDigest" changed
   it "keeps compiler-provided template policies stable for a monomorphic project with no laws" $ do
     before <- accepted (source "definition same (value :: Bool) :: Bool is value end")
     after <- canonicalCapture (source "function same (value :: Bool) -> Bool is value end function")

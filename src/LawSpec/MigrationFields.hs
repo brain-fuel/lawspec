@@ -12,7 +12,7 @@ import LawSpec.Common (Span(..),Location(..))
 import LawSpec.Elaboration (coreTypeWithSourceRecords)
 import qualified LawSpec.Model as S
 import LawSpec.MigrationScopes (sourceContext)
-import LawSpec.MigrationTemplates (SourceTemplates(..))
+import LawSpec.MigrationTemplates (SourceTemplates(..),legacyNominalRecord)
 import LawSpec.SourceSyntax
 
 sourceFields :: SourceTemplates -> [SourceSyntax] -> Either String Value
@@ -22,7 +22,10 @@ sourceFields captured syntax = do
   let covered=map fst facts
   unless (all (\node -> key (syntaxSpan node) `elem` covered) nodes)
     (Left "some source field operations have no checked typed occurrence")
-  pure (object ["version" .= (1::Int),"status" .= ("available"::String),"uses" .= M.elems unique])
+  pure (object ["version" .= (1::Int),"status" .= ("available"::String),"uses" .= M.elems unique,
+    "constructors" .= [object ["constructor" .= C.idText (C.constructorId tag),
+      "nominalRecord" .= legacyNominalRecord declaration tag] |
+      declaration<-templateDataDeclarations captured,tag<-C.dataConstructors declaration]])
   where
     nodes=nub [node | source<-syntax,node<-syntaxNodes source,syntaxKind node `elem` ["field-access","field-update"]]
     terms=concat [body:before++after | (_,definitions)<-templateDefinitions captured,(_,body,before,after)<-definitions] ++
