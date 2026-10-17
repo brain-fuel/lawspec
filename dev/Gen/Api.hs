@@ -7,7 +7,7 @@ import LawSpec.Scalar
 import qualified LawSpec.Targets as Targets
 
 methods :: [(String, String)]
-methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("proofTasks", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest"), ("migrationComparison", "MigrationComparisonRequest")]
+methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("proofTasks", "CheckRequest"), ("planGeneration", "GenerationRequest"), ("migrationBaseline", "MigrationRequest"), ("migrationComparison", "MigrationComparisonRequest"), ("migrationBindings", "MigrationBindingRequest")]
 
 apiSources :: Layout -> [(FilePath, String)]
 apiSources layout = [("api.mjs", output api), ("index.d.ts", output declarations)]
@@ -195,9 +195,13 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "NativeNameBinding" (fields [("declaration", "string"), ("name", "string")])
   , interface "NativeGoImport" (fields [("alias", "string"), ("path", "string")])
   , interface "NativeErlangInclude" (fields [("path", "string"), ("library?", "boolean")])
+  , interface "NativeHandlerBinding" (fields [("ability","string"),("native","NativeReference")])
+  , interface "NativeFailureMapping" (fields [("failure","string"),("native","NativeReference")])
+  , interface "NativeNetworkBinding" (fields [("identity?","string"),("trusted?","string")])
   , interface "NativeBindings" (fields [("types?", "NativeTypeBinding[]"), ("generators?", "NativeGeneratorBinding[]"),
       ("functions?", "NativeFunctionBinding[]"), ("rustCrate?", "string"), ("goImports?", "NativeGoImport[]"),
       ("names?", "NativeNameBinding[]"),
+      ("handlers?", "NativeHandlerBinding[]"), ("failures?", "NativeFailureMapping[]"), ("network?", "NativeNetworkBinding"),
       ("erlangIncludes?", "NativeErlangInclude[]")])
   , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed"])
   , interface "ObligationEvidence"
@@ -232,6 +236,7 @@ declarations = joinWith (softbreak <> softbreak)
       [("schemaVersion?",text "5"),("languageProfile",quoted "1.0-rc.1"),("from",quoted "0.24")]
   , interface "MigrationComparisonRequest extends MigrationRequest"
       [("migrated",text "CheckRequest & {schemaVersion?: 5; languageProfile: '1.0-rc.1'}")]
+  , interface "MigrationBindingRequest extends MigrationComparisonRequest" [("target?",text "Target")]
   , interface "MigrationPayloadField" (fields [("label","string"),("fromIndex","number"),("toIndex","number"),
       ("fromBinder","string"),("toBinder","string")])
   , alias "MigrationPayloadConstructor"
@@ -272,6 +277,26 @@ declarations = joinWith (softbreak <> softbreak)
       [text "MigrationPending",group (text "MigrationTemplateCertificate &" <> softline <> record
         [("metadata",text "MigrationDigestPair"),("definitions",union (map quoted ["matched","not-established"])),
          ("laws",union (map quoted ["matched","not-established"])),("payloadShapes",quoted "matched")])]
+  , interface "MigrationProgramAnchor" (fields [("programDigest","string"),("definitionPlaneDigest","string"),("lawBodiesDigest","string")])
+  , alias "MigrationBindingChange"
+      [record ([("kind",quoted "single-payload-field")] ++ fields [("type","string"),("constructor","string"),("from","string"),("to","string"),("native","string")]),
+       record ([("kind",quoted "grouped-record-payload")] ++ fields [("type","string"),("constructor","string"),("payload","string")] ++
+         [("fields",array (record (fields [("field","string"),("native","string"),("nativeArgumentIndex","number"),("payloadPath","string[]")])))] )]
+  , alias "MigrationBindingProposal"
+      [record [("status",quoted "unavailable"),("reason",text "string")],
+       record ([("version",text "1"),("algorithm",quoted "sha256"),("status",union (map quoted ["matched","not-established"])),
+          ("machineBits",union [text "32",text "64"])] ++
+         fields [("scope","string"),("target","string"),("inputBindings","NativeBindings"),("originalBindingsDigest","string"),
+           ("before","MigrationProgramAnchor"),("after","MigrationProgramAnchor"),("proposedNativeBindings","NativeBindings"),
+           ("requirements","string[]"),("changes","MigrationBindingChange[]"),("beforeValidated","true"),
+           ("afterValidated","boolean"),("proposalComplete","boolean"),("originalsUnchanged","true")] ++
+         [("sourceTemplates",record (fields [("before","MigrationTemplateDomainAnchors"),("after","MigrationTemplateDomainAnchors")])),
+          ("bindings",record ([("status",union (map quoted ["matched","not-established"]))] ++
+            [(name,union [text "string",text "null"]) | name<-["before","after"]])),
+          ("obligations",record ([("status",union (map quoted ["matched","not-established"]))] ++
+            fields [("before","ObligationEvidence[]")] ++ [("after",union [text "ObligationEvidence[]",text "null"])])),
+          ("nativeConformance",quoted "not-established"),("targetGeneration",quoted "not-established"),
+          ("lawVerification",quoted "not-established-by-binding-correspondence")])]
   , alias "MigrationPayloadComparison"
       [record ([("version",text "1"),("algorithm",quoted "sha256"),("status",quoted "not-established"),("machineBits",union [text "32",text "64"])] ++
         fields [("scope","string"),("beforeDigest","string"),("afterDigest","string")] ++
@@ -328,7 +353,7 @@ declarations = joinWith (softbreak <> softbreak)
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
        [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("sourceFields?",text "MigrationSourceFields"),("migrationSemantics?",text "MigrationSemanticSnapshot"),
-        ("migrationComparison?",text "MigrationPayloadComparison"),("migrationComparisonInput?",union (map quoted ["before","migrated"]))] ++
+        ("migrationComparison?",text "MigrationPayloadComparison"),("migrationBindings?",text "MigrationBindingProposal"),("migrationComparisonInput?",union (map quoted ["before","migrated"]))] ++
        [("proofTasks?",text "ProofTask[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])

@@ -212,7 +212,8 @@ test('Chapter 6 retains raw shape differences while establishing transported Cor
   assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
   assert.equal(report.correspondence.program.status,'matched');
   assert.equal(report.correspondence.program.basis,'matching-complete-Core-after-validated-payload-transport-and-input-domain-correspondence');
-  assert.equal(report.correspondence.nativeBindings.status,'not-established');
+  assert.equal(report.correspondence.nativeBindings.status,'matched');
+  assert.equal(report.correspondence.nativeBindings.configurationCount,0);
   assert.deepEqual(report.correspondence.differences.dataTypes.changed,['nand2tetris.chap06::type::Predefined','nand2tetris.chap06::type::Line']);
   assert.equal(report.correspondence.differences.dataTypes.added.length,1);
   assert.ok(report.correspondence.differences.dataTypes.added[0].startsWith('lawspec::structural::record::'));

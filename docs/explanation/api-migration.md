@@ -61,6 +61,31 @@ record fields retain their existing identities; grouped alternative fields
 still require native binding correspondence. Indexed/GADT payload conversions,
 dependency-package migration and validated project writing remain unfinished.
 
+Each configured target now has a separate `bindingPreview` entry. The source
+baseline is compiled independently of target bindings; the compiler then checks
+each actual native request against the legacy source and derives a destination
+proposal. API-supplied bindings are checked in the same way, rather than being
+sent to the binding-blind schema-3 request. They have a separate input entry
+and never replace target configurations or become implicit target defaults.
+A binding error in one target keeps project-wide binding correspondence
+unestablished.
+
+For a single alternative payload, the proposal changes its logical field label
+to `value` and preserves the existing native field and constructor. Accepted
+proposals appear explicitly in `proposedConfiguration.targets`; the original
+configuration and files stay unchanged. No explicit bindings means there is no
+binding configuration to adapt, rather than evidence that generated application
+interfaces have been verified. The report records the configuration count.
+
+Grouped native payloads still require a checked layout preserving every native
+field and positional constructor argument; their pending proposal records both
+the original argument positions and destination record paths. Opaque codecs
+receiving changed logical data and factories over changed generated types need
+independent correspondence checks. Their destination configuration may pass
+validation while implementation correspondence remains unknown. Binding facts
+retain the existing runtime-enforcement and assumption classifications and do
+not establish native execution, target generation, or law truth.
+
 When the canonical preview compiles, `correspondence.payloads` compares its
 checked constructor shapes with the original compiler input, including unused
 generic declarations. It derives grouped record identities through ordinary

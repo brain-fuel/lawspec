@@ -1,6 +1,6 @@
 -- | Compare reusable-law templates with their parameters kept symbolic. No
--- implementation or witness is chosen, and the comparison program is never
--- emitted, searched, or used as input-population evidence.
+-- implementation or witness is chosen. Law bodies are never emitted or
+-- executed; independent domain-only checks may use the admitted definitions.
 module LawSpec.MigrationLawTransport (lawTransport,lawMetadata) where
 
 import Control.Monad (unless)

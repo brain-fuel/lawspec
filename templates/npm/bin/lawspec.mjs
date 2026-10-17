@@ -152,7 +152,11 @@ async function migrateCommand() {
   if (options.write && !report.validated) throw Object.assign(new Error(
     "migration-incomplete: writing requires validated source, constructor and native binding transformations; no files were written"),
     { diagnostics: [{ code: "migration-incomplete", message: report.blockers.join(" "), at: null }] });
-  output(options.json ? report : `Read-only migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` +
+  const bindingChanges=report.bindingPreview.targets.flatMap(target=>target.evidence?.changes??[]).length;
+  const bindingChecked=report.bindingPreview.targets.filter(target=>target.evidence?.beforeValidated===true).length;
+  const bindingMatched=report.bindingPreview.targets.filter(target=>target.status==='matched').length;
+  const bindingSummary=`Native binding preview: ${bindingChecked} of ${report.bindingPreview.configurationCount} original configurations checked; ${bindingMatched} proposals match; ${bindingChanges} field changes.\n`;
+  output(options.json ? report : `Read-only migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` + bindingSummary +
     report.blockers.join("\n") + "\nNo files were written. Use --json to review the typed baseline, source-edit preview and proposed configuration. The source preview is not a validated project migration.");
 }
 

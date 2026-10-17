@@ -85,7 +85,8 @@ test('the read-only report establishes checked payload Core while leaving native
   assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
   assert.equal(report.correspondence.payloads.payloadShapes.status,'matched');
   assert.equal(report.correspondence.program.status,'matched');
-  assert.equal(report.correspondence.nativeBindings.status,'not-established');
+  assert.equal(report.correspondence.nativeBindings.status,'matched');
+  assert.equal(report.correspondence.nativeBindings.configurationCount,0);
   assert.equal(report.correspondence.generatedBehavior.status,'not-established');
   assert.equal(report.correspondence.status,'not-established');
   assert.equal(report.validated,false);

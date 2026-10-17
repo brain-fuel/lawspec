@@ -1,4 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest, MigrationComparisonRequest, MigrationPayloadComparison} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest, MigrationComparisonRequest, MigrationPayloadComparison, ObligationEvidence, MigrationBindingRequest} from '../../npm/index.js';
 
 export function migrationDigests(result: Result): string[] {
   const snapshot: MigrationSemanticSnapshot | undefined = result.migrationSemantics;
@@ -268,3 +268,29 @@ export function symbolicMigrationEvidence(result: Result): string[] {
 // @ts-expect-error Source-field metadata cannot silently claim an unknown version.
 const fabricatedSourceFields: NonNullable<Result['sourceFields']> = {status: 'available', version: 2, uses: []};
 void fabricatedSourceFields;
+
+export function nativeBindingMigration(result: Result): string[] {
+  const proposal = result.migrationBindings;
+  if (!proposal || proposal.status === 'unavailable') return [];
+  const version: 1 = proposal.version;
+  const nativeConformance: 'not-established' = proposal.nativeConformance;
+  const generation: 'not-established' = proposal.targetGeneration;
+  const originalDigest: string = proposal.originalBindingsDigest;
+  const obligations: ObligationEvidence[] = proposal.obligations.before;
+  // @ts-expect-error A configuration proposal is not evidence of native conformance.
+  const proved: 'proved' = proposal.nativeConformance;
+  void version; void generation; void originalDigest; void obligations; void proved;
+  return [proposal.target, nativeConformance, ...proposal.changes.flatMap(change => {
+    if (change.kind === 'single-payload-field') return [change.native];
+    return change.fields.map(field => field.nativeArgumentIndex + ':' + field.payloadPath.join('.'));
+  })];
+}
+
+const nativeMigrationRequest: MigrationBindingRequest = {...comparisonRequest, target: 'python', nativeBindings: {
+  handlers: [{ability: 'sample::Gateway', native: ['application', 'Gateway']}],
+  failures: [{failure: 'sample::Failure::Invalid', native: ['application', 'Invalid']}],
+  network: {identity: 'identity.seed', trusted: 'trusted.txt'},
+}};
+// @ts-expect-error The binding proposal uses the same supported target names as generation.
+const invalidNativeMigrationTarget: MigrationBindingRequest = {...nativeMigrationRequest, target: 'fiction'};
+void nativeMigrationRequest; void invalidNativeMigrationTarget;

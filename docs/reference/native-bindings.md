@@ -38,7 +38,7 @@ for legacy migration input. The fields include `types`, `functions`, `generators
   `ConcurrentLinkedQueue<kotlin.Int>`, instead of `kotlin.Any`. Other
   targets ignore it; Java keeps `Object`.
 
-RC1 also accepts `names`, which explicitly chooses a generated public function
+The current authoring profile also accepts `names`, which explicitly chooses a generated public function
 name. This applies to checked definitions and adapters, preserving declaration
 identity, type, body, contracts and every call to the declaration:
 
@@ -58,6 +58,40 @@ suffixes. A name override supplies no native implementation and creates no
 native bridge on its own. The compiler requires schema 5 and the explicit
 `1.0-rc.1` profile for this field. The `rc1-native-names` acceptance suite checks
 two colliding source spellings with distinct behavior on every target.
+
+## Migrating 0.24 bindings
+
+The read-only migration report checks the actual bindings for every configured
+target. It shows binding changes separately from source edits and target
+execution. A single alternative's payload label changes to `value` while its
+native field stays the same. For example, an old mapping
+
+```json
+{"field": "flag", "native": "stored"}
+```
+
+becomes
+
+```json
+{"field": "value", "native": "stored"}
+```
+
+The application still supplies `stored`. The proposed configuration contains
+this explicit change only after the compiler accepts it. Nominal record field
+mappings retain their names. A failed target blocks project-wide binding
+correspondence without discarding other targets' diagnostic results.
+
+Grouped payloads need a native layout that preserves every field and the
+original positional constructor argument order. The report records those
+positions and the new record paths; it currently leaves this conversion
+unestablished. Codecs receiving a changed logical representation and factories
+over changed generated data also require independent correspondence. Existing
+assumptions remain assumptions. Binding proposals do not execute native code,
+prove laws, validate a whole project, or authorize writing by themselves.
+
+See [the migration API](api.md#native-binding-migration-proposals) for the
+compiler-owned proposal format and [source migration](../explanation/api-migration.md#source-migration-from-024)
+for the remaining project-wide gates.
 
 ## Async adapters
 

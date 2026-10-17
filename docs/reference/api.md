@@ -36,6 +36,7 @@ interface Compiler {
   planGeneration(input: GenerationRequest): Promise<Result>;
   migrationBaseline(input: MigrationRequest): Promise<Result>;
   migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
+  migrationBindings(input: MigrationBindingRequest): Promise<Result>;
 }
 function createCompiler(): Promise<Compiler>;
 ```
@@ -258,6 +259,44 @@ The enclosing status remains `not-established`, with `validated: false`.
 project-wide gates. `lawVerification` is
 `not-established-by-payload-shapes`. The method does not execute native
 implementations or authorize project writing.
+
+### Native binding migration proposals
+
+`migrationBindings` takes a `MigrationBindingRequest`: the same explicit
+schema-5/profile/`from: '0.24'` source pair as `migrationComparison`, plus an
+optional supported `target`. Its original `nativeBindings` are checked against
+the legacy program. The destination sources use canonical parsing and mandatory
+definition validation. Both sides require `verification.layers: []`.
+
+The compiler derives an automatic binding proposal from its checked payload
+plan and resolves that proposal against the destination program. A single
+alternative payload's old logical field becomes `value`; its native field,
+constructor, type and function references remain. Named record mappings retain
+their fields. A supplied `migrated.nativeBindings` is also checked and compared
+with that automatic proposal. Unsupported adaptation remains explicit.
+
+`Result.migrationBindings` is unavailable with a reason, or a version-1
+`MigrationBindingProposal`. It records the target and machine width, the exact
+`inputBindings`, unchanged-input and validation flags, full Core program anchors,
+and all four source-template anchors on each side. `bindings` compares resolved,
+normalized configurations. `proposedNativeBindings` is the concrete request
+object; `changes` identifies renamed fields or pending grouped layouts.
+Grouped fields include original `nativeArgumentIndex` and destination
+`payloadPath`, independent of configuration entry order. `requirements` lists
+unresolved correspondence. An accepted configuration can still have an
+unestablished overall proposal.
+
+`obligations.before` and `.after` preserve the ordinary evidence classifications:
+native type boundaries are runtime enforced; codecs, factories and native
+functions remain assumed. `nativeConformance` and `targetGeneration` stay
+`not-established`; the method neither executes native code nor verifies a law.
+The coordinator checks the request, source and target anchors, obligation
+classifications and proposed-object digest before accepting binding facts.
+
+The shared compiler resolver remains the authority. This follows the explicit
+external-contract boundary described by [SPARK's imported-subprogram
+contracts](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html#writing-contracts-on-imported-subprograms):
+checking callers or interfaces does not verify an imported implementation.
 
 ### Packages
 

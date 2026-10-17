@@ -19,7 +19,9 @@ test('migration keeps versioned dependency templates while comparing monomorphic
     assert.equal(report.correspondence.sourceTemplates.status,'matched',JSON.stringify(report.correspondence.sourceTemplates));
     assert.equal(report.correspondence.program.status,'matched');
     assert.ok(!report.blockers.some(reason=>reason.includes('empty-domain')||reason.includes('source-template')));
-    assert.ok(report.blockers.some(reason=>reason.includes('Native constructor')));
+    assert.equal(report.correspondence.nativeBindings.status,'matched');
+    assert.equal(report.correspondence.nativeBindings.configurationCount,0);
+    assert.equal(report.correspondence.generatedBehavior.status,'not-established');
     assert.ok(report.blockers.some(reason=>reason.includes('native behavior')));
     assert.ok(report.blockers.some(reason=>reason.includes('writing has not been implemented')));
     const before=report.baseline.coreSnapshot,after=report.sourcePreview.canonicalCheck.coreSnapshot;

@@ -67,5 +67,14 @@ export async function createCompiler() {
               method: 'migrationComparison',
             }
         ),
+    migrationBindings: (input) =>
+        call(
+            {
+              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
+              input.nativeBindings === undefined ? 3 : 4,
+              ...input,
+              method: 'migrationBindings',
+            }
+        ),
   };
 }

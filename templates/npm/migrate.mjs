@@ -2,12 +2,14 @@
 // to write an unvalidated transformation or silently alter native payload APIs.
 import {planLegacySourceEdits} from './migration-laws.mjs';
 import {compareMigrationSnapshots} from './migration-correspondence.mjs';
+import {planNativeBindings} from './migration-bindings.mjs';
 
 export const legacyLawLayers = ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model'];
 export async function migrationReport(compiler, config, input) {
-  const baseline = await compiler.check({ ...input, schemaVersion: 3 });
+  const {nativeBindings:inputBindings,...sourceInput}=input;
+  const baseline = await compiler.check({ ...sourceInput, schemaVersion: 3 });
   if (baseline.diagnostics?.length) return { from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: baseline.diagnostics };
-  const syntax = await compiler.migrationBaseline({...input,schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',verification:{layers:[]}});
+  const syntax = await compiler.migrationBaseline({...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',verification:{layers:[]}});
   if (syntax.diagnostics?.length) return {from:'0.24',to:'1.0-rc.1',validated:false,diagnostics:syntax.diagnostics};
   if (!Array.isArray(syntax.sourceSyntax)) throw new Error('The compiler did not return the checked source syntax inventory');
   const files = new Set(input.sources.map(s => s.path));
@@ -31,7 +33,7 @@ export async function migrationReport(compiler, config, input) {
       diagnostics:[{code:'migration-source',message:error.message,at:null}]};
   }
   if (!sourcePreview.diagnostics.length) {
-    const checked = await compiler.check({...input,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},migrationSnapshot:true,
+    const checked = await compiler.check({...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},migrationSnapshot:true,
       sources:sourcePreview.sources.map(({path,content})=>({path,content}))});
     sourcePreview.canonicalCheck = {status:checked.diagnostics.length?'rejected':'accepted',diagnostics:checked.diagnostics,
       intrinsicDefinitionChecks:checked.verification?.intrinsicDefinitionChecks===true,
@@ -39,8 +41,8 @@ export async function migrationReport(compiler, config, input) {
   } else sourcePreview.canonicalCheck = {status:'unavailable',diagnostics:sourcePreview.diagnostics};
   let payloadComparison={status:'unavailable',reason:'The canonical preview or compiler-side payload comparison is unavailable.'};
   if(sourcePreview.canonicalCheck.status==='accepted'&&typeof compiler.migrationComparison==='function') {
-    const compared=await compiler.migrationComparison({...input,schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',verification:{layers:[]},
-      migrated:{...input,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
+    const compared=await compiler.migrationComparison({...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',verification:{layers:[]},
+      migrated:{...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
         sources:sourcePreview.sources.map(({path,content})=>({path,content}))}});
     payloadComparison=compared.migrationComparison??{status:'unavailable',
       reason:'The compiler did not admit both inputs for payload comparison.',diagnostics:compared.diagnostics};
@@ -48,6 +50,14 @@ export async function migrationReport(compiler, config, input) {
   const correspondence={...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,
     payloadComparison.executableTransport,payloadComparison.definitionTemplates,payloadComparison.lawTemplates,payloadComparison.sourceUnits),
     payloads:payloadComparison};
+  const bindingPreview=sourcePreview.canonicalCheck.status==='accepted' ?
+    await planNativeBindings(compiler,config,input,sourcePreview.sources.map(({path,content})=>({path,content})),
+      syntax.migrationSemantics,sourcePreview.canonicalCheck.coreSnapshot) :
+    {status:'not-established',scope:'explicit native binding configuration',
+      configurationCount:config.targets.length+(input.nativeBindings!==undefined?1:0),targets:[],
+      proposedTargets:config.targets,reason:'Native binding planning requires an admitted canonical source preview.'};
+  correspondence.nativeBindings={status:bindingPreview.status,scope:bindingPreview.scope,
+    configurationCount:bindingPreview.configurationCount};
   const pending=[
     ['program','Complete checked Core correspondence has not been established.'],
     ['definitionPlane','Checked definition and contract correspondence has not been established.'],
@@ -60,7 +70,7 @@ export async function migrationReport(compiler, config, input) {
     correspondence.sourceTemplates.domainPolicies?.status==='not-established';
   return {
     from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: [],
-    proposedConfiguration: { ...config, version: 2, languageProfile: '1.0-rc.1', verification: { layers: [...legacyLawLayers] } },
+    proposedConfiguration: { ...config, targets:bindingPreview.proposedTargets, version: 2, languageProfile: '1.0-rc.1', verification: { layers: [...legacyLawLayers] } },
     baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax,sourceFields:syntax.sourceFields,
       coreSnapshot:syntax.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'} },
     sourcePreview,
@@ -69,7 +79,9 @@ export async function migrationReport(compiler, config, input) {
       requirement:'Preserve domain correspondence, including empty and dependent domains, when validating this migration.'})),
     constructorChanges: payloads,
     nativeBindings: config.targets.map(target => ({ target: target.language, bindings: target.nativeBindings ?? null })),
+    bindingPreview,
     blockers: [...pending.filter(([name])=>correspondence[name].status!=='matched').map(([,reason])=>reason),
+      ...bindingPreview.targets.filter(target=>target.status!=='matched').map(target=>'Native bindings for '+(target.target||'input')+': '+target.reason),
       ...(domainPending ? ['Legacy nonempty input-domain handling and canonical universal quantification require explicit correspondence checks; no empty-domain equivalence is assumed.'] : []),
       ...(sourcePreview.canonicalCheck.status==='rejected' ? ['The partial preview does not yet pass canonical compilation; inspect sourcePreview.canonicalCheck.diagnostics.'] : []),
       ...sourcePreview.diagnostics.map(diagnostic => 'Source preview unavailable: ' + diagnostic.message),

@@ -388,6 +388,21 @@ export interface NativeErlangInclude {
   library?: boolean;
 }
 
+export interface NativeHandlerBinding {
+  ability: string;
+  native: NativeReference;
+}
+
+export interface NativeFailureMapping {
+  failure: string;
+  native: NativeReference;
+}
+
+export interface NativeNetworkBinding {
+  identity?: string;
+  trusted?: string;
+}
+
 export interface NativeBindings {
   types?: NativeTypeBinding[];
   generators?: NativeGeneratorBinding[];
@@ -395,6 +410,9 @@ export interface NativeBindings {
   rustCrate?: string;
   goImports?: NativeGoImport[];
   names?: NativeNameBinding[];
+  handlers?: NativeHandlerBinding[];
+  failures?: NativeFailureMapping[];
+  network?: NativeNetworkBinding;
   erlangIncludes?: NativeErlangInclude[];
 }
 
@@ -525,6 +543,10 @@ export interface MigrationComparisonRequest extends MigrationRequest {
   migrated: CheckRequest & {schemaVersion?: 5; languageProfile: '1.0-rc.1'};
 }
 
+export interface MigrationBindingRequest extends MigrationComparisonRequest {
+  target?: Target;
+}
+
 export interface MigrationPayloadField {
   label: string;
   fromIndex: number;
@@ -644,6 +666,73 @@ export type MigrationUnitTransport =
       definitions: 'matched' | 'not-established';
       laws: 'matched' | 'not-established';
       payloadShapes: 'matched';
+    };
+
+export interface MigrationProgramAnchor {
+  programDigest: string;
+  definitionPlaneDigest: string;
+  lawBodiesDigest: string;
+}
+
+export type MigrationBindingChange =
+    {
+      kind: 'single-payload-field';
+      type: string;
+      constructor: string;
+      from: string;
+      to: string;
+      native: string;
+    } |
+    {
+      kind: 'grouped-record-payload';
+      type: string;
+      constructor: string;
+      payload: string;
+      fields: {
+        field: string;
+        native: string;
+        nativeArgumentIndex: number;
+        payloadPath: string[];
+      }[];
+    };
+
+export type MigrationBindingProposal =
+    {status: 'unavailable'; reason: string;} |
+    {
+      version: 1;
+      algorithm: 'sha256';
+      status: 'matched' | 'not-established';
+      machineBits: 32 | 64;
+      scope: string;
+      target: string;
+      inputBindings: NativeBindings;
+      originalBindingsDigest: string;
+      before: MigrationProgramAnchor;
+      after: MigrationProgramAnchor;
+      proposedNativeBindings: NativeBindings;
+      requirements: string[];
+      changes: MigrationBindingChange[];
+      beforeValidated: true;
+      afterValidated: boolean;
+      proposalComplete: boolean;
+      originalsUnchanged: true;
+      sourceTemplates: {
+        before: MigrationTemplateDomainAnchors;
+        after: MigrationTemplateDomainAnchors;
+      };
+      bindings: {
+        status: 'matched' | 'not-established';
+        before: string | null;
+        after: string | null;
+      };
+      obligations: {
+        status: 'matched' | 'not-established';
+        before: ObligationEvidence[];
+        after: ObligationEvidence[] | null;
+      };
+      nativeConformance: 'not-established';
+      targetGeneration: 'not-established';
+      lawVerification: 'not-established-by-binding-correspondence';
     };
 
 export type MigrationPayloadComparison =
@@ -824,6 +913,7 @@ export interface Result {
   sourceFields?: MigrationSourceFields;
   migrationSemantics?: MigrationSemanticSnapshot;
   migrationComparison?: MigrationPayloadComparison;
+  migrationBindings?: MigrationBindingProposal;
   migrationComparisonInput?: 'before' | 'migrated';
   proofTasks?: ProofTask[];
   evidence?: ObligationEvidence[];
@@ -888,6 +978,7 @@ export interface Compiler {
   planGeneration(input: GenerationRequest): Promise<Result>;
   migrationBaseline(input: MigrationRequest): Promise<Result>;
   migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
+  migrationBindings(input: MigrationBindingRequest): Promise<Result>;
 }
 
 export function createCompiler(): Promise<Compiler>;

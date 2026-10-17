@@ -25,7 +25,7 @@ test('the exhaustive TypeScript visitor traverses emitted records, effects and f
   t.after(() => rm(directory, {recursive: true, force: true}));
   execFileSync(tsc, ['--strict', '--target', 'ES2022', '--module', 'NodeNext', '--moduleResolution', 'NodeNext',
     '--rootDir', 'test/fixtures', '--outDir', directory, 'test/fixtures/payload_api.ts'], {cwd: root, stdio: 'pipe'});
-  const {children, nodeFixtures, sourceFieldMigrations, symbolicMigrationEvidence} = await import(pathToFileURL(path.join(directory, 'payload_api.js')).href);
+  const {children, nodeFixtures, sourceFieldMigrations, symbolicMigrationEvidence, nativeBindingMigration} = await import(pathToFileURL(path.join(directory, 'payload_api.js')).href);
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   const expressions = [];
@@ -85,5 +85,9 @@ test('the exhaustive TypeScript visitor traverses emitted records, effects and f
   const fingerprints = symbolicMigrationEvidence(comparison);
   assert.equal(fingerprints.length, 5);
   assert.ok(fingerprints.every(value => /^[0-9a-f]{64}$/.test(value)));
+  const nativeProposal = await compiler.migrationBindings({...options, from: '0.24', target: 'python', sources: original,
+    migrated: {...options, sources: migrated}});
+  assert.deepEqual(nativeProposal.diagnostics, []);
+  assert.deepEqual(nativeBindingMigration(nativeProposal), ['python', 'not-established']);
   t.diagnostic(`Traversed ${expressions.length} emitted expressions across ${kinds.size} node kinds; both handler forms and call filters were present.`);
 });

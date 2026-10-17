@@ -1,8 +1,9 @@
 -- | Versioned wire views. Field names and discriminators are selected explicitly;
 -- no internal AST or IR datatype is serialized with genericToJSON.
-module LawSpec.Public (programView, typeView, expressionView, valueView) where
+module LawSpec.Public (programView, typeView, expressionView, valueView, obligationView) where
 import qualified LawSpec.Unification as U
 import Data.Aeson
+import Data.Aeson.Types (Pair)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import qualified Data.Map.Strict as M
@@ -19,6 +20,17 @@ import LawSpec.Backend (declarationName, prettyType)
 import LawSpec.Collections (collectionsUnit,canonicalCollectionValues,collectionOperations,canonicalCollectionOperation)
 
 type Names = [(C.Id,String)]
+
+-- Shared evidence presentation also serves documentary migration snapshots.
+-- Its status remains the existing runtime/assumption/proof classification.
+obligationView :: Names -> Obligation -> Value
+obligationView names = object . obligationFields names
+
+obligationFields :: Names -> Obligation -> [Pair]
+obligationFields names o =
+  [ "owner" .= C.idText (obligationUnit o), "declaration" .= C.idText (obligationDeclaration o)
+  , "stage" .= obligationStage o, "status" .= statusName (obligationStatus o)
+  , "reason" .= obligationReason o, "claim" .= fmap (expressionView names) (obligationClaim o) ]
 
 -- | The compiler API exposes types as JSON in one stable shape.
 typeView :: C.Type -> Value
@@ -296,11 +308,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
     unitSettingsOf h = case [s | u <- programUnits, Just s <- [C.unitHarnessSettings u], Just (C.unitHarnessName s) == C.harnessUnit h] of
       s : _ -> Just s
       [] -> Nothing
-    evidenceView o = object (
-      [ "owner" .= C.idText (obligationUnit o), "declaration" .= C.idText (obligationDeclaration o)
-      , "stage" .= obligationStage o, "status" .= statusName (obligationStatus o)
-      , "reason" .= obligationReason o
-      , "claim" .= fmap (expressionView (declarationBinders (obligationDeclaration o))) (obligationClaim o) ] ++
+    evidenceView o = object (obligationFields (declarationBinders (obligationDeclaration o)) o ++
       -- A law's obligation comes from the law plane; how it is discharged,
       -- from the harness plane, which is reported beside it.
       [ "harness" .= harnessView (declarationBinders (obligationDeclaration o)) (C.propertyHarness p)

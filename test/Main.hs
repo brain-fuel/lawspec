@@ -64,6 +64,7 @@ import qualified MigrationSnapshotSpec
 import qualified MigrationTemplateSpec
 import qualified CapabilityScopeSpec
 import qualified PayloadTransportSpec
+import qualified MigrationBindingSpec
 import qualified MigrationPayloadSpec
 import qualified DomainEvidenceSpec
 import qualified AsyncSpec
@@ -110,6 +111,7 @@ main = hspec $ do
   MigrationTemplateSpec.test_migrationTemplates
   CapabilityScopeSpec.test_capabilityScopes
   PayloadTransportSpec.test_payloadTransport
+  MigrationBindingSpec.test_migrationBindings
   MigrationPayloadSpec.test_migrationPayloads
   DomainEvidenceSpec.test_domainEvidence
   CanonicalSpec.test_canonicalAuthoringPreservesIntrinsicGuarantees
