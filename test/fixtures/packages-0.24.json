@@ -1,0 +1,76 @@
+{
+  "description": "Frozen 0.24 package inputs for migration regression; current authoring examples live in examples/packages.",
+  "config": {
+    "version": 1,
+    "sources": [
+      "orders.lawspec"
+    ],
+    "dependencies": {
+      "shop.domain": "^1.0.0",
+      "shop.tax": "^2.0.0"
+    },
+    "packages": [
+      "../shop-domain",
+      "../shop-tax-1",
+      "../shop-tax-2"
+    ],
+    "targets": []
+  },
+  "input": {
+    "sources": [
+      {
+        "path": "orders.lawspec",
+        "content": "unit shop.orders\nimport shop.domain as domain (Money, Cents, `commutative`, `idempotent`)\n-- shop.domain uses version 1 of shop.tax; this project's range selects\n-- version 2. Both are in the build, and their Bands are different types.\nimport shop.tax.api as tax (Band)\n\n-- Constructor names are scoped to their unit: this Usd is not domain.Usd.\ntype Currency is | Usd | Gbp end\n\ntype Line is Line price :: Money quantity :: domain.Quantity end\n\nsettlement :: Currency -> domain.Currency\nlineTotal :: Line -> Money\n-- Generic laws quantify over the argument's base type, so these adapters take\n-- any Int64; the last law restricts its inputs to Cents.\ncheaper :: Int64 -> Int64 -> Int64\nroundDown :: Int64 -> Int64\nclassify :: Int64 -> Band\n\nlaw `dollars settle in dollars` is\n  definition is\n    settlement Usd = domain.Usd\n  end\nend\n\nlaw `pounds settle in euros` is\n  definition is\n    settlement Gbp = domain.Eur\n  end\nend\n\nlaw `a line total keeps the price currency` is\n  definition is\n    `for all` (l :: Line) .\n      domain.currencyOf (lineTotal l) = (match l with\n        | Line p q -> domain.currencyOf p\n        end)\n  end\n  example `two items` is\n    l = Line (Money domain.Usd 250) (domain.Quantity 2)\n    expect domain.centsOf (lineTotal l) = 500\n  end\nend\n\nlaw `the cheaper price does not depend on order` is\n  definition is\n    `commutative` cheaper\n  end\nend\n\nlaw `rounding down to whole dollars is stable` is\n  definition is\n    `idempotent` roundDown\n  end\nend\n\nlaw `rounding down never raises a price` is\n  definition is\n    `for all` (c :: Cents) . roundDown c <= c\n  end\nend\n\nlaw `prices are classified into version 2 bands` is\n  definition is\n    `for all` (c :: Cents) . tax.rateOf (classify c) <= 25\n  end\n  example `nothing` is c = 0 expect classify c = Zero end\n  example `small` is c = 9999 expect classify c = Low end\n  example `large` is c = 10000 expect classify c = High end\nend\n\nlaw `shop.domain keeps version 1 of the bands` is\n  definition is\n    domain.dutyOf domain.High = 20\n  end\nend\n\nlaw `this project sees version 2 of the bands` is\n  definition is\n    tax.rateOf High = 25\n  end\nend\n"
+      }
+    ],
+    "packages": [
+      {
+        "name": "shop.domain",
+        "version": "1.2.0",
+        "dependencies": {
+          "shop.tax": "^1.0.0"
+        },
+        "sources": [
+          {
+            "path": "../shop-domain/src/domain.lawspec",
+            "content": "unit shop.domain\nimport shop.tax.api as tax (Band)\n\n-- shop.domain depends on version 1 of shop.tax and offers its Band to its own\n-- importers, as if declared here.\nexport Band\n\n-- A package of reusable types, refinements, definitions and laws. Other units\n-- import it by name; its declarations keep their own names, so an importer may\n-- declare a Currency or a Usd of its own.\ntype Currency is | Usd | Eur end\n\nrefinement Cents is (c :: Int64 where c >= 0 && c <= 100000000) end\n\ntype Money is Money currency :: Currency cents :: Cents end\n\nwrapper Quantity is Int32 where value >= 1 && value <= 1000 end\n\ndefinition currencyOf (m :: Money) :: Currency is\n  match m with | Money c n -> c end\nend\n\ndefinition centsOf (m :: Money) :: Int64 is\n  match m with | Money c n -> n end\nend\n\n-- The duty on a band, at version 1's rates.\ndefinition dutyOf (b :: Band) :: Int64 is tax.rateOf b end\n\n-- Generic laws are templates: an importer applies them to its own adapters.\nlaw `commutative` (f :: a -> a -> a) requires Eq a is\n  definition is\n    `for all` (x :: a) (y :: a) . f x y = f y x\n  end\nend\n\nlaw `idempotent` (f :: a -> a) requires Eq a is\n  definition is\n    `for all` (x :: a) . f (f x) = f x\n  end\nend\n\n-- A published contract: every project that depends on this package implements\n-- convert and is tested against these laws.\nconvert :: Currency -> Money -> Money\n\nlaw `conversion targets the requested currency` is\n  definition is\n    `for all` (c :: Currency) (m :: Money) . currencyOf (convert c m) = c\n  end\nend\n\nlaw `converting to the same currency changes nothing` is\n  definition is\n    `for all` (m :: Money) . convert (currencyOf m) m = m\n  end\nend\n"
+          }
+        ]
+      },
+      {
+        "name": "shop.tax",
+        "version": "1.0.0",
+        "dependencies": {},
+        "sources": [
+          {
+            "path": "../shop-tax-1/src/api.lawspec",
+            "content": "unit shop.tax.api\nimport shop.tax.rates as rates (Band)\n\n-- The package's facade: importers use shop.tax.api, and the names it\n-- re-exports are the declarations of shop.tax.rates, not copies.\nexport Band, rates.rateOf\n"
+          },
+          {
+            "path": "../shop-tax-1/src/rates.lawspec",
+            "content": "unit shop.tax.rates\n\n-- Version 1 of the tax bands.\ntype Band is | Low | High end\n\ndefinition rateOf (b :: Band) :: Int64 is\n  match b with | Low -> 5 | High -> 20 end\nend\n"
+          }
+        ]
+      },
+      {
+        "name": "shop.tax",
+        "version": "2.0.0",
+        "dependencies": {},
+        "sources": [
+          {
+            "path": "../shop-tax-2/src/api.lawspec",
+            "content": "unit shop.tax.api\nimport shop.tax.rates as rates (Band)\n\n-- The package's facade: importers use shop.tax.api, and the names it\n-- re-exports are the declarations of shop.tax.rates, not copies.\nexport Band, rates.rateOf\n"
+          },
+          {
+            "path": "../shop-tax-2/src/rates.lawspec",
+            "content": "unit shop.tax.rates\n\n-- Version 2 adds a zero band and changes the rates. A build may hold both\n-- versions: each dependent sees the one its version range selects.\ntype Band is | Zero | Low | High end\n\ndefinition rateOf (b :: Band) :: Int64 is\n  match b with | Zero -> 0 | Low -> 10 | High -> 25 end\nend\n"
+          }
+        ]
+      }
+    ],
+    "dependencies": {
+      "shop.domain": "^1.0.0",
+      "shop.tax": "^2.0.0"
+    }
+  }
+}

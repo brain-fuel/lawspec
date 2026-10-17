@@ -5,12 +5,14 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
 import {showScalar} from '../scalars.mjs';
+import {legacyCheck,legacyGeneration,canonicalRequest} from './legacy-input.mjs';
 const compiler=await createCompiler();
 const catalog=await readFile(new URL('../examples/specs/scalar_catalog.lawspec',import.meta.url),'utf8');
 const source=content=>[{path:'scalar.lawspec',content}];
-test('API v3 retains every scalar representation without JSON number loss',async()=>{
- const result=await compiler.check({sources:source(catalog)});
- assert.deepEqual(result.diagnostics,[]);assert.equal(result.schemaVersion,3);assert.equal(result.machineBits,64);
+test('schema-5 migration retains every legacy scalar representation without JSON number loss',async()=>{
+ const result=await legacyCheck(compiler,{sources:source(catalog)});
+ assert.deepEqual(result.diagnostics,[]);assert.equal(result.schemaVersion,5);assert.equal(result.machineBits,64);
+ assert.equal(result.sourceLanguageProfile,'0.24');
  const values=Object.fromEntries(result.laws.map(l=>[l.name.split(' representation')[0],l.examples[0].bindings[0].value]));
  assert.equal(Object.keys(values).length,33);
  assert.deepEqual(values.UInt64,{type:'UInt64',value:'18446744073709551615'});
@@ -26,14 +28,14 @@ test('API v3 retains every scalar representation without JSON number loss',async
 });
 test('machine profile and request schema have explicit diagnostics',async()=>{
  const content='unit width\nf :: IntSize -> IntSize\nlaw `law` is definition is `equivalent` f f end example `wide` is x = 2147483648 expect f x = 2147483648 end end';
- assert.equal((await compiler.check({sources:source(content),machineBits:32})).diagnostics.length,1);
- assert.deepEqual((await compiler.check({sources:source(content),machineBits:64})).diagnostics,[]);
- assert.match((await compiler.check({sources:[],machineBits:16})).diagnostics[0].message,/32 or 64/);
- assert.match((await compiler.check({sources:[],schemaVersion:2})).diagnostics[0].message,/schemaVersion 3/);
+ assert.equal((await legacyCheck(compiler,{sources:source(content),machineBits:32})).diagnostics.length,1);
+ assert.deepEqual((await legacyCheck(compiler,{sources:source(content),machineBits:64})).diagnostics,[]);
+ assert.match((await compiler.check({...canonicalRequest,sources:[],machineBits:16})).diagnostics[0].message,/32 or 64/);
+ assert.match((await compiler.check({...canonicalRequest,sources:[],schemaVersion:2})).diagnostics[0].message,/schemaVersion 5/);
 });
 test('all targets expose generated runtime source placement independently of ownership',async()=>{
  for(const target of targets){
-  const result=await compiler.planGeneration({sources:source(catalog),target});
+  const result=await legacyGeneration(compiler,{sources:source(catalog),target});
   assert.deepEqual(result.diagnostics,[]);
   const runtimes=result.files.filter(f=>f.placement==='source'&&f.ownership==='generated');
   assert.ok(runtimes.length > 0, target);
@@ -46,17 +48,17 @@ test('arithmetic capabilities resolve at specialization and retain safe lexical 
  const generic='law `numeric` (f :: a -> a) requires Integer a is definition is `for all` (x :: a) . x + 1 = 1 + x end end\n';
  for(const [type,valid] of [['Int8',true],['Text',false]]){
   const content=`unit generic\nf :: ${type} -> ${type}\n${generic}law \`use\` is definition is \`numeric\` f end end`;
-  assert.equal((await compiler.check({sources:source(content)})).diagnostics.length===0,valid);
+  assert.equal((await legacyCheck(compiler,{sources:source(content)})).diagnostics.length===0,valid);
  }
  const content='unit lexical\nx :: Int8 -> BigInt\ng :: Int8 -> BigInt\nlaw `law` is definition is `equivalent` x g end example `one` is x = 1 expect g x = 2 end end';
- for(const target of targets)assert.deepEqual((await compiler.planGeneration({sources:source(content),target})).diagnostics,[],target);
+ for(const target of targets)assert.deepEqual((await legacyGeneration(compiler,{sources:source(content),target})).diagnostics,[],target);
 });
 test('raw literal validation rejects host integer wraparound',async()=>{
  const content='unit bad\nlaw `law` is definition is `for all` (x :: CodePoint) . x = x end example `bad` is x = codePoint(18446744073709551616) expect x = codePoint(0) end end';
- assert.ok((await compiler.check({sources:source(content)})).diagnostics.length);
+ assert.ok((await legacyCheck(compiler,{sources:source(content)})).diagnostics.length);
 });
 test('generated runtime preserves native byte values, identities, and absence contracts',async()=>{
- const result=await compiler.planGeneration({sources:source(catalog),target:'javascript'});
+ const result=await legacyGeneration(compiler,{sources:source(catalog),target:'javascript'});
  const code=result.files.find(f=>f.path.endsWith('lawspec_runtime.mjs')).content;
  const runtime=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
  const bytes=new Uint8Array([0,128,255]);

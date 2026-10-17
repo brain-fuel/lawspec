@@ -4,86 +4,20 @@ import {loadCore} from './launcher.mjs';
 export async function createCompiler() {
   const call = await loadCore();
   return {
-    format: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'format',
-            }
-        ),
-    check: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'check',
-            }
-        ),
-    expand: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'expand',
-            }
-        ),
+    format: (input) => call({schemaVersion: 5, ...input, method: 'format'}),
+    check: (input) => call({schemaVersion: 5, ...input, method: 'check'}),
+    expand: (input) => call({schemaVersion: 5, ...input, method: 'expand'}),
     proofTasks: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'proofTasks',
-            }
-        ),
+        call({schemaVersion: 5, ...input, method: 'proofTasks'}),
     planGeneration: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'planGeneration',
-            }
-        ),
+        call({schemaVersion: 5, ...input, method: 'planGeneration'}),
     migrationBaseline: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'migrationBaseline',
-            }
-        ),
+        call({schemaVersion: 5, ...input, method: 'migrationBaseline'}),
     migrationComparison: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'migrationComparison',
-            }
-        ),
+        call({schemaVersion: 5, ...input, method: 'migrationComparison'}),
     migrationBindings: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'migrationBindings',
-            }
-        ),
+        call({schemaVersion: 5, ...input, method: 'migrationBindings'}),
     migrationGeneration: (input) =>
-        call(
-            {
-              schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :
-              input.nativeBindings === undefined ? 3 : 4,
-              ...input,
-              method: 'migrationGeneration',
-            }
-        ),
+        call({schemaVersion: 5, ...input, method: 'migrationGeneration'}),
   };
 }

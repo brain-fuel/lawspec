@@ -109,33 +109,38 @@ the constructors `Less`, `Equal` and `Greater`.
 ```lawspec
 unit guide.collections
 
-dedupe :: List Int32 -> Set Int32
-wordCounts :: List Text -> KeyVal Text BigInt
+dedupe :: List Int32 -> SortedSet Int32
+wordCounts :: List Text -> KeyVal Text Integer
 
-definition countWords (words :: List Text) (counts :: KeyVal Text BigInt) :: KeyVal Text BigInt is
-  match words with
-  | Nil -> counts
-  | Cons w rest -> match prelude.lookup w counts with
-    | Nothing -> countWords rest (prelude.put w 1 counts)
-    | Just n -> countWords rest (prelude.put w ((n + 1) :: BigInt) counts)
-    end
+function countWords (words :: List Text) (counts :: KeyVal Text Integer) ->
+  KeyVal Text Integer is
+  first matching case of words :
+    when Nil then counts
+    when Cons w rest then first matching case of prelude.lookup w counts :
+        when Nothing then countWords rest (prelude.put w 1 counts)
+        when Just n then countWords rest (prelude.put w ((n + 1) :: Integer)
+          counts)
+      end case
+  end case
+end function
+
+law "|dedupe agrees with setOf| is
+  definition : for all (xs :: List Int32) => dedupe xs = prelude.sortedSetOf xs
+    end end
+end
+
+law "|word counts agree with the definition| is
+  definition :
+    for all (words :: List Text) => wordCounts words = countWords words
+      (prelude.keyValOf []) end
   end
 end
 
-law `dedupe agrees with setOf` is
-  definition is `for all` (xs :: List Int32) . dedupe xs = prelude.setOf xs end
-end
-
-law `word counts agree with the definition` is
-  definition is
-    `for all` (words :: List Text) . wordCounts words = countWords words (prelude.keyValOf [])
-  end
-end
-
-law `the latest put wins` is
-  definition is
-    `for all` (k :: Text) (v :: BigInt) (w :: BigInt) (m :: KeyVal Text BigInt) .
-      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w
+law "|the latest put wins| is
+  definition :
+    for all (k :: Text) (v :: Integer) (w :: Integer) (m :: KeyVal Text Integer)
+      =>
+      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w end
   end
 end
 ```

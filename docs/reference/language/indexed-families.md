@@ -59,25 +59,25 @@ Rules:
 ```lawspec
 unit guide.arithmetic
 
-type Row (n :: Natural) is
+type Row (n :: Whole) is one of
   | End where n = 0
-  | Cell head :: Int8 tail :: Row m where n = m + 1
-end
+  | Cell of type record{ head :: Int8 tail :: Row m} where n = m + 1
+end type
 
 -- Both subtrees share one height: a perfect tree.
-type Perfect (n :: Natural) is
-  | Leaf value :: Int8 where n = 0
-  | Node left :: Perfect m right :: Perfect m where n = m + 1
-end
+type Perfect (n :: Whole) is one of
+  | Leaf  of type Int8 where n = 0
+  | Node of type record{ left :: Perfect m right :: Perfect m} where n = m + 1
+end type
 
 -- A grid's index is its number of cells.
-type Grid (n :: Natural) is
-  | Grid rows :: Row r columns :: Row c where n = r * c
-end
+type Grid (n :: Whole) is one of
+  | Grid of type record{ rows :: Row r columns :: Row c} where n = r * c
+end type
 
-type Rest (n :: Natural) is
-  | Rest items :: Row m where n = m - 1
-end
+type Rest (n :: Whole) is one of
+  | Rest  of type Row m where n = m - 1
+end type
 
 dropFirst :: (xs :: Row (k + 1)) -> (r :: Rest k)
 ```

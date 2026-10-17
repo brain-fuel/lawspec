@@ -174,6 +174,14 @@ touched attestation reliance o
       , let matched = filter (== dependencyName d) names, not (null matched) ]
   where names = M.findWithDefault [] (obligationDeclaration o) reliance
 
+-- | Dependencies a planned native check would reach. This is a plan, never
+-- evidence that the named environment ran a test.
+plannedTouches :: Attestation -> M.Map Id [String] -> Obligation -> [Dependency]
+plannedTouches attestation reliance o
+  | obligationStage o /= "law" || obligationStatus o /= Planned = []
+  | otherwise = [d | d <- attestationDependencies attestation,
+      dependencyName d `elem` M.findWithDefault [] (obligationDeclaration o) reliance]
+
 -- | The fields an attestation adds to each obligation of the API's evidence
 -- list, in the same order; empty for an obligation it does not touch.
 attestedFields :: Attestation -> Program -> [Obligation] -> [[Pair]]
@@ -181,7 +189,11 @@ attestedFields attestation program obligations = map fields obligations
   where
     reliance = relied program
     fields o = case touched attestation reliance o of
-      [] -> []
+      [] -> case plannedTouches attestation reliance o of
+        [] -> []
+        ds -> [ "plannedEnvironment" .= attestationEnvironment attestation
+              , "plannedEnvironmentRun" .= runView attestation
+              , "plannedAgainst" .= map dependencyView ds ]
       ds -> [ "environment" .= attestationEnvironment attestation
             , "environmentRun" .= runView attestation
             , "against" .= map (dependencyView . fst) ds ]
@@ -211,6 +223,8 @@ attestationView attestation program obligations = object (
   [ "dependencies" .=
       [ object (dependencyPairs d ++
           [ "obligations" .= [ idText (obligationDeclaration o)
-                             | o <- obligations, d `elem` map fst (touched attestation reliance o) ] ])
+                             | o <- obligations, d `elem` map fst (touched attestation reliance o) ]
+          , "plannedObligations" .= [ idText (obligationDeclaration o)
+                                    | o <- obligations, d `elem` plannedTouches attestation reliance o ] ])
       | d <- attestationDependencies attestation ] ])
   where reliance = relied program

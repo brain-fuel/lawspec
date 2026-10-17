@@ -3,10 +3,10 @@ unit lessons.money
 -- A small library of money types and laws, shared by other units.
 refinement Cents is (c :: Int64 where c >= 0 && c <= 10000000) end
 
-definition dollars (n :: Int32) :: BigInt is n * 100 end
+function dollars (n :: Int32) -> Integer is n * 100 end function
 
-law `never more than` (f :: a -> a -> a) requires Ordered a is
-  definition is
-    `for all` (x :: a) (y :: a) . f x y <= x && f x y <= y
+law "|never more than| (f :: a -> a -> a) requires Ordered a is
+  definition :
+    for all (x :: a) (y :: a) => f x y <= x && f x y <= y end
   end
 end

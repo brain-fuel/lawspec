@@ -50,7 +50,7 @@ export function checkBindingProposal(before,after,requested,target,evidence) {
     scope:'explicit binding configuration; external behavior and generated APIs remain separate'};
 }
 
-export async function planNativeBindings(compiler,config,input,sources,before,after) {
+export async function planNativeBindings(compiler,config,input,sources,before,after,migratedContext={}) {
   const scopes=config.targets.map((target,index)=>({target,index,language:target.language,
     bindings:target.nativeBindings}));
   if(input.nativeBindings!==undefined)
@@ -67,7 +67,7 @@ export async function planNativeBindings(compiler,config,input,sources,before,af
     const options={...input,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]}};
     const {nativeBindings:ignored,...canonical}=options;
     const result=await compiler.migrationBindings({...options,from:'0.24',target:language,
-      nativeBindings:bindings??{},migrated:{...canonical,sources}});
+      nativeBindings:bindings??{},migrated:{...canonical,...migratedContext,sources}});
     const evidence=result.migrationBindings;
     const checked=result.diagnostics?.length ? pending(result.diagnostics.map(item=>item.message).join(' ')) :
       checkBindingProposal(before,after,bindings,language,evidence);

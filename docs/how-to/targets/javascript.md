@@ -74,7 +74,7 @@ JavaScript object equality.
 ```lawspec
 unit example.total
 
-definition increment (x :: Int8) :: BigInt is x + 1 end
+function increment (x :: Int8) -> Integer is x + 1 end function
 ```
 
 ```javascript

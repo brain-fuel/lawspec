@@ -2,8 +2,9 @@ unit shop.tax.rates
 
 -- Version 2 adds a zero band and changes the rates. A build may hold both
 -- versions: each dependent sees the one its version range selects.
-type Band is | Zero | Low | High end
+type Band is one of | Zero | Low | High end type
 
-definition rateOf (b :: Band) :: Int64 is
-  match b with | Zero -> 0 | Low -> 10 | High -> 25 end
-end
+function rateOf (b :: Band) -> Int64 is
+  first matching case of b : when Zero then 0 when Low then 10 when High then 25
+  end case
+end function

@@ -9,8 +9,8 @@ Canonical requests use `schemaVersion: 5`, explicit
 `languageProfile: "1.0-rc.1"`, and optional `verification: {layers: []}`.
 An empty selection performs intrinsic definition checks and reports laws as
 `not-verified`. Native tests are `planned` until an execution supplies evidence.
-The existing schema-3/4 interface below is retained during migration; making
-schema 5 the sole normal interface remains a minor-version interface gate.
+Schema 5 is the public interface. Schemas 3 and 4 are rejected; legacy source
+enters through the explicit migration methods with `from: "0.24"`.
 The `format` method requires schema 5 and returns `formattedSources` after
 canonical validation. Every view and editor service uses the same typed Core.
 Typed laws expose `inputDomain: "universal"` for canonical obligations and
@@ -47,13 +47,13 @@ function createCompiler(): Promise<Compiler>;
 ```ts
 interface CheckRequest {
   sources: Source[];                        // {path, content}
-  schemaVersion?: 3 | 4 | 5;
-  languageProfile?: '1.0-rc.1';
+  schemaVersion?: 5;
+  languageProfile: '1.0-rc.1';
   verification?: Verification;
   migrationSnapshot?: boolean;             // schema 5; comparison metadata only
   machineBits?: 32 | 64;                    // default 64
   generation?: Partial<Generation>;         // cases, maxAttempts, maxShrinks, exhaustiveLimit
-  nativeBindings?: NativeBindings;          // schema 4 or 5
+  nativeBindings?: NativeBindings;
   package?: {name: string; version: string};
   dependencies?: Record<string, string>;
   packages?: Package[];
@@ -112,15 +112,16 @@ interface MigrationBaselineRequest extends MigrationRequest {
 
 ### Schema versions
 
-Canonical requests select schema 5 and `languageProfile: '1.0-rc.1'`.
-The JavaScript facade selects schema 5 when that profile is present.
+Requests require `languageProfile: '1.0-rc.1'`. The JavaScript facade defaults
+`schemaVersion` to 5; supplying 3 or 4 is a request diagnostic, including when
+native bindings are present. Results, including rejected requests, use schema 5.
+Omitting `verification` selects no law checks. Mandatory definition validation
+still runs, and laws report `not-verified`.
 
-Requests may omit `schemaVersion` or send `3`. Requests with `nativeBindings`
-use `4`; the JavaScript API selects it automatically when `nativeBindings` is
-present, unless you set `schemaVersion` yourself. A non-empty `nativeBindings`
-with schema 3 is rejected, so a compiler that does not understand bindings can
-never ignore them. An explicit schema `2` receives a diagnostic. Results report
-the negotiated schema.
+Only explicit migration methods admit 0.24 source. A migration baseline returns
+`sourceLanguageProfile: '0.24'`; it does not convert ordinary `check` or
+generation requests into legacy requests. Documentary references always use
+the typed schema-5 representation.
 
 ### SMT tasks and solver execution
 
@@ -385,7 +386,7 @@ independently verified. No solver or additional evaluator is introduced.
 
 ```ts
 interface Result {
-  schemaVersion: 3 | 4 | 5;
+  schemaVersion: 5;
   diagnostics: Diagnostic[];
   machineBits?: 32 | 64;
   generation?: Generation;
@@ -774,3 +775,15 @@ An Erlang header uses `include`, or `include_lib` when `library` is true.
 `check` validates identities;
 `planGeneration` also checks target support. See
 [native bindings](native-bindings.md).
+
+
+### Planned environment dependencies
+
+An attestation supplied for a planned native law check adds `plannedEnvironment`,
+`plannedEnvironmentRun` and `plannedAgainst`. These fields describe the proposed
+wiring and do not claim that a test ran. The dependency summary separates
+`plannedObligations` from completed `obligations`; the law remains `planned`.
+Completed execution associations use `environment`, `environmentRun` and
+`against`. The CLI can associate a historical passing native run with its
+attestation and reports its timestamp and seed separately; this does not upgrade
+the current compiler plan into a proof or claim that the current sources passed.

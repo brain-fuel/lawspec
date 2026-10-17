@@ -65,6 +65,89 @@ Installed-project validation exposed an authoring-interface defect in JavaScript
 
 The native integration harness uses returned law identities when checking invalidation and replay; Scala's offline invocation explicitly enables its required power mode. Distribution integrity now checks every canonical example's staged npm copy. All 17 installed CLI/native flows passed at 64-bit readable output, including wrong-fee mutation, selective invalidation, failure replay and ownership. All 142 complete native/WASM responses matched: normal generation and migration generation cover every target at both machine widths and both layouts. The full SDK catalog passed 443 checks with three opt-in native layout checks skipped; those Rust, Go and Haskell checks then passed separately at both widths and layouts. The focused 31 execution-command checks, 44 native-binding compiler checks, one C# check, 232 boundary checks, six editor checks, 119 documentation pages with 114 snippets, generated files, version and integrity checks passed. Compiler sources and native/WASM compiler bytes remain unchanged from the preceding checkpoint; the integrity manifest changes only its extra-source-file packaging fingerprint. Chapter 6 remains unchanged. Execution conformance does not establish a model proof. This advances public-consumer migration; the schema/profile cutoff, remaining catalog and documentation consumers, Chapter 6 second pass and full iteration acceptance remain open. No release-candidate designation or tag is implied.
 
+### Public API and environment evidence — implementation underway
+
+The isolated public-interface cutover requires schema 5 and an explicit technical language profile on ordinary API calls; no selected law layers is the default. Configuration version 1 remains migration input. Ordinary CLI commands, project formatting and the language server direct old projects to migration. Frozen 0.24 regression fixtures and the archived specifications catalog use the explicit migration entry rather than permissive canonical parsing. Canonical exported native payments use ordinary requests.
+
+Planned environment wiring is represented separately as `plannedEnvironment`, `plannedEnvironmentRun`, `plannedAgainst` and dependency `plannedObligations`. These do not claim execution or change the law status. The CLI shows planned, unverified, incomplete and unsupported obligations; it reports historical passing native runs with their timestamps and seeds separately from the current plan. A passing record may link its own attestation, without attaching another law's unexecuted plan to that historical run. Node's native execution receipt remains trusted runner evidence, not a proof certificate.
+
+This cutover is not yet shipped or accepted. Its focused checks include 105 SDK regressions, six compiler boundary checks, 44 native binding request checks, 12 API contract checks, seven environment checks and eight complete native/WASM comparisons. Remaining package, historical CLI, documentation/playground and public-consumer migrations, full regression/parity runs and distribution fingerprints must pass before this isolated change reaches main. The verified payments checkpoint above has been pushed separately. The iteration remains a minor version; readability remains user-deferred, all-named endings remain the following minor, and pre-final-1.0 gates remain open.
+
+### Public-interface verification and documentation audit — in progress
+
+The first full compiler run for the interface cutover passed 2,077 examples.
+The SDK run excluding the separately scheduled archived-catalog export passed
+453 tests, skipped two opt-in native layouts, and failed one overstrict test
+assertion: a restored constant law may be either proved or exhaustively checked.
+That assertion is corrected; these numbers precede the later proof changes and
+are not final acceptance of the current tree.
+
+Package migration now previews and validates declared dependency sources as well
+as project sources. Atomic writing observes package manifests and complete source
+inventories, rejects stale edits and newly added sources, and confines dependency
+writes to the explicitly observed source paths. A finite package fixture passes
+correspondence and writing; the manually adopted canonical orders demonstration
+retains conservative refusals for unestablished generic reusable-law populations.
+The package parity run matched 70 complete native/WASM responses, including 68
+generation requests across every target, width and layout. This is generation
+correspondence, not execution of those generated projects.
+
+The documentation audit found additional canonical-language gaps rather than
+hiding complete examples as fragments. Canonical case predicates now retain
+their constructor facts for definition admission; strict and relaxed range
+predicates and an independently zero denominator are regression cases. Canonical
+constructor matchers reuse the existing ordered pattern matrix, including nested
+records, tuples and wildcards. Fourteen focused matcher tests pass at both widths.
+Migration now records positional matcher spans for payload rewriting. The complete
+matcher documentation example has an admitted canonical preview and validated
+migration correspondence. Indexed payload proof views and documentary typed
+failures remain under investigation. The indexed concatenation reproducer exposes
+a generic measure using a different structural payload identity from its concrete
+input. The unsuccessful proof-view and continuation changes were removed; no
+projection identity was equated without typed correspondence and no result
+contract or recursive-descent check was weakened.
+All seven lesson targets (JavaScript, Java, Python, TypeScript, F#, C# and Swift)
+now pass their correct adapters and reject their stub and eight mutants: 56
+mutants and seven stubs in total. The first offline F# invocation lacked restored
+NuGet imports in its fresh project. The acceptance harness now restores from the
+local global-package cache, disables network auditing for that offline restore,
+and then runs the selected Microsoft test platform; F# and C# both pass after
+that correction. Scala's offline invocation also enables its required power mode.
+
+The rebuilt WASM matches 142 complete native responses: 72 matcher responses and
+70 package responses, including 136 generation requests across all 17 targets,
+both widths and both layouts. Saved response hashes are independently audited.
+All 125 generated files, 232 boundary modules, six editor checks, version and
+artifact-integrity checks pass. The editor's first invocation lacked its local
+dependency link; the six checks pass with the existing locked dependency cache.
+The full compiler rerun completed 2,097 examples with zero failures and 16
+solver-dependent pending cases. After installing Z3 5.1.0, all 22 native SMT
+checks pass, covering those 16 pending cases. The SDK run excluding the archived
+catalog export completed 457 tests: 449 passed, zero failed and eight skipped.
+All eight skips subsequently pass in targeted reruns: the two native Rust/Haskell
+layout checks at both widths and layouts, and six real-solver checks in the
+ten-test SMT SDK suite. These counts retain the original run's limits and the
+separate rerun receipts rather than rewriting its reported totals.
+
+The documentation rerun still rejects the indexed-family and typed-failure
+pages; the remaining fragment and prose migration, archived export and complete
+release checks remain open. These are checkpoint results, not milestone
+acceptance. This isolated work has not been pushed to main or tagged.
+
+Proof precedent: [SPARK quantified expressions](https://docs.adacore.com/R/docs/gnat-25.1/spark2014/html/spark2014_ug/en/source/specification_features.html#quantified-expressions)
+separate definedness obligations from quantified truth;
+[Lean's quantifiers](https://lean-lang.org/doc/reference/latest/Basic-Propositions/Quantifiers/)
+distinguish universal functions from existential witness/proof pairs, and its
+[empty type](https://lean-lang.org/doc/reference/latest/Basic-Types/The-Empty-Type/)
+shows why a generic parameter does not establish inhabitance. Generic-population
+refusals remain conservative. [Lean's reduction rules](https://lean-lang.org/doc/reference/latest/The-Type-System/)
+and [Why3's typed pattern matching](https://why3.org/doc/syntaxref.html#conditionals-let-bindings-and-pattern-matching)
+provide the constructor-reduction and shared-desugaring precedents for the proof
+view investigation. LawSpec still uses its existing typed proof projection and
+arithmetic checker. No new Z3 binding, Why3 backend, Lean integration or independent
+proof certificate is claimed. Strict definedness and termination admission remain
+mandatory, and proof simplification must not erase those audits.
+
 ## Latest approved milestone direction — 15 October 2026
 
 The user supplied a `tensorflow.ctc` specification and required every `end` to identify the block it closes. The current parser does not yet meet that requirement: functions, procedures, types, cases, conditionals and mappings have named closers, while laws, sections, quantifiers, tables and several other constructs still accept bare `end`.

@@ -1,35 +1,37 @@
 unit lessons.orders
 
-type Size is | Small | Large end
+type Size is one of | Small | Large end type
 
 -- A drink has a size and up to four extra shots of espresso.
-type Drink is Drink size :: Size shots :: (s :: Int32 where s >= 0 && s <= 4) end
+type Drink is a record{  size :: Size shots :: (s :: Int32 where s >= 0 && s <=
+  4)} end type
 
 -- Checked definitions are part of the specification: LawSpec proves they
 -- are total and generates them for every target.
-definition basePrice (size :: Size) :: Int32 is
-  match size with
-  | Small -> 250
-  | Large -> 320
-  end
-end
+function basePrice (size :: Size) -> Int32 is
+  first matching case of size :
+    when Small then 250
+    when Large then 320
+  end case
+end function
 
-definition drinkPrice (drink :: Drink) :: BigInt is
-  match drink with
-  | Drink size shots -> basePrice size + shots * 60
-  end
-end
+function drinkPrice (drink :: Drink) -> Integer is
+  first matching case of drink :
+    when Drink record{ size = size , shots = shots} then basePrice size + shots
+      * 60
+  end case
+end function
 
 -- Your implementation must agree with the definition for every drink.
 price :: Drink -> Int64
 
-law `the price follows the menu` is
-  definition is
-    `for all` (d :: Drink) . price d = drinkPrice d
+law "|the price follows the menu| is
+  definition :
+    for all (d :: Drink) => price d = drinkPrice d end
   end
 
-  example `a large with two shots` is
-    d = Drink Large 2
+  example "|a large with two shots| :
+    d = Drink record{ size = Large , shots = 2}
     expect price d = 440
   end
 end

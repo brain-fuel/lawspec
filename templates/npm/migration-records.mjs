@@ -156,4 +156,7 @@ export function planLegacyRecords(document,source,shapes) {
     if (!tag || !arrow) throw new Error('Checked record pattern has no source branch');
     wrap(sourceTag(tag),bindings,shape,'record pattern');
   }
+  for (const pattern of nodes.filter(node=>node.kind==='matcher-pattern' && shapeOf(node.name)?.wrap && sourceTag(node))) {
+    wrap(sourceTag(pattern),children(pattern,node=>node.kind==='matcher-field'),shapeOf(pattern.name),'record matcher pattern');
+  }
 }

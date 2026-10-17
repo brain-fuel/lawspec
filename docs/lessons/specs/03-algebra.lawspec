@@ -3,33 +3,33 @@ unit lessons.totals
 -- The larger of two totals, as used to find the biggest order of the day.
 larger :: Int64 -> Int64 -> Int64
 
-law `the order of the totals does not matter` is
-  definition is
-    `commutative` larger
+law "|the order of the totals does not matter| is
+  definition :
+    apply law "|commutative| larger
   end
 end
 
-law `grouping does not matter` is
-  definition is
-    `associative` larger
+law "|grouping does not matter| is
+  definition :
+    apply law "|associative| larger
   end
 end
 
-law `a total compared with itself is itself` is
-  definition is
-    `idempotent operation` larger
+law "|a total compared with itself is itself| is
+  definition :
+    apply law "|idempotent operation| larger
   end
 end
 
-law `the smallest total is neutral` is
-  definition is
-    `identity` larger (Int64.min)
+law "|the smallest total is neutral| is
+  definition :
+    apply law "|identity| larger (Int64.min)
   end
 end
 
-law `the larger total is at least each total` is
-  definition is
-    `for all` (a :: Int64) (b :: Int64) .
-      larger a b >= a && larger a b >= b
+law "|the larger total is at least each total| is
+  definition :
+    for all (a :: Int64) (b :: Int64) =>
+      larger a b >= a && larger a b >= b end
   end
 end

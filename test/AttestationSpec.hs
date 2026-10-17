@@ -13,30 +13,30 @@ import LawSpec.Api (dispatch)
 spec :: String
 spec = unlines
   [ "unit shop.orders"
-  , "type Receipt is Receipt cents :: Int32 end"
+  , "type Receipt is a record{cents :: Int32} end type"
   , "ability Gateway is"
   , "  capture :: Int32 -> Receipt"
   , "laws"
-  , "  law `a receipt is for the amount` is"
-  , "    definition is `for all` (cents :: Int32) . capture cents = Receipt cents end"
+  , "  law receiptAmount is"
+  , "    definition: for all (cents :: Int32) => capture cents = Receipt record{cents = cents} end end"
   , "  end"
   , "end"
   , "handler fakeGateway for Gateway is"
-  , "  capture cents is Receipt cents end"
+  , "  capture cents is Receipt record{cents = cents} end"
   , "end"
   , "normalize :: Int32 -> Int32"
-  , "definition twice (x :: Int32) :: BigInt is x + x end"
-  , "definition checkout (cents :: Int32) :: Bool is"
-  , "  match capture cents with | Receipt paid -> paid == cents end"
+  , "function twice (x :: Int32) -> Integer is x + x end function"
+  , "procedure checkout (cents :: Int32) -> Bool uses Gateway is"
+  , "  first matching case of capture cents: when Receipt record{cents = paid} then paid = cents end case"
+  , "end procedure"
+  , "law checkoutCharges is"
+  , "  definition: for all (cents :: Int32) => checkout cents = true end end"
   , "end"
-  , "law `checkout charges the amount` is"
-  , "  definition is `for all` (cents :: Int32) . checkout cents = true end"
+  , "law normalizing is"
+  , "  definition: for all (x :: Int32) => normalize (normalize x) = normalize x end end"
   , "end"
-  , "law `normalizing is idempotent` is"
-  , "  definition is `for all` (x :: Int32) . normalize (normalize x) = normalize x end"
-  , "end"
-  , "law `doubling` is"
-  , "  definition is `for all` (x :: Int32) . twice x = x * 2 end"
+  , "law doubling is"
+  , "  definition: for all (x :: Int32) => twice x = x * 2 end end"
   , "end" ]
 
 dependency :: String -> String -> [(K.Key, Value)] -> Value
@@ -56,7 +56,9 @@ attestation dependencies = object
 
 check :: Maybe Value -> Value
 check attested = fromMaybe Null $ decode $ dispatch $ encode $ object $
-  [ "method" .= ("check" :: String), "sources" .= [object ["path" .= ("a.lawspec" :: String), "content" .= spec]] ] ++
+  [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+    "verification" .= object ["layers" .= (["proof", "exhaustive", "property"] :: [String])],
+    "method" .= ("check" :: String), "sources" .= [object ["path" .= ("a.lawspec" :: String), "content" .= spec]] ] ++
   [ "attestation" .= a | Just a <- [attested] ]
 
 field :: String -> Value -> Maybe Value
@@ -85,29 +87,32 @@ test_attestationReportsWhereTestsRanWithoutChangingEvidence = describe "environm
       unmatched = dependency "payments" "real" []
       attested = check (Just (attestation [gateway, normalize, unmatched]))
       plain = check Nothing
-  it "reports a law run under an ability's production handler against its stand-in" $ do
+  it "plans production-handler dependencies without claiming a completed run" $ do
+    field "diagnostics" attested `shouldBe` Just (Array V.empty)
     let law = item "[native]" attested
-    field "status" law `shouldBe` Just (String "property-tested")
-    field "environment" law `shouldBe` Just (String "staging")
-    fmap (fmap (field "dependency")) (field "against" law >>= arrayOf) `shouldBe` Just [Just (String "shop.orders::Gateway")]
-    (field "against" law >>= arrayOf >>= firstOf >>= field "standIn" >>= field "conformance") `shouldBe` Just (String "3")
-    (field "environmentRun" law >>= field "id") `shouldBe` Just (String "run-1")
+    field "status" law `shouldBe` Just (String "planned")
+    field "environment" law `shouldBe` Nothing
+    field "against" law `shouldBe` Nothing
+    field "plannedEnvironment" law `shouldBe` Just (String "staging")
+    fmap (fmap (field "dependency")) (field "plannedAgainst" law >>= arrayOf) `shouldBe` Just [Just (String "shop.orders::Gateway")]
+    (field "plannedAgainst" law >>= arrayOf >>= firstOf >>= field "standIn" >>= field "conformance") `shouldBe` Just (String "3")
+    (field "plannedEnvironmentRun" law >>= field "id") `shouldBe` Just (String "run-1")
   it "matches a native adapter a law calls" $
-    (field "against" (item "normalizing" attested) >>= arrayOf >>= firstOf >>= field "kind") `shouldBe` Just (String "real")
+    (field "plannedAgainst" (item "normalizing" attested) >>= arrayOf >>= firstOf >>= field "kind") `shouldBe` Just (String "real")
   it "matches an ability a law reaches through a definition" $
-    (field "against" (item "checkout" attested) >>= arrayOf >>= firstOf >>= field "dependency") `shouldBe` Just (String "shop.orders::Gateway")
+    (field "plannedAgainst" (item "checkout" attested) >>= arrayOf >>= firstOf >>= field "dependency") `shouldBe` Just (String "shop.orders::Gateway")
   it "leaves a law under a spec handler, a proved law and other obligations unchanged" $ do
-    field "environment" (item "[fakeGateway]" attested) `shouldBe` Nothing
-    field "environment" (item "doubling" attested) `shouldBe` Nothing
+    field "plannedEnvironment" (item "[fakeGateway]" attested) `shouldBe` Nothing
+    field "plannedEnvironment" (item "doubling" attested) `shouldBe` Nothing
     field "environment" (item "shop.orders::normalize\"" attested) `shouldBe` Nothing
   it "changes no status and no other field (the plane rule)" $ do
-    let strip (Object o) = Object (foldr (KM.delete . K.fromString) o ["environment", "environmentRun", "against"])
+    let strip (Object o) = Object (foldr (KM.delete . K.fromString) o ["environment", "environmentRun", "against", "plannedEnvironment", "plannedEnvironmentRun", "plannedAgainst"])
         strip v = v
     map strip (items attested) `shouldBe` items plain
     field "laws" attested `shouldBe` field "laws" plain
   it "reports each dependency with the obligations it touched, none when it matches nothing" $ do
     let deps = fromMaybe [] (field "attestation" attested >>= field "dependencies" >>= arrayOf)
-    [ (field "dependency" d, fmap (length . fromMaybe [] . arrayOf) (field "obligations" d)) | d <- deps ] `shouldBe`
+    [ (field "dependency" d, fmap (length . fromMaybe [] . arrayOf) (field "plannedObligations" d)) | d <- deps ] `shouldBe`
       [ (Just (String "shop.orders::Gateway"), Just 2), (Just (String "shop.orders::normalize"), Just 1), (Just (String "payments"), Just 0) ]
     field "attestation" plain `shouldBe` Nothing
   it "rejects an unknown format, an unknown version and a document that breaks the rules" $ do

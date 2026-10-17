@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/native-ownership.test.mjs by lawspec-dev generate. Do not edit.
+import {legacyGeneration} from './legacy-input.mjs';
 // Filesystem acceptance for adopting and regenerating native bindings.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
@@ -32,7 +33,8 @@ for (const [target, fixtureName, factory, generatorFile] of configurations) {
     const testDir = target === 'go' ? sourceDir : 'checks/native';
     const base = {sources,target,sourceDir,testDir,machineBits:32,minify:false};
     async function generate(options) {
-      const result = await compiler.planGeneration(options);
+      // Frozen 0.24 native payload fixtures retain their migration boundary.
+      const result = await legacyGeneration(compiler, options);
       assert.deepEqual(result.diagnostics,[]);
       return result.files;
     }

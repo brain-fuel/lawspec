@@ -8,35 +8,37 @@ export Band
 -- A package of reusable types, refinements, definitions and laws. Other units
 -- import it by name; its declarations keep their own names, so an importer may
 -- declare a Currency or a Usd of its own.
-type Currency is | Usd | Eur end
+type Currency is one of | Usd | Eur end type
 
 refinement Cents is (c :: Int64 where c >= 0 && c <= 100000000) end
 
-type Money is Money currency :: Currency cents :: Cents end
+type Money is a record{  currency :: Currency cents :: Cents} end type
 
 wrapper Quantity is Int32 where value >= 1 && value <= 1000 end
 
-definition currencyOf (m :: Money) :: Currency is
-  match m with | Money c n -> c end
-end
+function currencyOf (m :: Money) -> Currency is
+  first matching case of m : when Money record{ currency = c , cents = n} then c
+  end case
+end function
 
-definition centsOf (m :: Money) :: Int64 is
-  match m with | Money c n -> n end
-end
+function centsOf (m :: Money) -> Int64 is
+  first matching case of m : when Money record{ currency = c , cents = n} then n
+  end case
+end function
 
 -- The duty on a band, at version 1's rates.
-definition dutyOf (b :: Band) :: Int64 is tax.rateOf b end
+function dutyOf (b :: Band) -> Int64 is tax.rateOf b end function
 
 -- Generic laws are templates: an importer applies them to its own adapters.
-law `commutative` (f :: a -> a -> a) requires Eq a is
-  definition is
-    `for all` (x :: a) (y :: a) . f x y = f y x
+law "|commutative| (f :: a -> a -> a) requires Eq a is
+  definition :
+    for all (x :: a) (y :: a) => f x y = f y x end
   end
 end
 
-law `idempotent` (f :: a -> a) requires Eq a is
-  definition is
-    `for all` (x :: a) . f (f x) = f x
+law "|idempotent| (f :: a -> a) requires Eq a is
+  definition :
+    for all (x :: a) => f (f x) = f x end
   end
 end
 
@@ -44,14 +46,14 @@ end
 -- convert and is tested against these laws.
 convert :: Currency -> Money -> Money
 
-law `conversion targets the requested currency` is
-  definition is
-    `for all` (c :: Currency) (m :: Money) . currencyOf (convert c m) = c
+law "|conversion targets the requested currency| is
+  definition :
+    for all (c :: Currency) (m :: Money) => currencyOf (convert c m) = c end
   end
 end
 
-law `converting to the same currency changes nothing` is
-  definition is
-    `for all` (m :: Money) . convert (currencyOf m) m = m
+law "|converting to the same currency changes nothing| is
+  definition :
+    for all (m :: Money) => convert (currencyOf m) m = m end
   end
 end

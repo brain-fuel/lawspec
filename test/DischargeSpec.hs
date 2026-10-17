@@ -93,7 +93,8 @@ test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ d
     payments <- readFile "examples/specs/payments.lawspec"
     bindings <- maybe Null id . decode <$> BL.readFile "test/fixtures/native-payments/bindings.json"
     let response = maybe Null id $ decode $ dispatch $ encode $ object
-          [ "method" .= ("check" :: String), "schemaVersion" .= (4 :: Int)
+          [ "method" .= ("migrationBaseline" :: String), "schemaVersion" .= (5 :: Int)
+          , "languageProfile" .= ("1.0-rc.1" :: String), "from" .= ("0.24" :: String)
           , "sources" .= [object ["path" .= ("payments.lawspec" :: String), "content" .= payments]]
           , "nativeBindings" .= (bindings :: Value) ]
         stages = case response of

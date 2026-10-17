@@ -1,4 +1,6 @@
 // Generated from templates/npm/test/expect-runtime.test.mjs by lawspec-dev generate. Do not edit.
+// Historical 0.24 generation fixtures use the explicit migration entry.
+import {legacyGeneration} from './legacy-input.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -13,7 +15,7 @@ test("generated examples evaluate each asserted expression once without capturin
   const root = await mkdtemp(path.join(process.cwd(), ".lawspec-runtime-"));
   try {
     const compiler = await createCompiler();
-    const result = await compiler.planGeneration({
+    const result = await legacyGeneration(compiler, {
       target: "javascript",
       sources: [
         {

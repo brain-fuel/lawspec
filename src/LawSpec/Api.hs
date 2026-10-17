@@ -199,31 +199,14 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     comparisonFailure side (Object fields) = Object (KM.insert "migrationComparisonInput" (String side) fields)
     comparisonFailure _ value = value
     unavailable reason = object ["status" .= ("unavailable"::String),"reason" .= (reason::String)]
-    responseVersion = case eitherDecode bytes >>= parseEither
-        (withObject "request" (\o -> o .:? "schemaVersion" .!= (3 :: Int))) of
-      Right 5 -> 5 :: Int
-      Right 4 -> 4 :: Int
-      _ -> 3
     withPackages project described (Object value) =
       Object (foldr (\(k, v) -> KM.insert k v) value (packagesView project described))
     withPackages _ _ value = value
-    versioned (Object value) = Object (KM.insert "schemaVersion" (toJSON responseVersion)
-      (if responseVersion < 5 then legacyReferences value else value))
+    versioned (Object value) = Object (KM.insert "schemaVersion" (toJSON (5::Int)) value)
     versioned value = value
-    -- Legacy grammars contain only unnamed external citations. Keep the old
-    -- wire shape while schema 5 exposes checked documentary targets.
-    legacyReferences value = case KM.lookup "laws" value of
-      Just (Array laws) -> KM.insert "laws" (Array (fmap legacyLaw laws)) value
-      _ -> value
-    legacyLaw (Object law) = case KM.lookup "references" law of
-      Just (Array refs) -> Object (KM.insert "references" (Array (fmap legacyCitation refs)) law)
-      _ -> Object law
-    legacyLaw value = value
-    legacyCitation (Object reference) | Just resource <- KM.lookup "resource" reference = resource
-    legacyCitation value = value
     request = withObject "request" $ \o -> do
-      version <- o .:? "schemaVersion" .!= (3 :: Int)
-      unless (version `elem` [3,4,5]) (fail "LawSpec requires API schemaVersion 3, 4 (migration) or 5; see docs/explanation/api-migration.md")
+      version <- o .:? "schemaVersion" .!= (5 :: Int)
+      unless (version==5) (fail "LawSpec requires API schemaVersion 5 and languageProfile 1.0-rc.1; legacy source enters through migrationBaseline from 0.24")
       snapshot <- o .:? "migrationSnapshot" .!= False
       unless (not snapshot || version==5) (fail "migrationSnapshot requires API schemaVersion 5 and languageProfile 1.0-rc.1")
       method <- o .:? "method" .!= "check"
@@ -239,15 +222,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
         unless (from == ("0.24" :: String)) (fail (method ++ " requires from 0.24"))
       else pure ()
       native <- o .:? "nativeBindings" .!= emptyNativeRequest
-      unless (native == emptyNativeRequest || version `elem` [4,5])
-        (fail "nativeBindings requires API schemaVersion 4; schema 3 compilers may ignore bindings")
-      unless (null (requestNames native) || version == 5)
-        (fail "native name overrides require API schemaVersion 5 and languageProfile 1.0-rc.1")
-      verification <- if version == 5 then do
-        profile <- o .: "languageProfile"
-        unless (profile == ("1.0-rc.1" :: String)) (fail "schema 5 requires languageProfile 1.0-rc.1")
-        Just <$> o .:? "verification" .!= V.noVerification
-        else pure Nothing
+      profile <- o .: "languageProfile"
+      unless (profile == ("1.0-rc.1" :: String)) (fail "schema 5 requires languageProfile 1.0-rc.1")
+      verification <- Just <$> o .:? "verification" .!= V.noVerification
       -- A project may itself be a package, and may depend on packages whose
       -- sources are supplied alongside its own.
       rootPackage <- o .:? "package" >>= traverse (withObject "package" (\p -> (,) <$> p .: "name" <*> p .: "version"))
@@ -359,7 +336,7 @@ withBenchmarks entries (Object o) = Object (KM.insert "benchmarks" (toJSON (map 
 withBenchmarks _ value = value
 
 failure :: [Diagnostic] -> Value
-failure ds = object ["schemaVersion" .= (3 :: Int), "diagnostics" .= ds]
+failure ds = object ["schemaVersion" .= (5 :: Int), "diagnostics" .= ds]
 
 type Stages = ([Unit], [Expanded], C.Program, BindingPlan, [Obligation], [(Package, [String])], Either [Diagnostic] Plan,Maybe SourceTemplates)
 

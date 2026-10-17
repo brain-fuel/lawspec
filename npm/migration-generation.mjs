@@ -70,7 +70,7 @@ export function checkNativeBoundaryReceipt(before,after,request,bindingProposal,
     nativeConformance:'not-established',lawVerification:'not-established-by-boundary-correspondence'};
 }
 
-export async function planMigrationGeneration(compiler,config,input,sources,before,after,bindingPreview){
+export async function planMigrationGeneration(compiler,config,input,sources,before,after,bindingPreview,migratedContext={}){
   const rows=[];
   for(const binding of bindingPreview.targets){
     const target=binding.index===null?input:config.targets[binding.index];
@@ -82,7 +82,7 @@ export async function planMigrationGeneration(compiler,config,input,sources,befo
     const options={...input,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
       target:binding.target,sourceDir:target.sourceDir,testDir:target.testDir,minify:input.minify===true};
     const request={...options,from:'0.24',nativeBindings:binding.evidence.inputBindings,
-      migrated:{...options,sources,nativeBindings:binding.proposedNativeBindings}};
+      migrated:{...options,...migratedContext,sources,nativeBindings:binding.proposedNativeBindings}};
     const result=await compiler.migrationGeneration(request),evidence=result.migrationGeneration;
     const checked=result.diagnostics?.length?pending(result.diagnostics.map(item=>item.message).join(' ')):
       checkGenerationReceipt(before,after,request,binding.evidence,evidence);

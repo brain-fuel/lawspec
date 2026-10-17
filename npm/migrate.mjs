@@ -15,7 +15,9 @@ export async function migrationReport(compiler, config, input) {
   const baseline = await compiler.migrationBaseline({...legacyInput,verification:{layers:[...legacyLawLayers]}});
   if (baseline.diagnostics?.length) return { from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: baseline.diagnostics };
   if (!Array.isArray(baseline.sourceSyntax)) throw new Error('The compiler did not return the checked source syntax inventory');
-  const files = new Set(input.sources.map(s => s.path));
+  const packageInputs = input.packages ?? [];
+  const allSources = [...input.sources, ...packageInputs.flatMap(pkg => pkg.sources)];
+  const files = new Set(allSources.map(source => source.path));
   const owned = origin => origin?.kind === 'source' && files.has(origin.span.start.file);
   const declarations = baseline.units.flatMap(unit => unit.declarations.filter(d => owned(d.origin)).map(d => ({ unit: unit.id, ...d })));
   const definitions = baseline.definitions.filter(d => declarations.some(declaration => declaration.id === d.id));
@@ -29,15 +31,23 @@ export async function migrationReport(compiler, config, input) {
   })));
   let sourcePreview;
   try {
+    if(files.size !== allSources.length) throw new Error('Project and package source paths must be unique.');
+    const edited = planLegacySourceEdits(allSources,baseline,baseline.sourceSyntax,baseline.sourceFields);
+    const edits = new Map(edited.map(source => [source.path,source]));
     sourcePreview = {scope:'checked computations, nominal records and alternative payloads, ordered collection names, unsigned integers, cases, laws, explicit universal scopes and expectation-first tables',
-      sources:planLegacySourceEdits(input.sources,baseline,baseline.sourceSyntax,baseline.sourceFields),diagnostics:[]};
+      sources:input.sources.map(source => edits.get(source.path)),
+      packages:packageInputs.map(pkg => ({...pkg,sources:pkg.sources.map(source => edits.get(source.path))})),diagnostics:[]};
   } catch (error) {
     sourcePreview = {scope:'checked computations, nominal records and alternative payloads, ordered collection names, unsigned integers, cases, laws, explicit universal scopes and expectation-first tables',sources:[],
       diagnostics:[{code:'migration-source',message:error.message,at:null}]};
   }
+  const migratedSources=sourcePreview.sources.map(({path,content})=>({path,content}));
+  const migratedPackages=(sourcePreview.packages??[]).map(pkg=>({...pkg,
+    sources:pkg.sources.map(({path,content})=>({path,content}))}));
+  const migratedContext=packageInputs.length?{packages:migratedPackages}:{};
   if (!sourcePreview.diagnostics.length) {
-    const checked = await compiler.check({...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},migrationSnapshot:true,
-      sources:sourcePreview.sources.map(({path,content})=>({path,content}))});
+    const checked = await compiler.check({...sourceInput,...migratedContext,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},migrationSnapshot:true,
+      sources:migratedSources});
     sourcePreview.canonicalCheck = {status:checked.diagnostics.length?'rejected':'accepted',diagnostics:checked.diagnostics,
       intrinsicDefinitionChecks:checked.verification?.intrinsicDefinitionChecks===true,
       lawVerification:'no-selected-checks',coreSnapshot:checked.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'}};
@@ -45,8 +55,8 @@ export async function migrationReport(compiler, config, input) {
   let payloadComparison={status:'unavailable',reason:'The canonical preview or compiler-side payload comparison is unavailable.'};
   if(sourcePreview.canonicalCheck.status==='accepted'&&typeof compiler.migrationComparison==='function') {
     const compared=await compiler.migrationComparison({...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',verification:{layers:[]},
-      migrated:{...sourceInput,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
-        sources:sourcePreview.sources.map(({path,content})=>({path,content}))}});
+      migrated:{...sourceInput,...migratedContext,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
+        sources:migratedSources}});
     payloadComparison=compared.migrationComparison??{status:'unavailable',
       reason:'The compiler did not admit both inputs for payload comparison.',diagnostics:compared.diagnostics};
   }
@@ -54,16 +64,16 @@ export async function migrationReport(compiler, config, input) {
     payloadComparison.executableTransport,payloadComparison.definitionTemplates,payloadComparison.lawTemplates,payloadComparison.sourceUnits),
     payloads:payloadComparison};
   const bindingPreview=sourcePreview.canonicalCheck.status==='accepted' ?
-    await planNativeBindings(compiler,config,input,sourcePreview.sources.map(({path,content})=>({path,content})),
-      baseline.migrationSemantics,sourcePreview.canonicalCheck.coreSnapshot) :
+    await planNativeBindings(compiler,config,input,migratedSources,
+      baseline.migrationSemantics,sourcePreview.canonicalCheck.coreSnapshot,migratedContext) :
     {status:'not-established',scope:'explicit native binding configuration',
       configurationCount:config.targets.length+(input.nativeBindings!==undefined?1:0),targets:[],
       proposedTargets:config.targets,reason:'Native binding planning requires an admitted canonical source preview.'};
   correspondence.nativeBindings={status:bindingPreview.status,scope:bindingPreview.scope,
     configurationCount:bindingPreview.configurationCount};
   const generationPreview=await planMigrationGeneration(compiler,config,{...input,generation:baseline.generation},
-    sourcePreview.sources.map(({path,content})=>({path,content})),baseline.migrationSemantics,
-    sourcePreview.canonicalCheck.coreSnapshot,bindingPreview);
+    migratedSources,baseline.migrationSemantics,
+    sourcePreview.canonicalCheck.coreSnapshot,bindingPreview,migratedContext);
   correspondence.targetGeneration={status:generationPreview.status,scope:generationPreview.scope,
     configurationCount:generationPreview.configurationCount};
   correspondence.nativeBoundary=generationPreview.nativeBoundary;

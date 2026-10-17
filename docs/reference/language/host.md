@@ -15,16 +15,18 @@ unit guide.notes
 import lawspec.host
 
 -- Keep a note in a file, read it back, and remove the file.
-definition remember (note :: Bytes) :: Maybe Bytes uses FileSystem is
-  writeBytes ".guide-note" note; let read = readBytes ".guide-note" in removePath ".guide-note"; read
+procedure remember (note :: Bytes) -> Maybe Bytes uses FileSystem is
+  writeBytes ".guide-note" note; let read = readBytes ".guide-note" in
+  removePath ".guide-note"; read
+end procedure
+
+law "|a remembered note reads back| is
+  definition : for all (note :: Bytes) => remember note = Just note end end
 end
 
-law `a remembered note reads back` is
-  definition is `for all` (note :: Bytes) . remember note = Just note end
-end
-
-law `an empty environment has no variables` using emptyEnvironment is
-  definition is `for all` (name :: Text) . environmentVariable name = Nothing end
+law "|an empty environment has no variables| using emptyEnvironment is
+  definition : for all (name :: Text) => environmentVariable name = Nothing end
+  end
 end
 ```
 

@@ -6,12 +6,12 @@ parseQuantity :: Text -> Int32
 
 -- A law states a property for every input. This one reuses a prelude law:
 -- parsing what was formatted gives back the original value.
-law `quantities survive a round trip` is
-  definition is
-    `round trip identity is preserved` formatQuantity parseQuantity
+law "|quantities survive a round trip| is
+  definition :
+    apply law "|round trip identity is preserved| formatQuantity parseQuantity
   end
 
-  example `a dozen` is
+  example "|a dozen| :
     x = 12
     expect formatQuantity x = "12"
     expect parseQuantity (formatQuantity x) = 12

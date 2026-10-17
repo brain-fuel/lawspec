@@ -17,7 +17,10 @@ planned :: String -> Maybe String -> IO (KM.KeyMap Value)
 planned target testDir = do
   names <- sort . filter (".lawspec" `isSuffixOf`) <$> listDirectory "examples/specs"
   sources <- mapM (\name -> (\content -> object ["path" .= name, "content" .= content]) <$> readFile ("examples/specs/" ++ name)) names
-  let request = object (["method" .= ("planGeneration" :: String), "target" .= target, "sources" .= sources] ++
+  let request = object (["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+        "method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String), "includeGeneration" .= True,
+        "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+        "target" .= target, "sources" .= sources] ++
         ["testDir" .= d | Just d <- [testDir]])
   case decode (dispatch (encode request)) of
     Just (Object response) -> pure response

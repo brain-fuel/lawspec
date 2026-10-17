@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/expression-presentation.test.mjs by lawspec-dev generate. Do not edit.
+import {legacyCheck} from './legacy-input.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
@@ -222,8 +223,8 @@ test('emitted operational terms retain handlers, call filters and the original e
   for (const fixture of ['abilities', 'failures']) {
     const content = await readFile(new URL(`../../examples/specs/${fixture}.lawspec`, import.meta.url), 'utf8') +
       (fixture === 'abilities' ? '\ndefinition handledCheckout (cents :: Int32) :: Bool is handle checkout cents with fakeGateway end end\n' : '');
-    // These published examples remain explicit migration-schema inputs.
-    const result = await compiler.expand({schemaVersion: 4, sources: [{path: fixture + '.lawspec', content}]});
+    // These historical examples enter through the explicit migration interface.
+    const result = await legacyCheck(compiler, {sources: [{path: fixture + '.lawspec', content}]});
     assert.deepEqual(result.diagnostics, []);
     const before = structuredClone(result), render = presentation(result), terms = [];
     function collect(value) {

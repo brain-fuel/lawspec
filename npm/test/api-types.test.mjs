@@ -1,6 +1,7 @@
 // Generated from templates/npm/test/api-types.test.mjs by lawspec-dev generate. Do not edit.
 // The published TypeScript declarations admit an exhaustive visitor over the
 // expression types (test/fixtures/payload_api.ts). Skipped without tsc.
+import {canonicalRequest, legacyCheck} from './legacy-input.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -39,11 +40,11 @@ test('the exhaustive TypeScript visitor traverses emitted records, effects and f
     const file = path.join(root, 'examples', fixture + '.lawspec');
     const content = await readFile(file, 'utf8') + (fixture === 'specs/abilities'
       ? '\ndefinition handledCheckout (cents :: Int32) :: Bool is handle checkout cents with fakeGateway end end\n' : '');
-    // The effect examples retain their explicit legacy schema until migration;
-    // expression nodes have the same published shape in both interfaces.
-    const result = await compiler.expand({
-      ...(fixture.startsWith('rc1/') ? {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []}} : {schemaVersion: 4}),
-      sources: [{path: file, content}]});
+    // Historical effect fixtures use migration; canonical records use the ordinary API.
+    const request = {sources: [{path: file, content}]};
+    const result = fixture.startsWith('rc1/')
+      ? await compiler.expand({...canonicalRequest, ...request})
+      : await legacyCheck(compiler, request);
     assert.deepEqual(result.diagnostics, [], fixture);
     collect(result);
   }

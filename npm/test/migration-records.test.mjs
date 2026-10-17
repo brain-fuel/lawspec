@@ -50,6 +50,30 @@ test('nominal records retain field identities while nested construction, pattern
   }
 });
 
+test('constructor matchers migrate nested positional fields with comments and independent expected outcomes',async()=>{
+  const content='unit records\n'+
+    'type Leaf is Leaf left :: Bool right :: Bool end\n'+
+    'type Choice is | Absent | Pair left :: Leaf right :: Leaf end\n'+
+    'definition selected (value :: Choice) :: Bool is value matches Pair (Leaf true _) -- retained matcher comment\n (Leaf _ false) end\n'+
+    'law `selection` is definition is `for all` (value :: Choice) . selected value = (value matches Pair (Leaf true _) (Leaf _ false)) end '+
+    'table (value, expected) is '+
+      'row Absent, false '+
+      'row (Pair (Leaf true false) (Leaf true false)), true '+
+      'row (Pair (Leaf false false) (Leaf true false)), false '+
+      'row (Pair (Leaf true false) (Leaf true true)), false '+
+      'expect selected value = expected end end';
+  for(const bits of [32,64]) {
+    const {sources,after}=await migrate(content,bits);
+    assert.ok(sources[0].content.includes('matches Pair record{'));
+    assert.ok(sources[0].content.includes('(Leaf record{'));
+    assert.ok(sources[0].content.includes('-- retained matcher comment'));
+    assert.equal(after.laws[0].examples.length,4);
+    const mutant=sources.map(source=>({...source,content:source.content.replace('left = true','left = false')}));
+    const rejected=await compiler.check({...options,machineBits:bits,sources:mutant});
+    assert.ok(rejected.diagnostics.some(diagnostic=>diagnostic.code==='refuted'));
+  }
+});
+
 test('local alternatives retain zero/single arities and explicitly group multiple payload fields', async () => {
   const content='unit records\n'+
     'type Variant is | Empty | Single flag of type Bool | Double left :: Bool right :: Bool end\n'+

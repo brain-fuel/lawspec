@@ -75,21 +75,22 @@ symbol also has an English name, and some combinators have only a name:
 ```lawspec
 unit guide.railway
 
-type Problem is | TooSmall | TooLarge end
+type Problem is one of | TooSmall | TooLarge end type
 
-definition positive (x :: BigInt) :: Either Problem BigInt is
+function positive (x :: Integer) -> Either Problem Integer is
   prelude.select (x > 0) (Right x) (Left TooSmall)
-end
+end function
 
-definition small (x :: BigInt) :: Either Problem BigInt is
+function small (x :: Integer) -> Either Problem Integer is
   prelude.select (x < 100) (Right x) (Left TooLarge)
-end
+end function
 
-definition twice (x :: BigInt) :: BigInt is x + x end
+function twice (x :: Integer) -> Integer is x + x end function
 
-law `a failure short-circuits` is
-  definition is
-    `for all` (x :: BigInt) . x <= 0 implies (twice <$> (positive x >>= small)) = Left TooSmall
+law "|a failure short-circuits| is
+  definition :
+    for all (x :: Integer) => x <= 0 implies (twice <$> (positive x >>= small))
+      = Left TooSmall end
   end
 end
 ```
@@ -138,11 +139,11 @@ unit guide.arith
 
 scale :: Int8 -> Int8
 
-law `promotes instead of wrapping` is
-  definition is
-    `for all` (x :: Int8) . prelude.Int64 x * 2 = x + x
+law "|promotes instead of wrapping| is
+  definition :
+    for all (x :: Int8) => prelude.Int64 x * 2 = x + x end
   end
-  example `max` is
+  example "|max| :
     x = 127
     expect x + 1 = 128
     expect prelude.quot (-7) 2 = -3
@@ -167,13 +168,17 @@ bounded type the context wants instead:
 ```lawspec
 unit guide.bounded
 
-definition nextEpoch (e :: Int16) :: Int16 is prelude.wrapping (e + 1) end
-definition topUp (level :: UInt8) :: UInt8 is prelude.saturating (level + 10) end
-definition total (a :: Int32) (b :: Int32) :: Maybe Int32 is prelude.bounded (a + b) end
+function nextEpoch (e :: Int16) -> Int16 is prelude.wrapping (e + 1)
+end function
+function topUp (level :: UInt8) -> UInt8 is prelude.saturating (level + 10)
+end function
+function total (a :: Int32) (b :: Int32) -> Maybe Int32 is prelude.bounded (a +
+  b) end function
 
-law `bounded arithmetic` is
-  definition is
-    nextEpoch 32767 = -32768 and topUp 250 = 255 and total 2147483647 1 = Nothing
+law "|bounded arithmetic| is
+  definition :
+    nextEpoch 32767 = -32768 and topUp 250 = 255 and total 2147483647 1 =
+    Nothing
   end
 end
 ```

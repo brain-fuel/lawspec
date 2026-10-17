@@ -22,15 +22,15 @@ put :: Store -> Int32 -> Int32 -> Unit
 size :: Store -> Int32
 
 resource Store is
-  acquire is openStore unitValue end
-  release store is closeStore store end
-  reset store is clearStore store end
+acquire is openStore unitValue end
+release store is closeStore store end
+reset store is clearStore store end
 end
 
-law `every case gets an empty store` for store :: Store is
-  definition is
-    `for all` (k :: Int32) (v :: Int32) .
-      size store = 0 and put store k v = unitValue and size store = 1
+law "|every case gets an empty store| for store :: Store is
+  definition :
+    for all (k :: Int32) (v :: Int32) =>
+      size store = 0 and put store k v = unitValue and size store = 1 end
   end
 end
 ```

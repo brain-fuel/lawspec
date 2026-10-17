@@ -20,11 +20,11 @@ unit example.formatting
 render :: Int32 -> Text
 referenceRender :: Int32 -> Text
 
-law `decimal renderers agree` is
-  definition is
-    `equivalent` render referenceRender
+law "|decimal renderers agree| is
+  definition :
+    apply law "|equivalent| render referenceRender
   end
-  example `both renderers produce a negative decimal string` is
+  example "|both renderers produce a negative decimal string| :
     x = -42
     expect render x = "-42"
     expect referenceRender x = "-42"

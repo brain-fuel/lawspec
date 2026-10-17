@@ -15,22 +15,25 @@ unit guide.ordering
 wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end
 wrapper OrderId is Text where prelude.length value > 0 end
 
-type UnvalidatedOrder is UnvalidatedOrder id :: Text quantity :: Int32 end
-type ValidatedOrder is ValidatedOrder id :: OrderId quantity :: UnitQuantity end
-type PricedOrder is PricedOrder id :: OrderId quantity :: UnitQuantity total :: Int64 end
-type OrderError is | InvalidOrderId | InvalidQuantity | PriceTooHigh end
+type UnvalidatedOrder is a record{  id :: Text quantity :: Int32} end type
+type ValidatedOrder is a record{  id :: OrderId quantity :: UnitQuantity}
+end type
+type PricedOrder is a record{  id :: OrderId quantity :: UnitQuantity total ::
+  Int64} end type
+type OrderError is one of | InvalidOrderId | InvalidQuantity | PriceTooHigh
+end type
 
 workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is
-  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder
-  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder
+validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder
+priceOrder :: ValidatedOrder -> Either OrderError PricedOrder
 end
 
-law `quantities are always in range` is
-  definition is
-    `for all` (q :: UnitQuantity) .
-      valueOfUnitQuantity q >= 1 && valueOfUnitQuantity q <= 1000
+law "|quantities are always in range| is
+  definition :
+    for all (q :: UnitQuantity) =>
+      valueOfUnitQuantity q >= 1 && valueOfUnitQuantity q <= 1000 end
   end
-  example `largest quantity` is
+  example "|largest quantity| :
     q = UnitQuantity 1000
     expect valueOfUnitQuantity q = 1000
   end

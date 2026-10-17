@@ -26,9 +26,9 @@ unit example.codec
 encode :: Int32 -> Text
 decode :: Text -> Int32
 
-law `decoding recovers the encoded value` is
-  definition is
-    `left inverse` decode encode
+law "|decoding recovers the encoded value| is
+  definition :
+    apply law "|left inverse| decode encode
   end
 end
 ```

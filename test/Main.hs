@@ -6,6 +6,9 @@ import qualified WitnessSpec
 import qualified QuantifierDomainSpec
 import qualified SearchSpec
 import qualified CanonicalSpec
+import qualified CanonicalPredicateFactsSpec
+import qualified CanonicalMatcherSpec
+import qualified CanonicalInterfaceSpec
 import qualified ContextualSpec
 import qualified RecordIdentitySpec
 import qualified RecordNormalizeSpec
@@ -102,6 +105,9 @@ concrete :: String -> String
 concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
+  CanonicalPredicateFactsSpec.test_canonicalPredicateFacts
+  CanonicalMatcherSpec.test_canonicalMatchers
+  CanonicalInterfaceSpec.test_canonicalInterface
   EqSetSpec.test_eqOnlySetsPreserveMembershipAndIteration
   EqSetOperationsSpec.test_eqSetOperations
   CanonicalCollectionsSpec.test_canonicalCollections

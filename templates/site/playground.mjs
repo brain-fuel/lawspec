@@ -140,7 +140,9 @@ class Model extends EventTarget {
   async generate(target) {
     const spec = this.spec;
     if (this.generated[target]?.spec === spec) return this.generated[target].result;
-    const result = await (await loadCompiler()).planGeneration({ sources: this.sources(), target });
+    const result = await (await loadCompiler()).planGeneration({schemaVersion:5,
+      languageProfile:'1.0-rc.1',verification:{layers:['proof','exhaustive','property','examples','runtime','model']},
+      sources: this.sources(), target });
     this.generated[target] = { spec, result };
     return result;
   }
@@ -337,7 +339,8 @@ class Playground extends HTMLElement {
   async check() {
     this.status.textContent = "Compiling…";
     try {
-      const result = await (await loadCompiler()).check({ sources: this.model.sources() });
+      const result = await (await loadCompiler()).check({schemaVersion:5,
+        languageProfile:'1.0-rc.1',verification:{layers:[]},sources: this.model.sources() });
       if (result.diagnostics.length) return this.showDiagnostics(result.diagnostics);
       const unit = /^\s*unit\s+([\w.]+)/m.exec(this.model.spec)?.[1];
       const laws = (result.evidence ?? []).filter((e) => e.stage === "law" && e.owner === unit);
@@ -346,7 +349,7 @@ class Playground extends HTMLElement {
         element("strong", { text: law.declaration.split("::law::").pop() }),
         element("div", { class: "detail", text: law.reason }),
       ]))));
-      this.status.textContent = `Compiles: ${laws.length} law${laws.length === 1 ? "" : "s"}.`;
+      this.status.textContent = `Compiles: ${laws.length} law${laws.length === 1 ? "" : "s"}. No law checks selected.`;
     } catch (error) {
       this.status.textContent = `Cannot compile: ${error.message}`;
     }

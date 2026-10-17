@@ -16,16 +16,17 @@ async price :: (sku :: Text) -> (r :: Int32 where r >= 0)
 async stock :: Text -> Int32
 quote :: Text -> Int32
 
-law `prices agree with quotes` is
-  definition is `for all` (sku :: Text) . price sku = quote sku end
-  example `a free sample` is
+law "|prices agree with quotes| is
+  definition : for all (sku :: Text) => price sku = quote sku end end
+  example "|a free sample| :
     sku = "free"
     expect price sku = 0
   end
 end
 
-law `stocked products have prices` is
-  definition is `for all` (sku :: Text) . stock sku > 0 implies price sku >= 0 end
+law "|stocked products have prices| is
+  definition : for all (sku :: Text) => stock sku > 0 implies price sku >= 0 end
+  end
 end
 ```
 

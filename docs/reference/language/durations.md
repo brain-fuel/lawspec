@@ -14,19 +14,21 @@ every target.
 unit guide.timeouts
 
 -- The totality audit proves the result is in range for every retries.
-definition timeoutFor (retries :: Int32 where retries >= 0 && retries <= 5) :: Duration is
+function timeoutFor (retries :: Int32 where retries >= 0 && retries <= 5) ->
+  Duration is
   2s + 500ms * retries
-end
+end function
 
 remaining :: Duration -> Duration -> Duration
 
-law `what remains of a budget` is
-  definition is
-    `for all` (budget :: Duration) (spent :: Duration) .
+law "|what remains of a budget| is
+  definition :
+    for all (budget :: Duration) (spent :: Duration) =>
       prelude.toMicroseconds (remaining budget spent) =
-        prelude.select (spent <= budget) (prelude.toMicroseconds budget - prelude.toMicroseconds spent) 0
+      prelude.select (spent <= budget) (prelude.toMicroseconds budget -
+      prelude.toMicroseconds spent) 0 end
   end
-  example `part of a second` is
+  example "|part of a second| :
     budget = 1s
     spent = 250ms
     expect remaining budget spent = 750ms

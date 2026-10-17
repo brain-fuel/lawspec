@@ -304,7 +304,10 @@ preprocess cited errors snippets pages page markdown = unlines <$> go (lines mar
           modifyIORef snippets (+ 1)
           let sources = [object [K.fromString "path" .= p, K.fromString "content" .= c] | (p, c) <- files]
               request method more = decodeValue (dispatch (encode (object
-                ([K.fromString "method" .= method, K.fromString "sources" .= sources] ++ more))))
+                ([K.fromString "schemaVersion" .= (5 :: Int), K.fromString "languageProfile" .= ("1.0-rc.1" :: String),
+                  K.fromString "verification" .= object [K.fromString "layers" .=
+                    (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+                  K.fromString "method" .= method, K.fromString "sources" .= sources] ++ more))))
           case diagnostics (request "check" []) of
             [] -> pure ()
             ds -> problem ("snippet does not compile:\n  " ++ intercalate "\n  " ds ++ "\n" ++ source)

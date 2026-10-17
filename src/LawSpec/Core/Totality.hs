@@ -814,6 +814,11 @@ activatePresence facts =
 
 assumeSimple :: Bool -> Proof -> Facts -> Facts
 assumeSimple truth expression facts = case expression of
+  -- A capture-avoiding let substitution leaves one binder-free result branch.
+  -- Its Boolean result is its body's result. Definedness of the selected
+  -- expression remains audited by Match; this only propagates an assumed
+  -- input predicate into the constructor facts it already contains.
+  Match _ [([],body)] -> assume truth body facts
   DataMatch value branches | Just identity <- variableIdentity value ->
     facts{constructorPredicates=M.insert identity (foldl (flip appendNew) (M.findWithDefault [] identity (constructorPredicates facts))
       [(tag,binders,if truth then body else Negated body) | (tag,binders,body) <- branches]) (constructorPredicates facts)}

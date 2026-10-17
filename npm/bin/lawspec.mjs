@@ -160,6 +160,8 @@ async function migrateCommand() {
 
 async function formatCommand() {
   const config = positional.length ? null : JSON.parse(await readFile(configFile, "utf8"));
+  if(config&&(config.version!==2||config.languageProfile!=="1.0-rc.1"))
+    throw new Error("Formatting a project requires configuration version 2 and languageProfile 1.0-rc.1; run lawspec migrate --from 0.24 first.");
   const root = positional.length ? process.cwd() : configRoot;
   const files = await collectSources(root, positional.length ? positional : config.sources);
   const compiler = await createCompiler();
@@ -180,6 +182,7 @@ async function packageCommand() {
   const compiler = await createCompiler();
   const result = diagnostics(
     await compiler.check({
+      languageProfile: '1.0-rc.1', verification: {layers: []},
       sources: own.sources,
       package: { name: own.name, version: own.version },
       ...(await packageInput(manifest, directory)),
@@ -221,6 +224,8 @@ async function init() {
     current === null
       ? { version: 2, languageProfile: "1.0-rc.1", verification: { layers: [] }, sources: ["laws"], targets: [] }
       : JSON.parse(current);
+  if(config.version!==2||config.languageProfile!=='1.0-rc.1')
+    throw new Error('Existing projects require configuration version 2 and languageProfile 1.0-rc.1; run lawspec migrate --from 0.24 first.');
   if (
     config.targets.some(
       (t) =>
@@ -328,7 +333,7 @@ async function lastRuns() {
       const known = runs.get(law) ?? {};
       const latest = (known.passed ?? "") > (run.passed ?? "") ? known : run;
       runs.set(law, { flaky: known.flaky || run.flaky, adequacy: run.adequacy ?? known.adequacy,
-        passed: latest.passed, environment: latest.environment });
+        passed: latest.passed, seed: latest.seed, environment: latest.environment });
     }
   }
   return { runs, attestations };
@@ -439,7 +444,7 @@ async function runTests(compiler, input, selected, roots, config) {
     }));
     // The laws the attestation touches, each with how its dependencies
     // were wired (the run's id and times aside).
-    const attested = new Map((planned.evidence ?? []).filter((item) => item.against)
+    const attested = new Map((planned.evidence ?? []).filter((item) => item.against || item.plannedAgainst)
       .map((item) => [item.declaration, JSON.stringify([item.environment, item.against])]));
     const pending = await planWrites(root, planned.files);
     if (pending.changes.length)
@@ -779,14 +784,14 @@ async function main() {
     throw new Error(`Unknown command: ${verb}`);
   const config = JSON.parse(await readFile(configFile, "utf8"));
   if (
-    ![1,2].includes(config.version) ||
+    config.version!==2 ||
     !Array.isArray(config.sources) ||
     !Array.isArray(config.targets)
   )
     throw new Error(
-      "Expected lawspec.json version 2 with languageProfile 1.0-rc.1, sources and targets arrays (version 1 is migration input)",
+      "Expected lawspec.json version 2 with languageProfile 1.0-rc.1, sources and targets arrays; run lawspec migrate --from 0.24 for version 1 projects",
     );
-  if (config.version === 2 && config.languageProfile !== "1.0-rc.1") throw new Error("Configuration version 2 requires languageProfile 1.0-rc.1");
+  if (config.languageProfile !== "1.0-rc.1") throw new Error("Configuration version 2 requires languageProfile 1.0-rc.1");
   const selected = config.targets.filter(
     (t) => !options.target || t.language === options.target,
   );
@@ -821,7 +826,7 @@ async function main() {
   const input = {
     ...(cache === undefined ? {} : { cacheDirectory: cache }),
     sources: await sources(config),
-    ...(config.version === 2 ? { languageProfile: config.languageProfile, verification: config.verification ?? { layers: [] } } : {}),
+    languageProfile: config.languageProfile, verification: config.verification ?? { layers: [] },
     ...(await packageInput(config, configRoot)),
     generation: config.generation,
     machineBits: options.machineBits ?? config.machineBits ?? 64,
@@ -857,6 +862,10 @@ async function main() {
     ["known-failing", "KNOWN FAILING"],
     ["flaky", "FLAKY"],
     ["skipped", "SKIPPED"],
+    ["planned", "PLANNED"],
+    ["not-verified", "NOT VERIFIED"],
+    ["incomplete", "INCOMPLETE"],
+    ["unsupported", "UNSUPPORTED"],
   ];
   const evidenceSummary = (evidence) => {
     if (!evidence.length) return "";
@@ -877,7 +886,9 @@ async function main() {
     output(
       options.json
         ? result
-        : `Checked ${result.laws.length} law(s).` + evidenceSummary(result.evidence ?? []),
+        : `Compiled ${result.laws.length} law(s). Intrinsic definition checks passed.` +
+          (result.verification?.selection === "no-selected-checks"
+            ? " No law checks selected." : evidenceSummary(result.evidence ?? [])),
     );
     return;
   }
@@ -893,11 +904,12 @@ async function main() {
       const laws = new Set([...runs].filter(([, run]) => run.environment === id).map(([law]) => law));
       if (!laws.size) continue;
       const attested = diagnostics(await compiler.check({ ...input, attestation }));
-      const fields = new Map(attested.evidence.filter((item) => item.against && laws.has(item.declaration))
-        .map(({ declaration, environment, environmentRun, against }) => [declaration, { environment, environmentRun, against }]));
+      const fields = new Map(attested.evidence.filter((item) => (item.against || item.plannedAgainst) && laws.has(item.declaration))
+        .map(item => [item.declaration, {environment: item.environment ?? item.plannedEnvironment,
+          environmentRun: item.environmentRun ?? item.plannedEnvironmentRun, against: item.against ?? item.plannedAgainst}]));
       evidence = evidence.map((item) => item.stage === "law" && fields.has(item.declaration) ? { ...item, ...fields.get(item.declaration) } : item);
       environments.push({ ...attested.attestation, dependencies: attested.attestation.dependencies
-        .map((d) => ({ ...d, obligations: d.obligations.filter((law) => laws.has(law)) })) });
+        .map((d) => ({ ...d, obligations: [...new Set([...d.obligations, ...(d.plannedObligations ?? [])])].filter((law) => laws.has(law)), plannedObligations: [] })) });
     }
     // Native bindings are configured per target; their obligations are added.
     for (const target of selected) {
@@ -915,7 +927,7 @@ async function main() {
     evidence = evidence.map((item) => {
       const run = item.stage === "law" ? runs.get(item.declaration) : undefined;
       if (!run) return item;
-      return { ...item, ...(run.adequacy ? { adequacy: run.adequacy } : {}),
+      return { ...item, lastNativeRun: {passed: run.passed, seed: run.seed}, ...(run.adequacy ? { adequacy: run.adequacy } : {}),
         ...(run.flaky && ["property-tested", "exhaustively-checked"].includes(item.status)
           ? { status: "flaky", reason: `${item.reason}; its last run failed, then passed on a retry` } : {}) };
     });
@@ -930,7 +942,8 @@ async function main() {
               return `${label} (${items.length})\n` + items.map((item) =>
                 `  ${item.stage} ${obligationName(item)}${item.target ? ` [${item.target}]` : ""}` +
                 (item.claim ? `: ${item.claim.text}` : "") + `\n    ${item.reason}` +
-                (item.against ? `\n    ran in environment ${item.environment} (run ${item.environmentRun.id}) against ` +
+                (item.lastNativeRun ? `\n    last native run passed at ${item.lastNativeRun.passed} (seed ${item.lastNativeRun.seed})` : "") +
+                (item.against ? `\n    last recorded passing run in environment ${item.environment} (run ${item.environmentRun.id}) against ` +
                   item.against.map(dependencyText).join("; ") : "")).join("\n");
             })
             .filter((section) => section !== null),
@@ -940,7 +953,8 @@ async function main() {
           // Where the tests ran: reporting only, so no status above changes.
           ...environments.map((e) => `ENVIRONMENT ${e.environment} (run ${e.run.id}, recorded ${e.run.recordedAt})\n` +
             e.dependencies.map((d) => `  ${dependencyText(d)}; ` + (d.obligations.length
-              ? `${d.obligations.length} tested obligation(s)` : "no tested obligation relies on it")).join("\n"))]
+              ? `${d.obligations.length} tested obligation(s)` :
+                d.plannedObligations?.length ? `${d.plannedObligations.length} planned obligation(s); no completed run linked` : "no tested obligation relies on it")).join("\n"))]
             .join("\n\n"),
     );
     return;

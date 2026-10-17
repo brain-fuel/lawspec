@@ -17,11 +17,13 @@ unit guide.dice
 import lawspec.randomness
 
 -- A die: reproducible under a seed.
-definition roll (sides :: Int64 where sides >= 1) :: Integer uses Random is randomBelow sides + 1 end
+procedure roll (sides :: Int64 where sides >= 1) -> Integer uses Random is
+  randomBelow sides + 1 end procedure
 
-law `rolls are on the die` using seeded random 42 is
-  definition is
-    `for all` (sides :: Int64 where sides >= 1) . (let r = roll sides in r >= 1 && r <= sides) = true
+law "|rolls are on the die| using seeded random 42 is
+  definition :
+    for all (sides :: Int64 where sides >= 1) => (let r = roll sides in r >= 1
+      && r <= sides) = true end
   end
 end
 

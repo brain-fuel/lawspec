@@ -1,33 +1,33 @@
 unit lessons.evidence
 
 -- A checked definition: laws about it can be proved.
-definition twice (x :: Int32) :: BigInt is x + x end
+function twice (x :: Int32) -> Integer is x + x end function
 
-law `twice doubles` is
-  definition is
-    `for all` (x :: Int32) . twice x = x * 2
+law "|twice doubles| is
+  definition :
+    for all (x :: Int32) => twice x = x * 2 end
   end
 end
 
 -- Days of the week, numbered from Sunday. Seven inputs: every one is tested.
 isWeekend :: (d :: Int8 where d >= 0 && d <= 6) -> Bool
 
-law `weekends are Saturday and Sunday` is
-  definition is
-    `for all` (d :: Int8 where d >= 0 && d <= 6) .
-      isWeekend d = (d == 0 || d == 6)
+law "|weekends are Saturday and Sunday| is
+  definition :
+    for all (d :: Int8 where d >= 0 && d <= 6) =>
+      isWeekend d = (d = 0 || d = 6) end
   end
 end
 
 -- Too many inputs to try them all: generated cases, boundaries and examples.
 roundToDollars :: Int64 -> Int64
 
-law `rounding to dollars is stable` is
-  definition is
-    `idempotent` roundToDollars
+law "|rounding to dollars is stable| is
+  definition :
+    apply law "|idempotent| roundToDollars
   end
 
-  example `a price with cents` is
+  example "|a price with cents| :
     x = 1299
     expect roundToDollars x = 1200
   end

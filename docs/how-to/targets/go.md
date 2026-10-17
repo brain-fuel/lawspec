@@ -55,15 +55,15 @@ generic variant structs. For:
 ```lawspec
 unit example.trees
 
-type Tree (a :: Type) is
-  Leaf value :: a
-  Branch children :: List (Tree a)
-end
+type Tree (a :: Type) is one of
+  Leaf  of type a
+  Branch  of type List (Tree a)
+end type
 
 echo :: Tree Int8 -> Tree Int8
 
-law `echo preserves the tree` is
-  definition is `for all` (x :: Tree Int8) . echo x = x end
+law "|echo preserves the tree| is
+  definition : for all (x :: Tree Int8) => echo x = x end end
 end
 ```
 
@@ -129,7 +129,7 @@ Definitions become methods on `LawSpecDefinitions` in the unit's package:
 ```lawspec
 unit example.total
 
-definition increment (x :: Int8) :: BigInt is x + 1 end
+function increment (x :: Int8) -> Integer is x + 1 end function
 ```
 
 ```go

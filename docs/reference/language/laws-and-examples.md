@@ -50,21 +50,21 @@ A law with parameters is reusable. Parameters are typed functions or values, and
 ```lawspec
 unit guide.reusable
 
-law `preserves length`
+law "|preserves length|
   (f :: List a -> List a)
-is
-  definition is
-    `for all` (xs :: List a) . prelude.length (f xs) = prelude.length xs
+  is
+  definition :
+    for all (xs :: List a) => prelude.length (f xs) = prelude.length xs end
   end
 end
 
 reverse :: List Int8 -> List Int8
 
-law `reverse keeps every element` is
-  definition is
-    `preserves length` reverse
+law "|reverse keeps every element| is
+  definition :
+    apply law "|preserves length| reverse
   end
-  example `three elements` is
+  example "|three elements| :
     xs = [1, 2, 3]
     expect reverse xs = [3, 2, 1]
   end
@@ -139,17 +139,17 @@ unit guide.tables
 
 shippingCost :: Int32 -> Int32 -> Int32
 
-law `shipping cost grows with weight and distance` is
-  definition is
-    `for all` (kilograms :: Int32 where kilograms >= 0 && kilograms <= 1000)
-      (kilometres :: Int32 where kilometres >= 0 && kilometres <= 1000) .
-      shippingCost kilograms kilometres >= 0
+law "|shipping cost grows with weight and distance| is
+  definition :
+    for all (kilograms :: Int32 where kilograms >= 0 && kilograms <= 1000)
+      (kilometres :: Int32 where kilometres >= 0 && kilometres <= 1000) =>
+      shippingCost kilograms kilometres >= 0 end
   end
-  table (kilograms, kilometres, cost) is
+  expect shippingCost kilograms kilometres = cost
+  in table (kilograms, kilometres, cost) :
     row 0, 0, 0
     row 1, 10, 15
     row 2, 10, 30
-    expect shippingCost kilograms kilometres = cost
   end
 end
 ```

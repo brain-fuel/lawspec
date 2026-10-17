@@ -13,43 +13,45 @@ to hold.
 ```lawspec
 unit guide.matchers
 
-type Order is
-  | Pending id :: Int32
-  | Shipped id :: Int32 carrier :: Text
-end
+type Order is one of
+  | Pending  of type Int32
+  | Shipped of type record{ id :: Int32 carrier :: Text}
+end type
 
 sortItems :: List Int32 -> List Int32
 slug :: Text -> Text
 average :: Int32 -> Int32 -> Float64
 ship :: Int32 -> Order
 
-law `sorting keeps every item` is
-  definition is
-    `for all` (xs :: List Int32) . sortItems xs has same items as xs
+law "|sorting keeps every item| is
+  definition :
+    for all (xs :: List Int32) => sortItems xs has same items as xs end
   end
 end
 
-law `a slug is lowercase words joined by dashes` is
-  definition is
-    `for all` (title :: Text) . slug title matches regex "([a-z0-9]+(-[a-z0-9]+)*)?"
+law "|a slug is lowercase words joined by dashes| is
+  definition :
+    for all (title :: Text) => slug title matches regex
+    "([a-z0-9]+(-[a-z0-9]+)*)?" end
   end
-  example `a title` is
+  example "|a title| :
     title = "Hello World"
     expect slug title starts with "hello"
     expect slug title ends with "world"
   end
 end
 
-law `the average lies between the two` is
-  definition is
-    `for all` (a :: Int32) (b :: Int32) .
-      average a b is within 0.5 of prelude.Float64 (prelude.quot (a + b) 2)
+law "|the average lies between the two| is
+  definition :
+    for all (a :: Int32) (b :: Int32) =>
+      average a b is within 0.5 of prelude.Float64 (prelude.quot (a + b) 2) end
   end
 end
 
-law `shipping gives a shipped order` is
-  definition is
-    `for all` (id :: Int32) . ship id matches Shipped _ _
+law "|shipping gives a shipped order| is
+  definition :
+    for all (id :: Int32) => ship id matches Shipped record{ id = _ , carrier =
+        _} end
   end
 end
 ```

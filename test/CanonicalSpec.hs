@@ -302,7 +302,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
   it "resolves documentary prelude law phrases after ordinary scopes" $
     core "law linked is definition: true end references: ref law prelude.\"|left inverse| ref law \"|left inverse| end end"
       `shouldSatisfy` isRight
-  it "exposes structured references in schema 5 while retaining legacy citation arrays" $ do
+  it "exposes structured references in schema 5 including explicit migration citations" $ do
     let request version source = object
           (["schemaVersion" .= (version :: Int), "method" .= ("check" :: String), "sources" .= [source]] ++
            (if version == 5 then ["languageProfile" .= ("1.0-rc.1" :: String), "verification" .= object ["layers" .= ([] :: [String])]] else []))
@@ -316,7 +316,16 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         legacy = Source "legacy.lawspec" "unit legacy law `valid` is definition is true end references are \"legacy citation\" end end"
     mapM_ (\version -> case eitherDecode (dispatch (encode (request version legacy))) of
       Left message -> expectationFailure message
-      Right response -> references response `shouldBe` Right [[String "legacy citation"]]) [3,4]
+      Right response -> case response of
+        Object fields -> Data.Aeson.KeyMap.lookup "diagnostics" fields `shouldSatisfy`
+          (\value -> maybe False (/= toJSON ([] :: [Value])) value)
+        _ -> expectationFailure "expected a schema rejection") [3,4]
+    let baseline = object ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+          "method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String), "sources" .= [legacy]]
+    case eitherDecode (dispatch (encode baseline)) of
+      Left message -> expectationFailure message
+      Right response -> references response `shouldBe` Right [[object
+        ["kind" .= ("external" :: String), "resource" .= ("legacy citation" :: String)]]]
     let input = source "law valid is definition: true end references: ref law valid.description \"external citation\" end end"
     case eitherDecode (dispatch (encode (request 5 input))) of
       Left message -> expectationFailure message

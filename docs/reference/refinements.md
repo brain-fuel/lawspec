@@ -63,32 +63,33 @@ A named refinement declares type parameters and value parameters separately:
 unit guide.overflow
 
 refinement AdditionOverflows
-  (T :: Type) (left :: T)
-  requires Integer T Bounded T is
-  (right :: T where left + right > T.max)
+(T :: Type) (left :: T)
+requires Integer T Bounded T is
+(right :: T where left + right > T.max)
 end
 
 add :: (x :: Int8)
-    -> (y :: AdditionOverflows Int8 x)
-    -> (result :: Integer where result == x + y)
+-> (y :: AdditionOverflows Int8 x)
+-> (result :: Integer where result == x + y)
 ```
 
 ```lawspec
 unit guide.between
 
 refinement Between
-  (T :: Type) (minimum :: T) (maximum :: T)
-  requires Ordered T is
-  (value :: T where minimum <= value && value <= maximum)
+(T :: Type) (minimum :: T) (maximum :: T)
+requires Ordered T is
+(value :: T where minimum <= value && value <= maximum)
 end
 
 refinement PositiveInt8 is (value :: Int8 where value > 0) end
 
 clamp :: (x :: Between Int8 1 10) -> PositiveInt8
 
-law `clamped values are positive` is
-  definition is
-    `for all` (x :: Between Int8 1 10) (y :: Int8) (z :: Int8 where z > Int8.max - y) . clamp x > 0
+law "|clamped values are positive| is
+  definition :
+    for all (x :: Between Int8 1 10) (y :: Int8) (z :: Int8 where z > Int8.max -
+      y) => clamp x > 0 end
   end
 end
 ```
@@ -124,15 +125,15 @@ generic ones, specialized to the predicate's types):
 ```lawspec
 unit guide.nonempty
 
-definition nonempty (xs :: List a) :: Bool is
-  match xs with
-    | Nil -> false
-    | Cons head tail -> true
-  end
-end
+function nonempty (xs :: List a) -> Bool is
+  first matching case of xs :
+    when Nil then false
+    when Cons head tail then true
+  end case
+end function
 
 refinement Nonempty (T :: Type) is
-  (xs :: List T where nonempty xs)
+(xs :: List T where nonempty xs)
 end
 ```
 
@@ -205,11 +206,11 @@ classification and byte lengths. The design is discussed in
 ```lawspec
 unit guide.refined_increment
 
-definition increment (x :: Int8 where x < 127)
-  :: (result :: Int8 where result > x)
-is
+function increment (x :: Int8 where x < 127)
+  -> (result :: Int8 where result > x)
+  is
   prelude.Int8 (x + 1)
-end
+end function
 ```
 
 The arithmetic promotes to `Integer` before the explicit conversion back to
@@ -241,13 +242,13 @@ precondition.
 ```lawspec
 unit guide.helpers
 
-definition nonzero (value :: Int8 where value != 0)
-  :: (result :: Int8 where result != 0)
-is value end
+function nonzero (value :: Int8 where value != 0)
+  -> (result :: Int8 where result != 0)
+  is value end function
 
-definition reciprocal (value :: Int8 where value != 0) :: Rational is
+function reciprocal (value :: Int8 where value != 0) -> Rational is
   1 / nonzero value
-end
+end function
 ```
 
 The checker first proves the call's preconditions (and, for recursive calls,
@@ -275,10 +276,10 @@ predicate can refer to an earlier input:
 ```lawspec
 unit guide.list_payloads
 
-law `elements exceed the earlier bound` is
-  definition is `for all` (floor :: Int8)
-    (xs :: List (value :: Int8 where value > floor)) .
-    prelude.length xs >= 0
+law "|elements exceed the earlier bound| is
+  definition : for all (floor :: Int8)
+      (xs :: List (value :: Int8 where value > floor)) =>
+      prelude.length xs >= 0 end
   end
 end
 ```
@@ -301,14 +302,16 @@ A refinement on a whole product can relate its fields:
 ```lawspec
 unit guide.range
 
-type Range is Range lower :: Int8 upper :: Int8 end
+type Range is a record{  lower :: Int8 upper :: Int8} end type
 
-definition gap
-  (range :: Range where match range with | Range lo hi -> hi > lo end)
-  :: Rational
-is
-  match range with | Range lo hi -> 1 / (hi - lo) end
-end
+function gap
+  (range :: Range where first matching case of range : when Range record{ lower
+      = lo , upper = hi} then hi > lo end case)
+  -> Rational
+  is
+  first matching case of range : when Range record{ lower = lo , upper = hi}
+    then 1 / (hi - lo) end case
+end function
 ```
 
 The field relation justifies the non-zero denominator within that branch only.
@@ -322,24 +325,24 @@ wherever that parameter is stored, including recursive types, list elements and
 ```lawspec
 unit example.positive_pair
 
-type Pair (a :: Type) (b :: Type) is
-  Pair first :: a second :: b
-end
+type Pair (a :: Type) (b :: Type) is a record{
+  first :: a second :: b}
+end type
 
 refinement Positive is (value :: Int8 where value > 0) end
 
-definition reciprocal (pair :: Pair Positive Bool) :: Rational is
-  match pair with
-    | Pair first second -> 1 / first
-  end
-end
+function reciprocal (pair :: Pair Positive Bool) -> Rational is
+  first matching case of pair :
+    when Pair record{ first = first , second = second} then 1 / first
+  end case
+end function
 
-law `half` is
-  definition is
-    `for all` (pair :: Pair Positive Bool) . reciprocal pair > 0
+law "|half| is
+  definition :
+    for all (pair :: Pair Positive Bool) => reciprocal pair > 0 end
   end
-  example `two` is
-    pair = Pair 2 false
+  example "|two| :
+    pair = Pair record{ first = 2 , second = false}
     expect reciprocal pair = rational(1, 2)
   end
 end
@@ -367,13 +370,14 @@ A field can be refined directly, and may refer to earlier fields:
 ```lawspec
 unit guide.gap
 
-type Gap is
-  Gap first :: Int8 second :: (n :: Int8 where n > first)
-end
+type Gap is a record{
+  first :: Int8 second :: (n :: Int8 where n > first)}
+end type
 
-definition inverseGap (gap :: Gap) :: Rational is
-  match gap with | Gap x y -> 1 / (y - x) end
-end
+function inverseGap (gap :: Gap) -> Rational is
+  first matching case of gap : when Gap record{ first = x , second = y} then 1 /
+    (y - x) end case
+end function
 ```
 
 Construction in a total definition must prove the field predicates; matching

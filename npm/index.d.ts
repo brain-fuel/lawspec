@@ -286,7 +286,7 @@ export interface Law {
   examples: Example[];
   description: string;
   rationale: string;
-  references: DocumentaryReference[] | string[];
+  references: DocumentaryReference[];
   location: Location;
   trace: string[];
   generation: Generation;
@@ -453,6 +453,9 @@ export interface ObligationEvidence {
   environment?: string;
   environmentRun?: AttestedRun;
   against?: AttestedDependency[];
+  plannedEnvironment?: string;
+  plannedEnvironmentRun?: AttestedRun;
+  plannedAgainst?: AttestedDependency[];
 }
 
 export interface AttestedRun {
@@ -480,7 +483,8 @@ export interface AttestationView {
   environment: string;
   run: AttestedRun;
   producer?: PackageVersion;
-  dependencies: (AttestedDependency & {obligations: string[]})[];
+  dependencies: (AttestedDependency &
+    {obligations: string[]; plannedObligations: string[];})[];
 }
 
 export interface PackageVersion {
@@ -522,11 +526,11 @@ export interface VerificationSelection {
 }
 
 export interface CheckRequest {
-  languageProfile?: '1.0-rc.1';
+  languageProfile: '1.0-rc.1';
   verification?: Verification;
   migrationSnapshot?: boolean;
   sources: Source[];
-  schemaVersion?: 3 | 4 | 5;
+  schemaVersion?: 5;
   machineBits?: 32 | 64;
   generation?: Partial<Generation>;
   nativeBindings?: NativeBindings;
@@ -1044,7 +1048,7 @@ export type ProofTask =
     };
 
 export interface Result {
-  schemaVersion: 3 | 4 | 5;
+  schemaVersion: 5;
   machineBits?: 32 | 64;
   languageProfile?: "1.0-rc.1";
   verification?: VerificationSelection;

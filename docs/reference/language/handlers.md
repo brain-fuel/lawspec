@@ -19,39 +19,41 @@ See [Abilities](abilities.md) for declaring abilities.
 unit guide.store
 
 ability Store is
-  put :: Int32 -> Unit
-  size :: Integer
+put :: Int32 -> Unit
+size :: Integer
 laws
-  law `size is never negative` is
-    definition is size >= 0 end
-  end
+law "|size is never negative| is
+  definition : size >= 0 end
+end
 end
 
 -- A handler with state: the items stored so far.
 handler memoryStore for Store with state items :: List Int32 start [] is
-  put item is ~items := Cons item items; unitValue end
-  size is prelude.length items end
+put item is ~items := Cons item items; unitValue end
+size is prelude.length items end
 end
 
 -- A handler without state.
 handler emptyStore for Store is
-  put item is unitValue end
-  size is 0 end
+put item is unitValue end
+size is 0 end
 end
 
 -- A clause may be a definition that gives Pair result state.
-definition putFirst (item :: Int32) (items :: List Int32) :: Pair Unit (List Int32) is
-  match items with
-  | Nil -> Pair unitValue [item]
-  | Cons first rest -> Pair unitValue items
-  end
-end
+function putFirst (item :: Int32) (items :: List Int32) -> Pair Unit (List
+  Int32) is
+  first matching case of items :
+    when Nil then Pair unitValue [item]
+    when Cons first rest then Pair unitValue items
+  end case
+end function
 
-definition sizeOf (items :: List Int32) :: Pair Integer (List Int32) is Pair (prelude.length items) items end
+function sizeOf (items :: List Int32) -> Pair Integer (List Int32) is Pair
+  (prelude.length items) items end function
 
 handler firstStore for Store with state items :: List Int32 start [] is
-  put by putFirst
-  size by sizeOf
+put by putFirst
+size by sizeOf
 end
 ```
 

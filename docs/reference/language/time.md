@@ -18,13 +18,14 @@ unit guide.clock
 import lawspec.time (Instant, advance)
 
 -- When a lease ends: now plus its length.
-definition leaseEnd (length :: Duration where length <= 24h) :: Instant uses Clock is now + length end
+procedure leaseEnd (length :: Duration where length <= 24h) -> Instant uses
+  Clock is now + length end procedure
 
 -- Under the virtual clock, time moves only when told to.
-law `a lease lasts its length` using virtual clock is
-  definition is
-    `for all` (length :: Duration where length <= 24h) .
-      (let ends = leaseEnd length in advance length; now >= ends) = true
+law "|a lease lasts its length| using virtual clock is
+  definition :
+    for all (length :: Duration where length <= 24h) =>
+      (let ends = leaseEnd length in advance length; now >= ends) = true end
   end
 end
 

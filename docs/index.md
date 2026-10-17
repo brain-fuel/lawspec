@@ -22,12 +22,12 @@ unit example.addition
 
 add :: Int32 -> Int32 -> Int32
 
-law `addition commutes` is
-  definition is
-    `commutative` add
+law "|addition commutes| is
+  definition :
+    apply law "|commutative| add
   end
 
-  example `3 plus 5 and 5 plus 3 both produce 8` is
+  example "|3 plus 5 and 5 plus 3 both produce 8| :
     x = 3
     y = 5
     expect add x y = 8

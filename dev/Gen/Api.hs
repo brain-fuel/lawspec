@@ -59,7 +59,7 @@ api = text "import {loadCore} from './launcher.mjs';" <> softbreak <> softbreak 
   where
     method name = group (text (name ++ ": (input) =>") <>
       nest 4 (softline <> text "call" <>
-        delimit 4 "(" ")" [group (object [group (text "schemaVersion: input.languageProfile === '1.0-rc.1' ? 5 :" <> softline <> text "input.nativeBindings === undefined ? 3 : 4"), text "...input", text "method: " <> quoted name])]))
+        delimit 4 "(" ")" [group (object [text "schemaVersion: 5", text "...input", text "method: " <> quoted name])]))
 
 declarations :: Doc
 declarations = joinWith (softbreak <> softbreak)
@@ -162,7 +162,7 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "Law" (fields
       [("id", "string"), ("owner", "string"), ("name", "string"), ("inputs", "Input[]"), ("parameters?", "Input[]"),
        ("assertion", "Assertion"), ("examples", "Example[]"), ("description", "string"),
-       ("rationale", "string"), ("references", "DocumentaryReference[] | string[]"), ("location", "Location"),
+       ("rationale", "string"), ("references", "DocumentaryReference[]"), ("location", "Location"),
        ("trace", "string[]"), ("generation", "Generation"), ("inputDomain", "'nonempty' | 'universal'"),
        ("metadata", "LawMetadata"), ("harness", "LawHarness")])
   , interface "DeclarationSource" (fields [("unit","string"),("name","string"),("canonicalName?","string")])
@@ -211,7 +211,8 @@ declarations = joinWith (softbreak <> softbreak)
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
        [("claim", union [text "Expr", text "null"])] ++
        -- Where its tests ran, when an environment attestation touches it.
-       fields [("environment?", "string"), ("environmentRun?", "AttestedRun"), ("against?", "AttestedDependency[]")])
+       fields [("environment?", "string"), ("environmentRun?", "AttestedRun"), ("against?", "AttestedDependency[]"),
+               ("plannedEnvironment?", "string"), ("plannedEnvironmentRun?", "AttestedRun"), ("plannedAgainst?", "AttestedDependency[]")])
   , interface "AttestedRun" (fields [("id", "string"), ("startedAt", "string"), ("recordedAt", "string")])
   , interface "AttestedStandIn" (fields [("identity", "string"), ("version", "string"), ("conformance", "string"), ("historyDigest?", "string")])
   , interface "AttestedDependency"
@@ -219,7 +220,7 @@ declarations = joinWith (softbreak <> softbreak)
        [("kind", union (map quoted ["real", "stand-in"]))] ++ fields [("standIn?", "AttestedStandIn")])
   , interface "AttestationView"
       (fields [("environment", "string"), ("run", "AttestedRun"), ("producer?", "PackageVersion")] ++
-       [("dependencies", array (text "(AttestedDependency & {obligations: string[]})"))])
+       [("dependencies", array (group (text "(AttestedDependency &" <> nest 2 (softline <> record (fields [("obligations", "string[]"), ("plannedObligations", "string[]")])) <> text ")")))])
   , interface "PackageVersion" (fields [("name", "string"), ("version", "string")])
   , interface "Package" (fields [("name", "string"), ("version", "string"), ("dependencies?", "Record<string, string>"), ("sources", "Source[]")])
   , interface "PackageView" (fields [("name", "string"), ("version", "string"), ("dependencies", "Record<string, string>"), ("units", "string[]")])
@@ -229,8 +230,8 @@ declarations = joinWith (softbreak <> softbreak)
       [("layers",text "VerificationLayer[]"),("selection",union (map quoted ["no-selected-checks","selected-checks"])),
        ("intrinsicDefinitionChecks",text "true")]
   , interface "CheckRequest"
-      [("languageProfile?", quoted "1.0-rc.1"), ("verification?", text "Verification"), ("migrationSnapshot?",text "boolean"),
-       ("sources", text "Source[]"), ("schemaVersion?", union [text "3", text "4", text "5"]),
+      [("languageProfile", quoted "1.0-rc.1"), ("verification?", text "Verification"), ("migrationSnapshot?",text "boolean"),
+       ("sources", text "Source[]"), ("schemaVersion?", text "5"),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
        ("attestation?", text "unknown")]
@@ -389,7 +390,7 @@ declarations = joinWith (softbreak <> softbreak)
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "unsupported"),("reason",text "string")])]
   , interface "Result"
-      ([("schemaVersion", union [text "3", text "4", text "5"]), ("machineBits?", union [text "32", text "64"])] ++
+      ([("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])] ++
        fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++

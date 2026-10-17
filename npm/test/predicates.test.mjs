@@ -1,4 +1,6 @@
 // Generated from templates/npm/test/predicates.test.mjs by lawspec-dev generate. Do not edit.
+// Frozen 0.24 fixtures enter through the explicit migration interface.
+import {legacyCheck, legacyGeneration} from './legacy-input.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -8,7 +10,7 @@ import path from "node:path";
 import { createCompiler } from "../api.mjs";
 const compiler = await createCompiler();
 const check = (content) =>
-  compiler.expand({ sources: [{ path: "predicates.lawspec", content }] });
+  legacyCheck(compiler, { sources: [{ path: "predicates.lawspec", content }] });
 
 test("port predicates, reusable guards and Bool literals survive the public API", async () => {
   const content = await readFile(
@@ -93,7 +95,7 @@ law \`guarded\` is
  example \`both true\` is x = 3 expect result x = 3 end
 end`;
   async function generate(content) {
-    const r = await compiler.planGeneration({
+    const r = await legacyGeneration(compiler, {
       target: "javascript",
       sources: [{ path: "conditions.lawspec", content }],
     });

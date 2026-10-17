@@ -32,7 +32,7 @@ const run=(command,args,options={})=>{
 };
 const selected=process.env.LAWSPEC_NATIVE_LAYOUT_TARGET;
 const required=target=>selected===target||selected==='all';
-const available=command=>spawnSync(command,command==='erl'?['-noshell','-eval','halt(0).']:[command==='kotlinc'?'-version':'--version'],{stdio:'ignore'}).status===0;
+const available=command=>spawnSync(command,command==='erl'?['-noshell','-eval','halt(0).']:command==='go'?['version']:[command==='kotlinc'?'-version':'--version'],{stdio:'ignore'}).status===0;
 async function files(root,extension){
   const found=[];
   for(const item of await readdir(root,{withFileTypes:true})){

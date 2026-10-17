@@ -9,5 +9,16 @@
     "docs/lessons/specs/07-imports.lawspec",
     "docs/lessons/specs/07-money.lawspec",
     "docs/lessons/specs/08-evidence.lawspec"
-  ]
+  ],
+  "languageProfile": "1.0-rc.1",
+  "verification": {
+    "layers": [
+      "proof",
+      "exhaustive",
+      "property",
+      "examples",
+      "runtime",
+      "model"
+    ]
+  }
 }

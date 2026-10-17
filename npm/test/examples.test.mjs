@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/examples.test.mjs by lawspec-dev generate. Do not edit.
+import {legacyGeneration} from './legacy-input.mjs';
 import {createCompiler} from '../api.mjs';
 import {targets} from '../templates.mjs';
 import { test } from "node:test";
@@ -23,7 +24,9 @@ test("examples exports all bundled stubs/tests, preserves adapters, and protects
       path: name, content: await readFile(new URL(name, directory), 'utf8'),
     })));
     for (const target of result) {
-      const expected = await compiler.planGeneration({sources, target: target.target});
+      const expected = await legacyGeneration(compiler, {sources, target: target.target});
+      assert.equal(target.sourceLanguageProfile, '0.24');
+      assert.equal(expected.sourceLanguageProfile, '0.24');
       assert.deepEqual(expected.diagnostics, []);
       assert.deepEqual(target.files, expected.files.map(({path, ownership, placement}) => ({path, ownership, placement})));
       assert.ok(target.files.some(f => f.placement === "source" && f.ownership === "generated"));

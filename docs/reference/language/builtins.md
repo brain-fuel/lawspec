@@ -29,22 +29,26 @@ import lawspec.randomness
 
 -- A deadline: now plus a wait. Under the virtual clock, time moves only
 -- when told to.
-definition deadline (wait :: Duration where wait <= 1h) :: Instant uses Clock is now + wait end
+procedure deadline (wait :: Duration where wait <= 1h) -> Instant uses Clock is
+  now + wait end procedure
 
-law `a deadline is as far off as the wait` using virtual clock is
-  definition is
-    `for all` (wait :: Duration where wait <= 1h) . (let d = deadline wait in d - now) = wait
+law "|a deadline is as far off as the wait| using virtual clock is
+  definition :
+    for all (wait :: Duration where wait <= 1h) => (let d = deadline wait in d -
+      now) = wait end
   end
 end
 
 -- Seeded draws are reproducible: the same seed gives the same draws.
-definition roll (sides :: Int64 where sides >= 1) :: Integer uses Random is randomBelow sides + 1 end
+procedure roll (sides :: Int64 where sides >= 1) -> Integer uses Random is
+  randomBelow sides + 1 end procedure
 
-law `a seed fixes the rolls` is
-  definition is
-    `for all` (sides :: Int64 where sides >= 1) .
-      handle roll sides with seededRandom end = handle roll sides with seededRandom end
-  end
+law "|a seed fixes the rolls| is
+  definition :
+    for all (sides :: Int64 where sides >= 1) =>
+      handle roll sides with seededRandom end = handle roll sides with
+    seededRandom end end
+end
 end
 ```
 

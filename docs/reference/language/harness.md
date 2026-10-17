@@ -20,44 +20,44 @@ for why the two planes are kept apart.
 ```lawspec
 unit guide.shop
 
-type Order is Order items :: Int32 total :: Int32 end
+type Order is a record{  items :: Int32 total :: Int32} end type
 
-definition itemsOf (order :: Order) :: Int32 is
-  match order with | Order items total -> items end
-end
-definition totalOf (order :: Order) :: Int32 is
-  match order with | Order items total -> total end
-end
-definition isEmpty (order :: Order) :: Bool is itemsOf order == 0 end
+function itemsOf (order :: Order) -> Int32 is
+  first matching case of order : when Order record{ items = items , total = total} then items end case
+end function
+function totalOf (order :: Order) -> Int32 is
+  first matching case of order : when Order record{ items = items , total = total} then total end case
+end function
+function isEmpty (order :: Order) -> Bool is itemsOf order = 0 end function
 
 discount :: Order -> Int32
 
-law `a discount is never more than the total` is
-  definition is
-    `for all` (order :: Order where itemsOf order >= 0 && totalOf order >= 0) .
-      (discount order <= totalOf order) = true
+law "|a discount is never more than the total| is
+  definition :
+    for all (order :: Order where itemsOf order >= 0 && totalOf order >= 0) =>
+      (discount order <= totalOf order) = true end
   end
 end
 
 harness guide.shop.testing for guide.shop is
-  strategy smallOrder :: Order is
-    bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order items (items * 100)
-  end
-  strategy bulkOrder :: Order is
-    any such that itemsOf it > 10 && totalOf it >= 0 at most 1000 discards
-  end
-  strategy orders :: Order is frequency 9 smallOrder, 1 bulkOrder end
+strategy smallOrder :: Order is
+bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order record{ items = items , total = (items * 100)}
+end
+strategy bulkOrder :: Order is
+any such that itemsOf it > 10 && totalOf it >= 0 at most 1000 discards
+end
+strategy orders :: Order is frequency 9 smallOrder, 1 bulkOrder end
 
-  tags pricing
+tags pricing
 
-  for law `a discount is never more than the total`
-    use orders for order
-    cover 5% "empty order" when isEmpty order
-    classify totalOf order > 1000 as "large"
-    label if isEmpty order then "empty" else "some items"
-    timeout 10 s
+for law "|a discount is never more than the total|
+use orders for order
+cover 5% "empty order" when isEmpty order
+classify totalOf order > 1000 as "large"
+label if isEmpty order then "empty" else "some items" end if
+timeout 10 s
 
-  benchmark `discount of a bulk order` is discount (Order 30 50000) end
+benchmark `discount of a bulk order` is discount (Order record{ items = 30 , total = 50000}) end
 end
 ```
 

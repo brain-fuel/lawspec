@@ -1175,7 +1175,7 @@ matcherSuffix operand = choice
   , try (keyword "starts" *> keyword "with") *> (call "startsWith" <$> operand)
   , try (keyword "ends" *> keyword "with") *> (call "endsWith" <$> operand)
   , try (keyword "fails" *> keyword "with") *> failsWith
-  , keyword "matches" *> (regexLiteral <|> (flip patternTest <$> patternP) <|> (call "matchesRegex" <$> operand))
+  , keyword "matches" *> (regexLiteral <|> matcherPatternP <|> (call "matchesRegex" <$> operand))
   ]
   where
     call name other subject = Apply (Apply (Var ("prelude." ++ name)) subject) other
@@ -1185,14 +1185,32 @@ matcherSuffix operand = choice
       pure (\subject -> Apply (Apply (Var "prelude.regexMatches") (StringLit pattern)) subject)
     -- e fails with P: attempt e, and its failure matches P.
     failsWith = do
-      pattern <- patternP
+      test <- matcherPatternP
       message <- optional (try (keyword "message" *> keyword "contains") *> operand)
       let failure = "lawspecFailure"
-          checks = patternTest (Var failure) pattern :
+          checks = test (Var failure) :
             [Apply (Apply (Var "prelude.messageContains") (Var failure)) m | Just m <- [message]]
       pure (\subject -> MatchExpr (Apply (Var "prelude.attempt") subject)
         [ MatchBranch "Either::Left" [failure] (foldr1 (Binary "&&") checks)
         , MatchBranch "Either::Right" ["lawspecResult"] (BoolLit False) ])
+
+-- Canonical matchers use the same typed pattern matrix as ordered cases.
+-- A bare lowercase name remains a Regex operand, rather than a binding that
+-- would silently match everything. The selected expression is evaluated once.
+matcherPatternP :: P (Expr -> Expr)
+matcherPatternP = do
+  canonical <- canonicalP
+  if not canonical then flip patternTest <$> patternP else try $ do
+    pattern <- selectionPatternP True
+    case pattern of
+      SelectionBinding _ -> empty
+      _ -> pure ()
+    let names = selectionBindings pattern
+    unless (length names == length (nub names)) (fail "repeated variable binding in pattern")
+    pure (\subject -> MatchExpr subject [MatchBranch letTag ["it"]
+      (selectionMatrix 0 [Var "it"]
+        [SelectionRow [pattern] [] Nothing (BoolLit True),
+         SelectionRow [SelectionAny] [] Nothing (BoolLit False)])])
 
 -- A regex literal's text, checked against the portable dialect.
 regexText :: P String
@@ -1208,7 +1226,7 @@ regexText = do
 data Pattern = AnyValue | EqualTo Expr | Built String [Pattern]
 
 patternP :: P Pattern
-patternP = do
+patternP = sourceNode "matcher-pattern" (\pattern -> case pattern of Built name _ -> Just name; _ -> Nothing) $ do
   name <- constructorName
   Built name <$> many field
   where
@@ -1216,7 +1234,8 @@ patternP = do
       name <- qualifiedName
       unless (startsUpper name) (fail "expected a constructor")
       pure name
-    field = (AnyValue <$ lexeme (try (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
+    field = sourceNode "matcher-field" (const Nothing) $
+      (AnyValue <$ lexeme (try (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
       <|> parens patternP
       <|> (EqualTo <$> (try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)))
       <|> ((`Built` []) <$> constructorName)

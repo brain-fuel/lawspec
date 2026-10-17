@@ -21,12 +21,12 @@ unit guide.lists
 
 reverse :: List Int32 -> List Int32
 
-law `reverse preserves length` is
-  definition is
-    `for all` (xs :: List Int32) .
-      prelude.length (reverse xs) = prelude.length xs
+law "|reverse preserves length| is
+  definition :
+    for all (xs :: List Int32) =>
+      prelude.length (reverse xs) = prelude.length xs end
   end
-  example `duplicates count separately` is
+  example "|duplicates count separately| :
     xs = [3, 1, 3]
     expect prelude.length xs = 3
     expect reverse xs = [3, 1, 3]
@@ -57,11 +57,13 @@ unit guide.presence
 
 echo :: Maybe (Either Int8 Bool) -> Maybe (Either Int8 Bool)
 
-law `preserve every alternative` is
-  definition is `for all` (x :: Maybe (Either Int8 Bool)) . echo x = x end
-  example `absent` is x = Nothing expect echo x = Nothing end
-  example `left integer` is x = Just (Left 127) expect echo x = Just (Left 127) end
-  example `right boolean` is x = Just (Right false) expect echo x = Just (Right false) end
+law "|preserve every alternative| is
+  definition : for all (x :: Maybe (Either Int8 Bool)) => echo x = x end end
+  example "|absent| : x = Nothing expect echo x = Nothing end
+  example "|left integer| : x = Just (Left 127) expect echo x = Just (Left 127)
+  end
+  example "|right boolean| : x = Just (Right false) expect echo x = Just (Right
+    false) end
 end
 ```
 
@@ -80,27 +82,27 @@ explicitly with `:: Type`.
 ```lawspec
 unit guide.trees
 
-type Pair (a :: Type) (b :: Type) is
-  Pair
-    first :: a
-    second :: b
-end
+type Pair (a :: Type) (b :: Type) is a record{
 
-type Tree (a :: Type) is
-  Leaf value :: a
-  Branch children :: List (Tree a)
-end
+  first :: a
+  second :: b}
+end type
 
-definition rebuild (tree :: Tree a) :: Tree a is
-  match tree with
-    | Leaf value -> Leaf value
-    | Branch children -> Branch children
-  end
-end
+type Tree (a :: Type) is one of
+  Leaf  of type a
+  Branch  of type List (Tree a)
+end type
 
-law `preserve the constructor and its fields` is
-  definition is `for all` (tree :: Tree Int8) . rebuild tree = tree end
-  example `nested branches` is
+function rebuild (tree :: Tree a) -> Tree a is
+  first matching case of tree :
+    when Leaf value then Leaf value
+    when Branch children then Branch children
+  end case
+end function
+
+law "|preserve the constructor and its fields| is
+  definition : for all (tree :: Tree Int8) => rebuild tree = tree end end
+  example "|nested branches| :
     tree = Branch [Leaf 127, Branch [], Leaf -128]
     expect rebuild tree = Branch [Leaf 127, Branch [], Leaf -128]
   end
@@ -119,26 +121,26 @@ A type with one constructor has fields that code reads and replaces by name:
 ```lawspec
 unit guide.fields
 
-type Account is
-  Account
-    owner :: Text
-    balance :: Int64
-end
+type Account is a record{
 
-type Ledger is
-  Ledger
-    account :: Account
-    entries :: Int32
-end
+  owner :: Text
+  balance :: Int64}
+end type
 
-definition rename (l :: Ledger) (name :: Text) :: Ledger is
+type Ledger is a record{
+
+  account :: Account
+  entries :: Int32}
+end type
+
+function rename (l :: Ledger) (name :: Text) -> Ledger is
   l with account = (l.account with owner = name), entries = 0
-end
+end function
 
-law `a rename reads back` is
-  definition is
-    `for all` (l :: Ledger) (name :: Text) .
-      (rename l name).account.owner = name and (rename l name).entries = 0
+law "|a rename reads back| is
+  definition :
+    for all (l :: Ledger) (name :: Text) =>
+      (rename l name).account.owner = name and (rename l name).entries = 0 end
   end
 end
 ```
@@ -200,12 +202,13 @@ unfolded into it, so every target checks it where values are built:
 ```lawspec
 unit example.badges
 
-definition validName (name :: Text) :: Bool is name matches regex "[a-z]+" end
+function validName (name :: Text) -> Bool is name matches regex "[a-z]+"
+end function
 
-type Badge is
-  Badge
-    label :: (v :: Text where validName v)
-end
+type Badge is a record{
+
+  label :: (v :: Text where validName v)}
+end type
 ```
 
 A recursive definition cannot be unfolded, and is refused there.

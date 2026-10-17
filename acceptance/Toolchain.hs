@@ -1,13 +1,13 @@
 -- | The native test command for each target, shared by every acceptance suite.
 module Toolchain (Toolchain(..), toolchain, mutantArguments, compileFailure) where
 
-import Data.Char (toLower)
-import Data.List (isInfixOf, isSuffixOf, sort)
-import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory, removePathForcibly)
+import Data.Char (toLower, isSpace)
+import Data.List (isInfixOf, isSuffixOf, sort, stripPrefix, dropWhileEnd)
+import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory, removePathForcibly, withCurrentDirectory)
 import System.IO (readFile')
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
-import System.Process (callProcess)
+import System.Process (callProcess, readProcess)
 import Control.Monad (when)
 
 data Toolchain = Toolchain
@@ -65,14 +65,28 @@ toolchain project target = do
     -- contents' timestamps at full resolution) and runs it on
     -- Microsoft.Testing.Platform, as global.json selects.
     -- Scala CLI compiles incrementally on its Bloop server.
-    "scala" -> pure (plain "scala" (["test", "."] ++ flag "--offline"))
+    "scala" -> pure (plain "scala" (["test", "."] ++ flag "--power" ++ flag "--offline"))
     _ | target `elem` ["fsharp", "csharp"] ->
-        pure (plain "dotnet" ("test" : ["--no-restore" | offline]))
+        pure (Toolchain "dotnet" ("test" : ["--no-restore" | offline])
+          (when offline (restoreDotNet project)) (pure ""))
     -- swift test builds incrementally (SwiftPM compares file contents'
     -- timestamps at full resolution) and runs the Swift Testing tests.
     "swift" -> pure (plain "swift" ["test"])
     _ -> ioError (userError ("unknown target: " ++ target))
   where plain c a = Toolchain c a (pure ()) (pure "")
+
+-- Fresh acceptance projects have no generated NuGet imports yet. Restore
+-- those from the installed package cache before asking the SDK to select its
+-- test runner. A local source and disabled audit keep offline runs offline;
+-- missing cached packages fail the restore instead of selecting another runner.
+restoreDotNet :: FilePath -> IO ()
+restoreDotNet project = do
+  output <- readProcess "dotnet" ["nuget", "locals", "global-packages", "--list", "--force-english-output"] ""
+  cache <- case lines output of
+    [line] | Just path <- stripPrefix "global-packages: " line -> pure (dropWhileEnd isSpace path)
+    _ -> ioError (userError "cannot locate the dotnet global package cache")
+  withCurrentDirectory project $
+    callProcess "dotnet" ["restore", "--source", cache, "-p:NuGetAudit=false", "--verbosity", "quiet"]
 
 -- Gleam has no project precompile hook. Its native bridge is built explicitly,
 -- before Gleam copies priv into the application and production shipment.

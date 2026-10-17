@@ -96,12 +96,12 @@ following the unit's package and class. For:
 ```lawspec
 unit example.total
 
-definition size (xs :: List Int8) :: BigInt is
-  match xs with
-    | Nil -> 0
-    | Cons head tail -> 1 + size tail
-  end
-end
+function size (xs :: List Int8) -> Integer is
+  first matching case of xs :
+    when Nil then 0
+    when Cons head tail then 1 + size tail
+  end case
+end function
 ```
 
 call:

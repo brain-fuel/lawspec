@@ -505,7 +505,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "32b40834ed6f58d5290af56b62037426cb5868b4d4fa2ee6de0aa541a494199f",
-    "lawspec.cabal": "fd382fadc44896d40e5f05a4099f58ab8d1b90005149d203ad96273fb9a70cbb",
+    "lawspec.cabal": "d8a30147a4693f3ac8980e898b92c82c20ce3ebb259ae704ce8b1f5ef11172de",
     "package.yaml": "8f340b6e338af7793afb1f13c4feab28eeddc4c3b2754bff181f9460406962f9",
     "runtime/LawSpecCodecs.hs": "4109ac35634ab4c226b5464e824b03b90014a6b44426b5c33e34c6608d0bea70",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
@@ -732,8 +732,8 @@
     "src/LawSpec/Actors/Scala.hs": "6a034fb96983fd11b8714d5c6b8c09b5cb24ceb06977b52010c2424a51b60f38",
     "src/LawSpec/Actors/Types.hs": "09f764a8da926f00817a0de0f17a03d48194c819a3c64aca78c96b19d38ac823",
     "src/LawSpec/Actors/Web.hs": "b8a63be30754569d7b150d454e656b4089a63e2f913bb2276ba722e2529e185d",
-    "src/LawSpec/Api.hs": "81b245b626c3a114a1c308b0545d339d9cecfa5fbf9272920b872f348e077bb9",
-    "src/LawSpec/Attestation.hs": "55ac5bca528ef22cd29762cf2b3c226c2b4e18a50a667aac6d74a36be78bd62c",
+    "src/LawSpec/Api.hs": "ab48449c91137d8e8c67ea6ce1c68a01260392f4245ca62a0d497924414a6daa",
+    "src/LawSpec/Attestation.hs": "8315879771dbf8417a32a06421b292ad67ede9635449b9865e171f0d2afe11f7",
     "src/LawSpec/Backend.hs": "2b707ebc5a9ad32e7783caa7041ebfdd4fe22bd73cbff136dc5344cff33d59d5",
     "src/LawSpec/BeamAbilities.hs": "958d34b7a8808dbe4f5fad6a5b6b922651ac1659f2dc6bcf7189732dc4e2d823",
     "src/LawSpec/BeamActors.hs": "f2dfd04d9d73534ff2888c77d00e42fa5dd7f1b3c6b0d552ca1a3e85520ebbf5",
@@ -798,7 +798,7 @@
     "src/LawSpec/Core/Smt.hs": "29e163d6d3ba38e8f6f1f8ebeab5cd57d0684517d3dd90b3d9b620b68d3b8c8f",
     "src/LawSpec/Core/Stages.hs": "7c3d8330ef0196f85c9f561f2a3077e5fc0f7e1070ac09c3853d91da49579d46",
     "src/LawSpec/Core/Total.hs": "9cb7d9cc37f14a5a77e5fe27437d258e967e61ea15398e0f3cbd567b237a89da",
-    "src/LawSpec/Core/Totality.hs": "c0859289bd9d96338f34f8b29e2eceb4ba7ea8f5b3b561be1853081266e64694",
+    "src/LawSpec/Core/Totality.hs": "67021fe35d0e65496066836568121969f97eb26f52057d5c437c5528814c76a6",
     "src/LawSpec/Core/Types.hs": "dba6f2781f576e8a919347f742944ff01f68ab96580ae84f8cd664fb4d549a46",
     "src/LawSpec/Core/Validate.hs": "32d56e6a8390b88d0f614d98d3cd6f986e51fcdef4c2f06601eade724f953e40",
     "src/LawSpec/Core/Value.hs": "e366666aef9f1ec6fa089d540d772d68b474955b9f5f8ab4b3298fe0b1c85844",
@@ -904,7 +904,7 @@
     "src/LawSpec/NativeRequestView.hs": "4a6389f2cc87d84324e2f502cb15a083c9d29f236a162cefe5bd2173db98df91",
     "src/LawSpec/Network.hs": "b779c7ed8ffdb03cdd44b42534dc3b78ffa52d942aa4c03d941d0d7925a73878",
     "src/LawSpec/Packages.hs": "fd66ad5a6bdd167d518d2548df21f12a6af02e2d635c1993bf3e309824b1d8b4",
-    "src/LawSpec/Parser.hs": "2b23e3e474488bf8cf8ae0ae6bdc1aa5e6821141774bdde246fc7448593c60fb",
+    "src/LawSpec/Parser.hs": "0b30b4b651843c3c78d356602b0358864a41662e40a2b0741ad4d49899dd0f95",
     "src/LawSpec/Persist.hs": "5eb5ef847b2d776f1a282afe4034d757277de8a22ee89c2e612851133e14ca4d",
     "src/LawSpec/PortableGenerator.hs": "e0fab6648d1b118b43415c5ff5ede10b790226349e89e74cdb7f182b9fdc9545",
     "src/LawSpec/PortableTestHelpers.hs": "1a60780525e70b2faf84c09750362ea5a9b2927225812378e6e210126aed6a45",
@@ -1005,9 +1005,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "12f288c12f95e7856f97340d3c4b36d666c7ca652e45f94daba45d074887687c",
-    "npm/core.wasm": "d6bb22aae751fe2c997dd61f30b6e7613b9f35729cb6db86000fa6649e7b76ec",
+    "npm/core.wasm": "2cecac1a5eb05026917e8245696906b57591bb530f47e60dcfa575e8dedc5472",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
-    "npm/api.mjs": "2e56d49a5c8e5acafec9139f5445413732404cdc3cff4753cb27e31f8ac5aa4e",
-    "npm/index.d.ts": "8356270aec54ac746fb1079a848ebbdaef007cbede1fe2ab481eeb07b4345286"
+    "npm/api.mjs": "8110e4f8bfbec33bdd04a34d18189d56d094495674de58ce55a0c4076411e9ca",
+    "npm/index.d.ts": "ab2b06869607e4e46940772bc9d0a3060701e473c63f0d32d3febfec05003cf2"
   }
 }

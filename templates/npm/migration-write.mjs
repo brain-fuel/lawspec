@@ -19,7 +19,13 @@ const unchanged=async entry=>{
 // Stage every replacement before committing, retain original inodes for
 // rollback, and commit configuration last. A process/OS crash is not a global
 // filesystem transaction; recovery paths are retained if rollback cannot finish.
-export async function commitMigration(root,changes,{recheck=async()=>{}}={}){
+export async function commitMigration(root,changes,{recheck=async()=>{},packageLocations=new Map()}={}){
+  // Only manifest-observed package sources receive an alternate root. Ordinary
+  // destinations retain the project's traversal and symbolic-link checks.
+  const destination=relative=>{
+    const location=packageLocations.get(relative);
+    return location?safePath(location.root,location.path):safePath(root,relative);
+  };
   const lockPath=await safePath(root,'.lawspec-migration.lock');
   let lock;
   try{lock=await open(lockPath,'wx');}
@@ -33,7 +39,7 @@ export async function commitMigration(root,changes,{recheck=async()=>{}}={}){
     for(const change of changes){
       if(typeof change.expected!=='string'||typeof change.content!=='string')
         throw failure('migration-write','Migration replacements require exact original and destination text.');
-      const file=await safePath(root,change.path),info=await lstat(file),bytes=await readFile(file);
+      const file=await destination(change.path),info=await lstat(file),bytes=await readFile(file);
       if(!info.isFile()||!(info.mode&0o222))throw failure('migration-write','Migration requires a writable regular file: '+change.path);
       if(!bytes.equals(Buffer.from(change.expected,'utf8')))
         throw failure('migration-stale','File changed during migration: '+change.path);
@@ -48,9 +54,9 @@ export async function commitMigration(root,changes,{recheck=async()=>{}}={}){
       await link(file,entry.backup);
     }
     await recheck();
-    for(const entry of observed){await safePath(root,entry.path);await unchanged(entry);}
+    for(const entry of observed){await destination(entry.path);await unchanged(entry);}
     for(const entry of entries){
-      await safePath(root,entry.path);await unchanged(entry);
+      await destination(entry.path);await unchanged(entry);
       await rename(entry.stage,entry.file);applied.push(entry);
     }
   }catch(error){
@@ -100,9 +106,31 @@ export async function writeMigration(compiler,root,configurationPath,configurati
   if((snapshot.machineBits??64)!==(config.machineBits??64)||
     JSON.stringify(snapshot.generation)!==JSON.stringify(config.generation))
     throw failure('migration-configuration','Project writing requires the machine width and generation settings from its configuration.');
+  const packageLocations=new Map(),packageManifests=[];
+  for(let index=0;index<packages.length;index++){
+    const packageRoot=path.resolve(root,packagePaths[index]);
+    const manifestPath=path.join(packageRoot,'lawspec-package.json');
+    const text=await readFile(manifestPath,'utf8'),manifest=JSON.parse(text),pkg=packages[index];
+    if(pkg.name!==manifest.name||pkg.version!==manifest.version||
+      JSON.stringify(pkg.dependencies??{})!==JSON.stringify(manifest.dependencies??{})||
+      JSON.stringify(pkg.sources)!==JSON.stringify(await collectSources(packageRoot,manifest.sources,root)))
+      throw failure('migration-configuration','Checked package sources must match their configured manifest: '+packagePaths[index]);
+    packageManifests.push({root:packageRoot,path:manifestPath,text,sources:manifest.sources,expected:pkg.sources});
+    for(const source of pkg.sources){
+      const relative=path.relative(packageRoot,path.resolve(root,source.path)).split(path.sep).join('/');
+      await safePath(packageRoot,relative);
+      if(packageLocations.has(source.path))throw failure('migration-configuration','Duplicate package source: '+source.path);
+      packageLocations.set(source.path,{root:packageRoot,path:relative});
+    }
+  }
   const observeSources=async()=>{
     if(JSON.stringify(await collectSources(root,config.sources))!==JSON.stringify(snapshot.sources))
       throw failure('migration-stale','The complete project source inventory changed or differs from the checked input.');
+    for(const pkg of packageManifests){
+      if(await readFile(pkg.path,'utf8')!==pkg.text||
+        JSON.stringify(await collectSources(pkg.root,pkg.sources,root))!==JSON.stringify(pkg.expected))
+        throw failure('migration-stale','A package manifest or complete source inventory changed: '+pkg.path);
+    }
   };
   if(['packages','package','dependencies'].some(key=>snapshot[key]!==undefined)&&typeof recheck!=='function')
     throw failure('migration-write','Package-backed migration requires rechecking package inputs before committing.');
@@ -111,13 +139,17 @@ export async function writeMigration(compiler,root,configurationPath,configurati
   if(report.diagnostics.length)throw Object.assign(new Error(report.diagnostics.map(item=>item.message).join(' ')),
     {diagnostics:report.diagnostics});
   if(!report.validated)throw failure('migration-incomplete',report.blockers.join(' ')||'Migration correspondence was not established.');
-  const originals=new Map(snapshot.sources.map(source=>[source.path,source.content]));
-  if(originals.size!==snapshot.sources.length||report.sourcePreview.sources.length!==originals.size)
+  const originalSources=[...snapshot.sources,...packages.flatMap(pkg=>pkg.sources)];
+  const previewSources=[...report.sourcePreview.sources,...(report.sourcePreview.packages??[]).flatMap(pkg=>pkg.sources)];
+  const originals=new Map(originalSources.map(source=>[source.path,source.content]));
+  if(originals.size!==originalSources.length||previewSources.length!==originals.size||
+    new Set(previewSources.map(source=>source.path)).size!==originals.size||
+    previewSources.some(source=>!originals.has(source.path)))
     throw failure('migration-write','Every admitted source must have exactly one replacement.');
-  const changes=report.sourcePreview.sources.map(source=>({path:source.path,
+  const changes=previewSources.map(source=>({path:source.path,
     expected:originals.get(source.path),content:source.content}));
   changes.push({path:configurationPath,expected:configurationText,
     content:JSON.stringify(report.proposedConfiguration,null,2)+'\n'});
-  report.filesWritten=await commitMigration(root,changes,{recheck:async()=>{await observeSources();await recheck?.();}});
+  report.filesWritten=await commitMigration(root,changes,{packageLocations,recheck:async()=>{await recheck?.();await observeSources();}});
   return report;
 }

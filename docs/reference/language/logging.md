@@ -17,11 +17,12 @@ import lawspec.logging (LogLevel)
 charge :: Int32 -> Bool uses Log
 
 -- A law that inspects what was logged records the log.
-law `a charge is logged once` using recording Log is
-  definition is
-    `for all` (cents :: Int32 where cents >= 0 && cents <= 1000) .
-      (if charge cents then calls of logMessage == 1 else calls of logMessage == 0) = true
-  end
+law "|a charge is logged once| using recording Log is
+  definition :
+    for all (cents :: Int32 where cents >= 0 && cents <= 1000) =>
+      (if charge cents then calls of logMessage = 1 else calls of logMessage = 0
+    end if) = true end
+end
 end
 ```
 

@@ -1,9 +1,9 @@
 unit lessons.menu
-import lessons.money as money (Cents, `never more than`)
+import lessons.money as money (Cents, law "|never more than|)
 
 -- Types, refinements, definitions and generic laws come from another unit;
 -- adapters stay with the unit that declares them.
-type Item is | Espresso | Latte | Tea end
+type Item is one of | Espresso | Latte | Tea end type
 
 priceOf :: Item -> Cents
 
@@ -11,14 +11,14 @@ priceOf :: Item -> Cents
 -- it is applied to accepts any Int64.
 cheapest :: Int64 -> Int64 -> Int64
 
-law `every item costs at most five dollars` is
-  definition is
-    `for all` (item :: Item) . priceOf item <= money.dollars 5
+law "|every item costs at most five dollars| is
+  definition :
+    for all (item :: Item) => priceOf item <= money.dollars 5 end
   end
 end
 
-law `the cheaper price is never more than either price` is
-  definition is
-    `never more than` cheapest
+law "|the cheaper price is never more than either price| is
+  definition :
+    apply law "|never more than| cheapest
   end
 end

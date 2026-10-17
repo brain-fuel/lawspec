@@ -16,7 +16,9 @@ import Test.Hspec
 import LawSpec.Api (dispatch)
 
 call :: [(K.Key, Value)] -> Value
-call fields = fromMaybe (error "invalid API response") (decode (dispatch (encode (object fields))))
+call fields = fromMaybe (error "invalid API response") (decode (dispatch (encode (object
+  (["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+    "verification" .= object ["layers" .= (["proof", "exhaustive", "property", "examples", "runtime", "model"] :: [String])]] ++ fields)))))
 
 field :: String -> Value -> Value
 field name (Object o) = fromMaybe Null (KM.lookup (K.fromString name) o)
@@ -70,9 +72,9 @@ rustSource :: Value
 rustSource = source "rust.lawspec" $ unlines
   [ "unit rust_example"
   , "successor :: Int8 -> Integer"
-  , "law `promotes` is"
-  , " definition is `for all` (x :: Int8) . successor x = x + 1 end"
-  , " example `maximum` is x = 127 expect successor x = 128 end"
+  , "law promotes is"
+  , " definition: for all (x :: Int8) => successor x = x + 1 end end"
+  , " example maximum: x = 127 expect successor x = 128 end"
   , "end" ]
 
 -- | The npm package, the CLI and the documentation site all reach the compiler
@@ -85,7 +87,7 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
     it "owns adapters and separates the numeric runtime from Proptest helpers" $ do
       let result = call ["method" .= ("planGeneration" :: String), "target" .= ("rust" :: String), "sources" .= [rustSource]]
       diagnostics result `shouldBe` []
-      field "schemaVersion" result `shouldBe` Number 3
+      field "schemaVersion" result `shouldBe` Number 5
       text (field "kind" (field "origin" (head (list (field "declarations" (head (list (field "units" result)))))))) `shouldBe` "source"
       let adapter = head [f | f <- files result, text (field "ownership" f) == "user"]
       text (field "path" adapter) `shouldBe` "src/rust_example.rs"
@@ -125,20 +127,22 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
     payments <- runIO (readFile "examples/specs/payments.lawspec")
     bindings <- runIO (fromMaybe Null . decode <$> BL.readFile "test/fixtures/native-payments/bindings.json")
     let paymentSources = [source "payments.lawspec" payments]
-        request method extra = call (["method" .= (method :: String), "sources" .= paymentSources] ++ extra)
-    it "negotiate schema 4, and schema 3 cannot silently ignore them" $ do
-      let valid = request "check" ["nativeBindings" .= bindings, "schemaVersion" .= (4 :: Int)]
-      field "schemaVersion" valid `shouldBe` Number 4
+        -- Frozen native payload shape is deliberately exercised through migration.
+        request method extra = call (["method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String),
+          "includeGeneration" .= (method == "planGeneration"), "sources" .= paymentSources] ++ extra)
+    it "use schema 5, and reject older schemas at the migration boundary" $ do
+      let valid = request "check" ["nativeBindings" .= bindings, "schemaVersion" .= (5 :: Int)]
+      field "schemaVersion" valid `shouldBe` Number 5
       diagnostics valid `shouldBe` []
       let incompatible = request "check" ["nativeBindings" .= bindings, "schemaVersion" .= (3 :: Int)]
       fst (firstDiagnostic incompatible) `shouldBe` "request"
-      snd (firstDiagnostic incompatible) `shouldSatisfy` isInfixOf "requires API schemaVersion 4"
+      snd (firstDiagnostic incompatible) `shouldSatisfy` isInfixOf "requires API schemaVersion 5"
     it "reject unknown configuration fields and invalid symbols" $
       forM_ [ object ["tyeps" .= ([] :: [Value])]
             , object ["functions" .= [object ["declaration" .= ("example.payments::addFee" :: String), "native" .= ("app.call()" :: String)]]] ] $ \b ->
-        fst (firstDiagnostic (request "check" ["nativeBindings" .= b, "schemaVersion" .= (4 :: Int)])) `shouldBe` "request"
+        fst (firstDiagnostic (request "check" ["nativeBindings" .= b, "schemaVersion" .= (5 :: Int)])) `shouldBe` "request"
     it "generate Rust bridges that link shared application-library types" $ do
-      let result = request "planGeneration" ["nativeBindings" .= bindings, "schemaVersion" .= (4 :: Int), "target" .= ("rust" :: String)]
+      let result = request "planGeneration" ["nativeBindings" .= bindings, "schemaVersion" .= (5 :: Int), "target" .= ("rust" :: String)]
       diagnostics result `shouldBe` []
       let adapter = fileWhere ("example/payments.rs" `isSuffixOf`) result
       text (field "ownership" adapter) `shouldBe` "generated"
@@ -152,7 +156,7 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
         binding = [("type", String "Int8"), ("factory", toJSON ["factories", "values" :: String])]
         generator extra = object (map (\(k, v) -> K.fromString k .= v) (binding ++ extra))
         plan target generators = call ["method" .= ("planGeneration" :: String), "target" .= (target :: String),
-          "schemaVersion" .= (4 :: Int), "sources" .= [stub], "nativeBindings" .= object ["generators" .= generators]]
+          "schemaVersion" .= (5 :: Int), "sources" .= [stub], "nativeBindings" .= object ["generators" .= generators]]
     it "are opt-in and reject ambiguous requests" $ do
       let ordinary = plan "python" [generator []]
       diagnostics ordinary `shouldBe` []
@@ -167,7 +171,7 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
                 ("factory", toJSON ["factories", "nested", "values" :: String]), ("stub", Bool True)]] ] $ \generators ->
         fst (firstDiagnostic (plan "python" generators)) `shouldBe` "native-binding"
       fst (firstDiagnostic (plan "python" [generator [("stub", String "yes")]])) `shouldBe` "request"
-      let shadowed = call ["method" .= ("planGeneration" :: String), "target" .= ("python" :: String), "schemaVersion" .= (4 :: Int),
+      let shadowed = call ["method" .= ("planGeneration" :: String), "target" .= ("python" :: String), "schemaVersion" .= (5 :: Int),
             "sources" .= [source "stub.lawspec" "unit stub\nf :: Int8 -> Int8"],
             "nativeBindings" .= object [ "functions" .= [object ["declaration" .= ("stub::f" :: String), "native" .= ["factories", "echo" :: String]]]
                                        , "generators" .= [generator [("stub", Bool True)]] ]]
@@ -180,19 +184,19 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
             , [["factories","values"],["crate","factories","values"]]
             , [["factories","nested"],["factories","nested","values"]]
             , [["factories","values"],["Factories","other" :: String]] ] $ \factories -> do
-        let result = call ["method" .= ("planGeneration" :: String), "target" .= ("rust" :: String), "schemaVersion" .= (4 :: Int),
+        let result = call ["method" .= ("planGeneration" :: String), "target" .= ("rust" :: String), "schemaVersion" .= (5 :: Int),
               "sources" .= [stub], "nativeBindings" .= object ["rustCrate" .= ("application" :: String),
                 "generators" .= [object ["type" .= (if index > 0 then "Int16" else "Int8" :: String), "factory" .= factory, "stub" .= True]
                                 | (index, factory) <- zip [0 :: Int ..] factories]]]
         diagnostics result `shouldNotBe` []
         snd (firstDiagnostic result) `shouldSatisfy` isInfixOf "scaffold"
     let scaffold target sourceText extra factory = call ["method" .= ("planGeneration" :: String), "target" .= (target :: String),
-          "schemaVersion" .= (4 :: Int), "sources" .= [source "stub.lawspec" sourceText],
+          "schemaVersion" .= (5 :: Int), "sources" .= [source "stub.lawspec" sourceText],
           "nativeBindings" .= object (("generators" .= [object ["type" .= ("Int8" :: String), "factory" .= (factory :: [String]), "stub" .= True]]) : extra)]
         rejected check result = do
           fst (firstDiagnostic result) `shouldBe` "native-binding"
           snd (firstDiagnostic result) `shouldSatisfy` check
-        law = "law `identity` is definition is `for all` (x :: Int8) . x = x end end"
+        law = "law identity is definition: for all (x :: Int8) => x = x end end end"
     it "reject inaccessible, colliding and inherited Java method names" $
       forM_ [ ["Factories","values"], ["lawspec","runtime","LawSpecRuntime","values"]
             , ["lawspec","testing","LawSpecNativeGenerators","values"], ["application","java","values"]
@@ -212,7 +216,7 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
             ["goImports" .= [object ["alias" .= ("app" :: String), "path" .= ("example.com/application" :: String)]]] ["app", "Bytes"]
       snd (firstDiagnostic imported) `shouldSatisfy` isInfixOf "package-local factories"
     it "scope Go scaffold collisions to their consuming package" $ do
-      let plan contents = call ["method" .= ("planGeneration" :: String), "target" .= ("go" :: String), "schemaVersion" .= (4 :: Int),
+      let plan contents = call ["method" .= ("planGeneration" :: String), "target" .= ("go" :: String), "schemaVersion" .= (5 :: Int),
             "sources" .= [source ("scope" ++ show i ++ ".lawspec") c | (i, c) <- zip [0 :: Int ..] contents],
             "nativeBindings" .= object [ "functions" .= [object ["declaration" .= ("first::echo" :: String), "native" .= ["Shared" :: String]]]
                                        , "generators" .= [object ["type" .= ("Int8" :: String), "factory" .= ["Shared" :: String], "stub" .= True]] ]]

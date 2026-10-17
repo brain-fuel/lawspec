@@ -888,6 +888,9 @@ test-suite lawspec-test
       BoundsSpec
       BuiltinsSpec
       CanonicalCollectionsSpec
+      CanonicalInterfaceSpec
+      CanonicalMatcherSpec
+      CanonicalPredicateFactsSpec
       CanonicalSpec
       CapabilityScopeSpec
       CollectionsSpec

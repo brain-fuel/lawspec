@@ -16,6 +16,8 @@ import { createCompiler } from 'lawspec';
 
 const compiler = await createCompiler();
 const result = await compiler.planGeneration({
+  languageProfile: '1.0-rc.1',
+  verification: {layers: ['property', 'examples']},
   sources: [{ path: 'codec.lawspec', content: sourceText }],
   target: 'python'
 });
@@ -24,7 +26,7 @@ else console.log(result.files);
 ```
 
 `createCompiler()` loads the WebAssembly compiler and returns an object with
-three methods:
+ordinary checking and generation methods:
 
 | Method | Returns |
 | --- | --- |
@@ -59,8 +61,11 @@ shim serializes them.
 TypeScript declarations ship in the package (`index.d.ts`). Requests accept
 `machineBits`, `generation`, `nativeBindings`, `dependencies`, `packages` and
 `package`; generation requests also accept `sourceDir`, `testDir` and `minify`.
-The API selects schema version 4 automatically when `nativeBindings` is
-present, and 3 otherwise.
+The API defaults to schema 5. Every ordinary request supplies the explicit
+`1.0-rc.1` language profile; older schemas are rejected. An omitted verification
+selection defaults to `[]`, retaining mandatory definition checks without
+claiming law verification. Use the migration methods with `from: "0.24"` for
+legacy source.
 
 The full wire format, including the lossless scalar encoding, is in the
 [API reference](../reference/api.md). Changes between versions are in

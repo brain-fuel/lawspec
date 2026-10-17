@@ -9,6 +9,19 @@ This page records how the compiler API has changed, for clients upgrading from
 earlier versions. The current protocol is specified in the
 [API reference](../reference/api.md).
 
+## Current public boundary
+
+Ordinary requests use API schema 5 and explicitly supply
+`languageProfile: '1.0-rc.1'`. Omitted verification layers default to `[]`;
+mandatory definition checks still run. Schemas 3 and 4 are rejected rather
+than negotiated. The historical schema sections below document earlier versions.
+
+Existing projects enter through `lawspec migrate --from 0.24`; normal CLI
+commands and the language server require configuration version 2 and the
+explicit profile. Migration reports are read-only unless `--write` applies a
+validated project transformation. SDK callers use the explicit migration
+methods and retain the source profile in the returned baseline.
+
 ## Source migration from 0.24
 
 `lawspec migrate --from 0.24 --json` reports the checked legacy declarations,

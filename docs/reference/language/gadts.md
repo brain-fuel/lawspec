@@ -11,28 +11,30 @@ that instance only, and matching on it refines the parameter in that branch.
 ```lawspec
 unit guide.gadts
 
-type Pair (a :: Type) (b :: Type) is Pair first :: a second :: b end
+type Pair (a :: Type) (b :: Type) is a record{  first :: a second :: b} end type
 
-type Expr (a :: Type) is
-  | Number value :: BigInt where a = BigInt
-  | Truth value :: Bool where a = Bool
-  | Same left :: Expr BigInt right :: Expr BigInt where a = Bool
-  | Both first :: Expr b second :: Expr c where a = Pair b c
-end
+type Expr (a :: Type) is one of
+  | Number  of type Integer where a = Integer
+  | Truth  of type Bool where a = Bool
+  | Same of type record{ left :: Expr Integer right :: Expr Integer} where a =
+  Bool
+  | Both of type record{ first :: Expr b second :: Expr c} where a = Pair b c
+end type
 
-definition eval (e :: Expr a) :: a is
-  match e with
-  | Number v -> v
-  | Truth b -> b
-  | Same l r -> eval l == eval r
-  | Both l r -> Pair (eval l) (eval r)
-  end
-end
+function eval (e :: Expr a) -> a is
+  first matching case of e :
+    when Number v then v
+    when Truth b then b
+    when Same record{ left = l , right = r} then eval l = eval r
+    when Both record{ first = l , second = r} then Pair record{ first = (eval l)
+        , second = (eval r)}
+  end case
+end function
 
 evalTruth :: Expr Bool -> Bool
 
-law `truths agree with eval` is
-  definition is `for all` (e :: Expr Bool) . evalTruth e = eval e end
+law "|truths agree with eval| is
+  definition : for all (e :: Expr Bool) => evalTruth e = eval e end end
 end
 ```
 

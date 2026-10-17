@@ -1,3 +1,5 @@
+// Frozen 0.24 fixtures enter through the explicit migration interface.
+import {legacyCheck, legacyGeneration} from './legacy-input.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -15,7 +17,7 @@ const shape = value => value.kind === 'data'
 test('WASM preserves nested sum tags, surrogate units and octets in structural examples', async () => {
   const sources = await bundled('lists');
   for (const machineBits of [32, 64]) {
-    const result = await compiler.check({sources, machineBits});
+    const result = await legacyCheck(compiler, {sources, machineBits});
     assert.deepEqual(result.diagnostics, []);
     const maybe = result.laws.find(law => law.name === 'Maybe preserves nested absence');
     assert.deepEqual(maybe.examples.map(example => shape(example.bindings[0].value)), [
@@ -33,7 +35,7 @@ test('WASM preserves nested sum tags, surrogate units and octets in structural e
 });
 
 test('WASM exports named product fields and recursive sum constructors', async () => {
-  const result = await compiler.check({sources: await bundled('data_types')});
+  const result = await legacyCheck(compiler, {sources: await bundled('data_types')});
   assert.deepEqual(result.diagnostics, []);
   const pair = result.dataTypes.find(type => type.name === 'Pair');
   const tree = result.dataTypes.find(type => type.name === 'Tree');

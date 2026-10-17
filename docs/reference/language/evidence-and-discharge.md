@@ -31,6 +31,19 @@ obligation under each:
 The reasoning behind these categories is in
 [evidence and discharge](../../explanation/evidence-and-discharge.md).
 
+## Planned and incomplete checks
+
+`PLANNED` (`planned`) describes selected native checks awaiting execution.
+`NOT VERIFIED` (`not-verified`) describes laws with no selected checks.
+`INCOMPLETE` (`incomplete`) and `UNSUPPORTED` (`unsupported`) retain the reason
+a search or analysis did not establish the obligation. None reports a completed
+proof or native run. A bounded search miss does not prove nonexistence.
+
+An attestation attached to a plan exposes `plannedAgainst`, separately from
+completed execution's `against`. `lawspec evidence` can show the timestamp,
+seed and environment of a historical passing native run while retaining the
+current plan's status; this is not evidence that the current sources passed.
+
 ## Laws over checked definitions
 
 Canonical authoring configuration selects law verification through
@@ -48,11 +61,11 @@ be shown to satisfy them.
 ```lawspec
 unit guide.evidence
 
-definition twice (x :: Int32) :: BigInt is x + x end
+function twice (x :: Int32) -> Integer is x + x end function
 
-law `twice doubles` is
-  definition is
-    `for all` (x :: Int32) . twice x = x * 2
+law "|twice doubles| is
+  definition :
+    for all (x :: Int32) => twice x = x * 2 end
   end
 end
 ```

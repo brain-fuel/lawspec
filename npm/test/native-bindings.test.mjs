@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {createCompiler} from '../api.mjs';
 import {planWrites, applyWrites} from '../files.mjs';
+import {legacyGeneration,canonicalRequest} from './legacy-input.mjs';
+const canonicalGeneration={...canonicalRequest,verification:{layers:['property','examples','runtime']}};
 
 const compiler = await createCompiler();
 const sources = [{path: 'payments.lawspec', content:
@@ -14,8 +16,8 @@ const nativeBindings = JSON.parse(await readFile(
   new URL('../../test/fixtures/native-payments/bindings.json', import.meta.url), 'utf8'));
 
 test('adopting a native binding cannot overwrite an existing user-owned adapter', async () => {
-  const before = await compiler.planGeneration({sources, target: 'rust'});
-  const after = await compiler.planGeneration({sources, nativeBindings, target: 'rust'});
+  const before = await legacyGeneration(compiler,{sources, target: 'rust'});
+  const after = await legacyGeneration(compiler,{sources, nativeBindings, target: 'rust'});
   const directory = await mkdtemp(path.join(os.tmpdir(), 'lawspec-native-ownership-'));
   try {
     const plan = await planWrites(directory, before.files);
@@ -32,7 +34,7 @@ test('Python generator scaffolds group factories and preserve implementations ac
   const sources = [{path:'stub.lawspec', content:'unit stub'}];
   const factory = ['application_generators','collections','values'];
   const generate = async (type, minify=false, testDir='checks/native') => {
-    const result = await compiler.planGeneration({sources, target:'python', testDir, minify,
+    const result = await compiler.planGeneration({...canonicalGeneration,sources, target:'python', testDir, minify,
       nativeBindings:{generators:[{type,factory,stub:true},
         {type:'Bool',factory:['application_generators','collections','flags'],stub:true}]}});
     assert.deepEqual(result.diagnostics,[]);
@@ -73,7 +75,7 @@ test('Rust factory scaffolds retain native signatures, nested modules and owners
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-rust-scaffolds-'));
   const sources=[{path:'stub.lawspec',content:'unit stub'}];
   const plan=async(type,minify=false,testDir='checks/native',stub=true)=>{
-    const result=await compiler.planGeneration({sources,target:'rust',testDir,minify,
+    const result=await compiler.planGeneration({...canonicalGeneration,sources,target:'rust',testDir,minify,
       nativeBindings:{rustCrate:'application',generators:[
         {type,factory:['crate','factories','collections','values'],stub},
         {type:'Int8',factory:['factories','integers'],stub},
@@ -120,7 +122,7 @@ for (const target of ['javascript','typescript']) {
     const extension=target==='typescript'?'ts':'mjs';
     const sources=[{path:'stub.lawspec',content:'unit stub'}];
     const plan=async(type,minify=false,testDir='checks/native')=>{
-      const result=await compiler.planGeneration({sources,target,minify,testDir,sourceDir:'library/domain',
+      const result=await compiler.planGeneration({...canonicalGeneration,sources,target,minify,testDir,sourceDir:'library/domain',
         nativeBindings:{generators:[{type,factory:['factories','collections','values'],stub:true},
           {type:'Int8',factory:['factories','collections','bytes'],stub:true}]}});
       assert.deepEqual(result.diagnostics,[]);
@@ -159,7 +161,7 @@ for (const target of ['javascript','typescript']) {
       [['factories','globalThis']],
       [['factories','values'],['Factories','other']],
     ]) {
-      const result=await compiler.planGeneration({target,sources:[{path:'stub.lawspec',content:'unit stub'}],
+      const result=await compiler.planGeneration({...canonicalGeneration,target,sources:[{path:'stub.lawspec',content:'unit stub'}],
         nativeBindings:{generators:factories.map((factory,index)=>({type:index?'Int16':'Int8',factory,stub:true}))}});
       assert.equal(result.diagnostics[0].code,'native-binding');
       assert.match(result.diagnostics[0].message,/conflict/);
@@ -171,8 +173,8 @@ for(const target of ['python','javascript','typescript','java','kotlin']) {
   test(`${target}: changing a native result class reports a scaffold update`,async()=>{
     const directory=await mkdtemp(path.join(os.tmpdir(),`lawspec-${target}-result-update-`));
     const plan=async name=>{
-      const result=await compiler.planGeneration({target,
-        sources:[{path:'scope.lawspec',content:'unit scope\ntype Money is Money amount :: Int8 end'}],
+      const result=await compiler.planGeneration({...canonicalGeneration,target,
+        sources:[{path:'scope.lawspec',content:'unit scope\ntype Money is a record{amount :: Int8} end type'}],
         nativeBindings:{types:[{type:'scope::type::Money',native:['domain',name],constructors:[
           {constructor:'Money',native:['domain',name],style:'record',fields:[{field:'amount',native:'amount'}]},
         ]}],generators:[{type:'scope::type::Money',factory:['java','kotlin'].includes(target)?['application','Factories','prices']:['factories','prices'],stub:true}]}});
@@ -192,7 +194,7 @@ test('Java generator scaffolds group typed factories and preserve edited impleme
   const {writeFile}=await import('node:fs/promises');
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-java-scaffolds-'));
   const plan=async(type,minify=false,testDir='checks/native')=>{
-    const result=await compiler.planGeneration({target:'java',minify,testDir,
+    const result=await compiler.planGeneration({...canonicalGeneration,target:'java',minify,testDir,
       sources:[{path:'stub.lawspec',content:'unit stub'}],nativeBindings:{generators:[
         {type,factory:['application','Factories','values'],stub:true},
         {type:'Int8',factory:['application','Factories','bytes'],stub:true},
@@ -227,7 +229,7 @@ test('Kotlin scaffolds group native Arb factories and preserve implementations a
   const {writeFile}=await import('node:fs/promises');
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-kotlin-scaffolds-'));
   const plan=async(type,minify=false,testDir='checks/native')=>{
-    const result=await compiler.planGeneration({target:'kotlin',minify,testDir,
+    const result=await compiler.planGeneration({...canonicalGeneration,target:'kotlin',minify,testDir,
       sources:[{path:'stub.lawspec',content:'unit stub'}],nativeBindings:{generators:[
         {type,factory:['application','Factories','values'],stub:true},
         {type:'Int8',factory:['application','Factories','bytes'],stub:true},
@@ -263,8 +265,8 @@ test('Go scaffolds preserve generic Rapid factories through layouts and signatur
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-go-scaffolds-'));
   const plan=async(type,minify=false,sourceDir='checks/native')=>{
     const applied=type==='List'?'List Int8':'Either Int8 Text';
-    const result=await compiler.planGeneration({target:'go',minify,sourceDir,testDir:sourceDir,
-      sources:[{path:'stub.lawspec',content:`unit stub\nlaw \`identity\` is definition is \`for all\` (x :: ${applied}) . x = x end end`}],
+    const result=await compiler.planGeneration({...canonicalGeneration,target:'go',minify,sourceDir,testDir:sourceDir,
+      sources:[{path:'stub.lawspec',content:`unit stub\nlaw "|identity| is definition: for all (x of type ${applied}) => x must be x end end end`}],
       nativeBindings:{generators:[{type,factory:['NativeValues'],stub:true},{type:'Int8',factory:['NativeBytes'],stub:true}]}});
     assert.deepEqual(result.diagnostics,[]);
     return result.files;
@@ -295,8 +297,8 @@ test('Go scaffolds preserve generic Rapid factories through layouts and signatur
 test('Go native result class changes update the user-owned factory contract',async()=>{
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-go-native-result-'));
   const plan=async name=>{
-    const result=await compiler.planGeneration({target:'go',sources:[{path:'scope.lawspec',content:
-      'unit scope\ntype Money is Money amount :: Int8 end\nlaw `identity` is definition is `for all` (x :: Money) . x = x end end'}],
+    const result=await compiler.planGeneration({...canonicalGeneration,target:'go',sources:[{path:'scope.lawspec',content:
+      'unit scope\ntype Money is a record{amount :: Int8} end type\nlaw "|identity| is definition: for all (x of type Money) => x must be x end end end'}],
       nativeBindings:{goImports:[{alias:'domain',path:'example.com/domain'}],types:[
         {type:'scope::type::Money',native:['domain',name],constructors:[{constructor:'Money',native:['domain',name],
           style:'record',fields:[{field:'amount',native:'Amount'}]}]},
@@ -316,7 +318,7 @@ test('Haskell scaffolds preserve typed generic factories and user implementation
   const {writeFile}=await import('node:fs/promises');
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-haskell-scaffolds-'));
   const plan=async(type,minify=false,testDir='checks/native')=>{
-    const result=await compiler.planGeneration({target:'haskell',minify,sourceDir:'library/native',testDir,
+    const result=await compiler.planGeneration({...canonicalGeneration,target:'haskell',minify,sourceDir:'library/native',testDir,
       sources:[{path:'stub.lawspec',content:'unit stub'}],nativeBindings:{generators:[
         {type,factory:['Application','Generators','values'],stub:true},
         {type:'Int8',factory:['Application','Generators','bytes'],stub:true}]}});
@@ -349,8 +351,8 @@ test('Haskell scaffolds preserve typed generic factories and user implementation
 test('Haskell native class changes update the generator signature',async()=>{
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-haskell-native-result-'));
   const plan=async name=>{
-    const result=await compiler.planGeneration({target:'haskell',sources:[{path:'stub.lawspec',content:
-      'unit stub\ntype Money is Money amount :: Int8 end'}],nativeBindings:{types:[
+    const result=await compiler.planGeneration({...canonicalGeneration,target:'haskell',sources:[{path:'stub.lawspec',content:
+      'unit stub\ntype Money is a record{amount :: Int8} end type'}],nativeBindings:{types:[
         {type:'stub::type::Money',native:['Domain',name],constructors:[{constructor:'Money',native:['Domain',name],
           style:'record',fields:[{field:'amount',native:'amount'}]}]}],
       generators:[{type:'stub::type::Money',factory:['Factories','prices'],stub:true}]}});

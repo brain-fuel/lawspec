@@ -39,7 +39,10 @@ programs tag = (render "x + 0 = x", render "0 + x = x")
 
 request :: String -> String -> [(String, String)] -> B.ByteString
 request method target sources = encode (object
-  [ "method" .= method, "target" .= target
+  [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String)
+  , "method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String)
+  , "includeGeneration" .= (method == "planGeneration"), "target" .= target
+  , "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])]
   , "sources" .= [object ["path" .= path, "content" .= content] | (path, content) <- sources] ])
 
 response :: B.ByteString -> Maybe Value

@@ -21,14 +21,16 @@ test("incompatible or unverifiable environments prevent generation writes", asyn
   t.after(() => rm(root, { recursive: true, force: true }));
   const executable = path.join(root, "python");
   const config = {
-    version: 1,
+    version: 2,
+    languageProfile: "1.0-rc.1",
+    verification: {layers: []},
     sources: ["codec.lawspec"],
     targets: [{ language: "python", root: ".", python: executable }],
   };
   await writeFile(path.join(root, "lawspec.json"), JSON.stringify(config));
   await writeFile(
     path.join(root, "codec.lawspec"),
-    await readFile(new URL("../starter.lawspec", import.meta.url), "utf8"),
+    await readFile(new URL("../starter-rc1.lawspec", import.meta.url), "utf8"),
   );
   for (const version of ["3.12.15", "unknown"]) {
     const report = {
@@ -50,7 +52,7 @@ test("incompatible or unverifiable environments prevent generation writes", asyn
         [new URL("../bin/lawspec.mjs", import.meta.url).pathname, "generate"],
         { cwd: root },
       ),
-      (e) => e.code === 1,
+      (e) => e.code === 1 && /python/.test(e.stdout + e.stderr),
     );
     assert.deepEqual((await readdir(root)).sort(), before);
     assert.equal(

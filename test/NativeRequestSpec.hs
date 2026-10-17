@@ -1,3 +1,4 @@
+-- Historical native representations enter through migrationBaseline from 0.24.
 -- | Native binding requests at the public request boundary.
 module NativeRequestSpec (test_nativeBindingRequestsAreValidatedAtTheirBoundary) where
 
@@ -14,7 +15,9 @@ import LawSpec.Common
 
 run :: String -> Value -> Value
 run source native = case eitherDecode (dispatch (encode (object
-  ["schemaVersion" .= (4 :: Int), "method" .= ("check" :: String), "sources" .= [Source "binding" source], "nativeBindings" .= native]))) of
+  ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+    "from" .= ("0.24" :: String), "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+    "method" .= ("migrationBaseline" :: String), "sources" .= [Source "binding" source], "nativeBindings" .= native]))) of
   Right value -> value
   Left problem -> error problem
 codes :: Value -> [Value]
@@ -64,7 +67,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
           _ -> []
         content file = case field "content" file of Just (String value) -> T.unpack value; _ -> ""
         request target compact source native = either error id (eitherDecode (dispatch (encode (object
-          ["schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String), "target" .= (target :: String),
+          ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String), "target" .= (target :: String),
            "minify" .= compact, "sources" .= [Source "binding" source], "nativeBindings" .= (native :: Value)]))))
         refs response = [(field "path" f,field "adapterReference" f) | f <- files response, field "ownership" f == Just (String "user")]
     mapM_ (\target -> it (target ++ " keeps checked bridges in source and native factories in tests") $ do
@@ -121,7 +127,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
 
   it "emits Kotlin scalar bridges even without structural declarations or laws" $ do
     let request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("kotlin" :: String)
           , "sources" .= [Source "binding" "unit sample\nf :: Int8 -> Int8"]
           , "nativeBindings" .= object ["functions" .= [object
@@ -132,7 +141,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
       Right value -> codes value `shouldBe` []
   it "plans Kotlin generator-only requests" $ do
     let request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("kotlin" :: String)
           , "sources" .= [Source "binding" "unit sample"]
           , "nativeBindings" .= object ["generators" .= [object
@@ -144,7 +156,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
 
   it "resolves Go calls without colliding with the application's exported adapter name" $ do
     let request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("go" :: String)
           , "sources" .= [Source "binding" "unit sample\nf :: Int8 -> Int8"]
           , "nativeBindings" .= object ["functions" .= [object
@@ -160,7 +175,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
       source <- readFile "examples/specs/async_bindings.lawspec"
       bindings <- either error id . eitherDecode <$> BL.readFile ("acceptance/asyncbindings/" ++ target ++ "/bindings.json")
       let request = object
-            [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+            [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+              "from" .= ("0.24" :: String), "includeGeneration" .= True,
+              "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+              "method" .= ("migrationBaseline" :: String)
             , "target" .= (target :: String), "sources" .= [Source "warehouse" source]
             , "nativeBindings" .= (bindings :: Value) ]
       case eitherDecode (dispatch (encode request)) of
@@ -176,7 +194,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
     source <- readFile "examples/specs/handles.lawspec"
     let call declaration key value = object ["declaration" .= ("example.handles::" ++ declaration :: String), key .= value]
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("go" :: String)
           , "sources" .= [Source "handles" source]
           , "nativeBindings" .= object
@@ -194,7 +215,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
           [").Offer(", "NewQueue()", "lsNativeMaybe[int32](", "lsHandleCodec[*Queue]", "lawSpecBoundSubmit("]
   it "rejects undeclared Go import aliases instead of emitting unresolved references" $ do
     let request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("go" :: String)
           , "sources" .= [Source "binding" "unit sample\nf :: Int8 -> Int8"]
           , "nativeBindings" .= object ["functions" .= [object
@@ -206,7 +230,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
 
   it "validates Haskell references and rejects collisions with generated modules" $ do
     let request reference = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("haskell" :: String)
           , "sources" .= [Source "binding" "unit sample\nf :: Int8 -> Int8"]
           , "nativeBindings" .= object ["functions" .= [object
@@ -223,7 +250,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
 
   it "validates Go module imports and restricts them to Go emission" $ do
     let request target imports reference = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= (target :: String)
           , "sources" .= [Source "binding" "unit sample\nf :: Int8 -> Int8"]
           , "nativeBindings" .= object ["goImports" .= (imports :: [Value]), "functions" .= [object
@@ -245,7 +275,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
   it "accepts Haskell application codec hooks without constructor mappings" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("haskell" :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object
             [ "types" .= [object ["type" .= ("sample::type::Value" :: String),
@@ -264,7 +297,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
     source <- readFile "examples/specs/handles.lawspec"
     let call name form = object ["declaration" .= ("example.handles::" ++ name :: String), form]
         request types = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("haskell" :: String), "sources" .= [Source "handles" source]
           , "nativeBindings" .= object
             [ "types" .= types
@@ -296,7 +332,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
   it "accepts Python application codec hooks without constructor mappings" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("python" :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object
             [ "types" .= [object ["type" .= ("sample::type::Value" :: String),
@@ -314,7 +353,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
   it "accepts JavaScript application codec hooks without constructor mappings" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("javascript" :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object
             [ "types" .= [object ["type" .= ("sample::type::Value" :: String),
@@ -332,7 +374,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
   it "accepts TypeScript application codec hooks without constructor mappings" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("typescript" :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object
             [ "types" .= [object ["type" .= ("sample::type::Value" :: String),
@@ -350,7 +395,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
   it "accepts Java application codec hooks without constructor mappings" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("java" :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object
             [ "types" .= [object ["type" .= ("sample::type::Value" :: String),
@@ -368,7 +416,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
   it "accepts Kotlin application codec hooks without constructor mappings" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("kotlin" :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object
             [ "types" .= [object ["type" .= ("sample::type::Value" :: String),
@@ -386,7 +437,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
   it "accepts Go application codec hooks without constructor mappings" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("go" :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object
             [ "types" .= [object ["type" .= ("sample::type::Value" :: String),
@@ -404,7 +458,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
   it "renames Go canonical types when an application type uses their name" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"
         request = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("go" :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object
             [ "types" .= [object ["type" .= ("sample::type::Value" :: String),
@@ -426,7 +483,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
         binding codec = object ["type" .= ("sample::type::Value" :: String),
           "native" .= (["crate","domain","Value"] :: [String]), "codec" .= codec]
         request target codec = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= (target :: String), "sources" .= [Source "binding" source]
           , "nativeBindings" .= object ["rustCrate" .= ("application" :: String), "types" .= [binding codec],
               "functions" .= [object ["declaration" .= ("sample::f" :: String),
@@ -445,7 +505,10 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
     source <- readFile "examples/specs/handles.lawspec"
     let method name native = object ["declaration" .= ("example.handles::" ++ name :: String), "method" .= (native :: String)]
         request types = object
-          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String)
           , "target" .= ("rust" :: String), "sources" .= [Source "handles.lawspec" source]
           , "nativeBindings" .= object ["rustCrate" .= ("application" :: String),
               "types" .= types,

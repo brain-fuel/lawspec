@@ -53,8 +53,12 @@ accepts texts = case compileUnits texts of
 -- | A generation request through the API, with packages.
 request :: [(Key, Value)] -> [(String, String)] -> Value
 request extra sources = maybe Null id $ decode $ dispatch $ encode $ object $
-  [ "method" .= ("check" :: String)
-  , "sources" .= [object ["path" .= p, "content" .= c] | (p, c) <- sources] ] ++ extra
+  -- These historical import fixtures use the explicit source-migration entry.
+  [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String)
+  , "method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String)
+  , "includeGeneration" .= (lookup "method" extra == Just (String "planGeneration"))
+  , "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])]
+  , "sources" .= [object ["path" .= p, "content" .= c] | (p, c) <- sources] ] ++ filter ((/= "method") . fst) extra
 
 diagnosticText :: Value -> String
 diagnosticText (Object o) = maybe "" show (KM.lookup "diagnostics" o)

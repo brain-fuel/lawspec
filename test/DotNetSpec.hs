@@ -1,3 +1,4 @@
+-- Historical native representations enter through migrationBaseline from 0.24.
 -- | F# and C# generation: the F# project and its runtime, C# over a generated
 -- F# model, native bindings, and the names lawspec test selects tests by.
 -- ref:DEC-fsharp-runtime-from-scratch ref:DEC-csharp-over-fsharp ref:DEC-tests-cite-requirements
@@ -75,7 +76,10 @@ test_dotnetTargetsShareOneRuntime = describe ".NET generation" $ do
           _ -> []
         content file = case field "content" file of Just (String value) -> T.unpack value; _ -> ""
         request target source native = either error id (eitherDecode (dispatch (encode (object
-          ["schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String), "target" .= (target :: String),
+          ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+            "method" .= ("migrationBaseline" :: String), "target" .= (target :: String),
            "minify" .= False, "sources" .= [Source "binding" source], "nativeBindings" .= (native :: Value)]))))
     it "binds F# types, functions, handlers and exceptions" $ do
       source <- readFile "examples/specs/handler_bindings.lawspec"

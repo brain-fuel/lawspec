@@ -4,39 +4,40 @@ unit lessons.checkout
 -- Quantity outside 1..20 cannot be constructed, generated or decoded.
 wrapper Quantity is Int32 where value >= 1 && value <= 20 end
 
-type RawOrder is RawOrder item :: Text quantity :: Int32 end
-type ValidOrder is ValidOrder item :: Text quantity :: Quantity end
-type Receipt is Receipt item :: Text total :: Int64 end
-type OrderProblem is | EmptyItem | BadQuantity end
+type RawOrder is a record{  item :: Text quantity :: Int32} end type
+type ValidOrder is a record{  item :: Text quantity :: Quantity} end type
+type Receipt is a record{  item :: Text total :: Int64} end type
+type OrderProblem is one of | EmptyItem | BadQuantity end type
 
 -- A workflow chains adapter steps. LawSpec checks that the steps fit
 -- together and generates checkout: validate followed by charge, where the
 -- first problem stops the chain.
 workflow checkout :: RawOrder -> Either OrderProblem Receipt is
-  validate :: RawOrder -> Either OrderProblem ValidOrder
-  charge :: ValidOrder -> Receipt
+validate :: RawOrder -> Either OrderProblem ValidOrder
+charge :: ValidOrder -> Receipt
 end
 
-law `validation accepts exactly the valid orders` is
-  definition is
-    `for all` (order :: RawOrder) .
-      (match validate order with
-        | Left problem -> false
-        | Right valid -> true
-        end) = (match order with
-        | RawOrder item quantity ->
-            prelude.length item > 0 && quantity >= 1 && quantity <= 20
-        end)
+law "|validation accepts exactly the valid orders| is
+  definition :
+    for all (order :: RawOrder) =>
+      (first matching case of validate order :
+        when Left problem then false
+        when Right valid then true
+      end case) = (first matching case of order :
+        when RawOrder record{ item = item , quantity = quantity} then
+          prelude.length item > 0 && quantity >= 1 && quantity <= 20
+      end case) end
   end
 end
 
-law `a receipt charges 250 cents per item` is
-  definition is
-    `for all` (order :: ValidOrder) .
-      (match charge order with
-        | Receipt item total -> total
-        end) = (match order with
-        | ValidOrder item quantity -> valueOfQuantity quantity * 250
-        end)
+law "|a receipt charges 250 cents per item| is
+  definition :
+    for all (order :: ValidOrder) =>
+      (first matching case of charge order :
+        when Receipt record{ item = item , total = total} then total
+      end case) = (first matching case of order :
+        when ValidOrder record{ item = item , quantity = quantity} then
+          valueOfQuantity quantity * 250
+      end case) end
   end
 end

@@ -106,7 +106,11 @@ main = do
       protocol = case field "languageProfile" <$> decode manifest of
         Just profile | profile /= Null -> [("schemaVersion", toJSON (5 :: Int)), ("languageProfile", profile)] ++
           [("verification", verification) | Just verification <- [field "verification" <$> decode manifest], verification /= Null]
-        _ -> []
+        -- Historical suites retain 0.24 syntax through the explicit migration
+        -- entry. Ordinary generation always uses the canonical public API.
+        _ -> [("schemaVersion", toJSON (5 :: Int)), ("languageProfile", String "1.0-rc.1"),
+              ("method", String "migrationBaseline"), ("from", String "0.24"), ("includeGeneration", Bool True),
+              ("verification", object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])])]
       extra = protocol ++ [("packages", toJSON packages) | not (null packages)] ++
         [("dependencies", dependencies) | dependencies /= Null]
   let targets = if null selected then scaffoldTargets else selected
@@ -117,7 +121,7 @@ main = do
     -- A target's native bindings, sent as the CLI sends lawspec.json's.
     hasBindings <- doesFileExist bindingsFile
     bound <- if hasBindings then decode <$> BL.readFile bindingsFile else pure Nothing
-    let native = maybe [] (\b -> [("nativeBindings", b)] ++ [("schemaVersion", toJSON (4 :: Int)) | null protocol]) bound
+    let native = maybe [] (\b -> [("nativeBindings", b)]) bound
     generated <- plan (extra ++ native) (sources ++ vectors) target bits minify
     if check then checkDisk project generated else do
       writeProject suite target project (bits == 64 && not minify) minify generated

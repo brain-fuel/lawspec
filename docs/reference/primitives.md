@@ -84,10 +84,10 @@ nesting, even on targets whose native null or optional types would collapse it.
 
 ```lawspec
 unit example.increment
-successor :: (x :: Int8) -> (result :: Integer where result == x + 1)
-law `promotes instead of wrapping` is
-  definition is `for all` (x :: Int8) . successor x = x + 1 end
-  example `maximum input` is x = 127 expect successor x = 128 end
+successor :: (x :: Int8) -> (result :: Integer where result = x + 1)
+law "|promotes instead of wrapping| is
+  definition : for all (x :: Int8) => successor x = x + 1 end end
+  example "|maximum input| : x = 127 expect successor x = 128 end
 end
 ```
 

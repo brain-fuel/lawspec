@@ -13,55 +13,61 @@ for every lawful handler. See [Handlers](handlers.md) for handlers, and
 ```lawspec
 unit guide.payments
 
-type Payment is | Approved cents :: Int32 | Declined end
-type Receipt is Receipt cents :: Int32 end
-type PaymentError is | Refused | TooLarge end
+type Payment is one of | Approved  of type Int32 | Declined end type
+type Receipt is a record{  cents :: Int32} end type
+type PaymentError is one of | Refused | TooLarge end type
 
 -- A payment gateway. Its laws bind every handler of it.
 ability Gateway is
-  authorize :: Int32 -> Payment
-  capture :: Int32 -> Receipt
-  fee :: Int32
+authorize :: Int32 -> Payment
+capture :: Int32 -> Receipt
+fee :: Int32
 laws
-  law `a receipt is for the amount captured` is
-    definition is `for all` (cents :: Int32) . capture cents = Receipt cents end
-  end
-  law `the fee is never negative` is
-    definition is fee >= 0 end
-  end
+law "|a receipt is for the amount captured| is
+  definition : for all (cents :: Int32) => capture cents = Receipt record{ cents
+        = cents} end end
+end
+law "|the fee is never negative| is
+  definition : fee >= 0 end
+end
 end
 
 handler fakeGateway for Gateway is
-  authorize cents is if cents <= 10000 then Approved cents else Declined end
-  capture cents is Receipt cents end
-  fee is 30 end
+authorize cents is if cents <= 10000 then Approved cents else Declined end if
+end
+capture cents is Receipt record{ cents = cents} end
+fee is 30 end
 end
 
 -- A checked definition that uses Gateway. LawSpec infers that.
-definition checkout (cents :: Int32) :: Bool is
-  match authorize cents with
-  | Approved amount -> (match capture amount with | Receipt paid -> paid == cents end)
-  | Declined -> false
-  end
-end
+procedure checkout (cents :: Int32) -> Bool is
+  first matching case of authorize cents :
+    when Approved amount then (first matching case of capture amount : when
+        Receipt record{ cents = paid} then paid = cents end case)
+        when Declined then false
+      end case
+    end procedure
 
--- A native adapter. Its signature must say what it uses.
-charge :: Int32 -> Bool uses Gateway
+    -- A native adapter. Its signature must say what it uses.
+    charge :: Int32 -> Bool uses Gateway
 
--- A definition that can fail says what it fails with.
-definition pay (cents :: Int32) :: Receipt uses Gateway fails with PaymentError is
-  if cents > 100000 then raise TooLarge else
-    match authorize cents with
-    | Approved amount -> capture amount
-    | Declined -> raise Refused
+    -- A definition that can fail says what it fails with.
+    procedure pay (cents :: Int32) -> Receipt uses Gateway fails with
+      PaymentError
+      is
+      if cents > 100000 then raise TooLarge else
+        first matching case of authorize cents :
+          when Approved amount then capture amount
+          when Declined then raise Refused
+        end case end if
+    end procedure
+
+    law "|large payments fail| using fakeGateway is
+      definition :
+        for all (cents :: Int32 where cents > 100000) => prelude.attempt (pay
+          cents) = Left TooLarge end
+      end
     end
-end
-
-law `large payments fail` using fakeGateway is
-  definition is
-    `for all` (cents :: Int32 where cents > 100000) . prelude.attempt (pay cents) = Left TooLarge
-  end
-end
 ```
 
 ## Declaring an ability

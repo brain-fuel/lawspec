@@ -46,6 +46,8 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
     let config;
     try { config = JSON.parse(await readFile(path.join(workspace, 'lawspec.json'), 'utf8')); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if(config&&(config.version!==2||config.languageProfile!=='1.0-rc.1'))
+      throw new Error('The language server requires configuration version 2 and languageProfile 1.0-rc.1; run lawspec migrate --from 0.24 first.');
     for (const entry of config?.sources ?? []) await visit(path.resolve(workspace, entry));
     for (const [uri, document] of documents) sources.set(fileURLToPath(uri), { path: fileURLToPath(uri), content: document.text });
     return [...sources.values()];

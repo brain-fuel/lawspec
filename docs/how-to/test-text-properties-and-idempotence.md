@@ -16,11 +16,11 @@ unit example.slug
 normalize :: Text -> Text
 referenceNormalize :: Text -> Text
 
-law `normalizers agree` is
-  definition is
-    `equivalent` normalize referenceNormalize
+law "|normalizers agree| is
+  definition :
+    apply law "|equivalent| normalize referenceNormalize
   end
-  example `spaces become hyphens; punctuation is preserved` is
+  example "|spaces become hyphens; punctuation is preserved| :
     x = "Hello, World!"
     expect normalize x = "Hello,-World!"
     expect referenceNormalize x = "Hello,-World!"
@@ -62,11 +62,11 @@ unit example.canonical_url
 
 canonicalize :: Text -> Text
 
-law `canonicalization reaches a fixed point` is
-  definition is
-    `idempotent` canonicalize
+law "|canonicalization reaches a fixed point| is
+  definition :
+    apply law "|idempotent| canonicalize
   end
-  example `all trailing slashes are removed in one pass` is
+  example "|all trailing slashes are removed in one pass| :
     x = "https://example.com/path///"
     expect canonicalize x = "https://example.com/path"
   end

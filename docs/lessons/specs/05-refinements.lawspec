@@ -7,25 +7,25 @@ refinement Percent is (p :: Int32 where p >= 0 && p <= 100) end
 
 applyDiscount :: Cents -> Percent -> Cents
 
-law `a discount never raises a price` is
-  definition is
-    `for all` (price :: Cents) (percent :: Percent) .
-      applyDiscount price percent <= price
+law "|a discount never raises a price| is
+  definition :
+    for all (price :: Cents) (percent :: Percent) =>
+      applyDiscount price percent <= price end
   end
 end
 
-law `no discount keeps the price` is
-  definition is
-    `for all` (price :: Cents) . applyDiscount price 0 = price
+law "|no discount keeps the price| is
+  definition :
+    for all (price :: Cents) => applyDiscount price 0 = price end
   end
 end
 
-law `a full discount makes it free` is
-  definition is
-    `for all` (price :: Cents) . applyDiscount price 100 = 0
+law "|a full discount makes it free| is
+  definition :
+    for all (price :: Cents) => applyDiscount price 100 = 0 end
   end
 
-  example `half price` is
+  example "|half price| :
     price = 1000
     expect applyDiscount price 50 = 500
   end

@@ -16,25 +16,27 @@ unit guide.temporal
 
 import lawspec.time (Instant)
 
-definition deadline (wait :: Duration where wait <= 1h) :: Instant uses Clock is now + wait end
+procedure deadline (wait :: Duration where wait <= 1h) -> Instant uses Clock is
+  now + wait end procedure
 
-law `a deadline passes` using virtual clock is
-  definition is (let d = deadline 1s in eventually within 2 s, now >= d) = true end
+law "|a deadline passes| using virtual clock is
+  definition : (let d = deadline 1s in eventually within 2 s, now >= d) = true
+  end
 end
 
-law `nothing is late before its deadline` using virtual clock is
-  definition is (let d = deadline 3s in always within 2 s, now < d) = true end
+law "|nothing is late before its deadline| using virtual clock is
+  definition : (let d = deadline 3s in always within 2 s, now < d) = true end
 end
 
-law `never past a later deadline` using virtual clock is
-  definition is (let d = deadline 3s in never within 2s, now >= d) = true end
+law "|never past a later deadline| using virtual clock is
+  definition : (let d = deadline 3s in never within 2s, now >= d) = true end
 end
 
-definition double (n :: Int32) :: Int64 is n * 2 end
+function double (n :: Int32) -> Int64 is n * 2 end function
 
-law `doubling is quick` is
-  definition is `for all` (n :: Int32) . double n takes at most 5 ms end
-  example `one` is
+law "|doubling is quick| is
+  definition : for all (n :: Int32) => double n takes at most 5 ms end end
+  example "|one| :
     n = 1
     expect double n takes at most 5 ms
   end

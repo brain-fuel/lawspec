@@ -1,3 +1,5 @@
+// Frozen 0.24 fixtures enter through the explicit migration interface.
+import {legacyCheck, legacyGeneration} from './legacy-input.mjs';
 import {propertyFiles} from './artifacts.mjs';
 import {targets} from '../templates.mjs';
 import { test } from "node:test";
@@ -25,7 +27,7 @@ const count = (a) =>
       : a.items.reduce((n, a) => n + count(a), 0);
 
 test("all algebra laws expand, including both sides and four division equations", async () => {
-  const r = await compiler.expand({ sources });
+  const r = await legacyCheck(compiler, { sources });
   assert.deepEqual(r.diagnostics, []);
   assert.equal(r.laws.length, 22);
   const expectedLaws = [
@@ -80,7 +82,7 @@ test("all algebra laws expand, including both sides and four division equations"
     /format \("port:"\) \(true\) \(443\) \(trim \(x\)\)/,
   );
   for (const target of targets) {
-    const plan = await compiler.planGeneration({ sources, target });
+    const plan = await legacyGeneration(compiler, { sources, target });
     assert.deepEqual(plan.diagnostics, [], target);
     assert.equal(plan.files.filter(f => f.ownership === "user").length, 2);
     assert.equal(propertyFiles(plan.files).length, 2);
@@ -92,10 +94,10 @@ test("currying has no fixed arity cap and rejects incomplete or mistyped applica
   const args = Array.from({ length: 11 }, (_, i) => String(i)).join(" ");
   const content = `unit arity\nf :: ${types}\nlaw \`twelve\` is definition is \`equivalent\` (f ${args}) (f ${args}) end example \`last input\` is x = 12 expect f ${args} x = 67 end end`;
   const check = (content) =>
-    compiler.check({ sources: [{ path: "arity.lawspec", content }] });
+    legacyCheck(compiler, { sources: [{ path: "arity.lawspec", content }] });
   assert.deepEqual((await check(content)).diagnostics, []);
   for (const target of targets) {
-    const plan = await compiler.planGeneration({
+    const plan = await legacyGeneration(compiler, {
       sources: [{ path: "arity.lawspec", content }],
       target,
     });
@@ -137,7 +139,7 @@ end example \`right side matters\` is x = 3 expect x = 3 end end`;
     );
   const good = `let calls=0; export function predicate(x){calls++;return true;} export function operation(x,y){return x+y;} process.on('exit',()=>console.log('GUARDS='+calls));`;
   async function generate(content) {
-    const r = await compiler.planGeneration({
+    const r = await legacyGeneration(compiler, {
       sources: [{ path: "compound.lawspec", content }],
       target: "javascript",
     });

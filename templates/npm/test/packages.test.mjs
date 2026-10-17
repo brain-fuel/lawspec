@@ -66,3 +66,25 @@ test('a package unit outside its namespace is rejected', async t => {
   const result = await lawspec(root, 'package', '--project', 'shop-domain');
   assert.match(result.diagnostics[0].message, /must be named shop\.domain or shop\.domain\.<name>/);
 });
+
+
+test('each selected package version keeps its own checked rate, including after independent mutations',async t=>{
+  const root=await copyExample(t),orders=path.join(root,'orders');
+  for(const [version,correct,mutant] of [['1','20','21'],['2','25','26']]){
+    const file=path.join(root,`shop-tax-${version}`,'src','rates.lawspec');
+    const original=await readFile(file,'utf8');
+    assert.ok(original.includes(correct));
+    await writeFile(file,original.replace(correct,mutant));
+    const result=await lawspec(orders,'check');
+    assert.ok(result.diagnostics.some(item=>item.code==='refuted'),JSON.stringify(result.diagnostics));
+    await writeFile(file,original);
+    const restored=await lawspec(orders,'check');
+    assert.deepEqual(restored.diagnostics,[]);
+    for(const wording of ['shop.domain keeps version 1','this project sees version 2']){
+      const law=restored.laws.find(item=>item.name.includes(wording));
+      assert.ok(law,wording);
+      const status=restored.evidence.find(item=>item.declaration===law.id&&item.stage==='law').status;
+      assert.ok(['proved','exhaustively-checked'].includes(status),`${wording}: ${status}`);
+    }
+  }
+});

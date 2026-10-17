@@ -12,25 +12,27 @@ them, reads items by index, and turns octets and texts into each other.
 unit guide.sequences
 
 -- Kafka's member ids: a client id and a counter.
-definition memberId (client :: Text) (n :: Int32) :: Text is client ++ "-" ++ prelude.textOf n end
+function memberId (client :: Text) (n :: Int32) -> Text is client ++ "-" ++
+  prelude.textOf n end function
 
 -- The octets of a key, summed.
-definition checksum (key :: Bytes) :: Integer is total (prelude.octets key) end
+function checksum (key :: Bytes) -> Integer is total (prelude.octets key)
+end function
 
-definition total (xs :: List UInt8) :: Integer is
-  match xs with
-  | Nil -> 0
-  | Cons o rest -> o + total rest
-  end
-end
+function total (xs :: List UInt8) -> Integer is
+  first matching case of xs :
+    when Nil then 0
+    when Cons o rest then o + total rest
+  end case
+end function
 
-law `sequences` is
-  definition is
+law "|sequences| is
+  definition :
     memberId "consumer" 3 = "consumer-3"
-      and checksum (prelude.utf8 "ab") = 195
-      and prelude.slice 1 3 "kafka" = "af"
-      and prelude.at 1 [10, 20, 30] = Just 20
-      and prelude.range 0 3 = [0, 1, 2]
+    and checksum (prelude.utf8 "ab") = 195
+    and prelude.slice 1 3 "kafka" = "af"
+    and prelude.at 1 [10, 20, 30] = Just 20
+    and prelude.range 0 3 = [0, 1, 2]
   end
 end
 ```

@@ -4,30 +4,30 @@ unit lessons.pricing
 -- more.
 priceInCents :: Int32 -> Int64
 
-law `drinks cost 250 cents each below ten` is
-  definition is
-    `for all` (q :: Int32) .
-      q >= 0 && q < 10 implies priceInCents q = q * 250
+law "|drinks cost 250 cents each below ten| is
+  definition :
+    for all (q :: Int32) =>
+      q >= 0 && q < 10 implies priceInCents q = q * 250 end
   end
 
-  example `nothing ordered` is
+  example "|nothing ordered| :
     q = 0
     expect priceInCents q = 0
   end
 
-  example `one coffee` is
+  example "|one coffee| :
     q = 1
     expect priceInCents q = 250
   end
 end
 
-law `ten or more drinks are discounted` is
-  definition is
-    `for all` (q :: Int32) .
-      q >= 10 && q <= 1000 implies priceInCents q = q * 225
+law "|ten or more drinks are discounted| is
+  definition :
+    for all (q :: Int32) =>
+      q >= 10 && q <= 1000 implies priceInCents q = q * 225 end
   end
 
-  example `a tray of ten` is
+  example "|a tray of ten| :
     q = 10
     expect priceInCents q = 2250
   end

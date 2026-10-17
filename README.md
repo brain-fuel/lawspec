@@ -69,14 +69,14 @@ unit example.atoi_codec
 itoa :: Int32 -> Text
 atoi :: Text -> Int32
 
-law `round trip` is
-  definition is
-    `left inverse` atoi itoa
+law "|round trip| is
+  definition :
+    apply law "|left inverse| atoi itoa
   end
-  description is
+  description :
     "applying {itoa} and then {atoi} recovers the original integer"
   end
-  example `negative integers use a minus sign and round-trip unchanged` is
+  example "|negative integers use a minus sign and round-trip unchanged| :
     x = -42
     expect itoa x = "-42"
     expect atoi (itoa x) = -42

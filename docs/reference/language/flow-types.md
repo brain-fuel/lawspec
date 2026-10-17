@@ -12,28 +12,28 @@ follows Wilshaw and Hutton, *Flow Typing: A New Lens on Linearity* ref:wilshaw-h
 ```lawspec
 unit guide.flow
 
-type Stack (n :: Natural) is
+type Stack (n :: Whole) is one of
   | Empty where n = 0
-  | Push top :: Int8 rest :: Stack m where n = m + 1
-end
+  | Push of type record{ top :: Int8 rest :: Stack m} where n = m + 1
+end type
 
 push :: (x :: Int8) -> Stack n / Stack (n + 1) -> Unit
 pop :: Stack (n + 1) / Stack n -> Int8
 
-definition pushed (x :: Int8) (s :: Stack n / Stack (n + 1)) :: Unit is
-  ~s := Push x s
-end
+function pushed (x :: Int8) (s :: Stack n / Stack (n + 1)) -> Unit is
+  ~s := Push record{ top = x , rest = s}
+end function
 
-law `pop returns what push pushed` is
-  definition is
-    `for all` (x :: Int8) (s :: Stack n) . (push x ~s; pop ~s) = x
+law "|pop returns what push pushed| is
+  definition :
+    for all (x :: Int8) (s :: Stack n) => (push x ~s; pop ~s) = x end
   end
 end
 
-law `pops come back in reverse` is
-  definition is
-    `for all` (x :: Int8) (y :: Int8) (s :: Stack n) .
-      (push x ~s; push y ~s; pop ~s; pop ~s) = x
+law "|pops come back in reverse| is
+  definition :
+    for all (x :: Int8) (y :: Int8) (s :: Stack n) =>
+      (push x ~s; push y ~s; pop ~s; pop ~s) = x end
   end
 end
 ```

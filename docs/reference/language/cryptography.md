@@ -14,30 +14,33 @@ known-answer vectors. It is one of the [built-in abilities](builtins.md).
 ```lawspec
 unit guide.handshake
 
-import lawspec.crypto (ExchangeKeyPair, ExchangePublicKey, Encapsulated, SigningKeyPair)
+import lawspec.crypto (ExchangeKeyPair, ExchangePublicKey, Encapsulated,
+SigningKeyPair)
 
 -- The server signs its exchange key; the client checks the signature,
 -- encapsulates a secret to the key, and both sides derive the same AEAD key.
-definition handshake (message :: Bytes) (context :: Bytes) :: Maybe Bytes uses KeyExchange, Signature, Aead is
-  match signingKeyPair with
-  | SigningKeyPair verifying signing ->
-      (match exchangeKeyPair with
-       | ExchangeKeyPair public secret ->
-           (let offer = sign signing (valueOfExchangePublicKey public) in
-            if verify verifying (valueOfExchangePublicKey public) offer then
-              (match encapsulate public with
-               | Encapsulated sent shared ->
-                   (let client = deriveAeadKey shared context in
-                    let server = deriveAeadKey (decapsulate secret sent) context in
-                    unseal server (seal client message context) context)
-               end)
-            else Nothing)
-       end)
-  end
-end
+procedure handshake (message :: Bytes) (context :: Bytes) -> Maybe Bytes uses
+  KeyExchange, Signature, Aead is
+  first matching case of signingKeyPair :
+    when SigningKeyPair verifying signing then
+      (first matching case of exchangeKeyPair :
+        when ExchangeKeyPair public secret then
+          (let offer = sign signing (valueOfExchangePublicKey public) in
+          if verify verifying (valueOfExchangePublicKey public) offer then
+            (first matching case of encapsulate public :
+              when Encapsulated sent shared then
+                (let client = deriveAeadKey shared context in
+                let server = deriveAeadKey (decapsulate secret sent) context in
+                unseal server (seal client message context) context)
+            end case)
+          else Nothing end if)
+      end case)
+  end case
+end procedure
 
-law `a handshake carries the message` is
-  definition is `for all` (message :: Bytes) (context :: Bytes) . handshake message context = Just message end
+law "|a handshake carries the message| is
+  definition : for all (message :: Bytes) (context :: Bytes) => handshake
+      message context = Just message end end
 end
 ```
 

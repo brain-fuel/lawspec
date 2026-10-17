@@ -14,11 +14,11 @@ contracts and proofs.
 ```lawspec
 unit guide.increment_definition
 
-definition increment (x :: Int8) :: BigInt
-requires Integer Int8
-is
+function increment (x :: Int8) -> Integer
+  requires Integer Int8
+  is
   x + 1
-end
+end function
 ```
 
 Parameters and the result have explicit types. The optional `requires` clause
@@ -91,15 +91,15 @@ unchanged:
 ```lawspec
 unit guide.integer_recursion
 
-definition countdown (n :: Natural) :: List Natural is
-  if n == 0 then [] else Cons n (countdown (n - 1))
-end
+function countdown (n :: Whole) -> List Whole is
+  if n = 0 then [] else Cons n (countdown (n - 1)) end if
+end function
 
-definition evensFrom (i :: Int32) (n :: Int32) :: List Int32 is
+function evensFrom (i :: Int32) (n :: Int32) -> List Int32 is
   if i >= n || i < 0 then [] else
-    (if prelude.rem i 2 == 0 then Cons i (evensFrom (prelude.Int32 (i + 1)) n)
-     else evensFrom (prelude.Int32 (i + 1)) n)
-end
+    (if prelude.rem i 2 = 0 then Cons i (evensFrom (prelude.Int32 (i + 1)) n)
+  else evensFrom (prelude.Int32 (i + 1)) n end if) end if
+end function
 ```
 
 Every recursive call must move the same parameter the same way. `prelude.range`
@@ -112,14 +112,14 @@ Type variables in a signature are quantified implicitly:
 ```lawspec
 unit guide.generic_definitions
 
-definition same (x :: a) (y :: a) :: Bool requires Eq a is x == y end
+function same (x :: a) (y :: a) -> Bool requires Eq a is x = y end function
 
-definition count (xs :: List a) :: BigInt is
-  match xs with
-    | Nil -> 0
-    | Cons head tail -> 1 + count tail
-  end
-end
+function count (xs :: List a) -> Integer is
+  first matching case of xs :
+    when Nil then 0
+    when Cons head tail then 1 + count tail
+  end case
+end function
 ```
 
 Each generic definition is checked once for typing, capabilities, termination
