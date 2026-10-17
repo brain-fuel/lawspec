@@ -656,6 +656,15 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
         local `shouldBe` fresh
         outer `shouldBe` y
       _ -> expectationFailure (show replaced)
+  it "keeps a consumer's outer argument outside a product conversion's binders" $ do
+    let x=Id "x"; input=Id "input"
+        n=T.Literal . SInteger "Integer"
+        selected=T.DataMatch (T.Variable input) [(Id "Box::Box",[x],n 3)]
+        body=T.Division False Quotient (n 1) (T.ExactArithmetic Subtract selected (T.Variable x))
+        definition actual=T.ProofDefinition (Id "consumer") "consumer" Nothing [input,x] body
+          [T.ExactComparison Equal (T.Variable x) (n actual)]
+    T.audit [definition 2] `shouldBe` Right ()
+    T.audit [definition 3] `shouldSatisfy` isLeft
   it "does not capture outer facts when introducing a hypothetical List member" $ do
     let xs = Id "xs"
         x = Id "x"

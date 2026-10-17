@@ -62,7 +62,10 @@ auditTemplatesWithDeferrals context initial bits unit templates = do
 auditCollected context declarations constructors bits unit templates = do
   lowered <- mapM lower templates
   extraViews<-foldM addView M.empty [definition | (_,_,state)<-lowered,definition<-M.elems (proofViews state)]
-  (guarantees,extraProofs)<-if M.null extraViews then pure (constructors,[]) else do
+  (proofRegistry,guarantees,extraProofs)<-if M.null extraViews then do
+    registry<-either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right (makeRegistry declarations)
+    pure (registry,constructors,[])
+   else do
     occurrences<-either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
       (uniqueNominals (declarations++concat [proofRecords state | (_,_,state)<-lowered]))
     known<-either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
@@ -72,9 +75,9 @@ auditCollected context declarations constructors bits unit templates = do
     CoreValidate.validateProgram program
     registry<-either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right (makeRegistry known)
     guarantees<-constructorProofContracts bits known
-    pure (guarantees,map (Total.definitionProof (P.fromRegistry registry) bits) (M.elems extraViews))
+    pure (registry,guarantees,map (Total.definitionProof (P.fromRegistry registry) bits) (M.elems extraViews))
   -- Non-linear postconditions the prover defers become runtime checks in Core.
-  T.auditDeferringWithResults guarantees [contract | (_,contract,_)<-lowered]
+  T.auditWithRecordInstances (P.recordInstances (P.fromRegistry proofRegistry)) M.empty guarantees [contract | (_,contract,_)<-lowered]
     ([definition | (definition,_,_)<-lowered]++extraProofs)
     (M.fromList [ (identity (S.functionName d), bounds)
                 | (d, _, _, _) <- templates
@@ -145,12 +148,18 @@ auditCollected context declarations constructors bits unit templates = do
         <$> proof name integerVariables argumentScope body
         <*> mapM (proof name integerVariables argumentScope) preconditions
         <*> mapM (proof name integerVariables resultScope) postconditions
+      records <- concat <$> mapM (\((_,name),(_,ty)) -> recordDomain name ty) (zip parameters (S.functionArguments definition))
       pure (T.ProofDefinition name (S.functionName definition)
         (Just (spanStart (S.functionSpan definition))) (map snd parameters) expression
         (concat [T.integerAssumptions bits name primitive
           | ((_,name),(_,ty)) <- zip parameters (S.functionArguments definition)
-          , S.Named primitive <- [S.baseType ty]]),
+          , S.Named primitive <- [S.baseType ty]] ++ records),
         T.ProofContract name result pre post,state)
+    recordDomain name ty = do
+      lowered <- coreType ty
+      pure [T.RecordType (C.constructorId constructor) (T.Variable name) |
+        C.Constructor parent _ <- [lowered],declaration <- declarations,C.idText (C.dataId declaration)==parent,
+        C.dataStructural declaration/=Nothing,[constructor]<-[C.dataConstructors declaration]]
     proof :: C.Id -> [String] -> M.Map String C.Id -> S.TypedExpr -> ProofM T.Proof
     proof owner integers scope typed = do
       let recur = proof owner integers scope
@@ -290,9 +299,10 @@ auditCollected context declarations constructors bits unit templates = do
                 index <- nextProofSite
                 pure (name, C.Id (C.idText owner ++ "::match::" ++ show (index :: Int)))
               branch <- proof owner integers (M.union (M.fromList names) scope) body
+              records <- lift (concat <$> mapM (\((_,name),(_,ty)) -> recordDomain name ty) (zip names fields))
               let domains = concat [T.integerAssumptions bits name primitive
                     | ((_,name),(_,ty)) <- zip names fields, S.Named primitive <- [S.baseType ty]]
-              pure (constructorTag (effectiveType value) tag,map snd names, T.TypedDomain domains branch)
+              pure (constructorTag (effectiveType value) tag,map snd names, T.TypedDomain (domains++records) branch)
             pure (case (S.baseType (effectiveType value), [body | (_,[],body) <- branches],
                         [(first,rest,body) | (_,[first,rest],body) <- branches]) of
               (S.Applied "List" _, [nil], [(first,rest,cons)]) -> T.ListMatch scrutinee nil first rest cons

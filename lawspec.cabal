@@ -536,6 +536,7 @@ library
       LawSpec.Core.Quantification
       LawSpec.Core.QuantifierDomain
       LawSpec.Core.RecordIdentity
+      LawSpec.Core.RecordInstances
       LawSpec.Core.RecordNormalize
       LawSpec.Core.RecordViewFunctions
       LawSpec.Core.RecordViews

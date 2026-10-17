@@ -33,6 +33,7 @@ import RecordIdentityFixtures (recordSmokeProgram)
 import LawSpec.Scalar
 import LawSpec.IndexTerm
 import qualified LawSpec.Core.Totality as Totality
+import qualified LawSpec.Core.RecordInstances as Instances
 
 origin :: Origin
 origin = GeneratedFrom (Id "records")
@@ -56,6 +57,41 @@ record fields = fst (either error id (makeRecordDeclaration [] fields origin))
 
 test_recordIdentitiesPreserveSemantics :: Spec
 test_recordIdentitiesPreserveSemantics = describe "closed structural record identities" $ do
+  it "links complete parametric product instances without transitive or nominal aliases" $ do
+    let a=Id "a"; b=Id "b"
+        list ty=Constructor "List" [TypeArgument ty]
+        make parameters fields=fst (either error id (makeRecordDeclaration parameters fields origin))
+        generic=make [a] [field "head" (TypeVariable a),field "tail" (list (TypeVariable a))]
+        fixed=make [b] [field "head" (TypeVariable b),field "tail" (list (scalarType "Int8"))]
+        instanceOf declaration ty=fst (either error id (instantiateRecordDeclaration declaration [ty] origin))
+        integers=instanceOf generic (scalarType "Int8")
+        booleans=instanceOf generic boolean
+        mixed=instanceOf fixed boolean
+        nominal=DataDeclaration (Id "Nominal") "Nominal" []
+          [DataConstructor (Id "Nominal::Make") "Make"
+            [Binder (Id "Nominal::head") "head" (scalarType "Int8"),Binder (Id "Nominal::tail") "tail" (list (scalarType "Int8"))] [] origin [] []] origin Nothing
+        tag declaration=constructorId (head (dataConstructors declaration))
+    registry<-either fail pure (makeRegistry [generic,fixed,integers,booleans,mixed,nominal])
+    let links=Instances.fromRegistry registry
+        projects from to=Instances.projects links (tag from) (tag to)
+    projects generic integers `shouldBe` True
+    projects generic booleans `shouldBe` True
+    projects fixed integers `shouldBe` True
+    projects fixed mixed `shouldBe` True
+    projects generic mixed `shouldBe` False
+    projects generic fixed `shouldBe` False
+    projects integers generic `shouldBe` False
+    projects generic nominal `shouldBe` False
+    projects nominal integers `shouldBe` False
+  it "does not link a product instance with an additional field restriction" $ do
+    let a=Id "a"; int8=scalarType "Int8"
+        generic=fst (either error id (makeRecordDeclaration [a] [field "value" (TypeVariable a)] origin))
+        selected=Binder (Id "field::value") "value" int8
+        zero=Expr int8 (Constant (SInteger "Int8" 0)) origin
+        restricted=record [RecordField selected [comparison Greater (local selected) zero]]
+        tag declaration=constructorId (head (dataConstructors declaration))
+    registry<-either fail pure (makeRegistry [generic,restricted])
+    Instances.projects (Instances.fromRegistry registry) (tag generic) (tag restricted) `shouldBe` False
   it "reads family indices through nested structural records and retains sibling guards" $ do
     let chainType = Constructor "PathChain" []
         chainTag tag = Id ("PathChain::" ++ tag)

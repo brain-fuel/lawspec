@@ -1,6 +1,6 @@
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, when, forM_, foldM, forM)
@@ -15,6 +15,7 @@ import LawSpec.Scalar (Scalar(..), exactValue, integerBounds, isInteger)
 import qualified LawSpec.Core.RefinementProof as R
 import Data.Ratio (denominator)
 import qualified LawSpec.Core.PayloadPlan as P
+import qualified LawSpec.Core.RecordInstances as Records
 
 -- | Definitions are audited in a small proof language of their own, so the
 -- totality audit never depends on how a target would run the code.
@@ -48,6 +49,9 @@ data Proof
   | NarrowInteger (Maybe Integer) (Maybe Integer) Proof
   | Integral Proof
   | TypedDomain [Proof] Proof
+  -- A product's checked type, retained through branch binder freshening.
+  -- This is type evidence, not an authored Boolean predicate.
+  | RecordType Id Proof
   | IsPresent Proof
   | PresentValue Proof
   -- A built-in pure function of its values, such as length: total, and an
@@ -123,7 +127,11 @@ auditDeferringWithResults = auditDeferringWithTemplates M.empty
 -- semantic identity or recursion from an executable name's prefix or suffix.
 auditDeferringWithTemplates :: M.Map Id (Id,String) -> [ProofConstructorContract] -> [ProofContract]
   -> [ProofDefinition] -> M.Map Id (Maybe Integer, Maybe Integer) -> Either [Diagnostic] [(Id,Int)]
-auditDeferringWithTemplates templates constructors contracts definitions results = do
+auditDeferringWithTemplates = auditWithRecordInstances Records.emptyInstances
+
+auditWithRecordInstances :: Records.RecordInstances -> M.Map Id (Id,String) -> [ProofConstructorContract] -> [ProofContract]
+  -> [ProofDefinition] -> M.Map Id (Maybe Integer,Maybe Integer) -> Either [Diagnostic] [(Id,Int)]
+auditWithRecordInstances instances templates constructors contracts definitions results = do
   let ids = map proofId definitions
       known = S.fromList ids
       signatures = M.fromList [(proofId d,proofArguments d) | d <- definitions]
@@ -134,7 +142,7 @@ auditDeferringWithTemplates templates constructors contracts definitions results
       template d = M.findWithDefault (proofId d,proofName d) (proofId d) templates
       components = stronglyConnComp [(d, proofId d,filter (/= proofId d) (concatMap calls (expressions d))) | d <- definitions]
       cyclicGroups = [group | CyclicSCC group <- components]
-      initialFacts = emptyFacts{constructorContracts=constructorTable,unfoldings=unfoldable,
+      initialFacts = emptyFacts{constructorContracts=constructorTable,unfoldings=unfoldable,recordInstances=instances,
         definitionTemplates=M.fromList [(proofId d,fst (template d)) | d <- definitions],
         resultBounds=results,
         naturalMeasures=naturalFixpoint S.empty,
@@ -303,6 +311,7 @@ children expression = case expression of
   NarrowInteger _ _ value -> [value]
   Integral value -> [value]
   TypedDomain facts value -> facts ++ [value]
+  RecordType _ value -> [value]
   IsPresent value -> [value]
   PresentValue value -> [value]
   Opaque _ values -> values
@@ -357,9 +366,11 @@ data Facts = Facts
   -- brings thousands of facts.
   , truthSet :: S.Set Proof
   , constraintSet :: S.Set R.Predicate
+  , recordInstances :: Records.RecordInstances
+  , recordTypes :: M.Map Id Id
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty M.empty S.empty S.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty M.empty S.empty S.empty Records.emptyInstances M.empty
 
 -- | Only explicit template identities may share a recursion check.
 sameDefinition :: Facts -> Id -> Id -> Bool
@@ -594,7 +605,7 @@ domainBounds name domains =
 -- | Checked record fields and guarded presentValue projections are strict
 -- subterms. Results of calls still have no argument provenance.
 valueProvenance :: Provenance -> Proof -> Maybe (Int,Bool)
-valueProvenance scope value = case value of
+valueProvenance scope value = case knownResult value of
   Variable name -> M.lookup name scope
   Integral inner -> valueProvenance scope inner
   Field _ _ _ inner -> (\(index,_) -> (index,True)) <$> valueProvenance scope inner
@@ -814,6 +825,10 @@ activatePresence facts =
 
 assumeSimple :: Bool -> Proof -> Facts -> Facts
 assumeSimple truth expression facts = case expression of
+  RecordType tag value | truth, Just identity <- variableIdentity value ->
+    let keep actual = if Records.projects (recordInstances facts) tag actual then actual
+          else if Records.projects (recordInstances facts) actual tag then tag else actual
+    in facts{recordTypes=M.alter (Just . maybe tag keep) identity (recordTypes facts)}
   -- A capture-avoiding let substitution leaves one binder-free result branch.
   -- Its Boolean result is its body's result. Definedness of the selected
   -- expression remains audited by Match; this only propagates an assumed
@@ -1153,6 +1168,7 @@ substituteProof replacements expression = case expression of
   NarrowInteger lower upper value -> NarrowInteger lower upper (recur value)
   Integral value -> Integral (recur value)
   TypedDomain domains value -> TypedDomain (map recur domains) (recur value)
+  RecordType tag value -> RecordType tag (recur value)
   IsPresent value -> IsPresent (recur value)
   PresentValue value -> PresentValue (recur value)
   Opaque name values -> Opaque name (map recur values)
@@ -1286,6 +1302,14 @@ normalizeCalls scope expression = evalState (go expression pure)
         body' <- go body continuation
         pure (LetCall name callee arguments' body')
       Construct tag fields -> values fields (continuation . Construct tag)
+      -- A product conversion's consumer stays in its single constructor
+      -- branch, retaining strict evaluation and the fields' provenance.
+      -- Fresh names prevent the consumer's free variables being captured.
+      DataMatch value [(tag,binders,body)] -> go value $ \value' -> do
+        names <- mapM (const fresh) binders
+        let renamed = substituteProof (M.fromList (zip binders (map Variable names))) body
+        body' <- go renamed continuation
+        pure (DataMatch value' [(tag,names,body')])
       DataMatch value branches -> go value $ \value' -> do
         branches' <- mapM (\(tag,binders,body) -> (\body' -> (tag,binders,body')) <$> go body pure) branches
         continuation (DataMatch value' branches')
@@ -1320,6 +1344,7 @@ normalizeCalls scope expression = evalState (go expression pure)
         domains' <- mapM (\value -> go value pure) domains
         body' <- go body pure
         continuation (TypedDomain domains' body')
+      RecordType tag value -> go value (continuation . RecordType tag)
       Sequence terms -> values terms (continuation . Sequence)
       ListCons first rest -> pair ListCons first rest continuation
       Comparison op a b -> pair (Comparison op) a b continuation
@@ -1409,15 +1434,31 @@ unfold facts callee arguments = do
 -- arithmetic and logic that the linear prover reads.
 expandKnown :: Facts -> Proof -> Proof
 expandKnown facts term = case term of
+  Construct tag fields -> Construct tag (map expand fields)
+  DataMatch value branches ->
+    let selected = expand value
+        known = case knownResult selected of
+          Construct tag fields -> Just (tag,fields)
+          other -> variableIdentity other >>= (`M.lookup` constructorValues facts)
+    in case known of
+      Just (tag,fields) | (names,body):_ <- [(names,body) | (candidate,names,body) <- branches,
+          candidate == tag,length names == length fields] ->
+        expand (substituteProof (M.fromList (zip names fields)) (stripDomains body))
+      _ -> DataMatch selected branches
   Field tag position bounds value ->
     let expanded = expand value
         known = knownResult expanded
         constructor = case known of
           Construct actual fields -> Just (actual,fields)
           _ -> variableIdentity known >>= (`M.lookup` constructorValues facts)
+        typed = variableIdentity known >>= (`M.lookup` recordTypes facts)
+        actualTag = case constructor of Just (actual,_) -> Just actual; _ -> typed
+        projectedTag = case actualTag of
+          Just actual | Records.projects (recordInstances facts) tag actual -> actual
+          _ -> tag
     in case constructor of
-      Just (actual,fields) | actual == tag,position >= 0,selected:_ <- drop position fields -> expand selected
-      _ -> Field tag position bounds expanded
+      Just (actual,fields) | actual == projectedTag,position >= 0,selected:_ <- drop position fields -> expand selected
+      _ -> Field projectedTag position bounds expanded
   Call name values | Just unfolded <- unfold facts name (map expand values) -> unfolded
   Call name values -> Call name (map expand values)
   ExactArithmetic op a b -> ExactArithmetic op (expand a) (expand b)

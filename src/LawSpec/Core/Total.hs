@@ -143,7 +143,7 @@ auditDefinitionContractsUncached scopes bits dataDeclarations allDefinitions all
     pure (T.ProofContract (contractDeclaration contract) freshResult
       (map lower (contractPreconditions contract)) (map lower (contractPostconditions contract)))
   constructorProofs <- constructorProofContracts bits dataDeclarations
-  T.auditDeferringWithTemplates (M.fromList
+  T.auditWithRecordInstances (Payload.recordInstances (Payload.fromRegistry registry)) (M.fromList
     [(declarationId d,template) | definition <- definitions,let d=definitionDeclaration definition,Just template <- [declarationTemplate d]])
     constructorProofs proofs (map (definitionProof (Payload.fromRegistry registry) bits) definitions)
     (M.fromList [(declarationId d, resultBounds bits (snd (functionType (declarationType d)))) | d <- map definitionDeclaration definitions])
@@ -165,7 +165,9 @@ definitionProof schema bits definition =
     location (map binderId (definitionArguments definition))
     (proofExpression schema bits (definitionBody definition))
     (concat [T.integerAssumptions bits (binderId argument) name
-      | argument <- definitionArguments definition, Constructor name [] <- [binderType argument]])
+      | argument <- definitionArguments definition, Constructor name [] <- [binderType argument]] ++
+     [T.RecordType tag (T.Variable (binderId argument)) | argument<-definitionArguments definition,
+       Just tag<-[Payload.recordTag schema (binderType argument)]])
 
 -- | Shared checked constructor guarantees for Core and typed source templates.
 constructorProofContracts :: Int -> [DataDeclaration] -> Either [Diagnostic] [T.ProofConstructorContract]
@@ -260,7 +262,9 @@ proofExpression schema bits = proof
       Match value branches ->
         let lowered = [(caseConstructor branch,map binderId (caseBinders branch), T.TypedDomain
               (concat [T.integerAssumptions bits (binderId field) name
-                | field <- caseBinders branch, Constructor name [] <- [binderType field]])
+                | field <- caseBinders branch, Constructor name [] <- [binderType field]] ++
+               [T.RecordType tag (T.Variable (binderId field)) | field<-caseBinders branch,
+                 Just tag<-[Payload.recordTag schema (binderType field)]])
               (proof (caseBody branch))) | branch <- branches]
         in case (expressionType value, [body | (_,[],body) <- lowered],
                  [(first,rest,body) | (_,[first,rest],body) <- lowered]) of

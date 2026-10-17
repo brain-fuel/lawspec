@@ -21,7 +21,7 @@ Validated project migration writes and the first canonical Chapter 6 pass shippe
 
 - [x] Verify scoped collection-provider discovery and ordered-set migration, including complete source correspondence, all 17 configured target emissions, native/WASM parity and regression checks. Opaque dependency fields retain conservative discovery.
 - [ ] Resolve or explicitly account for the remaining migration acceptance cases, including indexed/existential payloads, generic populations, dependency changes and opaque hooks. Missing correspondence must continue to block writes.
-- [ ] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration. Migration coordination and legacy artifact inspection now use explicit schema-5 migration entry points; ordinary legacy requests remain until consumer migration is complete.
+- [ ] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration. Ordinary requests now require schema 5 and the canonical profile; configuration requires version 2. Archived source uses explicit migration entry points. The cutover is implemented; final consumer and acceptance checks remain open.
 - [ ] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract.
 - [ ] Run the final compiler, target, generation, boundary, editor, documentation, parity and complete release checks on the final implementation; record failures and limits before claiming completion.
 
@@ -194,6 +194,61 @@ published reference states this limit. The indexed proof correspondence,
 symbolic `attempt` correspondence, automatic exception mapping, documentation
 fragments, archived export and remaining minor acceptance checklist stay open.
 No main push, milestone completion or tag is implied by this increment.
+
+### Typed product projections in indexed definitions — 17 October 2026
+
+Canonical indexed-vector concatenation now passes mandatory definition admission
+with an explicit record payload. The source-template and closed-Core audits
+retain a product's checked type through pattern-binder freshening. A generic
+product projection can use a concrete instance only after the existing rigid
+actual-type matcher and structural-record instantiator rebuild the complete
+same descriptor, including refinements and dependent relationships. Links are
+directed, are not transitive, and do not equate nominal types. Digest equality
+alone, matching field arity, and an unrelated stronger record do not establish
+this relation.
+
+The existing proof normalization also keeps a single-constructor conversion's
+consumer in its branch and reduces projections of known constructed products.
+It freshens binders before moving the continuation and retains the independent
+strict definedness walk. Recursive descent follows stored fields; arbitrary
+call results do not inherit their arguments' descent. The mechanism follows
+typed record projections in [Why3's language reference](https://why3.org/doc/syntaxref.html#type-declarations)
+and constructor elimination in [Lean's inductive types](https://lean-lang.org/doc/reference/latest/The-Type-System/Inductive-Types/).
+The LawSpec type matcher, descriptor builder, capture-avoiding substitution and
+existing proof projection remain compiler-trusted. This adds no Why3 backend,
+Z3 binding, independent proof checker or unchecked definition category. The
+existing SMT integration still invokes an external solver through SMT-LIB.
+
+The full compiler run passes **2,128 tests with zero failures**. Regression
+coverage checks 49 independently computed vector-concatenation outcomes at each
+machine width, dropped heads, wrong tails, a strict zero divisor,
+non-decreasing recursion, continuation capture, non-transitive generic links,
+nominal boundaries, stronger record restrictions and IEEE non-reflexivity.
+The indexed-family reference and both fragments were manually adopted and
+checked in context. Documentation passes 119 pages and 114 compiled snippets;
+126 generated outputs, 233 module boundaries, six editor checks, version and
+artifact integrity pass. Whole-source automatic migration correspondence is
+still unestablished; this manual adoption does not authorize migration writes.
+
+A further preservation regression remains explicit: the same canonical
+concatenation using `Nat` elements fails its recursive-call precondition,
+although the legacy positional version using an equivalent positive unbounded
+integer refinement admits. Ordinary `Bool`, `Integer`, `Whole`, `Int8` and
+`Float64` element versions admit. Refinement-payload provenance through product
+projections needs completing; it must not be repaired by discarding refinements
+or borrowing a stronger generic record contract. Reproducers and full response
+receipts are retained under `.artifacts/minor-public-interface-cutover/`.
+
+All 80 complete indexed native/WASM responses agree, including 68 generation
+requests across all 17 targets, both machine widths and both output layouts.
+The ten negative checks retain mandatory-admission failures, including the
+known positive-refinement regression. The broad SDK and archived export runs
+are in progress at this point. Native execution across all 17 targets is not
+claimed for this increment. Automatic exception-to-record mapping, symbolic
+`attempt` migration correspondence, the remaining documentation fragments,
+Chapter 6's second authoring pass and the full minor acceptance checklist remain
+open. Readability is user-deferred, all-named endings belong to the following
+minor, and this remains version 0.24.0 without an RC designation or tag.
 
 ## Latest approved milestone direction — 15 October 2026
 

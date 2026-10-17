@@ -14,23 +14,25 @@ the index.
 ```lawspec
 unit guide.indexed
 
-type Vec (n :: Natural) (a :: Type) is
+type Vec (n :: Whole) (a :: Type) is one of
   | VNil where n = 0
-  | VCons head :: a tail :: Vec m a where n = m + 1
-end
+  | VCons of type record{ head :: a tail :: Vec m a} where n = m + 1
+end type
 
 append :: (xs :: Vec n Int8) -> (ys :: Vec m Int8) -> (r :: Vec (n + m) Int8)
 
-definition concatV (xs :: Vec n Int8) (ys :: Vec m Int8) :: Vec (n + m) Int8 is
-  match xs with
-  | VNil -> ys
-  | VCons h t -> VCons h (concatV t ys)
-  end
-end
+function concatV (xs :: Vec n Int8) (ys :: Vec m Int8) -> Vec (n + m) Int8 is
+  first matching case of xs :
+    when VNil then ys
+    when VCons record{ head = h , tail = t} then VCons record{ head = h , tail =
+        (concatV t ys)}
+  end case
+end function
 
-law `append agrees with the proved definition` is
-  definition is
-    `for all` (xs :: Vec n Int8) (ys :: Vec m Int8) . append xs ys = concatV xs ys
+law "|append agrees with the proved definition| is
+  definition :
+    for all (xs :: Vec n Int8) (ys :: Vec m Int8) => append xs ys = concatV xs
+      ys end
   end
 end
 ```
@@ -38,10 +40,11 @@ end
 A multi-field constructor can split its index:
 
 ```lawspec fragment
-type Tree (n :: Natural) (a :: Type) is
+type Tree (n :: Whole) (a :: Type) is one of
   | Tip where n = 0
-  | Bin left :: Tree l a value :: a right :: Tree r a where n = l + r + 1
-end
+  | Bin of type record{ left :: Tree l a value :: a right :: Tree r a} where n =
+  l + r + 1
+end type
 ```
 
 Rules:
@@ -51,8 +54,8 @@ Rules:
   or a literal exponent.
 - A variable such as `m` is bound by the field whose type mentions it.
 - Every index has exactly one equation in every constructor.
-- `Natural` is also an ordinary value type: an unbounded integer that is at
-  least zero.
+- `Whole` is also an ordinary value type: an unbounded integer including zero.
+  `Nat` starts at one. Legacy zero-inclusive `Natural` migrates to `Whole`.
 
 ## Arithmetic, subtraction and shared indices
 
@@ -161,11 +164,11 @@ A match may leave out a constructor that the value's index rules out. A
 `Vec (n + 1) a` is never `VNil`, so taking its head needs one branch:
 
 ```lawspec fragment
-definition headV (xs :: Vec (n + 1) Int8) :: Int8 is
-  match xs with
-  | VCons h t -> h
-  end
-end
+function headV (xs :: Vec (n + 1) Int8) -> Int8 is
+  first matching case of xs:
+    when VCons record{head = value} then value
+  end case
+end function
 ```
 
 The compiler proves each left-out constructor impossible. A constructor the

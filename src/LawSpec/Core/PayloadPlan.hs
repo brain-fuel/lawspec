@@ -1,12 +1,13 @@
 -- | Finite parameter-provenance metadata shared by execution and proof lowering.
 module LawSpec.Core.PayloadPlan
-  ( Plan(..), Schema, fromRegistry, entry, arity, fields, storedParameters ) where
+  ( Plan(..), Schema, fromRegistry, entry, arity, fields, storedParameters,recordTag,recordInstances ) where
 
 import Control.Monad (unless)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Core.Types (TypeRegistry, registryDeclarations)
+import qualified LawSpec.Core.RecordInstances as R
 
 -- | Which parts of a value hold a type parameter's payload, so a predicate over
 -- payloads visits only those.
@@ -15,7 +16,7 @@ data Plan = Ignore | Parameter Int | Applied String [Plan]
 
 -- | Only checked registries can create schemas; recursive declarations stay as
 -- references rather than an eagerly expanded tree.
-newtype Schema = Schema [(String, [Id], [(Id, [Type])])]
+data Schema = Schema [(String, [Id], [(Id, [Type])])] [(String,Id)] R.RecordInstances
   deriving (Eq, Ord, Show)
 
 -- | Plans come only from a checked registry, so they never describe an
@@ -25,9 +26,18 @@ fromRegistry registry = Schema
   [(idText (dataId d), dataParameters d,
     [(constructorId c, map binderType (constructorFields c)) | c <- dataConstructors d])
     | d <- registryDeclarations registry]
+  [(idText (dataId d),constructorId c) | d<-registryDeclarations registry,dataStructural d/=Nothing,[c]<-[dataConstructors d]]
+  (R.fromRegistry registry)
+
+recordTag :: Schema -> Type -> Maybe Id
+recordTag (Schema _ tags _) (Constructor name _) = lookup name tags
+recordTag _ _ = Nothing
+
+recordInstances :: Schema -> R.RecordInstances
+recordInstances (Schema _ _ instances) = instances
 
 entry :: Schema -> String -> Either String ([Id], [(Id, [Type])])
-entry (Schema declarations) name = maybe (Left ("unknown payload data type: " ++ name)) Right
+entry (Schema declarations _ _) name = maybe (Left ("unknown payload data type: " ++ name)) Right
   (lookup name [(n,(parameters,constructors)) | (n,parameters,constructors) <- declarations])
 
 -- | Optional types take one parameter whatever the registry says.
@@ -57,7 +67,7 @@ recipe environment ty = case ty of
 -- | A least fixed point over parameter positions handles mutual and growing
 -- recursion while recognizing genuinely phantom parameters.
 storedParameters :: Schema -> String -> Either String [Int]
-storedParameters schema@(Schema declarations) name = do
+storedParameters schema@(Schema declarations _ _) name = do
   _ <- arity schema name
   pure (S.toAscList (M.findWithDefault S.empty name (settle initial)))
   where
