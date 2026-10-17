@@ -11,6 +11,7 @@ import LawSpec.Common (Artifact(..),Diagnostic(..),Generation,adapterReference)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.Digest (digest,digestHex,digestString)
 import LawSpec.NativeRequest
+import LawSpec.MigrationBoundary (boundaryReceipt)
 import LawSpec.Testing (planTesting)
 
 generationReceipt :: String -> Maybe String -> Maybe String -> Bool -> Generation
@@ -25,6 +26,7 @@ generationReceipt target sourceDir testDir minify settings bindings originalInpu
     "bindingProposal" .= bindings,
     "sourceInputs" .= object ["before" .= fingerprint originalInputs,"after" .= fingerprint migratedInputs],
     "before" .= old,"after" .= new,
+    "nativeBoundary" .= boundaryReceipt target before after original proposed,
     "nativeConformance" .= ("not-established"::String),
     "lawVerification" .= ("not-established-by-generation"::String)]
   where

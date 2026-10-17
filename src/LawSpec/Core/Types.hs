@@ -3,7 +3,7 @@
 module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations, assumingCapabilities
   , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements, keyedRequirements, keyedPrimitive
-  , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, freeExistentials, witnessPool
+  , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, freeExistentials, typeVariables, witnessPool
   ) where
 
 import Control.Exception (evaluate)

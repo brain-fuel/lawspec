@@ -573,6 +573,23 @@ export type MigrationGenerationSide =
     {status: 'rejected'; diagnostics: Diagnostic[];} |
     {status: 'not-established'; reason: string;};
 
+export type MigrationNativeBoundarySide =
+    {status: 'available'; contract: Record<string, unknown>; digest: string;} |
+    {status: 'unavailable'; reason: string;};
+
+export interface MigrationNativeBoundary {
+  version: 1;
+  algorithm: 'sha256';
+  policy: 'resolved-native-contract-v1';
+  status: 'matched' | 'not-established';
+  scope: string;
+  before: MigrationNativeBoundarySide;
+  after: MigrationNativeBoundarySide;
+  nativeConformance: 'not-established';
+  lawVerification: 'not-established-by-boundary-correspondence';
+  assumptions: string[];
+}
+
 export type MigrationGenerationReceipt =
     {
       version: 1;
@@ -590,6 +607,7 @@ export type MigrationGenerationReceipt =
       bindingProposal: MigrationBindingProposal;
       before: MigrationGenerationSide;
       after: MigrationGenerationSide;
+      nativeBoundary: MigrationNativeBoundary;
       nativeConformance: 'not-established';
       lawVerification: 'not-established-by-generation';
     } |

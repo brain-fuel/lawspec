@@ -32,6 +32,7 @@ test('migration generation records complete emitter artifacts on all 17 targets 
     assert.ok(evidence.before.files.some(file=>file.placement==='test'),'legacy harnesses were silently omitted');
     assert.ok(evidence.after.files.some(file=>file.placement==='test'),'canonical harnesses were silently omitted');
     for(const side of ['before','after'])assert.equal(evidence[side].artifactDigest,bindingDigest(evidence[side].files));
+    assert.equal(evidence.nativeBoundary.status,'matched',target);
     assert.equal(evidence.nativeConformance,'not-established');
     assert.equal(evidence.lawVerification,'not-established-by-generation');
     assert.equal(result.verification.selection,'no-selected-checks');
@@ -67,6 +68,7 @@ test('the report checks configured output directories and keeps native behavior 
 test('the report makes zero configured generation checks explicit',async()=>{
   const report=await migrationReport(compiler,{version:1,targets:[]},{sources:sources(old)});
   assert.equal(report.generationPreview.status,'not-requested');
+  assert.equal(report.correspondence.nativeBoundary.status,'not-requested');
   assert.equal(report.generationPreview.configurationCount,0);assert.deepEqual(report.generationPreview.targets,[]);
   assert.equal(report.validated,false);
 });
@@ -158,6 +160,7 @@ test('grouped native payload generation uses the admitted typed proposal on ever
       assert.equal(evidence.status,'not-established',target);assert.equal(evidence.before.status,'rejected',target);continue;
     }
     assert.equal(evidence.status,'accepted',JSON.stringify([target,evidence]));
+    assert.equal(evidence.nativeBoundary.status,'matched',JSON.stringify([target,evidence.nativeBoundary]));
     assert.equal(evidence.bindingProposal.changes[0].kind,'grouped-record-payload');
     const independent=await compiler.planGeneration({...input.migrated,
       nativeBindings:evidence.bindingProposal.proposedNativeBindings,verification:{layers:legacyLawLayers}});

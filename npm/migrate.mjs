@@ -65,6 +65,7 @@ export async function migrationReport(compiler, config, input) {
     sourcePreview.canonicalCheck.coreSnapshot,bindingPreview);
   correspondence.targetGeneration={status:generationPreview.status,scope:generationPreview.scope,
     configurationCount:generationPreview.configurationCount};
+  correspondence.nativeBoundary=generationPreview.nativeBoundary;
   const pending=[
     ['program','Complete checked Core correspondence has not been established.'],
     ['definitionPlane','Checked definition and contract correspondence has not been established.'],
@@ -91,6 +92,8 @@ export async function migrationReport(compiler, config, input) {
     blockers: [...pending.filter(([name])=>correspondence[name].status!=='matched').map(([,reason])=>reason),
       ...bindingPreview.targets.filter(target=>target.status!=='matched').map(target=>'Native bindings for '+(target.target||'input')+': '+target.reason),
       ...generationPreview.targets.filter(target=>target.status!=='accepted').map(target=>'Target generation for '+(target.target||'input')+': '+target.reason),
+      ...generationPreview.targets.filter(target=>target.status==='accepted'&&target.nativeBoundary.status!=='matched')
+        .map(target=>'Native boundary for '+(target.target||'input')+': '+target.nativeBoundary.reason),
       ...(domainPending ? ['Legacy nonempty input-domain handling and canonical universal quantification require explicit correspondence checks; no empty-domain equivalence is assumed.'] : []),
       ...(sourcePreview.canonicalCheck.status==='rejected' ? ['The partial preview does not yet pass canonical compilation; inspect sourcePreview.canonicalCheck.diagnostics.'] : []),
       ...sourcePreview.diagnostics.map(diagnostic => 'Source preview unavailable: ' + diagnostic.message),

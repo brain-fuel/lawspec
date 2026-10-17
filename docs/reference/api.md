@@ -329,6 +329,27 @@ implementation or generated law harness has run. This distinction follows
 [SPARK's proof and test boundary](https://docs.adacore.com/live/wave/spark2014/html/spark2014_ug/en/usage_scenarios.html#between-proof-and-unit-testing)
 and [Lean's separation of checking and compilation](https://lean-lang.org/doc/reference/latest/Elaboration-and-Compilation/).
 
+The receipt also includes `nativeBoundary`, a version-1 comparison using the
+`resolved-native-contract-v1` policy. Each available side contains its contract
+and SHA-256 digest. The compiler compares resolved constructor identities,
+native argument order and leaf types, calls, async/effect interfaces, handler
+operations, and generated data layouts exposed by unbound adapters. Rust's
+existing recursive boxing decisions are included. Named type references stay
+nominal; logical predicates and value indices remain covered by the separate
+complete Core/source-template correspondence gates.
+
+A `matched` boundary means these compiler-owned interfaces agree under the
+existing emitters and unchanged native implementation assumptions. It does not
+prove external code, opaque hooks, or generated executables correct. The
+coordinator accepts it only with the matching complete generation receipt,
+descriptor digests, checked binding proposal and original assumptions. Matching
+binding configuration or accepted emission alone cannot establish it. Changed
+unbound adapter layouts remain `not-established`; unavailable adaptations retain
+their reasons. `nativeConformance` and law verification remain unestablished.
+This follows [SPARK's contracts for imported subprograms](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html#writing-contracts-on-imported-subprograms):
+caller reasoning retains the external contract assumption until the body is
+independently verified. No solver or additional evaluator is introduced.
+
 ### Packages
 
 - `dependencies`: the package names and version ranges the request's own

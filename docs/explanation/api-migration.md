@@ -96,6 +96,16 @@ diagnostics and complete artifact digest manifest. `correspondence.targetGenerat
 records this gate; zero configured targets report `not-requested`. The plain
 report also shows how many target configurations were accepted.
 
+`correspondence.nativeBoundary` separately compares resolved native interfaces
+under their original external implementation assumptions. Each generation row
+retains its boundary comparison and full compiler receipt. The comparison
+includes native field types and order, callable signatures, handlers and data
+layouts exposed by generated unbound adapters. Accepted generation can therefore
+coexist with a changed boundary. Zero configured targets report `not-requested`.
+The plain report shows how many boundary comparisons match. Existing explicit
+native argument positions survive payload grouping, and native exception
+mappings retain their original first-match order.
+
 Generation acceptance does not establish native implementation correspondence
 or execute laws. `correspondence.generatedBehavior` and project-wide writing
 remain unestablished until their remaining checks are satisfied.

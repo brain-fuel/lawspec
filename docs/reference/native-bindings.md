@@ -95,8 +95,9 @@ nominal unwrapping or implicit width conversion. Configuration array order does
 not change constructor argument order. A path may stop at a whole typed field;
 its existing native conversion still applies.
 
-The migration report derives these layouts from the original checked constructor
-order. Python, JavaScript, TypeScript, Java, Kotlin, Scala, Rust, Go, Haskell,
+The migration report derives these layouts from the original resolved native
+argument order, including pre-existing explicit positions and nested paths.
+Without explicit positions it retains constructor declaration order. Python, JavaScript, TypeScript, Java, Kotlin, Scala, Rust, Go, Haskell,
 F#, Swift, Erlang, Elixir, Gleam and Groovy's Java bridge currently pack and unpack
 them. JVM codecs use
 the resolver's packing tree and ordinary schema construction. Rust derives moves and

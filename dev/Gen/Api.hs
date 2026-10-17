@@ -249,12 +249,21 @@ declarations = joinWith (softbreak <> softbreak)
       [record (fields [("status","'accepted'"),("artifactDigest","string"),("files","MigrationArtifact[]"),("diagnostics","Diagnostic[]")]),
        record (fields [("status","'rejected'"),("diagnostics","Diagnostic[]")]),
        record (fields [("status","'not-established'"),("reason","string")])]
+  , alias "MigrationNativeBoundarySide"
+      [record (fields [("status","'available'"),("contract","Record<string, unknown>"),("digest","string")]),
+       record (fields [("status","'unavailable'"),("reason","string")])]
+  , interface "MigrationNativeBoundary" (fields [("version","1"),("algorithm","'sha256'"),
+      ("policy","'resolved-native-contract-v1'"),("status","'matched' | 'not-established'"),("scope","string"),
+      ("before","MigrationNativeBoundarySide"),("after","MigrationNativeBoundarySide"),
+      ("nativeConformance","'not-established'"),("lawVerification","'not-established-by-boundary-correspondence'"),
+      ("assumptions","string[]")])
   , alias "MigrationGenerationReceipt"
       [record (fields [("version","1"),("algorithm","'sha256'"),("status","'accepted' | 'not-established'"),
         ("scope","string"),("target","Target"),("machineBits","32 | 64"),("sourceDir","string | null"),
         ("testDir","string | null"),("minify","boolean"),("generation","Generation"),("planning","'legacy-harnesses'"),
         ("sourceInputs","{before: string; after: string}"),("bindingProposal","MigrationBindingProposal"),("before","MigrationGenerationSide"),("after","MigrationGenerationSide"),
-        ("nativeConformance","'not-established'"),("lawVerification","'not-established-by-generation'")]),
+        ("nativeBoundary","MigrationNativeBoundary"),("nativeConformance","'not-established'"),
+        ("lawVerification","'not-established-by-generation'")]),
        record (fields [("status","'unavailable'"),("reason","string")])]
   , interface "MigrationPayloadField" (fields [("label","string"),("fromIndex","number"),("toIndex","number"),
       ("fromBinder","string"),("toBinder","string")])

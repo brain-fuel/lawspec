@@ -40,13 +40,44 @@ export function checkGenerationReceipt(before,after,request,bindingProposal,evid
     scope:'legacy harness plans and complete artifact manifests; target compilation and native behavior remain separate'};
 }
 
+const boundaryAssumptions=['existing compiler emitters',
+  'unchanged native implementations under their original binding assumptions'];
+const boundaryKeys=['configuration','types','calls','handlers','unboundAdapters','unmappedData'];
+const availableBoundary=side=>side?.status==='available'&&side.contract&&
+  typeof side.contract==='object'&&!Array.isArray(side.contract)&&
+  Object.keys(side.contract).length===boundaryKeys.length&&
+  boundaryKeys.every(key=>key==='configuration'?side.contract[key]&&typeof side.contract[key]==='object'&&
+    !Array.isArray(side.contract[key]):Array.isArray(side.contract[key]))&&
+  digest(side.digest)&&bindingDigest(side.contract)===side.digest;
+
+export function checkNativeBoundaryReceipt(before,after,request,bindingProposal,evidence){
+  const generation=checkGenerationReceipt(before,after,request,bindingProposal,evidence);
+  if(generation.status!=='accepted')return pending(generation.reason);
+  const boundary=evidence.nativeBoundary;
+  if(boundary?.version!==1||boundary.algorithm!=='sha256'||boundary.policy!=='resolved-native-contract-v1'||
+    boundary.nativeConformance!=='not-established'||
+    boundary.lawVerification!=='not-established-by-boundary-correspondence'||
+    bindingDigest(boundary.assumptions??null)!==bindingDigest(boundaryAssumptions)||
+    !availableBoundary(boundary.before)||!availableBoundary(boundary.after))
+    return pending(boundary?.after?.reason||boundary?.before?.reason||
+      'A complete resolved native boundary comparison with its original assumptions is required.');
+  const configuration={...bindingProposal.proposedNativeBindings,types:[]};
+  if(bindingDigest(boundary.after.contract.configuration)!==bindingDigest(configuration)||
+    boundary.status!=='matched'||boundary.before.digest!==boundary.after.digest)
+    return pending('Resolved native call contracts or generated adapter layouts differ across the migration.');
+  return {status:'matched',basis:'compiler-resolved-native-contract-correspondence',
+    scope:boundary.scope,assumptions:[...boundaryAssumptions],
+    nativeConformance:'not-established',lawVerification:'not-established-by-boundary-correspondence'};
+}
+
 export async function planMigrationGeneration(compiler,config,input,sources,before,after,bindingPreview){
   const rows=[];
   for(const binding of bindingPreview.targets){
     const target=binding.index===null?input:config.targets[binding.index];
     if(binding.status!=='matched'||!binding.target||typeof compiler.migrationGeneration!=='function'){
-      rows.push({target:binding.target,index:binding.index,...pending(binding.reason||
-        'A concrete target, matching binding proposal and generation-capable compiler are required.')});continue;
+      const unavailable=pending(binding.reason||
+        'A concrete target, matching binding proposal and generation-capable compiler are required.');
+      rows.push({target:binding.target,index:binding.index,...unavailable,nativeBoundary:{...unavailable}});continue;
     }
     const options={...input,schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
       target:binding.target,sourceDir:target.sourceDir,testDir:target.testDir,minify:input.minify===true};
@@ -55,9 +86,14 @@ export async function planMigrationGeneration(compiler,config,input,sources,befo
     const result=await compiler.migrationGeneration(request),evidence=result.migrationGeneration;
     const checked=result.diagnostics?.length?pending(result.diagnostics.map(item=>item.message).join(' ')):
       checkGenerationReceipt(before,after,request,binding.evidence,evidence);
-    rows.push({target:binding.target,index:binding.index,...checked,evidence,diagnostics:result.diagnostics??[]});
+    const nativeBoundary=checked.status==='accepted'?
+      checkNativeBoundaryReceipt(before,after,request,binding.evidence,evidence):pending(checked.reason);
+    rows.push({target:binding.target,index:binding.index,...checked,nativeBoundary,evidence,diagnostics:result.diagnostics??[]});
   }
   const count=bindingPreview.configurationCount;
   return {status:count===0?'not-requested':rows.length===count&&rows.every(row=>row.status==='accepted')?'accepted':'not-established',
-    scope:'every configured target; emitted artifacts, not native execution',configurationCount:count,targets:rows};
+    scope:'every configured target; emitted artifacts, not native execution',configurationCount:count,targets:rows,
+    nativeBoundary:{status:count===0?'not-requested':rows.length===count&&rows.every(row=>row.nativeBoundary.status==='matched')?
+      'matched':'not-established',configurationCount:count,
+      scope:'resolved native call contracts and generated adapter layouts under unchanged native implementation assumptions'}};
 }

@@ -631,6 +631,7 @@ library
       LawSpec.Matchers
       LawSpec.Memo
       LawSpec.MigrationBindings
+      LawSpec.MigrationBoundary
       LawSpec.MigrationDefinitionTransport
       LawSpec.MigrationDomains
       LawSpec.MigrationElaboration
@@ -646,6 +647,7 @@ library
       LawSpec.ModelTests
       LawSpec.NativeBinding
       LawSpec.NativeRequest
+      LawSpec.NativeRequestView
       LawSpec.Network
       LawSpec.Packages
       LawSpec.Parser

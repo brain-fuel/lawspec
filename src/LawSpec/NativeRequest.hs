@@ -1,7 +1,7 @@
 -- | Public binding configuration is resolved before entering target emission.
 module LawSpec.NativeRequest
   ( NativeRequest(..), NetworkBinding(..), networkArtifacts, FunctionBinding(..), NameBinding(..), NativeCall(..), GoImport(..), ErlangInclude(..), BindingPlan(..), HandlerBinding(..), FailureMapping(..)
-  , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, hasBindings
+  , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, normalizedNativeRequest, hasBindings
   ) where
 
 import Control.Monad (unless, when)
@@ -10,7 +10,7 @@ import Data.Aeson.Types (Parser)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isAscii, isAlpha, isAlphaNum, isLower)
-import Data.List (find, nub)
+import Data.List (find, nub, sortOn)
 import qualified LawSpec.Core as C
 import LawSpec.NativeBinding
 import LawSpec.AbilityNames (interfaceName)
@@ -87,6 +87,25 @@ emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] [] [] [] Nothing 
 -- | A plan without bindings, which emitters treat as the generated-types path.
 emptyBindingPlan :: BindingPlan
 emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] [] [] [] []
+-- | Only resolver-independent configuration orders are normalized. Failure
+-- mappings retain their first-match precedence.
+normalizedNativeRequest :: NativeRequest -> BindingPlan -> NativeRequest
+normalizedNativeRequest request resolved=request{requestBindings=Bindings types generators,
+  requestFunctions=sortOn functionDeclaration (requestFunctions request),requestNames=sortOn nameDeclaration (requestNames request),
+  requestHandlers=sortOn boundAbility (requestHandlers request),
+  requestGoImports=sortOn goImportAlias (requestGoImports request)}
+  where
+    types=[TypeBinding (C.dataId (resolvedDeclaration binding)) (resolvedNativeType binding)
+      [ConstructorBinding (C.constructorName (resolvedConstructor constructor)) (resolvedNativeConstructor constructor)
+        (resolvedConstructorStyle constructor) (case resolvedFieldPaths constructor of
+          Nothing->[FieldBinding (C.binderName field) native | (field,native)<-resolvedFields constructor]
+          Just paths->[NestedFieldBinding label native rest index |
+            (index,((_,native),label:rest))<-zip [0..] (zip (resolvedFields constructor) paths)]) |
+        constructor<-resolvedConstructors binding] (resolvedCodec binding) (resolvedArguments binding) |
+      binding<-sortOn (C.dataId . resolvedDeclaration) (resolvedTypes (bindingRepresentations resolved))]
+    generators=sortOn generatorType (generatorBindings (requestBindings request))
+
+
 -- | Projects without bindings skip the binding companion files. Bound handlers
 -- and failures do not count: they only change how the tests make production
 -- handlers and catch native failures.

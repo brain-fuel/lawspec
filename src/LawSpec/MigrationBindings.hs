@@ -21,6 +21,7 @@ import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
 import LawSpec.NativeBinding
 import qualified LawSpec.Targets as Targets
 import LawSpec.NativeRequest
+import LawSpec.NativeRequestView (nativeRequestView)
 
 -- The original wire object is echoed so a coordinator can reject stale facts
 -- prepared for another target configuration without reimplementing resolution.
@@ -73,7 +74,7 @@ bindingProposalWithRequest target requested plan previous next before after orig
     "proposedNativeBindings" .= candidate,"changes" .= changes,"requirements" .= reasons,
     "proposalComplete" .= null limits,"nativeConformance" .= ("not-established"::String),
     "targetGeneration" .= ("not-established"::String),"lawVerification" .= ("not-established-by-binding-correspondence"::String)],
-    case selectedPlan of Right checked | status=="matched" -> Just (normalizedRequest selected checked); _ -> Nothing)
+    case selectedPlan of Right checked | status=="matched" -> Just (normalizedNativeRequest selected checked); _ -> Nothing)
   where
     orderedEvidence=sortOn (\item -> (obligationUnit item,obligationDeclaration item,obligationStage item)) . bindingEvidence
     fingerprint=digestHex . digest . BL.toStrict . encode
@@ -92,7 +93,7 @@ bindingProposalWithRequest target requested plan previous next before after orig
     closure seen (identity:rest) | identity `Set.member` seen=closure seen rest
       | otherwise=closure (Set.insert identity seen) (M.findWithDefault [] identity graph++rest)
     automatic request resolved =
-      let mappings=map migrateType (typeBindings (requestBindings request))
+      let mappings=map (migrateType resolved) (typeBindings (requestBindings request))
           generators=["generator for "++C.idText (generatorType generator)++
               " uses a changed generated representation and needs independent native correspondence checks" |
             generator<-generatorBindings (requestBindings request),affected (generatorType generator),
@@ -109,16 +110,18 @@ bindingProposalWithRequest target requested plan previous next before after orig
             identity `notElem` map (C.dataId . resolvedDeclaration) (resolvedTypes (bindingRepresentations resolved))]
       in (request{requestBindings=(requestBindings request){typeBindings=[binding | (binding,_,_)<-mappings]}},
           concat [changes | (_,changes,_)<-mappings],concat [limits | (_,_,limits)<-mappings]++generators++functions)
-    migrateType binding =
+    migrateType resolved binding =
       let pairs=case find ((==boundType binding) . C.dataId . fst) (payloadDeclarations plan) of
             Just (old,new)->[(a,b) | (a,b)<-zip (C.dataConstructors old) (C.dataConstructors new)]
             Nothing->[]
-          entries=map (migrateConstructor (boundType binding) pairs) (boundConstructors binding)
+          originals=[constructor | mapping<-resolvedTypes (bindingRepresentations resolved),
+            C.dataId (resolvedDeclaration mapping)==boundType binding,constructor<-resolvedConstructors mapping]
+          entries=map (migrateConstructor (boundType binding) pairs originals) (boundConstructors binding)
           hooks=["codec for "++C.idText (boundType binding)++" receives a changed logical representation; its implementation needs independent correspondence checks" |
             boundCodec binding/=Nothing,affected (boundType binding)]
       in (binding{boundConstructors=[made | (made,_,_)<-entries]},concat [changes | (_,changes,_)<-entries],
           hooks++concat [limits | (_,_,limits)<-entries])
-    migrateConstructor identity pairs binding=case find ((==boundConstructor binding) . C.constructorName . fst) pairs of
+    migrateConstructor identity pairs originals binding=case find ((==boundConstructor binding) . C.constructorName . fst) pairs of
       Just (old,new) | [field]<-C.constructorFields old,[payload]<-C.constructorFields new,
         C.binderType field==C.binderType payload ->
           let changes=[object ["kind" .= ("single-payload-field"::String),"type" .= C.idText identity,
@@ -126,14 +129,22 @@ bindingProposalWithRequest target requested plan previous next before after orig
                 "native" .= nativeField mapped] | mapped<-boundFields binding,C.binderName field/=C.binderName payload]
           in (binding{boundFields=[mapped{boundField=C.binderName payload} | mapped<-boundFields binding]},changes,[])
       Just (old,new) | length (C.constructorFields old)>1,[payload]<-C.constructorFields new ->
-        (binding{boundFields=[NestedFieldBinding (C.binderName payload) (nativeField mapped) [C.binderName field] index |
-          (index,field)<-zip [0..] (C.constructorFields old),mapped<-boundFields binding,boundField mapped==C.binderName field]},
-          [object ["kind" .= ("grouped-record-payload"::String),"type" .= C.idText identity,
-          "constructor" .= boundConstructor binding,"fields" .=
-            [object ["field" .= C.binderName field,"native" .= nativeField mapped,"nativeArgumentIndex" .= index,
-              "payloadPath" .= [C.binderName payload,C.binderName field]] |
-              (index,field)<-zip [0::Int ..] (C.constructorFields old),mapped<-boundFields binding,boundField mapped==C.binderName field],
-          "payload" .= C.binderName payload]],[])
+        case find ((==C.constructorId old) . C.constructorId . resolvedConstructor) originals of
+          Nothing->(binding,[],["checked original constructor layout is unavailable"])
+          Just original->
+            let fields=resolvedFields original
+                paths=case resolvedFieldPaths original of
+                  Just values->values
+                  Nothing->[[C.binderName field] | (field,_)<-fields]
+                ordered=zip [0::Int ..] (zip fields paths)
+            in (binding{boundFields=[NestedFieldBinding (C.binderName payload) native path index |
+                  (index,((_,native),path))<-ordered]},
+                [object ["kind" .= ("grouped-record-payload"::String),"type" .= C.idText identity,
+                  "constructor" .= boundConstructor binding,"fields" .=
+                    [object ["field" .= label,"native" .= native,"nativeArgumentIndex" .= index,
+                      "payloadPath" .= (C.binderName payload:path)] |
+                      (index,((_,native),path@(label:_)))<-ordered],
+                  "payload" .= C.binderName payload]],[])
       _->(binding,[],[])
 
 typeNames :: C.Type -> [C.Id]
@@ -144,53 +155,4 @@ typeNames (C.Constructor name arguments)=C.Id name:concat [typeNames ty | C.Type
 -- Normalize only orders already made irrelevant by the existing resolver.
 -- In particular native constructor arguments follow declaration order.
 normalized :: NativeRequest -> BindingPlan -> Value
-normalized request resolved=nativeRequestView (normalizedRequest request resolved)
-
-normalizedRequest :: NativeRequest -> BindingPlan -> NativeRequest
-normalizedRequest request resolved=request{requestBindings=Bindings types generators,
-  requestFunctions=sortOn functionDeclaration (requestFunctions request),requestNames=sortOn nameDeclaration (requestNames request),
-  requestHandlers=sortOn boundAbility (requestHandlers request),requestFailures=sortOn (referenceParts . mappedNative) (requestFailures request),
-  requestGoImports=sortOn goImportAlias (requestGoImports request)}
-  where
-    types=[TypeBinding (C.dataId (resolvedDeclaration binding)) (resolvedNativeType binding)
-      [ConstructorBinding (C.constructorName (resolvedConstructor constructor)) (resolvedNativeConstructor constructor)
-        (resolvedConstructorStyle constructor) (case resolvedFieldPaths constructor of
-          Nothing->[FieldBinding (C.binderName field) native | (field,native)<-resolvedFields constructor]
-          Just paths->[NestedFieldBinding label native rest index |
-            (index,((_,native),label:rest))<-zip [0..] (zip (resolvedFields constructor) paths)]) |
-        constructor<-resolvedConstructors binding] (resolvedCodec binding) (resolvedArguments binding) |
-      binding<-sortOn (C.dataId . resolvedDeclaration) (resolvedTypes (bindingRepresentations resolved))]
-    generators=sortOn generatorType (generatorBindings (requestBindings request))
-
-fieldView field=object (["field" .= boundField field,"native" .= nativeField field]++case field of
-  FieldBinding{}->[]
-  NestedFieldBinding{..}->["path" .= nestedFieldPath,"argument" .= fieldArgument])
-
-nativeRequestView :: NativeRequest -> Value
-nativeRequestView request=object
-  (["types" .= map typeView (typeBindings (requestBindings request)),
-    "generators" .= map generatorView (generatorBindings (requestBindings request)),
-    "functions" .= map functionView (requestFunctions request),
-    "goImports" .= [object ["alias" .= goImportAlias item,"path" .= goImportPath item] | item<-requestGoImports request],
-    "erlangIncludes" .= [object ["path" .= erlangIncludePath item,"library" .= erlangIncludeLibrary item] | item<-requestErlangIncludes request],
-    "handlers" .= [object ["ability" .= boundAbility item,"native" .= referenceParts (boundNative item)] | item<-requestHandlers request],
-    "failures" .= [object ["failure" .= mappedFailure item,"native" .= referenceParts (mappedNative item)] | item<-requestFailures request],
-    "names" .= [object ["declaration" .= C.idText (nameDeclaration item),"name" .= nameOverride item] | item<-requestNames request]] ++
-    ["rustCrate" .= name | Just name<-[requestRustCrate request]]++
-    ["network" .= object (["identity" .= name | Just name<-[networkIdentity item]]++
-      ["trusted" .= name | Just name<-[networkTrusted item]]) | Just item<-[requestNetwork request]])
-  where
-    typeView item=object (["type" .= C.idText (boundType item),"native" .= referenceParts (nativeType item),
-      "constructors" .= [object ["constructor" .= boundConstructor constructor,
-        "native" .= referenceParts (nativeConstructor constructor),"style" .= style (constructorStyle constructor),
-        "fields" .= map fieldView (boundFields constructor)] | constructor<-boundConstructors item]]++
-      ["codec" .= object ["toNative" .= referenceParts (codecToNative codec),"fromNative" .= referenceParts (codecFromNative codec)] | Just codec<-[boundCodec item]]++
-      ["arguments" .= arguments | Just arguments<-[boundArguments item]])
-    generatorView item=object ["type" .= C.idText (generatorType item),"factory" .= referenceParts (generatorFactory item),"stub" .= generatorStub item]
-    functionView item=object (["declaration" .= C.idText (functionDeclaration item)]++case functionNative item of
-      StaticCall ref->["native" .= referenceParts ref]
-      MethodCall name->["method" .= name]
-      ConstructorCall ref->["constructor" .= referenceParts ref])
-    style RecordConstructor="record"::String
-    style VariantConstructor="variant"
-    style UnitConstructor="unit"
+normalized request resolved=nativeRequestView (normalizedNativeRequest request resolved)
