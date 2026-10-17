@@ -9,7 +9,39 @@ import {mkdtemp, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {utf16Position} from '../lsp.mjs';
 const legacyOptions={schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',verification:{layers:legacyLawLayers}};
+
+test('compiler spans round-trip wide literals, combining marks and tabs through migration and editor positions', async () => {
+  const compiler = await createCompiler();
+  const content = 'unit wide\r\n' +
+    'definition message (flag :: Bool) :: Text is if flag then "😀Ａe\u0301"\telse "done" end\r\n' +
+    'law `literal 😀Ａe\u0301 survives` is\r\n' +
+    '  definition is `for all` (flag :: Bool) . message flag = message flag end\r\n' +
+    '  example `wide literal 😀Ａ` is flag = true expect message flag = "😀Ａe\u0301" end\r\nend\r\n';
+  const input = {sources:[{path:'wide.lawspec',content}]};
+  const baseline = await compiler.migrationBaseline({...legacyOptions,...input});
+  assert.deepEqual(baseline.diagnostics, []);
+  const inventory = baseline.sourceSyntax.find(source => source.path === 'wide.lawspec');
+  for (const node of inventory.nodes) {
+    const start = migrationOffset(content,node.span.start), end = migrationOffset(content,node.span.end);
+    assert.ok(start <= end, node.kind);
+    for (const at of [node.span.start,node.span.end]) {
+      const position = utf16Position(content,at);
+      const offset = content.split('\n').slice(0,position.line).reduce((size,line) => size+line.length+1,0)+position.character;
+      assert.equal(offset,migrationOffset(content,at),node.kind);
+    }
+  }
+  assert.deepEqual(inventory.nodes.filter(node => node.kind === 'text').map(node =>
+    content.slice(migrationOffset(content,node.span.start),migrationOffset(content,node.span.end)).trim()),
+    ['"😀Ａe\u0301"','"done"','"😀Ａe\u0301"']);
+  const report = await migrationReport(compiler,{version:1,sources:['laws'],targets:[]},input);
+  assert.deepEqual(report.diagnostics, []);
+  assert.equal(report.validated,true,JSON.stringify(report.blockers));
+  assert.ok(report.sourcePreview.sources[0].content.includes('"😀Ａe\u0301"'));
+  for (const segment of report.sourcePreview.sources[0].segments.filter(segment => segment.retained))
+    assert.equal(report.sourcePreview.sources[0].content.slice(segment.start,segment.end),content.slice(segment.originalStart,segment.originalEnd));
+});
 
 test('migration tokens retain comments, quoted names, literal escapes and Unicode exactly', () => {
   const text = 'unit sample\r\n-- end "text"\r\n`a law` "end \\" | 😀" + \'\'\t:: ->\n';

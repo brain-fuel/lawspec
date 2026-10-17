@@ -300,6 +300,34 @@ test_sourceSyntax = describe "checked migration source syntax" $ do
     let source = Source "unicode.lawspec" "unit unicode\n-- 😀 description\ndefinition identity (value :: Bool) :: Bool is\n\tvalue\nend\n"
         selected = [syntaxSpan node | node <- nodesOf (inventory [source]),syntaxKind node == "expression.name",syntaxName node == Just "value"]
     map spanStart selected `shouldBe` [Location "unicode.lawspec" 4 9]
+  it "uses code-point columns after wide and combining characters in both grammars" $ do
+    forM_ [False,True] $ \canonical -> do
+      let prefix = if canonical
+            then "function message (flag :: Bool) -> Text is "
+            else "definition message (flag :: Bool) :: Text is "
+          expression = "if flag then \"😀Ａe\x301\" else \"done\""
+          closer = if canonical then " end if end function" else " end"
+          source = Source "wide.lawspec" ("unit wide\r\n"++prefix++expression++closer++"\r\n")
+          result = compileWithSourceSyntax canonical (\_ name->name) (\_ _->Nothing) 64 defaultGeneration [source]
+          selected = [syntaxSpan node | node<-nodesOf result,syntaxKind node=="text"]
+          afterFirst = length prefix + length ("if flag then \"😀Ａe\x301\" " :: String) + 1
+          startSecond = afterFirst + length ("else " :: String)
+      case result of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right _ -> do
+          map spanStart selected `shouldBe`
+            [Location "wide.lawspec" 2 (length prefix+length ("if flag then " :: String)+1),
+             Location "wide.lawspec" 2 startSecond]
+          map spanEnd selected `shouldBe`
+            [Location "wide.lawspec" 2 afterFirst,
+             Location "wide.lawspec" 2 (startSecond+length ("\"done\" " :: String))]
+  it "reports parser errors in code-point columns after wide literals" $ do
+    let prefix = "unit wide function broken (flag :: Bool) -> Text is if flag then \"😀Ａe\x301\" else "
+        source = Source "wide-error.lawspec" (prefix++"end if end function")
+    case compileWithSourceSyntax True (\_ name->name) (\_ _->Nothing) 64 defaultGeneration [source] of
+      -- The identifier parser rejects the reserved word after consuming "end".
+      Left diagnostics -> map at diagnostics `shouldBe` [Just (Location "wide-error.lawspec" 1 (length prefix+4))]
+      Right _ -> expectationFailure "expected a malformed branch to be rejected"
   it "records constructors, dependent fields, patterns, rows and each actual closer" $ do
     let source = Source "data.lawspec" $ unlines
           [ "unit data"

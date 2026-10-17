@@ -55,10 +55,12 @@ runParserT :: P a -> FilePath -> String -> Reader (M.Map String Header) (Either 
 runParserT = runParserWithCoordinates Nothing
 
 runParserWithCoordinates :: Maybe SourceOriginMap -> P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
-runParserWithCoordinates coordinates parser = MP.runParserT (evalStateT parser (ParseContext Nothing coordinates))
+runParserWithCoordinates coordinates parser name text = MP.runParserT
+  (evalStateT parser (ParseContext Nothing (Just positions))) name text
+  where positions = maybe (sourceCoordinatesFor [] (Source name text)) id coordinates
 
 runParserAt :: [SourceOriginMap] -> P a -> Source -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
-runParserAt origins parser source = runParserWithCoordinates (sourceOriginFor origins source) parser (path source) (content source)
+runParserAt origins parser source = runParserWithCoordinates (Just (sourceCoordinatesFor origins source)) parser (path source) (content source)
 
 sourceLocation :: P Location
 sourceLocation = do
@@ -2528,7 +2530,7 @@ sourceUnit source@(Source p s) = case partitionHarnessSources [source] of
 -- constructor arities, with each data type's constructors.
 sourceExports :: [SourceOriginMap] -> M.Map String Header -> Source -> (M.Map String Header, [(String, [String])])
 sourceExports origins extra source@(Source _ s) =
-  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders (sourceOriginFor origins source) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)),
+  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)),
    constructorOwners extra s)
 
 parseWith :: M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
@@ -2546,9 +2548,7 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
     let u0 = parsed { functionDefinitions =
           [d { functionSource = Just (unitName parsed,functionName d) } | d <- functionDefinitions parsed] }
     -- A harness file is read with the names of the unit it serves.
-    separate <- mapM (\harness@(Source hp hs) -> either (\e -> Left [case sourceOriginFor origins harness of
-        Nothing -> Diagnostic "parse" (errorBundlePretty e) Nothing
-        Just _ -> parseDiagnostic origins harness e]) Right
+    separate <- mapM (\harness@(Source hp hs) -> either (\e -> Left [parseDiagnostic origins harness e]) Right
       (runReader (MP.runParserT (runStateT harnessFileP (initialContext harness)) hp hs) (profile harness environment))) harnessFiles
     u <- case (unitHarness u0, map fst separate) of
       (_, []) -> pure u0
@@ -2577,8 +2577,8 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
           else []
     pure (((elaborated, imports), families'),inventory)
   where
-    initialContext input = ParseContext (if capture then Just [] else Nothing) (sourceOriginFor origins input)
-    environment = literalHeaders (sourceOriginFor origins source) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)
+    initialContext input = ParseContext (if capture then Just [] else Nothing) (Just (sourceCoordinatesFor origins input))
+    environment = literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)
 
 parseDiagnostic :: [SourceOriginMap] -> Source -> ParseErrorBundle String Void -> Diagnostic
 parseDiagnostic origins source bundle =
@@ -2587,11 +2587,12 @@ parseDiagnostic origins source bundle =
       (_,state)=reachOffset offset (bundlePosState bundle)
       position=pstateSourcePos state
       raw=Location (sourceName position) (unPos (sourceLine position)) (unPos (sourceColumn position))
-  in case sourceOriginFor origins source of
-    Nothing -> Diagnostic "parse" (errorBundlePretty bundle) (Just raw)
-    Just coordinates -> case originalLocation coordinates offset of
-      Just location -> Diagnostic "parse" (parseErrorTextPretty err) (Just location)
-      Nothing -> Diagnostic "source-origin" "parser error offset is outside the prepared source" Nothing
+  in case originalLocation (sourceCoordinatesFor origins source) offset of
+    Just location -> Diagnostic "parse"
+      (case sourceOriginFor origins source of
+        Nothing | location==raw -> errorBundlePretty bundle
+        _ -> parseErrorTextPretty err) (Just location)
+    Nothing -> Diagnostic "source-origin" "parser error offset is outside the prepared source" Nothing
 
 -- Sources that hold a harness rather than a unit, each with its header.
 partitionHarnessSources :: [Source] -> ([(Source, Either String (String, String))], [Source])

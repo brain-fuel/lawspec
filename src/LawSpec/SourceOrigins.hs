@@ -2,7 +2,7 @@
 -- characters retain their positions; generated characters point to their
 -- insertion site. This is source provenance, not another syntax representation.
 module LawSpec.SourceOrigins
-  ( SourceOriginMap, insertSourceNames, sourceOriginFor, originalLocation ) where
+  ( SourceOriginMap, insertSourceNames, sourceOriginFor, sourceCoordinatesFor, originalLocation ) where
 
 import LawSpec.Common
 import qualified Data.IntMap.Strict as IM
@@ -14,6 +14,25 @@ data SourceOriginMap = SourceOriginMap Source (IM.IntMap Location)
 sourceOriginFor :: [SourceOriginMap] -> Source -> Maybe SourceOriginMap
 sourceOriginFor origins source = find same origins
   where same (SourceOriginMap prepared _) = prepared==source
+
+-- Parser display columns can count a wide character twice. Public source
+-- coordinates count code points, with eight-column tab stops, even when the
+-- compiler has inserted no namespace qualifiers.
+sourceCoordinatesFor :: [SourceOriginMap] -> Source -> SourceOriginMap
+sourceCoordinatesFor origins source = case sourceOriginFor origins source of
+  Just coordinates -> coordinates
+  Nothing -> SourceOriginMap source (authoredPositions source)
+
+authoredPositions :: Source -> IM.IntMap Location
+authoredPositions source = IM.fromDistinctAscList
+  (zip [0..] (scanl advance (Location (path source) 1 1) (content source)))
+  where
+    advance (Location name row col) character =
+      let (nextRow,nextCol)=case character of
+            '\n' -> (row+1,1)
+            '\t' -> (row,col+8-((col-1) `mod` 8))
+            _ -> (row,col+1)
+      in nextRow `seq` nextCol `seq` Location name nextRow nextCol
 
 originalLocation :: SourceOriginMap -> Int -> Maybe Location
 originalLocation (SourceOriginMap _ positions) offset = IM.lookup offset positions
@@ -32,14 +51,7 @@ insertSourceNames source insertions = do
         in zip retained [cursor..]++[(character,offset) | character<-added]++pieces offset after rest
       preparedCharacters=pieces 0 text edits
       prepared=source{content=map fst preparedCharacters}
-      authoredPositions=IM.fromDistinctAscList (zip [0..] (scanl advance (Location (path source) 1 1) text))
+      authored=authoredPositions source
       offsets=map snd preparedCharacters++[size]
-      positions=IM.fromDistinctAscList [(offset,authoredPositions IM.! original) | (offset,original)<-zip [0..] offsets]
+      positions=IM.fromDistinctAscList [(offset,authored IM.! original) | (offset,original)<-zip [0..] offsets]
   pure (prepared,Just (SourceOriginMap prepared positions))
-  where
-    advance (Location name row col) character =
-      let (nextRow,nextCol)=case character of
-            '\n' -> (row+1,1)
-            '\t' -> (row,col+8-((col-1) `mod` 8))
-            _ -> (row,col+1)
-      in nextRow `seq` nextCol `seq` Location name nextRow nextCol

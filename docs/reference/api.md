@@ -193,8 +193,10 @@ executable representation. The same type, capability, effect, totality and
 definition-contract checks must succeed before any inventory is returned.
 Law verification still follows `verification.layers`; an empty selection
 reports `not-verified`. Spans count Unicode code points and eight-column tab
-stops, as other compiler spans do. Source-edit clients translate them to their
-own offset convention. See [source migration](../explanation/api-migration.md#source-migration-from-024).
+stops, as other compiler spans do. Display width does not change the count:
+an emoji or fullwidth letter counts once, and a combining mark counts as a
+separate code point. Source-edit clients translate them to their own offset
+convention. See [source migration](../explanation/api-migration.md#source-migration-from-024).
 
 ### Constructor payload comparison
 
