@@ -90,7 +90,12 @@ instantiate(C, Args) ->
     end, Known, maps:get(refinements, C, [])),
     case Bound of
         mismatch -> false;
-        _ -> {true, C#{arguments => Args, fields => [{N, substitute(T, Bound)} || {N, T} <- maps:get(fields, C)]}}
+        _ ->
+            Applied = C#{arguments => Args, fields => [{N, substitute(T, Bound)} || {N, T} <- maps:get(fields, C)]},
+            case maps:find(native_layout, C) of
+                error -> {true, Applied};
+                {ok, Layout} -> {true, Applied#{native_layout => layout_substitute(Layout, Bound)}}
+            end
     end.
 
 unify({parameter, I}, Actual, Known) ->
@@ -130,11 +135,26 @@ with_bindings(#{definitions := Definitions} = S, Shapes, Hooks) ->
         C <- maps:get(constructors, D)]),
     maps:foreach(fun(Tag, Shape) ->
         require(maps:is_key(Tag, Constructors), {unknown_native_constructor, Tag}),
-        case Shape of
-            #{native_tag := Atom} when map_size(Shape) =:= 1, is_atom(Atom) -> ok;
-            #{encode := Encode, decode := Decode} when map_size(Shape) =:= 2,
+        require(is_map(Shape), {invalid_native_shape, Tag}),
+        NativeShape = maps:remove(native_layout, Shape),
+        case NativeShape of
+            #{native_tag := Atom} when map_size(NativeShape) =:= 1, is_atom(Atom) -> ok;
+            #{encode := Encode, decode := Decode} when map_size(NativeShape) =:= 2,
                     is_function(Encode, 1), is_function(Decode, 1) -> ok;
             _ -> fail({invalid_native_shape, Tag})
+        end,
+        case maps:find(native_layout, Shape) of
+            error -> ok;
+            {ok, Layout} ->
+                Definition = maps:get(maps:get(Tag, Constructors), Definitions),
+                C = find_constructor(Tag, maps:get(constructors, Definition)),
+                require(is_list(Layout) andalso length(Layout) =:= length(maps:get(fields, C)),
+                    {invalid_native_layout, Tag}),
+                require(maps:get(existentials, C, 0) =:= 0 andalso maps:get(witnesses, C, []) =:= []
+                    andalso maps:get(refinements, C, []) =:= [], {invalid_native_layout, Tag}),
+                Indices = audit_layout(Layout, maps:get(parameters, Definition), S),
+                require(lists:sort(Indices) =:= lists:seq(0, length(Indices) - 1),
+                    {invalid_native_layout, Tag})
         end
     end, Shapes),
     NativeShapes = maps:merge(maps:get(native_shapes, S, #{}), Shapes),
@@ -153,7 +173,7 @@ with_bindings(#{definitions := Definitions} = S, Shapes, Hooks) ->
     end, Combined),
     Native = maps:map(fun(_, D) -> D#{constructors => [case maps:find(maps:get(tag, C), Shapes) of
         error -> C;
-        {ok, Shape} -> maps:merge(maps:without([native_tag, encode, decode], C), Shape)
+        {ok, Shape} -> maps:merge(maps:without([native_tag, encode, decode, native_layout], C), Shape)
     end || C <- maps:get(constructors, D)]} end, Definitions),
     S#{definitions => Native, native_codecs => Combined, native_shapes => NativeShapes,
         canonical => maps:get(canonical, S, S)}.
@@ -270,6 +290,14 @@ walk_data(Value, {Name, Args}, Cs, S, Mode) ->
         _ -> fail(expected_data)
     end,
     Tag = maps:get(tag, C),
+    case {Mode, maps:find(native_layout, C)} of
+        {encode, {ok, Layout}} -> native_construct(C, layout_encode(Layout, Fields, S));
+        {decode, {ok, Layout}} -> {ls_data, Tag, layout_decode(Layout, Fields, S)};
+        _ -> walk_fields(Name, Args, C, Fields, S, Mode)
+    end.
+
+walk_fields(Name, Args, C, Fields, S, Mode) ->
+    Tag = maps:get(tag, C),
     Declared = maps:get(fields, C),
     require(is_list(Fields) andalso length(Fields) =:= length(Declared), {wrong_field_count, Tag}),
     Typed = witnessed(C, Fields, S),
@@ -286,6 +314,56 @@ walk_data(Value, {Name, Args}, Cs, S, Mode) ->
             check_collection(Name, Converted),
             {ls_data, Tag, Converted}
     end.
+
+%% The compiler supplies one checked packing tree, not source field paths.
+%% Logical validation still surrounds conversion. Leaves run in native argument
+%% order, while structural packing retains the canonical field order.
+%% ref:DEC-native-bindings-typed-identity ref:DEC-typed-core-boundary
+audit_layout(Nodes, Scope, S) when is_list(Nodes) ->
+    lists:append([case Node of
+        {leaf, Index, Type} when is_integer(Index), Index >= 0 ->
+            check_type(Type, Scope, S), [Index];
+        {record, Tag, Children} when is_binary(Tag), is_list(Children) ->
+            Known = [C || D <- maps:values(maps:get(definitions, S)),
+                C <- maps:get(constructors, D), maps:get(tag, C) =:= Tag],
+            require(length(Known) =:= 1 andalso
+                length(Children) =:= length(maps:get(fields, hd(Known))), invalid_native_layout),
+            audit_layout(Children, Scope, S);
+        _ -> fail(invalid_native_layout)
+    end || Node <- Nodes]);
+audit_layout(_, _, _) -> fail(invalid_native_layout).
+
+layout_substitute(Nodes, Known) -> [case Node of
+    {leaf, Index, Type} -> {leaf, Index, substitute(Type, Known)};
+    {record, Tag, Children} -> {record, Tag, layout_substitute(Children, Known)}
+end || Node <- Nodes].
+
+layout_values(Nodes, Fields) ->
+    require(is_list(Fields) andalso length(Fields) =:= length(Nodes), invalid_native_layout),
+    lists:append([case {Node, Value} of
+        {{leaf, Index, Type}, _} -> [{Index, Type, Value}];
+        {{record, Tag, Children}, {ls_data, Tag, Values}} -> layout_values(Children, Values);
+        _ -> fail(invalid_native_layout)
+    end || {Node, Value} <- lists:zip(Nodes, Fields)]).
+
+layout_leaves(Nodes) -> lists:append([case Node of
+    {leaf, Index, Type} -> [{Index, Type}];
+    {record, _, Children} -> layout_leaves(Children)
+end || Node <- Nodes]).
+
+layout_encode(Layout, Fields, S) ->
+    [walk(Value, Type, S, encode) || {_, Type, Value} <- lists:keysort(1, layout_values(Layout, Fields))].
+
+layout_decode(Layout, Fields, S) ->
+    Leaves = lists:keysort(1, layout_leaves(Layout)),
+    require(is_list(Fields) andalso length(Fields) =:= length(Leaves), invalid_native_layout),
+    Converted = [walk(Value, Type, S, decode) || {{_, Type}, Value} <- lists:zip(Leaves, Fields)],
+    layout_pack(Layout, Converted).
+
+layout_pack(Nodes, Values) -> [case Node of
+    {leaf, Index, _} -> lists:nth(Index + 1, Values);
+    {record, Tag, Children} -> {ls_data, Tag, layout_pack(Children, Values)}
+end || Node <- Nodes].
 
 %% Core collections have one canonical order. Reject malformed native values
 %% instead of accepting duplicate set items or duplicate map keys.

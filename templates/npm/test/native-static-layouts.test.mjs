@@ -32,7 +32,7 @@ const run=(command,args,options={})=>{
 };
 const selected=process.env.LAWSPEC_NATIVE_LAYOUT_TARGET;
 const required=target=>selected===target||selected==='all';
-const available=command=>spawnSync(command,[command==='kotlinc'?'-version':'--version'],{stdio:'ignore'}).status===0;
+const available=command=>spawnSync(command,command==='erl'?['-noshell','-eval','halt(0).']:[command==='kotlinc'?'-version':'--version'],{stdio:'ignore'}).status===0;
 async function files(root,extension){
   const found=[];
   for(const item of await readdir(root,{withFileTypes:true})){
@@ -618,6 +618,138 @@ for(const target of ['fsharp','swift']){
           await writeFile(path.join(root,'Package.swift'),`// swift-tools-version: 6.2\nimport PackageDescription\nlet package=Package(name:"NativeLayout",platforms:[.macOS(.v26)],targets:[.target(name:"LawSpecRuntime",path:"lawspec/LawSpecRuntime"),.executableTarget(name:"Check",dependencies:["LawSpecRuntime"],path:"src")])\n`);
           assert.match(run('swift',['run','--quiet','-j','2','Check'],{cwd:root}),/checked native layout passed/);
         }
+      }finally{await rm(root,{recursive:true,force:true});}
+    }
+  });
+}
+
+function beamBindings(target){
+  const made=dotnetSwiftBindings('swift'),elixir=target==='elixir';
+  const owner=elixir?'LayoutApplication':'layout_application';
+  for(const type of made.types){
+    type.native=[owner,target==='erlang'?type.type.split('::').at(-1).toLowerCase():type.type.split('::').at(-1)];
+    for(const constructor of type.constructors){
+      constructor.native=target==='erlang'||(elixir&&constructor.constructor==='Stop')?
+        [constructor.constructor.toLowerCase()]:[owner,constructor.constructor];
+    }
+  }
+  made.functions=made.functions.map(binding=>({...binding,native:[owner,binding.declaration.split('::').at(-1).replace(/[A-Z]/g,c=>'_'+c.toLowerCase())]}));
+  if(target==='erlang')made.erlangIncludes=[{path:'layout_application.hrl'}];
+  return made;
+}
+const erlangLayoutApplication=`-module(layout_application).
+-include("layout_application.hrl").
+-export([copy/1,copy_bad/1,copy_chain/1,copy_crate/1]).
+copy({packed,_,_,0}) -> error(native_input_reached);
+copy(Value) -> Value.
+copy_bad({packed,Tail,Enabled,_}) -> {packed,Tail,Enabled,0}.
+copy_chain(Value) -> Value.
+copy_crate(#crate{quantity=0}) -> error(native_input_reached);
+copy_crate(Value) -> Value.
+`;
+const elixirLayoutApplication=`defmodule LayoutApplication.Packed do
+  defstruct [:tail, :enabled, :quantity]
+end
+defmodule LayoutApplication.Link do
+  defstruct [:next, :flag]
+end
+defmodule LayoutApplication.Crate do
+  defstruct [:quantity, :enabled, :tail]
+end
+defmodule LayoutApplication do
+  def copy(%{quantity: 0}), do: raise("NATIVE_INPUT_REACHED")
+  def copy(value), do: value
+  def copy_bad(value), do: %{value | quantity: 0}
+  def copy_chain(value), do: value
+  def copy_crate(%{quantity: 0}), do: raise("NATIVE_INPUT_REACHED")
+  def copy_crate(value), do: value
+end
+`;
+const gleamLayoutApplication=`pub type Packet(a) { Packed(quantity: Int, tail: a, enabled: Bool) }
+pub type Chain { Stop Link(flag: Bool, next: Chain) }
+pub type Crate(a) { Crate(quantity: Int, enabled: Bool, tail: a) }
+pub fn copy(value: Packet(Int)) -> Packet(Int) {
+  case value.quantity { 0 -> panic as "NATIVE_INPUT_REACHED" _ -> value }
+}
+pub fn copy_bad(value: Packet(Int)) -> Packet(Int) { Packed(tail: value.tail, enabled: value.enabled, quantity: 0) }
+pub fn copy_chain(value: Chain) -> Chain { value }
+pub fn copy_crate(value: Crate(Int)) -> Crate(Int) {
+  case value.quantity { 0 -> panic as "NATIVE_INPUT_REACHED" _ -> value }
+}
+`;
+function beamCheck(target){
+  const packet=(quantity)=>target==='elixir'?`#{'__struct__'=>'Elixir.LayoutApplication.Packed',tail=>7,enabled=>true,quantity=>${quantity}}`:
+    target==='gleam'?`{packed,${quantity},7,true}`:`{packed,7,true,${quantity}}`;
+  const crate=target==='elixir'?`#{'__struct__'=>'Elixir.LayoutApplication.Crate',tail=>7,enabled=>true,quantity=>3}`:'{crate,3,true,7}';
+  const chain=target==='elixir'?`#{'__struct__'=>'Elixir.LayoutApplication.Link',next=>stop,flag=>true}`:
+    target==='gleam'?'{link,true,stop}':'{link,stop,true}';
+  return `-module(layout_check).
+-export([run/0]).
+require(true) -> ok; require(false) -> error(native_layout_mismatch).
+reason({Identity,Reason}) when is_binary(Identity) -> reason(Reason);
+reason({Code,_}) -> Code;
+reason(Code) -> Code.
+rejected(Code,Action) ->
+    try Action(), error(invalid_value_admitted)
+    catch error:{lawspec,Reason} -> require(reason(Reason) =:= Code) end.
+bad({ls_data,Tag,[{ls_data,Payload,[{ls_data,First,[_,Flag]},Tail]}]}) ->
+    {ls_data,Tag,[{ls_data,Payload,[{ls_data,First,[0,Flag]},Tail]}]}.
+run() ->
+    Canonical=lawspec_data:schema(#{}), Native=lawspec_native_bindings:schema(Canonical),
+    Packet={<<"layouts::type::Packet">>,[{<<"UInt8">>,[]}]},
+    Logical=lawspec_beam_schema:from_native(${packet(3)},Packet,Native),
+    {ls_data,_,[{ls_data,_,[{ls_data,_,[3,true]},7]}]}=Logical,
+    require(lawspec_beam_schema:to_native(Logical,Packet,Native) =:= ${packet(3)}),
+    require(lawspec_native_bindings:call_0(Canonical,#{},Logical) =:= Logical),
+    rejected(refinement_violation,fun() -> lawspec_native_bindings:call_0(Canonical,#{},bad(Logical)) end),
+    rejected(refinement_violation,fun() -> lawspec_native_bindings:call_1(Canonical,#{},Logical) end),
+    rejected(integer_out_of_range,fun() -> lawspec_beam_schema:from_native(${packet(256)},Packet,Native) end),
+    rejected(invalid_native_constructor,fun() -> lawspec_beam_schema:from_native(other_packet,Packet,Native) end),
+    Chain={<<"layouts::type::Chain">>,[]},
+    Recursive=lawspec_beam_schema:from_native(${chain},Chain,Native),
+    require(lawspec_native_bindings:call_2(Canonical,#{},Recursive) =:= Recursive),
+    require(lawspec_beam_schema:to_native(Recursive,Chain,Native) =:= ${chain}),
+    Crate={<<"layouts::type::Crate">>,[{<<"UInt8">>,[]}]},
+    Record=lawspec_beam_schema:from_native(${crate},Crate,Native),
+    require(lawspec_native_bindings:call_3(Canonical,#{},Record) =:= Record),
+    require(lawspec_beam_schema:to_native(Record,Crate,Native) =:= ${crate}),
+    rejected(refinement_violation,fun() -> lawspec_native_bindings:call_3(Canonical,#{},bad(Record)) end),
+    io:format("checked native layout passed~n").
+`;
+}
+const gleamStdlib=process.env.LAWSPEC_GLEAM_STDLIB??new URL('../../.integration/gleam/build/packages/gleam_stdlib',import.meta.url).pathname;
+for(const target of ['erlang','elixir','gleam']){
+  const tool=target==='erlang'?'erl':target;
+  test(`${target} native layouts compile generic records, variants and recursive values with checked boundaries`,
+    {skip:!required(target)&&(!available(tool)?`${tool} is not installed`:
+      target==='gleam'&&!existsSync(gleamStdlib)?'prepared Gleam standard library is not installed':false)},async()=>{
+    for(const machineBits of [32,64])for(const minify of [false,true]){
+      const result=await compiler.planGeneration({...options,target,machineBits,minify,
+        sources:[{path:'layouts.lawspec',content:dotnetSwiftSource}],nativeBindings:beamBindings(target)});
+      assert.deepEqual(result.diagnostics,[]);
+      const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-beam-layout-'));
+      try{
+        for(const file of result.files.filter(file=>file.placement==='source')){
+          const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,file.content);
+        }
+        await mkdir(path.join(root,'ebin'));
+        await writeFile(path.join(root,'src/layout_check.erl'),beamCheck(target));
+        if(target==='erlang'){
+          await writeFile(path.join(root,'src/layout_application.hrl'),'-record(crate,{quantity,enabled,tail}).\n');
+          await writeFile(path.join(root,'src/layout_application.erl'),erlangLayoutApplication);
+        }else if(target==='elixir'){
+          await writeFile(path.join(root,'src/layout_application.ex'),elixirLayoutApplication);
+          run('elixirc',['-o','ebin',...await files(path.join(root,'src'),'.ex')],{cwd:root});
+        }else{
+          await writeFile(path.join(root,'src/layout_application.gleam'),gleamLayoutApplication);
+          await writeFile(path.join(root,'gleam.toml'),`name = "native_layout_fixture"\nversion = "0.1.0"\ntarget = "erlang"\n[dependencies]\ngleam_stdlib = { path = ${JSON.stringify(gleamStdlib)} }\n`);
+          run('gleam',['build'],{cwd:root});
+        }
+        if(target!=='gleam')run('erlc',['-Werror','-I','src','-o','ebin',...await files(path.join(root,'src'),'.erl')],{cwd:root});
+        const beamDirectories=target==='gleam'?[...new Set((await files(path.join(root,'build'),'.beam')).map(file=>path.dirname(file)))]:[path.join(root,'ebin')];
+        const output=target==='elixir'?run('elixir',['-pa',...beamDirectories,'-e',':layout_check.run()'],{cwd:root}):
+          run('erl',['-noshell','-pa',...beamDirectories,'-eval','layout_check:run(),halt(0).'],{cwd:root});
+        assert.match(output,/checked native layout passed/);
       }finally{await rm(root,{recursive:true,force:true});}
     }
   });

@@ -97,7 +97,8 @@ its existing native conversion still applies.
 
 The migration report derives these layouts from the original checked constructor
 order. Python, JavaScript, TypeScript, Java, Kotlin, Scala, Rust, Go, Haskell,
-F#, Swift and Groovy's Java bridge currently pack and unpack them. JVM codecs use
+F#, Swift, Erlang, Elixir, Gleam and Groovy's Java bridge currently pack and unpack
+them. JVM codecs use
 the resolver's packing tree and ordinary schema construction. Rust derives moves and
 recursive boxing from that same tree; adapter arguments and results reaching a
 nested layout pass the existing schema validator at the selected machine width.
@@ -113,9 +114,16 @@ Swift checks each nested tag and arity before projecting its fields. Entries
 validate inputs reaching a layout before calling native code, and the existing
 schema validation checks native results. Native types need no extra equality
 or display implementation for conversion.
+The BEAM targets carry the checked packing tree and applied leaf types into
+their shared schema. Conversion substitutes generic arguments, converts leaves
+in native argument order, and retains logical validation before encoding and
+after decoding. Erlang record fields use the supplied header, Elixir uses
+struct fields, and Gleam's compiled constructor helper determines actual tuple
+positions; no target guesses them from source field order. Existing opaque
+child-codec conversions continue to cross the canonical and bound schemas.
 Scalar, nested record and enclosing constructor validation remains mandatory.
-BEAM emitters report an explicit unsupported-layout diagnostic; C# and Clojure
-retain their broader native-type-binding restrictions. Target-independent
+C# and Clojure retain their broader native-type-binding restrictions and
+reject nested layouts explicitly. Target-independent
 configuration correspondence does not establish target generation or native
 behavior.
 Indexed and existential constructor layouts remain unsupported.

@@ -193,6 +193,8 @@ native_codec_children_cross_canonical_and_bound_shapes_test() ->
 
 native_binding_audit_test() ->
     Original = schema([box()]),
+    ?assertError({lawspec, {invalid_native_shape, <<"Box::Box">>}},
+        lawspec_beam_schema:with_bindings(Original, #{<<"Box::Box">> => invalid}, #{})),
     ?assertError({lawspec, {unknown_native_constructor, <<"Missing">>}},
         lawspec_beam_schema:with_bindings(Original, #{<<"Missing">> => #{native_tag => missing}}, #{})),
     ?assertError({lawspec, {invalid_native_shape, <<"Box::Box">>}},
@@ -212,6 +214,79 @@ native_constructor_positions_follow_the_compiler_test() ->
     ?assertEqual(#{native_tag => ready}, lawspec_beam_schema:constructor_shape(fun([]) -> ready end, 0)),
     ?assertError({lawspec, invalid_constructor_shape},
         lawspec_beam_schema:constructor_shape(fun([A, _]) -> {pair, A, A} end, 2)).
+
+%% ref:DEC-native-bindings-typed-identity ref:DEC-typed-core-boundary
+layout_fixture() ->
+    P = {parameter, 0},
+    First = definition(<<"First">>, 0, [(ctor(<<"First::Record">>, first,
+        [{<<"count">>, {<<"Int8">>, []}}, {<<"flag">>, {<<"Bool">>, []}}]))#{
+            predicates => [fun(_, _, [Count, _]) -> Count > 0 end]}]),
+    Payload = definition(<<"Payload">>, 1, [ctor(<<"Payload::Record">>, payload,
+        [{<<"first">>, {<<"First">>, []}}, {<<"tail">>, P}])]),
+    Packet = definition(<<"Packet">>, 1, [ctor(<<"Packet::Packed">>, packed,
+        [{<<"value">>, {<<"Payload">>, [P]}}])]),
+    Layout = [{record, <<"Payload::Record">>, [
+        {record, <<"First::Record">>, [{leaf, 2, {<<"Int8">>, []}}, {leaf, 1, {<<"Bool">>, []}}]},
+        {leaf, 0, P}]}],
+    {schema([First, Payload, Packet, box()]), Layout}.
+
+native_layout_nested_generic_contracts_and_conversion_order_test() ->
+    {Original, Layout} = layout_fixture(),
+    Shape = #{native_tag => native_packet, native_layout => Layout},
+    Bound = lawspec_beam_schema:with_bindings(Original, #{<<"Packet::Packed">> => Shape}, #{}),
+    Codec = fun(Label) ->
+        Convert = fun(V, []) -> put(layout_trace, get(layout_trace) ++ [Label]), V end,
+        #{encode => Convert, decode => Convert}
+    end,
+    S = lawspec_beam_schema:with_codecs(Bound,
+        #{<<"Int8">> => Codec(count), <<"Bool">> => Codec(flag), <<"Text">> => Codec(tail)}),
+    Type = {<<"Packet">>, [{<<"Text">>, []}]},
+    Value = fun(N) -> {ls_data, <<"Packet::Packed">>, [
+        {ls_data, <<"Payload::Record">>, [{ls_data, <<"First::Record">>, [N, true]}, <<"seven">>]}]} end,
+    put(layout_trace, []),
+    ?assertEqual({native_packet, <<"seven">>, true, 3}, lawspec_beam_schema:to_native(Value(3), Type, S)),
+    ?assertEqual([tail, flag, count], get(layout_trace)),
+    put(layout_trace, []),
+    ?assertEqual(Value(3), lawspec_beam_schema:from_native({native_packet, <<"seven">>, true, 3}, Type, S)),
+    ?assertEqual([tail, flag, count], get(layout_trace)),
+    put(layout_trace, []),
+    ?assertError({lawspec, {refinement_violation, <<"First::Record">>}},
+        lawspec_beam_schema:to_native(Value(0), Type, S)),
+    ?assertEqual([], get(layout_trace)),
+    ?assertError({lawspec, {refinement_violation, <<"First::Record">>}},
+        lawspec_beam_schema:from_native({native_packet, <<"seven">>, true, 0}, Type, S)),
+    ?assertError({lawspec, {integer_out_of_range, <<"Int8">>}},
+        lawspec_beam_schema:from_native({native_packet, <<"seven">>, true, 128}, Type, S)),
+    ?assertError({lawspec, invalid_native_layout},
+        lawspec_beam_schema:from_native({native_packet, <<"seven">>}, Type, S)),
+    erase(layout_trace).
+
+native_layout_inside_an_opaque_child_codec_test() ->
+    {Original, Layout} = layout_fixture(),
+    Hook = #{encode => fun({box, Child}, [Encode]) -> #{boxed => Encode(Child)} end,
+        decode => fun(#{boxed := Child}, [Decode]) -> {box, Decode(Child)} end},
+    Bound = lawspec_beam_schema:with_bindings(Original,
+        #{<<"Packet::Packed">> => #{native_tag => native_packet, native_layout => Layout}},
+        #{<<"Box">> => Hook}),
+    Type = {<<"Box">>, [{<<"Packet">>, [{<<"Text">>, []}]}]},
+    Packet = {ls_data, <<"Packet::Packed">>, [
+        {ls_data, <<"Payload::Record">>, [{ls_data, <<"First::Record">>, [3, true]}, <<"seven">>]}]},
+    Logical = {ls_data, <<"Box::Box">>, [Packet]},
+    Native = #{boxed => {native_packet, <<"seven">>, true, 3}},
+    ?assertEqual(Native, lawspec_beam_schema:to_native(Logical, Type, Bound)),
+    ?assertEqual(Logical, lawspec_beam_schema:from_native(Native, Type, Bound)).
+
+native_layout_audit_test() ->
+    {Original, Layout} = layout_fixture(),
+    Bind = fun(Tree) -> lawspec_beam_schema:with_bindings(Original,
+        #{<<"Packet::Packed">> => #{native_tag => native_packet, native_layout => Tree}}, #{}) end,
+    ?assertError({lawspec, {invalid_native_layout, <<"Packet::Packed">>}}, Bind([])),
+    ?assertError({lawspec, {invalid_native_layout, <<"Packet::Packed">>}},
+        Bind([{leaf, 1, {<<"Int8">>, []}}])),
+    ?assertError({lawspec, invalid_native_layout}, Bind([{record, <<"Missing">>, []}])),
+    ?assertError({lawspec, invalid_native_layout}, Bind([{record, <<"Payload::Record">>, []}])),
+    ?assertError({lawspec, unbound_schema_parameter}, Bind([{leaf, 0, {parameter, 1}}])),
+    ?assert(is_map(Bind(Layout))).
 
 handle_identity_test() ->
     S = schema([(definition(<<"Handle">>, 0, []))#{handle => true}]),

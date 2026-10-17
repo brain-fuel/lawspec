@@ -5,6 +5,7 @@
 module LawSpec.BeamNativeBinding (emitBindings, boundEntries, hasGenerators) where
 
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.GleamCode as G
@@ -50,7 +51,19 @@ emitBindings target layout bindings plan = do
     (Left "Erlang record bindings need erlangIncludes naming their header files")
   shapes <- forM (zip [0::Int ..] constructors) $ \(i,(mapping,constructor)) -> do
     shape <- nativeShape i mapping constructor
-    pure (E.binary (C.idText (C.constructorId (resolvedConstructor constructor))),shape)
+    packed <- case resolvedFieldLayout constructor of
+      Nothing -> pure shape
+      Just tree -> do
+        let parameters = C.dataParameters (resolvedDeclaration mapping)
+            node (NativeLeaf field argument) = do
+              ty <- S.typeReference parameters (C.binderType field)
+              pure (E.tuple [E.atom "leaf",D.text (show argument),E.reference ty])
+            node (NativeRecord _ record children) = do
+              nested <- mapM node children
+              pure (E.tuple [E.atom "record",E.binary (C.idText (C.constructorId record)),E.array nested])
+        nodes <- mapM node tree
+        pure (E.remote "maps" "put" [E.atom "native_layout",E.array nodes,shape])
+    pure (E.binary (C.idText (C.constructorId (resolvedConstructor constructor))),packed)
   hooks <- forM [(m,h) | m <- mappings, Just h <- [resolvedCodec m]] $ \(mapping,hook) -> do
     let parameters = [D.text ("_Child" ++ show i) | (i,_) <- zip [0::Int ..] (C.dataParameters (resolvedDeclaration mapping))]
         method ref = do
