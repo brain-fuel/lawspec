@@ -150,7 +150,7 @@ payloadCorrespondenceWithPlan before after = do
       "fromBinder" .= C.idText (C.binderId a),"toBinder" .= C.idText (C.binderId b)]
 
 plain :: Context
-plain = Context False False M.empty M.empty M.empty (C.Id "payload-shapes") 0 False Right Right Set.empty Right
+plain = Context False False M.empty M.empty M.empty (C.Id "payload-shapes") 0 False Right Right Set.empty M.empty Right
 
 uniqueMap :: Ord key => String -> [(key,value)] -> Either String (M.Map key value)
 uniqueMap label values = do

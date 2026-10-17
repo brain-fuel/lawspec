@@ -201,3 +201,67 @@ test('the preserved Chapter 6 baseline retains every law and example while previ
     assert.deepEqual(report.filesWritten,[]);
   }
 });
+
+test('checked field identities migrate unused generic projections and grouped updates',async()=>{
+  const content='unit records\n'+
+    'type Capsule (a :: Type) is Packed last :: Bool first :: a end\n'+
+    'definition read (input :: Capsule a) :: a is input.first end\n'+
+    'definition replace (input :: Capsule a) (value :: a) :: Capsule a is input with first = value, last = false end\n'+
+    'law `reads a replacement` is definition is `for all` (flag :: Bool) (value :: Bool) . '+
+      '(replace (Packed true flag) value).first = value end end';
+  for(const bits of [32,64]) {
+    const {sources,report}=await migrate(content,bits);
+    const text=sources[0].content;
+    assert.ok(text.includes('input.value.first'),text);
+    assert.ok(text.includes('Packed (input.value with first = value, last = false)'),text);
+    assert.ok(text.includes(').value.first = value'),text);
+    const fields=report.baseline.sourceFields;
+    assert.equal(fields.status,'available',JSON.stringify(fields));
+    assert.deepEqual([...new Set(fields.uses.map(use=>use.constructor))],['records::type::Capsule::Packed']);
+    assert.equal(report.correspondence.sourceTemplates.status,'matched',JSON.stringify(report.blockers));
+    const changed=sources.map(source=>({...source,content:source.content.replace('last = false','last = true')}));
+    const mutant=await compiler.migrationComparison({...options,verification:{layers:[]},from:'0.24',machineBits:bits,
+      sources:[{path:'records.lawspec',content}],
+      migrated:{...options,verification:{layers:[]},machineBits:bits,sources:changed}});
+    assert.deepEqual(mutant.diagnostics,[]);
+    assert.equal(mutant.migrationComparison.definitionTemplates.typedCore.definitionPlane.status,'not-established');
+  }
+});
+
+test('nested payload projections and updates preserve values through imported constructor identities',async()=>{
+  const sources=[{path:'model.lawspec',content:'unit model\n'+
+    'type Inner is Inside mark :: Bool flag :: Bool end\n'+
+    'type Outer is Outside mark :: Bool inner :: Inner end'},
+    {path:'use.lawspec',content:'unit use\nimport model as shapes (Inner, Outer)\n'+
+      'definition read (input :: Outer) :: Bool is input.inner.flag end\n'+
+      'definition flip (input :: Outer) :: Outer is input with inner = (input.inner with flag = !input.inner.flag) end\n'+
+      'law `flip` is definition is `for all` (input :: Outer) . (flip input).inner.flag = !input.inner.flag end end\n'+
+      'law `preserve` is definition is `for all` (input :: Outer) . (flip input).mark = input.mark and '+
+        '(flip input).inner.mark = input.inner.mark end end'}];
+  for(const machineBits of [32,64]) {
+    const report=await migrationReport(compiler,{version:1,targets:[]},{sources,machineBits});
+    assert.deepEqual(report.diagnostics,[]);
+    assert.deepEqual(report.sourcePreview.diagnostics,[]);
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted',JSON.stringify(report.sourcePreview.canonicalCheck.diagnostics));
+    const migrated=report.sourcePreview.sources.map(({path,content})=>({path,content}));
+    const result=await compiler.check({...options,sources:migrated,machineBits});
+    assert.deepEqual(result.diagnostics,[]);
+    assert.ok(result.evidence.filter(item=>item.stage==='law').every(item=>item.status==='exhaustively-checked'));
+    assert.equal(report.correspondence.sourceTemplates.status,'matched',JSON.stringify(report.blockers));
+    const text=migrated.find(source=>source.path==='use.lawspec').content;
+    assert.ok(text.includes('input.value.inner.value.flag'),text);
+    assert.ok(text.includes('with flag = !input.value.inner.value.flag'),text);
+    assert.equal(report.validated,false);
+  }
+});
+
+test('a single explicit alternative payload renames field accesses and updates to value',async()=>{
+  const content='unit records\n'+
+    'type Flag is FlagValue old :: Bool end\n'+
+    'definition flip (input :: Flag) :: Flag is input with old = !input.old end\n'+
+    'law `flipped` is definition is `for all` (flag :: Bool) . (flip (FlagValue flag)).old = !flag end end';
+  const {sources,report}=await migrate(content);
+  assert.ok(sources[0].content.includes('input with value = !input.value'));
+  assert.ok(sources[0].content.includes(')).value = !flag'));
+  assert.equal(report.correspondence.sourceTemplates.status,'matched',JSON.stringify(report.blockers));
+});

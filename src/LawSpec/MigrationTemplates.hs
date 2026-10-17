@@ -4,7 +4,7 @@
 -- generic definitions and reusable laws leave the concrete executable program.
 -- No syntax here is executed or admitted by a separate checking mechanism.
 module LawSpec.MigrationTemplates
-  ( SourceTemplates(..), DefinitionTemplate, templateSnapshot ) where
+  ( SourceTemplates(..), DefinitionTemplate, templateSnapshot, templateContext ) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value,object,(.=))
@@ -12,10 +12,9 @@ import Data.Binary (encode)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
-import Data.List (stripPrefix)
 import GHC.Generics (from,to)
 import qualified LawSpec.Core as C
-import LawSpec.Core.Migration (Project(..),GenericProject(..),Context(..),semanticName)
+import LawSpec.Core.Migration (Project(..),GenericProject(..),Context(..),semanticName,normalizeTrace)
 import LawSpec.Common (InputDomain(..))
 import LawSpec.Digest (digest,digestHex)
 import qualified LawSpec.Model as S
@@ -81,11 +80,7 @@ rename context name = M.findWithDefault name name (traceNames context)
 -- Normalize only a uniquely recognized declaration-name prefix; leave the
 -- argument suffix untouched, including phrase-looking literal contents.
 renameTrace :: Context -> String -> String
-renameTrace context value = case
-  [made ++ suffix | (name,made)<-M.toList (traceNames context),name/=made,
-    Just suffix<-[stripPrefix name value],null suffix || take 1 suffix==" "] of
-  [made] -> made
-  _ -> value
+renameTrace=normalizeTrace
 
 templateSnapshot :: Bool -> SourceTemplates -> Either String Value
 templateSnapshot canonical captured = do
@@ -112,10 +107,13 @@ templateSnapshot canonical captured = do
     , "domainPolicies" .= [object ["comparisonId" .= (S.owner law ++ "::law::" ++ S.name law),"policy" .= S.inputDomain law] | law<-laws]
     ])
   where
-    names=[S.lawName law | unit<-templateUnits captured,law<-S.laws unit]
-    context=Context canonical False M.empty M.empty
-      (M.fromList [(name,semanticName canonical name) | name<-names]) (C.Id "source-templates") 0 False Right Right Set.empty Right
+    context=templateContext canonical captured
     unique (owner,labels) = unless (Set.size (Set.fromList labels)==length labels)
       (Left ("migration template normalization collides law identities in " ++ owner))
     fingerprint value=digestHex (digest (BL.toStrict (encode (("checked-source-templates-v1"::String),value))))
     part identity value=object ["comparisonId" .= identity,"digest" .= fingerprint value]
+
+templateContext :: Bool -> SourceTemplates -> Context
+templateContext canonical captured=Context canonical False M.empty M.empty
+  (M.fromList [(name,semanticName canonical name) | unit<-templateUnits captured,law<-S.laws unit,let name=S.lawName law])
+  (C.Id "source-templates") 0 False Right Right Set.empty M.empty Right

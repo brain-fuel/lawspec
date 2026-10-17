@@ -37,7 +37,40 @@ function checkedDefinitionTemplates(before,after,evidence,machineBits) {
     core[name].before===core.before[field]&&core[name].after===core.after[field]&&core[name].before===core[name].after);
 }
 
-function compareTemplates(before,after,machineBits,definitionEvidence) {
+function anchoredTemplates(before,after,evidence,machineBits) {
+  return evidence?.status==='matched'&&evidence.version===1&&evidence.algorithm==='sha256'&&
+    evidence.machineBits===machineBits&&evidence.originalsUnchanged===true&&
+    templateComponents.every(([field])=>evidence.before?.[field]===before[field]&&evidence.after?.[field]===after[field]);
+}
+
+function matchingPair(pair) {
+  return pair?.status==='matched'&&typeof pair.before==='string'&&digest.test(pair.before)&&pair.before===pair.after;
+}
+
+function templateCoreIdentity(id) {
+  const split=id.indexOf('::law::');
+  return split<0?id:id.slice(0,split+7)+id.slice(split+7).replace(/[:%]/g,char=>char===':'?'%3A':'%25');
+}
+
+function checkedLawTemplates(before,after,evidence,machineBits) {
+  if(!anchoredTemplates(before,after,evidence,machineBits)||!matchingPair(evidence.metadata)||
+    evidence.lawBodiesEvaluated!==false) return false;
+  const core=evidence.typedCore;
+  if(core?.status!=='matched'||core.version!==1||core.algorithm!=='sha256'||core.machineBits!==machineBits||
+    core.copyValidated!==true||core.originalsUnchanged!==true||typeof core.sourceBeforeDigest!=='string'||!digest.test(core.sourceBeforeDigest)||
+    !available(core.before)||!available(core.after)||core.before.machineBits!==machineBits||core.after.machineBits!==machineBits) return false;
+  for(const [source,snapshot] of [[before,core.before],[after,core.after]]) {
+    if(JSON.stringify(source.domainPolicies.map(row=>({...row,comparisonId:templateCoreIdentity(row.comparisonId)})))!==
+      JSON.stringify(snapshot.domainPolicies)) return false;
+  }
+  return components.every(([field,name])=>{
+    const claim=core[name],old=core.before[field],made=core.after[field];
+    return claim?.before===old&&claim?.after===made&&claim.status===(old===made?'matched':'not-established')&&
+      (name==='program'||old===made);
+  });
+}
+
+function compareTemplates(before,after,machineBits,definitionEvidence,lawEvidence,unitEvidence) {
   const available=value=>[32,64].includes(machineBits)&&value?.status==='available'&&value.version===1&&value.algorithm==='sha256'&&
     value.machineBits===machineBits&&templateComponents.every(([name])=>typeof value[name]==='string'&&digest.test(value[name]))&&
     ['units','definitions','laws'].every(name=>rowsValid(value[name]))&&rowsValid(value.domainPolicies,true);
@@ -46,8 +79,17 @@ function compareTemplates(before,after,machineBits,definitionEvidence) {
   const checks=Object.fromEntries(templateComponents.map(([field,name])=>[name,
     before[field]===after[field]?{status:'matched',basis:'matching-checked-source-template-fingerprints'}:
       {status:'not-established',reason:'The checked source-template '+name+' fingerprints differ.'}]));
-  if(checks.definitions.status!=='matched'&&checkedDefinitionTemplates(before,after,definitionEvidence,machineBits)) {
+  const definitionsMatched=checkedDefinitionTemplates(before,after,definitionEvidence,machineBits);
+  const lawsMatched=checkedLawTemplates(before,after,lawEvidence,machineBits);
+  if(checks.definitions.status!=='matched'&&definitionsMatched) {
     checks.definitions={status:'matched',basis:'matching-complete-symbolic-definition-Core-and-source-interfaces-after-validated-payload-transport'};
+  }
+  if(checks.lawBodies.status!=='matched'&&lawsMatched) checks.lawBodies={status:'matched',
+    basis:'matching-complete-symbolic-law-Core-and-source-metadata-after-validated-payload-transport'};
+  if(checks.declarations.status!=='matched'&&definitionsMatched&&lawsMatched&&
+    anchoredTemplates(before,after,unitEvidence,machineBits)&&matchingPair(unitEvidence.metadata)&&
+    unitEvidence.definitions==='matched'&&unitEvidence.laws==='matched'&&unitEvidence.payloadShapes==='matched') {
+    checks.declarations={status:'matched',basis:'matching-complete-source-unit-metadata-and-certified-symbolic-terms-and-payloads'};
   }
   // Domain evidence belongs to the complete source capture that produced it.
   // A concrete-Core witness, stale capture, or one chosen law parameter is
@@ -57,7 +99,23 @@ function compareTemplates(before,after,machineBits,definitionEvidence) {
     return {...value,inputDomains:templateComponents.every(([field])=>evidence?.sourceTemplates?.[field]===value[field])?
       evidence:undefined};
   };
-  const policies=compareDomainPolicies(anchored(before),anchored(after));
+  let policies=compareDomainPolicies(anchored(before),anchored(after));
+  // The compiler's symbolic comparison copy retains the original inputs;
+  // abstract parameter declarations are never witnesses. Reuse only complete
+  // transported input evidence anchored to the checked law-template copy.
+  if(policies.status!=='matched'&&lawsMatched) {
+    const transported=compareDomainPolicies(lawEvidence.typedCore.before,lawEvidence.typedCore.after);
+    const candidates=new Map((transported.domains??[]).map(row=>[row.comparisonId,row]));
+    const domains=policies.domains.map(row=>{
+      const candidate=candidates.get(templateCoreIdentity(row.comparisonId));
+      return row.status==='matched'||candidate?.status!=='matched'?row:{...candidate,comparisonId:row.comparisonId,
+        basis:'matching-transported-template-domain-dependencies-and-verified-input-witnesses',
+        valueRepresentation:'transported-before-and-canonical-after'};
+    });
+    const matched=before.domainPolicies.length===after.domainPolicies.length&&domains.every(row=>row.status==='matched');
+    policies={...policies,status:matched?'matched':'not-established',domains,
+      ...(matched?{basis:'verified-input-domain-correspondence',reason:undefined}:{})};
+  }
   if(checks.laws.status!=='matched'&&checks.lawBodies.status==='matched'&&policies.status==='matched') {
     checks.laws={status:'matched',basis:'matching-policy-erased-source-templates-and-verified-input-domains'};
   }
@@ -154,11 +212,11 @@ function checkedTransportBodies(before,after,transport) {
     pair('lawBodies','lawBodiesDigest',true);
 }
 
-export function compareMigrationSnapshots(before,after,transport,definitionEvidence) {
+export function compareMigrationSnapshots(before,after,transport,definitionEvidence,lawEvidence,unitEvidence) {
   const incomplete=reason=>({status:'not-established',reason});
   const unproved={
     sourceTemplates:compareTemplates(before?.sourceTemplates,after?.sourceTemplates,
-      before?.machineBits===after?.machineBits?before?.machineBits:undefined,definitionEvidence),
+      before?.machineBits===after?.machineBits?before?.machineBits:undefined,definitionEvidence,lawEvidence,unitEvidence),
     nativeBindings:incomplete('Native constructor, field and representation bindings require project-wide correspondence.'),
     generatedBehavior:incomplete('Generated plans and native behavior require their own target validation.'),
   };

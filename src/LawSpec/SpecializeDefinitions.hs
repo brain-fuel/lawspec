@@ -1,6 +1,6 @@
 -- | Closed monomorphization after law expansion and template auditing. Target
 -- generators continue to receive only concrete, independently validated Core.
-module LawSpec.SpecializeDefinitions (specializeDefinitions, specializeDefinitionsWithContext) where
+module LawSpec.SpecializeDefinitions (specializeDefinitions, specializeDefinitionsWithContext, instantiateSymbolicDefinitions) where
 
 import Control.Monad.State.Strict
 import Control.Monad (forM, forM_, unless, when, foldM, zipWithM)
@@ -33,7 +33,18 @@ specializeDefinitions = specializeDefinitionsWithContext Source.emptyContext
 
 specializeDefinitionsWithContext :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> (Constraint -> Bool)
   -> [Unit] -> [Expanded] -> Either [Diagnostic] ([Unit],[Expanded])
-specializeDefinitionsWithContext sourceTypes declarations bits satisfies units properties = do
+specializeDefinitionsWithContext=specializeDefinitionsIn False
+
+-- Comparison-only instantiation at rigid type variables. The caller retains
+-- each complete source scheme and supplies its lexical capability context.
+-- This does not choose a concrete carrier or change executable specialization.
+instantiateSymbolicDefinitions :: Source.SourceContext -> [Core.DataDeclaration] -> Int -> (Constraint -> Bool)
+  -> [Unit] -> [Expanded] -> Either [Diagnostic] ([Unit],[Expanded])
+instantiateSymbolicDefinitions=specializeDefinitionsIn True
+
+specializeDefinitionsIn :: Bool -> Source.SourceContext -> [Core.DataDeclaration] -> Int -> (Constraint -> Bool)
+  -> [Unit] -> [Expanded] -> Either [Diagnostic] ([Unit],[Expanded])
+specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units properties = do
   results <- mapM unit units
   pure (map fst results, concatMap snd results)
   where
@@ -310,9 +321,10 @@ specializeDefinitionsWithContext sourceTypes declarations bits satisfies units p
     -- Source paths and spans are not growth in a specialization's type.
     -- Keep all predicate/type structure in the existing size bound, including
     -- annotation types, while measuring independently of diagnostic origins.
-    budgetType = mapType id (stripLocations . mapExprTypes budgetType)
+    budgetType = mapType (\ty->case ty of Named ('@':_) | symbolic->Named "@rigid"; _->ty)
+      (stripLocations . mapExprTypes budgetType)
     closed ty = null (typeVariables ty) && case baseType ty of
-      Named ('@':_) -> False
+      Named ('@':_) -> symbolic
       Arrow a b -> closed a && closed b
       Applied _ a -> closed a
       Application _ arguments -> all closed arguments

@@ -1,6 +1,6 @@
 -- | Closed execution of validated total definitions. The returned function has
 -- no adapter hook, so a definition cannot acquire effects during evaluation.
-module LawSpec.Core.Definitions (prepareDefinitions, prepareResolvingDefinitions, prepareHookedDefinitions) where
+module LawSpec.Core.Definitions (prepareDefinitions, prepareDefinitionsWithScopes, prepareResolvingDefinitions, prepareHookedDefinitions) where
 
 import Control.Monad (unless)
 import qualified Data.Map.Strict as M
@@ -8,7 +8,8 @@ import LawSpec.Common
 import LawSpec.Core
 import LawSpec.Core.Eval (evaluateValue, validateValueWithContracts)
 import LawSpec.Core.Types (makeRegistry)
-import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.Validate (validateProgram,validateProgramWithScopes)
+import LawSpec.Core.CapabilityScope (CapabilityScopes)
 import LawSpec.Core.DefinitionContracts (definitionContracts)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Core.Value (Value(..))
@@ -18,6 +19,13 @@ import LawSpec.Core.Value (Value(..))
 -- ref:DEC-total-definitions
 prepareDefinitions :: Program -> Either [Diagnostic] (Id -> [Value] -> Either String Value)
 prepareDefinitions program = ($ const Nothing) <$> prepareResolvingDefinitions program
+
+-- The same closed invoker for constant inputs in a symbolic comparison. It
+-- still has no adapter hook and checks every definition and contract first.
+prepareDefinitionsWithScopes :: CapabilityScopes -> Program -> Either [Diagnostic] (Id -> [Value] -> Either String Value)
+prepareDefinitionsWithScopes scopes program=do
+  hooked<-prepareHookedDefinitionsIn (validateProgramWithScopes scopes) program
+  pure (hooked (\_ _->Nothing))
 
 -- With a resolver for ability operations: an operation it maps to a clause
 -- definition is evaluated as a call of that clause, at any depth.
@@ -32,8 +40,12 @@ prepareResolvingDefinitions program = do
 -- handler with state answers its operations this way: LawSpec.Discharge).
 prepareHookedDefinitions :: Program -> Either [Diagnostic]
   (((Id -> [Value] -> Either String Value) -> Id -> Maybe ([Value] -> Either String Value)) -> Id -> [Value] -> Either String Value)
-prepareHookedDefinitions program = do
-  validateProgram program
+prepareHookedDefinitions=prepareHookedDefinitionsIn validateProgram
+
+prepareHookedDefinitionsIn :: (Program -> Either [Diagnostic] ()) -> Program -> Either [Diagnostic]
+  (((Id -> [Value] -> Either String Value) -> Id -> Maybe ([Value] -> Either String Value)) -> Id -> [Value] -> Either String Value)
+prepareHookedDefinitionsIn validate program = do
+  validate program
   let boundaries = definitionContracts (programUnits program)
   registry <- either (Left . pure . (\message -> Diagnostic "core" message Nothing)) Right
     (makeRegistry (programDataDeclarations program))

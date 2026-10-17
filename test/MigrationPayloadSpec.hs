@@ -3,8 +3,6 @@ module MigrationPayloadSpec (test_migrationPayloads) where
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Vector as Vector
-import Data.List (isInfixOf)
-import Data.Text (unpack)
 import LawSpec.Api (dispatch)
 import LawSpec.Model (Source(..))
 import Test.Hspec
@@ -37,6 +35,26 @@ groupOld="type Variant is | Empty | Item last :: Bool first :: UInt8 end"
 groupNew="type Variant is one of | Empty | Item of type record{last :: Bool first :: UInt8} end type"
 
 test_migrationPayloads=describe "checked constructor payload shape correspondence" $ do
+  it "compares unused generic law parameters without choosing implementations" $ do
+    result<-shapesMatch "law `same` (operation :: a -> a) requires Eq a is definition is `for all` (value :: a) . operation value = value end end"
+      "law \"|same| (operation :: a -> a) requires Eq a is definition: for all (value :: a) => operation value must be value end end end"
+    let evidence=comparison result >>= field "lawTemplates"
+    (evidence >>= field "status") `shouldBe` Just (String "matched")
+    (evidence >>= field "lawBodiesEvaluated") `shouldBe` Just (Bool False)
+    (evidence >>= field "typedCore" >>= field "copyValidated") `shouldBe` Just (Bool True)
+    (evidence >>= field "typedCore" >>= field "program" >>= field "status") `shouldBe` Just (String "not-established")
+  it "retains changed reusable law bodies and metadata independently of concrete instances" $ do
+    let before="law `same` (operation :: a -> a) requires Eq a is definition is `for all` (value :: a) . operation value = value end end"
+    result<-shapesMatch before
+      "law \"|same| (operation :: a -> a) requires Eq a is definition: for all (value :: a) => value must be value end end end"
+    (comparison result >>= field "lawTemplates" >>= field "status") `shouldBe` Just (String "not-established")
+    description<-shapesMatch before
+      "law \"|same| (operation :: a -> a) requires Eq a is description: \"Changed requirement\" end definition: for all (value :: a) => operation value must be value end end end"
+    (comparison description >>= field "lawTemplates" >>= field "metadata" >>= field "status") `shouldBe` Just (String "not-established")
+  it "keeps Eq-only law-template membership independent from portable ordering" $ do
+    result<-shapesMatch "law `member` (needle :: a) requires Eq a is definition is `for all` (items :: List a) . (items contains needle) = (items contains needle) end end"
+      "law \"|member| (needle :: a) requires Eq a is definition: for all (items :: List a) => (items contains needle) must be (items contains needle) end end end"
+    (comparison result >>= field "lawTemplates" >>= field "status") `shouldBe` Just (String "matched")
   it "compares the full unused generic definition plane without choosing an instantiation" $ do
     let before="type Capsule (a :: Type) is | Packed last :: Bool first :: a end\n"++
           "definition read (input :: Capsule a) :: a is match input with | Packed last first -> first end end"
@@ -75,14 +93,12 @@ test_migrationPayloads=describe "checked constructor payload shape correspondenc
     (evidence >>= field "status") `shouldBe` Just (String "not-established")
     (evidence >>= field "typedCore" >>= field "copyValidated") `shouldBe` Just (Bool True)
     (comparison result >>= field "executableTransport" >>= field "status") `shouldBe` Just (String "matched")
-  it "reports unsupported symbolic equality instead of replacing the body with an opaque call" $ do
+  it "retains the declared Eq scope while comparing a generic equality definition" $ do
     result<-shapesMatch "definition same (left :: a) (right :: a) :: Bool requires Eq a is left == right end"
       "function same (left :: a) (right :: a) -> Bool requires Eq a is left = right end function"
     let evidence=comparison result >>= field "definitionTemplates"
-    (evidence >>= field "status") `shouldBe` Just (String "not-established")
-    (evidence >>= field "typedCore" >>= field "reason") `shouldSatisfy` (\value->case value of
-      Just (String reason)->"unresolved equality capability" `isInfixOf` unpack reason
-      _->False)
+    (evidence >>= field "status") `shouldBe` Just (String "matched")
+    (evidence >>= field "typedCore" >>= field "copyValidated") `shouldBe` Just (Bool True)
   it "checks single-payload field renaming while keeping native correspondence separate" $ do
     result<-shapesMatch singleOld singleNew
     (comparison result >>= field "validated") `shouldBe` Just (Bool False)

@@ -62,6 +62,7 @@ import qualified PreludeResolutionSpec
 import qualified SourceSyntaxSpec
 import qualified MigrationSnapshotSpec
 import qualified MigrationTemplateSpec
+import qualified CapabilityScopeSpec
 import qualified PayloadTransportSpec
 import qualified MigrationPayloadSpec
 import qualified DomainEvidenceSpec
@@ -107,6 +108,7 @@ main = hspec $ do
   SourceSyntaxSpec.test_sourceSyntax
   MigrationSnapshotSpec.test_migrationSnapshot
   MigrationTemplateSpec.test_migrationTemplates
+  CapabilityScopeSpec.test_capabilityScopes
   PayloadTransportSpec.test_payloadTransport
   MigrationPayloadSpec.test_migrationPayloads
   DomainEvidenceSpec.test_domainEvidence

@@ -64,6 +64,20 @@ export interface SourceSyntax {
   references: SourceSyntaxReference[];
 }
 
+export interface SourceFieldUse {
+  kind: 'field-access' | 'field-update';
+  constructor: string;
+  field: string;
+  index: number;
+  span: Span;
+  base?: Span;
+  expression?: Span;
+}
+
+export type MigrationSourceFields =
+    {status: 'available'; version: 1; uses: SourceFieldUse[];} |
+    {status: 'unavailable'; reason: string;};
+
 export interface Diagnostic {
   code: string;
   message: string;
@@ -584,6 +598,54 @@ export type MigrationCoreTransport =
       after: MigrationSemanticSnapshot & {status: 'available'};
     };
 
+export interface MigrationDigestPair {
+  status: 'matched' | 'not-established';
+  before: string;
+  after: string;
+}
+
+export interface MigrationTemplateCertificate {
+  status: 'matched' | 'not-established';
+  version: 1;
+  algorithm: 'sha256';
+  machineBits: 32 | 64;
+  scope: string;
+  before: MigrationTemplateDomainAnchors;
+  after: MigrationTemplateDomainAnchors;
+  originalsUnchanged: true;
+  lawVerification: 'not-established-by-migration-correspondence';
+}
+
+export type MigrationDefinitionTransport =
+    MigrationPending |
+    MigrationTemplateCertificate &
+    {
+      interfaces: MigrationDigestPair & {scope: string};
+      typedCore: MigrationCoreTransport;
+      typeVariables: string;
+      nativeConformance: 'not-established';
+    };
+
+export type MigrationLawTransport =
+    MigrationPending |
+    MigrationTemplateCertificate &
+    {
+      metadata: MigrationDigestPair;
+      typedCore: MigrationCoreTransport;
+      lawBodiesEvaluated: false;
+      parameterInterpretation: string;
+    };
+
+export type MigrationUnitTransport =
+    MigrationPending |
+    MigrationTemplateCertificate &
+    {
+      metadata: MigrationDigestPair;
+      definitions: 'matched' | 'not-established';
+      laws: 'matched' | 'not-established';
+      payloadShapes: 'matched';
+    };
+
 export type MigrationPayloadComparison =
     {
       version: 1;
@@ -601,6 +663,9 @@ export type MigrationPayloadComparison =
         unexplainedAddedTypes: string[];
       };
       executableTransport: MigrationCoreTransport;
+      definitionTemplates?: MigrationDefinitionTransport;
+      lawTemplates?: MigrationLawTransport;
+      sourceUnits?: MigrationUnitTransport;
       dependencyBehavior: MigrationPending;
       nativeBindings: MigrationPending;
       lawVerification: 'not-established-by-payload-shapes';
@@ -756,6 +821,7 @@ export interface Result {
   formattedSources?: Source[];
   sourceLanguageProfile?: '0.24';
   sourceSyntax?: SourceSyntax[];
+  sourceFields?: MigrationSourceFields;
   migrationSemantics?: MigrationSemanticSnapshot;
   migrationComparison?: MigrationPayloadComparison;
   migrationComparisonInput?: 'before' | 'migrated';

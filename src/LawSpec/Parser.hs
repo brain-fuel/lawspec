@@ -904,7 +904,7 @@ selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> lit
 recordValueP :: P Expr
 recordValueP = do
   value <- recordConstructionP
-  fields <- many (try (char '.' *> identRaw))
+  fields <- many (try (sourceNode "field-access" Just (char '.' *> identRaw)))
   spaceP
   pure (foldl (\record field -> Apply (Var (fieldAccessPrefix ++ field)) record) value fields)
 
@@ -987,7 +987,7 @@ updatedExpr = do
   where
     fieldStart = try (keyword "with" *> lookAhead fieldStart')
     fieldStart' = ident *> symbol "=" *> notFollowedBy (char '=')
-    field = do
+    field = sourceNode "field-update" (Just . fst) $ do
       name <- ident
       unless (maybe False (isLower . fst) (uncons name)) (fail "a field's name starts with a lowercase letter")
       void (symbol "=")
@@ -1207,14 +1207,14 @@ applicationAtom = atom
     -- (e).logs reads a field of a parenthesized value, the dot adjacent.
     parenthesizedFields = do
       e <- symbol "(" *> parenthesizedValue <* char ')'
-      fields <- many (try (char '.' *> fieldName))
+      fields <- many (try (sourceNode "field-access" Just (char '.' *> fieldName)))
       spaceP
       pure (foldl (\value field -> Apply (Var (fieldAccessPrefix ++ field)) value) e fields)
     -- b.logs reads the field logs of b, whose type has one constructor; the
     -- dot is adjacent (f . g with spaces composes).
     valueAtom = do
       name <- valueNameRaw
-      fields <- if startsUpper name then pure [] else many (try (char '.' *> fieldName))
+      fields <- if startsUpper name then pure [] else many (try (sourceNode "field-access" Just (char '.' *> fieldName)))
       spaceP
       when (name `elem` ["if", "then", "else", "in"]) (fail ("expected a value, not the keyword " ++ name))
       pure (if startsUpper name then ConstructLit name []

@@ -71,6 +71,11 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "SourceSyntaxBinding" ([("namespace",union (map quoted ["type","constructor","refinement","value","law"]))] ++ fields [("name","string"),("target","string"),("declaration?","string")])
   , interface "SourceSyntaxReference" (fields [("name","string"),("target","string"),("span","Span"),("declaration?","string")])
   , interface "SourceSyntax" ([("version",text "1")] ++ fields [("path", "string"), ("unit", "string"), ("nodes", "SourceSyntaxNode[]"),("bindings","SourceSyntaxBinding[]"),("references","SourceSyntaxReference[]")])
+  , interface "SourceFieldUse" ([("kind",union (map quoted ["field-access","field-update"]))] ++
+      fields [("constructor","string"),("field","string"),("index","number"),("span","Span"),("base?","Span"),("expression?","Span")])
+  , alias "MigrationSourceFields"
+      [record [("status",quoted "available"),("version",text "1"),("uses",text "SourceFieldUse[]")],
+       record [("status",quoted "unavailable"),("reason",text "string")]]
   , interface "Diagnostic" [("code", text "string"), ("message", text "string"), ("at", union [text "Location", text "null"])]
   , interface "Artifact"
       [("path", text "string"), ("content", text "string"),
@@ -249,13 +254,32 @@ declarations = joinWith (softbreak <> softbreak)
             ("before",text "{comparisonId: string; policy: 'nonempty' | 'universal'}[]"),
             ("after",text "{comparisonId: string; policy: 'nonempty' | 'universal'}[]")])] ++
         [(name,text "MigrationSemanticSnapshot & {status: 'available'}") | name<-["before","after"]])]
+  , interface "MigrationDigestPair" ([("status",union (map quoted ["matched","not-established"]))] ++ fields [("before","string"),("after","string")])
+  , interface "MigrationTemplateCertificate"
+      ([("status",union (map quoted ["matched","not-established"])),("version",text "1"),("algorithm",quoted "sha256"),
+        ("machineBits",union [text "32",text "64"]),("scope",text "string"),
+        ("before",text "MigrationTemplateDomainAnchors"),("after",text "MigrationTemplateDomainAnchors"),
+        ("originalsUnchanged",text "true"),("lawVerification",quoted "not-established-by-migration-correspondence")])
+  , alias "MigrationDefinitionTransport"
+      [text "MigrationPending",group (text "MigrationTemplateCertificate &" <> softline <> record
+        [("interfaces",text "MigrationDigestPair & {scope: string}"),("typedCore",text "MigrationCoreTransport"),
+         ("typeVariables",text "string"),("nativeConformance",quoted "not-established")])]
+  , alias "MigrationLawTransport"
+      [text "MigrationPending",group (text "MigrationTemplateCertificate &" <> softline <> record
+        [("metadata",text "MigrationDigestPair"),("typedCore",text "MigrationCoreTransport"),
+         ("lawBodiesEvaluated",text "false"),("parameterInterpretation",text "string")])]
+  , alias "MigrationUnitTransport"
+      [text "MigrationPending",group (text "MigrationTemplateCertificate &" <> softline <> record
+        [("metadata",text "MigrationDigestPair"),("definitions",union (map quoted ["matched","not-established"])),
+         ("laws",union (map quoted ["matched","not-established"])),("payloadShapes",quoted "matched")])]
   , alias "MigrationPayloadComparison"
       [record ([("version",text "1"),("algorithm",quoted "sha256"),("status",quoted "not-established"),("machineBits",union [text "32",text "64"])] ++
         fields [("scope","string"),("beforeDigest","string"),("afterDigest","string")] ++
         [("payloadShapes",record ([("status",union (map quoted ["matched","not-established"]))] ++
           fields [("unchangedTypes","number"),("changes","MigrationPayloadChange[]"),("introducedRecords","string[]"),
             ("unexplainedAddedTypes","string[]")])),
-         ("executableTransport",text "MigrationCoreTransport"),("dependencyBehavior",text "MigrationPending"),
+         ("executableTransport",text "MigrationCoreTransport"),("definitionTemplates?",text "MigrationDefinitionTransport"),
+         ("lawTemplates?",text "MigrationLawTransport"),("sourceUnits?",text "MigrationUnitTransport"),("dependencyBehavior",text "MigrationPending"),
          ("nativeBindings",text "MigrationPending"),("lawVerification",quoted "not-established-by-payload-shapes"),("validated",text "false")]),
        record [("status",quoted "unavailable"),("reason",text "string")]]
   , let common=fields [("comparisonId","string"),("domainDigest","string"),("inputCount","number"),
@@ -303,7 +327,7 @@ declarations = joinWith (softbreak <> softbreak)
        fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]")] ++
-       [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("migrationSemantics?",text "MigrationSemanticSnapshot"),
+       [("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("sourceFields?",text "MigrationSourceFields"),("migrationSemantics?",text "MigrationSemanticSnapshot"),
         ("migrationComparison?",text "MigrationPayloadComparison"),("migrationComparisonInput?",union (map quoted ["before","migrated"]))] ++
        [("proofTasks?",text "ProofTask[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])

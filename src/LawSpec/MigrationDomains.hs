@@ -1,7 +1,7 @@
 -- | Wire projection of input-domain facts. The dependency fingerprint retains
 -- transitive checked dependencies, so nominal references and same-named
 -- predicate calls cannot conceal a changed domain implementation.
-module LawSpec.MigrationDomains (domainSnapshot,withTransportDomains) where
+module LawSpec.MigrationDomains (domainSnapshot,domainSnapshotWithScopes,withTransportDomains,withTransportDomainsWithScopes) where
 
 import Data.Aeson (Value(..),object,(.=))
 import qualified Data.Aeson.KeyMap as KM
@@ -12,7 +12,8 @@ import qualified Data.Set as Set
 import qualified LawSpec.Core as C
 import LawSpec.Core.Migration (normalizedProgram)
 import LawSpec.Core.DomainEvidence
-import LawSpec.Core.Definitions (prepareDefinitions)
+import LawSpec.Core.Definitions (prepareDefinitions,prepareDefinitionsWithScopes)
+import LawSpec.Core.CapabilityScope (CapabilityScopes)
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Digest (digest,digestHex)
 import LawSpec.Public (valueView)
@@ -23,22 +24,28 @@ import LawSpec.Scalar (Scalar(..))
 -- is the mandatory-validated transport copy, never a reinterpretation of the
 -- original serialized witness. Law bodies are not evaluated by this evidence.
 withTransportDomains :: [(C.Id,String)] -> C.Program -> [(C.Id,String)] -> C.Program -> Value -> Value
-withTransportDomains beforeNames before afterNames after (Object fields) =
-  Object (adjust (attach False beforeNames before) "before"
-    (adjust (attach True afterNames after) "after" fields))
+withTransportDomains=withTransportDomainsWithScopes M.empty M.empty
+
+withTransportDomainsWithScopes :: CapabilityScopes -> CapabilityScopes -> [(C.Id,String)] -> C.Program -> [(C.Id,String)] -> C.Program -> Value -> Value
+withTransportDomainsWithScopes beforeScopes afterScopes beforeNames before afterNames after (Object fields) =
+  Object (adjust (attach beforeScopes False beforeNames before) "before"
+    (adjust (attach afterScopes True afterNames after) "after" fields))
   where
     adjust f key values=maybe values (\value -> KM.insert key (f value) values) (KM.lookup key values)
-    attach canonical names program (Object snapshot) = Object (KM.insert "inputDomains" evidence snapshot)
+    attach scopes canonical names program (Object snapshot) = Object (KM.insert "inputDomains" evidence snapshot)
       where evidence=either (\reason -> object ["status" .= ("unavailable"::String),"reason" .= reason]) id
-              (domainSnapshot canonical names program)
-    attach _ _ _ value=value
-withTransportDomains _ _ _ _ value=value
+              (domainSnapshotWithScopes scopes canonical names program)
+    attach _ _ _ _ value=value
+withTransportDomainsWithScopes _ _ _ _ _ _ value=value
 
 domainSnapshot :: Bool -> [(C.Id,String)] -> C.Program -> Either String Value
-domainSnapshot canonical names program = do
+domainSnapshot=domainSnapshotWithScopes M.empty
+
+domainSnapshotWithScopes :: CapabilityScopes -> Bool -> [(C.Id,String)] -> C.Program -> Either String Value
+domainSnapshotWithScopes scopes canonical names program = do
   normalized <- normalizedProgram canonical False names program
   registry <- makeRegistry (C.programDataDeclarations program)
-  invoke <- either (Left . show) Right (prepareDefinitions program)
+  invoke <- either (Left . show) Right (if M.null scopes then prepareDefinitions program else prepareDefinitionsWithScopes scopes program)
   let definitions=[definition | unit<-C.programUnits program,definition<-C.unitDefinitions unit]
       graph=Dependencies.dependencyGraph (C.programDataDeclarations normalized) (C.programUnits normalized)
       ambient=normalized{C.programDataDeclarations=[],C.programUnits=[unit{C.unitProperties=[],

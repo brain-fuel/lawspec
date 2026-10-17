@@ -12,12 +12,11 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import qualified LawSpec.Core as C
 import LawSpec.Core.Migration (Context(..),Project(..))
-import LawSpec.Core.PayloadTransport (PayloadPlan,transportComparison)
+import LawSpec.Core.PayloadTransport (PayloadPlan,transportComparisonWithScopes)
 import LawSpec.Digest (digest,digestHex)
-import LawSpec.Frontend (elaborateWithSourceDeclarations)
+import LawSpec.MigrationElaboration (symbolicProgram)
 import LawSpec.MigrationTemplates (SourceTemplates(..),templateSnapshot)
 import qualified LawSpec.Model as S
-import qualified LawSpec.SourceContext as Source
 
 -- Both inputs have already passed ordinary frontend admission. Lower all
 -- definitions together so that unused generic bodies and their transitive
@@ -39,9 +38,9 @@ definitionTransport plan before after = do
         ["declarationsDigest","definitionTemplatesDigest","lawTemplatesDigest","lawBodiesDigest"]) fields)
       anchors _=Null
       evidence = do
-        old <- lower False before
-        new <- lower True after
-        symbolic <$> transportComparison plan [] old [] new
+        (old,oldScopes) <- symbolicProgram False before (templateUnits before) []
+        (new,newScopes) <- symbolicProgram True after (templateUnits after) []
+        symbolic . snd <$> transportComparisonWithScopes oldScopes newScopes plan [] old [] new
       (matched,core) = case evidence of
         Left reason -> (False,object ["status" .= ("not-established"::String),"reason" .= reason])
         Right view -> (field "status" view==Just (String "matched"),view)
@@ -67,11 +66,6 @@ definitionTransport plan before after = do
           (String "checked unspecialized definition Core; source requirements are separately fingerprinted") values)
         snapshot value=value
     symbolic value=value
-    lower canonical captured = either (Left . unlines . map S.message) Right $
-      elaborateWithSourceDeclarations canonical (Source.SourceContext (M.fromList
-        [(identity,Source.SourceConstructor fields equations) |
-          (identity,fields,equations)<-templateConstructors captured]))
-        (templateDataDeclarations captured) (templateMachineBits captured) (templateUnits captured) []
 
 -- The complete ordinary Core covers bodies, contracts, exact literals,
 -- evaluation order, effects and dependencies. It does not store every source
@@ -95,4 +89,4 @@ headers captured = do
   pure (digestHex (digest (BL.toStrict (encode (("checked-definition-interfaces-v1"::String),old,audited)))))
   where
     header definition=definition{S.functionBody=S.BoolLit True}
-    plain=Context False False M.empty M.empty M.empty (C.Id "definition-interfaces") 0 False Right Right Set.empty Right
+    plain=Context False False M.empty M.empty M.empty (C.Id "definition-interfaces") 0 False Right Right Set.empty M.empty Right

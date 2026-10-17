@@ -515,6 +515,7 @@ library
       LawSpec.Common
       LawSpec.Compile
       LawSpec.Core
+      LawSpec.Core.CapabilityScope
       LawSpec.Core.DefinitionContracts
       LawSpec.Core.Definitions
       LawSpec.Core.DomainEvidence
@@ -631,9 +632,14 @@ library
       LawSpec.Memo
       LawSpec.MigrationDefinitionTransport
       LawSpec.MigrationDomains
+      LawSpec.MigrationElaboration
+      LawSpec.MigrationFields
+      LawSpec.MigrationLawTransport
       LawSpec.MigrationPayloads
+      LawSpec.MigrationScopes
       LawSpec.MigrationTemplateDomains
       LawSpec.MigrationTemplates
+      LawSpec.MigrationUnitTransport
       LawSpec.Model
       LawSpec.ModelTests
       LawSpec.NativeBinding
@@ -876,6 +882,7 @@ test-suite lawspec-test
       BuiltinsSpec
       CanonicalCollectionsSpec
       CanonicalSpec
+      CapabilityScopeSpec
       CollectionsSpec
       ConditionalSpec
       ContainerRecordViewsSpec

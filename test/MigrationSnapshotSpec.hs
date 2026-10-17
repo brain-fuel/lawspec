@@ -96,6 +96,42 @@ test_migrationSnapshot = describe "full Core migration comparison snapshots" $ d
       normalized <- either fail pure (normalizedProgram False False [] (synthetic expression))
       [C.expressionNode (C.definitionBody definition) | unit<-C.programUnits normalized,definition<-C.unitDefinitions unit]
         `shouldSatisfy` all (\node -> case node of C.Let{} -> True; _ -> False)) [reordered,dependent]
+  it "cancels a unary product projection while retaining its effectful payload exactly once" $ do
+    let tag=C.Id "Box::Box"
+        ty=C.Constructor "Box" []
+        binder=C.Binder (C.Id "field") "value" (C.scalarType "Bool")
+        constructor=C.DataConstructor tag "Box" [binder] [] origin [] []
+        declaration=C.DataDeclaration (C.Id "Box") "Box" [] [constructor] origin Nothing
+        payload=C.Expr (C.scalarType "Bool") (C.ExternalCall (C.Id "effect") []) origin
+        value=C.Expr ty (C.Construct tag [payload]) origin
+        expression=C.Expr (C.scalarType "Bool") (C.Project tag 0 value) origin
+    normalized <- either fail pure (normalizedProgram False False [] (synthetic expression){C.programDataDeclarations=[declaration]})
+    [C.expressionNode (C.definitionBody definition) | unit<-C.programUnits normalized,definition<-C.unitDefinitions unit]
+      `shouldBe` [C.ExternalCall (C.Id "effect") []]
+  it "never cancels a product projection that would discard another field's evaluation" $ do
+    let tag=C.Id "Pair::Pair"
+        ty=C.Constructor "Pair" []
+        fields=[C.Binder (C.Id name) name (C.scalarType "Bool") | name<-["first","second"]]
+        constructor=C.DataConstructor tag "Pair" fields [] origin [] []
+        declaration=C.DataDeclaration (C.Id "Pair") "Pair" [] [constructor] origin Nothing
+        effect=C.Expr (C.scalarType "Bool") (C.ExternalCall (C.Id "effect") []) origin
+        value=C.Expr ty (C.Construct tag [boolean True,effect]) origin
+        expression=C.Expr (C.scalarType "Bool") (C.Project tag 0 value) origin
+    normalized <- either fail pure (normalizedProgram False False [] (synthetic expression){C.programDataDeclarations=[declaration]})
+    [C.expressionNode (C.definitionBody definition) | unit<-C.programUnits normalized,definition<-C.unitDefinitions unit]
+      `shouldSatisfy` all (\node -> case node of C.Project{}->True;_->False)
+  it "does not turn a non-product case into an unchecked projection" $ do
+    let tag=C.Id "Choice::One"
+        ty=C.Constructor "Choice" []
+        binder=C.Binder (C.Id "field") "value" (C.scalarType "Bool")
+        constructors=[C.DataConstructor tag "One" [binder] [] origin [] [],
+          C.DataConstructor (C.Id "Choice::None") "None" [] [] origin [] []]
+        declaration=C.DataDeclaration (C.Id "Choice") "Choice" [] constructors origin Nothing
+        selected=C.Expr ty (C.ExternalCall (C.Id "choose") []) origin
+        expression=C.Expr (C.scalarType "Bool") (C.Match selected [C.MatchCase tag [binder] (local binder)]) origin
+    normalized <- either fail pure (normalizedProgram False False [] (synthetic expression){C.programDataDeclarations=[declaration]})
+    [C.expressionNode (C.definitionBody definition) | unit<-C.programUnits normalized,definition<-C.unitDefinitions unit]
+      `shouldSatisfy` all (\node -> case node of C.Match{}->True;_->False)
   it "retains opaque symbol identity strings that resemble a renamed law" $ do
     let value=C.Expr (C.scalarType "Symbol") (C.Constant (SSymbol "migration::law::\"|same|" "label")) origin
     normalized <- either fail pure (normalizedProgram True False [(C.Id "migration::law::\"|same|","\"|same|")] (synthetic value))

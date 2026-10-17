@@ -150,6 +150,15 @@ The inventory retains unused generic definitions and reusable law templates
 before elaboration and specialization. Definition nodes also carry their
 checked `uses` row, including an empty array for a pure definition.
 
+`sourceFields` is either unavailable with a reason, or a version-1
+`{status: 'available', uses}` inventory. Each use records `kind`
+(`field-access` or `field-update`), resolved `constructor`, `field`, original
+field `index` and exact suffix `span`. Updates also retain available `base`
+and whole `expression` spans. These facts come from the existing checked typed
+expressions, including unused generic definitions; clients do not infer a
+field's owner from its spelling. Missing occurrence coverage is reported
+explicitly and blocks the field-edit preview.
+
 `bindings` records declaration/import namespace entries from the same checked
 resolver that compiles the program. Each entry has `namespace` (`type`,
 `constructor`, `refinement`, `value` or `law`), source `name` and resolver
@@ -234,9 +243,19 @@ as evidence of equivalence. Dependency analysis is conservative. External
 adapters and handlers must respect the value transport; native conformance
 remains a separate gate.
 
+`definitionTemplates` and `lawTemplates` compare complete symbolic source
+terms, including unused schemes and reusable laws, through ordinary checked
+Core. Their independent `interfaces` or `metadata` fingerprint pairs and
+`typedCore` certificates are anchored to all four source-template digests on
+both sides. `sourceUnits` combines those term certificates with the remaining
+complete source-unit metadata and checked payload plan. Its terms do not stand
+in for native implementations or witnesses. Generic `Eq` requirements are
+lexical typing evidence; they do not supply `Keyed`, generators or reflexivity.
+Input-domain correspondence remains independently checked.
+
 The enclosing status remains `not-established`, with `validated: false`.
-`dependencyBehavior` still requires unused source-template correspondence;
-`nativeBindings` remains separate. `lawVerification` is
+`dependencyBehavior`, native bindings and generated behavior remain separate
+project-wide gates. `lawVerification` is
 `not-established-by-payload-shapes`. The method does not execute native
 implementations or authorize project writing.
 

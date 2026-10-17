@@ -1,6 +1,6 @@
 -- | The only bridge from checked surface syntax to the typed core. Targets never
 -- receive TypedExpr's source tree or perform contextual literal inference.
-module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateCanonical, elaborateWithSourceDeclarations, elaborateExpression) where
+module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateCanonical, elaborateWithSourceDeclarations, elaborateWithSourceDeclarationsWithScopes, sourcePropertyId, elaborateExpression) where
 import qualified LawSpec.Model as S
 import qualified LawSpec.Compile as S
 import qualified LawSpec.SourceContext as Source
@@ -9,14 +9,16 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Core.EqSet as EqSet
 import LawSpec.Common
 import LawSpec.Data (elaborateDataDeclarationsWithContext)
-import LawSpec.Elaboration (elaborateExpression, binaryOp, elaborateDefinitionUnitWithSourceRecords, elaborateContractWithSourceRecords, abilityReferenceWithSourceRecords, unitOperationsWithSourceRecords, performOperations, collectSourceRecords, collectType, collectExpression, collectEquation, collectAbilityReference)
-import LawSpec.Core.Validate (validateProgram)
-import LawSpec.Core.Definitions (prepareDefinitions)
+import LawSpec.Elaboration (elaborateExpression, binaryOp, abilityReferenceWithSourceRecords, unitOperationsWithSourceRecords, performOperations, collectSourceRecords, collectType, collectExpression, collectEquation, collectAbilityReference)
+import LawSpec.Core.Validate (validateProgramWithScopes)
+import LawSpec.Core.CapabilityScope (CapabilityScopes,noCapabilities)
+import LawSpec.Elaboration (elaborateDefinitionUnitWithScopes,elaborateContractWithScopes,withCapabilities)
+import LawSpec.Core.Definitions (prepareDefinitions,prepareDefinitionsWithScopes)
 import LawSpec.Core.Types (makeRegistry)
 import qualified LawSpec.Core.Eval as CoreEval
 import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Release (checkResourceReleases)
-import LawSpec.Core.Total (deferProgramPostconditions)
+import LawSpec.Core.Total (deferProgramPostconditionsWithScopes)
 import LawSpec.Core.RecordIdentity (internRecordDeclarations)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import Control.Monad (forM, unless)
@@ -61,14 +63,16 @@ canonicalNames program = program{C.programDataDeclarations=map name (C.programDa
 -- A surface constant may use a checked collection builder. Evaluate it through
 -- the ordinary definition invoker, then retain concrete Core input values.
 -- Final validation still checks every materialized example and its domain.
-materializeExampleBindings :: C.Program -> Either [Diagnostic] C.Program
-materializeExampleBindings program
+materializeExampleBindingsWithScopes :: CapabilityScopes -> C.Program -> Either [Diagnostic] C.Program
+materializeExampleBindingsWithScopes scopes program
   | not (any hasCalls [value | unit <- C.programUnits program, property <- C.unitProperties unit,
       example <- C.propertyExamples property, (_,value) <- C.exampleBindings example]) = Right program
   | otherwise = do
       let definitions = program{C.programUnits = [unit{C.unitProperties =
-            [property{C.propertyExamples=[]} | property <- C.unitProperties unit]} | unit <- C.programUnits program]}
-      invoke <- prepareDefinitions definitions
+            if M.null scopes then [property{C.propertyExamples=[]} | property <- C.unitProperties unit] else []} | unit <- C.programUnits program]}
+          owners=Set.fromList [C.declarationId declaration | unit<-C.programUnits definitions,declaration<-C.unitDeclarations unit]
+      invoke <- if M.null scopes then prepareDefinitions definitions else
+        prepareDefinitionsWithScopes (M.restrictKeys scopes owners) definitions
       registry <- either (\message -> Left [Diagnostic "core" message Nothing]) Right
         (makeRegistry (C.programDataDeclarations program))
       units <- forM (C.programUnits program) $ \unit -> do
@@ -107,14 +111,18 @@ elaborate bits units properties = do
 -- without rebuilding a sparse declaration context from the executable roots.
 elaborateWithSourceDeclarations :: Bool -> Source.SourceContext -> [C.DataDeclaration]
   -> Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
-elaborateWithSourceDeclarations canonical sourceTypes dataDeclarations bits units properties = do
+elaborateWithSourceDeclarations=elaborateWithSourceDeclarationsWithScopes M.empty
+
+elaborateWithSourceDeclarationsWithScopes :: CapabilityScopes -> Bool -> Source.SourceContext -> [C.DataDeclaration]
+  -> Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
+elaborateWithSourceDeclarationsWithScopes scopes canonical sourceTypes dataDeclarations bits units properties = do
   collected <- mapM (unit sourceTypes dataDeclarations) units
   let elaborated = C.Program bits (appendRecords dataDeclarations (concatMap snd collected)) (map fst collected)
   normalized <- normalizeProgramRecords elaborated
   -- Postconditions over non-linear index arithmetic become runtime checks.
-  admitted <- deferProgramPostconditions normalized
-  core <- materializeExampleBindings admitted
-  validateProgram core
+  admitted <- deferProgramPostconditionsWithScopes scopes normalized
+  core <- materializeExampleBindingsWithScopes scopes admitted
+  validateProgramWithScopes scopes core
   checkResourceReleases core
   -- Audit every occurrence before interning: a duplicate descriptor must not
   -- hide an ill-defined source ordering of constructor restrictions.
@@ -125,16 +133,17 @@ elaborateWithSourceDeclarations canonical sourceTypes dataDeclarations bits unit
     appendRecords known records = known ++ records
     unit sourceTypes nominalDeclarations u = do
       (closed, owned, ps0, cs, dataDeclarations, occurrences) <- contextual Nothing $ do
-        (closed,definitionRecords) <- elaborateDefinitionUnitWithSourceRecords sourceTypes nominalDeclarations bits u
+        (closed,definitionRecords) <- elaborateDefinitionUnitWithScopes scopes sourceTypes nominalDeclarations bits u
         let knownDefinitions = appendRecords nominalDeclarations definitionRecords
-        contracts <- mapM (elaborateContractWithSourceRecords sourceTypes knownDefinitions bits u) (S.contracts u)
+        contracts <- mapM (elaborateContractWithScopes scopes sourceTypes knownDefinitions bits u) (S.contracts u)
         let contractRecords = concatMap snd contracts
             dataDeclarations = appendRecords knownDefinitions contractRecords
             cs = map fst contracts
         -- A law's Core depends on it, its unit's signatures and the data types.
         let dataDigest = digestHex (digestString (show (dataDeclarations,sourceTypes)))
             elaborated p = memoized elaborationTable
-              (digestHex (digestString (show (bits, dataDigest, S.unitName u, S.functions u, S.resourceDeclarations u, p))))
+              (digestHex (digestString (show (bits, dataDigest, S.unitName u, S.functions u, S.resourceDeclarations u,
+                M.findWithDefault noCapabilities (sourcePropertyId (S.unitName u) (S.name p)) scopes, p))))
               (property sourceTypes dataDeclarations u p)
             owned = filter ((== S.unitName u) . S.owner) properties
         ps0 <- mapM elaborated owned
@@ -185,8 +194,9 @@ elaborateWithSourceDeclarations canonical sourceTypes dataDeclarations bits unit
       C.Perform op args -> op : concatMap performedIn args
       _ -> concatMap performedIn (C.children e)
     declarationId u n = C.Id (S.unitName u ++ "::" ++ n)
-    property sourceTypes dataDeclarations u p = collectSourceRecords sourceTypes dataDeclarations $ do
-      let pid = C.Id (S.unitName u ++ "::law::" ++ escapeIdentity (S.name p))
+    property sourceTypes dataDeclarations u p = collectSourceRecords sourceTypes dataDeclarations $
+      withCapabilities (M.findWithDefault noCapabilities (sourcePropertyId (S.unitName u) (S.name p)) scopes) $ do
+      let pid = sourcePropertyId (S.unitName u) (S.name p)
           original = S.original p
           resourceIds = [(n,C.Id (C.idText pid ++ "::resource::" ++ show index)) | (index,(n,_)) <- zip [0::Int ..] (S.lawResources original)]
           nestedInputs = S.assertionInputs (S.assertion p)
@@ -534,8 +544,8 @@ baseName name = case break (== ':') name of
 
 -- | Quoted law names may contain separators. Escape them before composing IDs so
 -- a display name cannot masquerade as a binder segment in target accessors.
-escapeIdentity :: String -> String
-escapeIdentity = concatMap (\c -> case c of ':' -> "%3A"; '%' -> "%25"; _ -> [c])
+sourcePropertyId :: String -> String -> C.Id
+sourcePropertyId owner name=C.Id (owner++"::law::"++C.escapeIdentity name)
 
 elaborationTable :: Table (Either String (C.Property,[C.DataDeclaration]))
 elaborationTable = unsafePerformIO (newPersistentTable "elaborate" 4096 (const 1))

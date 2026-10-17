@@ -25,7 +25,7 @@ test('the exhaustive TypeScript visitor traverses emitted records, effects and f
   t.after(() => rm(directory, {recursive: true, force: true}));
   execFileSync(tsc, ['--strict', '--target', 'ES2022', '--module', 'NodeNext', '--moduleResolution', 'NodeNext',
     '--rootDir', 'test/fixtures', '--outDir', directory, 'test/fixtures/payload_api.ts'], {cwd: root, stdio: 'pipe'});
-  const {children, nodeFixtures} = await import(pathToFileURL(path.join(directory, 'payload_api.js')).href);
+  const {children, nodeFixtures, sourceFieldMigrations, symbolicMigrationEvidence} = await import(pathToFileURL(path.join(directory, 'payload_api.js')).href);
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   const expressions = [];
@@ -69,5 +69,21 @@ test('the exhaustive TypeScript visitor traverses emitted records, effects and f
   assert.deepEqual(children(update), [value, value]);
   assert.deepEqual(children(fixtures.find(node => node.kind === 'if')), [value, value, value]);
   assert.throws(() => children({kind: 'future-node'}), /Unrecognized expression node/);
+  const options = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []}};
+  const original = [{path: 'fields.lawspec', content: 'unit fields\n' +
+    'type Capsule (a :: Type) is Packed last :: Bool first :: a end\n' +
+    'definition read (input :: Capsule a) :: a is input.first end'}];
+  const baseline = await compiler.migrationBaseline({...options, from: '0.24', sources: original});
+  assert.deepEqual(baseline.diagnostics, []);
+  assert.deepEqual(sourceFieldMigrations(baseline), ['fields::type::Capsule::Packed:first']);
+  const migrated = [{path: 'fields.lawspec', content: 'unit fields\n' +
+    'type Capsule (a :: Type) is one of Packed of type record{last :: Bool first :: a} end type\n' +
+    'function read (input :: Capsule a) -> a is input.value.first end function'}];
+  const comparison = await compiler.migrationComparison({...options, from: '0.24', sources: original,
+    migrated: {...options, sources: migrated}});
+  assert.deepEqual(comparison.diagnostics, []);
+  const fingerprints = symbolicMigrationEvidence(comparison);
+  assert.equal(fingerprints.length, 5);
+  assert.ok(fingerprints.every(value => /^[0-9a-f]{64}$/.test(value)));
   t.diagnostic(`Traversed ${expressions.length} emitted expressions across ${kinds.size} node kinds; both handler forms and call filters were present.`);
 });

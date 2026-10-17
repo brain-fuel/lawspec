@@ -1,5 +1,5 @@
 -- | Structural termination and definedness auditing over typed Core only.
-module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes, proofExpression, definitionProof) where
+module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, validateDefinitionContractsWithScopes, deferNonlinearPostconditions, deferProgramPostconditions, deferProgramPostconditionsWithScopes, constructorProofContracts, safeConversionTypes, proofExpression, definitionProof) where
 
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
 import Control.Monad (unless, forM_, forM, foldM)
@@ -13,6 +13,7 @@ import System.Mem.StableName (StableName, makeStableName)
 import LawSpec.Common
 import LawSpec.Core
 import qualified LawSpec.Core.Types as Types
+import LawSpec.Core.CapabilityScope (CapabilityScopes,scopedRegistry)
 import qualified LawSpec.Core.Totality as T
 import qualified LawSpec.Core.PayloadPlan as Payload
 import LawSpec.Digest (digestHex, digestString)
@@ -29,9 +30,12 @@ validateDefinitions bits dataDeclarations definitions = validateDefinitionContra
 -- preconditions, proves result contracts, and checks closed call obligations.
 -- Native bridges enforce these domains on every entry point.
 validateDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] ()
-validateDefinitionContracts bits dataDeclarations definitions contracts = do
+validateDefinitionContracts = validateDefinitionContractsWithScopes M.empty
+
+validateDefinitionContractsWithScopes :: CapabilityScopes -> Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] ()
+validateDefinitionContractsWithScopes scopes bits dataDeclarations definitions contracts = do
   -- Every remaining postcondition must be proved; only the frontend defers.
-  deferred <- auditDefinitionContracts bits dataDeclarations definitions contracts
+  deferred <- auditDefinitionContractsWithScopes scopes bits dataDeclarations definitions contracts
   case deferred of
     [] -> pure ()
     (owner, _) : _ -> Left [Diagnostic "total" (idText owner ++ ": definition result refinement could not be proved") Nothing]
@@ -39,8 +43,11 @@ validateDefinitionContracts bits dataDeclarations definitions contracts = do
 -- | Moves each postcondition the prover defers (non-linear index arithmetic)
 -- into the contract's runtime postconditions; every other claim stays proved.
 deferNonlinearPostconditions :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [Contract]
-deferNonlinearPostconditions bits dataDeclarations definitions contracts = do
-  deferred <- auditDefinitionContracts bits dataDeclarations definitions contracts
+deferNonlinearPostconditions = deferNonlinearPostconditionsWithScopes M.empty
+
+deferNonlinearPostconditionsWithScopes :: CapabilityScopes -> Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [Contract]
+deferNonlinearPostconditionsWithScopes scopes bits dataDeclarations definitions contracts = do
+  deferred <- auditDefinitionContractsWithScopes scopes bits dataDeclarations definitions contracts
   pure [ contract { contractPostconditions = [p | (i, p) <- numbered, (owner, i) `notElem` deferred]
                   , contractRuntimePostconditions = contractRuntimePostconditions contract ++
                       [p | (i, p) <- numbered, (owner, i) `elem` deferred] }
@@ -51,41 +58,44 @@ deferNonlinearPostconditions bits dataDeclarations definitions contracts = do
 -- | Applies the deferral to every definition contract of a program; adapter
 -- contracts are untouched.
 deferProgramPostconditions :: Program -> Either [Diagnostic] Program
-deferProgramPostconditions program = do
+deferProgramPostconditions = deferProgramPostconditionsWithScopes M.empty
+
+deferProgramPostconditionsWithScopes :: CapabilityScopes -> Program -> Either [Diagnostic] Program
+deferProgramPostconditionsWithScopes scopes program = do
   let definitions = concatMap unitDefinitions (programUnits program)
       owned = S.fromList [declarationId (definitionDeclaration d) | d <- definitions]
       own = [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c `S.member` owned]
-  deferred <- deferNonlinearPostconditions (programMachineBits program) (programDataDeclarations program) definitions own
+  deferred <- deferNonlinearPostconditionsWithScopes scopes (programMachineBits program) (programDataDeclarations program) definitions own
   let table = M.fromList [(contractDeclaration d, d) | d <- deferred]
       replaced c = M.findWithDefault c (contractDeclaration c) table
   pure program { programUnits = [u { unitContracts = map replaced (unitContracts u) } | u <- programUnits program] }
 
-auditDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
-auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = unsafePerformIO $ do
+auditDefinitionContractsWithScopes :: CapabilityScopes -> Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
+auditDefinitionContractsWithScopes scopes bits dataDeclarations allDefinitions allContracts = unsafePerformIO $ do
   -- A program's definitions are audited by compilation, elaboration,
   -- validation and planning alike, the same definitions each time: the last
   -- few audits are kept, keyed by the definitions' identities in memory and
   -- the contracts' and data types' contents (compared in full) (a pure function, so this is
   -- only a cache). An audit of thousands of definitions is seconds.
   names <- mapM (\d -> evaluate d >>= makeStableName) allDefinitions
-  let key = AuditKey bits dataDeclarations names allContracts
+  let key = AuditKey scopes bits dataDeclarations names allContracts
   cached <- readIORef auditCache
   case lookup key cached of
     Just result -> pure result
     Nothing -> do
-      let result = auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContracts
+      let result = auditDefinitionContractsUncached scopes bits dataDeclarations allDefinitions allContracts
       writeIORef auditCache (take 4 ((key, result) : cached))
       pure result
-{-# NOINLINE auditDefinitionContracts #-}
+{-# NOINLINE auditDefinitionContractsWithScopes #-}
 
-data AuditKey = AuditKey Int [DataDeclaration] [StableName Definition] [Contract] deriving Eq
+data AuditKey = AuditKey CapabilityScopes Int [DataDeclaration] [StableName Definition] [Contract] deriving Eq
 
 auditCache :: IORef [(AuditKey, Either [Diagnostic] [(Id, Int)])]
 auditCache = unsafePerformIO (newIORef [])
 {-# NOINLINE auditCache #-}
 
-auditDefinitionContractsUncached :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
-auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContracts = do
+auditDefinitionContractsUncached :: CapabilityScopes -> Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
+auditDefinitionContractsUncached scopes bits dataDeclarations allDefinitions allContracts = do
   -- Orchestrations call adapters; they are run natively, not proved.
   let definitions = filter (not . definitionOrchestrates) allDefinitions
       orchestrated = [declarationId (definitionDeclaration d) | d <- allDefinitions, definitionOrchestrates d]
@@ -103,7 +113,7 @@ auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContrac
     diagnostic (location declaration) $ prefix (declarationName declaration) $ do
       unless (map binderType arguments == parameters && expressionType body == resultType)
         (Left "definition arguments or result do not match its signature")
-      validateExpressionWithRegistry registry bits signatures scope body
+      validateExpressionWithRegistry (scopedRegistry scopes (declarationId declaration) registry) bits signatures scope body
   -- Proof extraction can inspect constant numeric values. Validate the complete
   -- typed Core first, including malformed values supplied through internal APIs.
   proofs <- forM contracts $ \contract -> diagnostic Nothing $ do
@@ -117,7 +127,7 @@ auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContrac
         argumentScope = M.fromList [(binderId b,binderType b) | b <- arguments]
         resultScope = M.insert (binderId result) (binderType result) argumentScope
         check scope expression = do
-          validateExpressionWithRegistry registry bits signatures scope expression
+          validateExpressionWithRegistry (scopedRegistry scopes (contractDeclaration contract) registry) bits signatures scope expression
           unless (expressionType expression == scalarType "Bool") (Left "definition refinement must be Bool")
     unless (length ids == length (nub ids)) (Left "duplicate definition contract binder")
     unless (map binderType arguments == argumentTypes && binderType result == resultType)

@@ -4,14 +4,14 @@
 -- including constructor predicates, GADT equations and runtime contracts.
 module LawSpec.Core.Migration
   ( migrationSnapshot, normalizedProgram, transformProgram, transformProgramWithTypes
-  , Project(..), GenericProject(..), Context(..), semanticName ) where
+  , Project(..), GenericProject(..), Context(..), semanticName,normalizeTrace ) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value,object,(.=))
 import Data.Binary (encode)
 import qualified Data.ByteString.Lazy as BL
 import Data.Int
-import Data.List (isPrefixOf,isSuffixOf)
+import Data.List (isPrefixOf,isSuffixOf,stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Word
@@ -30,6 +30,7 @@ data Context = Context
   , rewriteExpression :: C.Expr -> Either String C.Expr
   , rewriteDeclaration :: C.DataDeclaration -> Either String C.DataDeclaration
   , structuralConstructors :: S.Set C.Id
+  , productConstructors :: M.Map C.Id Int
   , rewriteType :: C.Type -> Either String C.Type }
 
 class Project a where
@@ -109,6 +110,16 @@ semanticName True ('"':'|':rest) = maybe ('"':'|':rest) id (body [] rest)
     body _ [] = Nothing
 semanticName _ name = name
 
+-- Expansion prints a declaration-name prefix followed by argument text. Only
+-- normalize a uniquely identified prefix; phrase-looking literals in the
+-- argument suffix keep their exact values.
+normalizeTrace :: Context -> String -> String
+normalizeTrace context value=case
+  [made++suffix | (name,made)<-M.toList (traceNames context),name/=made,
+    Just suffix<-[stripPrefix name value],null suffix || take 1 suffix==" "] of
+  [made]->made
+  _->value
+
 scope :: Context -> C.Id -> Context
 scope context owner = context{ownerId=owner,localIds=M.empty,nextBinder=0}
 
@@ -174,7 +185,7 @@ instance Project C.Property where
     -- disappear from the comparison. Inputs already introduced their scopes.
     made <- to <$> genericProject inner (from value{C.propertyInputs=[]})
     pure made{C.propertyId=identity,C.propertyName=M.findWithDefault (C.propertyName value) (C.propertyName value) (traceNames context),
-      C.propertyInputs=inputs,C.propertyTrace=map (\name -> M.findWithDefault name name (traceNames context)) (C.propertyTrace value),
+      C.propertyInputs=inputs,C.propertyTrace=map (normalizeTrace context) (C.propertyTrace value),
       C.propertyInputDomain=if omitDomainPolicy context then Common.UniversalDomain else C.propertyInputDomain value}
 
 instance Project C.Example where
@@ -240,7 +251,8 @@ instance Project C.Expr where
           (,) binder' <$> project inner predicate) predicates
         pure (C.AllPayloads selected' callbacks)
       other -> project context other
-    pure (C.Expr ty node origin)
+    let result=C.Expr ty node origin
+    pure (if preserveSyntax context then result else reduce context result)
     where
       branch outer value = do
         tag <- project outer (C.caseConstructor value)
@@ -252,6 +264,48 @@ instance Project C.Expr where
 -- effects. No arbitrary let substitution or reordering is permitted.
 reduce :: Context -> C.Expr -> C.Expr
 reduce context expression = case C.expressionNode expression of
+  -- The existing structural storage adapter can introduce A -> B -> A
+  -- reconstruction around an instantiated generic record. Cancel only an
+  -- exact ordered field round trip, with no calls or nested conversions.
+  C.Match bridge [outer] | C.Match selected [inner]<-C.expressionNode bridge,
+    C.Construct middle arguments<-C.expressionNode (C.caseBody inner),
+    C.Construct original results<-C.expressionNode (C.caseBody outer),
+    middle==C.caseConstructor outer,original==C.caseConstructor inner,
+    original `S.member` structuralConstructors context,middle `S.member` structuralConstructors context,
+    passed (C.caseBinders inner) arguments,passed (C.caseBinders outer) results,
+    C.expressionType expression==C.expressionType selected,
+    C.expressionType (C.caseBody inner)==C.expressionType bridge,
+    C.expressionType (C.caseBody outer)==C.expressionType expression -> reduce context selected
+  -- A checked unary product contributes no other operand evaluation. Never
+  -- discard sibling fields of a multi-field constructor.
+  C.Project tag 0 selected | C.Construct made [value]<-C.expressionNode selected,
+    tag==made,M.lookup tag (productConstructors context)==Just 1,
+    C.expressionType expression==C.expressionType value -> reduce context value
+  -- Product matching itself only destructures an already evaluated value.
+  -- This retains selected evaluation even when other fields are unused.
+  C.Match selected [branch] | Just arity<-M.lookup (C.caseConstructor branch) (productConstructors context),
+    arity==length (C.caseBinders branch),
+    C.Local chosen<-C.expressionNode (C.caseBody branch),
+    [(position,binder)]<-[(position,binder) | (position,binder)<-zip [0::Int ..] (C.caseBinders branch),C.binderId binder==chosen],
+    C.expressionType expression==C.binderType binder ->
+      reduce context expression{C.expressionNode=C.Project (C.caseConstructor branch) position selected}
+  -- A unary product followed only by projections is the same projection
+  -- chain over its payload. Dependent uses prevent binder elimination.
+  C.Match selected [branch] | [binder]<-C.caseBinders branch,
+    M.lookup (C.caseConstructor branch) (productConstructors context)==Just 1,
+    uses (C.binderId binder) (C.caseBody branch)==1,
+    C.expressionType expression==C.expressionType (C.caseBody branch),
+    Just body<-projectionChain (C.binderId binder)
+      (C.Expr (C.binderType binder) (C.Project (C.caseConstructor branch) 0 selected) (C.expressionOrigin expression)) (C.caseBody branch) ->
+        reduce context body
+  -- Reading a field after a total product match preserves the same selected
+  -- and payload evaluation. Do not let a branch-local dependent type escape.
+  C.Match selected [branch] | M.member (C.caseConstructor branch) (productConstructors context),
+    C.Project tag index value<-C.expressionNode (C.caseBody branch),
+    all (\binder -> C.binderId binder `notElem` typeIds (C.expressionType value)) (C.caseBinders branch),
+    C.expressionType expression==C.expressionType (C.caseBody branch) ->
+      let inner=C.Expr (C.expressionType value) (C.Match selected [branch{C.caseBody=value}]) (C.expressionOrigin expression)
+      in expression{C.expressionNode=C.Project tag index (reduce context inner)}
   -- Strict identity binding evaluates the initializer exactly once. Dependent
   -- type occurrences count as uses, so eliminating it cannot unbind an index.
   C.Let binder initializer body | C.expressionNode body==C.Local (C.binderId binder),
@@ -262,7 +316,7 @@ reduce context expression = case C.expressionNode expression of
   -- A projection of an already checked structural value is total and pure.
   -- Do not generalize this to arbitrary unused initializers or nominal reads.
   C.Let binder initializer body | C.Project tag _ selected <- C.expressionNode initializer,
-    C.Local{} <- C.expressionNode selected,tag `S.member` structuralConstructors context,
+    pureStorage selected,tag `S.member` structuralConstructors context,
     C.binderType binder==C.expressionType initializer,
     uses (C.binderId binder) body==0,C.expressionType expression==C.expressionType body -> body
   C.Let binder value body | C.Match selected branches <- C.expressionNode body,
@@ -272,6 +326,23 @@ reduce context expression = case C.expressionNode expression of
   C.Let{} | Just made <- record expression -> made
   _ -> expression
   where
+    passed binders arguments=length binders==length arguments && and
+      [C.expressionNode value==C.Local (C.binderId binder) && C.expressionType value==C.binderType binder |
+        (binder,value)<-zip binders arguments]
+    pureStorage value=case C.expressionNode value of
+      C.Local{}->True
+      C.Match selected [branch] | pureStorage selected,
+        C.caseConstructor branch `S.member` structuralConstructors context,
+        C.Construct tag fields<-C.expressionNode (C.caseBody branch),
+        tag `S.member` structuralConstructors context,
+        passed (C.caseBinders branch) fields -> True
+      _->False
+    projectionChain identity value body=case C.expressionNode body of
+      C.Local found | found==identity -> Just value
+      C.Project tag index selected -> do
+        inner<-projectionChain identity value selected
+        pure body{C.expressionNode=C.Project tag index inner}
+      _->Nothing
     record outer = gather [] outer
       where
         gather entries current = case C.expressionNode current of
@@ -297,9 +368,12 @@ uses identity expression = length (filter (==identity) (C.freeBinders expression
       C.AllElements _ binder _ -> [C.binderType binder]
       C.AllPayloads _ predicates -> map (C.binderType . fst) predicates
       _ -> []
-    typeIds (C.TypeVariable name)=[name]
-    typeIds (C.Arrow a b)=typeIds a++typeIds b
-    typeIds (C.Constructor _ arguments)=concatMap argumentIds arguments
+
+typeIds :: C.Type -> [C.Id]
+typeIds (C.TypeVariable name)=[name]
+typeIds (C.Arrow a b)=typeIds a++typeIds b
+typeIds (C.Constructor _ arguments)=concatMap argumentIds arguments
+  where
     argumentIds (C.TypeArgument ty)=typeIds ty
     argumentIds (C.IndexArgument (C.IndexVariable name))=[name]
     argumentIds _=[]
@@ -311,17 +385,22 @@ normalizedProgram canonical bodyOnly names program = do
   project context program
   where
     properties=[(C.propertyId property,C.propertyName property) | unit<-C.programUnits program,property<-C.unitProperties unit,
-      ("::law::" ++ C.propertyName property) `isSuffixOf` C.idText (C.propertyId property)]
+      any (`isSuffixOf` C.idText (C.propertyId property))
+        ["::law::" ++ C.escapeIdentity (C.propertyName property),"::law::" ++ C.propertyName property]]
     targets=M.fromList [(identity,target identity name) | (identity,name)<-names++properties]
     target identity name
       | semanticName canonical name==name = identity
+      | C.escapeIdentity name `isSuffixOf` C.idText identity =
+          C.Id (owner identity (C.escapeIdentity name)++C.escapeIdentity (semanticName canonical name))
       | name `isSuffixOf` C.idText identity = C.Id (owner identity name++semanticName canonical name)
       | otherwise = identity
     owner identity name=take (length (C.idText identity)-length name) (C.idText identity)
     traces=M.fromList [(name,semanticName canonical name) | (_,name)<-names++properties]
     context=Context canonical bodyOnly targets M.empty traces (C.Id "program") 0 False Right Right
       (S.fromList [C.constructorId constructor | declaration<-C.programDataDeclarations program,
-        C.dataStructural declaration/=Nothing,constructor<-C.dataConstructors declaration]) Right
+        C.dataStructural declaration/=Nothing,constructor<-C.dataConstructors declaration])
+      (M.fromList [(C.constructorId constructor,length (C.constructorFields constructor)) |
+        declaration<-C.programDataDeclarations program,[constructor]<-[C.dataConstructors declaration]]) Right
 
 -- | Traverse the complete typed representation without normalization, alpha
 -- renaming, origin erasure or execution. Only the supplied checked transport
@@ -334,7 +413,7 @@ transformProgramWithTypes :: M.Map C.Id C.Id -> (C.Type -> Either String C.Type)
   -> (C.Expr -> Either String C.Expr) -> (C.DataDeclaration -> Either String C.DataDeclaration)
   -> C.Program -> Either String C.Program
 transformProgramWithTypes names types expressions declarations = project
-  (Context False False names M.empty M.empty (C.Id "transport") 0 True expressions declarations S.empty types)
+  (Context False False names M.empty M.empty (C.Id "transport") 0 True expressions declarations S.empty M.empty types)
 
 migrationSnapshot :: Bool -> [(C.Id,String)] -> C.Program -> Either String Value
 migrationSnapshot canonical names program = do

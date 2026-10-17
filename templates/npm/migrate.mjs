@@ -25,7 +25,7 @@ export async function migrationReport(compiler, config, input) {
   let sourcePreview;
   try {
     sourcePreview = {scope:'checked computations, nominal records and alternative payloads, ordered collection names, unsigned integers, cases, laws, explicit universal scopes and expectation-first tables',
-      sources:planLegacySourceEdits(input.sources,baseline,syntax.sourceSyntax),diagnostics:[]};
+      sources:planLegacySourceEdits(input.sources,baseline,syntax.sourceSyntax,syntax.sourceFields),diagnostics:[]};
   } catch (error) {
     sourcePreview = {scope:'checked computations, nominal records and alternative payloads, ordered collection names, unsigned integers, cases, laws, explicit universal scopes and expectation-first tables',sources:[],
       diagnostics:[{code:'migration-source',message:error.message,at:null}]};
@@ -46,7 +46,7 @@ export async function migrationReport(compiler, config, input) {
       reason:'The compiler did not admit both inputs for payload comparison.',diagnostics:compared.diagnostics};
   }
   const correspondence={...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,
-    payloadComparison.executableTransport,payloadComparison.definitionTemplates),
+    payloadComparison.executableTransport,payloadComparison.definitionTemplates,payloadComparison.lawTemplates,payloadComparison.sourceUnits),
     payloads:payloadComparison};
   const pending=[
     ['program','Complete checked Core correspondence has not been established.'],
@@ -61,7 +61,7 @@ export async function migrationReport(compiler, config, input) {
   return {
     from: '0.24', to: '1.0-rc.1', validated: false, diagnostics: [],
     proposedConfiguration: { ...config, version: 2, languageProfile: '1.0-rc.1', verification: { layers: [...legacyLawLayers] } },
-    baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax,
+    baseline: { declarations, definitions, laws, types, obligations: baseline.evidence, sourceSyntax:syntax.sourceSyntax,sourceFields:syntax.sourceFields,
       coreSnapshot:syntax.migrationSemantics??{status:'unavailable',reason:'The compiler did not return a Core migration snapshot.'} },
     sourcePreview,
     correspondence,

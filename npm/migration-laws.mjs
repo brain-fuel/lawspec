@@ -13,7 +13,7 @@ function phrase(name) {
   return '"|' + name.replace(/[\\|]/g,character => '\\'+character) + '|';
 }
 
-export function planLegacySourceEdits(sources, baseline, sourceSyntax) {
+export function planLegacySourceEdits(sources, baseline, sourceSyntax, sourceFields) {
   const computations = planLegacyComputationEdits(sources,baseline,sourceSyntax);
   const documents = new Map(sources.map(source => [source.path,new MigrationDocument(source)]));
   for (const source of computations) documents.get(source.path).edits.push(...source.edits);
@@ -21,7 +21,7 @@ export function planLegacySourceEdits(sources, baseline, sourceSyntax) {
     const document=documents.get(source.path);
     const nodes=source.nodes.map(node=>({...node,...document.range({kind:'source',span:node.span})}));
     if (nodes.some(node=>!Number.isInteger(node.start))) throw new Error('Source inventory belongs to a different migration document');
-    return {...source,nodes};
+    return {...source,nodes,fieldUses:sourceFields?.status==='available' ? sourceFields.uses.filter(use=>use.span.start.file===source.path) : null};
   });
   const shapes=legacyRecordShapes(indexed);
   for (const source of indexed) {

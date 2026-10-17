@@ -48,8 +48,12 @@ edge whitespace and tables without expectations also require an authoring
 decision.
 
 Record previews now include nominal braces and explicit single or record
-payloads for alternatives, together with construction, literal and case-pattern
-edits. Namespace bindings from the checked import resolver identify constructors
+payloads for alternatives, together with construction, literal, case-pattern,
+field-access and field-update edits. `baseline.sourceFields` maps exact suffix
+spans to compiler-resolved constructor fields, including unused generic bodies.
+Grouped updates rebuild the outer constructor around its updated record payload;
+the replacement is still evaluated before the base, and the base is evaluated
+once. Nested and imported fields use their resolved identities. Namespace bindings from the checked import resolver identify constructors
 across aliases and facade re-exports, including same-spelled local types. The
 planner indexes all supplied source declarations before applying uses, so
 source-file order does not decide which record a constructor denotes. Nominal
@@ -179,15 +183,22 @@ evidence.
 
 The host accepts a definition-template match only when those anchors, the
 matching interfaces and the validated Core fingerprint pairs agree at the same
-machine width. This clears only the definition-template component. Complete
-source-unit declarations and reusable laws remain independently checked; the
-new evidence does not clear their mismatches or enable project writing. Generic
-equality and numeric schemes that the existing Core cannot represent report
-explicit limits. Known bodies are never replaced with opaque declarations to
-obtain a match. This is migration correspondence, not proof that a law holds or
-that a native implementation conforms. Matching remains structural after the
-existing certified rewrites. A case and a direct projection can have different
-Core shapes; an unestablished result does not refute their equivalence.
+machine width. `lawTemplates` separately covers complete expanded laws with
+fresh abstract declarations for their parameters. Known function bodies remain
+present; abstract law parameters do not choose implementations or witnesses.
+`sourceUnits` combines those two certificates with complete remaining source
+metadata and the compiler-owned payload plan. Stale, partial or mismatched
+certificates cannot clear those components.
+
+Declared generic `Eq` requirements now provide lexical operation-typing evidence.
+They do not provide `Keyed`, generators or a law of reflexivity. The normal
+executable compiler still starts with no symbolic assumptions. Unsupported
+numeric or other schemes report their limits. Matching remains structural after
+narrow certified rewrites, including total product projections and exact ordered
+structural-storage round trips. Other equivalent-looking shapes may still be
+unestablished; that does not refute their equivalence. Source matching does not
+prove a law or a native implementation's conformance, and does not enable
+project writing.
 
 The optional `sourceTemplates.inputDomains` snapshot supplies domain-only rows
 for those same expanded templates, including reusable laws without executable

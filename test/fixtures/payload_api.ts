@@ -222,3 +222,49 @@ export function verificationSelection(result: Result): string | undefined {
   void intrinsic;
   return selected;
 }
+
+export function sourceFieldMigrations(result: Result): string[] {
+  const fields = result.sourceFields;
+  if (!fields || fields.status === 'unavailable') return [];
+  const version: 1 = fields.version;
+  void version;
+  return fields.uses.map(use => {
+    const kind: 'field-access' | 'field-update' = use.kind;
+    const index: number = use.index;
+    const file: string = use.span.start.file;
+    void kind; void index; void file;
+    return use.constructor + ':' + use.field;
+  });
+}
+
+export function symbolicMigrationEvidence(result: Result): string[] {
+  const comparison = result.migrationComparison;
+  if (!comparison || comparison.status === 'unavailable') return [];
+  const identifiers: string[] = [];
+  const definition = comparison.definitionTemplates;
+  if (definition && 'typedCore' in definition) {
+    identifiers.push(definition.before.definitionTemplatesDigest, definition.interfaces.before);
+    const preserved: true = definition.originalsUnchanged;
+    const conformance: 'not-established' = definition.nativeConformance;
+    void preserved; void conformance;
+  }
+  const law = comparison.lawTemplates;
+  if (law && 'typedCore' in law) {
+    identifiers.push(law.after.lawTemplatesDigest, law.metadata.after);
+    const evaluated: false = law.lawBodiesEvaluated;
+    // @ts-expect-error Matching symbolic terms does not establish a verified law.
+    const proved: true = law.lawBodiesEvaluated;
+    void evaluated; void proved;
+  }
+  const unit = comparison.sourceUnits;
+  if (unit && 'metadata' in unit) {
+    identifiers.push(unit.metadata.before);
+    const payloads: 'matched' = unit.payloadShapes;
+    const definitions: 'matched' | 'not-established' = unit.definitions;
+    void payloads; void definitions;
+  }
+  return identifiers;
+}
+// @ts-expect-error Source-field metadata cannot silently claim an unknown version.
+const fabricatedSourceFields: NonNullable<Result['sourceFields']> = {status: 'available', version: 2, uses: []};
+void fabricatedSourceFields;

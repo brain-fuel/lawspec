@@ -86,12 +86,12 @@ test('complete unused generic definitions match symbolically at both machine wid
   }
 });
 
-test('a different Core shape remains unestablished rather than claiming equivalence or inequivalence',async()=>{
+test('a pure product projection matches its exhaustive single-branch pattern',async()=>{
   const evidence=await compareSources(oldType+oldRead,newType+newProjection);
-  assert.equal(evidence.status,'not-established');
+  assert.equal(evidence.status,'matched');
   assert.equal(evidence.interfaces.status,'matched');
   assert.equal(evidence.typedCore.copyValidated,true);
-  assert.equal(evidence.typedCore.definitionPlane.status,'not-established');
+  assert.equal(evidence.typedCore.definitionPlane.status,'matched');
 });
 
 test('unused generic dependency and capability mutants remain unestablished',async()=>{
@@ -107,11 +107,11 @@ test('unused generic dependency and capability mutants remain unestablished',asy
   }
 });
 
-test('unsupported generic capabilities report limits while ordinary source admission remains mandatory',async()=>{
+test('declared generic equality is supported while ordinary source admission remains mandatory',async()=>{
   const evidence=await compareSources('definition equal (left :: a) (right :: a) :: Bool requires Eq a is left == right end',
     'function equal (left :: a) (right :: a) -> Bool requires Eq a is left = right end function');
-  assert.equal(evidence.status,'not-established');
-  assert.match(evidence.typedCore.reason,/unresolved equality capability/);
+  assert.equal(evidence.status,'matched');
+  assert.equal(evidence.typedCore.copyValidated,true);
   const rejected=await compiler.migrationComparison({...options,from:'0.24',sources:sources('definition invalid (unused :: a) :: Integer is 1 / 0 end'),
     migrated:{...options,sources:sources('function invalid (unused :: a) -> Integer is 1 / 0 end function')}});
   assert.notDeepEqual(rejected.diagnostics,[]);

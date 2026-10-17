@@ -13,7 +13,7 @@ import LawSpec.Digest (digestString, digestHex)
 import LawSpec.SourceText (formatSource)
 import LawSpec.SourceSyntax (SourceSyntax)
 import LawSpec.Compile
-import LawSpec.Frontend (elaborate, elaborateCanonical)
+import LawSpec.Frontend (elaborate, elaborateCanonical,sourcePropertyId)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), planTesting, planTestingWith)
 import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core.Smt as Smt
@@ -23,7 +23,8 @@ import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
 import LawSpec.MigrationTemplateDomains (withTemplateInputDomains)
 import LawSpec.MigrationDomains (domainSnapshot,withTransportDomains)
 import LawSpec.MigrationPayloads (payloadCorrespondenceWithPlan)
-import LawSpec.MigrationDefinitionTransport (definitionTransport)
+import LawSpec.MigrationUnitTransport (sourceTransport)
+import qualified LawSpec.MigrationFields as MigrationFields
 import LawSpec.Core.PayloadTransport (transportComparisonWithProgram)
 import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
@@ -56,7 +57,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       Left response -> response
       Right ((us,es,core,bindings,evidence,described,_,templates),syntax) ->
         let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-        in withMigrationSemantics False us core templates $ withMigrationSyntax syntax $ withAttestation attestation core obligations $ withVerification verification $
+        in withMigrationSemantics False us core templates $ withMigrationSyntax templates syntax $ withAttestation attestation core obligations $ withVerification verification $
           withPackages project described (programView settings us (map prettyExpanded es) [] obligations (C.lowerProgramFields core))
    else
    -- Typed compilation is shared across targets. SMT task preparation has a
@@ -138,13 +139,17 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                             Left reason -> unavailable reason
                             Right (view,Nothing) -> view
                             Right (Object fields,Just plan) ->
-                              let names units=[(C.Id (unitName unit ++ "::law::" ++ lawName law),lawName law) | unit<-units,law<-laws unit]
+                              let names units=[(sourcePropertyId (unitName unit) (lawName law),lawName law) | unit<-units,law<-laws unit]
                                   transported=either (\reason -> object ["status" .= ("not-established"::String),"reason" .= reason]) id
                                     (do (copy,view)<-transportComparisonWithProgram plan (names beforeUnits) beforeCore (names afterUnits) afterCore
                                         pure (withTransportDomains (names beforeUnits) copy (names afterUnits) afterCore view))
-                                  templates=either (\reason -> object ["status" .= ("not-established"::String),"reason" .= reason]) id
-                                    (definitionTransport plan previous next)
-                              in Object (KM.insert "definitionTemplates" templates (KM.insert "executableTransport" transported fields))
+                                  (sourceUnits,templates,lawTemplates)=case sourceTransport plan previous next of
+                                    Right checked->checked
+                                    Left reason->let pending=object ["status" .= ("not-established"::String),"reason" .= reason]
+                                      in (pending,pending,pending)
+                              in Object (KM.insert "sourceUnits" sourceUnits (KM.insert "lawTemplates" lawTemplates
+                                (KM.insert "definitionTemplates" templates (KM.insert "executableTransport" transported fields)))
+                                )
                             Right (view,_) -> view
                           _ -> unavailable "checked source templates were not captured for both inputs"
                     in withVerification (Just V.noVerification) (object ["diagnostics" .= ([]::[Diagnostic]),
@@ -231,10 +236,15 @@ withSources :: [Source] -> Value -> Value
 withSources sources (Object o) = Object (KM.insert "formattedSources" (toJSON sources) o)
 withSources _ value = value
 
-withMigrationSyntax :: [SourceSyntax] -> Value -> Value
-withMigrationSyntax syntax (Object value) = Object
-  (KM.insert "sourceLanguageProfile" (String "0.24") (KM.insert "sourceSyntax" (toJSON syntax) value))
-withMigrationSyntax _ value = value
+withMigrationSyntax :: Maybe SourceTemplates -> [SourceSyntax] -> Value -> Value
+withMigrationSyntax templates syntax (Object value) = Object
+  (KM.insert "sourceLanguageProfile" (String "0.24") (KM.insert "sourceFields" fields (KM.insert "sourceSyntax" (toJSON syntax) value)))
+  where
+    fields=case templates of
+      Nothing->unavailable "checked source templates were not captured"
+      Just captured->either unavailable id (MigrationFields.sourceFields captured syntax)
+    unavailable reason=object ["status" .= ("unavailable"::String),"reason" .= (reason::String)]
+withMigrationSyntax _ _ value = value
 
 -- A comparison projection of the actual, fully admitted Core. Snapshot errors
 -- never weaken mandatory validation or change which programs compile.

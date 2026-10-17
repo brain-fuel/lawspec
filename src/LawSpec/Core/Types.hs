@@ -1,7 +1,7 @@
 -- | Shared algebraic type declarations and kind checking. The registry contains
 -- core identities, never source names awaiting resolution or target mappings.
 module LawSpec.Core.Types
-  ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations
+  ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations, assumingCapabilities
   , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements, keyedRequirements, keyedPrimitive
   , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, freeExistentials, witnessPool
   ) where
@@ -29,7 +29,15 @@ data TypeRegistry = TypeRegistry
   , declarations :: M.Map Id DataDeclaration
   , storedFieldRules :: M.Map Id (Maybe [Id])
   , keyedFieldRules :: M.Map Id (Maybe [Id])
+  , assumedEquality :: S.Set Id
+  , assumedKeys :: S.Set Id
   }
+
+-- Each scoped registry is an immutable view. The cached declaration registry
+-- remains assumption-free, and neither operation supplies generation support.
+assumingCapabilities :: S.Set Id -> S.Set Id -> TypeRegistry -> TypeRegistry
+assumingCapabilities equality keyed registry=registry
+  {assumedEquality=S.union equality keyed,assumedKeys=keyed}
 
 -- | Planning and emission walk every declaration, built-in ones included.
 registryDeclarations :: TypeRegistry -> [DataDeclaration]
@@ -94,6 +102,7 @@ buildRegistry userDeclarations = do
       registry = TypeRegistry kinds (M.fromList kinds) (M.fromList [(dataId d, d) | d <- allDeclarations])
         (deriveStoredFieldCapabilities everyPrimitive (const True) allDeclarations)
         (deriveStoredFieldCapabilities keyedPrimitive ((/= EqSet.eqSetTypeId) . dataId) allDeclarations)
+        S.empty S.empty
   unique "type constructor identity" (map fst kinds)
   unique "data constructor identity" [constructorId c | d <- allDeclarations, c <- dataConstructors d]
   mapM_ EqSet.validateEqSetDeclaration allDeclarations
@@ -403,7 +412,8 @@ storedFieldNeeds primitiveOk definitions rules ty = case ty of
 -- | Return outstanding Eq obligations for type variables. A concrete type has
 -- derived equality exactly when this list is empty.
 equalityRequirements :: TypeRegistry -> Type -> Either String [Id]
-equalityRequirements = storedRequirements "structural equality"
+equalityRequirements registry ty = filter (`S.notMember` assumedEquality registry) <$>
+  storedRequirements "structural equality" registry ty
 
 -- | Current built-in value domains support both generation and equality. Both
 -- derivations follow stored fields, including parameter transformations in
@@ -436,5 +446,5 @@ keyedRequirements registry ty = do
   checkType registry ty
   forM_ (handleIn registry ty) $ \name ->
     Left (name ++ " is a handle, which has no portable order")
-  maybe (Left ("type has no portable order: " ++ show ty)) Right
+  filter (`S.notMember` assumedKeys registry) <$> maybe (Left ("type has no portable order: " ++ show ty)) Right
     (storedFieldNeeds keyedPrimitive (declarations registry) (keyedFieldRules registry) ty)

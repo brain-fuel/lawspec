@@ -2,7 +2,7 @@
 -- ordinary record normalizer and mandatory Core validator audit the result;
 -- neither this copy nor its rules are emitted or used to run laws.
 module LawSpec.Core.PayloadTransport
-  ( PayloadPlan(..), transportProgram, transportComparison, transportComparisonWithProgram ) where
+  ( PayloadPlan(..), transportProgram, transportProgramWithScopes, transportComparison, transportComparisonWithProgram, transportComparisonWithScopes ) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value(..),object,(.=))
@@ -17,7 +17,8 @@ import LawSpec.Core.Migration (Context(..),Project(..),transformProgram,transfor
 import LawSpec.Core.RecordIdentity (constructRecord,validateRecordDeclaration)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import LawSpec.Core.Types (makeRegistry,constructorFieldsFor,registryDeclarations)
-import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.Validate (validateProgramWithScopes)
+import LawSpec.Core.CapabilityScope (CapabilityScopes)
 import LawSpec.Digest (digest,digestHex)
 
 -- Built only after the frontend has compared full checked source descriptors,
@@ -28,7 +29,10 @@ data PayloadPlan = PayloadPlan
   } deriving (Eq,Show)
 
 transportProgram :: PayloadPlan -> C.Program -> Either String C.Program
-transportProgram plan original = do
+transportProgram=transportProgramWithScopes M.empty
+
+transportProgramWithScopes :: CapabilityScopes -> PayloadPlan -> C.Program -> Either String C.Program
+transportProgramWithScopes scopes plan original = do
   let known=M.fromList [(C.dataId value,value) | value<-C.programDataDeclarations original]
   mapM_ (\(before,_) -> do
     actual<-maybe (Left "a certified source declaration is missing from admitted Core") Right (M.lookup (C.dataId before) known)
@@ -163,7 +167,7 @@ transportProgram plan original = do
   _<-transformProgramWithTypes M.empty auditType audit Right original
   changed<-transformProgram renames rewrite declaration augmented
   normalized<-either (Left . show) Right (normalizeProgramRecords changed)
-  either (Left . show) Right (validateProgram normalized)
+  either (Left . show) Right (validateProgramWithScopes scopes normalized)
   pure normalized
 
 -- | Full-Core correspondence after transport. Catalog ordering is not
@@ -176,9 +180,14 @@ transportComparison plan beforeNames before afterNames after =
 -- Return the same validated comparison copy for frontend input-domain evidence;
 -- callers must not reconstruct it from the wire view or use it for generation.
 transportComparisonWithProgram :: PayloadPlan -> [(C.Id,String)] -> C.Program -> [(C.Id,String)] -> C.Program -> Either String (C.Program,Value)
-transportComparisonWithProgram plan beforeNames before afterNames after = do
+transportComparisonWithProgram=transportComparisonWithScopes M.empty M.empty
+
+transportComparisonWithScopes :: CapabilityScopes -> CapabilityScopes -> PayloadPlan -> [(C.Id,String)] -> C.Program -> [(C.Id,String)] -> C.Program -> Either String (C.Program,Value)
+transportComparisonWithScopes beforeScopes afterScopes plan beforeNames before afterNames after = do
   unless (C.programMachineBits before==C.programMachineBits after) (Left "transport requires matching machine widths")
-  made<-transportProgram plan before
+  either (Left . show) Right (validateProgramWithScopes beforeScopes before)
+  either (Left . show) Right (validateProgramWithScopes afterScopes after)
+  made<-transportProgramWithScopes beforeScopes plan before
   let order=map C.dataId (C.programDataDeclarations after)
       known=M.fromList [(C.dataId value,value) | value<-C.programDataDeclarations made]
       aligned=if Set.fromList order==M.keysSet known
@@ -228,7 +237,7 @@ mark :: C.Expr -> C.Expr
 mark expression=(C.mapChildren mark expression){C.expressionOrigin=marker}
 
 plain :: Context
-plain=Context False False M.empty M.empty M.empty (C.Id "transport") 0 False Right Right Set.empty Right
+plain=Context False False M.empty M.empty M.empty (C.Id "transport") 0 False Right Right Set.empty M.empty Right
 
 -- Overapproximations deliberately reject an affected observer instead of
 -- equating operations whose ordering, rendering or scheduling can change.

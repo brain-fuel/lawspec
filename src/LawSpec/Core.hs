@@ -16,6 +16,11 @@ import qualified Data.Set as Set
 -- two units' declarations of the same name never meet and an emitter never
 -- resolves a name again. ref:DEC-typed-core-boundary
 newtype Id = Id { idText :: String } deriving (Eq, Ord, Show, Generic)
+
+-- Escape declaration-name contents independently of the qualified identity's
+-- separators. Kept here so source elaboration and typed projections agree.
+escapeIdentity :: String -> String
+escapeIdentity=concatMap (\c -> case c of ':' -> "%3A"; '%' -> "%25"; _ -> [c])
 -- | Type parameters of indexed families take values as well as types, so Core
 -- records which a parameter expects. ref:DEC-indexed-families-as-evidence
 data Kind = ValueKind | TypeKind | KindArrow Kind Kind deriving (Eq, Show, Generic)
