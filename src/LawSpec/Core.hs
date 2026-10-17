@@ -371,7 +371,7 @@ data Contract = Contract { contractDeclaration :: Id, contractArguments :: [Bind
 -- | A law or contract as the tests need it, with the description, rationale,
 -- references and expansion trace emitted into each test's header, so a failing
 -- test explains itself.
-data Property = Property
+data Property = MkProperty
   { propertyId :: Id, propertyName :: String, propertyLocation :: Location
   , propertyInputs :: [Quantifier], propertyBody :: Proposition
   , propertyExamples :: [Example], propertyGeneration :: Generation
@@ -387,7 +387,21 @@ data Property = Property
   , propertyHarness :: LawHarness
   , propertyInputDomain :: InputDomain
   , propertyMetadata :: LawMetadata
+  -- Universally scoped formal values of an uninstantiated law template.
+  -- Each admissible parameter tuple has its own input-domain obligation;
+  -- these are not extra sampled inputs or zero-argument adapters.
+  , propertyParameters :: [Quantifier]
   } deriving (Eq, Show, Generic)
+
+pattern Property :: Id -> String -> Location -> [Quantifier] -> Proposition
+  -> [Example] -> Generation -> String -> String
+  -> [DocumentaryReference DocumentaryTarget] -> [String]
+  -> [(AbilityRef,HandlerRef)] -> [Resource] -> LawHarness -> InputDomain -> LawMetadata -> Property
+pattern Property identity name location inputs body examples generation description rationale references trace handlers resources harness domain metadata
+  <- MkProperty identity name location inputs body examples generation description rationale references trace handlers resources harness domain metadata _
+  where Property identity name location inputs body examples generation description rationale references trace handlers resources harness domain metadata =
+          MkProperty identity name location inputs body examples generation description rationale references trace handlers resources harness domain metadata []
+{-# COMPLETE Property #-}
 
 -- A law's harness. Every expression is over the law's inputs (or a
 -- strategy's bound values) and calls checked definitions only.
@@ -777,7 +791,7 @@ propertyExpressions property =
   concatMap (drawExpressions . third) (harnessDraws (propertyHarness property)) ++
   concatMap (drawExpressions . fourth) (harnessSearches (propertyHarness property)) ++
   concat [[resourceAcquire r, resourceRelease r] ++ maybe [] pure (resourceReset r) | r <- propertyResources property] ++
-  concat [quantifiedPredicates q ++ map snd (quantifiedBounds q) | q <- propertyInputs property] ++
+  concat [quantifiedPredicates q ++ map snd (quantifiedBounds q) | q <- propertyParameters property ++ propertyInputs property] ++
   concat [map snd (exampleBindings example) ++ concatMap propositionExpressions (exampleExpectations example)
     | example <- propertyExamples property]
   where

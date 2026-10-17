@@ -220,6 +220,8 @@ test('a grouped natural-index source preview establishes checked payload transpo
     assert.equal(report.correspondence.payloads.payloadShapes.status,'matched');
     assert.equal(report.correspondence.payloads.executableTransport.status,'matched');
     assert.equal(report.correspondence.payloads.executableTransport.copyValidated,true);
+    assert.equal(report.correspondence.payloads.lawTemplates.status,'matched');
+    assert.equal(report.correspondence.payloads.lawTemplates.typedCore.copyValidated,true);
     assert.equal(report.correspondence.sourceTemplates.status,'not-established');
     assert.ok(report.blockers.some(blocker=>blocker.includes('source-template correspondence')));
     assert.ok(report.blockers.every(blocker=>!blocker.includes('canonical compilation')));

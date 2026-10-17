@@ -15,7 +15,7 @@ import LawSpec.Core.Migration (semanticName)
 import LawSpec.Digest (digestHex,digestString)
 import LawSpec.Frontend (elaborateWithSourceDeclarations)
 import LawSpec.MigrationDomains (domainSnapshot)
-import LawSpec.MigrationTemplates (SourceTemplates(..))
+import LawSpec.MigrationTemplates (SourceTemplates(..),formalValueParameters)
 import LawSpec.SpecializeDefinitions (specializeDefinitionsWithContext)
 import LawSpec.CapabilityCheck (checkCapability)
 import LawSpec.Elaboration (coreTypeWithSourceRecords)
@@ -51,12 +51,21 @@ withTemplateInputDomains canonical captured core concrete (Object fields) =
       unit<-templateUnits captured,law<-S.laws unit]
     identity law=S.owner law++"::law::"++semanticName canonical (S.name law)
     unsupported :: S.Expanded -> String -> Value
+    parameterFields law=["formalParameterCount" .= length (formalValueParameters (S.original law)) |
+      not (null (formalValueParameters (S.original law)))]
     unsupported law reason=object
-      ["comparisonId" .= identity law,"inputCount" .= length (S.inputs law),
+      (["comparisonId" .= identity law,"inputCount" .= length (S.inputs law),
        "domainDigest" .= digestHex (digestString (show ("source-template-domain-unavailable-v1"::String,anchors,identity law,S.inputs law))),
        "status" .= ("unsupported"::String),"reason" .= reason,"complete" .= False,
-       "search" .= ("unsupported"::String),"candidateChecks" .= (0::Int),"searchLimit" .= (0::Int),"finiteLimit" .= (0::Int),"notes" .= ([]::[String])]
-    attach law (Object value)=Object (KM.insert "comparisonId" (String (T.pack (identity law))) value)
+       "search" .= ("unsupported"::String),"candidateChecks" .= (0::Int),"searchLimit" .= (0::Int),"finiteLimit" .= (0::Int),"notes" .= ([]::[String])]++parameterFields law)
+    -- Parameter-dependent domains are rejected before materialization. Only
+    -- independent populations reach this attachment with a verified witness.
+    attach law (Object value)=Object (KM.union fields (KM.insert "comparisonId" (String (T.pack (identity law))) value))
+      where
+        fields=case object (parameterFields law++["uniformity" .= ("parameter-independent"::String) |
+              not (null (formalValueParameters (S.original law))),KM.lookup "status" value==Just (String "inhabited")]) of
+          Object made->made
+          _->KM.empty
     attach law _=unsupported law "The compiler did not return an input-domain row."
     -- Reuse the actual concrete property only when its owner, name and full
     -- input binder names agree with the admitted source expansion.

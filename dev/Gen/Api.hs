@@ -160,7 +160,7 @@ declarations = joinWith (softbreak <> softbreak)
        variant "function" [("target", "DocumentaryTarget")],
        variant "external" [("resource", "string"), ("name?", "string")]]
   , interface "Law" (fields
-      [("id", "string"), ("owner", "string"), ("name", "string"), ("inputs", "Input[]"),
+      [("id", "string"), ("owner", "string"), ("name", "string"), ("inputs", "Input[]"), ("parameters?", "Input[]"),
        ("assertion", "Assertion"), ("examples", "Example[]"), ("description", "string"),
        ("rationale", "string"), ("references", "DocumentaryReference[] | string[]"), ("location", "Location"),
        ("trace", "string[]"), ("generation", "Generation"), ("inputDomain", "'nonempty' | 'universal'"),
@@ -340,9 +340,11 @@ declarations = joinWith (softbreak <> softbreak)
          ("nativeBindings",text "MigrationPending"),("lawVerification",quoted "not-established-by-payload-shapes"),("validated",text "false")]),
        record [("status",quoted "unavailable"),("reason",text "string")]]
   , let common=fields [("comparisonId","string"),("domainDigest","string"),("inputCount","number"),
-          ("search","string"),("candidateChecks","number"),("searchLimit","number"),("finiteLimit","number"),("notes","string[]")]
+          ("search","string"),("candidateChecks","number"),("searchLimit","number"),("finiteLimit","number"),("notes","string[]"),
+          ("formalParameterCount?","number"),("parameterInterpretation?","string")]
     in alias "MigrationInputDomain"
-      [ record (common++[("status",quoted "inhabited"),("witness",array (record (fields [("binder","string"),("value","DataValue")])))]),
+      [ record (common++[("status",quoted "inhabited"),("witness",array (record (fields [("binder","string"),("value","DataValue")]))),
+          ("uniformity?",quoted "parameter-independent")]),
         record (common++[("status",quoted "empty"),("complete",text "true")]),
         record (common++[("status",union (map quoted ["incomplete","unsupported"])),("complete",text "false"),("reason",text "string")]) ]
   , alias "MigrationDomainSnapshot"
@@ -361,7 +363,7 @@ declarations = joinWith (softbreak <> softbreak)
           fields [("scope","string"),("declarationsDigest","string"),("definitionTemplatesDigest","string"),
             ("lawTemplatesDigest","string"),("lawBodiesDigest","string")] ++
           [(name,array (record (fields [("comparisonId","string"),("digest","string")]))) | name<-["units","definitions","laws"]] ++
-          [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))])),
+          [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"])),("formalParameterCount?",text "number")])),
            ("inputDomains?",text "MigrationTemplateDomainSnapshot")])
       , record [("status",quoted "unavailable"),("reason",text "string")]]
   , alias "MigrationSemanticSnapshot"
@@ -370,7 +372,7 @@ declarations = joinWith (softbreak <> softbreak)
           fields [("scope","string"),("programDigest","string"),("definitionPlaneDigest","string"),("lawBodiesDigest","string"),
             ("sourceTemplates?","MigrationTemplateSnapshot"),("inputDomains?","MigrationDomainSnapshot")] ++
           [(name,array (record (fields [("comparisonId","string"),("digest","string")]))) | name<-["definitions","contracts","dataTypes"]] ++
-          [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"]))]))])
+          [("domainPolicies",array (record [("comparisonId",text "string"),("policy",union (map quoted ["nonempty","universal"])),("formalParameterCount?",text "number")]))])
       , record [("status",quoted "unavailable"),("reason",text "string")]]
   , alias "ProofTask"
       [record (fields [("encoding","'lawspec-smtlib-v1'"),("owner","string"),("declaration","string"),

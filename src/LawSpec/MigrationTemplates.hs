@@ -5,7 +5,7 @@
 -- No syntax here is executed or admitted by a separate checking mechanism.
 module LawSpec.MigrationTemplates
   ( SourceTemplates(..), DefinitionTemplate, templateSnapshot, templateContext
-  , legacyNominalRecord ) where
+  , legacyNominalRecord, isFunctionParameter, formalValueParameters ) where
 
 import Control.Monad (unless)
 import Data.Aeson (Value,object,(.=))
@@ -34,6 +34,12 @@ data SourceTemplates = SourceTemplates
   , templateDataDeclarations :: [C.DataDeclaration]
   , templateConstructors :: [(C.Id,[S.Type],[(C.Id,S.Type)])]
   } deriving (Eq,Show)
+
+isFunctionParameter :: S.Type -> Bool
+isFunctionParameter value=case S.baseType value of S.Arrow{}->True;_->False
+
+formalValueParameters :: S.Law -> [(String,S.Type)]
+formalValueParameters=filter (not . isFunctionParameter . snd) . S.parameters
 
 -- The legacy same-name convention denotes record syntax only when no
 -- indexed or existential constructor scope changes that interpretation.
@@ -125,7 +131,8 @@ templateSnapshot canonical captured = do
     , "definitions" .= [part (owner ++ "::" ++ S.functionName definition) value |
         (owner,values)<-definitions,value@(definition,_,_,_)<-values]
     , "laws" .= [part (S.owner law ++ "::law::" ++ S.name law) law | law<-laws]
-    , "domainPolicies" .= [object ["comparisonId" .= (S.owner law ++ "::law::" ++ S.name law),"policy" .= S.inputDomain law] | law<-laws]
+    , "domainPolicies" .= [object (["comparisonId" .= (S.owner law ++ "::law::" ++ S.name law),"policy" .= S.inputDomain law]++
+        ["formalParameterCount" .= length (formalValueParameters (S.original law)) | not (null (formalValueParameters (S.original law)))]) | law<-laws]
     ])
   where
     context=templateContext canonical captured

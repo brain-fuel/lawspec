@@ -1,6 +1,6 @@
 -- | The only bridge from checked surface syntax to the typed core. Targets never
 -- receive TypedExpr's source tree or perform contextual literal inference.
-module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateCanonical, elaborateWithSourceDeclarations, elaborateWithSourceDeclarationsWithScopes, sourcePropertyId, elaborateExpression) where
+module LawSpec.Frontend (compileCore, compileCoreCanonical, elaborate, elaborateCanonical, elaborateWithSourceDeclarations, elaborateWithSourceDeclarationsWithScopes, elaborateWithFormalValues, sourcePropertyId, elaborateExpression) where
 import qualified LawSpec.Model as S
 import qualified LawSpec.Compile as S
 import qualified LawSpec.SourceContext as Source
@@ -115,7 +115,19 @@ elaborateWithSourceDeclarations=elaborateWithSourceDeclarationsWithScopes M.empt
 
 elaborateWithSourceDeclarationsWithScopes :: CapabilityScopes -> Bool -> Source.SourceContext -> [C.DataDeclaration]
   -> Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
-elaborateWithSourceDeclarationsWithScopes scopes canonical sourceTypes dataDeclarations bits units properties = do
+elaborateWithSourceDeclarationsWithScopes=elaborateWithFormalValues M.empty
+
+-- Compiler-owned law-template binders precede sampled inputs in the checked
+-- surface copy. Split them while constructing Core, before ordinary admission;
+-- no abstract adapter or concrete parameter implementation is introduced.
+elaborateWithFormalValues :: M.Map C.Id Int -> CapabilityScopes -> Bool -> Source.SourceContext -> [C.DataDeclaration]
+  -> Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
+elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarations bits units properties = do
+  contextual Nothing $ unless (M.keysSet formalCounts `Set.isSubsetOf`
+    Set.fromList [sourcePropertyId (S.owner law) (S.name law) | law<-properties])
+    (Left "formal values name an unknown law template")
+  contextual Nothing $ mapM_ (\law -> let count=formalCount law in
+    unless (count>=0 && count<=length (S.inputs law)) (Left "invalid law-template formal value count")) properties
   collected <- mapM (unit sourceTypes dataDeclarations) units
   let elaborated = C.Program bits (appendRecords dataDeclarations (concatMap snd collected)) (map fst collected)
   normalized <- normalizeProgramRecords elaborated
@@ -129,6 +141,7 @@ elaborateWithSourceDeclarationsWithScopes scopes canonical sourceTypes dataDecla
   interned <- contextual Nothing (internRecordDeclarations (C.programDataDeclarations core))
   pure ((if canonical then canonicalNames else id) core{C.programDataDeclarations=interned})
   where
+    formalCount law=M.findWithDefault 0 (sourcePropertyId (S.owner law) (S.name law)) formalCounts
     appendRecords known [] = known
     appendRecords known records = known ++ records
     unit sourceTypes nominalDeclarations u = do
@@ -143,7 +156,7 @@ elaborateWithSourceDeclarationsWithScopes scopes canonical sourceTypes dataDecla
         let dataDigest = digestHex (digestString (show (dataDeclarations,sourceTypes)))
             elaborated p = memoized elaborationTable
               (digestHex (digestString (show (bits, dataDigest, S.unitName u, S.functions u, S.resourceDeclarations u,
-                M.findWithDefault noCapabilities (sourcePropertyId (S.unitName u) (S.name p)) scopes, p))))
+                M.findWithDefault noCapabilities (sourcePropertyId (S.unitName u) (S.name p)) scopes, formalCount p, p))))
               (property sourceTypes dataDeclarations u p)
             owned = filter ((== S.unitName u) . S.owner) properties
         ps0 <- mapM elaborated owned
@@ -224,9 +237,9 @@ elaborateWithSourceDeclarationsWithScopes scopes canonical sourceTypes dataDecla
         pure (C.Quantifier (C.Binder (resolve (S.inputId i)) (S.inputName i) t) preds boundTerms)
       body <- assertion (S.assertion p)
       examples <- forM (S.examples original) $ \e -> do
-        let aliases = [(S.inputName i,S.Var (S.inputId i)) | i <- S.inputs p]
+        let aliases = [(S.inputName i,S.Var (S.inputId i)) | i <- drop (formalCount p) (S.inputs p)]
             replace = S.replaceExprVars aliases
-        values <- forM (S.inputs p) $ \i -> do
+        values <- forM (drop (formalCount p) (S.inputs p)) $ \i -> do
           lit <- lift (maybe (Left ("missing example binding: " ++ S.inputName i)) Right (lookup (S.inputName i) (S.bindings e)))
           value <- term (S.Annotate (S.literalExpr lit) (S.inputType i))
           pure (resolve (S.inputId i),value)
@@ -278,13 +291,13 @@ elaborateWithSourceDeclarationsWithScopes scopes canonical sourceTypes dataDecla
       references <- lift (mapM (traverseReference (\target -> case target of
         S.ResolvedReferenceTarget resolved -> pure resolved
         S.ParsedReferenceTarget _ _ -> Left "unresolved documentary reference")) (S.references original))
-      pure C.Property
+      pure C.MkProperty
         { C.propertyId=pid, C.propertyName=S.name p, C.propertyLocation=S.location original
-        , C.propertyInputs=qs, C.propertyBody=body, C.propertyExamples=examples
+        , C.propertyInputs=drop (formalCount p) qs, C.propertyBody=body, C.propertyExamples=examples
         , C.propertyGeneration=S.generation p, C.propertyDescription=S.description original
         , C.propertyRationale=S.rationale original, C.propertyReferences=references
         , C.propertyTrace=S.trace p, C.propertyHandlers=[], C.propertyResources=resources, C.propertyHarness=C.noHarness
-        , C.propertyInputDomain=S.inputDomain p, C.propertyMetadata=S.lawMetadata original }
+        , C.propertyInputDomain=S.inputDomain p, C.propertyMetadata=S.lawMetadata original, C.propertyParameters=take (formalCount p) qs }
     contextual at = either (Left . pure . (\msg -> Diagnostic "elaboration" msg at)) Right
     -- Lexical locals are ordered innermost first, as the resolver's lookup is.
     -- They shadow declarations, even when their spelling names a function.

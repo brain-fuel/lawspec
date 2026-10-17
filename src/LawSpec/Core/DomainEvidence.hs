@@ -26,7 +26,11 @@ data DomainEvidence = DomainEvidence
 
 inputDomainEvidence :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value)
   -> [Definition] -> Property -> DomainEvidence
-inputDomainEvidence registry bits invoke definitions property =
+inputDomainEvidence registry bits invoke definitions property
+  | parameterDependent = result (UnsupportedInputDomain
+      "the input population depends on formal law values; a uniform witness or complete parameter analysis is required, and one sampled parameter tuple is insufficient")
+      "unsupported-uniform-input-search" 0 []
+  | otherwise =
   case firstExample 0 [] (take budget (propertyExamples property)) of
     (Just tuple,checks,notes) -> result (VerifiedInputTuple tuple) "example-input" checks notes
     (Nothing,checks,notes) -> case finiteDomain of
@@ -42,6 +46,17 @@ inputDomainEvidence registry bits invoke definitions property =
                     "bounded-input-search" (checks+budget-remaining) (notes'++errors)
   where
     quantifiers=propertyInputs property
+    parameters=Set.fromList (map (binderId.quantifiedBinder) (propertyParameters property))
+    parameterDependent=any (`Set.member` parameters)
+      (concat [typeVariables (binderType (quantifiedBinder q))++
+        concatMap freeBinders (quantifiedPredicates q++map snd (quantifiedBounds q)) | q<-quantifiers])
+    typeVariables value=case value of
+      TypeVariable name -> [name]
+      Arrow a b -> typeVariables a++typeVariables b
+      Constructor _ arguments -> concat [case argument of
+        TypeArgument ty -> typeVariables ty
+        IndexArgument (IndexVariable name) -> [name]
+        _ -> [] | argument<-arguments]
     settings=propertyGeneration property
     budget=max 1 (min (cases settings) (maxAttempts settings))
     finiteLimit=max 1 (exhaustiveLimit settings)

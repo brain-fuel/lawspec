@@ -262,7 +262,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
     -- target's native async (abilities-mapping.md).
     declarationRow d = [U.asyncAbility | C.declarationAsync d] ++ map C.abilityKey (C.declarationUses d)
     propertyView owner p =
-      let names = [(C.binderId b,C.binderName b) | q <- C.propertyInputs p, let b = C.quantifiedBinder q]
+      let names = [(C.binderId b,C.binderName b) | q <- C.propertyParameters p ++ C.propertyInputs p, let b = C.quantifiedBinder q]
           expr = expressionView names
           input q = let b = C.quantifiedBinder q in object
             ["id" .= C.idText (C.binderId b), "name" .= C.binderName b, "type" .= typeView (C.binderType b)
@@ -272,7 +272,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
             ["name" .= C.exampleName e
             ,"bindings" .= [object ["id" .= C.idText n,"name" .= maybe (C.idText n) id (lookup n names),"type" .= typeView (C.expressionType v),"value" .= constant v] | (n,v) <- C.exampleBindings e]
             ,"expectations" .= map (propositionView names) (C.exampleExpectations e)]
-      in object ["id" .= C.idText (C.propertyId p), "owner" .= owner,"name" .= C.propertyName p
+      in object (["id" .= C.idText (C.propertyId p), "owner" .= owner,"name" .= C.propertyName p
         ,"inputs" .= map input (C.propertyInputs p), "assertion" .= propositionView names (C.propertyBody p)
         ,"examples" .= map example (C.propertyExamples p), "description" .= C.propertyDescription p
         ,"rationale" .= C.propertyRationale p, "references" .= C.propertyReferences p
@@ -282,7 +282,8 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         -- The handler the law runs under for each ability it uses.
         ,"handlers" .= [object ["ability" .= C.abilityKey a, "handler" .= handlerText h] | (a, h) <- C.propertyHandlers p]
         -- How its tests run: the harness plane, apart from the law itself.
-        ,"harness" .= harnessView (names ++ logicalNames (C.propertyBody p)) (C.propertyHarness p)]
+        ,"harness" .= harnessView (names ++ logicalNames (C.propertyBody p)) (C.propertyHarness p)]++
+        ["parameters" .= map input (C.propertyParameters p) | not (null (C.propertyParameters p))])
     logicalNames claim = case claim of
       C.Quantified _ q body -> let b = C.quantifiedBinder q in (C.binderId b,C.binderName b) : logicalNames body
       C.Conjunction bodies -> concatMap logicalNames bodies
@@ -321,7 +322,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       | u <- programUnits, c <- C.unitContracts u, C.contractDeclaration c == declaration ] ++ concat
       [ [(C.binderId b,C.binderName b) | b <- C.constructorFields c]
       | d <- programDataDeclarations, c <- C.dataConstructors d, C.constructorId c == declaration ] ++ concat
-      [ [(C.binderId b,C.binderName b) | q <- C.propertyInputs p, let b = C.quantifiedBinder q]
+      [ [(C.binderId b,C.binderName b) | q <- C.propertyParameters p ++ C.propertyInputs p, let b = C.quantifiedBinder q]
       | u <- programUnits, p <- C.unitProperties u, C.propertyId p == declaration ]
     contractView c = let names = [(C.binderId b,C.binderName b) | b <- C.contractArguments c ++ [C.contractResult c]] in object
       ["id" .= C.idText (C.contractDeclaration c),"name" .= declarationName (C.contractDeclaration c)

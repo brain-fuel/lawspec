@@ -392,6 +392,7 @@ harness h = do
 
 property :: Property -> Normalize Property
 property p = do
+  parameters <- mapM quantifier (propertyParameters p)
   inputs <- mapM quantifier (propertyInputs p)
   body <- proposition (propertyBody p)
   examples <- forM (propertyExamples p) $ \example -> Example (exampleName example)
@@ -405,7 +406,7 @@ property p = do
     reset <- traverse expression (resourceReset r)
     pure r{resourceBinder=bound,resourceAcquire=acquire,resourceRelease=release,resourceReset=reset}
   selected <- harness (propertyHarness p)
-  pure p{propertyInputs=inputs,propertyBody=body,propertyExamples=examples,propertyHandlers=handlers,
+  pure p{propertyParameters=parameters,propertyInputs=inputs,propertyBody=body,propertyExamples=examples,propertyHandlers=handlers,
     propertyResources=resources,propertyHarness=selected}
 
 declaration :: Declaration -> Normalize Declaration

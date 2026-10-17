@@ -370,12 +370,36 @@ evidence.
 
 The host accepts a definition-template match only when those anchors, the
 matching interfaces and the validated Core fingerprint pairs agree at the same
-machine width. `lawTemplates` separately covers complete expanded laws with
-fresh abstract declarations for their parameters. Known function bodies remain
-present; abstract law parameters do not choose implementations or witnesses.
+machine width. `lawTemplates` separately covers complete expanded laws. Value
+parameters are lexically bound before the law's inputs; function parameters
+retain fresh abstract declarations. Known function bodies remain present;
+neither kind of parameter chooses an implementation or a population witness.
 `sourceUnits` combines those two certificates with complete remaining source
 metadata and the compiler-owned payload plan. Stale, partial or mismatched
 certificates cannot clear those components.
+
+Formal value binders belong to the authoritative typed law. They retain their
+own restrictions and bind left to right, including within subsequent input
+restrictions and named expectations. They are not zero-argument adapters or
+additional sampled inputs. Native test planning requires them to be
+instantiated. The existing SMT translator quantifies them before the inputs;
+its restriction against legacy nonempty-domain tasks still applies.
+This follows [Lean's section variables and declaration parameters](https://lean-lang.org/doc/reference/latest/Namespaces-and-Sections/#section-variables)
+and [Why3's bound logical variables](https://why3.org/doc/syntaxref.html#terms-and-formulas).
+The compiler's typed translation remains trusted; this adds no proof kernel or
+solver integration.
+
+Domain-policy rows and domain evidence record `formalParameterCount` when
+nonzero. A witness that does not depend on any formal value carries
+`uniformity: 'parameter-independent'`. The SDK requires the same parameter
+scope and this explicit uniformity evidence before using that witness to
+justify a population-policy change. This establishes legal inputs for every
+admissible parameter tuple; it does not establish that the parameter types are
+inhabited or that the law is true. Parameter-dependent populations currently
+report `unsupported-uniform-input-search`, without sampling a parameter tuple
+or claiming nonexistence. Complete finite parameter analysis and constructive
+uniform witnesses remain required work. Raw typed-Core fingerprints change
+with the stored formal scope; previous response pairs remain separate evidence.
 
 Declared generic `Eq` requirements now provide lexical operation-typing evidence.
 They do not provide `Keyed`, generators or a law of reflexivity. The normal

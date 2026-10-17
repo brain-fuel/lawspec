@@ -6,13 +6,21 @@ import qualified LawSpec.Core as C
 import LawSpec.Core.DomainEvidence
 import LawSpec.Core.Definitions (prepareDefinitions)
 import LawSpec.Core.Types (makeRegistry)
+import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.Smt (proofTasks,taskQuery)
+import LawSpec.Core.Migration (normalizedProgram)
+import LawSpec.Testing (planTesting)
 import LawSpec.Core.Value
 import qualified LawSpec.Core.Expression as Expression
 import LawSpec.MigrationDomains (domainSnapshot)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Vector as V
-import LawSpec.Frontend (compileCoreCanonical)
+import LawSpec.Frontend (compileCoreCanonical,elaborateWithFormalValues,sourcePropertyId)
+import qualified LawSpec.Compile as Compile
+import LawSpec.MigrationTemplates (SourceTemplates(..))
+import LawSpec.MigrationScopes (sourceContext)
+import qualified Data.Map.Strict as M
 import LawSpec.Common
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Model (Source(..))
@@ -40,7 +48,75 @@ domainDigest program = do
       _ -> fail "expected one domain fingerprint"
     _ -> fail "missing domain snapshot"
 
+formalPrefix count program=program{C.programUnits=[unit{C.unitProperties=
+  [property{C.propertyParameters=take count (C.propertyInputs property),
+    C.propertyInputs=drop count (C.propertyInputs property)} | property<-C.unitProperties unit]} | unit<-C.programUnits program]}
+
 test_domainEvidence = describe "checked input-domain evidence" $ do
+  it "keeps formal and ordinary elaboration contexts separate after cache warming" $ do
+    let text=Source "domain.lawspec" ("unit domain\n"++law "for all (choice :: Bool) (value :: Bool) => value = choice end")
+    (units,laws,_,captured)<-either (fail.show) pure
+      (Compile.compileWithMigrationCapture True (\_ name->name) (\_ _->Nothing) 64 defaultGeneration [text])
+    templates<-maybe (fail "missing source templates") pure captured
+    let elaborate counts=elaborateWithFormalValues counts M.empty True (sourceContext templates)
+          (templateDataDeclarations templates) 64 units laws
+        formal=M.singleton (sourcePropertyId "domain" "requirement") 1
+        counts program=[length (C.propertyParameters property) | unit<-C.programUnits program,
+          C.unitId unit==C.Id "domain",property<-C.unitProperties unit]
+    first<-either (fail.show) pure (elaborate formal)
+    ordinary<-either (fail.show) pure (elaborate M.empty)
+    again<-either (fail.show) pure (elaborate formal)
+    counts first `shouldBe` [1]
+    counts ordinary `shouldBe` [0]
+    counts again `shouldBe` [1]
+    elaborate (M.singleton (C.Id "missing") 1) `shouldSatisfy` isLeft
+    elaborate (M.map (const 3) formal) `shouldSatisfy` isLeft
+  it "keeps formal values in lexical scope without sampling them as law inputs" $ do
+    original<-checked defaultGeneration (law "for all (choice :: Bool) (value :: Bool where value = choice) => value = choice end")
+    let program=formalPrefix 1 original
+        unbound=program{C.programUnits=[unit{C.unitProperties=[property{C.propertyParameters=[]} |
+          property<-C.unitProperties unit]} | unit<-C.programUnits program]}
+    validateProgram program `shouldBe` Right ()
+    validateProgram unbound `shouldSatisfy` isLeft
+    normalized<-either fail pure (normalizedProgram True False [] program)
+    validateProgram normalized `shouldBe` Right ()
+    planTesting program `shouldSatisfy` isLeft
+    -- Canonical universal semantics are the same nested logical binders in
+    -- the existing SMT translation; the input-population scopes stay distinct.
+    before<-either (fail.show) pure (proofTasks original)
+    after<-either (fail.show) pure (proofTasks program)
+    map taskQuery after `shouldBe` map taskQuery before
+    dependent<-checked defaultGeneration (law "for all (choice :: Bool) (other :: Bool where other = choice) (value :: Bool) => other = choice end")
+    let ordered=formalPrefix 2 dependent
+        reversed=ordered{C.programUnits=[unit{C.unitProperties=[property{C.propertyParameters=reverse (C.propertyParameters property)} |
+          property<-C.unitProperties unit]} | unit<-C.programUnits ordered]}
+    validateProgram ordered `shouldBe` Right ()
+    validateProgram reversed `shouldSatisfy` isLeft
+  it "establishes an input witness independent of all admissible formal values" $ do
+    original<-checked defaultGeneration (law "for all (choice :: Bool) (value :: Bool) => false end")
+    let program=formalPrefix 1 original
+    result<-evaluateDomain program
+    domainStatus result `shouldBe` VerifiedInputTuple [ScalarValue (SBool False)]
+    snapshot<-either fail pure (domainSnapshot True [] program)
+    case snapshot of
+      A.Object fields | Just (A.Array rows)<-KM.lookup "domains" fields,
+        [A.Object row]<-V.toList rows -> do
+          KM.lookup "inputCount" row `shouldBe` Just (A.Number 1)
+          KM.lookup "formalParameterCount" row `shouldBe` Just (A.Number 1)
+          KM.lookup "uniformity" row `shouldBe` Just (A.String "parameter-independent")
+      _->expectationFailure "missing formal input-domain evidence"
+  it "does not turn one bounded parameter choice into uniform population evidence" $ do
+    original<-checked defaultGeneration (law "for all (minimum :: Integer) (value :: Bool where minimum != 0) => true end")
+    result<-evaluateDomain (formalPrefix 1 original)
+    domainStatus result `shouldSatisfy` (\status -> case status of UnsupportedInputDomain _->True;_->False)
+    domainSearch result `shouldBe` "unsupported-uniform-input-search"
+    domainCandidateChecks result `shouldBe` 0
+  it "retains the formal parameter's own restriction in input-domain fingerprints" $ do
+    first<-checked defaultGeneration (law "for all (minimum :: Integer where minimum >= 0) (value :: Bool) => true end")
+    changed<-checked defaultGeneration (law "for all (minimum :: Integer where minimum >= 1) (value :: Bool) => true end")
+    a<-domainDigest (formalPrefix 1 first)
+    b<-domainDigest (formalPrefix 1 changed)
+    a `shouldNotBe` b
   it "establishes a populated domain without executing a false law body" $ do
     result <- evidence defaultGeneration (law "for all (value :: Bool) => false end")
     domainStatus result `shouldBe` VerifiedInputTuple [ScalarValue (SBool False)]

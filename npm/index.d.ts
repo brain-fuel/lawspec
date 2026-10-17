@@ -281,6 +281,7 @@ export interface Law {
   owner: string;
   name: string;
   inputs: Input[];
+  parameters?: Input[];
   assertion: Assertion;
   examples: Example[];
   description: string;
@@ -857,8 +858,11 @@ export type MigrationInputDomain =
       searchLimit: number;
       finiteLimit: number;
       notes: string[];
+      formalParameterCount?: number;
+      parameterInterpretation?: string;
       status: 'inhabited';
       witness: {binder: string; value: DataValue;}[];
+      uniformity?: 'parameter-independent';
     } |
     {
       comparisonId: string;
@@ -869,6 +873,8 @@ export type MigrationInputDomain =
       searchLimit: number;
       finiteLimit: number;
       notes: string[];
+      formalParameterCount?: number;
+      parameterInterpretation?: string;
       status: 'empty';
       complete: true;
     } |
@@ -881,6 +887,8 @@ export type MigrationInputDomain =
       searchLimit: number;
       finiteLimit: number;
       notes: string[];
+      formalParameterCount?: number;
+      parameterInterpretation?: string;
       status: 'incomplete' | 'unsupported';
       complete: false;
       reason: string;
@@ -926,6 +934,7 @@ export type MigrationTemplateSnapshot =
       domainPolicies: {
         comparisonId: string;
         policy: 'nonempty' | 'universal';
+        formalParameterCount?: number;
       }[];
       inputDomains?: MigrationTemplateDomainSnapshot;
     } |
@@ -949,6 +958,7 @@ export type MigrationSemanticSnapshot =
       domainPolicies: {
         comparisonId: string;
         policy: 'nonempty' | 'universal';
+        formalParameterCount?: number;
       }[];
     } |
     {status: 'unavailable'; reason: string;};

@@ -64,6 +64,42 @@ async function compareSources(before,after,machineBits=64) {
   return result.migrationComparison;
 }
 
+test('formal values remain lexical binders in indexed law templates without sampled population claims',async()=>{
+  const before='type Chain (n :: Natural) is | Stop where n = 0 | Next marker :: Bool rest :: Chain m where n = m + 1 end';
+  const after='type Chain (n of type Whole) is one of | Stop where n = 0 | Next of type record{marker of type Bool rest of type Chain m} where n = m + 1 end type';
+  for(const machineBits of [32,64]) {
+    const result=await compareSources(before,after,machineBits);
+    assert.equal(result.lawTemplates.status,'matched');
+    const core=result.lawTemplates.typedCore;
+    assert.equal(core.copyValidated,true);
+    assert.equal(result.lawTemplates.lawBodiesEvaluated,false);
+    const domain=core.after.inputDomains.domains.find(row=>row.comparisonId==='symbolic::law::refinement Chain@index');
+    assert.equal(domain.formalParameterCount,2);
+    assert.equal(domain.status,'unsupported');
+    assert.equal(domain.candidateChecks,0);
+    assert.match(domain.reason,/uniform witness/);
+    assert.equal(domain.witness,undefined);
+    assert.equal(domain.uniformity,undefined);
+  }
+});
+
+test('independent law inputs have a uniform witness without binding their formal values to examples',async()=>{
+  const result=await compareSources(
+    'law `chosen` (choice :: Bool) is definition is `for all` (value :: Bool) . value = choice end example `kept` is value = true expect choice = true end end',
+    'law "|chosen| (choice of type Bool) is definition: for all (value of type Bool) => value must be choice end end example "|kept|: value = true expect choice = true end end');
+  assert.equal(result.lawTemplates.status,'matched');
+  for(const side of ['before','after']) {
+    const core=result.lawTemplates.typedCore[side];
+    const domain=core.inputDomains.domains.find(row=>row.comparisonId==='symbolic::law::chosen');
+    assert.equal(domain.formalParameterCount,1);
+    assert.equal(domain.inputCount,1);
+    assert.equal(domain.status,'inhabited');
+    assert.equal(domain.uniformity,'parameter-independent');
+    assert.equal(domain.witness.length,1);
+    assert.equal(core.domainPolicies.find(row=>row.comparisonId===domain.comparisonId).formalParameterCount,1);
+  }
+});
+
 test('unused generic laws keep symbolic parameters, their Eq scope and separate population policies',async()=>{
   for(const machineBits of [32,64])for(const name of ['same','same%:policy']) {
     const before='law `'+name+'` (operation :: a -> a) requires Eq a is definition is `for all` (value :: a) . operation value = value end end';

@@ -180,12 +180,13 @@ quantifiers context (value:rest) = do
 instance Project C.Property where
   project context value = do
     identity <- project context (C.propertyId value)
-    (inputs,inner) <- quantifiers (scope context identity) (C.propertyInputs value)
+    (parameters,parameterScope) <- quantifiers (scope context identity) (C.propertyParameters value)
+    (inputs,inner) <- quantifiers parameterScope (C.propertyInputs value)
     -- Project every other field generically: new Core fields cannot silently
     -- disappear from the comparison. Inputs already introduced their scopes.
-    made <- to <$> genericProject inner (from value{C.propertyInputs=[]})
+    made <- to <$> genericProject inner (from value{C.propertyInputs=[],C.propertyParameters=[]})
     pure made{C.propertyId=identity,C.propertyName=M.findWithDefault (C.propertyName value) (C.propertyName value) (traceNames context),
-      C.propertyInputs=inputs,C.propertyTrace=map (normalizeTrace context) (C.propertyTrace value),
+      C.propertyInputs=inputs,C.propertyParameters=parameters,C.propertyTrace=map (normalizeTrace context) (C.propertyTrace value),
       C.propertyInputDomain=if omitDomainPolicy context then Common.UniversalDomain else C.propertyInputDomain value}
 
 instance Project C.Example where
@@ -465,7 +466,8 @@ migrationSnapshot canonical names program = do
     , "contracts" .= [part (C.contractDeclaration contract) contract |
         unit<-C.programUnits full,contract<-C.unitContracts unit]
     , "dataTypes" .= [part (C.dataId declaration) declaration | declaration<-C.programDataDeclarations full]
-    , "domainPolicies" .= [object ["comparisonId" .= C.idText (C.propertyId property),"policy" .= C.propertyInputDomain property] |
+    , "domainPolicies" .= [object (["comparisonId" .= C.idText (C.propertyId property),"policy" .= C.propertyInputDomain property]++
+        ["formalParameterCount" .= length (C.propertyParameters property) | not (null (C.propertyParameters property))]) |
         unit<-C.programUnits full,property<-C.unitProperties unit]
     ])
   where

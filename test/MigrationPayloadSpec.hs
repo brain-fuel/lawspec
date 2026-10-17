@@ -41,6 +41,25 @@ test_migrationPayloads=describe "checked constructor payload shape correspondenc
       "type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{left of type Tree m right of type Tree m} where n = m + 1 end type"
     (comparison result >>= field "executableTransport" >>= field "status") `shouldBe` Just (String "matched")
     (comparison result >>= field "nativeBindings" >>= field "status") `shouldBe` Just (String "not-established")
+  it "retains formal index values while comparing generated indexed law templates" $ do
+    result<-shapesMatch
+      "type Chain (n :: Natural) is | Stop where n = 0 | Next marker :: Bool rest :: Chain m where n = m + 1 end"
+      "type Chain (n of type Whole) is one of | Stop where n = 0 | Next of type record{marker of type Bool rest of type Chain m} where n = m + 1 end type"
+    let templates=comparison result >>= field "lawTemplates"
+    (templates >>= field "status") `shouldBe` Just (String "matched")
+    (templates >>= field "typedCore" >>= field "copyValidated") `shouldBe` Just (Bool True)
+    (templates >>= field "lawBodiesEvaluated") `shouldBe` Just (Bool False)
+    let domains=maybe [] (rows "domains") (templates >>= field "typedCore" >>= field "after" >>= field "inputDomains")
+        indexed=[row | row<-domains,field "comparisonId" row==Just (String "payloads::law::refinement Chain@index")]
+    map (field "status") indexed `shouldBe` [Just (String "unsupported")]
+    map (field "formalParameterCount") indexed `shouldBe` [Just (Number 2)]
+  it "compares formal value laws and their named expectations without inventing parameter constants" $ do
+    result<-shapesMatch
+      "law `chosen` (choice :: Bool) is definition is `for all` (value :: Bool) . value = value end example `kept` is value = true expect choice = true end end"
+      "law \"|chosen| (choice of type Bool) is definition: for all (value of type Bool) => value must be value end end example \"|kept|: value = true expect choice = true end end"
+    let templates=comparison result >>= field "lawTemplates"
+    (templates >>= field "status") `shouldBe` Just (String "matched")
+    (templates >>= field "typedCore" >>= field "copyValidated") `shouldBe` Just (Bool True)
   it "does not certify changed equations, dropped equality or a stronger grouped relationship" $ do
     let before="type Tree (n :: Natural) is | Leaf where n = 0 | Fork left :: Tree m right :: Tree m where n = m + 1 end"
         make fields equation="type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{"++fields++"} where n = "++equation++" end type"

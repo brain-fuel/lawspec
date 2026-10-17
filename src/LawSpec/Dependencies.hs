@@ -127,7 +127,7 @@ keyOf graph content refs = digestHex (digestString (show (content, [ (n, nodeDig
 lawReferences :: Graph -> Property -> [Ref]
 lawReferences graph p = references graph $
   concat [ typeRefs (binderType (quantifiedBinder q)) ++ concatMap (exprRefs owners) (quantifiedPredicates q) ++
-           concatMap (exprRefs owners . snd) (quantifiedBounds q) | q <- propertyInputs p ] ++
+           concatMap (exprRefs owners . snd) (quantifiedBounds q) | q <- propertyParameters p ++ propertyInputs p ] ++
   propositionRefs owners (propertyBody p) ++
   concat [ concatMap (exprRefs owners . snd) (exampleBindings e) ++ concatMap (propositionRefs owners) (exampleExpectations e)
          | e <- propertyExamples p ] ++

@@ -2,19 +2,20 @@
 -- generic definition receives its own checked root, including unused schemes.
 -- No representative concrete type or arbitrary known-body implementation is
 -- introduced. Ordinary executable specialization continues to reject rigids.
-module LawSpec.MigrationElaboration (symbolicProgram) where
+module LawSpec.MigrationElaboration (symbolicProgram,symbolicProgramWithFormalValues) where
 
 import Control.Monad (unless)
 import Data.Binary (encode)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Set as Set
+import qualified Data.Map.Strict as M
 import qualified LawSpec.Core as C
 import LawSpec.Core.CapabilityScope (CapabilityScopes)
 import LawSpec.Core.Migration (semanticName)
 import LawSpec.CapabilityCheck (checkCapability)
 import LawSpec.Digest (digest,digestHex)
 import LawSpec.Elaboration (coreTypeWithSourceRecords)
-import LawSpec.Frontend (elaborateWithSourceDeclarationsWithScopes)
+import LawSpec.Frontend (elaborateWithFormalValues)
 import LawSpec.Inference (typeVariables)
 import LawSpec.MigrationScopes (sourceScopes,sourceContext)
 import LawSpec.MigrationTemplates
@@ -22,14 +23,17 @@ import LawSpec.SpecializeDefinitions (instantiateSymbolicDefinitions)
 import qualified LawSpec.Model as S
 
 symbolicProgram :: Bool -> SourceTemplates -> [S.Unit] -> [S.Expanded] -> Either String (C.Program,CapabilityScopes)
-symbolicProgram canonical captured original laws=do
+symbolicProgram=symbolicProgramWithFormalValues M.empty
+
+symbolicProgramWithFormalValues :: M.Map C.Id Int -> Bool -> SourceTemplates -> [S.Unit] -> [S.Expanded] -> Either String (C.Program,CapabilityScopes)
+symbolicProgramWithFormalValues formals canonical captured original laws=do
   rooted<-mapM roots original
   let units=map fst rooted
       given=concatMap snd rooted++concatMap (S.requirements.S.original) laws
       satisfies=checkCapability (coreTypeWithSourceRecords context declarations bits) declarations bits given
   (instantiated,properties)<-diagnostics (instantiateSymbolicDefinitions context declarations bits satisfies units laws)
   scopes<-sourceScopes captured{templateUnits=instantiated} properties
-  program<-diagnostics (elaborateWithSourceDeclarationsWithScopes scopes canonical context declarations bits instantiated properties)
+  program<-diagnostics (elaborateWithFormalValues formals scopes canonical context declarations bits instantiated properties)
   pure (program,scopes)
   where
     context=sourceContext captured

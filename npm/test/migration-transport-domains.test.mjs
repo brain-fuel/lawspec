@@ -18,6 +18,21 @@ const transport={status:'matched',version:1,algorithm:'sha256',machineBits:64,co
   after:{...after,inputDomains:facts(domain)}};
 const policy=(value=transport)=>compareMigrationSnapshots(before,after,value).domainPolicies;
 
+test('formal populations require uniform evidence in the same parameter scope',()=>{
+  const scoped=(snapshot,policy,row)=>({...snapshot,
+    domainPolicies:[{comparisonId:domain.comparisonId,policy,formalParameterCount:1}],inputDomains:facts(row)});
+  const witness={...domain,formalParameterCount:1,uniformity:'parameter-independent'};
+  const original=scoped(before,'nonempty',witness);
+  const compare=row=>compareMigrationSnapshots(original,scoped(after,'universal',row)).domainPolicies;
+  assert.equal(compare(witness).status,'matched');
+  const missing=structuredClone(witness);delete missing.uniformity;
+  const missingScope=structuredClone(witness);delete missingScope.formalParameterCount;
+  for(const invalid of [missing,missingScope,{...witness,formalParameterCount:2},
+    {...witness,uniformity:'sampled-parameter'}, {...witness,status:'unsupported',complete:false}]) {
+    assert.equal(compare(invalid).status,'not-established');
+  }
+});
+
 const changedBefore={...before,definitionPlaneDigest:'c'.repeat(64),lawBodiesDigest:'d'.repeat(64)};
 const bodyCertificate=()=>({...transport,
   program:{status:'not-established',before:transport.before.programDigest,after:transport.after.programDigest},

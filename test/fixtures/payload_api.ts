@@ -7,7 +7,8 @@ export function migrationDigests(result: Result): string[] {
   const algorithm: 'sha256' = snapshot.algorithm;
   const machineBits: 32 | 64 = snapshot.machineBits;
   const policy: ('nonempty' | 'universal')[] = snapshot.domainPolicies.map(item => item.policy);
-  void version; void algorithm; void machineBits; void policy;
+  const formalCounts: number[] = snapshot.domainPolicies.map(item => item.formalParameterCount ?? 0);
+  void version; void algorithm; void machineBits; void policy; void formalCounts;
   const templates = snapshot.sourceTemplates;
   const sourceDigests = templates?.status === 'available'
     ? [templates.declarationsDigest, templates.definitionTemplatesDigest, templates.lawTemplatesDigest,
@@ -28,7 +29,9 @@ export function migrationDigests(result: Result): string[] {
     ? inputDomains.domains.map(domain => {
       if (domain.status === 'inhabited') {
         const values = domain.witness.map(binding => binding.value);
-        void values;
+        const uniformity: 'parameter-independent' | undefined = domain.uniformity;
+        const formalCount: number | undefined = domain.formalParameterCount;
+        void values; void uniformity; void formalCount;
       } else if (domain.status === 'empty') {
         const complete: true = domain.complete;
         void complete;

@@ -151,6 +151,7 @@ planTable = unsafePerformIO (newPersistentTable "plan" 2048 (const 1))
 planProperty :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value) -> [Definition]
   -> Property -> Either String PlannedProperty
 planProperty registry bits invoke definitions p
+  | not (null (propertyParameters p)) = Left "instantiate a law's formal values before planning native tests; sampled parameters cannot establish uniform input domains"
   | propertyInputDomain p == UniversalDomain = do
       let qs = propertyInputs p
           limit = exhaustiveLimit (propertyGeneration p)

@@ -128,7 +128,7 @@ query program law = do
   unless (null (propertyResources law)) (Left "SMT translation does not execute resources")
   unless (null (propertyHandlers law)) (Left "SMT translation does not execute ability handlers")
   certificate <- evalStateT (proposition program [] M.empty
-    (foldr (Quantified ForEvery) (propertyBody law) (propertyInputs law))) (Work 0 0)
+    (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))) (Work 0 0)
   let script = "; " ++ encoding ++ "; negate a positive certificate, including definedness\n" ++
         "(assert " ++ no (positive certificate) ++ ")\n"
   unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")

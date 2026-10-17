@@ -280,6 +280,8 @@ resolvePerforms resolver p
   | otherwise = p
       { propertyInputs = [q { quantifiedPredicates = map go (quantifiedPredicates q)
                             , quantifiedBounds = [(o, go e) | (o, e) <- quantifiedBounds q] } | q <- propertyInputs p]
+      , propertyParameters = [q { quantifiedPredicates = map go (quantifiedPredicates q)
+                            , quantifiedBounds = [(o, go e) | (o, e) <- quantifiedBounds q] } | q <- propertyParameters p]
       , propertyBody = proposition (propertyBody p)
       , propertyExamples = [x { exampleBindings = [(i, go v) | (i, v) <- exampleBindings x]
                               , exampleExpectations = map proposition (exampleExpectations x) } | x <- propertyExamples p] }
@@ -343,7 +345,8 @@ proves program definitions p = do
   scalarClaim <- maybe (Left "a scoped proposition needs a complete search or constructive proof") Right (proofClaim p)
   let proof = Id (idText (propertyId p) ++ "::proof")
       result = Binder (Id (idText proof ++ "::result")) "result" bool
-      inputs = map quantifiedBinder (propertyInputs p)
+      quantifiers = propertyParameters p ++ propertyInputs p
+      inputs = map quantifiedBinder quantifiers
       bool = scalarType "Bool"
       origin = GeneratedFrom (propertyId p)
       claim = inline program definitions scalarClaim
@@ -351,7 +354,7 @@ proves program definitions p = do
       -- the input refinements alone. The body only has to be defined.
       synthetic = Definition (Declaration proof ("proof of " ++ propertyName p)
         (foldr (Arrow . binderType) bool inputs) origin) inputs claim
-      contract = Contract proof inputs result (concatMap quantifiedPredicates (propertyInputs p)) [claim] []
+      contract = Contract proof inputs result (concatMap quantifiedPredicates quantifiers) [claim] []
       table = M.fromList [(declarationId (definitionDeclaration d), d) | d <- definitions]
       reachable = close S.empty (concatMap callees (definitionBody synthetic : contractPreconditions contract))
       close seen [] = seen

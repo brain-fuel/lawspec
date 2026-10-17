@@ -14,7 +14,8 @@ import qualified LawSpec.Core as C
 import LawSpec.Core.Migration (Context(..),Project(..),semanticName)
 import LawSpec.Core.PayloadTransport (PayloadPlan,transportComparisonWithScopes)
 import LawSpec.Digest (digest,digestHex)
-import LawSpec.MigrationElaboration (symbolicProgram)
+import LawSpec.MigrationElaboration (symbolicProgramWithFormalValues)
+import LawSpec.Frontend (sourcePropertyId)
 import LawSpec.MigrationDomains (withTransportDomainsWithScopes)
 import LawSpec.MigrationTemplates
 import qualified LawSpec.Model as S
@@ -48,7 +49,7 @@ lawTransport plan before after = do
     "metadata" .= object ["status" .= (if oldMetadata==newMetadata then "matched" else "not-established"::String),
       "before" .= oldMetadata,"after" .= newMetadata],
     "typedCore" .= core,"originalsUnchanged" .= True,"lawBodiesEvaluated" .= False,
-    "parameterInterpretation" .= ("fresh abstract declarations; no parameter implementation or population witness chosen"::String),
+    "parameterInterpretation" .= ("lexically bound formal values and fresh abstract function declarations; no parameter implementation or population witness chosen"::String),
     "lawVerification" .= ("not-established-by-migration-correspondence"::String)])
   where
     names program=[(C.propertyId law,C.propertyName law) | unit<-C.programUnits program,law<-C.unitProperties unit]
@@ -67,13 +68,14 @@ lawTransport plan before after = do
       pure (digestHex (digest (BL.toStrict (encode (("checked-law-template-metadata-v1"::String),projected)))))
     lower canonical captured=do
       made<-mapM (parameterized canonical) (templateLaws captured)
-      let laws=map fst made
-          declarations=[(S.owner law,functions) | (law,functions)<-made]
+      let laws=[law | (law,_,_)<-made]
+          declarations=[(S.owner law,functions) | (law,functions,_)<-made]
+          formals=M.fromList [(sourcePropertyId (S.owner law) (S.name law),count) | (law,_,count)<-made,count>0]
           units=[unit{S.functions=S.functions unit++concat [functions | (owner,functions)<-declarations,owner==S.unitName unit]} |
             unit<-templateUnits captured]
       mapM_ (\unit->unless (length (S.functions unit)==Set.size (Set.fromList (map fst (S.functions unit))))
         (Left "symbolic law parameter declaration collides with a source declaration")) units
-      symbolicProgram canonical captured units laws
+      symbolicProgramWithFormalValues formals canonical captured units laws
     parameterized canonical law=do
       let parameters=S.parameters (S.original law)
           occupied=map S.inputId (S.inputs law++S.assertionInputs (S.assertion law))
@@ -86,10 +88,14 @@ lawTransport plan before after = do
             S.Named ('@':name)->scoped name
             other->other) (S.mapExprTypes rigid)
           scoped name=S.Named ("@<law-type:"++identity++":"++name++">")
-          declarations=[("<law-parameter:"++identity++":"++show index++">",rigid ty) | (index,(_,ty))<-zip [0::Int ..] parameters]
-          replacements=zip (map fst parameters) [S.Var name | (name,_)<-declarations]
+          formal index="<law-parameter:"++identity++":"++show index++">"
+          declarations=[(formal index,rigid value) | (index,(_,value))<-zip [0::Int ..] parameters,isFunctionParameter value]
+          replacements=[(name,S.Var (formal index)) | (index,(name,_))<-zip [0::Int ..] parameters]
           term=S.mapExprTypes rigid . S.replaceExprVars replacements
           ty=rigid . S.replaceTypeValueVars replacements
+          values=[S.Input name (formal index) (S.baseType (ty value))
+            (S.typePredicates (S.Var (formal index)) (ty value)) |
+            (index,(name,value))<-zip [0::Int ..] parameters,not (isFunctionParameter value)]
           input value=value{S.inputType=ty (S.inputType value),S.inputRefinements=map term (S.inputRefinements value)}
           assertion value=case value of
             S.AssertEqual a b->S.AssertEqual (term a) (term b)
@@ -101,12 +107,13 @@ lawTransport plan before after = do
           example value=value{S.expectations=[expectation{S.actual=term (S.replaceExprVars aliases (S.actual expectation))} |
             expectation<-S.expectations value]}
           original=(S.original law){S.parameters=[],S.examples=map example (S.examples (S.original law)),
-            S.requirements=[S.Capability name (ty value) | S.Capability name value<-S.requirements (S.original law)],
+            S.requirements=[S.Capability name (ty value) | S.Capability name value<-
+              S.requirements (S.original law)++concatMap (S.typeConstraints.snd) parameters],
             S.lawResources=[(name,ty value) | (name,value)<-S.lawResources (S.original law)]}
       unless (all (`notElem` occupied) (map fst parameters))
         (Left "a symbolic law parameter collides with an expanded input")
-      pure (law{S.inputs=map input (S.inputs law),S.left=term (S.left law),S.right=term (S.right law),
+      pure (law{S.inputs=values++map input (S.inputs law),S.left=term (S.left law),S.right=term (S.right law),
         S.guards=map term (S.guards law),S.assertion=assertion (S.assertion law),S.original=original,S.typedExpressions=[],
         S.generationPlan=[plan{S.domainInput=input (S.domainInput plan),S.domainBounds=[(operator,term value) |
           (operator,value)<-S.domainBounds plan]} | plan<-S.generationPlan law],
-        S.refinementArgumentChecks=map term (S.refinementArgumentChecks law)},declarations)
+        S.refinementArgumentChecks=map term (S.refinementArgumentChecks law)},declarations,length values)

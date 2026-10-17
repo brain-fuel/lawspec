@@ -62,9 +62,12 @@ domainSnapshotWithScopes scopes canonical names program = do
               known (C.declarationId declaration)])
             contracts=M.toAscList (M.fromList [(C.contractDeclaration contract,contract) |
               unit<-C.programUnits normalized,contract<-C.unitContracts unit,known (C.contractDeclaration contract)])
-        in digestHex (digest (BL.toStrict (encode (("migration-input-domain-v1"::String),ambient,
-          Dependencies.reachableData graph reached,declarations,contracts,
-          Dependencies.reachableDefinitions graph reached,C.propertyInputs property))))
+            original=(("migration-input-domain-v1"::String),ambient,
+              Dependencies.reachableData graph reached,declarations,contracts,
+              Dependencies.reachableDefinitions graph reached,C.propertyInputs property)
+            bytes=if null (C.propertyParameters property) then encode original else
+              encode (("migration-formal-input-domain-v1"::String),original,C.propertyParameters property)
+        in digestHex (digest (BL.toStrict bytes))
       original=[property | unit<-C.programUnits program,property<-C.unitProperties unit]
       compared=[property | unit<-C.programUnits normalized,property<-C.unitProperties unit]
       bits=C.programMachineBits program
@@ -74,12 +77,18 @@ domainSnapshotWithScopes scopes canonical names program = do
             fields=["comparisonId" .= C.idText (C.propertyId made),"domainDigest" .= fingerprint,"inputCount" .= length (C.propertyInputs made),
               "search" .= domainSearch evidence,"candidateChecks" .= domainCandidateChecks evidence,
               "searchLimit" .= domainSearchLimit evidence,"finiteLimit" .= domainFiniteLimit evidence,
-              "notes" .= domainNotes evidence]
+              "notes" .= domainNotes evidence]++
+              (if null (C.propertyParameters made) then [] else
+                ["formalParameterCount" .= length (C.propertyParameters made),
+                 "parameterInterpretation" .= ("input evidence must hold uniformly over admissible formal values; they are not sampled inputs"::String)])
         case domainStatus evidence of
           VerifiedInputTuple values -> do
             bindings <- sequence [object . (\value -> ["binder" .= C.idText (C.binderId (C.quantifiedBinder q)),"value" .= value])
               <$> valueView value | (q,value)<-zip (C.propertyInputs made) values]
-            pure (object (fields++["status" .= ("inhabited"::String),"witness" .= bindings]))
+            -- The checker returns a tuple with formals present only after
+            -- establishing that their values cannot affect the population.
+            pure (object (fields++["status" .= ("inhabited"::String),"witness" .= bindings]++
+              ["uniformity" .= ("parameter-independent"::String) | not (null (C.propertyParameters made))]))
           CompleteEmptyDomain -> pure (object (fields++["status" .= ("empty"::String),"complete" .= True]))
           InconclusiveDomain reason -> pure (object (fields++["status" .= ("incomplete"::String),"reason" .= reason,"complete" .= False]))
           UnsupportedInputDomain reason -> pure (object (fields++["status" .= ("unsupported"::String),"reason" .= reason,"complete" .= False]))

@@ -8,7 +8,9 @@ const templateComponents=[['declarationsDigest','declarations'],['definitionTemp
 
 function rowsValid(rows,policies=false) {
   return Array.isArray(rows)&&rows.every(item=>item&&typeof item.comparisonId==='string'&&
-    (policies?['nonempty','universal'].includes(item.policy):typeof item.digest==='string'&&digest.test(item.digest)))&&
+    (policies?['nonempty','universal'].includes(item.policy)&&
+      (item.formalParameterCount===undefined||Number.isSafeInteger(item.formalParameterCount)&&item.formalParameterCount>=0):
+      typeof item.digest==='string'&&digest.test(item.digest)))&&
     new Set(rows.map(item=>item.comparisonId)).size===rows.length;
 }
 
@@ -144,7 +146,9 @@ function compareDomainPolicies(before,after) {
   const evidenceAvailable=valid(before.inputDomains)&&valid(after.inputDomains);
   const oldDomains=new Map(evidenceAvailable?before.inputDomains.domains.map(row=>[row.comparisonId,row]):[]);
   const newDomains=new Map(evidenceAvailable?after.inputDomains.domains.map(row=>[row.comparisonId,row]):[]);
-  const validWitness=row=>row?.status==='inhabited'&&Number.isSafeInteger(row.inputCount)&&row.inputCount>=0&&
+  const validWitness=(row,policy)=>row?.status==='inhabited'&&Number.isSafeInteger(row.inputCount)&&row.inputCount>=0&&
+    (row.formalParameterCount??0)===(policy.formalParameterCount??0)&&
+    (!(policy.formalParameterCount>0)||row.uniformity==='parameter-independent')&&
     Array.isArray(row.witness)&&row.witness.length===row.inputCount&&
     row.witness.every(binding=>binding&&typeof binding.binder==='string'&&binding.value&&typeof binding.value==='object')&&
     new Set(row.witness.map(binding=>binding.binder)).size===row.witness.length;
@@ -153,7 +157,7 @@ function compareDomainPolicies(before,after) {
     if(!next) return {comparisonId:row.comparisonId,status:'not-established',reason:'The migrated input domain is missing.'};
     if(row.policy===next.policy) return {comparisonId:row.comparisonId,status:'matched',basis:'unchanged-domain-policy'};
     const old=oldDomains.get(row.comparisonId),changed=newDomains.get(row.comparisonId);
-    if(validWitness(old)&&validWitness(changed)&&old.domainDigest===changed.domainDigest&&
+    if(validWitness(old,row)&&validWitness(changed,next)&&old.domainDigest===changed.domainDigest&&
       old.inputCount===changed.inputCount&&
       JSON.stringify(old.witness.map(binding=>binding.binder))===JSON.stringify(changed.witness.map(binding=>binding.binder))) return {
       comparisonId:row.comparisonId,status:'matched',basis:'matching-domain-dependencies-and-verified-input-witnesses',

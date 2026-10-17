@@ -171,7 +171,8 @@ validateProgramWith scopes registry Program{..} = do
       mapM_ (\property -> validateProperty (scopedRegistry scopes (propertyId property) registry) ds property) (unitProperties u)
       mapM_ (\contract -> validateContract (scopedRegistry scopes (contractDeclaration contract) registry) ds contract) (unitContracts u)
     validateProperty current ds p = do
-      scope <- foldM (quantify current ds) M.empty (propertyInputs p)
+      parameters <- foldM (quantify current ds) M.empty (propertyParameters p)
+      scope <- foldM (quantify current ds) parameters (propertyInputs p)
       -- A law's resources are in scope in its body and examples; each one's
       -- acquire sees none of them, and its release sees it.
       resourceScope <- foldM (\s r -> do
@@ -196,7 +197,9 @@ validateProgramWith scopes registry Program{..} = do
       mapM_ (\(identity,_,_,strategy) -> case [binderType b | b <- binders,binderId b == identity] of
         [ty] -> validateDraw current ds M.empty ty strategy
         _ -> Left "search strategy selects an unknown scoped binder") searches
-      mapM_ (validateExample current ds scope resourceScope) (propertyExamples p)
+      let inputScope=M.fromList [(binderId binder,binderType binder) |
+            q<-propertyInputs p,let binder=quantifiedBinder q]
+      mapM_ (validateExample current ds inputScope resourceScope) (propertyExamples p)
     scopedBinders claim = case claim of
       Quantified _ q body -> quantifiedBinder q : scopedBinders body
       Conjunction bodies -> concatMap scopedBinders bodies
