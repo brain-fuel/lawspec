@@ -64,13 +64,30 @@ and mandatory definition checks after writing. Documentation checks pass for
 119 pages and 114 snippets; six editor checks, all 128 generated outputs,
 233 module boundaries, version consistency and artifact integrity pass.
 
-The full compiler and SDK regressions and complete native/WASM replay are still
-running for this checkpoint; focused success is not final regression acceptance.
-Their logs and complete before/after reproducer are under
+The final compiler regression passes **2,171 tests with zero failures** in
+790.1617 seconds. The SDK run excluding the separately running archived export
+passes **467 of 471 tests**, with zero failures and four opt-in native checks
+skipped, in 698.3088 seconds. Those four checks then pass explicitly: Rust and
+Haskell layouts each pass, and the five-test native-message suite includes
+passing Rust and Clojure execution with no skips. This is coverage across runs,
+not one uninterrupted skip-free SDK run.
+
+Native/WASM parity agrees on **778 complete responses**, including 68 generation
+requests across all 17 targets, both widths and both layouts. All 704 preceding
+responses were replayed; only the two expected typed-failure migration
+comparisons change. Their complete before/after pairs retain the newly matching
+law-template and source-unit evidence. Every compared generated artifact is
+unchanged. The replay resumed after its added generation probe omitted matching
+destination settings; the rejected request remains recorded, and the corrected
+requests pass. Frozen compiler hashes are checked around the completed replay.
+
+Logs and the complete before/after reproducer are under
 `.artifacts/attempt-template-types/` in the attempt-template worktree. The first
 new compiler test accidentally left its destination at the default machine
 width; its corrected two-sided requests pass. The superseded failed focused
-receipt and interrupted full run are retained separately.
+receipt and interrupted full run are retained separately. The earlier archive
+jobs remain active in their frozen worktrees; this receipt does not claim their
+completion or the complete iteration release check.
 
 This supersedes the historical symbolic `attempt` blocker below. Reordered
 shared-index measure bodies and grouped GADT/existential payload transport remain
