@@ -629,6 +629,7 @@ library
       LawSpec.Mailboxes
       LawSpec.Matchers
       LawSpec.Memo
+      LawSpec.MigrationDefinitionTransport
       LawSpec.MigrationDomains
       LawSpec.MigrationPayloads
       LawSpec.MigrationTemplateDomains

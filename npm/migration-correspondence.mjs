@@ -23,7 +23,22 @@ function differences(before,after,names) {
   }));
 }
 
-function compareTemplates(before,after,machineBits) {
+function checkedDefinitionTemplates(before,after,evidence,machineBits) {
+  if(evidence?.status!=='matched'||evidence.version!==1||evidence.algorithm!=='sha256'||
+    evidence.machineBits!==machineBits||evidence.originalsUnchanged!==true||
+    !templateComponents.every(([field])=>evidence.before?.[field]===before[field]&&evidence.after?.[field]===after[field])) return false;
+  const headers=evidence.interfaces,core=evidence.typedCore;
+  if(headers?.status!=='matched'||typeof headers.before!=='string'||!digest.test(headers.before)||headers.before!==headers.after||
+    core?.status!=='matched'||core.version!==1||core.algorithm!=='sha256'||core.machineBits!==machineBits||
+    core.copyValidated!==true||core.originalsUnchanged!==true||
+    typeof core.sourceBeforeDigest!=='string'||!digest.test(core.sourceBeforeDigest)||
+    !available(core.before)||!available(core.after)||core.before.machineBits!==machineBits||core.after.machineBits!==machineBits||
+    core.before.domainPolicies.length!==0||core.after.domainPolicies.length!==0) return false;
+  return components.every(([field,name])=>core[name]?.status==='matched'&&
+    core[name].before===core.before[field]&&core[name].after===core.after[field]&&core[name].before===core[name].after);
+}
+
+function compareTemplates(before,after,machineBits,definitionEvidence) {
   const available=value=>[32,64].includes(machineBits)&&value?.status==='available'&&value.version===1&&value.algorithm==='sha256'&&
     value.machineBits===machineBits&&templateComponents.every(([name])=>typeof value[name]==='string'&&digest.test(value[name]))&&
     ['units','definitions','laws'].every(name=>rowsValid(value[name]))&&rowsValid(value.domainPolicies,true);
@@ -32,6 +47,9 @@ function compareTemplates(before,after,machineBits) {
   const checks=Object.fromEntries(templateComponents.map(([field,name])=>[name,
     before[field]===after[field]?{status:'matched',basis:'matching-checked-source-template-fingerprints'}:
       {status:'not-established',reason:'The checked source-template '+name+' fingerprints differ.'}]));
+  if(checks.definitions.status!=='matched'&&checkedDefinitionTemplates(before,after,definitionEvidence,machineBits)) {
+    checks.definitions={status:'matched',basis:'matching-complete-symbolic-definition-Core-and-source-interfaces-after-validated-payload-transport'};
+  }
   // Domain evidence belongs to the complete source capture that produced it.
   // A concrete-Core witness, stale capture, or one chosen law parameter is
   // insufficient for a reusable template's uniform input population.
@@ -137,11 +155,11 @@ function checkedTransportBodies(before,after,transport) {
     pair('lawBodies','lawBodiesDigest',true);
 }
 
-export function compareMigrationSnapshots(before,after,transport) {
+export function compareMigrationSnapshots(before,after,transport,definitionEvidence) {
   const incomplete=reason=>({status:'not-established',reason});
   const unproved={
     sourceTemplates:compareTemplates(before?.sourceTemplates,after?.sourceTemplates,
-      before?.machineBits===after?.machineBits?before?.machineBits:undefined),
+      before?.machineBits===after?.machineBits?before?.machineBits:undefined,definitionEvidence),
     nativeBindings:incomplete('Native constructor, field and representation bindings require project-wide correspondence.'),
     generatedBehavior:incomplete('Generated plans and native behavior require their own target validation.'),
   };

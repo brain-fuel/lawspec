@@ -167,6 +167,28 @@ prefix, preserving their argument text. Other source-shape differences remain
 conservative blockers. Neither a template match nor a concrete Core match
 establishes native binding or generated-behavior correspondence.
 
+`migrationComparison.definitionTemplates` additionally compares the complete
+unspecialized definition plane through the ordinary frontend, Core validator
+and certified payload transport. Generic type variables remain symbolic; no
+sample type or sampled input stands in for a generic declaration. All source
+definitions and their dependencies are retained together, including unused
+bodies. Source interfaces, capability requirements and source/template
+identities have a separate fingerprint because concrete Core does not store
+every source requirement. Both complete source-template snapshots anchor this
+evidence.
+
+The host accepts a definition-template match only when those anchors, the
+matching interfaces and the validated Core fingerprint pairs agree at the same
+machine width. This clears only the definition-template component. Complete
+source-unit declarations and reusable laws remain independently checked; the
+new evidence does not clear their mismatches or enable project writing. Generic
+equality and numeric schemes that the existing Core cannot represent report
+explicit limits. Known bodies are never replaced with opaque declarations to
+obtain a match. This is migration correspondence, not proof that a law holds or
+that a native implementation conforms. Matching remains structural after the
+existing certified rewrites. A case and a direct projection can have different
+Core shapes; an unestablished result does not refute their equivalence.
+
 The optional `sourceTemplates.inputDomains` snapshot supplies domain-only rows
 for those same expanded templates, including reusable laws without executable
 instances. All four surrounding source-template digests anchor the evidence.

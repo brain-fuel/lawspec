@@ -45,7 +45,8 @@ export async function migrationReport(compiler, config, input) {
     payloadComparison=compared.migrationComparison??{status:'unavailable',
       reason:'The compiler did not admit both inputs for payload comparison.',diagnostics:compared.diagnostics};
   }
-  const correspondence={...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,payloadComparison.executableTransport),
+  const correspondence={...compareMigrationSnapshots(syntax.migrationSemantics,sourcePreview.canonicalCheck?.coreSnapshot,
+    payloadComparison.executableTransport,payloadComparison.definitionTemplates),
     payloads:payloadComparison};
   const pending=[
     ['program','Complete checked Core correspondence has not been established.'],

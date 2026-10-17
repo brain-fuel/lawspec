@@ -23,6 +23,7 @@ import LawSpec.MigrationTemplates (SourceTemplates,templateSnapshot)
 import LawSpec.MigrationTemplateDomains (withTemplateInputDomains)
 import LawSpec.MigrationDomains (domainSnapshot,withTransportDomains)
 import LawSpec.MigrationPayloads (payloadCorrespondenceWithPlan)
+import LawSpec.MigrationDefinitionTransport (definitionTransport)
 import LawSpec.Core.PayloadTransport (transportComparisonWithProgram)
 import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
@@ -141,7 +142,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                                   transported=either (\reason -> object ["status" .= ("not-established"::String),"reason" .= reason]) id
                                     (do (copy,view)<-transportComparisonWithProgram plan (names beforeUnits) beforeCore (names afterUnits) afterCore
                                         pure (withTransportDomains (names beforeUnits) copy (names afterUnits) afterCore view))
-                              in Object (KM.insert "executableTransport" transported fields)
+                                  templates=either (\reason -> object ["status" .= ("not-established"::String),"reason" .= reason]) id
+                                    (definitionTransport plan previous next)
+                              in Object (KM.insert "definitionTemplates" templates (KM.insert "executableTransport" transported fields))
                             Right (view,_) -> view
                           _ -> unavailable "checked source templates were not captured for both inputs"
                     in withVerification (Just V.noVerification) (object ["diagnostics" .= ([]::[Diagnostic]),

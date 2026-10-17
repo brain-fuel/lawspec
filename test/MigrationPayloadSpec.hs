@@ -3,6 +3,8 @@ module MigrationPayloadSpec (test_migrationPayloads) where
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.Vector as Vector
+import Data.List (isInfixOf)
+import Data.Text (unpack)
 import LawSpec.Api (dispatch)
 import LawSpec.Model (Source(..))
 import Test.Hspec
@@ -35,6 +37,52 @@ groupOld="type Variant is | Empty | Item last :: Bool first :: UInt8 end"
 groupNew="type Variant is one of | Empty | Item of type record{last :: Bool first :: UInt8} end type"
 
 test_migrationPayloads=describe "checked constructor payload shape correspondence" $ do
+  it "compares the full unused generic definition plane without choosing an instantiation" $ do
+    let before="type Capsule (a :: Type) is | Packed last :: Bool first :: a end\n"++
+          "definition read (input :: Capsule a) :: a is match input with | Packed last first -> first end end"
+        after="type Capsule (a :: Type) is one of | Packed of type record{last :: Bool first :: a} end type\n"++
+          "function read (input :: Capsule a) -> a is first matching case of input: when Packed record{last = last, first = first} then first end case end function"
+    result<-shapesMatch before after
+    let evidence=comparison result >>= field "definitionTemplates"
+    (evidence >>= field "status") `shouldBe` Just (String "matched")
+    (evidence >>= field "typeVariables") `shouldBe` Just (String "symbolic; no sample instantiations")
+    (evidence >>= field "interfaces" >>= field "status") `shouldBe` Just (String "matched")
+    (evidence >>= field "typedCore" >>= field "copyValidated") `shouldBe` Just (Bool True)
+  it "keeps unused generic behavior mutants visible after payload regrouping" $ do
+    let before="type Capsule (a :: Type) is | Packed first :: a second :: a end\n"++
+          "definition pick (input :: Capsule a) :: a is match input with | Packed first second -> first end end"
+        after="type Capsule (a :: Type) is one of | Packed of type record{first :: a second :: a} end type\n"++
+          "function pick (input :: Capsule a) -> a is input.value.second end function"
+    result<-shapesMatch before after
+    let evidence=comparison result >>= field "definitionTemplates"
+    (evidence >>= field "interfaces" >>= field "status") `shouldBe` Just (String "matched")
+    (evidence >>= field "status") `shouldBe` Just (String "not-established")
+    (evidence >>= field "typedCore" >>= field "definitionPlane" >>= field "status") `shouldBe` Just (String "not-established")
+  it "retains unused capability requirements beside a matching symbolic Core" $ do
+    result<-shapesMatch "definition same (value :: a) :: a requires Eq a is value end"
+      "function same (value :: a) -> a requires Keyed a is value end function"
+    let evidence=comparison result >>= field "definitionTemplates"
+    (evidence >>= field "typedCore" >>= field "status") `shouldBe` Just (String "matched")
+    (evidence >>= field "interfaces" >>= field "status") `shouldBe` Just (String "not-established")
+    (evidence >>= field "status") `shouldBe` Just (String "not-established")
+  it "compares transitive generic dependencies even when concrete Core has no instantiations" $ do
+    let before="definition helper (left :: a) (right :: a) :: a is left end\n"++
+          "definition choose (left :: a) (right :: a) :: a is helper left right end"
+        after="function helper (left :: a) (right :: a) -> a is right end function\n"++
+          "function choose (left :: a) (right :: a) -> a is helper left right end function"
+    result<-shapesMatch before after
+    let evidence=comparison result >>= field "definitionTemplates"
+    (evidence >>= field "status") `shouldBe` Just (String "not-established")
+    (evidence >>= field "typedCore" >>= field "copyValidated") `shouldBe` Just (Bool True)
+    (comparison result >>= field "executableTransport" >>= field "status") `shouldBe` Just (String "matched")
+  it "reports unsupported symbolic equality instead of replacing the body with an opaque call" $ do
+    result<-shapesMatch "definition same (left :: a) (right :: a) :: Bool requires Eq a is left == right end"
+      "function same (left :: a) (right :: a) -> Bool requires Eq a is left = right end function"
+    let evidence=comparison result >>= field "definitionTemplates"
+    (evidence >>= field "status") `shouldBe` Just (String "not-established")
+    (evidence >>= field "typedCore" >>= field "reason") `shouldSatisfy` (\value->case value of
+      Just (String reason)->"unresolved equality capability" `isInfixOf` unpack reason
+      _->False)
   it "checks single-payload field renaming while keeping native correspondence separate" $ do
     result<-shapesMatch singleOld singleNew
     (comparison result >>= field "validated") `shouldBe` Just (Bool False)
