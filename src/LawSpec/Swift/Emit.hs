@@ -77,7 +77,7 @@ emitSwiftWithBindings minify bindings plan = do
       typed <- emitSwiftTyped bits (map (C.dataId . resolvedDeclaration) boundTypes) declarations units
       let typedFile = [Artifact "src/LawSpec/LawSpecTypedProgram.swift" source "generated" "source" | Just source <- [swiftTypedSource typed]]
           typedCall i = (\f -> (f, swiftTypedContextual typed i)) <$> swiftTypedFunction typed i
-      entries <- Definitions.emitEntries layout bits calls typedCall declarations units
+      entries <- Definitions.emitEntriesWithLayouts boundTypes layout bits calls typedCall declarations units
       adapters <- Definitions.emitAdapters layout bits calls declarations units
       api <- Definitions.emitApi layout bits declarations units
       handlerClasses <- Handlers.emitHandlers layout bits typed declarations units

@@ -464,3 +464,162 @@ for(const target of ['go','haskell']){
     }
   });
 }
+
+const dotnetSwiftSource=recursiveSource+`
+type Crate (a :: Type) is a record{
+  payload :: record{last :: a first :: record{count :: (n :: UInt8 where n > 0) flag :: Bool}}
+} end type
+copyCrate :: Crate UInt8 -> Crate UInt8`;
+function dotnetSwiftBindings(target){
+  const made=recursiveBindings('haskell');
+  const swift=target==='swift';
+  made.types[0].constructors[0].native=swift?['Application','Packet','packed']:['Application','Packed'];
+  for(const constructor of made.types[1].constructors)
+    constructor.native=swift?['Application','Chain',constructor.constructor.toLowerCase()]:['Application',constructor.constructor];
+  made.types.push({type:'layouts::type::Crate',native:['Application','Crate'],constructors:[{
+    constructor:'Crate',native:['Application','Crate'],style:'record',fields:
+      made.types[0].constructors[0].fields.map(field=>({...field,field:'payload',native:swift?field.native:field.native[0].toUpperCase()+field.native.slice(1)})),
+  }]});
+  made.functions.push({declaration:'layouts::copyCrate',native:['Application','copyCrate']});
+  return made;
+}
+const fsharpApplication=`module Application
+[<NoEquality; NoComparison>]
+type Packet<'T> = Packed of tail: 'T * enabled: bool * quantity: byte
+[<NoEquality; NoComparison>]
+type Chain = Stop | Link of next: Chain * flag: bool
+[<NoEquality; NoComparison>]
+type Crate<'T> = { Tail: 'T; Enabled: bool; Quantity: byte }
+let copy (Packed(_,_,quantity) as value) =
+    if quantity = 0uy then failwith "NATIVE_INPUT_REACHED"
+    value
+let copyBad (Packed(tail,enabled,_)) = Packed(tail,enabled,0uy)
+let copyChain value = value
+let copyCrate (value: Crate<byte>) =
+    if value.Quantity = 0uy then failwith "NATIVE_INPUT_REACHED"
+    value
+`;
+const fsharpCheck=`module Check
+open LawSpec.Runtime
+let require condition = if not condition then failwith "native layout mismatch"
+let rejected code action =
+    try action (); failwith "invalid value admitted"
+    with :? LawSpecException as error -> require (error.Code = code)
+[<EntryPoint>]
+let main _ =
+    let schema = LawSpec.Generated.Program.schema
+    let symbols = Scalar.SymbolContext()
+    let packet = LawSpec.Data.Codecs.packet Codec.uint8
+    let logical = packet.FromNative (Application.Packed(7uy,true,3uy))
+    match logical with
+    | Value.Data(_, [Value.Data(_, [Value.Data(_, [Value.Int count; Value.Bool true]); Value.Int tail])]) -> require (count = 3I && tail = 7I)
+    | _ -> failwith "wrong packed shape"
+    let result = LawSpec.Generated.Layouts.copy schema symbols logical |> packet.ToNative
+    match result with Application.Packed(tail,enabled,count) -> require (tail = 7uy && enabled && count = 3uy)
+    let invalid = packet.FromNative (Application.Packed(7uy,true,0uy))
+    rejected "RefinementViolation" (fun () -> LawSpec.Generated.Layouts.copy schema symbols invalid |> ignore)
+    rejected "RefinementViolation" (fun () -> LawSpec.Generated.Layouts.copyBad schema symbols logical |> ignore)
+    let chain = LawSpec.Data.Codecs.chain ()
+    let recursive = chain.FromNative (Application.Link(Application.Link(Application.Stop,false),true))
+    match LawSpec.Generated.Layouts.copyChain schema symbols recursive |> chain.ToNative with
+    | Application.Link(Application.Link(Application.Stop,false),true) -> ()
+    | _ -> failwith "recursive chain mismatch"
+    let crate = LawSpec.Data.Codecs.crate Codec.uint8
+    let record = crate.FromNative { Application.Tail=7uy; Application.Enabled=true; Application.Quantity=3uy }
+    let result = LawSpec.Generated.Layouts.copyCrate schema symbols record |> crate.ToNative
+    require (result.Tail = 7uy && result.Enabled && result.Quantity = 3uy)
+    let invalid = crate.FromNative { Application.Tail=7uy; Application.Enabled=true; Application.Quantity=0uy }
+    rejected "RefinementViolation" (fun () -> LawSpec.Generated.Layouts.copyCrate schema symbols invalid |> ignore)
+    printfn "checked native layout passed"
+    0
+`;
+const swiftApplication=`import LawSpecRuntime
+public enum Application {
+    public enum Packet<T> { case packed(tail:T, enabled:Bool, quantity:UInt8) }
+    public indirect enum Chain: Sendable { case stop; case link(next:Chain, flag:Bool) }
+    public struct Crate<T> {
+        public let tail:T
+        public let enabled:Bool
+        public let quantity:UInt8
+    }
+    public enum Failure: Error { case nativeInputReached }
+    public static func copy(_ value:Packet<UInt8>) throws -> Packet<UInt8> {
+        if case .packed(_,_,0) = value { throw Failure.nativeInputReached }
+        return value
+    }
+    public static func copyBad(_ value:Packet<UInt8>) -> Packet<UInt8> {
+        switch value { case .packed(let tail,let enabled,_):return .packed(tail:tail,enabled:enabled,quantity:0) }
+    }
+    public static func copyChain(_ value:Chain) -> Chain { value }
+    public static func copyCrate(_ value:Crate<UInt8>) throws -> Crate<UInt8> {
+        if value.quantity == 0 { throw Failure.nativeInputReached }
+        return value
+    }
+}
+`;
+const swiftCheck=`import LawSpecRuntime
+func require(_ condition:Bool) { precondition(condition,"native layout mismatch") }
+func rejected(_ code:String,_ action:() throws -> Void) {
+    do { try action(); preconditionFailure("invalid value admitted") }
+    catch let error as LawSpecError { require(error.code == code) }
+    catch { preconditionFailure("unexpected native failure: \\(error)") }
+}
+@main struct Check {
+    static func main() throws {
+        let schema=LawSpec.Program.schema, symbols=SymbolContext()
+        let packet=LawSpec.DataCodecs.packet(Codecs.uint8)
+        let logical=try packet.fromNative(Application.Packet.packed(tail:7,enabled:true,quantity:3))
+        guard case .data(_,let outer)=logical, outer.count==1,
+              case .data(_,let payload)=outer[0], payload.count==2,
+              case .data(_,let first)=payload[0], first.count==2,
+              case .int(let count)=first[0], case .bool(true)=first[1], case .int(let tail)=payload[1]
+        else { preconditionFailure("wrong packed shape") }
+        require(count==BigInt(3) && tail==BigInt(7))
+        let result=try packet.toNative(LawSpec.Generated.Layouts.copy(schema,symbols,logical))
+        if case .packed(let tail,let enabled,let count)=result { require(tail==7 && enabled && count==3) }
+        let invalid=try packet.fromNative(Application.Packet.packed(tail:7,enabled:true,quantity:0))
+        rejected("RefinementViolation") { _ = try LawSpec.Generated.Layouts.copy(schema,symbols,invalid) }
+        rejected("RefinementViolation") { _ = try LawSpec.Generated.Layouts.copyBad(schema,symbols,logical) }
+        let chain=LawSpec.DataCodecs.chain()
+        let recursive=try chain.fromNative(.link(next:.link(next:.stop,flag:false),flag:true))
+        let back=try chain.toNative(LawSpec.Generated.Layouts.copyChain(schema,symbols,recursive))
+        if case .link(.link(.stop,false),true)=back {} else { preconditionFailure("recursive chain mismatch") }
+        let crate=LawSpec.DataCodecs.crate(Codecs.uint8)
+        let record=try crate.fromNative(Application.Crate(tail:7,enabled:true,quantity:3))
+        let recordBack=try crate.toNative(LawSpec.Generated.Layouts.copyCrate(schema,symbols,record))
+        require(recordBack.tail==7 && recordBack.enabled && recordBack.quantity==3)
+        let badRecord=try crate.fromNative(Application.Crate(tail:7,enabled:true,quantity:0))
+        rejected("RefinementViolation") { _ = try LawSpec.Generated.Layouts.copyCrate(schema,symbols,badRecord) }
+        print("checked native layout passed")
+    }
+}
+`;
+for(const target of ['fsharp','swift']){
+  const tool=target==='fsharp'?'dotnet':'swift';
+  test(`${target} native layouts compile generic variants, records and recursive types with checked boundaries`,
+    {skip:!required(target)&&!available(tool)&&`${tool} is not installed`},async()=>{
+    for(const machineBits of [32,64])for(const minify of [false,true]){
+      const result=await compiler.planGeneration({...options,target,machineBits,minify,
+        sources:[{path:'layouts.lawspec',content:dotnetSwiftSource}],nativeBindings:dotnetSwiftBindings(target)});
+      assert.deepEqual(result.diagnostics,[]);
+      const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-dotnet-swift-layout-'));
+      try{
+        for(const file of result.files.filter(file=>file.placement==='source')){
+          const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,file.content);
+        }
+        if(target==='fsharp'){
+          await mkdir(path.join(root,'src/Native/Types'),{recursive:true});
+          await writeFile(path.join(root,'src/Native/Types/Application.fs'),fsharpApplication);
+          await writeFile(path.join(root,'src/Check.fs'),fsharpCheck);
+          await writeFile(path.join(root,'src/Check.fsproj'),`<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><NuGetAudit>false</NuGetAudit></PropertyGroup><Import Project="LawSpec.Sources.props"/><ItemGroup><Compile Include="Check.fs"/><ProjectReference Include="../lawspec/LawSpec.Runtime/LawSpec.Runtime.fsproj"/></ItemGroup></Project>`);
+          assert.match(run('dotnet',['run','--project','src/Check.fsproj','--verbosity','quiet'],{cwd:root}),/checked native layout passed/);
+        }else{
+          await writeFile(path.join(root,'src/Application.swift'),swiftApplication);
+          await writeFile(path.join(root,'src/Check.swift'),swiftCheck);
+          await writeFile(path.join(root,'Package.swift'),`// swift-tools-version: 6.2\nimport PackageDescription\nlet package=Package(name:"NativeLayout",platforms:[.macOS(.v26)],targets:[.target(name:"LawSpecRuntime",path:"lawspec/LawSpecRuntime"),.executableTarget(name:"Check",dependencies:["LawSpecRuntime"],path:"src")])\n`);
+          assert.match(run('swift',['run','--quiet','-j','2','Check'],{cwd:root}),/checked native layout passed/);
+        }
+      }finally{await rm(root,{recursive:true,force:true});}
+    }
+  });
+}

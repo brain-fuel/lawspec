@@ -4,7 +4,7 @@
 -- definitions and the embedding API all call these same entries.
 -- ref:DEC-total-definitions ref:DEC-native-bindings-typed-identity
 module LawSpec.Swift.Definitions
-  ( emitEntries, emitAdapters, adapterDeclarations, nativeSignature, emitApi, declarationFailure
+  ( emitEntries, emitEntriesWithLayouts, emitAdapters, adapterDeclarations, nativeSignature, emitApi, declarationFailure
   , failureKey, TypedCall, isUnit, signatureText
   ) where
 
@@ -23,7 +23,7 @@ import qualified LawSpec.Swift.Abilities as Abilities
 import qualified LawSpec.Swift.Policy as Policy
 import qualified LawSpec.AbilityNames as N
 import LawSpec.NativeRequest (NativeCall(..))
-import LawSpec.NativeBinding (NativeRef(..))
+import LawSpec.NativeBinding (NativeRef(..), ResolvedTypeBinding, usesNativeLayout)
 import Control.Monad (forM)
 import Data.List (intercalate)
 
@@ -79,7 +79,10 @@ hasModule u = not (null (C.unitDeclarations u) && null (C.unitHandlers u) &&
 type TypedCall = C.Id -> Maybe (String, Bool)
 
 emitEntries :: D.Layout -> Int -> Calls -> TypedCall -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emitEntries layout bits calls typedCall declarations units = do
+emitEntries layout bits calls typedCall declarations units = emitEntriesWithLayouts [] layout bits calls typedCall declarations units
+
+emitEntriesWithLayouts :: [ResolvedTypeBinding] -> D.Layout -> Int -> Calls -> TypedCall -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
+emitEntriesWithLayouts bindings layout bits calls typedCall declarations units = do
   verified <- checkedDefinitionContracts bits declarations units
   names <- dataNames declarations
   forM [u | u <- orderedUnits units, hasModule u] $ \u -> do
@@ -126,7 +129,12 @@ emitEntries layout bits calls typedCall declarations units = do
         let aliases = zip (map C.binderId (C.contractArguments c)) arguments ++ [(C.binderId (C.contractResult c), "result")]
         mapM (fmap (\v -> call "Runtime" "require" [v, Str "postcondition"]) . render aliases)
           (case definition of Just _ -> runtimePostconditions c; Nothing -> C.contractPostconditions c ++ C.contractRuntimePostconditions c)
-      let inner = Do pre (Let "result" tValue body (Do post (Var "result")))
+      validated <- forM [(argument,ty) | (argument,ty) <- zip arguments parameterTypes,
+        usesNativeLayout declarations bindings ty] $ \(argument,ty) -> do
+          reference <- X.typeRef ty
+          pure (argument, call "Schema" "validate" [Var argument, reference, X.schemaVar])
+      let inner = foldr (\(argument,value) rest -> Let argument tValue value rest)
+            (Do pre (Let "result" tValue body (Do post (Var "result")))) validated
           wrapped = call "Runtime" "contextual" [Str (C.idText identity), Lambda [] tValue inner]
           params = ["_ schema: Schema", "_ symbols: SymbolContext"] ++ ["_ " ++ a ++ ": Value" | a <- arguments]
       pure (D.text ("/// " ++ C.idText identity) <> D.hardline <>

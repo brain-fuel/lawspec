@@ -81,7 +81,7 @@ emitDotNetWithBindings target minify bindings plan = do
       typed <- emitFSharpTyped bits (map (C.dataId . resolvedDeclaration) boundTypes) declarations units
       let typedFile = [Artifact "src/LawSpec/Typed.fs" source "generated" "source" | Just source <- [fsTypedSource typed]]
           typedCall i = (\f -> (f, maybe f id (fsTypedCsFunction typed i), fsTypedContextual typed i)) <$> fsTypedFunction typed i
-      entries <- Definitions.emitEntries lang layout bits calls typedCall declarations units
+      entries <- Definitions.emitEntriesWithLayouts boundTypes lang layout bits calls typedCall declarations units
       adapters <- Definitions.emitAdapters lang layout bits calls declarations units
       api <- Definitions.emitApi lang layout bits declarations units
       laws <- Properties.emitTests lang layout (not (null generators)) plan

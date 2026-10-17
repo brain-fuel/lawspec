@@ -79,6 +79,8 @@ What the segments mean depends on the target:
 | Kotlin | A fully qualified class, object or function name | `["domain", "PaymentsDomain", "Price"]` |
 | Go | One package-local identifier, or an import alias and an exported identifier | `["Price"]`, `["domain", "Price"]` |
 | Haskell | Module components, then the type, constructor or function | `["PaymentsDomain", "Price"]` |
+| F# | A qualified application type, union case or function | `["PaymentsDomain", "Price"]` |
+| Swift | A qualified application type, enum case or static function | `["PaymentsDomain", "Price", "price"]` |
 | Erlang | Module and type or function; a constructor uses one atom or record name | `["payments_domain", "apply_fee"]`, `["price"]` |
 | Elixir | Module components, then the function when calling one | `["PaymentsDomain", "Price"]`, `["PaymentsDomain", "apply_fee"]` |
 | Gleam | Module path segments, then the type, constructor or function | `["payments_domain", "Price"]` |

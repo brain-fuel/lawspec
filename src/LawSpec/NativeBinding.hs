@@ -4,7 +4,7 @@ module LawSpec.NativeBinding
   ( NativeRef(..), ConstructorStyle(..), FieldBinding(..), ConstructorBinding(..)
   , TypeBinding(..), CodecBinding(..), GeneratorBinding(..), Bindings(..), emptyBindings
   , ResolvedBindings(..), ResolvedTypeBinding(..), ResolvedConstructorBinding(..)
-  , NativeLayout(..), nativeLayoutPaths, foldNativeLayoutM
+  , NativeLayout(..), nativeLayoutPaths, foldNativeLayoutM, usesNativeLayout
   , ResolvedGeneratorBinding(..), resolveBindings, usesMachineRepresentation, reachableGeneratorTypes
   ) where
 
@@ -110,6 +110,20 @@ foldNativeLayoutM leaf record=mapM go
   where
     go (NativeLeaf _ index)=leaf index
     go (NativeRecord field constructor children)=mapM go children >>= record field constructor
+
+-- | Whether a boundary type can contain a value with an explicit packing plan.
+-- This follows the checked declaration graph; it does not resolve layouts again.
+usesNativeLayout :: [C.DataDeclaration] -> [ResolvedTypeBinding] -> C.Type -> Bool
+usesNativeLayout declarations bindings = go []
+  where
+    packed = [C.dataId (resolvedDeclaration binding) | binding <- bindings,
+      any ((/= Nothing) . resolvedFieldLayout) (resolvedConstructors binding)]
+    go seen (C.Constructor name arguments) = C.Id name `elem` packed ||
+      any (\argument -> case argument of C.TypeArgument child -> go seen child; _ -> False) arguments ||
+      (name `notElem` seen && any (go (name : seen) . C.binderType)
+        [field | declaration <- declarations, C.dataId declaration == C.Id name,
+          constructor <- C.dataConstructors declaration, field <- C.constructorFields constructor])
+    go _ _ = False
 
 -- | As GeneratorBinding, with the number of type parameters the factory takes,
 -- one child generator each.

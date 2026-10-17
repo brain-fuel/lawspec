@@ -96,19 +96,28 @@ not change constructor argument order. A path may stop at a whole typed field;
 its existing native conversion still applies.
 
 The migration report derives these layouts from the original checked constructor
-order. Python, JavaScript, TypeScript, Java, Kotlin, Scala, Rust, Go, Haskell
-and Groovy's Java bridge currently pack and unpack them. JVM codecs use the
-resolver's packing tree and ordinary schema construction. Rust derives typed moves and
+order. Python, JavaScript, TypeScript, Java, Kotlin, Scala, Rust, Go, Haskell,
+F#, Swift and Groovy's Java bridge currently pack and unpack them. JVM codecs use
+the resolver's packing tree and ordinary schema construction. Rust derives moves and
 recursive boxing from that same tree; adapter arguments and results reaching a
 nested layout pass the existing schema validator at the selected machine width.
 Go builds records through its ordinary schema; Haskell's existing codec
-validation surrounds structural packing and pattern projection. In these
-static bridges, unmapped records retain canonical concrete fields and their nominal children, including
-recursive children; generic parameters keep their supplied directional codecs.
+validation surrounds structural packing and pattern projection. In JVM, Rust,
+Go and Haskell bridges, unmapped records retain canonical concrete fields and
+their nominal children, including recursive children; generic parameters keep
+their supplied directional codecs.
 Conversion locals preserve native argument order independently of record order.
+F# and Swift use native type aliases in their shared data family, including
+generic arguments. Their codecs pack and project the checked structural tree;
+Swift checks each nested tag and arity before projecting its fields. Entries
+validate inputs reaching a layout before calling native code, and the existing
+schema validation checks native results. Native types need no extra equality
+or display implementation for conversion.
 Scalar, nested record and enclosing constructor validation remains mandatory.
-Other target emitters report an explicit unsupported-layout diagnostic; target-independent configuration
-correspondence does not establish target generation or native behavior.
+BEAM emitters report an explicit unsupported-layout diagnostic; C# and Clojure
+retain their broader native-type-binding restrictions. Target-independent
+configuration correspondence does not establish target generation or native
+behavior.
 Indexed and existential constructor layouts remain unsupported.
 
 Codecs receiving a changed logical representation and factories
