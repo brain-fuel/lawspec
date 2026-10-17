@@ -86,11 +86,17 @@ parameterized canonical law=do
   let parameters=S.parameters (S.original law)
       occupied=map S.inputId (S.inputs law++S.assertionInputs (S.assertion law))
       identity=digestHex (digest (BL.toStrict (encode (S.owner law,semanticName canonical (S.name law)))))
+      declared=Set.fromList (concatMap S.typeVariableNames
+        (map snd parameters++[value | S.Capability _ value<-S.requirements (S.original law)]++
+          map snd (S.lawResources (S.original law))))
       -- These are universally scoped type variables, just as in ordinary
       -- reusable-law expansion. Keeping them rigid prevents two callback
       -- invocations from choosing different error or result carriers.
+      -- Local inference variables retained in helper annotations (for example
+      -- attempt's unchosen failure type) are not declaration parameters. They
+      -- must remain flexible for ordinary inference in the comparison copy.
       rigid=S.mapType (\value->case value of
-        S.Variable name->scoped name
+        S.Variable name | Set.member name declared->scoped name
         S.Named ('@':name)->scoped name
         other->other) (S.mapExprTypes rigid)
       scoped name=S.Named ("@<law-type:"++identity++":"++name++">")

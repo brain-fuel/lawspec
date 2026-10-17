@@ -29,10 +29,59 @@ The human readability exercise remains user-deferred. Completing all named endin
 
 The dated implementation receipts below preserve historical statuses. The
 latest verified increments include **Refinement payloads through product storage**,
-**Canonical reference fragments and equality guidance**, and **Native exception
-messages and checked input ranges**. The product-storage increment
+**Canonical reference fragments and equality guidance**, **Native exception
+messages and checked input ranges**, and **Symbolic helper types in typed-failure
+migration**. The product-storage increment
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
+
+### Symbolic helper types in typed-failure migration — 17 October 2026
+
+The typed-failure documentation example now has complete symbolic law-template
+correspondence. Its source capture retains an inference variable in the result
+annotation added for `prelude.attempt`. Comparison previously turned that local
+variable into a rigid declaration parameter before ordinary inference could
+identify the result as `Int32`. Only declared parameter, capability and resource
+type variables now acquire that rigidity; already rigid lexical carriers retain
+their law-specific scope. Local helper inference variables remain flexible until
+the existing checker resolves them. Complete typed terms, metadata, population
+policies and transported-copy validation still participate in correspondence.
+
+The precedent is the distinction between bound parameters and elaboration
+metavariables in [Lean's expression implementation](https://github.com/leanprover/lean4/blob/master/src/Lean/Expr.lean)
+and its [elaboration/checking boundary](https://lean-lang.org/doc/reference/latest/Elaboration-and-Compilation/),
+alongside [Why3's polymorphic type expressions](https://why3.gitlabpages.inria.fr/why3/syntaxref.html#type-expressions).
+LawSpec reuses its existing inference and validation, which remain trusted;
+this adds no solver integration, external proof checker or proof certificate.
+
+All **33 focused payload/migration compiler regressions pass**, including both
+machine widths, changed-message rejection and existing symbolic generic/Eq
+checks. The real project writer migrates the complete typed-failure fixture,
+including its two laws and named example, with all **17 target configurations**
+in separate native- and WASM-backed runs. Both runs retain unestablished native
+conformance and law verification. The tests preserve no-selected-checks reporting
+and mandatory definition checks after writing. Documentation checks pass for
+119 pages and 114 snippets; six editor checks, all 128 generated outputs,
+233 module boundaries, version consistency and artifact integrity pass.
+
+The full compiler and SDK regressions and complete native/WASM replay are still
+running for this checkpoint; focused success is not final regression acceptance.
+Their logs and complete before/after reproducer are under
+`.artifacts/attempt-template-types/` in the attempt-template worktree. The first
+new compiler test accidentally left its destination at the default machine
+width; its corrected two-sided requests pass. The superseded failed focused
+receipt and interrupted full run are retained separately.
+
+This supersedes the historical symbolic `attempt` blocker below. Reordered
+shared-index measure bodies and grouped GADT/existential payload transport remain
+open. Uniform populations beyond the existing finite and parameter-independent
+cases remain limited; changed dependencies and opaque native hooks still cannot
+authorize writes without correspondence. Fresh grouped GADT and existential
+probes admit both sources but reach the explicit unsupported transport guard.
+Chapter 6's second authoring pass and the final iteration gates remain required.
+The original Chapter 6 bytes are unchanged. Readability remains user-deferred,
+all-named endings remain the following minor, and version 0.24.0 carries no RC
+designation or tag.
 
 ### Indexed payload migration increment — 17 October 2026
 

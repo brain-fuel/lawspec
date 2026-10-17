@@ -35,6 +35,26 @@ groupOld="type Variant is | Empty | Item last :: Bool first :: UInt8 end"
 groupNew="type Variant is one of | Empty | Item of type record{last :: Bool first :: UInt8} end type"
 
 test_migrationPayloads=describe "checked constructor payload shape correspondence" $ do
+  it "reinfers local attempt types while comparing complete typed-failure laws" $ do
+    let before="type Failure is | Declined message :: Text | Blocked end\n"++
+          "definition charge (amount :: Int32) :: Int32 fails with Failure is if amount < 0 then raise (Declined \"negative\") else amount end\n"++
+          "law `declined` is definition is `for all` (amount :: Int32 where amount < 0) . charge amount fails with Declined _ message contains \"negative\" end end"
+        after message="type Failure is one of | Declined of type record{message :: Text} | Blocked end type\n"++
+          "procedure charge (amount :: Int32) -> Int32 fails with Failure is if amount < 0 then raise (Declined record{message = \"negative\"}) else amount end if end procedure\n"++
+          "law \"|declined| is definition: for all (amount :: Int32 where amount < 0) => charge amount fails with Declined record{message = _} message contains \""++message++"\" end end end"
+        atBits bits made=replace "machineBits" (toJSON bits)
+          (replace "migrated" (object (options++["sources" .= source made,"machineBits" .= bits])) (request before made))
+    mapM_ (\bits -> do
+      result<-response (atBits bits (after "negative"))
+      field "diagnostics" result `shouldBe` Just (Array mempty)
+      let evidence=comparison result >>= field "lawTemplates"
+      (evidence >>= field "status") `shouldBe` Just (String "matched")
+      (evidence >>= field "typedCore" >>= field "copyValidated") `shouldBe` Just (Bool True)
+      (evidence >>= field "lawBodiesEvaluated") `shouldBe` Just (Bool False)
+      mutant<-response (atBits bits (after "other"))
+      field "diagnostics" mutant `shouldBe` Just (Array mempty)
+      (comparison mutant >>= field "lawTemplates" >>= field "status") `shouldBe` Just (String "not-established"))
+      ([32,64]::[Int])
   it "certifies one-field grouping without erasing the failure message label" $ do
     result<-shapesMatch "type Failure is | Declined message :: Text end"
       "type Failure is one of | Declined of type record{message :: Text} end type"

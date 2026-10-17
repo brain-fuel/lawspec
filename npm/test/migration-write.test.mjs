@@ -76,6 +76,28 @@ test('changed unbound native payload APIs cannot authorize any project write',as
   assert.deepEqual((await readdir(p.root)).sort(),['demo.lawspec','lawspec.json']);
 });
 
+test('typed failure laws migrate and write with complete symbolic correspondence on all 17 targets',async t=>{
+  const content=await readFile(new URL('../../test/fixtures/migration-typed-failures-0.24.lawspec',import.meta.url),'utf8');
+  const p=await project(t,{content,languages:targets});
+  const report=await writeMigration(compiler,p.root,'lawspec.json',p.text,p.input);
+  assert.equal(report.validated,true,JSON.stringify(report.blockers));
+  assert.equal(report.generationPreview.configurationCount,17);
+  assert.equal(report.correspondence.sourceTemplates.status,'matched');
+  assert.equal(report.correspondence.generatedBehavior.status,'matched-under-existing-assumptions');
+  assert.equal(report.validation.nativeConformance,'not-established');
+  assert.equal(report.validation.lawVerification,'not-established-by-migration');
+  const migrated=await readFile(path.join(p.root,'demo.lawspec'),'utf8');
+  assert.match(migrated,/Declined of type record\{/);
+  assert.match(migrated,/message contains "negative"/);
+  assert.deepEqual(report.filesWritten,['demo.lawspec','lawspec.json']);
+  const checked=await canonical(p);
+  assert.deepEqual(checked.diagnostics,[]);
+  assert.equal(checked.laws.length,2);
+  assert.equal(checked.laws[1].examples.length,1);
+  assert.equal(checked.verification.selection,'no-selected-checks');
+  assert.equal(checked.verification.intrinsicDefinitionChecks,true);
+});
+
 test('ordered collection migration writes only after full correspondence across all 17 targets',async t=>{
   const content=await readFile(new URL('../../test/fixtures/migration-collections-0.24.lawspec',import.meta.url),'utf8');
   const p=await project(t,{content,languages:targets});
