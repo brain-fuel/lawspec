@@ -28,6 +28,15 @@ data PayloadPlan = PayloadPlan
   , payloadRecords :: [C.DataDeclaration]
   } deriving (Eq,Show)
 
+-- The frontend certifies the complete record descriptor before constructing
+-- this plan. A one-field record payload is still a grouping, not a rename of
+-- that field to value; its label and restrictions live inside the record.
+regrouped :: C.DataConstructor -> C.DataConstructor -> Bool
+regrouped before after = case (C.constructorFields before,C.constructorFields after) of
+  ([field],[payload]) | C.binderType field == C.binderType payload -> False
+  (fields,[_]) -> not (null fields)
+  _ -> False
+
 transportProgram :: PayloadPlan -> C.Program -> Either String C.Program
 transportProgram=transportProgramWithScopes M.empty
 
@@ -43,7 +52,7 @@ transportProgramWithScopes scopes plan original = do
   let replacements=M.fromList [(C.dataId before,after) | (before,after)<-payloadDeclarations plan]
       constructors=M.fromList [(C.constructorId old,(old,new)) | (before,after)<-payloadDeclarations plan,
         (old,new)<-zip (C.dataConstructors before) (C.dataConstructors after),
-        length (C.constructorFields old)>1,length (C.constructorFields new)==1]
+        regrouped old new]
       additions=[value | value<-payloadRecords plan,C.dataId value `M.notMember` known]
       augmented=original{C.programDataDeclarations=C.programDataDeclarations original++additions}
       declarations=M.elems (M.union replacements known)++additions
@@ -52,7 +61,7 @@ transportProgramWithScopes scopes plan original = do
       -- references to those formals elsewhere in checked metadata follow it.
       renames=M.fromList [(C.binderId old,C.binderId new) | (before,after)<-payloadDeclarations plan,
         (a,b)<-zip (C.dataConstructors before) (C.dataConstructors after),
-        [old]<-[C.constructorFields a],[new]<-[C.constructorFields b]]
+        [old]<-[C.constructorFields a],[new]<-[C.constructorFields b],C.binderType old==C.binderType new]
       declaration value=case M.lookup (C.dataId value) replacements of
         Nothing -> pure value
         Just made -> pure made{C.dataConstructors=[constructor{C.constructorPredicates=map mark (C.constructorPredicates constructor)} |
@@ -62,13 +71,13 @@ transportProgramWithScopes scopes plan original = do
   let sourceData=registryDeclarations oldRegistry
       reordered=Set.fromList [C.dataId before | (before,after)<-payloadDeclarations plan,
         (old,new)<-zip (C.dataConstructors before) (C.dataConstructors after),
-        length (C.constructorFields old)>1,length (C.constructorFields new)==1,
+        regrouped old new,
         map C.binderName (C.constructorFields old)/=sort (map C.binderName (C.constructorFields old))]
       parameterized=Set.fromList [C.dataId value | value<-sourceData,not (null (C.dataParameters value))]
       changed=Set.fromList [C.dataId before | (before,_)<-payloadDeclarations plan]
       grouped=Set.fromList [C.dataId before | (before,after)<-payloadDeclarations plan,
         (old,new)<-zip (C.dataConstructors before) (C.dataConstructors after),
-        length (C.constructorFields old)>1,length (C.constructorFields new)==1]
+        regrouped old new]
       allGraph=M.fromList [(C.dataId value,concat [names (C.binderType field) |
         constructor<-C.dataConstructors value,field<-C.constructorFields constructor]) | value<-sourceData]
       payloadGraph=M.fromList [(C.dataId value,concat [names (C.binderType field) |

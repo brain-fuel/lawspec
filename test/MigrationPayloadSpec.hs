@@ -35,6 +35,17 @@ groupOld="type Variant is | Empty | Item last :: Bool first :: UInt8 end"
 groupNew="type Variant is one of | Empty | Item of type record{last :: Bool first :: UInt8} end type"
 
 test_migrationPayloads=describe "checked constructor payload shape correspondence" $ do
+  it "certifies one-field grouping without erasing the failure message label" $ do
+    result<-shapesMatch "type Failure is | Declined message :: Text end"
+      "type Failure is one of | Declined of type record{message :: Text} end type"
+    (comparison result >>= field "executableTransport" >>= field "status") `shouldBe` Just (String "matched")
+    (comparison result >>= field "executableTransport" >>= field "copyValidated") `shouldBe` Just (Bool True)
+  it "does not certify renamed, added or strengthened fields in a one-field grouping" $ do
+    mapM_ (\payload -> do
+      result<-accepted "type Failure is | Declined message :: Text end"
+        ("type Failure is one of | Declined of type record{" ++ payload ++ "} end type")
+      (shape result >>= field "status") `shouldBe` Just (String "not-established"))
+      ["reason :: Text", "message :: Text code :: Int8", "message :: (text :: Text where prelude.length text > 0)"]
   it "certifies shared natural indices in an explicit grouped payload" $ do
     result<-shapesMatch
       "type Tree (n :: Natural) is | Leaf where n = 0 | Fork left :: Tree m right :: Tree m where n = m + 1 end"

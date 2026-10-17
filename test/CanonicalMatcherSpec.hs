@@ -42,3 +42,28 @@ test_canonicalMatchers = describe "canonical matchers" $ do
       , "Shipped record{id = 1, carrier = \"post\"} matches Shipped (_, _)"
       ] $ \body -> it ("rejects an invalid pattern at " ++ show bits ++ " bits: " ++ body) $
         compile body `shouldSatisfy` isLeft
+    forM_
+      [ ("anonymous", "record{message :: Text code :: Int8}", "record{message = \"negative amount\", code = 4}", "")
+      , ("nominal", "Details", "Details record{message = \"negative amount\"}", "type Details is a record{message :: Text} end type")
+      , ("generic nominal", "Details Text", "Details record{message = \"negative amount\"}", "type Details (a :: Type) is a record{message :: a} end type")
+      ] $ \(name,payload,value,extra) ->
+        it ("checks a Text message in an explicit " ++ name ++ " payload at " ++ show bits ++ " bits") $ do
+          let body = unlines
+                [ "unit failure", extra
+                , "type Problem is one of | Declined of type " ++ payload ++ " | Blocked | Note of type Text | Count of type record{message :: Int8} end type"
+                , "law outcome is definition:"
+                , "  prelude.messageContains (Declined (" ++ value ++ ")) \"negative\""
+                , "  and not (prelude.messageContains (Declined (" ++ value ++ ")) \"NEGATIVE\")"
+                , "  and not (prelude.messageContains Blocked \"\")"
+                , "  and not (prelude.messageContains (Note \"negative\") \"negative\")"
+                , "  and not (prelude.messageContains (Count record{message = 4}) \"4\")"
+                , "end end"
+                ]
+          program <- either (fail . show) pure (compileCoreCanonical bits defaultGeneration [Source "failure.lawspec" body])
+          obligations <- either (fail . show) pure (dischargeEvidence program)
+          map obligationStatus obligations `shouldSatisfy` all (`elem` [Proved,ExhaustivelyChecked])
+    forM_ ["Text", "record{reason :: Text}", "record{message :: Int8}"] $ \payload ->
+      it ("rejects a failure without a Text message field at " ++ show bits ++ " bits: " ++ payload) $ do
+        let body = "unit failure\ntype Problem is one of | Declined of type " ++ payload ++ " end type\n" ++
+              "law invalid is definition: for all (problem :: Problem) => prelude.messageContains problem \"negative\" end end end"
+        compileCoreCanonical bits defaultGeneration [Source "failure.lawspec" body] `shouldSatisfy` isLeft

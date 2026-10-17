@@ -29,7 +29,10 @@ export function legacyRecordShapes(sources) {
       const binding=source.bindings.find(binding=>binding.namespace==='constructor' && binding.name===constructor.name);
       if (!binding) throw new Error('Checked constructor has no resolver identity: '+constructor.name);
       if (shapes.has(binding.target)) throw new Error('Duplicate checked constructor identity: '+binding.target);
-      shapes.set(binding.target,{name:constructor.name,fields:constructor.fields.map(field=>field.name),record:nominal,wrap:nominal||constructor.fields.length>1});
+      // message is an existing typed failure-matcher field. Preserve that
+      // explicit role inside a record even when it is the only payload field.
+      const grouped=!nominal&&(constructor.fields.length>1||constructor.fields.some(field=>field.name==='message'));
+      shapes.set(binding.target,{name:constructor.name,fields:constructor.fields.map(field=>field.name),record:nominal,grouped,wrap:nominal||grouped});
     }
   }
   return shapes;
@@ -58,8 +61,8 @@ export function planLegacyRecords(document,source,shapes) {
     if(use.kind==='field-access') {
       if(tokens[0]?.text!=='.' || tokens[1]?.text!==use.field)
         throw new Error('Checked field access has no source label');
-      replace(tokens[1],shape.fields.length===1?'value':'value.'+use.field,'explicit payload field access');
-    } else if(shape.fields.length===1) {
+      replace(tokens[1],shape.grouped?'value.'+use.field:'value','explicit payload field access');
+    } else if(!shape.grouped) {
       if(tokens[0]?.text!==use.field) throw new Error('Checked field update has no source label');
       replace(tokens[0],'value','explicit payload field update');
     } else {
@@ -105,12 +108,12 @@ export function planLegacyRecords(document,source,shapes) {
         replace(tag,'','nominal record constructor');
         const last = code(fields.at(-1)).at(-1);
         document.edit(last.end,last.end,'}','record type closer');
-      } else if (fields.length===1) {
+      } else if (fields.length===1 && !shapeOf(constructor.name)?.grouped) {
         const tokens = code(fields[0]);
         replace(tokens[0],'','single payload label');
         if (tokens[1]?.text==='::') replace(tokens[1],'of type','explicit payload annotation');
         else if (tokens[1]?.text!=='of' || tokens[2]?.text!=='type') throw new Error('Checked payload has no source annotation');
-      } else if (fields.length>1) {
+      } else if (fields.length>0) {
         document.edit(tag.end,tag.end,' of type record{','explicit record payload');
         const last = code(fields.at(-1)).at(-1);
         document.edit(last.end,last.end,'}','record payload closer');

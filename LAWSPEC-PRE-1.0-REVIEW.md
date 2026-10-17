@@ -148,6 +148,53 @@ arithmetic checker. No new Z3 binding, Why3 backend, Lean integration or indepen
 proof certificate is claimed. Strict definedness and termination admission remain
 mandatory, and proof simplification must not erase those audits.
 
+### Failure messages in explicit record payloads — current increment
+
+Canonical `message contains` now reads a `Text` field named `message` from an
+alternative's anonymous or named record payload, including generic records
+instantiated with `Text`. Existing direct message fields remain supported.
+Other text payloads and numeric fields named `message` do not acquire this role.
+The expression lowers to ordinary typed matches, projections and substring
+checking. It introduces no unchecked definition category or solver mechanism.
+
+Migration preserves a legacy message label in an explicit record even when it
+is the alternative's only field. The existing product transport now handles
+one-field grouping as well as multi-field grouping. It still rebuilds and
+compares the complete descriptor, labels, field types, restrictions and index
+relationships, and validates the transported Core. Pure renaming remains a
+separate case. Native binding proposals retain the original native argument
+position and field name through the new `value.message` path. Changed labels,
+additional fields and stronger restrictions do not establish correspondence.
+
+The finite message fixture passes complete source correspondence at both
+widths, including construction, projection, update, pattern matching and
+independent expected outcomes. The larger typed-failure documentation example
+now admits canonical source and runs correctly. Its automatic project migration
+remains blocked by symbolic law-template `attempt` type correspondence; matching
+concrete Core alone does not authorize writing. The documentation adoption was
+manual, not a claim of validated automatic migration.
+
+Checks pass 26 canonical matcher examples, 32 payload-shape examples, 36
+legacy law-primitive examples and 44 native-binding request examples.
+The focused WASM SDK run passes all 41 tests
+without skips. A real JavaScript run passes eight checks, rejects a changed
+model message and passes after restoration; this scenario is retained as an
+SDK regression using the acceptance dependencies. All 106 complete native/WASM
+responses match, including 68 generation requests and 34 binding proposals
+across all 17 targets and both widths. Generation also covers both layouts.
+These are generation/binding results, not native execution on all 17 targets.
+All 126 generated files, boundary, editor, version and integrity checks pass.
+The previous full regression receipts apply to checkpoint `5ae3db6`; the full
+compiler/SDK and release runs still need repeating on the final implementation.
+
+The documentation check now rejects only the indexed-family page. Automatic
+native exception mapping into a record payload remains unavailable; adapters
+can raise the runtime's `Fail` with an explicitly constructed record. The
+published reference states this limit. The indexed proof correspondence,
+symbolic `attempt` correspondence, automatic exception mapping, documentation
+fragments, archived export and remaining minor acceptance checklist stay open.
+No main push, milestone completion or tag is implied by this increment.
+
 ## Latest approved milestone direction — 15 October 2026
 
 The user supplied a `tensorflow.ctc` specification and required every `end` to identify the block it closes. The current parser does not yet meet that requirement: functions, procedures, types, cases, conditionals and mappings have named closers, while laws, sections, quantifiers, tables and several other constructs still accept bare `end`.

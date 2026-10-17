@@ -766,9 +766,24 @@ builtin env n args
       t <- infer env failure >>= resolve
       let parent = case t of Named name -> name; Applied name _ -> name; Application name _ -> name; _ -> ""
       known <- typesNamed parent
-      let withMessage = [c | d <- known, c <- Core.dataConstructors d,
-            any ((== "message") . Core.binderName) (Core.constructorFields c)]
-      when (null withMessage) (throwC ("message contains needs a failure type with a message field; " ++ prettyType t ++ " has none"))
+      withMessage <- forM [c | d <- known, c <- Core.dataConstructors d] $ \constructor -> do
+        shape <- matchConstructor t (Core.idText (Core.constructorId constructor))
+        case shape of
+          Just (fields,_) -> do
+            let named = zip (map Core.binderName (Core.constructorFields constructor)) fields
+            if any (\(name,ty) -> name == "message" && baseType ty == Named "Text") named
+              then pure True else case named of
+                [("value",payload)] -> do
+                  -- Canonical alternatives have one explicit payload. A
+                  -- documentary message belongs to its record, not to an
+                  -- arbitrary Text value or an implicitly unwrapped nominal.
+                  let local = "lawspecFailureMessagePayload"
+                  field <- tryC (fieldType (monoEnvironment [(local,payload)])
+                    (Apply (Var (fieldAccessPrefix ++ "message")) (Var local)) >>= resolve)
+                  pure (case field of Right ty -> baseType ty == Named "Text"; Left _ -> False)
+                _ -> pure False
+          Nothing -> pure False
+      unless (or withMessage) (throwC ("message contains needs a failure type with a Text message field; " ++ prettyType t ++ " has none"))
       checkExpr env (Named "Text") text
       pure (Named "Bool")
   -- recorded name value: value's rendering equals the recording's.

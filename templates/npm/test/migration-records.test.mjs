@@ -73,6 +73,29 @@ test('constructor matchers migrate nested positional fields with comments and in
   }
 });
 
+test('a single named failure message retains its role through checked grouping, projections, updates and patterns',async()=>{
+  const content='unit records\n'+
+    'type Failure is | Declined message :: Text end\n'+
+    'definition make (flag :: Bool) :: Failure is Declined (if flag then "negative amount" else "positive amount") end\n'+
+    'definition read (failure :: Failure) :: Text is failure.message end\n'+
+    'definition replace (failure :: Failure) (text :: Text) :: Failure is failure with message = text end\n'+
+    'law `message meaning` is definition is `for all` (flag :: Bool) . prelude.messageContains (make flag) "negative" = flag end '+
+      'table (flag, expected) is row true, true row false, false expect prelude.messageContains (make flag) "negative" = expected end end\n'+
+    'law `replacement meaning` is definition is `for all` (flag :: Bool) . read (replace (make flag) "changed") = "changed" end end\n'+
+    'law `pattern meaning` is definition is `for all` (flag :: Bool) . (make flag matches Declined _) = true end end';
+  for(const bits of [32,64]) {
+    const {sources,report}=await migrate(content,bits);
+    assert.ok(sources[0].content.includes('Declined of type record{'));
+    assert.ok(sources[0].content.includes('.value.message'));
+    assert.match(sources[0].content,/matches Declined record\{\s*message = _\s*\}/);
+    assert.equal(report.correspondence.payloads.payloadShapes.changes[0].constructors[0].kind,'record-payload');
+    assert.equal(report.validated,true,JSON.stringify(report.blockers));
+    const mutant=sources.map(source=>({...source,content:source.content.replace('"negative amount"','"unrelated"')}));
+    const rejected=await compiler.check({...options,machineBits:bits,sources:mutant});
+    assert.ok(rejected.diagnostics.some(diagnostic=>diagnostic.code==='refuted'));
+  }
+});
+
 test('local alternatives retain zero/single arities and explicitly group multiple payload fields', async () => {
   const content='unit records\n'+
     'type Variant is | Empty | Single flag of type Bool | Double left :: Bool right :: Bool end\n'+

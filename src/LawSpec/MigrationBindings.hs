@@ -128,7 +128,7 @@ bindingProposalWithRequest target requested plan previous next before after orig
                 "constructor" .= boundConstructor binding,"from" .= C.binderName field,"to" .= C.binderName payload,
                 "native" .= nativeField mapped] | mapped<-boundFields binding,C.binderName field/=C.binderName payload]
           in (binding{boundFields=[mapped{boundField=C.binderName payload} | mapped<-boundFields binding]},changes,[])
-      Just (old,new) | length (C.constructorFields old)>1,[payload]<-C.constructorFields new ->
+      Just (old,new) | not (null (C.constructorFields old)),[payload]<-C.constructorFields new ->
         case find ((==C.constructorId old) . C.constructorId . resolvedConstructor) originals of
           Nothing->(binding,[],["checked original constructor layout is unavailable"])
           Just original->

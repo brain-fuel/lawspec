@@ -46,6 +46,23 @@ test('single-payload proposals preserve actual native fields across every target
   }
 });
 
+test('a one-field message record preserves its explicit native argument across every target and width',async()=>{
+  const previous='unit bindings\ntype Failure is | Declined message :: Text end\ncopy :: Failure -> Failure';
+  const next='unit bindings\ntype Failure is one of | Declined of type record{message :: Text} end type\ncopy :: Failure -> Failure';
+  const mapped={types:[{type:'bindings::type::Failure',native:['application','Failure'],constructors:[
+    {constructor:'Declined',native:['application','Declined'],style:'variant',fields:[{field:'message',native:'reason'}]}]}],
+    functions:[{declaration:'bindings::copy',native:['application','copy']}]};
+  for(const target of targets)for(const machineBits of [32,64]) {
+    const evidence=await propose({...options,from:'0.24',target,machineBits,sources:sources(previous),nativeBindings:mapped,
+      migrated:{...options,machineBits,sources:sources(next)}});
+    assert.equal(evidence.status,'matched',JSON.stringify(evidence));
+    assert.deepEqual(evidence.proposedNativeBindings.types[0].constructors[0].fields,
+      [{field:'value',native:'reason',path:['message'],argument:0}]);
+    assert.equal(evidence.nativeConformance,'not-established');
+    assert.equal(evidence.targetGeneration,'not-established');
+  }
+});
+
 test('project reports check each actual target and expose explicit proposed binding changes',async()=>{
   const original={version:1,targets:[{language:'python',root:'python',nativeBindings:bindings},
     {language:'java',root:'java',nativeBindings:bindings},{language:'rust',root:'rust'}]};

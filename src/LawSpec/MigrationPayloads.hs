@@ -100,7 +100,7 @@ payloadCorrespondenceWithPlan before after = do
         same "constructor metadata, GADT equations or existential binders changed"
           old{C.constructorFields=[],C.constructorPredicates=[]} new{C.constructorFields=[],C.constructorPredicates=[]}
         case (C.constructorFields old,C.constructorFields new) of
-          ([field],[payload]) -> do
+          ([field],[payload]) | C.binderType field == C.binderType payload -> do
             -- Only the formal field name changes. The complete constructor
             -- metadata above retains index equations and existential scope;
             -- the existing transport renames this formal and validates Core.
@@ -110,7 +110,7 @@ payloadCorrespondenceWithPlan before after = do
               (C.constructorPredicates old) (C.constructorPredicates new)
             pure ([],object ["constructor" .= C.idText (C.constructorId old),"kind" .= ("single-payload"::String),
               "fields" .= [fieldEntry 0 0 field payload]],[(0,[0])])
-          (fields,[payload]) | length fields>1 -> do
+          (fields,[payload]) | not (null fields) -> do
             unless (null (C.constructorEquations old) && null (C.constructorExistentials old))
               (Left "grouped GADT or existential payloads need a separately checked transport")
             unless (C.binderName payload=="value" && null (C.constructorPredicates new))

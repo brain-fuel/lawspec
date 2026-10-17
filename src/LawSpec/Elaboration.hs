@@ -609,6 +609,7 @@ lowerResolvedTree capabilities context projections dataTypes declared bits origi
           declaration <- case [d | d <- builtinDataDeclarations ++ dataTypes, C.idText (C.dataId d) == parent] of
             [d] -> Right d
             _ -> Left "message contains needs a data type"
+          registry <- makeRegistry dataTypes
           let table = zip (C.dataParameters declaration) [a | C.TypeArgument a <- arguments]
               instantiate ty = case ty of
                 C.TypeVariable v -> maybe ty id (lookup v table)
@@ -621,9 +622,22 @@ lowerResolvedTree capabilities context projections dataTypes declared bits origi
           cases <- forM (zip [0 :: Int ..] (C.dataConstructors declaration)) $ \(k, c) -> do
             let binders = [C.Binder (C.Id (C.idText origin ++ "::match::message" ++ show k ++ "::" ++ show i))
                   (C.binderName f) (instantiate (C.binderType f)) | (i, f) <- zip [0 :: Int ..] (C.constructorFields c)]
-                body = case [b | b <- binders, C.binderName b == "message", C.binderType b == C.scalarType "Text"] of
-                  b : _ -> node t (C.Helper C.TextContains [node (C.binderType b) (C.Local (C.binderId b)), text])
-                  [] -> bool False
+                local b = node (C.binderType b) (C.Local (C.binderId b))
+                direct = [local b | b <- binders, C.binderName b == "message", C.binderType b == C.scalarType "Text"]
+            message <- case direct of
+              value:_ -> pure (Just value)
+              [] -> case binders of
+                [payload] | C.binderName payload == "value", C.Constructor name _ <- C.binderType payload ->
+                  case Types.lookupData registry (C.Id name) of
+                    Right record | [constructor] <- C.dataConstructors record -> do
+                      fields <- constructorFieldsFor registry (C.binderType payload) (C.constructorId constructor)
+                      pure $ case [(index,field) | (index,field) <- zip [0..] fields,
+                          C.binderName field == "message", C.binderType field == C.scalarType "Text"] of
+                        (index,field):_ -> Just (node (C.binderType field) (C.Project (C.constructorId constructor) index (local payload)))
+                        [] -> Nothing
+                    _ -> pure Nothing
+                _ -> pure Nothing
+            let body = maybe (bool False) (\value -> node t (C.Helper C.TextContains [value,text])) message
             pure (C.MatchCase (C.constructorId c) binders body)
           pure (node t (C.Match failure cases))
         _ -> Left "message contains needs a data type"
