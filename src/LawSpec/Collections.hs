@@ -9,7 +9,7 @@
 -- types they need: a type a program declares itself shadows the built-in one,
 -- along with its operations.
 module LawSpec.Collections
-  ( collectionsUnit, collectionsAlias, collectionTypes, collectionsSource
+  ( collectionsUnit, collectionsAlias, collectionTypes, collectionsSource, collectionSourceOwner, collectionSharedTypes
   , usedCollections, usedCollectionsCanonical, collectionOperation, canonicalCollectionOperation, collectionOperations, canonicalCollectionOperations
   , canonicalCollectionTypes, canonicalCollectionValues, canonicalCollectionNames
   , boundedArithmeticBlock, boundedArithmeticTypes, boundedArithmeticDefinition, boundedArithmeticDefinitions
@@ -153,14 +153,27 @@ usedCollections sources =
     takeComment (c : rest) = c : takeComment rest
     takeComment [] = []
 
+collectionSharedTypes :: [String]
+collectionSharedTypes = ["Set","EqSet","Queue","Stack","Deque"]
+
 -- | The unit's source, with the given types and the operations over them.
 collectionsSource :: [String] -> String
-collectionsSource types = unlines $
-  ["unit " ++ collectionsUnit, ""] ++
-  concat [block | (t, block) <- declarations, t `elem` types] ++
-  (if any (`elem` types) ["Set", "EqSet", "Queue", "Stack", "Deque"] then listHelpers else []) ++
-  concat [block | (t, block) <- operations, t `elem` types] ++
-  (if boundedArithmeticBlock `elem` types then boundedArithmeticSource else [])
+collectionsSource = unlines . concatMap snd . collectionSourceParts
+
+-- The generated provider records its own block boundaries. Import resolution
+-- preserves definition spans, so discovery need not guess ownership from names.
+-- The empty owner denotes the list helpers shared by several containers.
+collectionSourceOwner :: [String] -> Int -> Maybe String
+collectionSourceOwner types row = lookup row
+  (zip [1..] (concat [replicate (length block) owner | (owner,block)<-collectionSourceParts types])) >>= id
+
+collectionSourceParts :: [String] -> [(Maybe String,[String])]
+collectionSourceParts types =
+  [(Nothing,["unit " ++ collectionsUnit, ""])] ++
+  [(Just t,block) | (t,block)<-declarations,t `elem` types] ++
+  [(Just "",listHelpers) | any (`elem` types) collectionSharedTypes] ++
+  [(Just t,block) | (t,block)<-operations,t `elem` types] ++
+  [(Just boundedArithmeticBlock,boundedArithmeticSource) | boundedArithmeticBlock `elem` types]
   where
     declarations =
       [ ("Ordering", ["type Ordering is", "  | Less", "  | Equal", "  | Greater", "end", ""])

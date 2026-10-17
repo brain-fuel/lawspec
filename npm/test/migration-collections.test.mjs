@@ -31,6 +31,9 @@ const ordered=await readFile(new URL('../../test/fixtures/migration-collections-
 test('legacy sets retain sorted iteration, duplicate removal and every ordered operation at both widths',async()=>{
   for(const machineBits of [32,64]) {
     const {sources,report}=await migrate([{path:'ordered.lawspec',content:ordered}],machineBits);
+    assert.equal(report.validated,true,JSON.stringify(report.blockers));
+    assert.equal(report.validation.status,'validated-under-existing-assumptions');
+    assert.deepEqual(report.blockers,[]);
     const content=sources[0].content;
     for(const suffix of ['Of','Member','Insert','Remove','Union','Intersection','Difference'])
       assert.ok(content.includes('prelude.sortedSet'+suffix),suffix);

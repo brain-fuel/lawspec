@@ -19,6 +19,27 @@ compile bits text = compileCoreCanonical bits defaultGeneration [Source "canonic
 body text = compile 64 ("unit collections\n" ++ text)
 
 test_canonicalCollections = describe "canonical collections" $ do
+  it "emits ordered set matching without an unrelated map Entry declaration" $ do
+    case body "function ordered (values :: SortedSet Integer) -> List Integer is prelude.toList values end function" of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        map (C.idText . C.dataId) (C.programDataDeclarations program)
+          `shouldSatisfy` (\ids -> "lawspec.collections::type::Set" `elem` ids &&
+            all (`notElem` ids) ["lawspec.collections::type::KeyVal","lawspec.collections::type::Entry"])
+        case planTestingWith (Verification []) program of
+          Left ds -> expectationFailure (show ds)
+          Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
+  it "captures only the required Eq set provider despite bound values names" $ do
+    let result = body "function selected (values :: List Float64) -> Set Float64 is setOf values end function"
+    case result of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        map (C.idText . C.dataId) (C.programDataDeclarations program)
+          `shouldSatisfy` (\ids -> "lawspec.collections::type::EqSet" `elem` ids &&
+            all (`notElem` ids) ["lawspec.collections::type::Set","lawspec.collections::type::KeyVal","lawspec.collections::type::Entry","lawspec.collections::type::Ordering"])
+        case planTestingWith (Verification []) program of
+          Left ds -> expectationFailure (show ds)
+          Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
   it "retains authored declaration ownership through imports, re-exports and specialization" $ do
     let library = Source "spelling.lawspec" "unit spelling\nfunction same (value :: a) -> a is value end function"
         facade = Source "facade.lawspec" "unit facade\nimport spelling as original\nexport original.same"

@@ -10,11 +10,12 @@ import LawSpec.Core.Verification (Verification(..),Layer(..))
 import LawSpec.CoreEmit (emitPlan,targets)
 import LawSpec.Discharge (dischargeEvidenceWith)
 import LawSpec.Frontend (compileCoreCanonical)
-import LawSpec.Model (Source(..),defaultGeneration)
+import LawSpec.Model (Source(..),Diagnostic,defaultGeneration)
 import LawSpec.Testing (planTestingWith)
 
 compile sources = compileCoreCanonical 64 defaultGeneration sources
 body text = compile [Source "prelude-names.lawspec" ("unit names\n" ++ text)]
+checked :: Either [Diagnostic] C.Program -> Expectation
 checked result = case result of
   Left diagnostics -> expectationFailure (show diagnostics)
   Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
@@ -22,6 +23,39 @@ checked result = case result of
       `shouldSatisfy` either (const False) (all (== ExhaustivelyChecked))
 
 test_preludeResolution = describe "unqualified prelude resolution" $ do
+  it "does not load collection catalogues for shadowed operation names" $ do
+    let result = body (unlines
+          [ "function values (member :: Bool) -> Bool is member end function"
+          , "function echo (values :: a) -> a is values end function"
+          , "function head (items :: List Bool) -> Bool is first matching case of items: when Cons values remaining then values otherwise false end case end function"
+          , "law scoped is description: \"prelude.values prelude.setOf\" end definition: for all (values :: Bool where values = true) => echo values and head [values] end end end" ])
+    checked result
+    case result of
+      Left _ -> pure ()
+      Right program -> do
+        map (C.idText . C.unitId) (C.programUnits program) `shouldSatisfy` (notElem "lawspec.collections")
+        map (C.idText . C.dataId) (C.programDataDeclarations program)
+          `shouldSatisfy` all (not . isInfixOf "lawspec.collections::")
+  it "retains real map operations beside same-spelled lexical bindings" $ do
+    let result = body (unlines
+          [ "function echo (values :: Bool) -> Bool is values end function"
+          , "function selected (items :: KeyVal Bool Integer) -> List Integer is values items end function"
+          , "law mapped is definition: selected (keyValOf [Entry true 7]) = [7] and echo true end end" ])
+    checked result
+    case result of
+      Left _ -> pure ()
+      Right program -> map (C.idText . C.dataId) (C.programDataDeclarations program)
+        `shouldContain` ["lawspec.collections::type::Entry","lawspec.collections::type::KeyVal"]
+  it "retains ordering and pairs introduced by primitive operations" $ do
+    checked (body "law ordering is definition: compare 2 1 = Greater end end")
+    forM_ ["prelude.both (Right true :: Either Text Bool) (Right false :: Either Text Bool)",
+           "(Right true :: Either Text Bool) <*> (Right false :: Either Text Bool)"] $ \expression ->
+      case body ("law paired is definition: " ++ expression ++ " = " ++ expression ++ " end end") of
+        Left ds -> expectationFailure (show ds)
+        Right program -> do
+          map (C.idText . C.dataId) (C.programDataDeclarations program)
+            `shouldContain` ["lawspec.collections::type::Pair"]
+          checked (Right program)
   it "uses the ordinary checked collection, matcher and duration providers" $ do
     source <- readFile "test/fixtures/canonical-prelude-names.lawspec"
     let result = compile [Source "prelude-names.lawspec" source]

@@ -8,7 +8,7 @@
 -- under names derived from the declaring unit, so two units may declare the
 -- same names. Adapter signatures and concrete laws belong to their unit and
 -- are not importable.
-module LawSpec.Imports (resolveImports, resolveImportsWithProfile, resolveImportsByProfile, resolveImportsByProfileWithBindings, importedDefinitionName) where
+module LawSpec.Imports (resolveImports, resolveImportsWithProfile, resolveImportsByProfile, resolveImportsByProfileWithBindings, resolveImportsWithCollectionDemand, importedDefinitionName) where
 
 import LawSpec.Model
 import LawSpec.SourceSyntax (SyntaxBinding(..),SyntaxReference(..))
@@ -37,7 +37,7 @@ import qualified Data.Set as S
 data Names m = Names
   { onType :: String -> m String, onConstructor :: String -> m String
   , onRefinement :: String -> m String, onValue :: String -> m String
-  , onLaw :: String -> m String
+  , onLaw :: String -> m String, onBuiltin :: String -> m String
   , contextualArticles :: Bool, restrictionExpression :: Bool
   , declaredValue :: String -> Bool, declaredConstructor :: String -> Bool
   , observeExpression :: Span -> [String] -> Expr -> Expr -> m () }
@@ -103,6 +103,33 @@ resolveImportsByProfileWithBindings canonical visible units = do
   resolved <- resolveUnits True canonical visible units
   pure (map resolvedUnit resolved,[(unitName (resolvedUnit unit),(resolvedBindings unit,resolvedReferences unit)) | unit <- resolved])
 
+-- Reuse the same scoped traversal and export table as import resolution.
+-- The demand contains all authored and unused generic terms, copied dependency
+-- definitions and actual re-exports; the provider's own catalogue is not a root.
+resolveImportsWithCollectionDemand :: Bool -> (String -> Bool) -> (String -> String -> Maybe String)
+  -> [(Unit,[Import])] -> Either [Diagnostic] ([Unit],[(String,([SyntaxBinding],[SyntaxReference]))],([String],[Span],Bool))
+resolveImportsWithCollectionDemand capture canonical visible units = do
+  resolved<-resolveUnits capture canonical visible units
+  let roots=[unit | unit<-resolved,unitName (resolvedUnit unit)/=collectionsUnit]
+      refs=[name | unit<-roots,(_,name)<-S.toList (unitReferences (resolvedUnit unit))]++
+        concat [M.elems (exportTypes (resolvedExports unit))++M.elems (exportConstructors (resolvedExports unit)) | unit<-roots]++
+        -- Ability elaboration introduces a Pair of the result and new state.
+        [collectionsUnit++"::type::Pair" | unit<-roots,handler<-handlerDeclarations (resolvedUnit unit),
+          Just _<-[handlerState handler]]
+      spans=[functionSpan definition | unit<-roots,definition<-functionDefinitions (resolvedUnit unit)]++
+        [documentarySpan target | unit<-roots,law<-laws (resolvedUnit unit),reference<-references law,
+          target<-case reference of FunctionReference (ResolvedReferenceTarget target)->[target];_->[],
+          documentaryUnit target==collectionsUnit]
+      -- These fields are lowered after import resolution and are not covered
+      -- by walkUnit. Keep their conservative provider demand until their own
+      -- dependency traversal is available; never erase opaque dependencies.
+      opaque unit=not (null (contracts unit) && null (orchestrations unit) && null (policies unit) &&
+        null (machines unit) && null (handles unit) && null (protocols unit) && null (supervisors unit) &&
+        null (mailboxes unit) && null (handlerSets unit))
+  pure (map resolvedUnit resolved,
+    [(unitName (resolvedUnit unit),(resolvedBindings unit,resolvedReferences unit)) | unit<-resolved],
+    (refs,spans,any (opaque . resolvedUnit) roots))
+
 resolveUnits :: Bool -> (String -> Bool) -> (String -> String -> Maybe String) -> [(Unit,[Import])] -> Either [Diagnostic] [Resolved]
 resolveUnits capture canonical visible units = mapM (\(u, _) -> table Lazy.! unitName u) units
   where
@@ -153,7 +180,7 @@ resolveUnit capture canonical visible table u allImports = do
           _ -> Right name
       names :: Monad m => (Either [Diagnostic] String -> m String) -> (Span -> [String] -> Expr -> Expr -> m ()) -> Names m
       names liftName observe = Names (liftName . lookupName TypeName) (liftName . lookupName ConstructorName)
-        (liftName . lookupName RefinementName) (liftName . lookupName ValueName) (liftName . lookupName LawName)
+        (liftName . lookupName RefinementName) (liftName . lookupName ValueName) (liftName . lookupName LawName) pure
         canonical False (\n -> n `elem` map fst (functions u) || n `elem` map functionName (functionDefinitions u) ||
           n `elem` operationNames u || M.member (ValueName,n) scope)
         (\n -> n `elem` [dataConstructorName c | d <- dataTypes u,c <- dataTypeConstructors d] ||
@@ -405,7 +432,7 @@ portableUnit exports u = runIdentity $ do
   let rename table n = Identity (M.findWithDefault n n table)
       names = Names (rename (exportTypes exports)) (rename (exportConstructors exports))
         (rename (exportRefinements exports)) (rename (exportDefinitions exports)) (rename (exportLaws exports))
-        False False (const False) (const False) (\_ _ _ _ -> pure ())
+        pure False False (const False) (const False) (\_ _ _ _ -> pure ())
       declared table n = M.findWithDefault n n table
   walked <- walkUnit names u
   pure walked
@@ -468,7 +495,7 @@ lawReferences l = collect (walkLaw collector l)
 
 collector :: Names (State (S.Set (Kind, String)))
 collector = Names (record TypeName) (record ConstructorName) (record RefinementName) (record ValueName) (record LawName)
-  False False (const False) (const False) (\_ _ _ _ -> pure ())
+  (record ValueName) False False (const False) (const False) (\_ _ _ _ -> pure ())
   where
     record :: Kind -> String -> State (S.Set (Kind, String)) String
     record kind n = modify (S.insert (kind, n)) >> pure n
@@ -733,7 +760,8 @@ walkExpr names scope e
   -- prelude.<op> of a duration is a definition of the time unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- timeOperation op ->
           Var <$> onValue names (timeAlias ++ "." ++ definition)
-  Var n | n `elem` scope || take 8 n == "prelude." -> pure (Var n)
+  Var n | n `elem` scope -> pure (Var n)
+        | take 8 n == "prelude." -> Var <$> onBuiltin names n
         | otherwise -> Var <$> onValue names n
   Apply a b -> do
     function <- walkExpr names scope a
@@ -753,6 +781,9 @@ walkExpr names scope e
   AllPayloadsExpr value predicates -> AllPayloadsExpr <$> walkExpr names scope value <*>
     forM predicates (\(binder, body) -> (,) binder <$> walkExpr names (binder : scope) body)
   Binary op a b -> do
+    -- Railway lowering introduces Pair after import resolution. Observe this
+    -- primitive dependency without changing ordinary expression resolution.
+    if op == "<*>" then onBuiltin names "prelude.both" >> pure () else pure ()
     left <- walkExpr names scope a
     right <- walkExpr names scope b
     let expression = Binary op left right

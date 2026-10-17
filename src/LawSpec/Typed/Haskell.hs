@@ -637,8 +637,10 @@ matchStatements env scope value cases = do
       ("List::Cons", [h, t]) -> "LSF.Cons " ++ h ++ " " ++ t ++ " _"
       _ -> "_")
     _ | Just (kind, _) <- collectionArguments ty, [c] <- cases -> do
-          entry <- entryMaker env
-          let items = if kind == "KeyVal" then "(LSF.entriesList " ++ entry ++ " subject)" else "(LSF.listOf (Set.toAscList subject))"
+          items <- if kind == "KeyVal" then do
+            entry <- entryMaker env
+            pure ("(LSF.entriesList " ++ entry ++ " subject)")
+            else pure "(LSF.listOf (Set.toAscList subject))"
           bound <- binders c
           body <- cstmt env ([x | (Just x, _) <- bound] ++ scope) (caseBody c)
           let binding = case bound of

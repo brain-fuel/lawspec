@@ -15,6 +15,18 @@ The latest approved milestone direction below is authoritative. The implementati
 
 Examples are independent unless a section explicitly connects them. Repeated unit names and simplified signatures are separate presentations, not declarations intended to coexist in one source file.
 
+## Current minor completion checklist — 17 October 2026
+
+Validated project migration writes and the first canonical Chapter 6 pass shipped at `98c5cf79`. The scoped collection-provider increment and its verification are recorded below. This checklist distinguishes that completed increment from work still required before declaring the iteration complete.
+
+- [x] Verify scoped collection-provider discovery and ordered-set migration, including complete source correspondence, all 17 configured target emissions, native/WASM parity and regression checks. Opaque dependency fields retain conservative discovery.
+- [ ] Resolve or explicitly account for the remaining migration acceptance cases, including indexed/existential payloads, generic populations, dependency changes and opaque hooks. Missing correspondence must continue to block writes.
+- [ ] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration.
+- [ ] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract.
+- [ ] Run the final compiler, target, generation, boundary, editor, documentation, parity and complete release checks on the final implementation; record failures and limits before claiming completion.
+
+The human readability exercise remains user-deferred. Completing all named endings belongs to the immediately following minor. The larger demonstration portfolio, advanced verification and external Linguist acceptance remain pre-final-1.0 requirements. None of these statuses authorizes an RC designation or a tag.
+
 ## Latest approved milestone direction — 15 October 2026
 
 The user supplied a `tensorflow.ctc` specification and required every `end` to identify the block it closes. The current parser does not yet meet that requirement: functions, procedures, types, cases, conditionals and mappings have named closers, while laws, sections, quantifiers, tables and several other constructs still accept bare `end`.
@@ -605,6 +617,16 @@ The project coordinator now combines complete checked Core, source templates, do
 The native migration regression passes **150 tests** and the broad WASM/API/native/solver/files/authoring run passes **268 tests**, with zero failures or skips. Those runs precede the final configuration guards and published-example test; the final focused suites pass **16 native tests** and **21 WASM/files tests**, and the final authoring suite passes **20 tests**, all without failures or skips. No uninterrupted full-catalog run after those additions is claimed. Native/WASM parity agrees on **402 complete responses**, including four complete reports; all **172 selected preceding responses** match `d59637f0` exactly. Compiler sources, the native executable and WASM bytes are unchanged from that checkpoint, whose 1,998-test compiler run remains the baseline rather than a new compiler-test result. Evidence is under `.artifacts/minor-migration-writer/` in the migration-transport worktree.
 
 This enables admitted project writes without declaring all migration or authoring acceptance complete. Indexed/existential payload transport, changed opaque hooks, unestablished generic populations and captured dependency-catalogue changes retain their limits. In particular, the imported ordered-collection fixture still exposes additional canonical library declarations and remains blocked by full Core/source-template checks despite matching its exercised runtime outcomes; those checks were not weakened. The schema-5-only public-interface cutover, remaining migration/authoring demonstrations and full acceptance checks remain required. The larger portfolio, advanced verification and Linguist dependency remain pre-final-1.0. Readability remains user-deferred, and complete named endings remain the immediately following minor. Version 0.24.0 and the technical profile are unchanged. No RC designation, milestone completion or tag is claimed.
+
+### Scoped collection-provider demand — 17 October 2026
+
+A bound parameter named `values` previously triggered discovery of the prelude map operation, adding unused `KeyVal` declarations to canonical source captures and blocking ordered-set migration. Discovery now refines its conservative catalogue using the existing scope-aware import resolver. It preserves authored generic declarations, actual re-exports and documentary targets, shared helpers, bounded arithmetic, ordering and pairs introduced by subsequent elaboration. Fields outside the resolver's dependency traversal retain conservative discovery. Mandatory definition checks still run over the resulting complete program.
+
+The precedent is [Why3's dependency-based removal of unused symbols](https://why3.org/doc/technical.html#cmdoption-arg-remove_unused). LawSpec uses its existing resolver and versioned source-block ownership; proof infrastructure and the compiler trust boundary are unchanged. Complete Core and source-template comparisons remain strict. The ordered-set fixture now validates and writes with all 17 target configurations. That regression also exposed a Haskell emitter lookup of map `Entry` while matching a set; it now requests that constructor only for maps.
+
+The final native compiler regression passes **2,003 tests**, native migration passes **155 tests**, and the WASM migration/API/authoring suite passes **177 tests**, all with zero failures or skips. Native/WASM parity agrees on **682 complete API responses plus six complete project reports**, covering all 17 targets, both widths and both layouts; **172 selected preceding responses** match `98c5cf79` exactly. Generated files (120), module boundaries (232), documentation (119 pages and 114 snippets), editor tests (six), version and artifact integrity checks pass. Evidence is under `.artifacts/minor-collection-provider-demand/` in the migration-transport worktree. These are compiler, emission and migration checks; they do not establish a new native implementation conformance matrix.
+
+The ordered-collection blocker described in the preceding checkpoint is resolved. Remaining migration limits, public-interface cutover, Chapter 6 authoring and final acceptance remain on the checklist above. The original Chapter 6 bytes, version 0.24.0 and technical language profile are preserved. No milestone completion, RC designation or tag is claimed.
 
 ## Historical review discussion
 

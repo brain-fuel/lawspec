@@ -75,6 +75,21 @@ test('changed unbound native payload APIs cannot authorize any project write',as
   assert.deepEqual((await readdir(p.root)).sort(),['demo.lawspec','lawspec.json']);
 });
 
+test('ordered collection migration writes only after full correspondence across all 17 targets',async t=>{
+  const content=await readFile(new URL('../../test/fixtures/migration-collections-0.24.lawspec',import.meta.url),'utf8');
+  const p=await project(t,{content,languages:targets});
+  const report=await writeMigration(compiler,p.root,'lawspec.json',p.text,p.input);
+  assert.equal(report.validated,true,JSON.stringify(report.blockers));
+  assert.equal(report.generationPreview.configurationCount,17);
+  assert.equal(report.correspondence.generatedBehavior.status,'matched-under-existing-assumptions');
+  assert.deepEqual(report.blockers,[]);
+  assert.deepEqual(report.filesWritten,['demo.lawspec','lawspec.json']);
+  const checked=await canonical(p);assert.deepEqual(checked.diagnostics,[]);
+  assert.equal(checked.verification.intrinsicDefinitionChecks,true);
+  assert.match(await readFile(path.join(p.root,'demo.lawspec'),'utf8'),/SortedSet Integer/);
+  assert.equal((await load(p)).version,2);
+});
+
 test('mandatory definition errors cannot be hidden by forged earlier reports or disabled law layers',async t=>{
   const p=await project(t,{content:'unit demo\ndefinition unsafe (n :: Integer) :: Integer is 1 / n end'});
   await assert.rejects(writeMigration(compiler,p.root,'lawspec.json',p.text,p.input),error=>{
