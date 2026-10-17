@@ -14,10 +14,13 @@ main = do
         S.Definition "lawspec::structural::record::outer" 0 [S.Constructor "Outer" [S.Field "child" inner,S.Field "sibling" chain]],
         S.Definition "Wrapper" 0 [S.Constructor "Wrap" [S.Field "payload" outer]]]
        [] [] [("Stop",["c0","c10"]),("Next",["+ f0 c1","+ f0.1 c1"]),
-        ("Wrap",["p0/0/0.0","p0/0/0.1","== p0/0/0.1 + p0/1.0 c10","== p0/0/0.0 p0/1.0",">= p0/0/0.0 c1"])])
+        ("Outer",["== p0/0.0 f1"]),("Wrap",["p0/0/0.0","p0/0/0.1","== p0/0/0.1 + p0/1.0 c10","== p0/0/0.0 p0/1.0",">= p0/0/0.0 c1"])])
      stop=R.SData "Stop" []; one=R.SData "Next" [stop]; two=R.SData "Next" [one]
      wrap left right=R.SData "Wrap" [R.SData "Outer" [R.SData "Inner" [left],right]]
  forM_ [32,64] $ \bits -> do
+   let product a b=R.SData "Outer" [R.SData "Inner" [a],b]
+   unless (S.validate schema outer bits (product two two)==Right (product two two)) (error "rejected intrinsic record guard")
+   unless (isLeft (S.validate schema outer bits (product two stop))) (error "accepted invalid intrinsic record guard without parent")
    unless (S.validate schema wrapper bits (wrap two two)==Right (wrap two two)) (error "rejected valid nested path")
    forM_ [wrap two one,wrap stop stop] $ \bad ->
      unless (isLeft (S.validate schema wrapper bits bad)) (error "accepted mismatched or underflowing indices")

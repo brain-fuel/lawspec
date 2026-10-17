@@ -23,7 +23,7 @@ public class IndexPaths {
       new Definition("Chain", 0, List.of(ctor("Stop", List.of(), "c0", "c10"),
         ctor("Next", List.of(new Field("tail", chain)), "+ f0 c1", "+ f0.1 c1"))),
       new Definition(inner.name(), 0, List.of(ctor("Inner", List.of(new Field("rest", chain))))),
-      new Definition(outer.name(), 0, List.of(ctor("Outer", List.of(new Field("child", inner), new Field("sibling", chain))))),
+      new Definition(outer.name(), 0, List.of(ctor("Outer", List.of(new Field("child", inner), new Field("sibling", chain)), "== p0/0.0 f1"))),
       new Definition("Wrapper", 0, List.of(ctor("Wrap", List.of(new Field("payload", outer)),
         path, "p0/0/0.1", "== p0/0/0.1 + p0/1.0 c10", "== " + path + " p0/1.0", ">= " + path + " c1")))
     ));
@@ -35,6 +35,11 @@ public class IndexPaths {
     var two = value("Chain", "Next", one);
     for (int bits : new int[]{32,64}) {
       schema.validate(wrapper, wrap(two,two), bits);
+      schema.validate(outer, value(outer.name(), "Outer", value(inner.name(), "Inner", two), two), bits);
+      boolean invalidProduct = false;
+      try { schema.validate(outer, value(outer.name(), "Outer", value(inner.name(), "Inner", two), stop), bits); }
+      catch (RefinementViolation expected) { invalidProduct = true; }
+      if (!invalidProduct) throw new AssertionError("accepted invalid intrinsic record guard without parent");
       for (var path : List.of("f0/0/0.0", "p0/0/0.0.0", "p0/1/0.0", "p0/9.0")) {
         boolean rejected = false;
         try { schema(path).validate(wrapper, wrap(two,two), bits); }

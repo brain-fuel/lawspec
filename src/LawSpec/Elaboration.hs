@@ -58,7 +58,7 @@ coreTypeWithRecords = coreTypeWithSourceRecords Source.emptyContext
 
 coreTypeWithSourceRecords :: Source.SourceContext -> [C.DataDeclaration] -> Int -> S.Type -> Either String (C.Type,[C.DataDeclaration])
 coreTypeWithSourceRecords context dataTypes bits source = case S.baseType source of
-  S.Record fields -> do
+  S.RecordShape fields -> do
     let labels = map S.recordFieldLabel fields
         bindings = map S.recordFieldBinding fields
     unless (all (not . null) labels && length labels == length (nub labels))
@@ -86,7 +86,7 @@ coreTypeWithSourceRecords context dataTypes bits source = case S.baseType source
         predicateRecords = concatMap snd stored
     let parameters = nub (concat [typeVariables (C.binderType binder) ++
           concatMap expressionVariables predicates | Records.RecordField binder predicates <- recordFields])
-    (declaration,arguments) <- Records.makeRecordDeclaration parameters recordFields origin
+    (declaration,arguments) <- Records.makeRecordDeclarationWithIndexGuards parameters recordFields (S.recordIndexConditions source) origin
     pure (C.Constructor (C.idText (C.dataId declaration)) (map (C.TypeArgument . C.TypeVariable) arguments),nested ++ predicateRecords ++ [declaration])
   S.Arrow a b -> do
     (a',left) <- coreTypeWithSourceRecords context dataTypes bits a
@@ -153,7 +153,7 @@ collectEquation declarations bits origin resolve env left right = do
         S.Applied _ inner -> open inner
         S.Application _ ts -> any open ts
         S.Arrow x y -> open x || open y
-        S.Record fields -> any (open . S.recordFieldType) fields
+        S.RecordShape fields -> any (open . S.recordFieldType) fields
         S.Refined _ inner _ -> open inner
         _ -> False
       ta' = S.expressionType ta
@@ -281,7 +281,7 @@ elaborateResolvedRecordsInWithCapabilities capabilities context projections data
     types tree = S.expressionType tree : maybe [] pure (S.requiredConversion tree) ++
       concatMap types (S.operands tree) ++ concat [map snd fields ++ types body | S.TypedCase _ fields body <- S.typedCases tree]
     containsRecord ty = case S.baseType ty of
-      S.Record _ -> True
+      S.RecordShape _ -> True
       S.Arrow a b -> containsRecord a || containsRecord b
       S.Applied _ t -> containsRecord t
       S.Application _ ts -> any containsRecord ts

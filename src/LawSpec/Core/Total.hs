@@ -207,9 +207,7 @@ constructorProofContracts bits dataDeclarations = do
     -- Index guards with each field reference's measure name (<index>Of<Family>).
     indexGuards d c =
       [ (guard, measures)
-      | Just index <- [dataIndex d]
-      , Just (ConstructorIndex _ guards) <- [lookup (idText (constructorId c)) (familyIndexConstructors index)]
-      , guard@(IndexGuard _ left right) <- guards
+      | guard@(IndexGuard _ left right) <- declarationIndexGuards d (constructorId c)
       , let references = nub (termFields left ++ termFields right)
             measures = [((p, i), name) | (p, i) <- references, Just name <- [measureNameAt c p i]]
       , length measures == length references ]

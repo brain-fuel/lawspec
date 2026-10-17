@@ -314,6 +314,7 @@ export interface StructuralRecord {
   digest: string;
   descriptor: string;
   positions?: string[];
+  indexGuards?: string[];
   fields: {name: string; predicates: Expr[];}[];
 }
 

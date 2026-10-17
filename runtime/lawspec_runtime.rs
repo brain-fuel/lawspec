@@ -6300,9 +6300,10 @@ mod tests {
             DataSchema { name: "lawspec::structural::record::outer", parameters: 0,
                 constructors: vec![ConstructorSchema { tag: "Outer", fields: vec![inner,chain] }] },
             DataSchema { name: "PathWrapper", parameters: 0,
-                constructors: vec![ConstructorSchema { tag: "Wrap", fields: vec![outer] }] },
+                constructors: vec![ConstructorSchema { tag: "Wrap", fields: vec![outer.clone()] }] },
         ]).unwrap().with_indices(&[
             ("Stop", &["c0","c10"]), ("Next", &["+ f0 c1","+ f0.1 c1"]),
+            ("Outer", &["== p0/0.0 f1"]),
             ("Wrap", &["p0/0/0.0","p0/0/0.1","== p0/0/0.1 + p0/1.0 c10","== p0/0/0.0 p0/1.0",">= p0/0/0.0 c1"]),
         ]);
         let stop = construct_data("Stop", vec![]);
@@ -6311,6 +6312,9 @@ mod tests {
         let wrap = |left, right| construct_data("Wrap", vec![construct_data("Outer", vec![
             construct_data("Inner", vec![left]),right])]);
         for bits in [32,64] {
+            let product = |left, right| construct_data("Outer", vec![construct_data("Inner", vec![left]),right]);
+            assert!(schema.validate(product(two.clone(),two.clone()), &outer, bits).is_ok());
+            assert!(schema.validate(product(two.clone(),stop.clone()), &outer, bits).is_err());
             let good = wrap(two.clone(),two.clone());
             assert!(schema.validate(good.clone(), &wrapper, bits).is_ok());
             assert_eq!(schema.index_of(&wrapper, &good, 0).unwrap(), BigInt::from(2));

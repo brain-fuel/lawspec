@@ -677,7 +677,7 @@ walkType names scope t = case t of
   Arrow a b -> Arrow <$> walkType names scope a <*> walkType names scope b
   Applied n a -> Applied <$> onType names n <*> walkType names scope a
   Application n args -> Application <$> onType names n <*> mapM (walkType names scope) args
-  Record fields -> Record <$> recordFields scope fields
+  record@(RecordShape fields) -> withRecordFields record <$> recordFields scope fields
   Refined n a p -> Refined n <$> walkType names scope a <*> traverse (walkRestriction names (n : scope)) p
   RefinementApp n args -> RefinementApp <$> onRefinement names n <*> forM args (\argument -> case argument of
     TypeArgument a -> TypeArgument <$> walkType names scope a

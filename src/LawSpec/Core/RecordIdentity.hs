@@ -2,10 +2,10 @@
 -- independent of source order and locations; actual construction remains an
 -- ordinary sequence of typed Core expressions.
 module LawSpec.Core.RecordIdentity
-  ( RecordField(..), RecordDescription(..), RecordDescriptor, describeRecord, descriptorBytes
+  ( RecordField(..), RecordDescription(..), RecordDescriptor, describeRecord, describeRecordWithIndexGuards, normalizeRecordIndexGuards, descriptorBytes
   , descriptorDigest, descriptorDependencies, dependencyFingerprint
   , RecordInterner, emptyInterner, internRecord, internRecordWith
-  , makeRecordDeclaration, validateRecordDeclaration, internRecordDeclarations
+  , makeRecordDeclaration, makeRecordDeclarationWithIndexGuards, validateRecordDeclaration, internRecordDeclarations
   , instantiateRecordDeclaration, rebuildRecordDeclaration
   , constructRecord
   ) where
@@ -22,6 +22,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Blake3 (blake3Hex)
 import LawSpec.Core
+import LawSpec.IndexTerm
 import LawSpec.Digest (digest, digestHex)
 import LawSpec.Scalar (Scalar(..), primitive, isNumeric)
 
@@ -49,7 +50,13 @@ data RecordDescription = RecordDescription
 -- determines the returned permutation; unused enclosing bindings do not affect
 -- a record. Repeated uses still preserve the equality between field types.
 describeRecord :: [Id] -> [RecordField] -> Either String RecordDescription
-describeRecord parameters supplied = do
+describeRecord parameters supplied = describeRecordWithIndexGuards parameters supplied []
+
+-- Guard paths use canonical field order. Their root label is written into the
+-- descriptor, so source order and lexical index names never determine identity.
+-- Intervening product types and leaf indices are resolved by registry admission.
+describeRecordWithIndexGuards :: [Id] -> [RecordField] -> [IndexGuard] -> Either String RecordDescription
+describeRecordWithIndexGuards parameters supplied guards = do
   unique "record type parameter" parameters
   unique "record field label" (map (binderName . recordFieldBinder) supplied)
   unique "record field identity" (map (binderId . recordFieldBinder) supplied)
@@ -60,7 +67,10 @@ describeRecord parameters supplied = do
       scope = Scope (M.fromList (zip used [0..]))
         (M.fromList [(binderId binder,binderName binder) | RecordField binder _ <- fields]) M.empty 0
   entries <- mapM (fieldValue scope) fields
-  let bytes = BL.toStrict (encode (tag "lawspec.record.v1" [toJSON (length used),toJSON entries]))
+  restrictions <- mapM (guardValue (map (binderName . recordFieldBinder) fields)) (normalizeRecordIndexGuards guards)
+  let description = if null restrictions then tag "lawspec.record.v1" [toJSON (length used),toJSON entries]
+        else tag "lawspec.record.v2" [toJSON (length used),toJSON entries,toJSON restrictions]
+      bytes = BL.toStrict (encode description)
       dependencies = sort (nub (concatMap fieldDependencies fields))
   pure (RecordDescription (RecordDescriptor bytes (blake3Hex bytes) dependencies) used)
   where
@@ -68,6 +78,37 @@ describeRecord parameters supplied = do
     fieldValue scope (RecordField binder predicates) =
       tag "field" <$> sequence [pure (toJSON (binderName binder)),typeValue scope (binderType binder),
         toJSON <$> mapM (expressionValue scope) predicates]
+
+-- Index equality is symmetric and guard conjunction has no source sequencing.
+-- Normalize singleton paths too: f0.1 and p0.1 name the same leaf index.
+normalizeRecordIndexGuards :: [IndexGuard] -> [IndexGuard]
+normalizeRecordIndexGuards guards = sort (nub (map normalize (guards ++ concatMap defined guards)))
+  where
+    defined (IndexGuard _ a b)=subtractionGuards a ++ subtractionGuards b ++ powers a ++ powers b
+    powers (IndexApply op a b)=
+      [IndexGuard IndexAtLeast b (IndexConstant 0) | op==IndexPower] ++ powers a ++ powers b
+    powers _=[]
+    normalize (IndexGuard relation left right) =
+      let a=term left; b=term right in case relation of
+        IndexEqual | b < a -> IndexGuard relation b a
+        _ -> IndexGuard relation a b
+    term (IndexPath [position] index)=IndexField position index
+    term (IndexApply op a b)=IndexApply op (term a) (term b)
+    term value=value
+
+guardValue :: [String] -> IndexGuard -> Either String Value
+guardValue labels (IndexGuard relation a b) = tag
+  (case relation of IndexEqual -> "equal-index"; IndexAtLeast -> "index-at-least") <$> mapM term [a,b]
+  where
+    term value=case value of
+      IndexConstant n -> pure (tag "constant" [integer n])
+      IndexField position index -> reference [position] index
+      IndexPath path index -> reference path index
+      IndexApply op left right -> tag (indexOperationName op) <$> mapM term [left,right]
+    reference path index=case path of
+      position:rest | position>=0,position<length labels,all (>=0) rest,index>=0 ->
+        pure (tag "field-index" [toJSON (labels !! position),toJSON (map (integer . toInteger) rest),integer (toInteger index)])
+      _ -> Left "invalid structural record index field path"
 
 data Scope = Scope
   { typeBindings :: M.Map Id Int, fieldBindings :: M.Map Id String
@@ -307,8 +348,13 @@ internRecordWith index descriptor (RecordInterner table) = case M.lookup key tab
 -- every native backend. The returned parameter permutation belongs to the
 -- enclosing expression/type and is never stored in the shared interner.
 makeRecordDeclaration :: [Id] -> [RecordField] -> Origin -> Either String (DataDeclaration,[Id])
-makeRecordDeclaration available fields origin = do
-  description <- describeRecord available fields
+makeRecordDeclaration available fields = makeRecordDeclarationWithIndexGuards available fields []
+
+makeRecordDeclarationWithIndexGuards :: [Id] -> [RecordField] -> [IndexGuard] -> Origin
+  -> Either String (DataDeclaration,[Id])
+makeRecordDeclarationWithIndexGuards available fields suppliedGuards origin = do
+  let guards=normalizeRecordIndexGuards suppliedGuards
+  description <- describeRecordWithIndexGuards available fields guards
   let descriptor = recordDescriptor description
       parameters = recordParameters description
       identity = recordIdentity descriptor
@@ -322,7 +368,8 @@ makeRecordDeclaration available fields origin = do
       predicates = concatMap recordFieldPredicates fields
       groups = snd (foldl (\(offset,entries) (RecordField field conditions) ->
         (offset + length conditions,entries ++ [(binderName field,[offset..offset + length conditions - 1])])) (0,[]) fields)
-      record = StructuralRecord (T.unpack (T.decodeUtf8 (descriptorBytes descriptor))) (sortOn fst groups)
+      record = (if null guards then StructuralRecord else \descriptor groups -> RecordWithIndexGuards descriptor groups guards)
+        (T.unpack (T.decodeUtf8 (descriptorBytes descriptor))) (sortOn fst groups)
       declaration = (DataDeclaration identity ("Record" ++ descriptorDigest descriptor) canonicalParameters
         [DataConstructor constructor "Record" canonicalFields (map (renameExpression parameterMap fieldMap) predicates) origin [] []]
         origin Nothing) { dataStructural = Just record }
@@ -380,7 +427,7 @@ rebuildRecordDeclaration original available fieldTypes predicates origin = do
   let fields = [RecordField (field{binderType=ty})
           [predicates !! index | index <- maybe [] id (lookup (binderName field) (structuralPredicates metadata))]
         | (field,ty) <- zip (constructorFields constructor) fieldTypes]
-  (made,parameters) <- makeRecordDeclaration available fields origin
+  (made,parameters) <- makeRecordDeclarationWithIndexGuards available fields (structuralIndexGuards metadata) origin
   let newConstructor = head (dataConstructors made)
       parameterMap = M.fromList (zip parameters (dataParameters made))
       fieldMap = M.fromList (zip (map binderId (constructorFields constructor))
@@ -480,8 +527,14 @@ validateRecordDeclaration declaration = case dataStructural declaration of
       (Left "structural record restriction groups must cover each predicate exactly once")
     unless (all (\(_,ordered) -> ordered == sort ordered) groups)
       (Left "structural record restriction groups must retain predicate evaluation order")
-    description <- describeRecord (dataParameters declaration)
-      [RecordField field [predicates !! index | index <- maybe [] id (lookup (binderName field) groups)] | field <- fields]
+    let guards=structuralIndexGuards metadata
+    unless (guards==normalizeRecordIndexGuards guards)
+      (Left "structural record index guards must use canonical order and references")
+    case metadata of
+      RecordWithIndexGuards {} -> unless (not (null guards)) (Left "a constrained record must retain its index guards")
+      _ -> pure ()
+    description <- describeRecordWithIndexGuards (dataParameters declaration)
+      [RecordField field [predicates !! index | index <- maybe [] id (lookup (binderName field) groups)] | field <- fields] guards
     let descriptor = recordDescriptor description
     unless (recordParameters description == dataParameters declaration)
       (Left "structural record parameters must use canonical first-occurrence order without unused parameters")

@@ -531,3 +531,71 @@ test('fmt explicit paths use the working directory even when a different configu
     assert.deepEqual(JSON.parse(checked.stdout).changed,[]);
   }finally{await rm(outer,{recursive:true,force:true});}
 });
+
+test('indexed record inputs retain intrinsic guards and complete finite law domains in the SDK', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const source = 'unit levels\n' +
+    'type Level (n of type Whole) is one of | Low where n = 0 | High where n = 1 end type\n' +
+    'function measured (pair of type record{left of type Level m right of type Level m}) -> Whole is nOfLevel pair.left end function\n' +
+    'law same is definition: for all (pair of type record{left of type Level m right of type Level m}) =>\n' +
+    'measured pair must be nOfLevel pair.right end end\n' +
+    'expect measured pair = expected in table (pair,expected): ' +
+    'row record{left = Low, right = Low}, 0 row record{left = High, right = High}, 1 end end';
+  for (const machineBits of [32, 64]) {
+    const input = {schemaVersion: 5, languageProfile: '1.0-rc.1', machineBits,
+      sources: [{path: 'levels.lawspec', content: source}]};
+    const unchecked = await compiler.check({...input, verification: {layers: []}});
+    assert.deepEqual(unchecked.diagnostics, []);
+    assert.equal(unchecked.verification.selection, 'no-selected-checks');
+    assert.equal(unchecked.evidence.filter(item => item.stage === 'law').length, 1);
+    assert.ok(unchecked.evidence.filter(item => item.stage === 'law').every(item => item.status === 'not-verified'));
+    const record = unchecked.dataTypes.find(type => type.structure?.indexGuards?.length);
+    assert.deepEqual(record.structure.indexGuards, ['== f0 f1']);
+    assert.match(record.structure.descriptor, /lawspec\.record\.v2/);
+    const checked = await compiler.check({...input, verification: {layers: ['exhaustive', 'examples']}});
+    assert.deepEqual(checked.diagnostics, []);
+    assert.equal(checked.evidence.filter(item => item.stage === 'law').length, 1);
+    assert.ok(checked.evidence.filter(item => item.stage === 'law').every(item => item.status === 'exhaustively-checked'));
+    const unconstrained = source.replaceAll('right of type Level m', 'right of type Level k');
+    const failed = await compiler.check({...input,
+      sources: [{path: 'levels.lawspec', content: unconstrained}], verification: {layers: ['exhaustive', 'examples']}});
+    assert.ok(failed.diagnostics.some(item => item.code === 'refuted'));
+  }
+});
+
+
+test('the SDK retains two indices of one record field as a type-owned relationship', async () => {
+  const {createCompiler} = await import('../api.mjs');
+  const compiler = await createCompiler();
+  const source = 'unit dimensions\n' +
+    'type Matrix (rows of type Whole) (columns of type Whole) is one of ' +
+    '| Zero where rows = 0, columns = 0 | Skew where rows = 0, columns = 1 ' +
+    '| One where rows = 1, columns = 1 end type\n' +
+    'law diagonal is definition: for all (pair of type record{matrix of type Matrix dimension dimension}) => ' +
+    'rowsOfMatrix pair.matrix must be columnsOfMatrix pair.matrix end end end';
+  for (const machineBits of [32, 64]) {
+    const input = {schemaVersion: 5, languageProfile: '1.0-rc.1', machineBits,
+      verification: {layers: ['exhaustive']}, sources: [{path: 'dimensions.lawspec', content: source}]};
+    const result = await compiler.check(input);
+    assert.deepEqual(result.diagnostics, []);
+    const records = result.dataTypes.filter(type => type.structure?.indexGuards?.length);
+    assert.equal(records.length, 1);
+    assert.deepEqual(records[0].structure.indexGuards, ['== f0 f0.1']);
+    const laws = result.evidence.filter(item => item.stage === 'law');
+    assert.equal(laws.length, 1);
+    assert.equal(laws[0].status, 'exhaustively-checked');
+    const independent = await compiler.check({...input, sources: [{path: 'dimensions.lawspec',
+      content: source.replaceAll('Matrix dimension dimension', 'Matrix dimension independent')}]});
+    assert.ok(independent.diagnostics.some(item => item.code === 'refuted'));
+    const make = tag => source.split('law diagonal')[0] +
+      'function make (ignored of type Bool) -> record{matrix of type Matrix dimension dimension} is ' +
+      'record{matrix = ' + tag + '} end function';
+    const admitted = await compiler.check({...input, verification: {layers: []},
+      sources: [{path: 'dimensions.lawspec', content: make('Zero')}]});
+    assert.deepEqual(admitted.diagnostics, []);
+    const rejected = await compiler.check({...input, verification: {layers: []},
+      sources: [{path: 'dimensions.lawspec', content: make('Skew')}]});
+    assert.ok(rejected.diagnostics.some(item => item.code === 'total'));
+  }
+});

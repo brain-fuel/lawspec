@@ -16,7 +16,7 @@ def schema(path='p0/0/0.0'):
         Definition(chain.name, 0, [ctor('Stop', indices=['c0','c10']),
             ctor('Next', [Field('tail',chain)], ['+ f0 c1','+ f0.1 c1'])]),
         Definition(inner.name, 0, [ctor('Inner', [Field('rest',chain)])]),
-        Definition(outer.name, 0, [ctor('Outer', [Field('child',inner), Field('sibling',chain)])]),
+        Definition(outer.name, 0, [ctor('Outer', [Field('child',inner), Field('sibling',chain)], ['== p0/0.0 f1'])]),
         Definition(wrapper.name, 0, [ctor('Wrap', [Field('payload',outer)],
             [path, 'p0/0/0.1', '== p0/0/0.1 + p0/1.0 c10', f'== {path} p0/1.0', f'>= {path} c1'])]),
     ], [])
@@ -28,6 +28,11 @@ for bits in (32,64):
     checked = schema()
     two = next_(next_(stop))
     good = wrapped(two,two)
+    product = lambda left, right: construct('Outer', [construct('Inner', [left]), right])
+    checked.validate(outer, product(two,two), bits)
+    try: checked.validate(outer, product(two,stop), bits)
+    except RefinementViolation: pass
+    else: raise AssertionError('accepted invalid intrinsic record guard without parent')
     validated = checked.validate(wrapper, good, bits)
     assert validated.tag == "Wrap"
     assert checked._index_of(wrapper, validated, 0) == 2

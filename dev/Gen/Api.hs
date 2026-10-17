@@ -170,7 +170,7 @@ declarations = joinWith (softbreak <> softbreak)
       [("id", text "string"), ("declarations", text "(Binder & " <> record [("origin", text "Origin"),("source?",text "DeclarationSource"),("representation?",quoted "structural-record-storage")] <> text ")[]")]
   , interface "StructuralRecord"
       [("kind",quoted "record"),("digest",text "string"),("descriptor",text "string"),
-       ("positions?",text "string[]"),
+       ("positions?",text "string[]"),("indexGuards?",text "string[]"),
        ("fields",array (record (fields [("name","string"),("predicates","Expr[]")])))]
   , interface "DataTypeDeclaration"
       (fields [("id", "string"), ("name", "string"), ("parameters", "string[]"), ("origin", "Origin")] ++

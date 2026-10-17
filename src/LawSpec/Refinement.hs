@@ -111,7 +111,7 @@ expandType structures table stack ts vs t = case substituteType ts vs t of
     if n == "Either" || not (any hasValueRefinements args')
       then pure application else namedPredicates n args' application
   Arrow a b -> Arrow <$> expandType structures table stack M.empty M.empty a <*> expandType structures table stack M.empty M.empty b
-  Record fields -> Record <$> mapM (\field -> do
+  record@(RecordShape fields) -> withRecordFields record <$> mapM (\field -> do
     ty <- expandType structures table stack M.empty M.empty (recordFieldType field)
     pure field{recordFieldType=ty}) fields
   CheckedType ps a -> CheckedType ps <$> expandType structures table stack M.empty M.empty a
@@ -152,7 +152,7 @@ hasValueRefinements ty = case ty of
   Qualified _ inner -> hasValueRefinements inner
   Applied _ inner -> hasValueRefinements inner
   Application _ arguments -> any hasValueRefinements arguments
-  Record fields -> any (hasValueRefinements . recordFieldType) fields
+  RecordShape fields -> any (hasValueRefinements . recordFieldType) fields
   Arrow a b -> hasValueRefinements a || hasValueRefinements b
   _ -> False
 
@@ -162,7 +162,7 @@ substituteType :: M.Map String Type -> M.Map String Expr -> Type -> Type
 substituteType ts vs = go where
   go (Named n) = M.findWithDefault (Named n) n ts
   go (Variable n) = M.findWithDefault (Variable n) n ts
-  go (Record fields) = Record (scopeRecordFields
+  go record@(RecordShape fields) = withRecordFields record (scopeRecordFields
     (concatMap typeValueVars (M.elems ts)) (M.toList vs)
     (\active -> substituteType ts (M.fromList active)) fields)
   go (Refined n t p) = Refined fresh (go t) (expr <$> p)
@@ -230,7 +230,7 @@ typeNames (Variable n) = [n]
 typeNames (Arrow a b) = typeNames a ++ typeNames b
 typeNames (Applied _ t) = typeNames t
 typeNames (Application _ ts) = concatMap typeNames ts
-typeNames (Record fields) = concatMap (typeNames . recordFieldType) fields
+typeNames (RecordShape fields) = concatMap (typeNames . recordFieldType) fields
 typeNames (Refined _ t p) = typeNames t ++ maybe [] exprVars p
 typeNames (Qualified _ t) = typeNames t
 typeNames (CheckedType ps t) = concatMap exprVars ps ++ typeNames t

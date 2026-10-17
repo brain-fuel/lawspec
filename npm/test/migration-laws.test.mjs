@@ -206,17 +206,24 @@ test('case previews preserve nested selection, constructor bindings, recursion a
   }
 });
 
-test('a grouped natural-index payload preview keeps canonical rejection separate from planning and validation', async () => {
+test('a grouped natural-index source preview compiles while migration transport remains unestablished', async () => {
   const content = 'unit payload\ntype Chain (n :: Natural) is | Stop where n = 0 '+
     '| Next marker :: Bool rest :: Chain m where n = m + 1 end\n';
-  const report = await migrationReport(compiler,{version:1,targets:[]},{sources:[{path:'payload.lawspec',content}]});
-  assert.deepEqual(report.diagnostics,[]);
-  assert.deepEqual(report.sourcePreview.diagnostics,[]);
-  assert.equal(report.sourcePreview.canonicalCheck.status,'rejected');
-  assert.ok(report.sourcePreview.canonicalCheck.diagnostics.length>0);
-  assert.ok(report.blockers.some(blocker=>blocker.includes('canonical compilation')));
-  assert.equal(report.validated,false);
-  assert.deepEqual(report.filesWritten,[]);
+  for (const machineBits of [32,64]) {
+    const report = await migrationReport(compiler,{version:1,targets:[]},
+      {machineBits,sources:[{path:'payload.lawspec',content}]});
+    assert.deepEqual(report.diagnostics,[]);
+    assert.deepEqual(report.sourcePreview.diagnostics,[]);
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
+    assert.deepEqual(report.sourcePreview.canonicalCheck.diagnostics,[]);
+    assert.equal(report.sourcePreview.canonicalCheck.intrinsicDefinitionChecks,true);
+    assert.equal(report.correspondence.payloads.payloadShapes.status,'not-established');
+    assert.equal(report.correspondence.payloads.executableTransport.status,'not-established');
+    assert.ok(report.blockers.some(blocker=>blocker.includes('Core correspondence')));
+    assert.ok(report.blockers.every(blocker=>!blocker.includes('canonical compilation')));
+    assert.equal(report.validated,false);
+    assert.deepEqual(report.filesWritten,[]);
+  }
 });
 
 test('preview rejects implicit name trimming and expectation-free tables without enabling writes', async () => {

@@ -3,10 +3,10 @@
 module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
-import Control.Monad (unless, forM_, foldM, forM)
+import Control.Monad (unless, when, forM_, foldM, forM)
 import Control.Monad.State.Strict (State, evalState, get, put)
 import Data.Graph (SCC(..), stronglyConnComp)
-import Data.List (nub, sortOn, stripPrefix)
+import Data.List (isPrefixOf, nub, sortOn, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Common
@@ -413,10 +413,20 @@ walk signatures contracts self provenance facts expression = case expression of
     nested <- concat <$> mapM recur fields
     -- Index guards are proved where every measure has one instance; generic
     -- instances stay runtime-checked at construction.
-    forM_ (M.lookup tag (constructorContracts facts)) $ \contract ->
-      forM_ [condition | (True, condition) <- indexGuardConditions facts contract fields] $ \condition ->
+    indexCalls <- fmap concat $ forM (M.lookup tag (constructorContracts facts)) $ \contract -> do
+      let conditions=indexGuardConditions facts contract fields
+          intrinsic="lawspec::structural::record::" `isPrefixOf` idText tag
+      -- A product's intrinsic constraints must be proved before a checked
+      -- definition constructs it. Missing/ambiguous measures are unsupported,
+      -- rather than a new class of unchecked product constructors.
+      when intrinsic $
+        unless (length conditions==length (constructorIndexGuards contract) && all fst conditions)
+          (Left ("record index guards require unambiguous checked measures: " ++ idText tag))
+      fmap concat $ forM [condition | (True, condition) <- conditions] $ \condition -> do
+        scans <- if intrinsic then recur condition else pure []
         unless (provesResult signatures contracts provenance facts condition)
           (Left ("constructor index guard could not be proved: " ++ idText tag))
+        pure scans
     forM_ (M.lookup tag (constructorContracts facts)) $ \contract -> do
       unless (length fields == length (constructorParameters contract))
         (Left "constructor contract arity mismatch")
@@ -425,7 +435,7 @@ walk signatures contracts self provenance facts expression = case expression of
           (Left ("constructor field refinement could not be proved: " ++ idText tag))
         pure (assume True condition known)) facts (instantiateConstructor contract fields)
       pure ()
-    pure nested
+    pure (nested ++ indexCalls)
   LetCall result callee arguments body -> do
     unless (result `M.notMember` provenance && result `S.notMember` usedVariables facts)
       (Left "call result binder must be fresh")
@@ -501,8 +511,8 @@ walk signatures contracts self provenance facts expression = case expression of
     else pure (descending : nested)
   Logical op left right -> do
     before <- recur left
-    let skips = case left of Literal (SBool value) -> value /= (op == And); _ -> False
-    after <- if skips then pure [] else walk signatures contracts self provenance (assume (op == And) left facts) right
+    after <- concat <$> mapM (\(scope,known) -> walk signatures contracts self scope known right)
+      (conditionBranches signatures contracts provenance facts (op==And) left)
     pure (before ++ after)
   Absurd name -> do
     -- What follows from everything known (a measure of a value whose
@@ -514,9 +524,10 @@ walk signatures contracts self provenance facts expression = case expression of
     pure []
   Conditional condition yes no -> do
     before <- recur condition
-    let taken branch = case condition of Literal (SBool value) -> value == branch; _ -> True
-    whenYes <- if taken True then walk signatures contracts self provenance (assume True condition facts) yes else pure []
-    whenNo <- if taken False then walk signatures contracts self provenance (assume False condition facts) no else pure []
+    whenYes <- concat <$> mapM (\(scope,known) -> walk signatures contracts self scope known yes)
+      (conditionBranches signatures contracts provenance facts True condition)
+    whenNo <- concat <$> mapM (\(scope,known) -> walk signatures contracts self scope known no)
+      (conditionBranches signatures contracts provenance facts False condition)
     pure (before ++ whenYes ++ whenNo)
   ExactArithmetic Power base exponent -> do
     unless (entails facts (ExactComparison GreaterEqual exponent (Literal (SInteger "Integer" 0))))
@@ -616,6 +627,7 @@ resultCases signatures contracts scope facts expression = case expression of
     [recur (branchProvenance scope value binders) facts body | (binders,body) <- branches]
   TypedDomain domains body -> recur scope (foldl (flip (assume True)) facts domains) body
   Integral body -> [(s,f,Integral value) | (s,f,value) <- recur scope facts body]
+  Negated body | hasCallBindings body -> [(s,f,Negated value) | (s,f,value) <- recur scope facts body]
   Logical op left right -> concat
     [ (s,assume (op /= And) value known,Literal (SBool (op /= And))) :
         recur s (assume (op == And) value known) right
@@ -625,6 +637,49 @@ resultCases signatures contracts scope facts expression = case expression of
     | (s,known,value) <- recur scope facts condition]
   _ -> [(scope,facts,expression)]
   where recur = resultCases signatures contracts
+
+-- The condition has already passed the strict walk. Preserve only the calls
+-- and predicates evaluated on the selected Boolean path, including nested
+-- short-circuit RHS calls. A fact from a skipped branch must never escape.
+conditionBranches :: M.Map Id [Id] -> M.Map Id ProofContract -> Provenance -> Facts -> Bool -> Proof -> [(Provenance,Facts)]
+conditionBranches signatures contracts scope facts truth condition
+  | Just value <- literalTruth condition, value /= truth = []
+  -- Keep ordinary predicates symbolic. Only evaluated call binders add
+  -- contracts that must follow the selected short-circuit path.
+  | not (hasCallBindings condition) = [(scope,assume truth condition facts)]
+  | otherwise = case condition of
+      LetCall result callee arguments body ->
+        recur (M.delete result scope) (callResultFacts signatures contracts facts result callee arguments) truth body
+      Negated body -> recur scope facts (not truth) body
+      Logical op left right
+        -- To make a conjunction true, or a disjunction false, both operands
+        -- have the requested truth. Do not enumerate the discarded paths.
+        | truth == (op==And) -> concat
+            [recur local known truth right | (local,known)<-recur scope facts truth left]
+        | otherwise -> recur scope facts truth left ++ concat
+            [recur local known truth right | (local,known)<-recur scope facts (not truth) left]
+      Conditional selected yes no -> concat
+        [recur local known truth yes | (local,known)<-recur scope facts True selected] ++ concat
+        [recur local known truth no | (local,known)<-recur scope facts False selected]
+      TypedDomain domains body -> recur scope (foldl (flip (assume True)) facts domains) truth body
+      Match value branches -> concat
+        [recur (branchProvenance scope value binders) facts truth body | (binders,body)<-branches]
+      DataMatch value branches -> concat
+        [recur local known truth body | (local,known,body)<-dataBranches scope facts value branches]
+      _ -> [(local,assume truth value known)
+        | (local,known,value)<-resultCases signatures contracts scope facts condition,
+          maybe True (==truth) (literalTruth value)]
+  where
+    recur=conditionBranches signatures contracts
+    literalTruth (Literal (SBool value))=Just value
+    literalTruth (Negated value)=not <$> literalTruth value
+    literalTruth _=Nothing
+
+-- Only evaluated call binders add result contracts to a Boolean path.
+-- Branchless predicates keep the established symbolic entailment path.
+hasCallBindings :: Proof -> Bool
+hasCallBindings (LetCall _ _ _ _) = True
+hasCallBindings expression = any hasCallBindings (children expression)
 
 -- | Definedness has already been audited. Each result branch supplies only the
 -- guarantees of calls evaluated in that branch. Universal predicates introduce
@@ -911,8 +966,10 @@ derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap un
     -- its admitted contract over projections of the same value, so refined
     -- fields and dependencies survive projection without nominal unwrapping.
     fieldGuarantees = concat
-      [ instantiateConstructor contract
-          [Field tag index (Nothing, Nothing) value | index <- [0 .. length (constructorParameters contract) - 1]]
+      [ let fields=[Field tag index (Nothing, Nothing) value | index <- [0 .. length (constructorParameters contract) - 1]]
+        in instantiateConstructor contract fields ++
+           [condition | "lawspec::structural::record::" `isPrefixOf` idText tag,
+            (_,condition)<-indexGuardConditions facts contract fields]
       | Field tag _ _ value <- terms, faithful value
       , Just contract <- [M.lookup tag (constructorContracts facts)] ]
     -- A length or a size is never negative, and fits a 64-bit count.
@@ -1221,12 +1278,18 @@ normalizeCalls scope expression = evalState (go expression pure)
         body <- continuation (Variable name)
         pure (LetCall name callee arguments' body)
       LetCall name callee arguments body -> values arguments $ \arguments' -> do
-        body' <- go body pure
-        continuation (LetCall name callee arguments' body')
+        body' <- go body continuation
+        pure (LetCall name callee arguments' body')
       Construct tag fields -> values fields (continuation . Construct tag)
       DataMatch value branches -> go value $ \value' -> do
         branches' <- mapM (\(tag,binders,body) -> (\body' -> (tag,binders,body')) <$> go body pure) branches
         continuation (DataMatch value' branches')
+      -- A strict let/sequence has one result, whose evaluated calls must
+      -- remain in scope for its consumer (a projection or constructor guard).
+      -- Moving the continuation inside preserves the audited strict prefix.
+      Match value [([],body)] -> go value $ \value' -> do
+        body' <- go body continuation
+        pure (Match value' [([],body')])
       Match value branches -> go value $ \value' -> do
         branches' <- mapM (\(binders,body) -> (,) binders <$> go body pure) branches
         continuation (Match value' branches')

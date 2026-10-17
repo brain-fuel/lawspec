@@ -6,7 +6,7 @@ module LawSpec.Core where
 import LawSpec.Core.Policy (StagePolicy)
 import LawSpec.Core.Machine (Machine, Supervisor)
 import GHC.Generics (Generic)
-import LawSpec.IndexTerm (FamilyIndex(..))
+import LawSpec.IndexTerm (FamilyIndex(..),ConstructorIndex(..),IndexGuard)
 import LawSpec.Common
 import LawSpec.Scalar (Scalar)
 import qualified Data.Map.Strict as Map
@@ -99,7 +99,24 @@ pattern DataDeclaration identity name parameters constructors origin index <- Mk
 -- expressions or imposing the source's field order on type identity.
 data StructuralRecord = StructuralRecord
   { structuralDescriptor :: String, structuralPredicates :: [(String,[Int])] }
+  | RecordWithIndexGuards
+  { structuralDescriptor :: String, structuralPredicates :: [(String,[Int])]
+  , storedStructuralIndexGuards :: [IndexGuard] }
   deriving (Eq, Show, Generic)
+
+-- Intrinsic relationships belong to the product, independently of any nominal
+-- constructor that stores it. Unconstrained products retain their v1 identity.
+structuralIndexGuards :: StructuralRecord -> [IndexGuard]
+structuralIndexGuards (RecordWithIndexGuards _ _ guards) = guards
+structuralIndexGuards _ = []
+
+-- The same admitted guards feed reference evaluation, proof facts and schemas.
+declarationIndexGuards :: DataDeclaration -> Id -> [IndexGuard]
+declarationIndexGuards declaration tag =
+  maybe [] (maybe [] constructorIndexGuards . lookup (idText tag) . familyIndexConstructors) (dataIndex declaration) ++
+  [guard | Just structure <- [dataStructural declaration]
+         , tag `elem` map constructorId (dataConstructors declaration)
+         , guard <- structuralIndexGuards structure]
 -- | A GADT constructor's equations fix declaration parameters to types over its
 -- existentials: a value of T args uses the constructor only where each
 -- equation matches its argument, which also determines the existentials.

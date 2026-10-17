@@ -27,6 +27,7 @@ instance Binary S.Literal
 instance Binary S.MatchBranch
 instance Binary S.Refinement
 instance Binary S.RefinementArgument
+instance Binary S.RecordIndexConstraints
 instance Binary S.RecordField
 instance Binary S.Type
 instance Binary S.TypedCase

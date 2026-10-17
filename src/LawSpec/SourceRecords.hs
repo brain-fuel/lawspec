@@ -16,7 +16,7 @@ recordDeclarationsWithContext :: Source.SourceContext -> [C.DataDeclaration] -> 
 recordDeclarationsWithContext context known bits types = concatMap snd <$> mapM (coreTypeWithSourceRecords context known bits) (filter contains types)
   where
     contains ty = case S.baseType ty of
-      S.Record _ -> True
+      S.RecordShape _ -> True
       S.Arrow a b -> contains a || contains b
       S.Applied _ t -> contains t
       S.Application _ ts -> any contains ts

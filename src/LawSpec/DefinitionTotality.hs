@@ -110,7 +110,7 @@ auditCollected context declarations constructors bits unit templates = do
     -- The single constructor of a record type, from the declarations.
     coreType ty = fst <$> coreTypeWithSourceRecords context declarations bits ty
     recordOf ty = case S.baseType ty of
-      S.Record _ -> do
+      S.RecordShape _ -> do
         lowered <- coreType ty
         case lowered of
           C.Constructor name _ -> lookupRecord name

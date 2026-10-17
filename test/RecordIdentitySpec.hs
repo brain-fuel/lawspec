@@ -12,13 +12,14 @@ import Data.Binary (decode,encode)
 import qualified Data.ByteString.Lazy as BL
 import Data.Either (isLeft, isRight)
 import Data.IORef
-import Data.List (permutations)
+import Data.List (isInfixOf, permutations)
 import qualified Data.Map.Strict as M
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
 import LawSpec.Core
 import LawSpec.Core.RecordIdentity
 import LawSpec.Core.Types
+import qualified LawSpec.Core.Schema as Schema
 import LawSpec.Core.Value
 import LawSpec.Core.Eval (evaluateValue)
 import LawSpec.Core.Validate (validateProgram)
@@ -105,6 +106,104 @@ test_recordIdentitiesPreserveSemantics = describe "closed structural record iden
       isLeft (makeRegistry [chain,inner,outer,invalid path]) `shouldBe` True
     -- The last invalid path attempts to traverse the nominal PathChain.
     indexTermText (IndexField 0 1) `shouldBe` "f0.1"
+  describe "intrinsic record index relationships" $ do
+    let sizedType=Constructor "Sized" []
+        sized=(DataDeclaration (Id "Sized") "Sized" []
+          [DataConstructor (Id "Sized::Zero") "Zero" [] [] origin [] [],
+           DataConstructor (Id "Sized::One") "One" [] [] origin [] []] origin Nothing)
+          {dataIndex=Just (FamilyIndex ["n"] [("Sized::Zero",ConstructorIndex [IndexConstant 0] []),
+            ("Sized::One",ConstructorIndex [IndexConstant 1] [])])}
+        fields=[field "left" sizedType,field "right" sizedType]
+        shared=IndexGuard IndexEqual (IndexField 0 0) (IndexField 1 0)
+        make values guards=fst (either error id (makeRecordDeclarationWithIndexGuards [] values guards origin))
+        same=make fields [shared]
+        ty declaration=Constructor (idText (dataId declaration)) []
+        zero=DataValue sizedType (Id "Sized::Zero") []
+        one=DataValue sizedType (Id "Sized::One") []
+        pair declaration left right=DataValue (ty declaration) (constructorId (head (dataConstructors declaration))) [left,right]
+    it "hashes shared indices separately and normalizes field order, direction and singleton paths" $ do
+      let reversed=IndexGuard IndexEqual (IndexPath [1] 0) (IndexPath [0] 0)
+          equivalent=[make values guards | values<-permutations fields,guards<-[[shared],[reversed],[shared,reversed]]]
+      map dataId equivalent `shouldBe` replicate 6 (dataId same)
+      dataId same `shouldNotBe` dataId (record fields)
+      dataId same `shouldNotBe` dataId (make fields [IndexGuard IndexAtLeast (IndexField 0 0) (IndexField 1 0)])
+      dataIndex same `shouldBe` Nothing
+      case dataStructural same of
+        Just metadata -> do
+          structuralIndexGuards metadata `shouldBe` [shared]
+          structuralDescriptor metadata `shouldSatisfy` (\text -> "lawspec.record.v2" `isInfixOf` text)
+        Nothing -> expectationFailure "missing intrinsic index constraints"
+    it "checks the relationship on the product itself and filters complete finite domains" $ do
+      let registry=either error id (makeRegistry [sized,same])
+          empty=make fields [IndexGuard IndexAtLeast (IndexField 0 0) (IndexConstant 2)]
+          emptyRegistry=either error id (makeRegistry [sized,empty])
+      forM_ [32,64] $ \bits -> do
+        validateValue registry bits (ty same) (pair same one one) `shouldBe` Right (pair same one one)
+        validateValue registry bits (ty same) (pair same zero zero) `shouldBe` Right (pair same zero zero)
+        validateValue registry bits (ty same) (pair same one zero) `shouldSatisfy` isLeft
+        Testing.hasValueContracts registry (ty same) `shouldBe` True
+        Testing.finiteValuesWithRegistry registry bits 16 (ty same)
+          `shouldBe` Right (Just [pair same zero zero,pair same one one])
+        Testing.finiteValuesWithRegistry emptyRegistry bits 16 (ty empty) `shouldBe` Right (Just [])
+        case constructorProofContracts bits [sized,same] of
+          Right contracts -> length [guard | contract<-contracts,guard<-Totality.constructorIndexGuards contract] `shouldBe` 1
+          Left diagnostics -> expectationFailure (show diagnostics)
+      case Schema.dataSchemas [sized,same] of
+        Right schemas -> [Schema.constructorIndex c | d<-schemas,Schema.typeName d==idText (dataId same),c<-Schema.constructors d]
+          `shouldBe` [["== f0 f1"]]
+        Left message -> expectationFailure message
+    it "retains constraints when generic records are instantiated and rebuilt" $ do
+      let a=Id "a"; alpha=Id "alpha"
+          generic parameter=makeRecordDeclarationWithIndexGuards [parameter]
+            [field "right" (Constructor "Family" [TypeArgument (TypeVariable parameter)]),
+             field "left" (Constructor "Family" [TypeArgument (TypeVariable parameter)])] [shared] origin
+          first=fst (either error id (generic a)); renamed=fst (either error id (generic alpha))
+          (instantiated,_)=either error id (instantiateRecordDeclaration first [integerType] origin)
+          direct=make [field "left" (Constructor "Family" [TypeArgument integerType]),
+            field "right" (Constructor "Family" [TypeArgument integerType])] [shared]
+          rebuilt=fst (either error id (rebuildRecordDeclaration instantiated []
+            (map binderType (constructorFields (head (dataConstructors instantiated)))) [] origin))
+      dataId first `shouldBe` dataId renamed
+      dataId instantiated `shouldBe` dataId direct
+      rebuilt `shouldBe` instantiated
+      structuralIndexGuards (maybe (error "metadata") id (dataStructural instantiated)) `shouldBe` [shared]
+    it "rejects damaged descriptors, missing guards and paths that are not family indices" $ do
+      let metadata=maybe (error "metadata") id (dataStructural same)
+          changed=same{dataStructural=Just (RecordWithIndexGuards (structuralDescriptor metadata) (structuralPredicates metadata)
+            [IndexGuard IndexAtLeast (IndexField 0 0) (IndexField 1 0)])}
+          erased=same{dataStructural=Just (StructuralRecord (structuralDescriptor metadata) (structuralPredicates metadata))}
+      validateRecordDeclaration changed `shouldSatisfy` isLeft
+      validateRecordDeclaration erased `shouldSatisfy` isLeft
+      forM_ [IndexField 0 1,IndexPath [0,0] 0] $ \reference ->
+        isLeft (makeRegistry [sized,make fields [IndexGuard IndexEqual reference (IndexConstant 0)]]) `shouldBe` True
+      isLeft (makeRegistry [make [field "left" integerType,field "right" integerType] [shared]]) `shouldBe` True
+      forM_ [IndexPath [] 0,IndexField (-1) 0,IndexField 9 0] $ \reference ->
+        describeRecordWithIndexGuards [] fields [IndexGuard IndexEqual reference (IndexConstant 0)] `shouldSatisfy` isLeft
+    it "retains natural arithmetic definedness even for reflexive index equalities" $ do
+      forM_ [IndexApply IndexSubtract (IndexConstant 0) (IndexConstant 1),
+             IndexApply IndexPower (IndexConstant 0) (IndexConstant (-1))] $ \undefined -> do
+        let declaration=make [] [IndexGuard IndexEqual undefined undefined]
+            resultType=ty declaration
+            body=Expr resultType (Construct (constructorId (head (dataConstructors declaration))) []) origin
+            function=Definition (Declaration (Id "impossible") "impossible" resultType origin) [] body
+            program=Program 64 [declaration] [Unit (Id "indices") [definitionDeclaration function] [] [] [function] []]
+            registry=either error id (makeRegistry [declaration])
+        validateProgram program `shouldSatisfy` isLeft
+        Testing.finiteValuesWithRegistry registry 64 16 resultType `shouldBe` Right (Just [])
+        let guards=structuralIndexGuards (maybe (error "metadata") id (dataStructural declaration))
+        normalizeRecordIndexGuards guards `shouldBe` guards
+        length guards `shouldBe` 2
+    it "publishes product-owned guards as typed type metadata" $ do
+      case programView defaultGeneration [] [] [] [] (Program 64 [sized,same] []) of
+        A.Object object -> case KM.lookup "dataTypes" object of
+          Just (A.Array declarations) -> do
+            let guards=[value | A.Object declaration<-foldr (:) [] declarations,
+                  Just (A.Object structure)<-[KM.lookup "structure" declaration],
+                  Just value<-[KM.lookup "indexGuards" structure]]
+            guards `shouldBe` [A.toJSON (["== f0 f1"]::[String])]
+          _ -> expectationFailure "missing published types"
+        _ -> expectationFailure "missing published program"
+
   it "uses versioned array descriptors and a full 256-bit digest" $ do
     let d = descriptor [field "amount" integerType]
         arrays (A.Object _) = False

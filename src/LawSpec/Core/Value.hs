@@ -9,7 +9,7 @@ import GHC.Generics (Generic)
 import Control.Monad (unless, zipWithM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, Binder, DataDeclaration(..), DataConstructor(..), binderId, binderType)
+import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, Binder, DataDeclaration(..), DataConstructor(..), declarationIndexGuards, binderId, binderType)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Core.EqSet as EqSet
 import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsAt, constructorPredicatesFor, lookupData, constructorFieldPath, freeExistentials, matchType, substitute)
@@ -122,9 +122,7 @@ checkValueWith evaluate registry bits expected value =
       _ -> pure ()
     collections = "lawspec.collections::type::"
     indexGuards actual tag = case actual of
-      Constructor name _ | Right declaration <- lookupData registry (Id name)
-                         , Just family <- dataIndex declaration
-                         , Just (ConstructorIndex _ guards) <- lookup (idText tag) (familyIndexConstructors family) -> guards
+      Constructor name _ | Right declaration <- lookupData registry (Id name) -> declarationIndexGuards declaration tag
       _ -> []
 
 -- | Runtimes carry a field-only existential's type as a trailing Text field,

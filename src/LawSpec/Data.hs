@@ -119,7 +119,7 @@ dataDeclarationHeaders units = do
             -- A temporary header preserves nominal identities and field
             -- positions. The completion pass replaces this slot with the
             -- actual structural type before mandatory constructor validation.
-            S.Record _ -> Right (C.scalarType "Unit")
+            S.RecordShape _ -> Right (C.scalarType "Unit")
             _ -> Left "unresolved constructor field type"
           sourceVariables = S.typeVariableNames
       unless (primitive name == Nothing && name `notElem` ["Type", "Nullable", "Optional", "List", "Maybe", "Either"])
@@ -172,7 +172,7 @@ constructorSourceEntries includeOrdinary ((u,source),header) =
           other -> other]
   where
     containsRecord ty = case S.baseType ty of
-      S.Record _ -> True
+      S.RecordShape _ -> True
       S.Applied _ a -> containsRecord a
       S.Application _ values -> any containsRecord values
       S.Arrow a b -> containsRecord a || containsRecord b
@@ -305,7 +305,7 @@ inlineFieldDefinitions context headers bits unit = structured{S.dataTypes=map de
     globals=Infer.definitionEnvironment unit
     structured=SourceRecords.mapUnitTypeReferences records unit
     records=S.mapType record (S.mapExprTypes records)
-    record (S.Record fields)=S.Record [field{S.recordFieldType=fieldType (fieldScope (take count fields)) (S.recordFieldType field)}
+    record original@(S.RecordShape fields)=S.withRecordFields original [field{S.recordFieldType=fieldType (fieldScope (take count fields)) (S.recordFieldType field)}
       | (count,field)<-zip [1..] fields]
     record other=other
     fieldScope fields=[(S.recordFieldBinding field,Just (S.recordFieldType field)) | field<-fields]
@@ -323,7 +323,7 @@ inlineFieldDefinitions context headers bits unit = structured{S.dataTypes=map de
       S.Qualified constraints inner->S.Qualified
         [S.Capability name (fieldTypeAt depth active scope value) | S.Capability name value<-constraints]
         (fieldTypeAt depth active scope inner)
-      S.Record fields->S.Record [field{S.recordFieldType=fieldTypeAt depth active
+      original@(S.RecordShape fields)->S.withRecordFields original [field{S.recordFieldType=fieldTypeAt depth active
         (fieldScope (take count fields)) (S.recordFieldType field)} | (count,field)<-zip [1..] fields]
       S.Arrow left right->S.Arrow (fieldTypeAt depth active scope left) (fieldTypeAt depth active scope right)
       S.Applied name inner->S.Applied name (fieldTypeAt depth active scope inner)
@@ -504,7 +504,7 @@ fieldDefinitionChecks original expanded =
       (S.Applied _ inner,S.Applied _ next) -> nested range inner next
       (S.Application _ values,S.Application _ next) -> concat (zipWith (nested range) values next)
       (S.Arrow a b,S.Arrow c d) -> nested range a c ++ nested range b d
-      (S.Record fields,S.Record next) -> fieldChecks range
+      (S.RecordShape fields,S.RecordShape next) -> fieldChecks range
         [(S.recordFieldBinding field,S.recordFieldType field) | field<-fields]
         [(S.recordFieldBinding field,S.recordFieldType field) | field<-next]
       _ -> []

@@ -5,6 +5,7 @@ import qualified LawSpec.Unification as U
 import Data.Aeson
 import Data.Aeson.Types (Pair)
 import Data.List (intercalate)
+import LawSpec.IndexTerm (indexGuardText)
 import qualified LawSpec.Core as C
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Core.Eval as Eval
@@ -223,7 +224,8 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
               | index <- indexes,Just predicate <- [M.lookup index predicates]]]
           | (label,indexes) <- C.structuralPredicates structure
           , let predicates = M.fromList (zip [0..] (C.constructorPredicates constructor))]
-        ] ++ ["positions" .= positions | Just positions <- [positionalItems [(C.binderName field,C.binderName field) | field <- C.constructorFields constructor]]])
+        ] ++ ["indexGuards" .= map indexGuardText guards | let guards=C.structuralIndexGuards structure,not (null guards)] ++
+        ["positions" .= positions | Just positions <- [positionalItems [(C.binderName field,C.binderName field) | field <- C.constructorFields constructor]]])
         | Just structure <- [C.dataStructural declaration],constructor <- take 1 (C.dataConstructors declaration)])
     -- Source ownership comes from parsing the declaring unit, never from an
     -- origin filename or the spelling of a specialized generated identifier.

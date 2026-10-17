@@ -8,7 +8,11 @@ import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Compile
 import LawSpec.Emit
-import LawSpec.Frontend (compileCore)
+import LawSpec.Frontend (compileCore,compileCoreCanonical)
+import qualified LawSpec.Core.Types as CoreTypes
+import qualified LawSpec.Core.Definitions as CoreDefinitions
+import qualified LawSpec.Core.Eval as CoreEval
+import LawSpec.Core.Value (Value(..))
 import LawSpec.Model hiding (Expectation)
 import LawSpec.Testing
 import LawSpec.Core.Evidence
@@ -58,7 +62,7 @@ plansFor law = do
 -- data, direct generation, and be proved for every definition result rather
 -- than trusted. ref:DEC-indexed-families-as-evidence ref:REQ-indexed-families
 test_indexedFamiliesElaborateToErasedDataWithProvedIndices :: Spec
-test_indexedFamiliesElaborateToErasedDataWithProvedIndices = indexedSpec >> proofSpec >> arithmeticSpec
+test_indexedFamiliesElaborateToErasedDataWithProvedIndices = indexedSpec >> proofSpec >> arithmeticSpec >> recordSpec
 
 indexedSpec :: Spec
 indexedSpec = describe "natural-indexed families" $ do
@@ -274,3 +278,134 @@ arithmeticSpec = describe "index arithmetic and sibling indices" $ do
       Right plan -> do
         let indexed = [g | u <- plannedUnits plan, p <- plannedProperties u, Just g <- map generatorIndex (generatorRequirements p)]
         map indexedEquations indexed `shouldSatisfy` any (any ((== ["+ f0 c1", "== f0 f1"]) . snd))
+
+-- Intrinsic record relationships cannot be erased when a constructor or a
+-- quantified input groups indexed children. ref:DEC-indexed-families-as-evidence
+-- ref:DEC-typed-core-boundary ref:DEC-total-definitions
+recordSpec :: Spec
+recordSpec = describe "indexed source records" $ do
+  let compileRecords bits body=compileCoreCanonical bits defaultGeneration [Source "indexed-records.lawspec" ("unit indexed.records\n"++body)]
+      stack=unlines
+        ["type Stack (n of type Whole) is one of"
+        ,"| Empty where n = 0"
+        ,"| Push of type record{top of type Int8 rest of type Stack m} where n = m + 1"
+        ,"end type"
+        ,"function copyStack (stack of type Stack n) -> Stack n is"
+        ,"first matching case of stack:"
+        ,"when Empty then Empty"
+        ,"when Push payload then Push record{top = payload.top, rest = copyStack payload.rest}"
+        ,"end case end function"
+        ,"function push (top of type Int8) (rest of type Stack n) -> Stack (n + 1) is Push record{top = top, rest = rest} end function"
+        ,"function pop (stack of type Stack (n + 1)) -> Stack n is first matching case of stack: when Push payload then payload.rest end case end function"
+        ,"law stackResult is definition: pop (copyStack (push 4 Empty)) must be Empty end end"]
+      tree variable reversed=unlines
+        ["type Tree (n of type Whole) is one of"
+        ,"| Leaf where n = 0"
+        ,"| Branch of type record{"++(if reversed then "right of type Tree "++variable++" left of type Tree "++variable else "left of type Tree "++variable++" right of type Tree "++variable)++"} where n = "++variable++" + 1"
+        ,"end type"]
+      makers=unlines
+        ["function branch (left of type Tree n) (right of type Tree n) -> Tree (n + 1) is Branch record{left = left, right = right} end function"
+        ,"function copyTree (tree of type Tree n) -> Tree n is"
+        ,"first matching case of tree: when Leaf then Leaf when Branch pair then Branch record{left = copyTree pair.left, right = copyTree pair.right} end case end function"
+        ,"function paired (pair of type record{left of type Tree m right of type Tree m}) -> Tree (m + 1) is Branch pair end function"
+        ,"law treeResult is definition: copyTree (paired record{left = Leaf, right = Leaf}) must be branch Leaf Leaf end end"]
+      closedProperties bits program=case (CoreTypes.makeRegistry (C.programDataDeclarations program),CoreDefinitions.prepareDefinitions program) of
+        (Right registry,Right invoke) -> mapM_ (\property -> CoreEval.evaluateValueProposition registry bits invoke [] (C.propertyBody property) `shouldBe` Right True)
+          [property | unit<-C.programUnits program,property<-C.unitProperties unit,null (C.propertyInputs property)]
+        (Left message,_) -> expectationFailure message
+        (_,Left diagnostics) -> expectationFailure (show diagnostics)
+  it "checks nested measures, recursion and dependent results through a single record payload" $
+    mapM_ (\bits -> case compileRecords bits stack of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let texts=[constructorIndexTexts index | (tag,index)<-indexTable program "Stack",tag=="Push"]
+        texts `shouldBe` [["+ p0/0.0 c1"]]
+        closedProperties bits program) [32,64]
+  it "retains shared record indices through construction, recursion and implicit record inputs" $
+    mapM_ (\bits -> case compileRecords bits (tree "m" False++makers) of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let guards=[C.structuralIndexGuards structure | declaration<-C.programDataDeclarations program,
+              Just structure<-[C.dataStructural declaration],not (null (C.structuralIndexGuards structure))]
+        guards `shouldBe` [[IndexGuard IndexEqual (IndexField 0 0) (IndexField 1 0)]]
+        closedProperties bits program) [32,64]
+  it "rejects a recursive copy that drops its indexed tail" $ do
+    let damaged=unlines [if "when Push payload then Push record{" `isInfixOf` line then
+          "when Push payload then Push record{top = payload.top, rest = Empty}" else line | line<-lines stack]
+    compileRecords 64 damaged `shouldSatisfy` either (\diagnostics -> any (\d -> code d=="total") diagnostics) (const False)
+  it "checks indexed record table inputs and refuses a mismatched row" $ do
+    let prefix=unlines
+          ["type Level (n of type Whole) is one of | Low where n = 0 | High where n = 1 end type"
+          ,"function measure (pair of type record{left of type Level m right of type Level m}) -> Whole is nOfLevel pair.left end function"
+          ,"law measured is definition: for all (pair of type record{left of type Level m right of type Level m}) => measure pair must be nOfLevel pair.right end end"
+          ,"expect measure pair = expected in table (pair,expected):"]
+        good=prefix++"row record{left = Low, right = Low}, 0 row record{left = High, right = High}, 1 end end"
+        bad=prefix++"row record{left = Low, right = High}, 0 end end"
+    mapM_ (\bits -> do
+      compileRecords bits good `shouldSatisfy` either (const False) (const True)
+      compileRecords bits bad `shouldSatisfy` either (const True) (const False)) [32,64]
+  it "retains repeated indices in one family field, including beneath a nested product" $ do
+    let family=unlines
+          ["type Matrix (rows of type Whole) (columns of type Whole) is one of"
+          ,"| Zero where rows = 0, columns = 0"
+          ,"| Skew where rows = 0, columns = 1"
+          ,"| One where rows = 1, columns = 1 end type"]
+        body nested=family++"law diagonal is definition: for all (pair of type "++
+          (if nested then "record{child of type record{matrix of type Matrix dimension dimension}}" else "record{matrix of type Matrix dimension dimension}")++
+          ") => rowsOfMatrix pair."++(if nested then "child." else "")++"matrix must be columnsOfMatrix pair."++
+          (if nested then "child." else "")++"matrix end end end"
+    mapM_ (\(bits,nested) -> do
+      let maker selected=family++"function make (ignored of type Bool) -> record{matrix of type Matrix dimension dimension} is record{matrix = "++selected++"} end function"
+      compileRecords bits (maker "Zero") `shouldSatisfy` either (const False) (const True)
+      compileRecords bits (maker "Skew") `shouldSatisfy` either (any ((=="total") . code)) (const False)
+      case compileRecords bits (body nested) of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right program -> do
+          [C.structuralIndexGuards structure | declaration<-C.programDataDeclarations program,
+            Just structure<-[C.dataStructural declaration],not (null (C.structuralIndexGuards structure))]
+            `shouldBe` [[IndexGuard IndexEqual (IndexField 0 0) (IndexField 0 1)]]
+          case (CoreTypes.makeRegistry (C.programDataDeclarations program),CoreDefinitions.prepareDefinitions program) of
+            (Right registry,Right invoke) -> do
+              let [property]=[p | u<-C.programUnits program,p<-C.unitProperties u,C.propertyName p=="diagonal"]
+                  [quantifier]=C.propertyInputs property
+                  binder=C.quantifiedBinder quantifier
+              case finiteValuesWithRegistry registry bits 16 (C.binderType binder) of
+                Right (Just values) -> do
+                  length values `shouldBe` 2
+                  mapM_ (\value -> CoreEval.evaluateValueProposition registry bits invoke [(C.binderId binder,value)] (C.propertyBody property) `shouldBe` Right True) values
+                other -> expectationFailure (show other)
+            _ -> expectationFailure "failed to prepare a repeated-index product") [(bits,nested) | bits<-[32,64],nested<-[False,True]]
+  it "gives field order and implicit index spelling no part in structural identity" $ do
+    let identity body=fmap (\program -> [C.dataId declaration | declaration<-C.programDataDeclarations program,
+          Just structure<-[C.dataStructural declaration],not (null (C.structuralIndexGuards structure))]) (compileRecords 64 body)
+    identity (tree "m" False) `shouldBe` identity (tree "dimension" True)
+    identity (tree "m" False) `shouldSatisfy` either (const False) (not . null)
+  it "rejects unchecked sibling sizes and implicit conversion from an unconstrained product" $ do
+    let wrong=tree "m" False++"function wrong (left of type Tree n) (right of type Tree k) -> Tree (n + 1) is Branch record{left = left, right = right} end function"
+        cast=tree "m" False++"function wrong (pair of type record{left of type Tree n right of type Tree k}) -> Tree 1 is Branch pair end function"
+    mapM_ (\body -> compileRecords 64 body `shouldSatisfy` either (\diagnostics -> any (\d -> "index" `isInfixOf` message d) diagnostics) (const False)) [wrong,cast]
+  it "admits explicit branch evidence for record construction and rejects the unguarded mutation" $ do
+    let prefix=tree "m" False
+        header="function checkedPair (pair of type record{left of type Tree n right of type Tree k}) -> Maybe (Tree 1) is "
+        construction="Just (Branch record{left = pair.left, right = pair.right})"
+        -- Restrict both sizes to zero so the result's explicit index also holds.
+        guarded=prefix++header++"if nOfTree pair.left = 0 and nOfTree pair.right = 0 then "++construction++" else Nothing end if end function"
+        unguarded=prefix++header++construction++" end function"
+    compileRecords 64 guarded `shouldSatisfy` either (const False) (const True)
+    compileRecords 64 unguarded `shouldSatisfy` either (const True) (const False)
+  it "filters finite quantified record inputs through their intrinsic relationship" $ do
+    let source=unlines ["type Level (n of type Whole) is one of | Low where n = 0 | High where n = 1 end type",
+          "law shared is definition: for all (pair of type record{left of type Level m right of type Level m}) => nOfLevel pair.left = nOfLevel pair.right end end end"]
+    case compileRecords 64 source of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> case (CoreTypes.makeRegistry (C.programDataDeclarations program),CoreDefinitions.prepareDefinitions program) of
+        (Right registry,Right invoke) -> do
+          let [property]=[p | u<-C.programUnits program,p<-C.unitProperties u,C.propertyName p=="shared"]
+              [quantifier]=C.propertyInputs property
+              binder=C.quantifiedBinder quantifier
+          case finiteValuesWithRegistry registry 64 16 (C.binderType binder) of
+            Right (Just values) -> do
+              length values `shouldBe` 2
+              mapM_ (\value -> CoreEval.evaluateValueProposition registry 64 invoke [(C.binderId binder,value)] (C.propertyBody property) `shouldBe` Right True) values
+            other -> expectationFailure (show other)
+        other -> expectationFailure "failed to prepare finite intrinsic record input"

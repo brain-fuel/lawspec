@@ -159,7 +159,7 @@ resolve (Named ('@':n)) = gets (M.lookup n . givens) >>= maybe (pure (Named ('@'
 resolve (Arrow a b) = Arrow <$> resolve a <*> resolve b
 resolve (Applied n t) = Applied n <$> resolve t
 resolve (Application n ts) = Application n <$> mapM resolve ts
-resolve t@(Record fields) = checkRecordFields fields >> resolveRetained t
+resolve t@(RecordShape fields) = checkRecordFields fields >> resolveRetained t
 resolve t = pure (baseType t)
 
 -- Intrinsic record restrictions belong to the product's type identity. The
@@ -190,13 +190,17 @@ unify a b = do
     (Arrow p q,Arrow r s) -> unify p r >> unify q s
     (Applied n p, Applied m q) | n == m -> unify p q
     (Application n ps, Application m qs) | n == m && length ps == length qs -> zipWithM_ unify ps qs
-    (Record fields,Record others) -> unifyRecordFields fields others
+    (RecordShape fields,RecordShape others) -> sameRecordIndices x y >> unifyRecordFields fields others
     _ -> throwC ("type mismatch: " ++ prettyType x ++ " and " ++ prettyType y)
   where bind n t | occurs n t = throwC "infinite type"
                  | otherwise = modify (\s -> s{substitutions=M.insert n t (substitutions s)})
 
 -- Closed products compare labels, stored types and restrictions. They never
 -- acquire implicit width subtyping or a conversion from a nominal product.
+sameRecordIndices :: Type -> Type -> C ()
+sameRecordIndices a b=unless (recordIndexConditions a==recordIndexConditions b)
+  (throwC "record index relationships differ")
+
 unifyRecordFields :: [RecordField] -> [RecordField] -> C ()
 unifyRecordFields left right = do
   checkRecordFields left
@@ -244,7 +248,7 @@ unifyRecordFields left right = do
         (Applied name ty,Applied other target) | name == other -> stored ty target
         (Application name types,Application other targets) | name == other && length types == length targets ->
           zipWithM_ stored types targets
-        (Record fields,Record others) -> unifyRecordFields fields others
+        (RecordShape fields,RecordShape others) -> sameRecordIndices x y >> unifyRecordFields fields others
         _ -> throwC ("record field type mismatch: " ++ prettyType x ++ " and " ++ prettyType y)
     bind name ty = do
       when (occurs name ty) (throwC "infinite type")
@@ -261,7 +265,7 @@ checkRecordFields fields = do
   mapM_ (nested . recordFieldType) fields
   where
     nested ty = case ty of
-      Record fields -> checkRecordFields fields
+      RecordShape fields -> checkRecordFields fields
       Arrow a b -> nested a >> nested b
       Applied _ t -> nested t
       Application _ ts -> mapM_ nested ts
@@ -274,7 +278,7 @@ checkRecordFields fields = do
 -- An annotation cannot introduce a separate, unchecked value postcondition.
 annotationRefinements :: Type -> Bool
 annotationRefinements ty = case ty of
-  Record _ -> False
+  RecordShape _ -> False
   Arrow a b -> annotationRefinements a || annotationRefinements b
   Applied _ t -> annotationRefinements t
   Application _ ts -> any annotationRefinements ts
@@ -516,7 +520,7 @@ checkExpr env expected e = do
   t <- resolve (baseType expected)
   bits <- gets machineBits
   case (t,e) of
-    (Record declared,RecordLit fields) -> do
+    (RecordShape declared,RecordLit fields) -> do
       checkRecordFields declared
       let labels = map fst fields
           expectedLabels = map recordFieldLabel declared
@@ -584,7 +588,7 @@ needsConversion :: Type -> Type -> Bool
 needsConversion target source = not (same target source)
   where
     same a b | a == b = True
-    same (Record _) (Record _) = True
+    same (RecordShape _) (RecordShape _) = True
     same (Applied n a) (Applied m b) = n == m && same a b
     same (Application n as) (Application m bs) = n == m && length as == length bs && and (zipWith same as bs)
     same (Arrow a b) (Arrow c d) = same a c && same b d
@@ -606,7 +610,7 @@ operandTypes env a b = do
       let contextual t e fallback = case t of
             Named n | isInexact n && contextualNumber e -> checkExpr env t e >> pure t
             Application _ _ | isLiteral e || literalApplication e -> checkExpr env t e >> pure t
-            Record _ | isLiteral e || literalApplication e -> checkExpr env t e >> pure t
+            RecordShape _ | isLiteral e || literalApplication e -> checkExpr env t e >> pure t
             Applied _ _ | isLiteral e || literalApplication e -> checkExpr env t e >> pure t
             _ -> pure fallback
       left' <- contextual right a left
@@ -637,7 +641,7 @@ hasLiteralApplication value = literalApplication value || case unlocated value o
 
 contextualStructure :: Type -> Expr -> Bool
 contextualStructure ty value = structuralLiteral value ||
-  (case ty of Applied _ _ -> True; Application _ _ -> True; Record _ -> True; _ -> False) && literalApplication value
+  (case ty of Applied _ _ -> True; Application _ _ -> True; RecordShape _ -> True; _ -> False) && literalApplication value
 
 -- Typed children share the enclosing equality's instantiation, including a
 -- polymorphic builder whose argument is an empty collection.
@@ -674,14 +678,14 @@ builtin env n args
   | "prelude." ++ n == tuplePatternCheckName, [subject,count] <- args, Just arity <- patternArity count = do
       ty <- infer env subject >>= resolve
       case baseType ty of
-        Record fields | Just values <- positionalItems [(recordFieldLabel field,recordFieldType field) | field <- fields],
+        RecordShape fields | Just values <- positionalItems [(recordFieldLabel field,recordFieldType field) | field <- fields],
             toInteger (length values) == arity -> checkRecordFields fields
         _ -> throwC "a tuple pattern requires a structural tuple of the same arity"
       pure (Named "Bool")
   | "prelude." ++ n == recordPatternCheckName, [subject] <- args = do
       ty <- infer env subject >>= resolve
       case baseType ty of
-        Record fields -> checkRecordFields fields
+        RecordShape fields -> checkRecordFields fields
         t -> do
           let parent = case t of Named name -> name; Applied name _ -> name; Application name _ -> name; _ -> ""
           known <- typesNamed parent
@@ -953,7 +957,7 @@ typedExpressionWithSchemesContext context declarations bits env e = do
       let conversion = case target of Just targetType | needsConversion targetType t -> Just targetType; _ -> Nothing
       children <- case e of
         RecordLit fields -> case t of
-          Record declared -> sequence [case [recordFieldType field | field <- declared,recordFieldLabel field == label] of
+          RecordShape declared -> sequence [case [recordFieldType field | field <- declared,recordFieldLabel field == label] of
             [ty] -> descend (Just ty) value
             _ -> throwC "unknown record value field" | (label,value) <- fields]
           _ -> throwC "record literal requires a structural record type"
@@ -1226,7 +1230,7 @@ fieldShape :: Env -> Expr -> String -> C (Type,Maybe [Type],[String])
 fieldShape env subject field = do
   ty <- infer env subject >>= resolve
   case ty of
-    Record fields -> do
+    RecordShape fields -> do
       checkRecordFields fields
       let names = map recordFieldLabel fields
       unless (field `elem` names) (throwC ("." ++ field ++ ": record has no field called " ++ field))
@@ -1466,7 +1470,7 @@ refineTypes x y = do
     (Applied n p, Applied m q) | n == m -> refineTypes p q
     (Application n ps, Application m qs) | n == m && length ps == length qs ->
       M.unions <$> zipWithM refineTypes ps qs
-    (Record fields,Record others) -> unifyRecordFields fields others >> pure M.empty
+    (RecordShape fields,RecordShape others) -> sameRecordIndices a b >> unifyRecordFields fields others >> pure M.empty
     _ -> throwC ("type mismatch: " ++ prettyType a ++ " and " ++ prettyType b)
   where
     refinable n = take 7 n /= "exists:"
@@ -1512,7 +1516,7 @@ jointStructuralContext env a b
   | literalApplication a || literalApplication b = do
       left <- infer env a >>= resolve
       right <- infer env b >>= resolve
-      let structured ty = case ty of Applied _ _ -> True; Application _ _ -> True; Record _ -> True; _ -> False
+      let structured ty = case ty of Applied _ _ -> True; Application _ _ -> True; RecordShape _ -> True; _ -> False
       if structured left && structured right then do
         (left',right') <- operationOperandTypes env "==" a b
         pure (Annotate a left',Annotate b right')
@@ -1596,7 +1600,7 @@ matchScopesWithResult env _ value branches = do
   -- Structural record patterns have already selected their sole product
   -- shape. An exhausted guarded matrix is incomplete, not an unknown type.
   case resolved of
-    Record _ | null branches -> throwC "non-exhaustive match"
+    RecordShape _ | null branches -> throwC "non-exhaustive match"
     _ -> pure ()
   let parent = case resolved of Named n -> n; Applied n _ -> n; Application n _ -> n; _ -> ""
   declarations <- typesNamed parent

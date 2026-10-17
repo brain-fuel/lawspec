@@ -8,7 +8,7 @@ module LawSpec.Core.Schema
   ) where
 
 import qualified LawSpec.Core as C
-import LawSpec.IndexTerm (FamilyIndex(..), constructorIndexTexts)
+import LawSpec.IndexTerm (FamilyIndex(..), constructorIndexTexts, indexGuardText)
 
 -- | Runtimes substitute type parameters by position, so a schema never depends on
 -- a source binder name.
@@ -82,9 +82,9 @@ dataSchemasWithContracts declarations = do
     definition declaration = DataSchema (C.idText (C.dataId declaration))
       (length (C.dataParameters declaration)) <$>
       mapM (indexed declaration <$>) (map (constructor (C.dataParameters declaration)) (C.dataConstructors declaration))
-    indexed declaration schema = case C.dataIndex declaration >>= lookup (constructorTag schema) . familyIndexConstructors of
-      Just index -> schema { constructorIndex = constructorIndexTexts index }
-      Nothing -> schema
+    indexed declaration schema = schema{constructorIndex=
+      maybe [] constructorIndexTexts (C.dataIndex declaration >>= lookup (constructorTag schema) . familyIndexConstructors) ++
+      [indexGuardText guard | Just structure <- [C.dataStructural declaration],guard <- C.structuralIndexGuards structure]}
     constructor parameters value = do
       let scope = parameters ++ C.constructorExistentials value
       fields' <- mapM (field scope) (C.constructorFields value)

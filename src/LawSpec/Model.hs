@@ -1,4 +1,5 @@
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 -- | The surface syntax tree shared by the parser, inference and expansion. It
 -- stays out of Core and the emitters, which the boundary check enforces.
 -- ref:DEC-typed-core-boundary
@@ -11,11 +12,36 @@ import LawSpec.Common
 
 import Data.Aeson hiding (Number)
 import LawSpec.Scalar
-import LawSpec.IndexTerm (FamilyIndex)
+import LawSpec.IndexTerm (FamilyIndex,IndexGuard,indexGuardText)
 import GHC.Generics (Generic)
 import Data.List (intercalate, nub)
 
-data Type = Named String | Variable String | Arrow Type Type | Applied String Type | Application String [Type] | Record [RecordField] | Refined String Type (Maybe Expr) | RefinementApp String [RefinementArgument] | Qualified [Constraint] Type | CheckedType [Expr] Type deriving (Eq, Show, Generic)
+data Type = Named String | Variable String | Arrow Type Type | Applied String Type | Application String [Type] | Record [RecordField] | Refined String Type (Maybe Expr) | RefinementApp String [RefinementArgument] | Qualified [Constraint] Type | CheckedType [Expr] Type | IndexedRecord [RecordField] RecordIndexConstraints deriving (Eq, Show, Generic)
+-- Internal elaboration metadata stays on the product type through substitution.
+-- It is never a new authored declaration or an extra stored witness field.
+newtype RecordIndexConstraints = RecordIndexConstraints [IndexGuard] deriving (Eq,Show,Generic)
+instance ToJSON RecordIndexConstraints where
+  toJSON (RecordIndexConstraints guards)=toJSON (map indexGuardText guards)
+
+typeRecordFields :: Type -> Maybe [RecordField]
+typeRecordFields (Record fields)=Just fields
+typeRecordFields (IndexedRecord fields _)=Just fields
+typeRecordFields _=Nothing
+
+pattern RecordShape :: [RecordField] -> Type
+pattern RecordShape fields <- (typeRecordFields -> Just fields)
+
+withRecordFields :: Type -> [RecordField] -> Type
+withRecordFields (IndexedRecord _ constraints) fields=IndexedRecord fields constraints
+withRecordFields _ fields=Record fields
+
+recordIndexConditions :: Type -> [IndexGuard]
+recordIndexConditions (IndexedRecord _ (RecordIndexConstraints guards))=guards
+recordIndexConditions (Refined _ ty _)=recordIndexConditions ty
+recordIndexConditions (Qualified _ ty)=recordIndexConditions ty
+recordIndexConditions (CheckedType _ ty)=recordIndexConditions ty
+recordIndexConditions _=[]
+
 -- A field's public label and lexical binder start with the same spelling.
 -- Substitution can rename the binder without renaming the property. Fields
 -- retain declaration order: their binders scope over their own restrictions
@@ -389,9 +415,11 @@ prettyType (Named n) = n
 prettyType (Variable n) = reverse (takeWhile (/= ':') (reverse n))
 prettyType (Applied n t) = n ++ " (" ++ prettyType t ++ ")"
 prettyType (Application n ts) = n ++ concatMap (\t -> " (" ++ prettyType t ++ ")") ts
-prettyType (Record fields) | Just values <- positionalItems [(recordFieldLabel field,recordFieldType field) | field <- fields] =
+prettyType (IndexedRecord fields (RecordIndexConstraints guards)) =
+  prettyType (Record fields) ++ " with index constraints " ++ intercalate ", " (map indexGuardText guards)
+prettyType (RecordShape fields) | Just values <- positionalItems [(recordFieldLabel field,recordFieldType field) | field <- fields] =
   "(" ++ intercalate ", " (map prettyType values) ++ ")"
-prettyType (Record fields) = "record{" ++ intercalate ", "
+prettyType (RecordShape fields) = "record{" ++ intercalate ", "
   [recordFieldLabel field ++ " :: " ++ prettyType (recordFieldType field) | field <- fields] ++ "}"
 prettyType (Arrow a b) = atom a ++ " -> " ++ prettyType b where
   atom t@(Arrow _ _) = "(" ++ prettyType t ++ ")"
@@ -547,7 +575,7 @@ baseType (Applied n t) = Applied n (baseType t)
 baseType (Application n ts) = Application n (map baseType ts)
 -- Field restrictions form part of a structural product's identity and
 -- constructor contract. Erasing an enclosing refinement must retain them.
-baseType t@(Record _) = t
+baseType t@(RecordShape _) = t
 baseType t = t
 
 -- | Predicates are expressions over values; aliases never introduce storage wrappers.
@@ -613,7 +641,7 @@ typeConstraints (CheckedType _ t) = typeConstraints t
 typeConstraints (Refined _ t _) = typeConstraints t
 typeConstraints (Applied _ t) = typeConstraints t
 typeConstraints (Application _ ts) = concatMap typeConstraints ts
-typeConstraints (Record fields) = concatMap (typeConstraints . recordFieldType) fields
+typeConstraints (RecordShape fields) = concatMap (typeConstraints . recordFieldType) fields
 typeConstraints (Arrow a b) = typeConstraints a ++ typeConstraints b
 typeConstraints _ = []
 
@@ -622,7 +650,7 @@ mapType f g = walk where
   walk (Arrow a b) = f (Arrow (walk a) (walk b))
   walk (Applied n t) = f (Applied n (walk t))
   walk (Application n ts) = f (Application n (map walk ts))
-  walk (Record fields) = f (Record [field{recordFieldType=walk (recordFieldType field)} | field <- fields])
+  walk record@(RecordShape fields) = f (withRecordFields record [field{recordFieldType=walk (recordFieldType field)} | field <- fields])
   walk (Refined n t p) = f (Refined n (walk t) (g <$> p))
   walk (CheckedType ps t) = f (CheckedType (map g ps) (walk t))
   walk (Qualified cs t) = f (Qualified [Capability n (walk a) | Capability n a <- cs] (walk t))
@@ -679,7 +707,7 @@ typeValueVars ty = case ty of
   RefinementApp _ arguments -> concat [case argument of
     TypeArgument t -> typeValueVars t
     ValueArgument e -> exprVars e | argument <- arguments]
-  Record fields -> fieldsFree [] fields
+  RecordShape fields -> fieldsFree [] fields
   _ -> []
   where
     fieldsFree _ [] = []
@@ -694,7 +722,7 @@ replaceTypeValueVars env ty = case ty of
   Arrow a b -> Arrow (go a) (go b)
   Applied name a -> Applied name (go a)
   Application name arguments -> Application name (map go arguments)
-  Record fields -> Record (scopeRecordFields [] env replaceTypeValueVars fields)
+  record@(RecordShape fields) -> withRecordFields record (scopeRecordFields [] env replaceTypeValueVars fields)
   Refined binder inner predicate -> case predicate of
     Nothing -> Refined binder (go inner) Nothing
     Just body -> let (name,body') = replaceBoundExpr env binder body
@@ -769,7 +797,7 @@ typeVariableNames ty = nub $ case ty of
   Arrow a b -> typeVariableNames a ++ typeVariableNames b
   Applied _ a -> typeVariableNames a
   Application _ arguments -> concatMap typeVariableNames arguments
-  Record fields -> concatMap (typeVariableNames . recordFieldType) fields
+  RecordShape fields -> concatMap (typeVariableNames . recordFieldType) fields
   Refined _ inner predicate -> typeVariableNames inner ++ maybe [] expressionVariables predicate
   Qualified constraints inner -> typeVariableNames inner ++ concat [typeVariableNames t | Capability _ t <- constraints]
   CheckedType predicates inner -> typeVariableNames inner ++ concatMap expressionVariables predicates

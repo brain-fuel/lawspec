@@ -15,7 +15,7 @@ function schema(path = 'p0/0/0.0') {
   return new s.Schema([
     d(chain, [c('Stop', [], ['c0','c10']), c('Next', [f('tail', chain)], ['+ f0 c1','+ f0.1 c1'])]),
     d(inner, [c('Inner', [f('rest', chain)])]),
-    d(outer, [c('Outer', [f('child', inner),f('sibling', chain)])]),
+    d(outer, [c('Outer', [f('child', inner),f('sibling', chain)], ['== p0/0.0 f1'])]),
     d(wrapper, [c('Wrap', [f('payload', outer)], [path, 'p0/0/0.1', '== p0/0/0.1 + p0/1.0 c10', `== ${path} p0/1.0`, `>= ${path} c1`])]),
   ], [], Object.fromEntries(['nothing','just','left','right','presence'].map(name => [name, class {}])));
 }
@@ -27,6 +27,9 @@ test('nested structural index guards validate on both machine widths', () => {
     const checked = schema();
     const two = next(next(stop));
     const good = wrapped(two,two);
+    const product = (left, right) => construct('Outer', [construct('Inner', [left]), right]);
+    assert.deepEqual(checked.validate(outer, product(two,two), bits), product(two,two));
+    assert.throws(() => checked.validate(outer, product(two,stop), bits), s.RefinementViolation);
     assert.deepEqual(checked.validate(wrapper, good, bits), good);
     assert.throws(() => checked.validate(wrapper, wrapped(two,next(stop)), bits), s.RefinementViolation);
     assert.throws(() => checked.validate(wrapper, wrapped(stop,stop), bits), s.RefinementViolation);

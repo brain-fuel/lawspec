@@ -10,7 +10,7 @@ let definition name constructors : S.DataDefinition = { Name=name; Parameters=0;
 let definitions = [
     definition "Chain" [ctor "Stop" [] ["c0";"c10"]; ctor "Next" ["tail",chain] ["+ f0 c1";"+ f0.1 c1"]]
     definition "lawspec::structural::record::inner" [ctor "Inner" ["rest",chain] []]
-    definition "lawspec::structural::record::outer" [ctor "Outer" ["child",inner;"sibling",chain] []]
+    definition "lawspec::structural::record::outer" [ctor "Outer" ["child",inner;"sibling",chain] ["== p0/0.0 f1"]]
     definition "Wrapper" [ctor "Wrap" ["payload",outer] ["p0/0/0.0";"p0/0/0.1";"== p0/0/0.1 + p0/1.0 c10";"== p0/0/0.0 p0/1.0";">= p0/0/0.0 c1"]]
 ]
 let stop = Data("Stop", [])
@@ -21,6 +21,12 @@ let wrapped left right = Data("Wrap", [Data("Outer", [Data("Inner", [left]); rig
 let main _ =
     for bits in [32;64] do
         let schema = S.create definitions [] bits
+        let product left right = Data("Outer", [Data("Inner", [left]);right])
+        S.validate (product two two) outer schema |> ignore
+        let mutable invalidProduct = false
+        try S.validate (product two stop) outer schema |> ignore
+        with :? LawSpecException as error -> invalidProduct <- error.Code = "RefinementViolation"
+        if not invalidProduct then failwith "accepted invalid intrinsic record guard without parent"
         let good = S.validate (wrapped two two) wrapper schema
         if S.index good wrapper 0 schema <> bigint 2 || S.index good wrapper 1 schema <> bigint 12 then failwith "wrong index path"
         for bad in [wrapped two one; wrapped stop stop] do

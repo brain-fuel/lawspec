@@ -122,7 +122,7 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
 
   describe "indexed projections through structural products" $ do
     let measure=Id "measure"; input=Id "input"; tail=Id "tail"
-        stop=Id "Stop"; next=Id "Next"; product=Id "Record"; wrapper=Id "Wrap"
+        stop=Id "Stop"; next=Id "Next"; product=Id "lawspec::structural::record::proof-fixture::Record"; wrapper=Id "Wrap"
         payload=Id "payload"; result=Id "result"; use=Id "use"
         n=T.Literal . SInteger "Integer"
         measured value=T.Call measure [value]
@@ -151,6 +151,52 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
           post=T.ProofContract use result [] [same (T.Variable result)
             (right (T.Field wrapper 0 (Nothing,Nothing) (T.Variable input)))]
       check [post] body `shouldBe` Right ()
+    it "uses intrinsic index facts for projections without an explicit match" $ do
+      let first=Id "first"; second=Id "second"
+          invariant=T.ProofConstructorContract product [first,second] []
+            [(IndexGuard IndexEqual (IndexField 0 0) (IndexField 1 0),
+              [(([0],0),("nOfChain",[])),(([1],0),("nOfChain",[]))])]
+          post=T.ProofContract use result [] [same (T.Variable result) (right (T.Variable input))]
+          audit constraints=T.auditWithConstructorContracts [invariant] constraints [count,function (left (T.Variable input))]
+      audit [post] `shouldBe` Right ()
+      audit [post{T.postconditions=[same (T.Variable result) (T.ExactArithmetic Add (n 1) (right (T.Variable input)))]}]
+        `shouldSatisfy` isLeft
+    it "requires checked measures before constructing an intrinsically constrained product" $ do
+      let tag=Id "lawspec::structural::record::fixture::Record"
+          first=Id "first";second=Id "second"
+          invariant=T.ProofConstructorContract tag [first,second] []
+            [(IndexGuard IndexEqual (IndexField 0 0) (IndexField 1 0),
+              [(([0],0),("nOfChain",[])),(([1],0),("nOfChain",[]))])]
+          body=T.Construct tag [one,one]
+      T.auditWithConstructorContracts [invariant] [] [count,function body] `shouldBe` Right ()
+      T.auditWithConstructorContracts [invariant] [] [function body] `shouldSatisfy` isLeft
+      T.auditWithConstructorContracts [invariant] [] [count,function (T.Construct tag [one,zero])] `shouldSatisfy` isLeft
+    it "uses both executed conjuncts and does not borrow predicates from skipped paths" $ do
+      let tag=Id "lawspec::structural::record::boolean-path::Record"
+          first=Id "first"; second=Id "second"
+          invariant=T.ProofConstructorContract tag [first,second] []
+            [(IndexGuard IndexEqual (IndexField 0 0) (IndexField 1 0),
+              [(([0],0),("nOfChain",[])),(([1],0),("nOfChain",[]))])]
+          selected=T.Construct tag [project 0 (T.Variable input),project 1 (T.Variable input)]
+          safe=T.Construct tag [zero,zero]
+          condition op=T.Logical op (same (left (T.Variable input)) (n 0)) (same (right (T.Variable input)) (n 0))
+          audit body=T.auditWithConstructorContracts [invariant] [] [count,function body]
+      audit (T.Conditional (condition And) selected safe) `shouldBe` Right ()
+      audit (T.Conditional (T.Negated (condition And)) safe selected) `shouldBe` Right ()
+      audit (T.Conditional (condition Or) selected safe) `shouldSatisfy` isLeft
+      audit (T.Conditional (condition And) safe selected) `shouldSatisfy` isLeft
+    it "retains call contracts through strict product fields without skipping their prefix" $ do
+      let echo=Id "echo"; returned=Id "returned"
+          echoDefinition=T.ProofDefinition echo "echo" Nothing [input] (T.Variable input) []
+          echoContract=T.ProofContract echo returned [] [same (measured (T.Variable returned)) (measured (T.Variable input))]
+          call value=T.Call echo [value]
+          payload a b=T.Match (call a) [([],T.Construct product [call a,call b])]
+          body a b=T.Construct wrapper [payload a b]
+          audit term=T.auditWithConstructorContracts [invariant] [echoContract] [count,echoDefinition,function term]
+      audit (body one one) `shouldBe` Right ()
+      audit (body one zero) `shouldSatisfy` isLeft
+      audit (T.Construct wrapper [T.Match (T.Division False Quotient (n 1) (n 0)) [([],T.Construct product [one,one])]])
+        `shouldSatisfy` isLeft
     it "retains structural descent through a record projection for checked recursion" $ do
       let copy=Id "copy"
           definition=T.ProofDefinition copy "copy" Nothing [input]

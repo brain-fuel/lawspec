@@ -9,10 +9,11 @@ module LawSpec.Indexed
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
-import Data.List (elemIndex, intercalate, nub, (\\))
+import Data.List (elemIndex, intercalate, nub, nubBy, sortOn, (\\))
 import qualified Data.Map.Strict as M
 import LawSpec.IndexTerm
 import LawSpec.Model
+import LawSpec.Core.RecordIdentity (normalizeRecordIndexGuards)
 
 -- | A constructor of an indexed family with the equations its index satisfies.
 -- ref:DEC-indexed-families-as-evidence
@@ -72,8 +73,9 @@ elaborateFamiliesWith imported families u = do
       bind = bindImplicitIndices table known
   userDefinitions <- forM (map (completeMatches table) (functionDefinitions u)) $ \d -> do
     (arguments, substitution) <- bindBinders table known (functionArguments d)
+    result <- eraseResultRecords table (known ++ map fst arguments) (substituteIndices substitution (functionResult d))
     pure d { functionArguments = arguments
-           , functionResult = substituteIndices substitution (functionResult d)
+           , functionResult = result
            , functionBody = replaceExprVars substitution (functionBody d) }
   let definitionNames = map functionName (functionDefinitions u)
   userFunctions <- forM (functions u) $ \(n, t) -> case lookup n
@@ -115,7 +117,9 @@ applied n [a] = Applied n a
 applied n args = Application n args
 
 -- | A field of indexed type binds each variable index argument to that field.
-data Binding = Binding { boundField :: String, boundFamily :: String, boundIndex :: String }
+data Binding = Binding
+  { boundField :: String, boundPath :: [(Int,String)]
+  , boundFamily :: String, boundIndex :: String }
 
 familyReference :: M.Map String IndexedFamily -> Type -> Maybe (IndexedFamily, [RefinementArgument])
 familyReference table (RefinementApp n args) =
@@ -154,17 +158,7 @@ constructorBindings :: M.Map String IndexedFamily -> IndexedFamily -> IndexedCon
 constructorBindings table f c = do
   let context = familyName f ++ "." ++ dataConstructorName (indexedDeclaration c)
   pairs <- fmap concat $ forM (dataConstructorFields (indexedDeclaration c)) $ \(field, ty) ->
-    case familyReference table ty of
-      Nothing -> do
-        when (mentionsFamily table ty)
-          (Left (context ++ ": field " ++ field ++ " nests an indexed family; bind indices through a direct field"))
-        pure []
-      Just (g, args) -> fmap concat $ forM (zip (familyParameters g) args) $ \((parameter, isType), argument) ->
-        case (isType, argument) of
-          (False, ValueArgument e) -> case unlocated e of
-            Var v -> pure [(v, Binding field (familyName g) parameter)]
-            _ -> Left (context ++ ": field " ++ field ++ " must use an index variable, not an expression")
-          _ -> pure []
+    collectIndexedBindings table context field [] ty
   -- A variable bound by several fields is a sibling equality: the measure
   -- reads the first binder, and the others are guarded equal to it.
   let variables = nub (map fst pairs)
@@ -172,10 +166,59 @@ constructorBindings table f c = do
     (Left (context ++ ": index variable " ++ v ++ " shadows a family parameter"))
   pure pairs
 
+-- Positions follow canonical labels; labels separately retain source-level
+-- projection spelling. This never changes record value evaluation order.
+collectIndexedBindings :: M.Map String IndexedFamily -> String -> String -> [(Int,String)] -> Type
+  -> Either String [(String,Binding)]
+collectIndexedBindings table context field path ty = case familyReference table ty of
+  Just (g,args) -> fmap concat $ forM (zip (familyParameters g) args) $ \((parameter,isType),argument) ->
+    case (isType,argument) of
+      (False,ValueArgument e) -> case unlocated e of
+        Var v -> pure [(v,Binding field path (familyName g) parameter)]
+        _ -> Left (context ++ ": field " ++ field ++ " must use an index variable, not an expression")
+      _ -> pure []
+  Nothing -> case ty of
+    RecordShape fields -> do
+      pairs <- fmap concat $ forM (zip [0..] (sortOn recordFieldLabel fields)) $ \(position,child) ->
+        collectIndexedBindings table context field (path ++ [(position,recordFieldLabel child)]) (recordFieldType child)
+      forM_ (nub (map fst pairs)) $ \v -> when (v `elem` map recordFieldBinding fields)
+        (Left (context ++ ": record index " ++ v ++ " depends on a stored value; scalar-dependent record indices are not yet supported"))
+      pure pairs
+    _ -> do
+      when (mentionsFamily table ty)
+        (Left (context ++ ": field " ++ field ++ " nests an indexed family; bind indices through direct fields or structural records"))
+      pure []
+
+recordBindings :: M.Map String IndexedFamily -> String -> Type -> Either String [(String,Binding)]
+recordBindings table context = collectIndexedBindings table context "$record" []
+
+bindingReference :: M.Map String IndexedFamily -> [Int] -> Binding -> Maybe IndexTerm
+bindingReference table prefix binding = do
+  family <- M.lookup (boundFamily binding) table
+  index <- elemIndex (boundIndex binding) (indexParameters family)
+  case prefix ++ map fst (boundPath binding) of
+    [position] -> Just (IndexField position index)
+    [] -> Nothing
+    path -> Just (IndexPath path index)
+
+bindingValue :: Expr -> Binding -> Expr
+bindingValue root binding = foldl (\value (_,label) -> Apply (Var (fieldAccessPrefix ++ label)) value) root (boundPath binding)
+
+bindingGuards :: [(String,Binding)] -> (Binding -> Maybe IndexTerm) -> Either String [IndexGuard]
+bindingGuards bindings reference = fmap concat $ forM (nub (map fst bindings)) $ \v ->
+  case [binding | (name,binding) <- bindings,name==v] of
+    first:rest -> do
+      references <- maybe (Left ("unresolved index field for " ++ v)) Right (mapM reference (first:rest))
+      case references of
+        selected:others -> pure [IndexGuard IndexEqual selected other | other <- others]
+        [] -> pure []
+    [] -> pure []
+
 mentionsFamily :: M.Map String IndexedFamily -> Type -> Bool
 mentionsFamily table ty = case ty of
   RefinementApp _ args -> maybe False (const True) (familyReference table ty)
     || or [mentionsFamily table t | TypeArgument t <- args]
+  RecordShape fields -> any (mentionsFamily table . recordFieldType) fields
   Applied _ a -> mentionsFamily table a
   Application _ args -> any (mentionsFamily table) args
   Arrow a b -> mentionsFamily table a || mentionsFamily table b
@@ -227,48 +270,69 @@ familyIndex table f = do
         fields = map fst (dataConstructorFields d)
         reference b = do
           position <- elemIndex (boundField b) fields
-          family <- M.lookup (boundFamily b) table
-          index <- elemIndex (boundIndex b) (indexParameters family)
-          pure (IndexField position index)
+          bindingReference table [position] b
         term e = case indexShape e of
           IndexLiteral n -> Right (IndexConstant n)
           IndexVariable v -> maybe (Left ("unbound index variable " ++ v)) Right (lookup v bindings >>= reference)
           IndexBinary op a b -> IndexApply op <$> term a <*> term b
           IndexOther -> Left "invalid index expression"
     terms <- forM (indexParameters f) $ \index -> term (maybe (Number 0) id (lookup index (indexedEquations c)))
-    siblings <- fmap concat $ forM (nub (map fst bindings)) $ \v ->
-      case [b | (v', b) <- bindings, v' == v] of
-        first : rest -> do
-          references <- maybe (Left ("unresolved index field for " ++ v)) Right (mapM reference (first : rest))
-          case references of
-            r : rs -> pure [IndexGuard IndexEqual r other | other <- rs]
-            [] -> pure []
-        [] -> pure []
+    siblings <- bindingGuards bindings reference
     pure (dataConstructorName d, ConstructorIndex terms (siblings ++ concatMap subtractionGuards terms))
   pure (FamilyIndex (indexParameters f) constructors)
 
-eraseType :: M.Map String IndexedFamily -> Type -> Type
+eraseType :: M.Map String IndexedFamily -> Type -> Either String Type
 eraseType table ty = case familyReference table ty of
-  Just (g, args) -> applied (familyName g)
-    [eraseType table t | ((_, True), TypeArgument t) <- zip (familyParameters g) args]
+  Just (g,args) -> applied (familyName g) <$>
+    mapM (eraseType table) [value | ((_,True),TypeArgument value) <- zip (familyParameters g) args]
   Nothing -> case ty of
-    Applied n a -> Applied n (eraseType table a)
-    Application n args -> Application n (map (eraseType table) args)
-    Arrow a b -> Arrow (eraseType table a) (eraseType table b)
-    Refined n a p -> Refined n (eraseType table a) p
-    Qualified cs a -> Qualified cs (eraseType table a)
-    CheckedType ps a -> CheckedType ps (eraseType table a)
-    RefinementApp n args -> RefinementApp n
-      [case a of TypeArgument t -> TypeArgument (eraseType table t); _ -> a | a <- args]
-    _ -> ty
+    RecordShape fields -> do
+      bindings <- recordBindings table "record type" ty
+      -- A nested product owns its internal relationships already. A direct
+      -- family field can itself bind one variable to several indices; those
+      -- equalities still belong to this product and must not be collapsed.
+      let sameNestedChild (variable,a) (other,b) = variable==other &&
+            case (boundPath a,boundPath b) of
+              ((first,_):_:_,(second,_):_:_) -> first==second
+              _ -> False
+          representatives=nubBy sameNestedChild bindings
+      guards <- bindingGuards representatives (bindingReference table [])
+      fields' <- mapM (\field -> do value <- eraseType table (recordFieldType field);pure field{recordFieldType=value}) fields
+      let constraints=normalizeRecordIndexGuards (recordIndexConditions ty ++ guards)
+      pure (if null constraints then Record fields' else IndexedRecord fields' (RecordIndexConstraints constraints))
+    Applied n a -> Applied n <$> eraseType table a
+    Application n args -> Application n <$> mapM (eraseType table) args
+    Arrow a b -> Arrow <$> eraseType table a <*> eraseType table b
+    Refined n a p -> (\value -> Refined n value p) <$> eraseType table a
+    Qualified cs a -> Qualified <$> mapM (\(Capability name value) -> Capability name <$> eraseType table value) cs <*> eraseType table a
+    CheckedType ps a -> CheckedType ps <$> eraseType table a
+    RefinementApp n args -> RefinementApp n <$> mapM (\argument -> case argument of
+      TypeArgument value -> TypeArgument <$> eraseType table value
+      other -> pure other) args
+    _ -> pure ty
+
+-- Result-local implicit indices describe the product itself. An index referring
+-- to an enclosing value must not be erased into an independent local index.
+eraseResultRecords :: M.Map String IndexedFamily -> [String] -> Type -> Either String Type
+eraseResultRecords table scope ty = case ty of
+  RecordShape _ -> do
+    bindings <- recordBindings table "record result" ty
+    forM_ (nub (map fst bindings)) $ \v -> when (v `elem` scope)
+      (Left ("record result index " ++ v ++ " depends on an enclosing value; this dependent record result is not yet supported"))
+    eraseType table ty
+  Refined name inner predicate -> (\value -> Refined name value predicate) <$> eraseResultRecords table scope inner
+  Qualified constraints inner -> Qualified constraints <$> eraseResultRecords table scope inner
+  CheckedType predicates inner -> CheckedType predicates <$> eraseResultRecords table scope inner
+  _ -> pure ty
 
 erasedDeclaration :: M.Map String IndexedFamily -> IndexedFamily -> Either String DataTypeDeclaration
 erasedDeclaration table f = do
   index <- familyIndex table f
-  pure $ DataTypeDeclaration (familyName f) (typeParameters f)
-    [ d { dataConstructorFields = [(field, eraseType table ty) | (field, ty) <- dataConstructorFields d] }
-    | c <- familyConstructors f, let d = indexedDeclaration c ]
-    (familySpan f) (Just index)
+  constructors <- forM (familyConstructors f) $ \constructor -> do
+    let declaration=indexedDeclaration constructor
+    fields <- mapM (\(name,ty) -> (,) name <$> eraseType table ty) (dataConstructorFields declaration)
+    pure declaration{dataConstructorFields=fields}
+  pure (DataTypeDeclaration (familyName f) (typeParameters f) constructors (familySpan f) (Just index))
 
 -- | The measure recomputes an index from the constructor equations, replacing
 -- each index variable with the measure of the field that binds it.
@@ -280,7 +344,7 @@ familyMeasures table f = forM (indexParameters f) $ \index -> do
         fields = map fst (dataConstructorFields d)
         equation = maybe (Number 0) id (lookup index (indexedEquations c))
         measured v = case lookup v bindings of
-          Just b -> Apply (Var (measureName (boundFamily b) (boundIndex b))) (Var (boundField b))
+          Just b -> Apply (Var (measureName (boundFamily b) (boundIndex b))) (bindingValue (Var (boundField b)) b)
           Nothing -> Var v
     pure (MatchBranch (dataConstructorName d) fields (replaceIndex measured equation))
   let allFields = concatMap (map fst . dataConstructorFields . indexedDeclaration) (familyConstructors f)
@@ -321,7 +385,8 @@ bindImplicitIndices table known ty = do
                     _ | t' /= original -> Refined n t' Nothing
                       | otherwise -> original
                 | ((n, t'), original) <- zip bound arguments ]
-      finalResult = substituteIndices substitution result
+      substitutedResult = substituteIndices substitution result
+  finalResult <- eraseResultRecords table (known ++ map fst bound) substitutedResult
   checkClosed table (known ++ map fst bound) finalResult
   pure (foldr Arrow finalResult rebuilt)
   where
@@ -372,6 +437,19 @@ implicitAt table scope binder ty = case ty of
   Refined n inner p -> do
     (inner', fresh) <- implicitAt table scope binder inner
     pure (Refined n inner' p, fresh)
+  record@(RecordShape _) -> do
+    bindings <- recordBindings table ("binder " ++ binder) record
+    forM_ (nub (map fst bindings)) $ \v -> when (v `elem` (binder:scope))
+      (Left ("record index " ++ v ++ " depends on an enclosing value; this dependent record input is not yet supported"))
+    erased <- eraseType table record
+    pure (erased,[(v,Apply (Var (measureName (boundFamily binding) (boundIndex binding)))
+      (bindingValue (Var binder) binding)) | v<-nub (map fst bindings),Just binding<-[lookup v bindings]])
+  Qualified constraints inner -> do
+    (inner',fresh) <- implicitAt table scope binder inner
+    pure (Qualified constraints inner',fresh)
+  CheckedType predicates inner -> do
+    (inner',fresh) <- implicitAt table scope binder inner
+    pure (CheckedType predicates inner',fresh)
   _ -> case familyReference table ty of
     Nothing -> pure (ty, [])
     Just (f, args) -> do
@@ -410,7 +488,7 @@ implicitAt table scope binder ty = case ty of
         then Left ("binder " ++ binder ++ " mixes implicit and explicit indices of " ++ familyName f)
         else do
           let conditions = concat [c | (_, _, c) <- introduces]
-              erased = eraseType table ty
+          erased <- eraseType table ty
           pure (if null conditions then erased else Refined binder erased (Just (foldr1 (Binary "&&") conditions)),
             [(v, e) | (v, e, _) <- introduces])
 
@@ -430,6 +508,7 @@ substituteIndices substitution ty = case ty of
                TypeArgument t -> TypeArgument (substituteIndices substitution t) | a <- args]
   Refined n t p -> Refined n (substituteIndices substitution t)
     (replaceExprVars (filter ((/= n) . fst) substitution) <$> p)
+  record@(RecordShape fields) -> withRecordFields record (scopeRecordFields [] substitution substituteIndices fields)
   Applied n a -> Applied n (substituteIndices substitution a)
   Application n args -> Application n (map (substituteIndices substitution) args)
   Arrow a b -> Arrow (substituteIndices substitution a) (substituteIndices substitution b)
@@ -442,39 +521,44 @@ substituteIndices substitution ty = case ty of
 -- stack. Each one left out gets a branch that is unreachable, and the
 -- totality audit must prove it is never reached (or names the constructor).
 completeMatches :: M.Map String IndexedFamily -> FunctionDefinition -> FunctionDefinition
-completeMatches table d = d { functionBody = go (functionBody d) }
+completeMatches table d = d { functionBody = go families (functionBody d) }
   where
     families = [(name, f) | (name, ty) <- functionArguments d, Just f <- [familyOf ty]]
     familyOf ty = case ty of
       Applied n _ -> M.lookup n table
       Application n _ -> M.lookup n table
       Named n -> M.lookup n table
-      -- A family applied to index terms is its index refinement, F@index.
       RefinementApp n _ -> M.lookup (takeWhile (/= '@') n) table
       Refined _ inner _ -> familyOf inner
       _ -> Nothing
-    scrutinee e = case e of
-      Located _ inner -> scrutinee inner
-      Var v -> lookup v families
+    scrutinee known e = case unlocated e of
+      Var v -> lookup v known
       _ -> Nothing
-    go e = case e of
-      Located range inner -> Located range (go inner)
+    without names = filter ((`notElem` names) . fst)
+    go known e = case e of
+      Located range inner -> Located range (go known inner)
+      -- Canonical cases bind their selected value once as `it`. This is a
+      -- lexical let, not a match on the family's constructors. Preserve its
+      -- alias and shadowing when completing the actual case inside it.
+      MatchExpr value [MatchBranch tag [name] body] | tag==letTag ->
+        let local=without [name] known ++ [(name,family) | Just family<-[scrutinee known value]]
+        in MatchExpr (go known value) [MatchBranch tag [name] (go local body)]
       MatchExpr value branches ->
-        let branches' = [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
-        in case scrutinee value of
+        let branches' = [MatchBranch tag names (go (without names known) body) | MatchBranch tag names body <- branches]
+        in case scrutinee known value of
           Just f ->
             let tags = [tag | MatchBranch tag _ _ <- branches]
-                missing = [c | c <- map indexedDeclaration (familyConstructors f), dataConstructorName c `notElem` tags]
+                missing = [c | "_" `notElem` tags,c <- map indexedDeclaration (familyConstructors f),dataConstructorName c `notElem` tags]
                 absent c = MatchBranch (dataConstructorName c)
                   ["absent" ++ show i | (i, _) <- zip [0 :: Int ..] (dataConstructorFields c)]
                   (Apply (Var "prelude.unreachable") (StringLit (dataConstructorName c)))
-            in MatchExpr (go value) (branches' ++ map absent missing)
-          Nothing -> MatchExpr (go value) branches'
-      Apply f x -> Apply (go f) (go x)
-      Binary op a b -> Binary op (go a) (go b)
-      Unary op a -> Unary op (go a)
-      ConstructLit n fields -> ConstructLit n (map go fields)
-      RecordLit fields -> RecordLit [(label,go value) | (label,value) <- fields]
-      ListLit xs -> ListLit (map go xs)
-      Annotate inner t -> Annotate (go inner) t
+            in MatchExpr (go known value) (branches' ++ map absent missing)
+          Nothing -> MatchExpr (go known value) branches'
+      Apply f x -> Apply (go known f) (go known x)
+      Binary op a b -> Binary op (go known a) (go known b)
+      Unary op a -> Unary op (go known a)
+      ConstructLit n fields -> ConstructLit n (map (go known) fields)
+      RecordLit fields -> RecordLit [(label,go known value) | (label,value) <- fields]
+      ListLit xs -> ListLit (map (go known) xs)
+      Annotate inner t -> Annotate (go known inner) t
       other -> other

@@ -205,7 +205,7 @@ validType :: Type -> Bool
 validType (Named n) = maybe False (const True) (primitive n)
 validType (Applied n t) = n `elem` ["Nullable","Optional","List","Maybe"] && scalar t
 validType (Application "Either" [a,b]) = scalar a && scalar b
-validType (Record fields) = all (validType . recordFieldType) fields
+validType (RecordShape fields) = all (validType . recordFieldType) fields
 validType (Variable _) = True
 validType (Arrow a b) = validType a && validType b
 validType (Refined _ t _) = validType t
@@ -700,7 +700,7 @@ normalizeLiteralWithContext sourceTypes dataTypes bits ty (SetLiteral builder it
     SetLiteral builder <$> mapM (normalizeLiteralWithContext sourceTypes dataTypes bits element) items
   _ -> Left "a set literal requires the canonical Set type"
 normalizeLiteralWithContext sourceTypes dataTypes bits t (RecordLiteral fields) = case baseType t of
-  Record expected -> do
+  RecordShape expected -> do
     let labels=map fst fields
         declared=map recordFieldLabel expected
     unless (length labels == length (nub labels)) (Left "duplicate record literal field")
@@ -836,7 +836,7 @@ concreteValue check t = valueType check t && concrete (baseType t)
     concrete (Named ('@':_)) = False
     concrete (Applied _ a) = concrete a
     concrete (Application _ args) = all concrete args
-    concrete (Record fields) = all (concrete . recordFieldType) fields
+    concrete (RecordShape fields) = all (concrete . recordFieldType) fields
     concrete (Arrow a b) = concrete a && concrete b
     concrete _ = True
 
@@ -924,7 +924,7 @@ inferDefinitionTemplates sourceTypes declarations bits unit = do
       Arrow a b -> variables a ++ variables b
       Applied _ a -> variables a
       Application _ arguments -> concatMap variables arguments
-      Record fields -> concatMap (variables . recordFieldType) fields
+      RecordShape fields -> concatMap (variables . recordFieldType) fields
       _ -> []
     annotations expression = case expression of
       Located _ body -> annotations body

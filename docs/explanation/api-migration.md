@@ -205,20 +205,57 @@ index guards. The proof projection retains the intermediate constructor
 identities, and checked product projections preserve pure-call facts without
 skipping strict evaluation or termination admission.
 
-This is infrastructure for grouped indexed payloads. Source elaboration and
-migration remain unavailable for that case until record descriptors preserve
-all dependent relationships. The direct index generator does not receive nested
-paths; those values use ordinary generation with the existing checked candidate
-and shrinking filters. A bounded search does not become complete verification
-because a path can be evaluated.
+Source elaboration now preserves local shared natural indices in structural
+products. For example, `record{left of type Tree m right of type Tree m}`
+retains the relationship between the two child indices. The constrained
+product uses a `lawspec.record.v2` descriptor and exposes `structure.indexGuards`
+in schema 5. Unconstrained products retain their v1 descriptors and identities.
+A constrained product's descriptor includes normalized index relationships;
+field order, implicit index spelling and symmetric equality spelling do not
+change its identity. A repeated index in one field, such as
+`record{matrix of type Matrix n n}`, retains both selectors; a nested product
+owns its internal relationship without adding duplicate outer constraints.
+Registry admission resolves the paths and leaf indices.
+Undefined natural subtraction, division and powers cannot establish a vacuous
+relationship.
+
+These are intrinsic constraints on the product itself, enforced by the Core
+interpreter and every native schema. Definition admission uses checked measures
+to prove construction, and projections retain the relationship. Recursive
+calls still require descent before their result contracts become available.
+Strict sequences retain evaluated call facts for the enclosing constructor;
+unevaluated short-circuit branches contribute no facts. All strict fields and
+prefixes remain subject to definedness checking.
 
 The distinction between uniform parameters and varying indices follows the
 [Lean reference](https://lean-lang.org/doc/reference/latest/The-Type-System/Inductive-Types/).
 The [Idris dependent-record examples](https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html#dependent-records)
-also retain relationships between a record's fields and its type parameters.
-For LawSpec, grouping fields must preserve those relationships through checked
-projections and measures. These precedents guide the unfinished transport; they
-do not constitute a Lean/Idris proof integration or an implemented new solver.
+retain relationships between a record's fields and its type parameters.
+[SPARK dynamic predicates](https://docs.adacore.com/spark2014-docs/html/ug/en/source/type_contracts.html)
+and [Why3 type invariants and verification conditions](https://why3.org/doc/vcgen.html)
+provide the construction-check and subsequent-assumption precedent.
+LawSpec's products are immutable; they do not adopt the temporary invariant
+relaxation available for mutable private representations. The implementation
+extends the existing typed proof projection, checked measures and arithmetic
+checker. It adds no solver backend or proof-kernel integration. Obligation
+generation and its trusted implementation remain distinct from solver execution
+and independently checked proof evidence.
+
+Grouped indexed and existential **migration transport remains unavailable**.
+Scalar-dependent record indices, references to enclosing value indices in a
+record input/result, and non-variable indices inside record fields report their
+current limitations instead of erasing dependencies. The direct index generator
+does not receive nested paths; ordinary generation and shrinking retain their
+checked filters and limits. Bounded search remains incomplete. Complete finite
+enumeration filters on the product's own constraints, including empty domains.
+
+Adding the constrained-product variant changes the internal Binary encoding of
+Core structural metadata. Consequently, SHA-256 Core/template fingerprints for
+ordinary record-containing snapshots can change even though their public v1
+record descriptors and BLAKE3 identities are unchanged. Fingerprints from the
+preceding compiler are retained as separate evidence; they are not normalized
+away or treated as cross-version semantic certificates. This does not change
+the SHA-256 algorithms used by other caches.
 
 The preserved Chapter 6 preview now passes canonical compilation at both
 machine widths while retaining all 23 laws, 65 table rows, one named example,

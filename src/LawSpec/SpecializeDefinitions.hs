@@ -328,7 +328,7 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
       Arrow a b -> closed a && closed b
       Applied _ a -> closed a
       Application _ arguments -> all closed arguments
-      Record fields -> all (closed . recordFieldType) fields
+      RecordShape fields -> all (closed . recordFieldType) fields
       _ -> True
     match replacements pattern concrete = substitutions <$> execStateT (unify pattern concrete)
       (withSourceContext sourceTypes (withDataDeclarations declarations (initialState bits))){substitutions=replacements}

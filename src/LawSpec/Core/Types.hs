@@ -130,6 +130,16 @@ buildRegistry userDeclarations = do
                   Just childFamily | index >= 0 && index < length (familyIndexNames childFamily) -> pure ()
                   _ -> Left "index field path does not select a family index"
               _ -> Left "index field path does not select a family index"
+      forM_ (dataConstructors d) $ \constructor ->
+        forM_ [term | Just structure <- [dataStructural d],IndexGuard _ a b <- structuralIndexGuards structure,term <- [a,b]] $ \term ->
+          forM_ (termFields term) $ \(path,index) -> do
+            (leaf,_) <- constructorFieldPath registry (constructorFields constructor) path
+            case leaf of
+              Constructor name _ -> do
+                child <- lookupData registry (Id name)
+                unless (maybe False (\family -> index>=0 && index<length (familyIndexNames family)) (dataIndex child))
+                  (Left "record guard does not select a family index")
+              _ -> Left "record guard does not select a family index"
     validateConstructor registry parameters c = do
       unique "field identity" (map binderId (constructorFields c))
       unique "field name" (map binderName (constructorFields c))
