@@ -53,7 +53,7 @@ test('nested native layouts require complete structural coverage and explicit ar
 });
 
 test('unfinished target emitters reject nested native layouts explicitly',async()=>{
-  for (const target of targets.filter(target=>!['python','javascript','typescript','java','kotlin','scala','rust','groovy'].includes(target))) {
+  for (const target of targets.filter(target=>!['python','javascript','typescript','java','kotlin','scala','rust','groovy','go','haskell'].includes(target))) {
     const result=await compiler.planGeneration(request(target));
     assert.ok(result.diagnostics.length,target+' silently accepted an unsupported layout');
     assert.ok(result.diagnostics.some(item=>/nested native field layout|Clojure binds.*not types/.test(item.message)),JSON.stringify(result.diagnostics));

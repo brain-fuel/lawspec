@@ -441,11 +441,19 @@ emitBindings minify plan testing files = do
                   (call "canonicalCodec.decode" [D.text "value"] : converters "decode")]
           pure (D.text "var canonicalCodec = " <> canonical <> D.text ";" <> D.hardline,
             contextual "fromNative" encodeHook, contextual "toNative" decodeHook)
+      body<-case mapping d of
+        Nothing | not (null mappings)->do
+          name<-J.javaDataName declarations (C.dataId d)
+          let simple=last (split '.' name)
+              canonical=case simple of []->"dataCodec";first:rest->toLower first:rest++"Codec"
+          pure (D.text "return "<>call ("LawSpecDataCodecs."++canonical)
+            ([D.text "schema",D.text "bits",D.text "symbols"]++[D.text value | (_,(_,value))<-ps])<>D.text ";")
+        _->pure (D.text "var type = "<>tyRef<>D.text ";"<>D.hardline<>setup<>
+          D.text "return schema.codec("<>D.nest 4
+            (D.hardline<>D.joinWith (D.text ","<>D.hardline)
+              [D.text "type",D.text "bits",D.text "symbols",encodeBody,decodeBody])<>D.text ");")
       pure (D.text "public static " <> (if null ps then mempty else applied "" args <> D.text " ") <>
         applied "LawSpecSchema.Codec" [native] <> D.text " " <> call ("type" ++ show i)
           ([D.text "LawSpecSchema schema",D.text "int bits",D.text "java.util.Map<String, Object> symbols"] ++
            [applied "LawSpecSchema.Codec" [D.text t] <> D.text (" " ++ v) | (_,(t,v)) <- ps]) <>
-        D.text " " <> D.block 2 (D.text "var type = " <> tyRef <> D.text ";" <> D.hardline <> setup <>
-          D.text "return schema.codec(" <> D.nest 4
-            (D.hardline <> D.joinWith (D.text "," <> D.hardline)
-              [D.text "type",D.text "bits",D.text "symbols",encodeBody,decodeBody]) <> D.text ");"))
+        D.text " " <> D.block 2 body)

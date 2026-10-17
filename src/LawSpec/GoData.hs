@@ -396,6 +396,18 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
   where
     line = D.text
     linesDoc = D.joinWith D.hardline
+    layoutValues children=line "[]LawSpecValue"<>D.block 8 (linesDoc [child<>line "," | child<-children])
+    layoutProject []="value"
+    layoutProject (index:rest)=foldl (\value child->value++".Data.(lawSpecData).fields["++show child++"]")
+      ("data.fields["++show index++"]") rest
+    layoutReference parameters ty=S.typeReference (map fst parameters) ty >>= go
+      where
+        go (S.Parameter index)=case drop index parameters of
+          (_,value):_->Right (value++".typeRef")
+          _->Left "unbound Go native layout parameter"
+        go (S.Named name children)=do
+          arguments<-mapM go children
+          pure ("lsNamed("++intercalate ", " (q name:arguments)++")")
     definition names declaration = do
       name <- lookupName names (C.dataId declaration)
       let parameters = zip (C.dataParameters declaration)
@@ -411,57 +423,89 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
             "(" ++ intercalate ", " params ++ ") lawSpecCodec[" ++ native ++ "] "
       variants <- forM (C.dataConstructors declaration) $ \variant -> do
         variantName <- lookupName (nativeNamesFor names mappings) (C.constructorId variant)
-        let existential = mentionsAny (C.constructorExistentials variant)
-            refinedOnly = not (goProduct declarations declaration) && not (null (C.constructorEquations variant)) && null (C.constructorExistentials variant)
-            openArguments = [v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations variant)]
-        let free = length (freeExistentials declaration variant)
-        declaredFields <- forM (zip [0 :: Int ..] (C.constructorFields variant)) $ \(position, field) -> do
-          let nativeType = if refinedOnly then substitute (M.fromList (C.constructorEquations variant)) (C.binderType field)
-                else C.binderType field
-          -- An existential field's type comes from the value's own type, or
-          -- from its witnesses (@KEYS@: read from the value or native).
-          expression <- if existential (C.binderType field)
-            then pure (if free > 0
-              then "lsLogicalCodec(schema, bits, lsFieldTypeWith(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ ", @KEYS@), symbols)"
-              else "lsLogicalCodec(schema, bits, lsFieldType(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ "), symbols)")
-            else codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters nativeType
-          fieldType <- if existential (C.binderType field) then pure "LawSpecValue" else typeText names parameters nativeType
-          let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
-                [c | m <- mappings,c <- resolvedConstructors m]
-              fieldName = maybe (goFieldName (C.binderName field)) id
-                (mapped >>= lookup (C.binderId field) . map (\(f,n) -> (C.binderId f,n)) . resolvedFields)
-          pure (fieldName,C.binderName field,fieldType,expression)
-        textCodec <- codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.Constructor "Text" [])
-        let fields = declaredFields ++
-              [(capitalize (S.witnessFieldName free k), S.witnessFieldName free k, "string", textCodec) | k <- [0 .. free - 1]]
-            decodeKeys = "lsWitnessTail(data.fields, " ++ show free ++ ")"
-            encodeKeys = "[]string{" ++ intercalate ", " ["native." ++ capitalize (S.witnessFieldName free k) | k <- [0 .. free - 1]] ++ "}"
-            keyed keys expression = replaceKeys keys expression
-        let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
-              [c | m <- mappings,c <- resolvedConstructors m]
-            unit = maybe False ((== UnitConstructor) . resolvedConstructorStyle) mapped
-            tag = C.idText (C.constructorId variant)
-            concrete = applied variantName (if refinedOnly then openArguments else arguments)
-            width = maximum (0 : [length n | (n,_,_,_) <- fields])
-            construct = if unit then line variantName else if null fields then line (concrete ++ "{}") else
-              line concrete <> D.block 8 (linesDoc
-                [line (n ++ ":" ++ replicate (width - length n + 1) ' ' ++ keyed decodeKeys expression ++ ".toNative(data.fields[" ++ show index ++ "]),")
-                | (index,(n,_,_,expression)) <- zip [0::Int ..] fields])
-            encodeFields = if null fields then line "nil" else
-              line "[]LawSpecValue" <> D.block 8 (linesDoc
-                [line ("lsSchemaContext(" ++ q (tag ++ "." ++ original) ++ ", func() LawSpecValue ") <>
-                  D.block 8 (line ("return " ++ keyed encodeKeys expression ++ ".encode(native." ++ n ++ ", path)")) <> line "),"
-                | (n,original,_,expression) <- fields])
-            -- A refined variant implements only its refined interface.
-            decode = line ("case " ++ q tag ++ ":") <> D.nest 8 (D.hardline <> line "return " <>
-              (if refinedOnly then line "any(" <> construct <> line (").(" ++ native ++ ")") else construct))
-            result = line ("return schema.construct(typeRef, " ++ q tag ++ ", ") <> encodeFields <> line ", bits, symbols)"
-            encodeValue = if prefix == "lawSpec" then
-              line ("case " ++ concrete ++ ":") <> D.nest 8 (D.hardline <> result)
-              else line (if unit then "if any(value) == any(" ++ variantName ++ ") "
-                else "if native, ok := any(value).(" ++ concrete ++ "); ok ") <>
-                D.block 8 ((if not unit && null fields then line "_ = native" <> D.hardline else mempty) <> result)
-        pure (decode,encodeValue,result)
+        let mapped=find ((==C.constructorId variant) . C.constructorId . resolvedConstructor)
+              [constructor | mapping<-mappings,constructor<-resolvedConstructors mapping]
+        case mapped >>= resolvedFieldLayout of
+          Just tree->do
+            let fields=maybe [] resolvedFields mapped
+                paths=maybe [] id (mapped >>= resolvedFieldPaths)
+                tag=C.idText (C.constructorId variant)
+                concrete=applied variantName arguments
+            bridges<-mapM (codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols")
+              names parameters codecParameters . C.binderType . fst) fields
+            packed<-foldNativeLayoutM (Right . line . ("nativeField"++) . show)
+              (\field constructor children->do
+                ty<-layoutReference codecParameters (C.binderType field)
+                pure (line ("schema.construct("++ty++", "++q (C.idText (C.constructorId constructor))++", ")<>
+                  layoutValues children<>line ", bits, symbols)")) tree
+            let locals=[line ("nativeField"++show index++" := lsSchemaContext("++q (tag++"."++intercalate "." fieldPath)++", func() LawSpecValue ")<>
+                  D.block 8 (line ("return "++bridge++".encode(native."++nativeField++", path)"))<>line ")" |
+                    (index,((bridge,(_,nativeField)),fieldPath))<-zip [0::Int ..] (zip (zip bridges fields) paths)]
+                result=linesDoc (locals++[line ("return schema.construct(typeRef, "++q tag++", ")<>
+                  layoutValues packed<>line ", bits, symbols)"])
+                construct=line concrete<>D.block 8 (linesDoc
+                  [line (nativeField++": "++bridge++".toNative("++layoutProject path++"),") |
+                    ((bridge,(_,nativeField)),path)<-zip (zip bridges fields) (nativeLayoutPaths tree)])
+                decode=line ("case "++q tag++":")<>D.nest 8 (D.hardline<>line "return "<>construct)
+                encodeValue=line ("if native, ok := any(value).("++concrete++"); ok ")<>D.block 8 result
+            pure (decode,encodeValue,result)
+          Nothing->do
+            let existential = mentionsAny (C.constructorExistentials variant)
+                refinedOnly = not (goProduct declarations declaration) && not (null (C.constructorEquations variant)) && null (C.constructorExistentials variant)
+                openArguments = [v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations variant)]
+            let free = length (freeExistentials declaration variant)
+            declaredFields <- forM (zip [0 :: Int ..] (C.constructorFields variant)) $ \(position, field) -> do
+              let nativeType = if refinedOnly then substitute (M.fromList (C.constructorEquations variant)) (C.binderType field)
+                    else C.binderType field
+              -- An existential field's type comes from the value's own type, or
+              -- from its witnesses (@KEYS@: read from the value or native).
+              expression <- if existential (C.binderType field)
+                then pure (if free > 0
+                  then "lsLogicalCodec(schema, bits, lsFieldTypeWith(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ ", @KEYS@), symbols)"
+                  else "lsLogicalCodec(schema, bits, lsFieldType(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ "), symbols)")
+                else if null mappings || any ((==C.dataId declaration) . C.dataId . resolvedDeclaration) mappings
+                  then codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters nativeType
+                  -- An unbound concrete field belongs to the generated record,
+                  -- including its nominal children. Generic parameters still
+                  -- use the caller's directional codec from codecParameters.
+                  else codecUsing "lawSpec" Nothing (Just "symbols") names parameters codecParameters nativeType
+              fieldType <- if existential (C.binderType field) then pure "LawSpecValue" else typeText names parameters nativeType
+              let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
+                    [c | m <- mappings,c <- resolvedConstructors m]
+                  fieldName = maybe (goFieldName (C.binderName field)) id
+                    (mapped >>= lookup (C.binderId field) . map (\(f,n) -> (C.binderId f,n)) . resolvedFields)
+              pure (fieldName,C.binderName field,fieldType,expression)
+            textCodec <- codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.Constructor "Text" [])
+            let fields = declaredFields ++
+                  [(capitalize (S.witnessFieldName free k), S.witnessFieldName free k, "string", textCodec) | k <- [0 .. free - 1]]
+                decodeKeys = "lsWitnessTail(data.fields, " ++ show free ++ ")"
+                encodeKeys = "[]string{" ++ intercalate ", " ["native." ++ capitalize (S.witnessFieldName free k) | k <- [0 .. free - 1]] ++ "}"
+                keyed keys expression = replaceKeys keys expression
+            let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
+                  [c | m <- mappings,c <- resolvedConstructors m]
+                unit = maybe False ((== UnitConstructor) . resolvedConstructorStyle) mapped
+                tag = C.idText (C.constructorId variant)
+                concrete = applied variantName (if refinedOnly then openArguments else arguments)
+                width = maximum (0 : [length n | (n,_,_,_) <- fields])
+                construct = if unit then line variantName else if null fields then line (concrete ++ "{}") else
+                  line concrete <> D.block 8 (linesDoc
+                    [line (n ++ ":" ++ replicate (width - length n + 1) ' ' ++ keyed decodeKeys expression ++ ".toNative(data.fields[" ++ show index ++ "]),")
+                    | (index,(n,_,_,expression)) <- zip [0::Int ..] fields])
+                encodeFields = if null fields then line "nil" else
+                  line "[]LawSpecValue" <> D.block 8 (linesDoc
+                    [line ("lsSchemaContext(" ++ q (tag ++ "." ++ original) ++ ", func() LawSpecValue ") <>
+                      D.block 8 (line ("return " ++ keyed encodeKeys expression ++ ".encode(native." ++ n ++ ", path)")) <> line "),"
+                    | (n,original,_,expression) <- fields])
+                -- A refined variant implements only its refined interface.
+                decode = line ("case " ++ q tag ++ ":") <> D.nest 8 (D.hardline <> line "return " <>
+                  (if refinedOnly then line "any(" <> construct <> line (").(" ++ native ++ ")") else construct))
+                result = line ("return schema.construct(typeRef, " ++ q tag ++ ", ") <> encodeFields <> line ", bits, symbols)"
+                encodeValue = if prefix == "lawSpec" then
+                  line ("case " ++ concrete ++ ":") <> D.nest 8 (D.hardline <> result)
+                  else line (if unit then "if any(value) == any(" ++ variantName ++ ") "
+                    else "if native, ok := any(value).(" ++ concrete ++ "); ok ") <>
+                    D.block 8 ((if not unit && null fields then line "_ = native" <> D.hardline else mempty) <> result)
+            pure (decode,encodeValue,result)
       let decode = line ("func(value LawSpecValue) " ++ native ++ " ") <> D.block 8
             (line "data := value.Data.(lawSpecData)" <> D.hardline <>
              line "switch data.tag {" <> D.hardline <>

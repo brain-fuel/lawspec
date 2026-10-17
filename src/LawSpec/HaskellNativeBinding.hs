@@ -44,7 +44,9 @@ emitBindings minify plan testing files = do
       modules = map nativeImport (nub (map moduleOf (typeRefs ++ hookRefs)))
       hooks = [(C.dataId (resolvedDeclaration m),(qualify (codecToNative hook),qualify (codecFromNative hook))) |
         m <- mappings,Just hook <- [resolvedCodec m]]
-  codecs <- H.emitHaskellCodecsWithHooks layout declarations "LawSpecNativeCodecs" modules types constructors hooks
+      layouts=[(C.constructorId (resolvedConstructor constructor),constructor) |
+        mapping<-mappings,constructor<-resolvedConstructors mapping,resolvedFieldLayout constructor/=Nothing]
+  codecs <- H.emitHaskellCodecsWithLayouts layout declarations "LawSpecNativeCodecs" modules types constructors hooks layouts
   concrete <- if null generators then pure [] else reachableGeneratorTypes declarations representations
     [inputType i | p <- plannedUnits testing,property <- plannedProperties p,i <- inputs property]
   let usedGenerators = [g | g <- generators, any (\case C.Constructor name _ -> C.Id name == resolvedGeneratorType g; _ -> False) concrete]

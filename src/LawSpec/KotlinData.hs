@@ -452,7 +452,11 @@ emitCodecs mappings owner layout declarations = do
             D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline)
               [D.text "type", D.text "bits", D.text "symbols", encodeBody, decodeBody] <> D.text ",") <>
             D.hardline <> D.text ")"
-      pure (signature <> D.text " " <> D.block 4 body)
+      let selected=if owner/="LawSpecDataCodecs" && not (null mappings) && mapping declaration==Nothing
+            then D.text "return "<>call ("LawSpecDataCodecs."++codecName name)
+              ([D.text "schema",D.text "bits"]++[D.text value | (_,(_,value))<-parameters]++[D.text "symbols"])
+            else body
+      pure (signature <> D.text " " <> D.block 4 selected)
     witnessCount variant = maybe 0 (\d -> length (freeExistentials d variant)) (declarationOf variant)
     -- keys: the value's witness keys, read from the native value or the data.
     fields names parameters keys variant = do

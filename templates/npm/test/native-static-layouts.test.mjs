@@ -15,6 +15,9 @@ type Packet (a :: Type) is one of Packed of type record{
   last :: a first :: record{count :: (n :: UInt8 where n > 0) flag :: Bool}
 } end type
 copy :: Packet UInt8 -> Packet UInt8`;
+const chainSource=source+`
+type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type
+copyChain :: Chain -> Chain`;
 const bindings={types:[{type:'layouts::type::Packet',native:['application','Packet'],constructors:[
   {constructor:'Packed',native:['application','Packed'],style:'variant',fields:[
     {field:'value',path:['first','count'],argument:2,native:'quantity'},
@@ -39,7 +42,21 @@ async function files(root,extension){
   }
   return found;
 }
+const jvmBindings=()=>{
+  const made=structuredClone(bindings);
+  made.types.push({type:'layouts::type::Chain',native:['application','Chain'],constructors:[
+    {constructor:'Stop',native:['application','Chain','STOP'],style:'unit',fields:[]},
+    {constructor:'Link',native:['application','Link'],style:'variant',fields:[
+      {field:'value',path:['next'],argument:0,native:'next'},
+      {field:'value',path:['item'],argument:1,native:'flag'},
+    ]},
+  ]});
+  made.functions.push({declaration:'layouts::copyChain',native:['application','Operations','copyChain']});
+  return made;
+};
 const application={
+  'application/Chain.java':`package application; public interface Chain { Chain STOP=new Chain(){}; }`,
+  'application/Link.java':`package application; public record Link(Chain next,boolean flag) implements Chain {}`,
   'application/Packet.java':`package application; public interface Packet<T> {}`,
   'application/Packed.java':`package application;
 public record Packed<T>(T tail, boolean enabled, short quantity) implements Packet<T> {
@@ -50,6 +67,7 @@ public record Packed<T>(T tail, boolean enabled, short quantity) implements Pack
   'application/Operations.java':`package application;
 public final class Operations {
   public static boolean mutate=false;
+  public static Chain copyChain(Chain value){return value;}
   public static <T> Packet<T> copy(Packet<T> value){
     var packed=(Packed<T>)value;
     return mutate ? new Packed<>(packed.tail(),packed.enabled(),(short)0) : value;
@@ -67,6 +85,9 @@ public final class Fixture {
     require(nested.fields().get(0).data().equals(BigInteger.valueOf(3)));
     require(nested.fields().get(1).data().equals(true));
     require(payload.fields().get(1).data().equals(BigInteger.valueOf(7)));
+  }
+  public static void inspectChain(Chain value){
+    var link=(Link)value;require(link.flag()&&link.next()==Chain.STOP);
   }
   public static void inspectPacket(Packet<?> value){
     var packed=(Packed<?>)value;
@@ -91,6 +112,11 @@ public class Check {
     Operations.mutate=true;
     try{Layouts.copy(canonical.decode(logical));throw new AssertionError("invalid native result admitted");}
     catch(IllegalArgumentException expected){}
+    var chainCodec=LawSpecNativeCodecs.type1(schema,${bits},symbols);
+    var canonicalChain=LawSpecDataCodecs.chainCodec(schema,${bits},symbols);
+    var chain=chainCodec.encode(new Link(Chain.STOP,true));
+    Fixture.inspectChain(chainCodec.decode(chain));
+    Fixture.inspectChain(chainCodec.decode(canonicalChain.encode(Layouts.copyChain(canonicalChain.decode(chain)))));
     System.out.println("checked native layout passed");
   }
 }`;
@@ -111,6 +137,11 @@ fun main(){
   Operations.mutate=true
   try{Layouts.copy(canonical.decode(logical));throw AssertionError("invalid native result admitted")}
   catch(expected:IllegalArgumentException){}
+  val chainCodec=LawSpecNativeCodecs.chainCodec(schema,${bits})
+  val canonicalChain=LawSpecDataCodecs.chainCodec(schema,${bits})
+  val chain=chainCodec.encode(Link(Chain.STOP,true))
+  Fixture.inspectChain(chainCodec.decode(chain))
+  Fixture.inspectChain(chainCodec.decode(canonicalChain.encode(Layouts.copyChain(canonicalChain.decode(chain)))))
   println("checked native layout passed")
 }`;
 const scalaCheck=bits=>`import application.*
@@ -131,6 +162,11 @@ object Check {
     Operations.mutate=true
     try {Layouts.copy(canonical.decode(logical));throw new AssertionError("invalid native result admitted")}
     catch {case expected:IllegalArgumentException => ()}
+    val chainCodec=LawSpecNativeCodecs.chainCodec(schema,${bits})
+    val canonicalChain=LawSpecDataCodecs.chainCodec(schema,${bits})
+    val chain=chainCodec.encode(new Link(Chain.STOP,true))
+    Fixture.inspectChain(chainCodec.decode(chain))
+    Fixture.inspectChain(chainCodec.decode(canonicalChain.encode(Layouts.copyChain(canonicalChain.decode(chain)))))
     println("checked native layout passed")
   }
 }`;
@@ -141,7 +177,7 @@ for(const target of ['java','kotlin','scala','groovy']){
       target==='scala'&&!existsSync(new URL('../../.integration/scala/lawspec.json',import.meta.url))?'Scala acceptance environment is not installed':false)},async()=>{
     for(const machineBits of [32,64])for(const minify of [false,true]){
       const result=await compiler.planGeneration({...options,target,machineBits,minify,
-        sources:[{path:'layouts.lawspec',content:source}],nativeBindings:bindings});
+        sources:[{path:'layouts.lawspec',content:chainSource}],nativeBindings:jvmBindings()});
       assert.deepEqual(result.diagnostics,[]);
       const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-static-layout-'));
       try{
@@ -251,3 +287,179 @@ copyChain :: Chain -> Chain`;
     }finally{await rm(root,{recursive:true,force:true});}
   }}finally{await rm(targetRoot,{recursive:true,force:true});}
 });
+
+const recursiveSource=source+`
+copyBad :: Packet UInt8 -> Packet UInt8
+type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type
+copyChain :: Chain -> Chain`;
+function recursiveBindings(target){
+  const go=target==='go',module=go?'application':'Application';
+  const nativeBindings=structuredClone(bindings);
+  for(const item of nativeBindings.types){item.native[0]=module;for(const constructor of item.constructors){
+    constructor.native[0]=module;
+    if(go)for(const field of constructor.fields)field.native=field.native[0].toUpperCase()+field.native.slice(1);
+  }}
+  nativeBindings.types.push({type:'layouts::type::Chain',native:[module,'Chain'],constructors:[
+    {constructor:'Stop',native:[module,'Stop'],style:'unit',fields:[]},
+    {constructor:'Link',native:[module,'Link'],style:'variant',fields:[
+      {field:'value',path:['item'],argument:1,native:go?'Flag':'flag'},
+      {field:'value',path:['next'],argument:0,native:go?'Next':'next'},
+    ]},
+  ]});
+  nativeBindings.functions=['copy','copyBad','copyChain'].map(name=>({declaration:'layouts::'+name,
+    native:[module,go?name[0].toUpperCase()+name.slice(1):name]}));
+  if(go)nativeBindings.goImports=[{alias:module,path:'native_layout_fixture/application'}];
+  return nativeBindings;
+}
+const goApplication=`package application
+// Deliberately use another native declaration order.
+type Packed[T any] struct{ Quantity uint8; Enabled bool; Tail T }
+type Packet[T any] = Packed[T]
+var Calls int
+func Copy[T any](value Packet[T]) Packet[T]{Calls++;return value}
+func CopyBad[T any](value Packet[T]) Packet[T]{value.Quantity=0;return value}
+type Chain interface{chain()}
+type stop struct{}
+func(stop)chain(){}
+var Stop Chain=stop{}
+type Link struct{Flag bool;Next Chain}
+func(Link)chain(){}
+func CopyChain(value Chain) Chain{return value}
+`;
+const goCheck=bits=>`package layouts
+import("testing";"math/big";"native_layout_fixture/application")
+func TestNativeLayouts(t *testing.T){
+  schema:=lawSpecDataSchemaRegistry()
+  native:=lawSpecNativePacketCodec(schema,${bits},lsScalarCodec[uint8](schema,${bits},"UInt8"))
+  canonical:=lawSpecPacketCodec(schema,${bits},lsScalarCodec[uint8](schema,${bits},"UInt8"))
+  good:=application.Packed[uint8]{Tail:7,Enabled:true,Quantity:3}
+  logical:=native.fromNative(good)
+  payload:=logical.Data.(lawSpecData).fields[0].Data.(lawSpecData)
+  nested:=payload.fields[0].Data.(lawSpecData)
+  if nested.fields[0].Data.(*big.Int).Int64()!=3||nested.fields[1].Data!=true||payload.fields[1].Data.(*big.Int).Int64()!=7{t.Fatal("logical fields reordered")}
+  restored:=native.toNative(logical)
+  if restored.Tail!=7||!restored.Enabled||restored.Quantity!=3{t.Fatal("native fields reordered")}
+  rejected:=func(action func()){
+    t.Helper();caught:=false
+    func(){defer func(){if recover()!=nil{caught=true}}();action()}()
+    if !caught{t.Fatal("invalid boundary admitted")}
+  }
+  rejected(func(){native.fromNative(application.Packed[uint8]{Tail:7,Enabled:true,Quantity:0})})
+  original:=canonical.toNative(logical)
+  if native.toNative(canonical.fromNative(lawSpecBoundCopy(original))).Quantity!=3{t.Fatal("adapter changed fields")}
+  rejected(func(){lawSpecBoundCopyBad(original)})
+  invalid:=original;invalid.Value.First.Count=0
+  previous:=application.Calls
+  rejected(func(){lawSpecBoundCopy(invalid)})
+  if application.Calls!=previous{t.Fatal("invalid input reached native implementation")}
+  chainCodec:=lawSpecNativeChainCodec(schema,${bits})
+  chain:=chainCodec.toNative(chainCodec.fromNative(application.Link{Next:application.Stop,Flag:true}))
+  link,ok:=chain.(application.Link);if !ok||!link.Flag||link.Next!=application.Stop{t.Fatal("recursive native shape changed")}
+  canonicalChain:=lawSpecChainCodec(schema,${bits})
+  copied:=lawSpecBoundCopyChain(canonicalChain.toNative(chainCodec.fromNative(chain)))
+  link=chainCodec.toNative(canonicalChain.fromNative(copied)).(application.Link)
+  if !link.Flag||link.Next!=application.Stop{t.Fatal("recursive adapter changed branches")}
+}
+`;
+const haskellApplication=`module Application where
+import qualified Prelude as P
+import Data.Word(Word8)
+data Packet a = Packed{quantity :: Word8,enabled :: P.Bool,tail :: a}
+copy :: Packet a -> Packet a
+copy value=if quantity value P.== 0 then P.error "NATIVE_BAD_INPUT" else value
+copyBad :: Packet a -> Packet a
+copyBad value=value{quantity=0}
+data Chain = Stop | Link{flag :: P.Bool,next :: Chain}
+copyChain :: Chain -> Chain
+copyChain value=value
+`;
+function haskellCheck(bits,result){
+  const record=labels=>result.dataTypes.find(type=>type.structure&&
+    JSON.stringify(type.structure.fields.map(field=>field.name))===JSON.stringify(labels)).name;
+  const payload=record(['first','last']),details=record(['count','flag']);
+  return `module Main where
+import qualified Prelude as P
+import Prelude (IO,($),(>>=),(>>),pure,fail,otherwise)
+import qualified Application as A
+import qualified LawSpecCodecs as Codec
+import qualified LawSpecNativeCodecs as Native
+import qualified LawSpecDataCodecs as Canonical
+import qualified LawSpecDataSchema as Schema
+import qualified LawSpecData as Data
+import qualified LawSpecRuntime as LS
+import qualified Layouts
+import Data.Word(Word8)
+import Control.Exception(SomeException,try,evaluate,displayException)
+import Data.List(isInfixOf)
+right :: P.Either P.String a -> a
+right=P.either P.error P.id
+ensure condition=if condition then pure () else fail "native layout mismatch"
+reject action=do
+  outcome<-try (action >> pure ()) :: IO (P.Either SomeException ())
+  case outcome of
+    P.Left error->ensure (P.not (isInfixOf "NATIVE_BAD_INPUT" (displayException error)))
+    P.Right _->fail "invalid adapter boundary admitted"
+main :: IO ()
+main=do
+  symbols<-LS.newSymbolContext
+  let schema=right Schema.schema
+      scalar=Codec.integerCodec schema ${bits} "UInt8" :: Codec.Codec Word8
+      native=Native.packetCodec schema ${bits} scalar
+      canonical=Canonical.packetCodec schema ${bits} scalar
+      good=A.Packed{A.tail=7,A.enabled=P.True,A.quantity=3}
+      logical=right (Codec.encode native good)
+  case logical of
+    LS.SData _ [LS.SData _ [LS.SData _ [LS.SInteger "UInt8" 3,LS.SBool P.True],LS.SInteger "UInt8" 7]]->pure ()
+    _->fail "logical fields reordered"
+  let restored=right (Codec.decode native logical)
+  ensure (A.tail restored P.== 7 P.&& A.enabled restored P.&& A.quantity restored P.== 3)
+  case Codec.encode native good{A.quantity=0} of
+    P.Left _->pure ();P.Right _->fail "invalid native record admitted"
+  let original=right (Codec.decode canonical logical)
+      returned=Layouts.copy symbols original
+  ensure (Codec.encode canonical returned P.== P.Right logical)
+  reject (evaluate (Layouts.copyBad symbols original))
+  let invalid=Data.Packet (Data.${payload} (Data.${details} 0 P.True) 7)
+  reject (evaluate (Layouts.copy symbols invalid))
+  let chainCodec=Native.chainCodec schema ${bits}
+      chain=A.Link{A.next=A.Stop,A.flag=P.True}
+      chainLogical=right (Codec.encode chainCodec chain)
+      canonicalChain=Canonical.chainCodec schema ${bits}
+      copied=Layouts.copyChain symbols (right (Codec.decode canonicalChain chainLogical))
+      roundtrip=right (Codec.decode chainCodec (right (Codec.encode canonicalChain copied)))
+  case roundtrip of A.Link{A.next=A.Stop,A.flag=P.True}->pure ();_->fail "recursive shape changed"
+  P.putStrLn "checked native layouts passed"
+`;
+}
+for(const target of ['go','haskell']){
+  test(`${target} native layouts preserve recursive records and checked boundaries`,
+    {skip:!required(target)&&(target==='haskell'?'requires the Haskell acceptance environment':!available('go')&&'go is not installed')},async()=>{
+    const stackArguments=['--no-terminal','--stack-yaml',new URL('../../stack.yaml',import.meta.url).pathname,'path'];
+    const ghc=target==='haskell'?(process.env.LAWSPEC_GHC??run('stack',[...stackArguments,'--compiler-exe']).trim()):null;
+    const packageDb=target==='haskell'?run('stack',[...stackArguments,'--snapshot-pkg-db']).trim():null;
+    for(const machineBits of [32,64])for(const minify of [false,true]){
+      const result=await compiler.planGeneration({...options,target,machineBits,minify,
+        sources:[{path:'layouts.lawspec',content:recursiveSource}],nativeBindings:recursiveBindings(target)});
+      assert.deepEqual(result.diagnostics,[]);
+      const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-functional-layout-'));
+      try{
+        for(const file of result.files.filter(file=>file.placement==='source')){
+          const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});await writeFile(destination,file.content);
+        }
+        if(target==='go'){
+          await mkdir(path.join(root,'application'));
+          await writeFile(path.join(root,'application/application.go'),goApplication);
+          await writeFile(path.join(root,'layouts/layout_test.go'),goCheck(machineBits));
+          await writeFile(path.join(root,'go.mod'),'module native_layout_fixture\n\ngo 1.24\n');
+          run('go',['test','./...'],{cwd:root,env:{...process.env,GOPROXY:'off',GOTOOLCHAIN:'local'}});
+        }else{
+          await writeFile(path.join(root,'src/Application.hs'),haskellApplication);
+          await writeFile(path.join(root,'Main.hs'),haskellCheck(machineBits,result));
+          await mkdir(path.join(root,'build'));
+          run(ghc,['-package-db',packageDb,'-package','network','-O0','-isrc','-odir','build','-hidir','build','Main.hs','-o','check'],{cwd:root});
+          run(path.join(root,'check'),[],{cwd:root});
+        }
+      }finally{await rm(root,{recursive:true,force:true});}
+    }
+  });
+}
