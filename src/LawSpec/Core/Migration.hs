@@ -314,11 +314,16 @@ reduce context expression = case C.expressionNode expression of
     C.expressionType body==C.expressionType initializer,
     C.expressionType expression==C.expressionType initializer -> initializer
   -- A projection of an already checked structural value is total and pure.
-  -- Do not generalize this to arbitrary unused initializers or nominal reads.
+  -- It can be read directly, including when unused. Refuse dependent uses or
+  -- any scope that could capture the replacement; arbitrary calls and nominal
+  -- projections never pass this rule.
   C.Let binder initializer body | C.Project tag _ selected <- C.expressionNode initializer,
     pureStorage selected,tag `S.member` structuralConstructors context,
     C.binderType binder==C.expressionType initializer,
-    uses (C.binderId binder) body==0,C.expressionType expression==C.expressionType body -> body
+    uses (C.binderId binder) initializer==0,
+    uses (C.binderId binder) body==length (filter (==C.binderId binder) (C.freeBinders body)),
+    C.expressionType expression==C.expressionType body,
+    Just made<-storageSubstitution (C.binderId binder) initializer body -> reduce context made
   C.Let binder value body | C.Match selected branches <- C.expressionNode body,
     C.Local identity <- C.expressionNode selected,identity==C.binderId binder,
     uses identity body==1,C.expressionType expression==C.expressionType body ->
@@ -331,6 +336,7 @@ reduce context expression = case C.expressionNode expression of
         (binder,value)<-zip binders arguments]
     pureStorage value=case C.expressionNode value of
       C.Local{}->True
+      C.Project tag _ selected | tag `S.member` structuralConstructors context -> pureStorage selected
       C.Match selected [branch] | pureStorage selected,
         C.caseConstructor branch `S.member` structuralConstructors context,
         C.Construct tag fields<-C.expressionNode (C.caseBody branch),
@@ -356,6 +362,31 @@ reduce context expression = case C.expressionNode expression of
               C.expressionType outer==C.expressionType current ->
                 Just outer{C.expressionNode=C.Construct tag (map snd entries)}
           _ -> Nothing
+
+-- The conservative freshness check avoids both value capture and hiding an
+-- index binder. IDs may be reused by hand-built Core; do not assume global
+-- uniqueness or substitute through a shadowing binder.
+storageSubstitution :: C.Id -> C.Expr -> C.Expr -> Maybe C.Expr
+storageSubstitution identity replacement body
+  | any (`elem` (identity:C.freeBinders replacement++typedIds replacement)) (bound body) = Nothing
+  | not (consistent body) = Nothing
+  | otherwise = Just (replace body)
+  where
+    replace term=case C.expressionNode term of
+      C.Local found | found==identity -> replacement
+      _ -> C.mapChildren replace term
+    consistent term=(case C.expressionNode term of
+      C.Local found | found==identity -> C.expressionType term==C.expressionType replacement
+      _ -> True) && all consistent (C.children term)
+    typedIds term=typeIds (C.expressionType term)++concatMap typedIds (C.children term)
+    bound term=here++concatMap bound (C.children term)
+      where
+        here=case C.expressionNode term of
+          C.Let binder _ _ -> [C.binderId binder]
+          C.Match _ branches -> [C.binderId binder | branch<-branches,binder<-C.caseBinders branch]
+          C.AllElements _ binder _ -> [C.binderId binder]
+          C.AllPayloads _ predicates -> map (C.binderId . fst) predicates
+          _ -> []
 
 uses :: C.Id -> C.Expr -> Int
 uses identity expression = length (filter (==identity) (C.freeBinders expression)) + sum

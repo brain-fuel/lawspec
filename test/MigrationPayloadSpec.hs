@@ -35,6 +35,29 @@ groupOld="type Variant is | Empty | Item last :: Bool first :: UInt8 end"
 groupNew="type Variant is one of | Empty | Item of type record{last :: Bool first :: UInt8} end type"
 
 test_migrationPayloads=describe "checked constructor payload shape correspondence" $ do
+  it "certifies shared natural indices in an explicit grouped payload" $ do
+    result<-shapesMatch
+      "type Tree (n :: Natural) is | Leaf where n = 0 | Fork left :: Tree m right :: Tree m where n = m + 1 end"
+      "type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{left of type Tree m right of type Tree m} where n = m + 1 end type"
+    (comparison result >>= field "executableTransport" >>= field "status") `shouldBe` Just (String "matched")
+    (comparison result >>= field "nativeBindings" >>= field "status") `shouldBe` Just (String "not-established")
+  it "does not certify changed equations, dropped equality or a stronger grouped relationship" $ do
+    let before="type Tree (n :: Natural) is | Leaf where n = 0 | Fork left :: Tree m right :: Tree m where n = m + 1 end"
+        make fields equation="type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{"++fields++"} where n = "++equation++" end type"
+    mapM_ (\after -> do
+      result<-accepted before after
+      (shape result >>= field "status") `shouldBe` Just (String "not-established"))
+      [make "left of type Tree m right of type Tree m" "m + 2",
+       make "left of type Tree m right of type Tree k" "m + 1"]
+    stronger<-accepted
+      "type Tree (n :: Natural) is | Leaf where n = 0 | Fork left :: Tree m right :: Tree k where n = m + 1 end"
+      (make "left of type Tree m right of type Tree m" "m + 1")
+    (shape stronger >>= field "status") `shouldBe` Just (String "not-established")
+  it "does not exchange two different index selectors during regrouping" $ do
+    result<-accepted
+      "type Matrix (rows :: Natural) (columns :: Natural) is | Zero where rows = 0, columns = 0 | Step left :: Matrix m k right :: Matrix m k where rows = m + 1, columns = k + 1 end"
+      "type Matrix (rows of type Whole) (columns of type Whole) is one of | Zero where rows = 0, columns = 0 | Step of type record{left of type Matrix m k right of type Matrix k m} where rows = m + 1, columns = k + 1 end type"
+    (shape result >>= field "status") `shouldBe` Just (String "not-established")
   it "retains indexed and GADT equations when renaming one payload formal" $ do
     mapM_ (\(before,after) -> do
       result<-shapesMatch before after

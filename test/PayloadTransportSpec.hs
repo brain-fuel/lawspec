@@ -85,6 +85,50 @@ runObserved program = do
   pure (observed,answer)
 
 test_payloadTransport=describe "checked executable payload transport" $ do
+  it "transports recursive natural-index equations and checked construction through grouped records" $
+    forM_ [32,64] $ \bits -> do
+      let before="type Tree (n :: Natural) is | Leaf where n = 0 | Fork left :: Tree m right :: Tree m where n = m + 1 end\n"++
+            "definition one (unused :: Bool) :: Tree 1 is Fork Leaf Leaf end\n"
+          after="type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{left of type Tree m right of type Tree m} where n = m + 1 end type\n"++
+            "function one (unused of type Bool) -> Tree 1 is Fork record{left = Leaf, right = Leaf} end function\n"
+      (plan,old,new)<-pair bits before after
+      (copy,view)<-either fail pure (transportComparisonWithProgram plan [] old [] new)
+      field "status" view `shouldBe` Just (String "matched")
+      field "copyValidated" view `shouldBe` Just (Bool True)
+      forM_ [old,copy,new] $ \program -> do
+        invoke<-either (fail.show) pure (prepareDefinitions program)
+        tree<-either fail pure (invoke (C.Id "transport::one") [ScalarValue (SBool False)])
+        invoke (C.Id "transport::nOfTree") [tree] `shouldBe` Right (ScalarValue (SInteger "BigInt" 1))
+  it "remaps a non-leading indexed field without changing source evaluation order" $
+    forM_ [32,64] $ \bits -> do
+      _<-matched bits
+        ("type Stack (n :: Natural) is | Empty where n = 0 | Push top :: Bool rest :: Stack m where n = m + 1 end\n"++
+         "definition one (flag :: Bool) :: Stack 1 is Push flag Empty end")
+        ("type Stack (n of type Whole) is one of | Empty where n = 0 | Push of type record{top of type Bool rest of type Stack m} where n = m + 1 end type\n"++
+         "function one (flag of type Bool) -> Stack 1 is Push record{top = flag, rest = Empty} end function")
+      pure ()
+  it "retains both family-index selectors and natural subtraction definedness" $
+    forM_ [32,64] $ \bits -> forM_
+      [("type Matrix (rows :: Natural) (columns :: Natural) is | Zero where rows = 0, columns = 0 | Step left :: Matrix m k right :: Matrix m k where rows = m + 1, columns = k + 1 end",
+        "type Matrix (rows of type Whole) (columns of type Whole) is one of | Zero where rows = 0, columns = 0 | Step of type record{left of type Matrix m k right of type Matrix m k} where rows = m + 1, columns = k + 1 end type"),
+       ("type Matrix (rows :: Natural) (columns :: Natural) is | Zero where rows = 0, columns = 0 | Step flag :: Bool square :: Matrix m m where rows = m + 1, columns = m + 1 end",
+        "type Matrix (rows of type Whole) (columns of type Whole) is one of | Zero where rows = 0, columns = 0 | Step of type record{flag of type Bool square of type Matrix m m} where rows = m + 1, columns = m + 1 end type"),
+       ("type Chain (n :: Natural) is | Zero where n = 0 | Step flag :: Bool previous :: Chain m where n = m - 1 end",
+        "type Chain (n of type Whole) is one of | Zero where n = 0 | Step of type record{flag of type Bool previous of type Chain m} where n = m - 1 end type")]
+      $ \(before,after) -> do
+        _<-matched bits before after
+        pure ()
+  it "compares all three sibling constraints independently of their declaration order" $ do
+    _<-matched 64
+      "type Tree (n :: Natural) is | Leaf where n = 0 | Fork a :: Tree m c :: Tree m b :: Tree m where n = m + 1 end"
+      "type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{c of type Tree m a of type Tree m b of type Tree m} where n = m + 1 end type"
+    pure ()
+  it "keeps a reordered shared-index measure unestablished until its body is justified" $ do
+    view<-correspondence 64
+      "type Tree (n :: Natural) is | Leaf where n = 0 | Fork right :: Tree m left :: Tree m where n = m + 1 end"
+      "type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{left of type Tree m right of type Tree m} where n = m + 1 end type"
+    field "copyValidated" view `shouldBe` Just (Bool True)
+    (field "definitionPlane" view >>= field "status") `shouldBe` Just (String "not-established")
   it "anchors the validated comparison copy to both original admitted programs" $ do
     (plan,old,new)<-pair 64 (oldType++oldMake) (newType++newMake)
     let original=Binary.encode old
@@ -287,6 +331,29 @@ test_payloadTransport=describe "checked executable payload transport" $ do
     made<-either fail pure (normalizedProgram False False [] program)
     [C.expressionNode (C.definitionBody definition) | unit<-C.programUnits made,definition<-C.unitDefinitions unit]
       `shouldSatisfy` all (\node -> case node of C.Let{}->True;_->False)
+
+  it "retains inconsistent uses and shadowing when simplifying checked record reads" $ do
+    (program,_)<-checked True 64 "unit transport\nfunction read (input of type record{flag of type Bool other of type Bool}) -> Bool is input.flag end function"
+    let definition=head [d | u<-C.programUnits program,d<-C.unitDefinitions u]
+        initializer=C.definitionBody definition
+        origin=C.expressionOrigin initializer
+        boolean=C.scalarType "Bool"
+        binder=C.Binder (C.Id "transport::read::projection") "projection" boolean
+        local=C.Expr boolean (C.Local (C.binderId binder)) origin
+        wrong=C.Expr (C.scalarType "Integer") (C.Local (C.binderId binder)) origin
+        zero=C.Expr (C.scalarType "Integer") (C.Constant (SInteger "Integer" 0)) origin
+        wrongBody=C.Expr boolean (C.Binary C.Equal (C.Numeric (C.scalarType "Integer")) wrong zero) origin
+        shadow=C.Expr boolean (C.Let binder (C.Expr boolean (C.Constant (SBool True)) origin)
+          (C.Expr boolean (C.Unary C.Not local) origin)) origin
+        capture=C.Expr boolean (C.Let (head (C.definitionArguments definition))
+          (C.Expr (C.binderType (head (C.definitionArguments definition)))
+            (C.Local (C.binderId (head (C.definitionArguments definition)))) origin) local) origin
+        changed body=program{C.programUnits=[u{C.unitDefinitions=[definition{C.definitionBody=
+          C.Expr boolean (C.Let binder initializer body) origin}]} | u<-C.programUnits program]}
+    forM_ [wrongBody,shadow,capture] $ \body -> do
+      made<-either fail pure (normalizedProgram False False [] (changed body))
+      [C.expressionNode (C.definitionBody d) | u<-C.programUnits made,d<-C.unitDefinitions u]
+        `shouldSatisfy` all (\node -> case node of C.Let{}->True;_->False)
 
   it "checks intrinsic ordered-container types even in declarations with no comparison expression" $ do
     forM_ [("Set Capsule","SortedSet Capsule"),("KeyVal Capsule Bool","KeyVal Capsule Bool")] $ \(beforeType,afterType) -> do

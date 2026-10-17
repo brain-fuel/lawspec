@@ -206,7 +206,7 @@ test('case previews preserve nested selection, constructor bindings, recursion a
   }
 });
 
-test('a grouped natural-index source preview compiles while migration transport remains unestablished', async () => {
+test('a grouped natural-index source preview establishes checked payload transport while remaining migration gates block writes', async () => {
   const content = 'unit payload\ntype Chain (n :: Natural) is | Stop where n = 0 '+
     '| Next marker :: Bool rest :: Chain m where n = m + 1 end\n';
   for (const machineBits of [32,64]) {
@@ -217,9 +217,11 @@ test('a grouped natural-index source preview compiles while migration transport 
     assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
     assert.deepEqual(report.sourcePreview.canonicalCheck.diagnostics,[]);
     assert.equal(report.sourcePreview.canonicalCheck.intrinsicDefinitionChecks,true);
-    assert.equal(report.correspondence.payloads.payloadShapes.status,'not-established');
-    assert.equal(report.correspondence.payloads.executableTransport.status,'not-established');
-    assert.ok(report.blockers.some(blocker=>blocker.includes('Core correspondence')));
+    assert.equal(report.correspondence.payloads.payloadShapes.status,'matched');
+    assert.equal(report.correspondence.payloads.executableTransport.status,'matched');
+    assert.equal(report.correspondence.payloads.executableTransport.copyValidated,true);
+    assert.equal(report.correspondence.sourceTemplates.status,'not-established');
+    assert.ok(report.blockers.some(blocker=>blocker.includes('source-template correspondence')));
     assert.ok(report.blockers.every(blocker=>!blocker.includes('canonical compilation')));
     assert.equal(report.validated,false);
     assert.deepEqual(report.filesWritten,[]);

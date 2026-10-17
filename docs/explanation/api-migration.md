@@ -189,10 +189,30 @@ from names. Ordinary nominal records retain their labeled fields and braces.
 A single explicit payload may rename its formal field to `value` while retaining
 the exact checked payload type, constructor equations and existential binders.
 The existing copier follows the formal's identity and validates the complete
-transported Core. Grouped indexed and existential payloads still require their
-own checked transport. In particular, natural-index measures do not yet follow
-a family through an anonymous record payload; a preview of that form is rejected
-by canonical admission and cannot authorize writing.
+transported Core. Grouped natural-index payloads can retain their equations
+through an anonymous record. The certificate maps each old field to its exact
+record path, retaining every subsequent path component and index selector.
+The candidate record's own index relationships must follow from the original
+constructor's equalities. Its complete descriptor, types and refinements are
+independently rebuilt from the original checked fields. Changed equations,
+missing equalities, exchanged selectors and stronger relationships do not match.
+
+Equality classes normalize equivalent sibling-guard spellings while retaining
+every index read, including self-equalities that establish definedness. This is
+equality transport; it performs no arithmetic search. The checked comparison
+copy retains ordinary definition admission. Its comparison view can substitute
+pure projections of an already evaluated structural value, with explicit
+capture, annotation and dependent-use checks; effectful calls retain their
+strict evaluation order and multiplicity.
+
+The precedent is an explicit representation equivalence, as in Lean's
+[`Equiv` and its two inverse laws](https://github.com/leanprover-community/mathlib4/blob/master/Mathlib/Logic/Equiv/Defs.lean).
+The field-label bijection supplies the forward and inverse layout.
+[Why3 module cloning](https://why3.org/doc/syntaxref.html#module-cloning)
+checks definitions under symbol substitution and preserves constructor order;
+regrouping is a separate correspondence obligation here. These compiler checks
+are part of the trusted migration implementation. No Lean proof certificate or
+Why3 solver execution is produced by this correspondence.
 
 Core now represents an index projection through a structural record explicitly.
 The schema term `p0/1/2.0` reads index 0 of the value reached by constructor
@@ -241,7 +261,12 @@ checker. It adds no solver backend or proof-kernel integration. Obligation
 generation and its trusted implementation remain distinct from solver execution
 and independently checked proof evidence.
 
-Grouped indexed and existential **migration transport remains unavailable**.
+Grouped GADT and existential payload transport remains unavailable. A reordered
+shared-index measure whose body reads a different sibling remains unestablished
+until the body equivalence is justified; matching shape guards alone cannot
+authorize it. Source-template, input-domain and native binding correspondence
+also remain separate gates, so matching concrete indexed payload transport
+alone does not enable project writes.
 Scalar-dependent record indices, references to enclosing value indices in a
 record input/result, and non-variable indices inside record fields report their
 current limitations instead of erasing dependencies. The direct index generator
