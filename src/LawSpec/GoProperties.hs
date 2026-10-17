@@ -272,6 +272,12 @@ emitTests Config{..} unit laws = do
             ty = inputType inp
             hints = [expr hint | hint <- generatorHints plan, expressionType hint == ty,
               case C.expressionNode hint of C.Constant _ -> True; C.Local _ -> True; _ -> False]
+            scalar = case inputRange machineBits inp of
+              Nothing -> text "_lawspecScalarGenerator"
+              Just range -> closure "_lawspecScalarName string" "*rapid.Generator[LawSpecValue]"
+                (statements [text "if _lawspecScalarName == " <> quoted (typeKey ty) <> text " " <>
+                  block (returned (generatorWithin (Just range) ty)),
+                  returned (call "_lawspecScalarGenerator" [text "_lawspecScalarName"])])
             strategy = case (if nativeGenerators then [] else requiredSymbol plan) of
               value:_ -> call "rapid.Just" [expr value]
               -- The target is evaluated from the inputs drawn above.
@@ -285,7 +291,7 @@ emitTests Config{..} unit laws = do
                  text "_lawspecScalarGenerator"]
               [] -> call "lsCheckedDataStrategyWithAttempts" $
                 [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,number (maxAttempts (generation e)),
-                 text "symbols",E.array (seeds ++ hints),text "_lawspecScalarGenerator"] ++
+                 text "symbols",E.array (seeds ++ hints),scalar] ++
                 [text "lawSpecNativeFactories()" | nativeGenerators]
             suffix = if nativeGenerators || null (requiredSymbol plan) then text ".requireValue()" else mempty
         pure (assign (inputId inp) (strategy <> text ".Draw(t, " <>

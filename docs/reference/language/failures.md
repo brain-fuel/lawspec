@@ -111,10 +111,15 @@ An application that raises its own exceptions maps them to constructors in
 is the implementation plane, never part of a law. A mapped constructor with
 one `Text` payload gets the exception's message; a constructor pattern such as
 `fails with Rejected "negative"` checks that payload directly. Automatic native
-exception mappings currently support payload-free alternatives and single
-`Text` payloads. To use a record payload with `message contains`, the adapter
-must construct the record and raise the runtime's `Fail` explicitly. Automatic
-mapping into that record remains an open migration/interface requirement.
+exception mappings support payload-free alternatives, a single `Text`
+payload, and a chain of single-field records ending in `Text`, such as
+`Declined of type record{message :: Text}`. Named and anonymous products keep
+their resolved constructor identities; concrete generic arguments are
+substituted before construction. Multiple fields, alternative choices,
+recursive products, handles and indexed or existential payloads require an
+explicit adapter. Mapping supplies only the message, never invented values
+for other fields. The ordinary boundary validates the constructed payload,
+including refinements; a rejected message remains an error.
 The archived 0.24 suites
 `examples/specs/failures.lawspec` and `examples/specs/handler_bindings.lawspec`
 show both.

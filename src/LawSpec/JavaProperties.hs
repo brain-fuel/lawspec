@@ -353,6 +353,11 @@ emitTests Config{..} unit laws = do
               C.Constant _ -> True
               C.Local _ -> True
               _ -> False]
+          scalar = case inputRange machineBits input of
+            Nothing -> text (className ++ "LawSpecTest::_lawspecScalarGenerator")
+            Just range -> text "_lawspecScalarName -> _lawspecScalarName.equals(" <> quoted (typeKey ty) <>
+              text ") ? " <> generatorWithin (Just range) ty <> text " : " <>
+              call "_lawspecScalarGenerator" [text "_lawspecScalarName"]
           strategy = case requiredSymbol plan of
             value:_ -> call "Generator.constant" [expr value]
             [] | Just indexed <- generatorIndex plan ->
@@ -365,7 +370,7 @@ emitTests Config{..} unit laws = do
               (call "lawspec.testing.LawSpecDataStrategies.checkedGenerator"
                 ([text "_schema",reference ty,number machineBits,number nodeBudget,number (maxAttempts settings),
                  text "symbols",call "java.util.List.of" (seeds ++ hints),
-                 text (className ++ "LawSpecTest::_lawspecScalarGenerator")] ++
+                 scalar] ++
                 [call "lawspec.testing.LawSpecNativeGenerators.factories" [] | nativeGenerators]))
               [("map",[D.group (text "lawspec.testing.LawSpecDataStrategies.Checked" <> D.nest 4 (D.softbreak <> text "::requireValue"))])]
             [] -> hinted (generatorWithin (inputRange machineBits input) ty)

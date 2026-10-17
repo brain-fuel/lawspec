@@ -346,6 +346,12 @@ emitTests Config{..} unit laws = do
                     C.Constant _ -> True
                     C.Local _ -> True
                     _ -> False]
+                -- Restrict only the top-level primitive. Recursive products keep
+                -- their own fields' generators and the checked schema boundary.
+                scalar = case inputRange machineBits input of
+                  Nothing -> text "_lawspecScalarGenerator"
+                  Just range -> text "(_lawspecScalarName: String) => if (_lawspecScalarName == " <> quoted (typeKey ty) <> text ") " <>
+                      generatorWithin (Just range) ty <> text " else _lawspecScalarGenerator(_lawspecScalarName)"
                 strategy = case (if nativeGenerators then [] else requiredSymbol plan) of
                   value:_ -> call "Arb.constant" [call "LawSpecScalaStrategies.Checked" [expr value,text "null"]]
                   -- The target is evaluated from the inputs bound above.
@@ -359,7 +365,7 @@ emitTests Config{..} unit laws = do
                     [text "_schema",reference ty,number machineBits,number nodeBudget,
                      number (maxAttempts (generation e)),text "symbols",call "List" (seeds ++ hints)] ++
                     [text "lawspec.testing.LawSpecNativeGenerators.factories()" | nativeGenerators] ++
-                    [text "_lawspecScalarGenerator"]
+                    [scalar]
                 added = trailing (strategy <> text ".map") "_checked"
                   (text "if (_checked.error != null) " <> block (state (text "_values")) <>
                    text " else " <> block (state (text "_values :+ _checked.requireValue()")))

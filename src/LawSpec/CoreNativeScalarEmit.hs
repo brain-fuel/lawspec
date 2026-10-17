@@ -410,7 +410,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
                          [Doc.text (intercalate "." (C.failureNative b) ++ (if kt then "::class.java" else ".class")),
                           Doc.text (if kt then "{ _error -> " else "_error -> ") <>
                             (if kt then ktConstruct' failure else javaConstruct' failure) (C.idText (C.failureConstructor b))
-                              [(if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text (if kt then "(_error.message ?: \"\")" else "java.util.Objects.toString(_error.getMessage(), \"\")")) | C.failureMessage b] <> close]
+                              (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text (if kt then "(_error.message ?: \"\")" else "java.util.Objects.toString(_error.getMessage(), \"\")"))) b) <> close]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in (if kt then KotlinExpr.call else JavaExpr.call) "LawSpecRuntime.nativeFailures"
              ([(if kt then KotlinExpr.quoted else JavaExpr.quoted) (C.abilityKey ability), Doc.text opening <> convert failure native <> close, supplier] ++ mapped)
@@ -544,7 +544,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         let native = qualifyData (java (HaskellData.haskellDataType dataDeclarations failure))
             mapped = [ HaskellExpr.apply "LS.mappedFailure" [Doc.text "((\\_error -> " <>
                          hsConstructValue failure (C.idText (C.failureConstructor b))
-                           [hsNativeResult (C.scalarType "Text") (Doc.text "(Data.Text.pack (P.show _error))") | C.failureMessage b] <>
+                           (C.mapFailureFields (\ty tag -> hsConstructValue ty (C.idText tag)) (hsNativeResult (C.scalarType "Text") (Doc.text "(Data.Text.pack (P.show _error))")) b) <>
                          Doc.text (") :: " ++ intercalate "." (C.failureNative b) ++ " -> LS.Scalar)")]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in HaskellExpr.apply "LS.nativeFailures" [HaskellExpr.quoted (C.abilityKey ability),
@@ -802,7 +802,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       Doc.text "func(err error) (LawSpecValue, bool) " <> Doc.block 8 (Doc.joinWith Doc.hardline
         [ Doc.text ("if !lsErrorAs[" ++ goNativeRef (C.failureNative b) ++ "](err) ") <> Doc.block 8 (Doc.text "return LawSpecValue{}, false")
         , Doc.text "return " <> goConstruct' failure (C.idText (C.failureConstructor b))
-            [goNativeResult (C.scalarType "Text") (Doc.text "err.Error()") | C.failureMessage b] <> Doc.text ", true" ])
+            (C.mapFailureFields (\ty tag -> goConstruct' ty (C.idText tag)) (goNativeResult (C.scalarType "Text") (Doc.text "err.Error()")) b) <> Doc.text ", true" ])
     goNativeRef parts = intercalate "." parts
     failuresOf n = [a | d <- C.unitDeclarations u, C.declarationName d == n, a <- C.declarationUses d, C.isFail a]
     asyncNames = [C.declarationName d | d <- C.unitDeclarations u, C.declarationAsync d]

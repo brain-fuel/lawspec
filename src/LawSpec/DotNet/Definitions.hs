@@ -173,7 +173,7 @@ emitEntriesWithLayouts bindings lang layout bits calls typedCall declarations un
                       ("Effects.MapException<" ++ intercalate "." (C.failureNative fb) ++ ">"))
                       [Lambda [(caught, Ty (intercalate "." (C.failureNative fb)) (intercalate "." (C.failureNative fb)))] tValue
                         (call "Schema" "construct" [Str (C.idText (C.failureConstructor fb)),
-                          ListOf tValue [Ctor (Fn "Value.Text" "V.Text") [Raw (caught ++ ".Message") (caught ++ ".Message")] | C.failureMessage fb], ref, X.schemaVar])]
+                          ListOf tValue (C.mapFailureFields (\ty tag fields -> call "Schema" "construct" [Str (C.idText tag), ListOf tValue fields, either error id (X.typeRef ty), X.schemaVar]) (Ctor (Fn "Value.Text" "V.Text") [Raw (caught ++ ".Message") (caught ++ ".Message")]) fb), ref, X.schemaVar])]
                 pure (call "Effects" "nativeFailures" [Str (failureKey declaration), Lambda [] tValue converted,
                   ListOf (Ty "(exn -> Value option)" "FSharpFunc<Exception, FSharpOption<Value>>") (map mapping (zip [0 ..] bindings))])
           pure (call "Schema" "validate" [mapped, resultRef, X.schemaVar])

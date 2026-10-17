@@ -10,7 +10,7 @@ import LawSpec.Common
 import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import LawSpec.CoreEmit (emitPlan, emitPlanWithNativeOptions)
 import LawSpec.Discharge (dischargeEvidence)
-import LawSpec.Frontend (compileCore)
+import LawSpec.Frontend (compileCore, compileCoreCanonical)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.NativeBinding (NativeRef(..))
 import LawSpec.NativeRequest
@@ -345,6 +345,32 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
              FailureMapping (NativeRef ["payments", "Weird"]) "example.payments::Problem::Odd"] }
       fmap (map (\b -> (C.idText (C.failureConstructor b), C.failureMessage b)) . bindingFailures) (resolveNativeRequest compiled request)
         `shouldBe` Right [("example.payments::type::Problem::Refused", False), ("example.payments::type::Problem::Odd", True)]
+    forM_ [ ("record{message :: Text}", 1)
+          , ("record{detail :: record{message :: (text :: Text where text != \"\")}}", 2)
+          , ("Message Text", 1)
+          , ("Message (Message Text)", 2) ] $ \(payload, depth) ->
+      it ("resolves a checked native message product: " ++ payload) $ do
+        let source' = unlines ["unit example.payments", "type Message (a :: Type) is a record{value :: a} end type",
+              "type Problem is one of | Odd of type " ++ payload ++ " end type"]
+            Right compiled = compileCoreCanonical 64 defaultGeneration [Source "payments.lawspec" source']
+            request = emptyNativeRequest {requestFailures = [FailureMapping (NativeRef ["payments", "Weird"]) "example.payments::Problem::Odd"]}
+            nesting C.ExceptionMessage = 0 :: Int
+            nesting (C.MessageProduct _ _ child) = 1 + nesting child
+        case resolveNativeRequest compiled request of
+          Left problem -> expectationFailure problem
+          Right plan -> do
+            map (fmap nesting . C.failurePayload) (bindingFailures plan) `shouldBe` [Just depth]
+            map (C.mapFailureFields (\_ _ fields -> 1 + sum fields) (0 :: Int)) (bindingFailures plan) `shouldBe` [[depth]]
+    forM_ ["UInt8", "record{message :: Text code :: UInt8}", "Message UInt8", "Loop", "Grow Text", "Choice"] $ \payload ->
+      it ("rejects an ambiguous or non-text native message payload: " ++ payload) $ do
+        let Right compiled = compileCoreCanonical 64 defaultGeneration [Source "payments.lawspec" (unlines ["unit example.payments",
+              "type Message (a :: Type) is a record{value :: a} end type",
+              "type Loop is a record{next :: Loop} end type",
+              "type Grow (a :: Type) is a record{next :: Grow (List a)} end type",
+              "type Choice is one of | First | Second of type Text end type",
+              "type Problem is one of | Odd of type " ++ payload ++ " end type"])]
+            request = emptyNativeRequest {requestFailures = [FailureMapping (NativeRef ["payments", "Weird"]) "example.payments::Problem::Odd"]}
+        resolveNativeRequest compiled request `shouldSatisfy` isLeft
     it "rejects a mapping to an unknown constructor" $ do
       let Right compiled = program source
           request = emptyNativeRequest { requestFailures = [FailureMapping (NativeRef ["payments", "Declined"]) "example.payments::Problem::Lost"] }

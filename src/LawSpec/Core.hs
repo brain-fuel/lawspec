@@ -493,11 +493,27 @@ data Unit = MkUnit { unitId :: Id, unitDeclarations :: [Declaration], unitContra
 
 -- failures: [{"native": [...], "failure": "<unit>::<Type>::<Constructor>"}]:
 -- an adapter that fails with the type turns the native exception into that
--- constructor: one with no fields, or one Text field, which gets the
--- exception's message.
+-- constructor. A message may be carried through explicitly typed products;
+-- each target uses its existing construction and boundary validation.
 data FailureBinding = FailureBinding
-  { failureNative :: [String], failureConstructor :: Id, failureType :: Type, failureMessage :: Bool }
+  { failureNative :: [String], failureConstructor :: Id, failureType :: Type
+  , failurePayload :: Maybe FailurePayload }
   deriving (Eq, Show, Generic)
+
+data FailurePayload = ExceptionMessage | MessageProduct Type Id FailurePayload
+  deriving (Eq, Show, Generic)
+
+failureMessage :: FailureBinding -> Bool
+failureMessage = maybe False (const True) . failurePayload
+
+-- This is a construction plan, not an evaluator: only the exception's Text
+-- and resolved single-field products can appear. Target constructors retain
+-- responsibility for validating the complete value and its restrictions.
+mapFailureFields :: (Type -> Id -> [a] -> a) -> a -> FailureBinding -> [a]
+mapFailureFields construct message = maybe [] ((:[]) . build) . failurePayload
+  where
+    build ExceptionMessage = message
+    build (MessageProduct ty tag payload) = construct ty tag [build payload]
 
 -- | A mailbox is a typed queue with many senders and one receiver, generated on
 -- each target from this declaration alone. ref:DEC-actors-otp-supervision

@@ -451,13 +451,21 @@ unit u = do
   failures <- forM (unitFailureBindings u) $ \f -> do
     wanted <- ty (failureType f)
     constructor <- constructorAt (failureType f) wanted (failureConstructor f)
-    pure f{failureType=wanted,failureConstructor=constructor}
+    payload <- traverse failureProduct (failurePayload f)
+    pure f{failureType=wanted,failureConstructor=constructor,failurePayload=payload}
   settings <- traverse (\h -> (\benchmarks -> h{harnessBenchmarks=benchmarks}) <$>
     mapM (\(name,value) -> (,) name <$> expression value) (harnessBenchmarks h)) (unitHarnessSettings u)
   machines <- mapM machine (unitMachines u)
   pure u{unitDeclarations=signatures,unitContracts=contracts,unitProperties=properties,unitDefinitions=definitions,
     unitSessions=sessions,unitMailboxes=mailboxes,unitAbilities=abilities,unitHandlers=handlers,
     unitFailureBindings=failures,unitHarnessSettings=settings,unitMachines=machines}
+
+failureProduct :: FailurePayload -> Normalize FailurePayload
+failureProduct ExceptionMessage = pure ExceptionMessage
+failureProduct (MessageProduct before tag child) = do
+  after <- ty before
+  constructor <- constructorAt before after tag
+  MessageProduct after constructor <$> failureProduct child
 
 -- Model and scenario command references are nominal function identities. Their
 -- signatures above carry the types. Only closed structural state names and

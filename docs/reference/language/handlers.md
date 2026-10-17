@@ -376,9 +376,12 @@ constructors under `failures` in `lawspec.json`:
 - `native` names an exception class (Python, JavaScript, Java, Kotlin), an
   error type (Go, matched with `errors.As`), an exception type (Haskell) or a
   panic payload type (Rust).
-- `failure` names a constructor of the failure type: one with no fields, or
-  one `Text` field, which gets the exception's message (its `Debug` text in
-  Rust, `show` in Haskell).
+- `failure` names a constructor of the failure type: one with no payload,
+  one `Text` payload, or a single-field product chain ending in `Text`.
+  The leaf receives the exception's message (`Debug` text in Rust, `show` in
+  Haskell). The constructed value crosses the ordinary checked schema;
+  message refinements can reject it. Other payload shapes require an
+  explicit adapter (see [Failures](failures.md)).
 - Where a law calls an adapter that `fails with` the type, the mapped
   exception becomes that failure, as if the adapter had raised it.
 

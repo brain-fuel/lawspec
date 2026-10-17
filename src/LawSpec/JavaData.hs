@@ -1,7 +1,7 @@
 -- | Native data declarations follow the resolved-plan/renderer separation used
 -- by Go+. Public fields retain native types; runtime Value is only the bridge
 -- for primitive domains with no faithful Java representation.
-module LawSpec.JavaData (schemaSource, javaConstructorClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaDataName, identifier) where
+module LawSpec.JavaData (schemaSource, javaConstructorClass, javaConstructorBinaryClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaDataName, identifier) where
 
 import LawSpec.DataNames (qualifiedDataName, isProduct, nativeConstructorFieldType, caseNames, caseInsensitiveCounts, ambiguous)
 import Control.Monad (unless, forM)
@@ -240,10 +240,19 @@ javaConstructorClass declarations declaration constructor = do
   names <- namesFor declarations
   pure (constructorClass names declaration constructor)
 
+-- Reflection consumes JVM binary names; source references use dots.
+javaConstructorBinaryClass :: [C.DataDeclaration] -> C.DataDeclaration -> C.DataConstructor -> Either String String
+javaConstructorBinaryClass declarations declaration constructor = do
+  names <- namesFor declarations
+  pure (constructorClassWith "$" names declaration constructor)
+
 constructorClass :: Names -> C.DataDeclaration -> C.DataConstructor -> String
-constructorClass names declaration constructor
+constructorClass = constructorClassWith "."
+
+constructorClassWith :: String -> Names -> C.DataDeclaration -> C.DataConstructor -> String
+constructorClassWith separator names declaration constructor
   | isProduct declaration = "lawspec.data." ++ name
-  | otherwise = "lawspec.data." ++ name ++ "." ++ maybe (C.constructorName constructor) id
+  | otherwise = "lawspec.data." ++ name ++ separator ++ maybe (C.constructorName constructor) id
       (lookup (C.constructorId constructor) (caseNames name (C.dataConstructors declaration)))
   where name = nativeName names declaration
 

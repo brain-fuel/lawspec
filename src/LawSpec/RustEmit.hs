@@ -534,7 +534,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             called = case (failureType, [a | a@(AbilityRef _ [_]) <- declarationUses d, isFail a]) of
               (Just native, ability@(AbilityRef _ [failure]) : _) -> invoke ("ls::native_failures::<" ++ native ++ ", _>")
                 [string (abilityKey ability), Doc.text "|native| ls::IntoValue::into_value(native)", Doc.text "|| " <> plain,
-                 Doc.text (Paths.mappedFailures (NR.bindingRustCrate bindings) (unitFailureBindings unit) failure)]
+                 Doc.text (Paths.mappedFailures planMachineBits (NR.bindingRustCrate bindings) (unitFailureBindings unit) failure)]
               _ -> plain
             wrapped = invoke (if typeName result == "CodeUnit16" then "ls::Value::CodeUnit16" else "ls::IntoValue::into_value") [Doc.text "native_result"]
         ref <- schemaType result

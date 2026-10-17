@@ -259,7 +259,7 @@ emitBindings minify plan testing files = do
       ref <- E.reference failure
       pure [ D.text ("case error: " ++ intercalate "." (C.failureNative b) ++ " => scala.util.Left(") <> failureCodec <> D.text ".decode(" <>
                E.call "LawSpecScalaCodecs.construct" [D.text "schema", ref, E.quoted (C.idText (C.failureConstructor b)),
-                 E.call "List" [E.call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(error.getMessage, \"\")", D.text (show bits)] | C.failureMessage b],
+                 E.call "List" (C.mapFailureFields (\ty tag fields -> E.call "LawSpecScalaCodecs.construct" [D.text "schema", either error id (E.reference ty), E.quoted (C.idText tag), E.call "List" fields, D.text (show bits), D.text "symbols"]) (E.call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(error.getMessage, \"\")", D.text (show bits)]) b),
                  D.text (show bits), D.text "symbols"] <> D.text "))"
            | b <- bindingFailures plan, C.failureType b == failure ]
     handleDeclaration name = find (\d -> C.dataHandle d && C.dataId d == C.Id name) declarations

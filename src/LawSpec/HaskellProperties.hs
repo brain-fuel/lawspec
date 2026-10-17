@@ -334,6 +334,12 @@ emitTests Config{..} unit laws = do
             ty = inputType inp
             hints = [expr hint | hint <- generatorHints plan, expressionType hint == ty,
               case C.expressionNode hint of C.Constant _ -> True; C.Local _ -> True; _ -> False]
+            scalar = case inputRange machineBits inp of
+              Nothing -> apply "Strategies.primitiveStrategy" [number machineBits]
+              Just range -> lambda "_lawspecScalarName"
+                (text "if _lawspecScalarName P.== " <> quoted (typeKey ty) <>
+                 text " then " <> apply "P.Right" [generatorWithin (Just range) ty] <>
+                 text " else " <> apply "Strategies.primitiveStrategy" [number machineBits,text "_lawspecScalarName"])
             strategy = case requiredSymbol plan of
               value:_ -> apply "pure" [expr value]
               -- The target is evaluated from the inputs drawn above.
@@ -346,7 +352,7 @@ emitTests Config{..} unit laws = do
               [] -> E.checked (apply (if nativeGenerators then "Strategies.checkedStrategyWith" else "Strategies.checkedStrategy")
                 ([apply "NativeGenerators.factories" [text "symbols",text "_lawspecSchema",number machineBits] | nativeGenerators] ++ [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
                  apply "P.Just" [text "symbols"],E.array (seeds ++ hints),
-                 apply "Strategies.primitiveStrategy" [number machineBits]]))
+                 scalar]))
         pure (statements
           ([text (inputId inp ++ " <-") <> D.nest 2 (D.hardline <> strategy)] ++
            [runtime "forceScalar" [text (inputId inp)] <> text " `seq` pure ()" | not nativeGenerators]))) (generationPlan e)

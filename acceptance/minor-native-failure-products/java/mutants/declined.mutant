@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/main/java/till/Payments.java
+<<<<<<<
+    if (cents > 1000) throw new CardDeclined();
+=======
+    if (cents > 1000) throw new BadAmount("negative");
+>>>>>>>

@@ -1,0 +1,9 @@
+expect-any: a till gives back what it takes| [native] | small payments go through| [native]
+@@ src/main/scala/till/Till.scala
+<<<<<<<
+    Cash(money.cents)
+  }
+=======
+    Cash(money.cents + 1)
+  }
+>>>>>>>

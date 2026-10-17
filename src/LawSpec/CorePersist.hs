@@ -85,6 +85,7 @@ instance Binary C.Proposition
 instance Binary C.Quantifier
 instance Binary C.Type
 instance Binary C.UnaryOp
+instance Binary C.FailurePayload
 instance Binary C.FailureBinding
 instance Binary C.Unit
 instance Binary C.Session

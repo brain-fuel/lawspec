@@ -1,0 +1,6 @@
+@@ test/fixtures/canonical-refined-primitive-inputs.lawspec
+<<<<<<<
+positive > 1000 and negative < -1000 and message.code < 0
+=======
+positive <= 1000 and negative < -1000 and message.code < 0
+>>>>>>>

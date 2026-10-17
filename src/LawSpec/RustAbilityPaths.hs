@@ -4,7 +4,10 @@
 module LawSpec.RustAbilityPaths (moduleOf, moduleOfName, foreignOwners, performBridges, bridgeName, traitPath, mappedFailures) where
 
 import Data.Char (isAlphaNum)
+import Data.List (intercalate)
 import qualified LawSpec.Core as C
+import qualified LawSpec.RustExpr as E
+import qualified LawSpec.Code.Doc as D
 import LawSpec.AbilityNames
 
 -- A unit's module in lawspec_abilities.
@@ -40,13 +43,16 @@ bridgeName a op = if null (C.abilityArguments a) then op else interfaceName a ++
 -- The panic payloads lawspec.json maps to failures of this type, as the
 -- last argument of ls::native_failures: each payload type T becomes its
 -- constructor, given T's Debug text when the constructor takes a message.
-mappedFailures :: Maybe String -> [C.FailureBinding] -> C.Type -> String
-mappedFailures library bindings failure = "vec![" ++ concat
+mappedFailures :: Int -> Maybe String -> [C.FailureBinding] -> C.Type -> String
+mappedFailures bits library bindings failure = "vec![" ++ concat
   [ "Box::new(|payload: &(dyn std::any::Any + Send)| payload.downcast_ref::<" ++ path (C.failureNative b) ++ ">().map(|error| " ++
-    "ls::construct_data(" ++ show (C.idText (C.failureConstructor b)) ++ ", vec![" ++
-    (if C.failureMessage b then "ls::Value::Text(format!(\"{error:?}\"))" else "") ++ "]))) as ls::MappedFailure, "
+    "crate::lawspec_schema::schema().and_then(|schema| schema.validate(ls::construct_data(" ++ show (C.idText (C.failureConstructor b)) ++ ", vec![" ++
+    intercalate ", " (C.mapFailureFields (\_ tag fields -> "ls::construct_data(" ++ show (C.idText tag) ++ ", vec![" ++ intercalate ", " fields ++ "])") "ls::Value::Text(format!(\"{error:?}\"))" b) ++ "]), &" ++ reference ++ ", " ++ show bits ++
+    ")).unwrap_or_else(|error| std::panic::panic_any(error)))) as ls::MappedFailure, "
   | b <- bindings, C.failureType b == failure ] ++ "]"
-  where path parts = concatMap (\(i, p) -> (if i > (0 :: Int) then "::" else "") ++ (if i == 0 && p == "crate" then maybe p id library else p)) (zip [0 ..] parts)
+  where
+    reference = D.render D.Compact (either error id (E.reference failure))
+    path parts = concatMap (\(i, p) -> (if i > (0 :: Int) then "::" else "") ++ (if i == 0 && p == "crate" then maybe p id library else p)) (zip [0 ..] parts)
 
 -- The trait of an ability, from the crate root.
 traitPath :: [C.Unit] -> C.AbilityRef -> String

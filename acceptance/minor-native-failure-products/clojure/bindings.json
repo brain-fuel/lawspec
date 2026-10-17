@@ -1,0 +1,12 @@
+{
+  "functions": [
+    {"declaration": "example.till::pay", "native": ["till", "payments", "pay"]}
+  ],
+  "handlers": [
+    {"ability": "example.till::Drawer", "native": ["till", "payments", "native_till"]}
+  ],
+  "failures": [
+    {"native": ["till", "card_declined"], "failure": "example.till::PayError::Declined"},
+    {"native": ["till", "bad_amount"], "failure": "example.till::PayError::Rejected"}
+  ]
+}

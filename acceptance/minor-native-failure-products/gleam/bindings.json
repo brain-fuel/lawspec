@@ -1,0 +1,63 @@
+{
+  "types": [
+    {
+      "type": "example.till::type::Money",
+      "native": [
+        "till",
+        "native",
+        "Cash"
+      ],
+      "constructors": [
+        {
+          "constructor": "Money",
+          "native": [
+            "till",
+            "native",
+            "Cash"
+          ],
+          "style": "record",
+          "fields": [
+            {
+              "field": "cents",
+              "native": "cash_cents"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "example.till::pay",
+      "native": [
+        "till",
+        "native",
+        "pay"
+      ]
+    }
+  ],
+  "handlers": [
+    {
+      "ability": "example.till::Drawer",
+      "native": [
+        "till",
+        "native",
+        "new_native_till"
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "native": [
+        "card_declined"
+      ],
+      "failure": "example.till::PayError::Declined"
+    },
+    {
+      "native": [
+        "bad_amount"
+      ],
+      "failure": "example.till::PayError::Rejected"
+    }
+  ]
+}

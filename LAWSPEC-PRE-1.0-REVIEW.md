@@ -28,8 +28,9 @@ Validated project migration writes and the first canonical Chapter 6 pass shippe
 The human readability exercise remains user-deferred. Completing all named endings belongs to the immediately following minor. The larger demonstration portfolio, advanced verification and external Linguist acceptance remain pre-final-1.0 requirements. None of these statuses authorizes an RC designation or a tag.
 
 The dated implementation receipts below preserve historical statuses. The
-latest verified increments are **Refinement payloads through product storage**
-and **Canonical reference fragments and equality guidance**. The former
+latest verified increments include **Refinement payloads through product storage**,
+**Canonical reference fragments and equality guidance**, and **Native exception
+messages and checked input ranges**. The product-storage increment
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
 
@@ -383,6 +384,92 @@ continues independently against `9b76bd54`. Remaining migration, native
 exception mapping, Chapter 6 authoring and full minor acceptance remain open.
 Human readability remains user-deferred; all-named endings belong to the
 following minor. No RC designation or tag is authorized.
+
+### Native exception messages and checked input ranges — 17 October 2026
+
+Automatic native exception mappings now construct an explicitly typed message
+payload through single-field products, including anonymous records, nominal
+records and concrete generic applications. Payload-free alternatives and the
+existing direct Text form retain their behavior. The construction plan stores
+resolved constructor identities and applied types; the existing type registry
+checks each field, and record normalization retargets the entire plan. Every
+target uses its ordinary construction and boundary validation. No unchecked
+function category, alternative evaluator or new proof backend is introduced.
+
+Finite nested applications such as `Message (Message Text)` descend through
+proper type arguments. Repeated or growing recursive field applications are
+rejected. A mapping cannot invent additional fields or select a payload
+alternative. Indexed, existential and handle payloads remain unsupported by
+this automatic message construction. An explicit adapter remains available.
+The message is obtained once, and a refinement can reject it.
+
+Clojure now uses the JVM binary class names from the Java data-name planner,
+including single-constructor products and nested sum variants. It no longer
+reconstructs a class name from a source tag. Its runtime constructs the checked
+product chain before the existing failure codec validates the value. Rust now
+validates a mapped dynamic failure against the full schema before exposing it
+as the declared failure. A native Rust probe also executes a message refinement
+that calls a checked LawSpec function.
+
+The native matrix exposed a separate generation defect: schema-checked
+construction could discard the constant integer intervals already present in
+a law's input plan. The fix reuses `LawSpec.Bounds.inputRange` and the existing
+bounded primitive generators in Python, JavaScript, TypeScript, Java, Groovy,
+Clojure, Go, Kotlin, Scala and Haskell. Each input supplies its own primitive
+fallback; a record field of the same primitive type retains its own
+restriction. Explicit native factories, schema validation and the complete
+dependent predicates remain in place. This changes sampling, not the law or
+its proof obligations. Increasing discard limits is not the fix.
+
+Two permanent acceptance suites cover native exception records and independent
+and dependent input intervals. All 17 targets pass both CI profiles (64-bit
+readable and 32-bit compact): **68 successful suite runs**, each rejecting its
+two mutants (**136 rejected mutants**). The interval suite includes separate
+positive and negative Int64 inputs, a negative Int64 record field, and a
+relationship between two inputs. The native exception suite retains distinct
+native and specification handlers. These are sampled native execution results,
+not universal proofs or complete finite evidence.
+
+The focused compiler suite passes **19 tests**. All 17 targets, both widths and
+both layouts also participate in complete native/WASM response comparisons,
+including deep generic message construction and rejected recursive shapes.
+The original Chapter 6 source retains SHA-256
+`07d8116b847aa80e044ad3ea2cbc8317bc949a0c4fe07b560e513d6fa0bfaf06`.
+Artifacts are under `.artifacts/checked-input-ranges/` in the
+`lawspec-minor-checked-input-ranges` worktree. Earlier failed generation runs
+remain under `.artifacts/native-message-products/` in the preceding worktree;
+those failures are not passing evidence.
+
+The full compiler run passes **2,170 tests with zero failures** (783.7 seconds).
+The broad SDK run passes **466 of 470 tests**, with zero failures and four
+explicit environment selections skipped. Those four selected tests also pass
+when run in their required environments: the existing Rust and Haskell native
+layout tests and the new Rust and Clojure message tests. The separate five-test
+message run has no failures or skips; this is coverage across runs, not a
+claim of one uninterrupted skip-free SDK run.
+
+Complete native/WASM parity agrees on **704 responses** (628 regression and
+fixture responses plus 76 deep-message responses). All 486 preceding responses
+are retained in full. The 32 changed generations differ only in generated
+file fields, and only for the seven targets served by the additional scoped
+primitive fallbacks; typed obligations and other response fields are unchanged.
+The 128 generated files, 233-module compiler/backend boundary, six editor
+tests, version consistency, artifact integrity and documentation checks for
+119 pages/114 compiled snippets pass. The staged WASM artifact has SHA-256
+`82c4ce63d38157ebfd54ebf2942d594086747bb25694e9cab84581d2ec14beab`;
+the native core has SHA-256
+`872d00ac94b0657110778b46e86942bf405dbb65887da06bfe20b0500b578c95`.
+Both unsigned pointer conversions are verified in the generated WASM glue.
+
+The current archive/export run remains in progress against these frozen
+sources. The earlier archive/export baseline at
+`9b76bd54` passed its complete all-target export, adapter preservation and
+edited-file protection check (5,934.8 seconds). That is an earlier compiler
+receipt, not a claim that the current archive run has completed. Symbolic
+law-template `attempt` correspondence and the other migration acceptance gates
+remain open; executable mappings do not certify that transport. The human
+readability exercise remains deferred, complete named endings remain in the
+following minor, and this increment authorizes no RC designation or tag.
 
 ## Latest approved milestone direction — 15 October 2026
 

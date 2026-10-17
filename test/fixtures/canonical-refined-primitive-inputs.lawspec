@@ -1,0 +1,28 @@
+unit checkedPrimitiveInputs
+
+type Message is a record{
+  code of type (value of type Int64 where value < 0)
+}
+end type
+
+law separateRanges is
+  definition:
+    for all
+      (positive of type Int64 where positive >= 1001 and positive <= 100000)
+      (negative of type Int64 where negative >= -100000 and negative <= -1001)
+      (message of type Message) =>
+      positive > 1000 and negative < -1000 and message.code < 0
+    end
+  end
+end
+
+law dependentRanges is
+  definition:
+    for all
+      (earlier of type Int64 where earlier >= 1001 and earlier <= 1002)
+      (later of type Int64 where later >= 1002 and later <= 1003 and later > earlier)
+      (message of type Message) =>
+      later > earlier and later - earlier <= 2 and message.code < 0
+    end
+  end
+end

@@ -296,10 +296,12 @@ extra-source-files:
     test/fixtures/canonical-container-records.lawspec
     test/fixtures/canonical-empty-record-patterns.lawspec
     test/fixtures/canonical-gadt-payload-indices.lawspec
+    test/fixtures/canonical-native-failure-products.lawspec
     test/fixtures/canonical-positional-products.lawspec
     test/fixtures/canonical-prelude-names.lawspec
     test/fixtures/canonical-record-predicate-functions.lawspec
     test/fixtures/canonical-refined-gadt-indices.lawspec
+    test/fixtures/canonical-refined-primitive-inputs.lawspec
     test/fixtures/canonical-set-domains.lawspec
     test/fixtures/canonical-set-generation.lawspec
     test/fixtures/canonical-set-literals.lawspec

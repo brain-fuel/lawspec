@@ -12,6 +12,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Char (isAscii, isAlpha, isAlphaNum, isLower)
 import Data.List (find, nub, sortOn)
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.Types as Types
 import LawSpec.NativeBinding
 import LawSpec.AbilityNames (interfaceName)
 import LawSpec.Common (Artifact(..))
@@ -170,11 +171,37 @@ resolveNativeRequest program NativeRequest{..} = do
         [(d, c) | d <- C.programDataDeclarations program, c <- C.dataConstructors d, C.idText (C.constructorId c) == identity] of
           x : _ -> Just x
           [] -> Nothing
-      message <- case map C.binderType (C.constructorFields found) of
-        [] -> pure False
-        [C.Constructor "Text" []] -> pure True
-        _ -> Left (context ++ ": the constructor must have no fields, or one Text field for the message")
-      pure (C.FailureBinding (referenceParts mappedNative) (C.constructorId found) (C.Constructor (C.idText (C.dataId declaration)) []) message)
+      let wanted = C.Constructor (C.idText (C.dataId declaration)) []
+      registry <- Types.makeRegistry (C.programDataDeclarations program)
+      fields <- Types.constructorFieldsFor registry wanted (C.constructorId found)
+      payload <- case fields of
+        [] -> pure Nothing
+        [field] -> Just <$> messagePayload registry context [] (C.binderType field)
+        _ -> Left (context ++ ": the constructor must have no payload, or one Text/message product payload")
+      pure (C.FailureBinding (referenceParts mappedNative) (C.constructorId found) wanted payload)
+    messagePayload _ _ _ (C.Constructor "Text" []) = pure C.ExceptionMessage
+    messagePayload registry context seen ty@(C.Constructor name _) = do
+      let invalid = Left (context ++ ": the message payload must be Text or a nonrecursive single-field product ending in Text")
+      -- Repeated applications such as Message (Message Text) descend through
+      -- finite type arguments. A recursive field that repeats or grows an
+      -- application cannot supply a finite message construction.
+      let previous = [prior | prior@(C.Constructor owner _) <- seen, owner == name]
+      if case previous of prior:_ -> not (properTypePart ty prior); [] -> False
+        then invalid else do
+        declaration <- Types.lookupData registry (C.Id name)
+        case C.dataConstructors declaration of
+          [constructor] | not (C.dataHandle declaration), C.dataIndex declaration == Nothing,
+                          null (C.constructorEquations constructor), null (C.constructorExistentials constructor) -> do
+            fields <- Types.constructorFieldsFor registry ty (C.constructorId constructor)
+            case fields of
+              [field] -> C.MessageProduct ty (C.constructorId constructor) <$>
+                messagePayload registry context (ty:seen) (C.binderType field)
+              _ -> invalid
+          _ -> invalid
+    messagePayload _ context _ _ = Left (context ++ ": the message payload requires a concrete Text/product type")
+    properTypePart wanted (C.Constructor _ arguments) = or
+      [wanted == child || properTypePart wanted child | C.TypeArgument child <- arguments]
+    properTypePart _ _ = False
     breakOn text = case text of
       ':' : ':' : rest -> ("", rest)
       c : rest -> let (a, b) = breakOn rest in (c : a, b)

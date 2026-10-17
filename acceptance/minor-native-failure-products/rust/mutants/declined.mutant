@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/till_native.rs
+<<<<<<<
+        std::panic::panic_any(CardDeclined);
+=======
+        std::panic::panic_any(BadAmount("negative".to_string()));
+>>>>>>>

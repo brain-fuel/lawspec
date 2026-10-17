@@ -463,11 +463,16 @@ public final class LawSpecClojure {
     if (data != null && data.valAt(TYPE) instanceof Keyword kind) {
       String[] bound = boundFailures().get(kind.toString().substring(1));
       if (bound != null) {
-        Class<?> type = classOfTag((Keyword) Clojure.read(":" + bound[0]));
         try {
+          Class<?> type = Class.forName(bound[0]);
+          Object payload = Boolean.parseBoolean(bound[1]) ? info.getMessage() : null;
+          for (int i = bound.length - 1; i >= 2; i--) {
+            Class<?> product = Class.forName(bound[i]);
+            payload = messageProduct(product, payload);
+          }
           RecordComponent[] components = type.getRecordComponents();
           Object made = components.length == 0 ? type.getDeclaredConstructor().newInstance()
-              : type.getDeclaredConstructor(components[0].getType()).newInstance(Boolean.parseBoolean(bound[1]) ? info.getMessage() : null);
+              : messageProduct(type, payload);
           return new LawSpecRuntime.Fail(made);
         } catch (ReflectiveOperationException e) {
           throw new IllegalStateException("cannot make the failure " + bound[0], e);
@@ -475,6 +480,12 @@ public final class LawSpecClojure {
       }
     }
     return info;
+  }
+
+  private static Object messageProduct(Class<?> type, Object value) throws ReflectiveOperationException {
+    RecordComponent[] fields = type.getRecordComponents();
+    if (fields == null || fields.length != 1) throw new IllegalStateException("a mapped message requires one record field");
+    return type.getDeclaredConstructor(fields[0].getType()).newInstance(value);
   }
 
   static final Keyword TYPE = Keyword.intern("type");

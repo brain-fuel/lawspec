@@ -1,0 +1,67 @@
+unit example.till
+
+type Money is a record{cents :: Int64} end type
+type PayError is one of
+  | Declined
+  | Rejected of type record{message :: (text :: Text where text != "")}
+end type
+
+ability Drawer is
+  take :: Money -> Money
+  opening :: Money
+laws
+  law "|a till gives back what it takes| is
+    definition:
+      for all (cents :: Int64 where cents >= 0 and cents <= 1000) =>
+        take (Money record{cents = cents}) must be Money record{cents = cents}
+      end
+    end
+  end
+end
+
+handler fakeDrawer for Drawer is
+  take money is money end
+  opening is Money record{cents = 0} end
+end
+
+pay :: Int64 -> Money uses Drawer fails with PayError
+
+law "|small payments go through| is
+  definition:
+    for all (cents :: Int64 where cents >= 0 and cents <= 1000) =>
+      prelude.attempt (pay cents) must be Right (Money record{cents = cents})
+    end
+  end
+end
+
+law "|large payments are declined| is
+  definition:
+    for all (cents :: Int64 where cents > 1000 and cents <= 100000) =>
+      prelude.attempt (pay cents) must be Left Declined
+    end
+  end
+end
+
+law "|negative payments are rejected| is
+  definition:
+    for all (cents :: Int64 where cents >= -1000 and cents < 0) =>
+      prelude.attempt (pay cents) must be Left (Rejected record{message = "negative"})
+    end
+  end
+end
+
+law "|large payments fail as declined| is
+  definition:
+    for all (cents :: Int64 where cents > 1000 and cents <= 100000) =>
+      pay cents fails with Declined
+    end
+  end
+end
+
+law "|negative payments say why they are rejected| is
+  definition:
+    for all (cents :: Int64 where cents >= -1000 and cents < 0) =>
+      pay cents fails with Rejected record{message = _} message contains "negative"
+    end
+  end
+end

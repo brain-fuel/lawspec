@@ -195,7 +195,10 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
               mapping (k, fb) =
                 let native = intercalate "." (C.failureNative fb)
                     caught = "caught" ++ show (k :: Int)
-                    fields = if C.failureMessage fb then "[Value.text(String(describing: " ++ caught ++ "))]" else "[]"
+                    fields = "[" ++ intercalate ", " (C.mapFailureFields
+                      (\ty tag values -> "try Schema.construct(" ++ stringLiteral (C.idText tag) ++ ", [" ++ intercalate ", " values ++
+                        "], try " ++ D.render (D.Pretty 1000) (renderExpr (either error id (X.typeRef ty))) ++ ", schema)")
+                      ("Value.text(String(describing: " ++ caught ++ "))") fb) ++ "]"
                 in Raw ("Effects.mapError(" ++ native ++ ".self, { (" ++ caught ++ ": " ++ native ++ ") throws -> Value in try Schema.construct(" ++
                      stringLiteral (C.idText (C.failureConstructor fb)) ++ ", " ++ fields ++ ", try " ++ D.render (D.Pretty 1000) (renderExpr ref) ++ ", schema) })")
               mappings = map mapping (zip [0 ..] [fb | fb <- C.unitFailureBindings unit, C.failureType fb == failureTy])

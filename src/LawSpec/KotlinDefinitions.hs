@@ -188,7 +188,7 @@ emitKotlinDefinitions layout bits declarations units = do
             mapped = [ call "LawSpecRuntime.MappedFailure" [D.text (intercalate "." (failureNative b) ++ "::class.java"),
                          D.text "{ _error -> " <> call "LawSpecKotlinCodecs.construct"
                            [D.text "schema", either error id (E.reference failure), E.quoted (idText (failureConstructor b)), call "listOf"
-                             [call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "_error.message ?: \"\"", D.text (show bits)] | failureMessage b],
+                             (mapFailureFields (\ty tag fields -> call "LawSpecKotlinCodecs.construct" [D.text "schema", either error id (E.reference ty), E.quoted (idText tag), call "listOf" fields, D.text (show bits), D.text "symbols"]) (call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "_error.message ?: \"\"", D.text (show bits)]) b),
                             D.text (show bits), D.text "symbols"] <> D.text " }"]
                      | b <- bindings ]
         in call "LawSpecRuntime.nativeFailures" ([E.quoted (abilityKey ability),

@@ -1,0 +1,6 @@
+@@ test/fixtures/canonical-refined-primitive-inputs.lawspec
+<<<<<<<
+later > earlier and later - earlier <= 2 and message.code < 0
+=======
+later < earlier and later - earlier <= 2 and message.code < 0
+>>>>>>>

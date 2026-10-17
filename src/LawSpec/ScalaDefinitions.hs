@@ -190,7 +190,7 @@ emitScalaDefinitions layout bits declarations units = do
             mapped = [ call "LawSpecRuntime.MappedFailure" [D.text ("classOf[" ++ intercalate "." (failureNative b) ++ "]"),
                          D.text "(_error: Throwable) => " <> call "LawSpecScalaCodecs.construct"
                            [D.text "schema", either error id (E.reference failure), E.quoted (idText (failureConstructor b)), call "List"
-                             [call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(_error.getMessage, \"\")", D.text (show bits)] | failureMessage b],
+                             (mapFailureFields (\ty tag fields -> call "LawSpecScalaCodecs.construct" [D.text "schema", either error id (E.reference ty), E.quoted (idText tag), call "List" fields, D.text (show bits), D.text "symbols"]) (call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "java.util.Objects.toString(_error.getMessage, \"\")", D.text (show bits)]) b),
                             D.text (show bits), D.text "symbols"]]
                      | b <- bindings ]
         in call "LawSpecRuntime.nativeFailures" ([E.quoted (abilityKey ability),

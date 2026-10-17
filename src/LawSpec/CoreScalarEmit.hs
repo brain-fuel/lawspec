@@ -373,7 +373,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             [ if py then runtime "native_class" [quoted (intercalate "." (init (C.failureNative b))), quoted (last (C.failureNative b))]
                     else text (failureAlias (C.failureNative b))
             , lambda [text "_error"] (constructed failure (C.idText (C.failureConstructor b))
-                [converted (C.scalarType "Text") (if py then text "_builtins.str(_error)" else text "String(_error?.message ?? _error)") | C.failureMessage b]) ]
+                (C.mapFailureFields (\ty tag -> constructed ty (C.idText tag))
+                  (converted (C.scalarType "Text") (if py then text "_builtins.str(_error)" else text "String(_error?.message ?? _error)")) b)) ]
         | b <- bindings ]
     failureImports = nub [C.failureNative b | b <- C.unitFailureBindings u]
     failureAlias parts = "_lawspecFailure" ++ show (length (takeWhile (/= parts) failureImports))
@@ -817,13 +818,23 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
               C.Constant _ -> True
               C.Local _ -> True
               _ -> False]
+          scalarName = text "_lawspecScalarName"
+          fallback = if py then invoke "_lawspec_primitive_generators.__getitem__" [scalarName]
+            else text "_lawspec_primitive_generators[_lawspecScalarName]"
+          scalar = case inputRange bits (domainInput plan) of
+            Nothing -> text (if py then "_lawspec_primitive_generators.__getitem__"
+              else "(name) => _lawspec_primitive_generators[name]")
+            Just range ->
+              let bounded = Generator.generatorDocWithin py bits usesData referenceDoc (Just range) ty
+                  selected = scalarName <> text (if py then " == " else " === ") <> quoted (typeKey ty)
+                  body = if py then bounded <> text " if " <> selected <> text " else " <> fallback
+                    else selected <> text " ? " <> bounded <> text " : " <> fallback
+              in lambda [scalarName] (parenthesized body)
       pure (case requiredSymbol plan of
         value:_ -> invoke (if py then "st.just" else "fc.constant") [render value]
         [] -> invoke "_data_strategy"
           ([text "_lawspec_schema",referenceDoc ty,width,text (show budget),
-            text (if py then "_lawspec_primitive_generators.__getitem__"
-              else "(name) => _lawspec_primitive_generators[name]"),
-            text "symbols",array (seeds ++ hints)] ++
+            scalar,text "symbols",array (seeds ++ hints)] ++
             [text (show (maxAttempts (generation e))) | not py] ++
             -- The generated native wrapper takes index directly; the shared
             -- runtime receives its default native generators and schema.

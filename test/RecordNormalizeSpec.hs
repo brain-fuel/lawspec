@@ -39,6 +39,24 @@ comparison operation a b=Expr boolean (Binary operation (Numeric (expressionType
 
 test_recordNormalizationPreservesPrograms :: Spec
 test_recordNormalizationPreservesPrograms=describe "structural record normalization" $ do
+  it "retargets the applied products in a native message mapping" $ do
+    let parameter=Id "message.parameter"
+        generic=make [parameter] [field "message" (TypeVariable parameter)]
+        before=Constructor (idText (dataId generic)) [TypeArgument (scalarType "Text")]
+        concrete=fst (either error id (instantiateRecordDeclaration generic [scalarType "Text"] origin))
+        after=scalarType (idText (dataId concrete))
+        tag=Id "Problem::Declined"
+        problem=DataDeclaration (Id "Problem") "Problem" []
+          [DataConstructor tag "Declined" [Binder (Id "payload") "payload" before] [] origin [] []] origin Nothing
+        binding=FailureBinding ["NativeError"] tag (scalarType "Problem")
+          (Just (MessageProduct before (constructorId (head (dataConstructors generic))) ExceptionMessage))
+        input=Program 64 [generic,problem] [(Unit (Id "messages") [] [] [] [] []){unitFailureBindings=[binding]}]
+    case normalizeProgramRecords input of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right output -> case programUnits output of
+        [unit] -> map failurePayload (unitFailureBindings unit) `shouldBe`
+          [Just (MessageProduct after (constructorId (head (dataConstructors concrete))) ExceptionMessage)]
+        _ -> expectationFailure "missing normalized message unit"
   it "makes generic and concrete records interoperate through checked functions and nested nominal payloads" $
     forM_ [32,64] $ \bits -> do
       let source=recordInteroperabilityProgram bits
@@ -181,7 +199,7 @@ test_recordNormalizationPreservesPrograms=describe "structural record normalizat
         perform=Expr before (Perform (Operation ref "get") [value]) origin
         signature=(Declaration (Id "operation") "operation" before origin){declarationUses=[ref]}
         d=Definition signature [] perform
-        binding=FailureBinding ["NativeError"] (constructorId (head (dataConstructors generic))) before True
+        binding=FailureBinding ["NativeError"] (constructorId (head (dataConstructors generic))) before (Just ExceptionMessage)
         source=Program 64 [generic] [(Unit (Id "effects") [signature] [] [] [d] [])
           {unitAbilities=[a],unitHandlers=[h],unitFailureBindings=[binding]}]
     case normalizeProgramRecords source of

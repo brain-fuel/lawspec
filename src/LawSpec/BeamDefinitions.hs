@@ -45,7 +45,7 @@ nativeFailures target bindings schema declaration body = case [a | a <- C.declar
         (_, [tag]) | not (null tag) -> pure (E.tuple [E.atom "tag",E.atom tag])
         _ -> Left "Erlang and Gleam native failures require one atom naming a tagged Erlang error"
       let value = E.remote "lawspec_beam_schema" "construct" [E.binary (C.idText (C.failureConstructor binding)),
-            E.array [D.text "_LsExceptionMessage" | C.failureMessage binding],ref,schema]
+            E.array (C.mapFailureFields (\ty tag fields -> E.remote "lawspec_beam_schema" "construct" [E.binary (C.idText tag), E.array fields, either error id (E.typeReference ty), schema]) (D.text "_LsExceptionMessage") binding),ref,schema]
           match = E.remote "lawspec_beam_effects" "match_exception"
             [kind,D.text "_LsExceptionClass",D.text "_LsExceptionReason"]
       pure (E.lambda [D.text "_LsExceptionClass",D.text "_LsExceptionReason"]

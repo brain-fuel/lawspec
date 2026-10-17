@@ -23,9 +23,8 @@ data ClojureBindings = ClojureBindings
   { boundFunctions :: [((String, String), (String, String))]
   -- The ability's key, the generated class, and (namespace, function).
   , boundHandlers :: [(String, String, (String, String))]
-  -- The ex-info's :type, the failure constructor, and whether it takes the
-  -- ex-info's message.
-  , boundFailures :: [(String, String, Bool)]
+  -- The ex-info's :type and its resolved message construction plan.
+  , boundFailures :: [(String, C.FailureBinding)]
   -- The generated factory method, and (namespace, function).
   , boundGenerators :: [(String, (String, String))] }
 
@@ -58,7 +57,7 @@ splitBindings plan = do
     (NB.bindingCalls plan)
   let functions = [((unitOf d, javaName d), target r) | (d, r) <- NB.bindingFunctions plan] ++ calls
       handlers = [(C.idText key, className (C.idText key), target r) | (key, r) <- NB.bindingHandlers plan]
-      failures = [ (intercalate "." (map hyphens (init (C.failureNative f))) ++ "/" ++ hyphens (last (C.failureNative f)), C.idText (C.failureConstructor f), C.failureMessage f)
+      failures = [ (intercalate "." (map hyphens (init (C.failureNative f))) ++ "/" ++ hyphens (last (C.failureNative f)), f)
                  | f <- NB.bindingFailures plan, not (null (C.failureNative f)) ]
       factories = [ (g, "factory" ++ show i, target (resolvedGeneratorFactory g)) | (i, g) <- zip [0 :: Int ..] generators ]
       java = plan { NB.bindingRepresentations = ResolvedBindings []
