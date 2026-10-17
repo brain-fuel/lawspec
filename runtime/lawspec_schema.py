@@ -89,8 +89,12 @@ class Constructor:
     # Texts a refined field draws besides its native ones (field index,
     # texts): samples of the regex its refinement matches it against.
     hints: tuple = ()
+    native_paths: tuple | None = None
 
     def __post_init__(self):
+        if self.native_paths is not None:
+            object.__setattr__(self, "native_paths", tuple(
+                tuple(path) for path in self.native_paths))
         object.__setattr__(self, "fields", tuple(self.fields))
         object.__setattr__(self, "hints", tuple(
             (index, tuple(texts)) for index, texts in self.hints))
@@ -372,7 +376,8 @@ class Schema:
                     raise ValueError("duplicate constructor field")
                 if constructor.native_fields is not None:
                     native_names = constructor.native_fields
-                    if (len(native_names) != len(names)
+                    if (len(native_names) != (len(names) if constructor.native_paths
+                                             is None else len(constructor.native_paths))
                             or len(set(native_names)) != len(native_names)
                             or not all(isinstance(name, str)
                                        and name.isidentifier()
@@ -387,6 +392,86 @@ class Schema:
                     self._check(pattern, scope)
                 if not all(callable(test) for test in constructor.predicates):
                     raise TypeError("constructor predicate must be callable")
+
+        # Paths are checked against the entire product, including generic
+        # child types, before an application value can cross this schema.
+        for definition in self._definitions.values():
+            for constructor in definition.constructors:
+                if constructor.native_paths is not None:
+                    if constructor.native_fields is None:
+                        raise ValueError("native paths require native fields")
+                    self._native_layout(constructor.fields,
+                                        constructor.native_paths)
+
+    def _native_layout(self, fields, paths):
+        """A complete, nonoverlapping packing tree; leaves keep native order."""
+        def build(fields, entries):
+            if (any(not path for _, path in entries)
+                    or set(path[0] for _, path in entries)
+                    != set(field.name for field in fields)):
+                raise ValueError("native paths must cover exactly every field")
+            nodes = []
+            for field in fields:
+                children = [(index, path[1:]) for index, path in entries
+                            if path[0] == field.name]
+                direct = [index for index, path in children if not path]
+                if direct:
+                    if len(children) != 1:
+                        raise ValueError("overlapping native paths")
+                    nodes.append((field, direct[0]))
+                    continue
+                definition = self._definitions.get(
+                    getattr(field.type, "name", None))
+                if definition is None or len(definition.constructors) != 1:
+                    raise ValueError("native path must enter a record")
+                constructor = definition.constructors[0]
+                if constructor.existentials or constructor.refinements:
+                    raise ValueError("indexed native record path is unsupported")
+                instantiated = tuple(Field(child.name, substitute(
+                    child.type, field.type.arguments))
+                    for child in constructor.fields)
+                nodes.append((field, (constructor.tag,
+                                      build(instantiated, children))))
+            return tuple(nodes)
+        return build(fields, tuple(enumerate(paths)))
+
+    def _layout_walk(self, constructor, fields, bits, mode, symbols):
+        tree = self._native_layout(constructor.fields,
+                                   constructor.native_paths)
+        leaves = [None] * len(constructor.native_paths)
+        def gather(nodes, values):
+            for index, (field, child) in enumerate(nodes):
+                if isinstance(child, int):
+                    leaves[child] = (field.type, values[index])
+                else:
+                    tag, nested = child
+                    value = values[index]
+                    if (not isinstance(value, ls.DataValue)
+                            or value.tag != tag or len(value.fields) != len(nested)):
+                        raise ValueError("invalid native record payload")
+                    gather(nested, value.fields)
+        def types(nodes):
+            for field, child in nodes:
+                if isinstance(child, int):
+                    leaves[child] = field.type
+                else:
+                    types(child[1])
+        def pack(nodes, values):
+            return tuple(values[child] if isinstance(child, int)
+                         else ls.DataValue(child[0], pack(child[1], values))
+                         for _, child in nodes)
+        if mode == "native":
+            gather(tree, fields)
+            converted = [self._walk(ty, value, bits, mode, symbols)
+                         for ty, value in leaves]
+            return constructor.native(**dict(zip(
+                constructor.native_fields, converted)))
+        types(tree)
+        converted = [self._walk(ty, value, bits, mode, symbols)
+                     for ty, value in zip(leaves, fields)]
+        # from_native performs the ordinary recursive validation afterwards,
+        # checking both the packed record and its enclosing constructor.
+        return ls.DataValue(constructor.tag, pack(tree, converted))
 
     def _check(self, reference, parameters=0):
         if isinstance(reference, Parameter):
@@ -420,7 +505,8 @@ class Schema:
                 Field(field.name, substitute(field.type, arguments))
                 for field in constructor.fields), constructor.native,
                 constructor.predicates, constructor.native_fields,
-                constructor.indices, witnesses=constructor.witnesses))
+                constructor.indices, witnesses=constructor.witnesses,
+                native_paths=constructor.native_paths))
         return tuple(found)
 
     def recorded_text(self, reference, value):
@@ -468,9 +554,13 @@ class Schema:
             for constructor in definition.constructors:
                 mapped = bindings.pop(constructor.tag, None)
                 if mapped is not None:
-                    native, fields = mapped
+                    if len(mapped) not in (2, 3):
+                        raise ValueError("invalid native constructor mapping")
+                    native, fields = mapped[:2]
+                    paths = mapped[2] if len(mapped) == 3 else None
                     constructor = replace(
-                        constructor, native=native, native_fields=fields)
+                        constructor, native=native, native_fields=fields,
+                        native_paths=paths)
                 constructors.append(constructor)
             definitions.append(replace(
                 definition, constructors=tuple(constructors)))
@@ -717,6 +807,10 @@ class Schema:
                     raise ValueError(
                         "foreign constructor for " + reference.name)
                 fields = value.fields
+            if (constructor.native_paths is not None
+                    and mode in ("native", "logical")):
+                return self._layout_walk(
+                    constructor, fields, bits, mode, symbols)
             if len(fields) != len(constructor.fields):
                 raise ValueError("wrong field count: " + constructor.tag)
             converted = []

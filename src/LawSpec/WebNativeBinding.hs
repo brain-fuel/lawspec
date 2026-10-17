@@ -33,8 +33,10 @@ emitBindings ts minify bindings plan files = do
       alias ref = "native" ++ show (length (takeWhile (/=ref) refs))
   imports <- forM refs $ \ref -> nativeImport "./" (alias ref) ref
   let entries = [E.array [E.quoted (C.idText (C.constructorId (resolvedConstructor c))),
-        D.delimitTrailing 2 "{" "}" [D.text ("native: " ++ alias (resolvedNativeConstructor c)),
-          D.text "fields: " <> E.array [E.quoted name | (_,name) <- resolvedFields c]]] |
+        D.delimitTrailing 2 "{" "}" ([D.text ("native: " ++ alias (resolvedNativeConstructor c)),
+          D.text "fields: " <> E.array [E.quoted name | (_,name) <- resolvedFields c]]++
+          [D.text "paths: " <> E.array [E.array (map E.quoted path) | path<-paths] |
+            Just paths<-[resolvedFieldPaths c]])] |
         m <- mappings, c <- resolvedConstructors m]
       hooks = [E.array [E.quoted (C.idText (C.dataId (resolvedDeclaration m))),
         D.delimitTrailing 2 "{" "}" [D.text ("native: " ++ alias (resolvedNativeType m)),
@@ -42,7 +44,9 @@ emitBindings ts minify bindings plan files = do
           D.text ("fromNative: " ++ alias (codecFromNative hook))]] |
         m <- mappings, Just hook <- [resolvedCodec m]]
       hookType = if ts then "<string, {native: Function; toNative: Function; fromNative: Function}>" else ""
-      mapType = if ts then "<string, {native: Function; fields: string[]}>" else ""
+      mapType = if not ts then "" else if any ((/=Nothing) . resolvedFieldPaths) (concatMap resolvedConstructors mappings)
+        then "<string, {native: Function; fields: string[]; paths?: string[][]}>"
+        else "<string, {native: Function; fields: string[]}>"
       supportBody = D.joinWith D.hardline (sourceImports "./" ++ imports ++
         [D.text "export const canonical = data.makeSchema();",
          D.text "export const native = canonical.withNativeBindings(" <>

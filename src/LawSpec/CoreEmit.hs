@@ -589,6 +589,9 @@ emitPlanWithNativeNames minify "clojure" sourceDir testDir unescaped unwitnessed
   Clojure.clojureLayout sourceDir testDir <$> (Clojure.clojureFromJava clojure unwitnessed =<<
     emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "clojure" java) (escapePlan "clojure" unwitnessed))
 emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = do
+  unless (target `elem` ["python","javascript","typescript"] || all ((==Nothing) . Binding.resolvedFieldPaths)
+    [constructor | mapping<-Binding.resolvedTypes (NB.bindingRepresentations unescaped),constructor<-Binding.resolvedConstructors mapping])
+    (Left [Diagnostic "native-binding" ("nested native field layout emission is not implemented for "++target) Nothing])
   -- Public names are deterministic. A collision never receives a silent suffix.
   mapM_ (checkNames target . plannedUnit) (plannedUnits unwitnessed)
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))

@@ -73,7 +73,7 @@ test('API-supplied legacy native bindings no longer enter the binding-blind sche
   assert.deepEqual(report.bindingPreview.targets[0].proposedNativeBindings.types[0].constructors[0].fields,[{field:'value',native:'stored'}]);
 });
 
-test('grouped native payloads retain an explicit layout and argument-position requirement',async()=>{
+test('grouped native payloads derive a checked layout preserving original argument positions',async()=>{
   const content='unit bindings\ntype Pair is | Packed last :: Bool first :: Bool end\ncopy :: Pair -> Pair';
   const mapped={types:[{type:'bindings::type::Pair',native:['application','Pair'],constructors:[
     {constructor:'Packed',native:['application','Packed'],style:'variant',fields:[{field:'first',native:'left'},{field:'last',native:'right'}]}]}],
@@ -82,15 +82,20 @@ test('grouped native payloads retain an explicit layout and argument-position re
   const report=await migrationReport(compiler,config,{sources:sources(content)});
   assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
   const row=report.bindingPreview.targets[0];
-  assert.equal(row.status,'not-established');
-  assert.equal(row.evidence.proposalComplete,false);
-  assert.match(row.reason,/layout.*argument position/);
+  assert.equal(row.status,'matched',JSON.stringify(row));
+  assert.equal(row.evidence.proposalComplete,true);
+  assert.deepEqual(row.evidence.requirements,[]);
   assert.equal(row.evidence.changes[0].kind,'grouped-record-payload');
   assert.deepEqual(row.evidence.changes[0].fields,[
     {field:'last',native:'right',nativeArgumentIndex:0,payloadPath:['value','last']},
     {field:'first',native:'left',nativeArgumentIndex:1,payloadPath:['value','first']},
   ]);
-  assert.deepEqual(report.proposedConfiguration.targets[0].nativeBindings,mapped);
+  assert.deepEqual(report.proposedConfiguration.targets[0].nativeBindings.types[0].constructors[0].fields,[
+    {field:'value',path:['last'],argument:0,native:'right'},
+    {field:'value',path:['first'],argument:1,native:'left'},
+  ]);
+  assert.equal(row.evidence.nativeConformance,'not-established');
+  assert.equal(row.evidence.targetGeneration,'not-established');
   assert.equal(report.validated,false);
 });
 

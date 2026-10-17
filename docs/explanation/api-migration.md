@@ -57,8 +57,9 @@ once. Nested and imported fields use their resolved identities. Namespace bindin
 across aliases and facade re-exports, including same-spelled local types. The
 planner indexes all supplied source declarations before applying uses, so
 source-file order does not decide which record a constructor denotes. Nominal
-record fields retain their existing identities; grouped alternative fields
-still require native binding correspondence. Indexed/GADT payload conversions,
+record fields retain their existing identities. Grouped alternative fields
+receive checked native field paths and original argument positions; generation
+support for those layouts remains target-specific. Indexed/GADT payload conversions,
 dependency-package migration and validated project writing remain unfinished.
 
 Each configured target now has a separate `bindingPreview` entry. The source

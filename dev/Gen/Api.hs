@@ -184,7 +184,9 @@ declarations = joinWith (softbreak <> softbreak)
        ("requirements", array (record (fields [("capability", "string"), ("type", "string")]))),
        ("definition", text "string")]
   , alias "NativeReference" [text "string[]"]
-  , interface "NativeFieldBinding" (fields [("field", "string"), ("native", "string")])
+  , alias "NativeFieldBinding"
+      [record (fields [("field","string"),("native","string"),("path?","never"),("argument?","never")]),
+       record (fields [("field","string"),("native","string"),("path","string[]"),("argument","number")])]
   , interface "NativeConstructorBinding"
       (fields [("constructor", "string"), ("native", "NativeReference"), ("fields?", "NativeFieldBinding[]")] ++
        [("style", union (map quoted ["record", "variant", "unit"]))])

@@ -219,8 +219,15 @@ instance FromJSON ConstructorStyle where
     "unit" -> pure UnitConstructor
     _ -> fail "constructor style must be record, variant, or unit"
 instance FromJSON FieldBinding where
-  parseJSON = strict "native field" ["field","native"] $ \o ->
-    FieldBinding <$> o .: "field" <*> o .: "native"
+  parseJSON = strict "native field" ["field","native","path","argument"] $ \o -> do
+    field<-o .: "field"
+    native<-o .: "native"
+    path<-o .:? "path"
+    argument<-o .:? "argument"
+    case (path,argument) of
+      (Nothing,Nothing)->pure (FieldBinding field native)
+      (Just names,Just index)->pure (NestedFieldBinding field native names index)
+      _->fail "native field path and argument must be supplied together"
 instance FromJSON ConstructorBinding where
   parseJSON = strict "native constructor" ["constructor","native","style","fields"] $ \o ->
     ConstructorBinding <$> o .: "constructor" <*> o .: "native" <*> o .: "style" <*> o .:? "fields" .!= []

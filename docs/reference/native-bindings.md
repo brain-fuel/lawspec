@@ -81,10 +81,29 @@ this explicit change only after the compiler accepts it. Nominal record field
 mappings retain their names. A failed target blocks project-wide binding
 correspondence without discarding other targets' diagnostic results.
 
-Grouped payloads need a native layout that preserves every field and the
-original positional constructor argument order. The report records those
-positions and the new record paths; it currently leaves this conversion
-unestablished. Codecs receiving a changed logical representation and factories
+Grouped payloads use explicit structural paths and native argument positions:
+
+```json
+{"field": "value", "path": ["last"], "argument": 0, "native": "tail"}
+```
+
+`field` names a constructor field; `path` descends through anonymous records.
+Every native field in such a layout supplies both `path` and `argument`.
+Arguments must cover zero through the field count minus one exactly once.
+The compiler checks complete coverage without overlapping paths, missing fields,
+nominal unwrapping or implicit width conversion. Configuration array order does
+not change constructor argument order. A path may stop at a whole typed field;
+its existing native conversion still applies.
+
+The migration report derives these layouts from the original checked constructor
+order. Python, JavaScript and TypeScript bridges currently pack and unpack them
+through their ordinary schema conversions. Scalar, nested record and enclosing
+constructor validation remains mandatory. Other target emitters report an
+explicit unsupported-layout diagnostic; target-independent configuration
+correspondence does not establish target generation or native behavior.
+Indexed and existential constructor layouts remain unsupported.
+
+Codecs receiving a changed logical representation and factories
 over changed generated data also require independent correspondence. Existing
 assumptions remain assumptions. Binding proposals do not execute native code,
 prove laws, validate a whole project, or authorize writing by themselves.

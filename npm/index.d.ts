@@ -335,10 +335,9 @@ export interface Refinement {
 
 export type NativeReference = string[];
 
-export interface NativeFieldBinding {
-  field: string;
-  native: string;
-}
+export type NativeFieldBinding =
+    {field: string; native: string; path?: never; argument?: never;} |
+    {field: string; native: string; path: string[]; argument: number;};
 
 export interface NativeConstructorBinding {
   constructor: string;

@@ -79,6 +79,7 @@ export class Constructor {
       refinements = [],
       existentials = 0,
       witnesses = [],
+      nativePaths = null,
   ) {
     this.tag = tag;
     this.fields = Object.freeze([...fields]);
@@ -92,6 +93,8 @@ export class Constructor {
     // Existentials only a value determines (parameter numbers); their types
     // travel as the trailing string witness fields.
     this.witnesses = Object.freeze([...witnesses]);
+    this.nativePaths = nativePaths === null ? null
+      : Object.freeze(nativePaths.map(path => Object.freeze([...path])));
     this.nativeFields =
         nativeFields === null
           ? null
@@ -348,7 +351,7 @@ export class Schema {
         if (constructor.nativeFields !== null) {
           const fields = constructor.nativeFields;
           if (
-              fields.length !== constructor.fields.length ||
+              fields.length !== (constructor.nativePaths?.length ?? constructor.fields.length) ||
               new Set(fields).size !== fields.length ||
               !fields.every(
                   (field) =>
@@ -371,6 +374,78 @@ export class Schema {
         }
       }
     }
+    for (const definition of this.#definitions.values()) {
+      for (const constructor of definition.constructors) {
+        if (constructor.nativePaths !== null) {
+          if (constructor.nativeFields === null) throw new TypeError('native paths require native fields');
+          this.#nativeLayout(constructor.fields, constructor.nativePaths);
+        }
+      }
+    }
+  }
+
+  #nativeLayout(fields, paths) {
+    const build = (fields, entries) => {
+      const labels = new Set(entries.map(([, path]) => path[0]));
+      if (entries.some(([, path]) => !path.length) ||
+          labels.size !== fields.length ||
+          fields.some(field => !labels.has(field.name))) {
+        throw new TypeError('native paths must cover exactly every field');
+      }
+      return fields.map(field => {
+        const children = entries.filter(([, path]) => path[0] === field.name)
+            .map(([index, path]) => [index, path.slice(1)]);
+        const direct = children.filter(([, path]) => !path.length);
+        if (direct.length) {
+          if (children.length !== 1) throw new TypeError('overlapping native paths');
+          return {field, leaf: direct[0][0]};
+        }
+        const definition = this.#definitions.get(field.type.name);
+        if (!definition || definition.constructors.length !== 1) {
+          throw new TypeError('native path must enter a record');
+        }
+        const constructor = definition.constructors[0];
+        if (constructor.existentials || constructor.refinements.length) {
+          throw new TypeError('indexed native record path is unsupported');
+        }
+        const nested = constructor.fields.map(child =>
+          new Field(child.name, substitute(child.type, field.type.args)));
+        return {field, tag: constructor.tag, children: build(nested, children)};
+      });
+    };
+    return build(fields, paths.map((path, index) => [index, path]));
+  }
+
+  #layoutWalk(constructor, fields, bits, mode, symbols) {
+    const tree = this.#nativeLayout(constructor.fields, constructor.nativePaths);
+    const leaves = new Array(constructor.nativePaths.length);
+    const gather = (nodes, values) => nodes.forEach((node, index) => {
+      if (node.leaf !== undefined) leaves[node.leaf] = [node.field.type, values[index]];
+      else {
+        const value = values[index];
+        if (!(value instanceof ls.DataValue) || value.tag !== node.tag ||
+            value.fields.length !== node.children.length) {
+          throw new TypeError('invalid native record payload');
+        }
+        gather(node.children, value.fields);
+      }
+    });
+    const types = nodes => nodes.forEach(node => {
+      if (node.leaf !== undefined) leaves[node.leaf] = node.field.type;
+      else types(node.children);
+    });
+    const pack = (nodes, values) => nodes.map(node => node.leaf !== undefined
+      ? values[node.leaf] : new ls.DataValue(node.tag, pack(node.children, values)));
+    if (mode === 'native') {
+      gather(tree, fields);
+      const values = leaves.map(([type, value]) => this.#walk(type, value, bits, mode, symbols));
+      return new constructor.native(Object.fromEntries(
+        constructor.nativeFields.map((name, index) => [name, values[index]])));
+    }
+    types(tree);
+    const values = leaves.map((type, index) => this.#walk(type, fields[index], bits, mode, symbols));
+    // fromNative subsequently validates both the packed record and its parent.
+    return new ls.DataValue(constructor.tag, pack(tree, values));
   }
 
   #checkNative(native, names) {
@@ -429,6 +504,7 @@ export class Schema {
           [],
           0,
           constructor.witnesses,
+          constructor.nativePaths,
       ));
     }
     return found;
@@ -486,7 +562,7 @@ export class Schema {
                 definition.parameters,
                 definition.constructors.map((constructor) => {
                   if (!remaining.has(constructor.tag)) return constructor;
-                  const {native, fields} = remaining.get(constructor.tag);
+                  const {native, fields, paths = null} = remaining.get(constructor.tag);
                   remaining.delete(constructor.tag);
                   return new Constructor(
                       constructor.tag,
@@ -495,6 +571,10 @@ export class Schema {
                       constructor.predicates,
                       fields,
                       constructor.indices,
+                      constructor.refinements,
+                      constructor.existentials,
+                      constructor.witnesses,
+                      paths,
                   );
                 }),
                 definition.handle,
@@ -834,6 +914,13 @@ export class Schema {
         if (!constructor) {
           throw new TypeError(`invalid native ${type.name}`);
         }
+        if (constructor.nativePaths !== null) {
+          fields = constructor.nativeFields.map(name => {
+            if (!Object.hasOwn(value, name)) throw new TypeError(`missing native field: ${name}`);
+            return value[name];
+          });
+          return this.#layoutWalk(constructor, fields, bits, mode, symbols);
+        }
         fields = constructor.fields.map((field, index) => {
           const name =
               constructor.nativeFields?.[index] ?? field.name;
@@ -857,6 +944,9 @@ export class Schema {
           );
         }
         fields = value.fields;
+      }
+      if (mode === 'native' && constructor.nativePaths !== null) {
+        return this.#layoutWalk(constructor, fields, bits, mode, symbols);
       }
       if (fields.length !== constructor.fields.length) {
         throw new TypeError(

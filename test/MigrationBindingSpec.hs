@@ -54,6 +54,29 @@ test_migrationBindings = describe "compiler-owned native binding migration" $ do
           _->[]
     statuses "before" `shouldMatchList` [String "runtime-checked",String "assumed"]
     statuses "after" `shouldBe` statuses "before"
+  it "checks complete structural paths independently of native argument order" $ do
+    let source="unit native\ntype Parcel is one of Packed of type record{last :: Bool first :: Bool} end type"
+        mapped fields=object ["types" .= [object ["type" .= ("native::type::Parcel"::String),
+          "native" .= (["app","Parcel"]::[String]),"constructors" .= [object [
+            "constructor" .= ("Packed"::String),"native" .= (["app","Packed"]::[String]),
+            "style" .= ("variant"::String),"fields" .= fields]]]]]
+        entry path position=object ["field" .= ("value"::String),"native" .= (if path=="last" then "tail" else "head"::String),
+          "path" .= ([path]::[String]),"argument" .= (position::Int)]
+        request content fields=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+          "verification" .= object ["layers" .= ([]::[String])],"method" .= ("check"::String),
+          "sources" .= [Source "native.lawspec" content],"nativeBindings" .= mapped fields]
+        run content fields=either fail pure (eitherDecode (dispatch (encode (request content fields))) :: Either String Value)
+    accepted<-run source [entry "first" 1,entry "last" 0]
+    field "diagnostics" accepted `shouldBe` Just (Array mempty)
+    mapM_ (\fields->do
+      rejected<-run source fields
+      field "diagnostics" rejected `shouldNotBe` Just (Array mempty))
+      [[entry "first" 0],[entry "first" 0,entry "last" 0],
+       [entry "first" 0,entry "last" 2],[entry "first" 0,entry "unknown" 1],
+       [entry "first" 0,object ["field" .= ("value"::String),"native" .= ("whole"::String)]]]
+    nominal<-run "unit native\ntype Details is a record{first :: Bool last :: Bool} end type\ntype Parcel is one of Packed of type Details end type"
+      [entry "first" 1,entry "last" 0]
+    field "diagnostics" nominal `shouldNotBe` Just (Array mempty)
   it "requires an explicit legacy profile and does not become a permissive check method" $ do
     let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
           "method" .= ("migrationBindings"::String),"sources" .= [Source "native.lawspec" "unit native"],

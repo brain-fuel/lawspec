@@ -118,13 +118,14 @@ bindingProposal target requested plan previous next before after original overri
                 "native" .= nativeField mapped] | mapped<-boundFields binding,C.binderName field/=C.binderName payload]
           in (binding{boundFields=[mapped{boundField=C.binderName payload} | mapped<-boundFields binding]},changes,[])
       Just (old,new) | length (C.constructorFields old)>1,[payload]<-C.constructorFields new ->
-        (binding,[object ["kind" .= ("grouped-record-payload"::String),"type" .= C.idText identity,
+        (binding{boundFields=[NestedFieldBinding (C.binderName payload) (nativeField mapped) [C.binderName field] index |
+          (index,field)<-zip [0..] (C.constructorFields old),mapped<-boundFields binding,boundField mapped==C.binderName field]},
+          [object ["kind" .= ("grouped-record-payload"::String),"type" .= C.idText identity,
           "constructor" .= boundConstructor binding,"fields" .=
             [object ["field" .= C.binderName field,"native" .= nativeField mapped,"nativeArgumentIndex" .= index,
               "payloadPath" .= [C.binderName payload,C.binderName field]] |
               (index,field)<-zip [0::Int ..] (C.constructorFields old),mapped<-boundFields binding,boundField mapped==C.binderName field],
-          "payload" .= C.binderName payload]],
-          [C.idText identity++"."++boundConstructor binding++": grouped payload needs a checked native layout preserving every native field and constructor argument position"])
+          "payload" .= C.binderName payload]],[])
       _->(binding,[],[])
 
 typeNames :: C.Type -> [C.Id]
@@ -142,12 +143,17 @@ normalized request resolved=nativeRequestView request{requestBindings=Bindings t
   where
     types=[TypeBinding (C.dataId (resolvedDeclaration binding)) (resolvedNativeType binding)
       [ConstructorBinding (C.constructorName (resolvedConstructor constructor)) (resolvedNativeConstructor constructor)
-        (resolvedConstructorStyle constructor) [FieldBinding (C.binderName field) native | (field,native)<-resolvedFields constructor] |
+        (resolvedConstructorStyle constructor) (case resolvedFieldPaths constructor of
+          Nothing->[FieldBinding (C.binderName field) native | (field,native)<-resolvedFields constructor]
+          Just paths->[NestedFieldBinding label native rest index |
+            (index,((_,native),label:rest))<-zip [0..] (zip (resolvedFields constructor) paths)]) |
         constructor<-resolvedConstructors binding] (resolvedCodec binding) (resolvedArguments binding) |
       binding<-sortOn (C.dataId . resolvedDeclaration) (resolvedTypes (bindingRepresentations resolved))]
     generators=sortOn generatorType (generatorBindings (requestBindings request))
 
-fieldView field=object ["field" .= boundField field,"native" .= nativeField field]
+fieldView field=object (["field" .= boundField field,"native" .= nativeField field]++case field of
+  FieldBinding{}->[]
+  NestedFieldBinding{..}->["path" .= nestedFieldPath,"argument" .= fieldArgument])
 
 nativeRequestView :: NativeRequest -> Value
 nativeRequestView request=object

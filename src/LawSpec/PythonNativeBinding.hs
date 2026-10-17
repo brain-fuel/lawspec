@@ -41,8 +41,10 @@ emitBindings minify bindings plan files = do
     mapM_ (P.identifier . snd) (resolvedFields constructor)
     pure (D.text (P.q (C.idText (C.constructorId (resolvedConstructor constructor)))) <>
       D.text ": " <> D.delimit 4 "(" ")"
-        [reference (resolvedNativeConstructor constructor),
-         P.array [D.text (P.q name) | (_,name) <- resolvedFields constructor]])
+        ([reference (resolvedNativeConstructor constructor),
+         P.array [D.text (P.q name) | (_,name) <- resolvedFields constructor]] ++
+         [P.array [P.array (map (D.text . P.q) path) | path<-paths] |
+          Just paths<-[resolvedFieldPaths constructor]]))
   let hooks = [D.text (P.q (C.idText (C.dataId (resolvedDeclaration mapping)))) <>
         D.text ": " <> D.delimit 4 "(" ")"
           (map reference [resolvedNativeType mapping, codecToNative hook, codecFromNative hook]) |

@@ -9,7 +9,7 @@ module LawSpec.NativeBinding
 
 import Control.Monad (unless, forM, when)
 import Data.Char (isAscii, isAlpha, isAlphaNum)
-import Data.List (nub, find)
+import Data.List (nub, find, sortOn)
 import qualified LawSpec.Core as C
 import LawSpec.Core.Types (makeRegistry, substitute)
 import qualified Data.Map.Strict as M
@@ -24,7 +24,12 @@ data ConstructorStyle = RecordConstructor | VariantConstructor | UnitConstructor
   deriving (Eq, Show)
 -- | A native field may be named differently from the LawSpec field it carries.
 data FieldBinding = FieldBinding
-  { boundField :: String, nativeField :: String } deriving (Eq, Show)
+  { boundField :: String, nativeField :: String }
+  -- Explicit positions preserve a native constructor's argument order when
+  -- canonical structural products sort their fields by label.
+  | NestedFieldBinding
+  { boundField :: String, nativeField :: String
+  , nestedFieldPath :: [String], fieldArgument :: Int } deriving (Eq, Show)
 -- | Each LawSpec constructor is bound to the native constructor that builds it,
 -- so values cross the boundary without the user writing a converter.
 data ConstructorBinding = ConstructorBinding
@@ -77,6 +82,7 @@ data ResolvedConstructorBinding = ResolvedConstructorBinding
   { resolvedConstructor :: C.DataConstructor
   , resolvedNativeConstructor :: NativeRef, resolvedConstructorStyle :: ConstructorStyle
   , resolvedFields :: [(C.Binder, String)]
+  , resolvedFieldPaths :: Maybe [[String]]
   } deriving (Eq, Show)
 -- | As GeneratorBinding, with the number of type parameters the factory takes,
 -- one child generator each.
@@ -134,19 +140,65 @@ resolveBindings declarations Bindings{..} = do
     resolveConstructor count constructor ConstructorBinding{..} = contextual boundConstructor $ do
       reference nativeConstructor
       let fields = C.constructorFields constructor
-      unique "field mapping" (map boundField boundFields)
       unique "native field" (map nativeField boundFields)
-      exact "fields" (map C.binderName fields) (map boundField boundFields)
       mapM_ (identifier . nativeField) boundFields
       unless (constructorStyle /= RecordConstructor || count == 1)
         (Left "record representation requires exactly one constructor")
       unless (constructorStyle /= UnitConstructor || null fields)
         (Left "unit constructor cannot have fields")
-      mapped <- forM fields $ \field -> do
-        name <- maybe (Left "missing field mapping") (Right . nativeField)
-          (find ((== C.binderName field) . boundField) boundFields)
-        pure (field,name)
-      pure (ResolvedConstructorBinding constructor nativeConstructor constructorStyle mapped)
+      (mapped,paths) <- if all flat boundFields then do
+        unique "field mapping" (map boundField boundFields)
+        exact "fields" (map C.binderName fields) (map boundField boundFields)
+        mapped <- forM fields $ \field -> do
+          name <- maybe (Left "missing field mapping") (Right . nativeField)
+            (find ((== C.binderName field) . boundField) boundFields)
+          pure (field,name)
+        pure (mapped,Nothing)
+        else do
+          unless (all (not . flat) boundFields)
+            (Left "nested field layouts require an explicit path and argument for every native field")
+          let ordered=sortOn fieldArgument boundFields
+              paths=[boundField item:nestedFieldPath item | item<-ordered]
+          unless (map fieldArgument ordered==[0..length ordered-1])
+            (Left "native field arguments must occur exactly once from zero")
+          unique "field path" paths
+          unless (null (C.constructorExistentials constructor) && null (C.constructorEquations constructor))
+            (Left "nested native layouts for indexed or existential constructors are unsupported")
+          leaves<-cover fields paths
+          mapped<-forM (zip ordered paths) $ \(item,path)->do
+            field<-maybe (Left "missing native field path") Right (lookup path leaves)
+            pure (field,nativeField item)
+          pure (mapped,Just paths)
+      pure (ResolvedConstructorBinding constructor nativeConstructor constructorStyle mapped paths)
+    flat FieldBinding{}=True
+    flat NestedFieldBinding{}=False
+    -- A layout must cover the entire product, with neither overlap nor width
+    -- subtyping. Only anonymous records may be opened by a path.
+    cover fields paths = do
+      exact "field paths" (map C.binderName fields) (map head paths)
+      fmap concat $ forM fields $ \field -> do
+        let label=C.binderName field
+            tails=[rest | (name:rest)<-paths,name==label]
+        if [] `elem` tails then do
+          unless (tails==[[]]) (Left "overlapping native field paths")
+          pure [([label],field)]
+        else do
+          (declaration,arguments)<-case C.binderType field of
+            C.Constructor name arguments -> do
+              declaration<-maybe (Left "native field path must enter an anonymous record") Right
+                (find ((==C.Id name) . C.dataId) declarations)
+              pure (declaration,arguments)
+            _->Left "native field path must enter an anonymous record"
+          unless (C.dataStructural declaration/=Nothing)
+            (Left "native field path cannot unwrap a nominal type")
+          constructor<-case C.dataConstructors declaration of
+            [value]->Right value
+            _->Left "native field path requires one record constructor"
+          let substitutions=M.fromList (zip (C.dataParameters declaration) [ty | C.TypeArgument ty<-arguments])
+              children=[child{C.binderType=substitute substitutions (C.binderType child)} |
+                child<-C.constructorFields constructor]
+          nested<-cover children tails
+          pure [(label:path,child) | (path,child)<-nested]
     resolveGenerator GeneratorBinding{..} = contextual (C.idText generatorType) $ do
       reference generatorFactory
       count <- case find ((== generatorType) . C.dataId) declarations of

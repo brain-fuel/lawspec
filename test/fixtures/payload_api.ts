@@ -1,4 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest, MigrationComparisonRequest, MigrationPayloadComparison, ObligationEvidence, MigrationBindingRequest} from '../../npm/index.js';
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest, MigrationComparisonRequest, MigrationPayloadComparison, ObligationEvidence, MigrationBindingRequest, NativeFieldBinding} from '../../npm/index.js';
 
 export function migrationDigests(result: Result): string[] {
   const snapshot: MigrationSemanticSnapshot | undefined = result.migrationSemantics;
@@ -294,3 +294,10 @@ const nativeMigrationRequest: MigrationBindingRequest = {...comparisonRequest, t
 // @ts-expect-error The binding proposal uses the same supported target names as generation.
 const invalidNativeMigrationTarget: MigrationBindingRequest = {...nativeMigrationRequest, target: 'fiction'};
 void nativeMigrationRequest; void invalidNativeMigrationTarget;
+
+const nativeLeaf: NativeFieldBinding = {field:'value',path:['first'],argument:0,native:'head'};
+// @ts-expect-error A path needs an explicit native argument position.
+const missingPosition: NativeFieldBinding = {field:'value',path:['first'],native:'head'};
+// @ts-expect-error A native argument position needs an explicit structural path.
+const missingPath: NativeFieldBinding = {field:'value',argument:0,native:'head'};
+void nativeLeaf; void missingPosition; void missingPath;

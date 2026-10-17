@@ -280,7 +280,7 @@ with that automatic proposal. Unsupported adaptation remains explicit.
 `inputBindings`, unchanged-input and validation flags, full Core program anchors,
 and all four source-template anchors on each side. `bindings` compares resolved,
 normalized configurations. `proposedNativeBindings` is the concrete request
-object; `changes` identifies renamed fields or pending grouped layouts.
+object; `changes` identifies renamed fields and explicit grouped layouts.
 Grouped fields include original `nativeArgumentIndex` and destination
 `payloadPath`, independent of configuration entry order. `requirements` lists
 unresolved correspondence. An accepted configuration can still have an
