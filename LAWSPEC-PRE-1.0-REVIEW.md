@@ -105,7 +105,11 @@ freshness: it supplied the time after execution and therefore discarded the
 completed JUnit cases. The runner now supplies its launch time. Other model
 runner consumers use the same start-time convention; the 46 report/evidence
 contract tests pass. The corrected oracle run remains separate from that
-failed attempt.
+failed attempt. Its 64-bit readable profile passes 545 actual generated checks,
+including all 66 authored examples and all 23 laws. Independent oracles cover
+32,768 A instructions, 1,792 C combinations and 13 stateful programs with
+repeated-invocation independence. Six meaningful implementation/specification
+mutants are rejected. The 32-bit compact rerun remains in progress.
 
 The wide refund case was then strengthened to compare 9,007,199,254,740,992
 captured units with 9,007,199,254,740,993 requested units: converting these to
