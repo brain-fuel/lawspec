@@ -14,6 +14,7 @@ import qualified LawSpec.Compile as Compile
 import qualified LawSpec.Frontend as Frontend
 import LawSpec.Core.Definitions (prepareHookedDefinitions,prepareDefinitions)
 import LawSpec.Core.Migration (normalizedProgram,transformProgram,migrationSnapshot)
+import LawSpec.Core.MigrationIndexEquivalence (justifyIndexBodies)
 import LawSpec.Core.PayloadTransport
 import LawSpec.Core.Value (Value(..),compareValues)
 import qualified LawSpec.Core.Value as CV
@@ -123,12 +124,60 @@ test_payloadTransport=describe "checked executable payload transport" $ do
       "type Tree (n :: Natural) is | Leaf where n = 0 | Fork a :: Tree m c :: Tree m b :: Tree m where n = m + 1 end"
       "type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{c of type Tree m a of type Tree m b of type Tree m} where n = m + 1 end type"
     pure ()
-  it "keeps a reordered shared-index measure unestablished until its body is justified" $ do
-    view<-correspondence 64
-      "type Tree (n :: Natural) is | Leaf where n = 0 | Fork right :: Tree m left :: Tree m where n = m + 1 end"
-      "type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{left of type Tree m right of type Tree m} where n = m + 1 end type"
-    field "copyValidated" view `shouldBe` Just (Bool True)
-    (field "definitionPlane" view >>= field "status") `shouldBe` Just (String "not-established")
+  it "proves reordered shared-index measure bodies under their constructor invariants" $
+    forM_ [32,64] $ \bits -> do
+      view<-matched bits
+        "type Tree (n :: Natural) is | Leaf where n = 0 | Fork right :: Tree m left :: Tree m where n = m + 1 end"
+        "type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{left of type Tree m right of type Tree m} where n = m + 1 end type"
+      case field "indexMeasureBodies" view of
+        Just (Array entries)->Vector.length entries `shouldBe` 1
+        other->expectationFailure ("missing checked measure-body evidence: "++show other)
+  it "justifies each reordered measure in a family with two independent indices" $
+    forM_ [32,64] $ \bits -> do
+      view<-matched bits
+        "type Matrix (rows :: Natural) (columns :: Natural) is | Zero where rows = 0, columns = 0 | Step right :: Matrix m k left :: Matrix m k where rows = m + 1, columns = k + 1 end"
+        "type Matrix (rows of type Whole) (columns of type Whole) is one of | Zero where rows = 0, columns = 0 | Step of type record{left of type Matrix m k right of type Matrix m k} where rows = m + 1, columns = k + 1 end type"
+      case field "indexMeasureBodies" view of
+        Just (Array entries)->Vector.length entries `shouldBe` 2
+        other->expectationFailure ("missing independent measure evidence: "++show other)
+  it "does not equate same-typed sibling reads without an index equality invariant" $
+    forM_ [32,64] $ \bits -> do
+      (before,_)<-checked True bits "unit transport\ntype Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{left of type Tree m right of type Tree k} where n = m + 1 end type"
+      let swap expression=case C.expressionNode expression of
+            C.ExternalCall name [selected] | C.Project tag 0 root<-C.expressionNode selected ->
+              expression{C.expressionNode=C.ExternalCall name [selected{C.expressionNode=C.Project tag 1 root}]}
+            _->expression
+      after<-either fail pure (transformProgram M.empty (Right . swap) Right before)
+      validateProgram after `shouldBe` Right ()
+      (copy,evidence)<-either fail pure (justifyIndexBodies M.empty [] before [] after)
+      evidence `shouldBe` []
+      Binary.encode copy `shouldBe` Binary.encode before
+      old<-either fail pure (migrationSnapshot False [] before)
+      new<-either fail pure (migrationSnapshot True [] after)
+      field "definitionPlaneDigest" old `shouldNotBe` field "definitionPlaneDigest" new
+      let [record]=[d | d<-C.programDataDeclarations before,C.dataStructural d/=Nothing]
+          [constructor]=C.dataConstructors record
+          tree=C.Constructor "transport::type::Tree" []
+          product=C.Constructor (C.idText (C.dataId record)) []
+          leaf=CV.DataValue tree (C.Id "transport::type::Tree::Leaf") []
+          fork left right=CV.DataValue tree (C.Id "transport::type::Tree::Fork")
+            [CV.DataValue product (C.constructorId constructor) [left,right]]
+          unbalanced=fork leaf (fork leaf leaf)
+      forM_ [(before,1),(after,2)] $ \(program,expected) -> do
+        invoke<-either (fail.show) pure (prepareDefinitions program)
+        invoke (C.Id "transport::nOfTree") [unbalanced] `shouldBe` Right (ScalarValue (SInteger "BigInt" expected))
+  it "cannot hide changed index arithmetic behind a proved sibling equality" $
+    forM_ [32,64] $ \bits -> do
+      let old="type Tree (n :: Natural) is | Leaf where n = 0 | Fork right :: Tree m left :: Tree m where n = m + 1 end"
+          new="type Tree (n of type Whole) is one of | Leaf where n = 0 | Fork of type record{left of type Tree m right of type Tree m} where n = m + 1 end type"
+          change expression=case C.expressionNode expression of
+            C.Constant (SInteger name 1)->expression{C.expressionNode=C.Constant (SInteger name 2)}
+            _->expression
+      (plan,before,after)<-pair bits old new
+      changed<-either fail pure (transformProgram M.empty (Right . change) Right after)
+      view<-either fail pure (transportComparison plan [] before [] changed)
+      (field "definitionPlane" view >>= field "status") `shouldBe` Just (String "not-established")
+      field "indexMeasureBodies" view `shouldBe` Nothing
   it "anchors the validated comparison copy to both original admitted programs" $ do
     (plan,old,new)<-pair 64 (oldType++oldMake) (newType++newMake)
     let original=Binary.encode old

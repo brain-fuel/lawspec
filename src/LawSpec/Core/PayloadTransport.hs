@@ -14,6 +14,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import qualified LawSpec.Core as C
 import LawSpec.Core.Migration (Context(..),Project(..),transformProgram,transformProgramWithTypes,migrationSnapshot)
+import LawSpec.Core.MigrationIndexEquivalence (justifyIndexBodies)
 import LawSpec.Core.RecordIdentity (constructRecord,validateRecordDeclaration)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import LawSpec.Core.Types (makeRegistry,constructorFieldsFor,constructorBindingsAt,substitute,registryDeclarations)
@@ -202,9 +203,10 @@ transportComparisonWithScopes beforeScopes afterScopes plan beforeNames before a
   made<-transportProgramWithScopes beforeScopes plan before
   let order=map C.dataId (C.programDataDeclarations after)
       known=M.fromList [(C.dataId value,value) | value<-C.programDataDeclarations made]
-      aligned=if Set.fromList order==M.keysSet known
+      ordered=if Set.fromList order==M.keysSet known
         then made{C.programDataDeclarations=[value | identity<-order,Just value<-[M.lookup identity known]]}
         else made
+  (aligned,indexBodies)<-justifyIndexBodies beforeScopes beforeNames ordered afterNames after
   old<-migrationSnapshot False beforeNames aligned
   new<-migrationSnapshot True afterNames after
   source<-migrationSnapshot False beforeNames before
@@ -226,7 +228,7 @@ transportComparisonWithScopes beforeScopes afterScopes plan beforeNames before a
   oldPolicies<-field "domainPolicies" old
   newPolicies<-field "domainPolicies" new
   let matched=oldDefinitions==newDefinitions && oldLaws==newLaws
-  pure (aligned,object ["status" .= (if matched then "matched" else "not-established"::String),
+  pure (aligned,object $ ["status" .= (if matched then "matched" else "not-established"::String),
     "version" .= (1::Int),"algorithm" .= ("sha256"::String),"machineBits" .= C.programMachineBits before,
     "scope" .= ("complete checked concrete Core after certified payload transport; body matching excludes input-domain policies"::String),
     "copyValidated" .= True,"originalsUnchanged" .= True,"sourceBeforeDigest" .= sourceProgram,
@@ -236,7 +238,8 @@ transportComparisonWithScopes beforeScopes afterScopes plan beforeNames before a
     "lawBodies" .= result oldLaws newLaws,
     "domainPolicies" .= object ["before" .= oldPolicies,"after" .= newPolicies,
       "status" .= (if oldPolicies==newPolicies then "matched" else "not-established"::String)],
-    "before" .= available old,"after" .= available new])
+    "before" .= available old,"after" .= available new] ++
+      ["indexMeasureBodies" .= indexBodies | not (null indexBodies)])
 
 
 marker :: C.Origin

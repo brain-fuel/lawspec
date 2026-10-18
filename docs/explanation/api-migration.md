@@ -277,9 +277,27 @@ checker. It adds no solver backend or proof-kernel integration. Obligation
 generation and its trusted implementation remain distinct from solver execution
 and independently checked proof evidence.
 
-A reordered shared-index measure whose body reads a different sibling remains
-unestablished until the body equivalence is justified; matching shape guards
-alone cannot authorize it. Abstract generic GADT roots can still fail branch
+Reordered shared-index measure bodies can correspond when the ordinary
+definition-contract validator proves their branch results equal under the
+constructor's checked invariants. Only pure structural storage reads in
+self-measure calls may differ; dispatch, arithmetic, interfaces and other calls
+remain identical. The comparison uses a temporary Boolean helper with a required
+true result, retains mandatory target termination, and validates the changed
+comparison copy. `indexMeasureBodies` records the affected identities and body
+digests. These helpers are never emitted. This is a trusted compiler
+transformation using the existing prover, not a new solver or an independently
+checked certificate. The structural-recursion precedent is described in
+[Lean's recursive definitions](https://lean-lang.org/doc/reference/latest/Definitions/Recursive-Definitions/).
+Matching types without an equality invariant cannot justify different sibling
+reads, and a changed arithmetic expression remains unestablished.
+
+This body evidence does not establish uniform input populations. For example,
+the generated refinement law for a natural-indexed tree can still require
+inhabitance evidence for every natural index; a complete finite check cannot
+establish that unbounded claim. Such projects remain unwritable when this
+independent policy correspondence is missing.
+
+Abstract generic GADT roots can still fail branch
 admission. Pure matching of field-only existentials remains a source limitation
 in both profiles. An otherwise matching project containing only unused
 polymorphic definitions still lacks accepted nonempty target generation and

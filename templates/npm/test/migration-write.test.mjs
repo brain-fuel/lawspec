@@ -75,6 +75,40 @@ test('changed unbound native payload APIs cannot authorize any project write',as
   assert.deepEqual((await readdir(p.root)).sort(),['demo.lawspec','lawspec.json']);
 });
 
+test('proved reordered index bodies retain the independent uniform-population write gate across all targets and widths',async t=>{
+  const content='unit demo\n'+
+    'type Tree (n :: Natural) is | Leaf flag :: Bool where n = 0 | Fork right :: Tree m left :: Tree m where n = m + 1 end\n'+
+    'definition sample (unused :: Bool) :: Tree 1 is Fork (Leaf true) (Leaf false) end\n'+
+    'law `height` is definition is `for all` (unused :: Bool) . nOfTree (sample unused) = 1 end end\n';
+  for(const machineBits of [32,64]){
+    const p=await project(t,{content,languages:targets});
+    Object.assign(p.config,{machineBits,minify:machineBits===32});
+    p.text=JSON.stringify(p.config,null,2)+'\n';
+    Object.assign(p.input,{machineBits,minify:machineBits===32});
+    await writeFile(path.join(p.root,'lawspec.json'),p.text);
+    const report=await migrationReport(compiler,p.config,p.input);
+    assert.equal(report.validated,false);
+    assert.equal(report.generationPreview.configurationCount,17);
+    assert.equal(report.generationPreview.status,'accepted');
+    assert.equal(report.correspondence.payloads.executableTransport.status,'matched');
+    assert.equal(report.correspondence.payloads.definitionTemplates.status,'matched');
+    assert.equal(report.correspondence.payloads.lawTemplates.status,'matched');
+    const evidence=report.correspondence.payloads.executableTransport.indexMeasureBodies;
+    assert.equal(evidence.length,1);assert.equal(evidence[0].definition,'demo::nOfTree');
+    assert.match(evidence[0].beforeBodyDigest,/^[0-9a-f]{64}$/);
+    assert.match(evidence[0].afterBodyDigest,/^[0-9a-f]{64}$/);
+    assert.notEqual(evidence[0].beforeBodyDigest,evidence[0].afterBodyDigest);
+    assert.ok(report.correspondence.sourceTemplates.domainPolicies.domains.some(row=>
+      row.comparisonId==='demo::law::refinement Tree@index'&&row.status==='not-established'));
+    assert.equal(report.sourcePreview.canonicalCheck.status,'accepted');
+    assert.deepEqual(report.filesWritten,[]);
+    await assert.rejects(writeMigration(compiler,p.root,'lawspec.json',p.text,p.input),error=>
+      error.diagnostics[0].code==='migration-incomplete'&&/input-domain/.test(error.message));
+    assert.equal(await readFile(path.join(p.root,'demo.lawspec'),'utf8'),content);
+    assert.equal(await readFile(path.join(p.root,'lawspec.json'),'utf8'),p.text);
+  }
+});
+
 test('typed failure laws migrate and write with complete symbolic correspondence on all 17 targets',async t=>{
   const content=await readFile(new URL('../../test/fixtures/migration-typed-failures-0.24.lawspec',import.meta.url),'utf8');
   const p=await project(t,{content,languages:targets});

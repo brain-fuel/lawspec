@@ -686,6 +686,12 @@ export type MigrationCoreTransport =
       sourceBeforeDigest: string;
       catalogOrdering: string;
       assumptions: string[];
+      indexMeasureBodies?: {
+        definition: string;
+        beforeBodyDigest: string;
+        afterBodyDigest: string;
+        basis: string;
+      }[];
       program: {
         status: 'matched' | 'not-established';
         before: string;

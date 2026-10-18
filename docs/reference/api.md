@@ -233,8 +233,10 @@ predicate terms, dependent relationships and full stored structural descriptor.
 Called definitions and dependencies behind nominal references still require
 whole-program correspondence.
 Unknown labels, additional fields, nominal substitutions and metadata changes
-do not establish correspondence. Changed indexed or existential payloads
-remain unsupported. Existing nominal products keep their fields directly.
+do not establish correspondence. Grouped indexed, GADT and existential payloads
+retain their checked relationships through explicit record transport; abstract
+branch admission and input-population limits remain independent gates. Existing
+nominal products keep their fields directly.
 
 `executableTransport` is either an unestablished check with a `reason`, or a
 version-1 SHA-256 comparison with `copyValidated: true`, `originalsUnchanged:
@@ -245,6 +247,13 @@ when definitions and law bodies correspond; the law-body comparison excludes
 input-domain policies. `program` still includes those policies, and
 `domainPolicies` reports both policy arrays and their separate matching status.
 Matching obligations does not verify their truth.
+
+When reordered index reads require a proved body equation,
+`indexMeasureBodies` contains entries with `definition`, `beforeBodyDigest`,
+`afterBodyDigest` and `basis`. The compiler checks temporary branch-equality
+contracts with its ordinary validator and retains mandatory target termination.
+This comparison-only evidence does not establish input-population correspondence,
+native conformance or law verification.
 
 The transport changes a comparison copy of the old program and runs ordinary
 record normalization and mandatory Core validation. Construction evaluates

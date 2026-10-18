@@ -114,6 +114,83 @@ still running. The remaining migration/coverage audit and final iteration
 release gate remain open. Readability stays deferred, all-named endings belong
 to the following minor, and this checkpoint authorizes no RC designation or tag.
 
+### Reordered shared-index body correspondence — 17 October 2026
+
+The comparison can now justify an index measure changing which equal-indexed
+sibling it reads after record regrouping. A temporary Boolean definition compares
+the two branch results under the constructor's checked invariants. Its result
+contract must be proved by the existing ordinary definition validator. Only pure
+structural storage reads in self-measure calls may differ; dispatch, arithmetic,
+interfaces and other calls remain identical. Other changed callees cannot be
+hidden by this rule. Both originals retain mandatory admission and termination,
+and the rewritten comparison copy is validated again. The helper is never emitted.
+
+The precedents are [Why3's pure lemma-functions and cloning obligations](https://why3.gitlabpages.inria.fr/why3/syntaxref.html)
+and [Lean's structural and well-founded recursion](https://lean-lang.org/doc/reference/latest/Definitions/Recursive-Definitions/).
+LawSpec uses its existing contract prover and constructor invariants, with target
+termination supplying the well-founded recursion boundary for the equal branch
+equations. This remains a trusted compiler transformation. It adds no solver
+binding, evaluator, proof-kernel integration or independent certificate.
+
+The focused compiler suite passes **35 cases**, including both widths, two
+independent indices, arithmetic mutation rejection and an independent
+counterexample: without a sibling equality invariant, the two reads return
+heights one and two on the same unbalanced tree. The migration SDK case accepts
+all **17 configured target emissions at both widths**, matches executable,
+definition-template and law-template bodies, and confirms the separate refusal
+to write when the generated `Tree@index` refinement law lacks uniform input
+population evidence. Body correspondence does not establish a legal tree for
+every natural index. That unbounded population requirement remains open; it is
+not replaced by finite samples or by this body proof.
+
+The optional `indexMeasureBodies` receipt records affected definition identities,
+before/after body digests and the proof basis. Public types and documentation
+describe that comparison-only scope. Full compiler regression passes **2,203
+tests** with zero failures. The SDK suite excluding archived catalog export
+passes **471 of 475 tests**, with zero failures and four explicit opt-in skips.
+Those four checks also pass in separate Rust, Haskell and native-failure runs;
+the five-test failure suite includes Rust and Clojure execution with no skips.
+All 129 generated files, 234 module boundaries, six editor tests, version
+consistency, artifact integrity and documentation checks for 119 pages and 115
+snippets pass.
+
+All **eight focused complete native/WASM responses** agree for reordered
+single-index and two-index bodies and changed-equation rejection at both widths.
+The new WASM artifact is 72,749,372 bytes, SHA-256
+`46fe8c746f8466d16ca27aa64992e44113df55220cd9cb009bb489a0cacba3be`.
+The full preceding-response replay is still running; its completion and the
+final iteration checks are not claimed here. Evidence is under
+`.artifacts/migration-acceptance/` in its isolated worktree. Initial test-harness
+and API-layout failures, corrected runs and exploratory proof attempts remain
+recorded separately.
+
+The migration acceptance inventory now distinguishes these concrete cases:
+
+| Case | Established behavior | Remaining limit or required work |
+|---|---|---|
+| Reordered index measures | Checked branch-body correspondence, both widths and independent indices | Unbounded generated-refinement populations remain a separate write blocker |
+| Grouped indexed, GADT and existential payloads | Concrete checked transport and witness factories | Abstract branch admission and field-only existential matching retain their source limits |
+| Unused polymorphic definitions | Complete symbolic body and requirement comparison | Projects with no accepted nonempty target artifacts still cannot write |
+| Generic input populations | Parameter-independent witnesses and complete finite parameter populations | Unbounded constructive witnesses and abstract function/resource-dependent populations remain unestablished |
+| Dependency changes | Anchored complete package/source comparison; actual changed dependencies and stale package inputs block writes | No arbitrary dependency-equivalence claim |
+| Opaque native hooks | Explicit checked layouts and original assumptions for unchanged representations | Changed opaque codecs and generator factories require independent implementation correspondence |
+
+The 77 passing native consumers cover
+[body and domain transport](templates/npm/test/migration-transport-domains.test.mjs),
+[package changes](templates/npm/test/migration-packages.test.mjs),
+[opaque native bindings](templates/npm/test/migration-native-bindings.test.mjs)
+and [actual project writes and refusals](templates/npm/test/migration-write.test.mjs).
+This inventory does not claim the remaining positive capabilities implemented.
+The broader coverage audit also identifies selective native generation for
+models and supervision as unfinished: `planTestingWith` still rejects these
+units when the model layer is unselected. Reporting that unsupported case
+honestly does not establish the contract's independent layer selection.
+
+The preceding typed-mapping catalog export continues on its frozen package
+snapshot. Readability remains deferred, all named endings belong to the following
+minor, and no RC designation or tag is implied. The completion checklist remains
+open.
+
 ### Grouped GADT and existential payloads — 17 October 2026
 
 This migration increment compares grouped GADT payloads and complete

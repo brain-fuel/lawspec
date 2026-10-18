@@ -533,6 +533,7 @@ library
       LawSpec.Core.Expression
       LawSpec.Core.Machine
       LawSpec.Core.Migration
+      LawSpec.Core.MigrationIndexEquivalence
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
       LawSpec.Core.PayloadTransport

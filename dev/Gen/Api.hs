@@ -285,7 +285,9 @@ declarations = joinWith (softbreak <> softbreak)
       [text "MigrationPending", record ([("status",union (map quoted ["matched","not-established"])),("version",text "1"),
           ("algorithm",quoted "sha256"),("machineBits",union [text "32",text "64"]),("scope",text "string"),
           ("copyValidated",text "true"),("originalsUnchanged",text "true"),("sourceBeforeDigest",text "string"),
-          ("catalogOrdering",text "string"),("assumptions",text "string[]")] ++
+          ("catalogOrdering",text "string"),("assumptions",text "string[]"),
+          ("indexMeasureBodies?",array (record (fields
+            [("definition","string"),("beforeBodyDigest","string"),("afterBodyDigest","string"),("basis","string")])))] ++
         [(name,record [("status",union (map quoted ["matched","not-established"])),("before",text "string"),("after",text "string")]) |
           name<-["program","definitionPlane","lawBodies"]] ++
         [("domainPolicies",record [("status",union (map quoted ["matched","not-established"])),
