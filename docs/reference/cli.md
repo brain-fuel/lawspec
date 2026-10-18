@@ -11,7 +11,7 @@ lawspec migrate --from 0.24 [--write] [--json] [--config <path>]
 lawspec lsp --stdio
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec check [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec check [--warn-matches] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec explain [<unit>::<law>] [--view developer|business|formal|evidence] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
@@ -37,6 +37,26 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
 | `--minify` | Compact output. Accepted only by `init`, `generate` and `examples`. |
 | `--no-cache` | Do not read or write the compiler cache for this command. |
+
+## Optional match warnings
+
+`lawspec check --warn-matches` reports structurally unreachable case branches
+(`case-unreachable`) and unnecessary fallbacks (`case-unnecessary-fallback`).
+Warnings include source spans, do not fail the command, and are separate from
+mandatory compiler errors. With `--json`, they appear in `warnings`, alongside
+`warningAnalysis` describing the analysis scope. SDK requests select them with
+`warnMatches: true`. They default to off and do not select law verification.
+
+The analysis reuses ordered-pattern specialization. Guards do not establish
+coverage. It is incomplete: an empty warning list does not prove that every
+branch is reachable. Constructor/refinement facts that are only available after
+typing may establish further unreachable branches without producing warnings.
+Mandatory exhaustiveness, definedness and contract validation still apply.
+
+In VS Code, enable `lawspec.warnMatches`. Other LSP clients can send
+`initializationOptions: {warnMatches: true}`, or update the Boolean
+`settings.lawspec.warnMatches` through `workspace/didChangeConfiguration`.
+Warnings use severity 2 and UTF-16 source ranges; compiler errors use severity 1.
 
 ## `fmt`
 

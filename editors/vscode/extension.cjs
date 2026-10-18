@@ -5,6 +5,8 @@ let client;
 exports.activate = async function activate(context) {
   const command = vscode.workspace.getConfiguration('lawspec').get('command', 'lawspec');
   client = new LanguageClient('lawspec', 'LawSpec', { command, args: ['lsp', '--stdio'] }, {
+    initializationOptions: { warnMatches: vscode.workspace.getConfiguration('lawspec').get('warnMatches', false) },
+    synchronize: { configurationSection: 'lawspec' },
     documentSelector: [{ scheme: 'file', language: 'lawspec' }],
   });
   context.subscriptions.push({ dispose: () => client?.stop() });

@@ -94,6 +94,18 @@ export interface Diagnostic {
   at: Location | null;
 }
 
+export interface MatchWarning extends Diagnostic {
+  severity: 'warning';
+  span: Span;
+}
+
+export interface MatchWarningAnalysis {
+  kind: 'match-reachability';
+  complete: false;
+  scope: 'ordered-pattern-specialization';
+  reason: string;
+}
+
 export interface Artifact {
   path: string;
   content: string;
@@ -532,6 +544,7 @@ export interface CheckRequest {
   languageProfile: '1.0-rc.1';
   verification?: Verification;
   migrationSnapshot?: boolean;
+  warnMatches?: boolean;
   sources: Source[];
   schemaVersion?: 5;
   machineBits?: 32 | 64;
@@ -1208,6 +1221,8 @@ export interface Result {
   contracts?: {owner: string; contract: Contract;}[];
   refinements?: Refinement[];
   diagnostics: Diagnostic[];
+  warnings?: MatchWarning[];
+  warningAnalysis?: MatchWarningAnalysis;
   expansions?: string[];
   files?: Artifact[];
   formattedSources?: Source[];

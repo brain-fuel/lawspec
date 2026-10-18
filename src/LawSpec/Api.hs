@@ -78,7 +78,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
        stageVerification = if taskMethod then fmap (\config -> V.Verification
          (filter (/= V.Proof) (V.verificationLayers config))) verification else verification
        stageKey = (if taskMethod then "smt-task-preparation:" else "") ++ sharedRequest bytes
-   in case (if snapshotRequested || method=="format" then memoized syntaxStagesTable ("canonical:" ++ stageKey)
+   in case (if snapshotRequested || method=="format" || matchWarningsRequested then memoized syntaxStagesTable ("canonical:" ++ stageKey)
           (stagesWithInput True True project packages sources bits settings native stageVerification)
         else fmap (\value -> (value,[])) (memoized stagesTable stageKey (stages project packages sources bits settings native stageVerification))) of
     Left response -> response
@@ -92,7 +92,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                             [] -> item{obligationStatus=Planned,obligationReason="an SMT proof task is requested; no solver execution has completed"}
                       | otherwise = item
          obligations = map pending evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-         result files = (if snapshotRequested then withMigrationSemantics True us core templates else id) $
+         result files = (if matchWarningsRequested then withMatchWarnings syntax else id) $
+           (if snapshotRequested then withMigrationSemantics True us core templates else id) $
            withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
           "expand" -> result []
@@ -127,6 +128,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       _ -> Nothing
     snapshotRequested = case decode bytes of
       Just (Object o) -> KM.lookup "migrationSnapshot" o==Just (Bool True)
+      _ -> False
+    matchWarningsRequested = case decode bytes of
+      Just (Object o) -> KM.lookup "warnMatches" o==Just (Bool True)
       _ -> False
     baselineGenerationRequested = case decode bytes of
       Just (Object o) -> KM.lookup "includeGeneration" o==Just (Bool True)
@@ -211,6 +215,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     request = withObject "request" $ \o -> do
       version <- o .:? "schemaVersion" .!= (5 :: Int)
       unless (version==5) (fail "LawSpec requires API schemaVersion 5 and languageProfile 1.0-rc.1; legacy source enters through migrationBaseline from 0.24")
+      _ <- o .:? "warnMatches" .!= False
       snapshot <- o .:? "migrationSnapshot" .!= False
       unless (not snapshot || version==5) (fail "migrationSnapshot requires API schemaVersion 5 and languageProfile 1.0-rc.1")
       method <- o .:? "method" .!= "check"
@@ -273,6 +278,16 @@ withMigrationSyntax templates syntax (Object value) = Object
       Just captured->either unavailable id (MigrationFields.sourceFields captured syntax)
     unavailable reason=object ["status" .= ("unavailable"::String),"reason" .= (reason::String)]
 withMigrationSyntax _ _ value = value
+
+-- | Optional authoring findings do not change admission or law evidence.
+withMatchWarnings :: [SourceSyntax] -> Value -> Value
+withMatchWarnings syntax (Object value) = Object
+  (KM.insert "warnings" (toJSON (concatMap syntaxMatchWarnings syntax))
+    (KM.insert "warningAnalysis" (object
+      ["kind" .= ("match-reachability" :: String), "complete" .= False,
+       "scope" .= ("ordered-pattern-specialization" :: String),
+       "reason" .= ("Only structurally eliminated rows are reported; absence of warnings does not prove that every branch is reachable." :: String)]) value))
+withMatchWarnings _ value = value
 
 -- A comparison projection of the actual, fully admitted Core. Snapshot errors
 -- never weaken mandatory validation or change which programs compile.

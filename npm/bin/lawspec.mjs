@@ -44,7 +44,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = [...(options[arg.slice(2)] ?? []), ...args[++i].split(",").filter(Boolean)];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--write", "--stdio"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--write", "--stdio", "--warn-matches"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -745,7 +745,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check]\n       lawspec migrate --from 0.24 [--write]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check]\n       lawspec migrate --from 0.24 [--write]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -801,6 +801,7 @@ async function main() {
     throw new Error("--seed must be a whole number");
   if (options.from && verb !== "migrate") throw new Error("--from applies to migrate");
   if (options.write && verb !== "migrate") throw new Error("--write applies to migrate");
+  if (options["warn-matches"] && verb !== "check") throw new Error("--warn-matches applies to check");
   if (options.stdio && verb !== "lsp") throw new Error("--stdio applies to lsp");
   if (verb === "migrate") return migrateCommand();
   if (verb === "lsp") {
@@ -908,7 +909,9 @@ async function main() {
   };
   const obligationName = (item) => item.declaration.replace("::law::", "::");
   if (verb === "check") {
-    const result = diagnostics(await compiler.check(input));
+    const result = diagnostics(await compiler.check({...input, ...(options["warn-matches"] ? {warnMatches:true} : {})}));
+    if (!options.json) for (const warning of result.warnings ?? [])
+      console.error(`${warning.at ? `${warning.at.file}:${warning.at.line}:${warning.at.column}: ` : ""}warning ${warning.code}: ${warning.message}`);
     for (const target of selected) {
       if (target.nativeBindings !== undefined)
         diagnostics(await compiler.check({...input, nativeBindings: target.nativeBindings}));

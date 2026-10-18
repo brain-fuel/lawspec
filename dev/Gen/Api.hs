@@ -78,6 +78,11 @@ declarations = joinWith (softbreak <> softbreak)
       [record [("status",quoted "available"),("version",text "1"),("uses",text "SourceFieldUse[]"),("constructors",text "SourceConstructorShape[]")],
        record [("status",quoted "unavailable"),("reason",text "string")]]
   , interface "Diagnostic" [("code", text "string"), ("message", text "string"), ("at", union [text "Location", text "null"])]
+  , interface "MatchWarning extends Diagnostic"
+      [("severity",quoted "warning"),("span",text "Span")]
+  , interface "MatchWarningAnalysis"
+      [("kind",quoted "match-reachability"),("complete",text "false"),
+       ("scope",quoted "ordered-pattern-specialization"),("reason",text "string")]
   , interface "Artifact"
       [("path", text "string"), ("content", text "string"),
        ("ownership", union (map quoted ["user", "generated"])),
@@ -232,7 +237,7 @@ declarations = joinWith (softbreak <> softbreak)
       [("layers",text "VerificationLayer[]"),("selection",union (map quoted ["no-selected-checks","selected-checks"])),
        ("intrinsicDefinitionChecks",text "true")]
   , interface "CheckRequest"
-      [("languageProfile", quoted "1.0-rc.1"), ("verification?", text "Verification"), ("migrationSnapshot?",text "boolean"),
+      [("languageProfile", quoted "1.0-rc.1"), ("verification?", text "Verification"), ("migrationSnapshot?",text "boolean"), ("warnMatches?",text "boolean"),
        ("sources", text "Source[]"), ("schemaVersion?", text "5"),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
@@ -436,7 +441,7 @@ declarations = joinWith (softbreak <> softbreak)
       ([("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])] ++
        fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
-       fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
+       fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "MatchWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
        [("baselineGeneration?",record [("status",quoted "generated"),("planning",quoted "legacy-harnesses"),
           ("execution",quoted "not-run"),("nativeConformance",quoted "not-established"),("lawVerification",quoted "not-established-by-generation")]),
         ("sourceLanguageProfile?",quoted "0.24"),("sourceSyntax?",text "SourceSyntax[]"),("sourceFields?",text "MigrationSourceFields"),("migrationSemantics?",text "MigrationSemanticSnapshot"),

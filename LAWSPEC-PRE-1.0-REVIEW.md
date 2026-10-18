@@ -726,6 +726,53 @@ or boundary-hint repairs. Final combined acceptance remains open; readability
 stays user-deferred and all named endings remain the following minor. No RC
 designation, tag or publication is claimed.
 
+### Optional case warnings — implementation under verification, 18 October 2026
+
+The completion audit found that the authoring contract's optional unreachable
+branch and unnecessary fallback diagnostics were missing. The separate
+`codex/minor-match-advisories` worktree adds opt-in `warnMatches` API output,
+`lawspec check --warn-matches`, and the VS Code `lawspec.warnMatches` setting.
+Warnings use `case-unreachable` and `case-unnecessary-fallback`, retain original
+source spans, and stay separate from mandatory errors and law evidence. Defaults
+remain off; no verification layer is selected by enabling these warnings.
+
+The implementation consumes the existing ordered pattern matrix's retained-row
+identities. It adds no solver or independent proof mechanism. Its structural
+analysis is incomplete, especially where further constructor or refinement facts
+only become available after typing. An empty warning list does not establish
+that every branch is reachable. Guards do not establish exhaustive coverage.
+
+This follows [SPARK's explicit warning-completeness boundary](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html#verifying-contract-consistency)
+and [Lean's configurable authoring warnings](https://lean-lang.org/doc/reference/latest/Linters-and-Code-Quality/Linters-and-Warnings/).
+[Lean's match compiler](https://github.com/leanprover/lean4/blob/master/src/Lean/Meta/Match/Match.lean)
+also tracks used alternatives during match compilation; LawSpec reuses its own
+existing matrix rather than introducing a second coverage implementation.
+
+The extended focused compiler run passes 21 tests, including warning
+selection at both machine widths, complete generated-result preservation across
+all 17 targets, guards, nested original spans, and unchanged mandatory admission
+errors, plus recursive-constructor, record and tuple shadowing. Seven editor
+tests and a strict published TypeScript declaration consumer also pass. All 84
+complete native responses match the pushed `1af46d54` baseline; opt-in warnings
+change only the two documented warning fields. All 84 complete WASM responses
+match the new native compiler, including all 17 emitters at both widths.
+Documentation checks pass 120 pages and 119 compiled snippets.
+
+An earlier attempt was stopped because its test-registration script had
+failed; its log and supersession reason are preserved. The initial SDK run
+passes actual compiler/API, LSP and TypeScript checks; its
+CLI case rejects a Node WASI experimental notice because it incorrectly assumed
+empty stderr. The repaired test permits that host notice while still checking
+LawSpec warning delivery and clean JSON output. The rerun passes all four public
+interface tests with no skips, including the CLI. Generation, boundary, integrity
+and version checks pass. The first canonical-format attempt skipped its absent
+checkout; the configured attempt requires the new files in HEAD and canonical
+comments on three mock methods. Those comments are supplied; the committed-file
+check and final combined acceptance remain open. Evidence is under
+`.artifacts/match-advisories/` in that worktree.
+No RC designation, tag or publication is implied.
+
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current
@@ -743,7 +790,7 @@ results for their own compiler and package snapshots.
 | Integer/Whole/Nat domains, bounded migration, zero-inclusive lengths/indices, exact literals and widening | Existing scalar/type admission and migration cover the domains and contextual literals; exact scalar widening uses the existing whole-domain containment check, with compiler tests, native runs on all 17 targets/both profiles and complete native/WASM comparisons | Final combined regression; narrowing, float precision loss and nominal unwrapping remain rejected |
 | Nominal records, explicit construction, closed anonymous products and typed alternatives | `Core/RecordIdentity`, source record elaboration; `SourceRecordCanonicalSpec`, `SourceRecordPayloadSpec`, `SourceRecordInferenceSpec`, `PayloadSpec` | Final compiler/native payload suites; unsupported dependent source forms remain diagnosed |
 | BLAKE3 identity, field-order independence, alias/bound-name normalization, collision interning and separate nominal dependency invalidation | Portable `Blake3`, canonical descriptors; official-vector checks in `CanonicalSpec`, `RecordIdentitySpec`, `RecordNormalizeSpec`, recorded GoForge comparison | Final record parity; unrelated SHA caches remain separate |
-| Single-evaluation ordered cases, scoped it, guards, recursive/record patterns, wildcards and exhaustiveness | Canonical case elaboration; `CanonicalMatcherSpec`, `CanonicalPredicateFactsSpec`, recursive-record examples | Final compiler/target gates; guards do not establish coverage |
+| Single-evaluation ordered cases, scoped it, guards, recursive/record patterns, wildcards and exhaustiveness | Canonical case elaboration; `CanonicalMatcherSpec`, `CanonicalPredicateFactsSpec`, recursive-record examples | Final compiler/target gates and optional-warning integration above; guards do not establish coverage |
 | Nested quantifiers/negation, left-to-right restrictions, normative wording, contextual articles and typed equality | Authoritative Core propositions; `CanonicalSpec`, `QuantifierDomainSpec`, `WitnessSpec`, contextual-article SDK checks | Final logical, reusable-law, Eq and IEEE regressions |
 | Prelude lookup after locals/imports, ambiguity and capture avoidance | Shared resolution/substitution; `PreludeResolutionSpec`, canonical qualified-name and reusable-law tests | Final compiler/consumer gates |
 | Eq-only Set/membership, first-occurrence order, SortedSet migration, collection any and explicit map selections | `Core/EqSet`, existing collection operations; `EqSetSpec`, `EqSetOperationsSpec`, `CanonicalCollectionsSpec`, SDK set/membership/migration suites | Final native collection suites; iteration itself needs no Eq |

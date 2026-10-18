@@ -717,7 +717,7 @@ firstCaseP = do
   try (keyword "first" *> keyword "matching" *> keyword "case" *> keyword "of")
   value <- expr
   void (symbol ":" <* notFollowedBy (char ':'))
-  branches <- some $ do
+  branchEntries <- some $ withSpan $ do
     keyword "when"
     explicit <- option False (True <$ try (keyword "it" *> keyword "matches"))
     pattern <- selectionPatternP explicit
@@ -730,9 +730,11 @@ firstCaseP = do
       SelectionCondition condition -> SelectionRow [SelectionAny] []
         (Just (maybe condition (Binary "&&" condition) guard)) body
       _ -> SelectionRow [pattern] [] guard body
-  fallback <- optional (keyword "otherwise" *> expr)
+  fallbackEntry <- optional (withSpan (keyword "otherwise" *> expr))
   closeP "case"
-  let rows = branches ++ maybe [] (\body -> [SelectionRow [SelectionAny] [] Nothing body]) fallback
+  let branches = map fst branchEntries
+      fallback = fmap fst fallbackEntry
+      rows = branches ++ maybe [] (\body -> [SelectionRow [SelectionAny] [] Nothing body]) fallback
       rowNames=[("prelude.selection-row:" ++ show index,index) | index<-[0::Int .. length rows-1]]
       marked=[SelectionRow patterns aliases guard (Apply (Var name) body) |
         (SelectionRow patterns aliases guard body,(name,_))<-zip rows rowNames]
@@ -753,6 +755,12 @@ firstCaseP = do
         (index,row)<-zip [0::Int ..] rows,index `notElem` retained]
       validations=checks++bodies
       admitted=if null validations then runtime else foldl Apply (Var selectionValidationName) (runtime:validations)
+  -- The same retained-row calculation drives both admission and optional
+  -- advisories. Do not infer reachability from guards or solver guesses.
+  forM_ (zip [0 :: Int ..] (map snd branchEntries ++ maybe [] (pure . snd) fallbackEntry)) $ \(index,range) ->
+    when (index `notElem` retained) (recordNode (SyntaxNode
+      (if index == length branches then "match-warning.fallback" else "match-warning.unreachable")
+      Nothing range Nothing))
   pure (MatchExpr value [MatchBranch letTag ["it"] admitted])
 
 -- Remove temporary row markers from the generated matrix while recording

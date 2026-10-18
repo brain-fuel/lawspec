@@ -45,6 +45,11 @@
           "type": "string",
           "default": "lawspec",
           "description": "Path to the LawSpec CLI used for the language server."
+        },
+        "lawspec.warnMatches": {
+          "type": "boolean",
+          "default": false,
+          "description": "Report structurally unreachable case branches and unnecessary fallbacks. This analysis is incomplete and does not verify laws."
         }
       }
     }

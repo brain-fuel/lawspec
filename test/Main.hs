@@ -9,6 +9,7 @@ import qualified CanonicalSpec
 import qualified CaseFoldSpec
 import qualified ExactWideningSpec
 import qualified MappingSpec
+import qualified MatchWarningSpec
 import qualified CanonicalPredicateFactsSpec
 import qualified CanonicalMatcherSpec
 import qualified CanonicalInterfaceSpec
@@ -110,6 +111,7 @@ concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
   MappingSpec.test_typedMappings
+  MatchWarningSpec.test_matchWarnings
   CanonicalPredicateFactsSpec.test_canonicalPredicateFacts
   CanonicalMatcherSpec.test_canonicalMatchers
   CanonicalInterfaceSpec.test_canonicalInterface

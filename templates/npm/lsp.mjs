@@ -27,7 +27,7 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
   const compiler = suppliedCompiler ?? await createCompiler();
   const documents = new Map();
   let workspace = process.cwd(), buffer = Buffer.alloc(0), queue = Promise.resolve(), shuttingDown = false;
-  let last = { sources: [], result: null };
+  let last = { sources: [], result: null }, warnMatches = false;
   let finish;
   const ended = new Promise(resolve => { finish = resolve; });
   const send = value => {
@@ -62,15 +62,16 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
   }
   async function check() {
     const sources = await projectSources();
-    const result = await compiler.check({ sources, languageProfile: '1.0-rc.1', verification: { layers: [] } });
+    const result = await compiler.check({ sources, languageProfile: '1.0-rc.1', verification: { layers: [] }, ...(warnMatches ? {warnMatches:true} : {}) });
     last = { sources, result };
     for (const [uri, document] of documents) {
       const file = fileURLToPath(uri);
-      const diagnostics = (result.diagnostics ?? []).filter(d => !d.at || d.at.file === file).map(d => {
+      const diagnostics = [...(result.diagnostics ?? []), ...(warnMatches ? result.warnings ?? [] : [])].filter(d => !d.at || d.at.file === file).map(d => {
         const start = d.at ? utf16Position(document.text, d.at) : { line: 0, character: 0 };
         const content = document.text.split('\n')[start.line] ?? '';
         const end = { ...start, character: Math.min(content.length, start.character + ([...content.slice(start.character)][0]?.length ?? 0)) };
-        return { range: { start, end }, severity: 1, code: d.code, source: 'LawSpec', message: d.message };
+        const range = d.span ? span(d.span)?.range ?? {start,end} : {start,end};
+        return { range, severity: d.severity === 'warning' ? 2 : 1, code: d.code, source: 'LawSpec', message: d.message };
       });
       send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, version: document.version, diagnostics } });
     }
@@ -135,12 +136,21 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
     let result = null;
     switch (message.method) {
       case 'initialize':
+        if (params.initializationOptions?.warnMatches !== undefined && typeof params.initializationOptions.warnMatches !== 'boolean')
+          throw new Error('warnMatches must be a Boolean');
+        warnMatches = params.initializationOptions?.warnMatches ?? false;
         workspace = params.rootUri ? fileURLToPath(params.rootUri) : params.rootPath ?? workspace;
         result = { capabilities: { textDocumentSync: 1, positionEncoding: 'utf-16', documentFormattingProvider: true,
           documentSymbolProvider: true, hoverProvider: true, definitionProvider: true, referencesProvider: true },
           serverInfo: { name: 'LawSpec', version: '1.0-rc.1' } };
         break;
       case 'initialized': break;
+      case 'workspace/didChangeConfiguration': {
+        const next = params.settings?.lawspec?.warnMatches;
+        if (next !== undefined && typeof next !== 'boolean') throw new Error('lawspec.warnMatches must be a Boolean');
+        warnMatches = next ?? false;
+        await check(); break;
+      }
       case 'shutdown': shuttingDown = true; break;
       case 'exit': input.pause(); finish(); return;
       case 'textDocument/didOpen': documents.set(params.textDocument.uri, params.textDocument); await check(); break;
