@@ -74,12 +74,16 @@ testcase-like text in comments and CDATA.
 
 Verification is in progress in the isolated native-model-evidence worktree,
 under `.artifacts/native-model-evidence/`. Eleven focused compiler checks and
-46 execution/evidence unit checks pass. The first full compiler run passed
-2,213 tests; the added restart-attribution regression is included in the running
-final compiler check. The first SDK run passed 484 of 488 tests with no failures
-and four explicit opt-in skips; Rust and Haskell layout checks and the five-test
-native-failure suite separately pass without skips. The final SDK rerun,
-broader full-response parity replay remain open. The independently audited native
+46 execution/evidence unit checks pass. The final full compiler run passes
+**2,214 tests with zero failures** in 933.3846 seconds, including the added
+restart-attribution regression. The SDK rerun passes **486 of 490 tests**, with
+zero failures and four explicit opt-in skips, in 823,442.546 milliseconds.
+Rust and Haskell layout checks and the five-test native-failure suite separately
+pass without skips. The final retry/adequacy reader additions also pass the
+46-test focused suite, strict TypeScript checks and both JavaScript lifecycle
+profiles; this is combined evidence rather than one uninterrupted SDK run after
+every reader refinement. The broader full-response parity replay and frozen
+catalog export remain open. The independently audited native
 lifecycle receipts cover all 17 targets at 64-bit readable and 32-bit compact
 output: ordinary actor laws, six typed model obligations through five native
 slots, actual mutant failures, stale observations, repaired runs, no selected
