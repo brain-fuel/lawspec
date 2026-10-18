@@ -101,10 +101,15 @@ Evidence is under `.artifacts/gadt-payload-transport/` in the payload-transport
 worktree, including `native-acceptance-receipts.json`, `parity/receipts.json`
 and `parity/audited-deltas.json`. Initial source/native failures and superseded
 or interrupted runs remain recorded separately. An additional replay of
-Chapter 6's 72 published-authoring responses and the complete catalog export
-remain in progress. The export reads a frozen package copy so later work cannot
-change its inputs. These pending checks and the final iteration release check
-are not claimed complete by this checkpoint.
+Chapter 6's **72 published-authoring responses** also passes: 64 responses are
+identical and eight differ only in the independently audited Go/Haskell runtime
+sources. All 68 generations across the 17 targets, both widths and layouts are
+accepted. These two replays cover **924 complete native/WASM comparisons**;
+Chapter 6's source inventory and original-source digest remain unchanged.
+
+The complete catalog export remains in progress. It reads a frozen package copy
+so later work cannot change its inputs. That pending check and the final
+iteration release check are not claimed complete by this checkpoint.
 
 Generic GADT symbolic roots remain unestablished when an abstract branch cannot
 be admitted. Pure source matching of field-only existentials remains an existing
