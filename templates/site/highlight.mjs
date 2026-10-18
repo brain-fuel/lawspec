@@ -1,6 +1,5 @@
-// Syntax highlighting for the documentation: highlight.js, vendored at the
-// version pinned in docs/vendor.lock.json, with a LawSpec grammar whose words
-// match the VS Code grammar in editors/vscode.
+// LawSpec uses the editor's shared TextMate grammar and tokenizer. Generated
+// native code uses highlight.js. Both runtimes are vendored at locked versions.
 import hljs from "./vendor/highlight/core.js";
 import bash from "./vendor/highlight/languages/bash.min.js";
 import go from "./vendor/highlight/languages/go.min.js";
@@ -14,38 +13,11 @@ import python from "./vendor/highlight/languages/python.min.js";
 import rust from "./vendor/highlight/languages/rust.min.js";
 import typescript from "./vendor/highlight/languages/typescript.min.js";
 
-function lawspec(hljs) {
-  return {
-    name: "LawSpec",
-    aliases: ["lawspec"],
-    keywords: {
-      keyword:
-        "unit import as law requires is end definition description rationale " +
-        "example expect implies and references are where refinement type match " +
-        "with wrapper workflow",
-      literal: "true false null undefined unitValue",
-      built_in: "Eq Integer Ordered Bounded",
-      type:
-        "Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64 IntSize UIntSize " +
-        "UIntPtr BigInt BigUInt Rational Decimal Float32 Float64 Complex64 " +
-        "Complex128 Bool Char CodePoint CodeUnit16 Text CodePointText Utf16Text " +
-        "Bytes Symbol Unit Null Undefined List Maybe Either Nullable Optional " +
-        "Natural Type",
-    },
-    contains: [
-      hljs.COMMENT("--", "$"),
-      { scope: "keyword", begin: /`for all`/ },
-      { scope: "title.function", begin: /`/, end: /`/ },
-      hljs.QUOTE_STRING_MODE,
-      { scope: "built_in", begin: /\bprelude\.[A-Za-z_][A-Za-z0-9_]*/ },
-      { scope: "number", begin: /\b\d+(min|ms|us|s|h|d)\b|\b\d+(\.\d+)?([eE][-+]?\d+)?\b/, relevance: 0 },
-      { scope: "operator", begin: /::|->|==|!=|<=|>=|&&|\|\|/, relevance: 0 },
-    ],
-  };
-}
+import {lawSpecHighlighter} from "./lawspec-highlight.mjs";
+import {escapeSource} from "./textmate-highlighter.mjs";
 
 for (const [name, language] of Object.entries({
-  bash, go, haskell, java, javascript, json, kotlin, plaintext, python, rust, typescript, lawspec,
+  bash, go, haskell, java, javascript, json, kotlin, plaintext, python, rust, typescript,
 })) hljs.registerLanguage(name, language);
 hljs.registerAliases(["sh", "shell", "console"], { languageName: "bash" });
 hljs.registerAliases(["text"], { languageName: "plaintext" });
@@ -61,6 +33,7 @@ export function languageOf(path) {
 
 // Highlighted HTML for code, escaped when the language is unknown.
 export function highlight(code, language) {
+  if (language === "lawspec") return lawSpecHighlighter?.highlight(code) ?? escapeSource(code);
   return hljs.highlight(code, { language: hljs.getLanguage(language) ? language : "plaintext", ignoreIllegals: true }).value;
 }
 
@@ -68,7 +41,7 @@ export function highlight(code, language) {
 export function highlightPage(root = document) {
   for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
     const language = [...code.classList].find((c) => c.startsWith("language-"))?.slice(9);
-    if (!language || !hljs.getLanguage(language)) continue;
+    if (!language || language !== "lawspec" && !hljs.getLanguage(language)) continue;
     code.innerHTML = highlight(code.textContent, language);
     code.classList.add("hljs");
   }

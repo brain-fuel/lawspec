@@ -74,6 +74,9 @@ docsCommand args = case args of
 build :: Maybe FilePath -> IO ()
 build out = do
   version <- currentVersion
+  vendorLock <- BL.readFile "docs/vendor.lock.json" >>= either (die . ("docs/vendor.lock.json: " ++)) pure . eitherDecode
+  textmateVendor <- vendorDirectory vendorLock "vscode-textmate"
+  onigurumaVendor <- vendorDirectory vendorLock "vscode-oniguruma"
   navJson <- BL.readFile "docs/nav.json"
   tree <- either (die . ("docs/nav.json: " ++)) (pure . navTree Nothing) (eitherDecode navJson)
   nav <- either die pure tree >>= titled
@@ -97,6 +100,7 @@ build out = do
         fills =
           [ ("title", Inline (escape (pageTitle page))), ("root", Inline root)
           , ("version", Inline ("v" ++ version))
+          , ("textmate-vendor", Inline textmateVendor), ("oniguruma-vendor", Inline onigurumaVendor)
           , ("nav", Inline (navHtml page nav)), ("content", Inline (trackSwitcher pages page ++ html))
           , ("pager", Inline pager) ]
     (filled, _) <- either die pure (fillTemplate "templates/site/page.html" fills pageTemplate)
@@ -113,7 +117,7 @@ build out = do
       exists <- doesDirectoryExist directory
       when exists (removeDirectoryRecursive directory)
       forM_ rendered $ \(path, content) -> writeAt (directory </> path) content
-      assets directory
+      assets directory vendorLock
       putStrLn ("Built " ++ show (length pages) ++ " pages into " ++ directory ++ ".")
 
 -- | Pages in navigation order.
@@ -470,8 +474,8 @@ decodeValue = either (const Null) id . eitherDecode
 
 -- | Static assets: the site templates, the compiler and the vendored test
 -- libraries, which are fetched from npm at pinned versions and verified.
-assets :: FilePath -> IO ()
-assets out = do
+assets :: FilePath -> Value -> IO ()
+assets out lock = do
   let dir = out </> "assets"
   partials <- forM ["core-instance"] $ \name -> do
     source <- readFile' ("templates/partials" </> name ++ ".mjs")
@@ -481,16 +485,24 @@ assets out = do
         [K.fromString t .= c | t <- scaffoldTargets, Just c <- [testCommand t]]))))
       labels = ("target-labels", Inline (BLC.unpack (encode
         [[t, targetLabel t] | t <- scaffoldTargets])))
-  forM_ ["style.css", "playground.mjs", "diagnostic-expectations.mjs", "highlight.mjs", "lawspec-core.mjs", "node-test.mjs", "assert.mjs"] $ \file -> do
+  onigurumaVendor <- vendorDirectory lock "vscode-oniguruma"
+  let grammarFacts = [("oniguruma-vendor", Inline (BLC.unpack (encode onigurumaVendor)))]
+  forM_ ["style.css", "playground.mjs", "diagnostic-expectations.mjs", "highlight.mjs", "textmate-highlighter.mjs", "lawspec-highlight.mjs", "lawspec-core.mjs", "node-test.mjs", "assert.mjs"] $ \file -> do
     source <- readFile' ("templates/site" </> file)
-    (content, _) <- either die pure (fillTemplate ("templates/site" </> file) (commands : labels : partials) source)
+    (content, _) <- either die pure (fillTemplate ("templates/site" </> file) (commands : labels : grammarFacts ++ partials) source)
     writeAt (dir </> file) content
   copyFile "templates/site/_headers" (out </> "_headers")
+  -- One authoritative grammar, also used to generate the editor extension.
+  copyFile "templates/editors/vscode/syntaxes/lawspec.tmLanguage.json" (dir </> "lawspec.tmLanguage.json")
   forM_ ["core.wasm", "core_jsffi.js"] $ \file -> do
     exists <- doesFileExist ("npm" </> file)
     unless exists (die ("npm/" ++ file ++ " is missing; run make wasm first"))
     copyFile ("npm" </> file) (dir </> file)
-  lock <- BL.readFile "docs/vendor.lock.json" >>= either (die . ("docs/vendor.lock.json: " ++)) pure . eitherDecode
+  forM_ [("vscode-textmate", ["release/main.js", "LICENSE.md"]),
+         ("vscode-oniguruma", ["release/main.js", "release/onig.wasm", "LICENSE.txt", "NOTICES.txt"])] $ \(name, files) -> do
+    unpacked <- vendor lock name
+    target <- vendorDirectory lock name
+    forM_ files $ \file -> copyTo (unpacked </> "package" </> file) (dir </> "vendor" </> target </> file)
   -- Syntax highlighting: highlight.js's core and the languages the docs use.
   let highlighted = ["languages/" ++ l ++ ".min.js" | l <- highlightLanguages]
   forM_ [ ("fast-check", "fast-check", "lib", \f -> ".js" `isSuffixOf` f && not ("/" `isInfixOf` f))
@@ -510,6 +522,13 @@ assets out = do
 
 highlightLanguages :: [String]
 highlightLanguages = ["bash", "go", "haskell", "java", "javascript", "json", "kotlin", "plaintext", "python", "rust", "scala", "typescript"]
+
+vendorDirectory :: Value -> String -> IO FilePath
+vendorDirectory (Object lock) name = case KM.lookup (K.fromString name) lock of
+  Just (Object fields) | Just (String version) <- KM.lookup (K.fromString "version") fields ->
+    pure (map (\c -> if c == '/' then '-' else c) (filter (/= '@') name) ++ "-" ++ T.unpack version)
+  _ -> die ("docs/vendor.lock.json has no version for " ++ name)
+vendorDirectory _ _ = die "docs/vendor.lock.json must be an object"
 
 vendor :: Value -> String -> IO FilePath
 vendor (Object lock) name = do

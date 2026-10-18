@@ -12,6 +12,9 @@ custom grammar. Native recognition requires upstream acceptance and deployment.
 The repository provides an MIT-licensed TextMate grammar at
 `editors/vscode/syntaxes/lawspec.tmLanguage.json`, generated from the matching
 shared template. The extension registers `source.lawspec` for `.lawspec` files.
+The documentation site interprets those same grammar bytes with the matching
+TextMate and Oniguruma versions. Browser-bundle token scopes are checked against
+the editor across the repository's specification corpus.
 Tokenizer tests cover current examples, parser fixtures, comments, escapes,
 Unicode identifiers and identifier boundaries. The RC1 sample is
 `examples/rc1-authoring.lawspec`.

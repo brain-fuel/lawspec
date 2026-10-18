@@ -10,6 +10,18 @@ Formatting is built into the compiler: it is deterministic, identical in the
 native and WebAssembly builds, and never downloads or runs an external
 formatter.
 
+## Source highlighting
+
+The documentation site and editor use the same TextMate grammar and pinned
+TextMate/Oniguruma tokenizer versions. Phrase names, Unicode identifiers,
+keywords and types therefore receive the same scopes. The website maps those
+scopes to its existing colors; highlighting preserves the source text.
+
+The site hosts the grammar and tokenizer assets locally, including their
+licenses. Vendor URLs include their locked versions. If highlighting assets
+cannot load, the source remains readable and compiler checks remain available.
+Generated native code uses highlight.js.
+
 ## Readable output
 
 | Target | Layout |

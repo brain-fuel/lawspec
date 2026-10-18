@@ -206,7 +206,7 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
       (claims name env command (M.lookup name targetOf)) s
     follows name command target = case target of
       Nothing -> ["typescript-bootstrap" | name == "npm-tests"] ++ ["python-bootstrap" | name == "beam-runtime"]
-        ++ ["editor-install" | name == "editor-grammar"]
+        ++ ["editor-install" | name `elem` ["editor-grammar","npm-tests"]]
         ++ ["docs" | name == "rejection-examples"]
       Just t
         | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> []
@@ -358,7 +358,8 @@ stepInputs :: String -> Maybe Inputs
 stepInputs name = case name of
   -- Hspec reads acceptance specs, bindings and fixtures, so they key it too.
   "compiler-tests" -> Just (Inputs [] ["npm/", "tools/", "docs/", "editors/"] [["stack", "--version"]])
-  "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/", "templates/site/diagnostic-expectations.mjs"] [] [["node", "--version"]])
+  "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/", "templates/site/", "templates/editors/vscode/syntaxes/",
+    "editors/vscode/syntaxes/", "editors/vscode/package-lock.json", "docs/vendor.lock.json"] [] [["node", "--version"]])
   "parity" -> Just (Inputs [] unread [["node", "--version"]])
   "package-smoke" -> Just (Inputs [] unread [["node", "--version"], ["npm", "--version"]])
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])

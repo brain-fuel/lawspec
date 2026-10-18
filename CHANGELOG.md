@@ -32,6 +32,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Documentation highlighting now uses the editor's shared TextMate grammar and
+  tokenizer. Phrase names end at their delimiter, and canonical function/type
+  syntax receives the editor's scopes. Highlighting asset failures preserve
+  readable source and compiler interaction.
 - Formatting retains the indentation of abilities, stateful handler operations
   and handled expressions, including conditional initializers.
 - Source formatting covers workflows, models, actors, supervisors, protocols,

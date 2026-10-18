@@ -14,6 +14,7 @@ const directory=await mkdtemp(path.join(artifacts,'docs-'));
 for(const folder of ['docs','templates/site','test/fixtures'])await mkdir(path.join(directory,folder),{recursive:true});
 await copyFile(path.join(root,'package.yaml'),path.join(directory,'package.yaml'));
 await copyFile(path.join(root,'templates/site/page.html'),path.join(directory,'templates/site/page.html'));
+await copyFile(path.join(root,'docs/vendor.lock.json'),path.join(directory,'docs/vendor.lock.json'));
 for(const file of ['canonical_refs.yaml','canonical_decisions.yaml'])await writeFile(path.join(directory,file),'');
 await writeFile(path.join(directory,'README.md'),'# Documentation fixture checks\n');
 await writeFile(path.join(directory,'docs/nav.json'),JSON.stringify([{path:'index.md'}]));
