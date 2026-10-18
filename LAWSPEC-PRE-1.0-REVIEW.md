@@ -98,18 +98,20 @@ that no longer matched the corrected formatter. The canonical source has been
 reformatted; its complete typed migration snapshots remain identical, its
 formatting is idempotent and the failed SDK case now passes separately. The
 original Chapter 6 and frozen legacy fixture retain their original bytes. The
-independent Chapter 6 oracle rerun remains in progress.
+independent Chapter 6 oracle rerun now passes at both profiles.
 
 The first oracle attempt also exposed a stale consumer of native-report
 freshness: it supplied the time after execution and therefore discarded the
 completed JUnit cases. The runner now supplies its launch time. Other model
 runner consumers use the same start-time convention; the 46 report/evidence
 contract tests pass. The corrected oracle run remains separate from that
-failed attempt. Its 64-bit readable profile passes 545 actual generated checks,
+failed attempt. Its 64-bit readable and 32-bit compact profiles each pass 545 actual generated checks,
 including all 66 authored examples and all 23 laws. Independent oracles cover
 32,768 A instructions, 1,792 C combinations and 13 stateful programs with
 repeated-invocation independence. Six meaningful implementation/specification
-mutants are rejected. The 32-bit compact rerun remains in progress.
+mutants are rejected at each profile. Both runs preserve the recorded inventory
+of 23 laws, 65 table rows, one named example, 25 definitions, seven ADTs and
+two refinements, alongside six authored mappings.
 
 The wide refund case was then strengthened to compare 9,007,199,254,740,992
 captured units with 9,007,199,254,740,993 requested units: converting these to
@@ -117,7 +119,12 @@ binary floating-point collapses their distinction. All 34 native positive
 profiles pass again with that final table data. Separate isolated JavaScript
 runs reject an additional precision-loss implementation mutation at both
 profiles, alongside their existing nine mutations. The final three business
-SDK consumers and 84 complete parity comparisons also pass again. These
+SDK consumers and 84 complete parity comparisons also pass again. Independent
+payload and receipt auditing confirms all 84 native/WASM responses, 82 unchanged
+preceding responses, the two formatting-only deltas, 68 accepted generation
+profiles, all 342 frozen native logs and both full Chapter 6 oracle receipts.
+The audit also rechecks the original Chapter 6 and legacy-fixture hashes; its
+receipt is `final-checkpoint-audit.json` under the same evidence directory. These
 receipts are combined evidence across the stated changes, not one uninterrupted
 SDK/native run after every correction. Evidence is under
 `.artifacts/business-demonstrations/` in the isolated business-demonstrations
