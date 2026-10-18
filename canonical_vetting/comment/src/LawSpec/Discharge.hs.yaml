@@ -13,9 +13,6 @@ decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/inli
 decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/lawClaim:
   digest: sha256:7e435794c40a1638
   verdict: pending
-decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/proofClaim:
-  digest: sha256:d1511dacd9fb781b
-  verdict: pending
 decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/proves:
   digest: sha256:afca3e789e3f28ab
   verdict: pending

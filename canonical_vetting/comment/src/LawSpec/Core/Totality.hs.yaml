@@ -94,9 +94,6 @@ decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/funct
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/substituteProof:
   digest: sha256:b9d36bdbb736ccc1
   verdict: pending
-decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/templateName:
-  digest: sha256:76110305b9c8af98
-  verdict: pending
 decision/haskell/src/LawSpec/Core/Totality.hs/module/LawSpec.Core.Totality/function/unfold:
   digest: sha256:f941a231169acea8
   verdict: pending

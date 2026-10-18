@@ -80,6 +80,77 @@ zero failures or skips. Independent auditing confirms all **273 frozen package
 files** retain their recorded hashes. This closes that frozen snapshot's run,
 not the current 0.25.0 package gate.
 
+### Final validation progress and Canon reconciliation — 18 October 2026
+
+The initial fresh all-17-target CI run uses the immutable `20f90b30` candidate.
+Its completed actual compiler suite passes in 1,004.1 seconds. Stack suppresses the
+successful suite's individual results; a separate dry-run inventory lists
+2,223 tests and is not counted as test execution. The installed-package smoke
+check passes in 1,853.1 seconds, including all bundled exports, all 17 structural
+generation targets at both widths/layouts, and native Rust scaffold execution.
+Its archive matches the independently inspected 202-file package, SHA-256
+`19a3fa4d4e6915b859c3c4c2ec6c16a5e06d5e53d3bd5ec6b0eba2d819c0dd70`.
+Release preconditions also pass; they do not replace the complete CI gate.
+
+Both fresh Chapter 6 oracle profiles pass: 64-bit readable and 32-bit compact.
+Each exercises all 32,768 A addresses, 1,792 C combinations, 13 stateful programs,
+independent repeated invocations and six meaningful mutants. Each runs 545
+generated checks. The authored inventory remains 23 laws, 65 table rows, one
+named example, 25 definitions, seven ADTs and two refinements. Separate canonical
+native/WASM parity matches 303 complete responses, including 221 accepted
+generation requests across all 17 targets and both widths/layouts. These are
+Python native-conformance and compiler/generation results; Chapter 6 native
+implementations in the other languages remain pre-final-1.0 work.
+
+The CI `canon` step exited zero because Canon was unavailable and explicitly
+skipped checking. It is not counted as a Canon pass. A real Canon 0.2.2 run
+found six stale pending entries, two incorrect `REQ-harness` links and a parser
+failure at a list-comprehension boundary. The cleanup removes only those six
+pending entries, corrects the links to `REQ-harness-units`, and parenthesizes the
+existing case expression without changing its body. No human verdict is
+introduced, changed or removed. A fresh stable whole-project Canon check passes
+with 15,131 informational findings under the existing pre-1.0 exemptions and
+zero non-informational findings. The exemptions do not discharge human vetting.
+The cleanup passes both compiler builds, 25 focused WASM migration transport
+tests, all 137 generated-file checks, the 236-module boundary check, version and
+source/artifact integrity checks, documentation for 120 pages/118 compiled
+snippets, and all 14 rejection-example controls. Complete old-native,
+rebuilt-native and rebuilt-WASM responses match for 78 requests, including 68
+accepted generation profiles across all 17 targets, both widths and layouts,
+and positive/changed-body migration transport. Every complete response and its
+stored hash is independently audited; nothing is stripped from comparisons.
+An initial comparison harness incorrectly selected law layers on migration
+requests; the API correctly rejected them, and the corrected full run passes.
+
+The rebuilt native compiler is SHA-256
+`78ea3167c695d36144d22259ba53658d88f641a95c2a9b971ee88d9891d9d025`;
+the 72,964,880-byte WASM is SHA-256
+`b450073873d2fc588e2a666fecbfc5839c7fb6cf48e509e01d97cc9cdca66158`.
+The independently inspected 202-file archive is SHA-256
+`2969487f4fd596b8c3c38359b505b2ab07b0c7b615af3c325b168b72859570e1`.
+Only its WASM and build-fingerprint manifest differ from the preceding inspected
+package. Its full installed-package and complete CI gates remain open.
+
+The committed cleanup supersedes the initial candidate for final acceptance;
+its unfinished CI will be stopped deliberately and the entire fresh gate run
+on the cleanup with nine workers. Completed initial-candidate receipts remain
+scoped to `20f90b30`; partial or interrupted steps are not passes. Evidence is
+under `.artifacts/canon-reconciliation/`
+in its isolated worktree and `.artifacts/minor-release-preparation/` in the
+preceding candidate worktree.
+
+The earlier frozen scenario-formatter snapshot's full SDK run has finished:
+506 tests, 502 passes, zero failures/cancellations, four explicit native
+environment skips, in 6,541,329.638083 ms. The export test takes
+6,540,849.464625 ms. This is the earlier 0.24 snapshot's result, not the final
+0.25 package result. The skipped checks cover Rust/Clojure mapped failures and
+Rust/Haskell native layouts; they do not count as native-conformance passes.
+
+Final acceptance remains open. Readability stays user-deferred, all-named
+endings belong to the following minor, and the larger portfolio, advanced
+verification and upstream Linguist gates remain pre-final-1.0. Version 0.25.0
+remains an unpublished minor without an RC designation or tag.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current

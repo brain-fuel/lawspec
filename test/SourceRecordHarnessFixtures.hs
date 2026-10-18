@@ -1,6 +1,6 @@
 -- | Structural products introduced by the harness reach the ordinary checked
 -- program, including bounded strategies and constructive witnesses.
--- ref:DEC-typed-core-boundary ref:REQ-harness ref:DEC-total-definitions
+-- ref:DEC-typed-core-boundary ref:REQ-harness-units ref:DEC-total-definitions
 module SourceRecordHarnessFixtures where
 
 import qualified LawSpec.Model as S

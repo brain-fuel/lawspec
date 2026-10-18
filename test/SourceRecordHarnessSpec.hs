@@ -1,5 +1,5 @@
 -- | Harness collection retains declarations, purity, lexical scope and honest
--- witness evidence. ref:REQ-harness ref:DEC-typed-core-boundary
+-- witness evidence. ref:REQ-harness-units ref:DEC-typed-core-boundary
 module SourceRecordHarnessSpec (test_recordHarnessesUseOneTypedContext) where
 
 import Control.Monad (forM_)

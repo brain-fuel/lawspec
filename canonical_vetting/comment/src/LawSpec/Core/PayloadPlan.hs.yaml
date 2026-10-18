@@ -16,6 +16,3 @@ decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan
 decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/function/storedParameters:
   digest: sha256:76eae45babd226f0
   verdict: pending
-decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/newtype/Schema:
-  digest: sha256:8b3f85748d5e2d17
-  verdict: pending

@@ -28,9 +28,6 @@ decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/parseV
 decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/preparePackages:
   digest: sha256:5227fe767f871662
   verdict: pending
-decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/rewriteUnit:
-  digest: sha256:2c981af0af7cb4ed
-  verdict: pending
 decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/satisfies:
   digest: sha256:873a921df0c7fece
   verdict: pending

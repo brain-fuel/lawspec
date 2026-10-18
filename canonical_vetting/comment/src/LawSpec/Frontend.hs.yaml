@@ -7,6 +7,3 @@ decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend/function/compil
 decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend/function/elaborate:
   digest: sha256:41695cd92b5fb884
   verdict: pending
-decision/haskell/src/LawSpec/Frontend.hs/module/LawSpec.Frontend/function/escapeIdentity:
-  digest: sha256:981ed3d1b07f5075
-  verdict: pending

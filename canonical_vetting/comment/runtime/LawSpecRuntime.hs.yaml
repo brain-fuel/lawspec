@@ -268,9 +268,6 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/endpoi
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/entryOf:
   digest: sha256:a6469460b5e215f0
   verdict: pending
-decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/equal:
-  digest: sha256:bb82dc3bd0029618
-  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/evaluateRemote:
   digest: sha256:187efbd6ec3341bb
   verdict: pending

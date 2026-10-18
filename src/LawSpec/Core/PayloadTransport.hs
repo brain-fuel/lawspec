@@ -139,7 +139,7 @@ transportProgramWithScopes scopes plan original = do
             (zip (map C.binderName (C.constructorFields old)) arguments) marker
           pure (make (C.expressionType expression) (C.Construct tag [payload]))
         C.Match selected cases -> do
-          branches<-sequence [case M.lookup (C.caseConstructor branch) constructors of
+          branches<-sequence [(case M.lookup (C.caseConstructor branch) constructors of
             Nothing->pure branch
             Just (old,_) -> do
               unless (length (C.caseBinders branch)==length (C.constructorFields old)) (Left "transport source pattern arity is invalid")
@@ -157,7 +157,7 @@ transportProgramWithScopes scopes plan original = do
                   body=foldr (\(bound,position) rest -> make (C.expressionType rest)
                     (C.Let bound (make (C.binderType bound) (C.Project tag position local)) rest))
                     (C.caseBody branch) (zip (C.caseBinders branch) positions)
-              pure branch{C.caseBinders=[binder],C.caseBody=body}
+              pure branch{C.caseBinders=[binder],C.caseBody=body})
             | (index,branch)<-zip [0::Int ..] cases]
           pure expression{C.expressionNode=C.Match selected branches,C.expressionOrigin=marker}
         C.Project tag index selected | Just (old,_)<-M.lookup tag constructors -> do
