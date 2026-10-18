@@ -23,6 +23,7 @@ Validated project migration writes and the first canonical Chapter 6 pass shippe
 - [ ] Resolve or explicitly account for the remaining migration acceptance cases, including indexed/existential payloads, generic populations, dependency changes and opaque hooks. Missing correspondence must continue to block writes.
 - [ ] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration. Ordinary requests now require schema 5 and the canonical profile; configuration requires version 2. Archived source uses explicit migration entry points. The cutover is implemented; final consumer and acceptance checks remain open.
 - [ ] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract. The authoring pass and its oracle/generation checks are complete; the wider coverage audit remains required.
+- [ ] Deliver authored expected compile-rejection examples checked by stable diagnostic codes. The documentation checker currently rejects every failing snippet; the existing compiler negative regressions do not close this authoring requirement.
 - [ ] Run the final compiler, target, generation, boundary, editor, documentation, parity and complete release checks on the final implementation; record failures and limits before claiming completion.
 
 The human readability exercise remains user-deferred. Completing all named endings belongs to the immediately following minor. The larger demonstration portfolio, advanced verification and external Linguist acceptance remain pre-final-1.0 requirements. None of these statuses authorizes an RC designation or a tag.
@@ -83,8 +84,15 @@ documentation for 120 pages with 115 compiled snippets pass. Chapter 6's
 `UserSymbol` refinement body now receives two-space indentation; complete typed
 snapshots before and after agree and the new formatting is idempotent. The
 original Chapter 6 and frozen legacy fixture retain their recorded bytes.
-The generated Python artifact comparison for that indentation change, full
-compiler/SDK regressions and the frozen catalog export remain in progress.
+Complete generated Python files are byte-identical before and after that
+indentation change at both profiles. Twelve source-sensitive dependency keys
+change per profile; every other test-manifest field matches. Complete response
+pairs retain those changes. The first comparison's assertion that the keys were
+identical failed; the corrected audit explicitly accounts for each changed key.
+The complete typed snapshots also match the preceding checkpoint's snapshot.
+The full compiler regression passes **2,220 tests with zero failures** in
+865.4078 seconds. Fresh oracle executions for the current source, the SDK
+regression and frozen catalog export remain in progress.
 
 Evidence is under `.artifacts/formatter-block-coverage/` in the isolated
 formatter-block-coverage worktree. This checkpoint does not complete the wider
