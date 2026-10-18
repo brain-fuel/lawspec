@@ -115,6 +115,10 @@ When there is no configuration file, `init` creates `lawspec.json` with
 fails if the starter already exists. When the file exists, it adds the target.
 A target of the same language with the same root is an error.
 
+New configurations use version 2, `languageProfile: "1.0-rc.1"` and
+`verification.layers: []`. Select optional law checks explicitly; intrinsic
+definition validation remains mandatory.
+
 If the target root has no build files (such as `pom.xml`, `pyproject.toml`,
 `package.json`, `go.mod`, `stack.yaml`, `package.yaml`, a `.cabal` file,
 `Cargo.toml` or Gradle files), `init` creates the target's scaffold. Otherwise
@@ -123,10 +127,13 @@ It never overwrites a file.
 
 ## `check`
 
-Parses, resolves, type-checks and expands every law, without target tools.
-Prints the number of laws and the count of obligations with each
-[evidence status](language/evidence-and-discharge.md). Validates the native
-bindings of the selected targets. `--json` prints the compiler's full result.
+Parses, resolves and type-checks the project, validates definitions and expands
+every law, without target tools. Prints the number of laws and the count of
+obligations with each [evidence status](language/evidence-and-discharge.md).
+Optional law layers default to none; those laws remain `not-verified`.
+Configured native tests are planned until their execution supplies evidence.
+The command also validates native bindings of selected targets. `--json` prints
+the compiler's full result.
 
 ## `prove`
 
@@ -145,8 +152,10 @@ contracts retain their own guarantees.
 ## `evidence`
 
 Lists every obligation with its stage, identity, claim and reason, grouped by
-status from `PROVED` to `ASSUMED / EXTERNAL`, then the harness plane's
-`KNOWN FAILING`, `FLAKY` and `SKIPPED`. A `HARNESS` section follows: for each
+status. Completed evidence, `PLANNED`, `NOT VERIFIED`, `INCOMPLETE`,
+`UNSUPPORTED` and `ASSUMED / EXTERNAL` retain their distinct meanings, alongside
+the harness plane's `KNOWN FAILING`, `FLAKY` and `SKIPPED`. A `HARNESS` section
+follows: for each
 law with a [harness](language/harness.md), how it is tested (strategies,
 `cover`, `classify`, `label`, tags, timeout, retries) and, from the last
 `lawspec test`, how many cases ran and what they covered. The law's obligation
@@ -154,7 +163,7 @@ and its harness are kept apart: the harness can never change the obligation.
 
 - `<unit>` limits the list to one unit.
 - `<unit>::<declaration>` limits it to one obligation, such as
-  `example.atoi_codec::itoa and then atoi yields a` or `example.atoi_codec::itoa`.
+  `example.codec::codec` or `example.codec::itoa`.
   No match is an error.
 - Binding, codec, generator and native-function obligations of the selected
   targets are included and labelled with their target.
@@ -173,12 +182,31 @@ and its harness are kept apart: the harness can never change the obligation.
 
 ## `explain`
 
-Prints each law's expansion trace, its final property, and each example's input
-bindings and expected results. It does not run adapters.
+Presents the checked law, its examples and available evidence. All views use
+the same typed assertion. The command does not execute adapters or law tests.
 
-- `<unit>::<law>` selects one law, named without backticks. No match is an
-  error. Without it, every law is explained.
-- `--json` prints the expanded law records with their expansions.
+- `<unit>::<law>` selects the exact owner and name returned by `check --json`.
+  Without it, every law is explained; an unmatched selector is an error.
+- `--view developer` includes the requirement, typed property, examples,
+  documentary references and configured witness/search settings. It is the
+  default view.
+- `--view business` presents the same requirement in business wording.
+- `--view formal` presents its logical binders and proposition.
+- `--view evidence` lists available evidence and its reasons, keeping planned
+  checks separate from completed results.
+- `--json` returns explanation records containing the selected view, law
+  identity, typed assertion, inputs, examples, metadata, references,
+  witness/search settings, evidence and presentation text.
+
+Canonical phrase names retain their `"|...|` delimiters in a selector. For
+`unit demo` with a law declared as `law "|zero| is`, quote the entire selector
+for the shell:
+
+```sh
+npx lawspec explain 'demo::"|zero|' --view business --json
+```
+
+The same qualified spelling selects that law in `evidence`.
 
 ## `doctor`
 

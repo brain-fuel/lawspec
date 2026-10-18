@@ -16,56 +16,59 @@ integration. Every command and option is listed in the
 npx lawspec check
 ```
 
-`check` parses, resolves, type-checks and expands every law. It needs no target
-build tools. It prints the number of laws and a summary of how the obligations
-are discharged:
+`check` parses, resolves and type-checks the project, expands its laws and runs
+mandatory definition validation. It needs no target build tools. New projects
+select no optional law checks: their laws remain `not-verified` even when
+intrinsic definition checks pass.
 
-```text
-Checked 1 law(s). Evidence: 0 proved, 0 exhaustively checked, 1 property tested, 0 runtime checked, 2 assumed / external.
+Choose the checks you want in the project's version-2 `lawspec.json`. For
+generated property tests and authored examples, set:
+
+```json
+{
+  "verification": {
+    "layers": ["property", "examples"]
+  }
+}
 ```
 
-A law over checked definitions that the compiler can refute on a finite domain
-fails here with code `refuted`. When a target has native bindings, `check`
-validates them too. Add `--json` for the full compiler result.
+This plans those native checks; running them supplies execution evidence.
+Other layers, such as `proof` and `exhaustive`, can be selected independently.
+Selected compiler checks report established counterexamples with code
+`refuted`. When a target has native bindings, `check` validates them too.
+Add `--json` for the full compiler result. Optional layer selection never
+disables definition checks or deferred definition-contract enforcement.
 
 ## Inspect a law
 
 ```sh
-npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
+npx lawspec explain example.codec::codec --view developer
+npx lawspec explain example.codec::codec --view business --json
 ```
 
-`explain` prints each step of the law's expansion, the final property, and the
-inputs and expected results of each example. It does not run your adapters.
-Without an argument it explains every law. The argument is
-`<unit>::<law name>`, without backticks.
+`explain` presents the same typed requirement in developer, business, formal
+or evidence form. It includes examples and available evidence without running
+your adapters. Without a selector it explains every law. Use the exact
+`<owner>::<name>` returned by `check --json`; preserve canonical phrase-name
+delimiters and quote the entire selector for the shell. The
+[CLI reference](../reference/cli.md#explain) gives a phrase-name example.
 
 ## List the evidence
 
 ```sh
 npx lawspec evidence
-npx lawspec evidence example.atoi_codec
-npx lawspec evidence 'example.atoi_codec::itoa and then atoi yields a'
+npx lawspec evidence example.codec
+npx lawspec evidence example.codec::codec
 ```
 
-`evidence` lists every obligation, grouped by status from `PROVED` to
-`ASSUMED / EXTERNAL`, with its claim and the reason for its status. For the
-starter project:
+`evidence` groups obligations by status and gives the reason for each result.
+`PLANNED` means a check is configured; `NOT VERIFIED` records an unverified
+obligation. Completed native results appear after `lawspec test` records the
+run. Property-test evidence describes those tested cases rather than a
+universal proof. An incomplete witness search does not prove nonexistence.
 
-```text
-PROPERTY TESTED (1)
-  law example.atoi_codec::itoa and then atoi yields a: (atoi (itoa (x)) == x)
-    the generated tests check 100 generated cases, 4 boundary cases and 2 examples; relies on example.atoi_codec::atoi, example.atoi_codec::itoa
-
-ASSUMED / EXTERNAL (2)
-  adapter example.atoi_codec::itoa
-    native implementation taken on trust; called by 1 law(s)
-  adapter example.atoi_codec::atoi
-    native implementation taken on trust; called by 1 law(s)
-```
-
-Filter by a
-unit or by `unit::declaration`. With native bindings, binding, codec, generator
-and native-function obligations are listed with their target. See
+Filter by a unit or by `unit::declaration`. With native bindings, binding,
+codec, generator and native-function obligations are listed with their target. See
 [evidence and discharge](../reference/language/evidence-and-discharge.md).
 
 ## Generate
@@ -129,9 +132,13 @@ npm ci
 npx lawspec check
 npx lawspec doctor --target python
 npx lawspec generate --check --target python
-python -m pytest
+npx lawspec test --target python --fresh
+npx lawspec evidence example.codec::codec
 ```
 
 `generate --check` catches a specification change that someone forgot to
-regenerate. The native test command then runs the committed tests. Use `--json`
-on `check`, `doctor` and `generate` for machine-readable output.
+regenerate. `test` runs the selected native checks and records their scoped
+results; `--fresh` reruns them. Keep the verification-layer selections in
+`lawspec.json` under version control so the job runs the intended checks.
+Use `--json` on `check`, `doctor`, `generate`, `explain` and `evidence` for
+machine-readable output.

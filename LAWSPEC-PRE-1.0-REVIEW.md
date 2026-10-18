@@ -201,6 +201,44 @@ semantics. Readability stays deferred, all-named endings belong to the following
 minor, and the larger pre-final-1.0 gates remain open. No tag or publication is
 authorized by these checks.
 
+### Installed authoring commands and current CLI documentation — 18 October 2026
+
+The current 202-file archive, SHA-256
+`2969487f4fd596b8c3c38359b505b2ab07b0c7b615af3c325b168b72859570e1`,
+passes its fresh installed-package CI check in 1,738.8 seconds. Its CLI/API,
+bundled exports, all-17-target structural generation, native JavaScript tests
+and native Rust scaffold/adapter tests execute successfully. Independent archive
+inspection confirms that its artifacts match the current sources and package.
+
+A separate installation of that exact archive passes the four authoring
+commands outside the checkout. Migration's default report preserves source and
+configuration; validated writing produces configuration 2, the explicit profile
+and the six selections preserving legacy behavior. This source-only project
+does not establish target/native conformance or law truth through migration.
+Formatting rejects the deliberately unformatted file under `--check`, then
+formats idempotently while preserving its complete typed migration snapshot,
+Unicode comment and literal marker. All four explanation JSON views retain the
+same typed assertion. The actual installed LSP handles split UTF-8 stdio frames,
+advertises UTF-16 positions, returns outlines and formats unsaved text without
+changing the file. Existing compiler/editor tests cover position conversion.
+
+The initial explanation probe assumed an ordinary name for a migrated phrase
+law; the compiler's returned name selects it correctly. The exact documented
+shell-quoted selector also passes installed `explain` and `evidence` commands.
+The CLI reference and CI guide now use canonical selectors, describe all four
+views and their JSON records, select native checks explicitly, distinguish
+planned/unverified from completed evidence, and use `lawspec test` to record
+native results. They remove a stale example that called planned checks
+`PROPERTY TESTED`. Evidence is under `.artifacts/ci-mapping-coverage/` and
+`.artifacts/cli-authoring-docs/` in their respective isolated worktrees.
+
+The full CI continues. It has exposed obsolete replay-source grammar and a
+missing language profile in the Rust layout consumer; those consumer repairs
+remain required. The 40 added native checks also remain pending. Neither this
+installed-interface result nor release preconditions close final acceptance.
+Readability remains user-deferred, all-named endings belong to the following
+minor, and pre-final-1.0 gates stay open. No tag or publication is implied.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current
