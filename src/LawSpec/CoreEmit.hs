@@ -65,6 +65,8 @@ import LawSpec.Memo (Table, newPersistentTable, memoized)
 import Data.Binary (Binary(..))
 import qualified Data.Text as T
 import qualified LawSpec.Dependencies as D
+import qualified LawSpec.NativeModelChecks as NativeModels
+import LawSpec.TestManifest (unitTestPath)
 import LawSpec.Digest (digestHex, digestString)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -98,8 +100,21 @@ emitPlanWithFormat minify target plan = do
 emitMaterializedPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitMaterializedPlanWithFormat minify target plan = do
   checkExecutionPlan plan
+  checkNativeModelNames target plan
   mapM_ (checkNames target . plannedUnit) (plannedUnits plan)
   emitPlanWithFormatUnchecked minify target plan
+
+checkNativeModelNames :: String -> Plan -> Either [Diagnostic] ()
+checkNativeModelNames target plan = do
+  let modelCollisions=concat [NativeModels.collisions (NativeModels.nativeChecks target
+        (unitTestPath target (C.idText (C.unitId u))) u) |
+        u<-modelTestUnits plan] ++
+        [NativeModels.checkTestName check | target `elem` ["javascript","typescript"],
+          u<-modelTestUnits plan,check<-NativeModels.nativeChecks target
+            (unitTestPath target (C.idText (C.unitId u))) u,law<-C.unitProperties u,
+          NativeModels.checkTestName check==C.idText (C.unitId u)++"::"++C.propertyName law]
+  unless (null modelCollisions) (Left [Diagnostic "collision"
+    ("native model checks share generated test names; rename the conflicting models: "++comma modelCollisions) Nothing])
 
 -- Logical validation precedes witness materialization for every public emitter.
 -- The native definition generators recheck the corresponding logical view.
@@ -359,7 +374,8 @@ emitPlanFormatted minify target Plan{..} = do
     (Left [Diagnostic "collision" "Scala adapter shadows a generated JVM runtime class" Nothing])
   unless (target /= "scala" || all ((`notElem` [["scala"], ["java"]]) . take 1 . split '.' . unitName) units)
     (Left [Diagnostic "identifier" "Scala's scala and java packages are reserved" Nothing])
-  emitted <- mapM (emitUnit laws) (filter (\u -> not (null (functions u)) || any ((== unitName u) . owner) laws) units)
+  emitted <- mapM (emitUnit laws) (filter (\u -> not (null (functions u)) || any ((== unitName u) . owner) laws ||
+    planModelChecks && not (null (C.unitMachines u) && null (C.unitSupervisors u))) units)
   dataFiles <- if target == "java" && (not (null planDataDeclarations) || not (null definitionCalls) || hasPayload)
     then either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
       (JavaData.emitJavaDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)
@@ -538,9 +554,10 @@ emitPlanFormatted minify target Plan{..} = do
     lawKey law = D.keyOf graph (show (planMachineBits, law)) (D.lawReferences graph (plannedProperty law))
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
+          testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks) u
       in fmap (map unstore) $ memoized emitTable (digestHex (digestString (show (minify, target, planMachineBits,
-             u { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
-           (fmap (map store) (emitUnitWith laws u))
+             testing { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
+           (fmap (map store) (emitUnitWith laws testing))
     emitUnitWith laws u
       | target `elem` ["java","kotlin","scala","go","haskell"] =
           Native.nativeScalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
@@ -592,6 +609,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
       named = bindings { NB.bindingFunctions = [(rename d,r) | (d,r) <- NB.bindingFunctions bindings]
                        , NB.bindingCalls = [(rename d,c) | (d,c) <- NB.bindingCalls bindings]
                        , NB.bindingNames = [] }
+  checkNativeModelNames target plan
   mapM_ (checkNames target . plannedUnit) (plannedUnits plan)
   emitPlanWithNativeNames minify target sourceDir testDir named plan
 

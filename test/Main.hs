@@ -10,6 +10,7 @@ import qualified MappingSpec
 import qualified CanonicalPredicateFactsSpec
 import qualified CanonicalMatcherSpec
 import qualified CanonicalInterfaceSpec
+import qualified ModelLayerSelectionSpec
 import qualified ContextualSpec
 import qualified RecordIdentitySpec
 import qualified RecordNormalizeSpec
@@ -110,6 +111,7 @@ main = hspec $ do
   CanonicalPredicateFactsSpec.test_canonicalPredicateFacts
   CanonicalMatcherSpec.test_canonicalMatchers
   CanonicalInterfaceSpec.test_canonicalInterface
+  ModelLayerSelectionSpec.test_modelLayerSelection
   EqSetSpec.test_eqOnlySetsPreserveMembershipAndIteration
   EqSetOperationsSpec.test_eqSetOperations
   CanonicalCollectionsSpec.test_canonicalCollections

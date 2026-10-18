@@ -209,9 +209,22 @@ return value. A `Maybe` result treats the target's null value as `Nothing`.
 
 ## Evidence
 
-`lawspec evidence` lists each model as property-tested against its
-reference, and a shared model's histories as property-tested for its
-consistency.
+Select `"model"` in `verification.layers` to generate and run model,
+parallel-history, scenario and supervision checks. This selection is independent
+of ordinary law properties and examples. Omitting it preserves the typed model,
+reference definitions and public actor, supervisor and session APIs. Mandatory
+definition validation still checks reference code.
+
+`lawspec evidence` distinguishes checks that are planned from checks that have
+completed. An unselected model check reports `not-verified`; selecting the layer
+alone supplies no completed evidence. Native checks compare sampled executions
+against the reference and its consistency requirements. Their success does not
+prove every history or establish that a different native implementation conforms.
+
+Every target registers its model checks in the native test manifest. Some native
+frameworks combine a model's sequential, parallel and scenario checks in one
+method. Its successful completion covers those included checks together; a
+failure cannot be recorded as a successful completion of any of them.
 
 The [models example](../../../examples/specs/models.lawspec) has a linear
 stack and a shared counter. The [concurrent collections

@@ -187,10 +187,18 @@ node --test npm/test/*.test.mjs                 # npm package tests
 stack run lawspec-dev -- boundaries             # Core and emitters never import syntax or inference
 stack run lawspec-dev -- integrity              # build fingerprints and staged copies
 node tools/parity.mjs                           # native and WASM output agree
+node tools/parity.mjs --canonical examples/rc1/parcel-measurements.lawspec
 node tools/package-smoke.mjs                    # pack, install and use the archive
 ```
 
 `make test`, `make check` and `make package` group these.
+
+The parity command uses explicit migration requests for the archived bundled
+specifications. `--canonical` selects ordinary canonical requests for the named
+files. Its counts distinguish accepted responses from matching rejections, and
+every target must emit the reference codec at both widths and layouts. Package
+checks load the canonical example's complete dependency graph, including both
+tax-package versions.
 
 Benchmarks measure the generated code itself:
 

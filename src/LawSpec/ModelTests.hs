@@ -49,7 +49,7 @@ prepare bits datas calls u wrap machine = do
 -- | A test file per unit with models, for Go, Java, Kotlin and Haskell.
 modelTestArtifacts :: String -> Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] [Artifact]
 modelTestArtifacts target bits datas calls u
-  | null (C.unitMachines u) = pure []
+  | null (C.unitMachines u) && null (C.unitSupervisors u) = pure []
   | otherwise = do
       prepared <- mapM (\m -> (,) m <$> prepare bits datas calls u wrap m) (C.unitMachines u)
       pure [Artifact path (render prepared) "generated" "test"]

@@ -143,7 +143,7 @@ clojureFromJava cb plan javaFiles = do
               unitTest = listToMaybe [pu | pu <- plannedUnits plan, javaTestPath (C.idText (C.unitId (plannedUnit pu))) == path]
               ns = case unitTest of
                 Just pu -> namespaceOf (C.idText (C.unitId (plannedUnit pu))) ++ "-lawspec-test"
-                Nothing -> (if null package then "" else package ++ ".") ++ kebab className
+                Nothing -> (if null package then "" else namespaceOf package ++ ".") ++ kebab className
               title name = maybe (kebab name) (`clojureTestTitle` name) unitTest
           pure [ Artifact ("java/test/" ++ directory ++ casesClassName className ++ ".java") (casesJava cases) "generated" "test"
                , Artifact ("test/" ++ clojurePath ns) (testNamespace ns unitTest casesClass title cases) "generated" "test" ]

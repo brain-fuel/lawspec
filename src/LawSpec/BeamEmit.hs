@@ -72,12 +72,12 @@ emitBeamWithBindings target minify bindings plan = do
         "gleam" -> Gleam.emitNative layout declarations units
         _ -> pure []
       tests <- Properties.emit target layout bindings plan
-      models <- Models.emit target layout bits declarations units
+      models <- Models.emit target layout bits declarations (modelTestUnits plan)
       pure (schemaFile : typedFiles ++ definitions ++ abilities ++ actors ++ mailboxes ++ sessions ++ remotes ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++
         tests ++ models ++ runtimes ++ modelRuntimes ++ testRuntimes ++ cryptoAssets ++ generators (tests ++ models))
     testRuntimes = [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl")
       (runtimeSource ("beam-" ++ name)) "generated" "test"
-      | name <- ["report"] ++ ["coverage" | target == "gleam"] ++ ["test_run" | target == "gleam" || target == "erlang" && any (\u -> not (null (plannedProperties u)) || not (null (ModelChecks.checks (plannedUnit u))) ||
+      | name <- ["report"] ++ ["coverage" | target == "gleam"] ++ ["test_run" | target == "gleam" || target == "erlang" && any (\u -> not (null (plannedProperties u)) || not (null (ModelChecks.checks (modelTestUnit plan (plannedUnit u)))) ||
           maybe False (not . null . C.harnessBenchmarks) (C.unitHarnessSettings (plannedUnit u))) (plannedUnits plan)] ++
           (if hasCaseSupervision then ["resource", "resources"] else [])]
     hasCaseSupervision = any (\p -> not (null (C.propertyResources (plannedProperty p))) ||
@@ -85,14 +85,14 @@ emitBeamWithBindings target minify bindings plan = do
       (concatMap plannedProperties (plannedUnits plan))
     modelRuntimes = [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl")
       (runtimeSource ("beam-" ++ name)) "generated" "test"
-      | any (not . null . C.unitMachines) units,
+      | any (not . null . C.unitMachines) (modelTestUnits plan),
         name <- ["model","model_parallel","values"] ++ ["random" | not hasPolicies] ++
           ["tasks" | not hasPolicies && not hasActors] ++
           (if any (not . null . machineScenarios) (concatMap C.unitMachines units)
             then ["history","scenario","scenario_io","scenario_network","wire","memory_network","channel_protocol","node","transport","endpoint"] else []),
         name `notElem` runtimeNames] ++
       [Artifact (testSupport ++ "lawspec_beam_supervision.erl") (runtimeSource "beam-supervision") "generated" "test"
-        | any (not . null . C.unitSupervisors) units]
+        | any (not . null . C.unitSupervisors) (modelTestUnits plan)]
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- runtimeNames] ++

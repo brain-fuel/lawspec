@@ -227,7 +227,7 @@ emitBindings minify plan testing files = do
         pure (Artifact (directory ++ "/lawspec_native_generators_test.go") (D.render layout source) "generated" "test" : stubs)
       ordinary <- either (Left . show) Right $
         Scalar.nativeScalarEmitWithAdapterBindings callNames (not (null usedGenerators)) minify declarations
-          (Definitions.definitionCalls (map plannedUnit (plannedUnits testing))) bits "go" unit (plannedProperties p)
+          (Definitions.definitionCalls (map plannedUnit (plannedUnits testing))) bits "go" (modelTestUnit testing unit) (plannedProperties p)
       -- Orchestrations call the bridges too.
       definitions <- Definitions.emitGoDefinitionsWithCalls callNames layout bits declarations
         (filter (\u -> not (null (functions u)) || any ((== unitName u) . owner) laws) units)

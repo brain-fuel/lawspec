@@ -49,6 +49,11 @@ toolchain. `lawspec test` keeps its state next to this file: results in
 `.lawspec/reports`, the [failure database](cli.md#the-failure-database) in
 `.lawspec/failures` and coverage in `.lawspec/coverage`. None is committed.
 
+The `model` layer selects native model, parallel-history, scenario and supervision
+checks on all targets. Ordinary law properties and examples can run with this
+layer omitted, including laws that call the generated actor and supervisor APIs.
+Reference definitions retain mandatory contract checks regardless of selection.
+
 ### Targets
 
 | Field | Targets | Meaning |

@@ -561,7 +561,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           (statements $ [Doc.text "let ctx = &mut ls::Context::testing();"] ++ installs ++ [
             invoke "lawspec_harness::benchmark" [string n, Doc.text "|| " <> block (statements [binding "_measured" body, Doc.text "Ok(())"])]]))
       modelTests <- map (reverse . dropWhile (== '\n') . reverse) <$>
-        either (Left . concatMap message) Right (ModelTests.rustModelTests planMachineBits planDataDeclarations definitionNames unit)
+        either (Left . concatMap message) Right (ModelTests.rustModelTests planMachineBits planDataDeclarations definitionNames (modelTestUnit plan unit))
       let testNames = unitTestNames "rust" (map (propertyName . plannedProperty) plannedProperties)
       tests <- forM (zip [0::Int ..] plannedProperties) $ \(index,pp) -> do
         let p = plannedProperty pp

@@ -26,6 +26,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Law verification layers are selected independently and default to none.
   Definition validation and deliberately deferred runtime contracts remain
   mandatory. New-project instructions explicitly select starter law checks.
+- Model checks can be selected independently on all 17 native targets while
+  actor and supervisor APIs remain available to ordinary law tests. Native
+  manifests register model checks, and runners require their actual completions.
 - Canonical `Set` uses Eq and first-occurrence order; legacy ordered-set uses
   migrate to `SortedSet`. Canonical numeric names distinguish `Whole` and `Nat`.
 - Validated payload transport preserves indexed, GADT and existential metadata.

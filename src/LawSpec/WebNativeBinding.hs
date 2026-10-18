@@ -159,7 +159,7 @@ emitBindings ts minify bindings plan files = do
     emitted <- either (Left . show) Right $ concat <$> mapM (\unit ->
       Scalar.scalarEmitWithNativeGenerators True minify (planDataDeclarations plan)
         (Definitions.definitionCalls (map plannedUnit (plannedUnits plan)))
-        (planMachineBits plan) target (plannedUnit unit) (plannedProperties unit))
+        (planMachineBits plan) target (modelTestUnit plan (plannedUnit unit)) (plannedProperties unit))
         [unit | unit <- plannedUnits plan, not (null (plannedProperties unit))]
     let strategies = unlines [if line == "import * as ls from './lawspec_runtime.mjs';"
           then "import * as ls from '../src/lawspec_runtime." ++ importExt ++ "';"

@@ -746,13 +746,13 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           -- history must be linearizable.
           parallel = statement (if py then runtime "check_model_parallel" [model] else text "await " <> runtime "checkModelParallelAsync" [model])
           parallelBlock = if py then function ("test_model_" ++ C.machineName machine ++ "_parallel") [] parallel
-            else text "test(" <> message (label ++ " in parallel") <> text ", async () => " <> Doc.block 2 parallel <> text ");"
+            else text "test(" <> message (label ++ " parallel") <> text ", async () => " <> Doc.block 2 parallel <> text ");"
           -- Each scenario of the model runs on many schedules.
           scenario (i, program) =
             let run = statement (if py then runtime "check_scenario" [model, quoted (programSpec program)]
                   else text "await " <> runtime "checkScenarioAsync" [model, quoted (programSpec program)])
             in if py then function ("test_model_" ++ C.machineName machine ++ "_scenario" ++ show (i :: Int)) [] run
-               else text "test(" <> message (unitName u ++ "::scenario " ++ programTitle program) <> text ", async () => " <> Doc.block 2 run <> text ");"
+               else text "test(" <> message (label ++ "::scenario " ++ programTitle program) <> text ", async () => " <> Doc.block 2 run <> text ");"
       pure (renderDocument block ++ (if C.machineShared machine then renderDocument parallelBlock else "") ++
         concatMap (renderDocument . scenario) (zip [0 ..] (C.machineScenarios machine)))
     -- An async adapter's task is awaited where it is called.

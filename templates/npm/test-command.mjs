@@ -205,7 +205,8 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
     const directory = testDir || defaultDir;
     return file.startsWith(directory + "/") ? file.slice(directory.length + 1) : file;
   };
-  const named = (entry) => new RegExp(`^${regex(entry.name)}_`);
+  const model = (entry) => entry.kind === "model";
+  const named = (entry) => new RegExp(`^${regex(entry.name)}${model(entry) ? "$" : "_"}`);
   const className = (file, defaultDir, extension) => without(relativeTo(file, defaultDir), extension).replaceAll("/", ".");
   if (["erlang", "elixir", "gleam"].includes(language)) {
     const run = randomUUID();
@@ -244,19 +245,33 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
       ran: (test) => test.status === "passed" ? entries.filter((entry) => test.identity === identity(entry)) : [] }];
   }
   if (language === "python")
-    return groupBy(entries, (e) => e.file).map(([file, laws], n) => {
+    return groupBy(entries, (e) => e.file).flatMap(([file, selected], n) => {
+      const laws=selected.filter(entry=>!model(entry));
+      const models=selected.filter(model);
+      const invocations=[];
       const report = path.join(scratch, `pytest-${n}.xml`);
       // parallel: pytest-xdist runs the tests on several workers, when it
       // is installed (lawspec test checks); otherwise one after another.
-      const workers = xdist && laws.some((e) => e.parallel) ? ["-p", "xdist", "-n", "auto"] : [];
+      const workers = xdist && selected.some((e) => e.parallel) ? ["-p", "xdist", "-n", "auto"] : [];
       const pytest = ["-m", "pytest", "-q", ...workers, file, "-k", laws.map((e) => `${e.name}__`).join(" or "), `--junitxml=${report}`];
-      return { laws, command: target.python || "python3",
+      if(laws.length)invocations.push({ laws, command: target.python || "python3",
         args: coverage ? ["-m", "coverage", "run", "--append", `--data-file=${path.join(coverage, ".coverage")}`, ...pytest.slice(1)] : pytest,
         report: { kind: "junit", files: [report] },
-        ran: (test) => laws.filter((e) => test.name.startsWith(`${e.name}__`)) };
+        ran: (test) => laws.filter((e) => test.name.startsWith(`${e.name}__`)) });
+      if(models.length){
+        const modelReport=path.join(scratch,`pytest-model-${n}.xml`);
+        const arguments_=["-m","pytest","-q",...workers,
+          ...new Set(models.map(entry=>`${file}::${entry.name}`)),`--junitxml=${modelReport}`];
+        invocations.push({laws:models,command:target.python||"python3",
+          args:coverage?["-m","coverage","run","--append",`--data-file=${path.join(coverage,".coverage")}`,...arguments_.slice(1)]:arguments_,
+          report:{kind:"junit",files:[modelReport]},
+          ran:test=>models.filter(entry=>test.name===entry.name)});
+      }
+      return invocations;
     });
   if (language === "javascript" || language === "typescript") {
-    const pattern = (e) => `^${regex(e.label)}( example: .*| property| known failing| skipped| replay| search)?$`;
+    const pattern = (e) => model(e)?`^${regex(e.label)}$`:
+      `^${regex(e.label)}( example: .*| property| known failing| skipped| replay| search)?$`;
     const files = [...new Set(entries.map((e) => language === "typescript"
       ? `dist/${without(e.file, ".ts")}.js` : e.file))];
     const file = path.join(scratch, "node-events.jsonl");
@@ -280,7 +295,9 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
     return groupBy(entries, (e) => path.posix.dirname(e.file)).map(([directory, laws]) => ({
       laws, command: "go",
       args: ["test", "-json", "-count=1", ...(coverage ? ["-cover", `-coverprofile=${path.join(coverage, `go-${directory.replaceAll("/", "_") || "root"}.out`)}`] : []),
-        `./${directory}`, "-run", `^(${laws.map((e) => regex(e.name)).join("|")})_`],
+        `./${directory}`, "-run", laws.some(model)?
+          `^(${[...new Set(laws.map(e=>regex(e.name)+(model(e)?"$":"_")))].join("|")})`:
+          `^(${laws.map((e) => regex(e.name)).join("|")})_`],
       report: { kind: "go-json" },
       ran: (test) => laws.filter((e) => named(e).test(test.name)) }));
   if (language === "java") {
@@ -288,9 +305,9 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
     return [{ laws: entries, command: target.maven || "mvn",
       args: [...(offline ? ["-o"] : []), "-B", ...(coverage ? ["org.jacoco:jacoco-maven-plugin:prepare-agent"] : []), "test",
         ...(coverage ? ["org.jacoco:jacoco-maven-plugin:report"] : []),
-        `-Dtest=${byClass.map(([name, laws]) => `${name}#${laws.map((e) => `${e.name}_*`).join("+")}`).join(",")}`],
+        `-Dtest=${byClass.map(([name, laws]) => `${name}#${[...new Set(laws.map((e) => model(e)?e.name:`${e.name}_*`))].join("+")}`).join(",")}`],
       report: { kind: "junit", directory: "target/surefire-reports" },
-      ran: (test) => entries.filter((e) => test.classname === className(e.file, "src/test/java", ".java") && named(e).test(test.name)) }];
+      ran: (test) => entries.filter((e) => test.classname === (e.scope??className(e.file, "src/test/java", ".java")) && named(e).test(test.name)) }];
   }
   // Kotest names tests by string, which Gradle's method filters cannot
   // select. Kotest's own filter selects them within each class: one pattern,
@@ -298,13 +315,15 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
   // patterns must all match, so alternatives go in one group).
   if (language === "kotlin")
     return groupBy(entries, (e) => e.file).map(([file, laws]) => {
-      const filter = `(${laws.map((e) => `${e.name}_`).join("|")})*`;
+      const filter = laws.some(model)?
+        `(${[...new Set(laws.map(e=>regex(e.name)+(model(e)?"":"_.*")))].join("|")})`:
+        `(${laws.map((e) => `${e.name}_`).join("|")})*`;
       const name = className(file, "src/test/kotlin", ".kt");
       return { laws, command: target.gradle || "gradle",
         args: [...(offline ? ["--offline"] : []), "--console=plain", "test", ...(coverage ? ["koverXmlReport"] : []), "--rerun", "--tests", name],
         env: { "kotest.filter.tests": filter, kotest_filter_tests: filter },
         report: { kind: "junit", directory: "build/test-results/test" },
-        ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
+        ran: (test) => laws.filter((e) => test.classname === (e.scope??name) && named(e).test(test.name)) };
     });
   // ScalaTest selects tests by substring (-z): each law's tests are named
   // after it, then a kind after a separator no name contains. Its JUnit
@@ -320,18 +339,21 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
         "-O", `-coverage-exclude-files:.*/${testRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/.*`] : [];
       return { laws, command: target.scala || "scala",
         args: ["test", ".", ...(offline ? ["--power","--offline"] : []), ...measured, "--test-only", name, "--",
-          ...laws.flatMap((e) => ["-z", `${e.name}_`]), "-u", directory],
+          ...[...new Map(laws.map(e=>[(model(e)?"exact:":"prefix:")+e.name,e])).values()]
+            .flatMap(e=>[model(e)?"-t":"-z",model(e)?e.name:`${e.name}_`]), "-u", directory],
         report: { kind: "junit", directory: path.relative(root, directory) || "." },
-        ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
+        ran: (test) => laws.filter((e) => test.classname === (e.scope??name) && named(e).test(test.name)) };
     });
   // A Clojure test is the law's words, a double dash and the kind of test
   // (LawSpec.TestNames); the runner selects tests by namespace and prefix.
   if (language === "clojure") {
-    const ns = (e) => without(relativeTo(e.file, "test"), ".clj").replaceAll("/", ".").replaceAll("_", "-");
+    const ns = (e) => e.scope??without(relativeTo(e.file, "test"), ".clj").replaceAll("/", ".").replaceAll("_", "-");
     return [{ laws: entries, command: target.clojure || "clojure",
-      args: ["-M:test", ...entries.flatMap((e) => ["--select", `${ns(e)}/${e.name}--`])],
+      args: ["-M:test", ...[...new Map(entries.map(e=>[(model(e)?"exact:":"prefix:")+ns(e)+"/"+e.name,e])).values()]
+        .flatMap(e=>[model(e)?"--select-exact":"--select",`${ns(e)}/${e.name}${model(e)?"":"--"}`])],
       report: { kind: "junit", directory: "target/test-results" },
-      ran: (test) => entries.filter((e) => test.classname === ns(e) && test.name.startsWith(`${e.name}--`)) }];
+      ran: (test) => entries.filter((e) => test.classname === ns(e) &&
+        (model(e)?test.name===e.name:test.name.startsWith(`${e.name}--`))) }];
   }
   // A Spock feature is the law's words, a colon and the kind of test
   // (LawSpec.TestNames), so "name: *" selects one law's features only.
@@ -339,15 +361,16 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
     const name = (e) => className(e.file, "src/test/groovy", ".groovy");
     return [{ laws: entries, command: target.gradle || "gradle",
       args: [...(offline ? ["--offline"] : []), "--console=plain", "test", ...(coverage ? ["jacocoTestReport"] : []), "--rerun",
-        ...entries.flatMap((e) => ["--tests", `${name(e)}.${e.name}: *`])],
+        ...[...new Set(entries.map(e=>`${e.scope??name(e)}.${e.name}${model(e)?"":": *"}`))].flatMap(name=>["--tests",name])],
       report: { kind: "junit", directory: "build/test-results/test" },
-      ran: (test) => entries.filter((e) => test.classname === name(e) && test.name.startsWith(`${e.name}: `)) }];
+      ran: (test) => entries.filter((e) => test.classname === (e.scope??name(e)) &&
+        (model(e)?test.name===e.name:test.name.startsWith(`${e.name}: `))) }];
   }
   if (language === "rust")
     return groupBy(entries, (e) => e.file).map(([file, laws]) => ({
       laws, command: "cargo",
       args: [...(coverage ? ["llvm-cov", "--no-report"] : []), "test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--", "--exact",
-        ...laws.map((e) => e.name)],
+        ...new Set(laws.map((e) => e.name))],
       report: { kind: "lines", pattern: /^test (\S+) \.\.\. (ok|FAILED|ignored)/ },
       ran: (test) => laws.filter((e) => test.name === e.name) }));
   // xUnit v3 on Microsoft.Testing.Platform selects test methods with its
@@ -383,11 +406,13 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
   }
   if (language === "haskell") {
     const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
-    const matches = entries.map((e) => `${module(e)}/${e.name}_`);
+    const matches = [...new Set(entries.map((e) => model(e)?
+      `/${e.scope??module(e)}/${e.unit} models/${e.name}/`:`${module(e)}/${e.name}_`))];
     return [{ laws: entries, command: "stack",
-      args: ["--no-terminal", "test", ...(coverage ? ["--coverage"] : []), "--test-arguments", matches.map((m) => `--match ${m}`).join(" ")],
+      args: ["--no-terminal", "test", ...(coverage ? ["--coverage"] : []), "--test-arguments",
+        matches.map((m) => `--match ${m.includes(" ")?JSON.stringify(m):m}`).join(" ")],
       report: { kind: "hspec" },
-      ran: (test) => entries.filter((e) => test.classname === module(e) && named(e).test(test.name)) }];
+      ran: (test) => entries.filter((e) => test.classname === (e.scope??module(e)) && named(e).test(test.name)) }];
   }
   throw new Error(`lawspec test does not support ${language}`);
 }
@@ -564,7 +589,8 @@ export async function executedTests(report, output, root, since) {
     let module = "";
     for (const line of output.split("\n")) {
       if (/^\S/.test(line) && !/^(Finished|Failures|Randomized|\d+ examples?)/.test(line)) module = line.trim();
-      const example = line.match(/^\s+(law\S*?):?(?:\s.*)?\s\[([✔✘])\]\s*$/);
+      const example = line.match(/^\s+(law\S*?):?(?:\s.*)?\s\[([✔✘])\]\s*$/) ??
+        line.match(/^\s+(model .+?|supervision)\s\[([✔✘])\]\s*$/);
       if (example) tests.push({ name: example[1], classname: module, status: example[2] === "✔" ? "passed" : "failed" });
     }
     return tests;

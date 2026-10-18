@@ -36,7 +36,7 @@ import LawSpec.Packages
 import LawSpec.Discharge (dischargeEvidence, dischargeEvidenceWith, bindingEvidence, defaultHandlerEvidence)
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
 import Data.Foldable (toList)
-import LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest)
+import LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
@@ -111,7 +111,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
               Left ds -> failure ds
               Right _ -> withSources (map formatSource sources) (result [])
           "format" -> failure [Diagnostic "language-profile" "format requires API schema 5 and languageProfile 1.0-rc.1" Nothing]
-          "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests (verificationKeys verification (testManifest target testDir (plannedCore core plan))) . result)
+          "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests (verificationKeys verification
+              (testManifestWithModelChecks (maybe True (`V.selected` V.Model) verification) target testDir (plannedCore core plan))) . result)
             ((++ networkArtifacts native) <$> (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
 
@@ -320,12 +321,13 @@ withAttestation _ _ _ value = value
 withTests :: [TestEntry] -> Value -> Value
 withTests entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entries)) o)
   where
-    entry e = object
+    entry e = object $
       [ "law" .= C.idText (entryLaw e), "unit" .= entryUnit e, "label" .= entryLabel e
       , "index" .= entryIndex e, "file" .= entryFile e, "key" .= entryKey e
       , "callsAdapters" .= entryCallsAdapters e, "name" .= entryName e, "tags" .= entryTags e
       , "skip" .= entrySkip e, "knownFailing" .= entryKnownFailing e
-      , "parallel" .= entryParallel e ]
+      , "parallel" .= entryParallel e ] ++
+      ["kind" .= kind | Just kind<-[entryKind e]] ++ ["scope" .= scope | Just scope<-[entryScope e]]
 withTests _ value = value
 
 -- The harness's benchmarks and the tests that measure them.

@@ -6,10 +6,11 @@
 -- its unit's test file, the law's dependency key (the plan key of
 -- LawSpec.Dependencies), and its harness: tags, and whether it is skipped or
 -- known to fail. A runner can tell which laws an edit affects, select their
--- tests by name and by tag, and knows which tests not to expect. BEAM also
--- registers each model, scenario and supervision check in the same native
--- test file, with a distinct evidence identity and dependency key.
-module LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
+-- tests by name and by tag, and knows which tests not to expect. Selected
+-- model, scenario and supervision checks on every target have distinct
+-- evidence identities and dependency keys, even when a native method combines
+-- several checks. The manifest records their actual files and native slots.
+module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
 
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, stripPrefix)
@@ -20,6 +21,7 @@ import LawSpec.TestNames (unitTestNames, unitBenchmarkNames, lawWords)
 import qualified LawSpec.BeamCode as Beam
 import qualified LawSpec.BeamModelChecks as ModelChecks
 import qualified LawSpec.DotNet.Names as DotNet
+import qualified LawSpec.NativeModelChecks as NativeModels
 
 -- | Each generated test is keyed by the law it checks and the digest of what the
 -- law reaches, so lawspec test runs only the tests an edit can affect.
@@ -31,19 +33,24 @@ data TestEntry = TestEntry
   , entryName :: String, entryTags :: [String], entrySkip :: Maybe String
   , entryKnownFailing :: Maybe String
   -- Whether the law's unit lets its tests run at the same time (parallel).
-  , entryParallel :: Bool }
+  , entryParallel :: Bool
+  -- Exact framework slots for model checks use no law-kind suffix.
+  , entryKind :: Maybe String, entryScope :: Maybe String }
   deriving (Eq, Show)
 
 -- | The manifest for one target, with its test directory if not the default.
 testManifest :: String -> Maybe String -> Program -> [TestEntry]
-testManifest target testDir program =
+testManifest=testManifestWithModelChecks True
+
+testManifestWithModelChecks :: Bool -> String -> Maybe String -> Program -> [TestEntry]
+testManifestWithModelChecks modelsSelected target testDir program =
   [ TestEntry (propertyId p) unit (unit ++ "::" ++ propertyName p) index
       (relocated (unitTestPath target unit)) (keyOf graph (show (programMachineBits program, p)) (lawReferences graph p))
       (any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)])
       testName (harnessTags (propertyHarness p)) (harnessSkip (propertyHarness p)) (harnessKnownFailing (propertyHarness p))
-      (maybe False harnessParallel (unitHarnessSettings u))
+      (maybe False harnessParallel (unitHarnessSettings u)) Nothing Nothing
   | u <- programUnits program
   , let unit = idText (unitId u)
         names = if target `elem` ["javascript", "typescript"] then [unit ++ "::" ++ propertyName p | p <- unitProperties u]
@@ -56,8 +63,8 @@ testManifest target testDir program =
         unitMailboxes u, unitSupervisors u)) (unitReferences graph u))
       (ModelChecks.checkAction check /= ModelChecks.Supervision)
       (ModelChecks.checkName check) [] Nothing Nothing
-      (maybe False harnessParallel (unitHarnessSettings u))
-  | target `elem` ["erlang", "elixir", "gleam"], u <- programUnits program
+      (maybe False harnessParallel (unitHarnessSettings u)) Nothing Nothing
+  | modelsSelected, target `elem` ["erlang", "elixir", "gleam"], u <- programUnits program
   , let unit = idText (unitId u)
   , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ] ++
   -- .NET writes a unit's model, scenario and supervision checks to a test
@@ -69,11 +76,22 @@ testManifest target testDir program =
         unitMailboxes u, unitSupervisors u)) (unitReferences graph u))
       (ModelChecks.checkAction check /= ModelChecks.Supervision)
       (if target == "csharp" then pascalCase (ModelChecks.checkName check) else ModelChecks.checkName check) [] Nothing Nothing
-      (maybe False harnessParallel (unitHarnessSettings u))
-  | target `elem` ["fsharp", "csharp", "swift"], u <- programUnits program
+      (maybe False harnessParallel (unitHarnessSettings u)) Nothing Nothing
+  | modelsSelected, target `elem` ["fsharp", "csharp", "swift"], u <- programUnits program
   , not (null (unitMachines u) && null (unitSupervisors u))
   , let unit = idText (unitId u)
-  , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ]
+  , (index, check) <- zip [length (unitProperties u) ..] (ModelChecks.checks u) ] ++
+  [ TestEntry (ModelChecks.checkIdentity check) unit (ModelChecks.checkLabel check) index
+      (relocated (NativeModels.checkFile native))
+      (keyOf graph (show (programMachineBits program,ModelChecks.checkAction check,
+        programDataDeclarations program,concatMap unitSessions (programUnits program),
+        unitMailboxes u,unitSupervisors u)) (unitReferences graph u))
+      (ModelChecks.checkAction check/=ModelChecks.Supervision)
+      (NativeModels.checkTestName native) [] Nothing Nothing
+      (maybe False harnessParallel (unitHarnessSettings u)) (Just "model") (NativeModels.checkScope native)
+  | modelsSelected,u<-programUnits program,let unit=idText (unitId u)
+  , (index,native)<-zip [length (unitProperties u)..] (NativeModels.nativeChecks target (unitTestPath target unit) u)
+  , let check=NativeModels.checkEvidence native ]
   where
     graph = dependencyGraph (programDataDeclarations program) (programUnits program)
     native h = case h of

@@ -63,17 +63,18 @@
         nil)
       (base m))))
 
-(defn- selected? [selections v]
-  (or (empty? selections)
+(defn- selected? [selections exact v]
+  (or (and (empty? selections) (empty? exact))
       (let [{:keys [ns name]} (meta v)
             full (str (ns-name ns) "/" name)]
-        (some #(str/starts-with? full %) selections))))
+        (or (contains? exact full)
+            (some #(str/starts-with? full %) selections)))))
 
-(defn- run-namespace [ns selections]
+(defn- run-namespace [ns selections exact]
   (let [tests (or (some-> (ns-resolve ns 'lawspec-tests) deref)
                   (->> (ns-interns ns) vals (filter (comp :test meta)) (sort-by (comp str :name meta))))
         schedule (or (some-> (ns-resolve ns 'lawspec-schedule) deref) {})
-        chosen (filter #(selected? selections %) tests)]
+        chosen (filter #(selected? selections exact %) tests)]
     (when (seq chosen)
       (t/do-report {:type :begin-test-ns :ns (the-ns ns)})
       (law/run (str (ns-name ns)) (vec chosen) schedule)
@@ -81,17 +82,19 @@
 
 (defn -main [& args]
   (let [selections (->> (partition 2 args) (filter #(= "--select" (first %))) (map second))
+        exact (->> (partition 2 args) (filter #(= "--select-exact" (first %))) (map second) set)
+        queries (concat selections exact)
         exit (atom 1)]
     (try
       (build/compile-java!)
       (build/use-classes!)
       (let [nss (namespaces)
-            nss (if (seq selections) (filter (fn [n] (some #(str/starts-with? % (str n "/")) selections)) nss) nss)
+            nss (if (seq queries) (filter (fn [n] (some #(str/starts-with? % (str n "/")) queries)) nss) nss)
             results (atom {})]
         (doseq [n nss] (require n))
         (binding [t/*report-counters* (ref t/*initial-report-counters*)]
           (binding [t/report (recording results t/report)]
-            (doseq [n nss] (run-namespace n selections)))
+            (doseq [n nss] (run-namespace n selections exact)))
           (let [counters @t/*report-counters*]
             (.mkdirs (io/file "target/test-results"))
             (doseq [[ns-name cases] (group-by ffirst (dissoc @results nil))]

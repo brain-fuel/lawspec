@@ -38,6 +38,8 @@ import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
 data Plan = Plan
   { planMachineBits :: Int, planDataDeclarations :: [DataDeclaration]
   , plannedUnits :: [PlannedUnit]
+  -- Execution selection is separate from the authoritative typed units.
+  , planModelChecks :: Bool
   } deriving (Eq, Show, Generic)
 -- | Each unit's laws are planned together because they are emitted together.
 data PlannedUnit = PlannedUnit { plannedUnit :: Unit, plannedProperties :: [PlannedProperty] } deriving (Eq, Show, Generic)
@@ -77,8 +79,6 @@ planTesting program = do
 -- no optional tests; typed definitions still reach every native emitter.
 planTestingWith :: V.Verification -> Program -> Either [Diagnostic] Plan
 planTestingWith config program = do
-  unless (V.selected config V.Model || all (\u -> null (unitMachines u) && null (unitSupervisors u)) (programUnits program))
-    (Left [Diagnostic "verification-unsupported" "selective native generation for models and supervision is not yet supported; the typed model and runtime semantics have been retained" Nothing])
   let executable = any (V.selected config) [V.Exhaustive,V.Property,V.Examples]
       selectedProgram = program { programUnits =
         [ u { unitProperties = if executable then unitProperties u else [] }
@@ -87,7 +87,8 @@ planTestingWith config program = do
   when (V.selected config V.Exhaustive && not (V.selected config V.Property) &&
     any ((== Nothing) . finiteCases) (concatMap plannedProperties (plannedUnits plan)))
     (Left [Diagnostic "verification-incomplete" "complete finite coverage was requested but exceeds the finite domain or exhaustive limit; no exhaustive success is claimed" Nothing])
-  pure plan { plannedUnits = [let properties = map choose (plannedProperties u)
+  pure plan { planModelChecks = V.selected config V.Model,
+    plannedUnits = [let properties = map choose (plannedProperties u)
     in u { plannedProperties = properties, plannedUnit = (plannedUnit u) { unitProperties = map plannedProperty properties } }
     | u <- plannedUnits plan] }
   where
@@ -116,7 +117,19 @@ planLowered program@Program{..} = do
         properties <- mapM property (unitProperties u)
         pure (PlannedUnit (u { unitProperties = map plannedProperty properties }) properties)
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right (plan p)
-  Plan programMachineBits interned <$> mapM unit programUnits
+  units<-mapM unit programUnits
+  pure (Plan programMachineBits interned units True)
+
+-- | Only model-test builders receive this execution view. Public actor and
+-- supervisor APIs, validation, definitions and source/evidence views use the
+-- complete plannedUnit. Never replace the units stored in a Plan with it.
+modelTestUnit :: Plan -> Unit -> Unit
+modelTestUnit plan unit
+  | planModelChecks plan=unit
+  | otherwise=unit{unitMachines=[],unitSupervisors=[]}
+
+modelTestUnits :: Plan -> [Unit]
+modelTestUnits plan=map (modelTestUnit plan . plannedUnit) (plannedUnits plan)
 
 -- | How each law of a program is planned, by the generated tests and by
 -- evidence discharge alike. A law is planned from what it reaches: the types

@@ -52,6 +52,16 @@ named target name = case target of
   "kotlin" -> "\"" ++ name ++ "_"
   _ -> name ++ "_"
 
+-- Exact model slots do not have an ordinary law's test-kind suffix.
+modelNamed :: String -> String -> String
+modelNamed target name = case target of
+  "python" -> "def " ++ name ++ "("
+  "go" -> "func " ++ name ++ "("
+  "rust" -> "fn " ++ name ++ "()"
+  "haskell" -> "\"" ++ name ++ "\""
+  "kotlin" -> "\"" ++ name ++ "\""
+  _ -> name ++ "("
+
 unsplit :: String -> String
 unsplit text = case text of
   '"' : rest | (sep : after) <- dropWhile blank rest, sep `elem` (",+" :: String), '"' : more <- dropWhile blank after -> unsplit more
@@ -81,7 +91,8 @@ test_testManifestNamesEveryLawsTestOnEachTarget = describe "the test manifest" $
                 -- Labels are single-quoted string literals there.
                 joined content `shouldSatisfy` isInfixOf (concatMap (\c -> if c == '\'' then "\\'" else [c]) (text (field "label" t)))
             -- Haskell and Kotlin split long string literals into pieces.
-            | otherwise -> unsplit content `shouldSatisfy` isInfixOf (named target name)
+            | otherwise -> unsplit content `shouldSatisfy` isInfixOf
+                (if field "kind" t == String "model" then modelNamed target name else named target name)
   it "follows a custom test directory" $ do
     response <- planned "python" (Just "checks")
     let Array files = field "files" response

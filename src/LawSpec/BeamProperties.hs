@@ -29,7 +29,7 @@ emit target layout bindings plan = do
   pure (tests ++ [erlangRun | target == "erlang", not (null testedUnits)])
   where
     testedUnits = [u | u <- plannedUnits plan, not (null (plannedProperties u) &&
-      null (benchmarks (plannedUnit u)) && null (ModelChecks.checks (plannedUnit u)))]
+      null (benchmarks (plannedUnit u)) && null (ModelChecks.checks (modelTestUnit plan (plannedUnit u))))]
     benchmarks = maybe [] C.harnessBenchmarks . C.unitHarnessSettings
     erlangRun = Artifact "test/lawspec_generated_tests.erl"
       (D.render layout (E.moduleDoc "lawspec_generated_tests" [("lawspec_test_",0)]
@@ -55,7 +55,7 @@ emit target layout bindings plan = do
           names = unitTestNames target (map (C.propertyName . plannedProperty) properties)
           measured = benchmarks unit
           benchmarkNames = unitBenchmarkNames (map fst measured)
-          models = ModelChecks.checks unit
+          models = ModelChecks.checks (modelTestUnit plan unit)
           allNames = names ++ map ModelChecks.checkName models ++ benchmarkNames
           allowances = zip names (map runnerAllowance properties)
           allowance n = maybe runnerGuard id (lookup n allowances)

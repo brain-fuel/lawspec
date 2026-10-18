@@ -118,6 +118,16 @@ native bindings are present. Results, including rejected requests, use schema 5.
 Omitting `verification` selects no law checks. Mandatory definition validation
 still runs, and laws report `not-verified`.
 
+`planGeneration.tests` is a `NativeTestEntry[]` manifest of selected native checks.
+Each entry identifies its obligation, generated file, native name and dependency
+key. An entry with `kind: 'model'` names an exact native test slot; its optional
+`scope` supplies the native class, namespace or Hspec module. Several model
+obligations can share one method that executes all their checks. A runner must
+observe that method completing successfully before recording any of them as
+passed. A successful process that discovers no selected tests is insufficient.
+The `model` verification layer controls these checks independently of ordinary
+law tests. Omitting it preserves model declarations and public runtime APIs.
+
 Only explicit migration methods admit 0.24 source. A migration baseline returns
 `sourceLanguageProfile: '0.24'`; it does not convert ordinary `check` or
 generation requests into legacy requests. Documentary references always use

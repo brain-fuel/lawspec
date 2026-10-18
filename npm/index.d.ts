@@ -1053,6 +1053,23 @@ export type ProofTask =
       reason: string;
     };
 
+export interface NativeTestEntry {
+  law: string;
+  unit: string;
+  label: string;
+  index: number;
+  file: string;
+  key: string;
+  callsAdapters: boolean;
+  name: string;
+  tags: string[];
+  skip: string | null;
+  knownFailing: string | null;
+  parallel: boolean;
+  kind?: 'model';
+  scope?: string;
+}
+
 export interface Result {
   schemaVersion: 5;
   machineBits?: 32 | 64;
@@ -1069,6 +1086,7 @@ export interface Result {
   expansions?: string[];
   files?: Artifact[];
   formattedSources?: Source[];
+  tests?: NativeTestEntry[];
   baselineGeneration?: {
     status: 'generated';
     planning: 'legacy-harnesses';

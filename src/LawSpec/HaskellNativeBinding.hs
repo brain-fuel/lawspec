@@ -103,7 +103,7 @@ emitBindings minify plan testing files = do
         Scalar.nativeScalarEmitWithAdapterBindings
           [(C.declarationId d,C.declarationName d) | (d,_) <- boundAdapters]
           (not (null usedGenerators)) minify declarations (Definitions.definitionCalls (map plannedUnit (plannedUnits testing)))
-          bits "haskell" unit (plannedProperties p)
+          bits "haskell" (modelTestUnit testing unit) (plannedProperties p)
       let imports = ["Prelude as P", "Data.Int as I", "Data.Word as W", "Data.Text as T",
             "Data.ByteString as B", "Data.Complex as C", "LawSpecRuntime as LS",
             "LawSpecSchema as Schema", "LawSpecCodecs as Codec", "LawSpecData as Data",

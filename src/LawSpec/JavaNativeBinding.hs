@@ -200,7 +200,7 @@ emitBindings minify plan testing files = do
     emitted <- either (Left . show) Right $ concat <$> mapM (\unit ->
       Scalar.nativeScalarEmitWithNativeGenerators True minify declarations
         (Definitions.definitionCalls (map plannedUnit (plannedUnits testing))) bits "java"
-        (plannedUnit unit) (plannedProperties unit))
+        (modelTestUnit testing (plannedUnit unit)) (plannedProperties unit))
         [unit | unit <- plannedUnits testing, not (null (plannedProperties unit))]
     pure (helper : [file | file <- emitted,artifactPlacement file == "test"] ++
       [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (runtimeSource "java-data-strategies") "generated" "test" |

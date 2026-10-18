@@ -1,77 +1,76 @@
-import { execFileSync } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
-import assert from "node:assert/strict";
-import path from "node:path";
-import { createCompiler } from "../npm/api.mjs";
-import { targets } from "../npm/templates.mjs";
-const root = path.resolve(import.meta.dirname, "..");
-const bin = process.env.LAWSPEC_CORE || path.join(
-  execFileSync("stack", ["path", "--local-install-root"], {
-    cwd: root,
-    encoding: "utf8",
-  }).trim(),
-  "bin/lawspec-core",
-);
-const content = await readFile(
-  path.join(root, "examples/specs/atoi_codec.lawspec"),
-  "utf8",
-);
-const compiler = await createCompiler();
-const requested = process.argv.slice(2);
-const fixturePaths = requested.length ? requested.map(name => path.resolve(name)) :
-  (await readdir(path.join(root, "examples/specs")))
-    .filter(name => name.endsWith(".lawspec"))
-    .sort()
-    .map(name => path.join(root, "examples/specs", name));
-const fixtures = [
-  ...(await Promise.all(fixturePaths.map(name => readFile(name, "utf8")))),
-  content.replace("x = -42", "x = 2147483648"),
-  content.replace("representing an Int32", "λ 日本語 😀 representing an Int32"),
-];
-async function compare(method, input, label) {
-  const native = JSON.parse(
-    execFileSync(bin, [], {
-      input: JSON.stringify({ ...input, method }),
-      maxBuffer: 64 * 1024 * 1024,
-      encoding: "utf8",
-    }),
-  );
-  assert.deepEqual(await compiler[method](input), native, label);
+// Compare complete compiler responses across native and WASM boundaries.
+// Archived source enters through migration; matching rejections are counted
+// separately and cannot stand in for accepted backend generation.
+import {execFileSync} from 'node:child_process';
+import {readFile,readdir} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import {createCompiler} from '../npm/api.mjs';
+import {targets} from '../npm/templates.mjs';
+import {collectSources} from '../npm/files.mjs';
+const root=path.resolve(import.meta.dirname,'..');
+const bin=process.env.LAWSPEC_CORE||path.join(execFileSync('stack',['path','--local-install-root'],{
+  cwd:root,encoding:'utf8'}).trim(),'bin/lawspec-core');
+const canonical=process.argv.includes('--canonical');
+const requested=process.argv.slice(2).filter(arg=>arg!=='--canonical');
+assert.ok(!canonical||requested.length,'--canonical requires explicit canonical fixture paths');
+const paths=requested.length?requested.map(name=>path.resolve(name)):
+  (await readdir(path.join(root,'examples/specs'))).filter(name=>name.endsWith('.lawspec')).sort()
+    .map(name=>path.join(root,'examples/specs',name));
+const reference=canonical?'npm/starter-rc1.lawspec':'examples/specs/atoi_codec.lawspec';
+const content=await readFile(path.join(root,reference),'utf8');
+const invalid=canonical?content.replace('row -42,','row 2147483648,'):
+  content.replace('x = -42','x = 2147483648');
+const unicode=canonical?content.replace('Converting an integer','λ 日本語 😀 Converting an integer'):
+  content.replace('representing an Int32','λ 日本語 😀 representing an Int32');
+assert.notEqual(invalid,content,'The invalid-input probe must change its source');
+assert.notEqual(unicode,content,'The Unicode probe must change its source');
+const fixtures=[...(await Promise.all(paths.map(name=>readFile(name,'utf8')))),invalid,unicode];
+const compiler=await createCompiler(),counts={responses:0,accepted:0,rejected:0,generationAccepted:0,generationRejected:0};
+const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['proof','exhaustive','property','examples','runtime','model']}};
+async function compare(method,input,label,{generation=false,required=false,rejected=false}={}){
+  const native=JSON.parse(execFileSync(bin,[],{input:JSON.stringify({...input,method}),encoding:'utf8',maxBuffer:128*1024*1024}));
+  const wasm=await compiler[method](input);assert.deepEqual(wasm,native,label);
+  assert.equal(native.schemaVersion,5,label);counts.responses++;
+  const accepted=native.diagnostics.length===0;counts[accepted?'accepted':'rejected']++;
+  if(rejected)assert.ok(!accepted,label+' admitted an out-of-range input');
+  if(generation)counts[accepted?'generationAccepted':'generationRejected']++;
+  if(required){assert.deepEqual(native.diagnostics,[],label);if(generation)assert.ok(native.files.length,label+' emitted no artifacts');}
+  return native;
 }
-for (const machineBits of [32, 64]) {
-  for (const [index, text] of fixtures.entries()) {
-    const input = {sources: [{path: "fixture.lawspec", content: text}], machineBits};
-    for (const method of ["check", "expand"])
-      await compare(method, input, `${method}: fixture ${index}, ${machineBits} bits`);
+for(const machineBits of [32,64]){
+  for(const [index,text]of fixtures.entries()){
+    const input={...options,sources:[{path:'fixture.lawspec',content:text}],machineBits};
+    if(canonical)for(const method of ['check','expand'])await compare(method,input,`${method}:${index}:${machineBits}`,{rejected:index===paths.length});
+    else await compare('migrationBaseline',{...input,from:'0.24'},`migration baseline:${index}:${machineBits}`,{rejected:index===paths.length});
   }
-  console.log(`Check/expand parity passed for ${fixtures.length} fixtures at ${machineBits} bits.`);
+  console.log('Frontend full-response parity:',fixtures.length,'fixtures,',machineBits,'bits');
 }
-for (const machineBits of [32,64])
-for (const minify of [false, true]) {
-for (const [index, text] of fixtures.entries())
-  for (const target of targets) {
-    const input = {
-      sources: [{ path: "codec.lawspec", content: text }],
-      target,
-      machineBits,
-      minify,
-    };
-    await compare("planGeneration", input,
-      `fixture ${index}, ${target}, ${machineBits} bits, minify=${minify}`);
+for(const machineBits of [32,64])for(const minify of [false,true]){
+  for(const [index,text]of fixtures.entries())for(const target of targets){
+    const input={...options,sources:[{path:'fixture.lawspec',content:text}],target,machineBits,minify};
+    await compare(canonical?'planGeneration':'migrationBaseline',canonical?input:{...input,from:'0.24',includeGeneration:true},
+      `generation:${index}:${target}:${machineBits}:${minify}`,{generation:true,rejected:index===paths.length});
   }
-console.log(`Generation parity passed at ${machineBits} bits, minify=${minify}.`);
+  // Require actual accepted output from every backend in every profile, in
+  // addition to comparing any honest unsupported/rejected fixture responses.
+  for(const target of targets){
+    const input={...options,sources:[{path:'codec.lawspec',content}],target,machineBits,minify};
+    await compare(canonical?'planGeneration':'migrationBaseline',canonical?input:{...input,from:'0.24',includeGeneration:true},
+      `required codec:${target}:${machineBits}:${minify}`,{generation:true,required:true});
+  }
+  console.log('Generation full-response parity:',machineBits,'bits, compact=',minify);
 }
-// Imports and packages: a project and the package it depends on.
-const packaged = {
-  sources: [{path: "orders.lawspec", content: await readFile(path.join(root, "examples/packages/orders/orders.lawspec"), "utf8")}],
-  dependencies: {"shop.domain": "^1.0.0"},
-  packages: [{name: "shop.domain", version: "1.2.0", sources: [{path: "domain.lawspec",
-    content: await readFile(path.join(root, "examples/packages/shop-domain/src/domain.lawspec"), "utf8")}]}],
-};
-for (const method of ["check", "expand"]) await compare(method, packaged, `${method}: packages`);
-for (const target of targets)
-  await compare("planGeneration", {...packaged, target}, `packages, ${target}`);
-console.log("Package parity passed for check, expand and every target.");
-console.log(
-  `Native/WASM parity: ${fixtures.length * targets.length * 4} fixture/target/width/layout combinations passed.`,
-);
+const projectRoot=path.join(root,'examples/packages/orders');
+const config=JSON.parse(await readFile(path.join(projectRoot,'lawspec.json'),'utf8'));
+const packages=await Promise.all(config.packages.map(async name=>{
+  const directory=path.resolve(projectRoot,name);
+  const manifest=JSON.parse(await readFile(path.join(directory,'lawspec-package.json'),'utf8'));
+  return {name:manifest.name,version:manifest.version,...(manifest.dependencies?{dependencies:manifest.dependencies}:{}),
+    sources:await collectSources(directory,manifest.sources)};
+}));
+const packaged={...options,sources:await collectSources(projectRoot,config.sources),dependencies:config.dependencies,packages};
+for(const method of ['check','expand'])await compare(method,packaged,`canonical packages:${method}`,{required:true});
+for(const target of targets)await compare('planGeneration',{...packaged,target},
+  `canonical packages:${target}`,{generation:true,required:true});
+console.log('Complete native/WASM response counts:',JSON.stringify(counts));

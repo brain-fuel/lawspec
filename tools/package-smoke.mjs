@@ -135,14 +135,18 @@ try {
       `import {createCompiler} from 'lawspec';
        import {readFileSync} from 'node:fs';
        const c=await createCompiler();
+       const legacy=sources=>c.migrationBaseline({schemaVersion:5,languageProfile:'1.0-rc.1',
+         verification:{layers:[]},from:'0.24',sources});
        const source=readFileSync(new URL('./examples/specs/equivalent.lawspec', import.meta.resolve('lawspec')), 'utf8');
-       const r=await c.expand({sources:[{path:'equivalent.lawspec',content:source}]});
-       if(r.schemaVersion!==3 || r.diagnostics.length || r.laws.length!==2 || !r.expansions[0].includes('referenceRender'))throw new Error(JSON.stringify(r));
+       const rejected=await c.expand({schemaVersion:3,sources:[{path:'equivalent.lawspec',content:source}]});
+       if(rejected.schemaVersion!==5 || !rejected.diagnostics.length)throw new Error('Installed API silently accepted schema 3');
+       const r=await legacy([{path:'equivalent.lawspec',content:source}]);
+       if(r.schemaVersion!==5 || r.sourceLanguageProfile!=='0.24' || r.diagnostics.length || r.laws.length!==2 || !r.expansions[0].includes('referenceRender'))throw new Error(JSON.stringify(r));
        const port=readFileSync(new URL('./examples/specs/parse_port.lawspec', import.meta.resolve('lawspec')), 'utf8');
-       const guarded=await c.expand({sources:[{path:'parse_port.lawspec',content:port}]});
+       const guarded=await legacy([{path:'parse_port.lawspec',content:port}]);
        if(guarded.diagnostics.length || guarded.laws[0].assertion.kind!=='implies' || !guarded.expansions[0].includes('implies'))throw new Error(JSON.stringify(guarded));
        const algebra=readFileSync(new URL('./examples/specs/algebra.lawspec', import.meta.resolve('lawspec')), 'utf8');
-       const expanded=await c.expand({sources:[{path:'algebra.lawspec',content:algebra}]});
+       const expanded=await legacy([{path:'algebra.lawspec',content:algebra}]);
        if(expanded.diagnostics.length || expanded.laws.length!==19 || !expanded.expansions.some(s=>s.includes('divideRight') && s.includes('divideLeft')))throw new Error(JSON.stringify(expanded));
        console.log('Installed API expands equivalent, predicate and all algebra examples');`,
     ],
@@ -154,20 +158,27 @@ try {
     import {readFileSync} from 'node:fs';
     import {createCompiler} from 'lawspec';
     const compiler = await createCompiler();
+    const canonical=await compiler.check({schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]},
+      sources:[{path:'starter.lawspec',content:readFileSync(new URL('./starter-rc1.lawspec',import.meta.resolve('lawspec')),'utf8')}]});
+    assert.equal(canonical.schemaVersion,5);
+    assert.deepEqual(canonical.diagnostics,[]);
+    assert.ok(canonical.laws.length>0);
+    const legacy=input=>compiler.migrationBaseline({schemaVersion:5,languageProfile:'1.0-rc.1',
+      verification:{layers:[]},...input,from:'0.24'});
     const names = ['collections', 'data_types', 'total_functions',
       'recursive_refinements'];
     const sources = names.map(name => ({path: name + '.lawspec',
       content: readFileSync(new URL('./examples/specs/' + name + '.lawspec',
         import.meta.resolve('lawspec')), 'utf8')}));
     for (const machineBits of [32, 64]) {
-      const checked = await compiler.check({sources, machineBits});
+      const checked = await legacy({sources, machineBits});
       assert.deepEqual(checked.diagnostics, []);
       assert.ok(checked.dataTypes.some(type => type.name === 'Tree'));
       assert.ok(checked.definitions.length > 0);
       for (const target of ${JSON.stringify(targets)}) {
         for (const minify of [false, true]) {
-          const result = await compiler.planGeneration({sources, machineBits,
-            target, minify});
+          const result = await legacy({sources, machineBits,
+            target, minify,includeGeneration:true});
           assert.deepEqual(result.diagnostics, [], target);
           assert.ok(result.files.some(file => file.placement === 'source' &&
             file.ownership === 'generated'), target);

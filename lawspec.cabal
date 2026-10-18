@@ -298,6 +298,7 @@ extra-source-files:
     test/fixtures/canonical-existential-native-profiles.lawspec
     test/fixtures/canonical-existential-records.lawspec
     test/fixtures/canonical-gadt-payload-indices.lawspec
+    test/fixtures/canonical-model-layer-selection.lawspec
     test/fixtures/canonical-native-failure-products.lawspec
     test/fixtures/canonical-positional-products.lawspec
     test/fixtures/canonical-prelude-names.lawspec
@@ -657,6 +658,7 @@ library
       LawSpec.Model
       LawSpec.ModelTests
       LawSpec.NativeBinding
+      LawSpec.NativeModelChecks
       LawSpec.NativeRequest
       LawSpec.NativeRequestView
       LawSpec.Network
@@ -937,6 +939,7 @@ test-suite lawspec-test
       MigrationPayloadSpec
       MigrationSnapshotSpec
       MigrationTemplateSpec
+      ModelLayerSelectionSpec
       NativeBindingSpec
       NativeRequestSpec
       PayloadProofSpec

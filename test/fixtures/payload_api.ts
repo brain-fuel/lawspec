@@ -323,3 +323,10 @@ const oldSchema: CheckRequest = {languageProfile: '1.0-rc.1', sources: [], schem
 const missingProfile: CheckRequest = {sources: []};
 void oldSchema; void missingProfile;
 void baselinePreview; void ordinaryPreview;
+
+// Public consumers distinguish exact model slots from law test families and
+// retain the native scope when grouping completion reports.
+export function nativeModelSlots(result: Result): string[] {
+  return (result.tests ?? []).filter(entry => entry.kind === 'model')
+    .map(entry => `${entry.file}:${entry.scope ?? entry.unit}:${entry.name}`);
+}

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { benchmarkInvocations, preparationInvocations, invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests,
-  environmentDigest, projectDigest, testsToRun } from "../test-command.mjs";
+  environmentDigest, projectDigest, testsToRun, executedTests } from "../test-command.mjs";
 
 // A manifest entry, named as each target names a law's tests (LawSpec.TestNames).
 const names = { python: (i) => `test_law_${i}`, go: (i) => `TestLaw${i}`, rust: (i) => `law_law_${i}` };
@@ -207,7 +207,6 @@ test("a law's key changes with its adapters only when it calls them", () => {
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { executedTests } from "../test-command.mjs";
 
 // What each runner reports, reduced to the laws whose tests actually ran.
 async function ranLaws(target, entries, report, output = "") {
@@ -490,4 +489,58 @@ test("selects .NET laws with xUnit query filters and reads them back by display 
   assert.ok(coverage[0].args.includes("--coverage"));
   const bench = benchmarkInvocations({ language: "fsharp" }, [{ unit: "example.unit", benchmark: "a booking", file: "tests/LawSpec/ExampleUnit.fs", name: "benchmarkABooking" }]);
   assert.deepEqual(bench[0].args, ["test", "--filter-query", "/*/*/*/benchmarkABooking"]);
+});
+
+test('native model slots use exact selectors and never accept a similarly prefixed completion',()=>{
+  const slots=[
+    ['python','tests/test_example_actors_lawspec.py','test_model_account',undefined],
+    ['javascript','test/example_actors.lawspec.test.mjs','example.actors::model account',undefined],
+    ['typescript','test/example_actors.lawspec.test.ts','example.actors::model account',undefined],
+    ['go','example/actors/lawspec_models_test.go','TestModelAccount',undefined],
+    ['java','src/test/java/example/ActorsModelTest.java','modelAccount','example.ActorsModelTest'],
+    ['kotlin','src/test/kotlin/example/ActorsModelTest.kt','example.actors::model account','example.ActorsModelTest'],
+    ['scala','src/test/scala/example/ActorsModelTest.scala','example.actors::model account','example.ActorsModelTest'],
+    ['groovy','src/test/groovy/example/ActorsModelSpec.groovy','model account','example.ActorsModelSpec'],
+    ['clojure','test/example/actors_model_test.clj','model-account','example.actors-model-test'],
+    ['haskell','test/Example/ActorsModelSpec.hs','model account','Example.ActorsModel'],
+    ['rust','tests/example_actors_lawspec.rs','model_account',undefined],
+  ];
+  for(const [language,file,name,scope] of slots){
+    const entry={...law(0,file,'example.actors::model account'),unit:'example.actors',
+      law:'example.actors::model::account::sequential',name,kind:'model',...(scope?{scope}:{})};
+    const runs=invocations({language},[entry],{scratch:'.scratch'});
+    const run=runs.find(run=>run.laws?.length);
+    assert.ok(run,language);
+    const completion={name,classname:scope??'',status:'passed'};
+    if(language==='typescript'||language==='javascript')completion.name=entry.label;
+    assert.deepEqual(run.ran(completion),[entry],language);
+    assert.deepEqual(run.ran({...completion,name:completion.name+'_extra'}),[],language+' prefix');
+    if(scope)assert.deepEqual(run.ran({...completion,classname:'foreign.scope'}),[],language+' scope');
+    if(language==='python'){
+      assert.ok(run.args.includes(file+'::'+name));assert.ok(!run.args.includes('-k'));
+    }
+    if(language==='clojure')assert.ok(run.args.includes('--select-exact'));
+    if(language==='scala')assert.ok(run.args.includes('-t'));
+    if(language==='haskell')assert.ok(run.args.at(-1).includes('"/Example.ActorsModel/example.actors models/model account/"'));
+  }
+});
+
+test('a grouped native model completion covers its included checks without scheduling duplicate methods',()=>{
+  const base={...law(0,'src/test/java/example/ActorsModelTest.java','example.actors::model account'),
+    unit:'example.actors',name:'modelAccount',kind:'model',scope:'example.ActorsModelTest'};
+  const entries=['sequential','parallel','scenario::receipt'].map(role=>({...base,law:'example.actors::model::account::'+role}));
+  const [run]=invocations({language:'java'},entries);
+  assert.equal(run.args.find(arg=>arg.startsWith('-Dtest=')),'-Dtest=example.ActorsModelTest#modelAccount');
+  assert.deepEqual(run.ran({name:'modelAccount',classname:'example.ActorsModelTest',status:'passed'}),entries);
+  assert.deepEqual(run.ran({name:'modelAccount_other',classname:'example.ActorsModelTest',status:'passed'}),[]);
+});
+
+test('Hspec model completions retain their complete names and discovered module scope',async()=>{
+  const output='Example.ActorsModel\n  example.actors models\n    model account [✔]\n    supervision [✔]\n    model other [✘]\n\nFinished in 0.01 seconds\n3 examples, 1 failure\n';
+  const completed=await executedTests({kind:'hspec'},output,'.',0);
+  assert.deepEqual(completed,[
+    {name:'model account',classname:'Example.ActorsModel',status:'passed'},
+    {name:'supervision',classname:'Example.ActorsModel',status:'passed'},
+    {name:'model other',classname:'Example.ActorsModel',status:'failed'},
+  ]);
 });

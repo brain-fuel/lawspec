@@ -498,6 +498,8 @@ targetSteps target =
   [ step (target ++ "-" ++ suite) (acceptance [suite, target]) | target == "scala", suite <- ["scala-bound-handlers"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
+  [ Step (target ++ "-model-layer-selection" ++ suffix) env ["node", "tools/model-layer-integration.mjs", target]
+  | (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ Step (target ++ "-crypto-cli" ++ suffix) env ["node", "tools/beam-crypto-integration.mjs", target]
   | target `elem` Targets.beamTargets, (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ Step (target ++ "-model-cli" ++ suffix) env ["node", "tools/beam-model-integration.mjs", target]

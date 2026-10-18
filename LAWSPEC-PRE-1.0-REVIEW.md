@@ -119,6 +119,77 @@ The remaining migration/coverage audit and final iteration
 release gate remain open. Readability stays deferred, all-named endings belong
 to the following minor, and this checkpoint authorizes no RC designation or tag.
 
+### Independent native model-layer selection — 17 October 2026
+
+The testing plan now records model execution selection separately from complete
+typed units. Derived test views omit unselected machines and supervision checks;
+reference definitions, mandatory validation, actor, supervisor and session APIs
+remain available. Every backend uses this selection, including native-binding
+regeneration paths. Eleven backends that previously emitted unregistered model
+tests now register their actual native slots alongside the six existing targets.
+
+Optional manifest metadata identifies exact model slots and native scope. Some
+frameworks combine sequential, parallel and scenario checks in one method; a
+successful native completion covers the included checks together. A failed or
+undiscovered method establishes no successful completion. Python node selection,
+ScalaTest exact names, Clojure exact vars and Hspec full paths avoid applying
+ordinary law-prefix selection to model slots. Distinct logical groups with
+colliding generated slots are rejected rather than sharing evidence.
+
+Seven focused compiler checks pass, including all-target source/API preservation
+at both widths and layouts, mandatory reference-definition rejection, model-only
+manifests and selected native-name collision rejection. Actual public CLI/native
+flows pass on all 17 targets at 64-bit readable and 32-bit compact output. Each
+runs ordinary actor laws with model checks disabled, executes all five model
+checks with that layer selected, rejects an incorrect checked reference
+transition and reports zero execution with no selected checks. The compact
+negative runs additionally require a completed native failure in JUnit output.
+The canonical fixture uses the existing independent actor implementations.
+
+Full compiler regression passes **2,210 tests** with zero failures. The rebuilt
+WASM SDK suite excluding archived catalog export passes **474 of 478 tests**,
+with zero failures and four explicit opt-in skips. Separate Rust and Haskell
+layout checks and the five-test native-failure suite cover those opt-ins with no
+skips. An additional binding-consumer regression passes on all 17 targets at
+32-bit readable and 64-bit compact output. It retains every public source and
+ordinary law slot while independently selecting model checks; cache keys
+explicitly change with the verification selection.
+
+All **68 complete native/WASM binding responses** match, and independent
+full-response, source, slot and receipt-hash auditing passes. The WASM is
+72,855,249 bytes, SHA-256
+`a6a7116f9f299dee6834e2f4feacc17aba1d691661f7a9ecf1c84c900d5480d8`.
+All 34 execution-command checks, a strict typed manifest consumer, 131 generated
+outputs, 236 module boundaries, six editor checks and documentation for 119 pages
+and 115 compiled snippets pass. The broader complete-response replay, frozen
+current-package catalog export and package smoke remain in progress. This does
+not claim those checks or the final iteration gate. Evidence is under
+`.artifacts/model-layer-selection/` and `.artifacts/model-layer-integration/`
+in the isolated model-layer-selection worktree. An older manifest assertion
+assumed every entry was a law test family; it now distinguishes exact model slots
+and retains source-name checks for both. Initial missing-generation and dependency
+preparation failures remain recorded separately.
+
+The standard release-tool audit also found stale interface consumers. Package
+smoke still requested schema 3, and the standard parity script sent archived
+syntax through canonical entry points, permitting matching request rejections
+to stand in for generation coverage. Both now use explicit migration entry
+points for archived source and canonical requests for canonical source. Parity
+requires accepted codec generation on every target, width and layout, checks
+actual out-of-range rejections and loads all versions of the canonical package
+example's dependencies. Earlier custom, anchored full-response parity receipts
+remain separate evidence; the defective standard script does not establish
+accepted generation coverage. Corrected public-tool runs are recorded separately
+from their initial fixture/profile failures. The corrected tool passes **297
+complete legacy-mode responses** (227 accepted, 70 rejected) and **303 complete
+canonical-mode responses** (231 accepted, 72 rejected). Each run includes 221
+accepted generations and 68 expected generation rejections, with required codec
+output on all 17 targets, both widths and layouts, plus the complete canonical
+package dependency graph. The wider evidence-view audit remains open: persisted
+native model completions must be reconciled with aggregate typed model
+obligations without turning sampled checks into proofs. No release designation
+or tag is authorized by this checkpoint.
+
 ### Reordered shared-index body correspondence — 17 October 2026
 
 The comparison can now justify an index measure changing which equal-indexed
@@ -192,10 +263,10 @@ The 77 passing native consumers cover
 [opaque native bindings](templates/npm/test/migration-native-bindings.test.mjs)
 and [actual project writes and refusals](templates/npm/test/migration-write.test.mjs).
 This inventory does not claim the remaining positive capabilities implemented.
-The broader coverage audit also identifies selective native generation for
-models and supervision as unfinished: `planTestingWith` still rejects these
-units when the model layer is unselected. Reporting that unsupported case
-honestly does not establish the contract's independent layer selection.
+At this checkpoint the broader coverage audit identified selective native model
+generation as unfinished: `planTestingWith` rejected these units when the model
+layer was unselected. The independent-selection increment above supersedes that
+source limitation; its remaining verification gates are recorded separately.
 
 The preceding typed-mapping catalog export has passed on its frozen package
 snapshot, as recorded above; that is not a catalog run on this later compiler.

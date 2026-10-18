@@ -87,7 +87,7 @@ emitSwiftWithBindings minify bindings plan = do
       let remote = if usesNetwork then Remote.emitRemote plan else []
       laws <- Properties.emitTests layout (not (null generators)) plan
       nativeGenerators <- Properties.emitNativeGenerators layout bits declarations generators
-      models <- Models.emitModels layout bits declarations units
+      models <- Models.emitModels layout bits declarations (modelTestUnits plan)
       vectors <- cryptoVectorTests
       pure (runtimeArtifacts ++ [namespaces] ++ dataFiles ++ protocols ++ bridges ++ [schema] ++ defaults ++ typedFile ++ entries ++ adapters ++ api ++ handlerClasses ++ sessions ++ actors ++ mailboxes ++ remote ++
         [Properties.emitRootSuites] ++ nativeGenerators ++ laws ++ models ++ vectors)

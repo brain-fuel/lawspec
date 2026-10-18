@@ -161,7 +161,7 @@ emitBindings minify bindings plan files = do
     emitted <- either (Left . show) Right $ concat <$> mapM (\unit ->
       Scalar.scalarEmitWithNativeGenerators True minify (planDataDeclarations plan)
         (Definitions.definitionCalls (map plannedUnit (plannedUnits plan)))
-        (planMachineBits plan) "python" (plannedUnit unit) (plannedProperties unit))
+        (planMachineBits plan) "python" (modelTestUnit plan (plannedUnit unit)) (plannedProperties unit))
         [unit | unit <- plannedUnits plan, not (null (plannedProperties unit))]
     pure (helper : [file | file <- emitted, artifactPlacement file == "test"] ++
       [Artifact "tests/lawspec_data_strategies.py" (runtimeSource "python-data-strategies") "generated" "test" |
