@@ -13,14 +13,16 @@ title: Install LawSpec and create a project
 
 You do not need a Haskell toolchain. The reference platforms are macOS and Linux.
 
-## Install from npm
+## Install the development checkout
 
-Install [LawSpec from npm](https://www.npmjs.com/package/lawspec) as a
-development dependency, and run the local CLI with `npx`:
+This guide describes the canonical authoring profile in the unreleased minor on
+`main`. The checkout includes its prebuilt WASM package. Install that package
+locally; you do not need to build the Haskell compiler. For the released
+[0.24.0 npm package](https://www.npmjs.com/package/lawspec/v/0.24.0), follow the
+[0.24.0 documentation](https://github.com/brain-fuel/lawspec/tree/v0.24.0).
 
 ```sh
-npm install --save-dev lawspec@0.24.0
-npx lawspec --version
+git clone https://github.com/brain-fuel/lawspec.git lawspec
 ```
 
 ## Start in a new, empty directory
@@ -31,30 +33,40 @@ LawSpec can create `package.json` and its test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.24.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.24.0
+node ../lawspec/npm/bin/lawspec.mjs init --target javascript
+npm install --save-dev ../lawspec/npm
+npx lawspec --version
 npx lawspec check
-npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
+npx lawspec explain 'example.codec::codec'
 npx lawspec doctor
-npx lawspec generate
 ```
 
 `init` writes:
 
 - `lawspec.json`, the [project configuration](../reference/configuration.md);
 - `laws/atoi_codec.lawspec`, a starter specification with two functions,
-  `itoa` and `atoi`, and a round-trip law with examples;
+  `itoa` and `atoi`, and a round-trip law with a three-row expectation table;
 - the target's build files, when the directory has none.
 
-Replace `javascript` with `java`, `python`, `typescript`, `go`, `haskell`,
-`kotlin` or `rust` to choose another target. Each [target guide](targets/index.md)
+Choose any of the 17 supported targets. Each [target guide](targets/index.md)
 lists the build setup `init` creates and the toolchain it expects.
+
+## Select law verification
+
+New projects have `verification.layers: []`. Compiler checks for definitions
+remain mandatory, and `check` reports that no optional law checks were selected.
+To run the starter's properties and examples, set `verification.layers` to
+`["property", "examples"]` in the generated `lawspec.json`, then generate:
+
+```sh
+npx lawspec generate
+```
 
 ## Implement the adapters
 
 `generate` writes the tests and, the first time, one adapter file per unit. The
 adapters are yours. The starter adapters throw until you implement them. For
-JavaScript, implement `src/example/atoi_codec.mjs`:
+JavaScript, implement `src/example/codec.mjs`:
 
 ```javascript
 export function itoa(value) { return String(value); }
@@ -76,7 +88,7 @@ shrinking and failure reporting.
 Install LawSpec first, then run `init` in the project:
 
 ```sh
-npm install --save-dev lawspec@0.24.0
+npm install --save-dev /path/to/lawspec/npm
 npx lawspec init --target javascript
 ```
 

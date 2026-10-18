@@ -118,10 +118,19 @@ data FunctionDefinition = MkFunctionDefinition
   -- specialization independently of generated executable identities.
   , functionSource :: Maybe (String,String)
   , functionTemplate :: Maybe String
+  -- Source mapping obligations remain intrinsic after ordinary desugaring.
+  -- Only origins and row boundaries are stored here; typed bodies are the
+  -- authoritative values, so import/type rewriting has one expression tree.
+  , functionMapping :: Maybe MappingOrigin
+  } deriving (Eq, Show, Generic)
+data MappingRole = MappingForward | MappingPreimages | MappingInverse deriving (Eq, Show, Generic)
+data MappingOrigin = MappingOrigin
+  { mappingOwner :: String, mappingName :: String, mappingRole :: MappingRole
+  , mappingRowSpans :: [Span], mappingFallbackSpan :: Maybe Span
   } deriving (Eq, Show, Generic)
 pattern FunctionDefinition :: String -> [(String,Type)] -> Type -> [Constraint] -> Expr -> Span -> FunctionDefinition
-pattern FunctionDefinition name arguments result requirements body range <- MkFunctionDefinition name arguments result requirements body range _ _
-  where FunctionDefinition name arguments result requirements body range = MkFunctionDefinition name arguments result requirements body range Nothing Nothing
+pattern FunctionDefinition name arguments result requirements body range <- MkFunctionDefinition name arguments result requirements body range _ _ _
+  where FunctionDefinition name arguments result requirements body range = MkFunctionDefinition name arguments result requirements body range Nothing Nothing Nothing
 {-# COMPLETE FunctionDefinition #-}
 -- | asyncFunctions names the adapters declared `async`: their results arrive
 -- later, as each target's task, and tests await them where they are called.

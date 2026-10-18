@@ -1,0 +1,139 @@
+unit authoring.deliveryLabels
+
+type Preference is a record{
+  enabled of type Bool
+}
+end type
+
+type Destination is one of
+  | Missing
+  | Selected of type Bool
+end type
+
+mapping preferenceLabel of type Preference -> Text is
+  row Preference record{enabled = false}, "disabled"
+  row Preference record{enabled = true}, "enabled"
+end mapping
+
+mapping destinationLabel of type Destination -> Text is
+  row Missing, "missing"
+  row Selected false, "disabled"
+  row Selected true, "enabled"
+end mapping
+
+mapping historyLabel of type (List Bool) -> Text is
+  row [], "empty"
+  row [true], "enabled"
+  otherwise "other"
+end mapping
+
+mapping choicesLabel of type (Set Bool) -> Text is
+  row #S{}, "empty"
+  row #S{false}, "disabled"
+  row #S{true}, "enabled"
+  row #S{false, true}, "both"
+end mapping
+
+mapping sharedLabel of type record{enabled of type Bool} -> Text is
+  row record{enabled = false}, "shared"
+  row record{enabled = true}, "shared"
+end mapping
+
+mapping enabledLabel of type (flag of type Bool where flag) -> Text is
+  row true, "enabled"
+end mapping
+
+mapping signedZero of type Bool -> record{value of type Float64} is
+  row false, record{value = float64Bits("8000000000000000")}
+  row true, record{value = float64Bits("0000000000000000")}
+end mapping
+
+law "|preferences retain their labels and inverse| is
+  definition:
+    for all (preference of type Preference) =>
+      preferenceLabel preference must be
+        destinationLabel (Selected preference.enabled)
+      and preferenceLabelInverse
+        (preferenceLabel preference) must be Just preference
+    end
+  end
+
+  expect preferenceLabel preference = expected
+  in table (preference, expected):
+    row Preference record{enabled = false}, "disabled"
+    row Preference record{enabled = true}, "enabled"
+  end
+end
+
+law "|missing destinations remain distinguishable| is
+  definition:
+    destinationLabelInverse "missing" must be Just Missing
+    and destinationLabelInverse "unknown" must be Nothing
+  end
+end
+
+law "|histories use an explicit fallback| is
+  definition:
+    for all (history of type List Bool) =>
+      historyLabel history must be
+        first matching case of history:
+          when Nil then "empty"
+          when Cons true Nil then "enabled"
+          otherwise "other"
+        end case
+    end
+  end
+
+  expect historyLabel history = expected
+  in table (history, expected):
+    row [], "empty"
+    row [true], "enabled"
+    row [false], "other"
+    row [true, false], "other"
+  end
+end
+
+law "|choices disregard input iteration order| is
+  definition:
+    for all (choices of type Set Bool) =>
+      choicesLabel choices must be
+        if false in choices then
+          if true in choices then "both" else "disabled" end if
+        else
+          if true in choices then "enabled" else "empty" end if
+        end if
+      and choicesLabelInverse "both" must be Just #S{false, true}
+    end
+  end
+
+  expect choicesLabel choices = expected
+  in table (choices, expected):
+    row #S{}, "empty"
+    row #S{false}, "disabled"
+    row #S{true}, "enabled"
+    row #S{true, false}, "both"
+  end
+end
+
+law "|shared labels retain every matching preference| is
+  definition:
+    sharedLabelPreimages "shared" must be
+      [record{enabled = false}, record{enabled = true}]
+    and sharedLabelPreimages "unknown" must be
+      ([] of type List record{enabled of type Bool})
+  end
+end
+
+law "|enabled label helpers retain the input restriction| is
+  definition:
+    enabledLabelPreimages "enabled" must be [true]
+    and enabledLabelInverse "enabled" must be Just true
+  end
+end
+
+law "|equal signed zeros retain both preimages| is
+  definition:
+    signedZeroPreimages record{value = float64Bits("0000000000000000")}
+      must be [false, true]
+  end
+end

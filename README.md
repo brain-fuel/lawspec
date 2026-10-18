@@ -5,18 +5,23 @@
 LawSpec is a specification language for the laws your code must obey. It
 compiles reusable laws and concrete examples into native property-based tests
 and implementation adapters for Java, Python, JavaScript, TypeScript, Go,
-Haskell, Kotlin and Rust. The compiler is written in Haskell and distributed on
-npm as prebuilt WebAssembly, with a Node CLI and a typed JavaScript API.
+Haskell, Kotlin, Rust, C#, F#, Swift, Erlang, Elixir, Gleam, Clojure, Groovy and
+Scala. The compiler is written in Haskell and distributed on npm as prebuilt
+WebAssembly, with a Node CLI and a typed JavaScript API.
+
+The canonical authoring examples below target the unreleased minor on `main`.
+Install the development checkout as shown below. For released 0.24.0, use the
+[0.24.0 documentation](https://github.com/brain-fuel/lawspec/tree/v0.24.0).
 
 ## Features
 
 - **Reusable laws.** A prelude of [round-trip, equivalence and algebraic laws](docs/reference/prelude-algebra.md), and your own generic laws.
 - **Examples with expected results** that [pin each law down](docs/reference/language/laws-and-examples.md).
-- **Native tests** with each target's framework, generators and shrinkers: JetCheck, Hypothesis, fast-check, Rapid, Hedgehog, Kotest and Proptest.
+- **Native tests** with each [target's framework, generators and shrinkers](docs/how-to/targets/index.md).
 - **A full scalar catalog** with [exact arithmetic](docs/reference/primitives.md) that never wraps.
 - **Structural data**: [lists, `Maybe`, `Either`, products and sums](docs/reference/language/types-and-data.md).
 - **Refinements and contracts** with [dependent generation](docs/reference/refinements.md) that constructs valid inputs.
-- **Checked total definitions** that are [proved and generated](docs/reference/language/definitions.md) on every target.
+- **Automatic definition checks** for [exhaustiveness, termination, definedness and contracts](docs/reference/language/definitions.md), with deliberately deferred postconditions enforced at runtime.
 - **Indexed families** such as [length-indexed vectors](docs/reference/language/indexed-families.md), with proved indices.
 - **Domain modeling** with [wrappers and workflows](docs/reference/language/domain-modeling.md).
 - **Imports and versioned packages** of [shared laws and types](docs/reference/language/imports-and-packages.md).
@@ -30,33 +35,33 @@ npm as prebuilt WebAssembly, with a Node CLI and a typed JavaScript API.
 Node 22+ and the selected target's build tools are required. No Haskell
 toolchain is needed. The reference platforms are macOS and Linux.
 
-```sh
-npm install --save-dev lawspec@0.24.0
-npx lawspec --version
-```
-
-To try it in a **new, empty directory**, initialize before installing, so that
-LawSpec can create `package.json` and its test script:
+The checkout includes the development WASM package. To try it in a **new, empty
+directory**, initialize before installing, so that LawSpec can create
+`package.json` and its test script:
 
 ```sh
+git clone https://github.com/brain-fuel/lawspec.git lawspec
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.24.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.24.0
+node ../lawspec/npm/bin/lawspec.mjs init --target javascript
+npm install --save-dev ../lawspec/npm
+npx lawspec --version
 npx lawspec check
-npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
+npx lawspec explain 'example.codec::codec'
 npx lawspec doctor
-npx lawspec generate
 ```
 
-Implement `src/example/atoi_codec.mjs`, then run `npm test`:
+New projects start with `verification.layers: []`: intrinsic definition checks
+run, and no law verification is selected. Set `verification.layers` to
+`["property", "examples"]` in `lawspec.json`, then run `npx lawspec generate`.
+Implement `src/example/codec.mjs`, then run `npm test`:
 
 ```javascript
 export function itoa(value) { return String(value); }
 export function atoi(value) { return Number(value); }
 ```
 
-In an existing project, install LawSpec first, then run
+In an existing project, install the checkout's `npm` directory first, then run
 `npx lawspec init --target javascript`. Existing build files are preserved;
 apply the printed setup instructions before generating. See
 [Install LawSpec and create a project](docs/how-to/install-and-init.md).

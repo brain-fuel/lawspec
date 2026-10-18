@@ -202,8 +202,11 @@ from names. Ordinary nominal records retain their labeled fields and braces.
 A single explicit payload may rename its formal field to `value` while retaining
 the exact checked payload type, constructor equations and existential binders.
 The existing copier follows the formal's identity and validates the complete
-transported Core. Grouped natural-index payloads can retain their equations
-through an anonymous record. The certificate maps each old field to its exact
+transported Core. Grouped natural-index, GADT and existential payloads can retain
+their equations and witness metadata through an anonymous record. Concrete
+eliminator bodies and existential factories use the same checked transport;
+factory packing retains the witness bindings inferred from actual arguments.
+The certificate maps each old field to its exact
 record path, retaining every subsequent path component and index selector.
 The candidate record's own index relationships must follow from the original
 constructor's equalities. Its complete descriptor, types and refinements are
@@ -274,12 +277,16 @@ checker. It adds no solver backend or proof-kernel integration. Obligation
 generation and its trusted implementation remain distinct from solver execution
 and independently checked proof evidence.
 
-Grouped GADT and existential payload transport remains unavailable. A reordered
-shared-index measure whose body reads a different sibling remains unestablished
-until the body equivalence is justified; matching shape guards alone cannot
-authorize it. Source-template, input-domain and native binding correspondence
-also remain separate gates, so matching concrete indexed payload transport
-alone does not enable project writes.
+A reordered shared-index measure whose body reads a different sibling remains
+unestablished until the body equivalence is justified; matching shape guards
+alone cannot authorize it. Abstract generic GADT roots can still fail branch
+admission. Pure matching of field-only existentials remains a source limitation
+in both profiles. An otherwise matching project containing only unused
+polymorphic definitions still lacks accepted nonempty target generation and
+cannot be written; the positive generic-factory demonstration includes a
+concrete caller. Source-template, input-domain and native binding correspondence
+remain separate gates, so matching a concrete payload alone does not enable
+project writes.
 Scalar-dependent record indices, references to enclosing value indices in a
 record input/result, and non-variable indices inside record fields report their
 current limitations instead of erasing dependencies. The direct index generator
@@ -295,6 +302,12 @@ preceding compiler are retained as separate evidence; they are not normalized
 away or treated as cross-version semantic certificates. This does not change
 the SHA-256 algorithms used by other caches.
 
+Retaining mapping provenance extends source-definition Binary metadata too.
+Source-template and interface fingerprints can consequently change for ordinary
+functions with no mapping declaration. Complete preceding/current response pairs
+retain those hashes separately; comparison statuses, checked Core and the other
+correspondence fields remain independently auditable.
+
 The preserved Chapter 6 preview now passes canonical compilation at both
 machine widths while retaining all 23 laws, 65 table rows, one named example,
 25 definitions, seven ADTs and two refinements. The
@@ -307,8 +320,7 @@ input-domain or project-wide migration correspondence.
 passes canonical compilation. This check selects no optional law verification
 and retains mandatory definition validation. An accepted preview still does
 not establish project correspondence. A rejected preview includes diagnostics
-for transformations that remain unfinished, such as grouped natural-index
-payloads.
+for malformed or unsupported field dependencies and constructor scopes.
 
 The report's `baseline.coreSnapshot` and
 `sourcePreview.canonicalCheck.coreSnapshot` contain versioned fingerprints of

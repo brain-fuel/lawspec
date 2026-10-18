@@ -859,7 +859,8 @@ equality env ty = case ty of
                   , D.text ("return " ++ intercalate " && " ("true" : [chk ("a." ++ fieldName f) ("b." ++ fieldName f) | (f, chk) <- zip (constructorFields (firstOf (dataConstructors d))) (firstOf checks)])) ]
         else do
           let arms = [ D.text ("case *" ++ variantType env d c ++ generic ++ ":") <> D.nest 8 (D.hardline <> D.joinWith D.hardline
-                         ([D.text ("y, ok := b.(*" ++ variantType env d c ++ generic ++ ")")] ++
+                         ([D.text ((if null (constructorFields c) then "_, ok" else "y, ok") ++
+                            " := b.(*" ++ variantType env d c ++ generic ++ ")")] ++
                           [D.text ("return ok && " ++ intercalate " && " ("true" : [chk ("x." ++ fieldName f) ("y." ++ fieldName f) | (f, chk) <- zip (constructorFields c) cs]))]))
                      | (c, cs) <- zip (dataConstructors d) checks ]
               used = any (not . null . constructorFields) (dataConstructors d)

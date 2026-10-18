@@ -10,12 +10,18 @@ title: LawSpec documentation
 LawSpec is a specification language for the laws your code must obey. You write
 function signatures, reusable laws and concrete examples once. The compiler
 checks them and turns them into native property-based tests and implementation
-adapters for Java, Python, JavaScript, TypeScript, Go, Haskell, Kotlin and Rust.
+adapters for Java, Python, JavaScript, TypeScript, Go, Haskell, Kotlin, Rust,
+C#, F#, Swift, Erlang, Elixir, Gleam, Clojure, Groovy and Scala.
 Each target uses its usual test framework, generators and shrinkers.
 
 The compiler is written in Haskell. It ships in the `lawspec` npm package as
 prebuilt WebAssembly, with a Node command-line interface and a typed JavaScript
 API. You do not need a Haskell toolchain to use it.
+
+These canonical authoring examples describe the unreleased minor on `main`.
+[Install the development checkout](how-to/install-and-init.md) to use this
+profile. For released 0.24.0, use its
+[tagged documentation](https://github.com/brain-fuel/lawspec/tree/v0.24.0).
 
 ```lawspec
 unit example.addition

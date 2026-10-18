@@ -1,0 +1,6 @@
+@@ test/fixtures/canonical-typed-mappings.lawspec
+<<<<<<<
+  row Preference record{enabled = true}, "enabled"
+=======
+  row Preference record{enabled = true}, "wrong"
+>>>>>>>

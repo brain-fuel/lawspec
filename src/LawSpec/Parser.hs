@@ -2179,11 +2179,11 @@ parameterPatternP = sourceNode "parameter" (\(pattern,_,_) -> case selectionBind
 
 -- Typed constants lower to ordinary checked definitions. Exhaustive constructor
 -- coverage is admitted by the same compiler contract audit as hand-written code.
-mappingP :: P [FunctionDefinition]
-mappingP = do
+mappingP :: String -> P [FunctionDefinition]
+mappingP owner = do
   canonical <- canonicalP
   unless canonical empty
-  ((name,keyType,resultType,writtenRows,writtenFallback), range) <- withSpan $ do
+  ((name,keyType,resultType,rows,fallback), range) <- withSpan $ do
     keyword "mapping"
     name <- ident
     annotationP
@@ -2191,85 +2191,53 @@ mappingP = do
     void (symbol "->")
     resultType <- typeP
     keyword "is"
-    rows <- some (keyword "row" *> ((,) <$> literalP <* symbol "," <*> literalP))
-    fallback <- optional (keyword "otherwise" *> literalP)
+    rows <- many (withSpan (keyword "row" *> ((,) <$> literalP <* symbol "," <*> literalP)))
+    fallback <- optional (withSpan (keyword "otherwise" *> literalP))
     closeP "mapping"
     pure (name,keyType,resultType,rows,fallback)
-  rows <- mapM (\(key,value) -> (,) <$> contextualLiteral keyType key <*> contextualLiteral resultType value) writtenRows
-  fallback <- traverse (contextualLiteral resultType) writtenFallback
-  unless (all simpleKey (map fst rows) && case baseType keyType of RefinementApp _ _ -> False; _ -> True)
-    (fail "mapping keys currently require a primitive type or unqualified payload-free constructor; resolved compound-key validation is not yet implemented")
-  let equal a b = literalEquality a b
-      keys = map fst rows
-      outputs = map snd rows
-  unless (all (\k -> equal k k) keys) (fail "mapping keys must be reflexive under Eq; NaN is not a key")
-  unless (and [not (equal a b) | (index,a) <- zip [0 :: Int ..] keys, b <- drop (index + 1) keys])
-    (fail "duplicate mapping key")
-  let input = "lawspecMappingInput"
+  let dependencies=typeValueVars keyType++typeValueVars resultType++
+        concat [literalNames key++literalNames value | ((key,value),_)<-rows]++
+        maybe [] (literalNames.fst) fallback
+      taken=map (takeWhile (/='.')) dependencies
+      input=fresh "lawspecMappingInput" taken
       select c yes no = foldl Apply (Var "prelude.select") [c,yes,no]
-      lookupRows result = foldr (\(key,value) rest -> select (Binary "==" (Var input) (literalExpr key)) (literalExpr value) rest) result rows
+      key ((value,_),at) = Located at (literalExpr value)
+      output ((_,value),at) = Located at (literalExpr value)
+      lookupRows result = foldr (\row rest -> select (Binary "==" (Var input) (key row)) (output row) rest) result rows
+      -- The default is unobservable only after complete typed coverage has
+      -- been established by the intrinsic mapping audit. It is never an
+      -- authored fallback, and missing coverage still rejects compilation.
       body = case fallback of
-        Just other -> lookupRows (literalExpr other)
-        Nothing | all enumKey keys -> MatchExpr (Var input)
-          [MatchBranch tag [] (literalExpr value) | (ConstructorLiteral tag [],value) <- rows]
-        Nothing | keyType == Named "Bool", any (equal (BoolLiteral True)) keys, any (equal (BoolLiteral False)) keys ->
-          lookupRows (literalExpr (snd (head rows)))
-        Nothing -> MatchExpr (Var input) []
-      make n argument result expr = FunctionDefinition n [(input,argument)] result [] expr range
-      -- Compare each typed output at execution, so aliases or contextual
-      -- representations cannot make a compile-time grouping lose preimages.
-      preimage = foldr (\(key,value) rest -> Apply (Apply (Var "prelude.append")
-        (select (Binary "==" (Var input) (literalExpr value)) (ListLit [literalExpr key]) (ListLit []))) rest) (ListLit []) rows
-      inverse = foldr (\(key,value) rest -> select (Binary "==" (Var input) (literalExpr value))
-        (ConstructLit "Just" [literalExpr key]) rest) (ConstructLit "Nothing" []) rows
-      eligibleInverse = all simpleKey outputs && case baseType resultType of
-        RefinementApp _ _ -> False
-        _ -> True
-      unique = eligibleInverse && all (\v -> equal v v) outputs && and
-        [not (equal a b) | (index,a) <- zip [0 :: Int ..] outputs, b <- drop (index + 1) outputs]
-  pure ([make name keyType resultType body] ++
-    [make (derived name "preimages") resultType (Applied "List" keyType) preimage | fallback == Nothing] ++
-    [make (derived name "inverse") resultType (Applied "Maybe" keyType) inverse | unique && fallback == Nothing])
+        Just (value,at) -> lookupRows (Located at (literalExpr value))
+        Nothing -> lookupRows (case rows of row:_ -> output row; [] -> MatchExpr (Var input) [])
+      origin role = MappingOrigin owner name role (map snd rows) (snd <$> fallback)
+      make role n argument result expr = (FunctionDefinition n [(input,argument)] result [] expr range)
+        {functionMapping=Just (origin role)}
+      -- Preliminary groups retain the exact literal spelling. The resolved
+      -- mapping audit replaces these with typed Eq classes before the final
+      -- compilation, so e.g. signed zero and reordered sets group correctly.
+      groups=foldl (\known row -> insertRow row known) [] rows
+      insertRow row []=[[row]]
+      insertRow row (group:rest) | snd (fst row)==snd (fst (head group))=(group++[row]):rest
+                                | otherwise=group:insertRow row rest
+      preimage = foldr (\group rest -> select (Binary "==" (Var input) (output (head group)))
+        (ListLit (map key group)) rest) (ListLit []) groups
+      -- Use the builtin identities, independently of local Just/Nothing names.
+      inverse = foldr (\row rest -> select (Binary "==" (Var input) (output row))
+        (ConstructLit "Maybe::Just" [key row]) rest) (ConstructLit "Maybe::Nothing" []) rows
+  pure ([make MappingForward name keyType resultType body] ++
+    [make MappingPreimages (derived name "preimages") resultType (Applied "List" keyType) preimage | fallback == Nothing] ++
+    [make MappingInverse (derived name "inverse") resultType (Applied "Maybe" keyType) inverse | fallback == Nothing])
   where
-    simpleKey (ConstructorLiteral name []) = '.' `notElem` name
-    simpleKey (ConstructorLiteral _ _) = False
-    simpleKey (ListLiteral _) = False
-    simpleKey (RecordLiteral _) = False
-    simpleKey (SetLiteral _ _) = False
-    simpleKey _ = True
-    contextualLiteral ty value = case (baseType ty, literalExpr value) of
-      (Named name, expression) | primitive name /= Nothing -> case expression of
-        ScalarLit scalar -> convert scalar
-        Number n -> convert (SInteger "Integer" n)
-        DecimalNumber c e -> convert (SDecimal c e)
-        StringLit text -> convert (textScalar text)
-        BoolLit b -> convert (SBool b)
-        _ -> pure value
-        where convert scalar = either fail (pure . ScalarLiteral) (convertScalar 64 name scalar)
-      _ -> pure value
-    enumKey (ConstructorLiteral _ []) = True
-    enumKey _ = False
+    fresh name taken | name `elem` taken=fresh (name++"_") taken
+                     | otherwise=name
+    literalNames (ConstructorLiteral name fields)=name:concatMap literalNames fields
+    literalNames (ListLiteral fields)=concatMap literalNames fields
+    literalNames (RecordLiteral fields)=concatMap (literalNames.snd) fields
+    literalNames (SetLiteral builder fields)=builder:concatMap literalNames fields
+    literalNames _=[]
     derived ('"':'|':body) suffix = "\"|" ++ take (length body - 1) body ++ " " ++ suffix ++ "|"
     derived name suffix = name ++ (if suffix == "preimages" then "Preimages" else "Inverse")
-
-literalEquality :: Literal -> Literal -> Bool
-literalEquality a b = case (literalScalar a,literalScalar b) of
-  (Just x,Just y) -> scalarEqual x y
-  _ -> case (a,b) of
-    (ConstructorLiteral x xs,ConstructorLiteral y ys) -> x == y && length xs == length ys && and (zipWith literalEquality xs ys)
-    (ListLiteral xs,ListLiteral ys) -> length xs == length ys && and (zipWith literalEquality xs ys)
-    (RecordLiteral xs,RecordLiteral ys) -> length xs == length ys &&
-      length xs == length (nub (map fst xs)) && length ys == length (nub (map fst ys)) &&
-      all (\(label,value) -> maybe False (literalEquality value) (lookup label ys)) xs
-    _ -> False
-  where
-    literalScalar literal = case literal of
-      IntLiteral n -> Just (SInteger "Integer" n)
-      DecimalLiteral c e -> Just (SDecimal c e)
-      TextLiteral text -> Just (textScalar text)
-      BoolLiteral bool -> Just (SBool bool)
-      ScalarLiteral scalar -> Just scalar
-      _ -> Nothing
 
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | WrapperMember Wrapper | WorkflowMember Workflow | ModelMember ModelDeclaration
@@ -2423,7 +2391,7 @@ unitP = do
     <|> (HandlerSetMember <$> (try (lookAhead (keyword "handlers" *> ident *> keyword "is")) *> handlerSetP))
     -- harness name for unit is ... end (LawSpec.Harness).
     <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
-    <|> (MappingMember <$> mappingP)
+    <|> (MappingMember <$> mappingP n)
     <|> (DefinitionMember <$> definitionUsesP)
     <|> try (AsyncMember <$> (keyword "async" *> withSpan ((,) <$> ident <* annotationP <*> typeP)) <*> usesP)
     <|> try (SignatureMember <$> withSpan ((,) <$> ident <* annotationP <*> typeP) <*> usesP)

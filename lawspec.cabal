@@ -310,6 +310,7 @@ extra-source-files:
     test/fixtures/canonical-sets.lawspec
     test/fixtures/canonical-smt-arithmetic.lawspec
     test/fixtures/canonical-stateful-initializers.lawspec
+    test/fixtures/canonical-typed-mappings.lawspec
     test/fixtures/constructor_boundaries.lawspec
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec
@@ -636,6 +637,7 @@ library
       LawSpec.KotlinTestHelpers
       LawSpec.MachineSpec
       LawSpec.Mailboxes
+      LawSpec.MappingCheck
       LawSpec.Matchers
       LawSpec.Memo
       LawSpec.MigrationBindings
@@ -929,6 +931,7 @@ test-suite lawspec-test
       InferenceSchemeSpec
       LanguageGapsSpec
       LawPrimitivesSpec
+      MappingSpec
       MigrationBindingSpec
       MigrationPayloadSpec
       MigrationSnapshotSpec

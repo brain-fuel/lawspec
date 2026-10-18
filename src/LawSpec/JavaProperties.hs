@@ -332,17 +332,22 @@ emitTests Config{..} unit laws = do
               ([text "if (_captured.error() != null) return true;" | nativeGenerators] ++
                unpack ++ [bindingsDoc,returned (conjunction (map (truth . expr) predicates))]))])]
           callback = closure inputName (statements (unpack ++ [bindingsDoc] ++ handlerInstalls e ++ [check,returned (text "true")]))
-      -- Keep JetCheck's native tree shrinking and its growing list budget.
+      -- JetCheck rejects repeated generation trees within one session. Small
+      -- structural domains can exhaust those trees before the requested case
+      -- count. Independent one-case sessions retain its native shrinking and
+      -- the growing budget; a seeded stream keeps the complete run repeatable.
       let invocation count size = statement $ chain (text "_lawspecChecker()")
-            [("withIterationCount",[number count]),
+            [("withSeed",[call "_lawspecSeeds.nextLong" []]),
+             ("withIterationCount",[number count]),
              ("withSizeHint",[lambda "_iteration" size]),
              ("forAll",[strategy,callback])]
           growing iteration = text "(int) " <> call "Math.min"
             [text "java.lang.Integer.MAX_VALUE",text ("2L * " ++ iteration ++ " + 8")]
-          body | nativeGenerators || constructorContracts =
-            text ("for (int _case = 0; _case < " ++ show (cases (generation e)) ++ "; _case++) ") <>
-              block (statements [bind "_sizeHint" (growing "_case"),invocation (1 :: Int) (text "_sizeHint")])
-            | otherwise = invocation (cases (generation e)) (growing "_iteration")
+          body = statements
+            [text "var _lawspecSeed = System.getenv(\"LAWSPEC_SEED\");",
+             text "var _lawspecSeeds = _lawspecSeed == null ? new java.util.Random() : new java.util.Random(Long.parseLong(_lawspecSeed));",
+             text ("for (int _case = 0; _case < " ++ show (cases (generation e)) ++ "; _case++) ") <>
+               block (statements [bind "_sizeHint" (growing "_case"),invocation (1 :: Int) (text "_sizeHint")])]
       pure $ testFunction (fn ++ "_property") body
     contextualStrategy settings plan = do
       let input = domainInput plan

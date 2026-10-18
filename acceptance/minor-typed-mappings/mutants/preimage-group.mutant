@@ -1,0 +1,6 @@
+@@ test/fixtures/canonical-typed-mappings.lawspec
+<<<<<<<
+  row record{enabled = true}, "shared"
+=======
+  row record{enabled = true}, "separate"
+>>>>>>>

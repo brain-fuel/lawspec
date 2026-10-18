@@ -6,6 +6,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Canonical authoring with `function` and `procedure`, phrase names, explicit
+  record and alternative payloads, first-matching cases, readable equality
+  wording and nested logical quantifiers.
+- Checked mappings over resolved scalar, record, constructor and collection
+  constants. Typed Eq detects duplicate and non-reflexive keys; complete finite
+  coverage or an explicit fallback is required. Complete mappings derive
+  preimages and, when justified by unique outputs, a Maybe-valued inverse.
+- Formatting, validated project migration from 0.24, four explanation views,
+  and compiler-backed editor support. Ordinary interfaces use API schema 5,
+  configuration version 2 and the technical language profile `1.0-rc.1`.
+- A canonical Chapter 6 specification, with independent native Python oracles
+  for all A-instruction addresses and C-instruction combinations.
+
+### Changed
+
+- Law verification layers are selected independently and default to none.
+  Definition validation and deliberately deferred runtime contracts remain
+  mandatory. New-project instructions explicitly select starter law checks.
+- Canonical `Set` uses Eq and first-occurrence order; legacy ordered-set uses
+  migrate to `SortedSet`. Canonical numeric names distinguish `Whole` and `Nat`.
+- Validated payload transport preserves indexed, GADT and existential metadata.
+  Unsupported source, population, dependency and native-binding correspondence
+  continues to block migration writes.
+- Java and Groovy structural property checks retain seeded generation and native
+  shrinking without exhausting a small domain's JetCheck generation trees.
+  Go equality generation handles payload-free alternatives alongside payloads.
+
 ## [0.24.0] - 2026-10-13
 
 ### Added

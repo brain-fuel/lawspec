@@ -36,6 +36,84 @@ migration**, the verified oracle runs of **Chapter 6 authoring**, and
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
 
+### Resolved typed mappings — 17 October 2026
+
+Mapping row checks now use resolved names, expanded aliases, actual machine
+widths and ordinary typed constants. The existing Core evaluator and complete
+finite-domain engine check key restrictions, Eq reflexivity, duplicate keys
+and coverage. Record and collection keys no longer have the earlier blanket
+parser rejection. Explicit fallbacks admit unbounded key domains; unsupported
+or incomplete coverage cannot authorize a mapping without one.
+
+Complete mappings group output values by typed Eq to derive preimages in
+source row order. An inverse remains available only for unique, reflexive
+outputs. A second ordinary compilation resolves exactly those helper names
+and reconstructs grouped literal results with their precise key refinements.
+Provisional helpers never leave compilation. Native binding identities and
+ordinary definition contracts remain mandatory; law selection cannot disable
+these checks. Bodyless definitions and restrictions beyond existing admission
+or complete-domain analysis retain their existing limits.
+
+The precedents are [Why3's finite maps and their explicit executable equality
+parameter](https://why3.gitlabpages.inria.fr/why3/stdlib/fmap.html) and
+[Mathlib's complete finite enumeration](https://github.com/leanprover-community/mathlib4/blob/master/Mathlib/Data/Fintype/Defs.lean).
+LawSpec retains IEEE Eq semantics rather than importing mathematical
+reflexivity for NaN. The compiler translation, existing evaluator and cover
+generator remain trusted. This adds no solver binding or independent proof
+certificate.
+
+All 22 focused mapping regressions pass, including complete UInt8 coverage,
+nominal boundaries, refined keys, aliases, imported facades, phrase names,
+signed zeros and NaN rejection. The full compiler passes **2,200 tests**. The
+SDK suite excluding the archived-catalog export passes **470 of 474 tests**,
+with no failures and four explicit opt-in skips. Separate Rust/Haskell layout
+checks and all five native-failure checks pass, covering those skips.
+
+The delivery mapping suite passes all 17 targets at 64-bit readable and 32-bit
+compact output: **34 target/profile passes and 68 mutant rejections**. Its Java
+run exposed finite generation-tree exhaustion. The shared Java/Groovy property
+emitter now uses independent one-case JetCheck sessions with a seeded stream,
+retaining its growing budget, native shrinking and replay data. This follows
+[JetCheck's generator-tree deduplication and replay implementation](https://github.com/JetBrains/jetCheck/blob/master/src/main/java/org/jetbrains/jetCheck/Iteration.java).
+The original failing seed passes and the nominal-label mutant produces a
+shrunk `PropertyFalsified`, not a generator failure. Go equality emission now
+uses a blank identifier for a payload-free alternative's unused asserted value.
+These native checks establish bounded conformance, not universal law proofs.
+
+Native/WASM parity agrees on **999 complete responses**. Of the 924 preceding
+responses, 746 are identical and 178 retain complete audited deltas. Changes in
+the preceding non-mapping suite are limited to named source/interface
+fingerprints from the source-definition Binary extension and exact seed-stream
+additions in Java/Groovy tests. Chapter 6 changes only its six mapping bodies,
+twelve derived helpers, dependent test cache keys and their emitted/serialized
+implementations. Its types, laws, obligations, contracts and other response
+fields remain unchanged. No response fields were omitted from parity.
+
+All four Chapter 6 oracle runs pass with native/WASM compilers at both profiles.
+Each independently exercises 32,768 A addresses, 1,792 C combinations and 13
+stateful programs, rejects all six mutants, preserves repeated invocation
+independence and validates project migration. Its authored inventory remains
+23 laws, 65 expectation rows, one named example, 25 definitions including six
+mappings, seven ADTs and two refinements. This is Python native conformance;
+the larger all-17-language Chapter 6 implementation gate remains pre-final-1.0.
+
+All 129 generated files, 233 module boundaries, six editor tests, version checks
+and documentation for 119 pages and 115 snippets pass. The actual quickstart
+also passes local package installation, explicit zero-check reporting, the
+current starter law selector, doctor, generation and native tests after
+selecting property/examples. Documentation now distinguishes the unreleased
+checkout from tagged 0.24.0 and lists all 17 targets. The public migration
+reference no longer describes completed GADT/existential transport as unavailable.
+
+Evidence is under `.artifacts/typed-mappings/`, including
+`native-acceptance-receipts.json`, `chapter6-oracle-receipts.json`,
+`parity/receipts.json`, `parity/audited-deltas.json` and
+`quickstart-receipt.json`. Earlier failed and superseded exploratory runs remain
+separate. The complete catalog export reads a frozen package snapshot and is
+still running. The remaining migration/coverage audit and final iteration
+release gate remain open. Readability stays deferred, all-named endings belong
+to the following minor, and this checkpoint authorizes no RC designation or tag.
+
 ### Grouped GADT and existential payloads — 17 October 2026
 
 This migration increment compares grouped GADT payloads and complete

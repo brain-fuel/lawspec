@@ -27,6 +27,7 @@ import qualified LawSpec.Core.Types as CoreTypes
 import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Scalar
 import LawSpec.Parser
+import qualified LawSpec.MappingCheck as MappingCheck
 import LawSpec.Imports (resolveImportsWithCollectionDemand)
 import LawSpec.Documentary (resolveDocumentaryReferences)
 import LawSpec.Abilities (elaborateAbilities)
@@ -353,7 +354,14 @@ compileWithSourceOrigins = compileWithCollectionDemand Nothing
 compileWithCollectionDemand :: Maybe (Bool,[String]) -> [SourceOriginMap] -> Bool -> Bool -> (String -> String -> String)
   -> (String -> String -> Maybe String) -> Int -> Generation -> [Source]
   -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
-compileWithCollectionDemand selected origins capture canonical referenceUnit visible bits settings sources = do
+compileWithCollectionDemand = compileWithMappingSelection Nothing
+
+-- Candidate inverse names are resolved only after typed row equality has
+-- established their availability. No provisional program leaves this entry.
+compileWithMappingSelection :: Maybe MappingCheck.MappingSelection -> Maybe (Bool,[String]) -> [SourceOriginMap]
+  -> Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
+  -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
+compileWithMappingSelection mappingSelection selected origins capture canonical referenceUnit visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Reserved Core identities belong to compiler-provided versioned sources.
@@ -402,7 +410,8 @@ compileWithCollectionDemand selected origins capture canonical referenceUnit vis
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.
         [("lawspec.host", "lawspecHost", [], \text -> usesResources text && not (importsBuiltin "lawspec.host" text)) | resources]
-  (parsedUnits,sourceSyntax) <- parseSourcesWithOrigins origins capture canonical collections implicit builtins sources
+  (candidates,sourceSyntax) <- parseSourcesWithOrigins origins capture canonical collections implicit builtins sources
+  let parsedUnits=[(MappingCheck.selectMappingCandidates mappingSelection imports unit,imports) | (unit,imports)<-candidates]
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   documented <- resolveDocumentaryReferences referenceUnit visible parsedUnits
   let canonicalUnits = Set.fromList [name | source <- sources, Right name <- [sourceUnit source]]
@@ -427,7 +436,7 @@ compileWithCollectionDemand selected origins capture canonical referenceUnit vis
       -- Removing the last false-positive provider must also remove its
       -- implicit unit. Explicit imports retain a deliberately empty unit.
   if refined/=collections then
-    compileWithCollectionDemand (Just (explicitCollection||not (null refined),refined)) origins capture canonical referenceUnit visible bits settings sources
+    compileWithMappingSelection mappingSelection (Just (explicitCollection||not (null refined),refined)) origins capture canonical referenceUnit visible bits settings sources
   else do
    -- Abilities, handlers and rows, once each unit has what it imports.
    abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
@@ -437,7 +446,7 @@ compileWithCollectionDemand selected origins capture canonical referenceUnit vis
          [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
          | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]
    lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported) parsed)
-   let beforeExpansion = map qualifyDataNames lowered
+   let beforeExpansion = map (qualifyDataNames . MappingCheck.contextualizeMappings) lowered
    (headers0,headerContext)<-dataDeclarationHeaders beforeExpansion
    -- Header slots are for type inference, not index or constructor proofs.
    let headers=[header{Core.dataIndex=Nothing} | header<-headers0]
@@ -584,36 +593,43 @@ compileWithCollectionDemand selected origins capture canonical referenceUnit vis
    closedProgram <- deferProgramPostconditions normalizedProgram
    invoke <- prepareDefinitions closedProgram
    registry <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry (Core.programDataDeclarations closedProgram))
-   forM_ properties $ \property -> do
-     u <- maybe (Left [Diagnostic "semantic" "missing property owner" Nothing]) Right
-       (lookup (owner property) [(unitName u,u) | u <- specialized])
-     either (Left . pure . (\message -> Diagnostic "semantic" message (Just (location (original property))))) Right $
-       evalStateT (do
-         let identify name = Core.Id (unitName u ++ "::" ++ name)
-         forM_ (refinementArgumentChecks property) $ \check -> do
-           (term,known) <- lift (evaluationTerm sourceTypes closedDataTypes (map (identify . fst) (functions u))
-             bits (Core.Id (name property)) identify (functions u) check)
-           value <- lift (CoreEval.evaluateValue known bits invoke [] term)
-           unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
-         mapM_ (validateExampleDomains bits u invoke (inputs property)) (examples (original property)))
-         (withSourceContext sourceTypes (withDataDeclarations closedDataTypes (initialState bits)))
-   -- Ability inference stores only nonempty rows. A known source definition
-   -- absent from that sparse table is pure; an unknown declaration is not.
-   let sourceRows = [(unitName u,[(functionName d,maybe [] id (lookup (functionName d) (abilityRows u)))
-                         | d <- functionDefinitions u]) | u <- us]
-       annotate syntax = let (bindings,references)=maybe ([],[]) id (lookup (syntaxUnit syntax) sourceBindings)
-         in syntax{syntaxNodes=map (node (syntaxUnit syntax)) (syntaxNodes syntax),syntaxBindings=bindings,
-           syntaxReferences=[reference | reference <- references,let Span start end=referenceSpan reference,
-             file start==syntaxPath syntax,file end==syntaxPath syntax]}
-       node owner item
-         | syntaxKind item == "declaration.definition", Just name <- syntaxName item,
-           Just used <- lookup owner sourceRows >>= lookup name = item{syntaxUses=Just (map prettyType used)}
-         | otherwise = item
-   pure (specialized, properties,
-     [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]],
-     if capture then Just (SourceTemplates bits us checkedTemplates allExpanded dataTypes
-       [(identity,Source.sourceFields constructor,Source.sourceEquations constructor) |
-         (identity,constructor)<-migrationConstructorSources us dataTypes]) else Nothing)
+   let hasMappings=any (any (maybe False ((==MappingForward).mappingRole).functionMapping).functionDefinitions) us
+   choices<-if hasMappings then MappingCheck.checkMappings settings us closedProgram invoke else pure M.empty
+   if hasMappings && mappingSelection==Nothing then
+     compileWithMappingSelection (Just choices) selected origins capture canonical referenceUnit visible bits settings sources
+   else do
+     when (maybe False (/=choices) mappingSelection)
+       (Left [Diagnostic "mapping" "mapping derivation changed after final name resolution" Nothing])
+     forM_ properties $ \property -> do
+       u <- maybe (Left [Diagnostic "semantic" "missing property owner" Nothing]) Right
+         (lookup (owner property) [(unitName u,u) | u <- specialized])
+       either (Left . pure . (\message -> Diagnostic "semantic" message (Just (location (original property))))) Right $
+         evalStateT (do
+           let identify name = Core.Id (unitName u ++ "::" ++ name)
+           forM_ (refinementArgumentChecks property) $ \check -> do
+             (term,known) <- lift (evaluationTerm sourceTypes closedDataTypes (map (identify . fst) (functions u))
+               bits (Core.Id (name property)) identify (functions u) check)
+             value <- lift (CoreEval.evaluateValue known bits invoke [] term)
+             unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
+           mapM_ (validateExampleDomains bits u invoke (inputs property)) (examples (original property)))
+           (withSourceContext sourceTypes (withDataDeclarations closedDataTypes (initialState bits)))
+     -- Ability inference stores only nonempty rows. A known source definition
+     -- absent from that sparse table is pure; an unknown declaration is not.
+     let sourceRows = [(unitName u,[(functionName d,maybe [] id (lookup (functionName d) (abilityRows u)))
+                           | d <- functionDefinitions u]) | u <- us]
+         annotate syntax = let (bindings,references)=maybe ([],[]) id (lookup (syntaxUnit syntax) sourceBindings)
+           in syntax{syntaxNodes=map (node (syntaxUnit syntax)) (syntaxNodes syntax),syntaxBindings=bindings,
+             syntaxReferences=[reference | reference <- references,let Span start end=referenceSpan reference,
+               file start==syntaxPath syntax,file end==syntaxPath syntax]}
+         node owner item
+           | syntaxKind item == "declaration.definition", Just name <- syntaxName item,
+             Just used <- lookup owner sourceRows >>= lookup name = item{syntaxUses=Just (map prettyType used)}
+           | otherwise = item
+     pure (specialized, properties,
+       [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]],
+       if capture then Just (SourceTemplates bits us checkedTemplates allExpanded dataTypes
+         [(identity,Source.sourceFields constructor,Source.sourceEquations constructor) |
+           (identity,constructor)<-migrationConstructorSources us dataTypes]) else Nothing)
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
 -- names it invokes, a superset of the ones expansion resolves.

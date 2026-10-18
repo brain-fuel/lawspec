@@ -42,9 +42,16 @@ table        = ("expect" expression ["=" expected])+
                "in" "table" "(" name ("," name)* ")" ":"
                ("row" constant ("," constant)*)+ "end"
 mapping      = "mapping" name annotation "is"
-               ("row" constant "," constant)+ ["otherwise" constant]
+               ("row" constant "," constant)* ["otherwise" constant]
                "end" "mapping"
 ```
+
+A mapping annotation is a function type, such as `of type Bool -> Text`.
+Rows have constant keys and outputs. A mapping without rows can supply an
+explicit `otherwise`; bodyless definitions still require ordinary admission.
+Key comparison happens after names, aliases and contextual types resolve.
+Without `otherwise`, the compiler must establish complete finite coverage of
+the restricted input domain. An incomplete or unsupported cover is an error.
 
 A law uses `law name is`, optional scalar metadata, its sections and examples,
 then `end`. Every ordinary law has exactly one `definition:` section.

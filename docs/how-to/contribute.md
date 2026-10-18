@@ -12,7 +12,7 @@ This guide is for working on LawSpec itself. To use LawSpec, see the
 
 | Directory | Contents |
 | --- | --- |
-| `src/` | The compiler library: parser, imports, inference, elaboration, Core, prover, testing planner and the eight emitters. |
+| `src/` | The compiler library: parser, imports, inference, elaboration, Core, prover, testing planner and the 17 target emitters. |
 | `app/` | `lawspec-core`, the native compiler executable. It reads a JSON request on standard input and writes the result. |
 | `dev/` | `lawspec-dev`: repository checks (`boundaries`, `integrity`), code generation, and the local CI driver. |
 | `acceptance/` | `lawspec-acceptance` and its suites, which run the bundled examples on every target. |
@@ -38,14 +38,14 @@ The root also holds canon's files: `canon.yaml` (its configuration),
 Stack is the native development tool:
 
 ```sh
-stack --no-terminal build
+stack --no-terminal build --test --no-run-tests
 stack --no-terminal test
 ```
 
 To try a request against the native compiler:
 
 ```sh
-printf '%s' '{"method":"check","sources":[{"path":"x.lawspec","content":"unit example.empty"}]}' | stack exec lawspec-core
+printf '%s' '{"schemaVersion":5,"languageProfile":"1.0-rc.1","verification":{"layers":[]},"method":"check","sources":[{"path":"x.lawspec","content":"unit example.empty"}]}' | stack exec lawspec-core
 ```
 
 ### WebAssembly

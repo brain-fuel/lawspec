@@ -608,15 +608,47 @@ remove the extracted filename and must be rejected during exhaustive checking. T
 examples count domain layers; explicit record payloads add product nodes.
 
 Finite mappings lower to ordinary checked lookup definitions. Constant keys
-must be distinct and reflexive under Eq. Complete constructor coverage or an
-explicit `otherwise` is required. Complete mappings derive finite preimages;
+must be distinct and reflexive under Eq. Complete finite coverage of the
+restricted key domain or an explicit `otherwise` is required. Names, aliases,
+nominal identities and contextual literals resolve before this check, using
+the selected machine width. Record, constructor and collection constants use
+ordinary typed equality; record field order and set iteration order cannot
+distinguish duplicate keys. Complete mappings derive finite preimages;
 an inverse is Maybe-valued and derived when outputs are unique and reflexive.
-A fallback does not silently acquire an incomplete finite inverse. The current
-implementation checks primitive scalar and unqualified payload-free enum keys.
+A fallback does not silently acquire an incomplete finite inverse.
 A partial lookup is explicitly Maybe-valued and supplies `otherwise Nothing`;
-the generated function remains total. Resolved compound keys and additional
-finite domains remain implementation gates. Preimages compare outputs using typed
-Eq; inverse derivation requires established output uniqueness.
+the generated function remains total. Preimages group outputs using typed Eq
+and retain matching keys in source row order, including their refinements.
+Signed zeros compare equal; NaN keys are rejected and NaN outputs cannot
+justify an inverse. Existing definition admission and finite-domain analysis
+limits still apply; a bounded sample never establishes complete coverage.
+
+Nominal keys use explicit construction:
+
+```lawspec
+unit example.preferenceLabels
+
+type Preference is a record{
+  enabled of type Bool
+}
+end type
+
+mapping preferenceLabel of type Preference -> Text is
+  row Preference record{enabled = false}, "disabled"
+  row Preference record{enabled = true}, "enabled"
+end mapping
+
+law "|enabled preferences retain their label| is
+  definition:
+    preferenceLabel (Preference record{enabled = true}) must be "enabled"
+  end
+end
+```
+
+The [delivery mapping specification](../../../test/fixtures/canonical-typed-mappings.lawspec)
+also covers payload constructors, list fallbacks, sets, refined keys and shared
+output labels. Its seven laws and ten independent expectation rows run in the
+native acceptance suite on all 17 targets at both machine profiles.
 
 ```text
 mapping answerText of type Answer -> Text is

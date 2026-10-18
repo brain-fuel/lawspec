@@ -19,6 +19,8 @@ instance Binary S.Expanded
 instance Binary S.Expectation
 instance Binary S.Expr
 instance Binary S.FunctionDefinition
+instance Binary S.MappingOrigin
+instance Binary S.MappingRole
 instance Binary S.Import
 instance Binary S.Input
 instance Binary S.SourceReferenceTarget
