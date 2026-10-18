@@ -15,7 +15,7 @@ module LawSpecCodecs
   , nullableCodecWith, optionalCodecWith
   ) where
 
-import Control.Monad (unless, foldM, zipWithM)
+import Control.Monad (unless, zipWithM)
 import Data.Bits (finiteBitSize)
 import Data.Char (ord)
 import Data.Complex (Complex((:+)))
@@ -39,23 +39,10 @@ context label = either (Left . ((label ++ ": ") ++)) Right
 checkNativeProfile :: S.Schema -> S.TypeRef -> Int -> Either String ()
 checkNativeProfile schema typeRef bits = do
   unless (bits == 32 || bits == 64) (Left "machineBits must be 32 or 64")
-  S.checkType schema 0 typeRef
-  _ <- visit [] typeRef
-  pure ()
-  where
-    -- A witnessed existential takes a witness pool type, which every profile
-    -- supports.
-    visit seen (S.Parameter _) = pure seen
-    visit seen current@(S.Named name arguments) = do
-      previous <- foldM visit seen arguments
-      unless (name `notElem` ["IntSize", "UIntSize", "UIntPtr"] ||
-              bits == finiteBitSize (0 :: Int))
-        (Left "machineBits does not match native architecture")
-      if name `elem` previous then pure previous else do
-        variants <- S.constructors schema current
-        let fields = [ty | S.Constructor _ items <- maybe [] id variants,
-                           S.Field _ ty <- items]
-        foldM visit (name : previous) fields
+  names <- S.nativeProfileTypes schema typeRef
+  unless (all (`notElem` ["IntSize", "UIntSize", "UIntPtr"]) names ||
+          bits == finiteBitSize (0 :: Int))
+    (Left "machineBits does not match native architecture")
 
 codec :: S.Schema -> Int -> S.TypeRef
       -> (LS.Scalar -> Either String a)

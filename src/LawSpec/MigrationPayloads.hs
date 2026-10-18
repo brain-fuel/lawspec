@@ -111,8 +111,6 @@ payloadCorrespondenceWithPlan before after = do
             pure ([],object ["constructor" .= C.idText (C.constructorId old),"kind" .= ("single-payload"::String),
               "fields" .= [fieldEntry 0 0 field payload]],[(0,[0])])
           (fields,[payload]) | not (null fields) -> do
-            unless (null (C.constructorEquations old) && null (C.constructorExistentials old))
-              (Left "grouped GADT or existential payloads need a separately checked transport")
             unless (C.binderName payload=="value" && null (C.constructorPredicates new))
               (Left "a grouped payload must use value and introduce no outer constructor restrictions")
             SourceConstructor types _ <- maybe (Left "the checked source constructor context is missing") Right

@@ -4,7 +4,7 @@ module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations, assumingCapabilities
   , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements, keyedRequirements, keyedPrimitive
   , constructorFieldPath
-  , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, freeExistentials, typeVariables, witnessPool
+  , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, constructorBindingsAt, freeExistentials, typeVariables, witnessPool
   ) where
 
 import Control.Exception (evaluate)
@@ -265,6 +265,17 @@ witnessPool = [Constructor "Bool" [], Constructor "Int32" []]
 -- ref:DEC-gadts-and-index-arithmetic
 constructorFieldsAt :: TypeRegistry -> Type -> Id -> [Type] -> Either String [Binder]
 constructorFieldsAt registry ty tag actual = do
+  (constructor,bound)<-constructorScopeAt registry ty tag actual
+  pure [field {binderType = substitute bound (binderType field)} | field <- constructorFields constructor]
+
+-- | The same checked constructor instantiation, including witnesses inferred
+-- from actual fields. Representation transport must retain these bindings when
+-- packing fields into a record; the parent type alone cannot determine them.
+constructorBindingsAt :: TypeRegistry -> Type -> Id -> [Type] -> Either String (M.Map Id Type)
+constructorBindingsAt registry ty tag actual = snd <$> constructorScopeAt registry ty tag actual
+
+constructorScopeAt :: TypeRegistry -> Type -> Id -> [Type] -> Either String (DataConstructor,M.Map Id Type)
+constructorScopeAt registry ty tag actual = do
   checkType registry ty
   case ty of
     Constructor name arguments -> do
@@ -281,7 +292,7 @@ constructorFieldsAt registry ty tag actual = do
         maybe (Left ("the field types of " ++ idText tag ++ " disagree on its existential types")) Right $
           foldM (\acc (field, value) -> matchType free acc (substitute known (binderType field)) value)
             known (zip (constructorFields constructor) actual)
-      pure [field {binderType = substitute bound (binderType field)} | field <- constructorFields constructor]
+      pure (constructor,bound)
     _ -> Left "data construction requires an applied data type"
 
 -- | Whether a constructor builds values of a declaration at these arguments,

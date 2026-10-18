@@ -549,9 +549,14 @@ retain planned example evidence rather than a claim of complete verification.
 Explanations hide compiler-marked storage calls only when their complete typed
 signature matches; the authoritative typed assertion retains those calls.
 
-Refinement inside structural GADT index arguments and checked function expansion
-in anonymous field restrictions still require compiler work. Opaque storage and
-infinitely expanding type specializations do not acquire implicit conversions.
+Structural GADT index arguments retain their stored field restrictions, as in
+the [refined-index fixture](../../../test/fixtures/canonical-refined-gadt-indices.lawspec).
+Checked functions used in anonymous field restrictions expand through the
+ordinary definition machinery; the
+[predicate-function fixture](../../../test/fixtures/canonical-record-predicate-functions.lawspec)
+also checks dependent sibling fields. These checks remain mandatory with no
+law layers selected. Opaque storage and infinitely expanding type
+specializations do not acquire implicit conversions.
 
 Recursive record and constructor patterns preserve structural descent for
 checked recursive functions. The
@@ -608,8 +613,9 @@ explicit `otherwise` is required. Complete mappings derive finite preimages;
 an inverse is Maybe-valued and derived when outputs are unique and reflexive.
 A fallback does not silently acquire an incomplete finite inverse. The current
 implementation checks primitive scalar and unqualified payload-free enum keys.
-Resolved compound keys, additional finite domains and explicitly partial
-mappings remain implementation gates. Preimages compare outputs using typed
+A partial lookup is explicitly Maybe-valued and supplies `otherwise Nothing`;
+the generated function remains total. Resolved compound keys and additional
+finite domains remain implementation gates. Preimages compare outputs using typed
 Eq; inverse derivation requires established output uniqueness.
 
 ```text
@@ -655,9 +661,12 @@ predicate arguments and membership arguments are strict and evaluated once;
 empty collections do not bypass their mandatory checks. Maps select keys,
 values or entries explicitly. Sized containers use their existing checked
 item-list operations. Literal element context does not reinterpret computed
-collections. Native adapter coverage, broader unqualified prelude resolution
-and validated project-wide migration remain required. A finite example does not prove a law
-over all sets. The review packet tracks all remaining gates.
+collections. Opaque dependency fields retain conservative provider discovery;
+unresolved or ambiguous names require qualification. Project migration writes
+require complete source, population, binding and target-generation
+correspondence, and do not establish native implementation conformance. A
+finite example does not prove a law over all sets. The review packet tracks all
+remaining gates.
 
 In `let name = value in body`, the first `in` outside a delimited
 subexpression ends the initializer. Write membership in a parenthesized

@@ -1,0 +1,12 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {
+    "layers": [
+      "property"
+    ]
+  },
+  "architecture": true,
+  "specs": [
+    "test/fixtures/canonical-existential-native-profiles.lawspec"
+  ]
+}

@@ -9,7 +9,7 @@ module LawSpecSchema
   , FieldPredicate, ValidationFailure(..), failureMessage
   , create, createWithContracts, createIndexed, createRefined, withWitnesses, witnessedSchema, witnessText, hasContracts, checkType, fieldType
   , fieldTypeAt, witnessKeys, witnessed, witnessChoices, witnessPool, witnessKey, parseWitness
-  , constructors, substitute
+  , constructors, substitute, nativeProfileTypes
   , validate, validateWith, validateChecked
   , allPayloads, allPayloadsWith
   , construct, constructWith, equal, equalWith, match, matchWith
@@ -116,8 +116,14 @@ substitute arguments (Named name children) =
   Named name (map (substitute arguments) children)
 
 constructors :: Schema -> TypeRef -> Either String (Maybe [Constructor])
-constructors schema@(Schema definitions _ _ _ refinements _) typeRef = do
+constructors schema typeRef = do
   checkType schema 0 typeRef
+  instantiateConstructors schema typeRef
+
+-- Private traversal of checked metadata may retain constructor-local witnesses.
+-- Value operations use constructors and still require a closed root type.
+instantiateConstructors :: Schema -> TypeRef -> Either String (Maybe [Constructor])
+instantiateConstructors (Schema definitions _ _ _ refinements _) typeRef =
   case typeRef of
     Named name arguments -> case
         find (\(Definition n _ _) -> n == name) definitions of
@@ -130,6 +136,22 @@ constructors schema@(Schema definitions _ _ _ refinements _) typeRef = do
          Constructor tag fields <- variants,
          Just extended <- [refine (lookup tag refinements) parameters arguments]])
     Parameter _ -> Left "unbound schema parameter"
+
+-- | Collect known native carriers without requiring a value's hidden witness.
+-- Inspect every compatible constructor, including known fields of a product
+-- containing an open witness. The public root must remain closed and valid.
+nativeProfileTypes :: Schema -> TypeRef -> Either String [String]
+nativeProfileTypes schema typeRef = do
+  checkType schema 0 typeRef
+  visit [] typeRef
+  where
+    visit seen (Parameter _) = pure seen
+    visit seen current@(Named name arguments) = do
+      previous <- foldM visit seen arguments
+      if name `elem` previous then pure previous else do
+        variants <- instantiateConstructors schema current
+        foldM visit (name : previous)
+          [ty | Constructor _ fields <- maybe [] id variants, Field _ ty <- fields]
 
 -- | Arguments extended with the existentials a constructor's refinements bind;
 -- Nothing when the refinements do not match.

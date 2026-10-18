@@ -18,9 +18,12 @@ import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Core.Types (makeRegistry)
 import LawSpec.Core.Definitions (prepareDefinitions)
+import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
+import LawSpec.Witness (witnessPlan)
+import LawSpec.Scalar (textScalar)
 import LawSpec.Core.Eval (evaluateValue,evaluateValueProposition)
 import LawSpec.CoreEmit (emitPlan,targets)
-import LawSpec.Testing (planTesting,plannedUnits,plannedProperties,plannedProperty)
+import LawSpec.Testing (planTesting,planDataDeclarations,plannedUnits,plannedUnit,plannedProperties,plannedProperty)
 import SourceRecordPayloadFixtures (payloadSource)
 import SourceRecordMetadataFixtures (metadataSource)
 
@@ -42,6 +45,40 @@ checkOutcomes bits candidate = do
     _ -> expectationFailure "structural nominal payload program did not admit"
 
 test_structuralNominalPayloads = describe "structural nominal payloads" $ do
+  it "constructs existential record payloads at concrete and rigid generic carriers" $
+    forM_ [32,64] $ \bits -> checked (compileCoreCanonical bits S.defaultGeneration [S.Source "existential.lawspec" (unlines
+      ["unit example.existentialStorage",
+       "type Shown is one of | Shown of type record{held :: a flag :: Bool} end type",
+       "function flagValue (flag :: Bool) -> Shown is Shown record{held = true, flag = flag} end function",
+       "function numberValue (value :: Int32) -> Shown is Shown record{held = value, flag = false} end function",
+       "function package (value :: a) -> Shown is Shown record{held = value, flag = true} end function"])]) $ \program -> do
+      checkOutcomes bits program
+      normalizeProgramRecords program `shouldBe` Right program
+  it "retains mandatory record restrictions while inferring an existential witness" $ do
+    let declarations="type Shown is one of | Shown of type record{held :: a flag :: (ready :: Bool where ready)} end type\n"
+        make argument="function create (flag :: "++argument++") -> Shown is Shown record{held = true, flag = flag} end function"
+    compile (declarations++make "Bool") `shouldSatisfy` isLeft
+    checked (compile (declarations++make "(ready :: Bool where ready)")) (checkOutcomes 64)
+  it "checks logical plans before witness lowering and rejects forged native witnesses" $ do
+    let source="type Shown is one of | Shown of type record{held :: a flag :: Bool} end type\n"++
+          "function create (flag :: (ready :: Bool where ready)) -> Shown is Shown record{held = true, flag = flag} end function"
+    checked (compile source) $ \program -> case planTesting program of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right plan -> do
+        let native=witnessPlan plan
+            units=map plannedUnit (plannedUnits native)
+            declarations=planDataDeclarations native
+            wrong expression=let value=C.mapChildren wrong expression in case C.expressionNode value of
+              C.Construct tag [payload,_] | tag==C.Id "example.payloads::type::Shown::Shown" ->
+                value{C.expressionNode=C.Construct tag [payload,C.Expr (C.scalarType "Text")
+                  (C.Constant (textScalar "Int32")) (C.expressionOrigin value)]}
+              _ -> value
+            forged=[unit{C.unitDefinitions=[definition{C.definitionBody=wrong (C.definitionBody definition)} |
+              definition<-C.unitDefinitions unit]} | unit<-units]
+        native `shouldNotBe` plan
+        checkedDefinitionContracts 64 declarations units `shouldSatisfy` isRight
+        checkedDefinitionContracts 64 declarations forged `shouldSatisfy` isLeft
+        forM_ targets $ \target -> emitPlan target native `shouldSatisfy` isLeft
   it "checks actual named-record and alternative payloads, generic extraction and literal tables" $
     forM_ [32,64] $ \bits -> checked
       (compileCoreCanonical bits S.defaultGeneration [S.Source "payloads.lawspec" payloadSource]) (checkOutcomes bits)

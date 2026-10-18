@@ -1,0 +1,6 @@
+@@ test/fixtures/canonical-existential-records.lawspec
+<<<<<<<
+held = true, flag = flag
+=======
+held = (7 :: Int32), flag = flag
+>>>>>>>

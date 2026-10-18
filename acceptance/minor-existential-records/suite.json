@@ -1,0 +1,13 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {
+    "layers": [
+      "property",
+      "examples",
+      "runtime"
+    ]
+  },
+  "specs": [
+    "test/fixtures/canonical-existential-records.lawspec"
+  ]
+}

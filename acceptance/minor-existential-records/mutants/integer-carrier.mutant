@@ -1,0 +1,6 @@
+@@ test/fixtures/canonical-existential-records.lawspec
+<<<<<<<
+held = value, flag = false
+=======
+held = true, flag = false
+>>>>>>>

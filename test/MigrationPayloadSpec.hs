@@ -15,6 +15,8 @@ options=["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
   "verification" .= object ["layers" .= ([]::[String])]]
 request before after=object (options++["method" .= ("migrationComparison"::String),"from" .= ("0.24"::String),
   "sources" .= source before,"migrated" .= object (options++["sources" .= source after])])
+requestAt bits before after=replace "machineBits" (toJSON bits)
+  (replace "migrated" (object (options++["sources" .= source after,"machineBits" .= bits])) (request before after))
 response value=either fail pure (eitherDecode (dispatch (encode value)) :: Either String Value)
 replace key value (Object fields)=Object (KM.insert key value fields)
 replace _ _ value=value
@@ -35,6 +37,54 @@ groupOld="type Variant is | Empty | Item last :: Bool first :: UInt8 end"
 groupNew="type Variant is one of | Empty | Item of type record{last :: Bool first :: UInt8} end type"
 
 test_migrationPayloads=describe "checked constructor payload shape correspondence" $ do
+  it "preserves grouped GADT equations and complete concrete eliminator bodies" $ do
+    let before="type Expr (a :: Type) is | Truth flag :: Bool other :: Int8 where a = Bool | Count number :: Int8 marked :: Bool where a = Int8 end\n"++
+          "definition read (input :: Expr Bool) :: Bool is match input with | Truth flag other -> flag end end"
+        after body="type Expr (a :: Type) is one of | Truth of type record{flag :: Bool other :: Int8} where a = Bool | Count of type record{number :: Int8 marked :: Bool} where a = Int8 end type\n"++
+          "function read (input :: Expr Bool) -> Bool is first matching case of input: when Truth record{flag = flag, other = other} then "++body++" end case end function"
+    mapM_ (\bits -> do
+      result<-response (requestAt bits before (after "flag"))
+      field "diagnostics" result `shouldBe` Just (Array mempty)
+      mapM_ (\key -> (comparison result >>= field key >>= field "status") `shouldBe` Just (String "matched"))
+        ["payloadShapes","executableTransport","definitionTemplates","lawTemplates","sourceUnits"]
+      mutant<-response (requestAt bits before (after "not flag"))
+      field "diagnostics" mutant `shouldBe` Just (Array mempty)
+      (comparison mutant >>= field "definitionTemplates" >>= field "status") `shouldBe` Just (String "not-established"))
+      ([32,64]::[Int])
+  it "retains existential constructor witnesses through concrete and unused generic record factories" $ do
+    let oldType="type Shown is Shown held :: a flag :: Bool end\n"
+        newType="type Shown is one of Shown of type record{held :: a flag :: Bool} end type\n"
+        variants=[("definition create (flag :: Bool) :: Shown is Shown true flag end",
+          "function create (flag :: Bool) -> Shown is Shown record{held = true, flag = flag} end function"),
+          ("definition create (value :: a) :: Shown is Shown value true end",
+          "function create (value :: a) -> Shown is Shown record{held = value, flag = true} end function")]
+    mapM_ (\bits -> mapM_ (\(before,after) -> do
+      result<-response (requestAt bits (oldType++before) (newType++after))
+      field "diagnostics" result `shouldBe` Just (Array mempty)
+      mapM_ (\key -> (comparison result >>= field key >>= field "status") `shouldBe` Just (String "matched"))
+        ["payloadShapes","executableTransport","definitionTemplates","lawTemplates","sourceUnits"]
+      (comparison result >>= field "executableTransport" >>= field "copyValidated") `shouldBe` Just (Bool True)) variants)
+      ([32,64]::[Int])
+  it "does not hide a changed existential factory value or witness type behind record grouping" $ do
+    let before="type Shown is Shown held :: a flag :: Bool end\n"++
+          "definition create (flag :: Bool) :: Shown is Shown true flag end"
+        after held="type Shown is one of Shown of type record{held :: a flag :: Bool} end type\n"++
+          "function create (flag :: Bool) -> Shown is Shown record{held = "++held++", flag = flag} end function"
+    mapM_ (\held -> do
+      result<-response (request before (after held))
+      field "diagnostics" result `shouldBe` Just (Array mempty)
+      (comparison result >>= field "definitionTemplates" >>= field "status") `shouldBe` Just (String "not-established"))
+      ["false","(7 :: Int32)"]
+  it "keeps unsupported generic GADT template admission separate from matching payload shapes" $ do
+    let before="type Expr (a :: Type) is | Truth flag :: Bool other :: Int8 where a = Bool | Count number :: Int8 marked :: Bool where a = Int8 end\n"++
+          "definition read (input :: Expr a) :: Bool is match input with | Truth flag other -> flag | Count number marked -> marked end end"
+        after="type Expr (a :: Type) is one of | Truth of type record{flag :: Bool other :: Int8} where a = Bool | Count of type record{number :: Int8 marked :: Bool} where a = Int8 end type\n"++
+          "function read (input :: Expr a) -> Bool is first matching case of input: when Truth record{flag = flag, other = other} then flag when Count record{number = number, marked = marked} then marked end case end function"
+    result<-response (request before after)
+    field "diagnostics" result `shouldBe` Just (Array mempty)
+    (shape result >>= field "status") `shouldBe` Just (String "matched")
+    (comparison result >>= field "definitionTemplates" >>= field "status") `shouldBe` Just (String "not-established")
+    (comparison result >>= field "validated") `shouldBe` Just (Bool False)
   it "reinfers local attempt types while comparing complete typed-failure laws" $ do
     let before="type Failure is | Declined message :: Text | Blocked end\n"++
           "definition charge (amount :: Int32) :: Int32 fails with Failure is if amount < 0 then raise (Declined \"negative\") else amount end\n"++

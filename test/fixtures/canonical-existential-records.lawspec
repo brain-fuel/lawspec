@@ -1,0 +1,35 @@
+unit example.gadt
+
+type Shown is one of
+  | Shown of type record{held :: a flag :: Bool}
+end type
+
+function flagValue (flag :: (ready :: Bool where ready)) -> Shown is
+  Shown record{held = true, flag = flag}
+end function
+
+function numberValue (value :: Int32) -> Shown is
+  Shown record{held = value, flag = false}
+end function
+
+function package (value :: a) -> Shown is
+  Shown record{held = value, flag = true}
+end function
+
+describe :: Shown -> Text
+
+law "|Boolean payload retains its hidden carrier| is
+  definition:
+    for all (flag :: (ready :: Bool where ready)) =>
+      describe (flagValue flag) must be "Bool"
+    end
+  end
+end
+
+law "|integer payload retains its hidden carrier| is
+  definition:
+    for all (value :: Int32) =>
+      describe (numberValue value) must be "Int32"
+    end
+  end
+end

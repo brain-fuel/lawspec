@@ -1,0 +1,19 @@
+unit example.gadt
+
+type Shown is one of
+  | Shown of type record{held :: a machine :: IntSize}
+end type
+
+function create (flag :: Bool) -> Shown is
+  Shown record{held = flag, machine = 0}
+end function
+
+describe :: Shown -> Text
+
+law "|known machine fields retain native architecture checks| is
+  definition:
+    for all (flag :: Bool) =>
+      describe (create flag) must be "Bool"
+    end
+  end
+end

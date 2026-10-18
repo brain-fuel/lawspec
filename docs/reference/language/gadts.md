@@ -79,6 +79,16 @@ A type variable in a constructor that is not a parameter is existential.
   read the witness natively. A field of such a constructor cannot itself be
   named `witness`.
 
+Checked definitions can construct these values with an explicit record payload,
+such as `Shown record{held = value, flag = true}` for
+`Shown of type record{held :: a flag :: Bool}`. The actual `held` type fixes the
+hidden carrier; it is not chosen from a sample during definition checking.
+Field restrictions and nominal boundaries still apply. The
+[existential-record fixture](../../../test/fixtures/canonical-existential-records.lawspec)
+checks Boolean and Int32 factories and an unused generic factory; its native
+suite reads the resulting witnesses on all 17 targets. This construction
+support does not enable pure source matching of field-only existentials.
+
 ## Native types
 
 | Target | `Expr` | Field-only existential |

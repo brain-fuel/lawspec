@@ -16,7 +16,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Core.Migration (Context(..),Project(..),transformProgram,transformProgramWithTypes,migrationSnapshot)
 import LawSpec.Core.RecordIdentity (constructRecord,validateRecordDeclaration)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords)
-import LawSpec.Core.Types (makeRegistry,constructorFieldsFor,registryDeclarations)
+import LawSpec.Core.Types (makeRegistry,constructorFieldsFor,constructorBindingsAt,substitute,registryDeclarations)
 import LawSpec.Core.Validate (validateProgramWithScopes)
 import LawSpec.Core.CapabilityScope (CapabilityScopes)
 import LawSpec.Digest (digest,digestHex)
@@ -106,9 +106,9 @@ transportProgramWithScopes scopes plan original = do
         C.Helper C.Concurrently arguments | any (observes grouped . C.expressionType) arguments ->
           Left "concurrent payload construction needs an explicit scheduling-preserving transport"
         _->pure expression
-      at ty tag = do
+      at ty tag bound = do
         payload<-case constructorFieldsFor registry ty tag of
-          Right [field]->pure (C.binderType field)
+          Right [field]->pure (substitute bound (C.binderType field))
           _->Left "transport requires one checked destination payload"
         (identity,arguments)<-case payload of
           C.Constructor name args | length args==length [() | C.TypeArgument _<-args] ->
@@ -132,7 +132,8 @@ transportProgramWithScopes scopes plan original = do
       rewrite expression = case C.expressionNode expression of
         C.Construct tag arguments | Just (old,_)<-M.lookup tag constructors -> do
           unless (length arguments==length (C.constructorFields old)) (Left "transport source constructor arity is invalid")
-          (_,record,types,_,_)<-at (C.expressionType expression) tag
+          bound<-constructorBindingsAt oldRegistry (C.expressionType expression) tag (map C.expressionType arguments)
+          (_,record,types,_,_)<-at (C.expressionType expression) tag bound
           payload<-constructRecord (fresh expression "fields") record types
             (zip (map C.binderName (C.constructorFields old)) arguments) marker
           pure (make (C.expressionType expression) (C.Construct tag [payload]))
@@ -141,7 +142,9 @@ transportProgramWithScopes scopes plan original = do
             Nothing->pure branch
             Just (old,_) -> do
               unless (length (C.caseBinders branch)==length (C.constructorFields old)) (Left "transport source pattern arity is invalid")
-              (ty,_,_,tag,fields)<-at (C.expressionType selected) (C.caseConstructor branch)
+              bound<-constructorBindingsAt oldRegistry (C.expressionType selected) (C.caseConstructor branch)
+                (map C.binderType (C.caseBinders branch))
+              (ty,_,_,tag,fields)<-at (C.expressionType selected) (C.caseConstructor branch) bound
               let binder=C.Binder (fresh expression ("payload-"++show index)) "payload" ty
                   stored=zip (map C.binderName (C.constructorFields old)) (C.caseBinders branch)
               ordered<-mapM (\field -> maybe (Left "transport pattern field is missing") Right (lookup (C.binderName field) stored)) fields
@@ -157,12 +160,12 @@ transportProgramWithScopes scopes plan original = do
             | (index,branch)<-zip [0::Int ..] cases]
           pure expression{C.expressionNode=C.Match selected branches,C.expressionOrigin=marker}
         C.Project tag index selected | Just (old,_)<-M.lookup tag constructors -> do
-          (ty,_,_,recordTag,fields)<-at (C.expressionType selected) tag
+          (ty,_,_,recordTag,fields)<-at (C.expressionType selected) tag M.empty
           target<-destination old index fields
           let payload=make ty (C.Project tag 0 selected)
           pure (make (C.expressionType expression) (C.Project recordTag target payload))
         C.Update tag index selected replacement | Just (old,_)<-M.lookup tag constructors -> do
-          (ty,_,_,recordTag,fields)<-at (C.expressionType selected) tag
+          (ty,_,_,recordTag,fields)<-at (C.expressionType selected) tag M.empty
           target<-destination old index fields
           -- Update evaluates replacement before selected. Keeping it as the
           -- record Update's replacement preserves both order and once-only

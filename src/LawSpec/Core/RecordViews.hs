@@ -5,12 +5,13 @@
 -- ref:DEC-typed-core-boundary ref:DEC-total-definitions
 module LawSpec.Core.RecordViews (structuralViews,structuralViewsWith,adaptStructuralWith) where
 
-import Control.Monad (unless,zipWithM)
+import Control.Monad (unless,zipWithM,zipWithM_,foldM)
 import Control.Monad.State.Strict
 import Control.Monad.Except
 import qualified Data.Map.Strict as M
 import LawSpec.Core
 import qualified LawSpec.Core.Types as Types
+import qualified LawSpec.Core.RecordInstances as Instances
 import LawSpec.Digest (digestHex,digestString)
 
 type Scope = M.Map Id Type
@@ -43,7 +44,31 @@ runViews canonical declarations convert outer wanted source =
     equal a b=do
       a'<-lift (lift (canonical a));b'<-lift (lift (canonical b))
       unless (a'==b') (throwError "structural representation types differ")
-    fields ty tag actual=liftEither (registry >>= \known->Types.constructorFieldsAt known ty tag actual)
+    fields ty tag actual=do
+      known<-liftEither registry
+      case Types.constructorFieldsAt known ty tag actual of
+        Right made->pure made
+        Left reason->do
+          -- A free existential is inferred from the actual payload, not from
+          -- its parent type. Canonical records may have changed product IDs.
+          -- Candidate matching opens only structural products; complete type
+          -- normalization below must still establish the same descriptor.
+          original<-liftEither (Types.constructorFieldsFor known ty tag)
+          declaration<-case ty of
+            Constructor name _->liftEither (Types.lookupData known (Id name))
+            _->throwError reason
+          constructor<-maybe (throwError reason) pure
+            (lookup tag [(constructorId c,c) | c<-dataConstructors declaration])
+          let flexible=Types.freeExistentials declaration constructor
+          unless (not (null flexible) && length original==length actual) (throwError reason)
+          bound<-maybe (throwError reason) pure (foldM (\current (field,value)->
+            Instances.matchParameters known flexible current (binderType field) value)
+            M.empty (zip original actual))
+          made<-liftEither (Types.constructorFieldsAt known ty tag
+            [Types.substitute bound (binderType field) | field<-original])
+          zipWithM_ (\field value->equal (binderType field) value) made actual
+          pure made
+    projectedFields ty tag=liftEither (registry >>= \known->Types.constructorFieldsFor known ty tag)
     adapt wanted value
       | wanted==expressionType value=pure value
       | otherwise=do
@@ -154,13 +179,13 @@ runViews canonical declarations convert outer wanted source =
         pure original{expressionNode=Construct tag made}
       Project tag index subject -> do
         value<-go scope subject
-        expected<-fields (expressionType value) tag []
+        expected<-projectedFields (expressionType value) tag
         case drop index expected of
           field:_->adapt (expressionType original) original{expressionType=binderType field,expressionNode=Project tag index value}
           []->throwError "structural projection field is out of range"
       Update tag index subject replacement -> do
         value<-go scope subject;field<-go scope replacement
-        expected<-fields (expressionType value) tag []
+        expected<-projectedFields (expressionType value) tag
         case drop index expected of
           chosen:_->do
             made<-adapt (binderType chosen) field

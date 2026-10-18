@@ -15,6 +15,7 @@ import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
 import LawSpec.Witness (witnessPlan)
+import LawSpec.Core.DefinitionContracts (validateEmissionDefinitions)
 import LawSpec.Collections (isCollectionsType)
 import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
 import qualified LawSpec.BeamEmit as Beam
@@ -89,9 +90,22 @@ emitPlan = emitPlanWithFormat False
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target plan = do
+  checkDefinitionPlan plan
+  emitMaterializedPlanWithFormat minify target plan
+
+-- Internal representation plans have already passed logical admission. Witness
+-- lowering is idempotent; native definition emitters check its logical view.
+emitMaterializedPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+emitMaterializedPlanWithFormat minify target plan = do
   checkExecutionPlan plan
   mapM_ (checkNames target . plannedUnit) (plannedUnits plan)
   emitPlanWithFormatUnchecked minify target plan
+
+-- Logical validation precedes witness materialization for every public emitter.
+-- The native definition generators recheck the corresponding logical view.
+checkDefinitionPlan :: Plan -> Either [Diagnostic] ()
+checkDefinitionPlan plan=either (Left . pure . (\message -> Diagnostic "total" message Nothing)) Right
+  (validateEmissionDefinitions (planMachineBits plan) (planDataDeclarations plan) (map plannedUnit (plannedUnits plan)))
 
 -- Every public emitter receives an execution plan, never an unplanned search.
 -- Refuse malformed manually constructed plans before any target renderer runs.
@@ -115,10 +129,10 @@ emitPlanWithFormatUnchecked minify target given | target `elem` DotNet.dotnetTar
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
 -- Groovy runs over the Java target's files (DEC-groovy-over-java).
 emitPlanWithFormatUnchecked minify "groovy" given =
-  Groovy.groovyFromJava given =<< emitPlanWithFormat minify "java" (escapePlan "groovy" given)
+  Groovy.groovyFromJava given =<< emitMaterializedPlanWithFormat minify "java" (escapePlan "groovy" given)
 -- Clojure runs over them too (DEC-clojure-over-java).
 emitPlanWithFormatUnchecked minify "clojure" given =
-  Clojure.clojureFromJava Clojure.noClojureBindings given =<< emitPlanWithFormat minify "java" (escapePlan "clojure" given)
+  Clojure.clojureFromJava Clojure.noClojureBindings given =<< emitMaterializedPlanWithFormat minify "java" (escapePlan "clojure" given)
 emitPlanWithFormatUnchecked minify "swift" given = Swift.emitSwift minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
 emitPlanWithFormatUnchecked minify target given = do
@@ -566,6 +580,7 @@ emitPlanWithOptions minify target sourceDir testDir plan =
 -- ref:DEC-idiomatic-generated-types
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
+  checkDefinitionPlan original
   checkExecutionPlan original
   let rename declaration = case lookup (C.declarationId declaration) (NB.bindingNames bindings) of
         Just name -> declaration { C.declarationName = name }
@@ -611,7 +626,7 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     (Left [Diagnostic "native-binding" "goImports is only valid for Go bindings" Nothing])
   unless (target == "erlang" || null (NB.bindingErlangIncludes bindings))
     (Left [Diagnostic "native-binding" "erlangIncludes is only valid for Erlang bindings" Nothing])
-  emitted <- if not (NB.hasBindings bindings) then emitPlanWithFormat minify target plan
+  emitted <- if not (NB.hasBindings bindings) then emitMaterializedPlanWithFormat minify target plan
     else if target `elem` ["erlang","elixir","gleam"] then
       Beam.emitBeamWithBindings target minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     else if target `elem` DotNet.dotnetTargets then
@@ -622,31 +637,31 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindings minify bindings plan
       <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan))))
     else if target == "python" then do
-      ordinary <- emitPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (PythonNativeBinding.emitBindings minify bindings plan ordinary)
     else if target `elem` ["javascript","typescript"] then do
-      ordinary <- emitPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (WebNativeBinding.emitBindings (target == "typescript") minify bindings plan ordinary)
     else if target == "java" then do
-      ordinary <- emitPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (JavaNativeBinding.emitBindings minify bindings plan ordinary)
     else if target == "kotlin" then do
-      ordinary <- emitPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (KotlinNativeBinding.emitBindings minify bindings plan ordinary)
     else if target == "scala" then do
-      ordinary <- emitPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (ScalaNativeBinding.emitBindings minify bindings plan ordinary)
     else if target == "haskell" then do
-      ordinary <- emitPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (HaskellNativeBinding.emitBindings minify bindings plan ordinary)
     else if target == "go" then do
-      ordinary <- emitPlanWithFormat minify target plan
+      ordinary <- emitMaterializedPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (GoNativeBinding.emitBindings minify bindings plan ordinary)
     else Left [Diagnostic "native-binding" ("native binding emission is not implemented for " ++ target) Nothing]
@@ -659,31 +674,31 @@ emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = 
     else if NB.hasBindings bindings && minify && target == "rust"
     then emitRustWithBindings False bindings plan
     else if NB.hasBindings bindings && minify && target == "python" then do
-      ordinary <- emitPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (PythonNativeBinding.emitBindings False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target `elem` ["javascript","typescript"] then do
-      ordinary <- emitPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (WebNativeBinding.emitBindings (target == "typescript") False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target == "java" then do
-      ordinary <- emitPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (JavaNativeBinding.emitBindings False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target == "kotlin" then do
-      ordinary <- emitPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (KotlinNativeBinding.emitBindings False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target == "scala" then do
-      ordinary <- emitPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (ScalaNativeBinding.emitBindings False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target == "haskell" then do
-      ordinary <- emitPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (HaskellNativeBinding.emitBindings False bindings plan ordinary)
     else if NB.hasBindings bindings && minify && target == "go" then do
-      ordinary <- emitPlanWithFormat False target plan
+      ordinary <- emitMaterializedPlanWithFormat False target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (GoNativeBinding.emitBindings False bindings plan ordinary)
     else pure emitted

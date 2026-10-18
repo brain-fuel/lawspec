@@ -276,6 +276,12 @@ func lsSubstitute(t lawSpecTypeRef, arguments []lawSpecTypeRef) lawSpecTypeRef {
 
 func (s *lawSpecSchema) constructors(t lawSpecTypeRef) ([]lawSpecConstructorSchema, bool) {
 	s.check(t, 0)
+	return s.instantiateConstructors(t)
+}
+
+// Internal field traversal can retain constructor-local witness parameters.
+// Public value operations still require a closed type through constructors.
+func (s *lawSpecSchema) instantiateConstructors(t lawSpecTypeRef) ([]lawSpecConstructorSchema, bool) {
 	definition, exists := s.definitions[t.name]
 	if !exists {
 		return nil, false
@@ -998,6 +1004,7 @@ func lsSchemaEqual(a, b LawSpecValue) bool {
 
 // Check the complete native binding, including fields in unselected variants.
 func (s *lawSpecSchema) checkNativeProfile(t lawSpecTypeRef, bits int) {
+	s.check(t, 0)
 	visited := map[string]bool{}
 	var check func(lawSpecTypeRef)
 	check = func(current lawSpecTypeRef) {
@@ -1014,7 +1021,9 @@ func (s *lawSpecSchema) checkNativeProfile(t lawSpecTypeRef, bits int) {
 			return
 		}
 		visited[current.name] = true
-		constructors, _ := s.constructors(current)
+		// A record containing a witnessed existential is open until a value
+		// supplies that witness. Its known fields still need profile checks.
+		constructors, _ := s.instantiateConstructors(current)
 		for _, constructor := range constructors {
 			for _, field := range constructor.fields {
 				check(field.typeRef)
