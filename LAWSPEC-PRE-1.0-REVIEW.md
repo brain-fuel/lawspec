@@ -109,8 +109,13 @@ Evidence is under `.artifacts/typed-mappings/`, including
 `native-acceptance-receipts.json`, `chapter6-oracle-receipts.json`,
 `parity/receipts.json`, `parity/audited-deltas.json` and
 `quickstart-receipt.json`. Earlier failed and superseded exploratory runs remain
-separate. The complete catalog export reads a frozen package snapshot and is
-still running. The remaining migration/coverage audit and final iteration
+separate. The complete catalog export passes its frozen typed-mapping package
+snapshot: all bundled exports, independent generated-file comparisons, adapter
+preservation, edited-test protection and path checks pass in 5,673,649.2 ms.
+That snapshot predates the package README and changelog additions; its 263 code
+and product files match the final typed-mapping package exactly. This is the
+`ba9ceeb1` compiler/package receipt, separate from later compiler increments.
+The remaining migration/coverage audit and final iteration
 release gate remain open. Readability stays deferred, all-named endings belong
 to the following minor, and this checkpoint authorizes no RC designation or tag.
 
@@ -158,8 +163,14 @@ All **eight focused complete native/WASM responses** agree for reordered
 single-index and two-index bodies and changed-equation rejection at both widths.
 The new WASM artifact is 72,749,372 bytes, SHA-256
 `46fe8c746f8466d16ca27aa64992e44113df55220cd9cb009bb489a0cacba3be`.
-The full preceding-response replay is still running; its completion and the
-final iteration checks are not claimed here. Evidence is under
+The completed full replay passes **1,081 complete native/WASM responses**.
+All **999 preceding responses are identical**, with no fields or fingerprints
+removed. The 82 additional responses cover both-width body-equivalence and
+changed-equation cases plus complete project-report compiler requests across all
+17 targets. Both project reports match executable, definition-template and
+law-template bodies, accept every configured emission, and retain the independent
+uniform-population write blocker. Independent receipt-hash and full-response
+auditing passes. Final iteration checks are not claimed here. Evidence is under
 `.artifacts/migration-acceptance/` in its isolated worktree. Initial test-harness
 and API-layout failures, corrected runs and exploratory proof attempts remain
 recorded separately.
@@ -186,8 +197,9 @@ models and supervision as unfinished: `planTestingWith` still rejects these
 units when the model layer is unselected. Reporting that unsupported case
 honestly does not establish the contract's independent layer selection.
 
-The preceding typed-mapping catalog export continues on its frozen package
-snapshot. Readability remains deferred, all named endings belong to the following
+The preceding typed-mapping catalog export has passed on its frozen package
+snapshot, as recorded above; that is not a catalog run on this later compiler.
+Readability remains deferred, all named endings belong to the following
 minor, and no RC designation or tag is implied. The completion checklist remains
 open.
 
