@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { benchmarkInvocations, preparationInvocations, invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests,
+import { benchmarkInvocations, configurationInvocations, preparationInvocations, invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests,
   environmentDigest, projectDigest, testsToRun, executedTests } from "../test-command.mjs";
 
 // A manifest entry, named as each target names a law's tests (LawSpec.TestNames).
@@ -266,7 +266,8 @@ test('Node structured reports preserve phrase names and literal XML entities wit
     const xmlFile=path.join(scratch,'projected.xml');
     await writeFile(xmlFile,junitFromTests(tests));
     const xml=await executedTests({kind:'junit',files:[xmlFile]},'',scratch,0);
-    assert.deepEqual(xml.map(test=>test.name),[labels[0],labels[1],labels[4]]);
+    assert.deepEqual(xml.map(test=>test.name),labels);
+    assert.deepEqual(xml.map(test=>test.status),['passed','passed','skipped','skipped','failed']);
     const rows=(await readFile(run.report.file,'utf8')).trim().split('\n').map(line=>JSON.parse(line));
     for(const invalid of [rows.slice(0,-1),rows.slice(1),rows.map(row=>({...row,run:'old'})),
       rows.map(row=>({...row,version:2})),[rows[0],{...rows[1],time:-1},rows.at(-1)],
@@ -542,4 +543,39 @@ test('Hspec model completions retain their complete names and discovered module 
     {name:'supervision',classname:'Example.ActorsModel',status:'passed'},
     {name:'model other',classname:'Example.ActorsModel',status:'failed'},
   ]);
+});
+
+test('completion matching identifies failed native checks without counting them as passed',()=>{
+  for(const language of ['javascript','typescript','erlang','elixir','gleam']){
+    const entry={...law(0,'test/example.lawspec.test.mjs','example::model account'),
+      unit:'example',law:'example::model::account::sequential',name:'model_account__sequential',kind:'model'};
+    if(['javascript','typescript'].includes(language))entry.label='example::model account';
+    const run=invocations({language},[entry]).find(run=>run.laws?.length);
+    const completion={name:entry.label,identity:`${entry.unit}::${entry.name}`,status:'failed'};
+    assert.deepEqual(run.matches(completion),[entry],language);
+    assert.deepEqual(run.ran(completion),[],language);
+  }
+});
+
+test('JUnit completions retain failures and reject stale explicit reports and fake CDATA cases',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-native-junit-'));
+  try{
+    const file=path.join(root,'report.xml');
+    await writeFile(file,`<testsuite><testcase name='pass' classname='bank'/>
+      <testcase name="bad" classname="bank"><failure message="wrong &lt;value&gt;"><![CDATA[actual 1; expected 2 <testcase name="fake"/>]]></failure></testcase>
+      <testcase name="error"><error message="setup"/></testcase><testcase name="skip"><skipped message="disabled"/></testcase></testsuite>`);
+    const rows=await executedTests({kind:'junit',files:[file]},'',root,0);
+    assert.deepEqual(rows.map(row=>row.name),['pass','bad','error','skip']);
+    assert.deepEqual(rows.map(row=>row.status),['passed','failed','failed','skipped']);
+    assert.match(rows[1].failure,/wrong <value>/);assert.match(rows[1].failure,/actual 1; expected 2/);
+    const {utimes}=await import('node:fs/promises');await utimes(file,new Date(0),new Date(0));
+    assert.deepEqual(await executedTests({kind:'junit',files:[file]},'',root,Date.now()),[]);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+
+test('Haskell prepares Stack-owned build metadata before hashing an execution',()=>{
+  assert.deepEqual(configurationInvocations({language:'haskell'}),[
+    {command:'stack',args:['--no-terminal','config','build-files']}]);
+  assert.deepEqual(configurationInvocations({language:'javascript'}),[]);
 });

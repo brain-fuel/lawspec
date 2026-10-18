@@ -81,7 +81,9 @@ planTestingWith :: V.Verification -> Program -> Either [Diagnostic] Plan
 planTestingWith config program = do
   let executable = any (V.selected config) [V.Exhaustive,V.Property,V.Examples]
       selectedProgram = program { programUnits =
-        [ u { unitProperties = if executable then unitProperties u else [] }
+        [ u { unitProperties = if not executable then []
+              else if any (V.selected config) [V.Exhaustive,V.Property] then unitProperties u
+              else filter (not . null . propertyExamples) (unitProperties u) }
         | u <- programUnits program ] }
   plan <- planTesting selectedProgram
   when (V.selected config V.Exhaustive && not (V.selected config V.Property) &&

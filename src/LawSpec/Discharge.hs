@@ -112,7 +112,7 @@ dischargeSelected selection program = do
           Nothing -> pure (obligation status (reason ++ maybe "" (const "; its harness skips its tests") (harnessSkip harness)))
     let enabled layer = maybe True (`V.selected` layer) selection
         pending status reason = pure (tested (if selection == Nothing then status else Planned) reason)
-    if not (any enabled [V.Proof,V.Exhaustive,V.Property,V.Examples,V.Runtime,V.Model,V.Analysis])
+    if not (any enabled [V.Proof,V.Exhaustive,V.Property,V.Examples,V.Runtime,V.Analysis])
       then pure (obligation NotVerified "no law verification layers selected; intrinsic definition checks still apply")
       else case plan p of
         Left message -> pure (tested (if selection == Nothing then Assumed else
@@ -146,6 +146,9 @@ dischargeSelected selection program = do
               ("the generated tests check " ++ count (cases settings) "generated case" ++ ", " ++
                count (length (boundaryCases planned)) "boundary case" ++ " and " ++
                count (length (propertyExamples p)) "example" ++ relying adapters)
+          | enabled V.Examples, null (propertyExamples p),
+            not (any enabled [V.Proof,V.Exhaustive,V.Property,V.Runtime,V.Analysis]) ->
+              pure (obligation NotVerified "no authored examples are selected for this law; no law checks ran")
           | enabled V.Examples -> pending PropertyTested
               ("the generated tests will check " ++ count (length (propertyExamples p)) "example" ++ relying adapters)
           | otherwise -> pure (obligation Incomplete "the selected analyses have not established this law; no completed proof or exhaustive result")

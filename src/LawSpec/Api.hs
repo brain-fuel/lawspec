@@ -14,7 +14,7 @@ import LawSpec.SourceText (formatSource)
 import LawSpec.SourceSyntax (SourceSyntax)
 import LawSpec.Compile
 import LawSpec.Frontend (elaborate, elaborateCanonical,sourcePropertyId)
-import LawSpec.Testing (Plan(..), PlannedUnit(..), planTesting, planTestingWith)
+import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTesting, planTestingWith)
 import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core.Smt as Smt
 import qualified LawSpec.Core as C
@@ -66,7 +66,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
               withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core))
         in if baselineGenerationRequested then either failure
              (withBaselineGeneration . withBenchmarks (benchmarkManifest target testDir core) .
-              withTests (testManifest target testDir (plannedCore core legacyPlan)) . result)
+              withTests core Nothing legacyPlan (testManifest target testDir (plannedCore core legacyPlan)) . result)
              ((++ networkArtifacts native) <$> (legacyPlan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
            else result []
    else
@@ -111,7 +111,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
               Left ds -> failure ds
               Right _ -> withSources (map formatSource sources) (result [])
           "format" -> failure [Diagnostic "language-profile" "format requires API schema 5 and languageProfile 1.0-rc.1" Nothing]
-          "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests (verificationKeys verification
+          "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests core verification plan (verificationKeys verification
               (testManifestWithModelChecks (maybe True (`V.selected` V.Model) verification) target testDir (plannedCore core plan))) . result)
             ((++ networkArtifacts native) <$> (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
@@ -318,8 +318,8 @@ withAttestation (Just attestation) core obligations (Object o) = Object
 withAttestation _ _ _ value = value
 
 -- | Which generated tests check each law, for running a subset of them.
-withTests :: [TestEntry] -> Value -> Value
-withTests entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entries)) o)
+withTests :: C.Program -> Maybe V.Verification -> Either [Diagnostic] Plan -> [TestEntry] -> Value -> Value
+withTests original verification testing entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entries)) o)
   where
     entry e = object $
       [ "law" .= C.idText (entryLaw e), "unit" .= entryUnit e, "label" .= entryLabel e
@@ -327,8 +327,31 @@ withTests entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entr
       , "callsAdapters" .= entryCallsAdapters e, "name" .= entryName e, "tags" .= entryTags e
       , "skip" .= entrySkip e, "knownFailing" .= entryKnownFailing e
       , "parallel" .= entryParallel e ] ++
-      ["kind" .= kind | Just kind<-[entryKind e]] ++ ["scope" .= scope | Just scope<-[entryScope e]]
-withTests _ value = value
+      ["coverage" .= coverage e] ++
+      ["kind" .= kind | Just kind<-[entryKind e]] ++ ["scope" .= scope | Just scope<-[entryScope e]] ++
+      ["obligations" .= [object ["declaration" .= C.idText identity,"stage" .= stage] |
+        (identity,stage)<-entryObligations e] | not (null (entryObligations e))]
+    coverage entry
+      | not (null (entryObligations entry)) = object ["kind" .= ("sampled"::String),"scopedQuantifiers" .= False]
+      | Right plan <- testing,
+        p:_ <- [p | u<-plannedUnits plan,p<-plannedProperties u,
+          C.propertyId (plannedProperty p)==entryLaw entry] =
+          let examplesOnly=maybe False (\config -> V.selected config V.Examples &&
+                not (any (V.selected config) [V.Exhaustive,V.Property])) verification
+              kind | examplesOnly="examples"
+                   | Just _ <- finiteCases p="finite-inputs"
+                   | otherwise="sampled"
+              count | examplesOnly=Just (length (C.propertyExamples (plannedProperty p)))
+                    | otherwise=length <$> finiteCases p
+          in object (["kind" .= (kind::String),
+                "scopedQuantifiers" .= scoped entry] ++
+              ["cases" .= n | Just n<-[count]])
+      | otherwise=object ["kind" .= ("sampled"::String),"scopedQuantifiers" .= True]
+    scoped entry=case [C.hasLogicalQuantifier (C.propertyBody property) |
+      unit<-C.programUnits original,property<-C.unitProperties unit,C.propertyId property==entryLaw entry] of
+        value:_ -> value
+        [] -> True
+withTests _ _ _ _ value = value
 
 -- The harness's benchmarks and the tests that measure them.
 withBenchmarks :: [BenchmarkEntry] -> Value -> Value

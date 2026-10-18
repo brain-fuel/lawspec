@@ -1,10 +1,11 @@
 -- | Stateful evidence identities shared by BEAM emission and CLI selection.
 -- Each native completion covers one sequential model, parallel model,
 -- scenario, or supervision check. ref:DEC-never-pass-vacuously
-module LawSpec.BeamModelChecks (Check(..), Action(..), checks, machineNames) where
+module LawSpec.BeamModelChecks (Check(..), Action(..), checks, machineNames, checkObligations) where
 
 import qualified LawSpec.Core as C
-import LawSpec.Core.Machine (Machine(..))
+import qualified LawSpec.Core.Evidence as E
+import LawSpec.Core.Machine (Machine(..), Command(..))
 import qualified LawSpec.Core.Program as P
 import LawSpec.TestNames (unitTestNames)
 
@@ -44,3 +45,18 @@ checks unit = concatMap model (zip (machineNames unit) (C.unitMachines unit)) ++
          [Check (C.Id (identity ++ "::scenario::" ++ escape (P.programTitle program))) entry
            (label ++ "::scenario " ++ P.programTitle program) (Scenario name machine program)
            | (entry, program) <- zip scenarioNames (machineScenarios machine)]
+
+-- | Link native execution to the existing typed obligations. Compiled session
+-- safety facts are not established by a sampled native history run.
+checkObligations :: C.Unit -> Check -> [E.Obligation]
+checkObligations unit check = case checkAction check of
+  Sequential _ machine -> filter (\item -> E.obligationStage item == "model" ||
+    (E.obligationStage item == "restart" && any commandRestart (machineCommands machine))) (evidence machine)
+  Parallel _ machine -> filter (\item -> E.obligationStatus item == E.PropertyTested &&
+    E.obligationStage item `notElem` ["model","restart","scenario"]) (evidence machine)
+  Scenario _ machine program -> filter (\item -> E.obligationStage item == "scenario" &&
+    E.obligationDeclaration item == C.Id (C.idText owner ++ "::model::" ++ machineName machine ++
+      "::scenario::" ++ P.programTitle program)) (evidence machine)
+  Supervision -> map (E.supervisorEvidence owner) (C.unitSupervisors unit)
+  where owner=C.unitId unit
+        evidence=E.machineEvidence owner

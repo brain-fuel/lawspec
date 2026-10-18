@@ -62,7 +62,7 @@ export function explainLaw(law, result, view = 'developer') {
     ...references.map(reference => `Reference: ${referenceText(reference)}`)].filter(Boolean);
   let text;
   if (view === 'evidence') text = evidence.length
-    ? evidence.map(e => `${e.status.toUpperCase()}: ${e.reason}`).join('\n')
+    ? evidence.map(e => `${e.status.toUpperCase()}: ${e.reason}`+(e.nativeEvidence?'\n'+nativeEvidenceText(e):'')).join('\n')
     : 'No completed evidence has been supplied for this law.';
   else if (view === 'business') text = [...documentary, law.description,
     quantifiers.length ? `For every ${quantifiers.join(' and ')}` : '',
@@ -82,6 +82,7 @@ export function explainLaw(law, result, view = 'developer') {
         ...example.bindings.map(binding => `  ${binding.name} = ${valueText(binding.value, locals)}`),
         ...example.expectations.map(expectation => `  expect ${proposition(expectation, false, locals)}`)];
     })].join('\n');
+  if(view==='developer')for(const item of evidence)if(item.nativeEvidence)text+='\n'+nativeEvidenceText(item);
   if (view === 'evidence' && strategies.length) text += '\n' + strategies.join('\n');
   return { view, law: law.id, metadata, references, witnesses, searches, examples, inputs: law.inputs, assertion: law.assertion, evidence, text };
 }
@@ -96,4 +97,16 @@ function referenceText(reference) {
   const name = raw.startsWith('"|') || /^\p{L}[\p{L}\p{N}_]*$/u.test(raw)
     ? raw : `"|${raw.replace(/[\\|]/g, '\\$&')}|`;
   return `ref ${reference.kind} ${reference.target.unit}.${name}${section}`;
+}
+
+export function nativeEvidenceText(item){
+  if(!item.nativeEvidence)return '';
+  const summary=item.nativeEvidence;
+  return [`Native conformance: ${summary.status}; search completeness: ${summary.searchCompleteness}`,
+    ...summary.observations.map(row=>`${row.target} (${row.root}): ${row.outcome}; ${row.freshness}`+
+      (row.attempt?`; seed ${row.attempt.seed}; ${row.attempt.at}`:'')+`; ${row.reason}`),
+    ...summary.observations.flatMap(row=>(row.attempt?.tests??[]).filter(test=>test.status==='failed')
+      .map(test=>`${test.name}: ${test.reason??test.failure??test.message??'native test failed'}`)),
+    ...summary.observations.filter(row=>row.attempt?.invocation.output)
+      .map(row=>'Native invocation output (scoped to that invocation):\n'+row.attempt.invocation.output)].join('\n');
 }

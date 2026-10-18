@@ -330,3 +330,11 @@ export function nativeModelSlots(result: Result): string[] {
   return (result.tests ?? []).filter(entry => entry.kind === 'model')
     .map(entry => `${entry.file}:${entry.scope ?? entry.unit}:${entry.name}`);
 }
+
+export function nativeObservationScopes(result: Result): string[] {
+  return (result.evidence ?? []).flatMap(item => (item.nativeEvidence?.observations ?? []).map(row => {
+    const seed: number | string | undefined = row.attempt?.seed;
+    const finiteCases: number | undefined = row.coverage?.cases;
+    return `${item.declaration}:${row.target}:${row.freshness}:${row.outcome}:${seed}:${finiteCases}`;
+  }));
+}

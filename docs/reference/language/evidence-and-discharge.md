@@ -44,6 +44,47 @@ completed execution's `against`. `lawspec evidence` can show the timestamp,
 seed and environment of a historical passing native run while retaining the
 current plan's status; this is not evidence that the current sources passed.
 
+## Recorded native conformance
+
+The CLI attaches `nativeEvidence` to the same obligation in all explanation
+views. `kind` is `native-conformance`; `status` distinguishes `passed`, `failed`,
+`partial`, `incomplete`, `skipped`, `known-failing`, `stale`, `unavailable` and
+`not-selected`. Each observation records its target/project scope, freshness,
+coverage and actual attempt. Seeds outside JavaScript's safe integer range
+remain exact decimal strings for replay. A native framework may impose its own
+seed limits.
+
+Current completion requires matching compiler, source, selection, binding,
+attested wiring, recording, native project and toolchain fingerprints. Tests
+must actually appear in the current runner report; exit status zero alone is
+insufficient. Pending attempts invalidate older cached successes before native
+execution. Skipped tests and expected failures do not verify a requirement.
+JUnit failures retain their payloads; stale reports and testcase-like text
+inside comments or CDATA cannot count as fresh completions.
+
+`searchCompleteness` is `not-established` for sampled native execution. It can
+be `complete-finite-inputs` only when every requested scope completed its full
+finite input plan and there is no additional scoped quantifier search. A
+passing model history sample does not prove universal model correctness.
+Session deadlock and race-freedom facts retain their independent compiler
+evidence. Restart conformance requires a declared restart command.
+
+Only `planned` obligations acquire a completed native status. Existing formal
+proofs, mandatory definition checks, unsupported analyses and unselected laws
+retain their classifications. A singleton failing method reports failed native
+conformance; a failing method grouping several logical checks leaves those
+individual checks incomplete. This does not prove nonexistence.
+
+This reporting boundary follows [Why3's distinction between current, obsolete
+and detached proof attempts](https://why3.org/doc/manpages.html) and
+[SPARK's explicit treatment of unproved checks](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_investigate_unproved_checks.html).
+The compiler's identity links, fingerprinting and native report readers remain
+trusted. They add no solver execution or independently checked proof certificate.
+Before Haskell execution, the CLI uses
+[Stack's `config build-files`](https://docs.haskellstack.org/en/latest/commands/config_command/)
+to synchronize Hpack metadata before hashing. Reading evidence does not run that
+preparation.
+
 ## Laws over checked definitions
 
 Canonical authoring configuration selects law verification through
@@ -106,8 +147,9 @@ finite domain, or otherwise property testing. Its evidence names the adapters
 it relies on. A law with no inputs has a single case and is exhaustively
 checked.
 
-Proved and compiler-checked laws are still emitted as tests, which check the
-generated native definitions.
+With property, exhaustive or example execution selected, proved and
+compiler-checked laws also produce native tests checking generated definitions.
+An examples-only selection requires authored examples for each emitted law.
 
 ## Adapters and native code
 

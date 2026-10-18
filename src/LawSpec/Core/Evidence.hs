@@ -7,7 +7,7 @@
 -- adds the laws, whose status depends on the testing plan.
 module LawSpec.Core.Evidence
   ( Status(..), Obligation(..), statusName, statuses, programEvidence, runtimePostconditions
-  , adapterDeclarations
+  , adapterDeclarations, machineEvidence, supervisorEvidence
   ) where
 
 import qualified Data.Set as S
@@ -86,38 +86,7 @@ programEvidence program =
          [ Obligation (unitId unit) (declarationId adapter) "adapter" Nothing Assumed (adapterReason unit adapter)
          | adapter <- adapterDeclarations unit ] ++
          concatMap (machineEvidence (unitId unit)) (unitMachines unit) ++
-         [ Obligation (unitId unit) (Id (idText (unitId unit) ++ "::supervisor::" ++ supervisorName s)) "supervision" Nothing PropertyTested
-             "the runtime's supervision (strategies, lifetimes, restart limits, escalation, links and monitors) is checked by its own conformance test"
-         | s <- unitSupervisors unit ]
-    -- A model is tested against its reference; a shared one's histories
-    -- must also linearize. A scenario's shape is proved when it compiles.
-    machineEvidence owner machine =
-      let named role = Id (idText owner ++ "::model::" ++ machineName machine ++ role)
-      in [ Obligation owner (named "") "model" Nothing PropertyTested
-             "the system runs generated command sequences and must agree with the reference model at every step" ] ++
-         [ case machineConsistency machine of
-             Linearizable -> Obligation owner (named "") "linearizable" Nothing PropertyTested
-               "commands run at the same time on several threads; every history must linearize against the model"
-             Sequential -> Obligation owner (named "") "sequentially consistent" Nothing PropertyTested
-               "commands run at the same time on several threads; some order keeping each thread's own order must give every result"
-             Causal -> Obligation owner (named "") "causally consistent" Nothing PropertyTested
-               "commands run at the same time on several threads; each thread's results must follow from what happened before them"
-             Eventual -> Obligation owner (named "") "eventually consistent" Nothing PropertyTested
-               "commands run at the same time on several threads; once all are done, the state must be that of some order of them"
-         | machineShared machine ] ++
-         [ Obligation owner (named "") "restart" Nothing PropertyTested
-             "runs crash the actor between messages; after each restart it must agree with the model's restart"
-         | machineActor machine ] ++
-         concat
-         [ [ Obligation owner scenario "deadlock-free" Nothing Proved
-               (if P.programCyclic program
-                  then "no process waits for another in a cycle (checked when compiled)"
-                  else "its channels join the processes as a tree, and a tree of sessions cannot deadlock (checked when compiled)")
-           , Obligation owner scenario "race-free" Nothing Proved
-               "every channel end has one owner and sending it gives it up; shared state is reached only through the model's commands (checked when compiled)"
-           , Obligation owner scenario "scenario" Nothing PropertyTested
-               "runs on many schedules, some with a process crashed; a receive from a failed process fails or runs its or else, so no run blocks; every history must linearize against the model and every expect must hold" ]
-         | program <- machineScenarios machine, let scenario = named ("::scenario::" ++ P.programTitle program) ]
+         map (supervisorEvidence (unitId unit)) (unitSupervisors unit)
     contractEvidence owner definitions contract
       | contractDeclaration contract `S.member` definitions =
           [ obligation "precondition" claim RuntimeChecked "checked before a native caller's arguments reach the definition"
@@ -160,3 +129,39 @@ mentions name e = case expressionNode e of
 -- postconditions need none; deferred non-linear claims are checked.
 runtimePostconditions :: Contract -> [Expr]
 runtimePostconditions = contractRuntimePostconditions
+
+-- A model is tested against its reference; a shared one's histories
+-- must also linearize. A scenario's shape is proved when it compiles.
+machineEvidence :: Id -> Machine Id -> [Obligation]
+machineEvidence owner machine =
+  let named role = Id (idText owner ++ "::model::" ++ machineName machine ++ role)
+  in [ Obligation owner (named "") "model" Nothing PropertyTested
+         "the system runs generated command sequences and must agree with the reference model at every step" ] ++
+     [ case machineConsistency machine of
+         Linearizable -> Obligation owner (named "") "linearizable" Nothing PropertyTested
+           "commands run at the same time on several threads; every history must linearize against the model"
+         Sequential -> Obligation owner (named "") "sequentially consistent" Nothing PropertyTested
+           "commands run at the same time on several threads; some order keeping each thread's own order must give every result"
+         Causal -> Obligation owner (named "") "causally consistent" Nothing PropertyTested
+           "commands run at the same time on several threads; each thread's results must follow from what happened before them"
+         Eventual -> Obligation owner (named "") "eventually consistent" Nothing PropertyTested
+           "commands run at the same time on several threads; once all are done, the state must be that of some order of them"
+     | machineShared machine ] ++
+     [ Obligation owner (named "") "restart" Nothing PropertyTested
+         "runs crash the actor between messages; after each restart it must agree with the model's restart"
+     | machineActor machine ] ++
+     concat
+     [ [ Obligation owner scenario "deadlock-free" Nothing Proved
+           (if P.programCyclic program
+              then "no process waits for another in a cycle (checked when compiled)"
+              else "its channels join the processes as a tree, and a tree of sessions cannot deadlock (checked when compiled)")
+       , Obligation owner scenario "race-free" Nothing Proved
+           "every channel end has one owner and sending it gives it up; shared state is reached only through the model's commands (checked when compiled)"
+       , Obligation owner scenario "scenario" Nothing PropertyTested
+           "runs on many schedules, some with a process crashed; a receive from a failed process fails or runs its or else, so no run blocks; every history must linearize against the model and every expect must hold" ]
+     | program <- machineScenarios machine, let scenario = named ("::scenario::" ++ P.programTitle program) ]
+
+supervisorEvidence :: Id -> Supervisor -> Obligation
+supervisorEvidence owner supervisor =
+  Obligation owner (Id (idText owner ++ "::supervisor::" ++ supervisorName supervisor)) "supervision" Nothing PropertyTested
+    "the runtime's supervision (strategies, lifetimes, restart limits, escalation, links and monitors) is checked by its own conformance test"

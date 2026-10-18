@@ -8,6 +8,9 @@ import Data.List (sortOn,isInfixOf)
 import qualified Data.Vector as Vector
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Verification as V
+import qualified LawSpec.Core.Evidence as E
+import LawSpec.Core.Machine (Machine(..), Command(..))
+import qualified LawSpec.BeamModelChecks as B
 import LawSpec.CoreEmit (emitPlanWithFormat,targets)
 import LawSpec.Frontend (compileCoreCanonical)
 import LawSpec.Model (Source(..),defaultGeneration)
@@ -117,3 +120,63 @@ test_modelLayerSelection=describe "independent native model layer selection" $ d
     emitPlanWithFormat False "python" disabled `shouldSatisfy` either (const False) (const True)
     emitPlanWithFormat False "python" enabled `shouldSatisfy`
       either (any (isInfixOf "native model checks share generated test names" . show)) (const False)
+  it "links every native model slot to the existing typed obligations without claiming session safety" $ do
+    source<-readFile fixture
+    let extra=unlines ["", "scenario `receipt: 100% matched` in account is",
+          "  value <- deposit 1", "  expect value = 1", "end"]
+    forM_ targets $ \target -> do
+      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+            "method" .= ("planGeneration"::String),"target" .= target,
+            "verification" .= object ["layers" .= (["model"]::[String])],
+            "sources" .= [object ["path" .= fixture,"content" .= (source++extra)]]]
+      response<-maybe (fail "invalid compiler JSON") pure (decode (dispatch (encode request)))
+      items (field "diagnostics" response) `shouldBe` []
+      let entries=items (field "tests" response)
+          links=concatMap (items . field "obligations") entries
+          evidence=items (field "evidence" response)
+      length entries `shouldBe` 6
+      length links `shouldBe` 7
+      forM_ links $ \link -> do
+        any (\item -> field "declaration" item==field "declaration" link &&
+          field "stage" item==field "stage" link) evidence `shouldBe` True
+        field "stage" link `shouldSatisfy` (`notElem` map String ["race-free","deadlock-free"])
+      let escaped=[entry | entry<-entries,"receipt%3A 100%25 matched" `isInfixOf` show (field "law" entry)]
+      length escaped `shouldBe` 1
+      field "declaration" (head (items (field "obligations" (head escaped)))) `shouldBe`
+        String "example.actors::model::account::scenario::receipt: 100% matched"
+  it "plans no phantom law tests for an examples-only selection without examples" $ do
+    source<-readFile fixture
+    forM_ targets $ \target -> forM_ [["examples"],["examples","model"]] $ \layers -> do
+      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+            "method" .= ("planGeneration"::String),"target" .= target,
+            "verification" .= object ["layers" .= (layers::[String])],
+            "sources" .= [object ["path" .= fixture,"content" .= source]]]
+      response<-maybe (fail "invalid compiler JSON") pure (decode (dispatch (encode request)))
+      items (field "diagnostics" response) `shouldBe` []
+      length (items (field "tests" response)) `shouldBe` if "model" `elem` layers then 5 else 0
+      [field "status" item | item<-items (field "evidence" response),field "stage" item==String "law"]
+        `shouldSatisfy` all (==String "not-verified")
+  it "keeps scoped search visible after quantifiers lower into native Boolean terms" $ do
+    let source=unlines ["unit searchCoverage", "probe :: Bool -> Bool",
+          "law finds is definition: for all (input :: Bool) =>",
+          "  there exists (witness :: Bool) such that probe witness must be input end",
+          "end end end"]
+        request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+          "method" .= ("planGeneration"::String),"target" .= ("javascript"::String),
+          "verification" .= object ["layers" .= (["exhaustive"]::[String])],
+          "sources" .= [object ["path" .= ("search.lawspec"::String),"content" .= source]]]
+    response<-maybe (fail "invalid compiler JSON") pure (decode (dispatch (encode request)))
+    items (field "diagnostics" response) `shouldBe` []
+    let [entry]=items (field "tests" response)
+    field "kind" (field "coverage" entry) `shouldBe` String "finite-inputs"
+    field "cases" (field "coverage" entry) `shouldBe` Number 2
+    field "scopedQuantifiers" (field "coverage" entry) `shouldBe` Bool True
+  it "does not credit a model run with restart checks when no restart command is declared" $ do
+    source<-readFile fixture
+    core<-checked 64 source
+    let [unit]=[unit | unit<-C.programUnits core,not (null (C.unitMachines unit))]
+        [machine]=C.unitMachines unit
+        withoutRestart=machine{machineCommands=filter (not . commandRestart) (machineCommands machine)}
+        check=B.Check (C.Id "sequential") "sequential" "sequential" (B.Sequential "account" withoutRestart)
+    any commandRestart (machineCommands machine) `shouldBe` True
+    map E.obligationStage (B.checkObligations unit check) `shouldBe` ["model"]

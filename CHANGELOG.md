@@ -20,6 +20,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   configuration version 2 and the technical language profile `1.0-rc.1`.
 - A canonical Chapter 6 specification, with independent native Python oracles
   for all A-instruction addresses and C-instruction combinations.
+- Scoped native execution evidence shared by the four explanation views,
+  including current/stale inputs, actual completions, seeds and failure output.
+  Interrupted or undiscovered checks cannot reuse an older successful result;
+  sampled model runs remain distinct from proofs.
 
 ### Changed
 

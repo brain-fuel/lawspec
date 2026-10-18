@@ -13,11 +13,12 @@ import { serveLanguage } from "../lsp.mjs";
 import { explainLaw, explanationViews } from "../explain.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
+import { recordNativeAttempts, nativeSeed, attestedKeys, readNativeObservations, attachNativeEvidence, nativeEvidenceText } from "../native-evidence.mjs";
 import { beamCoverageRequirement, collectBeamCoverage } from "../beam-coverage.mjs";
 import { collectScalaCoverage } from "../scala-coverage.mjs";
 import { failureDatabase, projectKey } from "../failure-database.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { benchmarkInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
+import { benchmarkInvocations, configurationInvocations, preparationInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
   harnessStatistics, coverageTools, junitFromTests, testsToRun } from "../test-command.mjs";
 import {
   readOptional,
@@ -444,11 +445,19 @@ async function runTests(compiler, input, selected, roots, config) {
     }));
     // The laws the attestation touches, each with how its dependencies
     // were wired (the run's id and times aside).
-    const attested = new Map((planned.evidence ?? []).filter((item) => item.against || item.plannedAgainst)
-      .map((item) => [item.declaration, JSON.stringify([item.environment, item.against])]));
+    const attested = attestedKeys(planned);
+    if(!planned.tests.length&&!options.benchmarks){
+      summaries.push({target:target.language,root:target.root,seed:nativeSeed(seed),ran:[],unchanged:0,
+        ok:true,testsExecuted:0,selection:'no-selected-native-checks'});
+      continue;
+    }
     const pending = await planWrites(root, planned.files);
     if (pending.changes.length)
       throw new Error(`${target.language}: generated files are out of date; run lawspec generate${options.minify ? " --minify" : ""}`);
+    for(const preparation of configurationInvocations(target)){
+      const result=await spawned(preparation.command,preparation.args,root,process.env);
+      if(!result.ok)throw new Error(`${target.language}: native build metadata preparation failed`);
+    }
     const report_ = await doctor(target, root, planned.files);
     if (!report_.ok) throw new Error(`${target.language}: ${report_.message}\n${report_.instructions}`);
     const generated = new Set(planned.files.filter((f) => f.ownership === "generated").map((f) => f.path));
@@ -463,6 +472,7 @@ async function runTests(compiler, input, selected, roots, config) {
     const identity = projectKey(root);
     const resultsFile = path.join(configRoot, ".lawspec", "results", `${target.language}-${identity}.json`);
     const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
+    const attempts = {...(previous.attempts ?? {})};
     const {directory: failures, file: databaseFile, database} = await failureDatabase(configRoot, target.language, root);
     // Recording again runs every law, so each records what it sees now.
     const chosen = selectByTags(planned.tests, options.tag ?? [], options["exclude-tag"] ?? []);
@@ -474,10 +484,23 @@ async function runTests(compiler, input, selected, roots, config) {
     // databases beside it (Hypothesis, proptest).
     const replayed = options.seed === undefined ? stale.filter((entry) => database[entry.law]) : [];
     const batches = [
-      ...[...new Set(replayed.map((entry) => database[entry.law].seed))].map((s) =>
-        ({ seed: String(s), entries: replayed.filter((entry) => database[entry.law].seed === s) })),
+      ...[...new Set(replayed.map((entry) => nativeSeed(database[entry.law].seed)))].map((s) =>
+        ({ seed: String(s), entries: replayed.filter((entry) => nativeSeed(database[entry.law].seed) === s) })),
       { seed, entries: stale.filter((entry) => !replayed.includes(entry)) },
     ].filter((batch) => batch.entries.length);
+    const profile = {target:target.language,root,machineBits:input.machineBits,
+      minify:options.minify===true,build};
+    // Persist pending attempts before starting a native process. Interrupted or
+    // failed setup cannot leave an older passing cache entry looking completed.
+    for(const entry of stale){
+      Object.assign(attempts,recordNativeAttempts({laws:[entry],command:null},[],
+        {keys,seed,ok:false,profile,allEntries:planned.tests}));
+    }
+    const pendingLaws=Object.fromEntries(Object.entries(previous.laws??{})
+      .filter(([id])=>!stale.some(entry=>entry.law===id)));
+    await mkdir(path.dirname(resultsFile),{recursive:true});
+    await writeFile(path.join(path.dirname(resultsFile),".gitignore"),"*\n");
+    await atomicWrite(resultsFile,JSON.stringify({...previous,version:1,laws:pendingLaws,attempts},null,2)+"\n");
     const passed = [];
     const unrun = [];
     let failed = false;
@@ -520,21 +543,26 @@ async function runTests(compiler, input, selected, roots, config) {
     batches: for (const batch of batches) {
       for (const run of invocations(target, batch.entries, { offline, scratch, coverage: useCoverage ? coverage : null,
         xdist, root, coverageConfig: report_.coverage })) {
-        const since = Date.now() - 1000;
+        const since = Date.now();
         const { ok, output } = await spawned(run.command, run.args, root,
           { ...process.env, ...run.env, LAWSPEC_SEED: batch.seed, HSPEC_SEED: batch.seed,
             LAWSPEC_STATS: stats, LAWSPEC_FAILURES: failures, LAWSPEC_RECORDED: recordedFolder,
             ...(options["update-recorded"] ? { LAWSPEC_UPDATE_RECORDED: "1" } : {}) }, run.report?.kind === "go-json");
         if (run.coverage) coverageRuns.push(run.coverage);
         const executed = await executedTests(run.report, output, root, since);
+        const observed=recordNativeAttempts(run,executed,{keys,seed:batch.seed,ok,profile,output,allEntries:planned.tests});
+        if(!ok&&!run.laws.length)Object.assign(attempts,recordNativeAttempts({laws:batch.entries,command:run.command},[],
+          {keys,seed:batch.seed,ok:false,profile,output,allEntries:planned.tests}));
+        Object.assign(attempts,observed);
         for (const law of run.laws) seedOf.set(law.law, batch.seed);
+        // A completed combined model method remains scoped to its own checks,
+        // even if another selected method in this invocation failed.
+        passed.push(...run.laws.filter(entry=>['passed','known-failing'].includes(observed[entry.law]?.outcome)||!expected(entry)));
         if (report) junit.push({ target: `${target.language} (${target.root})`, xml: await junitOf(run, executed, root, since) });
         if (!ok || executed.some((test) => test.status === "failed")) { failed = true; break batches; }
         // A runner whose filter matched nothing reports success, so a law
         // counts as passed only if the runner's report shows its tests ran.
-        const ran = new Set(executed.flatMap(run.ran ?? (() => [])));
-        passed.push(...run.laws.filter((law) => ran.has(law) || !expected(law)));
-        unrun.push(...run.laws.filter((law) => !ran.has(law) && expected(law)));
+        unrun.push(...run.laws.filter(entry=>!passed.includes(entry)&&expected(entry)));
       }
     }
     if (unrun.length) failed = true;
@@ -566,7 +594,7 @@ async function runTests(compiler, input, selected, roots, config) {
     for (const entry of passed) {
       const label = entry.label;
       const observed = statistics.filter((s) => s.law === label);
-      laws[entry.law] = { key: keys.get(entry.law), seed: Number(seedOf.get(entry.law) ?? seed), passed: new Date().toISOString(),
+      laws[entry.law] = { key: keys.get(entry.law), seed: nativeSeed(seedOf.get(entry.law) ?? seed), passed: new Date().toISOString(),
         // A law the attestation touches names the run it passed in.
         ...(attestation && attested.has(entry.law) ? { environment: attestation.run.id } : {}),
         ...(observed.some((s) => s.outcome === "flaky") ? { flaky: true } : {}),
@@ -576,9 +604,10 @@ async function runTests(compiler, input, selected, roots, config) {
     // A law that failed is recorded with its seed; one that passed leaves.
     for (const entry of stale) {
       if (passed.includes(entry)) delete database[entry.law];
-      else if (seedOf.has(entry.law)) {
+      else {
         delete laws[entry.law];
-        database[entry.law] = { seed: Number(seedOf.get(entry.law)), failed: new Date().toISOString() };
+        if(!seedOf.has(entry.law))continue;
+        database[entry.law] = { seed: nativeSeed(seedOf.get(entry.law)), failed: new Date().toISOString() };
       }
     }
     await writeFile(path.join(configRoot, ".lawspec", "failures", ".gitignore"), "*\n");
@@ -589,14 +618,14 @@ async function runTests(compiler, input, selected, roots, config) {
     const attestations = Object.fromEntries(Object.entries({ ...(previous.attestations ?? {}),
       ...(attestation ? { [attestation.run.id]: attestation } : {}) })
       .filter(([id]) => Object.values(laws).some((run) => run.environment === id)));
-    await writeFile(resultsFile, JSON.stringify({ version: 1, laws,
+    await atomicWrite(resultsFile, JSON.stringify({ version: 1, laws, attempts,
       ...(Object.keys(attestations).length ? { attestations } : {}) }, null, 2) + "\n");
     const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
     const unmet = statistics.flatMap((s) => (s.cover ?? []).filter((c) => !c.met).map((c) => `${s.law}: cover ${c.required}% "${c.label}" (${c.observed}%)`));
     const benchmarks = statistics.filter((s) => s.benchmark);
     // How each parallel unit's tests actually ran at the same time.
     const parallelism = statistics.filter((s) => s.parallel).map(({ parallel, mode, workers }) => ({ unit: parallel, mode, workers }));
-    summaries.push({ target: target.language, root: target.root, seed: Number(seed), ran: stale.map((e) => e.law),
+    summaries.push({ target: target.language, root: target.root, seed: nativeSeed(seed), ran: stale.map((e) => e.law),
       ...(attestation ? { environment: attestation.environment } : {}),
       unchanged: chosen.length - stale.length, ok: !failed,
       ...(chosen.length !== planned.tests.length ? { deselected: planned.tests.length - chosen.length } : {}),
@@ -614,7 +643,8 @@ async function runTests(compiler, input, selected, roots, config) {
   }
   output(options.json ? summaries : summaries.map((s) =>
     `${s.target}${summaries.filter(other => other.target === s.target).length > 1 ? ` (${s.root})` : ""}: ${s.ran.length ? `ran ${s.ran.length} law(s) with seed ${s.seed}${s.environment ? ` in environment ${s.environment}` : ""}` : "nothing to run"}` +
-    `, ${s.unchanged} unchanged since their last passing run.${s.ok ? "" : " FAILED"}` +
+    (s.selection==='no-selected-native-checks'?'; no native checks selected; intrinsic definition checks passed.':
+      `, ${s.unchanged} unchanged since their last passing run.${s.ok ? "" : " FAILED"}`) +
     (s.deselected ? `\n${s.deselected} law(s) not selected by --tag or --exclude-tag.` : "") +
     (s.unrun ? `\nNo tests ran for ${s.unrun.join(", ")}; the runner matched none of their tests.` : "") +
     (s.flaky ? `\nFlaky (failed, then passed on a retry): ${s.flaky.join(", ")}` : "") +
@@ -897,7 +927,8 @@ async function main() {
     // ran; otherwise each law shows the attested run it last passed in.
     const named = await readAttestation(config);
     const result = diagnostics(await compiler.check({ ...input, ...(named ? { attestation: named } : {}) }));
-    let evidence = result.evidence;
+    let evidence = attachNativeEvidence(result.evidence,await readNativeObservations({compiler,input,selected,roots,
+      configRoot,build:await buildDigest(),evidence:result.evidence,attestation:named}));
     const { runs, attestations } = await lastRuns();
     const environments = named ? [result.attestation] : [];
     if (!named) for (const [id, attestation] of attestations) {
@@ -925,6 +956,7 @@ async function main() {
     // The last run's outcome (lawspec test): a law that failed, then passed
     // on a retry, is flaky; what its generated cases covered is its adequacy.
     evidence = evidence.map((item) => {
+      if(item.nativeEvidence)return item;
       const run = item.stage === "law" ? runs.get(item.declaration) : undefined;
       if (!run) return item;
       return { ...item, lastNativeRun: {passed: run.passed, seed: run.seed}, ...(run.adequacy ? { adequacy: run.adequacy } : {}),
@@ -942,6 +974,7 @@ async function main() {
               return `${label} (${items.length})\n` + items.map((item) =>
                 `  ${item.stage} ${obligationName(item)}${item.target ? ` [${item.target}]` : ""}` +
                 (item.claim ? `: ${item.claim.text}` : "") + `\n    ${item.reason}` +
+                (item.nativeEvidence ? `\n    ${nativeEvidenceText(item).replaceAll("\n","\n    ")}` : "") +
                 (item.lastNativeRun ? `\n    last native run passed at ${item.lastNativeRun.passed} (seed ${item.lastNativeRun.seed})` : "") +
                 (item.against ? `\n    last recorded passing run in environment ${item.environment} (run ${item.environmentRun.id}) against ` +
                   item.against.map(dependencyText).join("; ") : "")).join("\n");
@@ -969,7 +1002,10 @@ async function main() {
     if (!indices.length) throw new Error("No matching law");
     const view = options.view ?? "developer";
     if (!explanationViews.includes(view)) throw new Error(`Choose --view ${explanationViews.join("|")}`);
-    const explanations = indices.map(({e}) => explainLaw(e, result, view));
+    const observed={...result,evidence:attachNativeEvidence(result.evidence,await readNativeObservations({
+      compiler,input,selected,roots,configRoot,build:await buildDigest(),evidence:result.evidence,
+      attestation:await readAttestation(config)}))};
+    const explanations = indices.map(({e}) => explainLaw(e, observed, view));
     output(options.json ? explanations : explanations.map(e => e.text).join("\n\n"));
     return;
   }

@@ -456,6 +456,9 @@ export interface ObligationEvidence {
   plannedEnvironment?: string;
   plannedEnvironmentRun?: AttestedRun;
   plannedAgainst?: AttestedDependency[];
+  nativeEvidence?: NativeConformanceEvidence;
+  adequacy?: NativeAdequacy[];
+  plannedEvidence?: {status: DischargeStatus; reason: string};
 }
 
 export interface AttestedRun {
@@ -1053,6 +1056,126 @@ export type ProofTask =
       reason: string;
     };
 
+export type NativeSeed = number | string;
+
+export type NativeFreshness =
+    'matching-inputs' | 'stale' | 'not-selected' | 'unavailable' | 'not-run';
+
+export type NativeConformanceStatus =
+    'passed' |
+    'failed' |
+    'partial' |
+    'incomplete' |
+    'skipped' |
+    'known-failing' |
+    'not-selected' |
+    'stale' |
+    'unavailable';
+
+export type NativeOutcome =
+    'passed' |
+    'failed' |
+    'skipped' |
+    'incomplete' |
+    'not-run' |
+    'known-failing';
+
+export interface NativeCompletedTest {
+  name: string;
+  classname?: string;
+  identity?: string;
+  status: 'passed' | 'failed' | 'skipped';
+  failure?: string;
+  reason?: string;
+  time?: number;
+}
+
+export interface NativeExecutionProfile {
+  target: string;
+  root: string;
+  machineBits: 32 | 64;
+  minify: boolean;
+  build: string;
+}
+
+export interface NativeExecutionCheck {
+  id: string;
+  unit: string;
+  file: string;
+  name: string;
+  label: string;
+  scope?: string;
+  obligations: NativeEvidenceTarget[];
+  nativeGroup: string[];
+}
+
+export interface NativeInvocation {
+  ok: boolean;
+  command: string | null;
+  output?: string;
+}
+
+export interface NativeExecutionAttempt {
+  key: string;
+  planKey: string;
+  seed: NativeSeed;
+  at: string;
+  outcome: NativeOutcome;
+  profile: NativeExecutionProfile;
+  check: NativeExecutionCheck;
+  coverage: NativeCheckCoverage;
+  tests: NativeCompletedTest[];
+  invocation: NativeInvocation;
+  verification: 'native-execution';
+  searchCompleteness: 'not-established';
+}
+
+export interface NativeExecutionObservation {
+  target: string;
+  root: string;
+  outcome: NativeOutcome;
+  freshness: NativeFreshness;
+  reason: string;
+  check?: {id: string; obligations: NativeEvidenceTarget[]};
+  obligations?: NativeEvidenceTarget[];
+  coverage?: NativeCheckCoverage;
+  attempt?: NativeExecutionAttempt;
+  harness?: {flaky?: boolean; adequacy?: NativeAdequacy[]};
+}
+
+export interface NativeAdequacy {
+  test: string;
+  cases: number;
+  cover?: NativeCoverageObservation[];
+  classes?: Record<string, number>;
+  labels?: Record<string, number>;
+}
+
+export interface NativeCoverageObservation {
+  label: string;
+  observed: number;
+  required: number;
+  met: boolean;
+}
+
+export interface NativeConformanceEvidence {
+  kind: 'native-conformance';
+  status: NativeConformanceStatus;
+  searchCompleteness: 'complete-finite-inputs' | 'not-established';
+  observations: NativeExecutionObservation[];
+}
+
+export interface NativeCheckCoverage {
+  kind: 'sampled' | 'examples' | 'finite-inputs';
+  cases?: number;
+  scopedQuantifiers: boolean;
+}
+
+export interface NativeEvidenceTarget {
+  declaration: string;
+  stage: string;
+}
+
 export interface NativeTestEntry {
   law: string;
   unit: string;
@@ -1068,6 +1191,8 @@ export interface NativeTestEntry {
   parallel: boolean;
   kind?: 'model';
   scope?: string;
+  obligations?: NativeEvidenceTarget[];
+  coverage: NativeCheckCoverage;
 }
 
 export interface Result {

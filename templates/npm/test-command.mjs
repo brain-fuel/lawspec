@@ -98,6 +98,12 @@ const groupBy = (entries, key) => {
   return [...groups.entries()];
 };
 
+// Hpack discovers generated modules before native result keys are computed.
+// Stack owns this metadata transformation; no compilation or tests run here.
+export function configurationInvocations(target) {
+  return target.language==='haskell'?[{command:'stack',args:['--no-terminal','config','build-files']}]:[];
+}
+
 // Rebar and Mix run their configured compile hooks. Gleam has no corresponding
 // hook, so build its generated crypto bridge before starting a native test VM.
 export function preparationInvocations(target, files) {
@@ -196,7 +202,14 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
 // LawSpec.TestNames), then a kind after a separator no name contains, so one
 // law's name never selects another's. `scratch` is a folder for reports;
 // `coverage` asks each runner to measure coverage too (see coverageSetup).
-export function invocations(target, entries, { offline = false, scratch = ".", coverage = null, xdist = false,
+export function invocations(...arguments_) {
+  return nativeInvocations(...arguments_).map(run => {
+    const matches=run.matches??run.ran;
+    return matches?{...run,matches,ran:test=>test.status==='passed'?matches(test):[]}:run;
+  });
+}
+
+function nativeInvocations(target, entries, { offline = false, scratch = ".", coverage = null, xdist = false,
   root = process.cwd(), coverageConfig } = {}) {
   if (!entries.length) return [];
   const language = target.language;
@@ -212,6 +225,7 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
     const run = randomUUID();
     const file = path.join(scratch, `beam-${run}.jsonl`);
     const identity = (entry) => `${entry.unit}::${entry.name}`;
+    const matching = test => entries.filter(entry => test.identity === identity(entry));
     const env = { LAWSPEC_BEAM_REPORT: file, LAWSPEC_BEAM_RUN: run };
     const measured = coverage ? {run, file: path.resolve(coverage, "runs", `${run}.coverdata`),
       ...(language === "elixir" ? {beamDirectory: coverageConfig?.compilePath} : {}),
@@ -242,7 +256,7 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
       }
     }
     return [{ laws: entries, command, args, env, ...(measured ? {coverage: measured} : {}), report: {kind: "beam-events", file, run},
-      ran: (test) => test.status === "passed" ? entries.filter((entry) => test.identity === identity(entry)) : [] }];
+      matches: matching, ran: test => test.status === "passed" ? matching(test) : [] }];
   }
   if (language === "python")
     return groupBy(entries, (e) => e.file).flatMap(([file, selected], n) => {
@@ -276,6 +290,7 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
       ? `dist/${without(e.file, ".ts")}.js` : e.file))];
     const file = path.join(scratch, "node-events.jsonl");
     const runId=randomUUID();
+    const matching = test => entries.filter(entry => new RegExp(pattern(entry)).test(test.name));
     // parallel: test files run at the same time too.
     const node = ["--test", ...(entries.some((e) => e.parallel) ? ["--test-concurrency=" + Math.max(2, (globalThis.navigator?.hardwareConcurrency ?? 2))] : []),
       `--test-name-pattern=(${entries.map(pattern).join("|")})`,
@@ -286,7 +301,7 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
       args: coverage ? ["--no-install", "c8", "--reporter=text", `--reports-dir=${coverage}`, process.execPath, ...node] : node,
       // A CLI launched from node:test must start an independent native run.
       env:{LAWSPEC_NODE_RUN:runId,NODE_TEST_CONTEXT:undefined},report: { kind: "node-events", file, run:runId },
-      ran: (test) => test.status==='passed'?entries.filter((e) => new RegExp(pattern(e)).test(test.name)):[] };
+      matches: matching, ran: test => test.status === 'passed' ? matching(test) : [] };
     return language === "typescript"
       ? [{ laws: [], command: "npm", args: ["exec", "--", "tsc", "-p", "tsconfig.json"] }, run]
       : [run];
@@ -561,11 +576,25 @@ export async function executedTests(report, output, root, since) {
     const files = report.files ?? await reportFiles(path.join(root, report.directory), since);
     const tests = [];
     for (const file of files) {
-      const xml = await readFile(path.resolve(root, file), "utf8").catch(() => "");
-      for (const match of xml.matchAll(/<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/g)) {
-        if (/<skipped\b/.test(match[3] ?? "")) continue;
-        const attribute = (name) => unescapeXml(match[1].match(new RegExp(`\\b${name}="([^"]*)"`))?.[1] ?? "");
-        tests.push({ name: attribute("name").replace(/\(\)$/, ""), classname: attribute("classname") });
+      const location=path.resolve(root,file);
+      const info=await stat(location).catch(()=>null);
+      if(!info||info.mtimeMs<since)continue;
+      const xml=await readFile(location,"utf8").catch(()=>"");
+      const attributes=opening=>Object.fromEntries([...opening.matchAll(/\s([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)]
+        .map(match=>[match[1],unescapeXml(match[2]??match[3])]));
+      for(const element of junitElements(xml,["testcase"])){
+        const values=attributes(element.opening);
+        const native=junitElements(element.xml,["failure","error","skipped"]);
+        const failure=native.filter(element=>element.name!=="skipped");
+        const status=failure.length?"failed":native.length?"skipped":"passed";
+        const detail=element=>[attributes(element.opening).message,
+          unescapeXml(element.xml.slice(element.opening.length).replace(/<\/(failure|error|skipped)>\s*$/,"")
+            .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,(_,text)=>text))].filter(Boolean).join("\n");
+        const time=values.time===undefined?undefined:Number(values.time);
+        tests.push({name:(values.name??"").replace(/\(\)$/, ""),classname:values.classname??"",status,
+          ...(Number.isFinite(time)&&time>=0?{time}:{}),
+          ...(failure.length?{failure:failure.map(detail).join("\n")}:
+            status==="skipped"?{reason:native.map(detail).join("\n")}: {})});
       }
     }
     return tests;

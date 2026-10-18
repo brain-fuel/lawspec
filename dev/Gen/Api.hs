@@ -212,7 +212,9 @@ declarations = joinWith (softbreak <> softbreak)
        [("claim", union [text "Expr", text "null"])] ++
        -- Where its tests ran, when an environment attestation touches it.
        fields [("environment?", "string"), ("environmentRun?", "AttestedRun"), ("against?", "AttestedDependency[]"),
-               ("plannedEnvironment?", "string"), ("plannedEnvironmentRun?", "AttestedRun"), ("plannedAgainst?", "AttestedDependency[]")])
+               ("plannedEnvironment?", "string"), ("plannedEnvironmentRun?", "AttestedRun"), ("plannedAgainst?", "AttestedDependency[]"),
+               ("nativeEvidence?","NativeConformanceEvidence"),("adequacy?","NativeAdequacy[]"),
+               ("plannedEvidence?","{status: DischargeStatus; reason: string}")])
   , interface "AttestedRun" (fields [("id", "string"), ("startedAt", "string"), ("recordedAt", "string")])
   , interface "AttestedStandIn" (fields [("identity", "string"), ("version", "string"), ("conformance", "string"), ("historyDigest?", "string")])
   , interface "AttestedDependency"
@@ -391,11 +393,45 @@ declarations = joinWith (softbreak <> softbreak)
        record (fields [("encoding","'lawspec-smtlib-v1'"),("owner","string"),("declaration","string"),
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "unsupported"),("reason",text "string")])]
+  , alias "NativeSeed" [text "number",text "string"]
+  , alias "NativeFreshness" (map quoted ["matching-inputs","stale","not-selected","unavailable","not-run"])
+  , alias "NativeConformanceStatus" (map quoted ["passed","failed","partial","incomplete",
+      "skipped","known-failing","not-selected","stale","unavailable"])
+  , alias "NativeOutcome" (map quoted ["passed","failed","skipped","incomplete","not-run","known-failing"])
+  , interface "NativeCompletedTest" (fields [("name","string"),("classname?","string"),
+      ("identity?","string"),("status","'passed' | 'failed' | 'skipped'"),("failure?","string"),
+      ("reason?","string"),("time?","number")])
+  , interface "NativeExecutionProfile" (fields [("target","string"),("root","string"),
+      ("machineBits","32 | 64"),("minify","boolean"),("build","string")])
+  , interface "NativeExecutionCheck" (fields [("id","string"),("unit","string"),("file","string"),
+      ("name","string"),("label","string"),("scope?","string"),("obligations","NativeEvidenceTarget[]"),("nativeGroup","string[]")])
+  , interface "NativeInvocation" (fields [("ok","boolean"),("command","string | null"),("output?","string")])
+  , interface "NativeExecutionAttempt" (fields [("key","string"),("planKey","string"),("seed","NativeSeed"),
+      ("at","string"),("outcome","NativeOutcome"),("profile","NativeExecutionProfile"),
+      ("check","NativeExecutionCheck"),("coverage","NativeCheckCoverage"),("tests","NativeCompletedTest[]"),
+      ("invocation","NativeInvocation"),("verification","'native-execution'"),
+      ("searchCompleteness","'not-established'")])
+  , interface "NativeExecutionObservation" (fields [("target","string"),("root","string"),
+      ("outcome","NativeOutcome"),("freshness","NativeFreshness"),
+      ("reason","string"),("check?","{id: string; obligations: NativeEvidenceTarget[]}"),
+      ("obligations?","NativeEvidenceTarget[]"),("coverage?","NativeCheckCoverage"),("attempt?","NativeExecutionAttempt"),
+      ("harness?","{flaky?: boolean; adequacy?: NativeAdequacy[]}")])
+  , interface "NativeAdequacy" (fields [("test","string"),("cases","number"),
+      ("cover?","NativeCoverageObservation[]"),("classes?","Record<string, number>"),("labels?","Record<string, number>")])
+  , interface "NativeCoverageObservation" (fields [("label","string"),("observed","number"),
+      ("required","number"),("met","boolean")])
+  , interface "NativeConformanceEvidence" (fields [("kind","'native-conformance'"),
+      ("status","NativeConformanceStatus"),
+      ("searchCompleteness","'complete-finite-inputs' | 'not-established'"),
+      ("observations","NativeExecutionObservation[]")])
+  , interface "NativeCheckCoverage" (fields [("kind","'sampled' | 'examples' | 'finite-inputs'"),
+      ("cases?","number"),("scopedQuantifiers","boolean")])
+  , interface "NativeEvidenceTarget" (fields [("declaration","string"),("stage","string")])
   , interface "NativeTestEntry" (fields
       [("law","string"),("unit","string"),("label","string"),("index","number"),
        ("file","string"),("key","string"),("callsAdapters","boolean"),("name","string"),
        ("tags","string[]"),("skip","string | null"),("knownFailing","string | null"),
-       ("parallel","boolean"),("kind?","'model'"),("scope?","string")])
+       ("parallel","boolean"),("kind?","'model'"),("scope?","string"),("obligations?","NativeEvidenceTarget[]"),("coverage","NativeCheckCoverage")])
   , interface "Result"
       ([("schemaVersion", text "5"), ("machineBits?", union [text "32", text "64"])] ++
        fields [("languageProfile?", "\"1.0-rc.1\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++

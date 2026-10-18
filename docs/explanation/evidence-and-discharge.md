@@ -45,9 +45,9 @@ costs nothing at test time and gives a stronger answer. It also moves failures
 earlier: a false law over definitions on a finite domain is a compile error
 (`refuted`), with the counterexample, rather than a test failure later. ref:DEC-evidence-statuses
 
-Proved and exhaustively checked laws are still emitted as tests. Those tests
-check something different: that each target's generated code for the
-definitions behaves as the Core semantics says.
+When native law tests are selected, proved and exhaustively checked laws are
+also emitted as tests. Those tests check that each target's generated code for
+the definitions behaves as the Core semantics says.
 
 ## Why adapters are "assumed"
 
@@ -58,6 +58,29 @@ accounting honest: the laws about them are property tested, but the code itself
 is outside what LawSpec can see.
 
 ## Using the report
+
+`lawspec evidence` and the four `lawspec explain` views share the same typed
+obligations. Selected native tests start as **planned**. A completed native run
+can supply **property tested** evidence, or **exhaustively checked** evidence
+when every finite input was checked and the obligation contains no additional
+scoped quantifier search. A sampled model run does not prove every possible
+history, fairness assumption or existence claim.
+
+The separate `nativeEvidence` report names the target, project, completed test,
+seed and time. It checks the current compiler, specification, configuration,
+bindings, generated files, native sources and toolchain against the recorded
+inputs. Changed inputs make a result **stale**. An interrupted run, failed
+setup or runner that discovers no tests provides no successful completion.
+When one native method groups several logical checks, a failed method leaves
+the individual obligations **incomplete** unless the runner identifies their
+separate results. Failure output remains available for diagnosis.
+Current retry and coverage observations remain attached to their native scope;
+a run that failed and then passed on retry retains its **flaky** classification.
+
+Compiler proofs and native conformance remain separate: a native failure does
+not erase a proof about the formal model. Likewise, choosing no law layers
+leaves laws unverified even when historical native observations exist. An
+examples-only selection with no authored examples executes no law tests.
 
 - A **proved** or **exhaustively checked** law has deductive or complete finite
   evidence for the formal model. Native conformance, examples and independent
