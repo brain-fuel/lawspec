@@ -4,6 +4,47 @@ import { PassThrough } from 'node:stream';
 import { serveLanguage, utf16Position } from '../lsp.mjs';
 import { explainLaw } from '../explain.mjs';
 
+test('formatting preserves checked snapshots across resource, harness, workflow and scenario blocks',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const {createCompiler}=await import('../api.mjs');
+  const compiler=await createCompiler();
+  const fixtures=[
+    ['canonical-formatter-resources-harness.lawspec',[
+      'resource Scratch is\n  acquire is\n    openScratch ()\n  end',
+      '  for law same\n    use flags for value\n    repeat 2\n  benchmark',
+      '  benchmark `if all end is only a benchmark name` is\n    true\n  end',
+    ]],
+    ['canonical-formatter-model-workflow.lawspec',[
+      'model store :: shared Store by Bool is\n  start openStore by false',
+      '  all\n    first :: Bool -> Bool\n    second :: Bool -> Bool\n  end\n  combine chooseFirst',
+    ]],
+    ['canonical-model-layer-selection.lawspec',[
+      'supervisor bank is\n  one for one\n  at most 3 restarts in 5s\n  permanent account\nend',
+      '  with\n    receive receipt m or else\n      balance\n    end\n    expect m = 5\n  end',
+    ]],
+  ];
+  for(const [file,fragments] of fixtures){
+    const original=await readFile(new URL('../../test/fixtures/'+file,import.meta.url),'utf8');
+    const content=original.split('\n').map(line=>line.trimStart()).join('\n');
+    for(const machineBits of [32,64]){
+      const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,
+        verification:{layers:[]},sources:[{path:file,content}]};
+      const before=await compiler.check({...input,migrationSnapshot:true});
+      assert.deepEqual(before.diagnostics,[],file);
+      const formatted=await compiler.format(input);
+      assert.deepEqual(formatted.diagnostics,[],file);
+      const output=formatted.formattedSources[0].content;
+      for(const fragment of fragments)assert.ok(output.includes(fragment),file+': '+fragment);
+      const after=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
+      assert.deepEqual(after.diagnostics,[],file);
+      assert.deepEqual(after.migrationSemantics,before.migrationSemantics,file);
+      const repeated=await compiler.format({...input,sources:formatted.formattedSources});
+      assert.deepEqual(repeated.diagnostics,[]);
+      assert.deepEqual(repeated.formattedSources,formatted.formattedSources,file);
+    }
+  }
+});
+
 test('canonical stateful procedures preserve state, sequencing and equality precedence through the SDK',async()=>{
   const {createCompiler}=await import('../api.mjs');
   const compiler=await createCompiler();

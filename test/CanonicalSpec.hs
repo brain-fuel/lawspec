@@ -2,7 +2,7 @@
 module CanonicalSpec (test_canonicalAuthoringPreservesIntrinsicGuarantees) where
 
 import Data.Either (isRight, isLeft)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Aeson
@@ -1031,6 +1031,72 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
        "  read is","    value","  end","end",
        "function readOnce (ignored :: ()) -> Bool is",
        "  handle read with memory end","end function"]
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "formats actors, supervisors, protocols and nested scenario recovery from their actual canonical source" $ do
+    body <- readFile "test/fixtures/canonical-model-layer-selection.lawspec"
+    let unindented=unlines (map (dropWhile (== ' ')) (lines body))
+        formatted=formatSource (Source "actors.lawspec" unindented)
+        output=LawSpec.Model.content formatted
+        significant text=[(tokenKind t,tokenText t) | t<-sourceTokens text,tokenKind t/=TriviaToken]
+    output `shouldSatisfy` isInfixOf "actor account :: Account by Int64 is\n  start openAccount by 0\n  restart from reopen by modelReopen"
+    output `shouldSatisfy` isInfixOf "supervisor bank is\n  one for one\n  at most 3 restarts in 5s\n  permanent account\nend"
+    output `shouldSatisfy` isInfixOf "protocol Receipt is\n  send Int64\nend"
+    output `shouldSatisfy` isInfixOf "  par\n    n <- deposit 5\n    send receipt n\n  with\n    receive receipt m or else\n      balance\n    end\n    expect m = 5\n  end\nend"
+    significant output `shouldBe` significant body
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "keeps paired scenario names indivisible across header lines and leaves infix backticks unpaired" $ do
+    body <- readFile "test/fixtures/canonical-model-layer-selection.lawspec"
+    let name="`if all processes finish then end the scenario with a receipt whose long descriptive name stays intact`"
+        input=Source "names.lawspec" (unlines (concatMap (\line ->
+          if "scenario `a deposit" `isPrefixOf` line then ["scenario",name,"in account is"] else [line]) (lines body)))
+        formatted=formatSource input
+        output=LawSpec.Model.content formatted
+        significant text=[(tokenKind t,tokenText t) | t<-sourceTokens text,tokenKind t/=TriviaToken]
+    lines output `shouldContain` ["  "++name]
+    significant output `shouldBe` significant (LawSpec.Model.content input)
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+    let infixText="(scenario `first true) `second false"
+    [tokenText token | token<-sourceTokens infixText,tokenKind token==PhraseToken] `shouldBe` ["`first","`second"]
+    restoreSource (sourceTokens infixText) `shouldBe` infixText
+  it "keeps resources, wrappers, refinements and harness groups at their grammatical levels" $ do
+    let input=source (unlines
+          ["refinement Positive is", "(value :: Integer where value > 0)", "end",
+           "wrapper Flag is", "Bool", "end", "handle Scratch",
+           "openScratch :: () -> Scratch", "closeScratch :: Scratch -> ()",
+           "resource Scratch is", "acquire is", "openScratch ()", "end",
+           "release scratch is", "closeScratch scratch", "end", "end",
+           "law same is", "definition:", "for all (value :: Bool) =>", "value must be value", "end", "end", "end",
+           "harness example.canonical.testing for example.canonical is",
+           "strategy flags :: Bool is", "one of true, false", "end",
+           "tags smoke", "for law same", "use flags for value", "repeat 2",
+           "benchmark `if all end is only a benchmark name` is", "true", "end",
+           "for laws same", "repeat 3", "end",
+           "function workflow (value :: Bool) -> Bool is", "value", "end function"])
+        formatted=formatSource input
+        output=LawSpec.Model.content formatted
+    output `shouldSatisfy` isInfixOf "refinement Positive is\n  (value :: Integer where value > 0)\nend\nwrapper Flag is\n  Bool\nend\nhandle Scratch\nopenScratch"
+    output `shouldSatisfy` isInfixOf "resource Scratch is\n  acquire is\n    openScratch ()\n  end\n  release scratch is\n    closeScratch scratch\n  end\nend\nlaw same"
+    output `shouldSatisfy` isInfixOf "  strategy flags :: Bool is\n    one of true, false\n  end\n  tags smoke\n  for law same\n    use flags for value\n    repeat 2\n  benchmark `if all end is only a benchmark name` is\n    true\n  end\n  for laws same\n    repeat 3\nend\nfunction workflow"
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "formats models and workflow all groups without treating contextual function calls as declarations" $ do
+    let input=source (unlines
+          ["handle Store", "openStore :: () -> Store", "put :: Store -> Bool -> ()",
+           "function modelPut (value :: Bool) (state :: Bool) -> Bool is", "value", "end function",
+           "model store :: shared Store by Bool is", "start openStore by false", "put by modelPut", "end",
+           "function chooseFirst (left :: Bool) (right :: Bool) -> Bool is", "left", "end function",
+           "workflow gather :: Bool -> Bool is", "all", "first :: Bool -> Bool", "second :: Bool -> Bool",
+           "end", "combine chooseFirst", "end",
+           "function resource (value :: Bool) -> Bool is", "value", "end function",
+           "function useResource (value :: Bool) -> Bool is", "resource value", "end function"])
+        formatted=formatSource input
+        output=LawSpec.Model.content formatted
+    output `shouldSatisfy` isInfixOf "model store :: shared Store by Bool is\n  start openStore by false\n  put by modelPut\nend"
+    output `shouldSatisfy` isInfixOf "workflow gather :: Bool -> Bool is\n  all\n    first :: Bool -> Bool\n    second :: Bool -> Bool\n  end\n  combine chooseFirst\nend"
+    output `shouldSatisfy` isInfixOf "function useResource (value :: Bool) -> Bool is\n  resource value\nend function"
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "uses UTF-16 editor positions for supplementary characters and tab columns" $ do

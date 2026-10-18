@@ -301,6 +301,8 @@ extra-source-files:
     test/fixtures/canonical-empty-record-patterns.lawspec
     test/fixtures/canonical-existential-native-profiles.lawspec
     test/fixtures/canonical-existential-records.lawspec
+    test/fixtures/canonical-formatter-model-workflow.lawspec
+    test/fixtures/canonical-formatter-resources-harness.lawspec
     test/fixtures/canonical-gadt-payload-indices.lawspec
     test/fixtures/canonical-model-layer-selection.lawspec
     test/fixtures/canonical-native-failure-products.lawspec

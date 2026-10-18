@@ -31,6 +31,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Formatting retains the indentation of abilities, stateful handler operations
   and handled expressions, including conditional initializers.
+- Source formatting covers workflows, models, actors, supervisors, protocols,
+  scenarios, resources, wrappers, refinements and harness groups. Paired scenario
+  and benchmark names remain indivisible; words inside them do not affect block
+  indentation. A top-level `handle` declaration does not open an expression block.
 
 - Law verification layers are selected independently and default to none.
   Definition validation and deliberately deferred runtime contracts remain

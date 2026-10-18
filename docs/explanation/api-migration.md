@@ -29,6 +29,18 @@ laws, constructor payloads and native bindings, together with a proposed
 version-2 configuration selecting the prior law layers. The report remains
 read-only.
 
+The current migration boundary includes these explicit limits. Missing
+correspondence produces `migration-incomplete` and blocks writing.
+
+| Case | Accepted evidence and remaining limit |
+| --- | --- |
+| Reordered index measures | Checked body correspondence is supported; unbounded generated-refinement populations need separate uniform input evidence. |
+| Indexed, GADT and existential payloads | Concrete transport and existential factories are supported. Some abstract generic branches and pure field-only existential matching remain unsupported. |
+| Unused polymorphic definitions | Symbolic bodies can match, but a project with only these definitions still needs accepted nonempty target artifacts before writing. |
+| Generic input populations | Parameter-independent witnesses and complete finite parameter analysis are supported. Unbounded constructive or abstract function/resource-dependent populations remain unestablished. |
+| Dependencies | Complete supplied package sources are checked together. Changed dependencies, stale inputs and unestablished package correspondence block writing. |
+| Opaque native hooks | Unchanged representations retain their existing assumptions. Codecs and generator factories over changed representations need independent implementation correspondence. |
+
 `sourcePreview` now includes planned edits for checked computation declarations,
 their result arrows and named closers, conditional closers, and ordinary text
 literals beginning with the reserved `"|` sequence. Effect rows determine
@@ -55,9 +67,9 @@ to refer to the authored text. The compiler uses its header parser to identify
 namespace insertion points and carries an origin map through parsing,
 diagnostics, typed declarations and references. Comments, literal contents,
 whitespace, implicit aliases and line endings retain their original contents.
-This corrects the orders example's shifted import spans; its still-legacy
-dependencies require separate migration before a canonical project preview can
-be admitted.
+The same origin preservation applies to supplied dependency sources. Project
+previews migrate and check those sources together; unsupported generic domains
+in the orders example remain an independent correspondence limit.
 
 The preview also migrates quoted law and example names, law import/export
 markers, explicit reusable-law applications, law section delimiters, universal
@@ -82,9 +94,10 @@ source-file order does not decide which record a constructor denotes. Nominal
 record fields retain their existing identities. Grouped alternative fields
 receive checked native field paths and original argument positions; generation
 support for those layouts remains target-specific. Indexed/GADT payload conversions
-and dependency-package migration retain their explicit limits. The writer changes
-owned project sources and configuration; dependency packages retain their checked
-versioned source and must remain unchanged while writing.
+retain their explicit limits. The writer transforms all admitted project and
+dependency sources together, preserving their declared paths. Package manifests
+and the complete source membership remain anchored; edits, added files or
+version changes during writing abort the transformation.
 
 Each configured target now has a separate `bindingPreview` entry. The source
 baseline is compiled through schema 5's explicit `migrationBaseline` request with

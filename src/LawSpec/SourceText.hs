@@ -12,21 +12,39 @@ data TokenKind = WordToken | SymbolToken | LiteralToken | PhraseToken | CommentT
 data Token = Token { tokenKind :: TokenKind, tokenText :: String, tokenOffset :: Int }
   deriving (Eq,Show)
 sourceTokens :: String -> [Token]
-sourceTokens = scan 0
+sourceTokens = scan 0 Nothing
   where
-    scan _ [] = []
-    scan offset input = let (kind,value,rest) = next input
-      in Token kind value offset : scan (offset + length value) rest
-    next input
+    scan _ _ [] = []
+    scan offset previous input = let (kind,value,rest) = next previous input
+                                     previous' = if kind `elem` [TriviaToken,CommentToken] then previous else Just (kind,value)
+      in Token kind value offset : scan (offset + length value) previous' rest
+    next previous input
       | "--" `isPrefixOf` input = let (a,b) = break (== '\n') input in (CommentToken,a,b)
       | "\"|" `isPrefixOf` input = let (a,b) = delimited '|' (drop 2 input) in (PhraseToken,"\"|" ++ a,b)
       | "`|" `isPrefixOf` input = let (a,b) = delimited '|' (drop 2 input) in (PhraseToken,"`|" ++ a,b)
       | '"':rest <- input = let (a,b) = delimited '"' rest in (LiteralToken,'"':a,b)
+      -- These existing constructs retain paired-backtick names in the
+      -- canonical profile. Words inside a name (including if, all and end)
+      -- do not open or close blocks. Canonical infix backticks stay unpaired.
+      | '`':rest <- input, Just (value,remaining) <- headerName previous rest = (PhraseToken,value,remaining)
       | '`':rest <- input = let (a,b) = span (\c -> isAlphaNum c || c `elem` ("_." :: String)) rest in (PhraseToken,'`':a,b)
       | c:_ <- input, isSpace c = let (a,b) = span isSpace input in (TriviaToken,a,b)
       | c:_ <- input, isAlphaNum c || c == '_' = let (a,b) = span (\c -> isAlphaNum c || c == '_') input in (WordToken,a,b)
       | c:rest <- input = (SymbolToken,[c],rest)
       | otherwise = (TriviaToken,"",[])
+    headerName previous rest = do
+      following <- case previous of
+        Just (WordToken,"scenario") -> Just "in"
+        Just (WordToken,"benchmark") -> Just "is"
+        _ -> Nothing
+      let (name,closing) = break (== '`') rest
+      remaining <- case closing of '`':more -> Just more; _ -> Nothing
+      let nextWord = takeWhile (\c -> isAlphaNum c || c == '_') (skipTrivia remaining)
+      if not (any (`elem` ['\n','\r']) name) && nextWord == following
+        then Just ('`':name ++ "`",remaining) else Nothing
+    skipTrivia input = case dropWhile isSpace input of
+      '-':'-':rest -> skipTrivia (dropWhile (/= '\n') rest)
+      rest -> rest
     delimited _ [] = ("",[])
     delimited end ('\\':c:rest) = let (a,b) = delimited end rest in ('\\':c:a,b)
     delimited end (c:rest) | c == end = ([c],rest)
@@ -44,30 +62,69 @@ formatSource (Source path body) = Source path (stabilize body)
     hasHarness = any (\t -> tokenKind t == WordToken && tokenText t == "harness") (sourceTokens body)
     stabilize text = let next = layout text
       in if next == text then next else stabilize next
-    layout text = unlines (concatMap (if any multiline (sourceTokens text) then pure else wrap) (indent text))
+    layout text =
+      let indented = indent text
+          hasMultiline = any multiline (sourceTokens text)
+      in unlines (concatMap (\(line,tokens) -> if hasMultiline then [line] else wrap tokens line)
+        (lineTokens indented))
     multiline token = tokenKind token `elem` [LiteralToken,PhraseToken] && '\n' `elem` tokenText token
-    indent text = snd (mapAccumL formatLine (0 :: Int,[],[],Nothing,[]) (zip offsets original))
+    -- Lex the complete source so paired names remain names even when their
+    -- declaration keyword is on the preceding line. Local token offsets also
+    -- let wrapping retain the lexer context across each continuation.
+    lineTokens original = snd (mapAccumL takeLine (sourceTokens (unlines original)) (zip offsets original))
+      where
+        offsets = scanl (\n line -> n + length line + 1) 0 original
+        takeLine remaining (offset,line) = let (local,rest) = span ((< offset + length line + 1) . tokenOffset) remaining
+          in (rest,(line,[token{tokenOffset=tokenOffset token-offset} | token<-local]))
+    indent text = snd (mapAccumL formatLine (0 :: Int,[],[],Nothing,[],[],Nothing)
+      [(offset,line,tokens) | (offset,(line,tokens)) <- zip offsets (lineTokens original)])
       where
         original = lines text
         offsets = scanl (\n line -> n + length line + 1) 0 original
+        syntaxTokens = [t | t<-sourceTokens text,tokenKind t `elem` [WordToken,SymbolToken]]
         protected = [(tokenOffset t,tokenOffset t + length (tokenText t)) | t <- sourceTokens text,
           tokenKind t `elem` [LiteralToken,PhraseToken], '\n' `elem` tokenText t]
-        formatLine state@(depth,cases,braces,previous,handlers) (offset,line)
+        formatLine state@(oldDepth,cases,braces,previous,handlers,blocks,group) (offset,line,lexed)
           | any (\(start,end) -> start < offset && offset < end) protected = (state,line)
           | null (dropWhile isSpace line) = (state,"")
           | otherwise =
               let content = dropWhile isSpace line
-                  tokens = [tokenText t | t <- sourceTokens content, tokenKind t `elem` [WordToken,SymbolToken]]
+                  tokens = [tokenText t | t <- lexed, tokenKind t `elem` [WordToken,SymbolToken]]
+                  -- A per-law harness group has no closing token. The next
+                  -- harness item (or the harness's end) returns to its level.
+                  groupEnd = maybe False (\level -> oldDepth == level + 1 &&
+                    (take 2 tokens `elem` [["for","law"],["for","laws"]] ||
+                     take 1 tokens `elem` [["strategy"],["benchmark"],["share"],["order"],["parallel"],["end"]])) group
+                  depth = oldDepth - if groupEnd then 1 else 0
+                  atBlock name = (name,depth) `elem` blocks
+                  insideBlock name = any ((== name) . fst) blocks
+                  declaration = depth == 0 && case tokens of
+                    name:_ | name `elem` topLevelBlocks -> case [tokenText t | t<-syntaxTokens,tokenOffset t>=offset] of
+                      _:next:_ -> next `notElem` [":","of"]
+                      _ -> False
+                    _ -> False
+                  nested = (atBlock "harness" && take 1 tokens `elem` [["strategy"],["benchmark"]]) ||
+                    (insideBlock "workflow" && take 1 tokens == ["all"]) ||
+                    (insideBlock "scenario" && take 1 tokens == ["par"])
+                  recovery = insideBlock "scenario" && contains ["or","else"] tokens
+                  resourceClause = atBlock "resource" && take 1 tokens `elem` [["acquire"],["release"],["reset"]]
+                  harnessGroup = atBlock "harness" && take 2 tokens `elem` [["for","law"],["for","laws"]]
                   caseEnd = take 2 tokens == ["end","case"]
                   branch = take 1 tokens `elem` [["when"],["otherwise"]] && not (null cases)
                   base = case cases of current:_ -> current; [] -> depth
-                  closing = case tokens of "end":_ -> 1; "}":_ -> 1; "else":_ -> 1; _ -> 0
+                  closing = case tokens of
+                    "end":_ -> 1
+                    "}":_ -> 1
+                    "else":_ -> 1
+                    ["with"] | insideBlock "par" -> 1
+                    _ -> 0
                   indentation = max 0 (if caseEnd then base - 1 else if branch then base else depth - closing)
                   declarationType = take 1 tokens == ["type"] && (depth == 0 || maybe True (/= "of") previous)
                   handlerStart = take 1 tokens == ["handler"]
                   operation = take 1 handlers == [depth] && "is" `elem` tokens &&
                     take 1 tokens `notElem` [["handler"],["start"],["end"]]
-                  opened = opens declarationType tokens + if operation then 1 else 0
+                  opened = opens declarationType (depth == 0 && take 1 tokens == ["handle"]) tokens +
+                    length (filter id [operation,declaration,nested,recovery,resourceClause,harnessGroup])
                   ends = length (filter (== "end") tokens)
                   recordType = declarationType && "record" `elem` tokens
                   (braceDelta,braces') = braceChanges recordType braces tokens
@@ -77,11 +134,16 @@ formatSource (Source path body) = Source path (stabilize body)
                     (if caseEnd then drop 1 cases else cases)
                   handlers' = [level | level <- (if handlerStart && nextDepth > depth then nextDepth:handlers else handlers),
                     level <= nextDepth]
-              in ((nextDepth,cases',braces',case reverse tokens of first:_ -> Just first; [] -> previous,handlers'),replicate (indentation * 2) ' ' ++ trimOutsideLiteral content)
+                  blocks' = filter ((<= nextDepth) . snd) (case tokens of
+                    name:_ | declaration || nested -> (name,depth+1):blocks
+                    _ -> blocks)
+                  group' = if harnessGroup then Just depth else if groupEnd then Nothing else group
+              in ((nextDepth,cases',braces',case reverse tokens of first:_ -> Just first; [] -> previous,handlers',blocks',group'),replicate (indentation * 2) ' ' ++ trimOutsideLiteral content)
+    topLevelBlocks = ["refinement","wrapper","workflow","protocol","scenario","model","actor","supervisor","resource","harness"]
     -- Wrapping may put the second word of "of type" at a line's start.
     -- That annotation continues the existing declaration, rather than opening
     -- a new type block and indenting every following declaration.
-    opens declarationType tokens =
+    opens declarationType handleDeclaration tokens =
       (if declarationType || take 1 tokens `elem` [["function"],["procedure"],["law"],["example"],["mapping"],
         ["ability"],["handler"],["handlers"]] then 1 else 0) +
       length [() | (a,b) <- zip tokens (drop 1 tokens), a `elem` ["definition","description","rationale","references"], b == ":"] +
@@ -89,7 +151,8 @@ formatSource (Source path body) = Source path (stabilize body)
       length [() | rest <- suffixes tokens, any (`isPrefixOf` rest)
         [["there","exists"],["there","must","exist"],["there","must","not","exist"],["there","does","not","exist"]]] +
       (if contains ["first","matching","case","of"] tokens then 1 else 0) +
-      length [() | (previous,word) <- zip ("":tokens) tokens,word == "handle" || word == "if" && previous /= "end"] +
+      length [() | (previous,word) <- zip ("":tokens) tokens,
+        word == "handle" && not handleDeclaration || word == "if" && previous /= "end"] +
       (if "table" `elem` tokens && ":" `elem` tokens then 1 else 0)
     contains prefix tokens = any (isPrefixOf prefix) (suffixes tokens)
     suffixes [] = [[]]
@@ -103,14 +166,17 @@ formatSource (Source path body) = Source path (stabilize body)
         go first delta stack (_:rest) = go first delta stack rest
     -- Wrap only at existing trivia, keeping phrases, strings and comments
     -- intact. Reindentation then accounts for the braces opened by each line.
-    wrap line
+    wrap tokens line
       | hasHarness || length line <= 80 || any ((== CommentToken) . tokenKind) tokens = [line]
       | otherwise = case reverse [tokenOffset t | t <- tokens, tokenKind t == TriviaToken,
           tokenOffset t > indentation, tokenOffset t <= 80,canSplit t] of
           [] -> [line]
-          split:_ -> take split line : wrap (replicate indentation ' ' ++ dropWhile isSpace (drop split line))
+          split:_ -> let consumed = split + length (takeWhile isSpace (drop split line))
+                         continuation = replicate indentation ' ' ++ drop consumed line
+                         remaining = [token{tokenOffset=tokenOffset token-consumed+indentation} |
+                           token<-tokens,tokenOffset token>=consumed]
+                     in take split line : wrap remaining continuation
       where
-        tokens = sourceTokens line
         indentation = length (takeWhile isSpace line)
         -- Keep grammatical phrases together when wrapping. In particular,
         -- splitting "end function" would turn its second word into a false

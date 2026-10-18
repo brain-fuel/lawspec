@@ -38,6 +38,19 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 | `--minify` | Compact output. Accepted only by `init`, `generate` and `examples`. |
 | `--no-cache` | Do not read or write the compiler cache for this command. |
 
+## `fmt`
+
+`fmt` formats the supplied paths, or the configured project sources when paths
+are omitted. It checks the canonical sources before writing them. `--check`
+reports files that need formatting and exits with status 1 without writing.
+
+Source layout uses two spaces and an 80-column target. Comments, literal
+values, names, equality wording, annotations and infix notation retain their
+spelling. Long indivisible names and literals may exceed the target. Harness
+settings keep their line boundaries; settings under `for law` or `for laws`
+are indented within their group. Resource operations, workflow groups and
+parallel scenario branches retain their enclosing block indentation.
+
 ## `migrate`
 
 `migrate --from 0.24` reads a version-1 project and reports its proposed canonical

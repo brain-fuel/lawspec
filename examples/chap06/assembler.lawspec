@@ -201,30 +201,30 @@ function predefinedAddress (symbol :: Predefined) -> Whole is
 end function
 
 refinement UserSymbol is
-(name :: Text where
-(name matches regex "[A-Za-z_.$:][A-Za-z0-9_.$:]*") && name != "SP" &&
-name != "LCL" &&
-name != "ARG" &&
-name != "THIS" &&
-name != "THAT" &&
-name != "SCREEN" &&
-name != "KBD" &&
-name != "R0" &&
-name != "R1" &&
-name != "R2" &&
-name != "R3" &&
-name != "R4" &&
-name != "R5" &&
-name != "R6" &&
-name != "R7" &&
-name != "R8" &&
-name != "R9" &&
-name != "R10" &&
-name != "R11" &&
-name != "R12" &&
-name != "R13" &&
-name != "R14" &&
-name != "R15")
+  (name :: Text where
+  (name matches regex "[A-Za-z_.$:][A-Za-z0-9_.$:]*") && name != "SP" &&
+  name != "LCL" &&
+  name != "ARG" &&
+  name != "THIS" &&
+  name != "THAT" &&
+  name != "SCREEN" &&
+  name != "KBD" &&
+  name != "R0" &&
+  name != "R1" &&
+  name != "R2" &&
+  name != "R3" &&
+  name != "R4" &&
+  name != "R5" &&
+  name != "R6" &&
+  name != "R7" &&
+  name != "R8" &&
+  name != "R9" &&
+  name != "R10" &&
+  name != "R11" &&
+  name != "R12" &&
+  name != "R13" &&
+  name != "R14" &&
+  name != "R15")
 end
 
 type Line is one of

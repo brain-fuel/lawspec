@@ -286,6 +286,62 @@ test('an unestablished generic input-domain policy blocks writing even when law 
   assert.deepEqual((await readdir(p.root)).sort(),['demo.lawspec','lawspec.json']);
 });
 
+test('symbolic agreement for an unused polymorphic-only project does not bypass target generation before writing',async t=>{
+  for(const machineBits of [32,64]){
+    const content='unit demo\ndefinition keep (value :: a) :: a is value end';
+    const p=await project(t,{content});
+    p.config.machineBits=machineBits;p.input.machineBits=machineBits;
+    p.text=JSON.stringify(p.config,null,2)+'\n';
+    await writeFile(path.join(p.root,'lawspec.json'),p.text);
+    const report=await migrationReport(compiler,p.config,p.input);
+    assert.deepEqual(report.diagnostics,[]);
+    assert.equal(report.correspondence.sourceTemplates.status,'matched');
+    assert.equal(report.generationPreview.status,'not-established');
+    assert.equal(report.validated,false);
+    await assert.rejects(writeMigration(compiler,p.root,'lawspec.json',p.text,p.input),error=>{
+      assert.equal(error.diagnostics[0].code,'migration-incomplete');
+      assert.match(error.message,/target generation/i);return true;
+    });
+    assert.equal(await readFile(path.join(p.root,'demo.lawspec'),'utf8'),content);
+    assert.equal(await readFile(path.join(p.root,'lawspec.json'),'utf8'),p.text);
+    assert.deepEqual((await readdir(p.root)).sort(),['demo.lawspec','lawspec.json']);
+  }
+});
+
+test('changed opaque codecs and generator factories refuse actual writes and retain all original application bytes',async t=>{
+  const content='unit demo\ntype Flag is | FlagValue flag :: Bool end\ncopy :: Flag -> Flag';
+  const functions=[{declaration:'demo::copy',native:['application','copy']}];
+  const variants=[
+    {types:[{type:'demo::type::Flag',native:['application','Flag'],
+      codec:{toNative:['application','encode'],fromNative:['application','decode']}}],functions},
+    {functions,generators:[{type:'demo::type::Flag',factory:['application','flags']}]},
+  ];
+  for(const machineBits of [32,64])for(const nativeBindings of variants){
+    const p=await project(t,{content});
+    p.config.machineBits=machineBits;p.input.machineBits=machineBits;
+    p.config.targets[0].nativeBindings=nativeBindings;
+    p.text=JSON.stringify(p.config,null,2)+'\n';
+    await writeFile(path.join(p.root,'lawspec.json'),p.text);
+    const application='existing native codec and factory implementation\n';
+    await mkdir(path.join(p.root,'python'));
+    await writeFile(path.join(p.root,'python/application.py'),application);
+    const report=await migrationReport(compiler,p.config,p.input);
+    assert.deepEqual(report.diagnostics,[]);
+    assert.equal(report.correspondence.sourceTemplates.status,'matched');
+    assert.equal(report.bindingPreview.status,'not-established');
+    assert.equal(report.validated,false);
+    await assert.rejects(writeMigration(compiler,p.root,'lawspec.json',p.text,p.input),error=>{
+      assert.equal(error.diagnostics[0].code,'migration-incomplete');
+      assert.match(error.message,/codec|generator/i);return true;
+    });
+    assert.equal(await readFile(path.join(p.root,'demo.lawspec'),'utf8'),content);
+    assert.equal(await readFile(path.join(p.root,'lawspec.json'),'utf8'),p.text);
+    assert.equal(await readFile(path.join(p.root,'python/application.py'),'utf8'),application);
+    assert.deepEqual((await readdir(p.root)).sort(),['demo.lawspec','lawspec.json','python']);
+    assert.deepEqual(await readdir(path.join(p.root,'python')),['application.py']);
+  }
+});
+
 
 test('invalid target roots and omitted package inputs cannot become a validated persisted configuration',async t=>{
   for(const change of [config=>{delete config.targets[0].root;},config=>{config.targets.push({...config.targets[0]});},

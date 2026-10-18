@@ -1,0 +1,27 @@
+unit example.canonical
+handle Store
+openStore :: () -> Store
+put :: Store -> Bool -> ()
+function modelPut (value :: Bool) (state :: Bool) -> Bool is
+value
+end function
+model store :: shared Store by Bool is
+start openStore by false
+put by modelPut
+end
+function chooseFirst (left :: Bool) (right :: Bool) -> Bool is
+left
+end function
+workflow gather :: Bool -> Bool is
+all
+first :: Bool -> Bool
+second :: Bool -> Bool
+end
+combine chooseFirst
+end
+function resource (value :: Bool) -> Bool is
+value
+end function
+function useResource (value :: Bool) -> Bool is
+resource value
+end function
