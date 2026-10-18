@@ -383,6 +383,24 @@ parity or the whole minor. Remaining target/mutant, package, formatter, editor,
 documentation and release checks remain open. Evidence is under
 `.artifacts/unicode-filename/`.
 
+The subsequent decreasing-span implementation passes the native suite at all
+seventeen targets in both 64-bit readable and 32-bit compact profiles, including
+all three mutants. Sixteen targets use the original increment's actual native
+receipts; Gleam's compiler-owned namespace admission is repaired separately at
+`e332d9bf` and both Gleam profiles pass. All 38 complete native/WASM responses
+match, and every generated file in all 34 target/profile projects matches the
+files used by those native executions. No fields are dropped or normalized for
+comparison. The rebuilt SDK's two tests pass without skips. The actual
+206-file npm archive matches the staged package byte for byte and includes the
+Unicode license and three new examples. Installed-package smoke remains
+running; this archive audit does not claim that gate passed. The checkpoint is
+pushed to main at `e332d9bf`, without a tag. The final WASM for that checkpoint
+is 73,117,916 bytes, SHA-256
+`aa7d9df1c55cee90f2af8b1e25a356551bf5d000ead37714806709fb0a846174`.
+Evidence is under `.artifacts/unicode-target-admission/`. The complete official
+mapping corpus is finite oracle coverage, and sampled properties remain
+sampled properties; neither result is a proof of every universal law.
+
 The same audit independently reproduced another missing requirement: `Int8`
 implicitly widens to `Integer`, but its provably lossless widening to `Int16`
 is rejected. The direct narrowing and exact-to-float probes reject correctly.
@@ -433,6 +451,45 @@ emitters and actual typed formatting snapshots. All 141 generated files,
 snippets pass. Complete response parity, the native repair and remaining target
 execution, packaging and final combined regression checks remain open. Evidence
 is under `.artifacts/exact-widening/`; this is not final minor acceptance.
+
+### Numeric bridges and documentary prelude aliases — 18 October 2026
+
+The isolated `minor-numeric-reference-boundaries` repair converts a differing
+exact numeric representation through .NET's existing `Scalar.convert` before
+schema validation. Core already restricts a differing checked-argument bridge
+to exact numeric types; identical types retain ordinary validation. The repair
+does not weaken ranges, nominal boundaries or mandatory admission. It addresses
+the actual F# Decimal/Rational failures above and remains subject to native
+execution, including C# consumers of the same portable bridge.
+
+The audit also reproduced unresolved documentary links to existing public
+prelude function aliases. Executable and documentary resolution now share the
+same provider table for collection, matcher, text and time definitions. Links
+retain the original declaration identity and source span, obey package
+visibility, and search local and explicitly imported names before falling back
+to the prelude. Primitive operations without a source definition do not gain
+invented function targets. Wrong-kind and unresolved references remain errors;
+references do not discharge obligations.
+
+Compiler and public SDK regressions cover alias-only references, qualified and
+unqualified forms, local/import shadowing, original target identities and
+no-selected-checks evidence. A new identity test initially caught `setOf`
+linking the legacy ordered constructor instead of `eqSetOf`; the repair applies
+the same existing `canonicalCollectionValues` map as import exports. All
+15 documentary compiler tests, eight exact-widening compiler tests and three
+targeted WASM SDK tests now pass. Both WASM builds have captured terminal-zero
+receipts and unchanged source hashes; the second build includes the identity
+repair. All 141 generated outputs, 237 boundary modules, integrity, and 120
+documentation pages with 119 compiled snippets pass. F# and C# each pass both
+native profiles and all three mutants. Swift then exposes the same unconverted
+Decimal/Rational representation failure. That failure is retained and remains
+unrepaired in this increment; the remaining native targets run independently
+so one failure cannot hide another. This is not final acceptance. The Unicode fixture
+law title now states its actual idempotence proposition. Its full official
+mapping table is retained, but previous old-title native receipts do not stand
+in for a current harness run. Evidence is under
+`.artifacts/numeric-reference-boundaries/`. Final combined acceptance remains
+open; no RC designation, tag or publication is claimed.
 
 ### Requirement coverage audit — 18 October 2026
 

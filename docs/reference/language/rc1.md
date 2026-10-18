@@ -112,8 +112,11 @@ A law selector is `definition`, `description`, `rationale`, `references`, or
 may follow whitespace or a dot after the law name. A known section selector
 addresses that documentary field; an omitted optional section has empty text
 or entries. A named selector requires an actual entry on the selected law.
-`ref function` selects a checked function or procedure definition. An adapter
-signature has no source definition to select. An unselected law link addresses
+`ref function` selects a checked function or procedure definition. Public
+prelude aliases such as `prelude.caseFold` and `prelude.setOf` select their
+original checked definitions. Local and explicitly imported functions take
+priority for unqualified links. An adapter signature or primitive operation
+has no source definition to select. An unselected law link addresses
 the law as a whole. Named external entries use a phrase name, a colon and one
 text resource; unnamed quoted citations are also external links. Named entries
 are unique within their law. Resources are documentary text, with no network

@@ -3,15 +3,16 @@
 module LawSpec.Documentary (resolveDocumentaryReferences) where
 
 import LawSpec.Model
+import LawSpec.PreludeNames (preludeDefinitionTarget)
 import Control.Monad (forM, unless)
 import Data.List (intercalate, nub, isPrefixOf)
 import qualified Data.Map.Strict as M
 
 data Kind = LawTarget | FunctionTarget deriving (Eq, Show)
 
-resolveDocumentaryReferences :: (String -> String -> String) -> (String -> String -> Maybe String)
+resolveDocumentaryReferences :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
   -> [(Unit, [Import])] -> Either [Diagnostic] [(Unit, [Import])]
-resolveDocumentaryReferences referenceUnit visible units = forM units $ \(u, imports) -> do
+resolveDocumentaryReferences canonical referenceUnit visible units = forM units $ \(u, imports) -> do
   linked <- forM (laws u) $ \law -> do
     refs <- mapM (resolve u) (references law)
     pure law { references = refs }
@@ -70,9 +71,12 @@ resolveDocumentaryReferences referenceUnit visible units = forM units $ \(u, imp
         Nothing -> pure []
         Just (u, imports) ->
           if not (null (local kind u name)) then pure (local kind u name)
-          else concat <$> mapM (lookupTarget (key : seen) at kind destination . itemParts imports . unquote)
-            [item | i <- imports, null (importUnit i), item <- importItems i,
-              itemKind kind item, itemBase imports (unquote item) == name]
+          else case (kind,destination,preludeDefinitionTarget canonical name) of
+            (FunctionTarget,"prelude",Just (provider,definition)) ->
+              exported (key : seen) at kind importer provider definition
+            _ -> concat <$> mapM (lookupTarget (key : seen) at kind destination . itemParts imports . unquote)
+              [item | i <- imports, null (importUnit i), item <- importItems i,
+                itemKind kind item, itemBase imports (unquote item) == name]
     listed kind name i = any (\item -> itemKind kind item && unquote item == name) (importItems i)
     itemKind LawTarget item = take 1 item == "`" && take 1 (reverse item) == "`"
     itemKind FunctionTarget item = take 1 item /= "`"

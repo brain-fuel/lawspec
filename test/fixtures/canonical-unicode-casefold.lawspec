@@ -4,7 +4,7 @@ function fold (text of type Text) -> Text is
   prelude.caseFold text
 end function
 
-law "|full default case folding agrees with Unicode 17| is
+law "|full default case folding is idempotent| is
   definition:
     for all (text of type Text) =>
       fold (fold text) must be fold text

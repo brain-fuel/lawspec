@@ -612,9 +612,14 @@ Location}`. Law links optionally carry `selector: {kind: "definition" |
 "description" | "rationale" | "references"}` or `{kind: "named-reference",
 name: string}`. External links carry `resource` and an optional phrase `name`.
 No target contains an expanded proposition, so cycles remain finite. These
-links never provide verification evidence. Transitional schemas 3/4 retain
-string citation arrays, as in the interface above; the generated TypeScript
-union covers both wire versions.
+links never provide verification evidence. Public prelude aliases backed by
+checked definitions resolve to their original declaring unit and source span:
+`ref function prelude.caseFold` targets `lawspec.text.textCaseFold`.
+Unqualified links resolve local and explicitly imported functions before the
+prelude. Primitive operations without a function definition do not manufacture
+documentary targets. Explicit legacy migration responses retain string
+citation arrays for schemas 3/4; ordinary requests require schema 5. The
+generated TypeScript union covers both wire versions.
 
 Schema 5 also exposes `law.harness.witnesses`: each entry has a target `binder`
 ID, a normalized lexical `path: string[]`, and a typed `expression: Expr`.

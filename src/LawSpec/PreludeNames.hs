@@ -3,16 +3,44 @@
 -- Internal execution helpers are not public source names.
 module LawSpec.PreludeNames
   ( simplePreludeHelpers, sequencePreludeHelpers, preludeValueName
-  , preludeDiscoveryText, preludeDependencyText ) where
+  , preludeDiscoveryText, preludeDependencyText, preludeDefinition, preludeDefinitionTarget ) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Collections (canonicalCollectionOperations)
+import qualified LawSpec.Collections as Collections
+import qualified LawSpec.Matchers as Matchers
+import qualified LawSpec.Time as Time
+import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldAlias,caseFoldOperation)
 import LawSpec.Matchers (matcherOperations)
 import LawSpec.Time (timeOperations)
 import LawSpec.Railway (railwayNames)
 import LawSpec.Scalar (isNumeric)
 import LawSpec.SourceText (Token(..),TokenKind(..),sourceTokens)
 import Data.List (nub,stripPrefix)
+import Data.Maybe (listToMaybe,fromMaybe)
+
+-- | Public aliases backed by ordinary checked definitions. Executable and
+-- documentary resolution share the provider identity and source spelling.
+-- Primitive operations and syntax combinators have no function definition.
+preludeDefinition :: Bool -> String -> Maybe (String,String,String)
+preludeDefinition canonical name = listToMaybe
+  [(unit,alias,definition) | (unit,alias,Just definition) <-
+    [(Collections.collectionsUnit,Collections.collectionsAlias,
+      fst <$> (if canonical then Collections.canonicalCollectionOperation else Collections.collectionOperation) name)
+    ,(Matchers.matchersUnit,Matchers.matchersAlias,Matchers.matcherOperation name)
+    ,(caseFoldUnit,caseFoldAlias,caseFoldOperation name)
+    ,(Time.timeUnit,Time.timeAlias,Time.timeOperation name)]]
+
+-- | The provider's original declaration behind its canonical export name.
+-- Import resolution applies this same map to collection exports. Documentary
+-- links address the original declaration directly, without an import scope.
+preludeDefinitionTarget :: Bool -> String -> Maybe (String,String)
+preludeDefinitionTarget canonical name = do
+  (unit,_,exportedName) <- preludeDefinition canonical name
+  let original = if canonical && unit == Collections.collectionsUnit
+        then fromMaybe exportedName (lookup exportedName Collections.canonicalCollectionValues)
+        else exportedName
+  pure (unit,original)
 
 simplePreludeHelpers :: [(String,C.Builtin)]
 simplePreludeHelpers =

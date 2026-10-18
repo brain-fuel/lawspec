@@ -263,6 +263,35 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         map LawSpec.Model.documentaryUnit targets `shouldBe` replicate 5 "domain"
         map LawSpec.Model.documentaryName targets `shouldMatchList`
           ["generic","generic","concrete","\"|same.value|","\"|same.value|"]
+  it "resolves documentary prelude function aliases to their original checked definitions" $ do
+    let source = Source "consumer.lawspec" $ unlines
+          ["unit consumer", "law documented is definition: true end references:",
+           "ref function prelude.caseFold ref function caseFold",
+           "ref function prelude.setOf ref function setOf",
+           "ref function prelude.milliseconds ref function milliseconds",
+           "ref function prelude.sameItems ref function sameItems end end"]
+    case compileCoreCanonical 64 defaultGeneration [source] of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        let targets = [target | u <- C.programUnits program, C.idText (C.unitId u) == "consumer",
+              law <- C.unitProperties u, LawSpec.Model.FunctionReference target <- C.propertyReferences law]
+        map LawSpec.Model.documentaryUnit targets `shouldMatchList`
+          concatMap (replicate 2) ["lawspec.text","lawspec.collections","lawspec.time","lawspec.matchers"]
+        map LawSpec.Model.documentaryName targets `shouldMatchList`
+          concatMap (replicate 2) ["textCaseFold","eqSetOf","milliseconds","matchersSameItems"]
+        all ((/= "<unknown>") . LawSpec.Model.file . LawSpec.Model.spanStart . LawSpec.Model.documentarySpan) targets
+          `shouldBe` True
+  it "keeps ordinary scopes ahead of documentary prelude function aliases" $ do
+    let source = Source "consumer.lawspec" $ unlines
+          ["unit consumer", "function caseFold (value :: Text) -> Text is value end function",
+           "law documented is definition: true end references:",
+           "ref function caseFold ref function prelude.caseFold end end"]
+    case compileCoreCanonical 64 defaultGeneration [source] of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        let targets = [target | u <- C.programUnits program, C.idText (C.unitId u) == "consumer",
+              law <- C.unitProperties u, LawSpec.Model.FunctionReference target <- C.propertyReferences law]
+        map LawSpec.Model.documentaryUnit targets `shouldBe` ["consumer","lawspec.text"]
   it "rejects unresolved or wrong-kind documentary targets and unknown named selectors" $ do
     let invalid =
           [ "ref law missing", "ref function missing", "ref law onlyFunction", "ref function valid",

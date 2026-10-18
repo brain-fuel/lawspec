@@ -13,14 +13,13 @@ module LawSpec.Imports (resolveImports, resolveImportsWithProfile, resolveImport
 import LawSpec.Model
 import LawSpec.SourceSyntax (SyntaxBinding(..),SyntaxReference(..))
 import LawSpec.Indexed (naturalRefinementName)
-import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, canonicalCollectionOperation, canonicalCollectionTypes, canonicalCollectionValues, internalConstructor, boundedArithmeticDefinitions)
-import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
-import LawSpec.Matchers (matchersUnit, matchersAlias, matcherOperation)
-import LawSpec.CaseFoldNames (caseFoldAlias,caseFoldOperation)
+import LawSpec.Collections (collectionsUnit, canonicalCollectionTypes, canonicalCollectionValues, internalConstructor, boundedArithmeticDefinitions)
+import LawSpec.Time (timeUnit, durationDefinitions)
+import LawSpec.Matchers (matchersUnit)
 import LawSpec.Resources (resourcesUnit)
 import LawSpec.Resilience (resilienceUnit, resilienceDefinitions)
 import LawSpec.Builtins (instantDefinitions)
-import LawSpec.PreludeNames (preludeValueName)
+import LawSpec.PreludeNames (preludeValueName,preludeDefinition)
 import LawSpec.Scalar (isNumeric)
 import LawSpec.Railway (railwayExprWithShadowed)
 import Control.Monad (forM, forM_, unless, when)
@@ -751,18 +750,10 @@ walkExpr names scope e
     pure (foldr (\(name,value) body -> MatchExpr value [MatchBranch letTag [name] body]) iteration captures)
   -- Canonical membership is type-directed across finite collections.
   Var "prelude.member" | contextualArticles names -> pure (Var "prelude.member")
-  -- prelude.<op> of a collection is a definition of the collections unit.
+  -- Prelude aliases and documentary links share their checked definition.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n,
-          Just (definition, _) <- (if contextualArticles names then canonicalCollectionOperation else collectionOperation) op ->
-          Var <$> onValue names (collectionsAlias ++ "." ++ definition)
-  -- prelude.<op> of a matcher over lists is a definition of the matchers unit.
-  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- matcherOperation op ->
-          Var <$> onValue names (matchersAlias ++ "." ++ definition)
-  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- caseFoldOperation op ->
-          Var <$> onValue names (caseFoldAlias ++ "." ++ definition)
-  -- prelude.<op> of a duration is a definition of the time unit.
-  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- timeOperation op ->
-          Var <$> onValue names (timeAlias ++ "." ++ definition)
+          Just (_,alias,definition) <- preludeDefinition (contextualArticles names) op ->
+          Var <$> onValue names (alias ++ "." ++ definition)
   Var n | n `elem` scope -> pure (Var n)
         | take 8 n == "prelude." -> Var <$> onBuiltin names n
         | otherwise -> Var <$> onValue names n

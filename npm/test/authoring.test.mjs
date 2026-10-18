@@ -5,6 +5,40 @@ import { PassThrough } from 'node:stream';
 import { serveLanguage, utf16Position } from '../lsp.mjs';
 import { explainLaw } from '../explain.mjs';
 
+test('documentary prelude function aliases retain declaration identities and ordinary scope priority',async()=>{
+  const {createCompiler}=await import('../api.mjs');
+  const compiler=await createCompiler();
+  const sources=[{path:'domain.lawspec',content:'unit domain\nfunction caseFold (value :: Text) -> Text is value end function'},
+    {path:'consumer.lawspec',content:`unit consumer
+import domain (caseFold)
+function setOf (value :: Bool) -> Bool is value end function
+law linked is
+  definition: true end
+  references:
+    ref function prelude.caseFold
+    ref function caseFold
+    ref function prelude.setOf
+    ref function setOf
+    ref function prelude.milliseconds
+    ref function prelude.sameItems
+  end
+end`}];
+  for(const machineBits of [32,64]){
+    const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,verification:{layers:[]},sources};
+    const result=await compiler.check(input);assert.deepEqual(result.diagnostics,[]);
+    const law=result.laws.find(law=>law.owner==='consumer');assert.ok(law);
+    assert.deepEqual(law.references.map(ref=>[ref.target.unit,ref.target.name]),[
+      ['lawspec.text','textCaseFold'],['domain','caseFold'],['lawspec.collections','eqSetOf'],
+      ['consumer','setOf'],['lawspec.time','milliseconds'],['lawspec.matchers','matchersSameItems']]);
+    assert.ok(result.evidence.filter(item=>item.stage==='law').every(item=>item.status==='not-verified'));
+    for(const reference of ['ref function prelude.notAFunction','ref law prelude.caseFold']){
+      const bad=await compiler.check({...input,sources:[{path:'bad.lawspec',content:
+        `unit bad\nlaw linked is definition: true end references: ${reference} end end`}]});
+      assert.ok(bad.diagnostics.some(item=>item.code==='reference'));
+    }
+  }
+});
+
 test('formatting uses parser roles for record-type separators across imported types without altering value or pattern commas',async()=>{
   const {readFile}=await import('node:fs/promises');
   const {createCompiler}=await import('../api.mjs');

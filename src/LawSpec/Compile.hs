@@ -417,7 +417,7 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
   (candidates,sourceSyntax) <- parseSourcesWithOrigins origins capture canonical collections implicit builtins sources
   let parsedUnits=[(MappingCheck.selectMappingCandidates mappingSelection imports unit,imports) | (unit,imports)<-candidates]
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
-  documented <- resolveDocumentaryReferences referenceUnit visible parsedUnits
+  documented <- resolveDocumentaryReferences canonical referenceUnit visible parsedUnits
   let canonicalUnits = Set.fromList [name | source <- sources, Right name <- [sourceUnit source]]
   let sourceProfile name = canonical && name `Set.member` canonicalUnits
   (imported',sourceBindings,demand) <- resolveImportsWithCollectionDemand capture sourceProfile visible documented

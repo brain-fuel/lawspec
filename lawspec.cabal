@@ -304,6 +304,7 @@ extra-source-files:
     test/fixtures/canonical-collection-membership.lawspec
     test/fixtures/canonical-container-records.lawspec
     test/fixtures/canonical-empty-record-patterns.lawspec
+    test/fixtures/canonical-exact-widening.lawspec
     test/fixtures/canonical-existential-native-profiles.lawspec
     test/fixtures/canonical-existential-records.lawspec
     test/fixtures/canonical-formatter-model-workflow.lawspec

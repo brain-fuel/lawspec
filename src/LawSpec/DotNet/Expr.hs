@@ -161,7 +161,13 @@ render context root = evalStateT (go context root) 0
       C.Convert mode ty source -> do
         v <- go ctx source
         case mode of
-          C.CheckedArgument -> checked ctx ty v
+          C.CheckedArgument | ty == C.expressionType source -> checked ctx ty v
+          -- A checked numeric bridge also changes the portable representation
+          -- (for example Int to Decimal), before validating its destination.
+          -- Core admits differing types here only for exact numeric operands.
+          C.CheckedArgument -> do
+            ref <- lift (contextType ctx ty)
+            checked ctx ty (call "Scalar" "convert" [v, ref, IntLit (toInteger (contextBits ctx))])
           C.Explicit -> do
             ref <- lift (contextType ctx ty)
             pure (call "Scalar" "convert" [v, ref, IntLit (toInteger (contextBits ctx))])
