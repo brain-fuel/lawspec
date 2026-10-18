@@ -244,8 +244,11 @@ and manifest digests in six migration-generation receipts. No response fields
 were removed. The corrected installed package smoke passes: installed API law
 expansion, structural APIs across all 17 targets, widths and layouts, and Rust
 scaffolding, doctor, adapters, execution and regeneration. The frozen
-current-package catalog export remains in progress; the final iteration gate
-is not claimed.
+current-package catalog export passes its complete adapter-preservation,
+edited-test protection and path checks in 7,143,784.925 milliseconds. All 266
+frozen package file hashes remain unchanged after execution. This is the frozen
+model-layer-selection package; later package snapshots retain their own runs.
+The final iteration gate is not claimed.
 Evidence is under
 `.artifacts/model-layer-selection/` and `.artifacts/model-layer-integration/`
 in the isolated model-layer-selection worktree. An older manifest assertion
