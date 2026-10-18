@@ -83,6 +83,8 @@ for (const entry of fixtureSources) {
 sources.sort((a, b) => a.path.localeCompare(b.path));
 const config = JSON.parse(await readFile(configFile, 'utf8'));
 config.verification = canonical.verification;
+// Keep the strategy/search fixtures sampled and the Boolean fixtures exhaustive.
+config.generation = {cases: 100, maxAttempts: 10000, maxShrinks: 1000, exhaustiveLimit: 256};
 config.sources = sources.map(source => source.path);
 await writeFile(configFile, JSON.stringify(config, null, 2) + '\n');
 await call('generate', ['--json', ...layoutFlags]);
@@ -97,13 +99,20 @@ const {createCompiler} = await import(pathToFileURL(path.join(packageRoot, 'api.
 const {harnessStatistics} = await import(pathToFileURL(path.join(packageRoot, 'test-command.mjs')));
 const {projectKey} = await import(pathToFileURL(path.join(packageRoot, 'failure-database.mjs')));
 const compiler = await createCompiler();
-const plan = await compiler.planGeneration({...canonical, target: language, machineBits: bits, minify, sources});
+const plan = await compiler.planGeneration({...canonical, target: language, machineBits: bits, minify,
+  generation: config.generation, sources});
 assert.deepEqual(plan.diagnostics, []);
 const lawIdentity = (owner, name) => {
   const law = plan.laws.find(law => law.owner === owner && law.name === '"|' + name + '|');
   assert.ok(law, `Missing canonical law ${owner}: ${name}`);
   return `${law.owner}::${law.name}`;
 };
+for (const [owner, name] of [['example.repetition', 'repeated random cases'],
+  ['example.repetition', 'repeated search'], ['example.target', 'interior maximum'],
+  ['example.target', 'dependent maximum'], ['example.target', 'wide maximum']])
+  assert.equal(plan.tests.find(test => test.label === lawIdentity(owner, name))?.coverage.kind, 'sampled');
+assert.equal(plan.tests.find(test => test.label === lawIdentity('example.repetition', 'repeated finite cases'))
+  ?.coverage.kind, 'finite-inputs');
 assert.equal(plan.tests.length, 39);
 assert.equal(plan.benchmarks.length, 8);
 const selectionAudit = path.join(base, 'selection.jsonl');

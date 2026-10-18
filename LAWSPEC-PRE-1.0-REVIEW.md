@@ -291,11 +291,41 @@ pass, along with documentation for 120 pages/118 compiled snippets and the real
 Canon check under its existing pre-1.0 exemptions. Evidence is under
 `.artifacts/canonical-integration-consumers/` in its
 isolated worktree. The complete 2,491-step graph, including the forty newly
-registered checks, remains required. Successful unchanged checks may reuse their
-existing content-addressed receipts; changed consumers and added native checks
-must actually execute. Final acceptance is still open. Readability remains
+registered checks, remains required as a fresh final-candidate run under the
+repository's release workflow. The ordinary CI cache remains available for
+development, but does not replace that final fresh gate. Final acceptance is
+still open. Readability remains
 user-deferred, all-named endings remain the following minor, and no tag,
 publication or release-candidate designation is claimed.
+
+### Explicit native harness generation profile — 18 October 2026
+
+Actual Erlang execution exposed a further fixture assumption: canonical range
+analysis can enumerate the 1,001-value integer domains used by sampling/search
+tests. With the default exhaustive limit, those tests reached exhaustive native
+checks and then correctly failed their sampling-only coverage requirements with
+zero generated observations. The consumer now explicitly sets 100 generated
+cases and an exhaustive limit of 256, retaining the existing attempt/shrink
+limits. Five sampling/search laws must have sampled plans, while the Boolean
+repetition law must retain a finite plan. No coverage assertion or negative
+native check was removed, and compiler/runtime behavior is unchanged.
+
+The corrected eighteen complete native/WASM BEAM responses agree at both
+profiles, with unchanged test/benchmark slot counts and preserved typed
+formatting snapshots. Actual 64-bit readable harness runs pass on Erlang and
+Elixir, including all thirty-nine law slots, skip/known-failure handling, flaky
+retries, repeated coverage/search, parallel selection, exact benchmark callback
+counts, recording failures/updates, resource-owner timeout/cleanup failures,
+JUnit and restored reruns. The earlier Erlang failure remains in the receipts.
+The isolated 64-bit model runs also pass on all three BEAM targets, including
+native discovery, selection, caching, JUnit, pop mutation and seed replay.
+Erlang's installed crypto run passes the native C/NIF build, vector/coverage
+checks and all three mutants with automatic replay after repair.
+
+Evidence remains under `.artifacts/canonical-integration-consumers/`. Other
+profiles and the complete fresh 2,491-step final-candidate run remain required.
+The current immutable run is allowed to finish; its completed receipts retain
+their original scope. No tag, publication or RC designation is implied.
 
 ### Requirement coverage audit — 18 October 2026
 
