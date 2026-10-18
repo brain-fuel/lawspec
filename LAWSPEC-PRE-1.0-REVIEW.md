@@ -91,8 +91,21 @@ pairs retain those changes. The first comparison's assertion that the keys were
 identical failed; the corrected audit explicitly accounts for each changed key.
 The complete typed snapshots also match the preceding checkpoint's snapshot.
 The full compiler regression passes **2,220 tests with zero failures** in
-865.4078 seconds. Fresh oracle executions for the current source, the SDK
-regression and frozen catalog export remain in progress.
+865.4078 seconds. The SDK regression records 492 passes, one stale Chapter 6
+formatting-baseline failure and four explicit opt-in skips out of 497 tests.
+That case had captured the earlier source before its indentation refresh;
+the corrected current-source case passes separately in 77.6152 seconds. This
+records the combined scope rather than an uninterrupted final-source SDK run.
+
+Fresh independent Chapter 6 oracles now pass at both profiles. Each executes
+545 generated checks covering 23 laws, 66 examples, 16 properties, 453 boundaries
+and ten replay hooks. Independent oracles cover all 32,768 A-instruction addresses,
+1,792 C-instruction combinations and 13 stateful programs, including repeated
+invocation independence. Each profile rejects six implementation/specification
+mutants. Receipt auditing verifies the current authored-source hash
+`569c7f3baf90ad3093bebc4ea32552c51dd1529a2a5777d26b007cf1a8b848d1`,
+the original-source and frozen-fixture hashes, and the pinned native compiler.
+The frozen catalog export and final iteration release checks remain open.
 
 Evidence is under `.artifacts/formatter-block-coverage/` in the isolated
 formatter-block-coverage worktree. This checkpoint does not complete the wider
