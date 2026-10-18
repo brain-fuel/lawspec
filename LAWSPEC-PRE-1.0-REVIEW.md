@@ -161,9 +161,16 @@ full-response, source, slot and receipt-hash auditing passes. The WASM is
 `a6a7116f9f299dee6834e2f4feacc17aba1d691661f7a9ecf1c84c900d5480d8`.
 All 34 execution-command checks, a strict typed manifest consumer, 131 generated
 outputs, 236 module boundaries, six editor checks and documentation for 119 pages
-and 115 compiled snippets pass. The broader complete-response replay, frozen
-current-package catalog export and package smoke remain in progress. This does
-not claim those checks or the final iteration gate. Evidence is under
+and 115 compiled snippets pass. The completed broader replay passes **1,285
+complete native/WASM responses**, including all 1,081 preceding requests and 204
+new selections across all 17 targets, both widths and layouts. Independent full
+response and receipt-hash auditing passes. Exactly 1,027 preceding responses are
+identical. The 54 intentional deltas contain only the Clojure runner's exact
+updated bytes in 48 artifact responses and its independently recomputed content
+and manifest digests in six migration-generation receipts. No response fields
+were removed. The frozen current-package catalog export and corrected installed
+package smoke remain in progress; the final iteration gate is not claimed.
+Evidence is under
 `.artifacts/model-layer-selection/` and `.artifacts/model-layer-integration/`
 in the isolated model-layer-selection worktree. An older manifest assertion
 assumed every entry was a law test family; it now distinguishes exact model slots
