@@ -726,6 +726,24 @@ or boundary-hint repairs. Final combined acceptance remains open; readability
 stays user-deferred and all named endings remain the following minor. No RC
 designation, tag or publication is claimed.
 
+### Final documentation reconciliation — 18 October 2026
+
+The optional case-warning increment is pushed on `main` at `e3d77b95`. Its
+focused compiler, public-interface, editor, complete-response parity, generation,
+boundary, integrity and configured canonical-format checks pass. An independent
+inspection of the current packed archive matches all 206 files to the candidate
+and passes six actual packaged-CLI checks across both machine widths: defaults,
+opt-in warning delivery, unchanged law evidence and mandatory admission errors.
+This does not replace the full installed catalog export or complete CI graph.
+
+The fresh 2,593-step acceptance run is executing on that immutable main snapshot.
+This documentation follow-up corrects the catalog export's command limit to one
+hour, records the warning controls in the changelog, and names their permanent
+regressions in the completion inventory. Compiler and target implementation bytes
+are unchanged. Final integration, applicable documentation/package checks and
+release preconditions remain open. No tag, publication or RC designation is
+authorized by this record.
+
 ### Optional case warnings — implementation under verification, 18 October 2026
 
 The completion audit found that the authoring contract's optional unreachable
@@ -793,7 +811,7 @@ results for their own compiler and package snapshots.
 | Integer/Whole/Nat domains, bounded migration, zero-inclusive lengths/indices, exact literals and widening | Existing scalar/type admission and migration cover the domains and contextual literals; exact scalar widening uses the existing whole-domain containment check, with compiler tests, native runs on all 17 targets/both profiles and complete native/WASM comparisons | Final combined regression; narrowing, float precision loss and nominal unwrapping remain rejected |
 | Nominal records, explicit construction, closed anonymous products and typed alternatives | `Core/RecordIdentity`, source record elaboration; `SourceRecordCanonicalSpec`, `SourceRecordPayloadSpec`, `SourceRecordInferenceSpec`, `PayloadSpec` | Final compiler/native payload suites; unsupported dependent source forms remain diagnosed |
 | BLAKE3 identity, field-order independence, alias/bound-name normalization, collision interning and separate nominal dependency invalidation | Portable `Blake3`, canonical descriptors; official-vector checks in `CanonicalSpec`, `RecordIdentitySpec`, `RecordNormalizeSpec`, recorded GoForge comparison | Final record parity; unrelated SHA caches remain separate |
-| Single-evaluation ordered cases, scoped it, guards, recursive/record patterns, wildcards and exhaustiveness | Canonical case elaboration; `CanonicalMatcherSpec`, `CanonicalPredicateFactsSpec`, recursive-record examples | Final compiler/target gates and optional-warning integration above; guards do not establish coverage |
+| Single-evaluation ordered cases, scoped it, guards, recursive/record patterns, wildcards and exhaustiveness | Canonical case elaboration; `CanonicalMatcherSpec`, `CanonicalPredicateFactsSpec`, `MatchWarningSpec`, recursive-record examples and SDK/CLI/LSP warning regressions | Final compiler/target/editor gates; guards do not establish coverage, and optional structural warnings do not establish complete reachability |
 | Nested quantifiers/negation, left-to-right restrictions, normative wording, contextual articles and typed equality | Authoritative Core propositions; `CanonicalSpec`, `QuantifierDomainSpec`, `WitnessSpec`, contextual-article SDK checks | Final logical, reusable-law, Eq and IEEE regressions |
 | Prelude lookup after locals/imports, ambiguity and capture avoidance | Shared resolution/substitution; `PreludeResolutionSpec`, canonical qualified-name and reusable-law tests | Final compiler/consumer gates |
 | Eq-only Set/membership, first-occurrence order, SortedSet migration, collection any and explicit map selections | `Core/EqSet`, existing collection operations; `EqSetSpec`, `EqSetOperationsSpec`, `CanonicalCollectionsSpec`, SDK set/membership/migration suites | Final native collection suites; iteration itself needs no Eq |

@@ -10,6 +10,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional case warnings through `lawspec check --warn-matches`, SDK requests
+  with `warnMatches: true`, and the VS Code `lawspec.warnMatches` setting.
+  Findings retain source spans and remain separate from compiler errors and
+  law evidence. An empty warning list does not prove that every branch is reachable.
+
 - Checked documentation rejection examples with `reject=<diagnostic-code>`.
   Each fixture requires exactly its expected compiler diagnostic, preserves
   failure context and reports unexpected acceptance after editing.
