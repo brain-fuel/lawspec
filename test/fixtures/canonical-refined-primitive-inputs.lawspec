@@ -26,3 +26,13 @@ law dependentRanges is
     end
   end
 end
+
+law retainedUpperBoundary is
+  definition:
+    for all
+      (value of type Int8 where value >= 100)
+      (message of type Message) =>
+      value >= 100 and value <= 127 and message.code < 0
+    end
+  end
+end

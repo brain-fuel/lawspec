@@ -626,7 +626,9 @@ stubs. The final public WASM regression checks exactly six unverified law
 slots when no layers are selected and the stable `total` rejection for an
 undefined definition. Documentation passes 120 pages and 119 compiled
 snippets. Canon passes with its declared registry exemptions; this is not a
-claim of human review. The full compiler regression run is still active.
+claim of human review. The full compiler regression subsequently passes
+2,237 tests with zero failures in 1,161.8611 seconds. That result belongs to
+this checkpoint, before the later contextual boundary-hint repair.
 Evidence is under `.artifacts/bounded-package-consumers/`, including
 `native-wide-state.json`, `native-pilot-final-state.json`,
 `generator-tree-evidence.json` and `parity-state.json`. Final combined acceptance
@@ -644,6 +646,85 @@ the original failed whole-run result. Evidence is under
 `.artifacts/fsharp-harness-recheck/` in the unchanged preflight worktree. Final
 combined acceptance remains open. No RC designation, tag or publication is
 claimed.
+
+### Contextual boundary hints — 18 October 2026
+
+The continuing older broad run found a Python failure in the compact
+`minor-refined-primitive-inputs` suite. Hypothesis reported 50 rejected examples
+and only seven accepted examples, with replay seed
+`25223908019183950680600183627505699360`. The narrowed integer generator was
+correct, but its supplemental type-boundary witnesses still included the
+minimum integer, minus one, zero and the maximum integer. Those values bypassed
+the narrowed range until the enclosing law restriction rejected them. Earlier
+input values could likewise be unsuitable hints for a dependent later input.
+
+The isolated `minor-refined-boundary-hints` repair filters contextual hints
+through the source-ordered restrictions in their actual lexical prefix before
+mixing them with native generation. The prefix is reconstructed when the
+framework shrinks earlier inputs. Final restriction checks remain, and no
+health check is suppressed. Constant primitive hints outside an established
+integer range are also omitted from the non-contextual portable path.
+This follows Hypothesis's documented
+[dependent draws and shrinking](https://hypothesis.readthedocs.io/en/latest/reference/strategies.html)
+and retains the existing typed predicate renderer and checked runtime, rather
+than introducing another evaluator or proof mechanism.
+
+A native Python regression observes the hint lists passed by the actual emitted
+property functions. It checks both narrow ranges, strict dependent ordering and
+retention of the valid `Int8` boundary 127. The original implementation fails
+with the recorded seed and seeds zero, one and two. The suite now contains a
+third law for that retained boundary; its existing two assertion mutants remain.
+A controlled counterexample also exercises Hypothesis's actual shrinking while
+the observation checks restrictions in changed prefixes. An initial local
+virtual-environment setup failure is recorded separately from the subsequent
+actual native failures.
+
+Both repair builds pass. All seventeen native targets pass the three-law suite
+at both profiles and reject both assertion mutants. Python passes all nine
+native tests at each profile, including the four replay seeds and the deliberate
+shrinking regression, using Python 3.13.15 and Hypothesis 6.135.26. Six additional
+Python/JavaScript/TypeScript package runs pass their adapters, mutations and
+applicable stub checks. The combined focused matrix completes all 40 runs with
+unchanged inputs.
+
+All 42 complete native/WASM responses agree, including both-width typed
+formatting correspondence, idempotence and all seventeen emitters. Every
+emitted file byte matches the 34 actual native-tested projects. The public SDK
+passes all eleven selected bounded-generation and real-Z3 proof regressions
+with no failures or skips. Documentation passes 120 pages and 119 compiled
+snippets; all 144 generated files, 237 boundary modules, source/artifact
+integrity and version consistency pass. The 73,154,006-byte WASM is SHA-256
+`6e0d8be4e259a29a12293b4762786905aa3f4a7a4ab24e7b81968c6d27a32528`.
+These are scoped execution results, not universal proofs or final combined
+acceptance. Evidence is under `.artifacts/refined-boundary-hints/` in the
+isolated worktree, including `native-state.json`, `parity-response-state.json`
+and `parity-native-file-evidence.json`.
+
+The queued 2,593-step run of `87f880c9` was deliberately superseded before
+executing any steps because it contains this reproduced bug. Its actual
+termination and unchanged inputs are recorded; it was not restarted because of
+silence or an observation timeout. The older broad run remains unchanged and
+its failed results remain failed. A complete fresh run on the repaired candidate
+is still required.
+
+Chapter 6 also passes fresh Python oracle execution at both profiles with the
+preceding pushed `87f880c9` compiler: all 32,768 A-instruction addresses, 1,792
+C-instruction combinations, thirteen stateful programs, independent repeated
+invocations and six mutants per profile. The required 23-law, 65-row, one-example,
+25-definition, seven-ADT and two-refinement authored inventory, plus six mappings,
+and both protected source hashes are unchanged. This does not establish all
+seventeen Chapter 6 implementations. The new hint repair still requires its
+own final combined run.
+
+The preceding `8f258e65` package smoke has now completed successfully. It
+exports all bundled examples in 3,357.075 seconds, exercises the installed
+structural API across seventeen targets at both widths and layouts, and passes
+installed JavaScript and Rust scaffold tests, doctor and regeneration checks.
+All 206 archive files match that checkpoint's package tree. This is supporting
+evidence for that archive, not installed acceptance of the subsequent generator
+or boundary-hint repairs. Final combined acceptance remains open; readability
+stays user-deferred and all named endings remain the following minor. No RC
+designation, tag or publication is claimed.
 
 ### Requirement coverage audit — 18 October 2026
 

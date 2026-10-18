@@ -811,13 +811,26 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
          invoke "given" [invoke "st.data" []]] ["_draw"]
         (statements (fresh e : draws ++ [statement (invoke "assume" [predicate]),body])))
     contextStrategy e plan = do
-      let ty = inputType (domainInput plan)
+      let input = domainInput plan
+          ty = inputType input
       seeds <- mapM valueLit (generatorBoundaries plan)
       let hints = [render hint | hint <- generatorHints plan,
             C.expressionType hint == ty, case C.expressionNode hint of
               C.Constant _ -> True
               C.Local _ -> True
               _ -> False]
+          -- Seed values are supplementary draws, so they must obey the same
+          -- restrictions as the narrowed scalar generator. Recompute them in
+          -- the actual lexical prefix on every draw/shrink. Earlier restrictions
+          -- guard partial expressions in later restrictions in source order.
+          prefix = takeWhile ((/= inputId input) . inputId) (inputs e) ++ [input]
+          predicates = concatMap inputRefinements prefix
+          candidates = array (seeds ++ hints)
+          accepted = lambda [text (inputId input)] (conjunction (map render predicates))
+          witnesses
+            | null predicates = candidates
+            | py = invoke "list" [invoke "filter" [accepted,candidates]]
+            | otherwise = method candidates "filter" [accepted]
           scalarName = text "_lawspecScalarName"
           fallback = if py then invoke "_lawspec_primitive_generators.__getitem__" [scalarName]
             else text "_lawspec_primitive_generators[_lawspecScalarName]"
@@ -834,7 +847,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         value:_ -> invoke (if py then "st.just" else "fc.constant") [render value]
         [] -> invoke "_data_strategy"
           ([text "_lawspec_schema",referenceDoc ty,width,text (show budget),
-            scalar,text "symbols",array (seeds ++ hints)] ++
+            scalar,text "symbols",witnesses] ++
             [text (show (maxAttempts (generation e))) | not py] ++
             -- The generated native wrapper takes index directly; the shared
             -- runtime receives its default native generators and schema.
@@ -897,7 +910,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           hinted input generator = case [render hint | plan <- generationPlan e,
               inputId (domainInput plan) == inputId input, hint <- generatorHints plan,
               C.expressionType hint == inputType input, isConstant hint,
-              C.expressionType hint /= C.scalarType "Symbol"] of
+              C.expressionType hint /= C.scalarType "Symbol", withinRange input hint] of
             [] -> generator
             -- Literals render against a symbol table; these hold no symbols,
             -- so a throwaway table is enough outside a case.
@@ -905,6 +918,9 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                            parenthesized (if py then text "{}" else invoke "new Map" [])
               in invoke (if py then "st.one_of" else "fc.oneof")
                 [if py then invoke "st.sampled_from" [values] else invoke "fc.constantFrom" [text "..." <> values], generator]
+          withinRange input hint = case (inputRange bits input,C.expressionNode hint) of
+            (Just (lo,hi),C.Constant (SInteger _ value)) -> value >= lo && value <= hi
+            _ -> True
           isConstant hint = case C.expressionNode hint of
             C.Constant _ -> True
             _ -> False

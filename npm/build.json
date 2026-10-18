@@ -820,7 +820,7 @@
     "src/LawSpec/CoreEmit.hs": "468765972c392c8ffac13f2dd2737e6523c569a6407816d73812a265fcc1e729",
     "src/LawSpec/CoreNativeScalarEmit.hs": "67d74c64ebc1fe82714aa2be39d9febf3c126e09d08f33b30c7e3af6d8f277b8",
     "src/LawSpec/CorePersist.hs": "a6131ae2277757cd90f4ba59717b8f3f87da808ebfe0e2ec7599f3a3d346ade7",
-    "src/LawSpec/CoreScalarEmit.hs": "f1792b8b236a02e36c885853bb0e2b1794ac277476f235ddbeb5128058b8661b",
+    "src/LawSpec/CoreScalarEmit.hs": "7121cbe8f626583b0db70739ab7c0c82acfcff0f97df1e9f12abaa469ea2b236",
     "src/LawSpec/Data.hs": "b088925dfa21ee1acd8dcb225815eb0e50648bb2f0c71b9fbead188a10e3699b",
     "src/LawSpec/DataNames.hs": "f7f4c390369a10dc4ed9b7a0a9ea713ae000188cb5e75fb6a3ea2676ba4a1c4d",
     "src/LawSpec/DefaultSources.hs": "85678a33e84f2d603c59bac3a4beeacbefcc96920accbac37beaba6344f00ab2",
@@ -1023,7 +1023,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "7c88c320d8fc988bae37a4364239b81c71564ec676607a7ea25dcb02e48304cf",
-    "npm/core.wasm": "51268e8efa8eefc674c34401d3ffc16510a94b7b1a1b306d3171e7b9afc03529",
+    "npm/core.wasm": "6e0d8be4e259a29a12293b4762786905aa3f4a7a4ab24e7b81968c6d27a32528",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "8110e4f8bfbec33bdd04a34d18189d56d094495674de58ce55a0c4076411e9ca",
     "npm/index.d.ts": "395fbd25eb784f081c22eb3a19dc458a3a0ec183d0febe127c9d85219b1e360b"
