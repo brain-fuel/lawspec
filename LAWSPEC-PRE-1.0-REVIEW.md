@@ -168,8 +168,11 @@ response and receipt-hash auditing passes. Exactly 1,027 preceding responses are
 identical. The 54 intentional deltas contain only the Clojure runner's exact
 updated bytes in 48 artifact responses and its independently recomputed content
 and manifest digests in six migration-generation receipts. No response fields
-were removed. The frozen current-package catalog export and corrected installed
-package smoke remain in progress; the final iteration gate is not claimed.
+were removed. The corrected installed package smoke passes: installed API law
+expansion, structural APIs across all 17 targets, widths and layouts, and Rust
+scaffolding, doctor, adapters, execution and regeneration. The frozen
+current-package catalog export remains in progress; the final iteration gate
+is not claimed.
 Evidence is under
 `.artifacts/model-layer-selection/` and `.artifacts/model-layer-integration/`
 in the isolated model-layer-selection worktree. An older manifest assertion
