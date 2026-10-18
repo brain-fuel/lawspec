@@ -87,7 +87,7 @@ integrity record = do
   let sources = sort (haskell ++ wasmApp ++ runtimes ++
         [ "dev/Gen/Embed.hs", "package.yaml", "lawspec.cabal", "stack.yaml"
         , "stack.yaml.lock", "wasm/cabal.project", "wasm/cabal.project.freeze"
-        , "wasm/lawspec-wasm.cabal" ])
+        , "wasm/lawspec-wasm.cabal", "vendor/unicode/17.0.0/CaseFolding.txt", "vendor/unicode/LICENSE.txt" ])
       artifacts = ["npm/core.wasm", "npm/core_jsffi.js", "npm/api.mjs", "npm/index.d.ts"]
   digests <- forM (sources ++ artifacts) $ \file -> (,) file . hex . SHA256.hash <$> B.readFile file
   if record
@@ -125,6 +125,7 @@ stagedCopies = do
   -- checked. ref:DEC-npm-documents-copied
   let documents = ["LICENSE"]
   let pairs = ("examples/specs/atoi_codec.lawspec", "npm/starter.lawspec") :
+        ("vendor/unicode/LICENSE.txt", "npm/UNICODE-LICENSE.txt") :
         [(d, "npm/" ++ d) | d <- documents] ++
         [("examples/specs/" ++ f, "npm/examples/specs/" ++ f) | f <- specs] ++
         [("examples/rc1-authoring.lawspec", "npm/examples/rc1-authoring.lawspec")] ++

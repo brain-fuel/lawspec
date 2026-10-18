@@ -16,6 +16,7 @@ import LawSpec.Indexed (naturalRefinementName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, canonicalCollectionOperation, canonicalCollectionTypes, canonicalCollectionValues, internalConstructor, boundedArithmeticDefinitions)
 import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
 import LawSpec.Matchers (matchersUnit, matchersAlias, matcherOperation)
+import LawSpec.CaseFold (caseFoldAlias,caseFoldOperation)
 import LawSpec.Resources (resourcesUnit)
 import LawSpec.Resilience (resilienceUnit, resilienceDefinitions)
 import LawSpec.Builtins (instantDefinitions)
@@ -757,6 +758,8 @@ walkExpr names scope e
   -- prelude.<op> of a matcher over lists is a definition of the matchers unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- matcherOperation op ->
           Var <$> onValue names (matchersAlias ++ "." ++ definition)
+  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- caseFoldOperation op ->
+          Var <$> onValue names (caseFoldAlias ++ "." ++ definition)
   -- prelude.<op> of a duration is a definition of the time unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- timeOperation op ->
           Var <$> onValue names (timeAlias ++ "." ++ definition)

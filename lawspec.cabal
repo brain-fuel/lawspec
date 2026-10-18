@@ -11,6 +11,8 @@ license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
+    vendor/unicode/LICENSE.txt
+    vendor/unicode/17.0.0/CaseFolding.txt
     README.md
     CHANGELOG.md
     runtime/lawspec_harness.rs
@@ -269,6 +271,7 @@ extra-source-files:
     examples/specs/workflows.lawspec
     examples/rc1-authoring.lawspec
     examples/rc1/authorization-snapshots.lawspec
+    examples/rc1/banner-filenames.lawspec
     examples/rc1/bit-codec.lawspec
     examples/rc1/bounded-witness-search.lawspec
     examples/rc1/conflicting-requirements.lawspec
@@ -280,6 +283,8 @@ extra-source-files:
     examples/rc1/native-payments.lawspec
     examples/rc1/order-workflow.lawspec
     examples/rc1/parcel-measurements.lawspec
+    examples/rc1/picture-records.lawspec
+    examples/rc1/picture-tuples.lawspec
     examples/rc1/record-payloads.lawspec
     examples/rc1/recursive-records.lawspec
     examples/rc1/refund-conformance.lawspec
@@ -323,6 +328,7 @@ extra-source-files:
     test/fixtures/canonical-smt-arithmetic.lawspec
     test/fixtures/canonical-stateful-initializers.lawspec
     test/fixtures/canonical-typed-mappings.lawspec
+    test/fixtures/canonical-unicode-casefold.lawspec
     test/fixtures/constructor_boundaries.lawspec
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec
@@ -524,6 +530,8 @@ library
       LawSpec.Builtins
       LawSpec.Capabilities
       LawSpec.CapabilityCheck
+      LawSpec.CaseFold
+      LawSpec.CaseFoldData
       LawSpec.Clojure.Bindings
       LawSpec.Clojure.Bridge
       LawSpec.Clojure.Emit
@@ -865,6 +873,7 @@ executable lawspec-dev
       Gen.Embed
       Gen.Json
       Gen.Template
+      Gen.Unicode
       Generate
       Scheduler
       Paths_lawspec
@@ -915,6 +924,7 @@ test-suite lawspec-test
       CanonicalPredicateFactsSpec
       CanonicalSpec
       CapabilityScopeSpec
+      CaseFoldSpec
       CollectionsSpec
       ConditionalSpec
       ContainerRecordViewsSpec

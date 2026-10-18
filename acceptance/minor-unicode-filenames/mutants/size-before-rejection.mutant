@@ -1,0 +1,7 @@
+expect: prohibited filenames are rejected before checking dimensions
+@@ examples/rc1/banner-filenames.lawspec
+<<<<<<<
+when containsProfanity it then Rejected it
+=======
+when containsProfanity it and picture.dimensions.width >= 1200 then Rejected it
+>>>>>>>

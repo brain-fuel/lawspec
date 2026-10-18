@@ -1,0 +1,7 @@
+expect: named dimensions determine orientation
+@@ examples/rc1/picture-records.lawspec
+<<<<<<<
+when it > height then Landscape
+=======
+when it > height then Portrait
+>>>>>>>

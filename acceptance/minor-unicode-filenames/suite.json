@@ -1,0 +1,10 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {"layers": ["property", "examples"]},
+  "specs": [
+    "examples/rc1/picture-tuples.lawspec",
+    "examples/rc1/picture-records.lawspec",
+    "examples/rc1/banner-filenames.lawspec",
+    "test/fixtures/canonical-unicode-casefold.lawspec"
+  ]
+}

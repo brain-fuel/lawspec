@@ -6,6 +6,7 @@ import qualified WitnessSpec
 import qualified QuantifierDomainSpec
 import qualified SearchSpec
 import qualified CanonicalSpec
+import qualified CaseFoldSpec
 import qualified MappingSpec
 import qualified CanonicalPredicateFactsSpec
 import qualified CanonicalMatcherSpec
@@ -125,6 +126,7 @@ main = hspec $ do
   MigrationPayloadSpec.test_migrationPayloads
   DomainEvidenceSpec.test_domainEvidence
   CanonicalSpec.test_canonicalAuthoringPreservesIntrinsicGuarantees
+  CaseFoldSpec.test_caseFold
   ContextualSpec.test_articlesPreserveOrdinaryNamesAndScope
   RecordIdentitySpec.test_recordIdentitiesPreserveSemantics
   RecordNormalizeSpec.test_recordNormalizationPreservesPrograms

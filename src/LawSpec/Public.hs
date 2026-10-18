@@ -19,6 +19,7 @@ import LawSpec.Common
 import LawSpec.Scalar (prettyScalar)
 import LawSpec.Backend (declarationName, prettyType)
 import LawSpec.Collections (collectionsUnit,canonicalCollectionValues,collectionOperations,canonicalCollectionOperation)
+import LawSpec.CaseFold (caseFoldUnit,caseFoldOperation)
 
 type Names = [(C.Id,String)]
 
@@ -231,7 +232,9 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
     -- origin filename or the spelling of a specialized generated identifier.
     sourceView owner name = object (["unit" .= owner,"name" .= name] ++
       ["canonicalName" .= ("prelude." ++ operation) | owner == collectionsUnit,
-        Just operation <- [collectionName name]])
+        Just operation <- [collectionName name]] ++
+      ["canonicalName" .= ("prelude." ++ operation) | owner == caseFoldUnit,
+        operation <- ["caseFold","textContains"],caseFoldOperation operation == Just name])
     collectionName name = case [operation | operation <- map fst collectionOperations ++ map fst canonicalCollectionValues,
       let public = case [alias | (alias,internal) <- canonicalCollectionValues,internal == name] of
             alias:_ -> alias

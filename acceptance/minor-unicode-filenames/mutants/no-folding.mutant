@@ -1,0 +1,7 @@
+expect: prohibited filenames are rejected before checking dimensions
+@@ examples/rc1/banner-filenames.lawspec
+<<<<<<<
+let folded = prelude.caseFold input in
+=======
+let folded = input in
+>>>>>>>

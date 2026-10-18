@@ -56,6 +56,34 @@ end
 - `slice`, `take` and `drop` are clamped to the sequence: an index before its
   start or past its end stands for the start or the end, so they never fail.
 - Every operation is total, and means the same on every target.
+
+## Case folding and substring predicates
+
+`prelude.caseFold text` applies Unicode 17.0.0 full default case folding.
+It uses the pinned C and F mappings, including expansions such as `ß` to `ss`.
+It excludes Turkic overrides: `I` becomes `i`, and `İ` becomes `i` followed by
+a combining dot. Unlisted code points retain their value. It adds no Unicode
+normalization or word boundaries. Every target uses the same checked definitions
+and [pinned upstream table](../../../vendor/unicode/README.md).
+
+`prelude.textContains whole fragment` is a checked Boolean function with the
+haystack first. It supports ordinary partial application:
+
+```lawspec
+unit guide.filename
+
+function prohibited (name of type Text) -> Bool is
+  let folded = prelude.caseFold name in
+    prelude.any (prelude.textContains folded) ["shit", "piss", "fuck"]
+end function
+```
+
+The [banner filename example](../../../examples/rc1/banner-filenames.lawspec)
+returns an explicit rejection before checking dimensions. A prohibited name
+remains a valid `Picture` value. The companion
+[tuple](../../../examples/rc1/picture-tuples.lawspec) and
+[anonymous record](../../../examples/rc1/picture-records.lawspec) examples
+retain the two dimension representations from examples 48 and 49.
 - A fold over `Bytes` is a recursion over its octets, as `total` is above.
 
 ## Limits

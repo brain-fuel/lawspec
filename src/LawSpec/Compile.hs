@@ -44,6 +44,7 @@ import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock,
 import LawSpec.Refinement
 import LawSpec.Prelude
 import LawSpec.PreludeNames (preludeDiscoveryText,preludeDependencyText)
+import LawSpec.CaseFold (caseFoldUnit,caseFoldAlias,usesCaseFold,caseFoldSource)
 import Control.Monad.State.Strict
 import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import qualified Data.Map.Strict as M
@@ -367,7 +368,7 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
   -- Reserved Core identities belong to compiler-provided versioned sources.
   -- A user unit must not manufacture one when its built-in is not injected.
   when canonical $ forM_ sources $ \source -> case sourceUnit source of
-    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : resourcesUnit : networkUnit : builtinUnits) ->
+    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : caseFoldUnit : resourcesUnit : networkUnit : builtinUnits) ->
       Left [Diagnostic "reserved-unit" ("the unit " ++ name ++ " is reserved for compiler-provided definitions") Nothing]
     _ -> pure ()
   -- Programs that use a collection get the built-in collections unit.
@@ -384,6 +385,7 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
       resilience = any usesResilience [text | Source _ text <- sources]
       -- Programs that use matchers over lists, or regexes, get the matchers unit.
       matchers = any (providerUses usesMatchers) [text | Source _ text <- sources]
+      textFolding = any (providerUses usesCaseFold) [text | Source _ text <- sources]
       -- Programs that name a built-in resource get the resources unit.
       resources = any usesResources [text | Source _ text <- sources]
       -- Built-in resources acquire and release through lawspec.host's
@@ -392,7 +394,7 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
                      , any (importsBuiltin unit) [text | Source _ text <- sources] || (unit == "lawspec.host" && resources)] ++
         -- lawspec.network: the secure network handler's module (LawSpec.Network).
         [Source ("<" ++ networkUnit ++ ">") networkSource | any (importsBuiltin networkUnit) [text | Source _ text <- sources]]
-      versionedCollectionSources = [text | Source _ text <- abilityUnits] ++ [clockSource | clock]
+      versionedCollectionSources = [text | Source _ text <- abilityUnits] ++ [clockSource | clock] ++ [caseFoldSource | textFolding]
       candidates = if canonical then usedCollectionsCanonical userTexts versionedCollectionSources
         else usedCollections ([text | Source _ text <- sources] ++ versionedCollectionSources)
       collections = maybe candidates snd selected
@@ -401,11 +403,13 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | providerPresent] ++
         [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "")) | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
         [Source "<lawspec.matchers>" matchersSource | matchers] ++
+        [Source "<lawspec.text>" caseFoldSource | textFolding] ++
         [Source "<lawspec.resources>" resourcesSource | resources] ++
         abilityUnits
       implicit = [(timeUnit, timeAlias, timeTypes, providerUses usesTime) | time] ++
         [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience] ++
         [(matchersUnit, matchersAlias, matchersTypes, providerUses usesMatchers) | matchers] ++
+        [(caseFoldUnit, caseFoldAlias, [], providerUses usesCaseFold) | textFolding] ++
         [(resourcesUnit, resourcesAlias, resourcesTypes, usesResources) | resources] ++
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.

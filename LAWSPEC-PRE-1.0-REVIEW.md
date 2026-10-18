@@ -327,6 +327,77 @@ profiles and the complete fresh 2,491-step final-candidate run remain required.
 The current immutable run is allowed to finish; its completed receipts retain
 their original scope. No tag, publication or RC designation is implied.
 
+### Completion audit corrections and Unicode authoring — 18 October 2026
+
+The requirement-by-requirement audit found that the earlier coverage inventory
+overstated two implementation claims: pinned full Unicode case folding and the
+finished picture/filename examples 48–50. The existing substring operations,
+tuple/record machinery and eight nesting demonstrations did not establish those
+requirements. They remain part of this minor, rather than being deferred to
+the larger pre-final-1.0 portfolio.
+
+The isolated `minor-unicode-filename-authoring` increment now implements
+`prelude.caseFold` from the unmodified Unicode 17.0.0 `CaseFolding.txt` C/F
+mappings. The pinned SHA-256 is
+`ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183`.
+The generator checks that digest and all 1,585 entries. S and Turkic T overrides
+are excluded; unlisted code points remain unchanged. The Unicode license is
+retained in the repository and npm package. This follows the
+[upstream full default mapping specification](https://www.unicode.org/Public/17.0.0/ucd/CaseFolding.txt).
+
+The implementation produces ordinary checked definitions over portable text
+slicing, ordering and concatenation. Halving a positive span uses the existing
+integer-descent termination check and keeps traversal stack depth logarithmic.
+Small balanced lookup functions avoid JVM method-size limits. There is no host
+lowercasing, normalization, word segmentation or second
+execution/proof engine. The upstream data, source generator, existing compiler
+admission and runtime text operations remain the trust boundary. Native and
+WASM compilation must independently agree on complete responses before this
+increment is accepted.
+
+The decreasing-measure precedent is
+[SPARK's subprogram termination variants](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html#subprogram-termination)
+and [Lean's well-founded recursive definitions](https://lean-lang.org/doc/reference/latest/Definitions/Recursive-Definitions/).
+For the recursive branch, `count > 1` establishes a nonnegative, strictly
+smaller `quot count 2`; both calls decrease that same argument. LawSpec reuses
+its existing checker for this fact. It introduces no trusted termination
+annotation, skipped definition admission or new solver/proof integration.
+
+`prelude.textContains whole fragment` is an ordinary checked function and can
+be partially applied. The completed filename policy folds before matching its
+three fragments and returns an explicit rejection before checking banner size.
+Pictures with prohibited names remain constructible. Dedicated tuple and
+anonymous-record dimension examples preserve examples 48 and 49. The new native
+suite includes all official mapped code points, unmapped characters, expansions,
+supplementary characters, default I, normalization-sensitive text, substring
+matching and rejection priority. Three mutants remove folding, check size before
+rejection, or reverse orientation. Both target profiles are registered in CI.
+
+The initial List-based traversal passed three focused compiler tests, 116
+generated JavaScript tests and 114 Java tests. Python's complete-corpus native
+run then exposed a recursion-depth failure (114 tests passed, one failed).
+The decreasing-span repair retains the complete corpus; its compiler and native
+reruns remain required. Those earlier results are supporting receipts for their
+own traversal, not passes for this repair, all 17 targets, universal laws, WASM
+parity or the whole minor. Remaining target/mutant, package, formatter, editor,
+documentation and release checks remain open. Evidence is under
+`.artifacts/unicode-filename/`.
+
+The same audit independently reproduced another missing requirement: `Int8`
+implicitly widens to `Integer`, but its provably lossless widening to `Int16`
+is rejected. The direct narrowing and exact-to-float probes reject correctly.
+General bounded exact widening remains required within this minor; no new
+narrowing, floating precision loss or nominal unwrapping is authorized.
+
+The six failures in the earlier `ad8bfc33` CI run all completed at the recorded
+macOS dark wake after 17 minutes of sleep. Each of the six original checks now
+passes unchanged in an isolated rerun. Original failed receipts are retained;
+this does not rewrite that run as green. All 26 repaired CLI consumers and the
+compiler suite also passed in that fresh baseline run. Its other checks are
+still running against immutable `ad8bfc33` sources. Readability stays deferred,
+all-named endings remain the following minor, and no RC, tag or final release
+acceptance is claimed.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current
@@ -341,14 +412,14 @@ results for their own compiler and package snapshots.
 | Pure functions, effectful procedures and abilities; polymorphism, capabilities, wrappers, indexed families and checked recursion | Canonical frontend and existing typed Core; `AbilitiesSpec`, `DefinitionSchemeSpec`, `SourceGadtIndicesSpec`, `SourceGadtRefinementsSpec`, record/payload suites | Final regression and target gates; no unchecked function category |
 | Declarations, annotations, sections, metadata and current-minor closers | Canonical parser, `CanonicalSpec`, published `docs/reference/language/syntax.md` | Final parser/docs checks; every named ending is explicitly the following minor |
 | Phrase spelling/escapes, qualified prefix/infix equivalence, precedence and native-name collisions | Canonical lexer/resolver; `CanonicalSpec`, `SourceSyntaxSpec`, `TargetNamesSpec` | Final target emission; collisions still require explicit bindings |
-| Integer/Whole/Nat domains, bounded migration, zero-inclusive lengths/indices, exact literals and widening | Scalar/type admission and migration inventories; `BoundsSpec`, `ContextualSpec`, `CanonicalSpec`, migration-source tests | Final regression; no implicit narrowing or nominal unwrapping |
+| Integer/Whole/Nat domains, bounded migration, zero-inclusive lengths/indices, exact literals and widening | Existing scalar/type admission and migration inventories cover the domains and contextual literals; a direct completion probe accepts Int8 to Integer but rejects Int8 to Int16 | Open: general compiler-proved bounded exact widening; preserve rejection of narrowing, float precision loss and nominal unwrapping |
 | Nominal records, explicit construction, closed anonymous products and typed alternatives | `Core/RecordIdentity`, source record elaboration; `SourceRecordCanonicalSpec`, `SourceRecordPayloadSpec`, `SourceRecordInferenceSpec`, `PayloadSpec` | Final compiler/native payload suites; unsupported dependent source forms remain diagnosed |
 | BLAKE3 identity, field-order independence, alias/bound-name normalization, collision interning and separate nominal dependency invalidation | Portable `Blake3`, canonical descriptors; official-vector checks in `CanonicalSpec`, `RecordIdentitySpec`, `RecordNormalizeSpec`, recorded GoForge comparison | Final record parity; unrelated SHA caches remain separate |
 | Single-evaluation ordered cases, scoped it, guards, recursive/record patterns, wildcards and exhaustiveness | Canonical case elaboration; `CanonicalMatcherSpec`, `CanonicalPredicateFactsSpec`, recursive-record examples | Final compiler/target gates; guards do not establish coverage |
 | Nested quantifiers/negation, left-to-right restrictions, normative wording, contextual articles and typed equality | Authoritative Core propositions; `CanonicalSpec`, `QuantifierDomainSpec`, `WitnessSpec`, contextual-article SDK checks | Final logical, reusable-law, Eq and IEEE regressions |
 | Prelude lookup after locals/imports, ambiguity and capture avoidance | Shared resolution/substitution; `PreludeResolutionSpec`, canonical qualified-name and reusable-law tests | Final compiler/consumer gates |
 | Eq-only Set/membership, first-occurrence order, SortedSet migration, collection any and explicit map selections | `Core/EqSet`, existing collection operations; `EqSetSpec`, `EqSetOperationsSpec`, `CanonicalCollectionsSpec`, SDK set/membership/migration suites | Final native collection suites; iteration itself needs no Eq |
-| Explicit substrings and pinned full Unicode default case folding without normalization | Shared Unicode table/runtime emitters; native collection/string suites and filename examples | Final target/runtime parity |
+| Explicit substrings and pinned full Unicode default case folding without normalization | Substrings exist; the completion audit found that the pinned table and public fold were missing. The isolated Unicode increment now adds ordinary checked definitions from Unicode 17 C/F data | Open: compiler, native target and WASM verification of the new fold; the earlier coverage inventory overstated this implementation |
 | Checked mappings, finite coverage/fallback, Maybe partial lookup, preimages and uniqueness-gated inverse | Mapping elaboration to ordinary definitions; `MappingSpec`, typed-mapping fixture, Chapter 6 mappings | Final mapping/native suites; external-oracle agreement stays separate |
 | Repeating named examples, expectation-first tables, multiple expectations, typed/recorded inputs and independent failures | Canonical table elaboration; starter, native-evidence and authoring suites | Final consumer/native execution |
 | Authored expected compile rejection with stable diagnostic codes | Independent `reject=<code>` documentation fences, three negative fixtures, fourteen documentation controls and editable rejection views | Verified at `4a6f672a`; rerun final docs/consumer gates |
@@ -366,7 +437,7 @@ results for their own compiler and package snapshots.
 | Schema 5, configuration 2, explicit profile, migration-only older input and preserved legacy law selections | Canonical admission and migration configuration; `CanonicalInterfaceSpec`, SDK canonical-interface/environment/migration-write tests | Final installed public consumers/release checks |
 | Shared website/editor TextMate highlighting and Linguist preparation | Exact shared grammar, locked TextMate/Oniguruma, corpus parity, `linguist-eligibility.md` | Upstream usage/import/acceptance/deployment remain external pre-final-1.0 dependencies |
 | Codecs/reusable inverse, existence/absence, authorization, refunds/conflicts and stateful orders | Published `examples/rc1` and permanent native acceptance suites | Final all-17-target run; existing receipts describe each suite's native scope |
-| Examples 48–50 and eight three-layer record/alternative combinations | Canonical filename/structural examples and eight nesting files; compiler/native outcomes and mutants | Final documentation/native nesting gates |
+| Examples 48–50 and eight three-layer record/alternative combinations | Eight nesting files and tuple/record machinery exist; the audit found that the completed prohibited-filename demonstration was missing. Three dedicated picture examples are now being implemented | Open: actual examples 48–50, Unicode/rejection priority, native outcomes and mutants; final nesting gates |
 | Chapter 6 semantic migration, authored inventory, complete instruction oracles and invocation independence | Canonical assembler, frozen original, checked mappings and `tools/chapter6-oracles.mjs`; fresh both-profile oracle receipts | Preserve inventory/hashes; complete implementations in other languages remain pre-final-1.0 |
 | Final compiler, target, generation, boundary, docs, editor, parity and release checks | CI graph, package smoke, locked runtimes and release preconditions | Open: final package rebuilding and fresh final-commit execution; 0.25.0 is in preparation |
 | Three-reader comprehension exercise | Ten questions and threshold retained here | Explicitly user-deferred; no reader results claimed |

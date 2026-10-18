@@ -193,7 +193,8 @@ try {
   for (const document of [
                            "README.md",
                            "CHANGELOG.md",
-                           "LICENSE"
+                           "LICENSE",
+                           "UNICODE-LICENSE.txt"
                          ])
     if (!(await readFile(path.join(app,'node_modules/lawspec',document),'utf8')).length) throw new Error('Missing packaged '+document);
   const rust=path.join(root,'rust');

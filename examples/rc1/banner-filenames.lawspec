@@ -1,0 +1,63 @@
+unit pictures.banners
+
+type Picture is a record{
+  fileName of type Text
+  dimensions of type record{
+    width of type Nat
+    height of type Nat
+  }
+}
+end type
+
+type BannerDecision is one of
+  | Rejected of type Text
+  | Eligible
+  | TooSmall
+end type
+
+function containsProfanity (input of type Text) -> Bool is
+  let folded = prelude.caseFold input in
+  prelude.any (prelude.textContains folded) ["shit", "piss", "fuck"]
+end function
+
+function bannerDecision (picture of type Picture) -> BannerDecision is
+  first matching case of picture.fileName:
+    when containsProfanity it then Rejected it
+    otherwise
+      if picture.dimensions.width >= 1200 and picture.dimensions.height >= 300
+        then
+        Eligible
+      else
+        TooSmall
+      end if
+  end case
+end function
+
+law "|prohibited filenames are rejected before checking dimensions| is
+  description:
+    "A prohibited fragment rejects the filename at every size. Clean banners need at least 1200 pixels of width and 300 pixels of height."
+  end
+  definition:
+    for all (picture of type Picture) =>
+      containsProfanity picture.fileName implies
+      bannerDecision picture must be Rejected picture.fileName
+    end
+  end
+  expect bannerDecision picture = expected
+  in table (picture, expected):
+    row Picture record{fileName = "banner.png", dimensions = record{width =
+        1200, height = 300}}, Eligible
+    row Picture record{fileName = "portrait.png", dimensions = record{width =
+        100, height = 100}}, TooSmall
+    row Picture record{fileName = "SHIT.png", dimensions = record{width = 1200,
+        height = 300}}, Rejected "SHIT.png"
+    row Picture record{fileName = "xxpIssxx.jpg", dimensions = record{width = 1,
+        height = 1}}, Rejected "xxpIssxx.jpg"
+    row Picture record{fileName = "PIẞ.png", dimensions = record{width = 1,
+        height = 1}}, Rejected "PIẞ.png"
+    row Picture record{fileName = "ſhit.png", dimensions = record{width = 1,
+        height = 1}}, Rejected "ſhit.png"
+    row Picture record{fileName = "fucK.png", dimensions = record{width = 1,
+        height = 1}}, Rejected "fucK.png"
+  end
+end

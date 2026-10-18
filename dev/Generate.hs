@@ -27,6 +27,7 @@ import Gen.Api (apiSources)
 import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage, embedSwift)
 import Gen.Json
 import Gen.Template
+import Gen.Unicode (caseFoldData)
 import LawSpec.Code.Doc (Layout(..))
 import qualified LawSpec.Core as Core
 import qualified LawSpec.Core.Types as CoreTypes
@@ -95,11 +96,15 @@ planOutputs = do
   swift <- embedSwift
   groovy <- embedJvmLanguage "groovy" "GroovySources"
   clojure <- embedJvmLanguage "clojure" "ClojureSources"
+  unicode <- caseFoldData
+  unicodeLicense <- readFile' "vendor/unicode/LICENSE.txt"
   let whole = [ Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
               , Output "src/LawSpec/DotNetSources.hs" dotnet False
               , Output "src/LawSpec/GroovySources.hs" groovy False
               , Output "src/LawSpec/ClojureSources.hs" clojure False
-              , Output "src/LawSpec/SwiftSources.hs" swift False ] ++
+              , Output "src/LawSpec/SwiftSources.hs" swift False
+              , Output "src/LawSpec/CaseFoldData.hs" unicode False
+              , Output "npm/UNICODE-LICENSE.txt" unicodeLicense False ] ++
         [ Output ("npm" </> name) content False | (name, content) <- api ]
   pure (sortOn outputPath (whole ++ map fst rendered))
 
@@ -144,13 +149,13 @@ factFills version =
       [ (t, Object [(layout, Object [(path, String content) | (path, content) <- files]) | (layout, minify) <- [("readable", False), ("compact", True)], Right files <- [scaffoldFiles minify t]])
       | t <- scaffoldTargets ])))
   , ("package-files", Inline (json (Array (map String shippedFiles))))
-  , ("package-documents", Inline (json (Array [String f | f <- shippedFiles, ".md" `isSuffixOf` f || f == "LICENSE"])))
+  , ("package-documents", Inline (json (Array [String f | f <- shippedFiles, ".md" `isSuffixOf` f || f `elem` ["LICENSE","UNICODE-LICENSE.txt"]])))
   , ("copy-documents", Inline (jsonString copyDocuments))
   , ("hpack-version", Inline (jsonString "0.38.1")) ]
 
 -- | What the npm package contains, beside its code.
 shippedFiles :: [String]
-shippedFiles = ["*.mjs", "*.json", "index.d.ts", "proof.d.ts", "bin", "core.wasm", "core_jsffi.js"] ++ copiedDocuments ++ ["LICENSE", "starter.lawspec", "starter-rc1.lawspec", "examples"]
+shippedFiles = ["*.mjs", "*.json", "index.d.ts", "proof.d.ts", "bin", "core.wasm", "core_jsffi.js"] ++ copiedDocuments ++ ["LICENSE", "UNICODE-LICENSE.txt", "starter.lawspec", "starter-rc1.lawspec", "examples"]
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.

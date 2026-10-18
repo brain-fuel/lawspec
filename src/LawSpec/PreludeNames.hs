@@ -29,7 +29,7 @@ preludeValueName name = isNumeric name || name `elem` publicNames
   where
     publicNames = map fst simplePreludeHelpers ++ map fst sequencePreludeHelpers ++
       map fst canonicalCollectionOperations ++ map fst matcherOperations ++ map fst timeOperations ++ railwayNames ++
-      ["any","member","contains","startsWith","endsWith","regexMatches","within","messageContains","recorded"
+      ["any","member","contains","startsWith","endsWith","regexMatches","within","messageContains","recorded","caseFold","textContains"
       ,"toList","size","isEmpty","quot","rem","pow","wrapping","saturating","bounded"
       ,"raise","attempt","calls","append","slice","take","drop","at","range"]
 

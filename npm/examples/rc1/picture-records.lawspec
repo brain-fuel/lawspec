@@ -1,0 +1,51 @@
+unit pictures.records
+
+type Orientation is one of
+  | Landscape
+  | Portrait
+  | Square
+end type
+
+type Picture is a record{
+  fileName of type Text
+  dimensions of type record{
+    width of type Nat
+    height of type Nat
+  }
+}
+end type
+
+function orientation
+  (record{dimensions = record{width = width, height = height}} of type Picture)
+  -> Orientation is
+  first matching case of width:
+    when it > height then Landscape
+    when it < height then Portrait
+    otherwise Square
+  end case
+end function
+
+law "|named dimensions determine orientation| is
+  description:
+    "Dimension labels preserve their meaning in either field order."
+  end
+  definition:
+    for all (picture of type Picture) =>
+      orientation picture must be
+      if picture.dimensions.width > picture.dimensions.height then Landscape
+      else if picture.dimensions.width < picture.dimensions.height then Portrait
+        else Square
+        end if
+      end if
+    end
+  end
+  expect orientation picture = expected
+  in table (picture, expected):
+    row Picture record{fileName = "wide.jpg", dimensions = record{width = 12,
+        height = 8}}, Landscape
+    row Picture record{fileName = "tall.jpg", dimensions = record{height = 12,
+        width = 8}}, Portrait
+    row Picture record{fileName = "square.jpg", dimensions = record{width = 10,
+        height = 10}}, Square
+  end
+end
