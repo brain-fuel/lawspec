@@ -766,9 +766,12 @@ empty stderr. The repaired test permits that host notice while still checking
 LawSpec warning delivery and clean JSON output. The rerun passes all four public
 interface tests with no skips, including the CLI. Generation, boundary, integrity
 and version checks pass. The first canonical-format attempt skipped its absent
-checkout; the configured attempt requires the new files in HEAD and canonical
-comments on three mock methods. Those comments are supplied; the committed-file
-check and final combined acceptance remain open. Evidence is under
+checkout. Subsequent checks exposed absent HEAD entries and duplicate canonical
+vetting of the new generated editor test. Its authoritative template carries the
+mock-method comments; the generated output now follows the existing
+`DEC-generated-files-not-checked` policy, like the generated grammar test.
+No human sign-off is fabricated. The repaired canonical-format check and final
+combined acceptance remain open. Evidence is under
 `.artifacts/match-advisories/` in that worktree.
 No RC designation, tag or publication is implied.
 

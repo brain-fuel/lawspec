@@ -19,6 +19,7 @@ ignore:
   - npm/
   - tools/*.mjs
   - editors/vscode/test/grammar.test.mjs
+  - editors/vscode/test/extension.test.mjs
   - src/LawSpec/RuntimeSources.hs
   - src/LawSpec/DotNetSources.hs
   - src/LawSpec/GroovySources.hs
