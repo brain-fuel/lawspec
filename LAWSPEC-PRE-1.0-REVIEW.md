@@ -166,6 +166,41 @@ endings belong to the following minor, and the larger portfolio, advanced
 verification and upstream Linguist gates remain pre-final-1.0. Version 0.25.0
 remains an unpublished minor without an RC designation or tag.
 
+### Native suite registration coverage — 18 October 2026
+
+The final coverage audit found that `minor-typed-mappings` had earlier native
+receipts but was absent from the automated CI matrix. It now runs on all 17
+targets at 64-bit readable and 32-bit compact output, adding 34 checks. The
+inventory also found the older `beam-status` suite absent; its known-failure,
+skip, strategy and coverage regressions now run on Erlang, Elixir and Gleam at
+both profiles, adding six checks. All 107 acceptance suite manifests now have
+registered native targets. The default CI graph contains 2,491 steps.
+
+An executable extraction of the actual old/new CI plans verifies that removing
+only these 40 added entries reproduces every existing target command,
+environment and order exactly. All 5,847 compared compiler, runtime, SDK,
+template, acceptance, fixture, example and package-source files match the
+immutable `04c4eb22` candidate. The development executable builds; compiler and
+package bytes are unchanged. Initial direct-build probes omitted the precise
+Vector package exposure; the corrected build uses the installed package ID.
+
+Separate current-artifact native/WASM parity passes 303 complete responses,
+including 221 accepted generation requests and the typed-mapping fixture on
+all 17 targets at both widths/layouts. The 72 intentional rejections are counted
+separately. This is compiler/generation parity; native execution remains the
+pending supplement's responsibility.
+
+The current fresh 2,451-step run continues on `04c4eb22`. A separate native
+supplement uses the existing acceptance harness with cache refresh, waits for
+that run's environment lock, and requires its successful completion first.
+Acceptance requires both that complete result and all 40 added native results;
+the additional checks remain pending. Evidence is under
+`.artifacts/ci-mapping-coverage/` in its isolated worktree. This registration
+change does not alter law verification, definition checking or language
+semantics. Readability stays deferred, all-named endings belong to the following
+minor, and the larger pre-final-1.0 gates remain open. No tag or publication is
+authorized by these checks.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current
