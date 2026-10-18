@@ -76,7 +76,12 @@ renderExpressionWithContext width reference key initialSchema symbols outer exte
           C.Convert mode ty source -> do
             value <- render source
             case mode of
-              C.CheckedArgument -> checked ty value
+              C.CheckedArgument | ty == C.expressionType source -> checked ty value
+              -- Exact numeric bridges can change the portable representation.
+              -- Retain schema validation after the existing scalar conversion.
+              C.CheckedArgument -> do
+                ref <- reference ty
+                checked ty (E.remote "lawspec_beam_scalar" "convert" [value,ref,width])
               C.Explicit -> do
                 ref <- reference ty
                 pure (E.remote "lawspec_beam_scalar" "convert" [value,ref,width])

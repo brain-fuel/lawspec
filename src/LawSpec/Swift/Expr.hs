@@ -164,7 +164,12 @@ render context root = evalStateT (go context root) 0
       C.Convert mode ty source -> do
         v <- go ctx source
         case mode of
-          C.CheckedArgument -> checked ctx ty v
+          C.CheckedArgument | ty == C.expressionType source -> checked ctx ty v
+          -- A differing exact numeric type needs its destination representation
+          -- before validation. Core excludes nominal/product conversions here.
+          C.CheckedArgument -> do
+            ref <- lift (contextType ctx ty)
+            checked ctx ty (call "Scalar" "convert" [v, ref, IntLit (toInteger (contextBits ctx))])
           C.Explicit -> do
             ref <- lift (contextType ctx ty)
             pure (call "Scalar" "convert" [v, ref, IntLit (toInteger (contextBits ctx))])

@@ -491,6 +491,62 @@ in for a current harness run. Evidence is under
 `.artifacts/numeric-reference-boundaries/`. Final combined acceptance remains
 open; no RC designation, tag or publication is claimed.
 
+### Remaining portable numeric conversions and package export — 18 October 2026
+
+The independent remaining-target run passes Clojure, Haskell, Kotlin, Groovy
+and Scala at both profiles, including all three mutants. Erlang, Elixir and
+Gleam reproduce the Decimal/Rational representation failures already seen in
+Swift. Their runtime validators deliberately require a matching representation;
+the missing operation is in the emitted checked numeric bridge.
+
+The isolated `minor-portable-numeric-conversions` increment applies the same
+existing scalar conversion before validation in Swift and the shared BEAM
+emitter. Identical types still take their original validation path. Core's
+numeric admission rules, nominal boundaries and mandatory contracts do not
+change. Native and WASM builds pass, as do eight focused compiler tests and
+three targeted public WASM regressions. Swift, Erlang, Elixir and Gleam each
+pass both native profiles and all three widening mutants. The complete
+seventeen-target matrix and the rebuilt Unicode SDK corpus are still running;
+these scoped results do not close them. All 141 generated outputs, 237 boundary
+modules, integrity, and 120 documentation pages with 119 compiled snippets pass.
+The 73,111,245-byte WASM is SHA-256
+`c22ba5d19dcad25667b7e4a41e9333886cc6be698554f6b5b9e6f118fc2a3a5f`.
+The previous sources and failed receipts remain unchanged.
+
+The installed Unicode checkpoint's smoke run terminates while exporting the
+bundled examples at the existing thirty-minute guard. Earlier installed CLI,
+generated-code and native starter checks completed, but the smoke gate did not.
+Its wrapper discarded the underlying error code and signal. The development
+smoke script now records each command, duration and original error cause.
+Only the expanded example export receives a one-hour budget; all exports and
+assertions remain required. The actual 206-file archive audit is separate
+evidence and is not a smoke pass. The generated script passes Node syntax
+checking. The new installed-package rerun has passed setup, checking,
+explanation, doctor, generation, native starter tests and generation checking;
+it is now exporting the bundled examples. A complete smoke pass remains
+required.
+
+Evidence is under `.artifacts/portable-numeric-conversions/` and the earlier
+frozen worktrees. Final combined compiler, target, SDK, parity, editor,
+documentation and release checks remain open. Readability stays deferred,
+all-named endings remain the following minor, and no RC designation, tag or
+publication is claimed.
+
+The still-running immutable `ad8bfc33` baseline also exposes additional
+acceptance failures. The `packages` suite supplies canonical package sources
+without a canonical profile, routing them through legacy parsing; the shared
+parse error is at `shop-domain/src/domain.lawspec:11`. Its manifest, native
+adapters/stubs and mutants need reconciliation and actual target checks.
+Kotlin and Scala built-in properties generate unsigned eight-byte values for a
+positive `Int64` restriction, admitting values above `2^63 - 1` before schema
+validation. Their bounded generators need correction and range/shrinking
+checks; this is not an intrinsic compiler check to disable. F#'s harness passes
+its correct implementation and initial mutants, then MSBuild loses child nodes
+during the `outside` mutant. That build failure cannot count as an expected
+strategy diagnostic and requires an unchanged isolated rerun. The six earlier
+sleep failures retain their separate passing reruns. None of these newly
+observed failures is rewritten as a pass or removed from final acceptance.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current

@@ -20,20 +20,24 @@ const packed = JSON.parse(
 );
 const archive = path.join(output, packed[0].filename);
 const root = await mkdtemp(path.join(os.tmpdir(), "lawspec-package-"));
-async function run(cmd, args, cwd = root) {
+async function run(cmd, args, cwd = root, {timeout = 1800000} = {}) {
+  const started = Date.now();
+  console.log(`[package-smoke] ${JSON.stringify([cmd, ...args])}`);
   try {
-    return await exec(cmd, args, {
+    const result = await exec(cmd, args, {
       cwd,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
-      // Guards against hangs, not slow machines: exporting every bundled example
-      // takes about eight minutes alone, single-threaded, and much longer on a
-      // loaded machine, so the guard is half an hour (lawspec-dev ci also runs
-      // this step alone).
-      timeout: 1800000,
+      timeout,
     });
+    console.log(`[package-smoke] completed in ${(Date.now() - started) / 1000}s`);
+    return result;
   } catch (e) {
-    throw new Error(`${cmd}: ${e.stdout}\n${e.stderr}`);
+    throw new Error(
+      `${JSON.stringify([cmd, ...args])} failed after ${(Date.now() - started) / 1000}s ` +
+      `(code=${e.code}, signal=${e.signal}, killed=${e.killed}): ${e.stdout}\n${e.stderr}`,
+      {cause: e},
+    );
   }
 }
 try {
@@ -102,7 +106,11 @@ try {
   );
   await run("npm", ["test"], app);
   await run(process.execPath, [cli, "generate", "--check"], app);
-  await run("npm", ["exec", "--no", "--", "lawspec", "examples"], app);
+  // Exporting the expanded corpus, including the portable Unicode tables,
+  // reached the old thirty-minute guard. Retain every export and assertion
+  // while allowing an hour for this operation; other commands keep their limit.
+  await run("npm", ["exec", "--no", "--", "lawspec", "examples"], app,
+    {timeout: 3600000});
   const textTest = await readFile(
     path.join(
       app,
