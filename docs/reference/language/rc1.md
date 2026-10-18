@@ -771,6 +771,45 @@ selection form; whole-value variable patterns require explicit `it matches`.
 Function/procedure requirements, resources, handlers and existing type features
 continue through the established typed pipeline.
 
+### Checked rejection examples
+
+Documentation can record a compiler rejection with a `lawspec reject=<code>`
+fence. Each fixture compiles independently with no optional law checks selected.
+Exactly one diagnostic must have the specified code. Unexpected acceptance,
+another code or additional diagnostics fail the documentation check. Messages
+and source positions are displayed without making their wording part of the
+expectation. Rejection examples cannot be `fragment` fences or request native
+implementations or execution.
+
+For an included fixture, write an opening fence such as
+` ```lawspec reject=total include=test/fixtures/rejected.lawspec ` and close it
+with ` ``` `. Keep rejection fixtures outside the application's configured
+sources; ordinary project compilation continues to reject them.
+
+The following function divides by a known zero denominator. Mandatory definition
+validation rejects it with `total`, independently of law verification.
+
+```lawspec reject=total include=test/fixtures/canonical-rejection-denominator.lawspec
+```
+
+A Boolean cannot be the result of a function declared to return an integer.
+This fixture expects the `definition` diagnostic code.
+
+```lawspec reject=definition include=test/fixtures/canonical-rejection-result-type.lawspec
+```
+
+An address must fit its refinement. The out-of-range constant is rejected with
+`total`; it cannot become a runtime example of a valid `Address`.
+
+```lawspec reject=total include=test/fixtures/canonical-rejection-address.lawspec
+```
+
+The pattern follows Lean's
+[`#guard_msgs` diagnostic assertions](https://lean-lang.org/doc/reference/latest/Interacting-with-Lean/).
+LawSpec checks its existing compiler's stable codes. A matching rejection is a
+check of compiler behavior and establishes no law or native implementation
+evidence.
+
 The translations use one typed Core: `given ... when C then P` becomes universal
 inputs and implication; each equality wording becomes typed Eq; nominal records
 become single-constructor products; anonymous products use canonical structural

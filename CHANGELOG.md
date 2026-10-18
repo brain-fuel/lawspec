@@ -8,6 +8,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Checked documentation rejection examples with `reject=<diagnostic-code>`.
+  Each fixture requires exactly its expected compiler diagnostic, preserves
+  failure context and reports unexpected acceptance after editing.
 - Canonical authoring with `function` and `procedure`, phrase names, explicit
   record and alternative payloads, first-matching cases, readable equality
   wording and nested logical quantifiers.

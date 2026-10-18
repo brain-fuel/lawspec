@@ -21,6 +21,8 @@
 --       adapters under acceptance/lessons/javascript/files, so the page can
 --       run the generated tests
 --   ```lawspec fragment [include=<spec>]   a partial snippet, shown as code
+--   ```lawspec reject=<code> [include=<spec>]   an independently checked
+--       rejection fixture; exactly one diagnostic must have that code
 --   ```<lang> include=<path> [region=<name>]
 --       the file, or the lines between "region <name>" and "endregion" comments
 --   ```<lang> file=<path> ...  a block canon tangles into <path>; shown as is
@@ -288,6 +290,8 @@ preprocess cited errors snippets pages page markdown = unlines <$> go (lines mar
           (kept ++) <$> go (drop 1 after)
       | otherwise = (:) <$> rewriteLinks l <*> go rest
     fence ("lawspec" : attributes) block
+      | Left why <- rejectionAttribute attributes =
+          problem why >> pure (["```lawspec"] ++ block ++ ["```"])
       | "fragment" `elem` attributes = case lookup "include" (mapMaybe attribute attributes) of
           Just file -> do
             content <- readIncluded file
@@ -295,6 +299,7 @@ preprocess cited errors snippets pages page markdown = unlines <$> go (lines mar
           Nothing -> pure (["```lawspec"] ++ block ++ ["```"])
       | otherwise = do
           let attrs = mapMaybe attribute attributes
+              rejection = lookup "reject" attrs
           -- Several files compile together; the last is the one shown.
           files <- case lookup "include" attrs of
             Just list -> forM (splitOn ',' list) $ \file -> (,) (takeFileName file) <$> readIncluded file
@@ -306,11 +311,17 @@ preprocess cited errors snippets pages page markdown = unlines <$> go (lines mar
               request method more = decodeValue (dispatch (encode (object
                 ([K.fromString "schemaVersion" .= (5 :: Int), K.fromString "languageProfile" .= ("1.0-rc.1" :: String),
                   K.fromString "verification" .= object [K.fromString "layers" .=
-                    (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
+                    (if rejection /= Nothing then [] else ["proof","exhaustive","property","examples","runtime","model"] :: [String])],
                   K.fromString "method" .= method, K.fromString "sources" .= sources] ++ more))))
-          case diagnostics (request "check" []) of
-            [] -> pure ()
-            ds -> problem ("snippet does not compile:\n  " ++ intercalate "\n  " ds ++ "\n" ++ source)
+              checked = request "check" []
+          case rejection of
+            Just expected -> unless (diagnosticCodes checked == Just [expected]) $
+              problem ("expected exactly one compiler rejection with code " ++ expected ++
+                "; received " ++ maybe "an invalid compiler response" show (diagnosticCodes checked) ++
+                "\n  " ++ intercalate "\n  " (diagnostics checked) ++ "\n" ++ source)
+            Nothing -> case diagnostics checked of
+              [] -> pure ()
+              ds -> problem ("snippet does not compile:\n  " ++ intercalate "\n  " ds ++ "\n" ++ source)
           -- implementations=<dir>: for each target, the files of <dir>/<target>/files
           -- that implement this example's adapters, found by the paths the
           -- compiler gives them. Acceptance suites test those files for real.
@@ -325,6 +336,7 @@ preprocess cited errors snippets pages page markdown = unlines <$> go (lines mar
           let target = fromMaybe (fromMaybe "java" (pageTrack page)) (lookup "target" attrs)
               key = fromMaybe (intercalate "," (map fst files)) (lookup "key" attrs)
               attributes' = [("data-path", name), ("data-source", source), ("data-target", target), ("data-key", key)] ++
+                [("data-reject", expected) | Just expected <- [rejection]] ++
                 [("data-view", v) | Just v <- [lookup "view" attrs]] ++
                 [("data-extra", BLC.unpack (encode [object [K.fromString "path" .= p, K.fromString "content" .= c] | (p, c) <- extra])) | not (null extra)] ++
                 [("data-implementations", BLC.unpack (encode (object [K.fromString t .= object [K.fromString p .= c | (p, c) <- fs] | (t, fs) <- implementations])))
@@ -431,6 +443,28 @@ diagnostics (Object o) = case KM.lookup (K.fromString "diagnostics") o of
         text v = BLC.unpack (encode v)
 diagnostics _ = ["no response"]
 
+-- Rejection fixtures check the compiler's stable codes, independently of
+-- wording and positions. Extra diagnostics and accidental acceptance fail.
+diagnosticCodes :: Value -> Maybe [String]
+diagnosticCodes (Object fields) = case KM.lookup (K.fromString "diagnostics") fields of
+  Just (Array values) -> mapM code (V.toList values)
+  _ -> Nothing
+  where code (Object value) = case KM.lookup (K.fromString "code") value of
+          Just (String name) -> Just (T.unpack name)
+          _ -> Nothing
+        code _ = Nothing
+diagnosticCodes _ = Nothing
+
+rejectionAttribute :: [String] -> Either String (Maybe String)
+rejectionAttribute attributes = case [a | a <- attributes, takeWhile (/= '=') a == "reject"] of
+  [] -> Right Nothing
+  [option] | Just name <- stripPrefix "reject=" option,
+             not (null name), all (\c -> isAlphaNum c || c `elem` ("_.-" :: String)) name ->
+    if any (\a -> takeWhile (/= '=') a `elem` ["fragment","implementations","run","view"]) attributes
+      then Left "reject fixtures cannot be fragments or request implementations, execution or an implementation view"
+      else Right (Just name)
+  _ -> Left "a rejection fixture requires exactly one nonempty reject=<diagnostic-code> attribute"
+
 decodeValue :: BL.ByteString -> Value
 decodeValue = either (const Null) id . eitherDecode
 
@@ -447,7 +481,7 @@ assets out = do
         [K.fromString t .= c | t <- scaffoldTargets, Just c <- [testCommand t]]))))
       labels = ("target-labels", Inline (BLC.unpack (encode
         [[t, targetLabel t] | t <- scaffoldTargets])))
-  forM_ ["style.css", "playground.mjs", "highlight.mjs", "lawspec-core.mjs", "node-test.mjs", "assert.mjs"] $ \file -> do
+  forM_ ["style.css", "playground.mjs", "diagnostic-expectations.mjs", "highlight.mjs", "lawspec-core.mjs", "node-test.mjs", "assert.mjs"] $ \file -> do
     source <- readFile' ("templates/site" </> file)
     (content, _) <- either die pure (fillTemplate ("templates/site" </> file) (commands : labels : partials) source)
     writeAt (dir </> file) content

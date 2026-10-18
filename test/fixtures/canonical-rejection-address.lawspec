@@ -1,0 +1,7 @@
+unit example.rejection
+
+refinement Address is (value of type UInt16 where value <= 32767) end
+
+function address (ignored of type ()) -> Address is
+  32768
+end function

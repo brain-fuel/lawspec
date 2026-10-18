@@ -23,7 +23,7 @@ Validated project migration writes and the first canonical Chapter 6 pass shippe
 - [ ] Resolve or explicitly account for the remaining migration acceptance cases, including indexed/existential payloads, generic populations, dependency changes and opaque hooks. Missing correspondence must continue to block writes.
 - [ ] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration. Ordinary requests now require schema 5 and the canonical profile; configuration requires version 2. Archived source uses explicit migration entry points. The cutover is implemented; final consumer and acceptance checks remain open.
 - [ ] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract. The authoring pass and its oracle/generation checks are complete; the wider coverage audit remains required.
-- [ ] Deliver authored expected compile-rejection examples checked by stable diagnostic codes. The documentation checker currently rejects every failing snippet; the existing compiler negative regressions do not close this authoring requirement.
+- [x] Deliver authored expected compile-rejection examples checked by stable diagnostic codes. Independently checked `reject=<code>` documentation fixtures, exact diagnostic matching and editable rejection views are implemented and verified below.
 - [ ] Run the final compiler, target, generation, boundary, editor, documentation, parity and complete release checks on the final implementation; record failures and limits before claiming completion.
 
 The human readability exercise remains user-deferred. Completing all named endings belongs to the immediately following minor. The larger demonstration portfolio, advanced verification and external Linguist acceptance remain pre-final-1.0 requirements. None of these statuses authorizes an RC designation or a tag.
@@ -36,6 +36,65 @@ migration**, the verified oracle runs of **Chapter 6 authoring**, and
 **Grouped GADT and existential payloads**. The product-storage increment
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
+
+### Checked compiler-rejection examples — 18 October 2026
+
+Documentation authors can write `lawspec reject=<diagnostic-code>` fences,
+including standalone source fixtures. The ordinary compiler checks each fixture
+independently with no optional law layers selected. Exactly one diagnostic must
+have the named code; accidental acceptance, a different code or extra diagnostics
+fail the documentation check. Malformed or duplicate attributes, fragments and
+requests for native implementations or execution are rejected. This introduces
+no LawSpec declaration, unchecked computation category or compiler-check bypass.
+
+The published examples cover a zero denominator, an incompatible function result
+and an out-of-range address refinement. Corrected counterparts compile. All
+three use the same unit name while retaining independent source contexts. The
+precedent is [Lean's `#guard_msgs` diagnostic assertions](https://lean-lang.org/doc/reference/latest/Interacting-with-Lean/);
+LawSpec checks its existing compiler's stable codes rather than message wording.
+A matched compiler rejection establishes compiler behavior, not law verification
+or native conformance.
+
+An editable rejection view shows the expected code and actual diagnostic with its
+source location. A repaired source reports unexpected acceptance. Wrong codes,
+reset/copy operations and edits during a pending check are covered. Each view owns
+an independent source model and offers compilation controls. Native execution
+controls are absent because the fixture deliberately fails compilation.
+
+All **14 actual documentation-checker controls** pass, including incorrect-code,
+unexpected-success, malformed-option and cross-fixture symbol-isolation cases.
+The rebuilt site contains 120 pages and **118 checked snippets**. Three SDK tests
+pass, covering every target entry point at both widths with no law layers.
+Native/WASM parity agrees on **132 complete responses**: 126 rejections and six
+accepted repairs. Independent payload and receipt-hash auditing passes. All 136
+generated outputs, 236 compiler boundaries, six editor checks, version consistency
+and artifact integrity pass.
+
+The emitted component also passes DOM interaction tests using its real browser
+WASM shim. These cover matching, source context, repair, wrong codes, reset,
+copy, independent same-key fixtures and invalidation of pending results. The
+browser plugin failed during initialization because its process-module import
+was unavailable. No visual browser inspection is claimed. The test harness uses
+pinned LinkeDOM 0.18.13 in the private artifact directory; it adds no product
+runtime dependency.
+
+Compiler library sources and both compiler artifacts remain byte-identical to
+the formatter checkpoint (`e16b1d77...` native and `f37cadd9...` WASM). The package
+manifest changes only its three fixture entries and corresponding packaging
+fingerprint. Existing mandatory validation and deferred runtime enforcement
+remain unchanged. Initial build/test assumptions and their corrected runs are
+retained under `.artifacts/rejection-examples/` in the rejection-examples worktree.
+The 14-control tool is registered in the normal CI plan.
+
+The continuing coverage audit confirms a separate site-highlighting defect:
+the web highlighter uses legacy rules, leaves canonical computation/type words
+unclassified and consumes a phrase name through its function body as a string.
+The emitted HTML reproducer is `highlight-audit.json` in the same evidence
+directory. The canonical editor TextMate grammar already handles these forms;
+web highlighting must be brought into correspondence before the wider authoring
+coverage gate closes. Frozen catalog exports and final iteration release checks
+also remain open. Readability remains deferred, all named endings belong to the
+following minor, and no RC designation or tag is implied.
 
 ### Formatter block coverage and migration refusal boundaries — implementation under verification
 

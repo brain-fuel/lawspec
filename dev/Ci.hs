@@ -207,6 +207,7 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
     follows name command target = case target of
       Nothing -> ["typescript-bootstrap" | name == "npm-tests"] ++ ["python-bootstrap" | name == "beam-runtime"]
         ++ ["editor-install" | name == "editor-grammar"]
+        ++ ["docs" | name == "rejection-examples"]
       Just t
         | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> []
         | otherwise -> [t ++ "-bootstrap"] ++ ["build-acceptance" | isJust' (acceptanceProject [] command)]
@@ -218,7 +219,7 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
       [Exclusive "stack-build" | buildsStack command] ++
       [Exclusive "stack-work" | name `elem` stackBuilders] ++
       [Exclusive "stack-snapshot" | name `elem` stackBuilders ++ ["haskell-bootstrap", warmUp "haskell"]] ++
-      [Shared "stack-work" | name `notElem` stackBuilders, take 1 command == ["stack"]] ++
+      [Shared "stack-work" | name `notElem` stackBuilders, take 1 command == ["stack"] || name == "rejection-examples"] ++
       [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability"]] ++
       [Shared "env:typescript" | name == "npm-tests"] ++
       [Exclusive "cargo:runtime/rust" | "runtime/rust/Cargo.toml" `elem` command] ++
@@ -345,6 +346,7 @@ coreSteps =
   , step "parity" ["node", "tools/parity.mjs"]
   , step "package-smoke" ["node", "tools/package-smoke.mjs"]
   , step "docs" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "docs", "--check"]
+  , step "rejection-examples" ["node", "tools/rejection-examples.mjs"]
   -- canon keeps its own content-addressed cache, so this step is never skipped.
   , step "canon" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "canon", "check"] ]
 
@@ -356,10 +358,12 @@ stepInputs :: String -> Maybe Inputs
 stepInputs name = case name of
   -- Hspec reads acceptance specs, bindings and fixtures, so they key it too.
   "compiler-tests" -> Just (Inputs [] ["npm/", "tools/", "docs/", "editors/"] [["stack", "--version"]])
-  "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/"] [] [["node", "--version"]])
+  "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/", "templates/site/diagnostic-expectations.mjs"] [] [["node", "--version"]])
   "parity" -> Just (Inputs [] unread [["node", "--version"]])
   "package-smoke" -> Just (Inputs [] unread [["node", "--version"], ["npm", "--version"]])
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
+  "rejection-examples" -> Just (Inputs ["dev/Docs.hs", "src/", "package.yaml", "templates/site/", "templates/tools/rejection-examples.mjs",
+    "tools/rejection-examples.mjs", "test/fixtures/canonical-rejection-"] [] [["node", "--version"], ["stack", "--version"]])
   "rust-runtime-debug" -> Just rustRuntime
   "rust-runtime-release" -> Just rustRuntime
   "beam-runtime" -> Just (Inputs ["runtime/lawspec_beam_", "runtime/lawspec_network.erl", "runtime/lawspec_crypto_", "runtime/defaults/vectors.txt",

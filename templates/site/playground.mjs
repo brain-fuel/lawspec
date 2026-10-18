@@ -27,8 +27,10 @@
 //   data-target   the language shown first
 //   data-view     "implementation" to open on the implementation
 //   data-key      the shared model's name
+//   data-reject   one expected compiler diagnostic code; independent fixture
 
 import { highlight, highlightPage, languageOf } from "./highlight.mjs";
+import { rejectionOutcome, diagnosticText } from "./diagnostic-expectations.mjs";
 
 const targets = /*@ target-labels @*/;
 const runnable = new Set(["javascript", "typescript"]);
@@ -191,6 +193,12 @@ class Playground extends HTMLElement {
   connectedCallback() {
     if (this.ready) return;
     this.ready = true;
+    if (this.hasAttribute("data-reject")) {
+      // Invalid examples never share declarations or edits with another block.
+      this.model = new Model(this);
+      this.connectRejection();
+      return;
+    }
     this.model = modelFor(this);
     this.target = this.dataset.target ?? "java";
 
@@ -229,6 +237,55 @@ class Playground extends HTMLElement {
       this.select(this.target, this.openKind());
     });
     this.select(this.target, this.dataset.view === "implementation" ? "implementation" : "spec");
+  }
+
+  connectRejection() {
+    this.rejectionGeneration = 0;
+    this.status = element("span", { class: "status", role: "status" });
+    this.rejectionButton = button("Check rejection", "Check the expected compiler diagnostic", () => this.checkRejection(), { class: "primary" });
+    const toolbar = element("div", { class: "toolbar" }, [
+      this.rejectionButton,
+      button("↺", "Restore the example", () => this.model.reset(), { "aria-label": "Restore the example" }),
+      button("⎘", "Copy the specification", () => navigator.clipboard?.writeText(this.model.spec), { "aria-label": "Copy the specification" }),
+      this.status,
+    ]);
+    this.pane = element("div", { class: "pane" });
+    this.output = element("div", { class: "output", hidden: true, "aria-live": "polite" });
+    this.replaceChildren(toolbar, this.pane, this.output);
+    const render = () => this.pane.replaceChildren(
+      element("div", { class: "pane-label spec", text: `${this.model.path} — expected compiler rejection: ${this.dataset.reject}` }),
+      editablePane(this.model.spec, "lawspec", `Specification ${this.model.path}`, text => this.model.setSpec(text, this)),
+    );
+    this.model.addEventListener("change", ({ detail }) => {
+      ++this.rejectionGeneration;
+      this.rejectionButton.disabled = false;
+      this.status.textContent = `Expected compiler rejection: ${this.dataset.reject}. Check the edited source.`;
+      this.output.hidden = true;
+      if (detail.reset) render();
+    });
+    this.status.textContent = `Expected compiler rejection: ${this.dataset.reject}.`;
+    render();
+  }
+
+  async checkRejection() {
+    const generation = ++this.rejectionGeneration;
+    const sources = this.model.sources();
+    this.rejectionButton.disabled = true;
+    this.output.hidden = true;
+    this.status.textContent = "Checking compiler rejection…";
+    try {
+      const result = await (await loadCompiler()).check({ schemaVersion: 5,
+        languageProfile: "1.0-rc.1", verification: { layers: [] }, sources });
+      if (generation !== this.rejectionGeneration) return;
+      const outcome = rejectionOutcome(this.dataset.reject, result);
+      this.status.textContent = outcome.message;
+      this.show(element("pre", { class: outcome.matches ? "expected-diagnostic" : "failure",
+        text: outcome.diagnostics?.length ? diagnosticText(outcome.diagnostics) : outcome.message }));
+    } catch (error) {
+      if (generation === this.rejectionGeneration) this.status.textContent = `Cannot check rejection: ${error.message}`;
+    } finally {
+      if (generation === this.rejectionGeneration) this.rejectionButton.disabled = false;
+    }
   }
 
   // What the workbench has open: the specification, the implementation, or a

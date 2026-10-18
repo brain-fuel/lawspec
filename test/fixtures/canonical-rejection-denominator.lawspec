@@ -1,0 +1,5 @@
+unit example.rejection
+
+function divide (value of type Integer) -> Integer is
+  prelude.quot value 0
+end function
