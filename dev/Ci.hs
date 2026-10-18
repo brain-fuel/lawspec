@@ -583,12 +583,14 @@ runStep console children (Step name env command) = do
 
 -- | Run a process as the leader of a new process group, with its output
 -- captured as readCreateProcessWithExitCode captures it (standard input is
--- empty), and the group recorded while it runs.
+-- empty), and the group recorded while it runs. Close unrelated descriptors
+-- so persistent build servers cannot inherit the CI environment lock.
 runGroup :: Children -> CreateProcess -> IO (ExitCode, String, String)
 runGroup children process = do
   (input, out, err, child) <- mask $ \_ -> do
     (Just input, Just out, Just err, child) <- createProcess process
-      { std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe, create_group = True }
+      { std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe
+      , create_group = True, close_fds = True }
     pid <- getPid child
     forM_ pid $ \g -> modifyIORef' children (M.insert (fromIntegral g) ())
     pure (input, out, err, child)

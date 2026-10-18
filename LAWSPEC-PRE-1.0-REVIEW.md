@@ -139,6 +139,21 @@ under `.artifacts/canon-reconciliation/`
 in its isolated worktree and `.artifacts/minor-release-preparation/` in the
 preceding candidate worktree.
 
+The initial candidate is deliberately stopped after 183 completed steps;
+its interrupted parity/SDK steps are not completed passes. The standalone
+cleanup compiler run and package smoke are also superseded by their required
+steps in the complete committed-candidate CI. The first replacement attempt
+cannot acquire the environment lock: three orphaned .NET MSBuild servers
+inherited its descriptor from the initial run. That attempt executes no gates.
+Only those three verified orphan lock holders are terminated. The CI runner now
+closes unrelated descriptors when creating a step, preserving its explicit
+standard-input/output/error pipes. A behavioral probe compiles the actual
+runner function with an export-only test shim: the original child inherits the
+held lock as descriptor 3 and fails; the corrected child inherits none and
+passes. The development executable rebuild passes. This change affects only
+the CI runner; the language compiler, WASM, SDK and package bytes stay unchanged.
+The complete nine-worker fresh CI remains required after committing this fix.
+
 The earlier frozen scenario-formatter snapshot's full SDK run has finished:
 506 tests, 502 passes, zero failures/cancellations, four explicit native
 environment skips, in 6,541,329.638083 ms. The export test takes
