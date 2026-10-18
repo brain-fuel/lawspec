@@ -13,6 +13,8 @@ assert.ok(['erlang', 'elixir', 'gleam'].includes(language), 'Pass a BEAM target'
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64);
 assert.ok([32, 64].includes(bits));
 const minify = process.env.LAWSPEC_MINIFY === '1';
+const canonical = {schemaVersion: 5, languageProfile: '1.0-rc.1',
+  verification: {layers: ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model']}};
 const base = path.join(repo, '.artifacts/beam-crypto-integration', `${language}-${bits}-${minify}`);
 await rm(base, {recursive: true, force: true});
 await mkdir(base, {recursive: true});
@@ -66,9 +68,10 @@ if (language === 'elixir') {
 }
 if (language === 'gleam') await run('gleam', ['build']);
 
-const source = await readFile(path.join(repo, 'examples/specs/crypto.lawspec'), 'utf8');
+const source = await readFile(path.join(repo, 'test/fixtures/cli-canonical/crypto.lawspec'), 'utf8');
 await writeFile(path.join(base, 'crypto.lawspec'), source);
 const config = JSON.parse(await readFile(configFile, 'utf8'));
+config.verification = canonical.verification;
 config.sources = ['crypto.lawspec'];
 config.targets[0].nativeBindings = JSON.parse(await readFile(path.join(repo, 'acceptance/crypto', language, 'bindings.json'), 'utf8'));
 await writeFile(configFile, JSON.stringify(config, null, 2) + '\n');
@@ -118,7 +121,7 @@ console.log('PASS generation checks build hooks and real C toolchain without wri
 
 const {createCompiler} = await import(pathToFileURL(path.join(packageRoot, 'api.mjs')));
 const compiler = await createCompiler();
-const plan = await compiler.planGeneration({target: language, machineBits: bits, minify,
+const plan = await compiler.planGeneration({...canonical, target: language, machineBits: bits, minify,
   sources: [{path: 'crypto.lawspec', content: source}], nativeBindings: config.targets[0].nativeBindings});
 assert.deepEqual(plan.diagnostics, []);
 assert.equal(plan.tests.length, 19, 'Run all imported crypto laws plus application laws');

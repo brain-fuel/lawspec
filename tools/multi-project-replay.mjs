@@ -75,10 +75,11 @@ for (const project of projects) {
 const configFile = path.join(base, 'lawspec.json');
 const config = JSON.parse(await readFile(configFile, 'utf8'));
 config.sources = ['replay.lawspec'];
+config.verification = {layers: ['property', 'examples']};
 await writeFile(configFile, JSON.stringify(config, null, 2));
+const replayLaw = name => `law "|${name}| is definition: for all (value :: Int32 where value >= 100 && value <= 200) => observe value must be value end end end\n`;
 await writeFile(path.join(base, 'replay.lawspec'),
-  'unit example.replay\nobserve :: Int32 -> Int32\n' +
-  'law `values survive` is definition is `for all` (value :: Int32 where value >= 100 && value <= 200) . observe value = value end end\n');
+  'unit example.replay\nobserve of type Int32 -> Int32\n' + replayLaw('values survive'));
 await call('generate');
 const [adapterFile, adapter, mutant] = {
   javascript: ['src/example/replay.mjs', 'export function observe(value) { return value; }\n',
@@ -100,6 +101,7 @@ for (const project of config.targets)
   assert.ok(junit.includes(`${language} (${project.root}):`), 'JUnit must distinguish projects using the same language');
 assert.ok(JSON.parse((await call('test', ['--json'])).stdout).every(result => result.ran.length === 0));
 const law = first[0].ran[0];
+assert.equal(law, 'example.replay::law::"|values survive|');
 await new Promise(resolve => setTimeout(resolve, 1100));
 await writeFile(adapters[0], mutant);
 const failure = await call('test', ['--seed', '7340271', '--json'], false);
@@ -124,7 +126,8 @@ assert.deepEqual(await database(directories[1]), {}, 'The second project must ha
 const inputs = await readdir(path.join(directories[0], 'inputs'));
 assert.ok(inputs.length > 0, 'The first project must retain its actual failing inputs');
 const input = JSON.parse(await readFile(path.join(directories[0], 'inputs', inputs[0]), 'utf8'));
-assert.equal(input.law, 'example.replay::values survive');
+assert.equal(input.law, 'example.replay::"|values survive|',
+  'Recorded inputs retain the canonical source law name');
 if (language === 'javascript') {
   // Its refined generator shrinks over its own tree. Retain exactly the
   // counterexample that it reports, even when that tree stops above 111.
@@ -156,8 +159,7 @@ console.log(`PASS project state survives removing and re-adding another target (
 if (language === 'elixir' && ['1', '2'].includes(maxFailures)) {
   const spec = path.join(base, 'replay.lawspec');
   await writeFile(spec, await readFile(spec, 'utf8') +
-    ['a second law', 'a third law'].map(name =>
-      `law \`${name}\` is definition is \`for all\` (value :: Int32 where value >= 100 && value <= 200) . observe value = value end end\n`).join(''));
+    ['a second law', 'a third law'].map(replayLaw).join(''));
   await call('generate');
   const complete = JSON.parse((await call('test', ['--json'])).stdout);
   assert.ok(complete.every(result => result.ok && result.ran.length === 3));

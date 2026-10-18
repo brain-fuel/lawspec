@@ -17,10 +17,12 @@ law \`text identity\` is definition is \`for all\` (x :: Text) . echo x = x end
 example \`source-like payload\` is x = "../src/literal" expect echo x = "../src/literal" end end
 law \`promotes\` is definition is \`for all\` (x :: Int8) . successor x = x + 1 end
 example \`maximum\` is x = 127 expect successor x = 128 end end`}));
-const request={sources,target:'rust',sourceDir,testDir,minify:process.env.LAWSPEC_MINIFY==='1'};
+const request={schemaVersion:5,languageProfile:'1.0-rc.1',from:'0.24',includeGeneration:true,
+  verification:{layers:['proof','exhaustive','property','examples','runtime','model']},
+  sources,target:'rust',sourceDir,testDir,machineBits:Number(process.env.LAWSPEC_MACHINE_BITS??64),minify:process.env.LAWSPEC_MINIFY==='1'};
 const result=process.env.LAWSPEC_CORE
-  ? JSON.parse(execFileSync(process.env.LAWSPEC_CORE,[],{input:JSON.stringify({method:'planGeneration',...request}),encoding:'utf8',maxBuffer:32*1024*1024}))
-  : await (await createCompiler()).planGeneration(request);
+  ? JSON.parse(execFileSync(process.env.LAWSPEC_CORE,[],{input:JSON.stringify({method:'migrationBaseline',...request}),encoding:'utf8',maxBuffer:32*1024*1024}))
+  : await (await createCompiler()).migrationBaseline(request);
 assert.deepEqual(result.diagnostics,[]);
 const scaffold=templates('rust');
 const tests=result.files.filter(f=>f.placement==='test'&&f.path.endsWith('_lawspec.rs'));

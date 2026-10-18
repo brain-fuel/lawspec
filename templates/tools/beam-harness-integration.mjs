@@ -13,6 +13,8 @@ const language = process.argv[2];
 assert.ok(['erlang', 'elixir', 'gleam'].includes(language), 'Pass a BEAM target');
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64), minify = process.env.LAWSPEC_MINIFY === '1';
 assert.ok([32, 64].includes(bits));
+const canonical = {schemaVersion: 5, languageProfile: '1.0-rc.1',
+  verification: {layers: ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model']}};
 const base = path.join(repo, '.artifacts/beam-harness-integration', `${language}-${bits}-${minify}`);
 await rm(base, {recursive: true, force: true});
 await mkdir(base, {recursive: true});
@@ -66,22 +68,21 @@ if (language === 'elixir') {
 if (language === 'gleam') await run('gleam', ['build']);
 const suites = ['beam-selection', 'beam-strategies', 'beam-adequacy', 'beam-target',
   'beam-repetition', 'beam-benchmarks', 'beam-resource-owners', 'scheduling', 'tables'];
+const fixtures = path.join(repo, 'test/fixtures/cli-canonical');
+const fixtureSources = JSON.parse(await readFile(path.join(fixtures, 'harness-sources.json'), 'utf8'));
+const archivedSources = (await Promise.all(suites.map(async suite =>
+  JSON.parse(await readFile(path.join(repo, 'acceptance', suite, 'suite.json'), 'utf8')).specs))).flat();
+assert.deepEqual(fixtureSources.map(entry => entry.legacySource).sort(), archivedSources.sort(),
+  'Every archived harness source must retain a canonical consumer fixture');
 const sources = [];
-for (const suite of suites) {
-  const manifest = JSON.parse(await readFile(path.join(repo, 'acceptance', suite, 'suite.json'), 'utf8'));
-  for (const file of manifest.specs) {
-    let content = await readFile(path.join(repo, file), 'utf8');
-    if (file === 'acceptance/beam-selection/a.lawspec')
-      content = content.replace('  order random\n  parallel', '  order random\n  parallel\n  tags smoke');
-    if (suite === 'beam-resource-owners')
-      content = content.replace('    timeout 500 ms', '    timeout 500 ms\n    tags owners');
-    const source = {path: `${suite}-${path.basename(file)}`, content};
-    sources.push(source);
-    await writeFile(path.join(base, source.path), source.content);
-  }
+for (const entry of fixtureSources) {
+  const source = {path: entry.path, content: await readFile(path.join(fixtures, entry.fixture), 'utf8')};
+  sources.push(source);
+  await writeFile(path.join(base, source.path), source.content);
 }
 sources.sort((a, b) => a.path.localeCompare(b.path));
 const config = JSON.parse(await readFile(configFile, 'utf8'));
+config.verification = canonical.verification;
 config.sources = sources.map(source => source.path);
 await writeFile(configFile, JSON.stringify(config, null, 2) + '\n');
 await call('generate', ['--json', ...layoutFlags]);
@@ -96,8 +97,13 @@ const {createCompiler} = await import(pathToFileURL(path.join(packageRoot, 'api.
 const {harnessStatistics} = await import(pathToFileURL(path.join(packageRoot, 'test-command.mjs')));
 const {projectKey} = await import(pathToFileURL(path.join(packageRoot, 'failure-database.mjs')));
 const compiler = await createCompiler();
-const plan = await compiler.planGeneration({target: language, machineBits: bits, minify, sources});
+const plan = await compiler.planGeneration({...canonical, target: language, machineBits: bits, minify, sources});
 assert.deepEqual(plan.diagnostics, []);
+const lawIdentity = (owner, name) => {
+  const law = plan.laws.find(law => law.owner === owner && law.name === '"|' + name + '|');
+  assert.ok(law, `Missing canonical law ${owner}: ${name}`);
+  return `${law.owner}::${law.name}`;
+};
 assert.equal(plan.tests.length, 39);
 assert.equal(plan.benchmarks.length, 8);
 const selectionAudit = path.join(base, 'selection.jsonl');
@@ -115,19 +121,19 @@ const first = (await test(['--fresh', '--seed', '4201', '--report', 'junit=harne
 assert.ok(first.ok && !first.unrun, JSON.stringify(first));
 assert.deepEqual(first.ran, plan.tests.map(test => test.law));
 assert.deepEqual(await selectedCalls(), [1, 2, 4, 10, 20, 21]);
-assert.ok(first.flaky.includes('example.repetition::transient failure'));
+assert.ok(first.flaky.includes(lawIdentity('example.repetition', 'transient failure')));
 assert.ok(first.parallelism.some(row => row.unit === 'example.overlap' && row.workers === 3));
 assert.ok(!first.benchmarks);
 assert.deepEqual((await benchmarkCalls()).map(row => row.name), ['ordinary']);
 const records = await harnessStatistics(statsPath);
-assert.ok(records.some(row => row.law === 'example.selectionB::skipped' && row.outcome === 'skipped'));
-assert.ok(records.some(row => row.law === 'example.selectionB::known' && row.outcome === 'known-failing'));
-assert.ok(records.some(row => row.law === 'example.adequacy::generated observations' && row.cases === 100
+assert.ok(records.some(row => row.law === lawIdentity('example.selectionB', 'skipped') && row.outcome === 'skipped'));
+assert.ok(records.some(row => row.law === lawIdentity('example.selectionB', 'known') && row.outcome === 'known-failing'));
+assert.ok(records.some(row => row.law === lawIdentity('example.adequacy', 'generated observations') && row.cases === 100
   && row.cover.every(cover => cover.met)));
-assert.ok(records.some(row => row.law === 'example.repetition::repeated random cases'
+assert.ok(records.some(row => row.law === lawIdentity('example.repetition', 'repeated random cases')
   && row.repeat === 3 && row.runs.length === 3));
-assert.ok(records.some(row => row.law === 'example.target::interior maximum' && row.search));
-assert.ok(records.some(row => row.law === 'example.resourceOwners::owners release after each test' && row.outcome === 'passed'));
+assert.ok(records.some(row => row.law === lawIdentity('example.target', 'interior maximum') && row.search));
+assert.ok(records.some(row => row.law === lawIdentity('example.resourceOwners', 'owners release after each test') && row.outcome === 'passed'));
 const junit = await readFile(path.join(base, 'harness.xml'), 'utf8');
 assert.ok(junit.includes('example.selectionA') && junit.includes('example.selectionB'));
 assert.match(junit, /<skipped/);
@@ -230,7 +236,7 @@ for (const [name, before, after] of [
     assert.equal(result.ok, false, name);
     assert.deepEqual(result.ran, plan.tests.filter(row => row.tags.includes('owners')).map(row => row.law));
     const reports = await harnessStatistics(statsPath);
-    assert.ok(reports.some(row => row.law === 'example.resourceOwners::owners release after each test'
+    assert.ok(reports.some(row => row.law === lawIdentity('example.resourceOwners', 'owners release after each test')
       && row.outcome === 'failed' && row.failureKind === 'harness' && row.attempts === 1), name);
     assert.match(await readFile(path.join(base, 'owners.xml'), 'utf8'), /<failure/);
   } finally {

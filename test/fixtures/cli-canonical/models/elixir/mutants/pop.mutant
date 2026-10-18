@@ -1,0 +1,7 @@
+expect-any: model_failed | ModelFailed
+@@ lib/example_models.ex
+<<<<<<<
+  def pop(%StackPush{value: %LawSpec.Data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949{rest: s, top: n}}), do: %PopFlow{result: n, state: s}
+=======
+  def pop(%StackPush{value: %LawSpec.Data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949{top: n}} = s), do: %PopFlow{result: n, state: s}
+>>>>>>>

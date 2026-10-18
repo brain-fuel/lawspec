@@ -1,0 +1,9 @@
+{
+  "recordIdentity": "lawspec::structural::record::d055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949",
+  "nativeRecordName": "Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949",
+  "fields": [
+    "rest",
+    "top"
+  ],
+  "origin": "Compiler-owned migration source edits; explicit canonical fixture adoption. Existing native model expectations and pop mutants remain the independent conformance checks. No project migration validation claim."
+}

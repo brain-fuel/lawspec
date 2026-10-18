@@ -1,0 +1,9 @@
+expect-any: model_failed | ModelFailed
+@@ src/example/models.gleam
+<<<<<<<
+  let assert data.StackPush(data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(rest: rest, top: n)) = s
+  data.PopFlow(n, rest)
+=======
+  let assert data.StackPush(data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(rest: _, top: n)) = s
+  data.PopFlow(n, s)
+>>>>>>>

@@ -239,6 +239,64 @@ installed-interface result nor release preconditions close final acceptance.
 Readability remains user-deferred, all-named endings belong to the following
 minor, and pre-final-1.0 gates stay open. No tag or publication is implied.
 
+### Canonical integration consumers — implementation under verification
+
+The immutable `04c4eb22` fresh run exposed 26 failures in five integration
+consumers: Rust custom layout, JavaScript/BEAM multi-project replay, and BEAM
+crypto, models and harnesses at both profiles. These helpers still submitted
+archived syntax to ordinary canonical entry points, omitted the explicit
+profile, or inherited the new empty verification selection. The run continues
+to collect the complete result; failed consumers are not counted as passes.
+
+Rust's archived layout fixture now enters through `migrationBaseline` with
+generation explicitly requested. Replay authors canonical laws and explicitly
+selects property/examples checks. The three BEAM consumers use checked canonical
+fixtures and explicitly preserve their six prior law layers. The harness fixture
+manifest accounts for every source in the original nine suite manifests.
+Canonical model adapters and pop mutants use the compiler-resolved structural
+record payload, including its field order. Legacy acceptance sources and adapters
+remain available through their existing explicit legacy path.
+
+The 23 new fixture files include fifteen specifications, twelve of which retain
+their original harness-source identities. These are explicit canonical fixture
+ports, not automatic validated project migrations. In particular, the model and
+harness migration previews still have unestablished source-template or domain
+correspondence; their writers remain blocked. Fixture adoption does not remove
+those migration limits or establish native implementation conformance.
+
+All eighteen complete BEAM generation responses agree between native and WASM
+compilers: three consumers, three targets and both profiles. Their expected
+slots remain eighteen model checks, nineteen crypto checks, and thirty-nine
+harness checks plus eight benchmarks. Three complete typed formatting snapshots
+are preserved and formatting is idempotent. All three canonical pop-mutant
+anchors match their adapter exactly once. Another ten complete native/WASM
+responses agree for Rust's explicit migration baseline and replay's four targets
+at both profiles. An initial private Rust assertion incorrectly counted nested
+examples as separate law slots; the corrected audit retains four slots.
+
+Real Rust Cargo execution passes with custom source/test roots, doctor checks,
+literal path preservation and regeneration ownership checks. The installed
+JavaScript replay check passes independent project caches, reports, failing seed
+and input retention, repair replay and target removal/readdition. Its first run
+exposed a stale assertion conflating a test identity containing `::law::` with
+the recorded source law name; both identities now have explicit assertions.
+The isolated 64-bit readable Erlang model integration also passes actual native
+selection/JUnit, unchanged caching, pop-mutant rejection, failed-seed replay
+and cache invalidation. Other BEAM native executions and the complete repaired
+CI gate remain pending.
+
+No compiler, runtime, WASM, SDK or package-source bytes change in this increment.
+The generated-file, 236-module boundary, artifact-integrity and version checks
+pass, along with documentation for 120 pages/118 compiled snippets and the real
+Canon check under its existing pre-1.0 exemptions. Evidence is under
+`.artifacts/canonical-integration-consumers/` in its
+isolated worktree. The complete 2,491-step graph, including the forty newly
+registered checks, remains required. Successful unchanged checks may reuse their
+existing content-addressed receipts; changed consumers and added native checks
+must actually execute. Final acceptance is still open. Readability remains
+user-deferred, all-named endings remain the following minor, and no tag,
+publication or release-candidate designation is claimed.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current

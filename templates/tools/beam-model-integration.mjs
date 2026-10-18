@@ -13,6 +13,8 @@ const language = process.argv[2];
 assert.ok(['erlang', 'elixir', 'gleam'].includes(language), 'Pass a BEAM target');
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64), minify = process.env.LAWSPEC_MINIFY === '1';
 assert.ok([32, 64].includes(bits));
+const canonical = {schemaVersion: 5, languageProfile: '1.0-rc.1',
+  verification: {layers: ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model']}};
 const base = path.join(repo, '.artifacts/beam-model-integration', `${language}-${bits}-${minify}`);
 await rm(base, {recursive: true, force: true});
 await mkdir(base, {recursive: true});
@@ -64,25 +66,31 @@ if (language === 'elixir') {
   await run('mix', ['deps.compile'], project, {environment: {MIX_ENV: 'test'}});
 }
 if (language === 'gleam') await run('gleam', ['build']);
-const sources = await Promise.all(['examples/specs/models.lawspec', 'examples/specs/actors.lawspec']
+const sources = await Promise.all(['test/fixtures/cli-canonical/models.lawspec', 'test/fixtures/cli-canonical/actors.lawspec']
   .map(async file => ({path: path.basename(file), content: await readFile(path.join(repo, file), 'utf8')})));
 sources.sort((a, b) => a.path.localeCompare(b.path));
 for (const source of sources) await writeFile(path.join(base, source.path), source.content);
 const config = JSON.parse(await readFile(configFile, 'utf8'));
+config.verification = canonical.verification;
 config.sources = sources.map(source => source.path);
 await writeFile(configFile, JSON.stringify(config, null, 2) + '\n');
 await call('generate', ['--json', ...layoutFlags]);
 for (const suite of ['models', 'actors'])
   for (const kind of ['files', 'native'])
     await cp(path.join(repo, 'acceptance', suite, language, kind), project, {recursive: true});
+const canonicalModels = path.join(repo, 'test/fixtures/cli-canonical/models', language);
+await cp(path.join(canonicalModels, 'files'), project, {recursive: true});
 await call('generate', ['--check', ...layoutFlags]);
 
 const {createCompiler} = await import(pathToFileURL(path.join(packageRoot, 'api.mjs')));
 const {invocations, executedTests} = await import(pathToFileURL(path.join(packageRoot, 'test-command.mjs')));
 const {projectKey} = await import(pathToFileURL(path.join(packageRoot, 'failure-database.mjs')));
 const compiler = await createCompiler();
-const plan = await compiler.planGeneration({target: language, machineBits: bits, minify, sources});
+const plan = await compiler.planGeneration({...canonical, target: language, machineBits: bits, minify, sources});
 assert.deepEqual(plan.diagnostics, []);
+const modelLayout = JSON.parse(await readFile(path.join(repo, 'test/fixtures/cli-canonical/model-layout.json'), 'utf8'));
+assert.ok(plan.dataTypes.some(type => type.id === modelLayout.recordIdentity && type.name === modelLayout.nativeRecordName),
+  'The canonical model adapter must use the checked structural payload identity');
 assert.equal(plan.tests.length, 18, 'Six ordinary laws, eleven model/scenario checks and one supervision check');
 const models = plan.tests.filter(test => test.law.includes('::model::'));
 assert.equal(models.length, 11);
@@ -122,7 +130,7 @@ assert.ok(nativeRows.every(test => test.status === 'passed'));
 for (const entry of models)
   assert.equal(nativeRows.filter(test => test.identity === identity(entry)).length, 1, 'No duplicated model tests');
 
-const mutation = await readFile(path.join(repo, 'acceptance/models', language, 'mutants/pop.mutant'), 'utf8');
+const mutation = await readFile(path.join(canonicalModels, 'mutants/pop.mutant'), 'utf8');
 const match = /^expect-any: .+\n@@ (.+)\n<<<<<<<\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>>\s*$/.exec(mutation);
 assert.ok(match);
 const [, file, before, after] = match, destination = path.join(project, file);
