@@ -74,7 +74,7 @@ type is `LawSpec.Data.Tree<'T0>` with cases `Leaf of value: 'T0` and
 | LawSpec | F# |
 | --- | --- |
 | `Int8`…`Int64`, `UInt8`…`UInt64` | `sbyte`…`int64`, `byte`…`uint64` |
-| `Integer`, `BigInt`, `BigUInt` | `bigint` |
+| `Integer`, `Whole`, `Nat` | `bigint` |
 | `IntSize`, `UIntSize`, `UIntPtr` | `int64`, `uint64`, `uint64` on both profiles, checked against `machineBits` |
 | `Float32`, `Float64` | `float32`, `float` |
 | `Decimal`, `Rational` | `LawSpec.ExactDecimal`, `LawSpec.Rational` |
@@ -114,7 +114,7 @@ handlers of the built-in abilities as these interfaces.
 
 ## Checked definitions
 
-For `definition increment (value :: Int8) :: BigInt is value + 1 end` in unit
+For `function increment (value :: Int8) -> Integer is value + 1 end function` in unit
 `example.total`, call:
 
 ```fsharp

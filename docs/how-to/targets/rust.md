@@ -58,7 +58,7 @@ or pointers; tests clone values where an input is used more than once.
 | `Bool` | `bool` |
 | Fixed-width integers | `i8`…`i64`, `u8`…`u64` |
 | `IntSize`, `UIntSize`, `UIntPtr` | `isize`, `usize`, `usize` |
-| `BigInt`, `BigUInt` | `BigInt`, `BigUint` |
+| `Whole`, `Nat` | `BigUint`, with domain checks |
 | `Integer` argument | `BigInt` |
 | `Integer` result | `Integer`, with lossless `From` implementations |
 | `Decimal`, `Rational` | Generated `Decimal`, `BigRational` |

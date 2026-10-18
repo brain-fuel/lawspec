@@ -83,7 +83,7 @@ generated on their own.
 | `Maybe a`, `Either a b` | `Maybe a`, `Either a b` |
 | `Nullable a` | `LS.Nullable a`, with `NullValue` and `NullableValue` |
 | `Optional a` | `LS.Optional a`, with `UndefinedValue` and `OptionalValue` |
-| `BigInt`, `BigUInt`, `Integer` argument | `Integer`, with domain checks |
+| `Whole`, `Nat`, `Integer` argument | `Integer`, with domain checks |
 | `Integer` result | `LS.IntegerValue`, built from any `Integral` with `LS.integerValue` |
 | `Decimal` | `LS.Decimal`, an exact finite base-ten `Rational` |
 | `Duration` | The generated `Duration` record, holding an `Integer` of microseconds |

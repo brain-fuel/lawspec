@@ -49,7 +49,7 @@ prove is rejected. IEEE float expressions never acquire exact identities such
 as `x - x = 0`.
 
 The range of every primitive integer type is available to the checker,
-including the selected machine width and the non-negative range of `BigUInt`.
+including the selected machine width and the non-negative range of `Whole`.
 Integer comparisons keep integrality: for an `Int8` `x`,
 `x < 127 && prelude.Int8 (x + 1) > x` narrows safely, because the conversion
 runs only on the guarded branch. Without the guard, it is rejected, because

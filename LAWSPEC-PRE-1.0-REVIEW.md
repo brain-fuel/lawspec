@@ -11,7 +11,7 @@ The immediate task is to discover whether actual business readers can understand
 
 The latest approved milestone direction below is authoritative. The implementation contract originally called RC1 remains the implementation baseline, subject to the later decisions recorded here. Earlier discussion and superseded alternatives remain history.
 
-**Implementation status:** the repository is at version 0.24.0. The authoring work currently being prepared is a minor-version milestone, **not a release candidate**. No RC version or tag is authorized. The existing technical profile identifier `1.0-rc.1` is retained during implementation; it is not a release designation. The redesigned examples below are language-design examples; they are not claims that the current parser accepts them. Code blocks deliberately use plain text rather than simulated syntax highlighting.
+**Implementation status:** version 0.25.0 is being prepared as an unpublished minor-version milestone, **not a release candidate**. Final package rebuilding and release checks remain open. No RC version or tag is authorized. The existing technical profile identifier `1.0-rc.1` is retained during implementation; it is not a release designation. The historical design examples below are not, by themselves, claims that the parser accepts them. Current executable examples and their evidence are identified in the implementation receipts. Code blocks deliberately use plain text rather than simulated syntax highlighting.
 
 Examples are independent unless a section explicitly connects them. Repeated unit names and simplified signatures are separate presentations, not declarations intended to coexist in one source file.
 
@@ -36,6 +36,49 @@ migration**, the verified oracle runs of **Chapter 6 authoring**, and
 **Grouped GADT and existential payloads**. The product-storage increment
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
+
+### Minor-version preparation — 18 October 2026
+
+Version **0.25.0** is prepared for the authoring milestone, without an RC
+designation, tag or publication. Package/Cabal/WASM/Rust versions and the CLI
+agree. The registry preflight reports no 0.25.0 version; this is a read-only
+check, not a publication. The technical language profile remains `1.0-rc.1`,
+API schema remains 5, configuration remains 2, and migration still starts from
+0.24. Historical 0.24 documentation links remain on their actual released tag.
+
+Both native and WASM package builds pass with the new version. The native
+compiler is SHA-256
+`7341f05eb33084d33d534a55ce0a0eab7ba527c1553f7d1d11012c78c6b99216`;
+the 72,964,848-byte WASM is SHA-256
+`f6ffdf78293954693165577903400b5150a1cb9a0d20e9f8e6625687e98272f6`.
+Version checks, all 137 generated-file checks, source/artifact fingerprint
+recording and documentation checks for 120 pages/118 compiled snippets pass.
+These preflights do not substitute for final regression or native execution.
+
+The public-documentation audit found stale inline function syntax, obsolete
+source number names and setup instructions that assumed law verification was
+selected by default. The guides now use canonical function/Integer/Whole/Nat
+forms and the unpublished checkout, and explicitly select property/examples
+when teaching test execution. Native type names such as Rust's BigInt remain
+native names. The collections reference previously combined an Eq-based
+canonical introduction with a long ordered-Set historical reference. It now
+consistently names SortedSet for keyed/sorted behavior and native ordered-set
+representations, and distinguishes Set's Eq requirements, storage order and
+IEEE behavior. Historical source remains available through the released
+0.24 documentation and this review's labeled history.
+
+Release instructions now cover all 17 targets, agree on the prepared version,
+and run release preconditions after the version is bumped and committed.
+Fresh final CI, installed consumers, native target checks, package inspection
+and the complete release check remain open. The user deferred readability;
+all-named closers remain the following minor, and pre-final-1.0 gates remain
+unchanged. No final acceptance or tag is claimed.
+
+The preceding formatter-block snapshot's catalog export has also completed:
+one test passes in **6,356,647.629583 ms** (total **6,356,818.63325 ms**), with
+zero failures or skips. Independent auditing confirms all **273 frozen package
+files** retain their recorded hashes. This closes that frozen snapshot's run,
+not the current 0.25.0 package gate.
 
 ### Requirement coverage audit — 18 October 2026
 
@@ -78,7 +121,7 @@ results for their own compiler and package snapshots.
 | Codecs/reusable inverse, existence/absence, authorization, refunds/conflicts and stateful orders | Published `examples/rc1` and permanent native acceptance suites | Final all-17-target run; existing receipts describe each suite's native scope |
 | Examples 48–50 and eight three-layer record/alternative combinations | Canonical filename/structural examples and eight nesting files; compiler/native outcomes and mutants | Final documentation/native nesting gates |
 | Chapter 6 semantic migration, authored inventory, complete instruction oracles and invocation independence | Canonical assembler, frozen original, checked mappings and `tools/chapter6-oracles.mjs`; fresh both-profile oracle receipts | Preserve inventory/hashes; complete implementations in other languages remain pre-final-1.0 |
-| Final compiler, target, generation, boundary, docs, editor, parity and release checks | CI graph, package smoke, locked runtimes and release preconditions | Open: fresh final commit/version execution; version is still 0.24.0 |
+| Final compiler, target, generation, boundary, docs, editor, parity and release checks | CI graph, package smoke, locked runtimes and release preconditions | Open: final package rebuilding and fresh final-commit execution; 0.25.0 is in preparation |
 | Three-reader comprehension exercise | Ten questions and threshold retained here | Explicitly user-deferred; no reader results claimed |
 | Larger demonstration portfolio and advanced verification | Original pre-final-1.0 gates retained below | Open pre-final-1.0; completing this minor does not authorize final 1.0 |
 
@@ -113,7 +156,8 @@ label accepted by the source language but rejected by existing native emitters;
 it now uses the portable domain label `caption`. This corrects the acceptance
 fixture, not native naming policy. Its focused SDK check passes in
 22,707.7755 ms. An earlier compiler run was deliberately stopped before updating
-the compiled fixture assertions; the restarted final compiler run remains open.
+the compiled fixture assertions. The restarted compiler run now passes
+**2,223 tests with zero failures** in 607.4778 seconds.
 
 The selected SDK run records **219 tests: 218 passes, one initial fixture
 failure, no skips**, in 363,046.918125 ms. All **192 migration, canonical-interface
@@ -143,9 +187,10 @@ original and canonical hashes remain intact; its entire native format response
 matches the preceding verified checkpoint. Evidence is retained under
 `.artifacts/record-type-format-separators/` in the isolated worktree.
 
-The final compiler run, current-package full catalog export, fresh installed
-consumer/native target gates, minor-version preparation and complete release
-check remain open. No RC designation, tag or final 1.0 acceptance is implied.
+That compiler result belongs to the frozen 0.24.0 formatter checkpoint. The
+current-package full catalog export, fresh installed consumer/native target
+gates, minor-version preparation and complete release check remain open. No RC
+designation, tag or final 1.0 acceptance is implied.
 
 ### Scenario command boundaries and multiline literals — implementation under verification
 

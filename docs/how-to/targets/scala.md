@@ -120,7 +120,7 @@ becomes that failure too. An `async` adapter returns a `Future`.
 
 ## Checked definitions
 
-For `definition increment (value :: Int8) :: BigInt is value + 1 end` in unit
+For `function increment (value :: Int8) -> Integer is value + 1 end function` in unit
 `example.total`, call:
 
 ```scala

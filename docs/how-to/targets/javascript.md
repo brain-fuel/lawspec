@@ -13,13 +13,20 @@ title: Set up JavaScript
 
 ## Create the project
 
+Use the development checkout for the unpublished 0.25.0 authoring profile:
+
 ```sh
-npm exec --package=lawspec@0.24.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.24.0
+git clone https://github.com/brain-fuel/lawspec.git lawspec
+mkdir lawspec-javascript && cd lawspec-javascript
+node ../lawspec/npm/bin/lawspec.mjs init --target javascript
+npm install --save-dev ../lawspec/npm
 npx lawspec doctor
-npx lawspec generate
-npm test
 ```
+
+New projects select no law checks. In `lawspec.json`, set
+`verification.layers` to `["property", "examples"]`, then run
+`npx lawspec generate`. Implement the generated adapter stubs and run `npm test`.
+Intrinsic definition checking always runs.
 
 In a directory without build files, `init` creates a `package.json` with
 `"type": "module"`, fast-check 4.10.2 and the test script

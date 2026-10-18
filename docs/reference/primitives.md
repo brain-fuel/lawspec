@@ -24,9 +24,9 @@ or type-only constructs such as `never`.
 | Signed integers | `Int8`, `Int16`, `Int32`, `Int64` | −2^(bits−1) through 2^(bits−1)−1 |
 | Unsigned integers | `UInt8`, `UInt16`, `UInt32`, `UInt64` | 0 through 2^bits−1 |
 | Machine integers | `IntSize`, `UIntSize`, `UIntPtr` | 32- or 64-bit, from the machine profile; no pointer operations |
-| Abstract integers | `Integer` | Exact mathematical values, independent of storage width |
-| Arbitrary integers | `BigInt`, `BigUInt` | Unbounded; `BigUInt` is non-negative |
-| Natural numbers | `Natural` | Unbounded, at least zero |
+| Exact integers | `Integer` | Unbounded mathematical integers, independent of native storage choices |
+| Whole numbers | `Whole` | Unbounded nonnegative integers, starting at zero |
+| Natural numbers | `Nat` | Unbounded positive integers, starting at one |
 | Exact fractions | `Decimal`, `Rational` | Finite coefficient × 10^exponent; reduced numerator over positive denominator |
 | Floating point | `Float32`, `Float64` | IEEE binary32 and binary64; NaN differs from itself, signed zeros are equal |
 | Complex | `Complex64`, `Complex128` | Two `Float32` or `Float64` components; componentwise IEEE equality |
@@ -35,6 +35,9 @@ or type-only constructs such as `never`.
 | Identity | `Symbol` | Identity, independent of its description |
 | Absence | `Unit`, `Null`, `Undefined` | Three distinct singleton domains |
 | Presence | `Nullable a`, `Optional a` | `Null` or a present value; `Undefined` or a present value |
+
+`"|whole number|` aliases `Whole`; `"|natural number|` aliases `Nat`. Legacy
+`BigInt`, `BigUInt` and zero-inclusive `Natural` source uses explicit migration.
 
 `Char` and `Text` exclude U+D800–U+DFFF. Code points range from 0 to 0x10FFFF,
 UTF-16 units from 0 to 65535, and bytes from 0 to 255. The raw constructors

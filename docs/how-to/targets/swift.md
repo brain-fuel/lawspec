@@ -63,7 +63,7 @@ by LawSpec's order and equality. For a type with constructors
 | LawSpec | Swift |
 | --- | --- |
 | `Int8`…`Int64`, `UInt8`…`UInt64` | `Int8`…`Int64`, `UInt8`…`UInt64` |
-| `Integer`, `BigInt`, `BigUInt` | `BigInt` |
+| `Integer`, `Whole`, `Nat` | `BigInt` |
 | `IntSize`, `UIntSize`, `UIntPtr` | `Int`, `UInt`, `UInt`, checked against `machineBits` |
 | `Float32`, `Float64` | `Float`, `Double` |
 | `Decimal`, `Rational` | `ExactDecimal`, `Rational` |
@@ -109,7 +109,7 @@ abilities as these protocols.
 
 ## Checked definitions
 
-For `definition increment (value :: Int8) :: BigInt is value + 1 end` in unit
+For `function increment (value :: Int8) -> Integer is value + 1 end function` in unit
 `example.total`, call:
 
 ```swift

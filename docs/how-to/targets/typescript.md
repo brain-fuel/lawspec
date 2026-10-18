@@ -17,13 +17,20 @@ title: Set up TypeScript
 
 ## Create the project
 
+Use the development checkout for the unpublished 0.25.0 authoring profile:
+
 ```sh
-npm exec --package=lawspec@0.24.0 -- lawspec init --target typescript
-npm install --save-dev lawspec@0.24.0
+git clone https://github.com/brain-fuel/lawspec.git lawspec
+mkdir lawspec-typescript && cd lawspec-typescript
+node ../lawspec/npm/bin/lawspec.mjs init --target typescript
+npm install --save-dev ../lawspec/npm
 npx lawspec doctor
-npx lawspec generate
-npm test
 ```
+
+New projects select no law checks. In `lawspec.json`, set
+`verification.layers` to `["property", "examples"]`, then run
+`npx lawspec generate`. Implement the generated adapter stubs and run `npm test`.
+Intrinsic definition checking always runs.
 
 In a directory without build files, `init` creates:
 
@@ -65,7 +72,7 @@ with types:
 ## Checked definitions
 
 Definition entry points are strictly typed. For
-`definition increment (x :: Int8) :: BigInt is x + 1 end`, the entry point
+`function increment (x :: Int8) -> Integer is x + 1 end function`, the entry point
 takes `symbols: Map<string, symbol>` and `value0: number`, and returns
 `bigint`. Runtime validation still rejects out-of-range and fractional numbers
 from untyped callers.

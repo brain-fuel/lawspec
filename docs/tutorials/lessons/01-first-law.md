@@ -18,6 +18,13 @@ one that formats a quantity and one that parses it back.
 LawSpec is an npm package. It needs Node 22 or later, whatever language you
 test in.
 
+This lesson uses the unpublished 0.25.0 development checkout. Clone it beside
+the project directory created below:
+
+```sh
+git clone https://github.com/brain-fuel/lawspec.git lawspec
+```
+
 ::: only java
 You also need JDK 25 and Maven. Create a directory, install LawSpec, and add a
 Java project:
@@ -25,7 +32,7 @@ Java project:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.24.0
+npm install --save-dev ../lawspec/npm
 npx lawspec init --target java --project java
 npx lawspec doctor
 ```
@@ -38,7 +45,7 @@ add a Python project with its own virtual environment:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.24.0
+npm install --save-dev ../lawspec/npm
 npx lawspec init --target python --project python
 python3 -m venv python/.venv
 python/.venv/bin/python -m pip install -e "python[test]"
@@ -54,7 +61,7 @@ Create a directory, install LawSpec, and add a JavaScript project:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.24.0
+npm install --save-dev ../lawspec/npm
 npx lawspec init --target javascript --project javascript
 npm install --prefix javascript
 npx lawspec doctor
@@ -98,6 +105,10 @@ The **law** says what must be true of them. It reuses a law from the prelude,
 case, with the values it must produce.
 
 ## Generate the tests
+
+New projects start with no law checks selected. In `lawspec.json`, set
+`verification.layers` to `["property", "examples"]` before generating this
+lesson's property tests and example. Intrinsic definition checking always runs.
 
 ```sh
 npx lawspec generate

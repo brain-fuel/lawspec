@@ -28,7 +28,7 @@ import {
   safePath,
   collectSources,
 } from "../files.mjs";
-const VERSION = "0.24.0";
+const VERSION = "0.25.0";
 const args = process.argv.slice(2);
 const verb = args.shift();
 const options = {};

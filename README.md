@@ -9,7 +9,8 @@ Haskell, Kotlin, Rust, C#, F#, Swift, Erlang, Elixir, Gleam, Clojure, Groovy and
 Scala. The compiler is written in Haskell and distributed on npm as prebuilt
 WebAssembly, with a Node CLI and a typed JavaScript API.
 
-The canonical authoring examples below target the unreleased minor on `main`.
+The canonical authoring examples below target 0.25.0, the minor in preparation
+on `main`.
 Install the development checkout as shown below. For released 0.24.0, use the
 [0.24.0 documentation](https://github.com/brain-fuel/lawspec/tree/v0.24.0).
 

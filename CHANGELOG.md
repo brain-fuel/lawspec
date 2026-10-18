@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-18
+
 ### Added
 
 - Checked documentation rejection examples with `reject=<diagnostic-code>`.
@@ -1692,7 +1694,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/brain-fuel/lawspec/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/brain-fuel/lawspec/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/brain-fuel/lawspec/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/brain-fuel/lawspec/compare/v0.21.0...v0.22.0

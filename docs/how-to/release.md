@@ -23,17 +23,17 @@ registry. Every step runs on your machine; there is no hosted CI.
 
 ```sh
 git switch main && git pull --ff-only
-make release-check
+git status --short
 ```
 
-`release-check` requires a clean `main`, every versioned file in agreement,
-generated files up to date, no existing tag for the version, and no published
-npm version with that number.
+Start from a clean `main`. Run `release-check` after preparing and committing
+the new version; the current released version already has a tag and registry
+entry, so it cannot pass those new-version preconditions.
 
 ## 2. Bump the version
 
 ```sh
-make bump VERSION=0.15.1
+make bump VERSION=0.25.0
 ```
 
 `lawspec-dev bump` sets the version in `package.yaml`, `lawspec.cabal`,
@@ -69,9 +69,10 @@ their fingerprints in `npm/build.json`.
 
 ```sh
 git add -A
-git commit -m "Release LawSpec 0.22.0"
+git commit -m "Prepare LawSpec 0.25.0"
 make ci-fresh
 make docs-check
+make release-check
 ```
 
 Canon reads versioned sources from `HEAD`, so commit the candidate before
@@ -84,13 +85,17 @@ them one at a time, for example to time a single step on an idle machine.
 
 Every CI step must pass: compiler and npm tests, native/WASM parity, the
 package smoke test, the editor grammar, and every acceptance suite for all
-eleven targets in both machine profiles. Logs are in `.artifacts/ci/`.
+17 targets in both machine profiles. Logs are in `.artifacts/ci/`.
+
+`release-check` then requires a clean `main`, matching versions and generated
+files, no existing tag for the prepared version, and no published npm version
+with that number. Passing these checks does not create a tag or publish.
 
 ## 5. Pack and inspect
 
 ```sh
 make package
-tar -tzf .artifacts/0.24.0/lawspec-0.24.0.tgz
+tar -tzf .artifacts/0.25.0/lawspec-0.25.0.tgz
 ```
 
 The archive holds the CLI and library code, `core.wasm` and its JavaScript glue,
@@ -103,8 +108,8 @@ packed copy.
 ## 6. Tag and push
 
 ```sh
-git tag -a v0.24.0 -m "LawSpec 0.22.0"
-git push --atomic origin main v0.24.0
+git tag -a v0.25.0 -m "LawSpec 0.25.0"
+git push --atomic origin main v0.25.0
 ```
 
 Push the branch and the annotated tag together, so the tag always names a
@@ -113,7 +118,7 @@ commit that is on `main`.
 ## 7. Publish
 
 ```sh
-npm publish .artifacts/0.24.0/lawspec-0.24.0.tgz --access public --tag latest --registry https://registry.npmjs.org
+npm publish .artifacts/0.25.0/lawspec-0.25.0.tgz --access public --tag latest --registry https://registry.npmjs.org
 ```
 
 Publish the archive you inspected, not the directory. npm asks for approval in
@@ -123,9 +128,9 @@ the browser; complete it there. If npm reports that you are not logged in, run
 ## 8. Verify the registry
 
 ```sh
-npm view lawspec@0.24.0 version dist.integrity
+npm view lawspec@0.25.0 version dist.integrity
 npm view lawspec dist-tags
-shasum -a 512 .artifacts/0.24.0/lawspec-0.24.0.tgz | awk '{print $1}' | xxd -r -p | base64
+shasum -a 512 .artifacts/0.25.0/lawspec-0.25.0.tgz | awk '{print $1}' | xxd -r -p | base64
 ```
 
 `dist.integrity` must be `sha512-` followed by the local archive's digest, and

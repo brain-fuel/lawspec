@@ -101,7 +101,7 @@ func Echo(value0 Tree[int8]) Tree[int8] {
 | --- | --- |
 | Fixed-width integers | `int8`…`int64`, `uint8`…`uint64` |
 | `IntSize`, `UIntSize`, `UIntPtr` | Native machine-sized integers, checked against `machineBits` |
-| `BigInt`, `BigUInt`, `Rational` | `*LawSpecBigInt`, `*LawSpecRational` (aliases of `math/big` types) |
+| `Whole`, `Nat`, `Rational` | `*LawSpecBigInt`, `*LawSpecRational` (aliases of `math/big` types) |
 | `Integer` result | Any signed or unsigned integer, or a `big.Int` value or pointer, through `any` |
 | Floats and complex values | `float32`, `float64`, `complex64`, `complex128` |
 | `Duration` | `time.Duration` of whole microseconds (`LawSpecDuration` in generated code) |

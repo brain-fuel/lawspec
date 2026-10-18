@@ -5,7 +5,7 @@ title: Collections
 ---
 # Collections
 
-## RC1 authoring profile
+## Canonical authoring profile
 
 In `1.0-rc.1`, `Set a` stores distinct elements in first-occurrence order.
 Construction and membership require `Eq a`: equality compares candidates with
@@ -30,7 +30,7 @@ required. Its elements require `Keyed a`. Keyed maps retain their requirements.
 IEEE equality is preserved: signed zeros compare equal, and a NaN is unequal
 to itself. A stored NaN therefore does not make membership of that NaN true.
 Canonical set values use the checked data representation on all targets; the
-legacy native collection mappings below describe the ordered representation.
+native collection mappings below describe `SortedSet`'s ordered representation.
 Complete finite checking includes every observable storage order. `Set Bool`
 has five inputs: the empty set, each singleton, and both orders of the two
 Boolean members. `Set (Set Bool)` has 114 stored inputs: equal inner sets
@@ -42,8 +42,8 @@ member can repeat without comparing equal, so its storage domain is unbounded.
 Property checking selects sampled native generation and shrinking; planning
 those checks supplies no completed verification evidence. A complete singleton
 input runs once. Each candidate and shrink must still satisfy element and
-dependent input restrictions. Project-wide migration and native adapter
-coverage remain unfinished.
+dependent input restrictions. Migration retains the support/refusal boundaries
+documented in [API and source migration](../../explanation/api-migration.md).
 
 ## Membership and predicates
 
@@ -88,16 +88,17 @@ exercises these forms, IEEE equality, map selections and dependent sized
 operations. Law verification remains independently selected: a planned native
 predicate test is not a completed proof or exhaustive verification.
 
-## Version 0.24 reference
+## Collection types
 
-The remainder of this page describes version 0.24 source. Its ordered `Set`
-becomes `SortedSet` in the canonical profile.
+The version 0.24 ordered `Set` migrates to `SortedSet`. Canonical `Set` uses
+equality and first-occurrence order as described above.
 
-Besides `List`, LawSpec has five built-in collections:
+Besides `List`, LawSpec has these built-in collections:
 
 | Type | Holds |
 | --- | --- |
-| `Set a` | distinct elements, in the portable order |
+| `Set a` | distinct elements, in first-occurrence order |
+| `SortedSet a` | distinct elements, in the portable order |
 | `KeyVal k v` | entries with distinct keys, in the portable order of the keys |
 | `Queue a` | items, first in first out |
 | `Stack a` | items, last in first out |
@@ -124,7 +125,7 @@ function countWords (words :: List Text) (counts :: KeyVal Text Integer) ->
   end case
 end function
 
-law "|dedupe agrees with setOf| is
+law "|dedupe agrees with sortedSetOf| is
   definition : for all (xs :: List Int32) => dedupe xs = prelude.sortedSetOf xs
     end end
 end
@@ -156,8 +157,9 @@ written as a value.
 
 | Type | Operations |
 | --- | --- |
-| all five | `size`, `isEmpty`, `toList` (in iteration order) |
+| all six | `size`, `isEmpty`, `toList` (in iteration order) |
 | `Set` | `setOf`, `member`, `insert`, `remove`, `union`, `intersection`, `difference` |
+| `SortedSet` | `sortedSetOf`, `sortedSetMember`, `sortedSetInsert`, `sortedSetRemove`, `sortedSetUnion`, `sortedSetIntersection`, `sortedSetDifference` |
 | `KeyVal` | `keyValOf` (a later entry for a key wins), `lookup` (a `Maybe v`), `put`, `delete`, `keys`, `values`, `entries` |
 | `Stack` | `stackOf` (the last item is on top), `push`, `pop`, `peek` (a `Maybe a`) |
 | `Queue` | `queueOf` (the first item is in front), `enqueue`, `dequeue`, `front` |
@@ -189,14 +191,15 @@ collections, their constructors (`SizedStackPush top rest`,
 
 ## The portable order
 
-`Set` elements and `KeyVal` keys need the `Keyed` capability: a total order that
-every target agrees on, so a set iterates in the same order everywhere.
+`SortedSet` elements and `KeyVal` keys need the `Keyed` capability: a total order
+that every target agrees on. Canonical `Set` needs equality for membership and
+duplicate detection, and does not acquire `Keyed` from its storage order.
 
 | Keyed | Not keyed |
 | --- | --- |
-| integers, `BigInt`, `Natural`, `Decimal`, `Rational` | `Float32`, `Float64`, `Complex` |
+| integers, `Whole`, `Nat`, `Decimal`, `Rational` | `Float32`, `Float64`, `Complex` |
 | `Bool`, `Char`, `CodePoint`, `Text`, `Bytes`, `Unit` | `Symbol`, functions |
-| data, `List`, `Maybe`, `Either`, `Set` and `KeyVal` whose fields are keyed | |
+| data, `List`, `Maybe`, `Either`, `SortedSet` and `KeyVal` whose fields are keyed | canonical `Set` |
 
 The order:
 
@@ -205,15 +208,18 @@ The order:
 - lists element by element, a prefix first; `Nothing` before `Just`;
 - other data by constructor, then by fields left to right.
 
-`Set Float64` is rejected: `Float64` has no portable order (`NaN`, `-0`).
+`SortedSet Float64` is rejected because `Float64` has no portable `Keyed` order.
+`Set Float64` supports IEEE equality with the NaN caveat described above.
 A definition that orders its arguments may require `Keyed a`.
 
 ## Native types
 
-Adapters receive and return each target's own collections. The generated
-codecs sort and deduplicate a set and keep the last value for a repeated key.
+Canonical `Set` uses its generated checked data type, shown in the adapter's
+signature. Its stored items retain first-occurrence order. `SortedSet`, maps
+and the other collections use the native representations below. Their codecs
+sort and deduplicate ordered sets and keep the last value for a repeated key.
 
-| Target | `Set` | `KeyVal` | `Queue`, `Deque` | `Stack` |
+| Target | `SortedSet` | `KeyVal` | `Queue`, `Deque` | `Stack` |
 | --- | --- | --- | --- | --- |
 | Python | `frozenset`; a sorted `tuple` for structured elements | `dict`; a `tuple` of pairs for structured keys | `collections.deque` | `deque`, top last |
 | JavaScript, TypeScript | `Set` (`ReadonlySet`); a frozen array for structured elements | `Map` (`ReadonlyMap`); an array of pairs for structured keys | array | array, top last |
@@ -228,11 +234,13 @@ list. Rust and Haskell generated data derive `Ord` when it is keyed.
 
 ## Generation
 
-Collections are generated from generated lists, and shrink as lists do. Sets
-and KeyVals are then sorted and deduplicated. Boundary values include the empty
+Collections are generated from generated lists, and shrink as lists do.
+`Set` detects duplicates by equality without sorting. `SortedSet` and KeyVals
+are sorted and deduplicated. Boundary values include the empty
 collection, a single item, and two items.
 
 ## Limits
 
 - `Deque` has no sized variant yet.
-- No literal syntax: `prelude.setOf [1, 2]` is the literal.
+- `#S{1, 2}` constructs a canonical set; other collections use their `...Of`
+  constructors.
