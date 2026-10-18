@@ -602,17 +602,35 @@ The six-law bounded-generation suite is registered for all seventeen targets at
 both profiles. A public WASM regression passes typed semantic correspondence,
 formatting idempotence, all seventeen emitters at both widths, honest no-layer
 evidence and mandatory division-by-zero rejection. Native and WASM builds,
-all 144 generated files, 237 boundary modules and integrity pass. The broader
-native matrix and complete response parity remain required.
+all 144 generated files, 237 boundary modules and integrity pass. The completed
+native matrix and four Kotlin/Scala pilots establish all seventeen targets at
+both profiles, with all three mutants rejected. Kotlin/Scala builtins also pass
+at both profiles, covering the original out-of-range generation failures.
 
 The package suite now declares the canonical profile and explicitly selects
 the six law layers preserving its previous behavior. A full seventeen-target
 generation preflight finds no diagnostics or recorded-stub changes. Current
-native JavaScript, Python, Java and TypeScript package runs pass, including
-adapter mutations and the stub-rejection check. The remaining targets and
-compact profiles are running. The original package implementations are retained;
-no signature mismatch check is skipped. Evidence is under
-`.artifacts/bounded-package-consumers/`.
+native package runs pass on all seventeen targets at both profiles, including
+all six adapter mutations and each applicable stub-rejection check. The
+original package implementations are retained; no signature mismatch check is
+skipped. Together with the bounded-generator and builtins checks, the broad
+matrix completes 68 independent native runs; four Kotlin/Scala generator pilots
+are recorded separately. Input hashes are unchanged throughout those runs.
+
+All 76 complete native/WASM responses agree for the bounded-generator and
+package fixtures at both widths, including all seventeen emitters. The 68
+emitted projects match every generated-file byte used by the native tests.
+User-owned package adapter files are compared separately with the original
+implementations exercised by those tests, rather than with empty generated
+stubs. The final public WASM regression checks exactly six unverified law
+slots when no layers are selected and the stable `total` rejection for an
+undefined definition. Documentation passes 120 pages and 119 compiled
+snippets. Canon passes with its declared registry exemptions; this is not a
+claim of human review. The full compiler regression run is still active.
+Evidence is under `.artifacts/bounded-package-consumers/`, including
+`native-wide-state.json`, `native-pilot-final-state.json`,
+`generator-tree-evidence.json` and `parity-state.json`. Final combined acceptance
+and current installed-package checks remain open.
 
 The F# harness subsequently passes an isolated unchanged rerun of its correct
 implementation and all seven mutants, including `outside`. All compiler and
@@ -641,14 +659,14 @@ results for their own compiler and package snapshots.
 | Pure functions, effectful procedures and abilities; polymorphism, capabilities, wrappers, indexed families and checked recursion | Canonical frontend and existing typed Core; `AbilitiesSpec`, `DefinitionSchemeSpec`, `SourceGadtIndicesSpec`, `SourceGadtRefinementsSpec`, record/payload suites | Final regression and target gates; no unchecked function category |
 | Declarations, annotations, sections, metadata and current-minor closers | Canonical parser, `CanonicalSpec`, published `docs/reference/language/syntax.md` | Final parser/docs checks; every named ending is explicitly the following minor |
 | Phrase spelling/escapes, qualified prefix/infix equivalence, precedence and native-name collisions | Canonical lexer/resolver; `CanonicalSpec`, `SourceSyntaxSpec`, `TargetNamesSpec` | Final target emission; collisions still require explicit bindings |
-| Integer/Whole/Nat domains, bounded migration, zero-inclusive lengths/indices, exact literals and widening | Existing scalar/type admission and migration inventories cover the domains and contextual literals; a direct completion probe accepts Int8 to Integer but rejects Int8 to Int16 | Open: general compiler-proved bounded exact widening; preserve rejection of narrowing, float precision loss and nominal unwrapping |
+| Integer/Whole/Nat domains, bounded migration, zero-inclusive lengths/indices, exact literals and widening | Existing scalar/type admission and migration cover the domains and contextual literals; exact scalar widening uses the existing whole-domain containment check, with compiler tests, native runs on all 17 targets/both profiles and complete native/WASM comparisons | Final combined regression; narrowing, float precision loss and nominal unwrapping remain rejected |
 | Nominal records, explicit construction, closed anonymous products and typed alternatives | `Core/RecordIdentity`, source record elaboration; `SourceRecordCanonicalSpec`, `SourceRecordPayloadSpec`, `SourceRecordInferenceSpec`, `PayloadSpec` | Final compiler/native payload suites; unsupported dependent source forms remain diagnosed |
 | BLAKE3 identity, field-order independence, alias/bound-name normalization, collision interning and separate nominal dependency invalidation | Portable `Blake3`, canonical descriptors; official-vector checks in `CanonicalSpec`, `RecordIdentitySpec`, `RecordNormalizeSpec`, recorded GoForge comparison | Final record parity; unrelated SHA caches remain separate |
 | Single-evaluation ordered cases, scoped it, guards, recursive/record patterns, wildcards and exhaustiveness | Canonical case elaboration; `CanonicalMatcherSpec`, `CanonicalPredicateFactsSpec`, recursive-record examples | Final compiler/target gates; guards do not establish coverage |
 | Nested quantifiers/negation, left-to-right restrictions, normative wording, contextual articles and typed equality | Authoritative Core propositions; `CanonicalSpec`, `QuantifierDomainSpec`, `WitnessSpec`, contextual-article SDK checks | Final logical, reusable-law, Eq and IEEE regressions |
 | Prelude lookup after locals/imports, ambiguity and capture avoidance | Shared resolution/substitution; `PreludeResolutionSpec`, canonical qualified-name and reusable-law tests | Final compiler/consumer gates |
 | Eq-only Set/membership, first-occurrence order, SortedSet migration, collection any and explicit map selections | `Core/EqSet`, existing collection operations; `EqSetSpec`, `EqSetOperationsSpec`, `CanonicalCollectionsSpec`, SDK set/membership/migration suites | Final native collection suites; iteration itself needs no Eq |
-| Explicit substrings and pinned full Unicode default case folding without normalization | Substrings exist; the completion audit found that the pinned table and public fold were missing. The isolated Unicode increment now adds ordinary checked definitions from Unicode 17 C/F data | Open: compiler, native target and WASM verification of the new fold; the earlier coverage inventory overstated this implementation |
+| Explicit substrings and pinned full Unicode default case folding without normalization | The completion audit exposed missing folding support, now implemented as ordinary checked definitions from pinned Unicode 17 C/F data; native runs on all 17 targets/both profiles, corpus SDK checks and complete native/WASM comparisons pass | Final combined regression and installed-package gate; no normalization or host case-fold dependency |
 | Checked mappings, finite coverage/fallback, Maybe partial lookup, preimages and uniqueness-gated inverse | Mapping elaboration to ordinary definitions; `MappingSpec`, typed-mapping fixture, Chapter 6 mappings | Final mapping/native suites; external-oracle agreement stays separate |
 | Repeating named examples, expectation-first tables, multiple expectations, typed/recorded inputs and independent failures | Canonical table elaboration; starter, native-evidence and authoring suites | Final consumer/native execution |
 | Authored expected compile rejection with stable diagnostic codes | Independent `reject=<code>` documentation fences, three negative fixtures, fourteen documentation controls and editable rejection views | Verified at `4a6f672a`; rerun final docs/consumer gates |
@@ -666,7 +684,7 @@ results for their own compiler and package snapshots.
 | Schema 5, configuration 2, explicit profile, migration-only older input and preserved legacy law selections | Canonical admission and migration configuration; `CanonicalInterfaceSpec`, SDK canonical-interface/environment/migration-write tests | Final installed public consumers/release checks |
 | Shared website/editor TextMate highlighting and Linguist preparation | Exact shared grammar, locked TextMate/Oniguruma, corpus parity, `linguist-eligibility.md` | Upstream usage/import/acceptance/deployment remain external pre-final-1.0 dependencies |
 | Codecs/reusable inverse, existence/absence, authorization, refunds/conflicts and stateful orders | Published `examples/rc1` and permanent native acceptance suites | Final all-17-target run; existing receipts describe each suite's native scope |
-| Examples 48–50 and eight three-layer record/alternative combinations | Eight nesting files and tuple/record machinery exist; the audit found that the completed prohibited-filename demonstration was missing. Three dedicated picture examples are now being implemented | Open: actual examples 48–50, Unicode/rejection priority, native outcomes and mutants; final nesting gates |
+| Examples 48–50 and eight three-layer record/alternative combinations | Eight nesting files and tuple/record machinery are present. The audit exposed missing completed filename demonstrations; examples 48–50 now include tuple/record/filename authoring, rejection priority and native outcomes/mutants on all 17 targets at both profiles | Final combined nesting, documentation and installed-example gates |
 | Chapter 6 semantic migration, authored inventory, complete instruction oracles and invocation independence | Canonical assembler, frozen original, checked mappings and `tools/chapter6-oracles.mjs`; fresh both-profile oracle receipts | Preserve inventory/hashes; complete implementations in other languages remain pre-final-1.0 |
 | Final compiler, target, generation, boundary, docs, editor, parity and release checks | CI graph, package smoke, locked runtimes and release preconditions | Open: final package rebuilding and fresh final-commit execution; 0.25.0 is in preparation |
 | Three-reader comprehension exercise | Ten questions and threshold retained here | Explicitly user-deferred; no reader results claimed |
