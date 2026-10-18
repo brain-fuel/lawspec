@@ -1,0 +1,33 @@
+unit formatter.recordSeparators
+
+type Picture is a record{
+	width of type Nat, -- Keep the comment's comma, λ and 😀.
+  dimensions of type record{
+    height :: Nat,
+    caption :: Text,
+  },
+  pair :: (Bool, Text),
+}
+end type
+
+function sample (ignored :: ()) -> Picture is
+  Picture record{width = 1, dimensions = record{height = 2, caption = "a,b"}, pair = (true, "c,d")}
+end function
+
+function display (picture :: Picture) -> Text is
+  first matching case of picture:
+    when Picture record{dimensions = record{caption = name, height = _}, pair = (flag, _)} then name
+  end case
+end function
+
+law sample is
+  definition:
+    for all (ignored :: ()) =>
+      display (sample ignored) must be "a,b"
+    end
+  end
+  expect display (sample ignored) = expected
+  in table (ignored, expected):
+    row (), "a,b"
+  end
+end

@@ -4,6 +4,41 @@ import { PassThrough } from 'node:stream';
 import { serveLanguage, utf16Position } from '../lsp.mjs';
 import { explainLaw } from '../explain.mjs';
 
+test('formatting uses parser roles for record-type separators across imported types without altering value or pattern commas',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const {createCompiler}=await import('../api.mjs');
+  const {targets}=await import('../templates.mjs');
+  const compiler=await createCompiler();
+  const content=await readFile(new URL('../../test/fixtures/canonical-record-type-separators.lawspec',import.meta.url),'utf8');
+  const companion='unit formatter.consumer\n'+
+    'import formatter.recordSeparators as picture (Picture, sample, display)\n'+
+    'function reference (value :: picture.Picture) -> record{original :: picture.Picture,note :: Text} is\n'+
+    'record{original = value, note = "keep,this"}\nend function\n';
+  for(const machineBits of [32,64]){
+    const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,verification:{layers:['exhaustive','examples']},
+      sources:[{path:'pictures.lawspec',content},{path:'consumer.lawspec',content:companion}]};
+    const before=await compiler.check({...input,migrationSnapshot:true});assert.deepEqual(before.diagnostics,[]);
+    const formatted=await compiler.format(input);assert.deepEqual(formatted.diagnostics,[]);
+    const output=formatted.formattedSources[0].content;
+    const compact=output.replace(/\s+/g,' ');
+    assert.ok(output.includes('  width of type Nat -- Keep the comment\'s comma, λ and 😀.'));
+    assert.ok(output.includes('    height :: Nat\n    caption :: Text\n  }\n  pair :: (Bool, Text)\n}'));
+    assert.ok(compact.includes('record{height = 2, caption = "a,b"}'));
+    assert.ok(compact.includes('record{caption = name, height = _}'));
+    const companionOutput=formatted.formattedSources[1].content.replace(/\s+/g,' ');
+    assert.ok(companionOutput.includes('record{original :: picture.Picture note :: Text}'));
+    assert.ok(companionOutput.includes('record{original = value, note = "keep,this"}'));
+    const after=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
+    assert.deepEqual(after.diagnostics,[]);assert.deepEqual(after.migrationSemantics,before.migrationSemantics);
+    const repeated=await compiler.format({...input,sources:formatted.formattedSources});
+    assert.deepEqual(repeated.diagnostics,[]);assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
+    for(const target of targets)for(const minify of [false,true]){
+      const generated=await compiler.planGeneration({...input,target,minify,sources:formatted.formattedSources});
+      assert.deepEqual(generated.diagnostics,[],target);assert.ok(generated.files.length,target);
+    }
+  }
+});
+
 test('formatting preserves multiline literal contents and processes trailing block endings',async()=>{
   const {createCompiler}=await import('../api.mjs');
   const compiler=await createCompiler();

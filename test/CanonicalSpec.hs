@@ -1129,6 +1129,30 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       `shouldBe` restoreSource (filter ((==LiteralToken) . tokenKind) (sourceTokens (LawSpec.Model.content input)))
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "uses parsed separator roles to omit record-type commas while retaining tuple, value, pattern and documentary commas" $ do
+    body <- readFile "test/fixtures/canonical-record-type-separators.lawspec"
+    let input=Source "record-type-separators.lawspec" body
+        formatted original = do
+          result <- eitherDecode (dispatch (encode (object
+            ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+             "method" .= ("format"::String),"sources" .= [original],
+             "verification" .= object ["layers" .= ([]::[String])]])))
+          parseEither (withObject "result" (\o -> do
+            diagnostics <- o .: "diagnostics" :: Parser [Value]
+            if null diagnostics then o .: "formattedSources" else fail (show diagnostics))) result
+    compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
+    case formatted input of
+      Left problem -> expectationFailure problem
+      Right [output] -> do
+        let text=LawSpec.Model.content output
+            compact=unwords (words text)
+        text `shouldSatisfy` isInfixOf "  width of type Nat -- Keep the comment's comma, λ and 😀."
+        text `shouldSatisfy` isInfixOf "    height :: Nat\n    caption :: Text\n  }\n  pair :: (Bool, Text)\n}"
+        compact `shouldSatisfy` isInfixOf "record{height = 2, caption = \"a,b\"}"
+        compact `shouldSatisfy` isInfixOf "record{caption = name, height = _}"
+        formatted output `shouldBe` Right [output]
+        compileCoreCanonical 64 defaultGeneration [output] `shouldSatisfy` isRight
+      Right other -> expectationFailure (show other)
   it "uses UTF-16 editor positions for supplementary characters and tab columns" $ do
     let source = Source "positions.lawspec" "a😀b\n\t😀x\n"
     utf16Position source (LawSpec.Model.Location "positions.lawspec" 1 3) `shouldBe` (0,3)

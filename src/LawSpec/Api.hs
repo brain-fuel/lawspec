@@ -10,8 +10,8 @@ import Data.Aeson.Types (parseEither)
 import qualified Data.ByteString.Lazy as B
 import LawSpec.Model
 import LawSpec.Digest (digestString, digestHex)
-import LawSpec.SourceText (formatSource)
-import LawSpec.SourceSyntax (SourceSyntax)
+import LawSpec.SourceText (formatSourceWithSyntax)
+import LawSpec.SourceSyntax (SourceSyntax(..))
 import LawSpec.Compile
 import LawSpec.Frontend (elaborate, elaborateCanonical,sourcePropertyId)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTesting, planTestingWith)
@@ -78,11 +78,11 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
        stageVerification = if taskMethod then fmap (\config -> V.Verification
          (filter (/= V.Proof) (V.verificationLayers config))) verification else verification
        stageKey = (if taskMethod then "smt-task-preparation:" else "") ++ sharedRequest bytes
-   in case (if snapshotRequested then fst <$> memoized syntaxStagesTable ("canonical:" ++ stageKey)
+   in case (if snapshotRequested || method=="format" then memoized syntaxStagesTable ("canonical:" ++ stageKey)
           (stagesWithInput True True project packages sources bits settings native stageVerification)
-        else memoized stagesTable stageKey (stages project packages sources bits settings native stageVerification)) of
+        else fmap (\value -> (value,[])) (memoized stagesTable stageKey (stages project packages sources bits settings native stageVerification))) of
     Left response -> response
-    Right (us,es,core,bindings,evidence,described,plan,templates) ->
+    Right ((us,es,core,bindings,evidence,described,plan,templates),syntax) ->
      let pending item | method=="proofTasks", maybe False (`V.selected` V.Proof) verification,
                         obligationStage item=="law", obligationStatus item==NotVerified =
                           case [why | unit<-C.programUnits core, law<-C.unitProperties unit,
@@ -105,11 +105,14 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                 Object response -> Object (KM.insert "proofTasks" (toJSON ([] :: [Smt.ProofTask])) response)
                 response -> response
           "proofTasks" -> failure [Diagnostic "language-profile" "proofTasks requires API schema 5 and languageProfile 1.0-rc.1" Nothing]
-          "format" | verification /= Nothing -> case preparePackagesWithOrigins True project packages (map formatSource sources) of
-            Left ds -> failure ds
-            Right (formatted,origins,visible,referenceUnit,_) -> case compileWithSourceOrigins origins False True referenceUnit visible bits settings formatted of
+          "format" | verification /= Nothing ->
+            let formattedSources=[formatSourceWithSyntax
+                  (concat [syntaxNodes item | item<-syntax,syntaxPath item==path source]) source | source<-sources]
+            in case preparePackagesWithOrigins True project packages formattedSources of
               Left ds -> failure ds
-              Right _ -> withSources (map formatSource sources) (result [])
+              Right (formatted,origins,visible,referenceUnit,_) -> case compileWithSourceOrigins origins False True referenceUnit visible bits settings formatted of
+                Left ds -> failure ds
+                Right _ -> withSources formattedSources (result [])
           "format" -> failure [Diagnostic "language-profile" "format requires API schema 5 and languageProfile 1.0-rc.1" Nothing]
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests core verification plan (verificationKeys verification
               (testManifestWithModelChecks (maybe True (`V.selected` V.Model) verification) target testDir (plannedCore core plan))) . result)

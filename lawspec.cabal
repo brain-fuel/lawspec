@@ -309,6 +309,7 @@ extra-source-files:
     test/fixtures/canonical-positional-products.lawspec
     test/fixtures/canonical-prelude-names.lawspec
     test/fixtures/canonical-record-predicate-functions.lawspec
+    test/fixtures/canonical-record-type-separators.lawspec
     test/fixtures/canonical-refined-gadt-indices.lawspec
     test/fixtures/canonical-refined-primitive-inputs.lawspec
     test/fixtures/canonical-rejection-address.lawspec

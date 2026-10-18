@@ -63,6 +63,8 @@ Function results use `->`; a procedure returning `()` may omit its result.
 Alternatives have no payload or one explicitly annotated payload; records and
 tuples group multiple components. Named records construct as `Name record{...}`;
 record values and patterns use comma-separated `field = value` entries.
+Record types accept optional field commas; formatting omits those separators
+and retains commas belonging to tuples, record values and record patterns.
 
 Phrase names start with `"|` and end with `|`, without a closing quote. Named
 infix application starts with a backtick and optionally uses pipe delimiters.

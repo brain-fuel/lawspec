@@ -1,11 +1,13 @@
 -- | Lossless lexical source for authoring tools. Tokens keep their exact text
 -- and offsets; the real parser/typed Core remains authoritative for meaning.
 module LawSpec.SourceText (Token(..), TokenKind(..), sourceTokens, restoreSource,
-  formatSource, utf16Position) where
+  formatSource, formatSourceWithSyntax, utf16Position) where
 
 import Data.Char (isAlphaNum, isSpace, ord)
-import Data.List (isPrefixOf, mapAccumL)
+import Data.List (isPrefixOf, mapAccumL, zip4)
+import qualified Data.Set as Set
 import LawSpec.Common
+import LawSpec.SourceSyntax (SyntaxNode(..))
 
 data TokenKind = WordToken | SymbolToken | LiteralToken | PhraseToken | CommentToken | TriviaToken
   deriving (Eq,Show)
@@ -51,6 +53,26 @@ sourceTokens = scan 0 Nothing
                          | otherwise = let (a,b) = delimited end rest in (c:a,b)
 restoreSource :: [Token] -> String
 restoreSource = concatMap tokenText
+
+-- | Only the authoritative parser identifies optional record-type commas.
+-- Value, pattern, tuple and literal separators retain their original spelling.
+-- Coordinates refer to authored characters, including tabs and Unicode, even
+-- when prelude resolution has inserted qualifiers into the checked source.
+formatSourceWithSyntax :: [SyntaxNode] -> Source -> Source
+formatSourceWithSyntax nodes source@(Source name body) = formatSource source{content=rewritten}
+  where
+    separators=Set.fromList [(line location,column location) | node<-nodes,
+      let location=spanStart (syntaxSpan node),
+      syntaxKind node=="record-type-separator",file (spanStart (syntaxSpan node))==name]
+    positions=scanl advance (Location name 1 1) body
+    advance (Location path row column) character = case character of
+      '\n' -> Location path (row+1) 1
+      '\t' -> Location path row (column+8-((column-1) `mod` 8))
+      _ -> Location path row (column+1)
+    rewritten=concat [if character==',' && (line position,column position) `Set.member` separators
+      then if maybe False isSpace previous || maybe False isSpace next then "" else " "
+      else [character]
+      | (position,previous,character,next)<-zip4 positions (Nothing:map Just body) body (map Just (drop 1 body)++[Nothing])]
 
 -- | Two-space indentation with literal/comment spelling retained. Line breaks
 -- never create obligations. Line-scoped harness settings and scenario command

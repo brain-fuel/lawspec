@@ -32,6 +32,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Formatting omits optional record-type field commas using the parser's source
+  inventory, retaining commas in values, patterns, tuples, comments and text.
 - Formatting preserves line-scoped scenario arguments, including command
   bindings, parallel branches and recovery, while wrapping surrounding code.
   Multiline literal contents retain their whitespace, and block endings after

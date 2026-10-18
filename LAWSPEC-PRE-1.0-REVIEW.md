@@ -15,12 +15,12 @@ The latest approved milestone direction below is authoritative. The implementati
 
 Examples are independent unless a section explicitly connects them. Repeated unit names and simplified signatures are separate presentations, not declarations intended to coexist in one source file.
 
-## Current minor completion checklist — 17 October 2026
+## Current minor completion checklist — 18 October 2026
 
 Validated project migration writes and the first canonical Chapter 6 pass shipped at `98c5cf79`. The scoped collection-provider increment and its verification are recorded below. This checklist distinguishes that completed increment from work still required before declaring the iteration complete.
 
 - [x] Verify scoped collection-provider discovery and ordered-set migration, including complete source correspondence, all 17 configured target emissions, native/WASM parity and regression checks. Opaque dependency fields retain conservative discovery.
-- [ ] Resolve or explicitly account for the remaining migration acceptance cases, including indexed/existential payloads, generic populations, dependency changes and opaque hooks. Missing correspondence must continue to block writes.
+- [x] Account for all six migration acceptance boundaries with supported-path and actual refusal tests. Unsupported abstract/indexed/existential forms, unbounded generic populations and changed opaque hooks remain explicit limits; missing correspondence still blocks writes. This closes the scoped boundary audit, not the final whole-iteration release gate.
 - [ ] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration. Ordinary requests now require schema 5 and the canonical profile; configuration requires version 2. Archived source uses explicit migration entry points. The cutover is implemented; final consumer and acceptance checks remain open.
 - [ ] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract. The authoring pass and its oracle/generation checks are complete; the wider coverage audit remains required.
 - [x] Deliver authored expected compile-rejection examples checked by stable diagnostic codes. Independently checked `reject=<code>` documentation fixtures, exact diagnostic matching and editable rejection views are implemented and verified below.
@@ -68,7 +68,7 @@ results for their own compiler and package snapshots.
 | Distinguish proof, particular witnesses, complete finite results, bounded findings, unsupported search and nonexistence | Typed evidence and scoped execution receipts; `DomainEvidenceSpec`, SDK evidence/native-evidence suites | Final evidence/consumer gates; sampled universals never become universal proofs |
 | Use established proof infrastructure with an explicit trust boundary | Typed SMT-LIB tasks and actual external Z3 execution; `SmtSpec`, SDK `smt-proof` tests, recorded SPARK/Why3/Lean/Idris/Rocq precedents | Final real-solver checks; no independent proof checker or in-process Z3 binding is claimed |
 | Preserve workflow/temporal/scenario/actor/model semantics, snapshots, history, fairness and model/native distinction | Existing checked models/native adapters; `StatefulModelSpec`, `ScenarioSpec`, `TemporalSpec`, native-evidence suites | Final native model/temporal gates; advanced analyses remain pre-final-1.0 |
-| Two-space/80-column formatting, idempotence, comments/literals and chosen wording | `SourceText`; canonical/SDK typed snapshots, handler/block fixtures, scenario/multiline fixes | Canonical omission of optional record-type commas remains unimplemented; full runs/release checks stay open; source-sensitive cache/remote identities can rekey |
+| Two-space/80-column formatting, idempotence, comments/literals and chosen wording | `SourceText`; canonical/SDK typed snapshots, handler/block fixtures, scenario/multiline fixes and parser-identified record separators | Current final compiler/release checks stay open; source-sensitive cache/remote identities can rekey |
 | Read-only migration, checked project writes, constructors/native bindings, comments/origins and rollback | Explicit migration APIs/writer; `MigrationSnapshotSpec`, `MigrationPayloadSpec`, SDK migration-write/package/native-binding suites | Six support/refusal boundaries below; final current-package run pending |
 | Developer/business/formal/evidence views and JSON from the same obligations | Shared typed presentation and `explain` CLI; SDK authoring/explanation/TypeScript tests | Final CLI/consumer tests; no second proposition interpretation |
 | Diagnostics, seeds, shrinking, source spans, expected/actual and search completeness | Structured compiler/evidence/execution results; API, witness, replay and native-evidence tests | Final consumers/native gates, including interrupted runs |
@@ -91,8 +91,61 @@ polymorphic-only missing target artifacts, stale package changes and changed
 opaque codecs/factories. They check that original source, configuration and
 application bytes survive refusal. Positive tests separately cover finite
 populations, concrete indexed/existential factories, complete dependency source
-transport and admitted native layouts on all configured targets. Final current
-run results are required before checking off this gate.
+transport and admitted native layouts on all configured targets. The current
+192 migration/interface/existential consumers pass in the run recorded below.
+The separate complete iteration release gate remains open.
+
+### Parser-identified record-type separators — implementation under verification
+
+The formatter now omits optional record-type field commas. The existing parser
+records their exact authored spans in its source inventory; the formatter uses
+those roles rather than recognizing another record grammar. Record values,
+patterns, tuple types/values, text and comments keep their commas. Inserted
+prelude qualifiers do not replace authored coordinates. The ordinary format API
+captures the existing syntax inventory, applies the edit, and recompiles the
+complete formatted project with mandatory definition validation still enabled.
+
+All **106 native canonical authoring tests** pass on the first fixture. The
+corrected public fixture passes **68 target/width/layout generations**, including
+an imported nominal type, complete typed snapshot correspondence, idempotence,
+tabs and a preserved Unicode comment. The initial fixture used a Unicode field
+label accepted by the source language but rejected by existing native emitters;
+it now uses the portable domain label `caption`. This corrects the acceptance
+fixture, not native naming policy. Its focused SDK check passes in
+22,707.7755 ms. An earlier compiler run was deliberately stopped before updating
+the compiled fixture assertions; the restarted final compiler run remains open.
+
+The selected SDK run records **219 tests: 218 passes, one initial fixture
+failure, no skips**, in 363,046.918125 ms. All **192 migration, canonical-interface
+and existential-migration consumers pass**. The remaining 26 authoring consumers
+also pass; the corrected separator case passes separately as recorded above.
+This is combined evidence, not an uninterrupted final-source SDK pass. Actual
+writer refusals account for all six migration boundaries without promoting
+unsupported generic or opaque transformations into supported capabilities.
+
+Complete native/WASM parity agrees on **436 full responses**, including
+**408 accepted generation requests** across all 17 targets, both widths and
+layouts, and four legacy migration-baseline responses. All 434 preceding
+responses match exactly; only the two record-separator format responses differ.
+Before/after typed snapshots agree for the scenario, literal and record/import
+fixtures. Every response pair and its hash passes an independent audit. The
+existing 124 source-sensitive remote-hash differences between unformatted and
+formatted scenario/literal programs remain explicitly checked; no new remote
+identity policy is introduced.
+
+The native compiler is SHA-256
+`5ce523bd6ad204a3718f86b86d6006200ed5ba7e57de5012d7861c6358f28e2b`;
+the 72,964,880-byte WASM is SHA-256
+`a2211c565e578e30c31c9df60dd29b6da4c7ba75348af388eadf3ae40a36ce04`.
+All 137 generated files, 236 compiler boundaries, six editor checks, integrity
+and documentation for 120 pages with 118 compiled snippets pass. Chapter 6's
+original and canonical hashes remain intact; its entire native format response
+matches the preceding verified checkpoint. Evidence is retained under
+`.artifacts/record-type-format-separators/` in the isolated worktree.
+
+The final compiler run, current-package full catalog export, fresh installed
+consumer/native target gates, minor-version preparation and complete release
+check remain open. No RC designation, tag or final 1.0 acceptance is implied.
 
 ### Scenario command boundaries and multiline literals — implementation under verification
 

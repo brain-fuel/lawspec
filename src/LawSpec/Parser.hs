@@ -278,7 +278,7 @@ anonymousRecordTypeP = do
       label <- ident
       annotationP
       ty <- typeP
-      void (optional (symbol ","))
+      void (optional (sourceNode "record-type-separator" (const Nothing) (symbol ",")))
       pure (RecordField label label ty)
 
 param :: P (String,Type)
@@ -696,7 +696,7 @@ canonicalRecordP = do
           label <- ident
           annotationP
           ty <- typeP
-          void (optional (symbol ","))
+          void (optional (sourceNode "record-type-separator" (const Nothing) (symbol ",")))
           pure (label,ty)
 
 -- Ordered selection reuses lazy matches and select. Binding the scrutinee

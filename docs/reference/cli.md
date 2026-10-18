@@ -54,6 +54,8 @@ Other code in the same unit can still wrap. Resource operations, workflow groups
 and parallel scenario branches retain their enclosing block indentation.
 Multiline literal contents keep their whitespace, including blank lines;
 block endings after the closing quote still close the enclosing formatter scope.
+Optional record-type field commas are omitted. Commas in record values,
+patterns, tuple types and tuple values are retained.
 
 ## `migrate`
 
