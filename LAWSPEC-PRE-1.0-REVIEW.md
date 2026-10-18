@@ -127,8 +127,13 @@ the 72,941,140-byte WASM is SHA-256
 `50ae53e251c2e26e46ccacae339150207691fda14cfc03af93aa859297248715`.
 All 137 generated outputs, 236 compiler boundaries, six editor tests, version
 agreement, artifact/source integrity and documentation for 120 pages with
-118 compiled snippets pass. The current full compiler and SDK catalog runs
-remain in progress; they are not claimed complete here.
+118 compiled snippets pass. The full compiler now passes **2,222 tests with
+zero failures** in 838.7431 seconds. The current SDK catalog run remains in
+progress and is not claimed complete here. A separate native audit verifies
+both original Chapter 6 hashes and its canonical authored hash, and confirms
+that the canonical assembler's formatted bytes remain unchanged. The first
+audit invocation exceeded Node's default subprocess output buffer; the
+corrected complete-response audit passes without that buffer limit.
 
 The broader requirement audit above also verifies an outstanding mechanical
 formatter requirement: optional commas remain in formatted multiline record
