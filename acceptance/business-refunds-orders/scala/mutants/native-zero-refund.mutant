@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/main/scala/example/RefundConformance.scala
+<<<<<<<
+if (request.requestedAmount == 0) RefundDecision.Approved
+=======
+if (request.requestedAmount == 0) RefundDecision.Rejected
+>>>>>>>

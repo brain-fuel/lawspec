@@ -46,13 +46,13 @@ formatSource (Source path body) = Source path (stabilize body)
       in if next == text then next else stabilize next
     layout text = unlines (concatMap (if any multiline (sourceTokens text) then pure else wrap) (indent text))
     multiline token = tokenKind token `elem` [LiteralToken,PhraseToken] && '\n' `elem` tokenText token
-    indent text = snd (mapAccumL formatLine (0 :: Int,[],[],Nothing) (zip offsets original))
+    indent text = snd (mapAccumL formatLine (0 :: Int,[],[],Nothing,[]) (zip offsets original))
       where
         original = lines text
         offsets = scanl (\n line -> n + length line + 1) 0 original
         protected = [(tokenOffset t,tokenOffset t + length (tokenText t)) | t <- sourceTokens text,
           tokenKind t `elem` [LiteralToken,PhraseToken], '\n' `elem` tokenText t]
-        formatLine state@(depth,cases,braces,previous) (offset,line)
+        formatLine state@(depth,cases,braces,previous,handlers) (offset,line)
           | any (\(start,end) -> start < offset && offset < end) protected = (state,line)
           | null (dropWhile isSpace line) = (state,"")
           | otherwise =
@@ -64,7 +64,10 @@ formatSource (Source path body) = Source path (stabilize body)
                   closing = case tokens of "end":_ -> 1; "}":_ -> 1; "else":_ -> 1; _ -> 0
                   indentation = max 0 (if caseEnd then base - 1 else if branch then base else depth - closing)
                   declarationType = take 1 tokens == ["type"] && (depth == 0 || maybe True (/= "of") previous)
-                  opened = opens declarationType tokens
+                  handlerStart = take 1 tokens == ["handler"]
+                  operation = take 1 handlers == [depth] && "is" `elem` tokens &&
+                    take 1 tokens `notElem` [["handler"],["start"],["end"]]
+                  opened = opens declarationType tokens + if operation then 1 else 0
                   ends = length (filter (== "end") tokens)
                   recordType = declarationType && "record" `elem` tokens
                   (braceDelta,braces') = braceChanges recordType braces tokens
@@ -72,18 +75,21 @@ formatSource (Source path body) = Source path (stabilize body)
                     (if caseEnd then max 0 (ends - 1) else ends) + braceDelta)
                   cases' = (if contains ["first","matching","case","of"] tokens then (nextDepth :) else id)
                     (if caseEnd then drop 1 cases else cases)
-              in ((nextDepth,cases',braces',case reverse tokens of first:_ -> Just first; [] -> previous),replicate (indentation * 2) ' ' ++ trimOutsideLiteral content)
+                  handlers' = [level | level <- (if handlerStart && nextDepth > depth then nextDepth:handlers else handlers),
+                    level <= nextDepth]
+              in ((nextDepth,cases',braces',case reverse tokens of first:_ -> Just first; [] -> previous,handlers'),replicate (indentation * 2) ' ' ++ trimOutsideLiteral content)
     -- Wrapping may put the second word of "of type" at a line's start.
     -- That annotation continues the existing declaration, rather than opening
     -- a new type block and indenting every following declaration.
     opens declarationType tokens =
-      (if declarationType || take 1 tokens `elem` [["function"],["procedure"],["law"],["example"],["mapping"]] then 1 else 0) +
+      (if declarationType || take 1 tokens `elem` [["function"],["procedure"],["law"],["example"],["mapping"],
+        ["ability"],["handler"],["handlers"]] then 1 else 0) +
       length [() | (a,b) <- zip tokens (drop 1 tokens), a `elem` ["definition","description","rationale","references"], b == ":"] +
       length [() | (a,b) <- zip tokens (drop 1 tokens), (a,b) `elem` [("for","all"),("given","(")]] +
       length [() | rest <- suffixes tokens, any (`isPrefixOf` rest)
         [["there","exists"],["there","must","exist"],["there","must","not","exist"],["there","does","not","exist"]]] +
       (if contains ["first","matching","case","of"] tokens then 1 else 0) +
-      (if take 1 tokens == ["if"] then 1 else 0) +
+      length [() | (previous,word) <- zip ("":tokens) tokens,word == "handle" || word == "if" && previous /= "end"] +
       (if "table" `elem` tokens && ":" `elem` tokens then 1 else 0)
     contains prefix tokens = any (isPrefixOf prefix) (suffixes tokens)
     suffixes [] = [[]]

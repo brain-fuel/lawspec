@@ -1,0 +1,9 @@
+expect: native refunds conform to the policy
+@@ example/refundConformance/adapter.go
+<<<<<<<
+if request.RequestedAmount.Sign() == 0 {
+		return RefundDecisionApproved{}
+=======
+if request.RequestedAmount.Sign() == 0 {
+		return RefundDecisionRejected{}
+>>>>>>>

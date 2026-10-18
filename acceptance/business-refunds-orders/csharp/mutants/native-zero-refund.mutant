@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/Example/RefundConformance.cs
+<<<<<<<
+if (request.RequestedAmount.IsZero) return RefundDecision.Approved;
+=======
+if (request.RequestedAmount.IsZero) return RefundDecision.Rejected;
+>>>>>>>

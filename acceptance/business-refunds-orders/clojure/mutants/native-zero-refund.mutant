@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/example/refundConformance.clj
+<<<<<<<
+(zero? requested-amount) :refund-decision/approved
+=======
+(zero? requested-amount) :refund-decision/rejected
+>>>>>>>

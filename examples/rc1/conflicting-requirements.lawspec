@@ -1,0 +1,30 @@
+unit example.conflictingRefunds
+
+type RefundDecision is one of
+  | Approved
+  | ReviewRequired
+end type
+
+function proposedDecision (flagged of type Bool) -> RefundDecision is
+  if flagged then ReviewRequired else Approved end if
+end function
+
+law "|every request is approved| is
+  description:
+    "The first requirement demands approval even when a request is flagged."
+  end
+  definition:
+    for all (flagged of type Bool) =>
+      proposedDecision flagged must be Approved
+    end
+  end
+end
+
+law "|a flagged request requires review| is
+  description:
+    "The second requirement demands a different result for the same request."
+  end
+  definition:
+    proposedDecision true must be ReviewRequired
+  end
+end

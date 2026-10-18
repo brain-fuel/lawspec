@@ -1,0 +1,44 @@
+unit example.refundConformance
+
+import example.refunds as policy
+
+nativeRefund of type policy.RefundRequest -> policy.RefundDecision
+
+law "|native refunds conform to the policy| is
+  description:
+    "The application's refund decision agrees with the checked policy."
+  end
+  definition:
+    for all (request of type policy.RefundRequest) =>
+      nativeRefund request must be policy.refund request
+    end
+  end
+
+  references:
+    ref function policy.refund
+  end
+
+  expect nativeRefund request = expected
+  in table (request, expected):
+    row policy.RefundRequest record{capturedAmount = 0, requestedAmount = 0,
+      flagged = false}, policy.Approved
+    row policy.RefundRequest record{capturedAmount = 0, requestedAmount = 0,
+      flagged = true}, policy.Approved
+    row policy.RefundRequest record{capturedAmount = 100, requestedAmount = 0,
+      flagged = true}, policy.Approved
+    row policy.RefundRequest record{capturedAmount = 0, requestedAmount = 1,
+      flagged = false}, policy.Rejected
+    row policy.RefundRequest record{capturedAmount = 100, requestedAmount = 101,
+      flagged = true}, policy.Rejected
+    row policy.RefundRequest record{capturedAmount = 100, requestedAmount = 100,
+      flagged = true}, policy.ReviewRequired
+    row policy.RefundRequest record{capturedAmount = 100, requestedAmount = 1,
+      flagged = true}, policy.ReviewRequired
+    row policy.RefundRequest record{capturedAmount = 100, requestedAmount = 100,
+      flagged = false}, policy.Approved
+    row policy.RefundRequest record{capturedAmount = 100, requestedAmount = 99,
+      flagged = false}, policy.Approved
+    row policy.RefundRequest record{capturedAmount = 9007199254740992,
+      requestedAmount = 9007199254740993, flagged = false}, policy.Rejected
+  end
+end

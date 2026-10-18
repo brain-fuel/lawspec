@@ -103,8 +103,9 @@ const selected = [plan.tests[0],
   plan.tests.find(test => test.name === 'supervision')];
 assert.ok(selected.every(Boolean));
 const [invocation] = invocations({language}, selected, {scratch: base, root: project, offline: env.LAWSPEC_OFFLINE === '1'});
+const subsetStarted = Date.now();
 const subset = await run(invocation.command, invocation.args, project, {environment: invocation.env});
-const completions = await executedTests(invocation.report, subset.output, project, Date.now());
+const completions = await executedTests(invocation.report, subset.output, project, subsetStarted);
 assert.deepEqual([...new Set(completions.map(test => test.identity))].sort(), selected.map(identity).sort());
 assert.ok(completions.every(test => test.status === 'passed'));
 for (const entry of selected.slice(1))
@@ -114,8 +115,9 @@ console.log('PASS complete manifest, native JUnit, unchanged cache and exact mix
 // Ordinary discovery must find the same checks once, without a second model facade.
 const report = {kind: 'beam-events', file: path.join(base, 'native.jsonl'), run: 'native-model-discovery'};
 const [command, args] = {erlang: ['rebar3', ['eunit']], elixir: ['mix', ['test']], gleam: ['gleam', ['test']]}[language];
+const nativeStarted = Date.now();
 const native = await run(command, args, project, {environment: {LAWSPEC_BEAM_REPORT: report.file, LAWSPEC_BEAM_RUN: report.run}});
-const nativeRows = await executedTests(report, native.output, project, Date.now());
+const nativeRows = await executedTests(report, native.output, project, nativeStarted);
 assert.deepEqual([...new Set(nativeRows.map(test => test.identity))].sort(), plan.tests.map(identity).sort());
 assert.ok(nativeRows.every(test => test.status === 'passed'));
 for (const entry of models)

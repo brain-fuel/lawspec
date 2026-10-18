@@ -1,0 +1,126 @@
+unit example.orders
+
+type OrderState is one of
+  | Pending
+  | Authorized
+  | Shipped
+  | Cancelled
+end type
+
+type OrderAction is one of
+  | Authorize
+  | Dispatch
+  | Cancel
+end type
+
+function nextState (state of type OrderState)
+  (action of type OrderAction) -> OrderState is
+  first matching case of action:
+    when Authorize then
+      if state = Pending then Authorized else state end if
+    when Dispatch then
+      if state = Authorized then Shipped else state end if
+    when Cancel then
+      if state = Shipped then Shipped else Cancelled end if
+  end case
+end function
+
+ability OrderStore is
+  current of type OrderState
+  change of type OrderState -> ()
+end
+
+handler inMemory for OrderStore with state order of type OrderState
+  start Pending is
+  current is order end
+  change updated is ~order := updated; () end
+end
+
+procedure perform (action of type OrderAction) -> OrderState uses OrderStore is
+  let updated = nextState current action in
+  change updated; current
+end procedure
+
+procedure process (actions of type List OrderAction) -> OrderState
+  uses OrderStore is
+  first matching case of actions:
+    when Nil then current
+    when Cons action remaining then
+      perform action; process remaining
+  end case
+end procedure
+
+function runOrder (actions of type List OrderAction) -> OrderState is
+  handle process actions with inMemory end
+end function
+
+function modelRun (state of type OrderState)
+  (actions of type List OrderAction) -> OrderState is
+  first matching case of actions:
+    when Nil then state
+    when Cons action remaining then
+      modelRun (nextState state action) remaining
+  end case
+end function
+
+law "|order transitions follow the business lifecycle| is
+  definition:
+    for all (state of type OrderState) (action of type OrderAction) =>
+      (state = Shipped implies nextState state action must be Shipped)
+      and (state = Cancelled implies nextState state action must be Cancelled)
+      and (state = Pending and action = Authorize implies
+      nextState state action must be Authorized)
+      and (state = Pending and action = Dispatch implies
+      nextState state action must be Pending)
+      and (state = Authorized and action = Authorize implies
+      nextState state action must be Authorized)
+      and (state = Authorized and action = Dispatch implies
+      nextState state action must be Shipped)
+      and ((state = Pending or state = Authorized) and action = Cancel implies
+      nextState state action must be Cancelled)
+    end
+  end
+  expect nextState state action = expected
+  in table (state, action, expected):
+    row Pending, Authorize, Authorized
+    row Pending, Dispatch, Pending
+    row Pending, Cancel, Cancelled
+    row Authorized, Authorize, Authorized
+    row Authorized, Dispatch, Shipped
+    row Authorized, Cancel, Cancelled
+    row Shipped, Authorize, Shipped
+    row Shipped, Dispatch, Shipped
+    row Shipped, Cancel, Shipped
+    row Cancelled, Authorize, Cancelled
+    row Cancelled, Dispatch, Cancelled
+    row Cancelled, Cancel, Cancelled
+  end
+end
+
+law "|processing retains each completed transition| is
+  description:
+    "Every action observes the state left by the previous action."
+  end
+  definition:
+    for all (actions of type List OrderAction) =>
+      runOrder actions must be modelRun Pending actions
+    end
+  end
+  expect runOrder actions = expected
+  in table (actions, expected):
+    row [], Pending
+    row [Dispatch], Pending
+    row [Authorize], Authorized
+    row [Authorize, Dispatch], Shipped
+    row [Cancel, Authorize, Dispatch], Cancelled
+    row [Authorize, Cancel, Dispatch], Cancelled
+    row [Authorize, Dispatch, Cancel], Shipped
+    row [Authorize, Dispatch, Authorize], Shipped
+  end
+end
+
+law "|independent orders start pending| is
+  definition:
+    runOrder [Authorize] must be Authorized and runOrder [] must be Pending
+  end
+end

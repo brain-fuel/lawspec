@@ -1,0 +1,9 @@
+{
+  "languageProfile": "1.0-rc.1",
+  "verification": {"layers": ["property", "examples"]},
+  "specs": [
+    "examples/rc1/refund-policy.lawspec",
+    "examples/rc1/refund-conformance.lawspec",
+    "examples/rc1/order-workflow.lawspec"
+  ]
+}

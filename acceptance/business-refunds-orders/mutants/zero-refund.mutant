@@ -1,0 +1,7 @@
+expect-any: a zero refund is approved | native refunds conform to the policy
+@@ examples/rc1/refund-policy.lawspec
+<<<<<<<
+when record{requestedAmount = 0} then Approved
+=======
+when record{requestedAmount = 0} then Rejected
+>>>>>>>

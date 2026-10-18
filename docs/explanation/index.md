@@ -11,10 +11,12 @@ reading, not instructions.
 - [Why executable laws](why-executable-laws.md): the idea LawSpec builds on,
   and what it adds.
 - [Roadmap](roadmap.md): what each release delivers, and what comes next.
-- [How the compiler works](how-the-compiler-works.md): from source to eight
+- [How the compiler works](how-the-compiler-works.md): from source to 17
   targets.
 - [Evidence and discharge](evidence-and-discharge.md): why every obligation
   reports how it was checked.
+- [Reviewing business policies](business-examples.md): refund priority,
+  contradictory requirements and stateful order histories.
 - [Abilities and the harness](abilities.md): dependencies as abilities, and
   why a law holds for every lawful handler.
 - [Generation and shrinking](generation-and-shrinking.md): how tests find

@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/Example/RefundConformance.fs
+<<<<<<<
+if request.RequestedAmount = 0I then RefundDecision.Approved
+=======
+if request.RequestedAmount = 0I then RefundDecision.Rejected
+>>>>>>>

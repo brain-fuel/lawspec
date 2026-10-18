@@ -1,0 +1,7 @@
+expect-any: an eligible flagged refund requires review | native refunds conform to the policy
+@@ examples/rc1/refund-policy.lawspec
+<<<<<<<
+when it.flagged then ReviewRequired
+=======
+when it.flagged then Approved
+>>>>>>>

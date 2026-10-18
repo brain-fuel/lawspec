@@ -271,15 +271,19 @@ extra-source-files:
     examples/rc1/authorization-snapshots.lawspec
     examples/rc1/bit-codec.lawspec
     examples/rc1/bounded-witness-search.lawspec
+    examples/rc1/conflicting-requirements.lawspec
     examples/rc1/constructive-witnesses.lawspec
     examples/rc1/documentary-review.lawspec
     examples/rc1/empty-domains.lawspec
     examples/rc1/finite-integer-domains.lawspec
     examples/rc1/law-metadata.lawspec
     examples/rc1/native-payments.lawspec
+    examples/rc1/order-workflow.lawspec
     examples/rc1/parcel-measurements.lawspec
     examples/rc1/record-payloads.lawspec
     examples/rc1/recursive-records.lawspec
+    examples/rc1/refund-conformance.lawspec
+    examples/rc1/refund-policy.lawspec
     examples/rc1/requirement-composition.lawspec
     examples/rc1/structural-records.lawspec
     examples/rc1/nesting/rrr.lawspec

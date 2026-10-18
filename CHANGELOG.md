@@ -24,8 +24,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   including current/stale inputs, actual completions, seeds and failure output.
   Interrupted or undiscovered checks cannot reuse an older successful result;
   sampled model runs remain distinct from proofs.
+- Refund policy and native conformance examples, contradictory requirements
+  with concrete refutations, and a stateful order-processing example.
 
 ### Changed
+
+- Formatting retains the indentation of abilities, stateful handler operations
+  and handled expressions, including conditional initializers.
 
 - Law verification layers are selected independently and default to none.
   Definition validation and deliberately deferred runtime contracts remain

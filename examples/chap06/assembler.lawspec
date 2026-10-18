@@ -253,8 +253,8 @@ function renderLine (line :: Line) -> Text is
     when Literal n then "@" ++ prelude.textOf n
     when Compute record{ comp = comp , dest = dest , jump = jump} then
       (if dest = NoDest then "" else destText dest ++ "=" end if) ++ compText
-    comp ++
-    (if jump = NoJump then "" else ";" ++ jumpText jump end if)
+      comp ++
+      (if jump = NoJump then "" else ";" ++ jumpText jump end if)
     when Builtin symbol then "@" ++ predefinedText symbol
     when Symbolic name then "@" ++ name
     when Label name then "(" ++ name ++ ")"

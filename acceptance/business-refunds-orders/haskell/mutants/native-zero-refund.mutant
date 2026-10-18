@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/Example/RefundConformance.hs
+<<<<<<<
+| requested == 0 = Data.RefundDecisionApproved
+=======
+| requested == 0 = Data.RefundDecisionRejected
+>>>>>>>

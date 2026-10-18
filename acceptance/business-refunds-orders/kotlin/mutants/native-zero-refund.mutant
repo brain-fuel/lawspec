@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/main/kotlin/example/RefundConformance.kt
+<<<<<<<
+if (request.requestedAmount.signum() == 0) return RefundDecision.Approved
+=======
+if (request.requestedAmount.signum() == 0) return RefundDecision.Rejected
+>>>>>>>

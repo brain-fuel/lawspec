@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/Example/RefundConformance.swift
+<<<<<<<
+if request.requestedAmount == 0 { return .approved }
+=======
+if request.requestedAmount == 0 { return .rejected }
+>>>>>>>

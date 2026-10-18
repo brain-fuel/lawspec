@@ -1,0 +1,7 @@
+expect: order transitions follow the business lifecycle
+@@ examples/rc1/order-workflow.lawspec
+<<<<<<<
+if state = Pending then Authorized else state end if
+=======
+if state = Pending or state = Cancelled then Authorized else state end if
+>>>>>>>

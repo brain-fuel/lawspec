@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ lib/example_refund_conformance.ex
+<<<<<<<
+requested == 0 -> %LawSpec.Data.RefundDecisionApproved{}
+=======
+requested == 0 -> %LawSpec.Data.RefundDecisionRejected{}
+>>>>>>>

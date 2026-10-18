@@ -1,0 +1,9 @@
+expect: native refunds conform to the policy
+@@ src/example/refundConformance.py
+<<<<<<<
+if request.requestedAmount == 0:
+        return data.RefundDecisionApproved()
+=======
+if request.requestedAmount == 0:
+        return data.RefundDecisionRejected()
+>>>>>>>

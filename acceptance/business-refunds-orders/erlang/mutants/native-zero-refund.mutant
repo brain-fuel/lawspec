@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/example_refund_conformance.erl
+<<<<<<<
+0 -> refund_decision_approved;
+=======
+0 -> refund_decision_rejected;
+>>>>>>>

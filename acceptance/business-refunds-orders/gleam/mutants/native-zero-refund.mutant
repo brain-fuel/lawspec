@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/example/refund_conformance.gleam
+<<<<<<<
+True, _, _ -> data.RefundDecisionApproved
+=======
+True, _, _ -> data.RefundDecisionRejected
+>>>>>>>

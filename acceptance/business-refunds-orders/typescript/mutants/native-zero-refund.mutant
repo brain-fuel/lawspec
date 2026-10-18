@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/example/refundConformance.ts
+<<<<<<<
+if (request.requestedAmount === 0n) return new data.RefundDecisionApproved();
+=======
+if (request.requestedAmount === 0n) return new data.RefundDecisionRejected();
+>>>>>>>

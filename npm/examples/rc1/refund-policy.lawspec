@@ -1,0 +1,88 @@
+unit example.refunds
+
+type RefundDecision is one of
+  | Approved
+  | ReviewRequired
+  | Rejected
+end type
+
+type RefundRequest is a record{
+  capturedAmount of type Whole
+  requestedAmount of type Whole
+  flagged of type Bool
+}
+end type
+
+function refund (request of type RefundRequest) -> RefundDecision is
+  first matching case of request:
+    when record{requestedAmount = 0} then Approved
+    when it.requestedAmount > it.capturedAmount then Rejected
+    when it.flagged then ReviewRequired
+    otherwise Approved
+  end case
+end function
+
+law "|a zero refund is approved| is
+  description:
+    "A zero request transfers nothing and needs no review."
+  end
+  definition:
+    for all (capturedAmount of type Whole) (flagged of type Bool) =>
+      refund (RefundRequest record{
+        capturedAmount = capturedAmount, requestedAmount = 0, flagged = flagged
+      }) must be Approved
+    end
+  end
+end
+
+law "|a refund cannot exceed the captured amount| is
+  definition:
+    for all (request of type RefundRequest) =>
+      request.requestedAmount > request.capturedAmount implies
+      refund request must be Rejected
+    end
+  end
+end
+
+law "|an eligible flagged refund requires review| is
+  definition:
+    for all (request of type RefundRequest) =>
+      request.requestedAmount > 0 and
+      request.requestedAmount <= request.capturedAmount and request.flagged
+      implies refund request must be ReviewRequired
+    end
+  end
+end
+
+law "|an eligible unflagged refund is approved| is
+  definition:
+    for all (request of type RefundRequest) =>
+      request.requestedAmount <= request.capturedAmount and not request.flagged
+      implies refund request must be Approved
+    end
+  end
+
+  expect refund request = expected
+  in table (request, expected):
+    row RefundRequest record{capturedAmount = 0, requestedAmount = 0, flagged =
+      false}, Approved
+    row RefundRequest record{capturedAmount = 0, requestedAmount = 0, flagged =
+      true}, Approved
+    row RefundRequest record{capturedAmount = 100, requestedAmount = 0, flagged
+      = true}, Approved
+    row RefundRequest record{capturedAmount = 0, requestedAmount = 1, flagged =
+      false}, Rejected
+    row RefundRequest record{capturedAmount = 100, requestedAmount = 101,
+      flagged = true}, Rejected
+    row RefundRequest record{capturedAmount = 100, requestedAmount = 100,
+      flagged = true}, ReviewRequired
+    row RefundRequest record{capturedAmount = 100, requestedAmount = 1, flagged
+      = true}, ReviewRequired
+    row RefundRequest record{capturedAmount = 100, requestedAmount = 100,
+      flagged = false}, Approved
+    row RefundRequest record{capturedAmount = 100, requestedAmount = 99, flagged
+      = false}, Approved
+    row RefundRequest record{capturedAmount = 9007199254740992, requestedAmount
+      = 9007199254740993, flagged = false}, Rejected
+  end
+end

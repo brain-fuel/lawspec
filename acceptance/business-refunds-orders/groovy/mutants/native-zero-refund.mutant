@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/main/groovy/example/RefundConformance.groovy
+<<<<<<<
+if (request.requestedAmount().signum() == 0) return new RefundDecision.Approved()
+=======
+if (request.requestedAmount().signum() == 0) return new RefundDecision.Rejected()
+>>>>>>>

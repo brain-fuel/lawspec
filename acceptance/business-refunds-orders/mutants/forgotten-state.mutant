@@ -1,0 +1,7 @@
+expect: processing retains each completed transition
+@@ examples/rc1/order-workflow.lawspec
+<<<<<<<
+change updated; current
+=======
+change Pending; current
+>>>>>>>

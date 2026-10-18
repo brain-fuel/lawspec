@@ -1,0 +1,7 @@
+expect: processing retains each completed transition
+@@ examples/rc1/order-workflow.lawspec
+<<<<<<<
+handle process actions with inMemory end
+=======
+handle process [] with inMemory end
+>>>>>>>

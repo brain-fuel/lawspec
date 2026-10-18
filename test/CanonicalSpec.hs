@@ -2,6 +2,7 @@
 module CanonicalSpec (test_canonicalAuthoringPreservesIntrinsicGuarantees) where
 
 import Data.Either (isRight, isLeft)
+import Data.List (isInfixOf)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Aeson
@@ -1001,6 +1002,35 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         significant text = [(tokenKind t,tokenText t) | t <- sourceTokens text, tokenKind t /= TriviaToken]
     significant (LawSpec.Model.content formatted) `shouldBe` significant body
     maximum (map length (lines (LawSpec.Model.content formatted))) `shouldSatisfy` (<= 80)
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "formats ability signatures, stateful handler operations and handled scopes without losing their enclosing depth" $ do
+    body <- readFile "examples/rc1/order-workflow.lawspec"
+    let input=Source "orders.lawspec" body
+        formatted=formatSource input
+        output=LawSpec.Model.content formatted
+        significant text=[(tokenKind t,tokenText t) | t<-sourceTokens text,tokenKind t/=TriviaToken]
+    output `shouldSatisfy` isInfixOf "ability OrderStore is\n  current of type OrderState\n  change of type OrderState -> ()\nend"
+    output `shouldSatisfy` isInfixOf "  start Pending is\n  current is order end\n  change updated is ~order := updated; () end\nend"
+    output `shouldSatisfy` isInfixOf "  handle process actions with inMemory end\nend function"
+    significant output `shouldBe` significant body
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "keeps multiline handler operations and conditional initializers inside their handler" $ do
+    let body=unlines ["ability State is","read of type Bool","end",
+          "handler memory for State with state value of type Bool",
+          "start if true then false else true end if is",
+          "read is","value","end","end",
+          "function readOnce (ignored :: ()) -> Bool is",
+          "handle read with memory end","end function"]
+        formatted=formatSource (source body)
+    lines (LawSpec.Model.content formatted) `shouldBe`
+      ["unit example.canonical","ability State is","  read of type Bool","end",
+       "handler memory for State with state value of type Bool",
+       "  start if true then false else true end if is",
+       "  read is","    value","  end","end",
+       "function readOnce (ignored :: ()) -> Bool is",
+       "  handle read with memory end","end function"]
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "uses UTF-16 editor positions for supplementary characters and tab columns" $ do

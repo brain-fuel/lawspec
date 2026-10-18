@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/example/refundConformance.mjs
+<<<<<<<
+request.requestedAmount > request.capturedAmount
+=======
+Number(request.requestedAmount) > Number(request.capturedAmount)
+>>>>>>>

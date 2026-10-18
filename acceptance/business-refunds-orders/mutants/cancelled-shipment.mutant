@@ -1,0 +1,7 @@
+expect: order transitions follow the business lifecycle
+@@ examples/rc1/order-workflow.lawspec
+<<<<<<<
+if state = Shipped then Shipped else Cancelled end if
+=======
+if state = Shipped then Cancelled else Cancelled end if
+>>>>>>>
