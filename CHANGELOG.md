@@ -32,6 +32,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Formatting preserves line-scoped scenario arguments, including command
+  bindings, parallel branches and recovery, while wrapping surrounding code.
+  Multiline literal contents retain their whitespace, and block endings after
+  a closing quote update the indentation of subsequent declarations.
 - Documentation highlighting now uses the editor's shared TextMate grammar and
   tokenizer. Phrase names end at their delimiter, and canonical function/type
   syntax receives the editor's scopes. Highlighting asset failures preserve

@@ -37,6 +37,108 @@ migration**, the verified oracle runs of **Chapter 6 authoring**, and
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
 
+### Requirement coverage audit — 18 October 2026
+
+This inventory checks the approved implementation contract against current
+sources. Source inspection does not replace final execution gates. The named
+tests are executable coverage; their current full-run results must be recorded
+before closing the completion checklist. Earlier dated receipts establish
+results for their own compiler and package snapshots.
+
+| Contract requirement | Current implementation and acceptance coverage | Outstanding acceptance |
+|---|---|---|
+| Mandatory definition checking independently of law layers | `Core/DefinitionContracts`, `Core/Totality`; `TotalSpec`, `DefinitionContractProofSpec`, `GadtSpec`, canonical no-layer rejection tests | Final compiler and native runtime-contract gates |
+| Pure functions, effectful procedures and abilities; polymorphism, capabilities, wrappers, indexed families and checked recursion | Canonical frontend and existing typed Core; `AbilitiesSpec`, `DefinitionSchemeSpec`, `SourceGadtIndicesSpec`, `SourceGadtRefinementsSpec`, record/payload suites | Final regression and target gates; no unchecked function category |
+| Declarations, annotations, sections, metadata and current-minor closers | Canonical parser, `CanonicalSpec`, published `docs/reference/language/syntax.md` | Final parser/docs checks; every named ending is explicitly the following minor |
+| Phrase spelling/escapes, qualified prefix/infix equivalence, precedence and native-name collisions | Canonical lexer/resolver; `CanonicalSpec`, `SourceSyntaxSpec`, `TargetNamesSpec` | Final target emission; collisions still require explicit bindings |
+| Integer/Whole/Nat domains, bounded migration, zero-inclusive lengths/indices, exact literals and widening | Scalar/type admission and migration inventories; `BoundsSpec`, `ContextualSpec`, `CanonicalSpec`, migration-source tests | Final regression; no implicit narrowing or nominal unwrapping |
+| Nominal records, explicit construction, closed anonymous products and typed alternatives | `Core/RecordIdentity`, source record elaboration; `SourceRecordCanonicalSpec`, `SourceRecordPayloadSpec`, `SourceRecordInferenceSpec`, `PayloadSpec` | Final compiler/native payload suites; unsupported dependent source forms remain diagnosed |
+| BLAKE3 identity, field-order independence, alias/bound-name normalization, collision interning and separate nominal dependency invalidation | Portable `Blake3`, canonical descriptors; official-vector checks in `CanonicalSpec`, `RecordIdentitySpec`, `RecordNormalizeSpec`, recorded GoForge comparison | Final record parity; unrelated SHA caches remain separate |
+| Single-evaluation ordered cases, scoped it, guards, recursive/record patterns, wildcards and exhaustiveness | Canonical case elaboration; `CanonicalMatcherSpec`, `CanonicalPredicateFactsSpec`, recursive-record examples | Final compiler/target gates; guards do not establish coverage |
+| Nested quantifiers/negation, left-to-right restrictions, normative wording, contextual articles and typed equality | Authoritative Core propositions; `CanonicalSpec`, `QuantifierDomainSpec`, `WitnessSpec`, contextual-article SDK checks | Final logical, reusable-law, Eq and IEEE regressions |
+| Prelude lookup after locals/imports, ambiguity and capture avoidance | Shared resolution/substitution; `PreludeResolutionSpec`, canonical qualified-name and reusable-law tests | Final compiler/consumer gates |
+| Eq-only Set/membership, first-occurrence order, SortedSet migration, collection any and explicit map selections | `Core/EqSet`, existing collection operations; `EqSetSpec`, `EqSetOperationsSpec`, `CanonicalCollectionsSpec`, SDK set/membership/migration suites | Final native collection suites; iteration itself needs no Eq |
+| Explicit substrings and pinned full Unicode default case folding without normalization | Shared Unicode table/runtime emitters; native collection/string suites and filename examples | Final target/runtime parity |
+| Checked mappings, finite coverage/fallback, Maybe partial lookup, preimages and uniqueness-gated inverse | Mapping elaboration to ordinary definitions; `MappingSpec`, typed-mapping fixture, Chapter 6 mappings | Final mapping/native suites; external-oracle agreement stays separate |
+| Repeating named examples, expectation-first tables, multiple expectations, typed/recorded inputs and independent failures | Canonical table elaboration; starter, native-evidence and authoring suites | Final consumer/native execution |
+| Authored expected compile rejection with stable diagnostic codes | Independent `reject=<code>` documentation fences, three negative fixtures, fourteen documentation controls and editable rejection views | Verified at `4a6f672a`; rerun final docs/consumer gates |
+| Documentary typed references, selectors/groups, unresolved errors and finite cycles | Resolved reference metadata; canonical reference tests, documentary-review example, unsaved-source LSP tests | Final consumers/docs/editor; references never discharge obligations |
+| Optional verification layers and honest no-selected-checks reporting | Compiler/API/config selection; `SelectionAdmissionSpec`, `ModelLayerSelectionSpec`, SDK evidence/model-layer suites | Final public-consumer and target gates |
+| Checked harness witnesses/lexical paths, complete or bounded searches and dependent shrinking | `Witness`, `HarnessWitness`, existing checked evaluator/search; `WitnessSpec`, `SearchSpec`, `QuantifierDomainSpec` | Final existential/native suites; failed candidates and bounded misses remain inconclusive |
+| Distinguish proof, particular witnesses, complete finite results, bounded findings, unsupported search and nonexistence | Typed evidence and scoped execution receipts; `DomainEvidenceSpec`, SDK evidence/native-evidence suites | Final evidence/consumer gates; sampled universals never become universal proofs |
+| Use established proof infrastructure with an explicit trust boundary | Typed SMT-LIB tasks and actual external Z3 execution; `SmtSpec`, SDK `smt-proof` tests, recorded SPARK/Why3/Lean/Idris/Rocq precedents | Final real-solver checks; no independent proof checker or in-process Z3 binding is claimed |
+| Preserve workflow/temporal/scenario/actor/model semantics, snapshots, history, fairness and model/native distinction | Existing checked models/native adapters; `StatefulModelSpec`, `ScenarioSpec`, `TemporalSpec`, native-evidence suites | Final native model/temporal gates; advanced analyses remain pre-final-1.0 |
+| Two-space/80-column formatting, idempotence, comments/literals and chosen wording | `SourceText`; canonical/SDK typed snapshots, handler/block fixtures, scenario/multiline fixes | Canonical omission of optional record-type commas remains unimplemented; full runs/release checks stay open; source-sensitive cache/remote identities can rekey |
+| Read-only migration, checked project writes, constructors/native bindings, comments/origins and rollback | Explicit migration APIs/writer; `MigrationSnapshotSpec`, `MigrationPayloadSpec`, SDK migration-write/package/native-binding suites | Six support/refusal boundaries below; final current-package run pending |
+| Developer/business/formal/evidence views and JSON from the same obligations | Shared typed presentation and `explain` CLI; SDK authoring/explanation/TypeScript tests | Final CLI/consumer tests; no second proposition interpretation |
+| Diagnostics, seeds, shrinking, source spans, expected/actual and search completeness | Structured compiler/evidence/execution results; API, witness, replay and native-evidence tests | Final consumers/native gates, including interrupted runs |
+| LSP stdio, diagnostics, formatting, symbols, hover, navigation/references and UTF-16 | Compiler-backed `lsp.mjs`, VS Code extension/grammar; unsaved-source/documentary/witness LSP tests | Final editor/SDK gates; unavailable visual browser inspection is not claimed |
+| Schema 5, configuration 2, explicit profile, migration-only older input and preserved legacy law selections | Canonical admission and migration configuration; `CanonicalInterfaceSpec`, SDK canonical-interface/environment/migration-write tests | Final installed public consumers/release checks |
+| Shared website/editor TextMate highlighting and Linguist preparation | Exact shared grammar, locked TextMate/Oniguruma, corpus parity, `linguist-eligibility.md` | Upstream usage/import/acceptance/deployment remain external pre-final-1.0 dependencies |
+| Codecs/reusable inverse, existence/absence, authorization, refunds/conflicts and stateful orders | Published `examples/rc1` and permanent native acceptance suites | Final all-17-target run; existing receipts describe each suite's native scope |
+| Examples 48–50 and eight three-layer record/alternative combinations | Canonical filename/structural examples and eight nesting files; compiler/native outcomes and mutants | Final documentation/native nesting gates |
+| Chapter 6 semantic migration, authored inventory, complete instruction oracles and invocation independence | Canonical assembler, frozen original, checked mappings and `tools/chapter6-oracles.mjs`; fresh both-profile oracle receipts | Preserve inventory/hashes; complete implementations in other languages remain pre-final-1.0 |
+| Final compiler, target, generation, boundary, docs, editor, parity and release checks | CI graph, package smoke, locked runtimes and release preconditions | Open: fresh final commit/version execution; version is still 0.24.0 |
+| Three-reader comprehension exercise | Ten questions and threshold retained here | Explicitly user-deferred; no reader results claimed |
+| Larger demonstration portfolio and advanced verification | Original pre-final-1.0 gates retained below | Open pre-final-1.0; completing this minor does not authorize final 1.0 |
+
+Migration acceptance establishes documented supported paths and checks refusals
+for the remaining limits; it does not claim every generic or opaque
+transformation is available. The detailed six-case inventory below remains
+authoritative. Actual writer tests cover reordered-index population refusal,
+unsupported generic GADT admission, unestablished generic populations,
+polymorphic-only missing target artifacts, stale package changes and changed
+opaque codecs/factories. They check that original source, configuration and
+application bytes survive refusal. Positive tests separately cover finite
+populations, concrete indexed/existential factories, complete dependency source
+transport and admitted native layouts on all configured targets. Final current
+run results are required before checking off this gate.
+
+### Scenario command boundaries and multiline literals — implementation under verification
+
+Valid scenarios with a long command argument previously failed after formatting:
+the formatter moved the argument off the invocation's physical line. Scenario
+command boundaries now survive binding, parallel delivery and recovery, while
+surrounding functions can wrap. A separate regression exposed multiline literals
+whose closing line also closes a function: the literal's whitespace remains
+exact, and trailing block tokens now update the scope before the next function.
+
+All **105 canonical authoring tests pass**. Complete native/WASM parity agrees
+on **288 responses**, including **272 accepted target generations** across all
+17 targets, both widths and layouts. Four complete before/after typed snapshots
+match and formatting is idempotent. An independent receipt/hash audit verifies
+all complete responses. The preceding compiler agrees on 280 responses; eight
+formatting responses contain the intended scenario or literal-layout changes.
+No response fields are removed from these comparisons.
+
+Comparing unformatted and formatted generated programs found existing
+source-sensitive remote-definition hashes. Across 124 changed generated-file
+pairs, only those SHA3-256 identities change; dispatch names, descriptors,
+executable definitions and every other artifact byte match. These full pairs
+are retained. Formatting is not claimed to preserve remote/cache identities.
+The first SDK assertion incorrectly required identical hashes; a subsequent
+test-helper regex omitted some target paths and then had an escaping error.
+Those failed/interrupted validation attempts remain separate from corrected
+results. The compiler implementation did not change during those test repairs.
+
+The current native compiler is SHA-256
+`360263687a3948c8a999cc922233eda5149ed482fae9017b2c80cd47fad61061`;
+the 72,941,140-byte WASM is SHA-256
+`50ae53e251c2e26e46ccacae339150207691fda14cfc03af93aa859297248715`.
+All 137 generated outputs, 236 compiler boundaries, six editor tests, version
+agreement, artifact/source integrity and documentation for 120 pages with
+118 compiled snippets pass. The current full compiler and SDK catalog runs
+remain in progress; they are not claimed complete here.
+
+The broader requirement audit above also verifies an outstanding mechanical
+formatter requirement: optional commas remain in formatted multiline record
+types. A valid Picture type compiles and formats, retaining its field comma.
+The complete request and responses are retained in
+`.artifacts/scenario-format-boundaries/record-separators-probe.json` in the
+isolated worktree. The next formatter increment must omit these type separators
+while retaining commas in record values/patterns and nested tuple syntax.
+This is an explicit remaining requirement, not a completed coverage gate.
+
 ### Shared editor and website highlighting — 18 October 2026
 
 The website now interprets the exact editor grammar with the same pinned
@@ -304,6 +406,14 @@ SDK consumers and 84 complete parity comparisons also pass again. Independent
 payload and receipt auditing confirms all 84 native/WASM responses, 82 unchanged
 preceding responses, the two formatting-only deltas, 68 accepted generation
 profiles, all 342 frozen native logs and both full Chapter 6 oracle receipts.
+
+The frozen business-demonstration catalog export has now completed: its full
+all-target export, independent generated-file comparison, adapter preservation,
+idempotence and path-protection test passes in **6,062,101.346875 ms** (total
+**6,062,265.196625 ms**), with zero failures or skips. Independent auditing
+verifies that all **273 frozen package files** retain their recorded hashes
+after completion. This closes that snapshot's export run, not the final
+current-package release gate.
 The audit also rechecks the original Chapter 6 and legacy-fixture hashes; its
 receipt is `final-checkpoint-audit.json` under the same evidence directory. These
 receipts are combined evidence across the stated changes, not one uninterrupted

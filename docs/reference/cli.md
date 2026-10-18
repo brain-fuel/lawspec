@@ -48,8 +48,12 @@ Source layout uses two spaces and an 80-column target. Comments, literal
 values, names, equality wording, annotations and infix notation retain their
 spelling. Long indivisible names and literals may exceed the target. Harness
 settings keep their line boundaries; settings under `for law` or `for laws`
-are indented within their group. Resource operations, workflow groups and
-parallel scenario branches retain their enclosing block indentation.
+are indented within their group. Scenario commands also keep their line
+boundaries, including long arguments in parallel branches and recovery blocks.
+Other code in the same unit can still wrap. Resource operations, workflow groups
+and parallel scenario branches retain their enclosing block indentation.
+Multiline literal contents keep their whitespace, including blank lines;
+block endings after the closing quote still close the enclosing formatter scope.
 
 ## `migrate`
 

@@ -53,8 +53,8 @@ restoreSource :: [Token] -> String
 restoreSource = concatMap tokenText
 
 -- | Two-space indentation with literal/comment spelling retained. Line breaks
--- never create obligations. Existing line boundaries, including line-scoped
--- harness settings, remain intact; long indivisible literals are never split.
+-- never create obligations. Line-scoped harness settings and scenario command
+-- boundaries remain intact; long indivisible literals are never split.
 formatSource :: Source -> Source
 formatSource (Source path body) = Source path (stabilize body)
   where
@@ -65,8 +65,9 @@ formatSource (Source path body) = Source path (stabilize body)
     layout text =
       let indented = indent text
           hasMultiline = any multiline (sourceTokens text)
-      in unlines (concatMap (\(line,tokens) -> if hasMultiline then [line] else wrap tokens line)
-        (lineTokens indented))
+      in unlines (concatMap (\((line,tokens),preserveLine) ->
+          if hasMultiline || preserveLine then [line] else wrap tokens line)
+        (zip (lineTokens (map fst indented)) (map snd indented)))
     multiline token = tokenKind token `elem` [LiteralToken,PhraseToken] && '\n' `elem` tokenText token
     -- Lex the complete source so paired names remain names even when their
     -- declaration keyword is on the preceding line. Local token offsets also
@@ -85,8 +86,7 @@ formatSource (Source path body) = Source path (stabilize body)
         protected = [(tokenOffset t,tokenOffset t + length (tokenText t)) | t <- sourceTokens text,
           tokenKind t `elem` [LiteralToken,PhraseToken], '\n' `elem` tokenText t]
         formatLine state@(oldDepth,cases,braces,previous,handlers,blocks,group) (offset,line,lexed)
-          | any (\(start,end) -> start < offset && offset < end) protected = (state,line)
-          | null (dropWhile isSpace line) = (state,"")
+          | not protectedLine && null (dropWhile isSpace line) = (state,("",False))
           | otherwise =
               let content = dropWhile isSpace line
                   tokens = [tokenText t | t <- lexed, tokenKind t `elem` [WordToken,SymbolToken]]
@@ -138,7 +138,16 @@ formatSource (Source path body) = Source path (stabilize body)
                     name:_ | declaration || nested -> (name,depth+1):blocks
                     _ -> blocks)
                   group' = if harnessGroup then Just depth else if groupEnd then Nothing else group
-              in ((nextDepth,cases',braces',case reverse tokens of first:_ -> Just first; [] -> previous,handlers',blocks',group'),replicate (indentation * 2) ' ' ++ trimOutsideLiteral content)
+                  -- Scenario invocation arguments start on their command's
+                  -- line. Preserve their boundaries, including nested par and
+                  -- recovery bodies, while reflowing the rest of the unit.
+                  preserveLine = protectedLine || insideBlock "scenario" || declaration && take 1 tokens == ["scenario"]
+              in ((nextDepth,cases',braces',case reverse tokens of first:_ -> Just first; [] -> previous,handlers',blocks',group'),
+                (if protectedLine then line else replicate (indentation * 2) ' ' ++ trimOutsideLiteral content,preserveLine))
+          where
+            -- The literal's characters stay untouched. Tokens following its
+            -- closing delimiter still update the surrounding block state.
+            protectedLine = any (\(start,end) -> start < offset && offset < end) protected
     topLevelBlocks = ["refinement","wrapper","workflow","protocol","scenario","model","actor","supervisor","resource","harness"]
     -- Wrapping may put the second word of "of type" at a line's start.
     -- That annotation continues the existing declaration, rather than opening

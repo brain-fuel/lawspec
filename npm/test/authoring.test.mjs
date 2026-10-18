@@ -5,6 +5,69 @@ import { PassThrough } from 'node:stream';
 import { serveLanguage, utf16Position } from '../lsp.mjs';
 import { explainLaw } from '../explain.mjs';
 
+test('formatting preserves multiline literal contents and processes trailing block endings',async()=>{
+  const {createCompiler}=await import('../api.mjs');
+  const compiler=await createCompiler();
+  const content='unit literal.boundaries\n'+
+    'function text (ignored :: ()) -> Text is "first\n   \nsecond" end function\n'+
+    'function same (value :: Bool) -> Bool is\nvalue\nend function\n';
+  const expected=content.replace('\nvalue\n','\n  value\n');
+  for(const machineBits of [32,64]){
+    const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,
+      verification:{layers:[]},sources:[{path:'literal.lawspec',content}]};
+    const before=await compiler.check({...input,migrationSnapshot:true});
+    assert.deepEqual(before.diagnostics,[]);
+    const formatted=await compiler.format(input);
+    assert.deepEqual(formatted.diagnostics,[]);
+    assert.equal(formatted.formattedSources[0].content,expected);
+    const after=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
+    assert.deepEqual(after.diagnostics,[]);
+    assert.deepEqual(after.migrationSemantics,before.migrationSemantics);
+    const repeated=await compiler.format({...input,sources:formatted.formattedSources});
+    assert.deepEqual(repeated.diagnostics,[]);
+    assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
+  }
+});
+
+test('formatting retains long scenario arguments and typed behavior through nested delivery and recovery',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const {createCompiler}=await import('../api.mjs');
+  const {targets}=await import('../templates.mjs');
+  const compiler=await createCompiler();
+  const file='canonical-scenario-format-boundaries.lawspec';
+  const content=await readFile(new URL('../../test/fixtures/'+file,import.meta.url),'utf8');
+  const commandLines=source=>source.split('\n').map(line=>line.trimStart())
+    .filter(line=>/^(notice "|reply <- echo |expect reply = |send receipt )/.test(line));
+  for(const machineBits of [32,64]){
+    const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,verification:{layers:[]},sources:[{path:file,content}]};
+    const before=await compiler.check({...input,migrationSnapshot:true});assert.deepEqual(before.diagnostics,[]);
+    const formatted=await compiler.format(input);assert.deepEqual(formatted.diagnostics,[]);
+    const output=formatted.formattedSources[0].content;
+    assert.ok(commandLines(content).length);assert.deepEqual(commandLines(output),commandLines(content));
+    const after=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
+    assert.deepEqual(after.diagnostics,[]);assert.deepEqual(after.migrationSemantics,before.migrationSemantics);
+    const repeated=await compiler.format({...input,sources:formatted.formattedSources});
+    assert.deepEqual(repeated.diagnostics,[]);assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
+    for(const minify of [false,true])for(const target of targets){
+      const request={...input,target,minify};
+      const original=await compiler.planGeneration(request);
+      const rewritten=await compiler.planGeneration({...request,sources:formatted.formattedSources});
+      assert.deepEqual(original.diagnostics,[],target);assert.deepEqual(rewritten.diagnostics,[],target);
+      assert.deepEqual(rewritten.files.map(file=>file.path),original.files.map(file=>file.path),target);
+      for(let index=0;index<original.files.length;index++){
+        const before=original.files[index],after=rewritten.files[index];
+        // Existing remote identities include source provenance in their
+        // dependency hashes. Retain every other byte, including definitions,
+        // dispatch names and descriptors, while accounting for that rekeying.
+        const remote=/(?:^|\/)(?:LawSpecRemote\.(?:java|hs)|lawspec_remote\.(?:py|mjs|ts|go|rs|erl)|RemoteDefinitions\.fs|LawSpecRemoteDefinitions\.swift)$/.test(before.path);
+        const identities=file=>remote?{...file,content:file.content.replace(/sha3-256:[0-9a-f]{64}/g,'<remote dependency hash>')}:file;
+        assert.deepEqual(identities(after),identities(before),target+': '+before.path);
+      }
+      assert.deepEqual(rewritten.tests,[]);assert.deepEqual(original.tests,[]);
+    }
+  }
+});
+
 test('formatting preserves checked snapshots across resource, harness, workflow and scenario blocks',async()=>{
   const {readFile}=await import('node:fs/promises');
   const {createCompiler}=await import('../api.mjs');

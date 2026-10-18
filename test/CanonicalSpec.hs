@@ -1099,6 +1099,36 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     output `shouldSatisfy` isInfixOf "function useResource (value :: Bool) -> Bool is\n  resource value\nend function"
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "preserves scenario command lines through binding, parallel delivery and recovery while wrapping surrounding functions" $ do
+    body <- readFile "test/fixtures/canonical-scenario-format-boundaries.lawspec"
+    let input=Source "scenario.lawspec" body
+        formatted=formatSource input
+        output=LawSpec.Model.content formatted
+        trim=dropWhile (== ' ')
+        commands text=filter (\line -> any (`isPrefixOf` line)
+          ["notice \"","reply <- echo ","expect reply = ","send receipt "]) (map trim (lines text))
+        significant text=[(tokenKind t,tokenText t) | t<-sourceTokens text,tokenKind t/=TriviaToken]
+    compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
+    commands body `shouldNotBe` []
+    commands output `shouldBe` commands body
+    maximum (map length (takeWhile (not . isPrefixOf "scenario") (lines output))) `shouldSatisfy` (<= 80)
+    output `shouldSatisfy` isInfixOf "  with\n    receive receipt held or else\n      notice \""
+    significant output `shouldBe` significant body
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "retains multiline literal whitespace while processing blocks closed after the literal" $ do
+    let body=unlines ["function text (ignored :: ()) -> Text is \"first", "   ",
+          "second\" end function", "function same (value :: Bool) -> Bool is", "value", "end function"]
+        input=source body
+        formatted=formatSource input
+    compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
+    lines (LawSpec.Model.content formatted) `shouldBe`
+      ["unit example.canonical","function text (ignored :: ()) -> Text is \"first","   ",
+       "second\" end function","function same (value :: Bool) -> Bool is","  value","end function"]
+    restoreSource (filter ((==LiteralToken) . tokenKind) (sourceTokens (LawSpec.Model.content formatted)))
+      `shouldBe` restoreSource (filter ((==LiteralToken) . tokenKind) (sourceTokens (LawSpec.Model.content input)))
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "uses UTF-16 editor positions for supplementary characters and tab columns" $ do
     let source = Source "positions.lawspec" "a😀b\n\t😀x\n"
     utf16Position source (LawSpec.Model.Location "positions.lawspec" 1 3) `shouldBe` (0,3)

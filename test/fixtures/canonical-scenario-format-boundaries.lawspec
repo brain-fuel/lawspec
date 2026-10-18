@@ -1,0 +1,39 @@
+unit formatter.scenario
+
+handle Store
+openStore :: () -> Store
+notice :: Store -> Text -> ()
+echo :: Store -> Text -> Text
+
+function modelNotice (message :: Text) (state :: Bool) -> Bool is state end function
+function modelEcho (message :: Text) (state :: Bool) -> Pair Text Bool is Pair message state end function
+function combined (firstMessage of type Text) (secondMessage of type Text) -> Text is firstMessage ++ secondMessage end function
+
+model store :: shared Store by Bool is
+start openStore by false
+notice by modelNotice
+echo by modelEcho
+end
+
+protocol Message is
+send Text
+end
+
+scenario `a long command and its reply` in store is
+notice "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
+reply <- echo "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
+expect reply = "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
+end
+
+scenario `parallel delivery and recovery keep command boundaries` in store is
+channel receipt :: Message
+par
+notice "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
+send receipt "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
+with
+receive receipt held or else
+notice "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
+end
+notice held
+end
+end
