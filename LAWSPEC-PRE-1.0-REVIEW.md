@@ -513,6 +513,16 @@ The 73,111,245-byte WASM is SHA-256
 `c22ba5d19dcad25667b7e4a41e9333886cc6be698554f6b5b9e6f118fc2a3a5f`.
 The previous sources and failed receipts remain unchanged.
 
+The complete widening matrix subsequently passes all seventeen targets at
+64-bit readable and 32-bit compact profiles, including all three mutants.
+All 42 complete native/WASM responses match: widening check/format/all-target
+generation at both widths, plus documentary-reference checking and formatting.
+Every generated file in all 34 native target/profile projects matches the
+current native and WASM generation byte for byte. Effective Canon 0.2.2 passes
+with the existing pre-1.0 exemptions; no human vetting is claimed. These results
+close the scoped widening/reference repair checks, not the pending Unicode
+SDK corpus, installed smoke, remaining baseline repairs or final combined gate.
+
 The installed Unicode checkpoint's smoke run terminates while exporting the
 bundled examples at the existing thirty-minute guard. Earlier installed CLI,
 generated-code and native starter checks completed, but the smoke gate did not.
