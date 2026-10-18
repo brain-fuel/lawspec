@@ -102,7 +102,13 @@ end
   including arithmetic and adapter calls.
 - `Float32` operations round at binary32 and `Float64` at binary64. Mixed
   inexact operations widen to the greater precision, and to complex when needed.
-- Exact and inexact values need explicit conversion. Fractional or out-of-range
+- Exact scalar values widen implicitly when the compiler proves that every
+  source value has an exact destination representation. For example, `Int8`
+  fits in `Int16`, `UInt8` fits in `Int16`, and `Decimal` fits in `Rational`.
+  `Int8` does not fit in `UInt16`, and `UInt64` does not fit in `Int64`.
+  This rule does not unwrap nominal types or convert whole records.
+- Exact and inexact values need explicit conversion. Floating conversions also
+  remain explicit. Fractional or out-of-range
   conversions to integers fail. A `Rational` converted to `Decimal` must
   terminate. Non-finite floats cannot convert to exact numbers.
 - `Decimal` arithmetic is exact, independent of Python's decimal context or any

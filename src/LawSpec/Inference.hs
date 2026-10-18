@@ -20,6 +20,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Mem.StableName (StableName, makeStableName)
 import qualified LawSpec.Core as Core
 import LawSpec.Core.Types (builtinDataDeclarations, makeRegistry)
+import LawSpec.Core.Total (safeConversionTypes)
 import qualified LawSpec.SourceContext as Source
 
 -- | Givens are branch-local facts about rigid type variables: matching a GADT
@@ -563,7 +564,13 @@ checkInferred :: Type -> Expr -> Type -> C ()
 checkInferred expected e inferred = do
   t <- resolve expected
   actual <- resolve inferred
+  bits <- gets machineBits
   case (t,actual) of
+    -- Reuse the existing typed conversion proof for exact scalar domains.
+    -- Whole products and nominal types do not enter this rule. Floating
+    -- conversions retain their explicit spelling, including possible rounding.
+    (Named n,Named m) | isExact n && isExact m,
+      safeConversionTypes bits (Core.scalarType n) (Core.scalarType m) Nothing -> pure ()
     (Named "Integer",Named m) | isInteger m -> pure ()
     -- Computed exact results use a checked adapter bridge at execution time.
     (Named n,Named m) | isExact n && m `elem` ["Integer","BigInt","Decimal","Rational"], not (isLiteral e) -> pure ()

@@ -514,7 +514,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "32b40834ed6f58d5290af56b62037426cb5868b4d4fa2ee6de0aa541a494199f",
-    "lawspec.cabal": "daf569c69d9692661d51c23cd1845d070ae2860f5e27b34befe144cbadd25f8b",
+    "lawspec.cabal": "c69827db10ca28071d05112d03a084692ab9a078563994d73deb53ffb11172bd",
     "package.yaml": "f133f5040e1b3c8d2713f5ac6ae1e889e454b05f04173bcd1edf58abe15d20b8",
     "runtime/LawSpecCodecs.hs": "02813943d154f064457601319ef59ab8c48f1416cdd40115e94a44619a1238a0",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
@@ -881,7 +881,7 @@
     "src/LawSpec/Imports.hs": "457146d1298a485f73b154cb107ecb4638140c23e264d30a87594e68393f9c45",
     "src/LawSpec/IndexTerm.hs": "2e783f10bf2fd326c86675595da3fe7ccbaab663be54e1b46bc31b9b284b8ab2",
     "src/LawSpec/Indexed.hs": "f0705d83603843efe843f2a35ac42f7ea50fea2c24bcc2b624b703cfe329918b",
-    "src/LawSpec/Inference.hs": "3bb36a518ce6418004707c0d8d1d83b504fb99dcf69c561f5551724c2a088501",
+    "src/LawSpec/Inference.hs": "8c3ad99c9b450c80c41e2d70d76b93e1249c2ff726415b1fe3fbfcca5c6573cb",
     "src/LawSpec/JavaData.hs": "d2f60c3823522251b3995631a9bb393cb6f2109344d33fd997560a6b054df122",
     "src/LawSpec/JavaDefinitions.hs": "19abe6ea8cfea7a1de1510d0bd17bd274b0cb9a43d0c319d6e7ccd93a192b4d4",
     "src/LawSpec/JavaExpr.hs": "ea846031db0ece077771b4892b2d04a615babebfef822a5f273f8b9c018fabb2",
@@ -1023,7 +1023,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "7c88c320d8fc988bae37a4364239b81c71564ec676607a7ea25dcb02e48304cf",
-    "npm/core.wasm": "aa7d9df1c55cee90f2af8b1e25a356551bf5d000ead37714806709fb0a846174",
+    "npm/core.wasm": "e4ab9d09524da228c9c9940592fca6efc5d912976f5e617f5f9b21fdac30ff56",
     "npm/core_jsffi.js": "ab80b8737881c5f8862353f9c3396666f52daca0ba21f9ee45a11bf293c33457",
     "npm/api.mjs": "8110e4f8bfbec33bdd04a34d18189d56d094495674de58ce55a0c4076411e9ca",
     "npm/index.d.ts": "395fbd25eb784f081c22eb3a19dc458a3a0ec183d0febe127c9d85219b1e360b"

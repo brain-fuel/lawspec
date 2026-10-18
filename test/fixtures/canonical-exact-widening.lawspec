@@ -1,0 +1,94 @@
+unit numbers.widening
+
+function widenSigned (value of type Int8) -> Int16 is value end function
+function widenUnsigned (value of type UInt8) -> Int16 is value end function
+function widenWord (value of type UInt32) -> Int64 is value end function
+function widenMagnitude (value of type UInt64) -> Integer is value end function
+function decimalByte (value of type UInt8) -> Decimal is value end function
+function rationalDecimal (value of type Decimal) -> Rational is value
+end function
+
+law "|signed bytes retain their value| is
+  definition:
+    for all (value of type Int8) =>
+      widenSigned value must be prelude.Int16 value
+    end
+  end
+  expect widenSigned value = expected
+  in table (value, expected):
+    row -128, -128
+    row -1, -1
+    row 0, 0
+    row 1, 1
+    row 127, 127
+  end
+end
+
+law "|unsigned bytes fit in a wider signed type| is
+  definition:
+    for all (value of type UInt8) =>
+      widenUnsigned value must be prelude.Int16 value
+    end
+  end
+  expect widenUnsigned value = expected
+  in table (value, expected):
+    row 0, 0
+    row 128, 128
+    row 255, 255
+  end
+end
+
+law "|unsigned words fit in a wider signed type| is
+  definition:
+    for all (value of type UInt32) =>
+      widenWord value must be prelude.Int64 value
+    end
+  end
+  expect widenWord value = expected
+  in table (value, expected):
+    row 0, 0
+    row 2147483648, 2147483648
+    row 4294967295, 4294967295
+  end
+end
+
+law "|unsigned magnitudes retain every bit| is
+  definition:
+    for all (value of type UInt64) =>
+      widenMagnitude value must be prelude.Integer value
+    end
+  end
+  expect widenMagnitude value = expected
+  in table (value, expected):
+    row 0, 0
+    row 9007199254740993, 9007199254740993
+    row 18446744073709551615, 18446744073709551615
+  end
+end
+
+law "|bytes have an exact decimal representation| is
+  definition:
+    for all (value of type UInt8) =>
+      decimalByte value must be prelude.Decimal value
+    end
+  end
+  expect decimalByte value = expected
+  in table (value, expected):
+    row 0, 0.0
+    row 255, 255.0
+  end
+end
+
+law "|decimal fractions have an exact rational representation| is
+  definition:
+    for all (value of type Decimal) =>
+      rationalDecimal value must be prelude.Rational value
+    end
+  end
+  expect rationalDecimal value = expected
+  in table (value, expected):
+    row -0.1, -0.1
+    row 0.0, 0.0
+    row 0.1, 0.1
+  end
+end

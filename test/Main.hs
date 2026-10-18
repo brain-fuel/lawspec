@@ -7,6 +7,7 @@ import qualified QuantifierDomainSpec
 import qualified SearchSpec
 import qualified CanonicalSpec
 import qualified CaseFoldSpec
+import qualified ExactWideningSpec
 import qualified MappingSpec
 import qualified CanonicalPredicateFactsSpec
 import qualified CanonicalMatcherSpec
@@ -127,6 +128,7 @@ main = hspec $ do
   DomainEvidenceSpec.test_domainEvidence
   CanonicalSpec.test_canonicalAuthoringPreservesIntrinsicGuarantees
   CaseFoldSpec.test_caseFold
+  ExactWideningSpec.test_exactWidening
   ContextualSpec.test_articlesPreserveOrdinaryNamesAndScope
   RecordIdentitySpec.test_recordIdentitiesPreserveSemantics
   RecordNormalizeSpec.test_recordNormalizationPreservesPrograms

@@ -1,0 +1,7 @@
+expect: signed bytes retain their value
+@@ test/fixtures/canonical-exact-widening.lawspec
+<<<<<<<
+function widenSigned (value of type Int8) -> Int16 is value end function
+=======
+function widenSigned (value of type Int8) -> Int16 is value + 1 end function
+>>>>>>>

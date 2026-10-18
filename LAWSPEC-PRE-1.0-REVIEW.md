@@ -398,6 +398,42 @@ still running against immutable `ad8bfc33` sources. Readability stays deferred,
 all-named endings remain the following minor, and no RC, tag or final release
 acceptance is claimed.
 
+### Exact scalar widening — 18 October 2026
+
+The completion audit's bounded-widening gap is now implemented through the
+existing typed conversion proof. Inference admits an implicit exact scalar
+conversion only when the complete source domain fits the destination domain
+at the selected machine width. Examples include `Int8` to `Int16`, `UInt8`
+to `Int16`, and `Decimal` to `Rational`. Narrowing, signedness loss, floating
+conversions, nominal unwrapping and whole-product conversion do not enter this
+rule. Mandatory definition checking and checked runtime bridges remain active.
+
+The precedent is [SPARK's proof of program integrity](https://learn.adacore.com/courses/intro-to-spark/chapters/03_Proof_Of_Program_Integrity.html),
+which treats range violations as verification obligations. Here the existing
+`Core.Total.safeConversionTypes` domain-containment rule discharges the simple
+whole-domain obligation; the compiler does not introduce another solver or
+claim SPARK certificates. That rule, elaboration and native exact-number
+representations remain the trust boundary.
+
+Eight focused compiler tests pass across both machine widths. They include
+complete checking of all 256 `UInt8` inputs, all seventeen target emitters,
+unsafe conversion refusals, nominal/product boundaries and division by zero
+with no optional law layers selected. The six-law, nineteen-row native suite
+checks signed extrema, unsigned values above the signed source maximum,
+`2^53 + 1`, `2^64 - 1`, and exact decimal fractions. Three mutants change a
+value, discard high bits, or require an unsafe implicit conversion. Native
+execution passed JavaScript, Java, Python, TypeScript, Rust and Go at both
+profiles, including all three mutants, before each profile stopped at F#.
+That failure exposes the portable F# checked-argument bridge validating an
+unconverted integer/decimal representation against Decimal/Rational. The
+failed receipts remain authoritative; the implementation needs a repair.
+Both rebuilt WASM SDK tests pass, covering admission/refusal, all seventeen
+emitters and actual typed formatting snapshots. All 141 generated files,
+237 boundary modules, integrity, and 120 documentation pages with 119 compiled
+snippets pass. Complete response parity, the native repair and remaining target
+execution, packaging and final combined regression checks remain open. Evidence
+is under `.artifacts/exact-widening/`; this is not final minor acceptance.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current

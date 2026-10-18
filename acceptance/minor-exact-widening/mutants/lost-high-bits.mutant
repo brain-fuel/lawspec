@@ -1,0 +1,7 @@
+expect: unsigned magnitudes retain every bit
+@@ test/fixtures/canonical-exact-widening.lawspec
+<<<<<<<
+function widenMagnitude (value of type UInt64) -> Integer is value end function
+=======
+function widenMagnitude (value of type UInt64) -> Integer is prelude.rem value 4294967296 end function
+>>>>>>>

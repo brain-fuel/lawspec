@@ -944,6 +944,7 @@ test-suite lawspec-test
       DotNetSpec
       EqSetOperationsSpec
       EqSetSpec
+      ExactWideningSpec
       FieldDefinitionExpansionSpec
       FlowSpec
       GadtSpec
