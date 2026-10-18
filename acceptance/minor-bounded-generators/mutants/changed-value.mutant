@@ -1,0 +1,7 @@
+expect: positive signed values stay inside their range
+@@ test/fixtures/canonical-bounded-generators.lawspec
+<<<<<<<
+function retain (value of type Integer) -> Integer is value end function
+=======
+function retain (value of type Integer) -> Integer is value + 1 end function
+>>>>>>>

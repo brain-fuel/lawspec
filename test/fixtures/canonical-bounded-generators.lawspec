@@ -1,0 +1,56 @@
+unit numbers.bounds
+
+function retain (value of type Integer) -> Integer is value end function
+function retainUnsigned (value of type UInt64) -> Integer is value end function
+
+law "|positive signed values stay inside their range| is
+  definition:
+    for all (value of type Int64 where value >= 1) =>
+      retain value must be prelude.Integer value
+    end
+  end
+end
+
+law "|large negative intervals retain their values| is
+  definition:
+    for all (value of type Int64 where
+      value >= -9223372036854775800 and value <= -9223372036854775795) =>
+      retain value must be prelude.Integer value
+    end
+  end
+end
+
+law "|large positive intervals retain their values| is
+  definition:
+    for all (value of type Int64 where
+      value >= 9223372036854775800 and value <= 9223372036854775806) =>
+      retain value must be prelude.Integer value
+    end
+  end
+end
+
+law "|unsigned high bits survive| is
+  definition:
+    for all (value of type UInt64 where value >= 18446744073709551610) =>
+      retainUnsigned value must be prelude.Integer value
+    end
+  end
+end
+
+law "|exact integers retain narrow distant ranges| is
+  definition:
+    for all (value of type Integer where
+      value >= 1267650600228229401496703205393 and
+      value <= 1267650600228229401496703205397) =>
+      retain value must be value
+    end
+  end
+end
+
+law "|singleton ranges retain their value| is
+  definition:
+    for all (value of type Int64 where value = -9223372036854775808) =>
+      retain value must be prelude.Integer value
+    end
+  end
+end

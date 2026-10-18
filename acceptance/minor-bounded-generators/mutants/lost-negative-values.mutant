@@ -1,0 +1,7 @@
+expect: large negative intervals retain their values
+@@ test/fixtures/canonical-bounded-generators.lawspec
+<<<<<<<
+function retain (value of type Integer) -> Integer is value end function
+=======
+function retain (value of type Integer) -> Integer is if value < 0 then 0 else value end if end function
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: unsigned high bits survive
+@@ test/fixtures/canonical-bounded-generators.lawspec
+<<<<<<<
+function retainUnsigned (value of type UInt64) -> Integer is value end function
+=======
+function retainUnsigned (value of type UInt64) -> Integer is prelude.rem value 4294967296 end function
+>>>>>>>

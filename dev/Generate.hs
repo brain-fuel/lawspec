@@ -32,6 +32,7 @@ import LawSpec.Code.Doc (Layout(..))
 import qualified LawSpec.Core as Core
 import qualified LawSpec.Core.Types as CoreTypes
 import LawSpec.Collections (collectionsSource)
+import Gen.BoundedGenerators (kotlinBoundedCases,scalaBoundedCases)
 import LawSpec.Scaffold (scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
 import LawSpec.Targets (targetLabel)
 
@@ -133,6 +134,8 @@ withHeader template target content
 factFills :: String -> [(String, Fill)]
 factFills version =
   [ ("version", Inline (jsonString version))
+  , ("kotlin-bounded-generators", Block (lines kotlinBoundedCases))
+  , ("scala-bounded-generators", Block (lines scalaBoundedCases))
   , ("eq-set-operations-source", Block (lines (collectionsSource ["EqSet"])))
   , ("builtin-data-names", Inline (json (Array
       [ Object [("id", String (Core.idText (Core.dataId declaration))), ("name", String (Core.dataName declaration)),

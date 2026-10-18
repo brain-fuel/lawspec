@@ -300,6 +300,7 @@ extra-source-files:
     examples/rc1/nesting/uur.lawspec
     examples/rc1/nesting/uuu.lawspec
     test/fixtures/blake3-256.json
+    test/fixtures/canonical-bounded-generators.lawspec
     test/fixtures/canonical-branch-admission.lawspec
     test/fixtures/canonical-collection-membership.lawspec
     test/fixtures/canonical-container-records.lawspec
@@ -872,6 +873,7 @@ executable lawspec-dev
       Ci
       Docs
       Gen.Api
+      Gen.BoundedGenerators
       Gen.Embed
       Gen.Json
       Gen.Template

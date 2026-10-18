@@ -69,7 +69,9 @@ generatorDocBounded boundsOf bits budget structural reference key = gen
       if lo >= -2147483648 && hi <= 2147483647
       then mapped (call "Arb.int" [text (show lo ++ " to " ++ show hi)]) "_number"
         (runtime "integer" [quoted name,text "_number.toString"])
-      else let width = byteWidth hi in integerGen name width width (lo < 0)
+      else if Just (lo,hi) == integerBounds bits name
+      then let width = byteWidth hi in integerGen name width width (lo < 0)
+      else boundedIntegerGen name lo hi
     gen (C.Constructor name []) | name `elem` ["BigInt","BigUInt","Integer"] =
       integerGen name (0 :: Int) (32 :: Int) (name /= "BigUInt")
     gen (C.Constructor "Bool" []) = mapped (text "Arb.boolean") "_value" (runtime "bool" [text "_value"])
@@ -105,12 +107,26 @@ generatorDocBounded boundsOf bits budget structural reference key = gen
       if name == "Bytes" then "255" else if name `elem` ["Utf16Text","CodeUnit16"] then "65535" else "1114111")] <>
       (if name `elem` ["Text","Char"] then text ".filter" <> lambda "_point" (text "_point < 55296 || _point > 57343") else mempty)
     byteWidth hi = walk (1 :: Int) where walk n | hi < 256 ^ n = n | otherwise = walk (n+1)
-    integerGen name lo hi signed = mapped
+    -- Preserve the existing ScalaCheck-backed shrink trees. Masking avoids
+    -- modulo bias; rejection removes only the excess power-of-two interval.
+    boundedIntegerGen name lo hi =
+      let size = hi - lo + 1
+          mask = until (>= size) (* 2) 1 - 1
+          width = byteWidth mask
+          masked = mapped (integerBytes width width False) "_rawInteger"
+            (call "_rawInteger.and" [call "java.math.BigInteger" [quoted (show mask)]])
+          accepted = masked <> text ".filter" <> lambda "_offset"
+            (call "_offset.compareTo" [call "java.math.BigInteger" [quoted (show size)]] <> text " < 0")
+      in mapped accepted "_offset" (runtime "integer" [quoted name,
+        call "_offset.add" [call "java.math.BigInteger" [quoted (show lo)]] <> text ".toString"])
+    integerGen name lo hi signed = mapped (integerBytes lo hi signed) "_integer"
+      (runtime "integer" [quoted name,text "_integer.toString"])
+    integerBytes lo hi signed = mapped
       (call "Arb.list" [text "Arb.int(0 to 255)",text (show lo ++ " to " ++ show hi)]) "_raw" (statements
         [text "val _bytes = _raw.map(_.toByte).toArray",
          text "val _integer = " <> D.multiline (text "if (_bytes.isEmpty) java.math.BigInteger.ZERO else " <>
            call "java.math.BigInteger" ([text "1" | not signed] ++ [text "_bytes"])),
-         runtime "integer" [quoted name,text "_integer.toString"]])
+         text "_integer"])
     floating (SFloat name pattern) = runtime "floating" [quoted name,quoted pattern]
     floating _ = error "non-floating Scala boundary"
 

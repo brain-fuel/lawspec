@@ -557,6 +557,76 @@ strategy diagnostic and requires an unchanged isolated rerun. The six earlier
 sleep failures retain their separate passing reruns. None of these newly
 observed failures is rewritten as a pass or removed from final acceptance.
 
+### Bounded native generators and canonical package acceptance — 18 October 2026
+
+The `minor-bounded-package-consumers` increment corrects Kotlin/Scala generation
+for finite integer restrictions. The previous implementation chose only a byte
+width and signedness, losing the actual endpoints. For a nonempty interval
+`[lo, hi]`, the repair masks an unsigned draw to the next power-of-two interval,
+rejects offsets outside `hi - lo + 1`, and adds `lo`. Rejection accepts at least
+half the masked offsets. The existing native `map`/`filter` operations retain
+and validate shrink trees. Full machine ranges retain their original signed or
+unsigned generator, including signed shrinking toward zero.
+
+This uses the repository's existing Kotest and ScalaCheck-backed adapters,
+not another generator or execution engine. The pinned
+[Kotest 5.9.1 BigInt implementation](https://github.com/kotest/kotest/blob/v5.9.1/kotest-property/src/jvmMain/kotlin/io/kotest/property/arbitrary/bigint.kt)
+offers Int-sized ranges or bit counts, rather than full BigInteger intervals;
+its bit-count form does not retain the existing byte shrink tree. The repair
+composes the existing byte arbitraries with the documented
+[generator operations](https://kotest.io/docs/5.9.x/proptest/generator-operations.html).
+Scala continues to draw through its existing
+[ScalaCheck seed/generator integration](https://github.com/typelevel/scalacheck/blob/v1.20.0/core/shared/src/main/scala/org/scalacheck/Gen.scala).
+ScalaCheck provides `Choose[BigInteger]`; replacing the existing tree generator
+with a value-only draw would require a separate shrink adapter. This repair
+keeps the existing tree pipeline on both frameworks.
+The range-checking precedent remains
+[SPARK's proof of program integrity](https://learn.adacore.com/courses/intro-to-spark/chapters/03_Proof_Of_Program_Integrity.html).
+The code generator, framework adapters and runtime scalar validation remain
+trusted; these changes do not add solver integration or independently checked
+proof certificates, and do not weaken mandatory definition validation.
+
+Native regressions render the actual compiler generators into 26 cases across
+both machine widths. Each checks 200 seeds, exact replay, type/range validity,
+and up to 96 shrink nodes per sample, including narrow negative intervals,
+large unsigned values, distant exact integers, singletons and default signed
+shrinking to zero. Both Kotlin and Scala pass at both output profiles, with
+all three specification mutants rejected. An initial adapter-directory failure
+stopped before compilation and is retained. The first 24-case pilot passed;
+the added full-signed compatibility cases then caught shrinking toward the
+minimum integer instead of zero. That regression was repaired and the current
+26-case runs pass. This is sampled execution coverage, not exhaustive proof of
+the generators or universal laws.
+
+The six-law bounded-generation suite is registered for all seventeen targets at
+both profiles. A public WASM regression passes typed semantic correspondence,
+formatting idempotence, all seventeen emitters at both widths, honest no-layer
+evidence and mandatory division-by-zero rejection. Native and WASM builds,
+all 144 generated files, 237 boundary modules and integrity pass. The broader
+native matrix and complete response parity remain required.
+
+The package suite now declares the canonical profile and explicitly selects
+the six law layers preserving its previous behavior. A full seventeen-target
+generation preflight finds no diagnostics or recorded-stub changes. Current
+native JavaScript, Python, Java and TypeScript package runs pass, including
+adapter mutations and the stub-rejection check. The remaining targets and
+compact profiles are running. The original package implementations are retained;
+no signature mismatch check is skipped. Evidence is under
+`.artifacts/bounded-package-consumers/`.
+
+The F# harness subsequently passes an isolated unchanged rerun of its correct
+implementation and all seven mutants, including `outside`. All compiler and
+harness sources match `ad8bfc33`; the copied resolved CI executable is byte
+identical and predates the original failure. The original CI rebuilt its native
+executables after the initial frozen-image capture, so the rerun records that
+actual CI image separately. The prior MSBuild child-node failure did not repeat;
+its missing temporary failure files prevent a stronger claim about the cause.
+The failed receipt remains retained. This closes the isolated follow-up, not
+the original failed whole-run result. Evidence is under
+`.artifacts/fsharp-harness-recheck/` in the unchanged preflight worktree. Final
+combined acceptance remains open. No RC designation, tag or publication is
+claimed.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current
