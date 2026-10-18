@@ -19,7 +19,7 @@ import LawSpec.Common
 import LawSpec.Scalar (prettyScalar)
 import LawSpec.Backend (declarationName, prettyType)
 import LawSpec.Collections (collectionsUnit,canonicalCollectionValues,collectionOperations,canonicalCollectionOperation)
-import LawSpec.CaseFold (caseFoldUnit,caseFoldOperation)
+import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldOperation)
 
 type Names = [(C.Id,String)]
 

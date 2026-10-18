@@ -3,6 +3,7 @@
 module CaseFoldSpec (test_caseFold) where
 
 import Data.Char (chr)
+import Data.Either (isLeft,isRight)
 import Data.List (isInfixOf)
 import Numeric (readHex)
 import Test.Hspec
@@ -13,9 +14,20 @@ import LawSpec.Core.Evidence (obligationStatus,obligationStage,Status(..))
 import qualified LawSpec.Core.Verification as V
 import LawSpec.CaseFold (caseFoldSource,usesCaseFold)
 import LawSpec.CaseFoldData (caseFoldMappings)
+import LawSpec.Testing (planTestingWith)
+import LawSpec.CoreEmit (emitPlan)
 
 test_caseFold :: Spec
 test_caseFold = describe "pinned full default Unicode case folding" $ do
+  it "emits the compiler-owned text module through Gleam while rejecting user namespace collisions" $ do
+    let verify source outcome = case compileCoreCanonical 64 defaultGeneration [source] >>=
+          planTestingWith (V.Verification []) of
+          Left diagnostics -> expectationFailure (show diagnostics)
+          Right plan -> outcome (emitPlan "gleam" plan)
+    verify (Source "folding.lawspec" "unit folding\nfunction folded (text :: Text) -> Text is prelude.caseFold text end function")
+      (`shouldSatisfy` isRight)
+    verify (Source "intruder.lawspec" "unit lawspec.intruder\nfunction same (flag :: Bool) -> Bool is flag end function")
+      (`shouldSatisfy` isLeft)
   it "embeds every C/F mapping from Unicode 17 and excludes simple and Turkic overrides" $ do
     original <- readFile "vendor/unicode/17.0.0/CaseFolding.txt"
     let fields line = case break (== ';') line of

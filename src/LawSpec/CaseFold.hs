@@ -7,17 +7,9 @@ module LawSpec.CaseFold
   ) where
 
 import LawSpec.CaseFoldData (caseFoldMappings)
+import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldAlias,caseFoldOperation)
 import LawSpec.SourceText (sourceTokens,Token(..),TokenKind(..))
 import Data.List (intercalate)
-
-caseFoldUnit, caseFoldAlias :: String
-caseFoldUnit = "lawspec.text"
-caseFoldAlias = "lawspecText"
-
-caseFoldOperation :: String -> Maybe String
-caseFoldOperation "caseFold" = Just "textCaseFold"
-caseFoldOperation "textContains" = Just "textContains"
-caseFoldOperation _ = Nothing
 
 usesCaseFold :: String -> Bool
 usesCaseFold text = any (`elem` ["caseFold","textContains"]) tokens ||

@@ -532,6 +532,7 @@ library
       LawSpec.CapabilityCheck
       LawSpec.CaseFold
       LawSpec.CaseFoldData
+      LawSpec.CaseFoldNames
       LawSpec.Clojure.Bindings
       LawSpec.Clojure.Bridge
       LawSpec.Clojure.Emit

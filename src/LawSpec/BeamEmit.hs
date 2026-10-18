@@ -25,6 +25,7 @@ import qualified LawSpec.Resources as Resources
 import qualified LawSpec.Matchers as Matchers
 import qualified LawSpec.Collections as Collections
 import qualified LawSpec.Resilience as Resilience
+import LawSpec.CaseFoldNames (caseFoldUnit)
 import qualified LawSpec.BeamNativeBinding as Native
 import qualified LawSpec.ElixirNative as Elixir
 import qualified LawSpec.GleamNative as Gleam
@@ -229,7 +230,7 @@ validatePlan target plan = do
   unless (target /= "gleam" || all (\n -> (not ("lawspec@" `isPrefixOf` n) ||
     n `elem` [E.nativeModule target u | u <- units,
       Abilities.defaultUnit u || C.idText (C.unitId u) `elem`
-        [Resilience.resilienceUnit,Resources.resourcesUnit,Matchers.matchersUnit,Collections.collectionsUnit]]) &&
+        [Resilience.resilienceUnit,Resources.resourcesUnit,Matchers.matchersUnit,Collections.collectionsUnit,caseFoldUnit]]) &&
     n `notElem` [E.nativeModule target u ++ "@definitions" | u <- units]) natives)
     (Left "Gleam module names collide with generated modules or the lawspec namespace")
   unless (all ((<= 230) . length) (moduleNames ++ generated ++ natives) &&
