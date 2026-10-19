@@ -66,6 +66,13 @@ experiment did not fix the regression and has been removed. The original
 full-run receipts remain attached to their own immutable snapshot; the full
 compiler suite and combined final-snapshot acceptance are still required.
 
+The superseded `e3d77b95` run preserves 2,367 passed steps, six interrupted
+built-in-context steps and 220 steps not executed. Its inputs stayed unchanged.
+It was stopped only after the concrete repair passed the original regression,
+scoped semantic checks and all six affected native profiles. Interruption does
+not count as a completed verification result. The combined native/WASM package
+build succeeds; full acceptance of the combined candidate remains open.
+
 ### Minor-version preparation — 18 October 2026
 
 Version **0.25.0** is prepared for the authoring milestone, without an RC
