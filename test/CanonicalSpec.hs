@@ -1053,6 +1053,68 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       , "", "end unit" ]
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "indents continued applications inside a conditional without drifting" $ do
+    let input = source $ unlines
+          [ "function copy (value :: Bool) -> Bool is value end function"
+          , "function nested (value :: Bool) -> Bool is"
+          , "if value then"
+          , "copy"
+          , "(copy"
+          , "value)"
+          , "else"
+          , "false"
+          , "end if"
+          , "end function" ]
+        formatted = formatSource input
+        output = content formatted
+        significant text = [(tokenKind token, tokenText token) |
+          token <- sourceTokens text, tokenKind token /= TriviaToken]
+    compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
+    output `shouldSatisfy` isInfixOf
+      "  if value then\n    copy\n      (copy\n        value)\n  else\n    false\n  end if\nend function"
+    significant output `shouldBe` significant (content input)
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "keeps long phrase declarations together and indents a continued expectation" $ do
+    let heading = "law \"|a deliberately long requirement name whose declaration still reads as one complete heading| is"
+        input = source $ unlines
+          [ heading
+          , "definition: for all (flag :: Bool) => flag = flag end for all end definition"
+          , "example \"|one outcome|:"
+          , "flag = true"
+          , "expect"
+          , "flag = true"
+          , "end example"
+          , "end law" ]
+        formatted = formatSource input
+        output = content formatted
+    compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
+    lines output `shouldSatisfy` elem heading
+    output `shouldSatisfy` isInfixOf "    expect\n      flag = true\n  end example"
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "aligns continued record fields and closers around a nested conditional" $ do
+    let input = source $ unlines
+          [ "type Flags is a record{flag :: Bool} end type"
+          , "law same is"
+          , "definition:"
+          , "Flags record{flag = true} ="
+          , "Flags record{"
+          , "flag = if true then"
+          , "true"
+          , "else"
+          , "true"
+          , "end if"
+          , "}"
+          , "end definition"
+          , "end law" ]
+        formatted = formatSource input
+        output = content formatted
+    compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
+    output `shouldSatisfy` isInfixOf
+      "    Flags record{flag = true} =\n      Flags record{\n        flag = if true then\n          true\n        else\n          true\n        end if\n      }\n  end definition"
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "aligns expectation table headers and indents their rows" $ do
     let input = source $ unlines
           [ "law same is"

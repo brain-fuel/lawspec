@@ -10,6 +10,19 @@ Formatting is built into the compiler: it is deterministic, identical in the
 native and WebAssembly builds, and never downloads or runs an external
 formatter.
 
+## LawSpec source
+
+`lawspec fmt [paths...]` formats checked source with two-space indentation and
+an 80-column target. `--check` reports files that need formatting. The CLI and
+editor share the compiler's parsed block and expression inventory, including
+continuation indentation for nested applications and expectations.
+
+Formatting preserves comments, literal values, phrase spelling, section order
+and the author's valid annotation, equality and infix wording. Long literals and
+declaration names can exceed the column target. A phrase declaration keeps its
+name together with its declaration keyword and `is`. Repeated formatting leaves
+the same result.
+
 ## Source highlighting
 
 The documentation site and editor use the same TextMate grammar and pinned

@@ -19,6 +19,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Formatter source spans survive wrapping and indentation changes, preserving
   line-scoped generator expressions and phrase names on repeated formatting.
+- Source formatting indents continued applications and expectations, aligns
+  record fields and closers, and keeps long phrase declarations together.
+- Both Chapter 6 entry points use the current grammar with readable nested
+  cases, conditionals, records and expectation tables.
 - Harness strategies expand parameterized refinements and retain dependent
   predicates during generation and shrinking.
 - Generated Kotlin registrations fit JVM method limits, and Haskell test

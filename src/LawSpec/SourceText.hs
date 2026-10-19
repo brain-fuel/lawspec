@@ -63,11 +63,18 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
       (index,token) <- zip [0..] originalTokens,
       offset (spanStart (syntaxSpan node)) <= tokenOffset token,
       tokenOffset token < offset (spanEnd (syntaxSpan node))]
+    expressionRanges = Map.fromListWith max
+      [(index-length (filter (<index) removed), finish-length (filter (<finish) removed)) |
+        node <- nodes, take 11 (syntaxKind node) == "expression." ||
+          syntaxKind node `elem` ["expectation","table-expectation","table-row"],
+        Just index <- [Map.lookup (offset (spanStart (syntaxSpan node))) indices],
+        let finish = maybe (length originalTokens) snd
+              (Map.lookupGE (offset (spanEnd (syntaxSpan node))) indices)]
     stabilize count text
       | count >= (8 :: Int) = text
       | otherwise = let next = layout text in
           if next == text then next else stabilize (count+1) next
-    layout text = unlines (concat (snd (mapAccumL render ([],[]) numbered)))
+    layout text = unlines (concat (snd (mapAccumL render ([],[],Map.empty,False) numbered)))
       where
         allTokens = sourceTokens text
         code = significant text
@@ -79,7 +86,7 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
         protected = [(tokenOffset token,tokenOffset token+length (tokenText token)) |
           token <- allTokens,tokenKind token `elem` [LiteralToken,PhraseToken],
           '\n' `elem` tokenText token]
-        render (stack,braces) (start,value,local) =
+        render (stack,braces,anchors,afterEquals) (start,value,local) =
           let first = case local of entry:_ -> Just entry; [] -> Nothing
               word = maybe "" (tokenText . snd) first
               closing = first >>= \(index,_) -> case Map.lookup index rebased of
@@ -89,12 +96,11 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
               branch = word `elem` ["when","otherwise"] && any ((==CaseBlock) . fst) stack
               branchVirtual = if branch && any (== (CaseBlock,True)) (take 1 stack) then 1 else 0
               blockDepth = length [() | (kind,_) <- stack,kind /= UnitBlock]
-              braceDepth = length (filter (== "{") braces) - if word == "}" then 1 else 0
               tableHeader = case stack of
                 (TableBlock,_):_ -> word == "expect" ||
                   take 2 (map (tokenText . snd) local) == ["in","table"]
                 _ -> False
-              depth = blockDepth + braceDepth + virtual - branchVirtual -
+              structuralDepth = blockDepth + virtual - branchVirtual -
                 (if tableHeader then 1 else 0) - case closing of
                 Just CaseBlock -> 1 + if take 1 stack == [(CaseBlock,True)] then 1 else 0
                 Just UnitBlock -> 0
@@ -102,6 +108,29 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
                 Nothing | word == "else" && any ((==IfBlock) . fst) stack -> 1
                         | word == "with" && any ((==ParBlock) . fst) stack -> 1
                         | otherwise -> 0
+              -- Delimiters remember the indentation of their opening line.
+              -- Nested keyword blocks still add their own levels; a record
+              -- on a continued line keeps its fields and closer aligned.
+              baseDepth = case (word,braces) of
+                ("}",(opening,atDepth):_) -> opening + structuralDepth-atDepth
+                _ -> maximum (structuralDepth :
+                  [opening+1+structuralDepth-atDepth | (opening,atDepth) <- braces])
+              -- Continued expressions get one additional level, even outside
+              -- delimiters. Token ordinals keep this stable after wrapping.
+              -- A surrounding expression cannot indent a nested block's
+              -- branches or closers; their own parsed structure owns layout.
+              active = case first of
+                Just (index,_) -> Map.filterWithKey (\begin (finish,anchor) ->
+                  begin < index && index < finish && anchor >= baseDepth) anchors
+                Nothing -> Map.empty
+              continuation = closing == Nothing && not branch &&
+                word `notElem` ["else","with","expect","in","row", ")", "]", "}"] &&
+                not (any (\(index,_) -> case Map.lookup index rebased of
+                  Just (True,_) -> True
+                  _ -> False) local)
+              depth | continuation && (afterEquals || not (Map.null active)) =
+                        1 + maximum (baseDepth : map snd (Map.elems active))
+                    | otherwise = baseDepth
               branchStack = if branch then markBranch stack else stack
               final = foldl apply branchStack local
               literalLine = any (\(a,b) -> a < start && start < b) protected
@@ -116,11 +145,25 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
                      | any ((==ScenarioBlock) . fst) stack = [indented]
                      | any (\(index,_) -> index `Set.member` lineExpressions || index `Set.member` quotedNames) local = [indented]
                      | otherwise = wrap indented
+              finalStructuralDepth = length [() | (kind,_) <- final,kind /= UnitBlock] +
+                length [() | (CaseBlock,True) <- final]
               finalBraces = foldl (\current (_,token) -> case tokenText token of
-                "{" -> (if null current && any (\(index,_) -> Map.lookup index rebased == Just (True,TypeBlock)) local then "" else "{"):current
+                "{" -> (depth+max 0 (length current-length braces),finalStructuralDepth):current
                 "}" -> drop 1 current
                 _ -> current) braces local
-          in ((final,finalBraces),output)
+              retained = case first of
+                Just (index,_) -> Map.filter ((>index) . fst) anchors
+                Nothing -> anchors
+              newAnchors = foldl (\current (index,_) -> case Map.lookup index expressionRanges of
+                Just finish -> Map.insert index (finish,depth +
+                  if Just index /= fmap fst first && (branch ||
+                    word `elem` ["function","procedure","operation","let","strategy"])
+                    then 1 else 0) current
+                Nothing -> current) retained local
+              nextEquals = case reverse local of
+                (_,token):_ -> tokenText token == "="
+                [] -> afterEquals
+          in ((final,finalBraces,newAnchors,nextEquals),output)
         apply stack (index,_) = case Map.lookup index rebased of
           Just (True,kind) -> (kind,False):stack
           Just (False,_) -> drop 1 stack
@@ -136,7 +179,7 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
       | otherwise = case reverse candidates of
           [] -> [value]
           split:_ -> let consumed = split + length (takeWhile isSpace (drop split value))
-                         rest = replicate indentation ' ' ++ drop consumed value
+                         rest = replicate (indentation+2) ' ' ++ drop consumed value
                      in take split value : wrap rest
       where
         indentation = length (takeWhile isSpace value)
@@ -145,9 +188,11 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
           tokenKind token == TriviaToken, tokenOffset token > indentation,
           tokenOffset token <= 80, safeBoundary index]
         safeBoundary index = case
-          (reverse [tokenText token | token <- take index lexed,tokenKind token /= TriviaToken],
-           [tokenText token | token <- drop (index+1) lexed,tokenKind token /= TriviaToken]) of
-          (left:_,right:_) -> (left,right) `notElem` protectedPairs
+          (reverse [token | token <- take index lexed,tokenKind token /= TriviaToken],
+           [token | token <- drop (index+1) lexed,tokenKind token /= TriviaToken]) of
+          (left:_,right:_) -> (tokenText left,tokenText right) `notElem` protectedPairs &&
+            not (tokenText left `elem` ["law","function","procedure"] && tokenKind right == PhraseToken) &&
+            not (tokenKind left == PhraseToken && tokenText right == "is")
           _ -> True
         protectedPairs = concatMap (\phrase -> zip phrase (drop 1 phrase))
           (["end":words (blockLabel kind) | kind <- blockKinds] ++
