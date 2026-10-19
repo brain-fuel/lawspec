@@ -24,7 +24,7 @@ end function
 law "|tuple dimensions determine orientation| is
   description:
     "Width comes first and height second in a picture's dimensions."
-  end
+  end description
   definition:
     for all (picture of type Picture) =>
       orientation picture must be
@@ -36,12 +36,13 @@ law "|tuple dimensions determine orientation| is
             end if
           end if
       end case
-    end
-  end
+    end for all
+  end definition
   expect orientation picture = expected
   in table (picture, expected):
     row Picture record{fileName = "wide.jpg", dimensions = (12, 8)}, Landscape
     row Picture record{fileName = "tall.jpg", dimensions = (8, 12)}, Portrait
     row Picture record{fileName = "square.jpg", dimensions = (10, 10)}, Square
-  end
-end
+  end table
+end law
+end unit

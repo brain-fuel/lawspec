@@ -1,6 +1,6 @@
 @@ src/Example/Gadt.cs
 <<<<<<<
-Expr<bool>.Negate n => !EvalTruth(n.operand),
+Expr<bool>.Negate n => !EvalTruth(n.value),
 =======
-Expr<bool>.Negate n => EvalTruth(n.operand),
+Expr<bool>.Negate n => EvalTruth(n.value),
 >>>>>>>

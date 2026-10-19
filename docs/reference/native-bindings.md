@@ -14,8 +14,8 @@ generated code does with it. For step-by-step use, see
 ## Configuration
 
 Bindings are set per target in `lawspec.json` (`targets[].nativeBindings`) or in
-a compiler request (`nativeBindings`): schema 5 for the RC1 profile, or schema 4
-for legacy migration input. The fields include `types`, `functions`, `generators`,
+a compiler request (`nativeBindings`): API schema 5 and the current language
+profile. The fields include `types`, `functions`, `generators`,
 `rustCrate`, `goImports` and `erlangIncludes`; their shapes are in the
 [API reference](api.md#native-bindings).
 
@@ -56,30 +56,10 @@ duplicate overrides and malformed identifiers are errors. A collision after
 overrides remains an error; generated public names never acquire automatic
 suffixes. A name override supplies no native implementation and creates no
 native bridge on its own. The compiler requires schema 5 and the explicit
-`1.0-rc.1` profile for this field. The `rc1-native-names` acceptance suite checks
+`1.0-rc.2` profile for this field. The `rc1-native-names` acceptance suite checks
 two colliding source spellings with distinct behavior on every target.
 
-## Migrating 0.24 bindings
-
-The read-only migration report checks the actual bindings for every configured
-target. It shows binding changes separately from source edits and target
-execution. A single alternative's payload label changes to `value` while its
-native field stays the same. For example, an old mapping
-
-```json
-{"field": "flag", "native": "stored"}
-```
-
-becomes
-
-```json
-{"field": "value", "native": "stored"}
-```
-
-The application still supplies `stored`. The proposed configuration contains
-this explicit change only after the compiler accepts it. Nominal record field
-mappings retain their names. A failed target blocks project-wide binding
-correspondence without discarding other targets' diagnostic results.
+## Structural payload layouts
 
 Grouped payloads use explicit structural paths and native argument positions:
 
@@ -95,9 +75,7 @@ nominal unwrapping or implicit width conversion. Configuration array order does
 not change constructor argument order. A path may stop at a whole typed field;
 its existing native conversion still applies.
 
-The migration report derives these layouts from the original resolved native
-argument order, including pre-existing explicit positions and nested paths.
-Without explicit positions it retains constructor declaration order. Python, JavaScript, TypeScript, Java, Kotlin, Scala, Rust, Go, Haskell,
+Bindings specify native argument order explicitly through positions and nested paths. Python, JavaScript, TypeScript, Java, Kotlin, Scala, Rust, Go, Haskell,
 F#, Swift, Erlang, Elixir, Gleam and Groovy's Java bridge currently pack and unpack
 them. JVM codecs use
 the resolver's packing tree and ordinary schema construction. Rust derives moves and
@@ -128,15 +106,6 @@ reject nested layouts explicitly. Target-independent
 configuration correspondence does not establish target generation or native
 behavior.
 Indexed and existential constructor layouts remain unsupported.
-
-Codecs receiving a changed logical representation and factories
-over changed generated data also require independent correspondence. Existing
-assumptions remain assumptions. Binding proposals do not execute native code,
-prove laws, validate a whole project, or authorize writing by themselves.
-
-See [the migration API](api.md#native-binding-migration-proposals) for the
-compiler-owned proposal format and [source migration](../explanation/api-migration.md#source-migration-from-024)
-for the remaining project-wide gates.
 
 ## Async adapters
 

@@ -1,4 +1,4 @@
-expect: the fee is never negative [native]
+expect: the fee is never negative| [native]
 @@ src/Example/Abilities.hs
 <<<<<<<
   , Abilities.fee = P.pure 25

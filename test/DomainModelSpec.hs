@@ -1,6 +1,7 @@
 -- | Domain modelling: wrappers and workflows.
 module DomainModelSpec (test_wrappersAndWorkflowsElaborateToCheckedLaws) where
 
+import FixtureSource (extendUnit)
 import Data.List (isInfixOf)
 import Test.Hspec
 import qualified LawSpec.Core as C
@@ -12,18 +13,19 @@ import LawSpec.Model hiding (Expectation)
 orders :: String
 orders = unlines
   [ "unit example.orders"
-  , "wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end"
-  , "wrapper OrderId is Text where prelude.length value > 0 end"
-  , "wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end"
-  , "type UnvalidatedOrder is UnvalidatedOrder id :: Text quantity :: Int32 end"
-  , "type ValidatedOrder is ValidatedOrder id :: OrderId quantity :: UnitQuantity end"
-  , "type PricedOrder is PricedOrder id :: OrderId quantity :: UnitQuantity total :: Int64 end"
-  , "type OrderError is | InvalidOrderId | InvalidQuantity | PriceTooHigh end"
-  , "type Receipt is Receipt order :: PricedOrder end"
-  ]
+   ++ "\n", ""
+  , "wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end wrapper"
+  , "wrapper OrderId is Text where prelude.length value > 0 end wrapper"
+  , "wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end wrapper"
+  , "type UnvalidatedOrder is a record{  id :: Text quantity :: Int32} end type\n"
+  , "type ValidatedOrder is a record{  id :: OrderId quantity :: UnitQuantity} end type\n"
+  , "type PricedOrder is a record{  id :: OrderId quantity :: UnitQuantity total :: Int64} end type\n"
+  , "type OrderError is one of | InvalidOrderId | InvalidQuantity | PriceTooHigh end type\n"
+  , "type Receipt is a record{  order :: PricedOrder} end type\n"
+  , "\nend unit" ]
 
 compileOrders :: String -> Either [Diagnostic] ([Unit], [Expanded])
-compileOrders extra = compile [Source "orders.lawspec" (orders ++ extra)]
+compileOrders extra = compile [Source "orders.lawspec" (extendUnit orders $ extra)]
 
 rejects :: String -> String -> Expectation
 rejects fragment extra = case compileOrders extra of
@@ -35,7 +37,7 @@ placeOrder = unlines
   [ "workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is"
   , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
   , "  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder"
-  , "end" ]
+  , "end"  ++ " workflow"]
 
 -- | Wrappers and workflows are how a domain is written down, and they are only
 -- worth having if each elaborates to constructs Core already checks.
@@ -54,8 +56,8 @@ test_wrappersAndWorkflowsElaborateToCheckedLaws = describe "domain modeling" $ d
           map functionName (functionDefinitions u) `shouldSatisfy` any (isInfixOf "valueOfUnitQuantity")
           [dataTypeParameters d | d <- dataTypes u, dataTypeName d == "NonEmptyList"] `shouldBe` [["a"]]
     it "accept valid construction in examples and reject invalid construction" $ do
-      let law q = "law `q` is definition is `for all` (q :: UnitQuantity) . valueOfUnitQuantity q >= 1 = true end\n" ++
-                  "example `e` is q = UnitQuantity " ++ q ++ " expect valueOfUnitQuantity q = " ++ q ++ " end end\n"
+      let law q = "law \"|q| is definition: for all (q :: UnitQuantity) => valueOfUnitQuantity q >= 1 = true end for all end definition\n" ++
+                  "example e: q = UnitQuantity " ++ q ++ " expect valueOfUnitQuantity q = " ++ q ++ " end example end law\n"
       compileOrders (law "1000") `shouldSatisfy` either (const False) (const True)
       rejects "field refinement failed" (law "0")
     it "record construction invariants as runtime-checked evidence" $
@@ -66,7 +68,7 @@ test_wrappersAndWorkflowsElaborateToCheckedLaws = describe "domain modeling" $ d
           length construction `shouldBe` 3
           map obligationStatus construction `shouldSatisfy` all (== RuntimeChecked)
     it "reject a wrapper that duplicates a data type" $
-      rejects "duplicate data type: OrderError" "wrapper OrderError is Int32 end\n"
+      rejects "duplicate data type: OrderError" "wrapper OrderError is Int32 end wrapper\n"
 
   describe "workflows" $ do
     it "declare the steps, define the workflow and add its laws" $
@@ -85,45 +87,45 @@ test_wrappersAndWorkflowsElaborateToCheckedLaws = describe "domain modeling" $ d
         [ "workflow checkout :: UnvalidatedOrder -> Either _ PricedOrder is"
         , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
         , "  priceOrder :: ValidatedOrder -> Either Text PricedOrder"
-        , "end" ]) of
+        , "end"  ++ " workflow"]) of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right (units, _) ->
           [map dataConstructorName (dataTypeConstructors d) | d <- dataTypes (head units), dataTypeName d == "CheckoutError"]
             `shouldBe` [["CheckoutValidateOrderFailed", "CheckoutPriceOrderFailed"]]
     it "map a step's error into a declared error type" $
       compileOrders (unlines
-        [ "definition describe (t :: Text) :: OrderError is PriceTooHigh end"
+        [ "function describe (t :: Text) -> OrderError is PriceTooHigh end function\n"
         , "workflow checkout :: UnvalidatedOrder -> Either OrderError PricedOrder is"
         , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
         , "  priceOrder :: ValidatedOrder -> Either Text PricedOrder"
         , "  mapError describe"
-        , "end" ]) `shouldSatisfy` either (const False) (const True)
+        , "end workflow" ]) `shouldSatisfy` either (const False) (const True)
     it "add a recovery law for orElse" $
       case compileOrders (unlines
         [ "workflow checkout :: UnvalidatedOrder -> Either OrderError ValidatedOrder is"
         , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
         , "  orElse retryOrder"
         , "end"
-        , "retryOrder :: OrderError -> Either OrderError ValidatedOrder" ]) of
+         ++ " workflow", "retryOrder :: OrderError -> Either OrderError ValidatedOrder" ]) of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right (_, expanded) -> map name expanded `shouldContain` ["checkout recovers with retryOrder"]
     it "compose total steps without Either" $
       compileOrders (unlines
         [ "workflow receipt :: PricedOrder -> Receipt is"
         , "  issue :: PricedOrder -> Receipt"
-        , "end" ]) `shouldSatisfy` either (const False) (const True)
+        , "end"  ++ " workflow"]) `shouldSatisfy` either (const False) (const True)
     it "compose total steps after fallible steps" $
       compileOrders (unlines
         [ "workflow checkout :: UnvalidatedOrder -> Either OrderError Receipt is"
         , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
         , "  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder"
         , "  issue :: PricedOrder -> Receipt"
-        , "end" ]) `shouldSatisfy` either (const False) (const True)
+        , "end"  ++ " workflow"]) `shouldSatisfy` either (const False) (const True)
     it "share a step declared with the same type" $
       compileOrders (placeOrder ++ unlines
         [ "workflow validate :: UnvalidatedOrder -> Either OrderError ValidatedOrder is"
         , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
-        , "end" ]) `shouldSatisfy` either (const False) (const True)
+        , "end"  ++ " workflow"]) `shouldSatisfy` either (const False) (const True)
 
     describe "diagnostics" $ do
       it "reject a step that receives the wrong state" $
@@ -131,73 +133,73 @@ test_wrappersAndWorkflowsElaborateToCheckedLaws = describe "domain modeling" $ d
           [ "workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "  priceOrder :: UnvalidatedOrder -> Either OrderError PricedOrder"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject steps with different error types" $
         rejects "priceOrder fails with Text but the workflow fails with OrderError; map it with mapError" (unlines
           [ "workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "  priceOrder :: ValidatedOrder -> Either Text PricedOrder"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject a total workflow with a fallible step" $
         rejects "validateOrder can fail, so the workflow must return Either" (unlines
           [ "workflow placeOrder :: UnvalidatedOrder -> PricedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject a workflow whose result differs from its stages" $
         rejects "but the workflow returns" (unlines
           [ "workflow placeOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject mapError before any fallible stage" $
         rejects "must follow a stage that can fail" (unlines
-          [ "definition describe (t :: Text) :: OrderError is PriceTooHigh end"
+          [ "function describe (t :: Text) -> OrderError is PriceTooHigh end function\n"
           , "workflow placeOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder is"
           , "  mapError describe"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject steps with more than one input" $
         rejects "must take exactly one input" (unlines
           [ "workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Int32 -> Either OrderError ValidatedOrder"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject a step redeclared with a different type" $
         rejects "declared with two different types" (placeOrder ++ unlines
           [ "workflow other :: UnvalidatedOrder -> ValidatedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> ValidatedOrder"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject a timeout on a synchronous step" $
         rejects "timeout needs an asynchronous step" (unlines
           [ "workflow placeOrder :: UnvalidatedOrder -> Either _ ValidatedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "    timeout 2s"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject a hedge on a synchronous step" $
         rejects "hedge needs an asynchronous step" (unlines
           [ "workflow placeOrder :: UnvalidatedOrder -> Either _ ValidatedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "    hedge 50ms"
-          , "end" ])
+          , "end"  ++ " workflow"])
       it "reject a hedge of a single attempt" $
         rejects "hedge needs at least 2 attempts" (unlines
           [ "async validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "workflow placeOrder :: UnvalidatedOrder -> Either _ ValidatedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "    hedge 50ms max 1"
-          , "end" ])
+          , "end workflow" ])
     describe "all groups" $ do
       let group prefix = unlines
             [ prefix ++ "checkId :: UnvalidatedOrder -> Either Text UnvalidatedOrder"
             , prefix ++ "checkQuantity :: UnvalidatedOrder -> Either Text UnvalidatedOrder"
-            , "definition firstOrder (a :: UnvalidatedOrder) (b :: UnvalidatedOrder) :: UnvalidatedOrder is a end"
+            , "function firstOrder (a :: UnvalidatedOrder) (b :: UnvalidatedOrder) -> UnvalidatedOrder is a end function\n"
             , "workflow check :: UnvalidatedOrder -> Either _ UnvalidatedOrder is"
             , "  all accumulate"
             , "    then checkId"
             , "    then checkQuantity"
-            , "  end"
+            , "  end all"
             , "  combine firstOrder"
-            , "end" ]
+            , "end workflow" ]
           elaborated prefix = case compileOrders (group prefix) of
             Left diagnostics -> Left (show diagnostics)
             Right (units, _) -> Right (head units)
@@ -221,6 +223,6 @@ test_wrappersAndWorkflowsElaborateToCheckedLaws = describe "domain modeling" $ d
         , "workflow placeOrder :: UnvalidatedOrder -> Either _ ValidatedOrder is"
         , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
         , "    hedge 50ms max 3"
-        , "end" ]) of
+        , "end workflow" ]) of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right _ -> pure ()

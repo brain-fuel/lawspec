@@ -17,7 +17,7 @@ end type
 
 function containsProfanity (input of type Text) -> Bool is
   let folded = prelude.caseFold input in
-  prelude.any (prelude.textContains folded) ["shit", "piss", "fuck"]
+  prelude.any (prelude.textContains folded) ["shit", "piss", "fuck"] end let
 end function
 
 function bannerDecision (picture of type Picture) -> BannerDecision is
@@ -36,13 +36,13 @@ end function
 law "|prohibited filenames are rejected before checking dimensions| is
   description:
     "A prohibited fragment rejects the filename at every size. Clean banners need at least 1200 pixels of width and 300 pixels of height."
-  end
+  end description
   definition:
     for all (picture of type Picture) =>
       containsProfanity picture.fileName implies
       bannerDecision picture must be Rejected picture.fileName
-    end
-  end
+    end for all
+  end definition
   expect bannerDecision picture = expected
   in table (picture, expected):
     row Picture record{fileName = "banner.png", dimensions = record{width =
@@ -59,5 +59,6 @@ law "|prohibited filenames are rejected before checking dimensions| is
         height = 1}}, Rejected "ſhit.png"
     row Picture record{fileName = "fucK.png", dimensions = record{width = 1,
         height = 1}}, Rejected "fucK.png"
-  end
-end
+  end table
+end law
+end unit

@@ -28,22 +28,23 @@ end procedure
 law "|large charges fail as too large| is
   definition :
     for all (cents :: Int32 where cents > 100000) => charge cents fails with
-      TooLarge _ end
-  end
-end
+      TooLarge _ end for all
+  end definition
+end law
 
 law "|negative charges are declined, and say why| is
   definition :
     for all (cents :: Int32 where cents < 0) =>
       charge cents fails with Declined record{ message = _} message contains
-    "negative" end
-  end
+    "negative" end for all
+  end definition
   example "|minus one| :
     cents = -1
     expect charge cents fails with Declined record{ message = _}
     expect !(charge cents fails with Blocked)
-  end
-end
+  end example
+end law
+end unit
 ```
 
 ## `fails with`
@@ -80,9 +81,9 @@ law "|refunds over the limit are too large| is
   definition:
     for all (cents :: Int32 where cents > 5000) =>
       refund cents fails with TooLarge 5000
-    end
-  end
-end
+    end for all
+  end definition
+end law
 ```
 
 The native code raises the runtime's `Fail` with a value of the failure

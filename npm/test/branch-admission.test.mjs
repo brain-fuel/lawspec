@@ -8,7 +8,7 @@ import {explainLaw} from '../explain.mjs';
 const compiler=await createCompiler();
 const content=await readFile(new URL('../../test/fixtures/canonical-branch-admission.lawspec',import.meta.url),'utf8');
 const sources=[{path:'admission.lawspec',content}];
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive','examples']}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['exhaustive','examples']}};
 const targets=['java','python','javascript','typescript','go','haskell','kotlin','rust','erlang','elixir','gleam','fsharp','csharp','scala','groovy','clojure','swift'];
 const privateNames=/selection-row:|selection-branch-check:|_lawspecUnreachableBranchResult_/;
 
@@ -39,10 +39,15 @@ test('discarded bodies, guards and fallbacks remain typed without optional law v
     selected('Bool','when true then true when false then false otherwise absent'),
     selected('Bool','when it matches bound then bound otherwise bound'),
     selected('UInt8','when #any then 0 when true then 256'),
-    'function selected (value of type a) -> Bool is first matching case of value: when #any then true when it matches bound if bound = bound then true end case end function',
-    'type Value (a of type Type) is one of | Number of type Integer where a = Integer | Truth of type Bool where a = Bool end type\nfunction read (value of type Value a) -> a is first matching case of value: when Number n then n when Truth b then b when Number n then false end case end function',
-    'procedure selected (value of type Bool) -> Bool is first matching case of value: when #any then true when true if 7 then false end case end procedure',
-    'law requirement is definition: for all (value of type Bool) => first matching case of value: when #any then true when true then absent end case end end end',
+    `function selected (value of type a) -> Bool is first matching case of value: when #any then true when it matches bound if bound = bound then true end case end function
+`,
+    `type Value (a of type Type) is one of | Number of type Integer where a = Integer | Truth of type Bool where a = Bool end type
+function read (value of type Value a) -> a is first matching case of value: when Number n then n when Truth b then b when Number n then false end case end function
+`,
+    `procedure selected (value of type Bool) -> Bool is first matching case of value: when #any then true when true if 7 then false end case end procedure
+`,
+    `law requirement is definition: for all (value of type Bool) => first matching case of value: when #any then true when true then absent end case end for all end definition end law
+`,
   ];
   for(const machineBits of [32,64])for(const body of invalid)for(const method of ['check','expand']) {
     const result=await compiler[method]({...options,verification:{layers:[]},machineBits,

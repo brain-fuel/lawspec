@@ -8,7 +8,7 @@ module LawSpec.CaseFold
 
 import LawSpec.CaseFoldData (caseFoldMappings)
 import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldAlias,caseFoldOperation)
-import LawSpec.SourceText (sourceTokens,Token(..),TokenKind(..))
+import LawSpec.SourceTokens (sourceTokens,Token(..),TokenKind(..))
 import Data.List (intercalate)
 
 usesCaseFold :: String -> Bool
@@ -24,22 +24,23 @@ usesCaseFold text = any (`elem` ["caseFold","textContains"]) tokens ||
 -- Slicing and portable text ordering retain their existing checked semantics.
 caseFoldSource :: String
 caseFoldSource = unlines
-  [ "unit " ++ caseFoldUnit
-  , "definition textContains (whole :: Text) (part :: Text) :: Bool is"
+  [ "unit lawspec.text"
+  , "import lawspec.collections (Ordering)"
+  , "function textContains (whole :: Text) (part :: Text) -> Bool is"
   , "  prelude.contains whole part"
-  , "end"
-  , "definition textCaseFold (text :: Text) :: Text is"
+  , "end function"
+  , "function textCaseFold (text :: Text) -> Text is"
   , "  textFoldSpan text 0 (prelude.length text)"
-  , "end"
-  , "definition textFoldSpan (text :: Text) (start :: Integer) (count :: Integer) :: Text is"
+  , "end function"
+  , "function textFoldSpan (text :: Text) (start :: Integer) (count :: Integer) -> Text is"
   , "  if count <= 0 then \"\" else"
-  , "  if count == 1 then textFoldPoint (prelude.slice start (start + 1) text) else"
+  , "  if count = 1 then textFoldPoint (prelude.slice start (start + 1) text) else"
   , "    let half = prelude.quot count 2 in"
   , "    textFoldSpan text start half ++ textFoldSpan text (start + half) half ++"
-  , "      (if prelude.rem count 2 == 0 then \"\" else"
-  , "        textFoldPoint (prelude.slice (start + 2 * half) (start + 2 * half + 1) text))"
-  , "end"
-  ] ++ intercalate "\n" (definitions "textFoldPoint" caseFoldMappings)
+  , "      (if prelude.rem count 2 = 0 then \"\" else"
+  , "        textFoldPoint (prelude.slice (start + 2 * half) (start + 2 * half + 1) text) end if) end let end if end if"
+  , "end function"
+  ] ++ intercalate "\n" (definitions "textFoldPoint" caseFoldMappings) ++ "\nend unit\n"
   where
     -- Keep each generated method small enough for JVM bytecode limits.
     definitions name pairs
@@ -49,9 +50,9 @@ caseFoldSource = unlines
             definition name (branch key value (name ++ "Left point") (name ++ "Right point")) :
             definitions (name ++ "Left") before ++ definitions (name ++ "Right") after
           _ -> []
-    definition name body = "definition " ++ name ++ " (point :: Text) :: Text is\n" ++ body ++ "\nend"
-    branch key value before after = "match prelude.compare point " ++ show key ++ " with\n" ++
-      "| Less -> " ++ before ++ "\n| Equal -> " ++ show value ++ "\n| Greater -> " ++ after ++ "\nend"
+    definition name body = "function " ++ name ++ " (point :: Text) -> Text is\n" ++ body ++ "\nend function"
+    branch key value before after = "first matching case of prelude.compare point " ++ show key ++ ":\n" ++
+      "when Less then " ++ before ++ "\nwhen Equal then " ++ show value ++ "\nwhen Greater then " ++ after ++ "\nend case"
     lookupTree [] = "point"
     lookupTree pairs = case splitAt (length pairs `div` 2) pairs of
       (before,(key,value):after) -> branch key value (lookupTree before) (lookupTree after)

@@ -91,14 +91,15 @@ unit example.tallies
 
 ability Counter is
 bump :: Int64 -> Int64
-end
+end ability
 
 handler tally for Counter with state total :: Int64 start 0 is
-bump n is
+operation bump n is
 ~total := (if n >= 0 && n <= 1000000 && total <= 1000000 - n then prelude.Int64
 (total + n) else total end if); total
-end
-end
+end operation
+end handler
+end unit
 ```
 
 Each target generates an entry point that makes the handler with its start

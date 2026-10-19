@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/business-demonstrations.test.mjs by lawspec-dev generate. Do not edit.
+import {semanticFacts} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
@@ -7,7 +8,7 @@ import {targets} from '../templates.mjs';
 import {explainLaw} from '../explain.mjs';
 
 const compiler=await createCompiler();
-const canonical={schemaVersion:5,languageProfile:'1.0-rc.1'};
+const canonical={schemaVersion:5,languageProfile:'1.0-rc.2'};
 const source=async name=>({path:`examples/rc1/${name}.lawspec`,content:await readFile(
   new URL(`../examples/rc1/${name}.lawspec`,import.meta.url),'utf8')});
 
@@ -22,17 +23,22 @@ test('refund and stateful order examples retain their obligations, exact amounts
     const formatted=await compiler.format(input);assert.deepEqual(formatted.diagnostics,[]);
     const again=await compiler.format({...input,sources:formatted.formattedSources});
     assert.deepEqual(again.formattedSources,formatted.formattedSources);
-    const original=await compiler.check({...input,migrationSnapshot:true});
-    const checked=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
+    const original=await compiler.check({...input});
+    const checked=await compiler.check({...input,sources:formatted.formattedSources});
     assert.deepEqual(checked.diagnostics,[]);
-    assert.deepEqual(checked.migrationSemantics,original.migrationSemantics);
+    assert.deepEqual(semanticFacts(checked),semanticFacts(original));
     const examples=await compiler.planGeneration({...input,target:'javascript',verification:{layers:['examples']}});
     assert.deepEqual(examples.diagnostics,[]);assert.equal(examples.tests.length,4);
     assert.equal(examples.tests.reduce((sum,entry)=>sum+entry.coverage.cases,0),40);
     const views=['developer','business','formal','evidence'].map(view=>explainLaw(result.laws[0],result,view));
     assert.ok(views.every(view=>JSON.stringify(view.evidence)===JSON.stringify(views[0].evidence)));
     const invalid=await compiler.check({...input,sources:[...sources,{path:'invalid.lawspec',
-      content:'unit invalid\nfunction invalidPolicy (value :: Integer) -> Integer is prelude.quot value 0 end function'}]});
+      content:`unit invalid
+
+function invalidPolicy (value :: Integer) -> Integer is prelude.quot value 0 end function
+
+end unit
+`}]});
     assert.ok(invalid.diagnostics.some(item=>item.code==='total'));
   }
 });

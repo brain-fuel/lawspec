@@ -208,10 +208,14 @@ compileBench scales = forM_ scales $ \n -> do
 
 syntheticModel :: Int -> String
 syntheticModel n = unlines $
-  ["unit synthetic.model", ""] ++
+  [ "unit synthetic.model\nend unit\n"
+  , ""
+  , ""
+  , "end unit" ] ++
   concat [ ["type Item" ++ show i ++ " is", "  Item" ++ show i, "    id :: Int64", "    name :: Text", "    tags :: List Text", "end", ""] | i <- items ] ++
   ["type State is", "  State"] ++ ["    items" ++ show i ++ " :: KeyVal Int64 Item" ++ show i | i <- items] ++ ["end", ""] ++
-  ["type ApiError is | NotFound | Conflict end", ""] ++
+  [ "type ApiError is one of | NotFound | Conflict end type\n"
+  , "" ] ++
   ["definition emptyState (u :: Unit) :: State is", "  State " ++ unwords (replicate n "(prelude.keyValOf [])"), "end", ""] ++
   concat [ [ "definition put" ++ k ++ " (x :: Item" ++ k ++ ") (s :: State) :: Pair Item" ++ k ++ " State fails with ApiError is"
            , "  match prelude.lookup x.id s.items" ++ k ++ " with"

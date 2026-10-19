@@ -39,19 +39,14 @@ cannot remove them.
 ## Never pass vacuously
 
 A property test that checked no inputs supplies no verification evidence.
-In the legacy profile, execution requires nonempty input domains:
+A generator that cannot find a valid input within `maxAttempts` reports the
+bounded search failure with reproduction information. Exhausting that search
+does not prove the domain empty. Examples outside their input domain are
+rejected. A type with no values cannot supply an argument, while containers
+such as `List Empty` can still contain the empty list.
 ref:DEC-never-pass-vacuously
 
-- An input domain that is empty or unreachable fails; it does not pass.
-- A generator that cannot find a valid input within `maxAttempts` fails with
-  reproduction information. Exhausting a search does not prove the domain is
-  empty, so it is never reported that way.
-- A statically empty domain is an execution-planning error. An example outside
-  its domain is rejected.
-- A type with no values cannot supply an argument, although containers of it,
-  such as `List Empty`, still can.
-
-In the canonical `1.0-rc.1` profile, universal propositions retain their
+In the canonical `1.0-rc.2` profile, universal propositions retain their
 mathematical meaning over empty domains. When the compiler establishes that
 the entire input domain is empty, selected proof or exhaustive verification
 reports that fact explicitly, with zero evaluated cases and no produced

@@ -8,7 +8,8 @@ extension Example.Gadt {
     static func evalNumber(_ value0: Expr<BigInt>) -> BigInt {
         switch value0 {
         case .number(let n): return n
-        case .plus(let left, let right): return evalNumber(left) + evalNumber(right)
+        case .plus(.record(let left, let right)):
+            return evalNumber(left) + evalNumber(right)
         default: fatalError("not an Expr<BigInt>")
         }
     }
@@ -17,7 +18,8 @@ extension Example.Gadt {
     static func evalTruth(_ value0: Expr<Bool>) -> Bool {
         switch value0 {
         case .truth(let b): return b
-        case .same(let left, let right): return evalNumber(left) == evalNumber(right)
+        case .same(.record(let left, let right)):
+            return evalNumber(left) == evalNumber(right)
         case .negate(let operand): return !evalTruth(operand)
         default: fatalError("not an Expr<Bool>")
         }
@@ -33,7 +35,7 @@ extension Example.Gadt {
     /// (example.gadt::type::Expr (example.gadt::type::Pair (BigInt) (Bool)) -> example.gadt::type::Pair (BigInt) (Bool))
     static func evalPair(_ value0: Expr<Pair<BigInt, Bool>>) -> Pair<BigInt, Bool> {
         switch value0 {
-        case .both(let first, let second):
+        case .both(.record(let first, let second)):
             return Pair(first: evalNumber(retype(Codecs.bigInt, first)), second: evalTruth(retype(Codecs.bool, second)))
         default: fatalError("not an Expr<Pair<BigInt, Bool>>")
         }

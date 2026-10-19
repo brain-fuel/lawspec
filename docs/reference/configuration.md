@@ -13,7 +13,7 @@ names another file. Relative paths resolve from the file's directory.
 ```json
 {
   "version": 2,
-  "languageProfile": "1.0-rc.1",
+  "languageProfile": "1.0-rc.2",
   "verification": {"layers": []},
   "sources": ["laws"],
   "machineBits": 64,
@@ -29,8 +29,8 @@ names another file. Relative paths resolve from the file's directory.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `version` | `2` | Yes | The canonical configuration format. Version 1 is accepted only by `lawspec migrate --from 0.24`. |
-| `languageProfile` | `1.0-rc.1` | Yes in version 2 | The explicit canonical grammar and semantics. |
+| `version` | `2` | Yes | The canonical configuration format. Earlier versions are rejected. |
+| `languageProfile` | `1.0-rc.2` | Yes in version 2 | The explicit canonical grammar and semantics. |
 | `verification` | object | No | `layers` defaults to `[]`, selecting none of the optional law checks. Choices: proof, exhaustive, property, examples, runtime, model, analysis. Intrinsic definition checks and their runtime enforcement remain automatic. |
 | `sources` | array of paths | Yes | `.lawspec` files, or directories scanned recursively for them. A file may hold a unit or a [harness](language/harness.md) for one. |
 | `targets` | array of targets | Yes | The target projects. |

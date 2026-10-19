@@ -21,7 +21,7 @@ model stack :: Stack n by List Int8 is
   push by modelPush
   pop by modelPop
   abstract toList
-end
+end model
 ```
 
 ## Declaring a model
@@ -32,7 +32,7 @@ model name :: [shared] State by Model is
   command by reference [when precondition]
   abstract function
   invariant predicate
-end
+end model
 ```
 
 | Line | Meaning |
@@ -64,7 +64,7 @@ model counter :: shared Counter by Int64 is
   increment ~ modelIncrement
   decrement ~ modelDecrement when positive
   read ~ modelRead
-end
+end model
 ```
 
 ## What LawSpec checks
@@ -132,7 +132,7 @@ model views :: shared Views by Int64 is
   start newViews ~ 0
   hit ~ modelHit
   abstract total
-end
+end model
 ```
 
 | Consistency | Every history must have... |
@@ -163,7 +163,7 @@ model queue :: shared WorkQueue behaves like Queue Int32 is
   offer as offer
   poll as poll          -- Maybe Int32
   queueSize as size
-end
+end model
 ```
 
 | Collection | Operations |

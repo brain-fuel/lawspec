@@ -5,71 +5,73 @@ unit example.harness
 -- harness's business, in harness_testing.lawspec.
 
 -- An order: how many items it has, and its total in cents.
-type Order is Order items :: Int32 total :: Int32 end
+type Order is a record{  items :: Int32 total :: Int32} end type
 
-definition itemsOf (order :: Order) :: Int32 is match order with | Order items total -> items end end
-definition totalOf (order :: Order) :: Int32 is match order with | Order items total -> total end end
-definition isEmpty (order :: Order) :: Bool is itemsOf order == 0 end
+function itemsOf (order :: Order) -> Int32 is first matching case of order : when Order record{ items = items , total = total} then items end case end function
+function totalOf (order :: Order) -> Int32 is first matching case of order : when Order record{ items = items , total = total} then total end case end function
+function isEmpty (order :: Order) -> Bool is itemsOf order = 0 end function
 
 -- The discount an order gets, and a price rounded to tens of cents.
 discount :: Order -> Int32
 roundCents :: Int32 -> Int32
 
-law `a discount is never more than the total` is
-  definition is
-    `for all` (order :: Order where itemsOf order >= 0 && totalOf order >= 0) .
-      (discount order <= totalOf order) = true
-  end
-end
+law "|a discount is never more than the total| is
+  definition :
+    for all (order :: Order where itemsOf order >= 0 && totalOf order >= 0) =>
+      (discount order <= totalOf order) = true end for all
+  end definition
+end law
 
-law `rounding is idempotent` is
-  definition is
-    `for all` (cents :: Int32 where cents >= 0 && cents <= 1000000) .
-      roundCents (roundCents cents) = roundCents cents
-  end
-end
+law "|rounding is idempotent| is
+  definition :
+    for all (cents :: Int32 where cents >= 0 && cents <= 1000000) =>
+      roundCents (roundCents cents) = roundCents cents end for all
+  end definition
+end law
 
-law `rounding never lowers a price` is
-  definition is
-    `for all` (cents :: Int32 where cents >= 0 && cents <= 1000000) .
-      (roundCents cents >= cents) = true
-  end
-end
+law "|rounding never lowers a price| is
+  definition :
+    for all (cents :: Int32 where cents >= 0 && cents <= 1000000) =>
+      (roundCents cents >= cents) = true end for all
+  end definition
+end law
 
 -- A ledger records payments. Every law about booking holds for every
 -- lawful ledger; the harness chooses which ones the tests use.
 ability Ledger is
   accept :: Int32 -> Bool
 laws
-  law `positive amounts are accepted` is
-    definition is `for all` (cents :: Int32 where cents > 0) . accept cents = true end
-  end
-end
+  law "|positive amounts are accepted| is
+    definition : for all (cents :: Int32 where cents > 0) => accept cents = true end for all end definition
+  end law
+end laws
+end ability
 
 handler fakeLedger for Ledger is
-  accept cents is cents > 0 end
-end
+  operation accept cents is cents > 0 end operation
+end handler
 
 book :: Int32 -> Bool uses Ledger
 
-law `booking a positive amount succeeds` is
-  definition is
-    `for all` (cents :: Int32 where cents > 0) . book cents = true
-  end
-end
+law "|booking a positive amount succeeds| is
+  definition :
+    for all (cents :: Int32 where cents > 0) => book cents = true end for all
+  end definition
+end law
 
-law `a refund is never booked twice` is
-  definition is
-    `for all` (cents :: Int32 where cents > 0) . book cents = book cents
-  end
-end
+law "|a refund is never booked twice| is
+  definition :
+    for all (cents :: Int32 where cents > 0) => book cents = book cents end for all
+  end definition
+end law
 
 -- A scratch area the laws may use; it can be emptied between laws, and
 -- laws running at the same time cannot interfere through it.
-type Scratch is Scratch used :: Int32 end
+type Scratch is a record{  used :: Int32} end type
 
 resource Scratch is concurrent
-  acquire is Scratch 0 end
-  release scratch is unitValue end
-  reset scratch is unitValue end
-end
+  acquire is Scratch record{ used = 0} end acquire
+  release scratch is unitValue end release
+  reset scratch is unitValue end reset
+end resource
+end unit

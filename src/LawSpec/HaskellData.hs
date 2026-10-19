@@ -3,7 +3,7 @@ module LawSpec.HaskellData (namesFor, requiresSchema, emitHaskellData, haskellDa
 
 import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.NativeBinding (ResolvedConstructorBinding(..), foldNativeLayoutM)
-import LawSpec.DataNames (flatDataCandidates, productConstructors, caseInsensitiveCounts, ambiguous)
+import LawSpec.DataNames (flatDataCandidates, productConstructors, caseInsensitiveCounts, ambiguous, fieldClosed)
 import LawSpec.HaskellTypeRefs
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Backend as Backend
@@ -123,9 +123,10 @@ emitHaskellData layout declarations = do
   selectors <- selectorsFor names declarations
   -- Keyed data can be a Data.Set element or Data.Map key, so it is ordered
   -- natively too.
-  let ordered declaration = either (const False) (const True) (keyedRequirements registry
+  let nativeEq = fieldClosed (all (null . C.constructorExistentials) . C.dataConstructors) declarations
+      ordered declaration = fieldClosed (not . gadtDeclaration) declarations declaration && either (const False) (const True) (keyedRequirements registry
         (C.Constructor (C.idText (C.dataId declaration)) [C.TypeArgument (C.TypeVariable p) | p <- C.dataParameters declaration]))
-  definitions <- mapM (\d -> definition names selectors (ordered d) d) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
+  definitions <- mapM (\d -> definition names selectors (nativeEq d) (ordered d) d) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
   let body = D.joinWith (D.hardline <> D.hardline) definitions
       rendered = D.render layout body
       imports = [D.text ("import qualified " ++ moduleName ++ " as " ++ alias) |
@@ -141,11 +142,11 @@ emitHaskellData layout declarations = do
     D.joinWith D.hardline imports <> D.hardline <> D.hardline <> body <> D.hardline))
   where
     -- A handle is the runtime's opaque handle: only adapters make one.
-    definition names _ _ declaration | C.dataHandle declaration = do
+    definition names _ _ _ declaration | C.dataHandle declaration = do
       name <- lookupName names (C.dataId declaration)
       pure (D.text ("type " ++ name ++ " = LS.Handle"))
-    definition names selectors _ declaration | gadtDeclaration declaration = gadtDefinition names selectors declaration
-    definition names selectors ordered declaration = do
+    definition names selectors _ _ declaration | gadtDeclaration declaration = gadtDefinition names selectors declaration
+    definition names selectors equatable ordered declaration = do
       name <- lookupName names (C.dataId declaration)
       let parameters = zip (C.dataParameters declaration) ["a" ++ show n | n <- [0::Int ..]]
           header = D.text (unwords ("data":name:map snd parameters))
@@ -166,7 +167,7 @@ emitHaskellData layout declarations = do
       pure (header <>
         (if null variants then mempty else D.nest 2 (D.hardline <> D.text "= " <>
           D.joinWith (D.hardline <> D.text "| ") variants)) <>
-        D.nest 2 (D.hardline <> D.text (if ordered then "deriving (P.Eq, P.Ord, P.Show)" else "deriving (P.Eq, P.Show)")))
+        D.nest 2 (D.hardline <> D.text (if ordered then "deriving (P.Eq, P.Ord, P.Show)" else if equatable then "deriving (P.Eq, P.Show)" else "deriving (P.Show)")))
     -- GADT syntax: each constructor states the type it builds. Existential
     -- fields keep their types; values compare only through LawSpec's codecs,
     -- so Eq is derived only where no constructor is existential.

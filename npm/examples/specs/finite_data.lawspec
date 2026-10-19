@@ -1,37 +1,38 @@
 unit example.finite_data
 
-type Choice is Yes | No end
+type Choice is one of Yes | No end type
 
-type Pair (a :: Type) (b :: Type) is
-  Pair first :: a second :: b
-end
+type Pair (a :: Type) (b :: Type) is a record{
+   first :: a second :: b}
+end type
 
-law `sum constructors remain distinct` is
-  definition is
-    `for all` (choice :: Choice) .
-      (match choice with
-        | Yes -> Yes
-        | No -> No
-      end) = choice
-  end
-  example `yes` is choice = Yes expect choice = Yes end
-end
+law "|sum constructors remain distinct| is
+  definition :
+    for all (choice :: Choice) =>
+      (first matching case of choice :
+        when Yes then Yes
+        when No then No
+      end case) = choice end for all
+  end definition
+  example "|yes| : choice = Yes expect choice = Yes end example
+end law
 
-law `products preserve both fields` is
-  definition is
-    `for all` (pair :: Pair Bool Bool) .
-      (match pair with
-        | Pair first second -> Pair first second
-      end) = pair
-  end
-  example `different fields` is
-    pair = Pair true false
-    expect pair = Pair true false
-  end
-end
+law "|products preserve both fields| is
+  definition :
+    for all (pair :: Pair Bool Bool) =>
+      (first matching case of pair :
+        when Pair record{ first = first , second = second} then Pair record{ first = first , second = second}
+      end case) = pair end for all
+  end definition
+  example "|different fields| :
+    pair = Pair record{ first = true , second = false}
+    expect pair = Pair record{ first = true , second = false}
+  end example
+end law
 
-law `nested optional products keep presence states` is
-  definition is
-    `for all` (value :: Maybe (Pair Choice (Nullable Bool))) . value = value
-  end
-end
+law "|nested optional products keep presence states| is
+  definition :
+    for all (value :: Maybe (Pair Choice (Nullable Bool))) => value = value end for all
+  end definition
+end law
+end unit

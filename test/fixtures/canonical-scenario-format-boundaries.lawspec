@@ -13,17 +13,17 @@ model store :: shared Store by Bool is
 start openStore by false
 notice by modelNotice
 echo by modelEcho
-end
+end model
 
 protocol Message is
 send Text
-end
+end protocol
 
 scenario `a long command and its reply` in store is
 notice "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
 reply <- echo "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
 expect reply = "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
-end
+end scenario
 
 scenario `parallel delivery and recovery keep command boundaries` in store is
 channel receipt :: Message
@@ -33,7 +33,8 @@ send receipt "A shipment notification retains its complete message and its indep
 with
 receive receipt held or else
 notice "A shipment notification retains its complete message and its independent command boundary, including repeated letters."
-end
+end or else
 notice held
-end
-end
+end par
+end scenario
+end unit

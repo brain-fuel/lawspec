@@ -21,64 +21,66 @@ classify :: Int64 -> Band
 law "|dollars settle in dollars| is
   definition :
     settlement Usd = domain.Usd
-  end
-end
+  end definition
+end law
 
 law "|pounds settle in euros| is
   definition :
     settlement Gbp = domain.Eur
-  end
-end
+  end definition
+end law
 
 law "|a line total keeps the price currency| is
   definition :
     for all (l :: Line) =>
       domain.currencyOf (lineTotal l) = (first matching case of l :
         when Line record{ price = p , quantity = q} then domain.currencyOf p
-      end case) end
-  end
+      end case) end for all
+  end definition
   example "|two items| :
     l = Line record{ price = (Money record{ currency = domain.Usd , cents =
         250}) , quantity = (domain.Quantity 2)}
     expect domain.centsOf (lineTotal l) = 500
-  end
-end
+  end example
+end law
 
 law "|the cheaper price does not depend on order| is
   definition :
     apply law "|commutative| cheaper
-  end
-end
+  end definition
+end law
 
 law "|rounding down to whole dollars is stable| is
   definition :
     apply law "|idempotent| roundDown
-  end
-end
+  end definition
+end law
 
 law "|rounding down never raises a price| is
   definition :
-    for all (c :: Cents) => roundDown c <= c end
-  end
-end
+    for all (c :: Cents) => roundDown c <= c end for all
+  end definition
+end law
 
 law "|prices are classified into version 2 bands| is
   definition :
-    for all (c :: Cents) => tax.rateOf (classify c) <= 25 end
-  end
-  example "|nothing| : c = 0 expect classify c = Zero end
-  example "|small| : c = 9999 expect classify c = Low end
-  example "|large| : c = 10000 expect classify c = High end
-end
+    for all (c :: Cents) => tax.rateOf (classify c) <= 25 end for all
+  end definition
+  example "|nothing| : c = 0 expect classify c = Zero end example
+  example "|small| : c = 9999 expect classify c = Low end example
+  example "|large| : c = 10000 expect classify c = High end example
+end law
 
 law "|shop.domain keeps version 1 of the bands| is
   definition :
     domain.dutyOf domain.High = 20
-  end
-end
+  end definition
+end law
 
 law "|this project sees version 2 of the bands| is
   definition :
     tax.rateOf High = 25
-  end
-end
+  end definition
+end law
+
+end unit

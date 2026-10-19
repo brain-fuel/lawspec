@@ -3,14 +3,14 @@ unit example.limits
 -- A workflow with a rate limit, for the resilience suite: two calls per
 -- second, rejecting the rest. Its own unit, so the suite's checks can call it
 -- on every target (a Haskell workflow imports its steps' module).
-type Ticket is Ticket number :: Int64 end
+type Ticket is a record{  number :: Int64} end type
 
 admitTicket :: Ticket -> Either Text Ticket
 
 workflow limited :: Ticket -> Either _ Ticket is
   admitTicket :: Ticket -> Either Text Ticket
     rateLimit tokenBucket 2 1s reject
-end
+end workflow
 
 -- A workflow that compensates: when charging fails, the reserved seat is
 -- released.
@@ -22,7 +22,7 @@ workflow book :: Ticket -> Either _ Ticket is
   reserveSeat :: Ticket -> Either Text Ticket
     compensate releaseSeat
   chargeCard :: Ticket -> Either Text Ticket
-end
+end workflow
 
 -- An asynchronous step within a timeout: the quote for ticket -1 is slow
 -- (600ms), so its stage times out.
@@ -31,7 +31,7 @@ async fetchQuote :: Ticket -> Either Text Ticket
 workflow quoted :: Ticket -> Either _ Ticket is
   fetchQuote :: Ticket -> Either Text Ticket
     timeout 200ms
-end
+end workflow
 
 -- An asynchronous step with a hedge: ticket -2's first quote stalls (600ms),
 -- so a second starts after 50ms and answers first.
@@ -40,4 +40,5 @@ async hedgeQuote :: Ticket -> Either Text Ticket
 workflow hedged :: Ticket -> Either _ Ticket is
   hedgeQuote :: Ticket -> Either Text Ticket
     hedge 50ms
-end
+end workflow
+end unit

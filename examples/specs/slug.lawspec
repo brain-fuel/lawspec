@@ -3,31 +3,32 @@ unit example.slug
 normalize :: Text -> Text
 referenceNormalize :: Text -> Text
 
-law `normalizers agree` is
-  definition is
-    `equivalent` normalize referenceNormalize
-  end
-  description is
+law "|normalizers agree| is
+  definition :
+    apply law "|equivalent| normalize referenceNormalize
+  end definition
+  description :
     "{normalize} and {referenceNormalize} replace ASCII spaces with hyphens"
-  end
-  example `spaces become hyphens; punctuation is preserved` is
+  end description
+  example "|spaces become hyphens; punctuation is preserved| :
     x = "Hello, World!"
     expect normalize x = "Hello,-World!"
     expect referenceNormalize x = "Hello,-World!"
-  end
-  example `empty text remains empty` is
+  end example
+  example "|empty text remains empty| :
     x = ""
     expect normalize x = ""
     expect referenceNormalize x = ""
-  end
-  example `Unicode is preserved while spaces become hyphens` is
+  end example
+  example "|Unicode is preserved while spaces become hyphens| :
     x = "café 日本語 😀"
     expect normalize x = "café-日本語-😀"
     expect referenceNormalize x = "café-日本語-😀"
-  end
-  example `quotes, backslashes and controls survive space replacement` is
+  end example
+  example "|quotes, backslashes and controls survive space replacement| :
     x = "quote: \" slash: \\ newline: \n tab: \t dollar: $"
     expect normalize x = "quote:-\"-slash:-\\-newline:-\n-tab:-\t-dollar:-$"
     expect referenceNormalize x = "quote:-\"-slash:-\\-newline:-\n-tab:-\t-dollar:-$"
-  end
-end
+  end example
+end law
+end unit

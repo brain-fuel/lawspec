@@ -7,7 +7,7 @@ import "math/big"
 func Replicate(value0 *LawSpecBigInt, value1 int8) Vec[int8] {
 	var result Vec[int8] = VecVNil[int8]{}
 	for i := new(big.Int); i.Cmp(value0) < 0; i.Add(i, big.NewInt(1)) {
-		result = VecVCons[int8]{Head: value1, Tail: result}
+		result = VecVCons[int8]{Value: Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec[int8]{Head: value1, Tail: result}}
 	}
 	return result
 }
@@ -18,7 +18,7 @@ func Append(value0 Vec[int8], value1 Vec[int8]) Vec[int8] {
 	if !ok {
 		return value1
 	}
-	return VecVCons[int8]{Head: cons.Head, Tail: Append(cons.Tail, value1)}
+	return VecVCons[int8]{Value: Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec[int8]{Head: cons.Value.Head, Tail: Append(cons.Value.Tail, value1)}}
 }
 
 // Zip keeps the second vector's elements in pairs with the first.
@@ -28,7 +28,7 @@ func Zip(value0 Vec[int8], value1 Vec[bool]) Vec[bool] {
 	if !ok || !ok2 {
 		return VecVNil[bool]{}
 	}
-	return VecVCons[bool]{Head: b.Head, Tail: Zip(a.Tail, b.Tail)}
+	return VecVCons[bool]{Value: Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec[bool]{Head: b.Value.Head, Tail: Zip(a.Value.Tail, b.Value.Tail)}}
 }
 
 // Flatten lists the values of a tree in order.
@@ -37,6 +37,6 @@ func Flatten(value0 Tree[int8]) Vec[int8] {
 	if !ok {
 		return VecVNil[int8]{}
 	}
-	right := VecVCons[int8]{Head: node.Value, Tail: Flatten(node.Right)}
-	return Append(Flatten(node.Left), right)
+	right := VecVCons[int8]{Value: Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec[int8]{Head: node.Value.Value, Tail: Flatten(node.Value.Right)}}
+	return Append(Flatten(node.Value.Left), right)
 }

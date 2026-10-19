@@ -76,9 +76,10 @@ const config = JSON.parse(await readFile(configFile, 'utf8'));
 config.sources = ['replay.lawspec'];
 config.verification = {layers: ['property', 'examples']};
 await writeFile(configFile, JSON.stringify(config, null, 2));
-const replayLaw = name => `law "|${name}| is definition: for all (value :: Int32 where value >= 100 && value <= 200) => observe value must be value end end end\n`;
+const replayLaw = name => `law "|${name}| is definition: for all (value :: Int32 where value >= 100 && value <= 200) => observe value must be value end for all end definition end law
+`;
 await writeFile(path.join(base, 'replay.lawspec'),
-  'unit example.replay\nobserve of type Int32 -> Int32\n' + replayLaw('values survive'));
+  'unit example.replay\nobserve of type Int32 -> Int32\n' + replayLaw('values survive') + 'end unit\n');
 await call('generate');
 const [adapterFile, adapter, mutant] = {
   javascript: ['src/example/replay.mjs', 'export function observe(value) { return value; }\n',
@@ -157,8 +158,10 @@ console.log(`PASS project state survives removing and re-adding another target (
 
 if (language === 'elixir' && ['1', '2'].includes(maxFailures)) {
   const spec = path.join(base, 'replay.lawspec');
-  await writeFile(spec, await readFile(spec, 'utf8') +
-    ['a second law', 'a third law'].map(replayLaw).join(''));
+  const source = await readFile(spec, 'utf8');
+  assert.match(source, /\bend unit\s*$/u);
+  await writeFile(spec, source.replace(/\bend unit\s*$/u, '') +
+    ['a second law', 'a third law'].map(replayLaw).join('') + '\nend unit\n');
   await call('generate');
   const complete = JSON.parse((await call('test', ['--json'])).stdout);
   assert.ok(complete.every(result => result.ok && result.ran.length === 3));

@@ -1,4 +1,5 @@
 // Generated from templates/npm/test/explanation-types.test.mjs by lawspec-dev generate. Do not edit.
+import {extendUnit} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
@@ -86,7 +87,7 @@ test('actual checked parcel domains show field names and refinements without alt
   const { createCompiler } = await import('../api.mjs');
   const compiler = await createCompiler();
   const content = await readFile(new URL('../../examples/rc1/parcel-measurements.lawspec', import.meta.url), 'utf8');
-  const result = await compiler.check({ schemaVersion: 5, languageProfile: '1.0-rc.1', verification: { layers: [] },
+  const result = await compiler.check({ schemaVersion: 5, languageProfile: '1.0-rc.2', verification: { layers: [] },
     sources: [{ path: 'parcel-measurements.lawspec', content }] });
   assert.deepEqual(result.diagnostics, []);
   const law = result.laws.find(law => law.id.endsWith('::positiveWeights'));
@@ -105,9 +106,9 @@ test('actual checked parcel domains show field names and refinements without alt
   assert.match(explainLaw(law, result, 'evidence').text, /NOT-VERIFIED/);
   assert.deepEqual(result, before);
   const displayedType = createTypePresentation(result).typeName(law.inputs[0].type);
-  const roundtrip = await compiler.check({ schemaVersion: 5, languageProfile: '1.0-rc.1', verification: { layers: [] },
-    sources: [{ path: 'parcel-measurements.lawspec', content: content +
-      `\nfunction domainIdentity (value of type ${displayedType}) -> ${displayedType} is\n  value\nend function\n` }] });
+  const roundtrip = await compiler.check({ schemaVersion: 5, languageProfile: '1.0-rc.2', verification: { layers: [] },
+    sources: [{ path: 'parcel-measurements.lawspec', content: extendUnit(content,
+      `\nfunction domainIdentity (value of type ${displayedType}) -> ${displayedType} is\n  value\nend function\n`) }] });
   assert.deepEqual(roundtrip.diagnostics, []);
   const identity = roundtrip.definitions.find(d => d.id.endsWith('::domainIdentity'));
   assert.ok(identity);

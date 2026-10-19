@@ -92,13 +92,8 @@ resolveDocumentaryReferences canonical referenceUnit visible units = forM units 
     itemBase imports = last . itemParts imports
     local LawTarget u name =
       [DocumentaryTarget (unitName u ++ "::law::" ++ escape (lawName law)) (unitName u) (lawName law) (pointSpan (location law)) (pointSpan (location law))
-      | law <- laws u, lawName law == (if unitName u == "prelude" then unphrase name else name)]
+      | law <- laws u, lawName law == name]
     local FunctionTarget u name =
       [DocumentaryTarget (unitName u ++ "::" ++ name) (unitName u) name span span
       | definition <- functionDefinitions u, functionName definition == name, let span = functionSpan definition]
     escape = concatMap (\c -> case c of ':' -> "%3A"; '%' -> "%25"; _ -> [c])
-    unphrase ('"':'|':rest) | not (null rest) && last rest == '|' = unescape (init rest)
-    unphrase name = name
-    unescape ('\\':c:rest) = c : unescape rest
-    unescape (c:rest) = c : unescape rest
-    unescape [] = []

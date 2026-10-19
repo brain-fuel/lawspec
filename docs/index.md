@@ -31,15 +31,16 @@ add :: Int32 -> Int32 -> Int32
 law "|addition commutes| is
   definition :
     apply law "|commutative| add
-  end
+  end definition
 
   example "|3 plus 5 and 5 plus 3 both produce 8| :
     x = 3
     y = 5
     expect add x y = 8
     expect add y x = 8
-  end
-end
+  end example
+end law
+end unit
 ```
 
 ## How the documentation is organized

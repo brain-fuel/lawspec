@@ -8,15 +8,15 @@ title: Minor-version authoring contract
 The authoritative implementation contract and remaining gates are in
 [the single review packet](../../../LAWSPEC-PRE-1.0-REVIEW.md). The current
 authoring milestone is a minor version, not a release candidate. The existing
-technical profile `1.0-rc.1` uses API schema 5 and configuration version 2;
+technical profile `1.0-rc.2` uses API schema 5 and configuration version 2;
 its identifier does not designate a released RC or final 1.0.
 
-Current syntax still uses bare `end` for laws, sections, quantifiers and some
-other blocks. The immediately following minor milestone must give every
-end-delimited block a named closer and reject bare `end` in normal source.
-That requires coordinated grammar, parser, formatter, migration, editor and
-example changes. The syntax and examples on this page describe the current
-implementation; they do not claim that the all-named-ending milestone is done.
+The 0.26 grammar requires a named closer for every keyword block, including
+units, sections, quantifiers, lets, operation clauses and harness groups. Bare
+`end` is invalid. The complete catalogue is in [Syntax](syntax.md). Pre-1.0
+migration tooling and compatibility grammar have been removed; active source
+uses this profile directly. Milestone acceptance is recorded separately in the
+review packet after the implementation and regression gates complete.
 
 Automatic exhaustiveness, termination, definedness, refinements and definition
 contracts stay intrinsic. A pure `function` has no ability operations; a
@@ -64,16 +64,17 @@ law identity is
   definition:
     for all (value of type Integer) =>
       same value must be value
-    end
-  end
+    end for all
+  end definition
 
   expect same value = expected
   in table (value, expected):
     row -1, -1
     row 0, 0
     row 1, 1
-  end
-end
+  end table
+end law
+end unit
 ```
 
 Laws may start with optional scalar `id` and `owner` metadata. Each takes one
@@ -94,7 +95,8 @@ references:
      ref function review}
   ref law "|other requests are declined| references."|Review policy|
   "|Review policy|: "Allowed requests are approved; all other requests are declined."
-end
+end references
+
 ```
 
 `ref law` accepts a local name, an imported alias, or a full unit-qualified
@@ -169,7 +171,7 @@ and refinement predicates retain their meaning. Worded `not`, `and`, `or`, and
 right-associative `implies` have their logical precedence; named infix
 application is nonassociative immediately above comparisons.
 
-Logical quantifiers keep their lexical order and own their closing `end`:
+Logical quantifiers keep their lexical order and close with `end for all` or `end exists`:
 
 ```text
 law witnesses is
@@ -177,10 +179,10 @@ law witnesses is
     for all (value of type Bool) =>
       there must exist a (witness of type Bool where witness = value) such that
         witness must be value
-      end
-    end
-  end
-end
+      end exists
+    end for all
+  end definition
+end law
 ```
 
 Restrictions bind left to right. A name is visible in its own restriction;
@@ -235,7 +237,8 @@ A harness can supply a checked expression for an existential binder:
 harness example.testing for example is
   for law successors
     witness value + 1 for definition.value.answer
-end
+end for law
+end harness
 ```
 
 The [complete constructive example](../../../examples/rc1/constructive-witnesses.lawspec)
@@ -294,9 +297,10 @@ witnesses and snapshot-aware effectful search remain required work.
 Existing harness strategies can select a scoped existential or universal binder:
 
 ```text
-strategy answers of type Integer is one of 1, 2 end
+strategy answers of type Integer is one of 1, 2 end strategy
 for law selected
   use answers for definition.allowed.answer
+end for law
 ```
 
 Scoped paths use the same lexical convention as configured witnesses. A short
@@ -361,7 +365,7 @@ complete interval within `exhaustiveLimit`:
 ```text
 there does not exist (value of type Integer where value >= 0 and value < 4) such that
   value = 4
-end
+end exists
 ```
 
 The same planning applies to leading universal inputs and scoped quantifiers.
@@ -408,8 +412,7 @@ verification states that the domain is empty and that zero cases were evaluated;
 it produces no witness for an actual input. Property testing alone reports that
 no cases ran. Examples still need valid inputs. The
 [empty-domain example](../../../examples/rc1/empty-domains.lawspec) contrasts an
-empty universal obligation with the absence of existential witnesses. The
-legacy profile retains its nonempty test-domain requirement until migration.
+empty universal obligation with the absence of existential witnesses.
 A law with no input binders has one case: its proposition is evaluated once.
 This differs from a universal binder whose domain has zero values.
 
@@ -430,7 +433,7 @@ pipes and backslashes, and reject emptiness, edge whitespace and line breaks.
 
 `Whole` includes zero, and `Nat` is strictly positive; their phrase aliases are
 `"|whole number|` and `"|natural number|`. Canonical integers are unbounded
-`Integer`. Legacy numeric names require migration. Collection indices and
+`Integer`. Earlier numeric spellings are rejected. Collection indices and
 lengths retain their zero-inclusive semantics.
 
 Reusable requirements use `apply law` followed by the law's name and arguments
@@ -441,8 +444,8 @@ first and encoder second:
 law roundTrip is
   definition:
     apply law "|left inverse| decode encode
-  end
-end
+  end definition
+end law
 ```
 
 The same typed expansion checks polymorphism, capabilities, argument count and
@@ -644,8 +647,9 @@ end mapping
 law "|enabled preferences retain their label| is
   definition:
     preferenceLabel (Preference record{enabled = true}) must be "enabled"
-  end
-end
+  end definition
+end law
+end unit
 ```
 
 The [delivery mapping specification](../../../test/fixtures/canonical-typed-mappings.lawspec)
@@ -697,22 +701,20 @@ empty collections do not bypass their mandatory checks. Maps select keys,
 values or entries explicitly. Sized containers use their existing checked
 item-list operations. Literal element context does not reinterpret computed
 collections. Opaque dependency fields retain conservative provider discovery;
-unresolved or ambiguous names require qualification. Project migration writes
-require complete source, population, binding and target-generation
-correspondence, and do not establish native implementation conformance. A
-finite example does not prove a law over all sets. The review packet tracks all
+unresolved or ambiguous names require qualification. A finite example does not
+prove a law over all sets. The review packet tracks all
 remaining gates.
 
 In `let name = value in body`, the first `in` outside a delimited
 subexpression ends the initializer. Write membership in a parenthesized
-initializer, such as `let present = (value in members) in present`. Membership
+initializer, such as `let present = (value in members) in present end let`. Membership
 inside records, lists, sets, conditionals and cases retains its ordinary
 meaning. A nested let initializer has its own delimiter; its body remains
 within the enclosing initializer.
 
 The implemented syntax below describes the canonical frontend entry point.
 The review packet also specifies grammar still awaiting implementation,
-including the remaining generic structural-payload cases and broader witness evidence. The legacy grammar remains the migration input language.
+including the remaining generic structural-payload cases and broader witness evidence.
 
 ```ebnf
 annotation = "of" "type" | "::" ;

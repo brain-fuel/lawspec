@@ -6,6 +6,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-19
+
+### Added
+
+- Mandatory named endings for every block, including units, ability law groups,
+  harness law groups, let expressions and generator binds. Handler clauses use
+  explicit `operation` openers and `end operation` closers.
+- Grammar profile `1.0-rc.2`, shared by compiler and authoring consumers.
+
+### Fixed
+
+- Formatter source spans survive wrapping and indentation changes, preserving
+  line-scoped generator expressions and phrase names on repeated formatting.
+- Harness strategies expand parameterized refinements and retain dependent
+  predicates during generation and shrinking.
+- Generated Kotlin registrations fit JVM method limits, and Haskell test
+  components avoid excessive optimization of large generated test expressions.
+- WASM transfers generated JSON directly as UTF-8 and reclaims transport
+  buffers between serialized calls; the host queue releases completed responses.
+
+### Removed
+
+- Pre-1.0 migration tooling, APIs and compatibility grammars. Active source and
+  consumers are updated directly until the API is stable.
+
 ## [0.25.0] - 2026-10-18
 
 ### Added
@@ -1699,7 +1724,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/brain-fuel/lawspec/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/brain-fuel/lawspec/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/brain-fuel/lawspec/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/brain-fuel/lawspec/compare/v0.22.0...v0.23.0

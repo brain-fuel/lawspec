@@ -38,57 +38,58 @@ law "|counter values are preserved| is
   definition:
     for all (value of type UInt8) =>
       unwrap (Counter value) must be value
-    end
-  end
+    end for all
+  end definition
 
   expect unwrap (Counter value) = expected
   in table (value, expected):
     row 0, 0
     row 7, 7
     row 255, 255
-  end
-end
+  end table
+end law
 
 law "|toggles preserve their Boolean values| is
   definition:
     for all (enabled of type Bool) =>
       unwrap (Toggle enabled) must be enabled
-    end
-  end
+    end for all
+  end definition
 
   expect unwrap (Toggle enabled) = expected
   in table (enabled, expected):
     row false, false
     row true, true
-  end
-end
+  end table
+end law
 
 law "|detailed readings expose their stored value| is
   definition:
     for all (value of type UInt8) =>
       score (Details record{value = value}) must be value
-    end
-  end
+    end for all
+  end definition
 
   expect score (Details record{value = value}) = expected
   in table (value, expected):
     row 0, 0
     row 7, 7
     row 255, 255
-  end
-end
+  end table
+end law
 
 law "|related indices preserve the Boolean component| is
   definition:
     for all (enabled of type Bool) =>
       second (Coupled record{first = [enabled, enabled], second = enabled})
         must be enabled
-    end
-  end
+    end for all
+  end definition
 
   expect second (Coupled record{first = [enabled], second = enabled}) = expected
   in table (enabled, expected):
     row false, false
     row true, true
-  end
-end
+  end table
+end law
+end unit

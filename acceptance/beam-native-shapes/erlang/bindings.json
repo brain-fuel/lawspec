@@ -45,12 +45,20 @@
           "style": "variant",
           "fields": [
             {
-              "field": "tail",
-              "native": "remainder"
+              "field": "value",
+              "native": "remainder",
+              "path": [
+                "tail"
+              ],
+              "argument": 0
             },
             {
               "field": "value",
-              "native": "item"
+              "native": "item",
+              "path": [
+                "value"
+              ],
+              "argument": 1
             }
           ]
         }
@@ -71,7 +79,7 @@
           "style": "variant",
           "fields": [
             {
-              "field": "item",
+              "field": "value",
               "native": "datum"
             }
           ]
@@ -84,7 +92,7 @@
           "style": "variant",
           "fields": [
             {
-              "field": "children",
+              "field": "value",
               "native": "trees"
             }
           ]

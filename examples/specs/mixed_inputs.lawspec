@@ -3,39 +3,40 @@ unit example.mixed.inputs
 normalize :: Text -> Text
 identity :: Int32 -> Int32
 
-law `text normalization reaches a fixed point with an unused integer input` is
-  definition is
-    `for all` (text :: Text) (number :: Int32) .
-      normalize text = normalize (normalize text)
-  end
-  example `text normalization and integer identity have explicit results` is
+law "|text normalization reaches a fixed point with an unused integer input| is
+  definition :
+    for all (text :: Text) (number :: Int32) =>
+      normalize text = normalize (normalize text) end for all
+  end definition
+  example "|text normalization and integer identity have explicit results| :
     text = "Hello, World!"
     number = -42
     expect normalize text = "Hello,-World!"
     expect identity number = -42
-  end
-end
+  end example
+end law
 
-law `integer identity with an unused text input` is
-  definition is
-    `for all` (text :: Text) (number :: Int32) .
-      identity number = number
-  end
-  example `text normalization and integer identity have explicit results` is
+law "|integer identity with an unused text input| is
+  definition :
+    for all (text :: Text) (number :: Int32) =>
+      identity number = number end for all
+  end definition
+  example "|text normalization and integer identity have explicit results| :
     text = "λ 😀"
     number = 2147483647
     expect normalize text = "λ-😀"
     expect identity number = 2147483647
-  end
-end
+  end example
+end law
 
-law `normalizing an empty literal` is
-  definition is
-    `for all` (text :: Text) .
-      normalize "" = ""
-  end
-  example `empty literal stays empty; quantified text is unused` is
+law "|normalizing an empty literal| is
+  definition :
+    for all (text :: Text) =>
+      normalize "" = "" end for all
+  end definition
+  example "|empty literal stays empty; quantified text is unused| :
     text = "unused context"
     expect normalize "" = ""
-  end
-end
+  end example
+end law
+end unit

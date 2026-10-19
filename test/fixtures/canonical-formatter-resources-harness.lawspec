@@ -1,42 +1,45 @@
 unit example.canonical
 refinement Positive is
 (value :: Integer where value > 0)
-end
+end refinement
 wrapper Flag is
 Bool
-end
+end wrapper
 handle Scratch
 openScratch :: () -> Scratch
 closeScratch :: Scratch -> ()
 resource Scratch is
 acquire is
 openScratch ()
-end
+end acquire
 release scratch is
 closeScratch scratch
-end
-end
+end release
+end resource
 law same is
 definition:
 for all (value :: Bool) =>
 value must be value
-end
-end
-end
+end for all
+end definition
+end law
 harness example.canonical.testing for example.canonical is
 strategy flags :: Bool is
 one of true, false
-end
+end strategy
 tags smoke
 for law same
 use flags for value
 repeat 2
+end for law
 benchmark `if all end is only a benchmark name` is
 true
-end
+end benchmark
 for laws same
 repeat 3
-end
+end for laws
+end harness
 function workflow (value :: Bool) -> Bool is
 value
 end function
+end unit

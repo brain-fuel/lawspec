@@ -15,7 +15,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 export const digest = (text) =>
   crypto.createHash("sha256").update(text).digest("hex");
-// Keep source discovery identical for CLI checking and migration revalidation.
+// Share source discovery between CLI commands.
 export async function collectSources(root,entries,relativeTo=root){
   const files=[];
   async function visit(file){

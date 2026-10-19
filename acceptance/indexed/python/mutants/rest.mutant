@@ -2,5 +2,5 @@
 <<<<<<<
     return data.Rest(value0)
 =======
-    return data.Rest(value0.tail)
+    return data.Rest(value0.value.tail)
 >>>>>>>

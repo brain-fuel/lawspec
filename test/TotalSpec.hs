@@ -62,9 +62,11 @@ test_checkedDefinitionsExecuteTotallyInCore :: Spec
 test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total definitions" $ do
   it "executes arithmetic justified by a matched field's primitive domain" $ do
     let source = Source "fields.lawspec" $ unlines
-          ["unit fields"
-          ,"definition first (xs :: List Int8) :: Rational is match xs with | Nil -> 0 | Cons head tail -> 1 / (head + 129) end end"
-          ,"law `nonnegative` is definition is `for all` (xs :: List Int8) . first xs >= 0 end end"]
+          [ "unit fields"
+           ++ "\n", ""
+          , "function first (xs :: List Int8) -> Rational is first matching case of xs : when Nil then 0 when Cons head tail then 1 / (head + 129) end case end function\n"
+          , "law \"|nonnegative| is definition : for all (xs :: List Int8) => first xs >= 0 end for all end definition end law"
+          , "\nend unit" ]
         list = Constructor "List" [TypeArgument int]
         nil = V.DataValue list (Id "List::Nil") []
         singleton n = V.DataValue list (Id "List::Cons") [V.ScalarValue (SInteger "Int8" n),nil]
@@ -80,9 +82,11 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         mapM_ (\target -> (planTesting program >>= emitPlan target) `shouldSatisfy` isRight) targets) [32,64]
   it "executes guarded narrowing for every Int8 value under both profiles" $ do
     let source = Source "narrow.lawspec" $ unlines
-          ["unit narrow"
-          ,"definition next (x :: Int8) :: Bool is x < 127 && prelude.Int8 (x + 1) > x end"
-          ,"law `range` is definition is `for all` (x :: Int8) . next x = (x < 127) end end"]
+          [ "unit narrow"
+           ++ "\n", ""
+          , "function next (x :: Int8) -> Bool is x < 127 && prelude.Int8 (x + 1) > x end function\n"
+          , "law \"|range| is definition : for all (x :: Int8) => next x = (x < 127) end for all end definition end law"
+          , "\nend unit" ]
     mapM_ (\bits -> case compileCore bits defaultGeneration [source] of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right program -> do
@@ -93,9 +97,11 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         mapM_ (\target -> (planTesting program >>= emitPlan target) `shouldSatisfy` isRight) targets) [32,64]
   it "uses exact implications for affine denominators without assuming IEEE identities" $ do
     let source = Source "affine.lawspec" $ unlines
-          ["unit affine"
-          ,"definition reciprocal (x :: Int8) :: Bool is x >= 0 && 1 / (x + 1) > 0 end"
-          ,"law `sign` is definition is `for all` (x :: Int8) . reciprocal x = (x >= 0) end end"]
+          [ "unit affine"
+           ++ "\n", ""
+          , "function reciprocal (x :: Int8) -> Bool is x >= 0 && 1 / (x + 1) > 0 end function\n"
+          , "law \"|sign| is definition : for all (x :: Int8) => reciprocal x = (x >= 0) end for all end definition end law"
+          , "\nend unit" ]
     mapM_ (\bits -> case compileCore bits defaultGeneration [source] of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right program -> do
@@ -116,39 +122,43 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
       `shouldSatisfy` isLeft) [nanGuard,infinityGuard]
   it "parses, checks, and evaluates source list recursion in both machine profiles" $ do
     let source = Source "total.lawspec" $ unlines
-          ["unit total"
-          ,"definition size (xs :: List Int8) :: BigInt is"
-          ,"  match xs with | Nil -> 0 | Cons head tail -> 1 + size tail end"
-          ,"end"
-          ,"law `length` is definition is `for all` (xs :: List Int8) . size xs = prelude.length xs end end"]
+          [ "unit total"
+           ++ "\n", ""
+          , "function size (xs :: List Int8) -> Integer is"
+          , "  first matching case of xs : when Nil then 0 when Cons head tail then 1 + size tail end case"
+          , "end function"
+          , "law \"|length| is definition : for all (xs :: List Int8) => size xs = prelude.length xs end for all end definition end law"
+          , "\nend unit" ]
     mapM_ (\bits -> case compileCore bits defaultGeneration [source] >>= prepareDefinitions of
       Left ds -> expectationFailure (show ds)
       Right invoke -> do
         let nil = V.DataValue list (Id "List::Nil") []
             values = foldr (\n tailValue -> V.DataValue list (Id "List::Cons")
               [V.ScalarValue (SInteger "Int8" n), tailValue]) nil [1,2,3]
-        invoke (Id "total::size") [values] `shouldBe` Right (V.ScalarValue (SInteger "BigInt" 3))
-        invoke (Id "total::size") [nil] `shouldBe` Right (V.ScalarValue (SInteger "BigInt" 0))
+        invoke (Id "total::size") [values] `shouldBe` Right (V.ScalarValue (SInteger "Integer" 3))
+        invoke (Id "total::size") [nil] `shouldBe` Right (V.ScalarValue (SInteger "Integer" 0))
         invoke (Id "total::size") [] `shouldSatisfy` isLeft
         invoke (Id "total::size") [V.ScalarValue (SBool True)] `shouldSatisfy` isLeft
         invoke (Id "adapter") [] `shouldSatisfy` isLeft) [32,64]
   it "checks unused source definitions, including recursion and partial bodies" $ do
-    let check body = compileCore 64 defaultGeneration [Source "total.lawspec" ("unit total\n" ++ body)]
+    let check body = compileCore 64 defaultGeneration [Source "total.lawspec" ("unit total\n\n" ++ body ++ "\nend unit\n")]
     mapM_ (\body -> check body `shouldSatisfy` isLeft)
-      ["definition bad (xs :: List Int8) :: BigInt is bad xs end"
-      ,"definition bad (xs :: List Int8) :: BigInt is match xs with | Nil -> 0 end end"
-      ,"definition bad (x :: BigInt) :: Rational is 1 / x end"
+      ["function bad (xs :: List Int8) -> Integer is bad xs end function\n"
+      ,"function bad (xs :: List Int8) -> Integer is first matching case of xs : when Nil then 0 end case end function\n"
+      ,"function bad (x :: Integer) -> Rational is 1 / x end function\n"
       ,"definition bad (x :: Int8) (x :: Int8) :: Int8 is x end"
-      ,"adapter :: Int8 -> Int8\ndefinition bad (x :: Int8) :: Int8 is adapter x end"
-      ,"definition f (x :: Int8) :: Int8 is g x end\ndefinition g (x :: Int8) :: Int8 is f x end"
-      ,"definition bad (x :: Int8) :: Bool is x end"
-      ,"definition bad (x :: Int8 where x >= 0) :: Rational is 1 / x end"]
+      ,"adapter :: Int8 -> Int8\nfunction bad (x :: Int8) -> Int8 is adapter x end function\n"
+      ,"function f (x :: Int8) -> Int8 is g x end function\nfunction g (x :: Int8) -> Int8 is f x end function\n"
+      ,"function bad (x :: Int8) -> Bool is x end function\n"
+      ,"function bad (x :: Int8 where x >= 0) -> Rational is 1 / x end function\n"]
   it "qualifies custom constructors and evaluates forward definition calls" $ do
     let source = Source "tree.lawspec" $ unlines
-          ["unit tree"
-          ,"type Tree is Leaf value :: Int8 | Branch children :: List Tree end"
-          ,"definition root (t :: Tree) :: Int8 is get t end"
-          ,"definition get (t :: Tree) :: Int8 is match t with | Leaf x -> x | Branch xs -> 0 end end"]
+          [ "unit tree"
+           ++ "\n", ""
+          , "type Tree is one of Leaf  of type Int8 | Branch  of type List Tree end type\n"
+          , "function root (t :: Tree) -> Int8 is get t end function\n"
+          , "function get (t :: Tree) -> Int8 is first matching case of t : when Leaf x then x when Branch xs then 0 end case end function\n"
+          , "\nend unit" ]
     case compileCore 64 defaultGeneration [source] >>= prepareDefinitions of
       Left ds -> expectationFailure (show ds)
       Right invoke -> invoke (Id "tree::root")
@@ -156,7 +166,11 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
           [V.ScalarValue (SInteger "Int8" 127)]] `shouldBe` Right (V.ScalarValue (SInteger "Int8" 127))
   it "preserves lexical parameter shadowing over function names" $ do
     let source = Source "shadow.lawspec" $ unlines
-          ["unit shadow", "x :: Bool -> Bool", "definition identity (x :: Int8) :: Int8 is x end"]
+          [ "unit shadow"
+           ++ "\n", ""
+          , "x :: Bool -> Bool"
+          , "function identity (x :: Int8) -> Int8 is x end function\n"
+          , "\nend unit" ]
     case compileCore 64 defaultGeneration [source] >>= prepareDefinitions of
       Left ds -> expectationFailure (show ds)
       Right invoke -> invoke (Id "shadow::identity") [V.ScalarValue (SInteger "Int8" 42)]
@@ -169,7 +183,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
     validateProgram (program good []) `shouldSatisfy` isLeft
     validateProgram (program good [definitionDeclaration good]) `shouldBe` Right ()
   it "does not silently replace checked definitions with adapter stubs" $ do
-    let source = Source "total.lawspec" "unit total\ndefinition identity (x :: Int8) :: Int8 is x end"
+    let source = Source "total.lawspec" "unit total\n\nfunction identity (x :: Int8) -> Int8 is x end function\nend unit\n"
     case compileCore 64 defaultGeneration [source] >>= planTesting of
       Left ds -> expectationFailure (show ds)
       Right plan -> mapM_ (\target -> case emitPlan target plan of
@@ -177,7 +191,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         Right files -> concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "identity") targets
   it "emits Rust definitions as generated source with typed native entry points" $ do
-    let source = Source "total.lawspec" "unit total\ndefinition identity (x :: Int8) :: Int8 is x end"
+    let source = Source "total.lawspec" "unit total\n\nfunction identity (x :: Int8) -> Int8 is x end function\nend unit\n"
     case compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan "rust" of
       Left ds -> expectationFailure (show ds)
       Right files -> do
@@ -189,7 +203,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "pub fn identity"
   it "emits Java definitions with native entry points and checked support" $ do
-    let source = Source "total.lawspec" "unit total\ndefinition identity (x :: Int8) :: Int8 is x end"
+    let source = Source "total.lawspec" "unit total\n\nfunction identity (x :: Int8) -> Int8 is x end function\nend unit\n"
     case compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan "java" of
       Left ds -> expectationFailure (show ds)
       Right files -> do
@@ -203,13 +217,13 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf " identity("
   it "rejects Java adapter collisions with generated definition classes" $ do
-    let total = Source "total.lawspec" "unit example.total\ndefinition identity (x :: Int8) :: Int8 is x end"
+    let total = Source "total.lawspec" "unit example.total\n\nfunction identity (x :: Int8) -> Int8 is x end function\nend unit\n"
     mapM_ (\unit -> (compileCore 64 defaultGeneration
-        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool")]
+        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool\nend unit\n")]
         >>= planTesting >>= emitPlan "java") `shouldSatisfy` isLeft)
       ["lawspec.runtime.law_spec_definition_bodies","lawspec.definitions.example.total"]
   it "emits Kotlin definitions with native generics and shared JVM bodies" $ do
-    let source = Source "total.lawspec" "unit total\ndefinition identity (x :: Optional (Nullable Int8)) :: Optional (Nullable Int8) is x end"
+    let source = Source "total.lawspec" "unit total\n\nfunction identity (x :: Optional (Nullable Int8)) -> Optional (Nullable Int8) is x end function\nend unit\n"
     case compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan "kotlin" of
       Left ds -> expectationFailure (show ds)
       Right files -> do
@@ -224,13 +238,13 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "fun identity"
   it "rejects Kotlin adapter collisions with JVM bodies and native definition objects" $ do
-    let total = Source "total.lawspec" "unit example.total\ndefinition identity (x :: Int8) :: Int8 is x end"
+    let total = Source "total.lawspec" "unit example.total\n\nfunction identity (x :: Int8) -> Int8 is x end function\nend unit\n"
     mapM_ (\unit -> (compileCore 64 defaultGeneration
-        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool")]
+        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool\nend unit\n")]
         >>= planTesting >>= emitPlan "kotlin") `shouldSatisfy` isLeft)
       ["lawspec.runtime.law_spec_definition_bodies","lawspec.definitions.example.total"]
   it "emits Python definitions as typed generated source without adapter stubs" $ do
-    let source = Source "total.lawspec" "unit total\ndefinition identity (x :: List Int8) :: List Int8 is x end"
+    let source = Source "total.lawspec" "unit total\n\nfunction identity (x :: List Int8) -> List Int8 is x end function\nend unit\n"
     case compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan "python" of
       Left ds -> expectationFailure (show ds)
       Right files -> do
@@ -244,21 +258,21 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "def identity"
   it "rejects Python definition support and module/package name collisions" $ do
-    let total = Source "total.lawspec" "unit example.total\ndefinition identity (x :: Int8) :: Int8 is x end"
+    let total = Source "total.lawspec" "unit example.total\n\nfunction identity (x :: Int8) -> Int8 is x end function\nend unit\n"
     mapM_ (\unit -> (compileCore 64 defaultGeneration
-        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool")]
+        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool\nend unit\n")]
         >>= planTesting >>= emitPlan "python") `shouldSatisfy` isLeft)
       ["lawspec_definitions", "lawspec_definition_bodies"]
     -- A unit named like another unit's package is the package's __init__.py.
     mapM_ (\(unit, path) -> (map artifactPath <$> (compileCore 64 defaultGeneration
-        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool")]
+        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool\nend unit\n")]
         >>= planTesting >>= emitPlan "python")) `shouldSatisfy` either (const False) (elem path))
       [("example", "src/example/__init__.py"), ("example.total.child", "src/example/total/__init__.py")]
     mapM_ (\name -> (compileCore 64 defaultGeneration [Source "collision.lawspec"
         ("unit total\ndefinition " ++ name ++ " (x :: Int8) :: Int8 is x end")]
         >>= planTesting >>= emitPlan "python") `shouldSatisfy` isLeft) ["_definitions", "_lawspec_schema"]
   it "emits JS/TS definitions as generated source with native typed TypeScript APIs" $ do
-    let source = Source "total.lawspec" "unit total\ndefinition identity (x :: List Int8) :: List Int8 is x end"
+    let source = Source "total.lawspec" "unit total\n\nfunction identity (x :: List Int8) -> List Int8 is x end function\nend unit\n"
     mapM_ (\(target,extension) -> case compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan target of
       Left ds -> expectationFailure (show ds)
       Right files -> do
@@ -276,10 +290,10 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
           concatMap artifactContent (native ++ bodies) `shouldNotSatisfy` isInfixOf "@ts-nocheck"
         else pure ()) [("javascript","mjs"),("typescript","ts")]
   it "rejects JS/TS definition support collisions and shadowed globals" $ do
-    let total = Source "total.lawspec" "unit example.total\ndefinition identity (x :: Int8) :: Int8 is x end"
+    let total = Source "total.lawspec" "unit example.total\n\nfunction identity (x :: Int8) -> Int8 is x end function\nend unit\n"
     mapM_ (\target -> do
       mapM_ (\unit -> (compileCore 64 defaultGeneration
-          [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool")]
+          [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool\nend unit\n")]
           >>= planTesting >>= emitPlan target) `shouldSatisfy` isLeft)
         ["lawspec_definitions.example.total", "lawspec_definition_bodies"]
       mapM_ (\name -> (compileCore 64 defaultGeneration [Source "collision.lawspec"
@@ -288,8 +302,11 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
       ["javascript","typescript"]
   it "emits Go native definition methods without colliding with data type names" $ do
     let source = Source "total.lawspec" $ unlines
-          ["unit total", "type Identity is Identity value :: Int8 end"
-          ,"definition identity (x :: Identity) :: Identity is x end"]
+          [ "unit total"
+           ++ "\n", ""
+          , "type Identity is a record{  value :: Int8} end type\n"
+          , "function identity (x :: Identity) -> Identity is x end function\n"
+          , "\nend unit" ]
     case compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan "go" of
       Left ds -> expectationFailure (show ds)
       Right files -> do
@@ -302,16 +319,19 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "func Identity"
   it "does not emit Go definition source into an unused empty unit" $ do
-    let sources = [Source "empty.lawspec" "unit empty", Source "total.lawspec"
-          "unit total\ndefinition identity (x :: Int8) :: Int8 is x end"]
+    let sources = [Source "empty.lawspec" "unit empty\nend unit\n", Source "total.lawspec"
+          "unit total\n\nfunction identity (x :: Int8) -> Int8 is x end function\nend unit\n"]
     case compileCore 64 defaultGeneration sources >>= planTesting >>= emitPlan "go" of
       Left ds -> expectationFailure (show ds)
       Right files -> map artifactPath files `shouldNotSatisfy` elem "empty/lawspec_definitions.go"
   it "emits Haskell native definitions with a scoped Symbol context" $ do
     let source = Source "total.lawspec" $ unlines
-          ["unit total", "definition identity (x :: Int8) :: Int8 is x end"
-          ,"definition schema (x :: Bool) :: Bool is x end"
-          ,"definition bits (x :: Bool) :: Bool is x end"]
+          [ "unit total"
+           ++ "\n", ""
+          , "function identity (x :: Int8) -> Int8 is x end function\n"
+          , "function schema (x :: Bool) -> Bool is x end function\n"
+          , "function bits (x :: Bool) -> Bool is x end function\n"
+          , "\nend unit" ]
     case compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan "haskell" of
       Left ds -> expectationFailure (show ds)
       Right files -> do

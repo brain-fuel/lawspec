@@ -5,9 +5,9 @@ unit example.abilities
 -- Gateway says so, and every law about it holds for every lawful handler:
 -- the native one written by hand, and each spec handler below.
 
-type Payment is | Approved cents :: Int32 | Declined end
-type Receipt is Receipt cents :: Int32 end
-type PaymentError is | Refused | TooLarge end
+type Payment is one of | Approved  of type Int32 | Declined end type
+type Receipt is a record{  cents :: Int32} end type
+type PaymentError is one of | Refused | TooLarge end type
 
 -- A payment gateway. Its laws are obligations on every handler.
 ability Gateway is
@@ -15,89 +15,91 @@ ability Gateway is
   capture :: Int32 -> Receipt
   fee :: Int32
 laws
-  law `a receipt is for the amount captured` is
-    definition is `for all` (cents :: Int32) . capture cents = Receipt cents end
-  end
-  law `an approval is for the amount asked` is
-    definition is
-      `for all` (cents :: Int32) .
-        (match authorize cents with
-         | Approved approved -> approved == cents
-         | Declined -> true
-         end) = true
-    end
-  end
-  law `the fee is never negative` is
-    definition is fee >= 0 end
-  end
-end
+  law "|a receipt is for the amount captured| is
+    definition : for all (cents :: Int32) => capture cents = Receipt record{ cents = cents} end for all end definition
+  end law
+  law "|an approval is for the amount asked| is
+    definition :
+      for all (cents :: Int32) =>
+        (first matching case of authorize cents :
+         when Approved approved then approved = cents
+         when Declined then true
+         end case) = true end for all
+    end definition
+  end law
+  law "|the fee is never negative| is
+    definition : fee >= 0 end definition
+  end law
+end laws
+end ability
 
 -- A fake for tests: it approves small amounts.
 handler fakeGateway for Gateway is
-  authorize cents is if cents <= 10000 then Approved cents else Declined end
-  capture cents is Receipt cents end
-  fee is 30 end
-end
+  operation authorize cents is if cents <= 10000 then Approved cents else Declined end if end operation
+  operation capture cents is Receipt record{ cents = cents} end operation
+  operation fee is 30 end operation
+end handler
 
 -- A handler with state: it keeps every amount it captured.
 handler keepingGateway for Gateway with state captured :: List Int32 start [] is
-  authorize cents is Approved cents end
-  capture cents is ~captured := Cons cents captured; Receipt cents end
-  fee is 0 end
-end
+  operation authorize cents is Approved cents end operation
+  operation capture cents is ~captured := Cons cents captured; Receipt record{ cents = cents} end operation
+  operation fee is 0 end operation
+end handler
 
 -- A checked definition that uses Gateway. Its row, {Gateway}, is inferred.
-definition checkout (cents :: Int32) :: Bool is
-  match authorize cents with
-  | Approved amount -> (match capture amount with | Receipt paid -> paid == cents end)
-  | Declined -> false
-  end
-end
+procedure checkout (cents :: Int32) -> Bool is
+  first matching case of authorize cents :
+  when Approved amount then (first matching case of capture amount : when Receipt record{ cents = paid} then paid = cents end case)
+  when Declined then false
+  end case
+end procedure
 
 -- A native adapter that uses Gateway: it gets a handler as its first
 -- argument.
 charge :: Int32 -> Bool uses Gateway
 
 -- A definition that can fail says what it fails with.
-definition pay (cents :: Int32) :: Receipt uses Gateway fails with PaymentError is
+procedure pay (cents :: Int32) -> Receipt uses Gateway fails with PaymentError is
   if cents > 100000 then raise TooLarge else
-    match authorize cents with
-    | Approved amount -> capture amount
-    | Declined -> raise Refused
-    end
-end
+    first matching case of authorize cents :
+    when Approved amount then capture amount
+    when Declined then raise Refused
+    end case end if
+end procedure
 
 -- Counting calls is part of the claim, so the law names a recording
 -- handler. Which gateway it records is left to the harness: each lawful one.
-law `checkout captures once, and only when it succeeds` using recording Gateway is
-  definition is
-    `for all` (cents :: Int32) .
-      (if checkout cents then calls of capture with (cents) == 1 else calls of capture == 0) = true
-  end
-end
+law "|checkout captures once, and only when it succeeds| using recording Gateway is
+  definition :
+    for all (cents :: Int32) =>
+      (if checkout cents then calls of capture with (cents) = 1 else calls of capture = 0 end if) = true end for all
+  end definition
+end law
 
-law `charge captures once, and only when it succeeds` using recording Gateway is
-  definition is
-    `for all` (cents :: Int32) .
-      (if charge cents then calls of capture with (cents) == 1 else calls of capture == 0) = true
-  end
-end
+law "|charge captures once, and only when it succeeds| using recording Gateway is
+  definition :
+    for all (cents :: Int32) =>
+      (if charge cents then calls of capture with (cents) = 1 else calls of capture = 0 end if) = true end for all
+  end definition
+end law
 
 -- This law needs the fake's limit, so the fake is part of the claim.
-law `large payments fail` using fakeGateway is
-  definition is
-    `for all` (cents :: Int32 where cents > 100000) . prelude.attempt (pay cents) = Left TooLarge
-  end
-end
+law "|large payments fail| using fakeGateway is
+  definition :
+    for all (cents :: Int32 where cents > 100000) => prelude.attempt (pay cents) = Left TooLarge end for all
+  end definition
+end law
 
-law `a declined payment is refused` using fakeGateway is
-  definition is
-    `for all` (cents :: Int32 where cents > 10000 && cents <= 100000) .
-      prelude.attempt (pay cents) = Left Refused
-  end
-end
+law "|a declined payment is refused| using fakeGateway is
+  definition :
+    for all (cents :: Int32 where cents > 10000 && cents <= 100000) =>
+      prelude.attempt (pay cents) = Left Refused end for all
+  end definition
+end law
 
 -- Without `using`, a law runs under each lawful handler in turn.
-law `the fee is small` is
-  definition is fee <= 100 end
-end
+law "|the fee is small| is
+  definition : fee <= 100 end definition
+end law
+end unit

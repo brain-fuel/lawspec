@@ -12,7 +12,7 @@ module LawSpec.Matchers
   ) where
 
 import Data.Char (isAlphaNum)
-import Data.List (isPrefixOf, tails)
+import LawSpec.SourceTokens (Token(..), TokenKind(..), sourceTokens)
 
 matchersUnit :: String
 matchersUnit = "lawspec.matchers"
@@ -42,79 +42,64 @@ matcherOperations =
 -- keeps it.
 usesMatchers :: String -> Bool
 usesMatchers text =
-  let tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') (stripComments (dropStrings text)))
+  let code = concat [if tokenKind token `elem` [LiteralToken,PhraseToken,CommentToken]
+                    then " " else tokenText token | token <- sourceTokens text]
+      tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') code)
       pairs = zip3 tokens (drop 1 tokens) (drop 2 tokens)
       declared = or [keyword `elem` ["type", "wrapper"] && name == "Regex" | (keyword, name) <- zip tokens (drop 1 tokens)]
   in not declared && (or [ (a, b) == ("same", "items") || (a, b, c) == ("contains", "all", "of") || (a, b, c) == ("is", "subset", "of")
                          | (a, b, c) <- pairs ] || any (`elem` tokens)
                            (["regex", "Regex"] ++ ["prelude." ++ operation | (operation,_) <- matcherOperations]))
-  where
-    stripComments = unlines . map takeComment . lines
-    takeComment line = case [i | (i, rest) <- zip [0 :: Int ..] (tails line), "--" `isPrefixOf` rest] of
-      i : _ -> take i line
-      [] -> line
-    -- Text in quotes is not code, but a regex literal's keyword is outside them.
-    dropStrings s = case s of
-      '"' : rest -> ' ' : dropStrings (skip rest)
-      c : rest -> c : dropStrings rest
-      [] -> []
-    skip s = case s of
-      '\\' : _ : rest -> skip rest
-      '"' : rest -> rest
-      _ : rest -> skip rest
-      [] -> []
 
 matchersSource :: String
 matchersSource = unlines
-  [ "unit " ++ matchersUnit
+  [ "unit lawspec.matchers"
   , ""
-  -- A regex in the portable dialect (LawSpec.Regex). Its values come from
-  -- regex literals, which the compiler checks.
-  , "type Regex is Regex pattern :: Text end"
+  , "type Regex is a record{  pattern :: Text} end type"
   , ""
   , "-- ys without the first item equal to x, or Nothing when there is none."
-  , "definition matchersRemoveFirst (x :: a) (ys :: List a) :: Maybe (List a) requires Eq a is"
-  , "  match ys with"
-  , "  | Nil -> Nothing"
-  , "  | Cons h t -> if h == x then Just t else"
-  , "      (match matchersRemoveFirst x t with"
-  , "       | Nothing -> Nothing"
-  , "       | Just rest -> Just (Cons h rest)"
-  , "       end)"
-  , "  end"
-  , "end"
+  , "function matchersRemoveFirst (x :: a) (ys :: List a) -> Maybe (List a) requires Eq a is"
+  , "  first matching case of ys :"
+  , "  when Nil then Nothing"
+  , "  when Cons h t then if h = x then Just t else"
+  , "      (first matching case of matchersRemoveFirst x t :"
+  , "       when Nothing then Nothing"
+  , "       when Just rest then Just (Cons h rest)"
+  , "       end case) end if"
+  , "  end case"
+  , "end function"
   , ""
   , "-- The same items, each as many times, in any order."
-  , "definition matchersSameItems (xs :: List a) (ys :: List a) :: Bool requires Eq a is"
-  , "  match xs with"
-  , "  | Nil -> (match ys with | Nil -> true | Cons h t -> false end)"
-  , "  | Cons h t -> match matchersRemoveFirst h ys with"
-  , "    | Nothing -> false"
-  , "    | Just rest -> matchersSameItems t rest"
-  , "    end"
-  , "  end"
-  , "end"
+  , "function matchersSameItems (xs :: List a) (ys :: List a) -> Bool requires Eq a is"
+  , "  first matching case of xs :"
+  , "  when Nil then (first matching case of ys : when Nil then true when Cons h t then false end case)"
+  , "  when Cons h t then first matching case of matchersRemoveFirst h ys :"
+  , "    when Nothing then false"
+  , "    when Just rest then matchersSameItems t rest"
+  , "    end case"
+  , "  end case"
+  , "end function"
   , ""
-  , "definition matchersHas (xs :: List a) (x :: a) :: Bool requires Eq a is"
-  , "  match xs with"
-  , "  | Nil -> false"
-  , "  | Cons h t -> if h == x then true else matchersHas t x"
-  , "  end"
-  , "end"
+  , "function matchersHas (xs :: List a) (x :: a) -> Bool requires Eq a is"
+  , "  first matching case of xs :"
+  , "  when Nil then false"
+  , "  when Cons h t then if h = x then true else matchersHas t x end if"
+  , "  end case"
+  , "end function"
   , ""
   , "-- Every item of ys is among xs."
-  , "definition matchersContainsAll (xs :: List a) (ys :: List a) :: Bool requires Eq a is"
-  , "  match ys with"
-  , "  | Nil -> true"
-  , "  | Cons h t -> if matchersHas xs h then matchersContainsAll xs t else false"
-  , "  end"
-  , "end"
+  , "function matchersContainsAll (xs :: List a) (ys :: List a) -> Bool requires Eq a is"
+  , "  first matching case of ys :"
+  , "  when Nil then true"
+  , "  when Cons h t then if matchersHas xs h then matchersContainsAll xs t else false end if"
+  , "  end case"
+  , "end function"
   , ""
-  , "definition matchersIsSubsetOf (xs :: List a) (ys :: List a) :: Bool requires Eq a is"
+  , "function matchersIsSubsetOf (xs :: List a) (ys :: List a) -> Bool requires Eq a is"
   , "  matchersContainsAll ys xs"
-  , "end"
+  , "end function"
   , ""
-  , "definition matchersMatchesRegex (t :: Text) (r :: Regex) :: Bool is"
-  , "  match r with | Regex p -> prelude.regexMatches p t end"
-  , "end"
-  ]
+  , "function matchersMatchesRegex (t :: Text) (r :: Regex) -> Bool is"
+  , "  first matching case of r : when Regex record{ pattern = p} then prelude.regexMatches p t end case"
+  , "end function"
+  , "end unit" ]

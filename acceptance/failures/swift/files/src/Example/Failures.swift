@@ -6,7 +6,7 @@ import LawSpecRuntime
 extension Example.Failures {
     /// (Int32 -> Int32)
     static func refund(_ value0: Int32) throws(PaymentError) -> Int32 {
-        if value0 > 5000 { throw .tooLarge(limit: 5000) }
+        if value0 > 5000 { throw .tooLarge(value: 5000) }
         return value0
     }
 
@@ -14,7 +14,7 @@ extension Example.Failures {
     static func settle(_ value0: Int32) async throws(PaymentError) -> Int32 {
         await Task.yield()
         if value0 < 0 { throw .blocked }
-        if value0 == 0 { throw .declined(message: "there is nothing to settle") }
+        if value0 == 0 { throw .declined(value: Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7(message: "there is nothing to settle")) }
         return value0
     }
 
@@ -26,7 +26,7 @@ extension Example.Failures {
     struct NativeGateway: LawSpec.Abilities.ExampleFailures.Gateway {
         func decide(_ value0: Int32) -> Decision {
             if value0 < 0 { return .block }
-            if value0 % 2 != 0 { return .decline(reason: "an odd amount") }
+            if value0 % 2 != 0 { return .decline(value: "an odd amount") }
             return .approve
         }
     }

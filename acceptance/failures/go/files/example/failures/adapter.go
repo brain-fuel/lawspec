@@ -14,7 +14,7 @@ func (handler *GatewayHandler) Decide(value0 int32) Decision {
 		return DecisionBlock{}
 	}
 	if value0%2 == 1 {
-		return DecisionDecline{Reason: "an odd amount"}
+		return DecisionDecline{Value: "an odd amount"}
 	}
 	return DecisionApprove{}
 }
@@ -25,7 +25,7 @@ func (handler *GatewayHandler) Decide(value0 int32) Decision {
 // Refund implements refund :: (Int32 -> Int32).
 func Refund(value0 int32) int32 {
 	if value0 > 5000 {
-		panic(LawSpecFail{Value: PaymentErrorTooLarge{Limit: 5000}})
+		panic(LawSpecFail{Value: PaymentErrorTooLarge{Value: 5000}})
 	}
 	return value0
 }
@@ -37,7 +37,7 @@ func Settle(value0 int32) LawSpecTask[int32] {
 			panic(LawSpecFail{Value: PaymentErrorBlocked{}})
 		}
 		if value0 == 0 {
-			panic(LawSpecFail{Value: PaymentErrorDeclined{Message: "there is nothing to settle"}})
+			panic(LawSpecFail{Value: PaymentErrorDeclined{Value: Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7{Message: "there is nothing to settle"}}})
 		}
 		return value0
 	})

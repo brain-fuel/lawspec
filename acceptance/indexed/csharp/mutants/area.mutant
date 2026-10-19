@@ -1,6 +1,6 @@
 @@ src/Example/Arithmetic.cs
 <<<<<<<
-Length(grid.Rows) * Length(grid.Columns)
+Length(grid.Value.Rows) * Length(grid.Value.Columns)
 =======
-Length(grid.Rows) + Length(grid.Columns)
+Length(grid.Value.Rows) + Length(grid.Value.Columns)
 >>>>>>>

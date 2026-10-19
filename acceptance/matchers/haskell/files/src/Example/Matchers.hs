@@ -28,4 +28,4 @@ slug title = T.intercalate (T.pack "-") (filter (not . T.null) (T.split (not . w
 
 -- (Int32 -> example.matchers::type::Order)
 ship :: I.Int32 -> Data.Order
-ship n = Data.OrderShipped n (T.pack "post")
+ship n = Data.OrderShipped (Data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911 (T.pack "post") n)

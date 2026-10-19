@@ -3,7 +3,7 @@ expect: repeated random cases
 <<<<<<<
     repeat 3
     retry flaky 2
-    cover 100% "ordinary roots" when n == 0
+    cover 100% "ordinary roots" when n = 0
 =======
     repeat 3
     retry flaky 2

@@ -22,7 +22,7 @@ test('native payment exports cover all targets and preserve application and gene
       assert.ok(project.files.every(file=>file.ownership==='user'));
       const config=JSON.parse(await readFile(path.join(project.directory,'lawspec.json'),'utf8'));
       assert.equal(config.version,2);
-      assert.equal(config.languageProfile,'1.0-rc.1');
+      assert.equal(config.languageProfile,'1.0-rc.2');
       assert.deepEqual(config.verification.layers,['proof','exhaustive','property','examples','runtime','model']);
       assert.equal(config.machineBits,32);
       assert.equal(config.targets[0].language,project.target);

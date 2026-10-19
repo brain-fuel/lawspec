@@ -24,14 +24,15 @@ reverse :: List Int32 -> List Int32
 law "|reverse preserves length| is
   definition :
     for all (xs :: List Int32) =>
-      prelude.length (reverse xs) = prelude.length xs end
-  end
+      prelude.length (reverse xs) = prelude.length xs end for all
+  end definition
   example "|duplicates count separately| :
     xs = [3, 1, 3]
     expect prelude.length xs = 3
     expect reverse xs = [3, 1, 3]
-  end
-end
+  end example
+end law
+end unit
 ```
 
 `prelude.length` returns an exact integer. Two lists are equal when they have
@@ -58,13 +59,14 @@ unit guide.presence
 echo :: Maybe (Either Int8 Bool) -> Maybe (Either Int8 Bool)
 
 law "|preserve every alternative| is
-  definition : for all (x :: Maybe (Either Int8 Bool)) => echo x = x end end
-  example "|absent| : x = Nothing expect echo x = Nothing end
+  definition : for all (x :: Maybe (Either Int8 Bool)) => echo x = x end for all end definition
+  example "|absent| : x = Nothing expect echo x = Nothing end example
   example "|left integer| : x = Just (Left 127) expect echo x = Just (Left 127)
-  end
+  end example
   example "|right boolean| : x = Just (Right false) expect echo x = Just (Right
-    false) end
-end
+    false) end example
+end law
+end unit
 ```
 
 These are algebraic sums. They are separate from the interoperability types
@@ -101,12 +103,13 @@ function rebuild (tree :: Tree a) -> Tree a is
 end function
 
 law "|preserve the constructor and its fields| is
-  definition : for all (tree :: Tree Int8) => rebuild tree = tree end end
+  definition : for all (tree :: Tree Int8) => rebuild tree = tree end for all end definition
   example "|nested branches| :
     tree = Branch [Leaf 127, Branch [], Leaf -128]
     expect rebuild tree = Branch [Leaf 127, Branch [], Leaf -128]
-  end
-end
+  end example
+end law
+end unit
 ```
 
 Constructors take their fields in declaration order. Constructors may be
@@ -140,9 +143,10 @@ end function
 law "|a rename reads back| is
   definition :
     for all (l :: Ledger) (name :: Text) =>
-      (rename l name).account.owner = name and (rename l name).entries = 0 end
-  end
-end
+      (rename l name).account.owner = name and (rename l name).entries = 0 end for all
+  end definition
+end law
+end unit
 ```
 
 - `b.f` is the field `f` of `b`. The dot touches both names; `f . g` with
@@ -209,6 +213,7 @@ type Badge is a record{
 
   label :: (v :: Text where validName v)}
 end type
+end unit
 ```
 
 A recursive definition cannot be unfolded, and is refused there.

@@ -26,7 +26,7 @@ networkSource = unlines
   , "-- The secure network handler: importing this unit gives a program's nodes"
   , "-- ML-DSA-65 identities, a signed ML-KEM-768 handshake and frames sealed"
   , "-- with AES-256-GCM (docs/reference/language/distribution.md#security)."
-  ]
+  , "end unit" ]
 
 usesNetworkUnits :: [C.Unit] -> Bool
 usesNetworkUnits = any ((== networkUnit) . C.idText . C.unitId)

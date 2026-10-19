@@ -11,17 +11,17 @@ let mutable private ids = 0
 
 let empty () : Stack = Stack.Empty
 
-let push (value0: sbyte) (value1: Stack) : PushFlow = { State = Push(value0, value1) }
+let push (value0: sbyte) (value1: Stack) : PushFlow = { State = Push({ Rest = value1; Top = value0 }) }
 
 // The flow signature guarantees a nonempty stack.
 let pop (value0: Stack) : PopFlow =
     match value0 with
-    | Push(top, rest) -> { Result = top; State = rest }
+    | Push({ Rest = rest; Top = top }) -> { Result = top; State = rest }
     | Empty -> invalidArg "value0" "pop needs a nonempty stack"
 
 let peek (value0: Stack) : PeekFlow =
     match value0 with
-    | Push(top, _) -> { Result = top; State = value0 }
+    | Push({ Rest = _; Top = top }) -> { Result = top; State = value0 }
     | Empty -> invalidArg "value0" "peek needs a nonempty stack"
 
 let newCounter () : Counter =

@@ -170,8 +170,10 @@ try {
 // lawspec test runs each law once, then only the laws an edit can affect. A
 // law that calls no adapter does not depend on the adapter's code.
 const specification = path.join(directory, 'laws/payments.lawspec');
-await writeFile(specification, (await readFile(specification, 'utf8')) +
-  '\nlaw "|integers equal themselves| is definition: for all (x of type Int8) => x must be x end end end\n');
+const originalSpecification = await readFile(specification, 'utf8');
+assert.match(originalSpecification, /\bend unit\s*$/u);
+await writeFile(specification, originalSpecification.replace(/\bend unit\s*$/u, '') +
+  '\nlaw "|integers equal themselves| is definition: for all (x of type Int8) => x must be x end for all end definition end law\nend unit\n');
 await run(process.execPath, [cli, 'generate', ...(minify ? ['--minify'] : [])], directory);
 const lawspecTest = async (flags = [], pass = true) => {
   const printed = await run(process.execPath, [cli, 'test', '--json', ...(minify ? ['--minify'] : []), ...flags], directory, pass);

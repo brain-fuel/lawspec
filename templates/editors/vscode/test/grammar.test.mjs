@@ -142,3 +142,11 @@ test('every bundled spec and parser fixture tokenizes without stopping early', a
   }
   assert.ok(files >= 50, `Expected all repository specs, found ${files}`);
 });
+
+
+test('every named closing phrase has one closing scope', () => {
+  for (const label of [/*@ block-labels @*/]) {
+    const closing = 'end ' + label;
+    scopeAt(closing, closing, 'keyword.control.block.end');
+  }
+});

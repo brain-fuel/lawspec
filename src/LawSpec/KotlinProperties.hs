@@ -75,6 +75,15 @@ emitTests Config{..} unit laws = do
   generated <- mapM (law testNames) (zip [0::Int ..] laws)
   let bodies=map snd generated
       sharedCases=concatMap fst generated
+      -- The JVM limits a method's bytecode to 64 KiB. Keep registration for
+      -- each law in its own method, while passing the constructor's registration
+      -- function so seeded ordering still collects every ordinary test.
+      registrations=zip [0::Int ..] (bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings))
+      registrationName index="_lawspecRegister" ++ className ++ show index
+      registration index doc = text ("private fun StringSpec." ++ registrationName index ++
+        "(_register: (String, " ++ testType ++ ") -> kotlin.Unit) ") <>
+        block (statements [text ("operator fun String.invoke(test: " ++ testType ++ ") { _register(this, test) }"),doc])
+      register index=call (registrationName index) [] <> text " { name, test -> name(test) }"
   let imports = sort $ ["io.kotest.core.spec.style.StringSpec", "io.kotest.property.checkAll",
         "io.kotest.property.Arb", "io.kotest.property.PropTestConfig", "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecSchema",
         "lawspec.runtime.LawSpecDataSchema", "lawspec.runtime.LawSpecDataCodecs",
@@ -85,7 +94,7 @@ emitTests Config{..} unit laws = do
     (if null packageName then mempty else text ("package " ++ packageName) <> D.hardline <> D.hardline) <>
     statements [text ("import " ++ name) | name <- imports] <> D.hardline <> D.hardline <>
     separate ([seedDoc, Helpers.assertionDoc, Helpers.dataHelpersDoc machineBits generator] ++
-      map contract (contracts unit) ++ sharedCases) <> D.hardline <> D.hardline <>
+      map contract (contracts unit) ++ sharedCases ++ [registration index doc | (index,doc)<-registrations]) <> D.hardline <> D.hardline <>
     text ("class " ++ className ++ "LawSpecTest : StringSpec(") <>
     -- Workflows wait on a virtual clock under test, and workflows and
     -- mailboxes read the Clock handler a law installs.
@@ -93,7 +102,7 @@ emitTests Config{..} unit laws = do
       [text "lawspec.Time.registerClock()" | installsClock unit]) :
       [call "lawspec.testing.LawSpecHarness.parallelism" [quoted unitLabel, quoted "coroutines on a thread per processor (Kotest concurrency)",
          text "Runtime.getRuntime().availableProcessors()"] | parallel] ++
-      ordered (bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)))) <> text ")" <>
+      ordered [register index | (index,_)<-registrations])) <> text ")" <>
     -- parallel: Kotest runs the tests concurrently, on as many threads as
     -- processors.
     (if parallel then text " " <> block (statements
@@ -288,7 +297,18 @@ emitTests Config{..} unit laws = do
           else pure [nativeProperty fn label e check]
       let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
             ["_property" | not (null property)]
-      pure (sharedDocs,metadataDocument 96 "//" e <> separate (searchBefore ++ harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter))
+      let tests=harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property)
+          -- A complete finite law can register thousands of distinct tests.
+          -- Local chunks retain the law's replay state and registration scope.
+          chunks []=[]
+          chunks docs=take 64 docs:chunks (drop 64 docs)
+          registered
+            | length tests > 64 && not (runSettings h) && C.harnessKnownFailing h==Nothing =
+                [text ("fun _lawspecChunk" ++ show i ++ "() ") <> block (separate docs) |
+                  (i,docs)<-zip [0::Int ..] (chunks tests)] ++
+                [call ("_lawspecChunk" ++ show i) [] | i<-[0..length (chunks tests)-1]]
+            | otherwise=tests
+      pure (sharedDocs,metadataDocument 96 "//" e <> separate (searchBefore ++ registered ++ searchAfter))
     contextualProperty fn label e check = do
       let bindings xs = statements [text "val symbols = _inputs.symbols",
             text "val _values = _inputs.values",fromValues xs]

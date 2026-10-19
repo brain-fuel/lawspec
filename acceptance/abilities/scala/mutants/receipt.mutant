@@ -1,4 +1,4 @@
-expect-any: a receipt is for the amount captured [native] | [recording native]
+expect-any: a receipt is for the amount captured| [native] | [recording native]
 @@ src/main/scala/example/Abilities.scala
 <<<<<<<
     ): lawspec.data.Receipt = lawspec.data.Receipt(value0)

@@ -16,7 +16,7 @@ import { createCompiler } from 'lawspec';
 
 const compiler = await createCompiler();
 const result = await compiler.planGeneration({
-  languageProfile: '1.0-rc.1',
+  languageProfile: '1.0-rc.2',
   verification: {layers: ['property', 'examples']},
   sources: [{ path: 'codec.lawspec', content: sourceText }],
   target: 'python'
@@ -62,10 +62,9 @@ TypeScript declarations ship in the package (`index.d.ts`). Requests accept
 `machineBits`, `generation`, `nativeBindings`, `dependencies`, `packages` and
 `package`; generation requests also accept `sourceDir`, `testDir` and `minify`.
 The API defaults to schema 5. Every ordinary request supplies the explicit
-`1.0-rc.1` language profile; older schemas are rejected. An omitted verification
+`1.0-rc.2` language profile; older schemas are rejected. An omitted verification
 selection defaults to `[]`, retaining mandatory definition checks without
-claiming law verification. Use the migration methods with `from: "0.24"` for
-legacy source.
+claiming law verification. Earlier profiles and schemas are rejected.
 
 The full wire format, including the lossless scalar encoding, is in the
 [API reference](../reference/api.md). Changes between versions are in

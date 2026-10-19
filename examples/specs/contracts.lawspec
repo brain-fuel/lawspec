@@ -4,121 +4,122 @@ unit example.contracts
 -- over Bytes and Text, refined records, and handlers named like their
 -- abilities.
 
-type Refusal is | Negative | Empty end
+type Refusal is one of | Negative | Empty end type
 
-definition bump (n :: Int64) (total :: Int64) :: Pair Int64 Int64 fails with Refusal is
+procedure bump (n :: Int64) (total :: Int64) -> Pair Int64 Int64 fails with Refusal is
   if n < 0 then raise Negative else
-    if total > 1000000 || n > 1000000 then Pair total total else Pair (prelude.Int64 (total + n)) (prelude.Int64 (total + n))
-end
+    if total > 1000000 || n > 1000000 then Pair total total else Pair (prelude.Int64 (total + n)) (prelude.Int64 (total + n)) end if end if
+end procedure
 
 -- A definition that may fail but does not.
-definition peek (total :: Int64) :: Pair Int64 Int64 fails with Refusal is Pair total total end
+procedure peek (total :: Int64) -> Pair Int64 Int64 fails with Refusal is Pair total total end procedure
 
 ability Counter is
   add :: Int64 -> Int64 fails with Refusal
   current :: Int64 fails with Refusal
-end
+end ability
 
 -- Named like its ability.
 handler counter for Counter with state total :: Int64 start 0 is
-  add by bump
-  current by peek
-end
+  operation add by bump end operation
+  operation current by peek end operation
+end handler
 
 -- A state with no typed form keeps this handler on the dynamic path.
-type Scaled is Scaled count :: Int64 scale :: Float64 end
+type Scaled is a record{  count :: Int64 scale :: Float64} end type
 
-definition bumpScaled (n :: Int64) (s :: Scaled) :: Pair Int64 Scaled fails with Refusal is
+procedure bumpScaled (n :: Int64) (s :: Scaled) -> Pair Int64 Scaled fails with Refusal is
   if n < 0 then raise Negative else
     if s.count > 1000000 || n > 1000000 then Pair s.count s else
-      Pair (prelude.Int64 (s.count + n)) (s with count = prelude.Int64 (s.count + n))
-end
+      Pair (prelude.Int64 (s.count + n)) (s with count = prelude.Int64 (s.count + n)) end if end if
+end procedure
 
-definition peekScaled (s :: Scaled) :: Pair Int64 Scaled fails with Refusal is Pair s.count s end
+procedure peekScaled (s :: Scaled) -> Pair Int64 Scaled fails with Refusal is Pair s.count s end procedure
 
-handler scaledCounter for Counter with state s :: Scaled start Scaled 0 1.0 is
-  add by bumpScaled
-  current by peekScaled
-end
+handler scaledCounter for Counter with state s :: Scaled start Scaled record{ count = 0 , scale = 1.0} is
+  operation add by bumpScaled end operation
+  operation current by peekScaled end operation
+end handler
 
 -- Bytes and Text inside handler clauses, on both paths.
 ability Codec is
   octetCount :: Text -> Int64
   label :: Text -> Int32 -> Text
-end
+end ability
 
 handler codec for Codec is
-  octetCount t is prelude.length (prelude.octets (prelude.utf8 t)) end
-  label t n is prelude.join "-" [t, prelude.textOf n] ++ prelude.slice 0 0 t end
-end
+  operation octetCount t is prelude.length (prelude.octets (prelude.utf8 t)) end operation
+  operation label t n is prelude.join "-" [t, prelude.textOf n] ++ prelude.slice 0 0 t end operation
+end handler
 
 handler scaledCodec for Codec with state s :: Float64 start 1.0 is
-  octetCount t is prelude.length (prelude.bytesOf (prelude.octets (prelude.utf8 t))) end
-  label t n is prelude.take (prelude.length t + 9) (t ++ "-" ++ prelude.textOf n) end
-end
+  operation octetCount t is prelude.length (prelude.bytesOf (prelude.octets (prelude.utf8 t))) end operation
+  operation label t n is prelude.take (prelude.length t + 9) (t ++ "-" ++ prelude.textOf n) end operation
+end handler
 
 -- A failed operation leaves the handler's state as it was, on the typed
 -- path (counter) and the dynamic one (scaledCounter).
-law `a refused add changes nothing` using counter is
-  definition is
-    `for all` (n :: Int64 where n >= 0 && n <= 1000) .
-      (let refused = prelude.attempt (add (0 - 1)) in add n) = n
-  end
-end
+law "|a refused add changes nothing| using counter is
+  definition :
+    for all (n :: Int64 where n >= 0 && n <= 1000) =>
+      (let refused = prelude.attempt (add (0 - 1)) in add n end let) = n end for all
+  end definition
+end law
 
-law `a refused add changes nothing, dynamically` using scaledCounter is
-  definition is
-    `for all` (n :: Int64 where n >= 0 && n <= 1000) .
-      (let refused = prelude.attempt (add (0 - 1)) in add n) = n
-  end
-end
+law "|a refused add changes nothing, dynamically| using scaledCounter is
+  definition :
+    for all (n :: Int64 where n >= 0 && n <= 1000) =>
+      (let refused = prelude.attempt (add (0 - 1)) in add n end let) = n end for all
+  end definition
+end law
 
-law `a text's octets count its UTF-8 bytes` using codec is
-  definition is
-    `for all` (n :: Int32 where n >= 0 && n <= 1000) .
-      octetCount (prelude.textOf n ++ "é") = prelude.length (prelude.textOf n) + 2
-  end
-end
+law "|a text's octets count its UTF-8 bytes| using codec is
+  definition :
+    for all (n :: Int32 where n >= 0 && n <= 1000) =>
+      octetCount (prelude.textOf n ++ "é") = prelude.length (prelude.textOf n) + 2 end for all
+  end definition
+end law
 
-law `a text's octets count its UTF-8 bytes, dynamically` using scaledCodec is
-  definition is
-    `for all` (n :: Int32 where n >= 0 && n <= 1000) .
-      octetCount (prelude.textOf n ++ "é") = prelude.length (prelude.textOf n) + 2
-  end
-end
+law "|a text's octets count its UTF-8 bytes, dynamically| using scaledCodec is
+  definition :
+    for all (n :: Int32 where n >= 0 && n <= 1000) =>
+      octetCount (prelude.textOf n ++ "é") = prelude.length (prelude.textOf n) + 2 end for all
+  end definition
+end law
 
-law `a label joins its parts` using codec is
-  definition is label "member" 3 = "member-3" end
-end
+law "|a label joins its parts| using codec is
+  definition : label "member" 3 = "member-3" end definition
+end law
 
-law `a label joins its parts, dynamically` using scaledCodec is
-  definition is label "member" 3 = "member-3" end
-end
+law "|a label joins its parts, dynamically| using scaledCodec is
+  definition : label "member" 3 = "member-3" end definition
+end law
 
 -- Refined records.
-type Pet is
-  Pet
+type Pet is a record{
+
     id :: Maybe Int64
-    name :: (v :: Text where v matches regex "[a-z]+")
-end
+    name :: (v :: Text where v matches regex "[a-z]+")}
+end type
 
-definition validName (name :: Text) :: Bool is name matches regex "[a-z]+" end
+function validName (name :: Text) -> Bool is name matches regex "[a-z]+" end function
 
-type Badge is
-  Badge
-    label :: (v :: Text where validName v)
-end
+type Badge is a record{
 
-definition withId (body :: Pet) (key :: Int64) :: Pet is body with id = Just key end
+    label :: (v :: Text where validName v)}
+end type
 
-definition validPet (p :: Pet) :: Bool is p.name matches regex "[a-z]{2,8}" end
+function withId (body :: Pet) (key :: Int64) -> Pet is body with id = Just key end function
 
-law `an id is set by a record update` is
-  definition is
-    `for all` (p :: Pet where validPet p) (key :: Int64) . (withId p key).id = Just key and (withId p key).name = p.name
-  end
-end
+function validPet (p :: Pet) -> Bool is p.name matches regex "[a-z]{2,8}" end function
 
-law `a badge keeps its label` is
-  definition is `for all` (t :: Badge) . validName t.label = true end
-end
+law "|an id is set by a record update| is
+  definition :
+    for all (p :: Pet where validPet p) (key :: Int64) => (withId p key).id = Just key and (withId p key).name = p.name end for all
+  end definition
+end law
+
+law "|a badge keeps its label| is
+  definition : for all (t :: Badge) => validName t.label = true end for all end definition
+end law
+end unit

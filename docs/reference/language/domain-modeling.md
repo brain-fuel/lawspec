@@ -12,8 +12,8 @@ they make illegal states unrepresentable.
 ```lawspec
 unit guide.ordering
 
-wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end
-wrapper OrderId is Text where prelude.length value > 0 end
+wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end wrapper
+wrapper OrderId is Text where prelude.length value > 0 end wrapper
 
 type UnvalidatedOrder is a record{  id :: Text quantity :: Int32} end type
 type ValidatedOrder is a record{  id :: OrderId quantity :: UnitQuantity}
@@ -26,18 +26,20 @@ end type
 workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is
 validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder
 priceOrder :: ValidatedOrder -> Either OrderError PricedOrder
-end
+end workflow
 
 law "|quantities are always in range| is
   definition :
     for all (q :: UnitQuantity) =>
-      valueOfUnitQuantity q >= 1 && valueOfUnitQuantity q <= 1000 end
-  end
+      valueOfUnitQuantity q >= 1 && valueOfUnitQuantity q <= 1000 end for all
+  end definition
   example "|largest quantity| :
     q = UnitQuantity 1000
     expect valueOfUnitQuantity q = 1000
-  end
-end
+  end example
+end law
+
+end unit
 ```
 
 ## Wrappers
@@ -46,8 +48,8 @@ A `wrapper` declares a distinct nominal type with one field, `value`, over a
 primitive or container, and an optional constraint on `value`:
 
 ```lawspec fragment
-wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end
-wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end
+wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end wrapper
+wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end wrapper
 ```
 
 - `UnitQuantity` is not interchangeable with `Int32`, nor with another wrapper
@@ -79,7 +81,7 @@ workflow register :: Signup -> Either SignupError Account is
   tap audit
   ensure brief else tooLong
   orElse waitlist
-end
+end workflow
 ```
 
 Because each state is its own type, a `ValidatedOrder` can only hold checked

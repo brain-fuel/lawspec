@@ -1,6 +1,6 @@
 @@ src/main/kotlin/example/Gadt.kt
 <<<<<<<
-        is Expr.Plus -> evalNumber(value0.left) + evalNumber(value0.right)
+        is Expr.Plus -> evalNumber(value0.value.left) + evalNumber(value0.value.right)
 =======
-        is Expr.Plus -> evalNumber(value0.left) - evalNumber(value0.right)
+        is Expr.Plus -> evalNumber(value0.value.left) - evalNumber(value0.value.right)
 >>>>>>>

@@ -1,6 +1,6 @@
 @@ src/Example/Gadt.cs
 <<<<<<<
-EvalNumber(p.left) + EvalNumber(p.right),
+EvalNumber(p.value.Left) + EvalNumber(p.value.Right),
 =======
-EvalNumber(p.left) - EvalNumber(p.right),
+EvalNumber(p.value.Left) - EvalNumber(p.value.Right),
 >>>>>>>

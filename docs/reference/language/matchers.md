@@ -25,35 +25,36 @@ ship :: Int32 -> Order
 
 law "|sorting keeps every item| is
   definition :
-    for all (xs :: List Int32) => sortItems xs has same items as xs end
-  end
-end
+    for all (xs :: List Int32) => sortItems xs has same items as xs end for all
+  end definition
+end law
 
 law "|a slug is lowercase words joined by dashes| is
   definition :
     for all (title :: Text) => slug title matches regex
-    "([a-z0-9]+(-[a-z0-9]+)*)?" end
-  end
+    "([a-z0-9]+(-[a-z0-9]+)*)?" end for all
+  end definition
   example "|a title| :
     title = "Hello World"
     expect slug title starts with "hello"
     expect slug title ends with "world"
-  end
-end
+  end example
+end law
 
 law "|the average lies between the two| is
   definition :
     for all (a :: Int32) (b :: Int32) =>
-      average a b is within 0.5 of prelude.Float64 (prelude.quot (a + b) 2) end
-  end
-end
+      average a b is within 0.5 of prelude.Float64 (prelude.quot (a + b) 2) end for all
+  end definition
+end law
 
 law "|shipping gives a shipped order| is
   definition :
     for all (id :: Int32) => ship id matches Shipped record{ id = _ , carrier =
-        _} end
-  end
-end
+        _} end for all
+  end definition
+end law
+end unit
 ```
 
 ## The matchers

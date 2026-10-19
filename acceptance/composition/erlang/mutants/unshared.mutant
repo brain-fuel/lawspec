@@ -1,4 +1,4 @@
-expect: sizes count records [native Logs, native Reader]
+expect: sizes count records| [native Logs, native Reader]
 @@ src/example_composition.erl
 <<<<<<<
 reader_handler(Store) ->

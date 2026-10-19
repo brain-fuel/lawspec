@@ -669,6 +669,14 @@ finiteValuesWithRegistry registry bits limit ty = do
             pure (sequence alternatives >>= bounded . concat)
           _ -> Left ("no finite domain for " ++ show t)
 
+-- | Intrinsic index guards need the same checked native generation as
+-- constructor predicates, including guards carried by structural payloads.
+hasConstructorContracts :: [DataDeclaration] -> Bool
+hasConstructorContracts = any $ \declaration ->
+  any (not . null . constructorPredicates) (dataConstructors declaration) ||
+  maybe False (not . null . structuralIndexGuards) (dataStructural declaration) ||
+  maybe False (any (not . null . constructorIndexGuards . snd) . familyIndexConstructors) (dataIndex declaration)
+
 -- | Fixed-point reachability follows stored parameters rather than all type
 -- arguments: Phantom Positive has no constrained values, while growing recursive
 -- applications can eventually store a constrained argument. The finite lattice

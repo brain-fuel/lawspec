@@ -19,7 +19,7 @@ import LawSpec.Scalar (Scalar(..))
 import SourceTupleSpec (checkOutcomes)
 
 compile bits body = compileCoreCanonical bits S.defaultGeneration
-  [S.Source "branches.lawspec" ("unit branches\n" ++ body)]
+  [S.Source "branches.lawspec" ("unit branches\n\n" ++ body ++ "\nend unit\n")]
 
 accepts body = forM_ [32,64] $ \bits -> case compile bits body of
   Left diagnostics -> expectationFailure (show diagnostics)
@@ -82,8 +82,8 @@ test_selectionAdmission = describe "independent admission of discarded case bran
   it "preserves the ordinary GADT rule for inaccessible constructors" $
     accepts (gadt ++ "function selected (value of type Value Bool) -> Bool is first matching case of value: when #any then true when Number record{value = n} if absent then absent end case end function")
   it "checks discarded guards and bodies in procedures and laws" $ do
-    rejects "procedure selected (value of type Bool) -> Bool is first matching case of value: when #any then true when true if 7 then false end case end procedure"
-    rejects "law requirement is definition: for all (value of type Bool) => first matching case of value: when #any then true when true then absent end case end end end"
+    rejects "procedure selected (value of type Bool) -> Bool is first matching case of value: when #any then true when true if 7 then false end case end procedure\n"
+    rejects "law requirement is definition: for all (value of type Bool) => first matching case of value: when #any then true when true then absent end case end for all end definition end law\n"
   it "retains nested selected-value scopes and removes temporary row names" $ do
     let body = selected "Bool" "when it matches bound then first matching case of (bound, 7): when (flag, number) then flag otherwise false end case otherwise false"
     forM_ [32,64] $ \bits -> case compile bits body of
@@ -97,11 +97,10 @@ test_selectionAdmission = describe "independent admission of discarded case bran
     rejects (selected "Integer" "when true then 0 when false then selected value")
   it "evaluates the subject once and never runs a discarded effectful body" $ do
     let body = unlines
-          [ "ability Trace is mark :: Integer -> Integer end"
+          [ "ability Trace is mark :: Integer -> Integer end ability"
           , "procedure observed (ignored of type ()) -> Integer is"
           , "first matching case of mark 0: when #any then mark 1 when 0 then mark 2 otherwise mark 3 end case"
-          , "end procedure"
-          ]
+          , "end procedure" ]
     forM_ [32,64] $ \bits -> do
       program <- either (fail . show) pure (compile bits body)
       invoke <- either (fail . show) pure (prepareHookedDefinitions program)

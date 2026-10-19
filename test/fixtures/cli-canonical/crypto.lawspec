@@ -22,17 +22,17 @@ procedure handshake (message :: Bytes) (context :: Bytes) -> Maybe Bytes uses
               when Encapsulated sent shared then
                 (let client = deriveAeadKey shared context in
                 let server = deriveAeadKey (decapsulate secret sent) context in
-                unseal server (seal client message context) context)
+                unseal server (seal client message context) context end let end let)
             end case)
-          else Nothing end if)
+          else Nothing end if end let)
       end case)
   end case
 end procedure
 
 law "|a handshake carries the message| is
   definition : for all (message :: Bytes) (context :: Bytes) => handshake
-      message context = Just message end end
-end
+      message context = Just message end for all end definition
+end law
 
 -- A native adapter: a short fingerprint of a public key, from its SHA3-256
 -- digest.
@@ -40,17 +40,18 @@ fingerprint :: Bytes -> Bytes uses Hash
 
 law "|a fingerprint is 8 bytes| is
   definition : for all (key :: Bytes) => prelude.length (fingerprint key) = 8
-    end end
-end
+    end for all end definition
+end law
 
 law "|a key has one fingerprint| is
-  definition : for all (key :: Bytes) => fingerprint key = fingerprint key end
-  end
-end
+  definition : for all (key :: Bytes) => fingerprint key = fingerprint key end for all
+  end definition
+end law
 
 -- A native adapter that seals with a fresh key and opens again.
 roundTrip :: Bytes -> Bool uses Aead
 
 law "|sealed messages open| is
-  definition : for all (message :: Bytes) => roundTrip message = true end end
-end
+  definition : for all (message :: Bytes) => roundTrip message = true end for all end definition
+end law
+end unit

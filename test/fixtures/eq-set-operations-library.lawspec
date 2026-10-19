@@ -1,119 +1,123 @@
 -- Generated from templates/test/fixtures/eq-set-operations-library.lawspec by lawspec-dev generate. Do not edit.
-unit lawspec.collections
+unit example.eqSetAlgorithms
 
-type EqSet (a :: Type) is EqSetItems items :: List a end
 
-definition collectionAppend (xs :: List a) (ys :: List a) :: List a is
-  match xs with
-  | Nil -> ys
-  | Cons h t -> Cons h (collectionAppend t ys)
-  end
-end
 
-definition collectionTail (xs :: List a) :: List a is
-  match xs with
-  | Nil -> xs
-  | Cons h t -> t
-  end
-end
 
-definition collectionHead (xs :: List a) :: Maybe a is
-  match xs with
-  | Nil -> Nothing
-  | Cons h t -> Just h
-  end
-end
+function collectionAppend (xs :: List a) (ys :: List a) -> List a is
+  first matching case of xs :
+  when Nil then ys
+  when Cons h t then Cons h (collectionAppend t ys)
+  end case
+end function
 
-definition collectionLast (xs :: List a) :: Maybe a is
-  match xs with
-  | Nil -> Nothing
-  | Cons h t -> match t with
-    | Nil -> Just h
-    | Cons second rest -> collectionLast t
-    end
-  end
-end
+function collectionTail (xs :: List a) -> List a is
+  first matching case of xs :
+  when Nil then xs
+  when Cons h t then t
+  end case
+end function
 
-definition collectionInit (xs :: List a) :: List a is
-  match xs with
-  | Nil -> xs
-  | Cons h t -> match t with
-    | Nil -> t
-    | Cons second rest -> Cons h (collectionInit t)
-    end
-  end
-end
+function collectionHead (xs :: List a) -> Maybe a is
+  first matching case of xs :
+  when Nil then Nothing
+  when Cons h t then Just h
+  end case
+end function
 
-definition eqSetContainsItems (x :: a) (xs :: List a) :: Bool requires Eq a is
-  match xs with
-  | Nil -> false
-  | Cons h t -> x == h || eqSetContainsItems x t
-  end
-end
+function collectionLast (xs :: List a) -> Maybe a is
+  first matching case of xs :
+  when Nil then Nothing
+  when Cons h t then first matching case of t :
+    when Nil then Just h
+    when Cons second rest then collectionLast t
+    end case
+  end case
+end function
 
-definition eqSetDistinctItems (xs :: List a) (seen :: List a) :: List a requires Eq a is
-  match xs with
-  | Nil -> xs
-  | Cons h t -> if eqSetContainsItems h seen then eqSetDistinctItems t seen
-    else Cons h (eqSetDistinctItems t (Cons h seen))
-  end
-end
+function collectionInit (xs :: List a) -> List a is
+  first matching case of xs :
+  when Nil then xs
+  when Cons h t then first matching case of t :
+    when Nil then t
+    when Cons second rest then Cons h (collectionInit t)
+    end case
+  end case
+end function
 
-definition eqSetOf (xs :: List a) :: EqSet a requires Eq a is
-  EqSetItems (eqSetDistinctItems xs [])
-end
 
-definition eqSetItems (set :: EqSet a) :: List a is
-  match set with | EqSetItems items -> items end
-end
+function eqSetContainsItems (x :: a) (xs :: List a) -> Bool requires Eq a is
+  first matching case of xs :
+  when Nil then false
+  when Cons h t then x = h || eqSetContainsItems x t
+  end case
+end function
 
-definition eqSetMember (x :: a) (set :: EqSet a) :: Bool requires Eq a is
+function eqSetDistinctItems (xs :: List a) (seen :: List a) -> List a requires Eq a is
+  first matching case of xs :
+  when Nil then xs
+  when Cons h t then if eqSetContainsItems h seen then eqSetDistinctItems t seen
+    else Cons h (eqSetDistinctItems t (Cons h seen)) end if
+  end case
+end function
+
+function eqSetOf (xs :: List a) -> Set a requires Eq a is
+  prelude.setOf (eqSetDistinctItems xs [])
+end function
+
+function eqSetItems (set :: Set a) -> List a is
+  prelude.toList set
+end function
+
+function eqSetMember (x :: a) (set :: Set a) -> Bool requires Eq a is
   eqSetContainsItems x (eqSetItems set)
-end
+end function
 
-definition eqSetInsert (x :: a) (set :: EqSet a) :: EqSet a requires Eq a is
+function eqSetInsert (x :: a) (set :: Set a) -> Set a requires Eq a is
   if eqSetMember x set then set
-  else EqSetItems (collectionAppend (eqSetItems set) [x])
-end
+  else prelude.setOf (collectionAppend (eqSetItems set) [x]) end if
+end function
 
-definition eqSetRemoveItems (x :: a) (items :: List a) :: List a requires Eq a is
-  match items with
-  | Nil -> items
-  | Cons h t -> if x == h then eqSetRemoveItems x t
-    else Cons h (eqSetRemoveItems x t)
-  end
-end
+function eqSetRemoveItems (x :: a) (items :: List a) -> List a requires Eq a is
+  first matching case of items :
+  when Nil then items
+  when Cons h t then if x = h then eqSetRemoveItems x t
+    else Cons h (eqSetRemoveItems x t) end if
+  end case
+end function
 
-definition eqSetRemove (x :: a) (set :: EqSet a) :: EqSet a requires Eq a is
-  EqSetItems (eqSetRemoveItems x (eqSetItems set))
-end
+function eqSetRemove (x :: a) (set :: Set a) -> Set a requires Eq a is
+  prelude.setOf (eqSetRemoveItems x (eqSetItems set))
+end function
 
-definition eqSetUnion (left :: EqSet a) (right :: EqSet a) :: EqSet a requires Eq a is
+function eqSetUnion (left :: Set a) (right :: Set a) -> Set a requires Eq a is
   eqSetOf (collectionAppend (eqSetItems left) (eqSetItems right))
-end
+end function
 
-definition eqSetFilterItems (items :: List a) (other :: List a) (keepMembers :: Bool) :: List a requires Eq a is
-  match items with
-  | Nil -> items
-  | Cons h t -> if (eqSetContainsItems h other) == keepMembers
+function eqSetFilterItems (items :: List a) (other :: List a) (keepMembers :: Bool) -> List a requires Eq a is
+  first matching case of items :
+  when Nil then items
+  when Cons h t then if (eqSetContainsItems h other) = keepMembers
     then Cons h (eqSetFilterItems t other keepMembers)
-    else eqSetFilterItems t other keepMembers
-  end
-end
+    else eqSetFilterItems t other keepMembers end if
+  end case
+end function
 
-definition eqSetIntersection (left :: EqSet a) (right :: EqSet a) :: EqSet a requires Eq a is
-  EqSetItems (eqSetFilterItems (eqSetItems left) (eqSetItems right) true)
-end
+function eqSetIntersection (left :: Set a) (right :: Set a) -> Set a requires Eq a is
+  prelude.setOf (eqSetFilterItems (eqSetItems left) (eqSetItems right) true)
+end function
 
-definition eqSetDifference (left :: EqSet a) (right :: EqSet a) :: EqSet a requires Eq a is
-  EqSetItems (eqSetFilterItems (eqSetItems left) (eqSetItems right) false)
-end
+function eqSetDifference (left :: Set a) (right :: Set a) -> Set a requires Eq a is
+  prelude.setOf (eqSetFilterItems (eqSetItems left) (eqSetItems right) false)
+end function
 
-definition eqSetSize (set :: EqSet a) :: Natural is
+function eqSetSize (set :: Set a) -> Whole is
   prelude.length (eqSetItems set)
-end
+end function
 
-definition eqSetIsEmpty (set :: EqSet a) :: Bool is
-  match eqSetItems set with | Nil -> true | Cons h t -> false end
-end
+function eqSetIsEmpty (set :: Set a) -> Bool is
+  first matching case of eqSetItems set : when Nil then true when Cons h t then false end case
+end function
 
+
+end unit

@@ -15,65 +15,66 @@ function event (value of type Event) -> Event is value end function
 
 law "|literal members retain first arrivals| is
   definition:
-    for all (unused of type Bool) => prelude.toList #S{3, 1, 3, 2} must be [3, 1, 2] end
-  end
+    for all (unused of type Bool) => prelude.toList #S{3, 1, 3, 2} must be [3, 1, 2] end for all
+  end definition
   expect prelude.toList #S{3, 1, 3, 2} = expected
   in table (unused, expected):
     row false, [3, 1, 2]
     row true, [3, 1, 2]
-  end
-end
+  end table
+end law
 
 law "|literal membership uses equality| is
   definition:
-    for all (unused of type Bool) => #S{2, 1} must be #S{1, 2} end
-  end
+    for all (unused of type Bool) => #S{2, 1} must be #S{1, 2} end for all
+  end definition
   expect #S{2, 1} = expected
   in table (unused, expected):
     row false, #S{1, 2}
     row true, #S{1, 2}
-  end
-end
+  end table
+end law
 
 law "|examples preserve set values| is
   definition:
-    for all (members of type Set Integer) => same members = members end
-  end
+    for all (members of type Set Integer) => same members = members end for all
+  end definition
   expect same members = expected
   in table (members, expected):
     row #S{}, #S{}
     row #S{3, 1, 3}, #S{1, 3}
     row #S{-1, 0, -1}, #S{0, -1}
-  end
-end
+  end table
+end law
 
 law "|record examples preserve set fields| is
   definition:
-    for all (value of type Saved) => saved value = value end
-  end
+    for all (value of type Saved) => saved value = value end for all
+  end definition
   example "|two saved members|:
     value = Saved record{members = #S{2, 1, 2}}
     expect saved value = Saved record{members = #S{1, 2}}
-  end
-end
+  end example
+end law
 
 law "|alternative examples preserve set payloads| is
   definition:
-    for all (value of type Event) => event value = value end
-  end
+    for all (value of type Event) => event value = value end for all
+  end definition
   example "|a selected member|:
     value = Selected #S{2, 2}
     expect event value = Selected #S{2}
-  end
-end
+  end example
+end law
 
 law "|sets can contain sets| is
   definition:
-    for all (unused of type Bool) => prelude.size #S{#S{1, 2}, #S{2, 1}, #S{3}} must be 2 end
-  end
+    for all (unused of type Bool) => prelude.size #S{#S{1, 2}, #S{2, 1}, #S{3}} must be 2 end for all
+  end definition
   expect prelude.size #S{#S{1, 2}, #S{2, 1}, #S{3}} = expected
   in table (unused, expected):
     row false, 2
     row true, 2
-  end
-end
+  end table
+end law
+end unit

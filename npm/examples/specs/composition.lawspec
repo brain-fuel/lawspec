@@ -5,13 +5,13 @@ unit example.composition
 -- the spec handlers together. The native handlers share a Store: each case
 -- opens one, and every native handler of the case is made with it.
 
-type Problem is | UnknownLog | EmptyRecord end
+type Problem is one of | UnknownLog | EmptyRecord end type
 
-type Log is
-  Log
+type Log is a record{
+
     records :: List Text
-    appends :: Int64
-end
+    appends :: Int64}
+end type
 
 handle Store
 
@@ -19,92 +19,96 @@ openStore :: Unit -> Store
 closeStore :: Store -> Unit
 
 resource Store is
-  acquire is openStore unitValue end
-  release store is closeStore store end
-end
+  acquire is openStore unitValue end acquire
+  release store is closeStore store end release
+end resource
 
 ability Logs with Store is
   create :: Text -> Unit
   append :: Text -> Text -> Int64 fails with Problem
 laws
-  law `a new log takes its first record at offset zero` is
-    definition is `for all` (t :: Text) (r :: Text where r != "") . (create t; append t r) = 0 end
-  end
-  law `an unknown log refuses records` is
-    definition is `for all` (t :: Text) (r :: Text) . append t r fails with UnknownLog end
-  end
-end
+  law "|a new log takes its first record at offset zero| is
+    definition : for all (t :: Text) (r :: Text where r != "") => (create t; append t r) = 0 end for all end definition
+  end law
+  law "|an unknown log refuses records| is
+    definition : for all (t :: Text) (r :: Text) => append t r fails with UnknownLog end for all end definition
+  end law
+end laws
+end ability
 
 ability Reader with Store is
   size :: Text -> Maybe Int64
 laws
-  law `an unknown log has no size` is
-    definition is `for all` (t :: Text) . size t = Nothing end
-  end
-end
+  law "|an unknown log has no size| is
+    definition : for all (t :: Text) => size t = Nothing end for all end definition
+  end law
+end laws
+end ability
 
 -- A client over Logs: it keeps the offset of its last write.
 ability Writer with Store is
   write :: Text -> Text -> Bool
   lastOffset :: Maybe Int64
 laws
-  law `a write to a new log is read back` is
-    definition is
-      `for all` (t :: Text) (r :: Text where r != "") . (create t; write t r; size t) = Just 1
-    end
-  end
-end
+  law "|a write to a new log is read back| is
+    definition :
+      for all (t :: Text) (r :: Text where r != "") => (create t; write t r; size t) = Just 1 end for all
+    end definition
+  end law
+end laws
+end ability
 
-definition empty (u :: Unit) :: KeyVal Text Log is prelude.keyValOf [] end
+function empty (u :: Unit) -> KeyVal Text Log is prelude.keyValOf [] end function
 
 -- One state for both abilities. It starts from a computed value, and the
 -- clause for append updates it in one branch only.
 handler store for Logs, Reader with state logs :: KeyVal Text Log start empty unitValue is
-  create t is ~logs := prelude.put t (Log [] 0) logs; unitValue end
-  append t r is
-    match prelude.lookup t logs with
-    | Nothing -> raise UnknownLog
-    | Just log ->
-        if r == "" then raise EmptyRecord else
+  operation create t is ~logs := prelude.put t (Log record{ records = [] , appends = 0}) logs; unitValue end operation
+  operation append t r is
+    first matching case of prelude.lookup t logs :
+    when Nothing then raise UnknownLog
+    when Just log then
+        if r = "" then raise EmptyRecord else
           (~logs := prelude.put t (log with records = Cons r log.records, appends = prelude.saturating (log.appends + 1)) logs;
-           log.appends)
-    end
-  end
-  size t is
-    match prelude.lookup t logs with
-    | Nothing -> Nothing
-    | Just log -> Just log.appends
-    end
-  end
-end
+           log.appends) end if
+    end case
+  end operation
+  operation size t is
+    first matching case of prelude.lookup t logs :
+    when Nothing then Nothing
+    when Just log then Just log.appends
+    end case
+  end operation
+end handler
 
 -- A clause may be a definition that gives Pair result state: `op by f`.
-definition writeTo (t :: Text) (r :: Text) (last :: Maybe Int64) :: Pair Bool (Maybe Int64) uses Logs is
-  match prelude.attempt (append t r) with
-  | Left problem -> Pair false last
-  | Right offset -> Pair true (Just offset)
-  end
-end
+procedure writeTo (t :: Text) (r :: Text) (last :: Maybe Int64) -> Pair Bool (Maybe Int64) uses Logs is
+  first matching case of prelude.attempt (append t r) :
+  when Left problem then Pair false last
+  when Right offset then Pair true (Just offset)
+  end case
+end procedure
 
-definition lastOf (last :: Maybe Int64) :: Pair (Maybe Int64) (Maybe Int64) is Pair last last end
+function lastOf (last :: Maybe Int64) -> Pair (Maybe Int64) (Maybe Int64) is Pair last last end function
 
 handler logWriter for Writer with state last :: Maybe Int64 start Nothing is
-  write by writeTo
-  lastOffset by lastOf
-end
+  operation write by writeTo end operation
+  operation lastOffset by lastOf end operation
+end handler
 
 -- The reference composition: every ability answered by spec handlers.
-handlers reference is store, logWriter end
+handlers reference is store, logWriter end handlers
 
-law `sizes count records` is
-  definition is
-    `for all` (t :: Text) (a :: Text where a != "") (b :: Text where b != "") .
-      (create t; append t a; append t b; size t) = Just 2
-  end
-end
+law "|sizes count records| is
+  definition :
+    for all (t :: Text) (a :: Text where a != "") (b :: Text where b != "") =>
+      (create t; append t a; append t b; size t) = Just 2 end for all
+  end definition
+end law
 
-law `a writer remembers where it wrote` is
-  definition is
-    `for all` (t :: Text) (r :: Text where r != "") . (create t; write t r; lastOffset) = Just 0
-  end
-end
+law "|a writer remembers where it wrote| is
+  definition :
+    for all (t :: Text) (r :: Text where r != "") => (create t; write t r; lastOffset) = Just 0 end for all
+  end definition
+end law
+end unit

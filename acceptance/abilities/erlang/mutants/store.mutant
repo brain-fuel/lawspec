@@ -1,4 +1,4 @@
-expect: a stored count comes back [native]
+expect: a stored count comes back| [native]
 @@ src/example_shop.erl
 <<<<<<<
       save => fun(Value) -> _ = lawspec_beam_effects:native_write(Stored, Value), ok end}.

@@ -6,13 +6,13 @@
 (defn empty [_] :stack/empty)
 
 (defn push [top stack]
-  {:lawspec/tag :push-flow/push-flow :state {:lawspec/tag :stack/push :top top :rest stack}})
+  {:lawspec/tag :push-flow/push-flow :state {:lawspec/tag :stack/push :value {:lawspec/tag :recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949/record :top top :rest stack}}})
 
 ;; The flow signature guarantees a nonempty stack.
-(defn pop [{:keys [top rest]}]
+(defn pop [{{:keys [top rest]} :value}]
   {:lawspec/tag :pop-flow/pop-flow :result top :state rest})
 
-(defn peek [{:keys [top] :as stack}]
+(defn peek [{{:keys [top]} :value :as stack}]
   {:lawspec/tag :peek-flow/peek-flow :result top :state stack})
 
 (def ^:private counters (atom {}))

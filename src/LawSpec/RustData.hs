@@ -1,7 +1,7 @@
 -- | Native declarations and bridges consume resolved Core, never surface syntax.
 module LawSpec.RustData (emitRustData, rustDataType, rustDataTypeWithParameters, rustFieldBoxed) where
 
-import LawSpec.DataNames (qualifiedDataName, caseInsensitiveCounts, ambiguous)
+import LawSpec.DataNames (qualifiedDataName, caseInsensitiveCounts, ambiguous, fieldClosed)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub, intercalate, find)
@@ -121,7 +121,7 @@ emitRustData layout declarations = do
   names <- namesFor declarations
   -- Keyed data can be a BTreeSet element or BTreeMap key, so it is ordered
   -- natively too (existential fields are dynamic values, which are not).
-  let keyed declaration = all (null . C.constructorExistentials) (C.dataConstructors declaration) &&
+  let keyed declaration = fieldClosed (all (null . C.constructorExistentials) . C.dataConstructors) declarations declaration &&
         either (const False) (const True) (keyedRequirements registry
           (C.Constructor (C.idText (C.dataId declaration)) [C.TypeArgument (C.TypeVariable p) | p <- C.dataParameters declaration]))
   definitions <- mapM (\d -> definition names (keyed d) d) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing,

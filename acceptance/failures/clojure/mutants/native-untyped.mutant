@@ -1,7 +1,7 @@
 expect: refunds over the limit are too large
 @@ src/example/failures.clj
 <<<<<<<
-  (when (> amount 5000) (ls/fail {:lawspec/tag :payment-error/too-large :limit 5000}))
+  (when (> amount 5000) (ls/fail {:lawspec/tag :payment-error/too-large :value 5000}))
 =======
   (when (> amount 5000) (throw (IllegalStateException. "too large")))
 >>>>>>>

@@ -21,7 +21,7 @@ test("incompatible or unverifiable environments prevent generation writes", asyn
   const executable = path.join(root, "python");
   const config = {
     version: 2,
-    languageProfile: "1.0-rc.1",
+    languageProfile: "1.0-rc.2",
     verification: {layers: []},
     sources: ["codec.lawspec"],
     targets: [{ language: "python", root: ".", python: executable }],

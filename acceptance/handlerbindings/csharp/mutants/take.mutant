@@ -1,4 +1,4 @@
-expect-any: a till gives back what it takes [native] | small payments go through [native]
+expect-any: a till gives back what it takes| [native] | small payments go through| [native]
 @@ src/Native/Till.cs
 <<<<<<<
         return new Money(money.Cents);

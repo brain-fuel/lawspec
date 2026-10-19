@@ -7,28 +7,29 @@ priceInCents :: Int32 -> Int64
 law "|drinks cost 250 cents each below ten| is
   definition :
     for all (q :: Int32) =>
-      q >= 0 && q < 10 implies priceInCents q = q * 250 end
-  end
+      q >= 0 && q < 10 implies priceInCents q = q * 250 end for all
+  end definition
 
   example "|nothing ordered| :
     q = 0
     expect priceInCents q = 0
-  end
+  end example
 
   example "|one coffee| :
     q = 1
     expect priceInCents q = 250
-  end
-end
+  end example
+end law
 
 law "|ten or more drinks are discounted| is
   definition :
     for all (q :: Int32) =>
-      q >= 10 && q <= 1000 implies priceInCents q = q * 225 end
-  end
+      q >= 10 && q <= 1000 implies priceInCents q = q * 225 end for all
+  end definition
 
   example "|a tray of ten| :
     q = 10
     expect priceInCents q = 2250
-  end
-end
+  end example
+end law
+end unit

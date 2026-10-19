@@ -106,8 +106,8 @@ elaborate bits units properties = do
   (dataDeclarations,sourceTypes) <- elaborateDataDeclarationsWithContext bits units
   elaborateWithSourceDeclarations False sourceTypes dataDeclarations bits units properties
 
--- | Migration captures retain complete unused constructor fields. Analyze
--- their input domains through the ordinary lowering and mandatory validator,
+-- | Retain the complete source constructor context while analyzing input
+-- domains through the ordinary lowering and mandatory validator,
 -- without rebuilding a sparse declaration context from the executable roots.
 elaborateWithSourceDeclarations :: Bool -> Source.SourceContext -> [C.DataDeclaration]
   -> Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
@@ -378,9 +378,7 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
               q <- C.propertyInputs cp ++ scopedQuantifiers (C.propertyBody cp)])
       -- A strategy of a refined type, (n :: T where p), keeps only the
       -- values that satisfy p, as `such that` does.
-      let (plain, refined) = case declared of
-            S.Refined n t (Just p) -> (t, Just (S.replaceExprVars [(n, S.Var "it")] p))
-            _ -> (declared, Nothing)
+      let (plain, refined) = strategyDomain declared
           gen' = maybe gen (\p -> S.GenSuchThat gen p 100) refined
       declaredType <- collectType bits plain
       unless (declaredType == inputType)
@@ -421,6 +419,9 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
     -- type) aims at the refinement, as a law input's generator does: its
     -- quantifier carries the refinement, whose bounds direct generation.
     -- The such that around it still checks every drawn value.
+    strategyDomain ty = (S.baseType ty, case S.typePredicates (S.Var "it") ty of
+      [] -> Nothing
+      predicates -> Just (foldr1 (S.Binary "&&") predicates))
     elaborateDraw closed u pid strategy input declared refinement gen = do
       aim <- refinedAim (-1) declared refinement
       go declared aim (0 :: Int) [] declared gen
@@ -442,20 +443,23 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
         go own aim k locals ty g = case g of
           S.GenAny Nothing -> anyOf own aim ty
           S.GenAny (Just other) -> do
-            actual <- collectType bits other
+            let (plain, refined) = strategyDomain other
+            actual <- collectType bits plain
             expected <- collectType bits ty
             unless (actual == expected)
               (lift (Left ("the strategy " ++ strategy ++ " draws any " ++ S.prettyType other ++ " where it needs " ++ S.prettyType ty)))
-            anyOf own aim ty
+            case refined of
+              Nothing -> anyOf own aim ty
+              Just predicate -> do
+                otherAim <- refinedAim k plain refined
+                go plain otherAim (k + 1) locals plain (S.GenSuchThat (S.GenAny Nothing) predicate 100)
           -- A reference keeps its declared type and refinement. Inlining the
           -- surface body earlier lost both, and could capture a caller's bind.
           -- Harness has already checked that this reference graph is acyclic.
           S.GenNamed n -> case lookup n strategies of
             Nothing -> lift (Left ("the strategy " ++ n ++ " is not known here"))
             Just named -> do
-              let (plain, refined) = case S.strategyType named of
-                    S.Refined x t (Just p) -> (t, Just (S.replaceExprVars [(x, S.Var "it")] p))
-                    t -> (t, Nothing)
+              let (plain, refined) = strategyDomain (S.strategyType named)
                   body = maybe (S.strategyBody named) (\p -> S.GenSuchThat (S.strategyBody named) p 100) refined
               actual <- collectType bits plain
               expected <- collectType bits ty
@@ -473,10 +477,13 @@ elaborateWithFormalValues formalCounts scopes canonical sourceTypes dataDeclarat
             predicate <- term (("it", (C.binderId binder, ty)) : locals) (S.Named "Bool") p
             pure (C.DrawSuchThat inner' binder predicate limit)
           S.GenBind x xty from body -> do
-            core <- collectType bits xty
+            let (plain, refined) = strategyDomain xty
+                checked = maybe from (\p -> S.GenSuchThat from p 100) refined
+            core <- collectType bits plain
             let binder = C.Binder (local k x) x core
-            from' <- go own Nothing (k + 1) locals xty from
-            body' <- go own aim (k + 1) ((x, (C.binderId binder, xty)) : locals) ty body
+            valueAim <- refinedAim k plain refined
+            from' <- go plain valueAim (k + 1) locals plain checked
+            body' <- go own aim (k + 1) ((x, (C.binderId binder, plain)) : locals) ty body
             pure (C.DrawBind binder from' body')
         -- Only a draw of the strategy's own type aims at its refinement.
         anyOf own aim ty = C.DrawAny <$> collectType bits ty <*> pure (if ty == own then aim else Nothing)

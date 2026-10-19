@@ -14,7 +14,7 @@ const language = process.argv[2];
 assert.ok(['erlang', 'elixir', 'gleam'].includes(language), 'Pass a BEAM target');
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64), minify = process.env.LAWSPEC_MINIFY === '1';
 assert.ok([32, 64].includes(bits));
-const canonical = {schemaVersion: 5, languageProfile: '1.0-rc.1',
+const canonical = {schemaVersion: 5, languageProfile: '1.0-rc.2',
   verification: {layers: ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model']}};
 const base = path.join(repo, '.artifacts/beam-harness-integration', `${language}-${bits}-${minify}`);
 await rm(base, {recursive: true, force: true});
@@ -71,10 +71,10 @@ const suites = ['beam-selection', 'beam-strategies', 'beam-adequacy', 'beam-targ
   'beam-repetition', 'beam-benchmarks', 'beam-resource-owners', 'scheduling', 'tables'];
 const fixtures = path.join(repo, 'test/fixtures/cli-canonical');
 const fixtureSources = JSON.parse(await readFile(path.join(fixtures, 'harness-sources.json'), 'utf8'));
-const archivedSources = (await Promise.all(suites.map(async suite =>
+const acceptanceSources = (await Promise.all(suites.map(async suite =>
   JSON.parse(await readFile(path.join(repo, 'acceptance', suite, 'suite.json'), 'utf8')).specs))).flat();
-assert.deepEqual(fixtureSources.map(entry => entry.legacySource).sort(), archivedSources.sort(),
-  'Every archived harness source must retain a canonical consumer fixture');
+assert.deepEqual(fixtureSources.map(entry => entry.acceptanceSource).sort(), acceptanceSources.sort(),
+  'Every harness acceptance source must have a current consumer fixture');
 const sources = [];
 for (const entry of fixtureSources) {
   const source = {path: entry.path, content: await readFile(path.join(fixtures, entry.fixture), 'utf8')};

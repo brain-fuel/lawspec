@@ -19,6 +19,7 @@ function increment (x :: Int8) -> Integer
   is
   x + 1
 end function
+end unit
 ```
 
 Parameters and the result have explicit types. The optional `requires` clause
@@ -100,6 +101,7 @@ function evensFrom (i :: Int32) (n :: Int32) -> List Int32 is
     (if prelude.rem i 2 = 0 then Cons i (evensFrom (prelude.Int32 (i + 1)) n)
   else evensFrom (prelude.Int32 (i + 1)) n end if) end if
 end function
+end unit
 ```
 
 Every recursive call must move the same parameter the same way. `prelude.range`
@@ -120,6 +122,7 @@ function count (xs :: List a) -> Integer is
     when Cons head tail then 1 + count tail
   end case
 end function
+end unit
 ```
 
 Each generic definition is checked once for typing, capabilities, termination

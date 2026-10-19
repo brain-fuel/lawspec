@@ -63,8 +63,8 @@ law "|picture dimensions determine orientation| is
     "|picture orientation| (Picture record{dimensions = (12, 8)}) must be Landscape
       and "|picture orientation| (Picture record{dimensions = (8, 12)}) must be Portrait
       and "|picture orientation| (Picture record{dimensions = (10, 10)}) must be Square
-  end
-end
+  end definition
+end law
 
 law "|generic tuples retain component types| is
   definition:
@@ -72,8 +72,8 @@ law "|generic tuples retain component types| is
       and "|first component| ("message", true) must be "message"
       and prelude.compare (false, false, false, false, false, false, false, false, false, true, false)
         (true, false, false, false, false, false, false, false, false, false, false) must be Less
-  end
-end
+  end definition
+end law
 
 law "|packet guards fall through in order| is
   definition:
@@ -84,8 +84,8 @@ law "|packet guards fall through in order| is
           when Delivered (record{ready = ready}, (authorized, confirmed)) then
             (ready and authorized) or confirmed
         end case)
-    end
-  end
+    end for all
+  end definition
 
   expect "|packet accepted| packet = expected
   in table (packet, expected):
@@ -94,8 +94,8 @@ law "|packet guards fall through in order| is
     row Delivered (record{ready = true}, (false, false)), false
     row Delivered (record{ready = false}, (true, false)), false
     row Delivered (record{ready = false}, (false, true)), true
-  end
-end
+  end table
+end law
 
 law "|tuple position ten follows source position ten| is
   definition:
@@ -106,26 +106,27 @@ law "|tuple position ten follows source position ten| is
       (tenth of type Bool) (eleventh of type Bool) =>
       "|tenth component| (first, second, third, fourth, fifth, sixth, seventh,
         eighth, ninth, tenth, eleventh) must be tenth
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|recursive tuple payloads retain their leaves| is
   definition:
     "|leaf count| (Branch (Leaf, Branch (Leaf, Leaf))) must be 3
-  end
-end
+  end definition
+end law
 
 law "|sets compare tuples by equality| is
   definition:
     prelude.size (#S{(true, false), (true, false), (false, true)}) must be 2
       and (true, false) in #S{(true, false), (false, true)}
-  end
-end
+  end definition
+end law
 
 law "|tuple equality preserves IEEE NaN behavior| is
   definition:
     not ((float64Bits("7ff8000000000001"), false)
       in [(float64Bits("7ff8000000000001"), false)])
-  end
-end
+  end definition
+end law
+end unit

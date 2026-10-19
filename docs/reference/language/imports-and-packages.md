@@ -19,8 +19,9 @@ settlement :: Currency -> domain.Currency
 law "|dollars settle in dollars| is
   definition:
     settlement Usd must be domain.Usd
-  end
-end
+  end definition
+end law
+end unit
 ```
 
 - `import U` makes every declaration of `U` available, qualified by an alias.
@@ -56,7 +57,7 @@ a definition `size`; `domain.Usd` and a local `Usd` are different constructors.
 - Imports are not re-exported unless the unit says so with `export` (below):
   a unit uses only what it imports itself.
 
-In the `1.0-rc.1` language profile, public prelude functions are also available
+In the `1.0-rc.2` language profile, public prelude functions are also available
 unqualified. For example, `member value items` and `prelude.member value items`
 use the same checked operation. Lexical bindings, local declarations and
 explicitly imported names are resolved first. A local `length` keeps its own
@@ -91,6 +92,7 @@ unit shop.tax.api
 import shop.tax.rates as rates (Band)
 
 export Band, rates.rateOf
+end unit
 ```
 
 - An `export` line lists names the unit imports: unqualified names from an

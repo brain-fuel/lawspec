@@ -1,66 +1,67 @@
 unit example.data_types
 
-type Pair (a :: Type) (b :: Type) is
-  Pair
+type Pair (a :: Type) (b :: Type) is a record{
+
     first :: a
-    second :: b
-end
+    second :: b}
+end type
 
-type Tree (a :: Type) is
-  Leaf value :: a
-  Branch children :: List (Tree a)
-end
+type Tree (a :: Type) is one of
+  Leaf  of type a
+  Branch  of type List (Tree a)
+end type
 
-law `products preserve every field` is
-  definition is
-    `for all` (pair :: Pair Int8 Bool) .
-      (match pair with
-        | Pair first second -> Pair first second
-      end) = pair
-  end
-  example `maximum integer and false` is
-    pair = Pair 127 false
-    expect pair = Pair 127 false
-  end
-end
+law "|products preserve every field| is
+  definition :
+    for all (pair :: Pair Int8 Bool) =>
+      (first matching case of pair :
+        when Pair record{ first = first , second = second} then Pair record{ first = first , second = second}
+      end case) = pair end for all
+  end definition
+  example "|maximum integer and false| :
+    pair = Pair record{ first = 127 , second = false}
+    expect pair = Pair record{ first = 127 , second = false}
+  end example
+end law
 
-law `sums preserve constructor identity and payloads` is
-  definition is
-    `for all` (tree :: Tree Int8) .
-      (match tree with
-        | Leaf value -> Leaf value
-        | Branch children -> Branch children
-      end) = tree
-  end
-  example `nested branches` is
+law "|sums preserve constructor identity and payloads| is
+  definition :
+    for all (tree :: Tree Int8) =>
+      (first matching case of tree :
+        when Leaf value then Leaf value
+        when Branch children then Branch children
+      end case) = tree end for all
+  end definition
+  example "|nested branches| :
     tree = Branch [Leaf 127, Branch [], Leaf -128]
     expect tree = Branch [Leaf 127, Branch [], Leaf -128]
-  end
-end
+  end example
+end law
 
 
 -- A refined type argument constrains the corresponding stored fields. This
 -- predicate becomes a scoped Core traversal, shared by all eight backends.
-refinement Positive is (value :: Int8 where value > 0) end
+refinement Positive is (value :: Int8 where value > 0) end refinement
 
-definition positivePair (value :: Positive) :: Pair Positive Bool is
-  Pair value true
-end
+function positivePair (value :: Positive) -> Pair Positive Bool is
+  Pair record{ first = value , second = true}
+end function
 
-definition reciprocalFirst (pair :: Pair Positive Bool) :: Rational is
-  match pair with
-    | Pair first second -> 1 / first
-  end
-end
+function reciprocalFirst (pair :: Pair Positive Bool) -> Rational is
+  first matching case of pair :
+    when Pair record{ first = first , second = second} then 1 / first
+  end case
+end function
 
-law `named payload contracts justify exact division` is
-  definition is
-    `for all` (value :: Positive) .
-      reciprocalFirst (positivePair value) = 1 / value
-  end
-  example `one half` is
+law "|named payload contracts justify exact division| is
+  definition :
+    for all (value :: Positive) =>
+      reciprocalFirst (positivePair value) = 1 / value end for all
+  end definition
+  example "|one half| :
     value = 2
-    expect positivePair value = Pair 2 true
+    expect positivePair value = Pair record{ first = 2 , second = true}
     expect reciprocalFirst (positivePair value) = rational(1, 2)
-  end
-end
+  end example
+end law
+end unit

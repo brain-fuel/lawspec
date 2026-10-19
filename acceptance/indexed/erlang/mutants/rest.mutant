@@ -2,5 +2,5 @@
 <<<<<<<
 drop_first(Xs) -> {rest, Xs}.
 =======
-drop_first({row_cell, _, T}) -> {rest, T}.
+drop_first({row_cell, {record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f, _, T}}) -> {rest, T}.
 >>>>>>>

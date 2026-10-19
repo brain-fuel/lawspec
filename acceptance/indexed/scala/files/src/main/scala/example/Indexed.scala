@@ -9,7 +9,7 @@ object Indexed {
     var result: Vec[scala.Byte] = Vec.VNil()
     var i = BigInt(0)
     while (i < value0) {
-      result = Vec.VCons(value1, result)
+      result = Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value1, result))
       i += 1
     }
     result
@@ -22,7 +22,7 @@ object Indexed {
     value1: lawspec.data.Vec[scala.Byte],
   ): lawspec.data.Vec[scala.Byte] =
     value0 match {
-      case Vec.VCons(head, tail) => Vec.VCons(head, append(tail, value1))
+      case Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head, tail)) => Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head, append(tail, value1)))
       case Vec.VNil() => value1
     }
 
@@ -33,8 +33,8 @@ object Indexed {
     value1: lawspec.data.Vec[scala.Boolean],
   ): lawspec.data.Vec[scala.Boolean] =
     (value0, value1) match {
-      case (Vec.VCons(_, tail0), Vec.VCons(head1, tail1)) =>
-        Vec.VCons(head1, zip(tail0, tail1))
+      case (Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(_, tail0)), Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head1, tail1))) =>
+        Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head1, zip(tail0, tail1)))
       case _ => Vec.VNil()
     }
 
@@ -42,8 +42,8 @@ object Indexed {
   def flatten(value0: lawspec.data.Tree[scala.Byte]): lawspec.data.Vec[scala.Byte] =
     value0 match {
       case Tree.Tip() => Vec.VNil()
-      case Tree.Bin(left, value, right) =>
-        val rest: Vec[scala.Byte] = Vec.VCons(value, flatten(right))
+      case Tree.Bin(lawspec.data.Recorde00f7d8e028cf6be6e08b4ed1f9853199bee01cf39e5a2faa3e38b8ad29bf271(left, right, value)) =>
+        val rest: Vec[scala.Byte] = Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value, flatten(right)))
         append(flatten(left), rest)
     }
 }

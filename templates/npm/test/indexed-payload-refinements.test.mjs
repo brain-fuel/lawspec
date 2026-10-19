@@ -1,3 +1,4 @@
+import {extendUnit} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {existsSync} from 'node:fs';
@@ -9,8 +10,9 @@ import {createCompiler} from '../api.mjs';
 import {targets} from '../templates.mjs';
 
 const compiler=await createCompiler();
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:[]}};
 const source=`unit refinementFacts
+
 type Vec (n :: Whole) (a :: Type) is one of
   | VNil where n = 0
   | VCons of type record{head :: a tail :: Vec m a} where n = m + 1
@@ -27,15 +29,18 @@ function values (xs :: Vec n Nat) -> List Nat is
     when VCons record{head = h, tail = t} then Cons h (values t)
   end case
 end function
+
+end unit
 `;
 const inputs=[[],[1],[2],[1,1],[1,2],[2,1],[2,2]];
 const vector=values=>values.length?`(VCons record{head = ${values[0]}, tail = ${vector(values.slice(1))}})`:'VNil';
 function matrix(mutant=false){
   let index=0;
-  return source+inputs.flatMap(left=>inputs.map(right=>{
+  return extendUnit(source,inputs.flatMap(left=>inputs.map(right=>{
     const row=index++,expected=mutant&&row===1?[3]:[...left,...right];
-    return `law matrix${row} is definition: values (concatV ${vector(left)} ${vector(right)}) must be [${expected.join(', ')}] end end`;
-  })).join('\n');
+    return `law matrix${row} is definition: values (concatV ${vector(left)} ${vector(right)}) must be [${expected.join(', ')}] end definition end law
+`;
+  })).join('\n'));
 }
 const sources=content=>[{path:'refinements.lawspec',content}];
 
@@ -102,16 +107,20 @@ test('generated JavaScript executes all independent outcomes and rejects a chang
 
 test('wrapper bounds prove only with proof selected and retain boundary counterexamples',async()=>{
   const wrapper=({minimum=1,lower=1,upper=1000,boundary=1000}={})=>`unit wrapperFacts
-wrapper Quantity is Int32 where value >= ${minimum} and value <= 1000 end
+
+wrapper Quantity is Int32 where value >= ${minimum} and value <= 1000 end wrapper
 law bounds is
   definition: for all (quantity :: Quantity) =>
     valueOfQuantity quantity >= ${lower} and valueOfQuantity quantity <= ${upper}
-  end end
+  end for all end definition
   example boundary:
     quantity = Quantity ${boundary}
     expect valueOfQuantity quantity = ${boundary}
-  end
-end`;
+  end example
+end law
+
+end unit
+`;
   const check=(machineBits,layers,content)=>compiler.check({...options,machineBits,verification:{layers},sources:sources(content)});
   for(const machineBits of [32,64]){
     const unselected=await check(machineBits,[],wrapper());assert.deepEqual(unselected.diagnostics,[]);
@@ -123,10 +132,11 @@ end`;
       assert.notEqual(unknown.evidence.find(item=>item.stage==='law').status,'proved');
       const planned=await check(machineBits,['examples'],wrapper(variant));assert.deepEqual(planned.diagnostics,[]);
       assert.equal(planned.evidence.find(item=>item.stage==='law').status,'planned');
-      const witness=wrapper(variant)+`\nlaw boundaryWitness is definition:
+      const witness=extendUnit(wrapper(variant),`\nlaw boundaryWitness is definition:
         valueOfQuantity (Quantity ${variant.boundary}) >= ${variant.lower??1} and
         valueOfQuantity (Quantity ${variant.boundary}) <= ${variant.upper??1000}
-      end end`;
+      end definition end law
+`);
       const refuted=await check(machineBits,['exhaustive'],witness);
       assert.ok(refuted.diagnostics.some(item=>item.code==='refuted'));
     }

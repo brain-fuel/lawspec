@@ -1,6 +1,6 @@
 @@ src/example/flow.mjs
 <<<<<<<
-  return new data.PopFlow(value0.top, value0.rest);
+  return new data.PopFlow(value0.value.top, value0.value.rest);
 =======
-  return new data.PopFlow(value0.top, value0);
+  return new data.PopFlow(value0.value.top, value0);
 >>>>>>>

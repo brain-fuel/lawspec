@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.25.0
+version:        0.26.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -221,6 +221,7 @@ extra-source-files:
     examples/specs/consistency.lawspec
     examples/specs/contracts.lawspec
     examples/specs/crypto.lawspec
+    examples/specs/ctc.lawspec
     examples/specs/currying.lawspec
     examples/specs/data_types.lawspec
     examples/specs/distribution.lawspec
@@ -339,9 +340,6 @@ extra-source-files:
     test/fixtures/eq-set-operations-library.lawspec
     test/fixtures/eq-set-operations.lawspec
     test/fixtures/list_contracts.lawspec
-    test/fixtures/migration-chap06-0.24.lawspec
-    test/fixtures/migration-collections-0.24.lawspec
-    test/fixtures/migration-typed-failures-0.24.lawspec
     test/fixtures/native_empty_domains.lawspec
     test/fixtures/native_shapes.lawspec
     test/fixtures/python_constructor_fields.lawspec
@@ -527,6 +525,7 @@ library
       LawSpec.BeamRemote
       LawSpec.BeamSessions
       LawSpec.Blake3
+      LawSpec.Blocks
       LawSpec.Bounds
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
@@ -555,11 +554,8 @@ library
       LawSpec.Core.Evidence
       LawSpec.Core.Expression
       LawSpec.Core.Machine
-      LawSpec.Core.Migration
-      LawSpec.Core.MigrationIndexEquivalence
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
-      LawSpec.Core.PayloadTransport
       LawSpec.Core.Policy
       LawSpec.Core.Positional
       LawSpec.Core.Program
@@ -664,19 +660,6 @@ library
       LawSpec.MappingCheck
       LawSpec.Matchers
       LawSpec.Memo
-      LawSpec.MigrationBindings
-      LawSpec.MigrationBoundary
-      LawSpec.MigrationDefinitionTransport
-      LawSpec.MigrationDomains
-      LawSpec.MigrationElaboration
-      LawSpec.MigrationFields
-      LawSpec.MigrationGeneration
-      LawSpec.MigrationLawTransport
-      LawSpec.MigrationPayloads
-      LawSpec.MigrationScopes
-      LawSpec.MigrationTemplateDomains
-      LawSpec.MigrationTemplates
-      LawSpec.MigrationUnitTransport
       LawSpec.Model
       LawSpec.ModelTests
       LawSpec.NativeBinding
@@ -736,6 +719,7 @@ library
       LawSpec.SourceRecords
       LawSpec.SourceSyntax
       LawSpec.SourceText
+      LawSpec.SourceTokens
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
       LawSpec.Swift.Abilities
@@ -942,13 +926,13 @@ test-suite lawspec-test
       DischargeSpec
       DistributionSpec
       DocumentSpec
-      DomainEvidenceSpec
       DomainModelSpec
       DotNetSpec
       EqSetOperationsSpec
       EqSetSpec
       ExactWideningSpec
       FieldDefinitionExpansionSpec
+      FixtureSource
       FlowSpec
       GadtSpec
       GenericDefinitionSpec
@@ -962,16 +946,12 @@ test-suite lawspec-test
       LawPrimitivesSpec
       MappingSpec
       MatchWarningSpec
-      MigrationBindingSpec
-      MigrationPayloadSpec
-      MigrationSnapshotSpec
-      MigrationTemplateSpec
       ModelLayerSelectionSpec
+      NamedBlocksSpec
       NativeBindingSpec
       NativeRequestSpec
       PayloadProofSpec
       PayloadSpec
-      PayloadTransportSpec
       PreludeResolutionSpec
       PythonBindingNamesSpec
       QuantifierDomainSpec

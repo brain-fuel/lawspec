@@ -7,16 +7,16 @@ nativeRefund of type policy.RefundRequest -> policy.RefundDecision
 law "|native refunds conform to the policy| is
   description:
     "The application's refund decision agrees with the checked policy."
-  end
+  end description
   definition:
     for all (request of type policy.RefundRequest) =>
       nativeRefund request must be policy.refund request
-    end
-  end
+    end for all
+  end definition
 
   references:
     ref function policy.refund
-  end
+  end references
 
   expect nativeRefund request = expected
   in table (request, expected):
@@ -40,5 +40,6 @@ law "|native refunds conform to the policy| is
       flagged = false}, policy.Approved
     row policy.RefundRequest record{capturedAmount = 9007199254740992,
       requestedAmount = 9007199254740993, flagged = false}, policy.Rejected
-  end
-end
+  end table
+end law
+end unit

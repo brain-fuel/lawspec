@@ -7,7 +7,7 @@ title: Collections
 
 ## Canonical authoring profile
 
-In `1.0-rc.1`, `Set a` stores distinct elements in first-occurrence order.
+In `1.0-rc.2`, `Set a` stores distinct elements in first-occurrence order.
 Construction and membership require `Eq a`: equality compares candidates with
 stored elements and detects duplicates. These operations do not require an
 order. Iteration with `prelude.toList`, size and emptiness do not compare
@@ -42,8 +42,7 @@ member can repeat without comparing equal, so its storage domain is unbounded.
 Property checking selects sampled native generation and shrinking; planning
 those checks supplies no completed verification evidence. A complete singleton
 input runs once. Each candidate and shrink must still satisfy element and
-dependent input restrictions. Migration retains the support/refusal boundaries
-documented in [API and source migration](../../explanation/api-migration.md).
+dependent input restrictions.
 
 ## Membership and predicates
 
@@ -90,7 +89,7 @@ predicate test is not a completed proof or exhaustive verification.
 
 ## Collection types
 
-The version 0.24 ordered `Set` migrates to `SortedSet`. Canonical `Set` uses
+Use `SortedSet` for ordered collection semantics. `Set` uses
 equality and first-occurrence order as described above.
 
 Besides `List`, LawSpec has these built-in collections:
@@ -127,23 +126,24 @@ end function
 
 law "|dedupe agrees with sortedSetOf| is
   definition : for all (xs :: List Int32) => dedupe xs = prelude.sortedSetOf xs
-    end end
-end
+    end for all end definition
+end law
 
 law "|word counts agree with the definition| is
   definition :
     for all (words :: List Text) => wordCounts words = countWords words
-      (prelude.keyValOf []) end
-  end
-end
+      (prelude.keyValOf []) end for all
+  end definition
+end law
 
 law "|the latest put wins| is
   definition :
     for all (k :: Text) (v :: Integer) (w :: Integer) (m :: KeyVal Text Integer)
       =>
-      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w end
-  end
-end
+      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w end for all
+  end definition
+end law
+end unit
 ```
 
 A unit that declares a type with one of these names, such as a `Stack` of its

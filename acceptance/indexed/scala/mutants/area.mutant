@@ -1,6 +1,6 @@
 @@ src/main/scala/example/Arithmetic.scala
 <<<<<<<
-    BigInt(length(value0.rows) * length(value0.columns))
+    BigInt(length(value0.value.rows) * length(value0.value.columns))
 =======
-    BigInt(length(value0.rows) + length(value0.columns))
+    BigInt(length(value0.value.rows) + length(value0.value.columns))
 >>>>>>>

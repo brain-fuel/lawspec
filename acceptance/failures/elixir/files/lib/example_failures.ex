@@ -4,13 +4,13 @@ defmodule Example.Failures do
   alias LawSpec.Abilities.Example.Failures.Gateway
   def gateway_handler(), do: %Gateway{decide: &decide/1}
   defp decide(n) when n < 0, do: %Data.DecisionBlock{}
-  defp decide(n) when rem(n, 2) == 1, do: %Data.DecisionDecline{reason: "an odd amount"}
+  defp decide(n) when rem(n, 2) == 1, do: %Data.DecisionDecline{value: "an odd amount"}
   defp decide(_n), do: %Data.DecisionApprove{}
 
-  def refund(n) when n > 5000, do: :lawspec_beam_effects.fail(%Data.PaymentErrorTooLarge{limit: 5000})
+  def refund(n) when n > 5000, do: :lawspec_beam_effects.fail(%Data.PaymentErrorTooLarge{value: 5000})
   def refund(n), do: n
 
   def settle(n) when n < 0, do: :lawspec_beam_effects.fail(%Data.PaymentErrorBlocked{})
-  def settle(0), do: :lawspec_beam_effects.fail(%Data.PaymentErrorDeclined{message: "there is nothing to settle"})
+  def settle(0), do: :lawspec_beam_effects.fail(%Data.PaymentErrorDeclined{value: %Data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7{message: "there is nothing to settle"}})
   def settle(n), do: n
 end

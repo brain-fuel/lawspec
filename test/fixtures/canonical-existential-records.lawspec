@@ -22,14 +22,15 @@ law "|Boolean payload retains its hidden carrier| is
   definition:
     for all (flag :: (ready :: Bool where ready)) =>
       describe (flagValue flag) must be "Bool"
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|integer payload retains its hidden carrier| is
   definition:
     for all (value :: Int32) =>
       describe (numberValue value) must be "Int32"
-    end
-  end
-end
+    end for all
+  end definition
+end law
+end unit

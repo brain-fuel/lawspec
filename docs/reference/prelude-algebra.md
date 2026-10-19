@@ -95,27 +95,28 @@ add :: Int32 -> Int32 -> Int32
 law "|addition commutes| is
   definition :
     apply law "|commutative| add
-  end
+  end definition
 
   example "|3 plus 5 and 5 plus 3 both produce 8| :
     x = 3
     y = 5
     expect add x y = 8
     expect add y x = 8
-  end
-end
+  end example
+end law
 
 law "|zero is an identity on both sides| is
   definition :
     apply law "|identity| add 0
-  end
+  end definition
 
   example "|zero preserves 3 on either side| :
     x = 3
     expect add 0 x = 3
     expect add x 0 = 3
-  end
-end
+  end example
+end law
+end unit
 ```
 
 - A partial application such as `add 1` can be passed to a unary law, and
@@ -144,15 +145,16 @@ multiply :: Int32 -> Int32 -> Int32
 law "|zero absorbs on both sides| is
   definition :
     for all (x :: Int32) =>
-      multiply 0 x = 0 and multiply x 0 = 0 end
-  end
+      multiply 0 x = 0 and multiply x 0 = 0 end for all
+  end definition
 
   example "|3 times zero and zero times 3 both produce zero| :
     x = 3
     expect multiply 0 x = 0
     expect multiply x 0 = 0
-  end
-end
+  end example
+end law
+end unit
 ```
 
 Quantification and implication extend over a following `and`:
@@ -187,21 +189,22 @@ law "|valid ports round trip| is
   definition :
     for all (x :: Int32) =>
       validPort x implies
-      parse (render x) = x end
-  end
+      parse (render x) = x end for all
+  end definition
 
   example "|ordinary port| :
     x = 443
     expect validPort x = true
     expect render x = "443"
     expect parse (render x) = 443
-  end
+  end example
 
   example "|zero is rejected; the round trip is skipped| :
     x = 0
     expect validPort x = false
-  end
-end
+  end example
+end law
+end unit
 ```
 
 - Explicit `expect` assertions always run, whatever the condition. A false

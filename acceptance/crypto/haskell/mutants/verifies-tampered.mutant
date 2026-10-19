@@ -1,4 +1,4 @@
-expect: a changed message fails to verify [native]
+expect: a changed message fails to verify| [native]
 @@ src/Example/Keys.hs
 <<<<<<<
     , Abilities.verify = \key message signature -> Abilities.verify inner key message signature

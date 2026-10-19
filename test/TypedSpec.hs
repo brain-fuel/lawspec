@@ -33,36 +33,38 @@ import LawSpec.HaskellDefinitions (emitHaskellDefinitions)
 ledger :: String
 ledger = unlines
   [ "unit example.ledger"
+   ++ "\n", ""
   , ""
-  , "type Account is Account owner :: Text balance :: Int64 end"
+  , "type Account is a record{  owner :: Text balance :: Int64} end type\n"
   , ""
-  , "definition credit (name :: Text) (amount :: Int64) (book :: KeyVal Text Account) :: KeyVal Text Account is"
-  , "  match prelude.lookup name book with"
-  , "  | Nothing -> prelude.put name (Account name amount) book"
-  , "  | Just a -> book"
-  , "  end"
-  , "end"
+  , "function credit (name :: Text) (amount :: Int64) (book :: KeyVal Text Account) -> KeyVal Text Account is"
+  , "  first matching case of prelude.lookup name book :"
+  , "  when Nothing then prelude.put name (Account record{ owner = name , balance = amount}) book"
+  , "  when Just a then book"
+  , "  end case"
+  , "end function"
   , ""
-  , "definition total (xs :: List Int64) (acc :: Integer) :: Integer is"
-  , "  match xs with"
-  , "  | Nil -> acc"
-  , "  | Cons h t -> total t (acc + h)"
-  , "  end"
-  , "end"
+  , "function total (xs :: List Int64) (acc :: Integer) -> Integer is"
+  , "  first matching case of xs :"
+  , "  when Nil then acc"
+  , "  when Cons h t then total t (acc + h)"
+  , "  end case"
+  , "end function"
   , ""
-  , "definition half (x :: Float64) :: Float64 is x / 2.0 end"
+  , "function half (x :: Float64) -> Float64 is x / 2.0 end function\n"
   , ""
-  , "definition current (b :: Maybe (KeyVal Text Account)) :: KeyVal Text Account is"
-  , "  match b with | Nothing -> prelude.keyValOf [] | Just k -> k end"
-  , "end"
+  , "function current (b :: Maybe (KeyVal Text Account)) -> KeyVal Text Account is"
+  , "  first matching case of b : when Nothing then prelude.keyValOf [] when Just k then k end case"
+  , "end function"
   , ""
   , "ability Bank is"
   , "  deposit :: Text -> Int64 -> Int64"
-  , "end"
+  , "end ability"
   , ""
   , "handler books for Bank with state book :: Maybe (KeyVal Text Account) start Nothing is"
-  , "  deposit name amount is ~book := Just (credit name amount (current book)); amount end"
-  , "end" ]
+  , "   operation deposit name amount is ~book := Just (credit name amount (current book)); amount end operation"
+  , "end handler"
+  , "\nend unit" ]
 
 consumer :: String
 consumer = unlines
@@ -70,9 +72,11 @@ consumer = unlines
   , ""
   , "import example.ledger as ledger"
   , ""
-  , "definition twice (name :: Text) (book :: KeyVal Text ledger.Account) :: KeyVal Text ledger.Account is"
+  , "function twice (name :: Text) (book :: KeyVal Text ledger.Account) -> KeyVal Text ledger.Account is"
   , "  ledger.credit name 1 (ledger.credit name 1 book)"
-  , "end" ]
+  , "end function"
+  , ""
+  , "end unit" ]
 
 program :: Either String C.Program
 program = either (Left . show) Right
@@ -217,7 +221,7 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
   describe "typed names" $ do
     it "stay the same when unrelated definitions are added before them" $ do
       let compile extra = either (\e -> error (show e)) id (compileCore 64 defaultGeneration [Source "ledger.lawspec" (extra ++ ledger)])
-          edited = "definition unrelated (x :: Int64) :: Int64 is x end\n\ndefinition another (t :: Text) :: Text is t end\n\n"
+          edited = "function unrelated (x :: Int64) -> Int64 is x end function\n\nfunction another (t :: Text) -> Text is t end function\n\n"
           namesOf p = do
             typed <- emitPythonTyped 64 (C.programDataDeclarations p) (C.programUnits p)
             rust <- emitRustTyped (C.programDataDeclarations p) (C.programUnits p)

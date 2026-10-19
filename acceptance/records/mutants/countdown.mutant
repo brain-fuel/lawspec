@@ -1,7 +1,7 @@
 expect: the evens below n are half of the range
 @@ examples/specs/records.lawspec
 <<<<<<<
-    (if prelude.rem i 2 == 0 then Cons i (evensBelow (prelude.Int32 (i + 1)) n) else evensBelow (prelude.Int32 (i + 1)) n)
+    (if prelude.rem i 2 = 0 then Cons i (evensBelow (prelude.Int32 (i + 1)) n) else evensBelow (prelude.Int32 (i + 1)) n end if) end if
 =======
-    (if prelude.rem i 3 == 0 then Cons i (evensBelow (prelude.Int32 (i + 1)) n) else evensBelow (prelude.Int32 (i + 1)) n)
+    (if prelude.rem i 3 = 0 then Cons i (evensBelow (prelude.Int32 (i + 1)) n) else evensBelow (prelude.Int32 (i + 1)) n end if) end if
 >>>>>>>

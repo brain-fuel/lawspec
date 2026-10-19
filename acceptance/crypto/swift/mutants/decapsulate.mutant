@@ -1,4 +1,4 @@
-expect-any: decapsulating gives the encapsulated secret [native] | a handshake carries the message
+expect-any: decapsulating gives the encapsulated secret| [native] | a handshake carries the message
 @@ src/Native/Counting.swift
 <<<<<<<
                 inner.decapsulate(key, ciphertext)

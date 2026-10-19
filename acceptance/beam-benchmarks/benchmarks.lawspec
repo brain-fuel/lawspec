@@ -5,19 +5,20 @@ work :: Int32 -> Int32
 async asyncWork :: Int32 -> Int32
 falseValue :: Unit -> Bool
 
-definition checked (n :: Int32) :: Int32 is n end
+function checked (n :: Int32) -> Int32 is n end function
 
 ability Meter is
   read :: Unit -> Int32
-end
+end ability
 
-definition measured (u :: Unit) :: Int32 uses Meter is read u end
+procedure measured (u :: Unit) -> Int32 uses Meter is read u end procedure
 
-law `ordinary check` is definition is ordinary 99 = 99 end end
+law "|ordinary check| is definition : ordinary 99 = 99 end definition end law
 
 harness example.benchmarks.testing for example.benchmarks is
-  benchmark `checked adapter` is work (checked 7) end
-  benchmark `async adapter` is asyncWork 8 end
-  benchmark `false is a value` is falseValue unitValue end
-  benchmark `production handler` is measured unitValue end
-end
+  benchmark `checked adapter` is work (checked 7) end benchmark
+  benchmark `async adapter` is asyncWork 8 end benchmark
+  benchmark `false is a value` is falseValue unitValue end benchmark
+  benchmark `production handler` is measured unitValue end benchmark
+end harness
+end unit

@@ -23,12 +23,13 @@ procedure roll (sides :: Int64 where sides >= 1) -> Integer uses Random is
 law "|rolls are on the die| using seeded random 42 is
   definition :
     for all (sides :: Int64 where sides >= 1) => (let r = roll sides in r >= 1
-      && r <= sides) = true end
-  end
-end
+      && r <= sides end let) = true end for all
+  end definition
+end law
 
 -- A session token: secure, so seeded random cannot stand in for it.
 token :: Int32 -> Bytes uses SecureRandom
+end unit
 ```
 
 ## Random
@@ -36,7 +37,7 @@ token :: Int32 -> Bytes uses SecureRandom
 ```lawspec fragment
 ability Random is
   randomBelow :: Int64 -> Int64
-end
+end ability
 ```
 
 `randomBelow n` draws from 0 up to, not including, `n`; it gives 0 when `n`
@@ -60,7 +61,7 @@ ability SecureRandom is
   secureBytes :: Int32 -> Bytes
   secureBelow :: Int64 -> Int64
   secureToken :: Text
-end
+end ability
 ```
 
 - `secureBytes n` is `n` bytes (none when `n` is negative); `secureBelow n`

@@ -16,17 +16,17 @@ object Models {
 
     fun empty(value0: Unit): Stack = Stack.Empty
 
-    fun push(value0: Byte, value1: Stack): PushFlow = PushFlow(Stack.Push(value0, value1))
+    fun push(value0: Byte, value1: Stack): PushFlow = PushFlow(Stack.Push(lawspec.data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(value1, value0)))
 
     // The flow signature guarantees a nonempty stack.
     fun pop(value0: Stack): PopFlow {
         val cell = value0 as Stack.Push
-        return PopFlow(cell.top, cell.rest)
+        return PopFlow(cell.value.top, cell.value.rest)
     }
 
     fun peek(value0: Stack): PeekFlow {
         val cell = value0 as Stack.Push
-        return PeekFlow(cell.top, cell)
+        return PeekFlow(cell.value.top, cell)
     }
 
     fun newCounter(value0: Unit): Counter {

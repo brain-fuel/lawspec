@@ -1,4 +1,4 @@
-expect: Logs: an unknown log refuses records [native]
+expect: Logs: an unknown log refuses records| [native]
 @@ src/main/kotlin/example/Composition.kt
 <<<<<<<
                 ?: throw LawSpecRuntime.Fail(lawspec.data.Problem.UnknownLog)

@@ -10,7 +10,7 @@ func EvalNumber(value0 Expr[*LawSpecBigInt]) *LawSpecBigInt {
 	case ExprNumber:
 		return e.Value
 	case ExprPlus:
-		return new(big.Int).Add(EvalNumber(e.Left), EvalNumber(e.Right))
+		return new(big.Int).Add(EvalNumber(e.Value.Left), EvalNumber(e.Value.Right))
 	}
 	panic("not an Expr[*LawSpecBigInt]")
 }
@@ -21,9 +21,9 @@ func EvalTruth(value0 Expr[bool]) bool {
 	case ExprTruth:
 		return e.Value
 	case ExprSame:
-		return EvalNumber(e.Left).Cmp(EvalNumber(e.Right)) == 0
+		return EvalNumber(e.Value.Left).Cmp(EvalNumber(e.Value.Right)) == 0
 	case ExprNegate:
-		return !EvalTruth(e.Operand)
+		return !EvalTruth(e.Value)
 	}
 	panic("not an Expr[bool]")
 }
@@ -33,11 +33,11 @@ func EvalTruth(value0 Expr[bool]) bool {
 func EvalPair(value0 Expr[Pair[*LawSpecBigInt, bool]]) Pair[*LawSpecBigInt, bool] {
 	both := value0.(ExprBoth[Pair[*LawSpecBigInt, bool]])
 	schema := lawSpecDataSchemaRegistry()
-	numbers := lawSpecExprCodec(schema, 64, lsScalarCodec[*LawSpecBigInt](schema, 64, "BigInt"))
-	truths := lawSpecExprCodec(schema, 64, lsScalarCodec[bool](schema, 64, "Bool"))
+	payload := lawSpecRecorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365eCodec(schema, 64, lsScalarCodec[*LawSpecBigInt](schema, 64, "Integer"), lsScalarCodec[bool](schema, 64, "Bool")).toNative(both.Value)
+
 	return Pair[*LawSpecBigInt, bool]{
-		First:  EvalNumber(numbers.toNative(both.First)),
-		Second: EvalTruth(truths.toNative(both.Second)),
+		First:  EvalNumber(payload.First),
+		Second: EvalTruth(payload.Second),
 	}
 }
 

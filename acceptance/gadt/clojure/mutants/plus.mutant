@@ -1,6 +1,6 @@
 @@ src/example/gadt.clj
 <<<<<<<
-(defmethod evaluate :expr/plus [{:keys [left right]}] (+' (evaluate left) (evaluate right)))
+(defmethod evaluate :expr/plus [{{:keys [left right]} :value}] (+' (evaluate left) (evaluate right)))
 =======
-(defmethod evaluate :expr/plus [{:keys [left right]}] (-' (evaluate left) (evaluate right)))
+(defmethod evaluate :expr/plus [{{:keys [left right]} :value}] (-' (evaluate left) (evaluate right)))
 >>>>>>>

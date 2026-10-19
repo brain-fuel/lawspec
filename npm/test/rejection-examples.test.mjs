@@ -29,7 +29,7 @@ test('authored rejection fixtures fail intrinsically at both widths and every ta
     const file='canonical-rejection-'+name+'.lawspec';
     const content=await readFile(new URL('../../test/fixtures/'+file,import.meta.url),'utf8');
     for(const machineBits of [32,64]){
-      const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,
+      const input={schemaVersion:5,languageProfile:'1.0-rc.2',machineBits,
         verification:{layers:[]},sources:[{path:file,content}]};
       const result=await compiler.check(input);
       assert.equal(rejectionOutcome(code,result).matches,true,JSON.stringify(result.diagnostics));
@@ -51,12 +51,22 @@ test('authored rejection fixtures fail intrinsically at both widths and every ta
 
 test('independent compiler fixtures do not retain declarations from a preceding accepted source',async()=>{
   const compiler=await createCompiler();
-  const input={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]}};
+  const input={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:[]}};
   const declared=await compiler.check({...input,sources:[{path:'first.lawspec',content:
-    'unit example.rejection\nfunction privateValue (value :: Bool) -> Bool is value end function'}]});
+    `unit example.rejection
+
+function privateValue (value :: Bool) -> Bool is value end function
+
+end unit
+`}]});
   assert.deepEqual(declared.diagnostics,[]);
   const independent=await compiler.check({...input,sources:[{path:'second.lawspec',content:
-    'unit example.rejection\nfunction second (value :: Bool) -> Bool is privateValue value end function'}]});
+    `unit example.rejection
+
+function second (value :: Bool) -> Bool is privateValue value end function
+
+end unit
+`}]});
   assert.equal(independent.diagnostics.length,1);
   assert.match(independent.diagnostics[0].message,/privateValue/);
   assert.equal(independent.diagnostics[0].at.file,'second.lawspec');

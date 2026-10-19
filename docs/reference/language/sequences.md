@@ -33,8 +33,9 @@ law "|sequences| is
     and prelude.slice 1 3 "kafka" = "af"
     and prelude.at 1 [10, 20, 30] = Just 20
     and prelude.range 0 3 = [0, 1, 2]
-  end
-end
+  end definition
+end law
+end unit
 ```
 
 | Operation | Gives |
@@ -74,8 +75,9 @@ unit guide.filename
 
 function prohibited (name of type Text) -> Bool is
   let folded = prelude.caseFold name in
-    prelude.any (prelude.textContains folded) ["shit", "piss", "fuck"]
+    prelude.any (prelude.textContains folded) ["shit", "piss", "fuck"] end let
 end function
+end unit
 ```
 
 The [banner filename example](../../../examples/rc1/banner-filenames.lawspec)

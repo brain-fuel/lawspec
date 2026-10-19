@@ -46,7 +46,7 @@ model stack :: Stack n by List Int8 is
   pop by modelPop
   peek by modelPeek
   abstract toList
-end
+end model
 
 -- A shared model: commands take one counter, whose type never changes, and
 -- may run at the same time, so each must be atomic. LawSpec also runs them
@@ -70,7 +70,7 @@ model counter :: shared Counter by Int64 is
   increment ~ modelIncrement
   decrement ~ modelDecrement when positive
   read ~ modelRead
-end
+end model
 
 -- A protocol lists what one end of a channel sends and receives; the other
 -- end does the reverse. Scenarios run a shared model's commands from
@@ -79,11 +79,11 @@ end
 -- each run must agree with the model.
 protocol Report is
   send Int64
-end
+end protocol
 
 protocol Request is
   send Report
-end
+end protocol
 
 scenario `a count is passed on` in counter is
   channel report :: Report
@@ -93,8 +93,8 @@ scenario `a count is passed on` in counter is
   with
     receive report m
     expect m = 1
-  end
-end
+  end par
+end scenario
 
 -- The asker hands its end of the answer channel to a worker, which replies
 -- to the listener directly.
@@ -110,25 +110,25 @@ scenario `a reply is delegated` in counter is
   with
     receive answer m
     expect m = 1
-  end
-end
+  end par
+end scenario
 
 scenario `two counts at once` in counter is
   par
     a <- increment
   with
     b <- increment
-  end
+  end par
   total <- read
   expect total = 2
-end
+end scenario
 
 -- Two channels between the same two processes close a cycle. That is
 -- accepted when no process waits for another in a cycle: here the first
 -- process sends before it waits, so the echo can always answer.
 protocol Echo is
   receive Int64
-end
+end protocol
 
 scenario `a count is echoed back` in counter is
   channel out :: Report
@@ -141,5 +141,6 @@ scenario `a count is echoed back` in counter is
   with
     receive out k
     send back k
-  end
-end
+  end par
+end scenario
+end unit

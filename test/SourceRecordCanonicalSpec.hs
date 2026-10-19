@@ -31,7 +31,7 @@ import LawSpec.Scalar (Scalar(..))
 import LawSpec.Persist ()
 import SourceRecordCanonicalFixtures (recordSource)
 
-compile body=compileCoreCanonical 64 S.defaultGeneration [S.Source "records.lawspec" ("unit example.records\n"++body)]
+compile body=compileCoreCanonical 64 S.defaultGeneration [S.Source "records.lawspec" ("unit example.records\n\n"++body ++ "\nend unit\n")]
 checked source action=either (expectationFailure . show) action source
 
 observeField :: IORef [Bool] -> [Value] -> Either String Value
@@ -44,7 +44,7 @@ observeField _ _=Left "invalid observed field"
 -- Canonical anonymous record syntax is not a nominal coercion.
 test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $ do
   it "rejects ill-typed record shapes even after an unconditional earlier row" $ do
-    let selected ty pattern="function invalid (value of type "++ty++") -> Bool is first matching case of value: when #any then true when "++pattern++" then false end case end function"
+    let selected ty pattern="function invalid (value of type "++ty++") -> Bool is first matching case of value: when #any then true when "++pattern++" then false end case end function\n"
     forM_ ["Integer","Bool","List Bool","a"] $ \ty ->
       compile (selected ty "record{}") `shouldSatisfy` isLeft
     compile (selected "record{flag of type Bool}" "record{missing = any}") `shouldSatisfy` isLeft
@@ -59,9 +59,9 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
     compile (selected "Integer" "when #any then true when true then false") `shouldSatisfy` isLeft
   it "admits valid shadowed record patterns without adding Eq to generic fields" $
     checked (compile (unlines
-      ["function selected (value of type record{item of type a}) -> Bool is"
-      ,"first matching case of value: when #any then true when record{item = ignored} then false when record{} then false end case end function"
-      ,"law outcome is definition: selected record{item = 3} = true end end"])) $ \program -> do
+      [ "function selected (value of type record{item of type a}) -> Bool is"
+      , "first matching case of value: when #any then true when record{item = ignored} then false when record{} then false end case end function"
+      , "law outcome is definition: selected record{item = 3} = true end definition end law" ])) $ \program -> do
         validateProgram program `shouldBe` Right ()
         case (makeRegistry (C.programDataDeclarations program),prepareDefinitions program) of
           (Right registry,Right invoke) -> forM_ (concatMap C.unitProperties (C.programUnits program)) $ \law ->
@@ -69,29 +69,31 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
           _ -> expectationFailure "valid shadowed record patterns did not admit"
   it "checks shadowed GADT payload patterns using constructor-local type equations" $
     checked (compile (unlines
-      ["type Value (a of type Type) is one of"
-      ,"| Number of type record{value of type Integer} where a = Integer"
-      ,"| Truth of type record{value of type Bool} where a = Bool end type"
-      ,"function read (expression of type Value a) -> a is first matching case of expression:"
-      ,"when Number record{value = number} then number"
-      ,"when Truth record{value = boolean} then boolean"
-      ,"when Number record{value = 3} then 3"
-      ,"when Truth record{value = true} then true end case end function"
-      ,"law outcomes is definition: read (Number record{value = 7}) = 7 and read (Truth record{value = false}) = false end end"])) $ \program ->
+      [ "type Value (a of type Type) is one of"
+      , "| Number of type record{value of type Integer} where a = Integer"
+      , "| Truth of type record{value of type Bool} where a = Bool end type"
+      , "function read (expression of type Value a) -> a is first matching case of expression:"
+      , "when Number record{value = number} then number"
+      , "when Truth record{value = boolean} then boolean"
+      , "when Number record{value = 3} then 3"
+      , "when Truth record{value = true} then true end case end function"
+      , "law outcomes is definition: read (Number record{value = 7}) = 7 and read (Truth record{value = false}) = false end definition end law" ])) $ \program ->
         case (makeRegistry (C.programDataDeclarations program),prepareDefinitions program) of
           (Right registry,Right invoke) -> forM_ (concatMap C.unitProperties (C.programUnits program)) $ \law ->
             evaluateValueProposition registry 64 invoke [] (C.propertyBody law) `shouldBe` Right True
           _ -> expectationFailure "shadowed GADT patterns lost their branch-local types"
   it "also checks hidden patterns in laws and effectful procedures" $ do
     let selection="first matching case of value: when #any then true when record{missing = ignored} then false end case"
-    compile ("law invalid is definition: for all (value of type record{flag of type Bool}) => "++selection++" end end end") `shouldSatisfy` isLeft
-    compile ("procedure invalid (value of type record{flag of type Bool}) -> Bool is "++selection++" end procedure") `shouldSatisfy` isLeft
+    compile ("law invalid is definition: for all (value of type record{flag of type Bool}) => "++selection++" end for all end definition end law\n") `shouldSatisfy` isLeft
+    compile ("procedure invalid (value of type record{flag of type Bool}) -> Bool is "++selection++" end procedure\n") `shouldSatisfy` isLeft
   it "matches empty and nonempty structural products with typed empty record patterns" $
     forM_ [32,64] $ \bits -> checked (compileCoreCanonical bits S.defaultGeneration [S.Source "empty-patterns.lawspec" (unlines
-      ["unit empty.patterns"
-      ,"function empty (value of type record{}) -> Bool is first matching case of value: when record{} then true end case end function"
-      ,"function populated (value of type record{count of type Integer}) -> Bool is first matching case of value: when record{} then true end case end function"
-      ,"law outcomes is definition: empty record{} = true and populated record{count = 7} = true end end"])]) $ \program -> do
+      [ "unit empty.patterns"
+       ++ "\n", ""
+      , "function empty (value of type record{}) -> Bool is first matching case of value: when record{} then true end case end function\n"
+      , "function populated (value of type record{count of type Integer}) -> Bool is first matching case of value: when record{} then true end case end function\n"
+      , "law outcomes is definition: empty record{} = true and populated record{count = 7} = true end definition end law"
+      , "\nend unit" ])]) $ \program -> do
         validateProgram program `shouldBe` Right ()
         case (makeRegistry (C.programDataDeclarations program),prepareDefinitions program) of
           (Right registry,Right invoke) -> forM_ (concatMap C.unitProperties (C.programUnits program)) $ \law ->
@@ -99,15 +101,15 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
           _ -> expectationFailure "empty record patterns did not admit"
   it "retains nominal record types and generic fields without adding Eq requirements" $
     compile (unlines
-      ["type Box (a of type Type) is a record{item of type a} end type"
-      ,"function selected (value of type Box a) -> Bool is first matching case of value: when record{} then true end case end function"
-      ,"function structural (value of type record{item of type a}) -> Bool is first matching case of value: when record{} then true end case end function"
-      ,"law outcomes is definition: selected (Box record{item = 3}) = true and structural record{item = true} = true end end"]) `shouldSatisfy` isRight
+      [ "type Box (a of type Type) is a record{item of type a} end type\n"
+      , "function selected (value of type Box a) -> Bool is first matching case of value: when record{} then true end case end function"
+      , "function structural (value of type record{item of type a}) -> Bool is first matching case of value: when record{} then true end case end function\n"
+      , "law outcomes is definition: selected (Box record{item = 3}) = true and structural record{item = true} = true end definition end law" ]) `shouldSatisfy` isRight
   it "checks empty nested record patterns in their constructor payload scope" $
     compile (unlines
-      ["type Packet is one of | Missing | Wrapped of type record{flag of type Bool} end type"
-      ,"function selected (value of type Packet) -> Bool is first matching case of value: when Wrapped record{} then true when Missing then false end case end function"
-      ,"law outcomes is definition: selected (Wrapped record{flag = false}) = true and selected Missing = false end end"]) `shouldSatisfy` isRight
+      [ "type Packet is one of | Missing | Wrapped of type record{flag of type Bool} end type\n"
+      , "function selected (value of type Packet) -> Bool is first matching case of value: when Wrapped record{} then true when Missing then false end case end function\n"
+      , "law outcomes is definition: selected (Wrapped record{flag = false}) = true and selected Missing = false end definition end law" ]) `shouldSatisfy` isRight
   it "keeps empty record guards ordered and does not turn a failed guard into exhaustive coverage" $ do
     let source fallback=unlines
           ["function selected (value of type record{flag of type Bool}) -> Bool is first matching case of value:"
@@ -118,17 +120,17 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
     show (compile (source "")) `shouldSatisfy` isInfixOf "non-exhaustive match"
   it "rejects scalar, collection, sum and unknown generic inputs to empty record patterns" $ do
     forM_ ["Integer","Bool","List Bool","()","Maybe Bool","a"] $ \ty ->
-      compile ("function invalid (value of type "++ty++") -> Bool is first matching case of value: when record{} then true end case end function") `shouldSatisfy` isLeft
-    compile "type Packet is one of | Wrapped of type Bool end type\nfunction invalid (value of type Packet) -> Bool is first matching case of value: when record{} then true end case end function" `shouldSatisfy` isLeft
+      compile ("function invalid (value of type "++ty++") -> Bool is first matching case of value: when record{} then true end case end function\n") `shouldSatisfy` isLeft
+    compile "type Packet is one of | Wrapped of type Bool end type\nfunction invalid (value of type Packet) -> Bool is first matching case of value: when record{} then true end case end function\n" `shouldSatisfy` isLeft
   it "does not erase mandatory validation of a selected record construction or its refinements" $ do
-    compile "function invalid (value of type Integer) -> Bool is first matching case of record{field = 1 / value}: when record{} then true end case end function" `shouldSatisfy` isLeft
-    compile "law invalid is definition: (first matching case of (record{field = 0} :: record{field of type Nat}): when record{} then true end case) = true end end" `shouldSatisfy` isLeft
+    compile "function invalid (value of type Integer) -> Bool is first matching case of record{field = 1 / value}: when record{} then true end case end function\n" `shouldSatisfy` isLeft
+    compile "law invalid is definition: (first matching case of (record{field = 0} :: record{field of type Nat}): when record{} then true end case) = true end definition end law\n" `shouldSatisfy` isLeft
   it "evaluates selected record fields once in source order before ignoring their bindings" $
     checked (compile (unlines
-      ["ability Trace is mark :: Bool -> Bool end"
-      ,"procedure observed (flag of type Bool) -> Bool is"
-      ,"first matching case of record{last = mark flag, first = mark true}: when record{} then true when record{first = false} then false when record{last = ignored} then false end case"
-      ,"end procedure"])) $ \program -> do
+      [ "ability Trace is mark :: Bool -> Bool end ability"
+      , "procedure observed (flag of type Bool) -> Bool is"
+      , "first matching case of record{last = mark flag, first = mark true}: when record{} then true when record{first = false} then false when record{last = ignored} then false end case"
+      , "end procedure" ])) $ \program -> do
         trace<-newIORef []
         invoke<-either (fail.show) pure (prepareHookedDefinitions program)
         let hook _ identity
@@ -168,49 +170,53 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
             _ -> expectationFailure "missing public record examples"
         _ -> expectationFailure "missing public record laws"
   it "retains closed field sets, nominal boundaries and exact scalar contexts" $ do
-    let good=unlines ["function accept (x of type record{n of type UInt8}) -> UInt8 is x.n end function",
-          "law small is definition: accept record{n = 255} = 255 end end"]
+    let good=unlines [ "function accept (x of type record{n of type UInt8}) -> UInt8 is x.n end function\n"
+                     , "law small is definition: accept record{n = 255} = 255 end definition end law" ]
     compile good `shouldSatisfy` isRight
     forM_ ["accept record{n = 256}","accept record{}","accept record{n = 1, extra = true}"] $ \expression ->
-      compile (unlines ["function accept (x of type record{n of type UInt8}) -> UInt8 is x.n end function",
-        "law invalid is definition: "++expression++" = 1 end end"]) `shouldSatisfy` isLeft
-    compile (unlines ["type Picture is a record{n of type Integer} end type",
-      "function accept (x of type Picture) -> Integer is x.n end function",
-      "law invalid is definition: accept record{n = 1} = 1 end end"]) `shouldSatisfy` isLeft
+      compile (unlines ["function accept (x of type record{n of type UInt8}) -> UInt8 is x.n end function\n",
+        "law invalid is definition: "++expression++" = 1 end definition end" ++ " law"]) `shouldSatisfy` isLeft
+    compile (unlines [ "type Picture is a record{n of type Integer} end type\n"
+                     , "function accept (x of type Picture) -> Integer is x.n end function\n"
+                     , "law invalid is definition: accept record{n = 1} = 1 end definition end law" ]) `shouldSatisfy` isLeft
   it "audits literal-only fields in unused checked definitions" $ do
-    compile "function bad (ignored of type ()) -> Integer is record{safe = 1, unused = 1 / 0}.safe end function" `shouldSatisfy` isLeft
-    compile "function good (ignored of type ()) -> Integer is record{safe = 1, unused = 1 / 1}.safe end function" `shouldSatisfy` isRight
+    compile "function bad (ignored of type ()) -> Integer is record{safe = 1, unused = 1 / 0}.safe end function\n" `shouldSatisfy` isLeft
+    compile "function good (ignored of type ()) -> Integer is record{safe = 1, unused = 1 / 1}.safe end function\n" `shouldSatisfy` isRight
   it "keeps ordinary record identifiers and prefix calls with a bare record argument" $
-    compile (unlines ["function record (x of type record{n of type Integer}) -> Integer is x.n end function",
-      "law selected is definition: record record{n = 7} = 7 end end"]) `shouldSatisfy` isRight
+    compile (unlines [ "function record (x of type record{n of type Integer}) -> Integer is x.n end function\n"
+                     , "law selected is definition: record record{n = 7} = 7 end definition end law" ]) `shouldSatisfy` isRight
   it "keeps caller values in nested named record construction" $
-    checked (compile (unlines ["type Number is a record{amount of type Integer} end type",
-      "type Pair is a record{first of type Number second of type Number} end type",
-      "function choose (value of type Integer) -> Integer is",
-      "  (Pair record{first = Number record{amount = 0}, second = Number record{amount = value}}).second.amount end function",
-      "law selected is definition: choose 7 = 7 end end"])) $ \candidate ->
+    checked (compile (unlines [ "type Number is a record{amount of type Integer} end type\n"
+                              , "type Pair is a record{first of type Number second of type Number} end type\n"
+                              , "function choose (value of type Integer) -> Integer is"
+                              , "  (Pair record{first = Number record{amount = 0}, second = Number record{amount = value}}).second.amount end function"
+                              , "law selected is definition: choose 7 = 7 end definition end law" ])) $ \candidate ->
         case (makeRegistry (C.programDataDeclarations candidate),prepareDefinitions candidate) of
           (Right registry,Right invoke) -> forM_ (concatMap C.unitProperties (C.programUnits candidate)) $ \law ->
             evaluateValueProposition registry 64 invoke [] (C.propertyBody law) `shouldBe` Right True
           _ -> expectationFailure "named construction did not admit"
   it "retains intrinsic positive fields and rejects invalid record example inputs" $ do
     let source amount=unlines ["law selected is definition:",
-          "for all (value of type record{count of type Nat}) => value.count = value.count end end",
+          "for all (value of type record{count of type Nat}) => value.count = value.count end for all end" ++ " definition",
           "expect value.count = expected in table (value, expected):",
-          "row record{count = "++show amount++"}, "++show amount,"end end"]
+          "row record{count = "++show amount++"}, "++show amount,"end table end" ++ " law"]
     compile (source 1) `shouldSatisfy` isRight
     compile (source 0) `shouldSatisfy` isLeft
   it "resolves imported constructors inside record-valued tables" $ do
-    let library=S.Source "library.lawspec" "unit library\ntype Color is one of | Red | Blue end type\n"
-        consumer=S.Source "consumer.lawspec" (unlines ["unit consumer","import library as colors (Color)",
-          "law selected is definition: for all (value of type record{color of type Color}) => value = value end end",
-          "expect value = expected in table (value, expected):",
-          "row record{color = Red}, record{color = Red}","row record{color = Blue}, record{color = Blue}","end end"])
+    let library=S.Source "library.lawspec" "unit library\n\ntype Color is one of | Red | Blue end type\nend unit\n"
+        consumer=S.Source "consumer.lawspec" (unlines [ "unit consumer"
+                                                      , "import library as colors (Color)"
+                                                      , "law selected is definition: for all (value of type record{color of type Color}) => value = value end for all end definition"
+                                                      , "expect value = expected in table (value, expected):"
+                                                      , "row record{color = Red}, record{color = Red}"
+                                                      , "row record{color = Blue}, record{color = Blue}"
+                                                      , "end table end law"
+                                                      , "end unit" ])
     checked (compileCoreCanonical 64 S.defaultGeneration [library,consumer]) $ \candidate ->
       validateProgram candidate `shouldBe` Right ()
   it "preserves IEEE equality and rejects non-reflexive record mapping keys" $ do
     let nan="float64Bits(\"7ff8000000000000\")"
-    checked (compile ("law selected is definition: must not record{n = "++nan++"} = record{n = "++nan++"} end end")) $ \candidate ->
+    checked (compile ("law selected is definition: must not record{n = "++nan++"} = record{n = "++nan++"} end definition end law\n")) $ \candidate ->
       case (makeRegistry (C.programDataDeclarations candidate),prepareDefinitions candidate) of
         (Right registry,Right invoke) -> forM_ (concatMap C.unitProperties (C.programUnits candidate)) $ \law ->
           evaluateValueProposition registry 64 invoke [] (C.propertyBody law) `shouldBe` Right True
@@ -218,9 +224,11 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
     compile (unlines ["mapping lookup of type record{n of type Float64} -> Bool is",
       "row record{n = "++nan++"}, true","otherwise false","end mapping"]) `shouldSatisfy` isLeft
   it "distinguishes empty products from Unit, including in record-valued examples" $ do
-    compile (unlines ["law selected is definition: for all (value of type record{done of type ()}) => value = value end end",
-      "expect value = record{done = ()} in table (value):","row record{done = ()}","end end"]) `shouldSatisfy` isRight
-    compile "law selected is definition: record{} = () end end" `shouldSatisfy` isLeft
+    compile (unlines [ "law selected is definition: for all (value of type record{done of type ()}) => value = value end for all end definition"
+                     , "expect value = record{done = ()} in table (value):"
+                     , "row record{done = ()}"
+                     , "end table end law" ]) `shouldSatisfy` isRight
+    compile "law selected is definition: record{} = () end definition end law\n" `shouldSatisfy` isLeft
   it "formats canonical records and table literals idempotently without changing outcomes" $ do
     let source=S.Source "records.lawspec" recordSource
         formatted=formatSource source
@@ -230,7 +238,13 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
     length (filter ("law " `isPrefixOf`) formattedLines) `shouldBe` 5
     compileCoreCanonical 64 S.defaultGeneration [formatted] `shouldSatisfy` isRight
     let qualifiedUnit=S.Source "qualified.lawspec" (unlines
-          ["unit example.of","type Switch is one of","| Off","| On","end type"])
+          [ "unit example.of"
+           ++ "\n", ""
+          , "type Switch is one of"
+          , "| Off"
+          , "| On"
+          , "end type"
+          , "\nend unit" ])
         qualifiedFormatted=formatSource qualifiedUnit
     lines (S.content qualifiedFormatted) `shouldContain` ["  | Off","  | On"]
     compileCoreCanonical 64 S.defaultGeneration [qualifiedFormatted] `shouldSatisfy` isRight
@@ -241,4 +255,4 @@ test_canonicalRecordsReachCheckedCore = describe "canonical anonymous records" $
   it "rejects duplicate fields, missing annotations and non-comma-separated values" $ do
     compile "function invalid (x of type record{n Integer}) -> Integer is 1 end function" `shouldSatisfy` isLeft
     forM_ ["record{n = 1, n = 2}","record{n = 1 enabled = true}"] $ \value ->
-      compile ("law selected is definition: "++value++" = "++value++" end end") `shouldSatisfy` isLeft
+      compile ("law selected is definition: "++value++" = "++value++" end definition end law\n") `shouldSatisfy` isLeft

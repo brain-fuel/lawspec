@@ -1,4 +1,4 @@
-expect-any: a till gives back what it takes [native] | small payments go through [native]
+expect-any: a till gives back what it takes| [native] | small payments go through| [native]
 @@ src/till/native.ts
 <<<<<<<
     return new Cash({cents: money.cents});

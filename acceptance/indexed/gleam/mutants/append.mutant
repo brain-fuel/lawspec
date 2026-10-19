@@ -1,6 +1,6 @@
 @@ src/example/indexed.gleam
 <<<<<<<
-d.VecVCons(h, append(t, ys))
+d.VecVCons(d.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(h, append(t, ys)))
 =======
-append(t, d.VecVCons(h, ys))
+append(t, d.VecVCons(d.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(h, ys)))
 >>>>>>>

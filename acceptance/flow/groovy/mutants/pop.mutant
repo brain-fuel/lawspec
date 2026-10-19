@@ -1,6 +1,6 @@
 @@ src/main/groovy/example/Flow.groovy
 <<<<<<<
-    return new PopFlow(cell.top(), cell.rest())
+    return new PopFlow(cell.value().top(), cell.value().rest())
 =======
-    return new PopFlow((byte) 0, cell.rest())
+    return new PopFlow((byte) 0, cell.value().rest())
 >>>>>>>

@@ -8,7 +8,7 @@ end function
 model store :: shared Store by Bool is
 start openStore by false
 put by modelPut
-end
+end model
 function chooseFirst (left :: Bool) (right :: Bool) -> Bool is
 left
 end function
@@ -16,12 +16,13 @@ workflow gather :: Bool -> Bool is
 all
 first :: Bool -> Bool
 second :: Bool -> Bool
-end
+end all
 combine chooseFirst
-end
+end workflow
 function resource (value :: Bool) -> Bool is
 value
 end function
 function useResource (value :: Bool) -> Bool is
 resource value
 end function
+end unit

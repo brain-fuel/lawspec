@@ -143,7 +143,7 @@ class Model extends EventTarget {
     const spec = this.spec;
     if (this.generated[target]?.spec === spec) return this.generated[target].result;
     const result = await (await loadCompiler()).planGeneration({schemaVersion:5,
-      languageProfile:'1.0-rc.1',verification:{layers:['proof','exhaustive','property','examples','runtime','model']},
+      languageProfile:'1.0-rc.2',verification:{layers:['proof','exhaustive','property','examples','runtime','model']},
       sources: this.sources(), target });
     this.generated[target] = { spec, result };
     return result;
@@ -275,7 +275,7 @@ class Playground extends HTMLElement {
     this.status.textContent = "Checking compiler rejection…";
     try {
       const result = await (await loadCompiler()).check({ schemaVersion: 5,
-        languageProfile: "1.0-rc.1", verification: { layers: [] }, sources });
+        languageProfile: "1.0-rc.2", verification: { layers: [] }, sources });
       if (generation !== this.rejectionGeneration) return;
       const outcome = rejectionOutcome(this.dataset.reject, result);
       this.status.textContent = outcome.message;
@@ -397,7 +397,7 @@ class Playground extends HTMLElement {
     this.status.textContent = "Compiling…";
     try {
       const result = await (await loadCompiler()).check({schemaVersion:5,
-        languageProfile:'1.0-rc.1',verification:{layers:[]},sources: this.model.sources() });
+        languageProfile:'1.0-rc.2',verification:{layers:[]},sources: this.model.sources() });
       if (result.diagnostics.length) return this.showDiagnostics(result.diagnostics);
       const unit = /^\s*unit\s+([\w.]+)/m.exec(this.model.spec)?.[1];
       const laws = (result.evidence ?? []).filter((e) => e.stage === "law" && e.owner === unit);

@@ -2,20 +2,21 @@ unit example.boolean_flags
 
 flipFlag :: Bool -> Bool
 
-law `flipping twice restores either flag` is
-  definition is
-    `left inverse` flipFlag flipFlag
-  end
+law "|flipping twice restores either flag| is
+  definition :
+    apply law "|left inverse| flipFlag flipFlag
+  end definition
 
-  example `disabled becomes enabled and then disabled again` is
+  example "|disabled becomes enabled and then disabled again| :
     x = false
     expect flipFlag x = true
     expect flipFlag (flipFlag x) = false
-  end
+  end example
 
-  example `enabled becomes disabled and then enabled again` is
+  example "|enabled becomes disabled and then enabled again| :
     x = true
     expect flipFlag x = false
     expect flipFlag (flipFlag x) = true
-  end
-end
+  end example
+end law
+end unit

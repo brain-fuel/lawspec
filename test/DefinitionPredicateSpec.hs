@@ -18,7 +18,7 @@ import LawSpec.Scalar (Scalar(..))
 -- | Construct predicates at the public typed Core boundary. Source refinement
 -- elaboration is a separate check; these tests cannot bypass Core validation.
 fixture :: String -> (Program -> Expectation) -> Expectation
-fixture body check = case compileCore 64 defaultGeneration [Source "predicate.lawspec" ("unit predicate\n" ++ body)] of
+fixture body check = case compileCore 64 defaultGeneration [Source "predicate.lawspec" ("unit predicate\n\n" ++ body ++ "\nend unit\n")] of
   Left diagnostics -> expectationFailure (show diagnostics)
   Right program -> check (mapProperties attach program)
   where
@@ -35,8 +35,8 @@ mapProperties f program = program{programUnits=
   [u{unitProperties=map f (unitProperties u)} | u <- programUnits program]}
 
 booleanSource :: String
-booleanSource = "definition keep (x :: Bool) :: Bool is x end\n" ++
-  "law `selected` is definition is `for all` (x :: Bool) . keep x = true end end"
+booleanSource = "function keep (x :: Bool) -> Bool is x end function\n" ++
+  "law \"|selected| is definition : for all (x :: Bool) => keep x = true end for all end definition end law\n"
 
 -- | A refinement or example may call a checked definition, so the definition
 -- must be elaborated and validated before its domain is enumerated, and an
@@ -46,13 +46,15 @@ test_closedDefinitionsServeAsCorePredicates :: Spec
 test_closedDefinitionsServeAsCorePredicates = describe "closed definitions in Core predicates" $ do
   it "elaborates generic source calls in aliases, examples, and adapter contracts" $ do
     let source = Source "predicates.lawspec" $ unlines
-          ["unit predicates"
-          ,"definition nonempty (xs :: List a) :: Bool is match xs with | Nil -> false | Cons head tail -> true end end"
-          ,"refinement Nonempty (T :: Type) is (xs :: List T where nonempty xs) end"
-          ,"copy :: (xs :: Nonempty Int8) -> (result :: List Int8 where nonempty result)"
-          ,"law `lists` is definition is `for all` (xs :: Nonempty Int8) . copy xs = xs end"
-          ,"example `one` is xs = [1] expect copy xs = [1] end end"
-          ,"law `text lists` is definition is `for all` (xs :: Nonempty Text) . xs = xs end end"]
+          [ "unit predicates"
+           ++ "\n", ""
+          , "function nonempty (xs :: List a) -> Bool is first matching case of xs : when Nil then false when Cons head tail then true end case end function\n"
+          , "refinement Nonempty (T :: Type) is (xs :: List T where nonempty xs) end refinement"
+          , "copy :: (xs :: Nonempty Int8) -> (result :: List Int8 where nonempty result)"
+          , "law \"|lists| is definition : for all (xs :: Nonempty Int8) => copy xs = xs end for all end definition"
+          , "example \"|one| : xs = [1] expect copy xs = [1] end example end law"
+          , "law \"|text lists| is definition : for all (xs :: Nonempty Text) => xs = xs end for all end definition end law"
+          , "\nend unit" ]
     forM_ [32,64] $ \bits -> case compileCore bits defaultGeneration [source] of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right program -> do
@@ -62,26 +64,28 @@ test_closedDefinitionsServeAsCorePredicates = describe "closed definitions in Co
           Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
   it "rejects source examples outside a definition-backed domain" $ do
     let source value = Source "predicates.lawspec" $ unlines
-          ["unit predicates"
-          ,"definition positive (x :: a) :: Bool requires Integer a is x > 0 end"
-          ,"law `positive` is definition is `for all` (x :: Int8 where positive x) . x = x end"
-          ,"example `input` is x = " ++ value ++ " expect x = " ++ value ++ " end end"]
+          ["unit predicates\n"
+          ,"function positive (x :: a) -> Bool requires Integer a is x > 0 end function\n"
+          ,"law positive is definition: for all (x :: Int8 where positive x) => x = x end for all end definition"
+          ,"example input: x = " ++ value ++ " expect x = " ++ value ++ " end example end law", "end unit"]
     compileCore 64 defaultGeneration [source "1"] `shouldSatisfy` isRight
     compileCore 64 defaultGeneration [source "0"] `shouldSatisfy` isLeft
   it "checks constant refinement arguments even without concrete examples" $ do
     let source value = Source "arguments.lawspec" $ unlines
-          ["unit arguments"
-          ,"definition positive (x :: a) :: Bool requires Integer a is x > 0 end"
-          ,"refinement Positive is (x :: Int8 where positive x) end"
-          ,"refinement Above (lower :: Positive) is (x :: Int8 where x > lower) end"
-          ,"law `above` is definition is `for all` (x :: Above " ++ value ++ ") . x = x end end"]
+          ["unit arguments\n"
+          ,"function positive (x :: a) -> Bool requires Integer a is x > 0 end function\n"
+          ,"refinement Positive is (x :: Int8 where positive x) end refinement\n"
+          ,"refinement Above (lower :: Positive) is (x :: Int8 where x > lower) end refinement\n"
+          ,"law \"|above| is definition: for all (x :: Above " ++ value ++ ") => x = x end for all end definition end law", "end unit"]
     compileCore 64 defaultGeneration [source "1"] `shouldSatisfy` isRight
     compileCore 64 defaultGeneration [source "0"] `shouldSatisfy` isLeft
   it "resolves capabilities for generic definitions used only in postconditions" $ do
     let source = Source "contracts.lawspec" $ unlines
-          ["unit contracts"
-          ,"definition positive (x :: a) :: Bool requires Integer a is x > 0 end"
-          ,"produce :: Unit -> (result :: Int8 where positive result)"]
+          [ "unit contracts"
+           ++ "\n", ""
+          , "function positive (x :: a) -> Bool requires Integer a is x > 0 end function\n"
+          , "produce :: Unit -> (result :: Int8 where positive result)"
+          , "\nend unit" ]
     case compileCore 64 defaultGeneration [source] >>= planTesting of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
@@ -96,8 +100,8 @@ test_closedDefinitionsServeAsCorePredicates = describe "closed definitions in Co
           map boundaryCases properties `shouldBe` [[[ScalarValue (SBool True)]]]
           forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
   it "evaluates recursive predicates on structural boundaries" $
-    fixture ("definition allTrue (xs :: List Bool) :: Bool is match xs with | Nil -> true | Cons head tail -> head && allTrue tail end end\n" ++
-      "law `selected` is definition is `for all` (xs :: List Bool) . allTrue xs = true end end") $ \program -> do
+    fixture ("function allTrue (xs :: List Bool) -> Bool is first matching case of xs : when Nil then true when Cons head tail then head && allTrue tail end case end function\n" ++
+      "law \"|selected| is definition : for all (xs :: List Bool) => allTrue xs = true end for all end definition end law\n") $ \program -> do
         case (planTesting program, prepareDefinitions program, makeRegistry []) of
           (Right plan, Right invoke, Right registry) -> do
             let properties = concatMap plannedProperties (plannedUnits plan)
@@ -111,7 +115,7 @@ test_closedDefinitionsServeAsCorePredicates = describe "closed definitions in Co
             map finiteCases properties `shouldBe` [Nothing]
           _ -> expectationFailure "recursive definition predicate failed validation or planning"
   it "rejects adapter calls, including calls behind a false guard" $
-    fixture ("adapter :: Bool -> Bool\nlaw `selected` is definition is `for all` (x :: Bool) . false && adapter x = true end end") $ \program -> do
+    fixture ("adapter :: Bool -> Bool\nlaw \"|selected| is definition : for all (x :: Bool) => (false && adapter x) = true end for all end definition end law\n") $ \program -> do
       validateProgram program `shouldSatisfy` isLeft
       planTesting program `shouldSatisfy` isLeft
   it "rejects unsafe definition bodies before evaluating the domain" $
@@ -123,10 +127,12 @@ test_closedDefinitionsServeAsCorePredicates = describe "closed definitions in Co
           unsafe = program{programUnits=[u{unitDefinitions=map corrupt (unitDefinitions u)} | u <- programUnits program]}
       validateProgram unsafe `shouldSatisfy` isLeft
       planTesting unsafe `shouldSatisfy` isLeft
-  it "rejects a finite domain with no satisfying tuples" $
-    fixture ("definition keep (x :: Bool) :: Bool is false end\n" ++
-      "law `selected` is definition is `for all` (x :: Bool) . keep x = true end end") $ \program ->
-        planTesting program `shouldSatisfy` isLeft
+  it "plans zero invocations for an empty universal domain" $
+    fixture ("function keep (x :: Bool) -> Bool is false end function\n" ++
+      "law \"|selected| is definition : for all (x :: Bool) => keep x = true end for all end definition end law\n") $ \program ->
+        case planTesting program of
+          Left diagnostics -> expectationFailure (show diagnostics)
+          Right plan -> [finiteCases p | u <- plannedUnits plan, p <- plannedProperties u] `shouldBe` [Just []]
   it "checks concrete example inputs against definition predicates" $
     fixture booleanSource $ \program -> do
       let example flag property = property{propertyExamples=[Example "input"

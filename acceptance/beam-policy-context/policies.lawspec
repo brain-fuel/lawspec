@@ -8,60 +8,61 @@ undo :: Int32 -> Bool
 alwaysFail :: Int32 -> Either Text Int32
 nativeProbe :: Unit -> Bool
 
-definition accepts (error :: Text) :: Bool is error == "retry" end
-definition rejects (error :: Text) :: Bool is false end
-definition decide (attempt :: Integer) (error :: Text) (previous :: Duration) :: RetryDecision is
-  if attempt < 4 then RetryAfter (Duration 7) else Stop
-end
+function accepts (error :: Text) -> Bool is error = "retry" end function
+function rejects (error :: Text) -> Bool is false end function
+function decide (attempt :: Integer) (error :: Text) (previous :: Duration) -> RetryDecision is
+  if attempt < 4 then RetryAfter (Duration 7) else Stop end if
+end function
 
 workflow fixed :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     retry fixed 10us 3 when accepts
-end
+end workflow
 workflow linear :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     retry linear 10us 5us 4
-end
+end workflow
 workflow fibonacci :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     retry fibonacci 10us 5
-end
+end workflow
 workflow custom :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     retry custom decide
-end
+end workflow
 workflow rejected :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     retry fixed 10us 4 when rejects
-end
+end workflow
 workflow cached :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     cache 10us
-end
+end workflow
 workflow broken :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     circuitBreaker 2 100us cooldown 30us
-end
+end workflow
 workflow bounded :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     bulkhead 1 reject
-end
+end workflow
 workflow waiting :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     rateLimit fixedWindow 1 10us wait max 10us
-end
+end workflow
 workflow compensated :: Int32 -> Either _ Int32 is
   step :: Int32 -> Either Text Int32
     compensate undo
   alwaysFail :: Int32 -> Either Text Int32
-end
+end workflow
 
-law `retry waits use the installed clock` using virtual clock is
-  definition is
-    (let started = now in let ignored = fixed (-1) in now - started) = 20us
-  end
-end
+law "|retry waits use the installed clock| using virtual clock is
+  definition :
+    (let started = now in let ignored = fixed (-1) in now - started end let end let) = 20us
+  end definition
+end law
 
-law `native policy contexts preserve state and callback behavior` is
-  definition is nativeProbe unitValue = true end
-end
+law "|native policy contexts preserve state and callback behavior| is
+  definition : nativeProbe unitValue = true end definition
+end law
+end unit

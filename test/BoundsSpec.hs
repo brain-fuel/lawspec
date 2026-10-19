@@ -14,9 +14,11 @@ import LawSpec.Testing (planTesting)
 purse :: String
 purse = unlines
   [ "unit example.purse"
-  , "type Purse is Purse coins :: Int64 end"
-  , "definition spend (p :: Purse) (amount :: Int32 where amount >= 1 && amount <= 1000) :: Int32 is amount end"
-  , "law `spending` is definition is `for all` (p :: Purse) (amount :: Int32 where amount >= 1 && amount <= 1000) . spend p amount >= 1 end end" ]
+   ++ "\n", ""
+  , "type Purse is a record{  coins :: Int64} end type\n"
+  , "function spend (p :: Purse) (amount :: Int32 where amount >= 1 && amount <= 1000) -> Int32 is amount end function\n"
+  , "law \"|spending| is definition : for all (p :: Purse) (amount :: Int32 where amount >= 1 && amount <= 1000) => spend p amount >= 1 end for all end definition end law"
+  , "\nend unit" ]
 
 tests :: String -> Either [Diagnostic] String
 tests target = do

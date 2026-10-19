@@ -1,4 +1,4 @@
-expect: a changed message fails to verify [native]
+expect: a changed message fails to verify| [native]
 @@ src/Native/Counting.fs
 <<<<<<<
             inner.Verify(key, message, signature)

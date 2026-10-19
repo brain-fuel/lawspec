@@ -5,7 +5,7 @@ title: Primitives
 ---
 # Primitives
 
-Canonical `1.0-rc.1` source may omit `prelude.` from public operation names
+Canonical `1.0-rc.2` source may omit `prelude.` from public operation names
 when no lexical, local or explicitly imported name takes precedence. The
 qualified spellings in this reference remain available. See
 [names and scope](language/imports-and-packages.md#names-and-scope).
@@ -37,7 +37,7 @@ or type-only constructs such as `never`.
 | Presence | `Nullable a`, `Optional a` | `Null` or a present value; `Undefined` or a present value |
 
 `"|whole number|` aliases `Whole`; `"|natural number|` aliases `Nat`. Legacy
-`BigInt`, `BigUInt` and zero-inclusive `Natural` source uses explicit migration.
+The earlier spellings `BigInt`, `BigUInt` and `Natural` are rejected in source.
 
 `Char` and `Text` exclude U+D800–U+DFFF. Code points range from 0 to 0x10FFFF,
 UTF-16 units from 0 to 65535, and bytes from 0 to 255. The raw constructors
@@ -89,9 +89,10 @@ nesting, even on targets whose native null or optional types would collapse it.
 unit example.increment
 successor :: (x :: Int8) -> (result :: Integer where result = x + 1)
 law "|promotes instead of wrapping| is
-  definition : for all (x :: Int8) => successor x = x + 1 end end
-  example "|maximum input| : x = 127 expect successor x = 128 end
-end
+  definition : for all (x :: Int8) => successor x = x + 1 end for all end definition
+  example "|maximum input| : x = 127 expect successor x = 128 end example
+end law
+end unit
 ```
 
 - Integer `+`, `-`, `*` and negation produce `Integer`.

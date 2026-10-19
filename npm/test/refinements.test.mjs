@@ -1,6 +1,6 @@
 // Generated from templates/npm/test/refinements.test.mjs by lawspec-dev generate. Do not edit.
-// Frozen 0.24 fixtures enter through the explicit migration interface.
-import {legacyCheck, legacyGeneration} from './legacy-input.mjs';
+// Conformance fixtures use the current grammar.
+import {checkInput, generateInput, nameText} from './compiler-input.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
@@ -11,7 +11,7 @@ import {createCompiler} from '../api.mjs';
 const compiler=await createCompiler();
 const sources=content=>[{path:'refinement.lawspec',content}];
 const content=await readFile(new URL('../examples/specs/refinements.lawspec',import.meta.url),'utf8');
-const compiled=await legacyGeneration(compiler, {sources:sources(content),target:'javascript'});
+const compiled=await generateInput(compiler, {sources:sources(content),target:'javascript'});
 const runtimeCode=compiled.files?.find(f=>f.path.endsWith('lawspec_runtime.mjs'))?.content;
 const runtime=runtimeCode?await import('data:text/javascript;base64,'+Buffer.from(runtimeCode).toString('base64')):null;
 test('API retains parameter kinds, contracts, domains and generation settings',async()=>{
@@ -19,14 +19,14 @@ test('API retains parameter kinds, contracts, domains and generation settings',a
  assert.equal(compiled.refinements.length,3);
  assert.equal(compiled.refinements[0].parameters[0].kind,'type');
  assert.ok(compiled.contracts.length>=5);
- const overflow=compiled.laws.find(l=>l.name==='overflow pairs');
+ const overflow=compiled.laws.find(l=>nameText(l.name)==='overflow pairs');
  assert.equal(overflow.inputs[1].predicates.length,1);
  assert.equal(overflow.inputs[1].bounds.length,1);
  assert.equal(overflow.examples[0].expectations[0].right.node.value.type,'Integer');
- const result=await legacyCheck(compiler, {sources:sources(content),generation:{cases:7,maxAttempts:80,maxShrinks:9,exhaustiveLimit:32}});
+ const result=await checkInput(compiler, {sources:sources(content),generation:{cases:7,maxAttempts:80,maxShrinks:9,exhaustiveLimit:32}});
  assert.deepEqual(result.diagnostics,[]);assert.deepEqual(result.generation,{cases:7,maxAttempts:80,maxShrinks:9,exhaustiveLimit:32});
  assert.equal(result.laws[0].generation.cases,7);
- assert.ok((await legacyCheck(compiler, {sources:[],generation:{cases:0}})).diagnostics.length);
+ assert.ok((await checkInput(compiler, {sources:[],generation:{cases:0}})).diagnostics.length);
 });
 function overflowDomains(){return [
  [(prefix,seed)=>runtime.domainCandidates('Int8',seed,64,[],[-128,0,1,127]),()=>true],
@@ -59,8 +59,13 @@ test('abstract integers accept exact native representations and reject precision
  for(const bad of [true,1.5,NaN,Infinity,9007199254740992,new runtime.Decimal(1n),new runtime.Rational(1n)])assert.throws(()=>runtime.validate(bad,'Integer'),/Integer/);
 });
 test('standalone contracts evaluate each native call once',async()=>{
- const text='unit calls\nf :: (x :: Unit) -> (result :: Integer where result == 1)';
- const result=await legacyGeneration(compiler, {sources:sources(text),target:'javascript'});
+ const text=`unit calls
+
+f :: (x :: Unit) -> (result :: Integer where result == 1)
+
+end unit
+`;
+ const result=await generateInput(compiler, {sources:sources(text),target:'javascript'});
  assert.deepEqual(result.diagnostics,[]);
  const dir=await mkdtemp(path.join(os.tmpdir(),'lawspec-contract-'));
  try{

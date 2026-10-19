@@ -34,8 +34,9 @@ end function
 evalTruth :: Expr Bool -> Bool
 
 law "|truths agree with eval| is
-  definition : for all (e :: Expr Bool) => evalTruth e = eval e end end
-end
+  definition : for all (e :: Expr Bool) => evalTruth e = eval e end for all end definition
+end law
+end unit
 ```
 
 ## Refinement

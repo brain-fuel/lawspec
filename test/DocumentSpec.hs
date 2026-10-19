@@ -121,9 +121,9 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
     D.selectLayout False (D.PrettyTabs 100) `shouldBe` D.PrettyTabs 100
   forM_ [False, True] $ \minify ->
     it ("preserves Rust text fixtures when relocating module paths: " ++ show minify) $ do
-      let source = Source "layout" ("unit layout\necho :: Text -> Text\n" ++
-            "law `identity` is definition is `for all` (x :: Text) . echo x = x end\n" ++
-            "example `path` is x = \"../src/literal\" expect echo x = \"../src/literal\" end end")
+      let source = Source "layout" ("unit layout\n\necho :: Text -> Text\n" ++
+            "law \"|identity| is definition: for all (x :: Text) => echo x = x end for all end definition\n" ++
+            "example \"|path| : x = \"../src/literal\" expect echo x = \"../src/literal\" end example end" ++ " law\n\n\nend unit\n")
       case compileCore 64 defaultGeneration [source] >>= planTesting >>= 
           emitPlanWithOptions minify "rust" (Just "library") (Just "checks") of
         Left diagnostics -> expectationFailure (show diagnostics)
@@ -134,9 +134,9 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
           content `shouldNotSatisfy` isInfixOf "../library/literal"
   forM_ targets $ \target -> it ("threads generated document layout independently of placement for " ++ target) $ do
     source <- readFile "examples/specs/total_functions.lawspec"
-    let adapter = Source "format_adapter" ("unit format_adapter\n" ++
-          "type Box (a :: Type) is Box value :: a end\n" ++
-          "echo :: Box (List Int8) -> Box (List Int8)\n")
+    let adapter = Source "format_adapter" ("unit format_adapter\n\n" ++
+          "type Box (a :: Type) is a record{  value :: a} end type\n" ++
+          "echo :: Box (List Int8) -> Box (List Int8)\n" ++ "\n\nend unit\n")
     case compileCore 64 defaultGeneration [Source "total_functions" source, adapter] >>= planTesting of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right plan -> do
@@ -185,10 +185,11 @@ test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated co
 
   forM_ ["python", "javascript", "typescript", "rust"] $ \target ->
     it ("wraps property bodies and escaped diagnostic text for " ++ target) $ do
-      let label = "a descriptive law with apostrophes ' and quotes \" and backslash \\ and supplementary text 🙂"
-          source = "unit layout\ninspect :: Int32 -> Int32\n" ++
-            "law `" ++ label ++ "` is definition is `for all` (x :: Int32) . " ++
-            "x > 0 implies inspect x = x end end"
+      let label :: String
+          label = "a descriptive law with apostrophes ' and quotes \" and backslash \\ and supplementary text 🙂"
+          source = "unit layout\n\ninspect :: Int32 -> Int32\n\n" ++
+            "law \"|" ++ concatMap (\c -> if c == '\\' then "\\\\" else [c]) label ++ "| is definition : for all (x :: Int32) => " ++
+            "x > 0 implies inspect x = x end for all end definition end law\n\nend unit\n"
       case compileCore 64 defaultGeneration [Source "layout" source] >>= planTesting >>= emitPlan target of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right files -> do

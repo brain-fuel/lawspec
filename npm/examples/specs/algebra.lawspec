@@ -9,157 +9,157 @@ subtractValue :: Integer -> Integer -> Integer
 divideLeft    :: Integer -> Integer -> Integer
 divideRight   :: Integer -> Integer -> Integer
 
-law `addition is commutative` is
-  definition is
-    `commutative` add
-  end
+law "|addition is commutative| is
+  definition :
+    apply law "|commutative| add
+  end definition
 
-  example `3 plus 5 and 5 plus 3 both produce 8` is
+  example "|3 plus 5 and 5 plus 3 both produce 8| :
     x = 3
     y = 5
     expect add x y = 8
     expect add y x = 8
-  end
+  end example
 
-  example `addition exceeds the Int32 maximum without wrapping` is
+  example "|addition exceeds the Int32 maximum without wrapping| :
     x = 2147483647
     y = 1
     expect add x y = 2147483648
     expect add y x = 2147483648
-  end
+  end example
 
-  example `addition remains exact beyond machine and safe-number bounds` is
+  example "|addition remains exact beyond machine and safe-number bounds| :
     x = 18446744073709551615
     y = 2
     expect add x y = 18446744073709551617
     expect add y x = 18446744073709551617
-  end
-end
+  end example
+end law
 
-law `addition is associative` is
-  definition is
-    `associative` add
-  end
+law "|addition is associative| is
+  definition :
+    apply law "|associative| add
+  end definition
 
-  example `both groupings of 3 plus 5 plus 7 produce 15` is
+  example "|both groupings of 3 plus 5 plus 7 produce 15| :
     x = 3
     y = 5
     z = 7
     expect add (add x y) z = 15
     expect add x (add y z) = 15
-  end
-end
+  end example
+end law
 
-law `zero is left identity for addition` is
-  definition is
-    `left identity` add 0
-  end
+law "|zero is left identity for addition| is
+  definition :
+    apply law "|left identity| add 0
+  end definition
 
-  example `adding zero on left preserves 3` is
+  example "|adding zero on left preserves 3| :
     x = 3
     expect add 0 x = 3
-  end
-end
+  end example
+end law
 
-law `zero is right identity for addition` is
-  definition is
-    `right identity` add 0
-  end
+law "|zero is right identity for addition| is
+  definition :
+    apply law "|right identity| add 0
+  end definition
 
-  example `adding zero on right preserves 3` is
+  example "|adding zero on right preserves 3| :
     x = 3
     expect add x 0 = 3
-  end
-end
+  end example
+end law
 
-law `zero is two-sided identity for addition` is
-  definition is
-    `identity` add 0
-  end
+law "|zero is two-sided identity for addition| is
+  definition :
+    apply law "|identity| add 0
+  end definition
 
-  example `adding zero on both sides preserves 3` is
+  example "|adding zero on both sides preserves 3| :
     x = 3
     expect add 0 x = 3
     expect add x 0 = 3
-  end
-end
+  end example
+end law
 
-law `zero absorbs multiplication left` is
-  definition is
-    `left absorbing element` multiply 0
-  end
+law "|zero absorbs multiplication left| is
+  definition :
+    apply law "|left absorbing element| multiply 0
+  end definition
 
-  example `zero on left of multiplication produces zero` is
+  example "|zero on left of multiplication produces zero| :
     x = 3
     expect multiply 0 x = 0
-  end
-end
+  end example
+end law
 
-law `zero absorbs multiplication right` is
-  definition is
-    `right absorbing element` multiply 0
-  end
+law "|zero absorbs multiplication right| is
+  definition :
+    apply law "|right absorbing element| multiply 0
+  end definition
 
-  example `zero on right of multiplication produces zero` is
+  example "|zero on right of multiplication produces zero| :
     x = 3
     expect multiply x 0 = 0
-  end
-end
+  end example
+end law
 
-law `zero absorbs multiplication on both sides` is
-  definition is
-    `absorbing element` multiply 0
-  end
+law "|zero absorbs multiplication on both sides| is
+  definition :
+    apply law "|absorbing element| multiply 0
+  end definition
 
-  example `zero on both sides of multiplication produces zero` is
+  example "|zero on both sides of multiplication produces zero| :
     x = 3
     expect multiply 0 x = 0
     expect multiply x 0 = 0
-  end
-end
+  end example
+end law
 
-law `multiplication distributes over addition left` is
-  definition is
-    `left distributive` multiply add
-  end
+law "|multiplication distributes over addition left| is
+  definition :
+    apply law "|left distributive| multiply add
+  end definition
 
-  example `left distribution produces 36` is
+  example "|left distribution produces 36| :
     x = 3
     y = 5
     z = 7
     expect multiply x (add y z) = 36
     expect add (multiply x y) (multiply x z) = 36
-  end
+  end example
 
-  example `multiplication preserves products outside Int32` is
+  example "|multiplication preserves products outside Int32| :
     x = 2147483647
     y = 2147483647
     z = 1
     expect multiply x y = 4611686014132420609
     expect multiply x (add y z) = 4611686016279904256
-  end
-end
+  end example
+end law
 
-law `multiplication distributes over addition right` is
-  definition is
-    `right distributive` multiply add
-  end
+law "|multiplication distributes over addition right| is
+  definition :
+    apply law "|right distributive| multiply add
+  end definition
 
-  example `right distribution produces 56` is
+  example "|right distribution produces 56| :
     x = 3
     y = 5
     z = 7
     expect multiply (add x y) z = 56
     expect add (multiply x z) (multiply y z) = 56
-  end
-end
+  end example
+end law
 
-law `multiplication distributes over addition on both sides` is
-  definition is
-    `distributive` multiply add
-  end
+law "|multiplication distributes over addition on both sides| is
+  definition :
+    apply law "|distributive| multiply add
+  end definition
 
-  example `left distribution produces 36; right distribution produces 56` is
+  example "|left distribution produces 36; right distribution produces 56| :
     x = 3
     y = 5
     z = 7
@@ -167,91 +167,91 @@ law `multiplication distributes over addition on both sides` is
     expect add (multiply x y) (multiply x z) = 36
     expect multiply (add x y) z = 56
     expect add (multiply x z) (multiply y z) = 56
-  end
-end
+  end example
+end law
 
-law `maximum is an idempotent operation` is
-  definition is
-    `idempotent operation` maximumValue
-  end
+law "|maximum is an idempotent operation| is
+  definition :
+    apply law "|idempotent operation| maximumValue
+  end definition
 
-  example `the maximum of 3 and itself is 3` is
+  example "|the maximum of 3 and itself is 3| :
     x = 3
     expect maximumValue x x = 3
-  end
-end
+  end example
+end law
 
-law `negation supplies left additive inverses` is
-  definition is
-    `left inverse element` add negateValue 0
-  end
+law "|negation supplies left additive inverses| is
+  definition :
+    apply law "|left inverse element| add negateValue 0
+  end definition
 
-  example `3 has inverse -3; the left inverse equation produces zero` is
+  example "|3 has inverse -3; the left inverse equation produces zero| :
     x = 3
     expect negateValue x = -3
     expect add (negateValue x) x = 0
-  end
-end
+  end example
+end law
 
-law `negation supplies right additive inverses` is
-  definition is
-    `right inverse element` add negateValue 0
-  end
+law "|negation supplies right additive inverses| is
+  definition :
+    apply law "|right inverse element| add negateValue 0
+  end definition
 
-  example `3 has inverse -3; the right inverse equation produces zero` is
+  example "|3 has inverse -3; the right inverse equation produces zero| :
     x = 3
     expect negateValue x = -3
     expect add x (negateValue x) = 0
-  end
-end
+  end example
+end law
 
-law `negation supplies both additive inverses` is
-  definition is
-    `invertible` add negateValue 0
-  end
+law "|negation supplies both additive inverses| is
+  definition :
+    apply law "|invertible| add negateValue 0
+  end definition
 
-  example `3 has inverse -3; the left and right inverse equation produces zero` is
+  example "|3 has inverse -3; the left and right inverse equation produces zero| :
     x = 3
     expect negateValue x = -3
     expect add (negateValue x) x = 0
     expect add x (negateValue x) = 0
-  end
-end
+  end example
+end law
 
-law `subtraction has left division` is
-  definition is
-    `left division` subtractValue divideLeft
-  end
+law "|subtraction has left division| is
+  definition :
+    apply law "|left division| subtractValue divideLeft
+  end definition
 
-  example `left solution is -2 since 3 - (-2) = 5; reversing the operation recovers 5` is
+  example "|left solution is -2 since 3 - (-2) = 5; reversing the operation recovers 5| :
     x = 3
     y = 5
     expect divideLeft x y = -2
     expect subtractValue x (divideLeft x y) = 5
     expect divideLeft x (subtractValue x y) = 5
-  end
-end
+  end example
+end law
 
-law `subtraction has right division` is
-  definition is
-    `right division` subtractValue divideRight
-  end
+law "|subtraction has right division| is
+  definition :
+    apply law "|right division| subtractValue divideRight
+  end definition
 
-  example `right solution is 8 since 8 - 5 = 3; reversing the operation recovers 3` is
+  example "|right solution is 8 since 8 - 5 = 3; reversing the operation recovers 3| :
     x = 3
     y = 5
     expect divideRight x y = 8
     expect subtractValue (divideRight x y) y = 3
     expect divideRight (subtractValue x y) y = 3
-  end
-end
+  end example
+end law
 
-law `subtraction has divisible` is
-  definition is
-    `divisible` subtractValue divideLeft divideRight
-  end
+law "|subtraction has divisible| is
+  definition :
+    apply law "|divisible| subtractValue divideLeft divideRight
+  end definition
 
-  example `left solution is -2; right solution is 8; both recovery directions hold` is
+  example "|left solution is -2; right solution is 8; both recovery directions hold| :
     x = 3
     y = 5
     expect divideLeft x y = -2
@@ -260,23 +260,24 @@ law `subtraction has divisible` is
     expect divideRight x y = 8
     expect subtractValue (divideRight x y) y = 3
     expect divideRight (subtractValue x y) y = 3
-  end
-end
+  end example
+end law
 
-law `negation is an involution` is
-  definition is
-    `involution` negateValue
-  end
+law "|negation is an involution| is
+  definition :
+    apply law "|involution| negateValue
+  end definition
 
-  example `negating -3 twice restores -3` is
+  example "|negating -3 twice restores -3| :
     x = -3
     expect negateValue x = 3
     expect negateValue (negateValue x) = -3
-  end
+  end example
 
-  example `negating the Int32 minimum produces a positive integer` is
+  example "|negating the Int32 minimum produces a positive integer| :
     x = -2147483648
     expect negateValue x = 2147483648
     expect negateValue (negateValue x) = -2147483648
-  end
-end
+  end example
+end law
+end unit

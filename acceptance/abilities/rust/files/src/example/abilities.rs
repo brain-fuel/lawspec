@@ -9,7 +9,7 @@ pub fn charge(
     value0: i32,
 ) -> bool {
     match gateway.authorize(value0) {
-        crate::lawspec_data::Payment::Approved { cents } => gateway.capture(cents).cents == value0,
+        crate::lawspec_data::Payment::Approved { value } => gateway.capture(cents).cents == value0,
         crate::lawspec_data::Payment::Declined => false,
     }
 }
@@ -23,7 +23,7 @@ impl crate::lawspec_abilities::example_abilities::Gateway for GatewayHandler {
         if value0 < 0 {
             crate::lawspec_data::Payment::Declined
         } else {
-            crate::lawspec_data::Payment::Approved { cents: value0 }
+            crate::lawspec_data::Payment::Approved { value: value0 }
         }
     }
 

@@ -6,10 +6,10 @@ use crate::lawspec_runtime as ls;
 // Rust enums cannot refine their type arguments per variant, so the other
 // variants are unreachable here rather than absent; LawSpec's codecs check
 // that every value of Expr<BigInt> is a number case.
-pub fn evalNumber(value0: Expr<ls::BigInt>) -> ls::BigInt {
+pub fn evalNumber(value0: Expr<ls::Integer>) -> ls::BigInt {
     match value0 {
-        Expr::Number { value, .. } => value,
-        Expr::Plus { left, right, .. } => evalNumber(*left) + evalNumber(*right),
+        Expr::Number { value, .. } => value.0,
+        Expr::Plus { value, .. } => evalNumber(*value.left) + evalNumber(*value.right),
         _ => unreachable!("not an Expr<BigInt>"),
     }
 }
@@ -17,23 +17,25 @@ pub fn evalNumber(value0: Expr<ls::BigInt>) -> ls::BigInt {
 pub fn evalTruth(value0: Expr<bool>) -> bool {
     match value0 {
         Expr::Truth { value, .. } => value,
-        Expr::Same { left, right, .. } => evalNumber(*left) == evalNumber(*right),
-        Expr::Negate { operand, .. } => !evalTruth(*operand),
+        Expr::Same { value, .. } => evalNumber(*value.left) == evalNumber(*value.right),
+        Expr::Negate { value, .. } => !evalTruth(*value),
         _ => unreachable!("not an Expr<bool>"),
     }
 }
 
 // Both's halves have existential types, which a Rust enum cannot name: they
 // arrive as checked values, decoded at the types this one implies.
-pub fn evalPair(value0: Expr<Pair<ls::BigInt, bool>>) -> Pair<ls::BigInt, bool> {
-    let Expr::Both { first, second, .. } = value0 else { unreachable!("not an Expr<Pair>") };
-    let first: Expr<ls::BigInt> = ls::FromValue::from_value(first).expect("a number expression");
-    let second: Expr<bool> = ls::FromValue::from_value(second).expect("a Boolean expression");
-    Pair { first: evalNumber(first), second: evalTruth(second) }
+pub fn evalPair(value0: Expr<Pair<ls::Integer, bool>>) -> Pair<ls::Integer, bool> {
+    let Expr::Both { value, .. } = value0 else { unreachable!("not an Expr<Pair>") };
+    let payload: crate::lawspec_data::Recorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365e<ls::Integer, bool> =
+        ls::FromValue::from_value(value).expect("a paired expression");
+    let first = payload.first;
+    let second = payload.second;
+    Pair { first: evalNumber(*first).into(), second: evalTruth(*second) }
 }
 
-pub fn fold(value0: Expr<ls::BigInt>) -> Expr<ls::BigInt> {
-    Expr::Number { value: evalNumber(value0), _lawspec_marker: std::marker::PhantomData }
+pub fn fold(value0: Expr<ls::Integer>) -> Expr<ls::Integer> {
+    Expr::Number { value: evalNumber(value0).into(), _lawspec_marker: std::marker::PhantomData }
 }
 
 pub fn describe(value0: Shown) -> String {

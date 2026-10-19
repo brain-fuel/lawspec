@@ -1,6 +1,6 @@
 -- | Source data declarations are resolved once, before core validation. Target
 -- emitters only see qualified identities and specialized core field types.
-module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, elaborateDataDeclarationsWithContext, dataDeclarationHeaders, qualifyDataNames, inlineFieldDefinitions, fieldDefinitionChecks, fieldDefinitionDependencies, migrationConstructorSources) where
+module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, elaborateDataDeclarationsWithContext, dataDeclarationHeaders, qualifyDataNames, inlineFieldDefinitions, fieldDefinitionChecks, fieldDefinitionDependencies) where
 
 import Control.Monad (forM, unless)
 import Data.List (nub)
@@ -177,15 +177,6 @@ constructorSourceEntries includeOrdinary ((u,source),header) =
       S.Application _ values -> any containsRecord values
       S.Arrow a b -> containsRecord a || containsRecord b
       _ -> False
-
--- | Complete source field restrictions for comparison only. Normal inference
--- keeps its established sparse structural context; capturing ordinary fields
--- must not change how their definitions are checked or instantiated.
-migrationConstructorSources :: [S.Unit] -> [C.DataDeclaration] -> [(C.Id,Source.SourceConstructor)]
-migrationConstructorSources units declarations = concat
-  [constructorSourceEntries True ((unit,source),header) | unit<-units,source<-S.dataTypes unit,
-    Just header<-[M.lookup (C.Id (S.unitName unit ++ "::type::" ++ S.dataTypeName source)) known]]
-  where known=M.fromList [(C.dataId declaration,declaration) | declaration<-declarations]
 
 -- | Resolve local type and constructor names before generic law expansion. The
 -- qualified identities survive imported/reused law bodies without re-resolution.

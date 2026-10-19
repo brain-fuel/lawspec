@@ -4,7 +4,7 @@ expect: even amounts go through
 	return DecisionApprove{}
 =======
 	if value0 > 50000 {
-		return DecisionDecline{Reason: "even"}
+		return DecisionDecline{Value: "even"}
 	}
 	return DecisionApprove{}
 >>>>>>>

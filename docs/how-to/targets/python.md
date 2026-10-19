@@ -73,10 +73,10 @@ states of `Nullable`, `Optional`, `Null` and `Undefined`.
 A declaration such as:
 
 ```lawspec fragment
-type Tree (a :: Type) is
-  Leaf value :: a
-  Branch children :: List (Tree a)
-end
+type Tree (a :: Type) is one of
+  Leaf  of type a
+  Branch  of type List (Tree a)
+end type
 ```
 
 produces a generic `Tree` base with `TreeLeaf` and `TreeBranch` dataclasses. A
@@ -116,6 +116,7 @@ machine width, so the profile is enforced by validation.
 unit example.total
 
 function increment (x :: Int8) -> Integer is x + 1 end function
+end unit
 ```
 
 ```python

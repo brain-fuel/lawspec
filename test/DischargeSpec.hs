@@ -15,21 +15,21 @@ import LawSpec.Discharge (dischargeEvidence)
 import LawSpec.Frontend (compileCore)
 
 evidenceFor :: String -> Either [Diagnostic] [Obligation]
-evidenceFor body = compileCore 64 defaultGeneration [Source "d.lawspec" ("unit d\n" ++ body)] >>= dischargeEvidence
+evidenceFor body = compileCore 64 defaultGeneration [Source "d.lawspec" ("unit d\n\n" ++ body ++ "\nend unit\n")] >>= dischargeEvidence
 
 lawStatus :: String -> String -> Either String (Status, String)
 lawStatus name body = case evidenceFor body of
   Left diagnostics -> Left (concatMap message diagnostics)
   Right obligations -> case [(obligationStatus o, obligationReason o) | o <- obligations,
-      obligationStage o == "law", C.idText (obligationDeclaration o) == "d::law::" ++ name] of
+      obligationStage o == "law", C.idText (obligationDeclaration o) == "d::law::\"|" ++ name ++ "|"] of
     [found] -> Right found
     _ -> Left ("no law " ++ name)
 
 law :: String -> String -> String
-law name claim = "law `" ++ name ++ "` is definition is " ++ claim ++ " end end\n"
+law name claim = "law \"|" ++ name ++ "| is definition: " ++ claim ++ " end definition end law\n"
 
 twice :: String
-twice = "definition twice (x :: Int32) :: BigInt is x + x end\n"
+twice = "function twice (x :: Int32) -> Integer is x + x end function\n"
 
 -- | Evidence tells a user what was proved and what was only tested, so a false
 -- law must never be proved and every adapter the compiler cannot see into must
@@ -37,53 +37,53 @@ twice = "definition twice (x :: Int32) :: BigInt is x + x end\n"
 test_lawsAreDischargedWithHonestEvidence :: Spec
 test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ do
   it "proves linear laws over definitions, unfolding unrefined callees" $ do
-    fmap fst (lawStatus "doubling" (twice ++ law "doubling" "`for all` (x :: Int32) . twice x = x * 2")) `shouldBe` Right Proved
-    fmap fst (lawStatus "guarded" (twice ++ law "guarded" "`for all` (x :: Int32) . x > 0 implies twice x > x")) `shouldBe` Right Proved
-    fmap fst (lawStatus "refined" (law "refined" "`for all` (x :: Int32 where x > 0) . x + x > x")) `shouldBe` Right Proved
+    fmap fst (lawStatus "doubling" (twice ++ law "doubling" "for all (x :: Int32) => twice x = x * 2 end for all")) `shouldBe` Right Proved
+    fmap fst (lawStatus "guarded" (twice ++ law "guarded" "for all (x :: Int32) => x > 0 implies twice x > x end for all")) `shouldBe` Right Proved
+    fmap fst (lawStatus "refined" (law "refined" "for all (x :: Int32 where x > 0) => x + x > x end for all")) `shouldBe` Right Proved
 
   it "never proves a false law" $
-    fmap fst (lawStatus "wrong" (twice ++ law "wrong" "`for all` (x :: Int32) . twice x = x")) `shouldBe` Right PropertyTested
+    fmap fst (lawStatus "wrong" (twice ++ law "wrong" "for all (x :: Int32) => twice x = x end for all")) `shouldBe` Right PropertyTested
 
   it "keeps callee preconditions as obligations instead of unfolding" $
-    fmap fst (lawStatus "half" ("definition half (x :: Int32 where x > 0) :: Int32 is x end\n" ++
-      law "half" "`for all` (x :: Int32 where x > 1) . half x > 0")) `shouldBe` Right PropertyTested
+    fmap fst (lawStatus "half" ("function half (x :: Int32 where x > 0) -> Int32 is x end function\n" ++
+      law "half" "for all (x :: Int32 where x > 1) => half x > 0 end for all")) `shouldBe` Right PropertyTested
 
   it "checks finite laws over definitions in the compiler and refutes false ones" $ do
-    let inc = "definition inc (x :: Int8) :: BigInt is x + 1 end\n"
-    fmap fst (lawStatus "bounded" (inc ++ law "bounded" "`for all` (x :: Int8) . inc x <= 128")) `shouldBe` Right Proved
+    let inc = "function inc (x :: Int8) -> Integer is x + 1 end function\n"
+    fmap fst (lawStatus "bounded" (inc ++ law "bounded" "for all (x :: Int8) => inc x <= 128 end for all")) `shouldBe` Right Proved
     -- Not linear, so not proved; every Int8 is evaluated instead.
-    lawStatus "square" (inc ++ law "square" "`for all` (x :: Int8) . inc x * inc x >= 0")
+    lawStatus "square" (inc ++ law "square" "for all (x :: Int8) => inc x * inc x >= 0 end for all")
       `shouldSatisfy` either (const False) (\(status, reason) -> status == ExhaustivelyChecked &&
         "the compiler evaluated all 256 inputs" `isInfixOf` reason)
-    case lawStatus "positive" (inc ++ law "positive" "`for all` (x :: Int8) . inc x > 0") of
-      Left failure -> failure `shouldSatisfy` isInfixOf "law positive is false for x = -128"
+    case lawStatus "positive" (inc ++ law "positive" "for all (x :: Int8) => inc x > 0 end for all") of
+      Left failure -> failure `shouldSatisfy` isInfixOf "law \"|positive| is false for x = -128"
       Right found -> expectationFailure ("expected a refutation, got " ++ show found)
 
   it "checks finite laws over adapters in the generated tests" $ do
     let flip' = "flipFlag :: Bool -> Bool\n"
-    lawStatus "twice" (flip' ++ law "twice" "`for all` (b :: Bool) . flipFlag (flipFlag b) = b")
+    lawStatus "twice" (flip' ++ law "twice" "for all (b :: Bool) => flipFlag (flipFlag b) = b end for all")
       `shouldSatisfy` either (const False) (\(status, reason) -> status == ExhaustivelyChecked &&
         "the generated tests check all 2 inputs" `isInfixOf` reason && "relies on d::flipFlag" `isInfixOf` reason)
     lawStatus "one" ("finish :: Int32 -> Bool\n" ++ law "one" "finish 1 = true")
       `shouldSatisfy` either (const False) (\(status, reason) -> status == ExhaustivelyChecked && "its only case" `isInfixOf` reason)
 
   it "property-tests infinite laws over adapters" $
-    lawStatus "idempotent" ("f :: Int32 -> Int32\n" ++ law "idempotent" "`for all` (x :: Int32) . f (f x) = f x")
+    lawStatus "idempotent" ("f :: Int32 -> Int32\n" ++ law "idempotent" "for all (x :: Int32) => f (f x) = f x end for all")
       `shouldSatisfy` either (const False) (\(status, reason) -> status == PropertyTested &&
         "100 generated cases" `isInfixOf` reason)
 
   it "reports adapters as assumed, noting those no law calls" $ do
     let Right obligations = evidenceFor ("f :: Int32 -> Int32\nunused :: Int8 -> Int8\n" ++
-          law "idempotent" "`for all` (x :: Int32) . f (f x) = f x")
+          law "idempotent" "for all (x :: Int32) => f (f x) = f x end for all")
         adapters = [(C.idText (obligationDeclaration o), obligationStatus o, obligationReason o) | o <- obligations, obligationStage o == "adapter"]
     adapters `shouldBe`
       [ ("d::f", Assumed, "native implementation taken on trust; called by 1 law(s)")
       , ("d::unused", Assumed, "native implementation taken on trust; no law calls it") ]
 
   it "reports contract and construction obligations as before" $ do
-    let Right obligations = evidenceFor ("type Box is Box value :: (v :: Int32 where v > 0) end\n" ++
+    let Right obligations = evidenceFor ("type Box is a record{  value :: (v :: Int32 where v > 0)} end type\n" ++
           "positive :: (x :: Int32 where x > 0) -> (y :: Int32 where y > 0)\n" ++
-          law "p" "`for all` (x :: Int32 where x > 0) . positive x > 0")
+          law "p" "for all (x :: Int32 where x > 0) => positive x > 0 end for all")
         stages = [(obligationStage o, obligationStatus o) | o <- obligations, obligationStage o /= "law"]
     stages `shouldSatisfy` elem ("construction", RuntimeChecked)
     stages `shouldSatisfy` elem ("precondition", RuntimeChecked)
@@ -93,8 +93,8 @@ test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ d
     payments <- readFile "examples/specs/payments.lawspec"
     bindings <- maybe Null id . decode <$> BL.readFile "test/fixtures/native-payments/bindings.json"
     let response = maybe Null id $ decode $ dispatch $ encode $ object
-          [ "method" .= ("migrationBaseline" :: String), "schemaVersion" .= (5 :: Int)
-          , "languageProfile" .= ("1.0-rc.1" :: String), "from" .= ("0.24" :: String)
+          [ "method" .= ("check" :: String), "schemaVersion" .= (5 :: Int)
+          , "languageProfile" .= ("1.0-rc.2" :: String)
           , "sources" .= [object ["path" .= ("payments.lawspec" :: String), "content" .= payments]]
           , "nativeBindings" .= (bindings :: Value) ]
         stages = case response of

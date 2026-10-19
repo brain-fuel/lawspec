@@ -1,11 +1,12 @@
 unit predicate_mixed
-law `mixed guard` is definition is
- `for all` (flag :: Bool) (text :: Text) (number :: Int32) .
- flag implies true implies flag
-end
-example `enabled` is flag = true text = "port" number = 443 expect flag = true end
-example `disabled` is flag = false text = "" number = 0 expect flag = false end
-end
-law `two Boolean inputs` is definition is
- `for all` (a :: Bool) (b :: Bool) . a implies b implies a = b
-end end
+law "|mixed guard| is definition :
+ for all (flag :: Bool) (text :: Text) (number :: Int32) =>
+ flag implies true implies flag end for all
+end definition
+example "|enabled| : flag = true text = "port" number = 443 expect flag = true end example
+example "|disabled| : flag = false text = "" number = 0 expect flag = false end example
+end law
+law "|two Boolean inputs| is definition :
+ for all (a :: Bool) (b :: Bool) => a implies b implies a = b end for all
+end definition end law
+end unit

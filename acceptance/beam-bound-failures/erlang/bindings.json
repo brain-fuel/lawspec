@@ -15,7 +15,7 @@
           "style": "variant",
           "fields": [
             {
-              "field": "message",
+              "field": "value",
               "native": "message"
             }
           ]

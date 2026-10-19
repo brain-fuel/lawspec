@@ -6,12 +6,12 @@ import qualified Data.Aeson.KeyMap as KM
 import Test.Hspec
 import LawSpec.Api (dispatch)
 
-source body="unit matchWarnings\nfunction selected (value :: Bool) -> Integer is\n"++body++"\nend function\n"
+source body="unit matchWarnings\nfunction selected (value :: Bool) -> Integer is\n"++body++"\nend function\n\nend unit\n"
 shadowed="first matching case of value: when #any then 1 when false then 2 otherwise 3 end case"
 guarded="first matching case of value: when #any if it then 1 otherwise 2 end case"
 request :: Int -> Maybe Bool -> String -> String -> String -> Value
 request bits enabled method target body=object
-  (["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+  (["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.2"::String),
     "verification" .= object ["layers" .= ([]::[String])],"machineBits" .= bits,
     "method" .= method,"target" .= target,"sources" .= [object ["path" .= ("warning-😀.lawspec"::String),"content" .= source body]]]++
    ["warnMatches" .= value | Just value<- [enabled]])
@@ -92,7 +92,7 @@ test_matchWarnings=describe "optional structural match warnings" $ do
     ] $ \(ty,body)->do
       let replaceSource (Object fields)=Object (KM.insert "sources" (toJSON [object [
             "path" .= ("patterns.lawspec"::String), "content" .=
-              ("unit patterns\nfunction selected (value :: "++ty++") -> Integer is "++body++" end function")]]) fields)
+              ("unit patterns\nfunction selected (value :: "++ty++") -> Integer is "++body++" end function\nend unit\n")]]) fields)
           replaceSource value=value
           before=run (replaceSource (request 64 Nothing "check" "" ""))
           warned=run (replaceSource (request 64 (Just True) "check" "" ""))

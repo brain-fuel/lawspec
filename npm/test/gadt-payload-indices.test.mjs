@@ -9,7 +9,7 @@ const compiler=await createCompiler();
 const path='test/fixtures/canonical-gadt-payload-indices.lawspec';
 const content=await readFile(new URL('../../'+path,import.meta.url),'utf8');
 const sources=[{path,content}];
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive','examples']}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['exhaustive','examples']}};
 const targets=['java','python','javascript','typescript','go','haskell','kotlin','rust','erlang','elixir','gleam','fsharp','csharp','scala','groovy','clojure','swift'];
 
 test('constructor equations determine generic payload fields across targets, widths and layouts',async()=>{
@@ -31,14 +31,22 @@ test('constructor equations determine generic payload fields across targets, wid
 
 test('payload indices retain mandatory scalar, branch and result checking without law layers',async()=>{
   const invalid=[
-    'type Fixed (a :: Type) is one of | Fixed of type a where a = UInt8 end type\nfunction invalid (ignored :: ()) -> Fixed UInt8 is Fixed true end function',
-    'type Fixed (a :: Type) is one of | Fixed of type a where a = UInt8 end type\nfunction invalid (ignored :: ()) -> Fixed UInt8 is Fixed 256 end function',
-    'type Tagged (a :: Type) is one of | Tagged of type a where a = record{value :: UInt8} end type\nfunction invalid (tagged :: Tagged a) -> Bool is first matching case of tagged: when Tagged value then value end case end function',
-    'type Value (a :: Type) is one of | Number of type a where a = UInt8 | Truth of type a where a = Bool end type\nfunction invalid (value :: Value a) -> UInt8 is first matching case of value: when Number value then value when Truth enabled then enabled.value end case end function',
+    `type Fixed (a :: Type) is one of | Fixed of type a where a = UInt8 end type
+function invalid (ignored :: ()) -> Fixed UInt8 is Fixed true end function
+`,
+    `type Fixed (a :: Type) is one of | Fixed of type a where a = UInt8 end type
+function invalid (ignored :: ()) -> Fixed UInt8 is Fixed 256 end function
+`,
+    `type Tagged (a :: Type) is one of | Tagged of type a where a = record{value :: UInt8} end type
+function invalid (tagged :: Tagged a) -> Bool is first matching case of tagged: when Tagged value then value end case end function
+`,
+    `type Value (a :: Type) is one of | Number of type a where a = UInt8 | Truth of type a where a = Bool end type
+function invalid (value :: Value a) -> UInt8 is first matching case of value: when Number value then value when Truth enabled then enabled.value end case end function
+`,
   ];
   for(const machineBits of [32,64])for(const body of invalid)for(const method of ['check','expand']) {
     const result=await compiler[method]({...options,verification:{layers:[]},machineBits,
-      sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body}]});
+      sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body+'\nend unit\n'}]});
     assert.ok(result.diagnostics.length>0,body);
     assert.ok(result.diagnostics.every(row=>row.code==='definition'),JSON.stringify(result.diagnostics));
   }

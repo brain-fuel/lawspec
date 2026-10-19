@@ -84,7 +84,7 @@
           "style": "variant",
           "fields": [
             {
-              "field": "reason",
+              "field": "value",
               "native": "Explanation"
             }
           ]

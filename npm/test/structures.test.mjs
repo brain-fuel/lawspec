@@ -1,6 +1,6 @@
 // Generated from templates/npm/test/structures.test.mjs by lawspec-dev generate. Do not edit.
-// Frozen 0.24 fixtures enter through the explicit migration interface.
-import {legacyCheck, legacyGeneration} from './legacy-input.mjs';
+// Conformance fixtures use the current grammar.
+import {checkInput, generateInput, nameText} from './compiler-input.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -18,15 +18,15 @@ const shape = value => value.kind === 'data'
 test('WASM preserves nested sum tags, surrogate units and octets in structural examples', async () => {
   const sources = await bundled('lists');
   for (const machineBits of [32, 64]) {
-    const result = await legacyCheck(compiler, {sources, machineBits});
+    const result = await checkInput(compiler, {sources, machineBits});
     assert.deepEqual(result.diagnostics, []);
-    const maybe = result.laws.find(law => law.name === 'Maybe preserves nested absence');
+    const maybe = result.laws.find(law => nameText(law.name) === 'Maybe preserves nested absence');
     assert.deepEqual(maybe.examples.map(example => shape(example.bindings[0].value)), [
       ['Maybe::Nothing'],
       ['Maybe::Just', ['Maybe::Nothing']],
       ['Maybe::Just', ['Maybe::Just', {type: 'Bool', value: true}]],
     ]);
-    const raw = result.laws.find(law => law.name === 'nested raw values survive');
+    const raw = result.laws.find(law => nameText(law.name) === 'nested raw values survive');
     assert.deepEqual(shape(raw.examples[0].bindings[0].value),
       ['List::Cons', ['Maybe::Nothing'],
         ['List::Cons', ['Maybe::Just', ['Either::Left', {type: 'CodeUnit16', value: 55296}]],
@@ -36,7 +36,7 @@ test('WASM preserves nested sum tags, surrogate units and octets in structural e
 });
 
 test('WASM exports named product fields and recursive sum constructors', async () => {
-  const result = await legacyCheck(compiler, {sources: await bundled('data_types')});
+  const result = await checkInput(compiler, {sources: await bundled('data_types')});
   assert.deepEqual(result.diagnostics, []);
   const pair = result.dataTypes.find(type => type.name === 'Pair');
   const tree = result.dataTypes.find(type => type.name === 'Tree');

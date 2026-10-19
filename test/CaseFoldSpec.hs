@@ -24,9 +24,9 @@ test_caseFold = describe "pinned full default Unicode case folding" $ do
           planTestingWith (V.Verification []) of
           Left diagnostics -> expectationFailure (show diagnostics)
           Right plan -> outcome (emitPlan "gleam" plan)
-    verify (Source "folding.lawspec" "unit folding\nfunction folded (text :: Text) -> Text is prelude.caseFold text end function")
+    verify (Source "folding.lawspec" "unit folding\n\nfunction folded (text :: Text) -> Text is prelude.caseFold text end function\nend unit\n")
       (`shouldSatisfy` isRight)
-    verify (Source "intruder.lawspec" "unit lawspec.intruder\nfunction same (flag :: Bool) -> Bool is flag end function")
+    verify (Source "intruder.lawspec" "unit lawspec.intruder\n\nfunction same (flag :: Bool) -> Bool is flag end function\nend unit\n")
       (`shouldSatisfy` isLeft)
   it "embeds every C/F mapping from Unicode 17 and excludes simple and Turkic overrides" $ do
     original <- readFile "vendor/unicode/17.0.0/CaseFolding.txt"
@@ -41,15 +41,15 @@ test_caseFold = describe "pinned full default Unicode case folding" $ do
     length expected `shouldBe` 1585
   it "uses checked decreasing spans and portable text operations, without a target Unicode API" $ do
     caseFoldSource `shouldSatisfy` isInfixOf "textFoldSpan text start half"
-    usesCaseFold "function ordinary (x :: Text) -> Text is prelude.caseFold x end function" `shouldBe` True
-    usesCaseFold "function ordinary (x :: Text) -> Text is x end function -- caseFold" `shouldBe` False
-    usesCaseFold "law documented is description: \"caseFold\" end definition: true end end" `shouldBe` False
+    usesCaseFold "function ordinary (x :: Text) -> Text is prelude.caseFold x end function\n" `shouldBe` True
+    usesCaseFold "function ordinary (x :: Text) -> Text is x end function -- caseFold\n" `shouldBe` False
+    usesCaseFold "law documented is description: \"caseFold\" end description definition: true end definition end law" `shouldBe` False
   it "checks expansions, supplementary code points, default I, identity and no normalization" $ do
     let cases = [("Straße Σς ﬃ İ I 𐐀", "strasse σσ ffi i\x307 i 𐐨"),
           ("é e\x301", "é e\x301"),("🙂\NUL", "🙂\NUL"),("", "")]
         law (input,expected) = "prelude.caseFold " ++ show input ++ " = " ++ show expected
         content = "unit folding\nlaw exact is definition: " ++
-          foldr1 (\a b -> a ++ " and " ++ b) (map law cases) ++ " end end"
+          foldr1 (\a b -> a ++ " and " ++ b) (map law cases) ++ " end definition end law\nend unit\n"
     case compileCoreCanonical 64 defaultGeneration [Source "folding.lawspec" content] >>=
         dischargeEvidenceWith (V.Verification [V.Exhaustive]) of
       Left diagnostics -> expectationFailure (show (map message diagnostics))

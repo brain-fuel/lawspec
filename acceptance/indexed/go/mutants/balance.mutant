@@ -1,6 +1,6 @@
 @@ example/arithmetic/adapter.go
 <<<<<<<
-PerfectNode{Left: Mirror(node.Right), Right: Mirror(node.Left)}
+PerfectNode{Value: Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8{Left: Mirror(node.Value.Right), Right: Mirror(node.Value.Left)}}
 =======
-PerfectNode{Left: Mirror(node.Right), Right: PerfectLeaf{}}
+PerfectNode{Value: Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8{Left: Mirror(node.Value.Right), Right: PerfectLeaf{}}}
 >>>>>>>

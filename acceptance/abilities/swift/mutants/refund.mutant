@@ -1,4 +1,4 @@
-expect: refunds of large amounts fail [native]
+expect: refunds of large amounts fail| [native]
 @@ src/Example/Shop.swift
 <<<<<<<
         if value0 > 100000 { throw .tooLarge }

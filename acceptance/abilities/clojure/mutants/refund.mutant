@@ -1,4 +1,4 @@
-expect: refunds of large amounts fail [native]
+expect: refunds of large amounts fail| [native]
 @@ src/example/shop.clj
 <<<<<<<
   (when (> value0 100000) (ls/fail :payment-error/too-large))

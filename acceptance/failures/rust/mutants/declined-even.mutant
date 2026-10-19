@@ -5,7 +5,7 @@ expect: even amounts go through
     }
 =======
         if value0 > 50000 {
-            return crate::lawspec_data::Decision::Decline { reason: "even".into() };
+            return crate::lawspec_data::Decision::Decline { value: "even".into() };
         }
         crate::lawspec_data::Decision::Approve
     }

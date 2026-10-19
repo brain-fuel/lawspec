@@ -1,6 +1,6 @@
 @@ src/Example/Flow.fs
 <<<<<<<
-let push (value: sbyte) (stack: Stack) : PushFlow = { PushFlow.State = Push(value, stack) }
+let push (value: sbyte) (stack: Stack) : PushFlow = { PushFlow.State = Push({ Rest = stack; Top = value }) }
 =======
 let push (value: sbyte) (stack: Stack) : PushFlow = { PushFlow.State = stack }
 >>>>>>>

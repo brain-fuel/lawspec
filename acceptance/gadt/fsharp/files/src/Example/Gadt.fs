@@ -8,13 +8,13 @@ open LawSpec.Data
 let rec evalNumber (value0: Expr<bigint>) : bigint =
     match value0 with
     | Number n -> n
-    | Plus(left, right) -> evalNumber left + evalNumber right
+    | Plus { Left = left; Right = right } -> evalNumber left + evalNumber right
     | _ -> invalidArg "value0" "not an Expr<bigint>"
 
 let rec evalTruth (value0: Expr<bool>) : bool =
     match value0 with
     | Truth b -> b
-    | Same(left, right) -> evalNumber left = evalNumber right
+    | Same { Left = left; Right = right } -> evalNumber left = evalNumber right
     | Negate operand -> not (evalTruth operand)
     | _ -> invalidArg "value0" "not an Expr<bool>"
 
@@ -26,7 +26,7 @@ let private retype (codec: LawSpec.Runtime.Codec<'T>) (value: Expr<LawSpec.Runti
 
 let evalPair (value0: Expr<Pair<bigint, bool>>) : Pair<bigint, bool> =
     match value0 with
-    | Both(first, second) ->
+    | Both { First = first; Second = second } ->
         { First = evalNumber (retype LawSpec.Runtime.Codec.bigint first)
           Second = evalTruth (retype LawSpec.Runtime.Codec.bool second) }
     | _ -> invalidArg "value0" "not an Expr<Pair<bigint, bool>>"

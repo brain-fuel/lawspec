@@ -15,13 +15,15 @@ import LawSpec.Model (Source(..),defaultGeneration)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Testing (planTesting)
 
-library = Source "<lawspec.collections>" (collectionsSource ["EqSet"])
-compile bits text = compileCore bits defaultGeneration [library,Source "eq-set-operations.lawspec" text]
+library :: IO Source
+library = Source "eq-set-operations-library.lawspec" <$> readFile "test/fixtures/eq-set-operations-library.lawspec"
+compile builtins bits text = compileCore bits defaultGeneration [builtins,Source "eq-set-operations.lawspec" text]
 
 test_eqSetOperations = describe "Eq-only set checked operations" $ do
   it "checks ordinary definitions and their outcome laws at both widths through every emitter" $ do
+    builtins <- library
     source <- readFile "test/fixtures/eq-set-operations.lawspec"
-    forM_ [32,64] $ \bits -> case compile bits source of
+    forM_ [32,64] $ \bits -> case compile builtins bits source of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right program -> do
         dischargeEvidence program `shouldSatisfy` isRight
@@ -29,13 +31,15 @@ test_eqSetOperations = describe "Eq-only set checked operations" $ do
           Left diagnostics -> expectationFailure (show diagnostics)
           Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
   it "retains the first zero's exact stored representation" $ do
+    builtins <- library
     source <- readFile "test/fixtures/eq-set-operations.lawspec"
-    case compile 64 source >>= prepareDefinitions of
+    case compile builtins 64 source >>= prepareDefinitions of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right invoke -> forM_ [(False,"0000000000000000"),(True,"8000000000000000")] $ \(negative,bits) ->
         (invoke (Id "example.eq_sets::preservedZero") [ScalarValue (SBool negative)] >>= listItems)
           `shouldBe` Right [ScalarValue (SFloat "Float64" bits)]
   it "allows iteration without Eq and requires Eq to construct a set" $ do
-    let prefix = "unit example.capabilities\nimport lawspec.collections as sets (EqSet)\n"
-    compile 64 (prefix ++ "definition read (set :: EqSet (a -> a)) :: List (a -> a) is sets.eqSetItems set end") `shouldSatisfy` isRight
-    compile 64 (prefix ++ "definition create (items :: List a) :: EqSet a is sets.eqSetOf items end") `shouldSatisfy` isLeft
+    builtins <- library
+    let prefix = "unit example.capabilities\nimport example.eqSetAlgorithms as sets\n\n"
+    compile builtins 64 (prefix ++ "function read (set :: Set (a -> a)) -> List (a -> a) is sets.eqSetItems set end function\nend unit") `shouldSatisfy` isRight
+    compile builtins 64 (prefix ++ "function create (items :: List a) -> Set a is sets.eqSetOf items end function\nend unit") `shouldSatisfy` isLeft

@@ -1,4 +1,4 @@
-expect: Logs: a new log takes its first record at offset zero [native]
+expect: Logs: a new log takes its first record at offset zero| [native]
 @@ src/example/composition.mjs
 <<<<<<<
     return BigInt(records.length - 1);

@@ -8,11 +8,15 @@ import {createCompiler} from '../api.mjs';
 import {doctor} from '../doctor.mjs';
 const compiler=await createCompiler();
 const sources=[{path:'rust.lawspec',content:`unit rust_example
+
 successor :: Int8 -> Integer
-law \`promotes\` is
- definition is \`for all\` (x :: Int8) . successor x = x + 1 end
- example \`maximum\` is x = 127 expect successor x = 128 end
-end`}];
+law "|promotes| is
+ definition : for all (x :: Int8) => successor x = x + 1 end for all end definition
+ example "|maximum| : x = 127 expect successor x = 128 end example
+end law
+
+end unit
+`}];
 
 test('Cargo preflight verifies every custom test target and rejects an unsupported toolchain',async t=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-rust-doctor-'));

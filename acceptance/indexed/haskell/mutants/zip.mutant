@@ -1,6 +1,6 @@
 @@ src/Example/Indexed.hs
 <<<<<<<
-zip (Data.VecVCons _ xs) (Data.VecVCons y ys) = Data.VecVCons y (zip xs ys)
+zip (Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec _ xs)) (Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec y ys)) = Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec y (zip xs ys))
 =======
-zip (Data.VecVCons _ xs) (Data.VecVCons _ ys) = zip xs ys
+zip (Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec _ xs)) (Data.VecVCons (Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec _ ys)) = zip xs ys
 >>>>>>>

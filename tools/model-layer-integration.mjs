@@ -65,7 +65,7 @@ const before='Pair (n + amount) (n + amount)',after='Pair (n + 2 * amount) (n + 
 assert.equal(source.split(before).length,2);
 const specification=path.join(project,'laws/actors.lawspec');await mkdir(path.dirname(specification),{recursive:true});
 async function select(layers,content=source){
-  await writeFile(configPath,JSON.stringify({version:2,languageProfile:'1.0-rc.1',machineBits:bits,
+  await writeFile(configPath,JSON.stringify({version:2,languageProfile:'1.0-rc.2',machineBits:bits,
     verification:{layers},sources:['laws'],targets:[target]},null,2)+'\n');
   await writeFile(specification,content);
 }

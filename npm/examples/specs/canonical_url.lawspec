@@ -2,23 +2,24 @@ unit example.canonical_url
 
 canonicalize :: Text -> Text
 
-law `canonicalization reaches a fixed point` is
-  definition is
-    `idempotent` canonicalize
-  end
-  description is
+law "|canonicalization reaches a fixed point| is
+  definition :
+    apply law "|idempotent| canonicalize
+  end definition
+  description :
     "{canonicalize} removes trailing slashes until the result is stable"
-  end
-  example `all trailing slashes are removed in one pass` is
+  end description
+  example "|all trailing slashes are removed in one pass| :
     x = "https://example.com/path///"
     expect canonicalize x = "https://example.com/path"
-  end
-  example `a URL without trailing slashes stays unchanged` is
+  end example
+  example "|a URL without trailing slashes stays unchanged| :
     x = "https://example.com/path"
     expect canonicalize x = "https://example.com/path"
-  end
-  example `empty input remains empty` is
+  end example
+  example "|empty input remains empty| :
     x = ""
     expect canonicalize x = ""
-  end
-end
+  end example
+end law
+end unit

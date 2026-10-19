@@ -1,6 +1,6 @@
 @@ src/Example/Arithmetic.fs
 <<<<<<<
-{ Front = value0; Back = value0 }
+{ Halves.Value = { Front = value0; Back = value0 } }
 =======
-{ Front = value0; Back = Cell(0y, value0) }
+{ Halves.Value = { Front = value0; Back = Cell({ Head = 0y; Tail = value0 }) } }
 >>>>>>>

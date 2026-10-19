@@ -7,7 +7,7 @@ import {createCompiler} from '../api.mjs';
 const compiler=await createCompiler();
 const content=await readFile(new URL('../../test/fixtures/canonical-empty-record-patterns.lawspec',import.meta.url),'utf8');
 const sources=[{path:'empty-patterns.lawspec',content}];
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive','examples']}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['exhaustive','examples']}};
 const targets=['java','python','javascript','typescript','go','haskell','kotlin','rust','erlang','elixir','gleam','fsharp','csharp','scala','groovy','clojure','swift'];
 
 test('typed empty patterns preserve empty, populated, nominal, generic and nested record outcomes on every target',async()=>{
@@ -28,17 +28,19 @@ test('typed empty patterns preserve empty, populated, nominal, generic and neste
 test('empty patterns do not admit scalars, collections, sums or unknown type variables',async()=>{
   for(const type of ['Integer','Bool','List Bool','()','Maybe Bool','a']) {
     const result=await compiler.check({...options,verification:{layers:[]},sources:[{path:'invalid.lawspec',content:
-      'unit invalid\nfunction invalid (value of type '+type+') -> Bool is first matching case of value: when record{} then true end case end function'}]});
+      'unit invalid\nfunction invalid (value of type '+type+') -> Bool is first matching case of value: when record{} then true end case end function\nend unit\n'}]});
     assert.ok(result.diagnostics.some(diagnostic=>diagnostic.message.includes('empty record pattern requires a known record type')),type);
   }
 });
 
 test('empty patterns retain guard exhaustiveness and mandatory definition checks with no law layers',async()=>{
   for(const content of [
-    'function invalid (value of type record{flag of type Bool}) -> Bool is first matching case of value: when record{} if value.flag then true end case end function',
-    'function invalid (value of type Integer) -> Bool is first matching case of record{field = 1 / value}: when record{} then true end case end function',
+    `function invalid (value of type record{flag of type Bool}) -> Bool is first matching case of value: when record{} if value.flag then true end case end function
+`,
+    `function invalid (value of type Integer) -> Bool is first matching case of record{field = 1 / value}: when record{} then true end case end function
+`,
   ]) {
-    const result=await compiler.check({...options,verification:{layers:[]},sources:[{path:'invalid.lawspec',content:'unit invalid\n'+content}]});
+    const result=await compiler.check({...options,verification:{layers:[]},sources:[{path:'invalid.lawspec',content:'unit invalid\n'+content+'\nend unit\n'}]});
     assert.ok(result.diagnostics.length>0);
     assert.ok(result.diagnostics.some(diagnostic=>/non-exhaustive|nonzero denominator/.test(diagnostic.message)));
   }

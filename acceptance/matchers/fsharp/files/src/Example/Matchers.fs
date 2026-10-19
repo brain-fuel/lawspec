@@ -16,4 +16,4 @@ let average (a: int) (b: int) : float = (float a + float b) / 2.0
 let slug (text: string) : string =
     words.Matches(text.ToLowerInvariant()) |> Seq.map (fun m -> m.Value) |> String.concat "-"
 
-let ship (id: int) : Order = Shipped(id, "post")
+let ship (id: int) : Order = Shipped({ Carrier = "post"; Id = id })

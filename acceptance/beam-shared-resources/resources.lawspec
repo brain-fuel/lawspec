@@ -9,11 +9,11 @@ usePool :: SharedPool -> Bool
 
 ability Audit is
   tick :: Unit -> Integer
-end
+end ability
 
 handler trackedAudit for Audit with state total :: Integer start 0 is
-  tick ignored is ~total := total + 1; total end
-end
+  operation tick ignored is ~total := total + 1; total end operation
+end handler
 
 handle Store
 openStore :: Integer -> Store
@@ -23,26 +23,26 @@ useStore :: Store -> Int32 -> Bool
 storeValue :: Store -> Int32
 
 resource Store is
-  acquire is openStore (tick unitValue) end
-  release store is closeStore store (tick unitValue) end
-  reset store is resetStore store (tick unitValue) end
-end
+  acquire is openStore (tick unitValue) end acquire
+  release store is closeStore store (tick unitValue) end release
+  reset store is resetStore store (tick unitValue) end reset
+end resource
 
-law `unit sharing keeps its acquisition handler` using trackedAudit for store :: Store is
-  definition is
-    `for all` (n :: Int32) . useStore store n
-  end
-  example `expectations use the current lease` is
+law "|unit sharing keeps its acquisition handler| using trackedAudit for store :: Store is
+  definition :
+    for all (n :: Int32) => useStore store n end for all
+  end definition
+  example "|expectations use the current lease| :
     n = 12
     expect storeValue store = 12
-  end
-end
+  end example
+end law
 
-law `another law gets a reset store` using trackedAudit for store :: Store is
-  definition is
-    `for all` (n :: Int32) . useStore store n
-  end
-end
+law "|another law gets a reset store| using trackedAudit for store :: Store is
+  definition :
+    for all (n :: Int32) => useStore store n end for all
+  end definition
+end law
 
 handle GroupStore
 openGroup :: Unit -> GroupStore
@@ -51,37 +51,39 @@ closeGroup :: GroupStore -> Unit
 useGroup :: GroupStore -> Bool
 
 resource GroupStore is
-  acquire is openGroup unitValue end
-  release store is closeGroup store end
-  reset store is resetGroup store end
-end
+  acquire is openGroup unitValue end acquire
+  release store is closeGroup store end release
+  reset store is resetGroup store end reset
+end resource
 
-law `first grouped use` for store :: GroupStore is
-  definition is useGroup store end
-end
+law "|first grouped use| for store :: GroupStore is
+  definition : useGroup store end definition
+end law
 
-law `second grouped use` for store :: GroupStore is
-  definition is useGroup store end
-end
+law "|second grouped use| for store :: GroupStore is
+  definition : useGroup store end definition
+end law
 
-law `an ungrouped law has another resource` for store :: GroupStore is
-  definition is useGroup store end
-end
+law "|an ungrouped law has another resource| for store :: GroupStore is
+  definition : useGroup store end definition
+end law
 
 resource SharedPool is
-  acquire is openPool unitValue end
-  release pool is closePool pool end
-  reset pool is resetPool pool end
-end
+  acquire is openPool unitValue end acquire
+  release pool is closePool pool end release
+  reset pool is resetPool pool end reset
+end resource
 
-law `run sharing starts here` for pool :: SharedPool is
-  definition is usePool pool end
-end
+law "|run sharing starts here| for pool :: SharedPool is
+  definition : usePool pool end definition
+end law
 
 harness example.sharedResources.testing for example.sharedResources is
   share Store per unit
   share GroupStore per group
   share SharedPool per run
-  for laws `first grouped use`, `second grouped use`
+  for laws "|first grouped use|, "|second grouped use|
     tags grouped
-end
+end for laws
+end harness
+end unit

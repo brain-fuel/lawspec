@@ -16,4 +16,4 @@
 (defn slug [text] (str/join "-" (re-seq #"[a-z0-9]+" (.toLowerCase ^String text java.util.Locale/ROOT))))
 
 ;; (Int32 -> example.matchers::type::Order)
-(defn ship [id] {:lawspec/tag :order/shipped :id id :carrier "post"})
+(defn ship [id] {:lawspec/tag :order/shipped :value {:lawspec/tag :recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911/record :id id :carrier "post"}})

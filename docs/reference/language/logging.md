@@ -21,9 +21,10 @@ law "|a charge is logged once| using recording Log is
   definition :
     for all (cents :: Int32 where cents >= 0 && cents <= 1000) =>
       (if charge cents then calls of logMessage = 1 else calls of logMessage = 0
-    end if) = true end
-end
-end
+    end if) = true end for all
+end definition
+end law
+end unit
 ```
 
 ## Log
@@ -33,7 +34,7 @@ type LogLevel is one of | Debug | Info | Warning | Error end type
 
 ability Log is
   logMessage :: LogLevel -> Text -> Unit
-end
+end ability
 ```
 
 `logMessage level text` logs `text` at `level`. Any logger is lawful: `Log`
@@ -54,7 +55,7 @@ The spec handler `silentLog` drops every message.
 ```lawspec fragment
 ability Trace is
   traceEvent :: Text -> Unit
-end
+end ability
 ```
 
 `traceEvent name` records an event. The **default handler** logs it at

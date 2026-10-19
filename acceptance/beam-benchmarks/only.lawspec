@@ -1,8 +1,9 @@
 unit example.benchmarkOnly
 
 harness example.benchmarkOnly.testing for example.benchmarkOnly is
-  benchmark `same-name` is 1 end
-  benchmark `same name` is 2 end
-  benchmark `雪` is false end
-  benchmark `雲` is true end
-end
+  benchmark `same-name` is 1 end benchmark
+  benchmark `same name` is 2 end benchmark
+  benchmark `雪` is false end benchmark
+  benchmark `雲` is true end benchmark
+end harness
+end unit

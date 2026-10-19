@@ -6,15 +6,13 @@ title: Compiler API
 # Compiler API
 
 Canonical requests use `schemaVersion: 5`, explicit
-`languageProfile: "1.0-rc.1"`, and optional `verification: {layers: []}`.
+`languageProfile: "1.0-rc.2"`, and optional `verification: {layers: []}`.
 An empty selection performs intrinsic definition checks and reports laws as
 `not-verified`. Native tests are `planned` until an execution supplies evidence.
-Schema 5 is the public interface. Schemas 3 and 4 are rejected; legacy source
-enters through the explicit migration methods with `from: "0.24"`.
+Schema 5 is the public interface. Schemas 3 and 4 and older language profiles are rejected. Pre-1.0 migration tooling is not provided.
 The `format` method requires schema 5 and returns `formattedSources` after
 canonical validation. Every view and editor service uses the same typed Core.
-Typed laws expose `inputDomain: "universal"` for canonical obligations and
-`"nonempty"` for legacy test domains. Complete verification of an empty universal
+Typed laws expose `inputDomain: "universal"` for obligations. Complete verification of an empty universal
 domain explicitly reports zero evaluated cases and no produced witnesses.
 Selecting property testing alone does not report completed verification when
 the domain supplies no cases.
@@ -34,10 +32,6 @@ interface Compiler {
   expand(input: CheckRequest): Promise<Result>;
   proofTasks(input: CheckRequest): Promise<Result>;
   planGeneration(input: GenerationRequest): Promise<Result>;
-  migrationBaseline(input: MigrationBaselineRequest): Promise<Result>;
-  migrationComparison(input: MigrationComparisonRequest): Promise<Result>;
-  migrationBindings(input: MigrationBindingRequest): Promise<Result>;
-  migrationGeneration(input: MigrationGenerationRequest): Promise<Result>;
 }
 function createCompiler(): Promise<Compiler>;
 ```
@@ -48,9 +42,8 @@ function createCompiler(): Promise<Compiler>;
 interface CheckRequest {
   sources: Source[];                        // {path, content}
   schemaVersion?: 5;
-  languageProfile: '1.0-rc.1';
+  languageProfile: '1.0-rc.2';
   verification?: Verification;
-  migrationSnapshot?: boolean;             // schema 5; comparison metadata only
   machineBits?: 32 | 64;                    // default 64
   generation?: Partial<Generation>;         // cases, maxAttempts, maxShrinks, exhaustiveLimit
   nativeBindings?: NativeBindings;
@@ -67,20 +60,6 @@ interface GenerationRequest extends CheckRequest {
   testDir?: string;
   minify?: boolean;                         // default false
 }
-
-interface MigrationRequest extends CheckRequest {
-  schemaVersion?: 5;
-  languageProfile: '1.0-rc.1';
-  from: '0.24';
-}
-
-interface MigrationBaselineRequest extends MigrationRequest {
-  includeGeneration?: boolean;
-  target?: Target;                          // required with includeGeneration
-  sourceDir?: string;
-  testDir?: string;
-  minify?: boolean;
-}
 ```
 
 - `check` and `expand` report whether the specification is valid.
@@ -92,12 +71,6 @@ interface MigrationBaselineRequest extends MigrationRequest {
 - `generation` fields you omit keep their defaults (100, 10000, 1000, 4096).
 - `minify` selects compact output; see
   [formatting](formatting.md).
-- `migrationSnapshot: true` includes versioned `migrationSemantics` fingerprints
-  of complete checked concrete Core. `migrationBaseline` includes them
-  automatically. Snapshot generation retains mandatory definition checks and
-  does not select or complete law verification. See
-  [source migration](../explanation/api-migration.md#source-migration-from-024)
-  for the normalization scope and the separate correspondence gates.
 - `cacheDirectory` names a folder where the compiler keeps its work, so later
   requests reuse what did not change; results are identical either way. The
   folder is created as needed, and entries are tied to the compiler version.
@@ -112,7 +85,7 @@ interface MigrationBaselineRequest extends MigrationRequest {
 
 ### Schema versions
 
-Requests require `languageProfile: '1.0-rc.1'`. The JavaScript facade defaults
+Requests require `languageProfile: '1.0-rc.2'`. The JavaScript facade defaults
 `schemaVersion` to 5; supplying 3 or 4 is a request diagnostic, including when
 native bindings are present. Results, including rejected requests, use schema 5.
 Omitting `verification` selects no law checks. Mandatory definition validation
@@ -127,11 +100,6 @@ observe that method completing successfully before recording any of them as
 passed. A successful process that discovers no selected tests is insufficient.
 The `model` verification layer controls these checks independently of ordinary
 law tests. Omitting it preserves model declarations and public runtime APIs.
-
-Only explicit migration methods admit 0.24 source. A migration baseline returns
-`sourceLanguageProfile: '0.24'`; it does not convert ordinary `check` or
-generation requests into legacy requests. Documentary references always use
-the typed schema-5 representation.
 
 ### SMT tasks and solver execution
 
@@ -155,241 +123,6 @@ unvalidated; unknown, timeout, unavailable and unsupported outcomes do not
 establish a law. The default browser API remains independent of Node process
 facilities. See [proof with Z3](../explanation/smt-proof.md) for supported
 theories, configuration and trust, and `proof.d.ts` for host result types.
-
-### Migration source inventory
-
-`migrationBaseline` explicitly selects the 0.24 source grammar with `from`.
-It requires schema 5 and the current technical language profile; normal
-schema-5 check, formatting and generation requests keep canonical parsing.
-Migration and normal requests use separate compilation caches.
-
-`includeGeneration: true` with a target adds the legacy source's generated
-artifacts to the read-only baseline. It uses the existing target emitters and
-legacy harness plan, allowing independent inspection and execution of migration
-fixtures without requesting legacy ordinary generation. `baselineGeneration`
-records `planning: 'legacy-harnesses'` and `execution: 'not-run'`; generation
-does not establish native conformance or law verification. Mandatory definition
-validation still applies. The flag is available only on `migrationBaseline`,
-which requires `from: '0.24'`. Omitting it retains the inventory-only response.
-
-The result includes `sourceLanguageProfile: '0.24'` and `sourceSyntax`, an
-array of version-1 inventories with `path`, `unit`, `nodes` and `bindings`. Nodes contain
-`kind`, optional `name` and a parser `span`. They identify actual declarations,
-sections, binders, types, expressions, patterns, literals, tables and closers.
-The inventory retains unused generic definitions and reusable law templates
-before elaboration and specialization. Definition nodes also carry their
-checked `uses` row, including an empty array for a pure definition.
-
-`sourceFields` is either unavailable with a reason, or a version-1
-`{status: 'available', uses}` inventory. Each use records `kind`
-(`field-access` or `field-update`), resolved `constructor`, `field`, original
-field `index` and exact suffix `span`. Updates also retain available `base`
-and whole `expression` spans. These facts come from the existing checked typed
-expressions, including unused generic definitions; clients do not infer a
-field's owner from its spelling. Missing occurrence coverage is reported
-explicitly and blocks the field-edit preview.
-
-`bindings` records declaration/import namespace entries from the same checked
-resolver that compiles the program. Each entry has `namespace` (`type`,
-`constructor`, `refinement`, `value` or `law`), source `name` and resolver
-`target`. Alias-qualified and unqualified imports retain their actual targets
-through facade re-exports. Type and constructor targets identify their nominal
-declarations; value and law targets use the resolver's existing portable
-naming convention. These entries are not native binding overrides or a map of
-lexically bound variables. In particular, a migration client must not treat a
-same-spelled function parameter as a free imported value.
-
-These are source syntax and checked declaration context, rather than another
-executable representation. The same type, capability, effect, totality and
-definition-contract checks must succeed before any inventory is returned.
-Law verification still follows `verification.layers`; an empty selection
-reports `not-verified`. Spans count Unicode code points and eight-column tab
-stops, as other compiler spans do. Display width does not change the count:
-an emoji or fullwidth letter counts once, and a combining mark counts as a
-separate code point. Source-edit clients translate them to their own offset
-convention. See [source migration](../explanation/api-migration.md#source-migration-from-024).
-
-### Constructor payload comparison
-
-`migrationComparison` takes a `MigrationRequest` for the original source and a
-required `migrated` canonical check request. Both inputs require the technical
-profile `1.0-rc.1`, schema 5 (the nested schema defaults to 5), empty verification
-layers, and the same machine width. Sources, packages, dependencies, generation
-settings and native bindings are resolved independently on each side. Both
-inputs must pass the ordinary mandatory definition checks. Input failures
-identify `migrationComparisonInput: 'before' | 'migrated'`.
-
-```typescript
-interface MigrationComparisonRequest extends MigrationRequest {
-  migrated: CheckRequest & {
-    schemaVersion?: 5;
-    languageProfile: '1.0-rc.1';
-  };
-}
-```
-
-The optional `Result.migrationComparison` is either unavailable with a reason,
-or a version-1 comparison of complete checked constructor shapes before generic
-specialization. `beforeDigest` and `afterDigest` bind the report to the checked
-data declarations and source constructor contexts. `payloadShapes` records its
-status, unchanged type count, changed types and constructors, introduced
-structural records, and unexplained added types. Successful constructor entries
-have kind `unchanged`, `single-payload`, or `record-payload`; payload entries
-include each field's label, source/destination indexes and binder identities.
-Grouped payloads also identify the derived record type and constructor.
-
-A shape match preserves the nominal outer identity, exact field types, checked
-predicate terms, dependent relationships and full stored structural descriptor.
-Called definitions and dependencies behind nominal references still require
-whole-program correspondence.
-Unknown labels, additional fields, nominal substitutions and metadata changes
-do not establish correspondence. Grouped indexed, GADT and existential payloads
-retain their checked relationships through explicit record transport; abstract
-branch admission and input-population limits remain independent gates. Existing
-nominal products keep their fields directly.
-
-`executableTransport` is either an unestablished check with a `reason`, or a
-version-1 SHA-256 comparison with `copyValidated: true`, `originalsUnchanged:
-true`, `machineBits`, `scope`, `catalogOrdering`, `assumptions`, and complete
-`before`/`after` Core snapshots. Its `program`, `definitionPlane` and `lawBodies`
-entries contain `{status, before, after}` fingerprints. The status is `matched`
-when definitions and law bodies correspond; the law-body comparison excludes
-input-domain policies. `program` still includes those policies, and
-`domainPolicies` reports both policy arrays and their separate matching status.
-Matching obligations does not verify their truth.
-
-When reordered index reads require a proved body equation,
-`indexMeasureBodies` contains entries with `definition`, `beforeBodyDigest`,
-`afterBodyDigest` and `basis`. The compiler checks temporary branch-equality
-contracts with its ordinary validator and retains mandatory target termination.
-This comparison-only evidence does not establish input-population correspondence,
-native conformance or law verification.
-
-The transport changes a comparison copy of the old program and runs ordinary
-record normalization and mandatory Core validation. Construction evaluates
-fields once in original source order. Patterns bind fields through checked
-projections; updates still evaluate the replacement before the subject.
-Contracts, deferred runtime postconditions, harness expressions and model
-metadata participate in the full traversal and fingerprints. Type catalog
-ordering can align by checked identity when the identity sets agree; field and
-predicate order are retained. The canonical Core fingerprints agree with those returned by an explicit
-canonical snapshot request.
-
-Affected key ordering, recorded rendering, concurrent construction and
-payload-predicate visitation require explicit behavior-preserving migration.
-The type traversal also checks intrinsic sortedness of sorted-set elements
-and keyed-map keys; changed map values do not themselves change key order.
-They currently report a limit instead of treating unchanged operation nodes
-as evidence of equivalence. Dependency analysis is conservative. External
-adapters and handlers must respect the value transport; native conformance
-remains a separate gate.
-
-`definitionTemplates` and `lawTemplates` compare complete symbolic source
-terms, including unused schemes and reusable laws, through ordinary checked
-Core. Their independent `interfaces` or `metadata` fingerprint pairs and
-`typedCore` certificates are anchored to all four source-template digests on
-both sides. `sourceUnits` combines those term certificates with the remaining
-complete source-unit metadata and checked payload plan. Its terms do not stand
-in for native implementations or witnesses. Generic `Eq` requirements are
-lexical typing evidence; they do not supply `Keyed`, generators or reflexivity.
-Input-domain correspondence remains independently checked.
-
-The enclosing status remains `not-established`, with `validated: false`.
-`dependencyBehavior`, native bindings and generated behavior remain separate
-project-wide gates. `lawVerification` is
-`not-established-by-payload-shapes`. The method does not execute native
-implementations or authorize project writing. The project migration coordinator
-combines these isolated receipts with all remaining source, domain, binding and
-target gates before validating a complete transformation.
-
-### Native binding migration proposals
-
-`migrationBindings` takes a `MigrationBindingRequest`: the same explicit
-schema-5/profile/`from: '0.24'` source pair as `migrationComparison`, plus an
-optional supported `target`. Its original `nativeBindings` are checked against
-the legacy program. The destination sources use canonical parsing and mandatory
-definition validation. Both sides require `verification.layers: []`.
-
-The compiler derives an automatic binding proposal from its checked payload
-plan and resolves that proposal against the destination program. A single
-alternative payload's old logical field becomes `value`; its native field,
-constructor, type and function references remain. Named record mappings retain
-their fields. A supplied `migrated.nativeBindings` is also checked and compared
-with that automatic proposal. Unsupported adaptation remains explicit.
-
-`Result.migrationBindings` is unavailable with a reason, or a version-1
-`MigrationBindingProposal`. It records the target and machine width, the exact
-`inputBindings`, unchanged-input and validation flags, full Core program anchors,
-and all four source-template anchors on each side. `bindings` compares resolved,
-normalized configurations. `proposedNativeBindings` is the concrete request
-object; `changes` identifies renamed fields and explicit grouped layouts.
-Grouped fields include original `nativeArgumentIndex` and destination
-`payloadPath`, independent of configuration entry order. `requirements` lists
-unresolved correspondence. An accepted configuration can still have an
-unestablished overall proposal.
-
-`obligations.before` and `.after` preserve the ordinary evidence classifications:
-native type boundaries are runtime enforced; codecs, factories and native
-functions remain assumed. `nativeConformance` and `targetGeneration` stay
-`not-established`; the method neither executes native code nor verifies a law.
-The coordinator checks the request, source and target anchors, obligation
-classifications and proposed-object digest before accepting binding facts.
-
-The shared compiler resolver remains the authority. This follows the explicit
-external-contract boundary described by [SPARK's imported-subprogram
-contracts](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html#writing-contracts-on-imported-subprograms):
-checking callers or interfaces does not verify an imported implementation.
-
-### Migration target generation
-
-`migrationGeneration` takes a `MigrationGenerationRequest`: a binding-migration
-source pair with the same concrete target, width, output directories, layout
-and generation limits on both sides. Both inputs use schema 5 and
-`verification.layers: []`; the original source explicitly selects `from: '0.24'`.
-Canonical source and intrinsic definition validation remain mandatory.
-
-The compiler retains the admitted destination binding request as typed data,
-then runs the existing harness planner and target emitter on both programs.
-`planning: 'legacy-harnesses'` means it generates the old project's full harness
-plans; it does not execute optional law checks. An incomplete binding proposal
-prevents destination emission from being accepted.
-
-`Result.migrationGeneration` contains a version-1 `MigrationGenerationReceipt`,
-or an unavailable result with a reason. Each side independently reports
-`accepted`, `rejected` with diagnostics, or `not-established`. Accepted sides
-include a complete artifact manifest with paths, ownership, placement,
-SHA-256 content digests, optional adapter-reference digests and an aggregate
-manifest digest. The receipt also carries the checked binding proposal and
-digests of the exact source/dependency inputs, including source paths and text.
-The coordinator checks those inputs, target options and complete manifests.
-
-Acceptance establishes emitter generation only. The receipt keeps
-`nativeConformance: 'not-established'` and
-`lawVerification: 'not-established-by-generation'`. No target compiler, native
-implementation or generated law harness has run. This distinction follows
-[SPARK's proof and test boundary](https://docs.adacore.com/live/wave/spark2014/html/spark2014_ug/en/usage_scenarios.html#between-proof-and-unit-testing)
-and [Lean's separation of checking and compilation](https://lean-lang.org/doc/reference/latest/Elaboration-and-Compilation/).
-
-The receipt also includes `nativeBoundary`, a version-1 comparison using the
-`resolved-native-contract-v1` policy. Each available side contains its contract
-and SHA-256 digest. The compiler compares resolved constructor identities,
-native argument order and leaf types, calls, async/effect interfaces, handler
-operations, and generated data layouts exposed by unbound adapters. Rust's
-existing recursive boxing decisions are included. Named type references stay
-nominal; logical predicates and value indices remain covered by the separate
-complete Core/source-template correspondence gates.
-
-A `matched` boundary means these compiler-owned interfaces agree under the
-existing emitters and unchanged native implementation assumptions. It does not
-prove external code, opaque hooks, or generated executables correct. The
-coordinator accepts it only with the matching complete generation receipt,
-descriptor digests, checked binding proposal and original assumptions. Matching
-binding configuration or accepted emission alone cannot establish it. Changed
-unbound adapter layouts remain `not-established`; unavailable adaptations retain
-their reasons. `nativeConformance` and law verification remain unestablished.
-This follows [SPARK's contracts for imported subprograms](https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html#writing-contracts-on-imported-subprograms):
-caller reasoning retains the external contract assumption until the body is
-independently verified. No solver or additional evaluator is introduced.
 
 ### Packages
 
@@ -417,8 +150,6 @@ interface Result {
   refinements?: Refinement[];
   evidence?: ObligationEvidence[];
   proofTasks?: ProofTask[];                 // preparation, not completed evidence
-  migrationSemantics?: MigrationSemanticSnapshot;
-  migrationComparison?: MigrationPayloadComparison;
   attestation?: AttestationView;            // when the request has one
   expansions?: string[];                    // expand and planGeneration
   files?: Artifact[];                       // planGeneration
@@ -431,61 +162,26 @@ An empty `diagnostics` array means the request was admitted. Completed law
 verification is reported separately in `evidence`; prepared tasks alone are
 not completed proofs.
 
-`MigrationSemanticSnapshot` is either `{status: 'unavailable', reason: string}`
-or a version-1 SHA-256 comparison snapshot with `status: 'available'`,
-`machineBits`, `scope`, `programDigest`, `definitionPlaneDigest`,
-`lawBodiesDigest`, `definitions`, `contracts`, `dataTypes` and `domainPolicies`.
-Part entries contain `{comparisonId, digest}`; policies contain
-`{comparisonId, policy: 'nonempty' | 'universal'}`. Comparison IDs are normalized
-identities for this projection. They do not replace source declaration IDs.
-The law-body digest excludes input-domain policy. Clients must check version,
-algorithm and machine width before comparing fingerprints. This metadata does
-not establish complete project migration, source-template correspondence,
-native binding correspondence, generated behavior or law verification.
-
-Available snapshots may also contain `sourceTemplates`, either unavailable
-with a reason or an independent version-1 SHA-256 snapshot at the same machine
-width. Its `declarationsDigest`, `definitionTemplatesDigest`,
-`lawTemplatesDigest` and `lawBodiesDigest` cover checked frontend values before
-specialization. `units`, `definitions` and `laws` contain part fingerprints;
-`domainPolicies` retains each expanded law's actual policy. The template
-law-body projection alone excludes that policy. This metadata includes unused
-generic definitions and reusable laws. It is comparison evidence, not execution
-or law-verification evidence.
-
-A source-template snapshot can also contain `inputDomains`. Its domain snapshot
-adds a `sourceTemplates` object containing all four template digests above;
-clients must match these anchors to the surrounding capture before using its
-rows. Concrete laws reuse their admitted input-domain facts. Reusable laws use
-the ordinary compiler and checked evaluator to analyze their input restrictions
-with the law body removed. A witness must work uniformly over admissible law
-parameters: parameter-dependent restrictions remain `unsupported` rather than
-sampling one function argument. Generic domains can also remain unsupported.
-Unused prelude laws remain in the capture and retain these limits. Neither a
-witness nor a complete empty-domain result verifies the law's proposition.
-
-`inputDomains` is another optional, versioned snapshot at the program's machine
-width. Available results have `lawBodiesEvaluated: false` and a `domains` array.
-Each entry includes `comparisonId`, `domainDigest`, `inputCount`, `search`,
-`candidateChecks`, `searchLimit`, `finiteLimit` and diagnostic `notes`.
-An `inhabited` entry adds `witness: {binder, value: DataValue}[]`;
-an `empty` entry has `complete: true`. `incomplete` and `unsupported` entries
-have `complete: false` and a `reason`, and supply no witness. The search limit
-bounds candidate search; finite enumeration has its separate finite limit.
-These are facts about valid input tuples, independent of the law body and its
-selected verification layers. A populated domain can accompany an unverified
-or false law.
-
 ### Diagnostics
 
 ```ts
-interface Diagnostic { code: string; message: string; at: Location | null }
+interface Diagnostic {
+  code: string;
+  message: string;
+  at: Location | null;
+  span?: {start: Location; end: Location};
+  related?: {message: string; span: {start: Location; end: Location}}[];
+}
 ```
 
 Source syntax errors, semantic errors, Core invariant failures and generation
 errors have distinct codes. Codes include `parse`, `import`, `package`,
 `indexed`, `refuted`, `layout` and `native-binding`. Locations use one-based
-lines and columns.
+lines and tab-expanded code-point columns. Block diagnostics include the
+closer's span and the corresponding opener as related information. Codes are
+`block-close-label-required`, `block-close-mismatch`, `block-close-unknown`,
+`block-close-unexpected` and `block-unclosed`. Editor clients convert both spans
+to UTF-16 positions.
 
 ### Artifacts
 
@@ -617,9 +313,7 @@ checked definitions resolve to their original declaring unit and source span:
 `ref function prelude.caseFold` targets `lawspec.text.textCaseFold`.
 Unqualified links resolve local and explicitly imported functions before the
 prelude. Primitive operations without a function definition do not manufacture
-documentary targets. Explicit legacy migration responses retain string
-citation arrays for schemas 3/4; ordinary requests require schema 5. The
-generated TypeScript union covers both wire versions.
+documentary targets. Ordinary requests require schema 5.
 
 Schema 5 also exposes `law.harness.witnesses`: each entry has a target `binder`
 ID, a normalized lexical `path: string[]`, and a typed `expression: Expr`.

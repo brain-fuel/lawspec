@@ -37,6 +37,26 @@ lowerUnitWith imported u = do
       fields <- mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) (dataConstructorFields c)
       pure c{dataConstructorFields=fields}) (dataTypeConstructors d)
     pure d{dataTypeConstructors=constructors}) (dataTypes u)
+  -- Harness declarations carry the same source types as law binders. Expand
+  -- aliases and indexed applications before specialization, including bind
+  -- inputs and named strategies that are reached through other strategies.
+  let expand = expandType structures table [] M.empty M.empty
+      generator gen = case gen of
+        GenAny ty -> GenAny <$> traverse expand ty
+        GenBind name ty from body -> GenBind name <$> expand ty <*> generator from <*> generator body
+        GenFrequency choices -> GenFrequency <$> mapM (\(weight,body) -> (,) weight <$> generator body) choices
+        GenSuchThat inner predicate limit -> (\body -> GenSuchThat body predicate limit) <$> generator inner
+        other -> pure other
+      item entry = case entry of
+        HarnessStrategy strategy -> do
+          ty <- expand (strategyType strategy)
+          body <- generator (strategyBody strategy)
+          pure (HarnessStrategy strategy{strategyType=ty,strategyBody=body})
+        other -> pure other
+  harness <- traverse (\h -> do entries <- mapM item (harnessItems h); pure h{harnessItems=entries}) (unitHarness u)
+  plans <- mapM (\(name,plan) -> do
+    draws <- mapM (\(input,strategy,ty,body) -> (,,,) input strategy <$> expand ty <*> generator body) (planDraws plan)
+    pure (name,plan{planDraws=draws})) (lawHarness u)
   -- Ability operations are answered by handlers, not adapters: no contract.
   cs <- mapM contractFor [(n,t) | (n,t) <- fs, n `notElem` map functionName definitions, n `notElem` operationNames u]
   let active = [c | c <- cs, not (null (contractPreconditions c) && null (contractPostconditions c))]
@@ -48,7 +68,7 @@ lowerUnitWith imported u = do
       mentionsHandle t = any (\n -> n `elem` handleNames || any (\h -> ("::type::" ++ n) `isSuffixOf'` h) handleNames) (typeNames t)
       generated c = not (any (mentionsHandle . snd) (contractArguments c ++ [contractResult c]))
       isSuffixOf' a b = reverse a == take (length a) (reverse b)
-  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw (filter generated active) ++ checks', dataTypes=ds, functionDefinitions=definitions}
+  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw (filter generated active) ++ checks', dataTypes=ds, functionDefinitions=definitions,unitHarness=harness,lawHarness=plans}
 
 -- | A refinement that is ill-formed is reported once, at its declaration, not at
 -- every use.

@@ -10,6 +10,7 @@ import {createCompiler} from '../api.mjs';
 
 const dependencies=new URL('../../.integration/javascript/node_modules',import.meta.url).pathname;
 const source=`unit guide.failures
+
 type PaymentError is one of
   | Declined of type record{message :: Text}
   | Blocked
@@ -21,23 +22,25 @@ procedure charge (cents :: Int32) -> Int32 fails with PaymentError is
   end if
 end procedure
 law tooLarge is
-  definition: for all (cents :: Int32 where cents > 100000) => charge cents fails with TooLarge _ end end
-end
+  definition: for all (cents :: Int32 where cents > 100000) => charge cents fails with TooLarge _ end for all end definition
+end law
 law declined is
   definition: for all (cents :: Int32 where cents < 0) =>
     charge cents fails with Declined record{message = _} message contains "negative"
-  end end
+  end for all end definition
   example minusOne:
     cents = -1
     expect charge cents fails with Declined _
     expect not (charge cents fails with Blocked)
-  end
-end
+  end example
+end law
+
+end unit
 `;
 
 test('generated typed failure messages execute real properties and examples and reject a changed native message',
   {skip:!existsSync(path.join(dependencies,'fast-check'))&&'requires the JavaScript acceptance dependencies'},async()=>{
-    const compiler=await createCompiler(),result=await compiler.planGeneration({schemaVersion:5,languageProfile:'1.0-rc.1',
+    const compiler=await createCompiler(),result=await compiler.planGeneration({schemaVersion:5,languageProfile:'1.0-rc.2',
       verification:{layers:['property','examples']},target:'javascript',sources:[{path:'failures.lawspec',content:source}]});
     assert.deepEqual(result.diagnostics,[]);
     const root=await mkdtemp(path.join(tmpdir(),'lawspec-failure-messages-'));

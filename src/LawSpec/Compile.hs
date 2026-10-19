@@ -3,15 +3,14 @@
 -- testing plan needs. It stops at the surface; LawSpec.Frontend turns its
 -- result into typed Core, so the eight emitters never see source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithMigrationCapture, compileWithSourceOrigins, validateDefinitionTypes, validateDefinitionTotality) where
+module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithSourceOrigins, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
 import LawSpec.Model
 import LawSpec.SourceOrigins (SourceOriginMap)
 import LawSpec.SourceSyntax (SourceSyntax(..),SyntaxNode(..),SyntaxReference(..))
-import LawSpec.MigrationTemplates (SourceTemplates(..),DefinitionTemplate)
-import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, dataDeclarationHeaders, inlineFieldDefinitions, fieldDefinitionChecks, fieldDefinitionDependencies, migrationConstructorSources)
+import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithContext, dataDeclarationHeaders, inlineFieldDefinitions, fieldDefinitionChecks, fieldDefinitionDependencies)
 import LawSpec.Capabilities (satisfiedWithContext)
 import qualified LawSpec.SourceContext as Source
 import LawSpec.Inference
@@ -96,20 +95,12 @@ closedCheck _ _ = True
 
 type Table = M.Map (String,String) Law
 
--- Built-in laws keep their versioned source grammar. Canonical callers name
--- their existing mathematical laws with ordinary phrase delimiters; local
--- and explicitly imported names are resolved before this prelude fallback.
+-- Prelude requirements share the same phrase-name namespace as user laws.
 preludeLawName :: String -> String
-preludeLawName name = unphrase (maybe name id (stripPrefix "prelude." name))
-  where
-    unphrase ('"':'|':rest) | "|" `isSuffixOf` rest = unescape (init rest)
-    unphrase n = n
-    unescape ('\\':c:rest) = c : unescape rest
-    unescape (c:rest) = c : unescape rest
-    unescape [] = []
+preludeLawName name = maybe name id (stripPrefix "prelude." name)
 
 expand :: [String] -> Table -> String -> Env -> [String] -> Law -> [Expr] -> C ([Input], Assertion, [String], [Expr])
-expand = expandScoped False
+expand = expandCanonical
 
 -- Canonical quantifiers keep lexical scope throughout expansion. Only a
 -- leading universal prefix becomes generated inputs; sibling quantifiers
@@ -319,7 +310,7 @@ compileWithSettings = compileWithImports (\_ _ -> Nothing)
 -- | visible importer imported explains why a unit may not import another
 -- (package boundaries), or is Nothing when it may.
 compileWithImports :: (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
-compileWithImports = compileWithParser False (\_ name -> name)
+compileWithImports = compileWithParser True (\_ name -> name)
 compileCanonical :: [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileCanonical = compileCanonicalWithImports (\_ _ -> Nothing) 64 defaultGeneration
 compileCanonicalWithImports :: (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
@@ -330,23 +321,18 @@ compileCanonicalWithReferenceUnits :: (String -> String -> String) -> (String ->
 compileCanonicalWithReferenceUnits = compileWithParser True
 compileWithParser :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileWithParser canonical referenceUnit visible bits settings sources = do
-  (units,properties,_,_) <- compileWithParserInventory False canonical referenceUnit visible bits settings sources
+  (units,properties,_) <- compileWithParserInventory False canonical referenceUnit visible bits settings sources
   pure (units,properties)
 
 compileWithSourceSyntax :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
-compileWithSourceSyntax canonical referenceUnit visible bits settings sources = do
-  (units,properties,syntax,_) <- compileWithMigrationCapture canonical referenceUnit visible bits settings sources
-  pure (units,properties,syntax)
+compileWithSourceSyntax canonical = compileWithParserInventory True canonical
 
-compileWithMigrationCapture :: Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
-compileWithMigrationCapture = compileWithParserInventory True
-
-compileWithParserInventory :: Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
+compileWithParserInventory :: Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
 compileWithParserInventory = compileWithSourceOrigins []
 
 compileWithSourceOrigins :: [SourceOriginMap] -> Bool -> Bool -> (String -> String -> String)
   -> (String -> String -> Maybe String) -> Int -> Generation -> [Source]
-  -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
+  -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
 compileWithSourceOrigins = compileWithCollectionDemand Nothing
 
 -- Provider refinement reparses the unchanged document with a strictly smaller
@@ -354,15 +340,16 @@ compileWithSourceOrigins = compileWithCollectionDemand Nothing
 -- on the resulting complete program, independently of optional law layers.
 compileWithCollectionDemand :: Maybe (Bool,[String]) -> [SourceOriginMap] -> Bool -> Bool -> (String -> String -> String)
   -> (String -> String -> Maybe String) -> Int -> Generation -> [Source]
-  -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
+  -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
 compileWithCollectionDemand = compileWithMappingSelection Nothing
 
 -- Candidate inverse names are resolved only after typed row equality has
 -- established their availability. No provisional program leaves this entry.
 compileWithMappingSelection :: Maybe MappingCheck.MappingSelection -> Maybe (Bool,[String]) -> [SourceOriginMap]
   -> Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
-  -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax],Maybe SourceTemplates)
-compileWithMappingSelection mappingSelection selected origins capture canonical referenceUnit visible bits settings sources = do
+  -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
+compileWithMappingSelection mappingSelection selected origins capture _ referenceUnit visible bits settings sources = do
+  let canonical = True
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Reserved Core identities belong to compiler-provided versioned sources.
@@ -377,9 +364,9 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
   -- Programs that import a built-in unit with abilities get it
   -- (LawSpec.Builtins); importing lawspec.time adds its clock. Their
   -- handlers with state use collections too.
-  let discovery = if canonical then preludeDiscoveryText else id
+  let discovery = preludeDiscoveryText
       userTexts = [discovery text | Source _ text <- sources]
-      providerUses uses text = uses text || (canonical && uses (preludeDependencyText text))
+      providerUses uses text = uses text || uses (preludeDependencyText text)
       clock = any usesClock [text | Source _ text <- sources]
       time = clock || any (providerUses usesTime) [text | Source _ text <- sources]
       resilience = any usesResilience [text | Source _ text <- sources]
@@ -401,7 +388,7 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
       providerPresent=maybe (not (null collections)) fst selected
 
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | providerPresent] ++
-        [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "")) | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
+        [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "") ++ "end unit\n") | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
         [Source "<lawspec.matchers>" matchersSource | matchers] ++
         [Source "<lawspec.text>" caseFoldSource | textFolding] ++
         [Source "<lawspec.resources>" resourcesSource | resources] ++
@@ -418,8 +405,7 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
   let parsedUnits=[(MappingCheck.selectMappingCandidates mappingSelection imports unit,imports) | (unit,imports)<-candidates]
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   documented <- resolveDocumentaryReferences canonical referenceUnit visible parsedUnits
-  let canonicalUnits = Set.fromList [name | source <- sources, Right name <- [sourceUnit source]]
-  let sourceProfile name = canonical && name `Set.member` canonicalUnits
+  let sourceProfile _ = True
   (imported',sourceBindings,demand) <- resolveImportsWithCollectionDemand capture sourceProfile visible documented
   let explicitCollection=any (\(_,imports)->any (\item->importUnit item==collectionsUnit&&
         let Span start end=importSpan item in start/=end) imports) parsedUnits
@@ -478,7 +464,7 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
    let dataDigest = digestHex (digestString (show (dataTypes,sourceTypes)))
        key parts = digestHex (digestString parts)
    mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit sourceTypes dataTypes bits u)) us
-   checkedTemplates <- forM (zip beforeExpansion us) $ \(original,u) -> do
+   _ <- forM (zip beforeExpansion us) $ \(original,u) -> do
      let checks=fieldDefinitionChecks original u
          dependencies=fieldDefinitionDependencies original checks
          validationUnit=u{functionDefinitions=functionDefinitions u ++ checks}
@@ -630,10 +616,7 @@ compileWithMappingSelection mappingSelection selected origins capture canonical 
              Just used <- lookup owner sourceRows >>= lookup name = item{syntaxUses=Just (map prettyType used)}
            | otherwise = item
      pure (specialized, properties,
-       [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]],
-       if capture then Just (SourceTemplates bits us checkedTemplates allExpanded dataTypes
-         [(identity,Source.sourceFields constructor,Source.sourceEquations constructor) |
-           (identity,constructor)<-migrationConstructorSources us dataTypes]) else Nothing)
+       [annotate syntax | syntax <- sourceSyntax,syntaxPath syntax `elem` [path | Source path _ <- sources]])
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
 -- names it invokes, a superset of the ones expansion resolves.
@@ -664,7 +647,7 @@ validationTable :: Memo.Table (Either [Diagnostic] ())
 validationTable = unsafePerformIO (Memo.newPersistentTable "validate" 4096 (const 1))
 {-# NOINLINE validationTable #-}
 
-definitionTemplatesTable :: Memo.Table (Either [Diagnostic] [DefinitionTemplate])
+definitionTemplatesTable :: Memo.Table (Either [Diagnostic] [(FunctionDefinition, TypedExpr, [TypedExpr], [TypedExpr])])
 definitionTemplatesTable = unsafePerformIO (Memo.newPersistentTable "definition-templates" (32*1024) weight)
   where
     weight (Left _) = 1
@@ -676,7 +659,8 @@ definitionTemplatesTable = unsafePerformIO (Memo.newPersistentTable "definition-
 -- actually tested, so a reader sees what a failure refers to.
 prettyExpanded :: Expanded -> String
 prettyExpanded e | propertyKind e == "contract" = description (original e)
-prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ (if null (inputRefinements i) then "" else " where " ++ intercalate " && " (map showExpr (inputRefinements i))) ++ ")" | i <- inputs e] ++ " . " ++ showAssertion (assertion e)
+prettyExpanded e = if null (inputs e) then showAssertion (assertion e) else
+  "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ (if null (inputRefinements i) then "" else " where " ++ intercalate " && " (map showExpr (inputRefinements i))) ++ ")" | i <- inputs e] ++ " => " ++ showAssertion (assertion e) ++ " end for all"
   where names = M.fromList [(inputId i,Var (inputName i)) | i <- inputs e ++ assertionInputs (assertion e)]
         showExpr = prettyExpr . subst names
         showAssertion (AssertEqual a b) = showExpr a ++ " = " ++ showExpr b
@@ -687,7 +671,8 @@ prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " +
           (if kind == ForEvery then "for all " else "there exists ") ++ "(" ++ inputName input ++ " :: " ++
           prettyType (inputType input) ++ (if null (inputRefinements input) then "" else " where " ++
             intercalate " and " (map showExpr (inputRefinements input))) ++ ") " ++
-          (if kind == ForEvery then "=> " else "such that ") ++ showAssertion body ++ " end"
+          (if kind == ForEvery then "=> " else "such that ") ++ showAssertion body ++
+          (if kind == ForEvery then " end for all" else " end exists")
 
 -- | Braced references are checked against the law's lexical function environment.
 metadataText :: [String] -> String -> Either String String

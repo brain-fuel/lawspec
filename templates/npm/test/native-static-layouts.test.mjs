@@ -1,3 +1,4 @@
+import {extendUnit} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {mkdtemp,mkdir,writeFile,readdir,rm} from 'node:fs/promises';
@@ -9,15 +10,19 @@ import {createCompiler} from '../api.mjs';
 import {templates} from '../templates.mjs';
 
 const compiler=await createCompiler();
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:[]}};
 const source=`unit layouts
+
 type Packet (a :: Type) is one of Packed of type record{
   last :: a first :: record{count :: (n :: UInt8 where n > 0) flag :: Bool}
 } end type
-copy :: Packet UInt8 -> Packet UInt8`;
-const chainSource=source+`
+copy :: Packet UInt8 -> Packet UInt8
+
+end unit
+`;
+const chainSource=extendUnit(source,`
 type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type
-copyChain :: Chain -> Chain`;
+copyChain :: Chain -> Chain`);
 const bindings={types:[{type:'layouts::type::Packet',native:['application','Packet'],constructors:[
   {constructor:'Packed',native:['application','Packed'],style:'variant',fields:[
     {field:'value',path:['first','count'],argument:2,native:'quantity'},
@@ -256,9 +261,9 @@ pub mod application;
 `;
 test('rust native layouts preserve recursive boxes and reject invalid adapter boundaries',
   {skip:!required('rust')&&'requires the Rust acceptance environment'},async()=>{
-  const content=source+`
+  const content=extendUnit(source,`
 type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type
-copyChain :: Chain -> Chain`;
+copyChain :: Chain -> Chain`);
   const nativeBindings=structuredClone(bindings);nativeBindings.rustCrate='native_layout_fixture';
   nativeBindings.types[0].native.unshift('crate');nativeBindings.types[0].constructors[0].native.unshift('crate');
   nativeBindings.functions[0].native=['crate','application','copy'];
@@ -288,10 +293,10 @@ copyChain :: Chain -> Chain`;
   }}finally{await rm(targetRoot,{recursive:true,force:true});}
 });
 
-const recursiveSource=source+`
+const recursiveSource=extendUnit(source,`
 copyBad :: Packet UInt8 -> Packet UInt8
 type Chain is one of | Stop | Link of type record{next :: Chain item :: Bool} end type
-copyChain :: Chain -> Chain`;
+copyChain :: Chain -> Chain`);
 function recursiveBindings(target){
   const go=target==='go',module=go?'application':'Application';
   const nativeBindings=structuredClone(bindings);
@@ -464,11 +469,11 @@ for(const target of ['go','haskell']){
   });
 }
 
-const dotnetSwiftSource=recursiveSource+`
+const dotnetSwiftSource=extendUnit(recursiveSource,`
 type Crate (a :: Type) is a record{
   payload :: record{last :: a first :: record{count :: (n :: UInt8 where n > 0) flag :: Bool}}
 } end type
-copyCrate :: Crate UInt8 -> Crate UInt8`;
+copyCrate :: Crate UInt8 -> Crate UInt8`);
 function dotnetSwiftBindings(target){
   const made=recursiveBindings('haskell');
   const swift=target==='swift';

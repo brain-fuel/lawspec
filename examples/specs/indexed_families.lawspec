@@ -2,19 +2,20 @@ unit example.indexed
 
 -- A list indexed by its length. Each constructor states how it changes the
 -- index; nOfVec is the checked measure that recomputes it from a value.
-type Vec (n :: Natural) (a :: Type) is
+type Vec (n :: Whole) (a :: Type) is one of
   | VNil where n = 0
-  | VCons head :: a tail :: Vec m a where n = m + 1
-end
+  | VCons of type record{ head :: a tail :: Vec m a} where n = m + 1
+end type
 
 -- A binary tree indexed by its number of values.
-type Tree (n :: Natural) (a :: Type) is
+type Tree (n :: Whole) (a :: Type) is one of
   | Tip where n = 0
-  | Bin left :: Tree l a value :: a right :: Tree r a where n = l + r + 1
-end
+  | Bin of type record{ left :: Tree l a value :: a right :: Tree r a} where n =
+  l + r + 1
+end type
 
 -- Result indices are checked contracts over the native implementations.
-replicate :: (n :: Natural where n < 64) -> (x :: Int8) -> (r :: Vec n Int8)
+replicate :: (n :: Whole where n < 64) -> (x :: Int8) -> (r :: Vec n Int8)
 append :: (xs :: Vec n Int8) -> (ys :: Vec m Int8) -> (r :: Vec (n + m) Int8)
 zip :: (xs :: Vec n Int8) -> (ys :: Vec n Bool) -> (r :: Vec n Bool)
 flatten :: (tree :: Tree n Int8) -> (r :: Vec n Int8)
@@ -22,67 +23,182 @@ flatten :: (tree :: Tree n Int8) -> (r :: Vec n Int8)
 -- Checked definitions whose result indices are proved statically, by
 -- structural induction over the constructor equations. They need no runtime
 -- postcondition, and serve as reference models for the native adapters.
-definition concatV (xs :: Vec n Int8) (ys :: Vec m Int8) :: Vec (n + m) Int8 is
-  match xs with
-  | VNil -> ys
-  | VCons h t -> VCons h (concatV t ys)
-  end
-end
+function concatV (xs :: Vec n Int8) (ys :: Vec m Int8) -> Vec (n + m) Int8 is
+  first matching case of xs :
+    when VNil then ys
+    when VCons record{ head = h , tail = t} then VCons record{ head = h , tail =
+        (concatV t ys)}
+  end case
+end function
 
-definition flattenV (tree :: Tree n Int8) :: Vec n Int8 is
-  match tree with
-  | Tip -> VNil
-  | Bin l v r -> concatV (flattenV l) (VCons v (flattenV r))
-  end
-end
+function flattenV (tree :: Tree n Int8) -> Vec n Int8 is
+  first matching case of tree :
+    when Tip then VNil
+    when Bin record{ left = l , value = v , right = r} then concatV (flattenV l)
+      (VCons record{ head = v , tail = (flattenV r)})
+  end case
+end function
 
-law `append agrees with the proved definition` is
-  definition is
-    `for all` (xs :: Vec n Int8) (ys :: Vec m Int8) . append xs ys = concatV xs ys
-  end
-end
+law "|append agrees with the proved definition| is
+  definition :
+    for all (xs :: Vec n Int8) (ys :: Vec m Int8) => append xs ys = concatV xs
+      ys end for all
+  end definition
+end law
 
-law `flatten agrees with the proved definition` is
-  definition is
-    `for all` (tree :: Tree 4 Int8) . flatten tree = flattenV tree
-  end
-end
+law "|flatten agrees with the proved definition| is
+  definition :
+    for all (tree :: Tree 4 Int8) => flatten tree = flattenV tree end for all
+  end definition
+end law
 
-law `replicate has the requested length` is
-  definition is
-    `for all` (n :: Natural where n < 16) (x :: Int8) . nOfVec (replicate n x) = n
-  end
-  example `three copies` is
+law "|replicate has the requested length| is
+  definition :
+    for all (n :: Whole where n < 16) (x :: Int8) => nOfVec (replicate n x) = n
+    end for all
+  end definition
+  example "|three copies| :
     n = 3
     x = 7
     expect nOfVec (replicate n x) = 3
-  end
-end
+  end example
+end law
 
-law `append adds lengths` is
-  definition is
-    `for all` (xs :: Vec n Int8) (ys :: Vec m Int8) .
-      nOfVec (append xs ys) = n + m
-  end
-end
+law "|append adds lengths| is
+  definition :
+    for all (xs :: Vec n Int8) (ys :: Vec m Int8) =>
+      nOfVec (append xs ys) = n + m end for all
+  end definition
+end law
 
--- A fixed index is generated directly rather than filtered.
-law `vectors of three elements` is
-  definition is
-    `for all` (xs :: Vec 3 Int8) . nOfVec (append xs xs) = 6
-  end
-end
+-- The harness constructs the fixed shape with independent scalar draws.
+law "|vectors of three elements| is
+  definition :
+    for all (xs :: Vec 3 Int8) => nOfVec (append xs xs) = 6 end for all
+  end definition
+end law
 
 -- A shared index constrains the second input by the first.
-law `zip preserves a shared length` is
-  definition is
-    `for all` (xs :: Vec n Int8) (ys :: Vec n Bool) . nOfVec (zip xs ys) = n
-  end
-end
+law "|zip preserves a shared length| is
+  definition :
+    for all (xs :: Vec n Int8) (ys :: Vec n Bool) => nOfVec (zip xs ys) = n
+    end for all
+  end definition
+end law
 
--- Generation splits the remaining index across both subtrees.
-law `flattening five values` is
-  definition is
-    `for all` (tree :: Tree 5 Int8) . nOfVec (flatten tree) = 5
-  end
-end
+-- The harness samples every binary shape of this fixed size.
+law "|flattening five values| is
+  definition :
+    for all (tree :: Tree 5 Int8) => nOfVec (flatten tree) = 5 end for all
+  end definition
+end law
+
+function branch (left of type Tree n Int8) (item of type Int8)
+  (right of type Tree m Int8) -> Tree (n + m + 1) Int8 is
+  Bin record{left = left, value = item, right = right}
+end function
+
+harness example.indexed.shapes for example.indexed is
+
+  strategy threeValues of type Vec 3 Int8 is
+    bind value0 of type Int8 from any in
+      bind value1 of type Int8 from any in
+        bind value2 of type Int8 from any in
+          one of (VCons record{head = value0, tail = (VCons record{head = value1, tail = (VCons record{head = value2, tail = VNil})})})
+        end bind
+      end bind
+    end bind
+  end strategy
+
+  strategy tree4 of type Tree 4 Int8 is
+    bind value0 of type Int8 from any in
+      bind value1 of type Int8 from any in
+        bind value2 of type Int8 from any in
+          bind value3 of type Int8 from any in
+            one of (branch Tip value0 (branch Tip value1 (branch Tip value2 (branch Tip value3 Tip)))),
+            (branch Tip value0 (branch Tip value1 (branch (branch Tip value3 Tip) value2 Tip))),
+            (branch Tip value0 (branch (branch Tip value2 Tip) value1 (branch Tip value3 Tip))),
+            (branch Tip value0 (branch (branch Tip value2 (branch Tip value3 Tip)) value1 Tip)),
+            (branch Tip value0 (branch (branch (branch Tip value3 Tip) value2 Tip) value1 Tip)),
+            (branch (branch Tip value1 Tip) value0 (branch Tip value2 (branch Tip value3 Tip))),
+            (branch (branch Tip value1 Tip) value0 (branch (branch Tip value3 Tip) value2 Tip)),
+            (branch (branch Tip value1 (branch Tip value2 Tip)) value0 (branch Tip value3 Tip)),
+            (branch (branch (branch Tip value2 Tip) value1 Tip) value0 (branch Tip value3 Tip)),
+            (branch (branch Tip value1 (branch Tip value2 (branch Tip value3 Tip))) value0 Tip),
+            (branch (branch Tip value1 (branch (branch Tip value3 Tip) value2 Tip)) value0 Tip),
+            (branch (branch (branch Tip value2 Tip) value1 (branch Tip value3 Tip)) value0 Tip),
+            (branch (branch (branch Tip value2 (branch Tip value3 Tip)) value1 Tip) value0 Tip),
+            (branch (branch (branch (branch Tip value3 Tip) value2 Tip) value1 Tip) value0 Tip)
+          end bind
+        end bind
+      end bind
+    end bind
+  end strategy
+
+  strategy tree5 of type Tree 5 Int8 is
+    bind value0 of type Int8 from any in
+      bind value1 of type Int8 from any in
+        bind value2 of type Int8 from any in
+          bind value3 of type Int8 from any in
+            bind value4 of type Int8 from any in
+              one of (branch Tip value0 (branch Tip value1 (branch Tip value2 (branch Tip value3 (branch Tip value4 Tip))))),
+              (branch Tip value0 (branch Tip value1 (branch Tip value2 (branch (branch Tip value4 Tip) value3 Tip)))),
+              (branch Tip value0 (branch Tip value1 (branch (branch Tip value3 Tip) value2 (branch Tip value4 Tip)))),
+              (branch Tip value0 (branch Tip value1 (branch (branch Tip value3 (branch Tip value4 Tip)) value2 Tip))),
+              (branch Tip value0 (branch Tip value1 (branch (branch (branch Tip value4 Tip) value3 Tip) value2 Tip))),
+              (branch Tip value0 (branch (branch Tip value2 Tip) value1 (branch Tip value3 (branch Tip value4 Tip)))),
+              (branch Tip value0 (branch (branch Tip value2 Tip) value1 (branch (branch Tip value4 Tip) value3 Tip))),
+              (branch Tip value0 (branch (branch Tip value2 (branch Tip value3 Tip)) value1 (branch Tip value4 Tip))),
+              (branch Tip value0 (branch (branch (branch Tip value3 Tip) value2 Tip) value1 (branch Tip value4 Tip))),
+              (branch Tip value0 (branch (branch Tip value2 (branch Tip value3 (branch Tip value4 Tip))) value1 Tip)),
+              (branch Tip value0 (branch (branch Tip value2 (branch (branch Tip value4 Tip) value3 Tip)) value1 Tip)),
+              (branch Tip value0 (branch (branch (branch Tip value3 Tip) value2 (branch Tip value4 Tip)) value1 Tip)),
+              (branch Tip value0 (branch (branch (branch Tip value3 (branch Tip value4 Tip)) value2 Tip) value1 Tip)),
+              (branch Tip value0 (branch (branch (branch (branch Tip value4 Tip) value3 Tip) value2 Tip) value1 Tip)),
+              (branch (branch Tip value1 Tip) value0 (branch Tip value2 (branch Tip value3 (branch Tip value4 Tip)))),
+              (branch (branch Tip value1 Tip) value0 (branch Tip value2 (branch (branch Tip value4 Tip) value3 Tip))),
+              (branch (branch Tip value1 Tip) value0 (branch (branch Tip value3 Tip) value2 (branch Tip value4 Tip))),
+              (branch (branch Tip value1 Tip) value0 (branch (branch Tip value3 (branch Tip value4 Tip)) value2 Tip)),
+              (branch (branch Tip value1 Tip) value0 (branch (branch (branch Tip value4 Tip) value3 Tip) value2 Tip)),
+              (branch (branch Tip value1 (branch Tip value2 Tip)) value0 (branch Tip value3 (branch Tip value4 Tip))),
+              (branch (branch Tip value1 (branch Tip value2 Tip)) value0 (branch (branch Tip value4 Tip) value3 Tip)),
+              (branch (branch (branch Tip value2 Tip) value1 Tip) value0 (branch Tip value3 (branch Tip value4 Tip))),
+              (branch (branch (branch Tip value2 Tip) value1 Tip) value0 (branch (branch Tip value4 Tip) value3 Tip)),
+              (branch (branch Tip value1 (branch Tip value2 (branch Tip value3 Tip))) value0 (branch Tip value4 Tip)),
+              (branch (branch Tip value1 (branch (branch Tip value3 Tip) value2 Tip)) value0 (branch Tip value4 Tip)),
+              (branch (branch (branch Tip value2 Tip) value1 (branch Tip value3 Tip)) value0 (branch Tip value4 Tip)),
+              (branch (branch (branch Tip value2 (branch Tip value3 Tip)) value1 Tip) value0 (branch Tip value4 Tip)),
+              (branch (branch (branch (branch Tip value3 Tip) value2 Tip) value1 Tip) value0 (branch Tip value4 Tip)),
+              (branch (branch Tip value1 (branch Tip value2 (branch Tip value3 (branch Tip value4 Tip)))) value0 Tip),
+              (branch (branch Tip value1 (branch Tip value2 (branch (branch Tip value4 Tip) value3 Tip))) value0 Tip),
+              (branch (branch Tip value1 (branch (branch Tip value3 Tip) value2 (branch Tip value4 Tip))) value0 Tip),
+              (branch (branch Tip value1 (branch (branch Tip value3 (branch Tip value4 Tip)) value2 Tip)) value0 Tip),
+              (branch (branch Tip value1 (branch (branch (branch Tip value4 Tip) value3 Tip) value2 Tip)) value0 Tip),
+              (branch (branch (branch Tip value2 Tip) value1 (branch Tip value3 (branch Tip value4 Tip))) value0 Tip),
+              (branch (branch (branch Tip value2 Tip) value1 (branch (branch Tip value4 Tip) value3 Tip)) value0 Tip),
+              (branch (branch (branch Tip value2 (branch Tip value3 Tip)) value1 (branch Tip value4 Tip)) value0 Tip),
+              (branch (branch (branch (branch Tip value3 Tip) value2 Tip) value1 (branch Tip value4 Tip)) value0 Tip),
+              (branch (branch (branch Tip value2 (branch Tip value3 (branch Tip value4 Tip))) value1 Tip) value0 Tip),
+              (branch (branch (branch Tip value2 (branch (branch Tip value4 Tip) value3 Tip)) value1 Tip) value0 Tip),
+              (branch (branch (branch (branch Tip value3 Tip) value2 (branch Tip value4 Tip)) value1 Tip) value0 Tip),
+              (branch (branch (branch (branch Tip value3 (branch Tip value4 Tip)) value2 Tip) value1 Tip) value0 Tip),
+              (branch (branch (branch (branch (branch Tip value4 Tip) value3 Tip) value2 Tip) value1 Tip) value0 Tip)
+            end bind
+          end bind
+        end bind
+      end bind
+    end bind
+  end strategy
+
+  for law "|vectors of three elements|
+    use threeValues for xs
+  end for law
+  for law "|flatten agrees with the proved definition|
+    use tree4 for tree
+  end for law
+  for law "|flattening five values|
+    use tree5 for tree
+  end for law
+
+end harness
+end unit

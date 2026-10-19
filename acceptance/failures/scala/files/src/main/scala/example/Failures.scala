@@ -18,7 +18,7 @@ object Failures {
   ): scala.concurrent.Future[scala.util.Either[lawspec.data.PaymentError, scala.Int]] =
     Future.successful {
       if (value0 < 0) Left(PaymentError.Blocked)
-      else if (value0 == 0) Left(PaymentError.Declined("there is nothing to settle"))
+      else if (value0 == 0) Left(PaymentError.Declined(lawspec.data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7("there is nothing to settle")))
       else Right(value0)
     }
 

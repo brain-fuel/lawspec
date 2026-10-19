@@ -5,7 +5,7 @@ title: How the compiler works
 ---
 # How the compiler works
 
-LawSpec is one compiler with eight backends. Everything that gives a
+LawSpec is one compiler with 17 target backends. Everything that gives a
 specification its meaning happens once, in a shared front end and Core; the
 backends only render a plan they are given. ref:DEC-typed-core-boundary
 
@@ -16,7 +16,7 @@ source ──► parse ──► resolve imports ──► elaborate families,
                                           wrappers, workflows
        ──► resolve names and infer types ──► typed Core
        ──► validate Core ──► prove and evaluate ──► testing plan
-       ──► emit (Java, Python, JavaScript, TypeScript, Go, Haskell, Kotlin, Rust)
+       ──► emit the selected target
 ```
 
 ### Parsing

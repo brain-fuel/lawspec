@@ -1,4 +1,4 @@
-expect-any: a receipt is for the amount captured [native] | [recording native]
+expect-any: a receipt is for the amount captured| [native] | [recording native]
 @@ src/example_abilities.erl
 <<<<<<<
       capture => fun(Cents) -> {receipt, Cents} end,

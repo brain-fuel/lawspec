@@ -17,7 +17,7 @@ handlers against a model, and generates a typed actor that runs them, for
 your implementation code.
 
 ```lawspec fragment
-type Account is Account balance :: Int64 end
+type Account is a record{balance :: Int64} end type
 
 openAccount :: Unit -> Account
 deposit :: Account -> UInt8 -> Pair Int64 Account
@@ -29,7 +29,7 @@ actor account :: Account by Int64 is
   restart from reopen by modelReopen
   on deposit by modelDeposit
   on balance by modelBalance
-end
+end actor
 ```
 
 ## Declaring an actor
@@ -41,7 +41,7 @@ actor name :: State by Model is
   on handler by reference [when precondition]
   abstract function
   invariant predicate
-end
+end actor
 ```
 
 | Line | Meaning |
@@ -226,7 +226,7 @@ supervisor bank is
   at most 3 restarts in 5s
   permanent account
   transient audit
-end
+end supervisor
 ```
 
 | Part | Meaning |

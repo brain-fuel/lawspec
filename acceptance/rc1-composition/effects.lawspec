@@ -2,11 +2,11 @@ unit example.rc1.siblingEffects
 
 ability Signal is
   signal of type Bool -> Bool
-end
+end ability
 
 handler echo for Signal is
-  signal value is value end
-end
+  operation signal value is value end operation
+end handler
 
 procedure read (value of type Bool) -> Bool uses Signal is
   signal value
@@ -16,7 +16,8 @@ law "|local binding preserves the chosen handler| using echo is
   definition:
     (for all (read of type Bool) =>
       read must be read
-    end)
+    end for all)
     and read true must be true
-  end
-end
+  end definition
+end law
+end unit

@@ -1,6 +1,12 @@
 @@ test/fixtures/canonical-typed-mappings.lawspec
 <<<<<<<
+mapping preferenceLabel of type Preference -> Text is
+  row Preference record{enabled = false}, "disabled"
   row Preference record{enabled = true}, "enabled"
+end mapping
 =======
+mapping preferenceLabel of type Preference -> Text is
+  row Preference record{enabled = false}, "disabled"
   row Preference record{enabled = true}, "wrong"
+end mapping
 >>>>>>>

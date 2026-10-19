@@ -35,9 +35,9 @@ procedure deadline (wait :: Duration where wait <= 1h) -> Instant uses Clock is
 law "|a deadline is as far off as the wait| using virtual clock is
   definition :
     for all (wait :: Duration where wait <= 1h) => (let d = deadline wait in d -
-      now) = wait end
-  end
-end
+      now end let) = wait end for all
+  end definition
+end law
 
 -- Seeded draws are reproducible: the same seed gives the same draws.
 procedure roll (sides :: Int64 where sides >= 1) -> Integer uses Random is
@@ -46,10 +46,11 @@ procedure roll (sides :: Int64 where sides >= 1) -> Integer uses Random is
 law "|a seed fixes the rolls| is
   definition :
     for all (sides :: Int64 where sides >= 1) =>
-      handle roll sides with seededRandom end = handle roll sides with
-    seededRandom end end
-end
-end
+      handle roll sides with seededRandom end handle = handle roll sides with
+    seededRandom end handle end for all
+end definition
+end law
+end unit
 ```
 
 ## Importing a built-in unit

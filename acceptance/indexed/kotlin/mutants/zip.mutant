@@ -1,6 +1,6 @@
 @@ src/main/kotlin/example/Indexed.kt
 <<<<<<<
-            Vec.VCons(value1.head, zip(value0.tail, value1.tail))
+            Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value1.value.head, zip(value0.value.tail, value1.value.tail)))
 =======
-            zip(value0.tail, value1.tail)
+            zip(value0.value.tail, value1.value.tail)
 >>>>>>>

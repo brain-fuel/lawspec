@@ -32,12 +32,12 @@ end function
 law "|emailPdfInvoice result| is
   description:
     "PDF invoices sent by email retain their file names."
-  end
+  end description
   definition:
     "|email invoice PDF file name| (emailPdfInvoice "invoice.pdf") must be Just
     "invoice.pdf"
-  end
-end
+  end definition
+end law
 
 function emailPlainTextInvoice (name of type Text) -> Delivery is
   Email (record{recipient = "accounts@example.com", document =
@@ -48,12 +48,12 @@ end function
 law "|emailPlainTextInvoice result| is
   description:
     "Plain-text invoices have no PDF file name."
-  end
+  end description
   definition:
     "|email invoice PDF file name| (emailPlainTextInvoice "invoice.pdf") must be
     Nothing
-  end
-end
+  end definition
+end law
 
 function downloadPdfInvoice (name of type Text) -> Delivery is
   Download (record{document = record{number =
@@ -64,9 +64,10 @@ end function
 law "|downloadPdfInvoice result| is
   description:
     "Downloads have no email invoice PDF file name."
-  end
+  end description
   definition:
     "|email invoice PDF file name| (downloadPdfInvoice "invoice.pdf") must be
     Nothing
-  end
-end
+  end definition
+end law
+end unit

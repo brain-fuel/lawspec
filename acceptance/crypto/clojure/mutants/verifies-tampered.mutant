@@ -1,4 +1,4 @@
-expect: a changed message fails to verify [native]
+expect: a changed message fails to verify| [native]
 @@ src/example/counting.clj
 <<<<<<<
      :verify (fn [key message signature] (ls/op inner :verify key message signature))}))

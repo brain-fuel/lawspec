@@ -5,7 +5,7 @@ unit example.concurrent
 -- runs the commands in sequence and at the same time, and every history
 -- must be linearizable. Sets and maps are checked key by key.
 
-type WorkQueue is WorkQueue id :: Int32 end
+type WorkQueue is a record{  id :: Int32} end type
 
 newQueue :: Unit -> WorkQueue
 async offer :: WorkQueue -> Int32 -> Unit
@@ -17,23 +17,23 @@ model queue :: shared WorkQueue behaves like Queue Int32 is
   offer as offer
   poll as poll
   queueSize as size
-end
+end model
 
-type Tags is Tags id :: Int32 end
+type Tags is a record{  id :: Int32} end type
 
 newTags :: Unit -> Tags
 async tag :: Tags -> Int32 -> Bool
 async untag :: Tags -> Int32 -> Bool
 async tagged :: Tags -> Int32 -> Bool
 
-model tags :: shared Tags behaves like Set Int32 is
+model tags :: shared Tags behaves like SortedSet Int32 is
   start newTags
   tag as add
   untag as remove
   tagged as contains
-end
+end model
 
-type Cache is Cache id :: Int32 end
+type Cache is a record{  id :: Int32} end type
 
 newCache :: Unit -> Cache
 async store :: Cache -> Int8 -> Int64 -> Maybe Int64
@@ -45,4 +45,5 @@ model cache :: shared Cache behaves like KeyVal Int8 Int64 is
   store as put
   fetch as get
   evict as remove
-end
+end model
+end unit

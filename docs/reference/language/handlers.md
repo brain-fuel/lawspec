@@ -23,21 +23,22 @@ put :: Int32 -> Unit
 size :: Integer
 laws
 law "|size is never negative| is
-  definition : size >= 0 end
-end
-end
+  definition : size >= 0 end definition
+end law
+end laws
+end ability
 
 -- A handler with state: the items stored so far.
 handler memoryStore for Store with state items :: List Int32 start [] is
-put item is ~items := Cons item items; unitValue end
-size is prelude.length items end
-end
+operation put item is ~items := Cons item items; unitValue end operation
+operation size is prelude.length items end operation
+end handler
 
 -- A handler without state.
 handler emptyStore for Store is
-put item is unitValue end
-size is 0 end
-end
+operation put item is unitValue end operation
+operation size is 0 end operation
+end handler
 
 -- A clause may be a definition that gives Pair result state.
 function putFirst (item :: Int32) (items :: List Int32) -> Pair Unit (List
@@ -52,9 +53,10 @@ function sizeOf (items :: List Int32) -> Pair Integer (List Int32) is Pair
   (prelude.length items) items end function
 
 handler firstStore for Store with state items :: List Int32 start [] is
-put by putFirst
-size by sizeOf
-end
+operation put by putFirst end operation
+operation size by sizeOf end operation
+end handler
+end unit
 ```
 
 ## A handler for several abilities
@@ -62,7 +64,7 @@ end
 ```lawspec fragment
 handler reference for Broker, Admin with state cluster :: BrokerState start emptyCluster unitValue is
   ...
-end
+end handler
 ```
 
 - One handler answers the operations of every ability it names, from one
@@ -71,12 +73,12 @@ end
   uses too, one handler made once per case: what a producer sends through
   it, a consumer reads.
 - Its ability laws are checked under it for each of its abilities.
-- `handle ... with h end` takes a handler of one ability, for now.
+- `handle ... with h end handle` takes a handler of one ability, for now.
 
 ## Sets of handlers
 
 ```lawspec fragment
-handlers reference is cluster, kafkaProducer, kafkaConsumer end
+handlers reference is cluster, kafkaProducer, kafkaConsumer end handlers
 ```
 
 A set of spec handlers, one for each ability it covers, that work together:
@@ -89,9 +91,9 @@ abilities, `` law [reference] ``. A law may name the set with `using`.
 
 ```lawspec fragment
 handler name for Ability [with state s :: Type start value] is
-  operation x y is body end
+  operation operationName x y is body end operation
   ...
-end
+end handler
 ```
 
 - A handler has one clause for each operation of its ability, no more and
@@ -124,7 +126,7 @@ end
 
 ```lawspec fragment
 function trial (cents :: Int32) -> Bool is
-  handle checkout cents with fakeGateway end
+  handle checkout cents with fakeGateway end handle
 end function
 ```
 
@@ -140,8 +142,8 @@ end function
 handler with `using` only when the handler is part of the claim.
 
 ```text
-law "|checkout captures once| using recording Gateway is ... end
-law "|large payments fail| using fakeGateway is ... end
+law "|checkout captures once| using recording Gateway is definition: ... end definition end law
+law "|large payments fail| using fakeGateway is definition: ... end definition end law
 ```
 
 `using` takes a list:
@@ -183,9 +185,9 @@ law "|checkout captures once, when it succeeds| using recording Gateway is
       else
         calls of capture = 0
       end if) must be true
-    end
-  end
-end
+    end for all
+  end definition
+end law
 ```
 
 ## Ability laws
@@ -409,7 +411,7 @@ definitions. Otherwise the generated tests check it.
   continues, or aborts to `prelude.attempt`. No handler captures a
   continuation.
 - A handler of several abilities cannot be named in `handle ... with`.
-- `handle ... with h end` names a spec handler; a native handler is chosen
+- `handle ... with h end handle` names a spec handler; a native handler is chosen
   by the law.
 - A workflow's call to an adapter catches the runtime's `Fail`; the
   `failures` mapping applies where laws call adapters.

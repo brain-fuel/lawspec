@@ -1,12 +1,15 @@
 unit example.selectionB
 observed :: Int32 -> Int32
-law `check` is definition is observed 2 = 2 end end
-law `skipped` is definition is observed 3 = 3 end end
-law `known` is definition is observed 4 = 5 end end
+law "|check| is definition : observed 2 = 2 end definition end law
+law "|skipped| is definition : observed 3 = 3 end definition end law
+law "|known| is definition : observed 4 = 5 end definition end law
 harness example.selectionB.testing for example.selectionB is
   order random
-  for law `skipped`
+  for law "|skipped|
     skip "not implemented"
-  for law `known`
+  end for law
+for law "|known|
     known failing "known native mismatch"
-end
+end for law
+end harness
+end unit

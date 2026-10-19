@@ -78,16 +78,17 @@ atoi :: Text -> Int32
 law "|round trip| is
   definition :
     apply law "|left inverse| atoi itoa
-  end
+  end definition
   description :
     "applying {itoa} and then {atoi} recovers the original integer"
-  end
+  end description
   example "|negative integers use a minus sign and round-trip unchanged| :
     x = -42
     expect itoa x = "-42"
     expect atoi (itoa x) = -42
-  end
-end
+  end example
+end law
+end unit
 ```
 
 `lawspec explain` shows the final property:

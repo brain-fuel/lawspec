@@ -1,6 +1,6 @@
 @@ src/example/flow.clj
 <<<<<<<
-(defn pop [{:keys [top rest]}]
+(defn pop [{{:keys [top rest]} :value}]
   {:lawspec/tag :pop-flow/pop-flow :result top :state rest})
 =======
 (defn pop [{:keys [top rest] :as stack}]

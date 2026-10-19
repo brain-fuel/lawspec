@@ -1,7 +1,7 @@
 -- | Native names for data declarations that share a short name. Units scope
 -- their declarations, so two units may both declare a Currency; targets with
 -- one data namespace qualify such a name by its unit (ShopDomainCurrency).
-module LawSpec.DataNames (qualifiedDataName, flatDataCandidates, flatDataCandidatesWith, isProduct, nativeConstructorFieldType, productConstructors, caseNames, caseInsensitiveCounts, ambiguous) where
+module LawSpec.DataNames (qualifiedDataName, flatDataCandidates, flatDataCandidatesWith, isProduct, nativeConstructorFieldType, productConstructors, caseNames, caseInsensitiveCounts, ambiguous, fieldClosed) where
 
 import Data.Char (isAlphaNum, toLower, toUpper)
 import qualified LawSpec.Core as C
@@ -88,3 +88,21 @@ caseInsensitiveCounts xs = M.fromListWith (+) [(map toLower name, 1) | (_, name)
 -- | Whether more than one name in the counted list is this one, ignoring case.
 ambiguous :: M.Map String Int -> String -> Bool
 ambiguous counts name = M.findWithDefault 0 (map toLower name) counts > 1
+
+-- | A native derived trait needs instances for every field dependency, even
+-- through containers and mutually recursive products. This is independent of
+-- LawSpec's logical capability evidence and portable equality implementation.
+fieldClosed :: (C.DataDeclaration -> Bool) -> [C.DataDeclaration] -> C.DataDeclaration -> Bool
+fieldClosed accepts declarations declaration = visit [] [C.dataId declaration]
+  where
+    table = M.fromList [(C.dataId d,d) | d <- declarations]
+    visit _ [] = True
+    visit seen (identity:rest)
+      | identity `elem` seen = visit seen rest
+      | Just d <- M.lookup identity table = accepts d && visit (identity:seen)
+          (concat [references (C.binderType f) | c <- C.dataConstructors d, f <- C.constructorFields c] ++ rest)
+      | otherwise = visit seen rest
+    references (C.Constructor name arguments) = C.Id name :
+      concat [references ty | C.TypeArgument ty <- arguments]
+    references (C.Arrow argument result) = references argument ++ references result
+    references _ = []

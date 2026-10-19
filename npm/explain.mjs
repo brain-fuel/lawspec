@@ -4,6 +4,8 @@
 import { createTypePresentation } from './typed-presentation.mjs';
 
 export const explanationViews = ['developer', 'business', 'formal', 'evidence'];
+const exampleName = name => name.startsWith('"|') && name.endsWith('|') ? name
+  : '"|' + name.replace(/\\/gu, '\\\\').replace(/\|/gu, '\\|') + '|';
 const presentationProposition = ({ typeName, expressionText }, inputs) => function proposition(assertion, business = false, scope = inputs) {
   const term = expression => expressionText(expression, scope);
   const recurse = (body, wording = business) => proposition(body, wording, scope);
@@ -34,7 +36,7 @@ const presentationProposition = ({ typeName, expressionText }, inputs) => functi
       const restrictions = assertion.predicates.map(p => expressionText(p, nested));
       const restricted = restrictions.length ? ` where ${restrictions.join(' and ')}` : '';
       if (business) return `${universal ? 'For every' : 'There must exist'} ${binder}${restricted}, ${proposition(assertion.body, true, nested)}`;
-      return `${universal ? 'for all' : 'there exists'} (${binder}${restricted}) ${universal ? '=>' : 'such that'}\n${proposition(assertion.body, false, nested)}\nend`;
+      return `${universal ? 'for all' : 'there exists'} (${binder}${restricted}) ${universal ? '=>' : 'such that'}\n${proposition(assertion.body, false, nested)}\nend ${universal ? 'for all' : 'exists'}`;
     }
     default: throw new Error(`Unsupported typed assertion ${assertion.kind}`);
   }
@@ -70,7 +72,7 @@ export function explainLaw(law, result, view = 'developer') {
     proposition(law.assertion, true), law.rationale ? `Reason: ${law.rationale}` : ''].filter(Boolean).join('\n');
   else if (view === 'formal') text = [quantifiers.length ? `for all (${quantifiers.join(') (')}) =>` : '',
     restrictions.length ? `(${restrictions.join(' and ')}) implies` : '',
-    proposition(law.assertion), ...(quantifiers.length ? ['end'] : [])].filter(Boolean).join('\n');
+    proposition(law.assertion), ...(quantifiers.length ? ['end for all'] : [])].filter(Boolean).join('\n');
   else text = [law.id, ...documentary, ...law.trace, ...strategies,
     ...(quantifiers.length ? [`Inputs: ${quantifiers.join('; ')}`] : []),
     ...(restrictions.length ? [`Restrictions: ${restrictions.join(' and ')}`] : []), proposition(law.assertion),
@@ -78,9 +80,9 @@ export function explainLaw(law, result, view = 'developer') {
     `Examples: ${examples.length}`,
     ...examples.flatMap(example => {
       const locals = new Map([...scope, ...example.bindings.map(binding => [binding.id, binding.name])]);
-      return [`example ${JSON.stringify(example.name)}`,
+      return [`example ${exampleName(example.name)}:`,
         ...example.bindings.map(binding => `  ${binding.name} = ${valueText(binding.value, locals)}`),
-        ...example.expectations.map(expectation => `  expect ${proposition(expectation, false, locals)}`)];
+        ...example.expectations.map(expectation => `  expect ${proposition(expectation, false, locals)}`), 'end example'];
     })].join('\n');
   if(view==='developer')for(const item of evidence)if(item.nativeEvidence)text+='\n'+nativeEvidenceText(item);
   if (view === 'evidence' && strategies.length) text += '\n' + strategies.join('\n');

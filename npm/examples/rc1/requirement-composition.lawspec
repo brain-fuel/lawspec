@@ -8,10 +8,10 @@ law "|each item has a match| (relation of type a -> b -> Bool) is
     for all (item of type b) =>
       there exists (witness of type a) such that
         relation witness item
-      end
-    end
-  end
-end
+      end exists
+    end for all
+  end definition
+end law
 
 function revokedMatch (authorization of type Authorization)
   (payment of type Payment) -> Bool is
@@ -26,25 +26,25 @@ law "|matching and readiness agree| is
       there exists (authorization of type Authorization
         where active Ready authorization) such that
         authorizes authorization payment
-      end
-    end)
-  end
+      end exists
+    end for all)
+  end definition
 
   description:
     "Every payment has a matching identity and an active approval when ready."
-  end
-end
+  end description
+end law
 
 law "|revocation or matching has a complete explanation| is
   definition:
     (must not apply law "|each item has a match| revokedMatch)
     or apply law "|each item has a match| authorizes
-  end
+  end definition
 
   description:
     "Either revoked approvals cannot cover every payment, or matching succeeds."
-  end
-end
+  end description
+end law
 
 law "|matching implies ready approval coverage| is
   definition:
@@ -54,36 +54,37 @@ law "|matching implies ready approval coverage| is
       there exists (authorization of type Authorization
         where active Ready authorization) such that
         authorizes authorization payment
-      end
-    end)
-  end
-end
+      end exists
+    end for all)
+  end definition
+end law
 
 law "|payment and approval identities have separate scopes| is
   definition:
     (for all (value of type Payment) =>
       value = FirstPayment or value = SecondPayment
-    end)
+    end for all)
     and
     (for all (value of type Authorization) =>
       value = FirstApproval or value = SecondApproval
-    end)
-  end
-end
+    end for all)
+  end definition
+end law
 
 law "|an empty condition does not hide required coverage| is
   definition:
     (for all (authorization of type Authorization where false) =>
       false
-    end)
+    end for all)
     and
     (there exists (authorization of type Authorization
       where active Ready authorization) such that
       authorizes authorization FirstPayment
-    end)
-  end
+    end exists)
+  end definition
 
   rationale:
     "A vacuous first clause leaves the approval requirement in force."
-  end
-end
+  end rationale
+end law
+end unit

@@ -1,6 +1,6 @@
 @@ src/main/groovy/example/Indexed.groovy
 <<<<<<<
-      return new Vec.VCons<Boolean>(flags.head(), zip(bytes.tail(), flags.tail()))
+      return new Vec.VCons<Boolean>(new lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec<Boolean>(flags.value().head(), zip(bytes.value().tail(), flags.value().tail())))
 =======
-      return zip(bytes.tail(), flags.tail())
+      return zip(bytes.value().tail(), flags.value().tail())
 >>>>>>>

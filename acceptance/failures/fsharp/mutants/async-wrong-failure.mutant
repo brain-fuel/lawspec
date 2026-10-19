@@ -1,7 +1,7 @@
 expect: settling nothing is declined, and says why
 @@ src/Example/Failures.fs
 <<<<<<<
-        elif value0 = 0 then return Error(Declined "there is nothing to settle")
+        elif value0 = 0 then return Error(Declined { Message = "there is nothing to settle" })
 =======
         elif value0 = 0 then return Error Blocked
 >>>>>>>

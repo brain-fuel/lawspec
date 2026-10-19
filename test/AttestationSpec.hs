@@ -13,31 +13,34 @@ import LawSpec.Api (dispatch)
 spec :: String
 spec = unlines
   [ "unit shop.orders"
-  , "type Receipt is a record{cents :: Int32} end type"
+   ++ "\n", ""
+  , "type Receipt is a record{cents :: Int32} end type\n"
   , "ability Gateway is"
   , "  capture :: Int32 -> Receipt"
   , "laws"
   , "  law receiptAmount is"
-  , "    definition: for all (cents :: Int32) => capture cents = Receipt record{cents = cents} end end"
-  , "  end"
-  , "end"
+  , "    definition: for all (cents :: Int32) => capture cents = Receipt record{cents = cents} end for all end definition"
+  , "  end law"
+  , "\nend laws"
+  , "end ability"
   , "handler fakeGateway for Gateway is"
-  , "  capture cents is Receipt record{cents = cents} end"
-  , "end"
+  , "   operation capture cents is Receipt record{cents = cents} end operation"
+  , "end handler"
   , "normalize :: Int32 -> Int32"
-  , "function twice (x :: Int32) -> Integer is x + x end function"
+  , "function twice (x :: Int32) -> Integer is x + x end function\n"
   , "procedure checkout (cents :: Int32) -> Bool uses Gateway is"
   , "  first matching case of capture cents: when Receipt record{cents = paid} then paid = cents end case"
   , "end procedure"
   , "law checkoutCharges is"
-  , "  definition: for all (cents :: Int32) => checkout cents = true end end"
-  , "end"
+  , "  definition: for all (cents :: Int32) => checkout cents = true end for all end definition"
+  , "end law"
   , "law normalizing is"
-  , "  definition: for all (x :: Int32) => normalize (normalize x) = normalize x end end"
-  , "end"
+  , "  definition: for all (x :: Int32) => normalize (normalize x) = normalize x end for all end definition"
+  , "end law"
   , "law doubling is"
-  , "  definition: for all (x :: Int32) => twice x = x * 2 end end"
-  , "end" ]
+  , "  definition: for all (x :: Int32) => twice x = x * 2 end for all end definition"
+  , "end law"
+  , "\nend unit" ]
 
 dependency :: String -> String -> [(K.Key, Value)] -> Value
 dependency name kind extra = object (["name" .= name, "endpoint" .= ("localhost:9092" :: String), "reached" .= True, "kind" .= kind] ++
@@ -56,7 +59,7 @@ attestation dependencies = object
 
 check :: Maybe Value -> Value
 check attested = fromMaybe Null $ decode $ dispatch $ encode $ object $
-  [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+  [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
     "verification" .= object ["layers" .= (["proof", "exhaustive", "property"] :: [String])],
     "method" .= ("check" :: String), "sources" .= [object ["path" .= ("a.lawspec" :: String), "content" .= spec]] ] ++
   [ "attestation" .= a | Just a <- [attested] ]

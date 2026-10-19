@@ -3,20 +3,21 @@ unit example.session_types
 protocol Exchange is
   send Maybe (List Int32)
   receive Unit
-end
-protocol Symbols is send Symbol end
-protocol Empty is end
-protocol LoopA is send LoopB end
-protocol LoopB is send LoopA end
-protocol Answer is receive Int32 send Int64 end
-protocol Passing is send Answer end
+end protocol
+protocol Symbols is send Symbol end protocol
+protocol Empty is end protocol
+protocol LoopA is send LoopB end protocol
+protocol LoopB is send LoopA end protocol
+protocol Answer is receive Int32 send Int64 end protocol
+protocol Passing is send Answer end protocol
 
 nativeProbe :: Unit -> Bool
-law `native session payloads retain their types and identity` is
-  definition is nativeProbe unitValue end
-end
+law "|native session payloads retain their types and identity| is
+  definition : nativeProbe unitValue end definition
+end law
 
 networkProbe :: Unit -> Bool
-law `native sessions move twice and relay local ends with canonical values` is
-  definition is networkProbe unitValue end
-end
+law "|native sessions move twice and relay local ends with canonical values| is
+  definition : networkProbe unitValue end definition
+end law
+end unit

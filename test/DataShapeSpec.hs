@@ -12,15 +12,15 @@ import LawSpec.Model hiding (Expectation)
 -- families that native pattern matching checks for exhaustiveness.
 shapes :: String -> String
 shapes extra = unlines
-  [ "unit example.shapes"
-  , "type Size is | Small | Large extra :: Int32 end"
-  , "type Drink is Drink size :: Size shots :: Int32 end"
-  , "type Chain (a :: Type) is | Stop | More item :: a tail :: Chain a end"
-  , "type Token is Token end"
-  , "type Shape is | Shape | Other end"
+  [ "unit example.shapes\n"
+  , "type Size is one of | Small | Large  of type Int32 end type\n"
+  , "type Drink is a record{  size :: Size shots :: Int32} end type\n"
+  , "type Chain (a :: Type) is one of | Stop | More of type record{ item :: a tail :: Chain a} end type\n"
+  , "type Token is one of Token end type\n"
+  , "type Shape is one of | Shape | Other end type\n"
   , extra
   , "f :: Drink -> Size -> Chain Int8 -> Token -> Shape -> Int32"
-  ]
+  , "end unit"]
 
 generated :: String -> String -> Either String String
 generated target extra = case compile [Source "shapes.lawspec" (shapes extra)] of
@@ -49,16 +49,19 @@ test_dataTypesBecomeEachTargetsIdiomaticShape = describe "native data shapes" $ 
       [ "public record Drink(lawspec.data.Size size, java.lang.Integer shots)"
       , "public sealed interface Size permits Size.Small, Size.Large"
       , "record Small() implements Size"
-      , "record More<T0>(T0 item, lawspec.data.Chain<T0> tail) implements Chain<T0>"
+      , "record More<T0>("
+      , "<T0> value)"
+      , "implements Chain<T0>"
+      , "T0 item, lawspec.data.Chain<T0> tail)"
       , "public record Token()"
       , "record ShapeCase() implements Shape"
       , "record Other() implements Shape" ]
     lacks "java" ["DrinkCase", "SmallCase", "OtherCase"]
   it "Java: rejects a record component that overrides an Object method" $
-    generated "java" "type Bad is Bad hashCode :: Int32 end\ng :: Bad -> Int32"
+    generated "java" "type Bad is a record{  hashCode :: Int32} end type\ng :: Bad -> Int32\n"
       `shouldSatisfy` either (isInfixOf "java.lang.Object.hashCode()") (const False)
   it "Clojure: a type named with an acronym is found again from its tags" $
-    generated "clojure" "type HTTPError is | NotFound | Gone end\ng :: HTTPError -> Int32"
+    generated "clojure" "type HTTPError is one of | NotFound | Gone end type\ng :: HTTPError -> Int32\n"
       `shouldSatisfy` either (const False) (isInfixOf "java.util.Map.entry(\"http-error\", \"lawspec.data.HTTPError\")")
   it "Kotlin: data classes and objects" $ do
     shows' "kotlin"

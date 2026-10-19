@@ -8,25 +8,25 @@ import lawspec.data.Shown
 
 @groovy.transform.CompileStatic
 final class Gadt {
-  // Only the number cases implement Expr<BigInteger>, so a number is one
+  // Only the number cases implement Expr<Number>, so a number is one
   // of them.
-  static BigInteger evalNumber(Expr<BigInteger> value0) {
-    if (value0 instanceof Expr.Plus plus) return evalNumber(plus.left()).add(evalNumber(plus.right()))
-    ((Expr.Number) value0).value()
+  static BigInteger evalNumber(Expr<Number> value0) {
+    if (value0 instanceof Expr.Plus plus) return evalNumber(plus.value().left()).add(evalNumber(plus.value().right()))
+    new BigInteger(((Expr.Number) value0).value().toString())
   }
 
   static boolean evalTruth(Expr<Boolean> value0) {
-    if (value0 instanceof Expr.Same same) return evalNumber(same.left()) == evalNumber(same.right())
-    if (value0 instanceof Expr.Negate negate) return !evalTruth(negate.operand())
+    if (value0 instanceof Expr.Same same) return evalNumber(same.value().left()) == evalNumber(same.value().right())
+    if (value0 instanceof Expr.Negate negate) return !evalTruth(negate.value())
     ((Expr.Truth) value0).value()
   }
 
-  static Pair<BigInteger, Boolean> evalPair(Expr<Pair<BigInteger, Boolean>> value0) {
-    var both = (Expr.Both<BigInteger, Boolean>) value0
-    new Pair<>(evalNumber(both.first()), evalTruth(both.second()))
+  static Pair<Number, Boolean> evalPair(Expr<Pair<Number, Boolean>> value0) {
+    var both = (Expr.Both<Number, Boolean>) value0
+    new Pair<>(evalNumber(both.value().first()), evalTruth(both.value().second()))
   }
 
-  static Expr<BigInteger> fold(Expr<BigInteger> value0) {
+  static Expr<Number> fold(Expr<Number> value0) {
     return new Expr.Number(evalNumber(value0))
   }
 

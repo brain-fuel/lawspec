@@ -1,4 +1,4 @@
-expect: Logs: an unknown log refuses records [native]
+expect: Logs: an unknown log refuses records| [native]
 @@ src/Example/Composition.swift
 <<<<<<<
             guard store.logs[log] != nil else { throw .unknownLog }

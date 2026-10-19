@@ -26,16 +26,18 @@ end function
 
 law "|pop returns what push pushed| is
   definition :
-    for all (x :: Int8) (s :: Stack n) => (push x ~s; pop ~s) = x end
-  end
-end
+    for all (x :: Int8) (s :: Stack n) => (push x ~s; pop ~s) = x end for all
+  end definition
+end law
 
 law "|pops come back in reverse| is
   definition :
     for all (x :: Int8) (y :: Int8) (s :: Stack n) =>
-      (push x ~s; push y ~s; pop ~s; pop ~s) = x end
-  end
-end
+      (push x ~s; push y ~s; pop ~s; pop ~s) = x end for all
+  end definition
+end law
+
+end unit
 ```
 
 ## Syntax
@@ -66,9 +68,9 @@ law "|both stacks get the value| is
   definition:
     for all (x :: Int8) (a :: Stack n) (b :: Stack m) =>
       (pushBoth x ~a ~b; pop ~a; pop ~b) must be x
-    end
-  end
-end
+    end for all
+  end definition
+end law
 ```
 
 A state has one owner, so the same state cannot be passed to two flow
@@ -86,9 +88,9 @@ law "|a push in each branch| is
     for all (x :: Int8) (s :: Stack n) =>
       ((if x > 0 then push x ~s else push 0 ~s end if); pop ~s)
         must be (if x > 0 then x else 0 end if)
-    end
-  end
-end
+    end for all
+  end definition
+end law
 ```
 
 Every branch must leave the state at the same type for it to be used after

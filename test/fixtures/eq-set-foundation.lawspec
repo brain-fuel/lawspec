@@ -1,115 +1,115 @@
--- Internal representation conformance, before canonical Set authoring exposure.
--- The reserved identity deliberately has no native ordered-container binding.
-unit lawspec.collections
+-- Equality and first-occurrence iteration through the public Set interface.
+unit example.eqSetFoundation
 
-type EqSet (a :: Type) is EqSetItems items :: List a end
-type Envelope is Envelope items :: Maybe (EqSet Float64) end
+type Envelope is a record{  items :: Maybe (Set Float64)} end type
 
-definition arrangement (reverse :: Bool) :: EqSet Float64 is
-  if reverse then EqSetItems [float64Bits("3ff0000000000000"), float64Bits("4000000000000000")] else EqSetItems [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")]
-end
+function arrangement (reverse :: Bool) -> Set Float64 is
+  if reverse then prelude.setOf [float64Bits("3ff0000000000000"), float64Bits("4000000000000000")] else prelude.setOf [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")] end if
+end function
 
-definition sameSet (left :: EqSet Float64) (right :: EqSet Float64) :: Bool is
-  left == right
-end
+function sameSet (left :: Set Float64) (right :: Set Float64) -> Bool is
+  left = right
+end function
 
-definition stored (set :: EqSet Float64) :: List Float64 is
-  match set with | EqSetItems items -> items end
-end
+function stored (set :: Set Float64) -> List Float64 is
+  prelude.toList set
+end function
 
-definition incomplete (reverse :: Bool) :: EqSet Float64 is
-  if reverse then EqSetItems [float64Bits("3ff0000000000000")] else EqSetItems [float64Bits("4000000000000000")]
-end
+function incomplete (reverse :: Bool) -> Set Float64 is
+  if reverse then prelude.setOf [float64Bits("3ff0000000000000")] else prelude.setOf [float64Bits("4000000000000000")] end if
+end function
 
-definition otherMembers (reverse :: Bool) :: EqSet Float64 is
-  if reverse then EqSetItems [float64Bits("3ff0000000000000"), float64Bits("4008000000000000")] else EqSetItems [float64Bits("4008000000000000"), float64Bits("3ff0000000000000")]
-end
+function otherMembers (reverse :: Bool) -> Set Float64 is
+  if reverse then prelude.setOf [float64Bits("3ff0000000000000"), float64Bits("4008000000000000")] else prelude.setOf [float64Bits("4008000000000000"), float64Bits("3ff0000000000000")] end if
+end function
 
-definition empty (reverse :: Bool) :: EqSet Float64 is
-  if reverse then EqSetItems [] else EqSetItems []
-end
+function empty (reverse :: Bool) -> Set Float64 is
+  if reverse then prelude.setOf [] else prelude.setOf [] end if
+end function
 
-definition withNan (reverse :: Bool) :: EqSet Float64 is
-  if reverse then EqSetItems [float64Bits("7ff8000000000001"), float64Bits("3ff0000000000000")]
-  else EqSetItems [float64Bits("3ff0000000000000"), float64Bits("7ff8000000000001")]
-end
+function withNan (reverse :: Bool) -> Set Float64 is
+  if reverse then prelude.setOf [float64Bits("7ff8000000000001"), float64Bits("3ff0000000000000")]
+  else prelude.setOf [float64Bits("3ff0000000000000"), float64Bits("7ff8000000000001")] end if
+end function
 
-definition repeatedNan (reverse :: Bool) :: EqSet Float64 is
-  if reverse then EqSetItems [float64Bits("7ff8000000000001"), float64Bits("7ff8000000000001")]
-  else EqSetItems [float64Bits("7ff8000000000001"), float64Bits("7ff8000000000002")]
-end
+function repeatedNan (reverse :: Bool) -> Set Float64 is
+  if reverse then prelude.setOf [float64Bits("7ff8000000000001"), float64Bits("7ff8000000000001")]
+  else prelude.setOf [float64Bits("7ff8000000000001"), float64Bits("7ff8000000000002")] end if
+end function
 
-definition singletonZero (negative :: Bool) :: EqSet Float64 is
-  if negative then EqSetItems [float64Bits("8000000000000000")]
-  else EqSetItems [float64Bits("0000000000000000")]
-end
+function singletonZero (negative :: Bool) -> Set Float64 is
+  if negative then prelude.setOf [float64Bits("8000000000000000")]
+  else prelude.setOf [float64Bits("0000000000000000")] end if
+end function
 
-definition nested (reverse :: Bool) :: EqSet (EqSet Float64) is
-  if reverse then EqSetItems [arrangement true, incomplete true]
-  else EqSetItems [incomplete true, arrangement false]
-end
+function nested (reverse :: Bool) -> Set (Set Float64) is
+  if reverse then prelude.setOf [arrangement true, incomplete true]
+  else prelude.setOf [incomplete true, arrangement false] end if
+end function
 
-law `set equality ignores iteration order` is
-  definition is `for all` (reverse :: Bool) .
-    sameSet (arrangement reverse) (arrangement (!reverse)) = true end
-end
+law "|set equality ignores iteration order| is
+  definition : for all (reverse :: Bool) =>
+    sameSet (arrangement reverse) (arrangement (!reverse)) = true end for all end definition
+end law
 
-law `iteration retains construction order` is
-  definition is `for all` (reverse :: Bool) .
-    stored (arrangement reverse) = (if reverse then [float64Bits("3ff0000000000000"), float64Bits("4000000000000000")] else [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")]) end
-end
+law "|iteration retains construction order| is
+  definition : for all (reverse :: Bool) =>
+    stored (arrangement reverse) = (if reverse then [float64Bits("3ff0000000000000"), float64Bits("4000000000000000")] else [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")] end if) end for all end definition
+end law
 
-law `set equality detects missing members` is
-  definition is `for all` (reverse :: Bool) .
-    sameSet (arrangement reverse) (incomplete reverse) = false end
-end
+law "|set equality detects missing members| is
+  definition : for all (reverse :: Bool) =>
+    sameSet (arrangement reverse) (incomplete reverse) = false end for all end definition
+end law
 
-law `set equality detects different members` is
-  definition is `for all` (reverse :: Bool) .
-    sameSet (arrangement reverse) (otherMembers reverse) = false end
-end
+law "|set equality detects different members| is
+  definition : for all (reverse :: Bool) =>
+    sameSet (arrangement reverse) (otherMembers reverse) = false end for all end definition
+end law
 
-law `empty sets compare equal` is
-  definition is `for all` (reverse :: Bool) .
-    sameSet (empty reverse) (empty (!reverse)) = true end
-end
+law "|empty sets compare equal| is
+  definition : for all (reverse :: Bool) =>
+    sameSet (empty reverse) (empty (!reverse)) = true end for all end definition
+end law
 
-law `a nonempty set differs from empty` is
-  definition is `for all` (reverse :: Bool) .
-    sameSet (arrangement reverse) (empty reverse) = false end
-end
+law "|a nonempty set differs from empty| is
+  definition : for all (reverse :: Bool) =>
+    sameSet (arrangement reverse) (empty reverse) = false end for all end definition
+end law
 
-law `set equality recurses through nominal products and alternatives` is
-  definition is `for all` (reverse :: Bool) .
-    Envelope (Just (arrangement reverse)) = Envelope (Just (arrangement (!reverse))) end
-end
+law "|set equality recurses through nominal products and alternatives| is
+  definition : for all (reverse :: Bool) =>
+    Envelope record{ items = (Just (arrangement reverse))} = Envelope record{ items = (Just (arrangement (!reverse)))} end for all end definition
+end law
 
-law `set equality recurses through lists` is
-  definition is `for all` (reverse :: Bool) .
-    [arrangement reverse] = [arrangement (!reverse)] end
-end
+law "|set equality recurses through lists| is
+  definition : for all (reverse :: Bool) =>
+    [arrangement reverse] = [arrangement (!reverse)] end for all end definition
+end law
 
-law `sets can contain Eq-only sets` is
-  definition is `for all` (reverse :: Bool) .
-    nested reverse = nested (!reverse) end
-end
+law "|sets can contain Eq-only sets| is
+  definition : for all (reverse :: Bool) =>
+    nested reverse = nested (!reverse) end for all end definition
+end law
 
-law `NaN membership does not use identity shortcuts` is
-  definition is `for all` (reverse :: Bool) .
-    sameSet (withNan reverse) (withNan reverse) = false end
-end
+law "|NaN membership does not use identity shortcuts| is
+  definition : for all (reverse :: Bool) =>
+    sameSet (withNan reverse) (withNan reverse) = false end for all end definition
+end law
 
-law `repeated NaNs are not equal duplicates` is
-  definition is `for all` (reverse :: Bool) .
-    sameSet (repeatedNan reverse) (repeatedNan reverse) = false end
-end
+law "|repeated NaNs are not equal duplicates| is
+  definition : for all (reverse :: Bool) =>
+    sameSet (repeatedNan reverse) (repeatedNan reverse) = false end for all end definition
+end law
 
-law `signed zeros are equal members` is
-  definition is `for all` (reverse :: Bool) .
-    sameSet (singletonZero reverse) (singletonZero (!reverse)) = true end
-end
+law "|signed zeros are equal members| is
+  definition : for all (reverse :: Bool) =>
+    sameSet (singletonZero reverse) (singletonZero (!reverse)) = true end for all end definition
+end law
 
-law `ordinary lists retain ordered equality` is
-  definition is `for all` (reverse :: Bool) .
-    (stored (arrangement reverse) == stored (arrangement (!reverse))) = false end
-end
+law "|ordinary lists retain ordered equality| is
+  definition : for all (reverse :: Bool) =>
+    (stored (arrangement reverse) = stored (arrangement (!reverse))) = false end for all end definition
+end law
+
+end unit

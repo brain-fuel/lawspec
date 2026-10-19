@@ -14,8 +14,7 @@ known-answer vectors. It is one of the [built-in abilities](builtins.md).
 ```lawspec
 unit guide.handshake
 
-import lawspec.crypto (ExchangeKeyPair, ExchangePublicKey, Encapsulated,
-SigningKeyPair)
+import lawspec.crypto (ExchangeKeyPair, ExchangePublicKey, Encapsulated, SigningKeyPair)
 
 -- The server signs its exchange key; the client checks the signature,
 -- encapsulates a secret to the key, and both sides derive the same AEAD key.
@@ -31,17 +30,18 @@ procedure handshake (message :: Bytes) (context :: Bytes) -> Maybe Bytes uses
               when Encapsulated sent shared then
                 (let client = deriveAeadKey shared context in
                 let server = deriveAeadKey (decapsulate secret sent) context in
-                unseal server (seal client message context) context)
+                unseal server (seal client message context) context end let end let)
             end case)
-          else Nothing end if)
+          else Nothing end if end let)
       end case)
   end case
 end procedure
 
 law "|a handshake carries the message| is
   definition : for all (message :: Bytes) (context :: Bytes) => handshake
-      message context = Just message end end
-end
+      message context = Just message end for all end definition
+end law
+end unit
 ```
 
 ## Keys and messages
@@ -73,7 +73,7 @@ pair them up.
 ability Hash is
   sha3 :: Bytes -> Digest
   shake :: Bytes -> Int32 -> Bytes
-end
+end ability
 ```
 
 `sha3 m` is SHA3-256 and `shake m n` the first `n` bytes of SHAKE256, both
@@ -88,7 +88,7 @@ ability KeyExchange is
   exchangeKeyPair :: ExchangeKeyPair
   encapsulate :: ExchangePublicKey -> Encapsulated
   decapsulate :: ExchangeSecretKey -> Ciphertext -> SharedSecret
-end
+end ability
 ```
 
 Key encapsulation (FIPS 203, ML-KEM-768): `exchangeKeyPair` makes a fresh
@@ -107,7 +107,7 @@ ability Signature is
   signingKeyPair :: SigningKeyPair
   sign :: SigningKey -> Bytes -> SignatureBytes
   verify :: VerifyingKey -> Bytes -> SignatureBytes -> Bool
-end
+end ability
 ```
 
 Signatures (FIPS 204, ML-DSA-65, hedged, with an empty context). `verify`
@@ -144,7 +144,7 @@ ability Aead is
   deriveAeadKey :: SharedSecret -> Bytes -> AeadKey
   seal :: AeadKey -> Bytes -> Bytes -> Sealed
   unseal :: AeadKey -> Sealed -> Bytes -> Maybe Bytes
-end
+end ability
 ```
 
 Authenticated encryption with associated data: AES-256-GCM (NIST SP

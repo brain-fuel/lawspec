@@ -55,7 +55,8 @@ data Schema = Schema [Definition] [(String, Int)] [(String, [FieldPredicate])] [
   [(String, ([(Int, TypeRef)], Int))] [(String, [Int])]
 
 hasContracts :: Schema -> Bool
-hasContracts (Schema _ _ contracts _ _ _) = any (not . null . snd) contracts
+hasContracts (Schema _ _ contracts indices _ _) = any (not . null . snd) contracts ||
+  any (any (\text -> take 1 (words text) `elem` [["=="],[">="]]) . snd) indices
 
 create :: [Definition] -> [String] -> Either String Schema
 create definitions primitives = createWithContracts definitions primitives []

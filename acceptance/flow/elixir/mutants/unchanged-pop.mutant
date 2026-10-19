@@ -1,6 +1,6 @@
 @@ lib/example_flow.ex
 <<<<<<<
-def pop(%StackPush{top: top, rest: rest}), do: %PopFlow{result: top, state: rest}
+def pop(%StackPush{value: %LawSpec.Data.Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be{top: top, rest: rest}}), do: %PopFlow{result: top, state: rest}
 =======
-def pop(%StackPush{top: top} = stack), do: %PopFlow{result: top, state: stack}
+def pop(%StackPush{value: %LawSpec.Data.Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be{top: top}} = stack), do: %PopFlow{result: top, state: stack}
 >>>>>>>

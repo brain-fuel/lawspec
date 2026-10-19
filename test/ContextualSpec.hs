@@ -17,89 +17,91 @@ import qualified LawSpec.Core.Evidence as E
 import qualified LawSpec.Core.Verification as V
 
 source :: String -> Source
-source body = Source "articles.lawspec" ("unit articles\n" ++ body)
+source body = Source "articles.lawspec" ("unit articles\n\n" ++ body ++ "\nend unit\n")
 
 test_articlesPreserveOrdinaryNamesAndScope :: Spec
 test_articlesPreserveOrdinaryNamesAndScope = describe "contextual articles" $ do
-  let law proposition = "law selected is definition: " ++ proposition ++ " end end"
+  let law proposition = "law selected is definition: " ++ proposition ++ " end definition end law\n"
       checked body = compileCoreCanonical 64 defaultGeneration [source body]
       verified sources = case compileCoreCanonical 64 defaultGeneration sources >>= dischargeEvidenceWith (V.Verification [V.Exhaustive]) of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right evidence -> map E.obligationStatus (filter ((== "law") . E.obligationStage) evidence)
           `shouldSatisfy` all (== E.ExhaustivelyChecked)
   it "resolves the current and earlier universal binders in their restrictions" $
-    verified [source (law "for all (enabled :: Bool where the enabled) (confirmed :: Bool where the confirmed = the enabled) => confirmed = true end")]
+    verified [source (law "for all (enabled :: Bool where the enabled) (confirmed :: Bool where the confirmed = the enabled) => confirmed = true end for all")]
   it "keeps enclosing binders available to restricted existential witnesses" $
-    verified [source (law "for all (enabled :: Bool) => there must exist a (reply :: Bool where the reply = the enabled) such that reply = enabled end end")]
+    verified [source (law "for all (enabled :: Bool) => there must exist a (reply :: Bool where the reply = the enabled) such that reply = enabled end exists end for all")]
   it "resolves given restrictions without changing the obligation" $
-    verified [source (law "given (enabled :: Bool) when the enabled then enabled = true end")]
+    verified [source (law "given (enabled :: Bool) when the enabled then enabled = true end given")]
   it "retains the operand's original span after elaborating an article" $ do
     let input = source (unlines
-          [ "law selected is", "  definition:", "    for all (enabled :: Bool where the enabled) =>", "      enabled = true", "    end", "  end", "end" ])
+          [ "law selected is"
+          , "  definition:"
+          , "    for all (enabled :: Bool where the enabled) =>"
+          , "      enabled = true"
+          , "    end for all"
+          , "  end definition"
+          , "end law" ])
     case compileCoreCanonical 64 defaultGeneration [input] of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right program -> do
         let predicates = [p | unit <- C.programUnits program, property <- C.unitProperties unit,
               q <- C.propertyInputs property, p <- C.quantifiedPredicates q]
         map C.expressionOrigin predicates `shouldBe`
-          [C.SourceSpan (S.Span (S.Location "articles.lawspec" 4 40) (S.Location "articles.lawspec" 4 47))]
+          [C.SourceSpan (S.Span (S.Location "articles.lawspec" 5 40) (S.Location "articles.lawspec" 5 47))]
   it "resolves the existing local it inside a harness filter" $
     verified [source (unlines
-      [ law "there exists (reply :: Bool) such that reply = true end"
+      [ law "there exists (reply :: Bool) such that reply = true end exists"
       , "harness articles.testing for articles is"
-      , "strategy replies :: Bool is (one of false, true) such that the it end"
-      , "for law selected", "use replies for reply", "end" ])]
+      , "strategy replies :: Bool is (one of false, true) such that the it end strategy"
+      , "for law selected", "use replies for reply", "end for law", "end harness" ])]
   it "preserves the bound record identity before field projection" $
     verified [source (unlines
-      [ "type Authorization is a record{ granted :: Bool } end type"
-      , law "for all (authorization :: Authorization where the authorization.granted) => authorization.granted = true end" ])]
+      [ "type Authorization is a record{ granted :: Bool } end type\n"
+      , law "for all (authorization :: Authorization where the authorization.granted) => authorization.granted = true end for all" ])]
   it "accepts articles before bound function arguments without changing application order" $
     verified [source (unlines
-      [ "function allowed (first :: Bool) (second :: Bool) -> Bool is first and second end function"
-      , law "for all (first :: Bool) (second :: Bool where allowed the first the second) => first and second end" ])]
+      [ "function allowed (first :: Bool) (second :: Bool) -> Bool is first and second end function\n"
+      , law "for all (first :: Bool) (second :: Bool where allowed the first the second) => first and second end for all" ])]
   it "accepts a bound operand after named infix application inside a restriction" $
     verified [source (unlines
-      [ "function authorizes (active :: Bool) (eligible :: Bool) -> Bool is active and eligible end function"
-      , law "given (active :: Bool) (eligible :: Bool) when the active is `authorizes the eligible then active and eligible end" ])]
+      [ "function authorizes (active :: Bool) (eligible :: Bool) -> Bool is active and eligible end function\n"
+      , law "given (active :: Bool) (eligible :: Bool) when the active is `authorizes the eligible then active and eligible end given" ])]
   it "keeps the single typed alternative payload when its argument has an article" $
     verified [source (unlines
-      [ "type Decision is one of | Allowed of type Bool end type"
-      , law "for all (flag :: Bool where Allowed the flag = Allowed true) => flag = true end" ])]
+      [ "type Decision is one of | Allowed of type Bool end type\n"
+      , law "for all (flag :: Bool where Allowed the flag = Allowed true) => flag = true end for all" ])]
   it "preserves ordinary variables named the, a and an" $
-    verified [source (law "for all (the :: Bool) (a :: Bool) (an :: Bool where the or an) => the or an end")]
+    verified [source (law "for all (the :: Bool) (a :: Bool) (an :: Bool where the or an) => the or an end for all")]
   it "preserves application of a checked function named the inside a restriction" $
     verified [source (unlines
-      [ "function the (flag :: Bool) -> Bool is not flag end function"
-      , law "for all (flag :: Bool where the flag) => flag = false end" ])]
+      [ "function the (flag :: Bool) -> Bool is not flag end function\n"
+      , law "for all (flag :: Bool where the flag) => flag = false end for all" ])]
   it "preserves an imported function named the and its explicit qualified form" $ do
-    let library = Source "library.lawspec" "unit library\nfunction the (flag :: Bool) -> Bool is not flag end function\n"
+    let library = Source "library.lawspec" "unit library\n\nfunction the (flag :: Bool) -> Bool is not flag end function\nend unit\n"
         caller = source (unlines
           [ "import library as predicates (the)"
-          , law "for all (flag :: Bool where the flag and predicates.the flag) => flag = false end" ])
+          , law "for all (flag :: Bool where the flag and predicates.the flag) => flag = false end for all" ])
     verified [library,caller]
   it "preserves a law parameter named the during reusable-law expansion" $
     verified [source (unlines
-      [ "law restricted (the :: Bool) is definition: for all (flag :: Bool where the or flag) => the or flag end end end"
-      , "law selected is definition: apply law restricted false end end" ])]
+      [ "law restricted (the :: Bool) is definition: for all (flag :: Bool where the or flag) => the or flag end for all end definition end law"
+      , "law selected is definition: apply law restricted false end definition end law" ])]
   it "retains intrinsic purity checks for a function parameter named the" $
-    case checked "law restricted (the :: Bool -> Bool) is definition: for all (flag :: Bool where the flag) => flag = false end end end" of
+    case checked "law restricted (the :: Bool -> Bool) is definition: for all (flag :: Bool where the flag) => flag = false end for all end definition end law\n" of
       Left diagnostics -> map message diagnostics `shouldContain` ["adapter calls are forbidden in refinement predicates"]
       Right _ -> expectationFailure "a law parameter must not become an article or bypass refinement purity"
   it "does not invent references to later, sibling or missing binders" $
     mapM_ (\proposition -> checked (law proposition) `shouldSatisfy` isLeft)
-      [ "for all (early :: Bool where the later) (later :: Bool) => early end"
+      [ "for all (early :: Bool where the later) (later :: Bool) => early end for all"
       , "(for all (other :: Bool) => other = other end) and (for all (flag :: Bool where the other) => flag end)"
-      , "there exists (reply :: Bool where the missing) such that reply end" ]
+      , "there exists (reply :: Bool where the missing) such that reply end exists" ]
   it "keeps the article contextual to restrictions" $ do
-    checked (law "for all (flag :: Bool) => the flag = flag end") `shouldSatisfy` isLeft
-    checked "function the (flag :: Bool) -> Bool is flag end function" `shouldSatisfy` isRight
-  it "retains legacy application and does not enable article sugar in legacy input" $ do
-    let legacy body = compileCore 64 defaultGeneration [source body]
-    legacy "definition the (flag :: Bool) :: Bool is !flag end\nlaw `selected` is definition is `for all` (flag :: Bool where the flag). flag = false end end" `shouldSatisfy` isRight
-    legacy "law `selected` is definition is `for all` (flag :: Bool where the flag). flag = true end end" `shouldSatisfy` isLeft
+    checked (law "for all (flag :: Bool) => the flag = flag end for all") `shouldSatisfy` isLeft
+    checked "function the (flag :: Bool) -> Bool is flag end function\n" `shouldSatisfy` isRight
   it "formats without dropping wording and emits the same checked programs on every target" $ do
-    let worded = source (law "for all (enabled :: Bool where the enabled) => enabled = true end")
-        plain = source (law "for all (enabled :: Bool where enabled) => enabled = true end")
+    let worded = source (law "for all (enabled :: Bool where the enabled) => enabled = true end for all")
+        plain = source (law "for all (enabled :: Bool where enabled) => enabled = true end for all")
         generated bits input = compileCoreCanonical bits defaultGeneration [input] >>= planTesting
         contents target plan = fmap (map (\a -> (artifactPath a,artifactContent a))) (emitPlan target plan)
     formatSource (formatSource worded) `shouldBe` formatSource worded

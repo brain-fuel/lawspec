@@ -8,25 +8,26 @@ async newAsyncToken :: Unit -> Token
 async touchAsync :: Token -> Unit
 async valueAsync :: Int8 -> Token -> Int32
 
-law `constructor omits Unit and method receives the handle first` is
-  definition is `for all` (n :: Int8) .
-    let token = newToken unitValue in value n token = n
-  end
-end
+law "|constructor omits Unit and method receives the handle first| is
+  definition : for all (n :: Int8) =>
+    let token = newToken unitValue in value n token = n end let end for all
+  end definition
+end law
 
-law `Unit results still execute the native method` is
-  definition is `for all` (n :: Int8) .
-    let token = newToken unitValue in touch token == unitValue && value n token == n + 1
-  end
-end
+law "|Unit results still execute the native method| is
+  definition : for all (n :: Int8) =>
+    let token = newToken unitValue in touch token = unitValue && value n token = n + 1 end let end for all
+  end definition
+end law
 
-law `fresh handles have distinct identities` is
-  definition is newToken unitValue != newToken unitValue end
-end
+law "|fresh handles have distinct identities| is
+  definition : newToken unitValue != newToken unitValue end definition
+end law
 
-law `async constructors and methods share their handle across workers` is
-  definition is `for all` (n :: Int8) .
+law "|async constructors and methods share their handle across workers| is
+  definition : for all (n :: Int8) =>
     let token = newAsyncToken unitValue in
-      valueAsync n token == n && touchAsync token == unitValue && valueAsync n token == n + 1
-  end
-end
+      valueAsync n token = n && touchAsync token = unitValue && valueAsync n token = n + 1 end let end for all
+  end definition
+end law
+end unit

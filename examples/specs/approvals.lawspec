@@ -9,27 +9,28 @@ unit example.approvals
 -- longer one, not the two together).
 async approvedQuickly :: Int64 -> Bool
 
-law `an all group's checks run at the same time` is
-  definition is
-    `for all` (n :: Int64) . approvedQuickly n = true
-  end
-  example `the slow order` is
+law "|an all group's checks run at the same time| is
+  definition :
+    for all (n :: Int64) => approvedQuickly n = true end for all
+  end definition
+  example "|the slow order| :
     n = -1
     expect approvedQuickly n = true
-  end
-end
+  end example
+end law
 
 -- Approves order n: the messages of its failures, as the workflow reports
 -- them. Order -1's credit check finishes first, but is declared second.
 async approvalErrors :: Int64 -> List Text
 
-law `failures are reported in declaration order` is
-  definition is
-    `for all` (n :: Int64) .
-      approvalErrors n = prelude.select (n < 0) ["no stock", "no credit"] []
-  end
-  example `the slow order` is
+law "|failures are reported in declaration order| is
+  definition :
+    for all (n :: Int64) =>
+      approvalErrors n = prelude.select (n < 0) ["no stock", "no credit"] [] end for all
+  end definition
+  example "|the slow order| :
     n = -1
     expect approvalErrors n = ["no stock", "no credit"]
-  end
-end
+  end example
+end law
+end unit

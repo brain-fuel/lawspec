@@ -2,15 +2,16 @@ unit example.remote
 
 ability Offset is
   shift :: Int32 -> Int32
-end
+end ability
 
-type Parcel is Parcel count :: Int32 note :: Maybe Text end
+type Parcel is a record{  count :: Int32 note :: Maybe Text} end type
 
-definition shifted (n :: Int32) :: Int32 uses Offset is shift n end
-definition parcel (p :: Parcel) :: Parcel is p end
-definition nothing (u :: Unit) :: Unit is u end
+procedure shifted (n :: Int32) -> Int32 uses Offset is shift n end procedure
+function parcel (p :: Parcel) -> Parcel is p end function
+function nothing (u :: Unit) -> Unit is u end function
 
 nativeProbe :: Unit -> Bool
-law `remote definitions preserve native values and the server ability choice` is
-  definition is nativeProbe unitValue end
-end
+law "|remote definitions preserve native values and the server ability choice| is
+  definition : nativeProbe unitValue end definition
+end law
+end unit

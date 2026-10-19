@@ -41,4 +41,4 @@ def slug(value0: str) -> str:
 # LawSpec argument 0: Int32
 # LawSpec result: example.matchers::type::Order
 def ship(value0: int) -> data.Order:
-    return data.OrderShipped(value0, "post")
+    return data.OrderShipped(data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911(id=value0, carrier="post"))

@@ -3,5 +3,5 @@ expect: negative amounts are blocked
 <<<<<<<
                (neg? amount) :decision/block
 =======
-               (neg? amount) {:lawspec/tag :decision/decline :reason "negative"}
+               (neg? amount) {:lawspec/tag :decision/decline :value "negative"}
 >>>>>>>

@@ -35,13 +35,13 @@ law "|fees preserve currency and exact decimal value| is
   definition:
     for all (money of type Money) =>
       addFee money must be feeModel money
-    end
-  end
+    end for all
+  end definition
 
   example "|decimal tenths|:
     money = Money record{amount = 0.1, currency = USD}
     expect addFee money = Money record{amount = 0.3, currency = USD}
-  end
+  end example
 
   example "|small amount is not rounded away|:
     money = Money record{
@@ -50,47 +50,47 @@ law "|fees preserve currency and exact decimal value| is
     expect addFee money = Money record{
       amount = 0.200000000000000000000000000001, currency = EUR
     }
-  end
+  end example
 
   example "|beyond binary floating precision|:
     money = Money record{amount = 9007199254740993.1, currency = GBP}
     expect addFee money = Money record{
       amount = 9007199254740993.3, currency = GBP
     }
-  end
-end
+  end example
+end law
 
 law "|payment variants and payloads survive native conversion| is
   definition:
     for all (payment of type Payment) =>
       roundTrip payment must be payment
-    end
-  end
+    end for all
+  end definition
 
   example "|successful payment|:
     payment = Paid (Money record{amount = 12.34, currency = EUR})
     expect roundTrip payment = Paid (Money record{
       amount = 12.34, currency = EUR
     })
-  end
+  end example
 
   example "|declined payment|:
     payment = Declined "card declined"
     expect roundTrip payment = Declined "card declined"
-  end
-end
+  end example
+end law
 
 law "|archives preserve order duplicates and absence| is
   definition:
     for all (payments of type List (Maybe Payment)) =>
       archive payments must be payments
-    end
-  end
+    end for all
+  end definition
 
   example "|empty archive|:
     payments = []
     expect archive payments = []
-  end
+  end example
 
   example "|missing is different from a declined payment|:
     payments = [
@@ -103,5 +103,6 @@ law "|archives preserve order duplicates and absence| is
     Just (Paid (Money record{amount = 0.1, currency = USD})),
     Just (Paid (Money record{amount = 0.1, currency = USD}))
     ]
-  end
-end
+  end example
+end law
+end unit

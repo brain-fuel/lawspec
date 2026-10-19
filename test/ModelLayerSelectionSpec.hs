@@ -1,6 +1,7 @@
 -- | Optional model execution never removes the typed program or its APIs.
 module ModelLayerSelectionSpec (test_modelLayerSelection) where
 
+import FixtureSource (extendUnit)
 import Control.Monad (forM_)
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as KM
@@ -72,13 +73,13 @@ test_modelLayerSelection=describe "independent native model layer selection" $ d
       sources off `shouldBe` sources on
   it "keeps mandatory definition errors in reference code outside the layer switch" $ do
     source<-readFile fixture
-    let bad=source++"\nfunction invalidReference (n :: Integer) -> Integer is prelude.quot n 0 end function\n"
+    let bad=extendUnit source $ "\nfunction invalidReference (n :: Integer) -> Integer is prelude.quot n 0 end function\n"
     compileCoreCanonical 64 defaultGeneration [Source fixture bad] `shouldSatisfy`
       either (any (isInfixOf "zero" . show)) (const False)
   it "returns no optional model manifest entries or verification claim when no layer is selected" $ do
     source<-readFile fixture
     forM_ targets $ \target -> do
-      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.2"::String),
             "method" .= ("planGeneration"::String),"target" .= target,
             "verification" .= object ["layers" .= ([]::[String])],
             "sources" .= [object ["path" .= fixture,"content" .= source]]]
@@ -94,7 +95,7 @@ test_modelLayerSelection=describe "independent native model layer selection" $ d
   it "registers real model-only test slots on every target without planning ordinary laws" $ do
     source<-readFile fixture
     forM_ targets $ \target -> do
-      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.2"::String),
             "method" .= ("planGeneration"::String),"target" .= target,
             "verification" .= object ["layers" .= (["model"]::[String])],
             "sources" .= [object ["path" .= fixture,"content" .= source]]]
@@ -113,8 +114,8 @@ test_modelLayerSelection=describe "independent native model layer selection" $ d
   it "rejects colliding selected native model slots without rejecting unselected models" $ do
     source<-readFile fixture
     let neighbor=unlines ["actor account_parallel :: Account by Int64 is",
-          "  start openAccount by 0", "  on deposit by modelDeposit", "end"]
-    core<-checked 64 (source++"\n"++neighbor)
+          "  start openAccount by 0", "  on deposit by modelDeposit", "end" ++ " actor"]
+    core<-checked 64 (extendUnit source neighbor)
     disabled<-planned [] core
     enabled<-planned [V.Model] core
     emitPlanWithFormat False "python" disabled `shouldSatisfy` either (const False) (const True)
@@ -123,12 +124,12 @@ test_modelLayerSelection=describe "independent native model layer selection" $ d
   it "links every native model slot to the existing typed obligations without claiming session safety" $ do
     source<-readFile fixture
     let extra=unlines ["", "scenario `receipt: 100% matched` in account is",
-          "  value <- deposit 1", "  expect value = 1", "end"]
+          "  value <- deposit 1", "  expect value = 1", "end" ++ " scenario"]
     forM_ targets $ \target -> do
-      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.2"::String),
             "method" .= ("planGeneration"::String),"target" .= target,
             "verification" .= object ["layers" .= (["model"]::[String])],
-            "sources" .= [object ["path" .= fixture,"content" .= (source++extra)]]]
+            "sources" .= [object ["path" .= fixture,"content" .= (extendUnit source extra)]]]
       response<-maybe (fail "invalid compiler JSON") pure (decode (dispatch (encode request)))
       items (field "diagnostics" response) `shouldBe` []
       let entries=items (field "tests" response)
@@ -147,7 +148,7 @@ test_modelLayerSelection=describe "independent native model layer selection" $ d
   it "plans no phantom law tests for an examples-only selection without examples" $ do
     source<-readFile fixture
     forM_ targets $ \target -> forM_ [["examples"],["examples","model"]] $ \layers -> do
-      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+      let request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.2"::String),
             "method" .= ("planGeneration"::String),"target" .= target,
             "verification" .= object ["layers" .= (layers::[String])],
             "sources" .= [object ["path" .= fixture,"content" .= source]]]
@@ -157,11 +158,14 @@ test_modelLayerSelection=describe "independent native model layer selection" $ d
       [field "status" item | item<-items (field "evidence" response),field "stage" item==String "law"]
         `shouldSatisfy` all (==String "not-verified")
   it "keeps scoped search visible after quantifiers lower into native Boolean terms" $ do
-    let source=unlines ["unit searchCoverage", "probe :: Bool -> Bool",
-          "law finds is definition: for all (input :: Bool) =>",
-          "  there exists (witness :: Bool) such that probe witness must be input end",
-          "end end end"]
-        request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+    let source=unlines [ "unit searchCoverage"
+                        ++ "\n", ""
+                       , "probe :: Bool -> Bool"
+                       , "law finds is definition: for all (input :: Bool) =>"
+                       , "there exists (witness :: Bool) such that probe witness must be input end exists"
+                       , "end for all end definition end law"
+                       , "\nend unit" ]
+        request=object ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.2"::String),
           "method" .= ("planGeneration"::String),"target" .= ("javascript"::String),
           "verification" .= object ["layers" .= (["exhaustive"]::[String])],
           "sources" .= [object ["path" .= ("search.lawspec"::String),"content" .= source]]]

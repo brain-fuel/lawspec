@@ -1,6 +1,7 @@
 -- | Stateful models and their commands.
 module StatefulModelSpec (test_statefulModelsElaborateFromTypestate) where
 
+import FixtureSource (extendUnit)
 import Data.List (isInfixOf)
 import Control.Monad (forM_)
 import Test.Hspec
@@ -13,34 +14,38 @@ import LawSpec.Model hiding (Expectation)
 stack :: String
 stack = unlines
   [ "unit example.stack"
-  , "type Stack (n :: Natural) is"
+   ++ "\n", ""
+  , "type Stack (n :: Whole) is one of"
   , "  | Empty where n = 0"
-  , "  | Push top :: Int8 rest :: Stack m where n = m + 1"
-  , "end"
+  , "  | Push of type record{ top :: Int8 rest :: Stack m} where n = m + 1"
+  , "end type"
   , "empty :: Unit -> Stack 0"
   , "push :: (x :: Int8) -> Stack n / Stack (n + 1) -> Unit"
   , "pop :: Stack (n + 1) / Stack n -> Int8"
   , "clear :: Stack n / Stack 0 -> Unit"
-  , "definition modelPush (x :: Int8) (xs :: List Int8) :: List Int8 is Cons x xs end"
-  , "definition modelPop (xs :: List Int8) :: Pair Int8 (List Int8) is"
-  , "  match xs with"
-  , "  | Nil -> Pair 0 Nil"
-  , "  | Cons x rest -> Pair x rest"
-  , "  end"
-  , "end"
-  , "definition modelClear (xs :: List Int8) :: List Int8 is Nil end"
-  , "definition short (xs :: List Int8) :: Bool is prelude.length xs <= 3 end" ]
+  , "function modelPush (x :: Int8) (xs :: List Int8) -> List Int8 is Cons x xs end function\n"
+  , "function modelPop (xs :: List Int8) -> Pair Int8 (List Int8) is"
+  , "  first matching case of xs :"
+  , "  when Nil then Pair record{ first = 0 , second = Nil}"
+  , "  when Cons x rest then Pair record{ first = x , second = rest}"
+  , "  end case"
+  , "end function"
+  , "function modelClear (xs :: List Int8) -> List Int8 is Nil end function\n"
+  , "function short (xs :: List Int8) -> Bool is prelude.length xs <= 3 end function\n"
+  , "\nend unit" ]
 
 counter :: String
 counter = unlines
   [ "unit example.counter"
-  , "type Counter is Counter id :: Int32 end"
+   ++ "\n", ""
+  , "type Counter is a record{  id :: Int32} end type\n"
   , "newCounter :: Unit -> Counter"
   , "increment :: Counter -> Int64"
   , "decrement :: Counter -> Int64"
-  , "definition modelIncrement (n :: Int64 where n >= 0 && n <= 1000) :: Pair Int64 Int64 is Pair (n + 1) (n + 1) end"
-  , "definition modelDecrement (n :: Int64 where n >= 0 && n <= 1000) :: Pair Int64 Int64 is Pair (n - 1) (n - 1) end"
-  , "definition positive (n :: Int64) :: Bool is n > 0 end" ]
+  , "function modelIncrement (n :: Int64 where n >= 0 && n <= 1000) -> Pair Int64 Int64 is Pair record{ first = (n + 1) , second = (n + 1)} end function\n"
+  , "function modelDecrement (n :: Int64 where n >= 0 && n <= 1000) -> Pair Int64 Int64 is Pair record{ first = (n - 1) , second = (n - 1)} end function\n"
+  , "function positive (n :: Int64) -> Bool is n > 0 end function\n"
+  , "\nend unit" ]
 
 machinesOf :: String -> Either String [Machine String]
 machinesOf source = case compile [Source "model.lawspec" source] of
@@ -81,14 +86,14 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
         [C.declarationUses d | (identity,d) <- declarations, identity `elem` map fst bridges]
           `shouldSatisfy` any (not . null)
   it "read each command's typestate from its flow parameter" $
-    case machinesOf (stack ++ unlines
+    case machinesOf (extendUnit stack $ unlines
       [ "model stack :: Stack n by List Int8 is"
       , "  start empty by Nil"
       , "  push by modelPush"
       , "  pop by modelPop"
       , "  clear ~ modelClear"
       , "  invariant short"
-      , "end" ]) of
+      , "end"  ++ " model"]) of
       Left message -> expectationFailure message
       Right [m] -> do
         machineShared m `shouldBe` False
@@ -102,12 +107,12 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
         shifted push [0] `shouldBe` [1]
       Right other -> expectationFailure (show other)
   it "elaborate a shared model with a precondition" $
-    case machinesOf (counter ++ unlines
+    case machinesOf (extendUnit counter $ unlines
       [ "model counter :: shared Counter by Int64 is"
       , "  start newCounter ~ 0"
       , "  increment ~ modelIncrement"
       , "  decrement ~ modelDecrement when positive"
-      , "end" ]) of
+      , "end"  ++ " model"]) of
       Left message -> expectationFailure message
       Right [m] -> do
         machineShared m `shouldBe` True
@@ -116,32 +121,32 @@ test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
       Right other -> expectationFailure (show other)
   describe "reject" $ do
     it "a reference of the wrong type" $
-      rejects "command pop's reference modelPush must have type" (stack ++ unlines
+      rejects "command pop's reference modelPush must have type" (extendUnit stack $ unlines
         [ "model stack :: Stack n by List Int8 is"
         , "  pop by modelPush"
-        , "end" ])
+        , "end"  ++ " model"])
     it "an indexed shared state" $
-      rejects "a shared state's type cannot change" (stack ++ unlines
+      rejects "a shared state's type cannot change" (extendUnit stack $ unlines
         [ "model stack :: shared Stack n by List Int8 is"
         , "  push by modelPush"
-        , "end" ])
+        , "end"  ++ " model"])
     it "a linear command without a flow parameter" $
-      rejects "must take the state as a flow parameter" (counter ++ unlines
+      rejects "must take the state as a flow parameter" (extendUnit counter $ unlines
         [ "model counter :: Counter by Int64 is"
         , "  increment ~ modelIncrement"
-        , "end" ])
+        , "end"  ++ " model"])
     it "a checked definition as a command" $
-      rejects "commands are adapters" (counter ++ unlines
+      rejects "commands are adapters" (extendUnit counter $ unlines
         [ "model counter :: shared Counter by Int64 is"
         , "  positive ~ modelIncrement"
-        , "end" ])
+        , "end"  ++ " model"])
     it "a precondition that is not over the model state" $
-      rejects "precondition modelIncrement must have type" (counter ++ unlines
+      rejects "precondition modelIncrement must have type" (extendUnit counter $ unlines
         [ "model counter :: shared Counter by Int64 is"
         , "  increment ~ modelIncrement when modelIncrement"
-        , "end" ])
+        , "end"  ++ " model"])
     it "a start that does not make the state" $
-      rejects "start increment must return Counter" (counter ++ unlines
+      rejects "start increment must return Counter" (extendUnit counter $ unlines
         [ "model counter :: shared Counter by Int64 is"
         , "  start increment ~ 0"
-        , "end" ])
+        , "end"  ++ " model"])

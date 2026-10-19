@@ -95,8 +95,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       any (any (usesData . inputType) . inputs) ls ||
       any expressionNeedsSchema (concatMap C.contractExpressions (contracts u) ++
         concatMap (C.propertyExpressions . original) ls))
-    fieldContracts = any (not . null . C.constructorPredicates)
-      (concatMap C.dataConstructors declarations)
+    fieldContracts = hasConstructorContracts declarations
     usesData = (if py then PythonData.requiresSchema else WebData.requiresSchema) declarations
     expressionNeedsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
     expressionNeedsSchema term = usesData (expressionType term) || any expressionNeedsSchema (C.children term)

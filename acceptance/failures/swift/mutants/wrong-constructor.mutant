@@ -3,5 +3,5 @@ expect: negative amounts are blocked
 <<<<<<<
             if value0 < 0 { return .block }
 =======
-            if value0 < 0 { return .decline(reason: "negative") }
+            if value0 < 0 { return .decline(value: "negative") }
 >>>>>>>

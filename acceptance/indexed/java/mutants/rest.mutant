@@ -2,5 +2,5 @@
 <<<<<<<
 return new Rest(value0);
 =======
-return new Rest(value0 instanceof Row.Cell cell ? cell.tail() : value0);
+return new Rest(value0 instanceof Row.Cell cell ? cell.value().tail() : value0);
 >>>>>>>

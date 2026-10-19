@@ -13,7 +13,7 @@ assert.ok(['erlang', 'elixir', 'gleam'].includes(language), 'Pass a BEAM target'
 const bits = Number(process.env.LAWSPEC_MACHINE_BITS ?? 64);
 assert.ok([32, 64].includes(bits));
 const minify = process.env.LAWSPEC_MINIFY === '1';
-const canonical = {schemaVersion: 5, languageProfile: '1.0-rc.1',
+const canonical = {schemaVersion: 5, languageProfile: '1.0-rc.2',
   verification: {layers: ['proof', 'exhaustive', 'property', 'examples', 'runtime', 'model']}};
 const base = path.join(repo, '.artifacts/beam-crypto-integration', `${language}-${bits}-${minify}`);
 await rm(base, {recursive: true, force: true});

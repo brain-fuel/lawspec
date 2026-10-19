@@ -106,10 +106,9 @@ main = do
       protocol = case field "languageProfile" <$> decode manifest of
         Just profile | profile /= Null -> [("schemaVersion", toJSON (5 :: Int)), ("languageProfile", profile)] ++
           [("verification", verification) | Just verification <- [field "verification" <$> decode manifest], verification /= Null]
-        -- Historical suites retain 0.24 syntax through the explicit migration
-        -- entry. Ordinary generation always uses the canonical public API.
-        _ -> [("schemaVersion", toJSON (5 :: Int)), ("languageProfile", String "1.0-rc.1"),
-              ("method", String "migrationBaseline"), ("from", String "0.24"), ("includeGeneration", Bool True),
+        -- Shared suites select their checks explicitly on the ordinary
+        -- canonical generation API.
+        _ -> [("schemaVersion", toJSON (5 :: Int)), ("languageProfile", String "1.0-rc.2"),
               ("verification", object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])])]
       extra = protocol ++ [("packages", toJSON packages) | not (null packages)] ++
         [("dependencies", dependencies) | dependencies /= Null]
@@ -448,7 +447,7 @@ suiteStubs suite target = do
 
 -- | The conformance unit checks every shared scalar vector as a law.
 conformance :: BL.ByteString -> (FilePath, String)
-conformance bytes = ("conformance.lawspec", unlines ("unit conformance" :
+conformance bytes = ("conformance.lawspec", unlines ("unit conformance\nend unit\n" :
   [ "law `vector " ++ show i ++ "` is definition is `for all` (marker :: Unit) . " ++
       text (field "expression" v) ++ " = " ++ text (field "expected" v) ++ " end end"
   | (i, v) <- zip [0 :: Int ..] (fromMaybe [] (decode bytes >>= list)) ]))

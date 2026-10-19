@@ -19,15 +19,15 @@ empty :: () -> Data.Stack
 empty _ = Data.StackEmpty
 
 push :: I.Int8 -> Data.Stack -> Data.PushFlow
-push top rest = Data.PushFlow (Data.StackPush top rest)
+push top rest = Data.PushFlow (Data.StackPush (Data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949 rest top))
 
 -- The flow signature guarantees a nonempty stack.
 pop :: Data.Stack -> Data.PopFlow
-pop (Data.StackPush top rest) = Data.PopFlow top rest
+pop (Data.StackPush (Data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949 rest top)) = Data.PopFlow top rest
 pop Data.StackEmpty = error "pop needs a nonempty stack"
 
 peek :: Data.Stack -> Data.PeekFlow
-peek stack@(Data.StackPush top _) = Data.PeekFlow top stack
+peek stack@(Data.StackPush (Data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949 _ top)) = Data.PeekFlow top stack
 peek Data.StackEmpty = error "peek needs a nonempty stack"
 
 {-# NOINLINE newCounter #-}

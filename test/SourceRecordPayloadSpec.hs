@@ -27,7 +27,7 @@ import LawSpec.Testing (planTesting,planDataDeclarations,plannedUnits,plannedUni
 import SourceRecordPayloadFixtures (payloadSource)
 import SourceRecordMetadataFixtures (metadataSource)
 
-compile body=compileCoreCanonical 64 S.defaultGeneration [S.Source "payloads.lawspec" ("unit example.payloads\n"++body)]
+compile body=compileCoreCanonical 64 S.defaultGeneration [S.Source "payloads.lawspec" ("unit example.payloads\n\n"++body ++ "\nend unit\n")]
 checked source action=either (expectationFailure . show) action source
 
 checkOutcomes bits candidate = do
@@ -47,21 +47,23 @@ checkOutcomes bits candidate = do
 test_structuralNominalPayloads = describe "structural nominal payloads" $ do
   it "constructs existential record payloads at concrete and rigid generic carriers" $
     forM_ [32,64] $ \bits -> checked (compileCoreCanonical bits S.defaultGeneration [S.Source "existential.lawspec" (unlines
-      ["unit example.existentialStorage",
-       "type Shown is one of | Shown of type record{held :: a flag :: Bool} end type",
-       "function flagValue (flag :: Bool) -> Shown is Shown record{held = true, flag = flag} end function",
-       "function numberValue (value :: Int32) -> Shown is Shown record{held = value, flag = false} end function",
-       "function package (value :: a) -> Shown is Shown record{held = value, flag = true} end function"])]) $ \program -> do
+      [ "unit example.existentialStorage"
+       ++ "\n", ""
+      , "type Shown is one of | Shown of type record{held :: a flag :: Bool} end type\n"
+      , "function flagValue (flag :: Bool) -> Shown is Shown record{held = true, flag = flag} end function\n"
+      , "function numberValue (value :: Int32) -> Shown is Shown record{held = value, flag = false} end function\n"
+      , "function package (value :: a) -> Shown is Shown record{held = value, flag = true} end function\n"
+      , "\nend unit" ])]) $ \program -> do
       checkOutcomes bits program
       normalizeProgramRecords program `shouldBe` Right program
   it "retains mandatory record restrictions while inferring an existential witness" $ do
     let declarations="type Shown is one of | Shown of type record{held :: a flag :: (ready :: Bool where ready)} end type\n"
-        make argument="function create (flag :: "++argument++") -> Shown is Shown record{held = true, flag = flag} end function"
+        make argument="function create (flag :: "++argument++") -> Shown is Shown record{held = true, flag = flag} end function\n"
     compile (declarations++make "Bool") `shouldSatisfy` isLeft
     checked (compile (declarations++make "(ready :: Bool where ready)")) (checkOutcomes 64)
   it "checks logical plans before witness lowering and rejects forged native witnesses" $ do
     let source="type Shown is one of | Shown of type record{held :: a flag :: Bool} end type\n"++
-          "function create (flag :: (ready :: Bool where ready)) -> Shown is Shown record{held = true, flag = flag} end function"
+          "function create (flag :: (ready :: Bool where ready)) -> Shown is Shown record{held = true, flag = flag} end function\n"
     checked (compile source) $ \program -> case planTesting program of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right plan -> do
@@ -97,92 +99,94 @@ test_structuralNominalPayloads = describe "structural nominal payloads" $ do
       (once >>= normalizeProgramRecords) `shouldBe` once
   it "checks whole structural results and generic alternative table bindings" $
     checked (compile (unlines
-      ["type Box (a of type Type) is one of | Box of type record{value of type a} end type",
-       "function payload (box of type Box a) -> record{value of type a} is",
-       "first matching case of box: when Box value then value end case end function",
-       "law direct is definition: payload (Box record{value = \"note\"}) = record{value = \"note\"} end end",
-       "law rows is definition: for all (box of type Box Text) => payload box = payload box end end",
-       "expect (payload box).value = expected in table (box, expected):",
-       "row Box record{value = \"note\"}, \"note\"","end end"])) $ \candidate -> do
+      [ "type Box (a of type Type) is one of | Box of type record{value of type a} end type\n"
+      , "function payload (box of type Box a) -> record{value of type a} is"
+      , "first matching case of box: when Box value then value end case end function"
+      , "law direct is definition: payload (Box record{value = \"note\"}) = record{value = \"note\"} end definition end law"
+      , "law rows is definition: for all (box of type Box Text) => payload box = payload box end for all end definition"
+      , "expect (payload box).value = expected in table (box, expected):"
+      , "row Box record{value = \"note\"}, \"note\""
+      , "end table end law" ])) $ \candidate -> do
       checkOutcomes 64 candidate
       BL.length (A.encode (Public.programView S.defaultGeneration [] [] [] [] candidate)) `shouldSatisfy` (>0)
   it "preserves GADT field types and branch-local equations for structural payloads" $
     checked (compile (unlines
-      ["type Value (a of type Type) is one of",
-       "| Number of type record{value of type Integer} where a = Integer",
-       "| Truth of type record{value of type Bool} where a = Bool","end type",
-       "function read (expression of type Value a) -> a is",
-       "first matching case of expression:",
-       "when Number record{value = number} then number",
-       "when Truth record{value = boolean} then boolean","end case end function",
-       "law number is definition: read (Number record{value = 7}) = 7 end end",
-       "law truth is definition: read (Truth record{value = true}) = true end end"])) (checkOutcomes 64)
+      [ "type Value (a of type Type) is one of"
+      , "| Number of type record{value of type Integer} where a = Integer"
+      , "| Truth of type record{value of type Bool} where a = Bool"
+      , "end type"
+      , "function read (expression of type Value a) -> a is"
+      , "first matching case of expression:"
+      , "when Number record{value = number} then number"
+      , "when Truth record{value = boolean} then boolean"
+      , "end case end function"
+      , "law number is definition: read (Number record{value = 7}) = 7 end definition end law"
+      , "law truth is definition: read (Truth record{value = true}) = true end definition end law" ])) (checkOutcomes 64)
   it "preserves structural record types in GADT result equations" $
     checked (compile (unlines
-      ["type Tagged (a of type Type) is one of",
-       "| Tagged of type Bool where a = record{value of type Integer}","end type",
-       "function flag (tagged of type Tagged record{value of type Integer}) -> Bool is",
-       "first matching case of tagged: when Tagged enabled then enabled end case end function",
-       "law selected is definition: flag (Tagged true) = true end end"])) (checkOutcomes 64)
+      [ "type Tagged (a of type Type) is one of"
+      , "| Tagged of type Bool where a = record{value of type Integer}"
+      , "end type"
+      , "function flag (tagged of type Tagged record{value of type Integer}) -> Bool is"
+      , "first matching case of tagged: when Tagged enabled then enabled end case end function"
+      , "law selected is definition: flag (Tagged true) = true end definition end law" ])) (checkOutcomes 64)
   it "keeps unknown fields, closed products and nominal boundaries checked" $ do
-    let declarations=unlines ["type Delivery is one of | Download of type record{count of type UInt8} end type",
+    let declarations=unlines ["type Delivery is one of | Download of type record{count of type UInt8} end type\n",
           "function count (delivery of type Delivery) -> UInt8 is first matching case of delivery:",
           "when Download record{count = value} then value end case end function"]
     forM_ ["Download record{}","Download record{count = 256}","Download record{count = 1, extra = true}"] $ \value ->
-      compile (declarations++"law invalid is definition: count ("++value++") = 1 end end") `shouldSatisfy` isLeft
-    compile (unlines ["type Number is a record{count of type Integer} end type",
-      "type Delivery is one of | Download of type record{count of type Integer} end type",
-      "law invalid is definition: Download (Number record{count = 1}) = Download record{count = 1} end end"]) `shouldSatisfy` isLeft
+      compile (declarations++"law invalid is definition: count ("++value++") = 1 end definition end law\n") `shouldSatisfy` isLeft
+    compile (unlines [ "type Number is a record{count of type Integer} end type\n"
+                     , "type Delivery is one of | Download of type record{count of type Integer} end type\n"
+                     , "law invalid is definition: Download (Number record{count = 1}) = Download record{count = 1} end definition end law" ]) `shouldSatisfy` isLeft
   it "audits unused computations and positive fields in structural payloads" $ do
-    compile (unlines ["type Delivery is one of | Download of type record{document of type Text unused of type Integer} end type",
-      "function invalid (ignored of type ()) -> Delivery is Download record{document = \"paper\", unused = 1 / 0} end function"]) `shouldSatisfy` isLeft
-    compile (unlines ["type Delivery is one of | Download of type record{count of type Nat} end type",
-      "function invalid (ignored of type ()) -> Delivery is Download record{count = 0} end function"]) `shouldSatisfy` isLeft
+    compile (unlines ["type Delivery is one of | Download of type record{document of type Text unused of type Integer} end type\n",
+      "function invalid (ignored of type ()) -> Delivery is Download record{document = \"paper\", unused = 1 / 0} end function\n"]) `shouldSatisfy` isLeft
+    compile (unlines ["type Delivery is one of | Download of type record{count of type Nat} end type\n",
+      "function invalid (ignored of type ()) -> Delivery is Download record{count = 0} end function\n"]) `shouldSatisfy` isLeft
   it "checks generic nominal projections in intrinsic structural refinements" $ do
     let declarations=unlines
-          [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type"
+          [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type\n"
           , "type Positive is a record{data of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}} end type"
           ]
-    checked (compile (declarations++"law selected is definition: Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} = Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} end end")) $ \candidate -> do
+    checked (compile (declarations++"law selected is definition: Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} = Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} end definition end law\n")) $ \candidate -> do
       checkOutcomes 64 candidate
       let once=normalizeProgramRecords candidate
       (once >>= normalizeProgramRecords) `shouldBe` once
-    compile (declarations++"function invalid (ignored of type ()) -> Positive is Positive record{data = record{box = Capsule record{payload = record{value = 0}}}} end function") `shouldSatisfy` isLeft
+    compile (declarations++"function invalid (ignored of type ()) -> Positive is Positive record{data = record{box = Capsule record{payload = record{value = 0}}}} end function\n") `shouldSatisfy` isLeft
   it "admits valid constructors whose intrinsic refinement reads generic nominal storage" $ do
     checked (compile (unlines
-      [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type"
+      [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type\n"
       , "type Positive is a record{data of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}} end type"
-      , "function positive (ignored of type ()) -> Positive is Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} end function"
-      , "law selected is definition: positive () = positive () end end"
-      ])) (checkOutcomes 64)
+      , "function positive (ignored of type ()) -> Positive is Positive record{data = record{box = Capsule record{payload = record{value = 1}}}} end function\n"
+      , "law selected is definition: positive () = positive () end definition end law" ])) (checkOutcomes 64)
   it "admits generic nominal field refinements in structural function inputs" $ do
     checked (compile (unlines
-      [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type"
+      [ "type Capsule (a of type Type) is a record{payload of type record{value of type a}} end type\n"
       , "function value (input of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}) -> Integer is input.box.payload.value end function"
-      , "law selected is definition: for all (input of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}) => value input > 0 end end"
+      , "law selected is definition: for all (input of type record{box of type (v of type Capsule Integer where v.payload.value > 0)}) => value input > 0 end for all end definition"
       , "expect value input = expected in table (input, expected):"
       , "row record{box = Capsule record{payload = record{value = 1}}}, 1"
       , "row record{box = Capsule record{payload = record{value = 3}}}, 3"
-      , "end end"
-      ])) (checkOutcomes 64)
+      , "end table end law" ])) (checkOutcomes 64)
   it "checks named-record literal fields by label inside generic payload tables" $ do
     let declarations=unlines
-          [ "type Customer is a record{code of type UInt8 note of type Text} end type"
-          , "type Envelope (a of type Type) is a record{payload of type record{value of type a}} end type"
+          [ "type Customer is a record{code of type UInt8 note of type Text} end type\n"
+          , "type Envelope (a of type Type) is a record{payload of type record{value of type a}} end type\n"
           , "function note (wrapped of type Envelope Customer) -> Text is wrapped.payload.value.note end function"
-          , "law notes is definition: for all (wrapped of type Envelope Customer) => note wrapped = note wrapped end end"
+          , "law notes is definition: for all (wrapped of type Envelope Customer) => note wrapped = note wrapped end for all end definition"
           , "expect note wrapped = expected in table (wrapped, expected):"
           ]
-        row="row Envelope record{payload = record{value = Customer record{note = \"first\", code = 7}}}, \"first\"\nend end"
+        row="row Envelope record{payload = record{value = Customer record{note = \"first\", code = 7}}}, \"first\"\nend table end law"
     checked (compile (declarations++row)) (checkOutcomes 64)
     forM_ ["note = \"first\"","note = \"first\", code = 7, code = 8","note = \"first\", code = 7, extra = true"] $ \fields ->
-      compile (declarations++"row Envelope record{payload = record{value = Customer record{"++fields++"}}}, \"first\"\nend end") `shouldSatisfy` isLeft
+      compile (declarations++"row Envelope record{payload = record{value = Customer record{"++fields++"}}}, \"first\"\nend table end law") `shouldSatisfy` isLeft
   it "checks parcel measurements and label tables with intrinsic generic refinements" $
     forM_ [32,64] $ \bits -> checked
       (compileCoreCanonical bits S.defaultGeneration [S.Source "metadata.lawspec" metadataSource])
       (checkOutcomes bits)
   it "checks capabilities against completed constructor shapes" $ do
     let source field=unlines ["type Task is one of | Task of type record{"++field++"} end type",
-          "type Gate is a record{check of type record{task of type (value of type Task where value = value)}} end type"]
+          "type Gate is a record{check of type record{task of type (value of type Task where value = value)}} end type\n"]
     compile (source "value of type Integer") `shouldSatisfy` isRight
     compile (source "run of type (Integer -> Integer)") `shouldSatisfy` isLeft

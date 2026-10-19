@@ -54,10 +54,10 @@ A product, a type with one constructor, is a `data class` named after the type
 fields, so `when` is exhaustive without casts. For:
 
 ```lawspec fragment
-type Tree (a :: Type) is
-  Leaf value :: a
-  Branch children :: List (Tree a)
-end
+type Tree (a :: Type) is one of
+  Leaf  of type a
+  Branch  of type List (Tree a)
+end type
 
 echo :: Tree Int8 -> Tree Int8
 ```

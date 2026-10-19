@@ -1,6 +1,6 @@
 @@ src/main/kotlin/example/Indexed.kt
 <<<<<<<
-        if (value0 is Vec.VCons) Vec.VCons(value0.head, append(value0.tail, value1)) else value1
+        if (value0 is Vec.VCons) Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value0.value.head, append(value0.value.tail, value1))) else value1
 =======
-        if (value0 is Vec.VCons) append(value0.tail, value1) else value1
+        if (value0 is Vec.VCons) append(value0.value.tail, value1) else value1
 >>>>>>>

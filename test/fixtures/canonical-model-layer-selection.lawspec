@@ -36,15 +36,15 @@ actor account :: Account by Int64 is
   on balance by modelBalance
   on close by modelClose
   invariant solvent
-end
+end actor
 
 -- Implementation code uses the generated typed actor: depositTwice starts an
 -- account and deposits from two callers at once.
 depositTwice :: UInt8 -> Int64
 
 law "|two callers' deposits both land| is
-  definition : for all (x :: UInt8) => depositTwice x = 2 * x end end
-end
+  definition : for all (x :: UInt8) => depositTwice x = 2 * x end for all end definition
+end law
 
 -- A supervisor starts its actors and restarts them after a crash: one for
 -- one restarts only the actor that crashed. The account restarts from its
@@ -53,22 +53,22 @@ supervisor bank is
   one for one
   at most 3 restarts in 5s
   permanent account
-end
+end supervisor
 
 -- survivesCrash starts the bank, deposits, crashes the account, and reads
 -- its balance through the same handle.
 survivesCrash :: UInt8 -> Int64
 
 law "|a crashed account keeps its balance| is
-  definition : for all (x :: UInt8) => survivesCrash x = x end end
-end
+  definition : for all (x :: UInt8) => survivesCrash x = x end for all end definition
+end law
 
 -- A scenario runs the actor's messages from processes that talk over
 -- channels. Some runs crash one process at a random point: a receive from a
 -- process that failed runs its or else instead of waiting forever.
 protocol Receipt is
   send Int64
-end
+end protocol
 
 scenario `a deposit's receipt, or the balance if the teller fails` in account is
   channel receipt :: Receipt
@@ -78,10 +78,10 @@ scenario `a deposit's receipt, or the balance if the teller fails` in account is
   with
     receive receipt m or else
       balance
-    end
+    end or else
     expect m = 5
-  end
-end
+  end par
+end scenario
 
 -- A mailbox has many senders and one receiver: two tellers report their
 -- deposits to one auditor, who receives both reports.
@@ -96,5 +96,6 @@ scenario `two tellers report to one auditor` in account is
   with
     receive reports first
     receive reports second
-  end
-end
+  end par
+end scenario
+end unit

@@ -21,42 +21,43 @@ law "|first arrivals determine iteration| is
         if reverse then [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")]
         else [float64Bits("3ff0000000000000"), float64Bits("4000000000000000")]
         end if
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|membership ignores iteration order| is
   definition:
     for all (reverse of type Bool) =>
       arrivals reverse must be arrivals (not reverse)
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|an existing arrival is a member| is
   definition:
     for all (reverse of type Bool) =>
       prelude.member float64Bits("3ff0000000000000") (arrivals reverse) must be true
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|equal duplicates do not increase size| is
   definition:
-    for all (reverse of type Bool) => prelude.size (arrivals reverse) must be 2 end
-  end
-end
+    for all (reverse of type Bool) => prelude.size (arrivals reverse) must be 2 end for all
+  end definition
+end law
 
 law "|ordered sets retain portable sorted iteration| is
   definition:
-    for all (reverse of type Bool) => prelude.toList (ordered reverse) must be [1, 2] end
-  end
-end
+    for all (reverse of type Bool) => prelude.toList (ordered reverse) must be [1, 2] end for all
+  end definition
+end law
 
 law "|NaN remains unequal to a stored NaN| is
   definition:
     for all (unused of type Bool) =>
       prelude.member float64Bits("7ff8000000000001") (prelude.setOf [float64Bits("7ff8000000000001")]) must be false
-    end
-  end
-end
+    end for all
+  end definition
+end law
+end unit

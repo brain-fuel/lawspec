@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
 
 const content = await readFile(new URL('../../test/fixtures/canonical-prelude-names.lawspec', import.meta.url), 'utf8');
-const request = (machineBits, layers, source = content) => ({schemaVersion: 5, languageProfile: '1.0-rc.1',
+const request = (machineBits, layers, source = content) => ({schemaVersion: 5, languageProfile: '1.0-rc.2',
   machineBits, verification: {layers}, sources: [{path: 'prelude-names.lawspec', content: source}]});
 
 test('unqualified prelude names keep checked obligations, optional evidence and formatting', async () => {
@@ -29,24 +29,53 @@ test('unqualified prelude names keep checked obligations, optional evidence and 
 test('prelude fallback preserves scopes, explicit-import ambiguity and mandatory rejection', async () => {
   const compiler = await createCompiler();
   const cases = [
-    ['type Regex is one of | OwnRegex end type\ntype Duration is one of | OwnDuration end type\ntype RetryDecision is one of | OwnRetry end type\nlaw separate is definition: sameItems [true] [true] and toMicroseconds (seconds 1) = 1000000 and OwnRegex = OwnRegex and OwnDuration = OwnDuration and OwnRetry = OwnRetry end end', true],
-    ['type Duration is one of | Own end type\nfunction invalid (unused :: Bool) -> Duration is seconds 1 end function', false],
-    ['function length (value :: Bool) -> Bool is not value end function\nlaw local is definition: length true = false end end', true],
-    ['function includes (value :: a) (items :: List a) -> Bool is member value items end function', false],
-    ['function includes (value :: a) (items :: List a) -> Bool requires Eq a is member value items end function', true],
-    ['function selected (value :: a) -> Bool is true end function\nfunction scan (items :: List a) -> Bool is any selected items end function', true],
-    ['function invalid (unused :: Bool) -> Bool is member (1 / 0) ([] :: List Integer) end function', false],
-    ['type Choice is one of | Right of type Bool end type\nfunction selected (value :: Bool) -> Bool is value end function\nfunction invalid (value :: Bool) -> Bool is bind (Right value) selected end function', false],
-    ['law invalid is definition: incompleteSearch () = true end end', false],
+    [`type Regex is one of | OwnRegex end type
+type Duration is one of | OwnDuration end type
+type RetryDecision is one of | OwnRetry end type
+law separate is definition: sameItems [true] [true] and toMicroseconds (seconds 1) = 1000000 and OwnRegex = OwnRegex and OwnDuration = OwnDuration and OwnRetry = OwnRetry end definition end law
+`, true],
+    [`type Duration is one of | Own end type
+function invalid (unused :: Bool) -> Duration is seconds 1 end function
+`, false],
+    [`function length (value :: Bool) -> Bool is not value end function
+law local is definition: length true = false end definition end law
+`, true],
+    [`function includes (value :: a) (items :: List a) -> Bool is member value items end function
+`, false],
+    [`function includes (value :: a) (items :: List a) -> Bool requires Eq a is member value items end function
+`, true],
+    [`function selected (value :: a) -> Bool is true end function
+function scan (items :: List a) -> Bool is any selected items end function
+`, true],
+    [`function invalid (unused :: Bool) -> Bool is member (1 / 0) ([] :: List Integer) end function
+`, false],
+    [`type Choice is one of | Right of type Bool end type
+function selected (value :: Bool) -> Bool is value end function
+function invalid (value :: Bool) -> Bool is bind (Right value) selected end function
+`, false],
+    [`law invalid is definition: incompleteSearch () = true end definition end law
+`, false],
   ];
   for (const [body, valid] of cases) {
-    const result = await compiler.check(request(64, [], `unit scopes\n${body}`));
+    const result = await compiler.check(request(64, [], `unit scopes\n${body}
+end unit
+`));
     assert.equal(result.diagnostics.length === 0, valid, JSON.stringify(result.diagnostics));
     if (valid) assert.equal(result.verification.intrinsicDefinitionChecks, true);
   }
   const result = await compiler.check({...request(64, []), sources: [
-    ...['first', 'second'].map(name => ({path: name + '.lawspec', content: `unit ${name}\nfunction length (value :: Bool) -> Bool is value end function`})),
-    {path: 'use.lawspec', content: 'unit use\nimport first as first (length)\nimport second as second (length)\nlaw ambiguous is definition: length true = true end end'},
+    ...['first', 'second'].map(name => ({path: name + '.lawspec', content: `unit ${name}
+
+function length (value :: Bool) -> Bool is value end function
+
+end unit
+`})),
+    {path: 'use.lawspec', content: `unit use
+import first as first (length)
+import second as second (length)
+law ambiguous is definition: length true = true end definition end law
+end unit
+`},
   ]});
   assert.ok(result.diagnostics.some(diagnostic => /imported from more than one unit/.test(diagnostic.message)));
 });

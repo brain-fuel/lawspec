@@ -23,6 +23,7 @@ answerable to it:
 ```lawspec
 unit example.increment
 successor :: (x :: Int8) -> (result :: Integer where result == x + 1)
+end unit
 ```
 
 An adapter that computes in `Int8` and wraps fails the contract at `127`. An

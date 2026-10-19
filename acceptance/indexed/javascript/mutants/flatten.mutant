@@ -1,6 +1,6 @@
 @@ src/example/indexed.mjs
 <<<<<<<
-  const right = new data.VecVCons(value0.value, flatten(value0.right));
+  const right = new data.VecVCons(new data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value0.value.value, flatten(value0.value.right)));
 =======
-  const right = new data.VecVCons(value0.value, new data.VecVNil());
+  const right = new data.VecVCons(new data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value0.value.value, new data.VecVNil()));
 >>>>>>>

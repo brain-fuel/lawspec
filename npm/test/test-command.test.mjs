@@ -529,7 +529,8 @@ test('native model slots use exact selectors and never accept a similarly prefix
 test('a grouped native model completion covers its included checks without scheduling duplicate methods',()=>{
   const base={...law(0,'src/test/java/example/ActorsModelTest.java','example.actors::model account'),
     unit:'example.actors',name:'modelAccount',kind:'model',scope:'example.ActorsModelTest'};
-  const entries=['sequential','parallel','scenario::receipt'].map(role=>({...base,law:'example.actors::model::account::'+role}));
+  const entries=['sequential','parallel',`scenario::receipt
+`].map(role=>({...base,law:'example.actors::model::account::'+role}));
   const [run]=invocations({language:'java'},entries);
   assert.equal(run.args.find(arg=>arg.startsWith('-Dtest=')),'-Dtest=example.ActorsModelTest#modelAccount');
   assert.deepEqual(run.ran({name:'modelAccount',classname:'example.ActorsModelTest',status:'passed'}),entries);

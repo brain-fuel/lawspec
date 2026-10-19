@@ -1,7 +1,7 @@
 expect: odd amounts are declined, and say why
 @@ src/example/failures.clj
 <<<<<<<
-               (odd? amount) {:lawspec/tag :decision/decline :reason "an odd amount"}
+               (odd? amount) {:lawspec/tag :decision/decline :value "an odd amount"}
 =======
-               (and (odd? amount) (> amount 50000)) {:lawspec/tag :decision/decline :reason "an odd amount"}
+               (and (odd? amount) (> amount 50000)) {:lawspec/tag :decision/decline :value "an odd amount"}
 >>>>>>>

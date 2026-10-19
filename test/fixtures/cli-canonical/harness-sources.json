@@ -3,72 +3,72 @@
     "suite": "beam-selection",
     "path": "beam-selection-a.lawspec",
     "fixture": "beam-selection-a.lawspec",
-    "legacySource": "acceptance/beam-selection/a.lawspec"
+    "acceptanceSource": "acceptance/beam-selection/a.lawspec"
   },
   {
     "suite": "beam-selection",
     "path": "beam-selection-b.lawspec",
     "fixture": "beam-selection-b.lawspec",
-    "legacySource": "acceptance/beam-selection/b.lawspec"
+    "acceptanceSource": "acceptance/beam-selection/b.lawspec"
   },
   {
     "suite": "beam-strategies",
     "path": "beam-strategies-strategies.lawspec",
     "fixture": "beam-strategies-strategies.lawspec",
-    "legacySource": "acceptance/beam-strategies/strategies.lawspec"
+    "acceptanceSource": "acceptance/beam-strategies/strategies.lawspec"
   },
   {
     "suite": "beam-adequacy",
     "path": "beam-adequacy-adequacy.lawspec",
     "fixture": "beam-adequacy-adequacy.lawspec",
-    "legacySource": "acceptance/beam-adequacy/adequacy.lawspec"
+    "acceptanceSource": "acceptance/beam-adequacy/adequacy.lawspec"
   },
   {
     "suite": "beam-target",
     "path": "beam-target-target.lawspec",
     "fixture": "beam-target-target.lawspec",
-    "legacySource": "acceptance/beam-target/target.lawspec"
+    "acceptanceSource": "acceptance/beam-target/target.lawspec"
   },
   {
     "suite": "beam-repetition",
     "path": "beam-repetition-repetition.lawspec",
     "fixture": "beam-repetition-repetition.lawspec",
-    "legacySource": "acceptance/beam-repetition/repetition.lawspec"
+    "acceptanceSource": "acceptance/beam-repetition/repetition.lawspec"
   },
   {
     "suite": "beam-benchmarks",
     "path": "beam-benchmarks-benchmarks.lawspec",
     "fixture": "beam-benchmarks-benchmarks.lawspec",
-    "legacySource": "acceptance/beam-benchmarks/benchmarks.lawspec"
+    "acceptanceSource": "acceptance/beam-benchmarks/benchmarks.lawspec"
   },
   {
     "suite": "beam-benchmarks",
     "path": "beam-benchmarks-only.lawspec",
     "fixture": "beam-benchmarks-only.lawspec",
-    "legacySource": "acceptance/beam-benchmarks/only.lawspec"
+    "acceptanceSource": "acceptance/beam-benchmarks/only.lawspec"
   },
   {
     "suite": "beam-resource-owners",
     "path": "beam-resource-owners-owners.lawspec",
     "fixture": "beam-resource-owners-owners.lawspec",
-    "legacySource": "acceptance/beam-resource-owners/owners.lawspec"
+    "acceptanceSource": "acceptance/beam-resource-owners/owners.lawspec"
   },
   {
     "suite": "scheduling",
     "path": "scheduling-scheduling_order.lawspec",
     "fixture": "scheduling-scheduling_order.lawspec",
-    "legacySource": "examples/specs/scheduling_order.lawspec"
+    "acceptanceSource": "examples/specs/scheduling_order.lawspec"
   },
   {
     "suite": "scheduling",
     "path": "scheduling-scheduling_overlap.lawspec",
     "fixture": "scheduling-scheduling_overlap.lawspec",
-    "legacySource": "examples/specs/scheduling_overlap.lawspec"
+    "acceptanceSource": "examples/specs/scheduling_overlap.lawspec"
   },
   {
     "suite": "tables",
     "path": "tables-tables.lawspec",
     "fixture": "tables-tables.lawspec",
-    "legacySource": "examples/specs/tables.lawspec"
+    "acceptanceSource": "examples/specs/tables.lawspec"
   }
 ]

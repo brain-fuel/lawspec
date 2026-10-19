@@ -6,13 +6,14 @@ unit example.sequencing
 -- pause notes when it is called (when the suite asks it to) and gives true.
 pause :: Int32 -> Bool
 
-law "|the first pause ends| is definition : pause 1 = true end end
-law "|the second pause ends| is definition : pause 2 = true end end
-law "|the third pause ends| is definition : pause 3 = true end end
-law "|the fourth pause ends| is definition : pause 4 = true end end
-law "|the fifth pause ends| is definition : pause 5 = true end end
-law "|the sixth pause ends| is definition : pause 6 = true end end
+law "|the first pause ends| is definition : pause 1 = true end definition end law
+law "|the second pause ends| is definition : pause 2 = true end definition end law
+law "|the third pause ends| is definition : pause 3 = true end definition end law
+law "|the fourth pause ends| is definition : pause 4 = true end definition end law
+law "|the fifth pause ends| is definition : pause 5 = true end definition end law
+law "|the sixth pause ends| is definition : pause 6 = true end definition end law
 
 harness example.sequencing.testing for example.sequencing is
   order random
-end
+end harness
+end unit

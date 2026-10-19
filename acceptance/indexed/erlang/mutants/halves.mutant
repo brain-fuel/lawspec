@@ -1,6 +1,6 @@
 @@ src/example_arithmetic.erl
 <<<<<<<
-{halves, Xs, Xs}
+{halves, {record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d, Xs, Xs}}
 =======
-{halves, Xs, {row_cell, 0, Xs}}
+{halves, {record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d, {row_cell, {record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f, 0, Xs}}, Xs}}
 >>>>>>>

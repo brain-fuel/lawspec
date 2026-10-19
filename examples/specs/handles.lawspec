@@ -17,4 +17,5 @@ model jobs :: shared Jobs behaves like Queue Int32 is
   submit as offer
   take as poll
   pending as size
-end
+end model
+end unit

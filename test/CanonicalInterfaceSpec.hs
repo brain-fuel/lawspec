@@ -1,5 +1,4 @@
--- | Ordinary hosts have one canonical interface. The old grammar is available
--- only through the explicit, reporting-only migration boundary.
+-- | Ordinary hosts share one strict current interface.
 module CanonicalInterfaceSpec (test_canonicalInterface) where
 
 import Control.Monad (forM_)
@@ -18,8 +17,8 @@ field _ _ = Null
 items (Array values) = V.toList values
 items _ = []
 diagnostics = items . field "diagnostics"
-source body = object ["path" .= ("boundary.lawspec" :: String), "content" .= ("unit boundary\n" ++ body)]
-profile = ["languageProfile" .= ("1.0-rc.1" :: String)]
+source body = object ["path" .= ("boundary.lawspec" :: String), "content" .= ("unit boundary\n\n" ++ body ++ "\nend unit\n")]
+profile = ["languageProfile" .= ("1.0-rc.2" :: String)]
 layers names = object ["layers" .= (names :: [String])]
 
 -- ref:REQ-compiler-api-contract
@@ -32,7 +31,7 @@ test_canonicalInterface = describe "canonical interface cutoff" $ do
               "method" .= (method :: String), "sources" .= [source ""], "target" .= ("python" :: String)])
         field "schemaVersion" result `shouldBe` Number 5
         map (field "code") (diagnostics result) `shouldBe` [String "request"]
-        show (diagnostics result) `shouldSatisfy` isInfixOf "migrationBaseline"
+        show (diagnostics result) `shouldSatisfy` isInfixOf "schemaVersion 5"
   it "requires the exact explicit profile even when the schema is omitted" $ do
     let base = ["sources" .= [source ""]]
     forM_ [[], ["languageProfile" .= Null], ["languageProfile" .= ("0.24" :: String)]] $ \extra ->
@@ -40,7 +39,7 @@ test_canonicalInterface = describe "canonical interface cutoff" $ do
     diagnostics (call (base ++ profile)) `shouldBe` []
     diagnostics (call (base ++ profile ++ ["schemaVersion" .= (5 :: Int)])) `shouldBe` []
   it "defaults to no selected law checks and does not claim verification" $ do
-    let body = "law falseClaim is definition: false end end"
+    let body = "law falseClaim is definition: false end definition end law\n"
     forM_ [[], ["verification" .= layers []]] $ \extra -> do
       let result = call (profile ++ ["sources" .= [source body]] ++ extra)
       diagnostics result `shouldBe` []
@@ -53,22 +52,19 @@ test_canonicalInterface = describe "canonical interface cutoff" $ do
     diagnostics (call (profile ++ ["sources" .= [source body], "verification" .= layers ["exhaustive"]]))
       `shouldNotBe` []
   it "retains mandatory definition admission without selected law checks" $
-    forM_ [ "function loops (x :: Integer) -> Integer is loops x end function"
-          , "function unsafe (x :: Integer) -> Integer is prelude.quot x 0 end function" ] $ \body -> do
+    forM_ [ "function loops (x :: Integer) -> Integer is loops x end function\n"
+          , "function unsafe (x :: Integer) -> Integer is prelude.quot x 0 end function\n" ] $ \body -> do
       let result = call (profile ++ ["sources" .= [source body], "verification" .= layers []])
       diagnostics result `shouldNotBe` []
       map (field "code") (diagnostics result) `shouldNotContain` [String "request", String "parse"]
-  it "admits legacy grammar only through an explicit migration request" $ do
-    let input = ["sources" .= [source "definition twice (x :: Integer) :: Integer is x + x end"]]
-        ordinary = call (profile ++ input)
-        baseline = call (profile ++ input ++ ["method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String)])
-    diagnostics ordinary `shouldNotBe` []
-    diagnostics baseline `shouldBe` []
-    items (field "sourceSyntax" baseline) `shouldNotBe` []
-    field "files" baseline `shouldBe` toJSON ([] :: [Value])
-    field "baselineGeneration" baseline `shouldBe` Null
-    map (field "code") (diagnostics (call (profile ++ input ++ ["method" .= ("migrationBaseline" :: String)])))
-      `shouldBe` [String "request"]
+  it "rejects legacy grammar without a compatibility entry point" $ do
+    let legacy="definition twice (x :: Integer) :: Integer is x + x end"
+        input=["sources" .= [source legacy]]
+    forM_ ["check","expand","format","planGeneration"] $ \method -> do
+      let result=call (profile ++ input ++ ["method" .= (method::String),"target" .= ("python"::String),"from" .= ("0.24"::String)])
+      diagnostics result `shouldNotBe` []
+    let removed=call (profile ++ ["sources" .= [source ""],"method" .= ("migrationBaseline"::String)])
+    map (field "code") (diagnostics removed) `shouldBe` [String "request"]
   it "accepts native bindings through the same canonical schema" $ do
     let result = call (profile ++ ["sources" .= [source "echo of type Int8 -> Int8"],
           "nativeBindings" .= object ["functions" .= [object

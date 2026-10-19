@@ -25,19 +25,21 @@ fee :: Int32
 laws
 law "|a receipt is for the amount captured| is
   definition : for all (cents :: Int32) => capture cents = Receipt record{ cents
-        = cents} end end
-end
+        = cents} end for all end definition
+end law
 law "|the fee is never negative| is
-  definition : fee >= 0 end
-end
-end
+  definition : fee >= 0 end definition
+end law
+
+end laws
+end ability
 
 handler fakeGateway for Gateway is
-authorize cents is if cents <= 10000 then Approved cents else Declined end if
-end
-capture cents is Receipt record{ cents = cents} end
-fee is 30 end
-end
+ operation authorize cents is if cents <= 10000 then Approved cents else Declined end if
+end operation
+ operation capture cents is Receipt record{ cents = cents} end operation
+ operation fee is 30 end operation
+end handler
 
 -- A checked definition that uses Gateway. LawSpec infers that.
 procedure checkout (cents :: Int32) -> Bool is
@@ -65,20 +67,27 @@ procedure checkout (cents :: Int32) -> Bool is
     law "|large payments fail| using fakeGateway is
       definition :
         for all (cents :: Int32 where cents > 100000) => prelude.attempt (pay
-          cents) = Left TooLarge end
-      end
-    end
+          cents) = Left TooLarge end for all
+      end definition
+    end law
+
+end unit
 ```
 
 ## Declaring an ability
 
 ```lawspec fragment
 ability Name is
-  operation :: Type
+  operationName :: Type
   ...
-laws
-  law ...
-end
+  laws
+    law requirement is
+      definition:
+        ...
+      end definition
+    end law
+  end laws
+end ability
 ```
 
 - An ability's name starts with an uppercase letter. An operation's name
@@ -180,7 +189,7 @@ procedure buy (cents :: Int32) -> Bool uses Gateway, Log is
   note "buying";
   let approved = checkout cents in
   note "bought";
-  approved
+  approved end let
 end procedure
 ```
 

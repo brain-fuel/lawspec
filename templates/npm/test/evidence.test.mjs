@@ -12,22 +12,25 @@ const cli = new URL('../bin/lawspec.mjs', import.meta.url).pathname;
 
 const spec = `unit shop.evidence
 
+
 function twice (x :: Int32) -> Integer is x + x end function
 flipFlag :: Bool -> Bool
 normalize :: Int32 -> Int32
 unused :: Int8 -> Int8
 
 law doubling is
-  definition: for all (x :: Int32) => twice x = x * 2 end end
-end
+  definition: for all (x :: Int32) => twice x = x * 2 end for all end definition
+end law
 
 law flippingTwice is
-  definition: for all (b :: Bool) => flipFlag (flipFlag b) = b end end
-end
+  definition: for all (b :: Bool) => flipFlag (flipFlag b) = b end for all end definition
+end law
 
 law normalizing is
-  definition: for all (x :: Int32) => normalize (normalize x) = normalize x end end
-end
+  definition: for all (x :: Int32) => normalize (normalize x) = normalize x end for all end definition
+end law
+
+end unit
 `;
 
 async function project(t, source) {
@@ -35,7 +38,7 @@ async function project(t, source) {
   t.after(() => rm(root, {recursive: true, force: true}));
   await mkdir(path.join(root, 'laws'));
   await writeFile(path.join(root, 'laws', 'evidence.lawspec'), source);
-  await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 2, languageProfile: '1.0-rc.1', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']}, sources: ['laws'], targets: []}));
+  await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 2, languageProfile: '1.0-rc.2', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']}, sources: ['laws'], targets: []}));
   return root;
 }
 
@@ -69,8 +72,13 @@ test('evidence filters by unit or declaration', async t => {
 });
 
 test('a false law over definitions with a finite domain is refuted', async t => {
-  const root = await project(t, 'unit shop.refuted\nfunction inc (x :: Int8) -> Integer is x + 1 end function\n' +
-    'law alwaysPositive is definition: for all (x :: Int8) => inc x > 0 end end end\n');
+  const root = await project(t, `unit shop.refuted
+
+function inc (x :: Int8) -> Integer is x + 1 end function
+law alwaysPositive is definition: for all (x :: Int8) => inc x > 0 end for all end definition end law
+
+end unit
+`);
   const result = JSON.parse(await lawspec(root, 'check', '--json'));
   assert.equal(result.diagnostics[0].code, 'refuted');
   assert.match(result.diagnostics[0].message, /law alwaysPositive is false for x = -128/);
@@ -81,10 +89,11 @@ test('a false law over definitions with a finite domain is refuted', async t => 
 // no status.
 const attestedSpec = `unit shop.orders
 
+
 type Receipt is a record{cents :: Int32} end type
 ability Gateway is
   capture :: Int32 -> Receipt
-end
+end ability
 normalize :: Int32 -> Int32
 function twice (x :: Int32) -> Integer is x + x end function
 procedure checkout (cents :: Int32) -> Bool uses Gateway is
@@ -94,14 +103,16 @@ procedure checkout (cents :: Int32) -> Bool uses Gateway is
 end procedure
 
 law checkoutCharges is
-  definition: for all (cents :: Int32) => checkout cents = true end end
-end
+  definition: for all (cents :: Int32) => checkout cents = true end for all end definition
+end law
 law normalizing is
-  definition: for all (x :: Int32) => normalize (normalize x) = normalize x end end
-end
+  definition: for all (x :: Int32) => normalize (normalize x) = normalize x end for all end definition
+end law
 law doubling is
-  definition: for all (x :: Int32) => twice x = x * 2 end end
-end
+  definition: for all (x :: Int32) => twice x = x * 2 end for all end definition
+end law
+
+end unit
 `;
 
 const attestation = (id, gateway = {kind: 'stand-in', stand_in: {product: 'acme/gateway', version: '0.1.0', conformance: '3'}}) => ({
@@ -141,7 +152,7 @@ test('evidence --attestation reports which tested laws ran against stand-ins, ch
 
 test('lawspec.json names an attestation, and a malformed one is rejected', async t => {
   const root = await project(t, attestedSpec);
-  await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 2, languageProfile: '1.0-rc.1', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']}, sources: ['laws'], targets: [], attestation: 'staging.json'}));
+  await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 2, languageProfile: '1.0-rc.2', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']}, sources: ['laws'], targets: [], attestation: 'staging.json'}));
   await writeFile(path.join(root, 'staging.json'), JSON.stringify(attestation('run-2')));
   const evidence = JSON.parse(await lawspec(root, 'evidence', '--json'));
   assert.equal(evidence.find(item => item.declaration === 'shop.orders::law::checkoutCharges').plannedEnvironmentRun.id, 'run-2');
@@ -180,7 +191,7 @@ test('evidence shows the attested run a law last passed in, from lawspec test re
 test('no selected layers are visible in check and evidence without a verification claim', async t => {
   const root = await project(t, spec);
   await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 2,
-    languageProfile: '1.0-rc.1', verification: {layers: []}, sources: ['laws'], targets: []}));
+    languageProfile: '1.0-rc.2', verification: {layers: []}, sources: ['laws'], targets: []}));
   assert.match(await lawspec(root, 'check'), /Intrinsic definition checks passed\. No law checks selected\./);
   const evidence = JSON.parse(await lawspec(root, 'evidence', '--json'));
   assert.ok(evidence.filter(item => item.stage === 'law').every(item => item.status === 'not-verified'));

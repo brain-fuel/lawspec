@@ -10,11 +10,11 @@ export Band
 -- declare a Currency or a Usd of its own.
 type Currency is one of | Usd | Eur end type
 
-refinement Cents is (c :: Int64 where c >= 0 && c <= 100000000) end
+refinement Cents is (c :: Int64 where c >= 0 && c <= 100000000) end refinement
 
 type Money is a record{  currency :: Currency cents :: Cents} end type
 
-wrapper Quantity is Int32 where value >= 1 && value <= 1000 end
+wrapper Quantity is Int32 where value >= 1 && value <= 1000 end wrapper
 
 function currencyOf (m :: Money) -> Currency is
   first matching case of m : when Money record{ currency = c , cents = n} then c
@@ -32,15 +32,15 @@ function dutyOf (b :: Band) -> Int64 is tax.rateOf b end function
 -- Generic laws are templates: an importer applies them to its own adapters.
 law "|commutative| (f :: a -> a -> a) requires Eq a is
   definition :
-    for all (x :: a) (y :: a) => f x y = f y x end
-  end
-end
+    for all (x :: a) (y :: a) => f x y = f y x end for all
+  end definition
+end law
 
 law "|idempotent| (f :: a -> a) requires Eq a is
   definition :
-    for all (x :: a) => f (f x) = f x end
-  end
-end
+    for all (x :: a) => f (f x) = f x end for all
+  end definition
+end law
 
 -- A published contract: every project that depends on this package implements
 -- convert and is tested against these laws.
@@ -48,12 +48,13 @@ convert :: Currency -> Money -> Money
 
 law "|conversion targets the requested currency| is
   definition :
-    for all (c :: Currency) (m :: Money) => currencyOf (convert c m) = c end
-  end
-end
+    for all (c :: Currency) (m :: Money) => currencyOf (convert c m) = c end for all
+  end definition
+end law
 
 law "|converting to the same currency changes nothing| is
   definition :
-    for all (m :: Money) => convert (currencyOf m) m = m end
-  end
-end
+    for all (m :: Money) => convert (currencyOf m) m = m end for all
+  end definition
+end law
+end unit

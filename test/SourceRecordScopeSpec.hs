@@ -180,10 +180,14 @@ test_recordTypeScopesPreserveDependencies = describe "source record type scopes"
     let changed = R.substituteType M.empty (M.singleton "floor" (S.Var "width")) shape
     (decode (encode (S.Arrow shape changed)) :: S.Type) `shouldBe` S.Arrow shape changed
   it "resolves imported types and refinements without importing field bindings" $ do
-    let provider = parsed (unlines ["unit measures", "type Token is Token end",
-          "definition threshold (input :: Integer) :: Integer is input end", "definition width (input :: Integer) :: Integer is input end",
-          "refinement Above (lower :: Integer) is (v :: Integer where v > lower) end"])
-        consumer = parsed "unit drawing\nf :: Unit -> Unit\n"
+    let provider = parsed (unlines [ "unit measures"
+                                    ++ "\n", ""
+                                   , "type Token is one of Token end type\n"
+                                   , "function threshold (input :: Integer) -> Integer is input end function\n"
+                                   , "function width (input :: Integer) -> Integer is input end function\n"
+                                   , "refinement Above (lower :: Integer) is (v :: Integer where v > lower) end refinement"
+                                   , "\nend unit" ])
+        consumer = parsed "unit drawing\n\nf :: Unit -> Unit\nend unit\n"
         ty = S.Record [field "object" (S.Named "Token"),field "width" integer,
           field "height" (above (S.Binary "+" (S.Var "width") (S.Apply (S.Var "threshold") (S.Number 10)))),
           field "larger" (S.RefinementApp "Above" [S.ValueArgument (S.Var "width")]),
@@ -204,7 +208,7 @@ test_recordTypeScopesPreserveDependencies = describe "source record type scopes"
         _ -> expectationFailure "lost resolved record fields"
       Right _ -> expectationFailure "unexpected resolved units"
   it "leaves forward field dependencies free for declaration validation" $ do
-    let unit = parsed "unit drawing\nf :: Unit -> Unit\n"
+    let unit = parsed "unit drawing\n\nf :: Unit -> Unit\nend unit\n"
         ty = S.Record [field "first" (above (S.Var "later")),field "later" integer]
     case Imports.resolveImports (\_ _ -> Nothing) [(unit{S.functions=[("f",ty)]},[])] of
       Left diagnostics -> expectationFailure (show diagnostics)

@@ -1,73 +1,4 @@
-import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, MigrationSemanticSnapshot, MigrationInputDomain, CheckRequest, MigrationBaselineRequest, MigrationComparisonRequest, MigrationPayloadComparison, ObligationEvidence, MigrationBindingRequest, NativeFieldBinding} from '../../npm/index.js';
-
-export function migrationDigests(result: Result): string[] {
-  const snapshot: MigrationSemanticSnapshot | undefined = result.migrationSemantics;
-  if (!snapshot || snapshot.status === 'unavailable') return [];
-  const version: 1 = snapshot.version;
-  const algorithm: 'sha256' = snapshot.algorithm;
-  const machineBits: 32 | 64 = snapshot.machineBits;
-  const policy: ('nonempty' | 'universal')[] = snapshot.domainPolicies.map(item => item.policy);
-  const formalCounts: number[] = snapshot.domainPolicies.map(item => item.formalParameterCount ?? 0);
-  void version; void algorithm; void machineBits; void policy; void formalCounts;
-  const templates = snapshot.sourceTemplates;
-  const sourceDigests = templates?.status === 'available'
-    ? [templates.declarationsDigest, templates.definitionTemplatesDigest, templates.lawTemplatesDigest,
-      templates.lawBodiesDigest, ...templates.definitions.map(item => item.digest),
-      ...templates.laws.map(item => item.comparisonId)] : [];
-  const templateDomains = templates?.status === 'available' ? templates.inputDomains : undefined;
-  if (templateDomains) {
-    const evaluated: false = templateDomains.lawBodiesEvaluated;
-    const anchor: string = templateDomains.sourceTemplates.lawBodiesDigest;
-    const rows: MigrationInputDomain[] = templateDomains.domains;
-    void evaluated; void anchor; void rows;
-    // @ts-expect-error Domain evidence never represents completed law verification.
-    const verified: true = templateDomains.lawBodiesEvaluated;
-    void verified;
-  }
-  const inputDomains = snapshot.inputDomains;
-  const domainDigests = inputDomains?.status === 'available'
-    ? inputDomains.domains.map(domain => {
-      if (domain.status === 'inhabited') {
-        const values = domain.witness.map(binding => binding.value);
-        const uniformity: 'parameter-independent' | undefined = domain.uniformity;
-        const formalCount: number | undefined = domain.formalParameterCount;
-        void values; void uniformity; void formalCount;
-      } else if (domain.status === 'uniformly-inhabited') {
-        const complete: true = domain.complete;
-        const cases = domain.parameterCases.map(row => [row.parameters, row.witness]);
-        const uniformity: 'complete-finite-parameters' = domain.uniformity;
-        void complete; void cases; void uniformity;
-      } else if (domain.status === 'empty-parameters' || domain.status === 'parameter-counterexample') {
-        const complete: true = domain.complete;
-        void complete;
-      } else if (domain.status === 'empty') {
-        const complete: true = domain.complete;
-        void complete;
-        // @ts-expect-error A complete empty domain has no fabricated witness.
-        void domain.witness;
-      } else {
-        const complete: false = domain.complete;
-        const reason: string = domain.reason;
-        void complete; void reason;
-      }
-      return domain.domainDigest;
-    }) : [];
-  return [snapshot.programDigest, snapshot.definitionPlaneDigest, snapshot.lawBodiesDigest,
-    ...sourceDigests,
-    ...domainDigests,
-    ...snapshot.definitions.map(item => item.comparisonId + ':' + item.digest),
-    ...snapshot.contracts.map(item => item.digest), ...snapshot.dataTypes.map(item => item.digest)];
-}
-
-const captureRequest: CheckRequest = {schemaVersion: 5, languageProfile: '1.0-rc.1', sources: [], migrationSnapshot: true};
-// @ts-expect-error Snapshot capture requires an actual Boolean switch.
-const malformedCapture: CheckRequest = {sources: [], migrationSnapshot: 'yes'};
-// @ts-expect-error Unavailable snapshots cannot claim matching concrete Core.
-const malformedSnapshot: MigrationSemanticSnapshot = {status: 'unavailable', programDigest: 'digest'};
-void captureRequest; void malformedCapture; void malformedSnapshot;
-// @ts-expect-error An inhabited domain requires actual typed input witnesses.
-const missingInputWitness: MigrationInputDomain = {status: 'inhabited'};
-void missingInputWitness;
+import type {Expr, ExprNode, PayloadPredicate, DocumentaryReference, DocumentaryTarget, Law, DataTypeDeclaration, StructuralRecord, DeclarationSource, Unit, Result, CheckRequest, ObligationEvidence, NativeFieldBinding} from '../../npm/index.js';
 
 export function authoredNames(unit: Unit): string[] {
   return unit.declarations.flatMap(declaration => {
@@ -191,41 +122,6 @@ export function structuralRestrictions(declaration: DataTypeDeclaration): Expr[]
   return structure.fields.flatMap(field => field.predicates);
 }
 
-export function payloadFields(result: Result): string[] {
-  const value: MigrationPayloadComparison | undefined = result.migrationComparison;
-  if (!value || value.status === 'unavailable') return [];
-  const validated: false = value.validated;
-  const status: 'matched' | 'not-established' = value.executableTransport.status;
-  if ('copyValidated' in value.executableTransport) {
-    const validatedCopy: true = value.executableTransport.copyValidated;
-    const sourceDigest: string = value.executableTransport.sourceBeforeDigest;
-    const digest: string = value.executableTransport.after.programDigest;
-    void validatedCopy; void digest;
-  }
-  const dependencyStatus: 'not-established' = value.dependencyBehavior.status;
-  void validated; void status; void dependencyStatus;
-  return value.payloadShapes.changes.flatMap(change => {
-    if (change.status === 'not-established') return [change.reason];
-    return change.constructors.flatMap(constructor => {
-      if (constructor.kind === 'unchanged') return [];
-      if (constructor.kind === 'record-payload') {
-        const identity: string = constructor.recordType;
-        void identity;
-      }
-      return constructor.fields.map(field => field.label + ':' + field.fromIndex + '->' + field.toIndex);
-    });
-  });
-}
-const comparisonRequest: MigrationComparisonRequest = {schemaVersion: 5, languageProfile: '1.0-rc.1', from: '0.24',
-  sources: [], migrated: {languageProfile: '1.0-rc.1', sources: []}};
-// @ts-expect-error Each input requires an explicit profile; the legacy input cannot implicitly choose it for the canonical input.
-const missingComparisonProfile: MigrationComparisonRequest = {...comparisonRequest, migrated: {sources: []}};
-// @ts-expect-error The migrated input cannot request the old grammar schema.
-const wrongComparisonSchema: MigrationComparisonRequest = {...comparisonRequest, migrated: {languageProfile: '1.0-rc.1', sources: [], schemaVersion: 4}};
-// @ts-expect-error Unavailable comparisons cannot manufacture payload matches.
-const fabricatedComparison: MigrationPayloadComparison = {status: 'unavailable', payloadShapes: {status: 'matched'}};
-void comparisonRequest; void missingComparisonProfile; void wrongComparisonSchema; void fabricatedComparison;
-
 export function verificationSelection(result: Result): string | undefined {
   if (!result.verification) return undefined;
   const intrinsic: true = result.verification.intrinsicDefinitionChecks;
@@ -234,78 +130,6 @@ export function verificationSelection(result: Result): string | undefined {
   return selected;
 }
 
-export function sourceFieldMigrations(result: Result): string[] {
-  const fields = result.sourceFields;
-  if (!fields || fields.status === 'unavailable') return [];
-  const version: 1 = fields.version;
-  void version;
-  return fields.uses.map(use => {
-    const kind: 'field-access' | 'field-update' = use.kind;
-    const index: number = use.index;
-    const file: string = use.span.start.file;
-    void kind; void index; void file;
-    return use.constructor + ':' + use.field;
-  });
-}
-
-export function symbolicMigrationEvidence(result: Result): string[] {
-  const comparison = result.migrationComparison;
-  if (!comparison || comparison.status === 'unavailable') return [];
-  const identifiers: string[] = [];
-  const definition = comparison.definitionTemplates;
-  if (definition && 'typedCore' in definition) {
-    identifiers.push(definition.before.definitionTemplatesDigest, definition.interfaces.before);
-    const preserved: true = definition.originalsUnchanged;
-    const conformance: 'not-established' = definition.nativeConformance;
-    void preserved; void conformance;
-  }
-  const law = comparison.lawTemplates;
-  if (law && 'typedCore' in law) {
-    identifiers.push(law.after.lawTemplatesDigest, law.metadata.after);
-    const evaluated: false = law.lawBodiesEvaluated;
-    // @ts-expect-error Matching symbolic terms does not establish a verified law.
-    const proved: true = law.lawBodiesEvaluated;
-    void evaluated; void proved;
-  }
-  const unit = comparison.sourceUnits;
-  if (unit && 'metadata' in unit) {
-    identifiers.push(unit.metadata.before);
-    const payloads: 'matched' = unit.payloadShapes;
-    const definitions: 'matched' | 'not-established' = unit.definitions;
-    void payloads; void definitions;
-  }
-  return identifiers;
-}
-// @ts-expect-error Source-field metadata cannot silently claim an unknown version.
-const fabricatedSourceFields: NonNullable<Result['sourceFields']> = {status: 'available', version: 2, uses: []};
-void fabricatedSourceFields;
-
-export function nativeBindingMigration(result: Result): string[] {
-  const proposal = result.migrationBindings;
-  if (!proposal || proposal.status === 'unavailable') return [];
-  const version: 1 = proposal.version;
-  const nativeConformance: 'not-established' = proposal.nativeConformance;
-  const generation: 'not-established' = proposal.targetGeneration;
-  const originalDigest: string = proposal.originalBindingsDigest;
-  const obligations: ObligationEvidence[] = proposal.obligations.before;
-  // @ts-expect-error A configuration proposal is not evidence of native conformance.
-  const proved: 'proved' = proposal.nativeConformance;
-  void version; void generation; void originalDigest; void obligations; void proved;
-  return [proposal.target, nativeConformance, ...proposal.changes.flatMap(change => {
-    if (change.kind === 'single-payload-field') return [change.native];
-    return change.fields.map(field => field.nativeArgumentIndex + ':' + field.payloadPath.join('.'));
-  })];
-}
-
-const nativeMigrationRequest: MigrationBindingRequest = {...comparisonRequest, target: 'python', nativeBindings: {
-  handlers: [{ability: 'sample::Gateway', native: ['application', 'Gateway']}],
-  failures: [{failure: 'sample::Failure::Invalid', native: ['application', 'Invalid']}],
-  network: {identity: 'identity.seed', trusted: 'trusted.txt'},
-}};
-// @ts-expect-error The binding proposal uses the same supported target names as generation.
-const invalidNativeMigrationTarget: MigrationBindingRequest = {...nativeMigrationRequest, target: 'fiction'};
-void nativeMigrationRequest; void invalidNativeMigrationTarget;
-
 const nativeLeaf: NativeFieldBinding = {field:'value',path:['first'],argument:0,native:'head'};
 // @ts-expect-error A path needs an explicit native argument position.
 const missingPosition: NativeFieldBinding = {field:'value',path:['first'],native:'head'};
@@ -313,16 +137,11 @@ const missingPosition: NativeFieldBinding = {field:'value',path:['first'],native
 const missingPath: NativeFieldBinding = {field:'value',argument:0,native:'head'};
 void nativeLeaf; void missingPosition; void missingPath;
 
-const baselinePreview: MigrationBaselineRequest = {schemaVersion: 5, languageProfile: '1.0-rc.1',
-  from: '0.24', sources: [], includeGeneration: true, target: 'python'};
-// @ts-expect-error Legacy artifact inspection is confined to the migration entry point.
-const ordinaryPreview: CheckRequest = {languageProfile: '1.0-rc.1', sources: [], includeGeneration: true};
 // @ts-expect-error ordinary clients cannot select a legacy schema
-const oldSchema: CheckRequest = {languageProfile: '1.0-rc.1', sources: [], schemaVersion: 4};
+const oldSchema: CheckRequest = {languageProfile: '1.0-rc.2', sources: [], schemaVersion: 4};
 // @ts-expect-error the canonical profile must be explicit
 const missingProfile: CheckRequest = {sources: []};
 void oldSchema; void missingProfile;
-void baselinePreview; void ordinaryPreview;
 
 // Public consumers distinguish exact model slots from law test families and
 // retain the native scope when grouping completion reports.

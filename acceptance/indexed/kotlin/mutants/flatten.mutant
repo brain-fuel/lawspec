@@ -1,6 +1,6 @@
 @@ src/main/kotlin/example/Indexed.kt
 <<<<<<<
-        val right: Vec<Byte> = Vec.VCons(value0.value, flatten(value0.right))
+        val right: Vec<Byte> = Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value0.value.value, flatten(value0.value.right)))
 =======
-        val right: Vec<Byte> = Vec.VCons(value0.value, Vec.VNil())
+        val right: Vec<Byte> = Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value0.value, Vec.VNil()))
 >>>>>>>

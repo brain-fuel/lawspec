@@ -1,4 +1,4 @@
-expect: Logs: an unknown log refuses records [native]
+expect: Logs: an unknown log refuses records| [native]
 @@ src/example/composition.ts
 <<<<<<<
     if (records === undefined) throw new ls.Fail(new data.ProblemUnknownLog());

@@ -7,21 +7,21 @@ end function
 law "|addition preserves the inputs| is
   description:
     "Adding two amounts gives their mathematical sum."
-  end
+  end description
 
   definition:
     for all (a of type Integer) (b of type Integer) =>
       a `|adds the values| b must be a + b
-    end
-  end
+    end for all
+  end definition
 
   expect "|adds the values| a b = expected
   in table (a, b, expected):
     row -1, 1, 0
     row 0, 0, 0
     row 1, 2, 3
-  end
-end
+  end table
+end law
 
 type Picture is a record{
   fileName of type Text
@@ -54,3 +54,4 @@ function "|picture category| (width of type Nat) -> Text is
     otherwise "large"
   end case
 end function
+end unit

@@ -1,49 +1,50 @@
 unit example.matching
 
 -- Rebuilding values checks both constructor identity and every payload field.
-law `list patterns preserve the head and tail` is
-  definition is
-    `for all` (xs :: List Int8) .
-      (match xs with
-        | Nil -> []
-        | Cons head tail -> Cons head tail
-      end) = xs
-  end
-end
+law "|list patterns preserve the head and tail| is
+  definition :
+    for all (xs :: List Int8) =>
+      (first matching case of xs :
+        when Nil then []
+        when Cons head tail then Cons head tail
+      end case) = xs end for all
+  end definition
+end law
 
-law `nested Maybe patterns preserve each absence state` is
-  definition is
-    `for all` (value :: Maybe (Maybe Bool)) .
-      (match value with
-        | Nothing -> Nothing
-        | Just inner -> Just (match inner with
-            | Nothing -> Nothing
-            | Just payload -> Just payload
-          end)
-      end) = value
-  end
-end
+law "|nested Maybe patterns preserve each absence state| is
+  definition :
+    for all (value :: Maybe (Maybe Bool)) =>
+      (first matching case of value :
+        when Nothing then Nothing
+        when Just inner then Just (first matching case of inner :
+            when Nothing then Nothing
+            when Just payload then Just payload
+          end case)
+      end case) = value end for all
+  end definition
+end law
 
-law `Either patterns preserve their constructor` is
-  definition is
-    `for all` (value :: Either (List Int8) (Maybe Bool)) .
-      (match value with
-        | Left items -> Left items
-        | Right optional -> Right optional
-      end) = value
-  end
-end
+law "|Either patterns preserve their constructor| is
+  definition :
+    for all (value :: Either (List Int8) (Maybe Bool)) =>
+      (first matching case of value :
+        when Left items then Left items
+        when Right optional then Right optional
+      end case) = value end for all
+  end definition
+end law
 
 -- The annotation gives the empty-case literal the same primitive type as head.
-law `matching can provide a default value` is
-  definition is
-    `for all` (value :: Maybe Int8) .
-      ((match value with
-        | Nothing -> 0
-        | Just payload -> payload
-      end) :: Int8) = ((match value with
-        | Just payload -> payload
-        | Nothing -> 0
-      end) :: Int8)
-  end
-end
+law "|matching can provide a default value| is
+  definition :
+    for all (value :: Maybe Int8) =>
+      ((first matching case of value :
+        when Nothing then 0
+        when Just payload then payload
+      end case) :: Int8) = ((first matching case of value :
+        when Just payload then payload
+        when Nothing then 0
+      end case) :: Int8) end for all
+  end definition
+end law
+end unit

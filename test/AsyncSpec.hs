@@ -19,9 +19,11 @@ import LawSpec.Testing (planTesting)
 orders :: String
 orders = unlines
   [ "unit example.orders"
+   ++ "\n", ""
   , "async price :: Text -> Int32"
   , "quote :: Text -> Int32"
-  , "law `prices agree` is definition is `for all` (sku :: Text) . price sku = quote sku end end" ]
+  , "law \"|prices agree| is definition : for all (sku :: Text) => price sku = quote sku end for all end definition end law"
+  , "\nend unit" ]
 
 program :: String -> Either [Diagnostic] C.Program
 program source = compileCore 64 defaultGeneration [Source "orders.lawspec" source]
@@ -45,9 +47,11 @@ test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask = describe "async a
   describe "as the Async ability" $ do
     let sugared = unlines
           [ "unit example.orders"
+           ++ "\n", ""
           , "price :: Text -> Int32 uses Async"
           , "quote :: Text -> Int32"
-          , "law `prices agree` is definition is `for all` (sku :: Text) . price sku = quote sku end end" ]
+          , "law \"|prices agree| is definition : for all (sku :: Text) => price sku = quote sku end for all end definition end law"
+          , "\nend unit" ]
     it "reads `uses Async` on a signature as `async`" $ do
       let shape source = [ [(C.declarationName d, C.declarationType d, C.declarationAsync d, C.declarationUses d) | d <- C.unitDeclarations u]
                          | Right compiled <- [program source], u <- C.programUnits compiled ]
@@ -58,18 +62,25 @@ test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask = describe "async a
     it "keeps the other abilities a signature uses" $ do
       let Right compiled = program (unlines
             [ "unit example.pay"
-            , "ability Gateway is fee :: Int32 end"
-            , "charge :: Int32 -> Bool uses Async, Gateway" ])
+             ++ "\n", ""
+            , "ability Gateway is fee :: Int32 end ability"
+            , "charge :: Int32 -> Bool uses Async, Gateway"
+            , "\nend unit" ])
       [(C.declarationAsync d, map C.abilityKey (C.declarationUses d)) | u <- C.programUnits compiled, d <- C.unitDeclarations u, C.declarationName d == "charge"]
         `shouldBe` [(True, ["example.pay::ability::Gateway"])]
     it "leaves a unit's own ability called Async alone" $ do
       let Right compiled = program (unlines
             [ "unit example.own"
-            , "ability Async is tick :: Int32 end"
-            , "ticks :: Int32 -> Int32 uses Async" ])
+             ++ "\n", ""
+            , "ability Async is tick :: Int32 end ability"
+            , "ticks :: Int32 -> Int32 uses Async"
+            , "\nend unit" ])
       [C.declarationAsync d | u <- C.programUnits compiled, d <- C.unitDeclarations u, C.declarationName d == "ticks"] `shouldBe` [False]
   it "keeps async usable as a name" $
-    program (unlines ["unit example.names", "async :: Int32 -> Int32"]) `shouldSatisfy` either (const False) (const True)
+    program (unlines [ "unit example.names"
+                      ++ "\n", ""
+                     , "async :: Int32 -> Int32"
+                     , "\nend unit" ]) `shouldSatisfy` either (const False) (const True)
   it "reports an async adapter's evidence as asynchronous" $ do
     let Right obligations = program orders >>= dischargeEvidence
     [obligationReason o | o <- obligations, obligationStage o == "adapter", "price" `isInfixOf` C.idText (obligationDeclaration o)]
@@ -81,7 +92,10 @@ test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask = describe "async a
            FunctionBinding (C.Id "example.orders::quote") (StaticCall (NativeRef ["pricing", "quote"]))] }
     resolveNativeRequest compiled request `shouldSatisfy` isRight
   it "scaffolds an asynchronous Unit adapter on Java as a future of Void" $ do
-    let source = unlines ["unit example.jobs", "post :: Int32 -> Unit uses Async"]
+    let source = unlines [ "unit example.jobs"
+                          ++ "\n", ""
+                         , "post :: Int32 -> Unit uses Async"
+                         , "\nend unit" ]
     stub "java" source `shouldSatisfy` either (const False) (isInfixOf "CompletableFuture<Void> post(")
   describe "scaffolds each target's task" $
     forM_ [ ("python", "async def price"), ("javascript", "export async function price")

@@ -16,7 +16,7 @@ extension Example.Abilities {
     static func gatewayHandler() -> any LawSpec.Abilities.ExampleAbilities.Gateway { NativeGateway() }
 
     struct NativeGateway: LawSpec.Abilities.ExampleAbilities.Gateway {
-        func authorize(_ value0: Int32) -> Payment { value0 < 0 ? .declined : .approved(cents: value0) }
+        func authorize(_ value0: Int32) -> Payment { value0 < 0 ? .declined : .approved(value: value0) }
         func capture(_ value0: Int32) -> Receipt { Receipt(cents: value0) }
         func fee() -> Int32 { 25 }
     }

@@ -170,8 +170,6 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
                     values = st.tuples(*children).map(
                         lambda values, tag=constructor.tag, keys=keys:
                         ls.DataValue(tag, tuple(values) + keys))
-                    if constructor.predicates:
-                        values = values.filter(lambda value: valid(ty, value))
                     alternatives.append(values)
             if ty.name == "lawspec.collections::type::EqSet":
                 def distinct(value):
@@ -225,9 +223,13 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
 
     if index is not None:
         target, equations = index
-        return indexed_strategy(schema, reference, int(target), equations,
-                                budget, build, inhabited, valid)
-    return build(reference, budget)
+        generated = indexed_strategy(schema, reference, int(target), equations,
+                                     budget, build, inhabited, valid)
+    else:
+        generated = build(reference, budget)
+    # Validate complete candidates and shrink results, including nested index
+    # guards. Invalid native factory samples still fail in their checked map.
+    return generated.filter(lambda value: valid(reference, value))
 
 
 def _canonical(key):

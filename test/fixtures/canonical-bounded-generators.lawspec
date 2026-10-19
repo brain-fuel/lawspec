@@ -7,35 +7,35 @@ law "|positive signed values stay inside their range| is
   definition:
     for all (value of type Int64 where value >= 1) =>
       retain value must be prelude.Integer value
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|large negative intervals retain their values| is
   definition:
     for all (value of type Int64 where
       value >= -9223372036854775800 and value <= -9223372036854775795) =>
       retain value must be prelude.Integer value
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|large positive intervals retain their values| is
   definition:
     for all (value of type Int64 where
       value >= 9223372036854775800 and value <= 9223372036854775806) =>
       retain value must be prelude.Integer value
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|unsigned high bits survive| is
   definition:
     for all (value of type UInt64 where value >= 18446744073709551610) =>
       retainUnsigned value must be prelude.Integer value
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|exact integers retain narrow distant ranges| is
   definition:
@@ -43,14 +43,15 @@ law "|exact integers retain narrow distant ranges| is
       value >= 1267650600228229401496703205393 and
       value <= 1267650600228229401496703205397) =>
       retain value must be value
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|singleton ranges retain their value| is
   definition:
     for all (value of type Int64 where value = -9223372036854775808) =>
       retain value must be prelude.Integer value
-    end
-  end
-end
+    end for all
+  end definition
+end law
+end unit

@@ -1,7 +1,7 @@
 expect: a withdrawal within the balance leaves the rest
 @@ examples/specs/records.lawspec
 <<<<<<<
-  | Right after -> Right after.balance
+  when Right after then Right after.balance
 =======
-  | Right after -> Right a.balance
+  when Right after then Right a.balance
 >>>>>>>

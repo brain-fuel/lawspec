@@ -1,6 +1,6 @@
 @@ src/main/groovy/example/Indexed.groovy
 <<<<<<<
-      return new Vec.VCons<Byte>(cons.head(), append(cons.tail(), value1))
+      return new Vec.VCons<Byte>(new lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec<Byte>(cons.value().head(), append(cons.value().tail(), value1)))
 =======
-      return append(cons.tail(), value1)
+      return append(cons.value().tail(), value1)
 >>>>>>>

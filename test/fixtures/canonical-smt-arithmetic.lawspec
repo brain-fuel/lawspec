@@ -12,16 +12,16 @@ law "|squares are nonnegative| is
   definition:
     for all (value of type Int8 where value >= -3 and value <= 3) =>
       square value >= 0
-    end
-  end
+    end for all
+  end definition
 
   expect square value = expected
   in table (value, expected):
     row -3, 9
     row 0, 0
     row 3, 9
-  end
-end
+  end table
+end law
 
 law "|every selected integer has a successor| is
   definition:
@@ -30,25 +30,25 @@ law "|every selected integer has a successor| is
         (candidate of type Int8 where candidate >= value and candidate <= value + 1)
       such that
         candidate > value
-      end
-    end
-  end
-end
+      end exists
+    end for all
+  end definition
+end law
 
 law "|no integer has a negative square| is
   definition:
     there does not exist (value of type Int8) such that
       square value < 0
-    end
-  end
-end
+    end exists
+  end definition
+end law
 
 law "|a nonzero integer has an exact reciprocal| is
   definition:
     for all (value of type Int8 where value != 0) =>
       reciprocal value * value must be 1
-    end
-  end
+    end for all
+  end definition
 
   expect reciprocal value = expected
   in table (value, expected):
@@ -56,5 +56,6 @@ law "|a nonzero integer has an exact reciprocal| is
     row -1, -1
     row 1, 1
     row 2, rational(1, 2)
-  end
-end
+  end table
+end law
+end unit

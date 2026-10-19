@@ -15,11 +15,11 @@ const z3=process.env.LAWSPEC_Z3??(spawnSync('z3',['-version'],{encoding:'utf8'})
 const requiresZ3={skip:z3?false:'install Z3 or set LAWSPEC_Z3 for real solver integration'};
 const localTsc=new URL('../../.integration/typescript/node_modules/.bin/tsc',import.meta.url).pathname;
 const tsc=process.env.LAWSPEC_TSC??(existsSync(localTsc)?localTsc:null);
-const law=body=>'law selected is definition: '+body+' end end';
-const request=(body,layers=['proof'],machineBits=64)=>({schemaVersion:5,languageProfile:'1.0-rc.1',
-  verification:{layers},machineBits,sources:[{path:'smt-😀.lawspec',content:'unit smt\n'+body}]});
-const square=law('for all (n :: Integer) => n * n >= 0 end');
-const falseLaw=law('for all (n :: Integer) => n = n + 1 end');
+const law=body=>'law selected is definition: '+body+' end definition end law';
+const request=(body,layers=['proof'],machineBits=64)=>({schemaVersion:5,languageProfile:'1.0-rc.2',
+  verification:{layers},machineBits,sources:[{path:'smt-😀.lawspec',content:'unit smt\n'+body+'\nend unit\n'}]});
+const square=law('for all (n :: Integer) => n * n >= 0 end for all');
+const falseLaw=law('for all (n :: Integer) => n = n + 1 end for all');
 
 test('SMT tasks stay separate from completed evidence and preserve mandatory checking with no selected layers',async()=>{
   const planned=await compiler.proofTasks(request(square.replace('law selected','law "|факт😀|')));
@@ -32,16 +32,17 @@ test('SMT tasks stay separate from completed evidence and preserve mandatory che
   assert.deepEqual(empty.proofTasks,[]);
   assert.deepEqual(empty.solverEvidence,[]);
   assert.ok(empty.evidence.filter(row=>row.stage==='law').every(row=>row.status==='not-verified'));
-  const broken=await proveWithZ3(compiler,request('function broken (n :: Integer) -> Rational is 1 / 0 end function',[]),{binary:'/missing/z3'});
+  const broken=await proveWithZ3(compiler,request(`function broken (n :: Integer) -> Rational is 1 / 0 end function
+`,[]),{binary:'/missing/z3'});
   assert.ok(broken.diagnostics.some(row=>row.code==='total'));
   assert.deepEqual(broken.solverEvidence,[]);
 });
 
 test('actual Z3 establishes nonlinear and dependent laws from rebuilt-WASM tasks at both widths',requiresZ3,async()=>{
   const samples=[square,
-    law('for all (n :: Integer) => there exists (next :: Integer where next > n) such that next = n + 1 end end'),
-    law('there does not exist (n :: Integer) such that n * n < 0 end'),
-    law('for all (n :: Integer where false) => false end')];
+    law('for all (n :: Integer) => there exists (next :: Integer where next > n) such that next = n + 1 end exists end for all'),
+    law('there does not exist (n :: Integer) such that n * n < 0 end exists'),
+    law('for all (n :: Integer where false) => false end for all')];
   for(const machineBits of [32,64])for(const body of samples) {
     const input=request(body,['proof'],machineBits);
     const result=await proveWithZ3(compiler,input,{binary:z3});
@@ -74,7 +75,10 @@ test('task planning remains separate from the ordinary proof cache and honors kn
   assert.equal(planned.evidence.find(row=>row.stage==='law').status,'planned');
   assert.deepEqual(repeated,checked);
   const guarded=request(square);
-  guarded.sources.push({path:'harness.lawspec',content:'harness smt.testing for smt is for law selected known failing "investigate" end'});
+  guarded.sources.push({path:'harness.lawspec',content:`harness smt.testing for smt is for law selected known failing "investigate"
+end for law
+end harness
+`});
   const result=await proveWithZ3(compiler,guarded,{binary:z3});
   assert.ok(result.diagnostics.some(row=>row.code==='harness'));
   assert.equal(result.solverEvidence[0].outcome,'unsat');
@@ -83,8 +87,8 @@ test('task planning remains separate from the ordinary proof cache and honors kn
 
 test('satisfiable Z3 tasks retain unvalidated models without claiming source refutation or nonexistence',requiresZ3,async()=>{
   for(const body of [falseLaw,
-    law('there exists (next :: Integer) such that for all (n :: Integer) => next > n end end'),
-    law('there does not exist (n :: Integer) such that n / (n - n) = 0 end')]) {
+    law('there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists'),
+    law('there does not exist (n :: Integer) such that n / (n - n) = 0 end exists')]) {
     const result=await proveWithZ3(compiler,request(body),{binary:z3});
     assert.deepEqual(result.diagnostics,[]);
     assert.equal(result.solverEvidence[0].outcome,'sat');
@@ -96,11 +100,11 @@ test('satisfiable Z3 tasks retain unvalidated models without claiming source ref
 });
 
 test('unsupported translations and unavailable Z3 remain explicit without substituting another theory',async()=>{
-  const rational=await proveWithZ3(compiler,request(law('there exists (n :: Rational) such that n * n = 2 end')),{binary:'/missing/z3'});
+  const rational=await proveWithZ3(compiler,request(law('there exists (n :: Rational) such that n * n = 2 end exists')),{binary:'/missing/z3'});
   assert.deepEqual(rational.diagnostics,[]);
   assert.equal(rational.solverEvidence[0].status,'unsupported');
   assert.match(rational.solverEvidence[0].reason,/Rational quantification/);
-  const ieee=await compiler.proofTasks(request(law('for all (n :: Float64) => n = n end')));
+  const ieee=await compiler.proofTasks(request(law('for all (n :: Float64) => n = n end for all')));
   assert.equal(ieee.proofTasks[0].status,'unsupported');
   const unavailable=await proveWithZ3(compiler,request(square),{binary:'/missing/z3'});
   assert.equal(unavailable.solverEvidence[0].outcome,'unavailable');
@@ -159,9 +163,9 @@ test('prove CLI reports selected, unselected, unavailable and mandatory-error ou
   const directory=await mkdtemp(path.join(tmpdir(),'lawspec-prove-cli-'));
   try {
     const cli=new URL('../bin/lawspec.mjs',import.meta.url).pathname;
-    const config={version:2,languageProfile:'1.0-rc.1',sources:['input.lawspec'],targets:[],verification:{layers:['proof']}};
+    const config={version:2,languageProfile:'1.0-rc.2',sources:['input.lawspec'],targets:[],verification:{layers:['proof']}};
     const save=async(body,layers=['proof'])=>{
-      await writeFile(path.join(directory,'input.lawspec'),'unit smt\n'+body);
+      await writeFile(path.join(directory,'input.lawspec'),'unit smt\n'+body+'\nend unit\n');
       await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,verification:{layers}}));
     };
     const run=()=>spawnSync(process.execPath,[cli,'prove','--solver',z3,'--json'],{cwd:directory,encoding:'utf8'});
@@ -178,7 +182,8 @@ test('prove CLI reports selected, unselected, unavailable and mandatory-error ou
     const absent=spawnSync(process.execPath,[cli,'prove','--solver','/missing/z3','--json'],{cwd:directory,encoding:'utf8'});
     assert.equal(absent.status,2,absent.stdout+absent.stderr);
     assert.equal(JSON.parse(absent.stdout).solverEvidence[0].outcome,'unavailable');
-    await save('function broken (n :: Integer) -> Rational is 1 / 0 end function',[]);
+    await save(`function broken (n :: Integer) -> Rational is 1 / 0 end function
+`,[]);
     const rejected=run();assert.equal(rejected.status,1,rejected.stdout+rejected.stderr);
     assert.ok(JSON.parse(rejected.stdout).diagnostics.some(row=>row.code==='total'));
   } finally {await rm(directory,{recursive:true,force:true});}
@@ -196,7 +201,7 @@ test('published proof subpath and task/evidence types admit a real TypeScript co
 import {createCompiler, type CheckRequest} from 'lawspec';
 import {proveWithZ3, proofTaskFingerprint, type Z3Options, type SolverEvidence} from 'lawspec/proof';
 const compiler=await createCompiler();
-const request:CheckRequest={languageProfile:'1.0-rc.1',verification:{layers:['proof']},sources:[]};
+const request:CheckRequest={languageProfile:'1.0-rc.2',verification:{layers:['proof']},sources:[]};
 const options:Z3Options={binary:'z3',timeoutMs:1000,memoryMb:512,seed:1};
 const planned=await compiler.proofTasks(request);
 for(const task of planned.proofTasks??[]) {

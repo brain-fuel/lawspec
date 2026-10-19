@@ -13,15 +13,15 @@ public static class Gadt
     public static BigInteger EvalNumber(Expr<BigInteger> expr) => expr switch
     {
         Expr<BigInteger>.Number n => n.value,
-        Expr<BigInteger>.Plus p => EvalNumber(p.left) + EvalNumber(p.right),
+        Expr<BigInteger>.Plus p => EvalNumber(p.value.Left) + EvalNumber(p.value.Right),
         _ => throw new ArgumentException("not an Expr<BigInteger>"),
     };
 
     public static bool EvalTruth(Expr<bool> expr) => expr switch
     {
         Expr<bool>.Truth t => t.value,
-        Expr<bool>.Same s => EvalNumber(s.left) == EvalNumber(s.right),
-        Expr<bool>.Negate n => !EvalTruth(n.operand),
+        Expr<bool>.Same s => EvalNumber(s.value.Left) == EvalNumber(s.value.Right),
+        Expr<bool>.Negate n => !EvalTruth(n.value),
         _ => throw new ArgumentException("not an Expr<bool>"),
     };
 
@@ -35,8 +35,8 @@ public static class Gadt
     {
         Expr<Pair<BigInteger, bool>>.Both b =>
             new Pair<BigInteger, bool>(
-                EvalNumber(Retype(Codec.BigInteger, b.first)),
-                EvalTruth(Retype(Codec.Bool, b.second))),
+                EvalNumber(Retype(Codec.BigInteger, b.value.First)),
+                EvalTruth(Retype(Codec.Bool, b.value.Second))),
         _ => throw new ArgumentException("not an Expr<Pair<BigInteger, bool>>"),
     };
 

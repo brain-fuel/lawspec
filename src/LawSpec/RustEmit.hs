@@ -263,7 +263,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         (NB.resolvedGenerators (NR.bindingRepresentations bindings))
       _ -> False
     definitionNames = Definitions.definitionNames (map plannedUnit plannedUnits)
-    hasFieldContracts = any (not . null . constructorPredicates) (concatMap dataConstructors planDataDeclarations)
+    hasFieldContracts = hasConstructorContracts planDataDeclarations
     hasDefinitions = not (null definitionNames)
     -- Typed channel ends (LawSpec.Sessions), which adapters use.
     hasSessions = any (not . null . unitSessions . plannedUnit) plannedUnits

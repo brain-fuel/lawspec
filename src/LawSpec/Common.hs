@@ -18,7 +18,7 @@ defaultGeneration = Generation 100 10000 1000 4096
 data Quantification = ForEvery | ForSome deriving (Eq, Show, Generic)
 instance ToJSON Quantification
 -- Canonical universal obligations include empty domains. Legacy test inputs
--- retain their nonempty-population requirement during migration.
+-- retain their explicit nonempty-population requirement.
 data InputDomain = NonemptyDomain | UniversalDomain deriving (Eq, Show, Generic)
 instance ToJSON InputDomain where
   toJSON NonemptyDomain = String "nonempty"
@@ -81,7 +81,11 @@ instance FromJSON Generation where
 data Location = Location { file :: String, line :: Int, column :: Int } deriving (Eq, Show, Generic)
 -- | Every failure carries a stable code as well as a message, so tools and tests
 -- can match a kind of error without parsing its wording.
-data Diagnostic = Diagnostic { code :: String, message :: String, at :: Maybe Location } deriving (Eq, Show, Generic)
+data Diagnostic
+  = Diagnostic { code :: String, message :: String, at :: Maybe Location }
+  | BlockDiagnostic { code :: String, message :: String, at :: Maybe Location
+                    , diagnosticSpan :: Span, diagnosticOpener :: Maybe Span }
+  deriving (Eq, Show, Generic)
 -- | The compiler reads no files itself: hosts pass sources in, so the WASM build
 -- and the native build behave alike. ref:DEC-wasm-distribution
 data Source = Source { path :: String, content :: String } deriving (Eq, Show, Generic)
@@ -106,7 +110,16 @@ mapArtifactContent f artifact = case artifact of
   AdapterArtifact{} -> artifact { artifactContent = f (artifactContent artifact), canonicalAdapter = f (canonicalAdapter artifact) }
   Artifact{} -> artifact { artifactContent = f (artifactContent artifact) }
 instance ToJSON Location
-instance ToJSON Diagnostic
+instance ToJSON Diagnostic where
+  toJSON diagnostic = object
+    (["code" .= code diagnostic, "message" .= message diagnostic, "at" .= at diagnostic] ++
+     case diagnostic of
+       Diagnostic{} -> []
+       BlockDiagnostic{diagnosticSpan=range,diagnosticOpener=opener} ->
+         ["span" .= object ["start" .= spanStart range,"end" .= spanEnd range]] ++
+         ["related" .= [object ["message" .= ("Block opened here." :: String),
+           "span" .= object ["start" .= spanStart origin,"end" .= spanEnd origin]]]
+           | Just origin <- [opener]])
 instance ToJSON Artifact where
   toJSON artifact = object
     (["path" .= artifactPath artifact, "content" .= artifactContent artifact,

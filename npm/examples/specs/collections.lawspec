@@ -6,9 +6,9 @@ unit example.collections
 -- build them from lists.
 
 -- The distinct values of a list.
-dedupe :: List Int32 -> Set Int32
+dedupe :: List Int32 -> SortedSet Int32
 -- How many times each word occurs.
-wordCounts :: List Text -> KeyVal Text BigInt
+wordCounts :: List Text -> KeyVal Text Integer
 -- Enqueue every value, first to last.
 fifo :: List Int8 -> Queue Int8
 -- Push every value, first to last: the last is on top.
@@ -16,175 +16,174 @@ lifo :: List Int8 -> Stack Int8
 -- Move the front item to the back.
 rotate :: Deque Int8 -> Deque Int8
 -- The distinct lists among some lists: structured elements.
-distinctRows :: List (List Int8) -> Set (List Int8)
+distinctRows :: List (List Int8) -> SortedSet (List Int8)
 
-definition countWords (words :: List Text) (counts :: KeyVal Text BigInt) :: KeyVal Text BigInt is
-  match words with
-  | Nil -> counts
-  | Cons w rest -> match prelude.lookup w counts with
-    | Nothing -> countWords rest (prelude.put w 1 counts)
-    | Just n -> countWords rest (prelude.put w ((n + 1) :: BigInt) counts)
-    end
-  end
-end
+function countWords (words :: List Text) (counts :: KeyVal Text Integer) -> KeyVal Text Integer is
+  first matching case of words :
+  when Nil then counts
+  when Cons w rest then first matching case of prelude.lookup w counts :
+    when Nothing then countWords rest (prelude.put w 1 counts)
+    when Just n then countWords rest (prelude.put w ((n + 1) :: Integer) counts)
+    end case
+  end case
+end function
 
-definition rotated (d :: Deque Int8) :: Deque Int8 is
-  match prelude.peekFront d with
-  | Nothing -> d
-  | Just x -> prelude.pushBack x (prelude.popFront d)
-  end
-end
+function rotated (d :: Deque Int8) -> Deque Int8 is
+  first matching case of prelude.peekFront d :
+  when Nothing then d
+  when Just x then prelude.pushBack x (prelude.popFront d)
+  end case
+end function
 
-law `dedupe agrees with setOf` is
-  definition is `for all` (xs :: List Int32) . dedupe xs = prelude.setOf xs end
-end
+law "|dedupe agrees with setOf| is
+  definition : for all (xs :: List Int32) => dedupe xs = prelude.sortedSetOf xs end for all end definition
+end law
 
-law `distinct rows agree with setOf` is
-  definition is `for all` (rows :: List (List Int8)) . distinctRows rows = prelude.setOf rows end
-end
+law "|distinct rows agree with setOf| is
+  definition : for all (rows :: List (List Int8)) => distinctRows rows = prelude.sortedSetOf rows end for all end definition
+end law
 
-law `word counts agree with the definition` is
-  definition is
-    `for all` (words :: List Text) . wordCounts words = countWords words (prelude.keyValOf [])
-  end
-end
+law "|word counts agree with the definition| is
+  definition :
+    for all (words :: List Text) => wordCounts words = countWords words (prelude.keyValOf []) end for all
+  end definition
+end law
 
-law `the queue's front is the first value` is
-  definition is
-    `for all` (x :: Int8) (xs :: List Int8) . prelude.front (fifo (Cons x xs)) = Just x
-  end
-end
+law "|the queue's front is the first value| is
+  definition :
+    for all (x :: Int8) (xs :: List Int8) => prelude.front (fifo (Cons x xs)) = Just x end for all
+  end definition
+end law
 
-law `the stack's top is the last value` is
-  definition is
-    `for all` (x :: Int8) (xs :: List Int8) . prelude.peek (lifo [x]) = Just x
-  end
-end
+law "|the stack's top is the last value| is
+  definition :
+    for all (x :: Int8) (xs :: List Int8) => prelude.peek (lifo [x]) = Just x end for all
+  end definition
+end law
 
-law `fifo keeps the order` is
-  definition is `for all` (xs :: List Int8) . prelude.toList (fifo xs) = xs end
-end
+law "|fifo keeps the order| is
+  definition : for all (xs :: List Int8) => prelude.toList (fifo xs) = xs end for all end definition
+end law
 
-law `rotate agrees with the definition` is
-  definition is `for all` (d :: Deque Int8) . rotate d = rotated d end
-end
+law "|rotate agrees with the definition| is
+  definition : for all (d :: Deque Int8) => rotate d = rotated d end for all end definition
+end law
 
-law `union is commutative` is
-  definition is
-    `for all` (s :: Set Int32) (t :: Set Int32) . prelude.union s t = prelude.union t s
-  end
-end
+law "|union is commutative| is
+  definition :
+    for all (s :: SortedSet Int32) (t :: SortedSet Int32) => prelude.sortedSetUnion s t = prelude.sortedSetUnion t s end for all
+  end definition
+end law
 
-law `a removed value is no member` is
-  definition is
-    `for all` (x :: Int32) (s :: Set Int32) . prelude.member x (prelude.remove x s) = false
-  end
-end
+law "|a removed value is no member| is
+  definition :
+    for all (x :: Int32) (s :: SortedSet Int32) => prelude.sortedSetMember x (prelude.sortedSetRemove x s) = false end for all
+  end definition
+end law
 
-law `an inserted value is a member` is
-  definition is
-    `for all` (x :: Int32) (s :: Set Int32) . prelude.member x (prelude.insert x s) = true
-  end
-end
+law "|an inserted value is a member| is
+  definition :
+    for all (x :: Int32) (s :: SortedSet Int32) => prelude.sortedSetMember x (prelude.sortedSetInsert x s) = true end for all
+  end definition
+end law
 
-law `intersection and difference split a set` is
-  definition is
-    `for all` (s :: Set Int32) (t :: Set Int32) .
-      prelude.union (prelude.intersection s t) (prelude.difference s t) = s
-  end
-end
+law "|intersection and difference split a set| is
+  definition :
+    for all (s :: SortedSet Int32) (t :: SortedSet Int32) =>
+      prelude.sortedSetUnion (prelude.sortedSetIntersection s t) (prelude.sortedSetDifference s t) = s end for all
+  end definition
+end law
 
-law `the latest put wins` is
-  definition is
-    `for all` (k :: Text) (v :: BigInt) (w :: BigInt) (m :: KeyVal Text BigInt) .
-      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w
-  end
-end
+law "|the latest put wins| is
+  definition :
+    for all (k :: Text) (v :: Integer) (w :: Integer) (m :: KeyVal Text Integer) =>
+      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w end for all
+  end definition
+end law
 
-law `a deleted key is absent` is
-  definition is
-    `for all` (k :: Text) (m :: KeyVal Text BigInt) . prelude.lookup k (prelude.delete k m) = Nothing
-  end
-end
+law "|a deleted key is absent| is
+  definition :
+    for all (k :: Text) (m :: KeyVal Text Integer) => prelude.lookup k (prelude.delete k m) = Nothing end for all
+  end definition
+end law
 
-law `keys are distinct` is
-  definition is
-    `for all` (m :: KeyVal Text BigInt) . prelude.size (prelude.setOf (prelude.keys m)) = prelude.size m
-  end
-end
+law "|keys are distinct| is
+  definition :
+    for all (m :: KeyVal Text Integer) => prelude.size (prelude.sortedSetOf (prelude.keys m)) = prelude.size m end for all
+  end definition
+end law
 
-law `popping the back leaves the rest` is
-  definition is
-    `for all` (x :: Int8) (d :: Deque Int8) . prelude.popBack (prelude.pushBack x d) = d
-  end
-end
+law "|popping the back leaves the rest| is
+  definition :
+    for all (x :: Int8) (d :: Deque Int8) => prelude.popBack (prelude.pushBack x d) = d end for all
+  end definition
+end law
 
-law `the empty stack stays empty` is
-  definition is
-    `for all` (x :: Int8) . prelude.isEmpty (prelude.pop (prelude.stackOf [x])) = true
-  end
-end
+law "|the empty stack stays empty| is
+  definition :
+    for all (x :: Int8) => prelude.isEmpty (prelude.pop (prelude.stackOf [x])) = true end for all
+  end definition
+end law
 
 -- Size-indexed stacks and queues: a pop, top, dequeue or front needs a
 -- non-empty one (SizedStack (n + 1) a), so it can never fail.
-law `the top is what was pushed` is
-  definition is
-    `for all` (x :: Int8) (s :: SizedStack 2 Int8) . prelude.sizedTop (prelude.sizedPush x s) = x
-  end
-end
+law "|the top is what was pushed| is
+  definition :
+    for all (x :: Int8) (s :: SizedStack 2 Int8) => prelude.sizedTop (prelude.sizedPush x s) = x end for all
+  end definition
+end law
 
-law `popping undoes a push` is
-  definition is
-    `for all` (s :: SizedStack 3 Int8) . prelude.sizedStackItems (prelude.sizedPop (prelude.sizedPush 7 s)) = prelude.sizedStackItems s
-  end
-end
+law "|popping undoes a push| is
+  definition :
+    for all (s :: SizedStack 3 Int8) => prelude.sizedStackItems (prelude.sizedPop (prelude.sizedPush 7 s)) = prelude.sizedStackItems s end for all
+  end definition
+end law
 
-law `a sized queue keeps arrival order` is
-  definition is
-    `for all` (x :: Int8) (y :: Int8) . prelude.sizedFront (prelude.sizedEnqueue y (prelude.sizedEnqueue x SizedQueueEmpty)) = x
-  end
-end
+law "|a sized queue keeps arrival order| is
+  definition :
+    for all (x :: Int8) (y :: Int8) => prelude.sizedFront (prelude.sizedEnqueue y (prelude.sizedEnqueue x SizedQueueEmpty)) = x end for all
+  end definition
+end law
 
 -- Text keys and items order by code point on every target. U+1F600 follows
 -- U+FF21 by code point, though in UTF-16 its first surrogate (U+D83D)
 -- precedes U+FF21, so a target ordering text by UTF-16 unit fails here.
 
 -- The items of a set of words, in the set's order.
-definition orderedItems (s :: Set Text) :: List Text is
-  match s with
-  | SetItems xs -> xs
-  end
-end
+function orderedItems (s :: SortedSet Text) -> List Text is
+  prelude.toList s
+end function
 
 -- The distinct words, in the order of the keys that count them.
-definition countedKeys (words :: List Text) :: List Text is
+function countedKeys (words :: List Text) -> List Text is
   prelude.keys (countWords words (prelude.keyValOf []))
-end
+end function
 
-law `text keys and items order by code point` is
-  definition is
-    `for all` (words :: List Text) . countedKeys words = orderedItems (prelude.setOf words)
-  end
-  example `a fullwidth letter precedes an emoji` is
+law "|text keys and items order by code point| is
+  definition :
+    for all (words :: List Text) => countedKeys words = orderedItems (prelude.sortedSetOf words) end for all
+  end definition
+  example "|a fullwidth letter precedes an emoji| :
     words = ["😀", "Ａ", "😀"]
     expect countedKeys words = ["Ａ", "😀"]
-    expect orderedItems (prelude.setOf words) = ["Ａ", "😀"]
-  end
-end
+    expect orderedItems (prelude.sortedSetOf words) = ["Ａ", "😀"]
+  end example
+end law
 
 -- How one set of words orders against another.
-definition compareSets (s :: Set Text) (t :: Set Text) :: Ordering is
+function compareSets (s :: SortedSet Text) (t :: SortedSet Text) -> Ordering is
   prelude.compare s t
-end
+end function
 
-law `sets of text order as their items do` is
-  definition is
-    `for all` (xs :: List Text) (ys :: List Text) .
-      compareSets (prelude.setOf xs) (prelude.setOf ys) = prelude.compare (orderedItems (prelude.setOf xs)) (orderedItems (prelude.setOf ys))
-  end
-  example `a set led by a fullwidth letter precedes one led by a later letter` is
+law "|sets of text order as their items do| is
+  definition :
+    for all (xs :: List Text) (ys :: List Text) =>
+      compareSets (prelude.sortedSetOf xs) (prelude.sortedSetOf ys) = prelude.compare (orderedItems (prelude.sortedSetOf xs)) (orderedItems (prelude.sortedSetOf ys)) end for all
+  end definition
+  example "|a set led by a fullwidth letter precedes one led by a later letter| :
     xs = ["😀", "Ａ"]
     ys = ["Ｂ"]
-    expect compareSets (prelude.setOf xs) (prelude.setOf ys) = Less
-  end
-end
+    expect compareSets (prelude.sortedSetOf xs) (prelude.sortedSetOf ys) = Less
+  end example
+end law
+end unit

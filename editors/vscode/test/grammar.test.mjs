@@ -143,3 +143,11 @@ test('every bundled spec and parser fixture tokenizes without stopping early', a
   }
   assert.ok(files >= 50, `Expected all repository specs, found ${files}`);
 });
+
+
+test('every named closing phrase has one closing scope', () => {
+  for (const label of ["unit", "function", "procedure", "type", "refinement", "wrapper", "law", "definition", "description", "rationale", "references", "example", "table", "for all", "exists", "given", "case", "if", "let", "mapping", "workflow", "all", "protocol", "scenario", "par", "or else", "model", "actor", "supervisor", "ability", "laws", "handler", "handlers", "operation", "handle", "resource", "acquire", "release", "reset", "harness", "for law", "for laws", "strategy", "bind", "benchmark"]) {
+    const closing = 'end ' + label;
+    scopeAt(closing, closing, 'keyword.control.block.end');
+  }
+});

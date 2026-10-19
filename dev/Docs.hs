@@ -313,7 +313,7 @@ preprocess cited errors snippets pages page markdown = unlines <$> go (lines mar
           modifyIORef snippets (+ 1)
           let sources = [object [K.fromString "path" .= p, K.fromString "content" .= c] | (p, c) <- files]
               request method more = decodeValue (dispatch (encode (object
-                ([K.fromString "schemaVersion" .= (5 :: Int), K.fromString "languageProfile" .= ("1.0-rc.1" :: String),
+                ([K.fromString "schemaVersion" .= (5 :: Int), K.fromString "languageProfile" .= ("1.0-rc.2" :: String),
                   K.fromString "verification" .= object [K.fromString "layers" .=
                     (if rejection /= Nothing then [] else ["proof","exhaustive","property","examples","runtime","model"] :: [String])],
                   K.fromString "method" .= method, K.fromString "sources" .= sources] ++ more))))
@@ -493,7 +493,7 @@ assets out lock = do
     writeAt (dir </> file) content
   copyFile "templates/site/_headers" (out </> "_headers")
   -- One authoritative grammar, also used to generate the editor extension.
-  copyFile "templates/editors/vscode/syntaxes/lawspec.tmLanguage.json" (dir </> "lawspec.tmLanguage.json")
+  copyFile "editors/vscode/syntaxes/lawspec.tmLanguage.json" (dir </> "lawspec.tmLanguage.json")
   forM_ ["core.wasm", "core_jsffi.js"] $ \file -> do
     exists <- doesFileExist ("npm" </> file)
     unless exists (die ("npm/" ++ file ++ " is missing; run make wasm first"))

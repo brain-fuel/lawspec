@@ -1,6 +1,6 @@
 @@ src/example_indexed.erl
 <<<<<<<
-{vec_v_cons, H, zip(T, U)}
+{vec_v_cons, {record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec, H, zip(T, U)}}
 =======
-{vec_v_cons, H, {vec_v_cons, H, zip(T, U)}}
+{vec_v_cons, {record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec, H, {vec_v_cons, {record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec, H, zip(T, U)}}}}
 >>>>>>>

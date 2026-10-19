@@ -14,6 +14,7 @@ law "|known machine fields retain native architecture checks| is
   definition:
     for all (flag :: Bool) =>
       describe (create flag) must be "Bool"
-    end
-  end
-end
+    end for all
+  end definition
+end law
+end unit

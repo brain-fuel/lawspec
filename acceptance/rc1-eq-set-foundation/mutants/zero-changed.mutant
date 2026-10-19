@@ -3,7 +3,7 @@ expect: refuted
 expect: signed zeros are equal members
 @@ test/fixtures/eq-set-foundation.lawspec
 <<<<<<<
-if negative then EqSetItems [float64Bits("8000000000000000")]
+if negative then prelude.setOf [float64Bits("8000000000000000")]
 =======
-if negative then EqSetItems [float64Bits("bff0000000000000")]
+if negative then prelude.setOf [float64Bits("bff0000000000000")]
 >>>>>>>

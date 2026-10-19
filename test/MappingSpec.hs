@@ -13,7 +13,7 @@ import LawSpec.Core.Eval (evaluateValueProposition)
 import LawSpec.Frontend (compileCoreCanonical)
 
 compileAt bits body=compileCoreCanonical bits S.defaultGeneration
-  [S.Source "mapping.lawspec" ("unit example.mapping\n"++body)]
+  [S.Source "mapping.lawspec" ("unit example.mapping\n\n"++body ++ "\nend unit\n")]
 checked bits body action=case compileAt bits body of
   Left diagnostics->expectationFailure (show diagnostics)
   Right program->action program
@@ -25,7 +25,7 @@ declarations program=[C.declarationName d | u<-C.programUnits program,d<-C.unitD
 rejects code body=case compileAt 64 body of
   Right _->expectationFailure "invalid mapping admitted"
   Left diagnostics->map S.code diagnostics `shouldContain` [code]
-law name body="law "++name++" is definition: "++body++" end end\n"
+law name body="law "++name++" is definition: "++body++" end definition end law\n"
 float bits="float64Bits(\""++bits++"\")"
 
 test_typedMappings=describe "resolved typed mappings" $ do
@@ -75,7 +75,7 @@ test_typedMappings=describe "resolved typed mappings" $ do
   it "removes unavailable inverse names from laws and documentary resolution" $ do
     let mapping="mapping label of type Bool -> Text is row false, \"same\" row true, \"same\" end mapping\n"
     compileAt 64 (mapping++law "invalid" "labelInverse \"same\" = Nothing") `shouldSatisfy` isLeft
-    compileAt 64 (mapping++"law documented is definition: true end references: ref function labelInverse end end") `shouldSatisfy` isLeft
+    compileAt 64 (mapping++"law documented is definition: true end definition references: ref function labelInverse end references end law\n") `shouldSatisfy` isLeft
   it "retains real declarations when a candidate inverse is unavailable and diagnoses real collisions" $ do
     let ordinary="function labelInverse (value :: Text) -> Bool is true end function\n"
     checked 64 (ordinary++"mapping label of type Bool -> Text is row false, \"same\" row true, \"same\" end mapping\n"++
@@ -83,15 +83,15 @@ test_typedMappings=describe "resolved typed mappings" $ do
     compileAt 64 (ordinary++"mapping label of type Bool -> Text is row false, \"off\" row true, \"on\" end mapping") `shouldSatisfy` isLeft
   it "keeps builtin Maybe identities when local constructors have the same spelling" $
     checked 64 (unlines
-      ["type Other is one of | Just of type Bool | Nothing end type",
+      ["type Other is one of | Just of type Bool | Nothing end type\n",
        "mapping label of type Bool -> Text is row false, \"off\" row true, \"on\" end mapping"]) $ \program->
         declarations program `shouldContain` ["labelInverse"]
   it "retains nominal construction boundaries and closed typed fields" $ do
     checked 64 (unlines
-      ["type Flag is a record{enabled :: Bool} end type",
+      ["type Flag is a record{enabled :: Bool} end type\n",
        "mapping label of type Flag -> Text is row Flag record{enabled = false}, \"off\" row Flag record{enabled = true}, \"on\" end mapping",
        law "selected" "label (Flag record{enabled = true}) = \"on\""]) outcomes
-    compileAt 64 "type Flag is a record{enabled :: Bool} end type\nmapping label of type Flag -> Text is row record{enabled = true}, \"on\" otherwise \"off\" end mapping" `shouldSatisfy` isLeft
+    compileAt 64 "type Flag is a record{enabled :: Bool} end type\nmapping label of type Flag -> Text is row record{enabled = true}, \"on\" otherwise \"off\" end mapping\n" `shouldSatisfy` isLeft
     compileAt 64 "mapping label of type record{value :: Nat} -> Text is row record{value = 0}, \"zero\" otherwise \"other\" end mapping" `shouldSatisfy` isLeft
   it "uses the selected machine width for contextual literals" $ do
     let body="mapping label of type UIntSize -> Text is row 4294967296, \"large\" otherwise \"other\" end mapping"
@@ -101,22 +101,22 @@ test_typedMappings=describe "resolved typed mappings" $ do
     compileAt 64 "mapping label of type (flag :: Bool where false) -> Nat is otherwise 0 end mapping" `shouldSatisfy` isLeft
   it "does not capture a predicate whose ordinary name resembles a generated argument" $
     checked 64 (unlines
-      ["function lawspecMappingInput (value :: UInt8) -> Bool is value > 0 end function",
+      ["function lawspecMappingInput (value :: UInt8) -> Bool is value > 0 end function\n",
        "mapping label of type Bool -> record{value :: (n :: UInt8 where lawspecMappingInput n)} is",
        "row false, record{value = 1}","row true, record{value = 2}","end mapping",
        law "selected" "(label true).value = 2"]) outcomes
   it "resolves qualified payload constructors before deriving finite coverage" $ do
-    let library=S.Source "library.lawspec" "unit library\ntype Switch is one of | Missing | Value of type Bool end type"
+    let library=S.Source "library.lawspec" "unit library\n\ntype Switch is one of | Missing | Value of type Bool end type\nend unit\n"
         consumer=S.Source "consumer.lawspec" (unlines
           ["unit consumer","import library as lib (Switch)",
            "mapping label of type Switch -> Text is row lib.Missing, \"missing\" row lib.Value false, \"off\" row lib.Value true, \"on\" end mapping",
-           law "selected" "label (lib.Value true) = \"on\""])
+           law "selected" "label (lib.Value true) = \"on\"", "end unit"])
     case compileCoreCanonical 64 S.defaultGeneration [library,consumer] of
       Left diagnostics->expectationFailure (show diagnostics)
       Right program->outcomes program
   it "resolves aliases before checking key restrictions and helper result contracts" $
     checked 64 (unlines
-      ["refinement Enabled is (flag :: Bool where flag) end",
+      ["refinement Enabled is (flag :: Bool where flag) end refinement\n",
        "mapping label of type Enabled -> Text is row true, \"on\" end mapping",
        law "preimage" "labelPreimages \"on\" = [true]",
        law "inverse" "labelInverse \"on\" = Just true"]) outcomes
@@ -145,10 +145,10 @@ test_typedMappings=describe "resolved typed mappings" $ do
         declarations program `shouldNotContain` ["labelInverse"]
         outcomes program
   it "resolves available helpers through imported facades and rejects unavailable imports" $ do
-    let library rows=S.Source "library.lawspec" ("unit library\nmapping label of type Bool -> Text is "++rows++" end mapping")
-        facade=S.Source "facade.lawspec" "unit facade\nimport library (labelPreimages, labelInverse)\nexport labelPreimages, labelInverse"
+    let library rows=S.Source "library.lawspec" ("unit library\nmapping label of type Bool -> Text is "++rows++" end mapping\nend unit")
+        facade=S.Source "facade.lawspec" "unit facade\nimport library (labelPreimages, labelInverse)\nexport labelPreimages, labelInverse\nend unit"
         consumer=S.Source "consumer.lawspec" ("unit consumer\nimport facade (labelPreimages, labelInverse)\n"++
-          law "preimage" "labelPreimages \"on\" = [true]"++law "inverse" "labelInverse \"on\" = Just true")
+          law "preimage" "labelPreimages \"on\" = [true]"++law "inverse" "labelInverse \"on\" = Just true"++"\nend unit\n")
         compile rows=compileCoreCanonical 64 S.defaultGeneration [library rows,facade,consumer]
     case compile "row false, \"off\" row true, \"on\"" of
       Left diagnostics->expectationFailure (show diagnostics)

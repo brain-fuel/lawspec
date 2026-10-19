@@ -1,7 +1,7 @@
 -- | Optional law verification. Intrinsic definition validation and its deferred
 -- runtime contracts are deliberately outside this selection.
 module LawSpec.Core.Verification
-  ( Verification(..), Layer(..), noVerification, legacyVerification, selected
+  ( Verification(..), Layer(..), noVerification, selected
   , layerName, executableLayers
   ) where
 
@@ -15,8 +15,6 @@ newtype Verification = Verification { verificationLayers :: [Layer] }
   deriving (Eq, Show)
 noVerification :: Verification
 noVerification = Verification []
-legacyVerification :: Verification
-legacyVerification = Verification [Proof, Exhaustive, Property, Examples, Runtime, Model, Analysis]
 selected :: Verification -> Layer -> Bool
 selected (Verification layers) layer = layer `elem` layers
 layerName :: Layer -> String

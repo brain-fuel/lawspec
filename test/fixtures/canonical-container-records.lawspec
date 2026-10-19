@@ -55,73 +55,74 @@ law "|batches preserve both readings| is
     for all (enabled of type Bool) =>
       unpack (pack [record{value = enabled}, record{value = not enabled}])
         must be [record{value = enabled}, record{value = not enabled}]
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|the first reading is selected| is
   definition:
     for all (enabled of type Bool) =>
       first (Batch [record{value = enabled}]) must be Just enabled
-    end
-  end
+    end for all
+  end definition
 
-end
+end law
 
 law "|batch examples preserve their readings| is
   definition:
     for all (batch of type Batch Bool) =>
       unpack (pack (unpack batch)) must be unpack batch
-    end
-  end
+    end for all
+  end definition
 
   expect first batch = expected
   in table (batch, expected):
     row Batch [], Nothing
     row Batch [record{value = true}], Just true
     row Batch [record{value = false}, record{value = true}], Just false
-  end
-end
+  end table
+end law
 
 law "|stored readings remain available| is
   definition:
     for all (enabled of type Bool) =>
       items (Stored record{items = [record{value = enabled}], optional = Nothing})
         must be [record{value = enabled}]
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|optional readings retain their values| is
   definition:
     for all (enabled of type Bool) =>
       optional (Stored record{items = [], optional = Just record{value = enabled}})
         must be Just record{value = enabled}
-    end
-  end
+    end for all
+  end definition
 
-end
+end law
 
 law "|stored examples retain both fields| is
   definition:
     for all (stored of type Stored Bool) =>
       Stored record{items = items stored, optional = optional stored}
         must be stored
-    end
-  end
+    end for all
+  end definition
 
   expect optional stored = expected
   in table (stored, expected):
     row Stored record{items = [], optional = Nothing}, Nothing
     row Stored record{items = [], optional = Just record{value = true}}, Just record{value = true}
-  end
-end
+  end table
+end law
 
 law "|archives preserve recursive readings| is
   definition:
     for all (enabled of type Bool) =>
       restore (Archive (Link record{item = record{value = enabled}, next = Stop}))
         must be Link record{item = record{value = enabled}, next = Stop}
-    end
-  end
-end
+    end for all
+  end definition
+end law
+end unit

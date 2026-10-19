@@ -653,7 +653,17 @@ refinementLaws a inst =
 stateful :: Maybe Location -> String -> Expr -> Either Failure Expr
 stateful at state = go (0 :: Int) (Var state)
   where
-    go depth current e = case unlocated e of
+    go depth current e
+      | Just (value,checks) <- selectionValidation e = do
+          value' <- go depth current value
+          checks' <- mapM (\check -> case selectionBranchCheck check of
+            Just body -> Apply (Var selectionBranchCheckName) <$> go depth current body
+            Nothing -> plain check >> pure (replace current check)) checks
+          pure (foldl Apply (Var selectionValidationName) (value':checks'))
+      | otherwise = case unlocated e of
+      -- This source-only fallback already denotes the complete transformed
+      -- result type when independently checking an unreachable authored row.
+      Var name | name == selectionBranchResultName -> pure e
       Binary ";" first rest -> case unlocated first of
         Binary ":=" target value | unlocated target == Var ('~' : state) -> do
           plain value
@@ -666,14 +676,14 @@ stateful at state = go (0 :: Int) (Var state)
         pure (MatchExpr (replace current value) [MatchBranch tag [name] rest'])
       -- Branches that update the state: the state so far is named first, so
       -- a branch's binders cannot capture what it reads.
-      MatchExpr value branches | assigns e -> do
+      MatchExpr value branches -> do
         plain value
         named depth current $ \current' -> do
           forM_ branches $ \(MatchBranch _ names _) -> when (state `elem` names)
             (Left (at, "a match in a handler clause cannot bind the state's name, " ++ state))
           branches' <- mapM (\(MatchBranch tag names body) -> MatchBranch tag names <$> go (depth + 1) current' body) branches
           pure (MatchExpr (replace current value) branches')
-      _ | Just (condition, yes, no) <- selection e, assigns e -> do
+      _ | Just (condition, yes, no) <- selection e -> do
         plain condition
         named depth current $ \current' -> do
           yes' <- go (depth + 1) current' yes
@@ -685,7 +695,6 @@ stateful at state = go (0 :: Int) (Var state)
     replace current = replaceExprVars [(state, current)]
     plain value = when ("Var \"~" `isInfixOf` show value)
       (Left (at, "~" ++ state ++ " may appear only on the left of :=, before a clause's result or a branch's"))
-    assigns value = "Binary \":=\"" `isInfixOf` show value
     selection value = case spine value of
       (Var "prelude.select", [c, a, b]) -> Just (c, a, b)
       _ -> Nothing

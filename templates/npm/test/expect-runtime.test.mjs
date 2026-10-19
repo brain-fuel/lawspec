@@ -1,5 +1,5 @@
-// Historical 0.24 generation fixtures use the explicit migration entry.
-import {legacyGeneration} from './legacy-input.mjs';
+// Generation fixtures use the current grammar and explicit verification layers.
+import {generateInput} from './compiler-input.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -14,13 +14,19 @@ test("generated examples evaluate each asserted expression once without capturin
   const root = await mkdtemp(path.join(process.cwd(), ".lawspec-runtime-"));
   try {
     const compiler = await createCompiler();
-    const result = await legacyGeneration(compiler, {
+    const result = await generateInput(compiler, {
       target: "javascript",
       sources: [
         {
           path: "once.lawspec",
           content:
-            "unit once\nactual :: Int32 -> Int32\nlaw `stable` is definition is `idempotent` actual end example `counts calls` is x = 7 expect actual x = 7 end end",
+            `unit once
+
+actual :: Int32 -> Int32
+law "|stable| is definition : apply law "|idempotent| actual end definition example "|counts calls| : x = 7 expect actual x = 7 end example end law
+
+end unit
+`,
         },
       ],
     });
@@ -52,7 +58,7 @@ test("generated examples evaluate each asserted expression once without capturin
       [
         "--test",
         "--test-name-pattern",
-        "example: counts calls",
+        "example:.*counts calls",
         "test/once.lawspec.test.mjs",
       ],
       { cwd: root, env },

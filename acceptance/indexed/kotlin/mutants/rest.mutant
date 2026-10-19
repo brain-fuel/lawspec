@@ -3,6 +3,6 @@
 Rest(value0)
 
 =======
-Rest((value0 as? Row.Cell)?.tail ?: value0)
+Rest((value0 as? Row.Cell)?.value.tail ?: value0)
 
 >>>>>>>

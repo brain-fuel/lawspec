@@ -1,4 +1,4 @@
-expect: sizes count records [native Logs, native Reader]
+expect: sizes count records| [native Logs, native Reader]
 @@ src/example/composition.gleam
 <<<<<<<
 pub fn reader_handler(store: data.Store) -> abilities_example_composition.Reader {

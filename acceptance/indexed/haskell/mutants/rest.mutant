@@ -2,6 +2,6 @@
 <<<<<<<
 dropFirst = Data.Rest
 =======
-dropFirst (Data.RowCell _ rest) = Data.Rest rest
+dropFirst (Data.RowCell (Data.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f _ rest)) = Data.Rest rest
 dropFirst row = Data.Rest row
 >>>>>>>

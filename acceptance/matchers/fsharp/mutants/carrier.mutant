@@ -1,7 +1,7 @@
 expect: the carrier is never empty
 @@ src/Example/Matchers.fs
 <<<<<<<
-let ship (id: int) : Order = Shipped(id, "post")
+let ship (id: int) : Order = Shipped({ Carrier = "post"; Id = id })
 =======
-let ship (id: int) : Order = Shipped(id, "")
+let ship (id: int) : Order = Shipped({ Carrier = ""; Id = id })
 >>>>>>>

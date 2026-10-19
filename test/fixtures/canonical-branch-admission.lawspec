@@ -43,41 +43,42 @@ law "|the first matching branch determines the outcome| is
   definition:
     for all (value of type Bool) =>
       selected value must be value
-    end
-  end
+    end for all
+  end definition
 
   expect selected value = expected
   in table (value, expected):
     row true, true
     row false, false
-  end
-end
+  end table
+end law
 
 law "|typed values retain their payload| is
   definition:
     read (Number record{value = 7}) must be 7 and
     read (Truth record{value = false}) must be false
-  end
-end
+  end definition
+end law
 
 law "|the packet retains its value| is
   definition:
     for all (flag of type Bool) =>
       retained record{flag = flag, value = "invoice"} must be "invoice"
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|scalar outcomes retain their exact type| is
   definition:
     for all (value of type Bool) =>
       if value then bounded value = 255 else bounded value = 0 end if
-    end
-  end
+    end for all
+  end definition
 
   expect bounded value = expected
   in table (value, expected):
     row true, 255
     row false, 0
-  end
-end
+  end table
+end law
+end unit

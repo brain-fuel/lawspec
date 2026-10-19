@@ -63,21 +63,22 @@ law "|preserves length|
   (f :: List a -> List a)
   is
   definition :
-    for all (xs :: List a) => prelude.length (f xs) = prelude.length xs end
-  end
-end
+    for all (xs :: List a) => prelude.length (f xs) = prelude.length xs end for all
+  end definition
+end law
 
 reverse :: List Int8 -> List Int8
 
 law "|reverse keeps every element| is
   definition :
     apply law "|preserves length| reverse
-  end
+  end definition
   example "|three elements| :
     xs = [1, 2, 3]
     expect reverse xs = [3, 2, 1]
-  end
-end
+  end example
+end law
+end unit
 ```
 
 Applying a reusable law expands it: the compiler substitutes the arguments,
@@ -112,11 +113,12 @@ An example binds each quantified input to a concrete value, then states one or
 more expected results:
 
 ```lawspec fragment
-example `zero renders as 0 and round-trips unchanged` is
+example "|zero renders as 0 and round-trips unchanged| :
   x = 0
   expect itoa x = "0"
   expect atoi (itoa x) = 0
-end
+end example
+
 ```
 
 - Bind every input of the expanded law exactly once, using the names in the
@@ -152,15 +154,16 @@ law "|shipping cost grows with weight and distance| is
   definition :
     for all (kilograms :: Int32 where kilograms >= 0 && kilograms <= 1000)
       (kilometres :: Int32 where kilometres >= 0 && kilometres <= 1000) =>
-      shippingCost kilograms kilometres >= 0 end
-  end
+      shippingCost kilograms kilometres >= 0 end for all
+  end definition
   expect shippingCost kilograms kilometres = cost
   in table (kilograms, kilometres, cost) :
     row 0, 0, 0
     row 1, 10, 15
     row 2, 10, 30
-  end
-end
+  end table
+end law
+end unit
 ```
 
 - `table (a, b, ...) is`, then `row` lines, then `expect` lines, then `end`.
@@ -188,7 +191,7 @@ description:
   parcel = 7
   expect label parcel = \"parcel 7\"
   ```"
-end
+end description
 ````
 
 - A fence holds bindings and expectations, as an example's body does.
@@ -209,17 +212,18 @@ A recorded value is stored in the project, under
 law "|the first label is recorded| is
   definition:
     label 1 must be recorded "first label"
-  end
-end
+  end definition
+end law
 ```
 
 Inside a law with a `parcel` input, a named example can use another recording:
 
 ```lawspec fragment
-  example "|parcel 42|:
+example "|parcel 42|:
     parcel = 42
     expect label parcel = recorded "parcel 42"
-  end
+  end example
+
 ```
 
 - The value is compared by its portable rendering, which is the same on
@@ -269,16 +273,17 @@ the same; fields containing extended scalars use the forms above.
 ```lawspec fragment
 description:
   "converting an Int32 to Text with {itoa} and then back with {atoi} yields the original Int32"
-end
+end description
 
 rationale:
   "representing an Int32 as Text must not change its value"
-end
+end rationale
 
 references:
   "left inverse"
   "round-trip property"
-end
+end references
+
 ```
 
 These blocks document the law. The compiler API reports them as the law's

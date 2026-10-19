@@ -2,31 +2,32 @@ unit lessons.discounts
 
 -- Refinements name the values an adapter accepts and returns. LawSpec only
 -- generates valid inputs, and checks every result at runtime.
-refinement Cents is (c :: Int64 where c >= 0 && c <= 10000000) end
-refinement Percent is (p :: Int32 where p >= 0 && p <= 100) end
+refinement Cents is (c :: Int64 where c >= 0 && c <= 10000000) end refinement
+refinement Percent is (p :: Int32 where p >= 0 && p <= 100) end refinement
 
 applyDiscount :: Cents -> Percent -> Cents
 
 law "|a discount never raises a price| is
   definition :
     for all (price :: Cents) (percent :: Percent) =>
-      applyDiscount price percent <= price end
-  end
-end
+      applyDiscount price percent <= price end for all
+  end definition
+end law
 
 law "|no discount keeps the price| is
   definition :
-    for all (price :: Cents) => applyDiscount price 0 = price end
-  end
-end
+    for all (price :: Cents) => applyDiscount price 0 = price end for all
+  end definition
+end law
 
 law "|a full discount makes it free| is
   definition :
-    for all (price :: Cents) => applyDiscount price 100 = 0 end
-  end
+    for all (price :: Cents) => applyDiscount price 100 = 0 end for all
+  end definition
 
   example "|half price| :
     price = 1000
     expect applyDiscount price 50 = 500
-  end
-end
+  end example
+end law
+end unit

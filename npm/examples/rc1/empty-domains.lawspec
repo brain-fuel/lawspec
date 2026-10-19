@@ -9,38 +9,39 @@ law "|no issued approval incurs an obligation| is
   definition:
     for all (approval of type UnissuedApproval) =>
       false
-    end
-  end
+    end for all
+  end definition
   description:
     "No approval can be constructed in this domain. Universal verification evaluates zero cases."
-  end
-end
+  end description
+end law
 
 law "|excluded inputs require no witnesses| is
   definition:
     for all (enabled of type Bool where false) =>
       there must exist (witness of type Integer) such that
         false
-      end
-    end
-  end
+      end exists
+    end for all
+  end definition
   description:
     "The restriction excludes every input. This establishes no witness for any actual input."
-  end
-end
+  end description
+end law
 
 law "|absence remains different from existence| is
   definition:
     there must not exist (approval of type UnissuedApproval) such that
       true
-    end
-  end
-end
+    end exists
+  end definition
+end law
 
 law "|excluded payments incur no obligation| is
   definition:
     for all (eligible of type Bool where false) =>
       false
-    end
-  end
-end
+    end for all
+  end definition
+end law
+end unit

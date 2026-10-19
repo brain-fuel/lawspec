@@ -25,12 +25,13 @@ procedure leaseEnd (length :: Duration where length <= 24h) -> Instant uses
 law "|a lease lasts its length| using virtual clock is
   definition :
     for all (length :: Duration where length <= 24h) =>
-      (let ends = leaseEnd length in advance length; now >= ends) = true end
-  end
-end
+      (let ends = leaseEnd length in advance length; now >= ends end let) = true end for all
+  end definition
+end law
 
 -- A native adapter gets the clock as an argument.
 stamp :: Int32 -> Instant uses Clock
+end unit
 ```
 
 ## Instants
@@ -58,9 +59,10 @@ ability Clock is
   now :: Instant
   sleep :: Duration -> Unit
 laws
-  law "|time does not go back| is ... end
-  law "|sleeping lets at least that long pass| is ... end
-end
+  law "|time does not go back| is definition: ... end definition end law
+  law "|sleeping lets at least that long pass| is definition: ... end definition end law
+end laws
+end ability
 ```
 
 - `now` is the current instant.

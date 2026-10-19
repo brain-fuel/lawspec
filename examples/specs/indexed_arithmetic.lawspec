@@ -3,38 +3,38 @@ unit example.arithmetic
 -- Index equations may use natural arithmetic: + - * div mod ^. Subtraction
 -- never truncates, so `m - 1` requires m >= 1 of every value. A variable bound
 -- by several fields makes those fields' indices equal.
-type Row (n :: Natural) is
+type Row (n :: Whole) is one of
   | End where n = 0
-  | Cell head :: Int8 tail :: Row m where n = m + 1
-end
+  | Cell of type record{ head :: Int8 tail :: Row m} where n = m + 1
+end type
 
 -- A perfect tree: both subtrees share one height.
-type Perfect (n :: Natural) is
-  | Leaf value :: Int8 where n = 0
-  | Node left :: Perfect m right :: Perfect m where n = m + 1
-end
+type Perfect (n :: Whole) is one of
+  | Leaf of type Int8 where n = 0
+  | Node of type record{ left :: Perfect m right :: Perfect m} where n = m + 1
+end type
 
 -- A grid's index is its number of cells.
-type Grid (n :: Natural) is
-  | Grid rows :: Row r columns :: Row c where n = r * c
-end
+type Grid (n :: Whole) is one of
+  | Grid of type record{ rows :: Row r columns :: Row c} where n = r * c
+end type
 
 -- Two halves of one length.
-type Halves (n :: Natural) is
-  | Halves front :: Row m back :: Row m where n = m + m
-end
+type Halves (n :: Whole) is one of
+  | Halves of type record{ front :: Row m back :: Row m} where n = m + m
+end type
 
 -- The number of whole pairs, and the length after the first element.
-type Pairs (n :: Natural) is
-  | Pairs items :: Row m where n = m div 2
-end
+type Pairs (n :: Whole) is one of
+  | Pairs of type Row m where n = m div 2
+end type
 
-type Rest (n :: Natural) is
-  | Rest items :: Row m where n = m - 1
-end
+type Rest (n :: Whole) is one of
+  | Rest of type Row m where n = m - 1
+end type
 
 mirror :: (tree :: Perfect n) -> (r :: Perfect n)
-area :: (grid :: Grid n) -> BigInt
+area :: (grid :: Grid n) -> Integer
 duplicate :: (xs :: Row m) -> (r :: Halves (m + m))
 countPairs :: (xs :: Row m) -> (r :: Pairs (m div 2))
 -- `k + 1` binds k to one less than the argument's length.
@@ -44,111 +44,386 @@ dropFirst :: (xs :: Row (k + 1)) -> (r :: Rest k)
 -- height, so mirrorP's result height is proved; so is transposeG's, as r * c
 -- and c * r are the same product. stackRows' claim, (r + r) * c = 2 * (r * c),
 -- is beyond linear arithmetic: it is checked on each result instead.
-definition mirrorP (tree :: Perfect n) :: Perfect n is
-  match tree with
-  | Leaf v -> Leaf v
-  | Node l r -> Node (mirrorP r) (mirrorP l)
-  end
-end
+function mirrorP (tree :: Perfect n) -> Perfect n is
+  first matching case of tree :
+    when Leaf v then Leaf v
+    when Node record{ left = l , right = r} then Node record{ left = (mirrorP r)
+        , right = (mirrorP l)}
+  end case
+end function
 
-definition transposeG (grid :: Grid n) :: Grid n is
-  match grid with
-  | Grid rows columns -> Grid columns rows
-  end
-end
+function transposeG (grid :: Grid n) -> Grid n is
+  first matching case of grid :
+    when Grid record{ rows = rows , columns = columns} then Grid record{ rows =
+        columns , columns = rows}
+  end case
+end function
 
-definition appendRow (xs :: Row n) (ys :: Row m) :: Row (n + m) is
-  match xs with
-  | End -> ys
-  | Cell h t -> Cell h (appendRow t ys)
-  end
-end
+function appendRow (xs :: Row n) (ys :: Row m) -> Row (n + m) is
+  first matching case of xs :
+    when End then ys
+    when Cell record{ head = h , tail = t} then Cell record{ head = h , tail =
+        (appendRow t ys)}
+  end case
+end function
 
-definition stackRows (grid :: Grid n) :: Grid (2 * n) is
-  match grid with
-  | Grid rows columns -> Grid (appendRow rows rows) columns
-  end
-end
+function stackRows (grid :: Grid n) -> Grid (2 * n) is
+  first matching case of grid :
+    when Grid record{ rows = rows , columns = columns} then Grid record{ rows =
+        (appendRow rows rows) , columns = columns}
+  end case
+end function
 
-law `mirror agrees with the proved definition` is
-  definition is
-    `for all` (tree :: Perfect 3) . mirror tree = mirrorP tree
-  end
-end
+law "|mirror agrees with the proved definition| is
+  definition :
+    for all (tree :: Perfect 3) => mirror tree = mirrorP tree end for all
+  end definition
+end law
 
-law `transposing keeps the area` is
-  definition is
-    `for all` (grid :: Grid 12) . area (transposeG grid) = 12
-  end
-end
+law "|transposing keeps the area| is
+  definition :
+    for all (grid :: Grid 12) => area (transposeG grid) = 12 end for all
+  end definition
+end law
 
-law `stacking doubles the area` is
-  definition is
-    `for all` (grid :: Grid 6) . area (stackRows grid) = 12
-  end
-end
+law "|stacking doubles the area| is
+  definition :
+    for all (grid :: Grid 6) => area (stackRows grid) = 12 end for all
+  end definition
+end law
 
--- Without an index claim, balanced trees are still generated directly, from a
--- few small heights; random trees would almost never be balanced.
-law `mirroring twice restores a tree` is
-  definition is
-    `for all` (tree :: Perfect n) . mirror (mirror tree) = tree
-  end
-end
+-- Without a fixed height, ordinary checked generation retains the balance
+-- guards. The harness constructs the fixed-height cases below.
+law "|mirroring twice restores a tree| is
+  definition :
+    for all (tree :: Perfect n) => mirror (mirror tree) = tree end for all
+  end definition
+end law
 
-law `mirroring keeps the height` is
-  definition is
-    `for all` (tree :: Perfect 3) . nOfPerfect (mirror tree) = 3
-  end
-end
+law "|mirroring keeps the height| is
+  definition :
+    for all (tree :: Perfect 3) => nOfPerfect (mirror tree) = 3 end for all
+  end definition
+end law
 
-law `a grid of six cells` is
-  definition is
-    `for all` (grid :: Grid 6) . area grid = 6
-  end
-end
+law "|a grid of six cells| is
+  definition :
+    for all (grid :: Grid 6) => area grid = 6 end for all
+  end definition
+end law
 
--- Generation chooses rows and columns among the divisors of twelve.
-law `the area is the index` is
-  definition is
-    `for all` (grid :: Grid 12) . area grid = nOfGrid grid
-  end
-end
+-- The harness chooses every factorization of twelve.
+law "|the area is the index| is
+  definition :
+    for all (grid :: Grid 12) => area grid = nOfGrid grid end for all
+  end definition
+end law
 
-law `duplicating makes equal halves` is
-  definition is
-    `for all` (xs :: Row m) . nOfHalves (duplicate xs) = m + m
-  end
-end
+law "|duplicating makes equal halves| is
+  definition :
+    for all (xs :: Row m) => nOfHalves (duplicate xs) = m + m end for all
+  end definition
+end law
 
--- Generation gives both halves the same length.
-law `halves of six` is
-  definition is
-    `for all` (halves :: Halves 6) . nOfHalves halves = 6
-  end
-end
+-- The harness constructs equal-length halves with independent cell values.
+law "|halves of six| is
+  definition :
+    for all (halves :: Halves 6) => nOfHalves halves = 6 end for all
+  end definition
+end law
 
-law `seven elements make three pairs` is
-  definition is
-    `for all` (xs :: Row 7) . nOfPairs (countPairs xs) = 3
-  end
-end
+law "|seven elements make three pairs| is
+  definition :
+    for all (xs :: Row 7) => nOfPairs (countPairs xs) = 3 end for all
+  end definition
+end law
 
 -- A child may have a larger index than its parent: Pairs 2 holds four or five.
-law `two pairs` is
-  definition is
-    `for all` (p :: Pairs 2) . nOfPairs p = 2
-  end
-end
+law "|two pairs| is
+  definition :
+    for all (p :: Pairs 2) => nOfPairs p = 2 end for all
+  end definition
+end law
 
-law `the rest is one shorter` is
-  definition is
-    `for all` (xs :: Row (k + 1)) . nOfRest (dropFirst xs) = k
-  end
-end
+law "|the rest is one shorter| is
+  definition :
+    for all (xs :: Row (k + 1)) => nOfRest (dropFirst xs) = k end for all
+  end definition
+end law
 
-law `the rest of three` is
-  definition is
-    `for all` (r :: Rest 3) . nOfRest r = 3
-  end
-end
+law "|the rest of three| is
+  definition :
+    for all (r :: Rest 3) => nOfRest r = 3 end for all
+  end definition
+end law
+
+harness example.arithmetic.shapes for example.arithmetic is
+
+  strategy row0 of type Row 0 is
+    one of End
+  end strategy
+
+  strategy row1 of type Row 1 is
+    bind tail of type Row 0 from row0 in
+      bind head of type Int8 from any in
+        one of Cell record{head = head, tail = tail}
+      end bind
+    end bind
+  end strategy
+
+  strategy row2 of type Row 2 is
+    bind tail of type Row 1 from row1 in
+      bind head of type Int8 from any in
+        one of Cell record{head = head, tail = tail}
+      end bind
+    end bind
+  end strategy
+
+  strategy row3 of type Row 3 is
+    bind tail of type Row 2 from row2 in
+      bind head of type Int8 from any in
+        one of Cell record{head = head, tail = tail}
+      end bind
+    end bind
+  end strategy
+
+  strategy row4 of type Row 4 is
+    bind tail of type Row 3 from row3 in
+      bind head of type Int8 from any in
+        one of Cell record{head = head, tail = tail}
+      end bind
+    end bind
+  end strategy
+
+  strategy row5 of type Row 5 is
+    bind tail of type Row 4 from row4 in
+      bind head of type Int8 from any in
+        one of Cell record{head = head, tail = tail}
+      end bind
+    end bind
+  end strategy
+
+  strategy row6 of type Row 6 is
+    bind tail of type Row 5 from row5 in
+      bind head of type Int8 from any in
+        one of Cell record{head = head, tail = tail}
+      end bind
+    end bind
+  end strategy
+
+  strategy row7 of type Row 7 is
+    bind tail of type Row 6 from row6 in
+      bind head of type Int8 from any in
+        one of Cell record{head = head, tail = tail}
+      end bind
+    end bind
+  end strategy
+
+  strategy perfect0 of type Perfect 0 is
+    bind value of type Int8 from any in
+      one of Leaf value
+    end bind
+  end strategy
+
+  strategy perfect1 of type Perfect 1 is
+    bind left of type Perfect 0 from perfect0 in
+      bind right of type Perfect 0 from perfect0 in
+        one of Node record{left = left, right = right}
+      end bind
+    end bind
+  end strategy
+
+  strategy perfect2 of type Perfect 2 is
+    bind left of type Perfect 1 from perfect1 in
+      bind right of type Perfect 1 from perfect1 in
+        one of Node record{left = left, right = right}
+      end bind
+    end bind
+  end strategy
+
+  strategy perfect3 of type Perfect 3 is
+    bind left of type Perfect 2 from perfect2 in
+      bind right of type Perfect 2 from perfect2 in
+        one of Node record{left = left, right = right}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid1by6 of type Grid 6 is
+    bind rows of type Row 1 from row1 in
+      bind columns of type Row 6 from row6 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid2by3 of type Grid 6 is
+    bind rows of type Row 2 from row2 in
+      bind columns of type Row 3 from row3 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid3by2 of type Grid 6 is
+    bind rows of type Row 3 from row3 in
+      bind columns of type Row 2 from row2 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid6by1 of type Grid 6 is
+    bind rows of type Row 6 from row6 in
+      bind columns of type Row 1 from row1 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid6 of type Grid 6 is
+    frequency 1 grid1by6, 1 grid2by3, 1 grid3by2, 1 grid6by1
+  end strategy
+
+  strategy row12 of type Row 12 is
+    bind value0 of type Int8 from any in
+      bind value1 of type Int8 from any in
+        bind value2 of type Int8 from any in
+          bind value3 of type Int8 from any in
+            bind value4 of type Int8 from any in
+              bind value5 of type Int8 from any in
+                bind value6 of type Int8 from any in
+                  bind value7 of type Int8 from any in
+                    bind value8 of type Int8 from any in
+                      bind value9 of type Int8 from any in
+                        bind value10 of type Int8 from any in
+                          bind value11 of type Int8 from any in
+                            one of (Cell record{head = value0, tail = (Cell record{head = value1, tail = (Cell record{head = value2, tail = (Cell record{head = value3, tail = (Cell record{head = value4, tail = (Cell record{head = value5, tail = (Cell record{head = value6, tail = (Cell record{head = value7, tail = (Cell record{head = value8, tail = (Cell record{head = value9, tail = (Cell record{head = value10, tail = (Cell record{head = value11, tail = End})})})})})})})})})})})})
+                          end bind
+                        end bind
+                      end bind
+                    end bind
+                  end bind
+                end bind
+              end bind
+            end bind
+          end bind
+        end bind
+      end bind
+    end bind
+  end strategy
+
+  strategy grid1by12 of type Grid 12 is
+    bind rows of type Row 1 from row1 in
+      bind columns of type Row 12 from row12 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid2by6 of type Grid 12 is
+    bind rows of type Row 2 from row2 in
+      bind columns of type Row 6 from row6 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid3by4 of type Grid 12 is
+    bind rows of type Row 3 from row3 in
+      bind columns of type Row 4 from row4 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid4by3 of type Grid 12 is
+    bind rows of type Row 4 from row4 in
+      bind columns of type Row 3 from row3 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid6by2 of type Grid 12 is
+    bind rows of type Row 6 from row6 in
+      bind columns of type Row 2 from row2 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid12by1 of type Grid 12 is
+    bind rows of type Row 12 from row12 in
+      bind columns of type Row 1 from row1 in
+        one of Grid record{rows = rows, columns = columns}
+      end bind
+    end bind
+  end strategy
+
+  strategy grid12 of type Grid 12 is
+    frequency 1 grid1by12, 1 grid2by6, 1 grid3by4, 1 grid4by3, 1 grid6by2, 1
+    grid12by1
+  end strategy
+
+  strategy equalHalves of type Halves 6 is
+    bind front of type Row 3 from row3 in
+      bind back of type Row 3 from row3 in
+        one of Halves record{front = front, back = back}
+      end bind
+    end bind
+  end strategy
+
+  strategy pairs4 of type Pairs 2 is
+    bind row of type Row 4 from row4 in
+      one of Pairs row
+    end bind
+  end strategy
+
+  strategy pairs5 of type Pairs 2 is
+    bind row of type Row 5 from row5 in
+      one of Pairs row
+    end bind
+  end strategy
+
+  strategy twoPairs of type Pairs 2 is frequency 1 pairs4, 1 pairs5 end strategy
+
+  strategy rest3 of type Rest 3 is
+    bind row of type Row 4 from row4 in
+      one of Rest row
+    end bind
+  end strategy
+
+  for law "|mirror agrees with the proved definition|
+    use perfect3 for tree
+  end for law
+  for law "|mirroring keeps the height|
+    use perfect3 for tree
+  end for law
+  for law "|transposing keeps the area|
+    use grid12 for grid
+  end for law
+  for law "|stacking doubles the area|
+    use grid6 for grid
+  end for law
+  for law "|a grid of six cells|
+    use grid6 for grid
+  end for law
+  for law "|the area is the index|
+    use grid12 for grid
+  end for law
+  for law "|halves of six|
+    use equalHalves for halves
+  end for law
+  for law "|seven elements make three pairs|
+    use row7 for xs
+  end for law
+  for law "|two pairs|
+    use twoPairs for p
+  end for law
+  for law "|the rest of three|
+    use rest3 for r
+  end for law
+
+end harness
+end unit

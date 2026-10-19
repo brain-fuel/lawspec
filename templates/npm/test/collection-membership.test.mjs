@@ -5,7 +5,7 @@ import {createCompiler} from '../api.mjs';
 import {explainLaw} from '../explain.mjs';
 
 const content = await readFile(new URL('../../test/fixtures/canonical-collection-membership.lawspec', import.meta.url), 'utf8');
-const input = (machineBits, layers, source = content) => ({schemaVersion: 5, languageProfile: '1.0-rc.1',
+const input = (machineBits, layers, source = content) => ({schemaVersion: 5, languageProfile: '1.0-rc.2',
   machineBits, verification: {layers}, sources: [{path: 'membership.lawspec', content: source}]});
 const evidence = result => result.evidence.filter(item => item.stage === 'law');
 
@@ -38,16 +38,27 @@ test('finite collection membership and predicates share checked typed execution'
 test('membership keeps Eq, mandatory strict argument checks and explicit map selection', async () => {
   const compiler = await createCompiler();
   const cases = [
-    ['function includes (value :: a) (members :: List a) -> Bool is value in members end function', false],
-    ['function includes (value :: a) (members :: List a) -> Bool requires Eq a is value in members end function', true],
-    ['function selected (value :: a) -> Bool is true end function\nfunction scan (members :: Queue a) -> Bool is prelude.any selected members end function', true],
-    ['function invalid (ignored :: Bool) -> Bool is (1 / 0) in ([] :: List Integer) end function', false],
-    ['function exceeds (limit :: Integer) (value :: Integer) -> Bool is value > limit end function\nfunction invalid (ignored :: Bool) -> Bool is prelude.any (exceeds (1 / 0)) ([] :: List Integer) end function', false],
-    ['law invalid is definition: 1 in prelude.keyValOf [Entry 1 2] end end', false],
-    ['law invalid is definition: "a" in "abc" end end', false],
+    [`function includes (value :: a) (members :: List a) -> Bool is value in members end function
+`, false],
+    [`function includes (value :: a) (members :: List a) -> Bool requires Eq a is value in members end function
+`, true],
+    [`function selected (value :: a) -> Bool is true end function
+function scan (members :: Queue a) -> Bool is prelude.any selected members end function
+`, true],
+    [`function invalid (ignored :: Bool) -> Bool is (1 / 0) in ([] :: List Integer) end function
+`, false],
+    [`function exceeds (limit :: Integer) (value :: Integer) -> Bool is value > limit end function
+function invalid (ignored :: Bool) -> Bool is prelude.any (exceeds (1 / 0)) ([] :: List Integer) end function
+`, false],
+    [`law invalid is definition: 1 in prelude.keyValOf [Entry 1 2] end definition end law
+`, false],
+    [`law invalid is definition: "a" in "abc" end definition end law
+`, false],
   ];
   for (const [body, valid] of cases) {
-    const result = await compiler.check(input(64, [], `unit capability_checks\n${body}`));
+    const result = await compiler.check(input(64, [], `unit capability_checks\n${body}
+end unit
+`));
     assert.equal(result.diagnostics.length === 0, valid, `${body}: ${JSON.stringify(result.diagnostics)}`);
     if (valid) assert.equal(result.verification.intrinsicDefinitionChecks, true);
   }

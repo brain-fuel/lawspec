@@ -3,7 +3,7 @@ expect: refuted
 expect: NaN membership does not use identity shortcuts
 @@ test/fixtures/eq-set-foundation.lawspec
 <<<<<<<
-if reverse then EqSetItems [float64Bits("7ff8000000000001"), float64Bits("3ff0000000000000")]
+if reverse then prelude.setOf [float64Bits("7ff8000000000001"), float64Bits("3ff0000000000000")]
 =======
-if reverse then EqSetItems [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")]
+if reverse then prelude.setOf [float64Bits("4000000000000000"), float64Bits("3ff0000000000000")]
 >>>>>>>

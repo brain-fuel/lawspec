@@ -1,6 +1,6 @@
 @@ src/main/scala/example/Indexed.scala
 <<<<<<<
-      case Vec.VCons(head, tail) => Vec.VCons(head, append(tail, value1))
+      case Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head, tail)) => Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head, append(tail, value1)))
 =======
-      case Vec.VCons(head, tail) => append(tail, value1)
+      case Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head, tail)) => append(tail, value1)
 >>>>>>>

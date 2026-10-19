@@ -7,16 +7,18 @@ empty :: Store -> Bool
 touch :: Store -> Bool
 
 resource Store is
-  acquire is openStore unitValue end
-  release store is closeStore store end
-end
+  acquire is openStore unitValue end acquire
+  release store is closeStore store end release
+end resource
 
 law "|owners release after each test| for first :: Store, second :: Store is
-  definition : empty first and empty second and touch second and empty first end
-end
+  definition : empty first and empty second and touch second and empty first end definition
+end law
 
 harness example.resourceOwners.testing for example.resourceOwners is
   for law "|owners release after each test|
     timeout 500 ms
     tags owners
-end
+end for law
+end harness
+end unit

@@ -1,5 +1,5 @@
 {
   "specs": ["test/fixtures/canonical-collection-membership.lawspec"],
-  "languageProfile": "1.0-rc.1",
+  "languageProfile": "1.0-rc.2",
   "verification": {"layers": ["exhaustive", "examples"]}
 }

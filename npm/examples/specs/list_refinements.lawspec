@@ -1,51 +1,52 @@
 unit example.list_refinements
 
-definition above (floor :: Int8) (xs :: List Int8) :: Bool is
-  match xs with
-  | Nil -> true
-  | Cons first rest -> first > floor && above floor rest
-  end
-end
+function above (floor :: Int8) (xs :: List Int8) -> Bool is
+  first matching case of xs :
+  when Nil then true
+  when Cons first rest then first > floor && above floor rest
+  end case
+end function
 
-definition positiveRows (rows :: List (List Int8)) :: Bool is
-  match rows with
-  | Nil -> true
-  | Cons first rest -> above 0 first && positiveRows rest
-  end
-end
+function positiveRows (rows :: List (List Int8)) -> Bool is
+  first matching case of rows :
+  when Nil then true
+  when Cons first rest then above 0 first && positiveRows rest
+  end case
+end function
 
-law `each element is positive` is
-  definition is `for all` (xs :: List (value :: Int8 where value > 0)) .
-    above 0 xs = true
-  end
-  example `empty` is xs = [] expect above 0 xs = true end
-  example `positive values` is xs = [1, 127] expect above 0 xs = true end
-end
+law "|each element is positive| is
+  definition : for all (xs :: List (value :: Int8 where value > 0)) =>
+    above 0 xs = true end for all
+  end definition
+  example "|empty| : xs = [] expect above 0 xs = true end example
+  example "|positive values| : xs = [1, 127] expect above 0 xs = true end example
+end law
 
-law `nested element domains` is
-  definition is `for all` (rows :: List (List (value :: Int8 where value > 0))) .
-    positiveRows rows = true
-  end
-  example `empty rows` is rows = [[], [1, 2]] expect positiveRows rows = true end
-end
+law "|nested element domains| is
+  definition : for all (rows :: List (List (value :: Int8 where value > 0))) =>
+    positiveRows rows = true end for all
+  end definition
+  example "|empty rows| : rows = [[], [1, 2]] expect positiveRows rows = true end example
+end law
 
-law `dependent elements` is
-  definition is `for all` (lawspecElement :: Int8)
-    (xs :: List (value :: Int8 where value > lawspecElement)) .
-    above lawspecElement xs = true
-  end
-  example `maximum prefix still permits empty` is
+law "|dependent elements| is
+  definition : for all (lawspecElement :: Int8)
+    (xs :: List (value :: Int8 where value > lawspecElement)) =>
+    above lawspecElement xs = true end for all
+  end definition
+  example "|maximum prefix still permits empty| :
     lawspecElement = 127 xs = [] expect above lawspecElement xs = true
-  end
-  example `nonempty continuation` is
+  end example
+  example "|nonempty continuation| :
     lawspecElement = 0 xs = [1, 2] expect above lawspecElement xs = true
-  end
-end
+  end example
+end law
 
-law `division stays behind its guard` is
-  definition is `for all`
-    (xs :: List (value :: Int8 where value != 0 && 1 / value > 0)) .
-    above 0 xs = true
-  end
-  example `positive denominator` is xs = [1] expect above 0 xs = true end
-end
+law "|division stays behind its guard| is
+  definition : for all
+    (xs :: List (value :: Int8 where value != 0 && 1 / value > 0)) =>
+    above 0 xs = true end for all
+  end definition
+  example "|positive denominator| : xs = [1] expect above 0 xs = true end example
+end law
+end unit

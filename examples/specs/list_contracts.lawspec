@@ -1,136 +1,137 @@
 unit example.list_contracts
 
-definition keep (xs :: List (value :: Int8 where value > 0))
-  :: List (value :: Int8 where value > 0)
-is xs end
+function keep (xs :: List (value :: Int8 where value > 0))
+  -> List (value :: Int8 where value > 0)
+is xs end function
 
-definition stronger (xs :: List (value :: Int8 where value > 10)) :: List Int8 is
+function stronger (xs :: List (value :: Int8 where value > 10)) -> List Int8 is
   keep (copypositive xs)
-end
+end function
 
-definition positive (value :: a) :: Bool requires Integer a is value > 0 end
+function positive (value :: a) -> Bool requires Integer a is value > 0 end function
 
-definition keephelper (xs :: List (value :: a where positive value))
-  :: List a requires Integer a
-is xs end
+function keephelper (xs :: List (value :: a where positive value))
+  -> List a requires Integer a
+is xs end function
 
-definition reuse (xs :: List (value :: Int8 where positive value)) :: List Int8 is
+function reuse (xs :: List (value :: Int8 where positive value)) -> List Int8 is
   keephelper xs
-end
+end function
 
-definition empty (value :: Int8) :: List (element :: Int8 where false) is [] end
+function empty (value :: Int8) -> List (element :: Int8 where false) is [] end function
 
-definition singleton (value :: Int8 where value > 0)
-  :: List (element :: Int8 where element > 0)
-is [value] end
-
-
-law `stronger domains satisfy the callee` is
-  definition is `for all` (xs :: List (value :: Int8 where value > 10)) .
-    stronger xs = xs
-  end
-  example `positive input` is xs = [11, 127] expect stronger xs = [11, 127] end
-end
-
-law `generic predicates keep their scope` is
-  definition is `for all` (xs :: List (value :: Int8 where value > 0)) .
-    reuse xs = xs
-  end
-  example `empty` is xs = [] expect reuse xs = [] end
-  example `nonempty` is xs = [1, 2] expect reuse xs = [1, 2] end
-end
-
-law `empty output satisfies an impossible element domain` is
-  definition is `for all` (value :: Int8) . empty value = [] end
-  example `zero` is value = 0 expect empty value = [] end
-end
-
-law `constructed output satisfies its contract` is
-  definition is `for all` (value :: Int8 where value > 0) . singleton value = [value] end
-  example `maximum` is value = 127 expect singleton value = [127] end
-end
+function singleton (value :: Int8 where value > 0)
+  -> List (element :: Int8 where element > 0)
+is [value] end function
 
 
-definition sumreciprocal (xs :: List (value :: Int8 where value != 0)) :: Rational is
-  match xs with
-  | Nil -> 0
-  | Cons first rest -> unwrapnonzero (wrapnonzero (nonzero first)) + sumreciprocal rest
-  end
-end
+law "|stronger domains satisfy the callee| is
+  definition : for all (xs :: List (value :: Int8 where value > 10)) =>
+    stronger xs = xs end for all
+  end definition
+  example "|positive input| : xs = [11, 127] expect stronger xs = [11, 127] end example
+end law
 
-definition sumrows (rows :: List (List (value :: Int8 where value != 0))) :: Rational is
-  match rows with
-  | Nil -> 0
-  | Cons first rest -> sumreciprocal first + sumrows rest
-  end
-end
+law "|generic predicates keep their scope| is
+  definition : for all (xs :: List (value :: Int8 where value > 0)) =>
+    reuse xs = xs end for all
+  end definition
+  example "|empty| : xs = [] expect reuse xs = [] end example
+  example "|nonempty| : xs = [1, 2] expect reuse xs = [1, 2] end example
+end law
 
-definition positivetail (xs :: List (value :: Int8 where value > 0))
-  :: List (value :: Int8 where value > 0)
+law "|empty output satisfies an impossible element domain| is
+  definition : for all (value :: Int8) => empty value = [] end for all end definition
+  example "|zero| : value = 0 expect empty value = [] end example
+end law
+
+law "|constructed output satisfies its contract| is
+  definition : for all (value :: Int8 where value > 0) => singleton value = [value] end for all end definition
+  example "|maximum| : value = 127 expect singleton value = [127] end example
+end law
+
+
+function sumreciprocal (xs :: List (value :: Int8 where value != 0)) -> Rational is
+  first matching case of xs :
+  when Nil then 0
+  when Cons first rest then unwrapnonzero (wrapnonzero (nonzero first)) + sumreciprocal rest
+  end case
+end function
+
+function sumrows (rows :: List (List (value :: Int8 where value != 0))) -> Rational is
+  first matching case of rows :
+  when Nil then 0
+  when Cons first rest then sumreciprocal first + sumrows rest
+  end case
+end function
+
+function positivetail (xs :: List (value :: Int8 where value > 0))
+  -> List (value :: Int8 where value > 0)
 is
-  match xs with | Nil -> [] | Cons first rest -> rest end
-end
+  first matching case of xs : when Nil then [] when Cons first rest then rest end case
+end function
 
-definition positivefirst (xs :: List (value :: Int8 where value > 0))
-  :: (result :: Int8 where result > 0)
+function positivefirst (xs :: List (value :: Int8 where value > 0))
+  -> (result :: Int8 where result > 0)
 is
-  match xs with | Nil -> 1 | Cons first rest -> first end
-end
+  first matching case of xs : when Nil then 1 when Cons first rest then first end case
+end function
 
 
-law `reciprocal sum uses each nonzero head` is
-  definition is `for all` (value :: Int8 where value != 0) .
-    sumreciprocal [value] = 1 / value
-  end
-  example `half` is value = 2 expect sumreciprocal [value] = rational(1, 2) end
-end
+law "|reciprocal sum uses each nonzero head| is
+  definition : for all (value :: Int8 where value != 0) =>
+    sumreciprocal [value] = 1 / value end for all
+  end definition
+  example "|half| : value = 2 expect sumreciprocal [value] = rational(1, 2) end example
+end law
 
-law `nested membership keeps row contracts` is
-  definition is `for all` (value :: Int8 where value != 0) .
-    sumrows [[], [value]] = 1 / value
-  end
-  example `negative half` is value = -2 expect sumrows [[], [value]] = rational(-1, 2) end
-end
+law "|nested membership keeps row contracts| is
+  definition : for all (value :: Int8 where value != 0) =>
+    sumrows [[], [value]] = 1 / value end for all
+  end definition
+  example "|negative half| : value = -2 expect sumrows [[], [value]] = rational(-1, 2) end example
+end law
 
-law `tail preserves its positive elements` is
-  definition is `for all` (first :: Int8 where first > 0)
-    (second :: Int8 where second > 0) . positivetail [first, second] = [second]
-  end
-  example `two values` is first = 1 second = 2 expect positivetail [first, second] = [2] end
-end
+law "|tail preserves its positive elements| is
+  definition : for all (first :: Int8 where first > 0)
+    (second :: Int8 where second > 0) => positivetail [first, second] = [second] end for all
+  end definition
+  example "|two values| : first = 1 second = 2 expect positivetail [first, second] = [2] end example
+end law
 
 -- Recursive calls supply their verified result contract by structural induction.
-definition copypositive (xs :: List (value :: Int8 where value > 0))
-  :: List (value :: Int8 where value > 0)
+function copypositive (xs :: List (value :: Int8 where value > 0))
+  -> List (value :: Int8 where value > 0)
 is
-  match xs with
-  | Nil -> []
-  | Cons first rest -> Cons first (copypositive rest)
-  end
-end
+  first matching case of xs :
+  when Nil then []
+  when Cons first rest then Cons first (copypositive rest)
+  end case
+end function
 
-definition nonzero (value :: Int8 where value != 0)
-  :: (result :: Int8 where result != 0)
-is value end
+function nonzero (value :: Int8 where value != 0)
+  -> (result :: Int8 where result != 0)
+is value end function
 
-definition wrapnonzero (value :: Int8 where value != 0)
-  :: Maybe (result :: Int8 where result != 0)
-is Just value end
+function wrapnonzero (value :: Int8 where value != 0)
+  -> Maybe (result :: Int8 where result != 0)
+is Just value end function
 
-definition unwrapnonzero (value :: Maybe (element :: Int8 where element != 0))
-  :: Rational
+function unwrapnonzero (value :: Maybe (element :: Int8 where element != 0))
+  -> Rational
 is
-  match value with
-  | Nothing -> 0
-  | Just element -> selectnonzero (Left element)
-  end
-end
+  first matching case of value :
+  when Nothing then 0
+  when Just element then selectnonzero (Left element)
+  end case
+end function
 
-definition selectnonzero (value :: Either (element :: Int8 where element != 0) Bool)
-  :: Rational
+function selectnonzero (value :: Either (element :: Int8 where element != 0) Bool)
+  -> Rational
 is
-  match value with
-  | Left element -> 1 / element
-  | Right ignored -> 0
-  end
-end
+  first matching case of value :
+  when Left element then 1 / element
+  when Right ignored then 0
+  end case
+end function
+end unit

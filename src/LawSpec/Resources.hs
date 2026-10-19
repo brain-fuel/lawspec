@@ -49,23 +49,23 @@ usesResources text =
 
 resourcesSource :: String
 resourcesSource = unlines
-  [ "unit " ++ resourcesUnit
+  [ "unit lawspec.resources"
   , ""
   , "-- A directory made for one case of a law, and removed with everything in it."
-  , "type TemporaryDirectory is TemporaryDirectory path :: Text end"
+  , "type TemporaryDirectory is a record{  path :: Text} end type"
   , ""
   , "-- An empty file made for one case of a law, and removed after it."
-  , "type TemporaryFile is TemporaryFile path :: Text end"
+  , "type TemporaryFile is a record{  path :: Text} end type"
   , ""
   , "-- A TCP port on the local host that was free when the case began."
-  , "type FreePort is FreePort number :: Int32 end"
+  , "type FreePort is a record{  number :: Int32} end type"
   , ""
   , "-- The process environment as the case found it; it is restored after."
-  , "type SavedEnvironment is SavedEnvironment snapshot :: Text end"
+  , "type SavedEnvironment is a record{  snapshot :: Text} end type"
   , ""
-  , "definition directoryPath (d :: TemporaryDirectory) :: Text is match d with | TemporaryDirectory p -> p end end"
+  , "function directoryPath (d :: TemporaryDirectory) -> Text is first matching case of d : when TemporaryDirectory record{ path = p} then p end case end function"
   , ""
-  , "definition filePath (f :: TemporaryFile) :: Text is match f with | TemporaryFile p -> p end end"
+  , "function filePath (f :: TemporaryFile) -> Text is first matching case of f : when TemporaryFile record{ path = p} then p end case end function"
   , ""
-  , "definition portNumber (p :: FreePort) :: Int32 is match p with | FreePort n -> n end end"
-  ]
+  , "function portNumber (p :: FreePort) -> Int32 is first matching case of p : when FreePort record{ number = n} then n end case end function"
+  , "end unit" ]

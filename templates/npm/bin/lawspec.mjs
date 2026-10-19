@@ -5,8 +5,6 @@ import path from "node:path";
 import { createCompiler } from "../api.mjs";
 import { targets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
-import { migrationReport } from "../migrate.mjs";
-import { writeMigration } from "../migration-write.mjs";
 import { proveWithZ3 } from "../proof.mjs";
 import { serveLanguage } from "../lsp.mjs";
 import { explainLaw, explanationViews } from "../explain.mjs";
@@ -34,7 +32,7 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report", "--attestation", "--view", "--from", "--solver", "--proof-timeout", "--proof-memory", "--proof-rlimit", "--proof-seed"].includes(arg)) {
+  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report", "--attestation", "--view", "--solver", "--proof-timeout", "--proof-memory", "--proof-rlimit", "--proof-seed"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
@@ -43,7 +41,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = [...(options[arg.slice(2)] ?? []), ...args[++i].split(",").filter(Boolean)];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--write", "--stdio", "--warn-matches"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--stdio", "--warn-matches"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -125,49 +123,16 @@ async function packageInput(owner, root) {
     ...(owner.dependencies !== undefined ? { dependencies: owner.dependencies } : {}),
   };
 }
-async function migrateCommand() {
-  if(options.write&&options["dry-run"])throw new Error("--write and --dry-run cannot be combined");
-  if (options.from !== "0.24") throw new Error("migrate requires --from 0.24");
-  const configurationText=await readFile(configFile,"utf8");
-  const config = JSON.parse(configurationText);
-  if (config.version !== 1) throw new Error("migrate --from 0.24 requires configuration version 1");
-  const compiler = await createCompiler();
-  const input={
-    sources: await sources(config), ...(await packageInput(config, configRoot)),
-    generation: config.generation, machineBits: config.machineBits ?? 64, minify: options.minify === true,
-  };
-  const recheck=async()=>{
-    const current={sources:await sources(config),...(await packageInput(config,configRoot))};
-    const original={sources:input.sources,...Object.fromEntries(['packages','dependencies']
-      .filter(key=>input[key]!==undefined).map(key=>[key,input[key]]))};
-    if(JSON.stringify(current)!==JSON.stringify(original))throw new Error('Project sources or package dependencies changed during migration.');
-  };
-  const report=options.write?await writeMigration(compiler,configRoot,path.basename(configFile),configurationText,input,{recheck}):
-    await migrationReport(compiler,config,input);
-  diagnostics(report);
-  const bindingChanges=report.bindingPreview.targets.flatMap(target=>target.evidence?.changes??[]).length;
-  const bindingChecked=report.bindingPreview.targets.filter(target=>target.evidence?.beforeValidated===true).length;
-  const bindingMatched=report.bindingPreview.targets.filter(target=>target.status==='matched').length;
-  const bindingSummary=`Native binding preview: ${bindingChecked} of ${report.bindingPreview.configurationCount} original configurations checked; ${bindingMatched} proposals match; ${bindingChanges} field changes.\n`;
-  const generationAccepted=report.generationPreview.targets.filter(target=>target.status==='accepted').length;
-  const generationSummary=`Target generation preview: ${generationAccepted} of ${report.generationPreview.configurationCount} configurations accepted. Native implementation conformance remains unestablished.\n`;
-  const boundaryMatched=report.generationPreview.targets.filter(target=>target.nativeBoundary.status==='matched').length;
-  const boundarySummary=`Native boundary comparison: ${boundaryMatched} of ${report.generationPreview.configurationCount} configurations match under their existing native implementation assumptions.\n`;
-  output(options.json ? report : `${options.write?"Written":"Read-only"} migration report: ${report.baseline.laws.length} laws, ${report.baseline.definitions.length} definitions, ${report.constructorChanges.length} constructor payload changes.\n` + bindingSummary + generationSummary + boundarySummary +
-    report.blockers.join("\n") + (options.write?`\n${report.filesWritten.length} files written. Existing native implementation assumptions are retained; no law verification is claimed.`:
-      `\nNo files were written. ${report.validated?'The migration is validated under its existing compiler and native implementation assumptions. Use --write to apply it.':'Migration remains incomplete.'} Use --json to inspect the complete report.`));
-}
-
 async function formatCommand() {
   const config = positional.length ? null : JSON.parse(await readFile(configFile, "utf8"));
-  if(config&&(config.version!==2||config.languageProfile!=="1.0-rc.1"))
-    throw new Error("Formatting a project requires configuration version 2 and languageProfile 1.0-rc.1; run lawspec migrate --from 0.24 first.");
+  if(config&&(config.version!==2||config.languageProfile!=="1.0-rc.2"))
+    throw new Error("Formatting a project requires configuration version 2 and languageProfile 1.0-rc.2");
   const root = positional.length ? process.cwd() : configRoot;
   const files = await collectSources(root, positional.length ? positional : config.sources);
   const compiler = await createCompiler();
   const result = diagnostics(await compiler.format({
     sources: files, ...(config ? await packageInput(config, configRoot) : {}),
-    languageProfile: "1.0-rc.1", verification: { layers: [] },
+    languageProfile: "1.0-rc.2", verification: { layers: [] },
   }));
   const changed = result.formattedSources.filter((file, index) => file.content !== files[index].content);
   if (!options.check) for (const file of changed) await atomicWrite(path.resolve(root, file.path), file.content);
@@ -182,7 +147,7 @@ async function packageCommand() {
   const compiler = await createCompiler();
   const result = diagnostics(
     await compiler.check({
-      languageProfile: '1.0-rc.1', verification: {layers: []},
+      languageProfile: '1.0-rc.2', verification: {layers: []},
       sources: own.sources,
       package: { name: own.name, version: own.version },
       ...(await packageInput(manifest, directory)),
@@ -222,10 +187,10 @@ async function init() {
   const current = await readOptional(configFile);
   const config =
     current === null
-      ? { version: 2, languageProfile: "1.0-rc.1", verification: { layers: [] }, sources: ["laws"], targets: [] }
+      ? { version: 2, languageProfile: "1.0-rc.2", verification: { layers: [] }, sources: ["laws"], targets: [] }
       : JSON.parse(current);
-  if(config.version!==2||config.languageProfile!=='1.0-rc.1')
-    throw new Error('Existing projects require configuration version 2 and languageProfile 1.0-rc.1; run lawspec migrate --from 0.24 first.');
+  if(config.version!==2||config.languageProfile!=='1.0-rc.2')
+    throw new Error('Existing projects require configuration version 2 and languageProfile 1.0-rc.2');
   if (
     config.targets.some(
       (t) =>
@@ -744,7 +709,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check]\n       lawspec migrate --from 0.24 [--write]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -798,11 +763,8 @@ async function main() {
     throw new Error("--attestation applies to evidence and test");
   if (options.seed !== undefined && !/^[0-9]+$/.test(options.seed))
     throw new Error("--seed must be a whole number");
-  if (options.from && verb !== "migrate") throw new Error("--from applies to migrate");
-  if (options.write && verb !== "migrate") throw new Error("--write applies to migrate");
   if (options["warn-matches"] && verb !== "check") throw new Error("--warn-matches applies to check");
   if (options.stdio && verb !== "lsp") throw new Error("--stdio applies to lsp");
-  if (verb === "migrate") return migrateCommand();
   if (verb === "lsp") {
     if (!options.stdio) throw new Error("lsp requires --stdio");
     return serveLanguage();
@@ -819,9 +781,9 @@ async function main() {
     !Array.isArray(config.targets)
   )
     throw new Error(
-      "Expected lawspec.json version 2 with languageProfile 1.0-rc.1, sources and targets arrays; run lawspec migrate --from 0.24 for version 1 projects",
+      "Expected lawspec.json version 2 with languageProfile 1.0-rc.2, sources and targets arrays",
     );
-  if (config.languageProfile !== "1.0-rc.1") throw new Error("Configuration version 2 requires languageProfile 1.0-rc.1");
+  if (config.languageProfile !== "1.0-rc.2") throw new Error("Configuration version 2 requires languageProfile 1.0-rc.2");
   const selected = config.targets.filter(
     (t) => !options.target || t.language === options.target,
   );
@@ -863,7 +825,7 @@ async function main() {
   };
   const compiler = await createCompiler();
   if (verb === "prove") {
-    if (config.version !== 2) throw new Error("prove requires configuration version 2 and languageProfile 1.0-rc.1");
+    if (config.version !== 2) throw new Error("prove requires configuration version 2 and languageProfile 1.0-rc.2");
     const result = diagnostics(await proveWithZ3(compiler, input, {
       ...(options.solver !== undefined ? {binary: options.solver} : {}),
       ...Object.fromEntries([["proof-timeout","timeoutMs"],["proof-memory","memoryMb"],

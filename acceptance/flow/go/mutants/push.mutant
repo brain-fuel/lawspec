@@ -1,6 +1,6 @@
 @@ example/flow/adapter.go
 <<<<<<<
-	return PushFlow{State: StackPush{Top: value0, Rest: value1}}
+	return PushFlow{State: StackPush{Value: Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be{Rest: value1, Top: value0}}}
 =======
 	return PushFlow{State: value1}
 >>>>>>>

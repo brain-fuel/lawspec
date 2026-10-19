@@ -6,7 +6,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Parser (parseSource)
 import qualified LawSpec.Frontend as Frontend
 
-base = either (error . show) id (parseSource (S.Source "record-unit.lawspec" "unit record.unit\n"))
+base = either (error . show) id (parseSource (S.Source "record-unit.lawspec" "unit record.unit\n\nend unit\n"))
 integer = S.Named "Integer"
 boolean = S.Named "Bool"
 shape = S.Record [S.RecordField "count" "count" integer]

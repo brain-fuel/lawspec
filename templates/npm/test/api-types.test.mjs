@@ -1,6 +1,6 @@
 // The published TypeScript declarations admit an exhaustive visitor over the
 // expression types (test/fixtures/payload_api.ts). Skipped without tsc.
-import {canonicalRequest, legacyCheck} from './legacy-input.mjs';
+import {canonicalRequest, checkInput} from './compiler-input.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -26,7 +26,7 @@ test('the exhaustive TypeScript visitor traverses emitted records, effects and f
   t.after(() => rm(directory, {recursive: true, force: true}));
   execFileSync(tsc, ['--strict', '--target', 'ES2022', '--module', 'NodeNext', '--moduleResolution', 'NodeNext',
     '--rootDir', 'test/fixtures', '--outDir', directory, 'test/fixtures/payload_api.ts'], {cwd: root, stdio: 'pipe'});
-  const {children, nodeFixtures, sourceFieldMigrations, symbolicMigrationEvidence, nativeBindingMigration} = await import(pathToFileURL(path.join(directory, 'payload_api.js')).href);
+  const {children, nodeFixtures} = await import(pathToFileURL(path.join(directory, 'payload_api.js')).href);
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   const expressions = [];
@@ -37,13 +37,18 @@ test('the exhaustive TypeScript visitor traverses emitted records, effects and f
   }
   for (const fixture of ['rc1/parcel-measurements', 'specs/abilities', 'specs/failures']) {
     const file = path.join(root, 'examples', fixture + '.lawspec');
-    const content = await readFile(file, 'utf8') + (fixture === 'specs/abilities'
-      ? '\ndefinition handledCheckout (cents :: Int32) :: Bool is handle checkout cents with fakeGateway end end\n' : '');
-    // Historical effect fixtures use migration; canonical records use the ordinary API.
+    const sourceText = await readFile(file, 'utf8');
+    const content = (fixture === 'specs/abilities' ? sourceText.replace(/end unit\s*$/u, '') : sourceText) + (fixture === 'specs/abilities'
+      ? `
+function handledCheckout (cents :: Int32) -> Bool is handle checkout cents with fakeGateway end handle end function
+
+end unit
+` : '');
+    // Every fixture uses the current compiler interface.
     const request = {sources: [{path: file, content}]};
     const result = fixture.startsWith('rc1/')
       ? await compiler.expand({...canonicalRequest, ...request})
-      : await legacyCheck(compiler, request);
+      : await checkInput(compiler, request);
     assert.deepEqual(result.diagnostics, [], fixture);
     collect(result);
   }
@@ -70,25 +75,5 @@ test('the exhaustive TypeScript visitor traverses emitted records, effects and f
   assert.deepEqual(children(update), [value, value]);
   assert.deepEqual(children(fixtures.find(node => node.kind === 'if')), [value, value, value]);
   assert.throws(() => children({kind: 'future-node'}), /Unrecognized expression node/);
-  const options = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []}};
-  const original = [{path: 'fields.lawspec', content: 'unit fields\n' +
-    'type Capsule (a :: Type) is Packed last :: Bool first :: a end\n' +
-    'definition read (input :: Capsule a) :: a is input.first end'}];
-  const baseline = await compiler.migrationBaseline({...options, from: '0.24', sources: original});
-  assert.deepEqual(baseline.diagnostics, []);
-  assert.deepEqual(sourceFieldMigrations(baseline), ['fields::type::Capsule::Packed:first']);
-  const migrated = [{path: 'fields.lawspec', content: 'unit fields\n' +
-    'type Capsule (a :: Type) is one of Packed of type record{last :: Bool first :: a} end type\n' +
-    'function read (input :: Capsule a) -> a is input.value.first end function'}];
-  const comparison = await compiler.migrationComparison({...options, from: '0.24', sources: original,
-    migrated: {...options, sources: migrated}});
-  assert.deepEqual(comparison.diagnostics, []);
-  const fingerprints = symbolicMigrationEvidence(comparison);
-  assert.equal(fingerprints.length, 5);
-  assert.ok(fingerprints.every(value => /^[0-9a-f]{64}$/.test(value)));
-  const nativeProposal = await compiler.migrationBindings({...options, from: '0.24', target: 'python', sources: original,
-    migrated: {...options, sources: migrated}});
-  assert.deepEqual(nativeProposal.diagnostics, []);
-  assert.deepEqual(nativeBindingMigration(nativeProposal), ['python', 'not-established']);
   t.diagnostic(`Traversed ${expressions.length} emitted expressions across ${kinds.size} node kinds; both handler forms and call filters were present.`);
 });

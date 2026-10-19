@@ -1,87 +1,88 @@
 unit fixture
 
-definition keep (xs :: List (value :: Int8 where value > 0))
-  :: List (value :: Int8 where value > 0)
-is xs end
+function keep (xs :: List (value :: Int8 where value > 0))
+  -> List (value :: Int8 where value > 0)
+is xs end function
 
-definition stronger (xs :: List (value :: Int8 where value > 10)) :: List Int8 is
+function stronger (xs :: List (value :: Int8 where value > 10)) -> List Int8 is
   keep (copypositive xs)
-end
+end function
 
-definition positive (value :: a) :: Bool requires Integer a is value > 0 end
+function positive (value :: a) -> Bool requires Integer a is value > 0 end function
 
-definition keephelper (xs :: List (value :: a where positive value))
-  :: List a requires Integer a
-is xs end
+function keephelper (xs :: List (value :: a where positive value))
+  -> List a requires Integer a
+is xs end function
 
-definition reuse (xs :: List (value :: Int8 where positive value)) :: List Int8 is
+function reuse (xs :: List (value :: Int8 where positive value)) -> List Int8 is
   keephelper xs
-end
+end function
 
-definition empty (value :: Int8) :: List (element :: Int8 where false) is [] end
+function empty (value :: Int8) -> List (element :: Int8 where false) is [] end function
 
-definition singleton (value :: Int8 where value > 0)
-  :: List (element :: Int8 where element > 0)
-is [value] end
+function singleton (value :: Int8 where value > 0)
+  -> List (element :: Int8 where element > 0)
+is [value] end function
 
-definition sumreciprocal (xs :: List (value :: Int8 where value != 0)) :: Rational is
-  match xs with
-  | Nil -> 0
-  | Cons first rest -> unwrapnonzero (wrapnonzero (nonzero first)) + sumreciprocal rest
-  end
-end
+function sumreciprocal (xs :: List (value :: Int8 where value != 0)) -> Rational is
+  first matching case of xs :
+  when Nil then 0
+  when Cons first rest then unwrapnonzero (wrapnonzero (nonzero first)) + sumreciprocal rest
+  end case
+end function
 
-definition sumrows (rows :: List (List (value :: Int8 where value != 0))) :: Rational is
-  match rows with
-  | Nil -> 0
-  | Cons first rest -> sumreciprocal first + sumrows rest
-  end
-end
+function sumrows (rows :: List (List (value :: Int8 where value != 0))) -> Rational is
+  first matching case of rows :
+  when Nil then 0
+  when Cons first rest then sumreciprocal first + sumrows rest
+  end case
+end function
 
-definition positivetail (xs :: List (value :: Int8 where value > 0))
-  :: List (value :: Int8 where value > 0)
+function positivetail (xs :: List (value :: Int8 where value > 0))
+  -> List (value :: Int8 where value > 0)
 is
-  match xs with | Nil -> [] | Cons first rest -> rest end
-end
+  first matching case of xs : when Nil then [] when Cons first rest then rest end case
+end function
 
-definition positivefirst (xs :: List (value :: Int8 where value > 0))
-  :: (result :: Int8 where result > 0)
+function positivefirst (xs :: List (value :: Int8 where value > 0))
+  -> (result :: Int8 where result > 0)
 is
-  match xs with | Nil -> 1 | Cons first rest -> first end
-end
+  first matching case of xs : when Nil then 1 when Cons first rest then first end case
+end function
 
 -- Recursive calls supply their verified result contract by structural induction.
-definition copypositive (xs :: List (value :: Int8 where value > 0))
-  :: List (value :: Int8 where value > 0)
+function copypositive (xs :: List (value :: Int8 where value > 0))
+  -> List (value :: Int8 where value > 0)
 is
-  match xs with
-  | Nil -> []
-  | Cons first rest -> Cons first (copypositive rest)
-  end
-end
+  first matching case of xs :
+  when Nil then []
+  when Cons first rest then Cons first (copypositive rest)
+  end case
+end function
 
-definition nonzero (value :: Int8 where value != 0)
-  :: (result :: Int8 where result != 0)
-is value end
+function nonzero (value :: Int8 where value != 0)
+  -> (result :: Int8 where result != 0)
+is value end function
 
-definition wrapnonzero (value :: Int8 where value != 0)
-  :: Maybe (result :: Int8 where result != 0)
-is Just value end
+function wrapnonzero (value :: Int8 where value != 0)
+  -> Maybe (result :: Int8 where result != 0)
+is Just value end function
 
-definition unwrapnonzero (value :: Maybe (element :: Int8 where element != 0))
-  :: Rational
+function unwrapnonzero (value :: Maybe (element :: Int8 where element != 0))
+  -> Rational
 is
-  match value with
-  | Nothing -> 0
-  | Just element -> selectnonzero (Left element)
-  end
-end
+  first matching case of value :
+  when Nothing then 0
+  when Just element then selectnonzero (Left element)
+  end case
+end function
 
-definition selectnonzero (value :: Either (element :: Int8 where element != 0) Bool)
-  :: Rational
+function selectnonzero (value :: Either (element :: Int8 where element != 0) Bool)
+  -> Rational
 is
-  match value with
-  | Left element -> 1 / element
-  | Right ignored -> 0
-  end
-end
+  first matching case of value :
+  when Left element then 1 / element
+  when Right ignored then 0
+  end case
+end function
+end unit

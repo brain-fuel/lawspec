@@ -1,6 +1,6 @@
 @@ src/Example/Arithmetic.fs
 <<<<<<<
-length value0.Rows * length value0.Columns
+length value0.Value.Rows * length value0.Value.Columns
 =======
-length value0.Rows + length value0.Columns
+length value0.Value.Rows + length value0.Value.Columns
 >>>>>>>

@@ -8,3 +8,4 @@ function rateOf (b :: Band) -> Int64 is
   first matching case of b : when Zero then 0 when Low then 10 when High then 25
   end case
 end function
+end unit

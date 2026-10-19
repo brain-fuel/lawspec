@@ -17,7 +17,7 @@ import LawSpec.Api (dispatch)
 
 call :: [(K.Key, Value)] -> Value
 call fields = fromMaybe (error "invalid API response") (decode (dispatch (encode (object
-  (["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
+  (["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
     "verification" .= object ["layers" .= (["proof", "exhaustive", "property", "examples", "runtime", "model"] :: [String])]] ++ fields)))))
 
 field :: String -> Value -> Value
@@ -71,11 +71,13 @@ source path body = object ["path" .= path, "content" .= body]
 rustSource :: Value
 rustSource = source "rust.lawspec" $ unlines
   [ "unit rust_example"
+   ++ "\n", ""
   , "successor :: Int8 -> Integer"
   , "law promotes is"
-  , " definition: for all (x :: Int8) => successor x = x + 1 end end"
-  , " example maximum: x = 127 expect successor x = 128 end"
-  , "end" ]
+  , " definition: for all (x :: Int8) => successor x = x + 1 end for all end definition"
+  , " example maximum: x = 127 expect successor x = 128 end example"
+  , "end law"
+  , "\nend unit" ]
 
 -- | The npm package, the CLI and the documentation site all reach the compiler
 -- only through the JSON requests core.wasm exports, so a request that answers
@@ -128,8 +130,7 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
     bindings <- runIO (fromMaybe Null . decode <$> BL.readFile "test/fixtures/native-payments/bindings.json")
     let paymentSources = [source "payments.lawspec" payments]
         -- Frozen native payload shape is deliberately exercised through migration.
-        request method extra = call (["method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String),
-          "includeGeneration" .= (method == "planGeneration"), "sources" .= paymentSources] ++ extra)
+        request method extra = call (["method" .= (method :: String), "sources" .= paymentSources] ++ extra)
     it "use schema 5, and reject older schemas at the migration boundary" $ do
       let valid = request "check" ["nativeBindings" .= bindings, "schemaVersion" .= (5 :: Int)]
       field "schemaVersion" valid `shouldBe` Number 5
@@ -152,7 +153,7 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
       tests `shouldSatisfy` isInfixOf "use lawspec_example::example_payments as adapter;"
 
   describe "generator scaffolds" $ do
-    let stub = source "stub.lawspec" "unit stub"
+    let stub = source "stub.lawspec" "unit stub\nend unit\n"
         binding = [("type", String "Int8"), ("factory", toJSON ["factories", "values" :: String])]
         generator extra = object (map (\(k, v) -> K.fromString k .= v) (binding ++ extra))
         plan target generators = call ["method" .= ("planGeneration" :: String), "target" .= (target :: String),
@@ -172,7 +173,7 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
         fst (firstDiagnostic (plan "python" generators)) `shouldBe` "native-binding"
       fst (firstDiagnostic (plan "python" [generator [("stub", String "yes")]])) `shouldBe` "request"
       let shadowed = call ["method" .= ("planGeneration" :: String), "target" .= ("python" :: String), "schemaVersion" .= (5 :: Int),
-            "sources" .= [source "stub.lawspec" "unit stub\nf :: Int8 -> Int8"],
+            "sources" .= [source "stub.lawspec" "unit stub\n\nf :: Int8 -> Int8\nend unit\n"],
             "nativeBindings" .= object [ "functions" .= [object ["declaration" .= ("stub::f" :: String), "native" .= ["factories", "echo" :: String]]]
                                        , "generators" .= [generator [("stub", Bool True)]] ]]
       fst (firstDiagnostic shadowed) `shouldBe` "native-binding"
@@ -196,23 +197,23 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
         rejected check result = do
           fst (firstDiagnostic result) `shouldBe` "native-binding"
           snd (firstDiagnostic result) `shouldSatisfy` check
-        law = "law identity is definition: for all (x :: Int8) => x = x end end end"
+        law = "law identity is definition: for all (x :: Int8) => x = x end for all end definition end law\n"
     it "reject inaccessible, colliding and inherited Java method names" $
       forM_ [ ["Factories","values"], ["lawspec","runtime","LawSpecRuntime","values"]
             , ["lawspec","testing","LawSpecNativeGenerators","values"], ["application","java","values"]
             , ["java","util","Factories","values"], ["org","jetbrains","jetCheck","Generator","values"]
             , ["application","Factories","wait"] ] $
-        rejected (isInfixOf "scaffold") . scaffold "java" "unit stub" []
+        rejected (isInfixOf "scaffold") . scaffold "java" "unit stub\nend unit\n" []
     it "reject conflicting Kotlin objects and reserved namespaces" $
       forM_ [ ["Factories","values"], ["application","Factories","toString"], ["kotlin","Factories","values"]
             , ["application","kotlin","values"], ["lawspec","testing","LawSpecNativeGenerators","values"]
             , ["io","kotest","property","Arb","values"] ] $
-        rejected (isInfixOf "scaffold") . scaffold "kotlin" "unit stub" []
+        rejected (isInfixOf "scaffold") . scaffold "kotlin" "unit stub\nend unit\n" []
     it "diagnose unused Go bindings, imported factories and package identifier conflicts" $ do
       forM_ [["panic"], ["rapid"], ["fmt"], ["TestValues"], ["lawSpecNativeFactories"]] $
-        rejected (lineMatches ["scaffold", "conflicts"]) . scaffold "go" ("unit stub\n" ++ law) []
-      snd (firstDiagnostic (scaffold "go" "unit stub" [] ["NativeBytes"])) `shouldSatisfy` isInfixOf "requires a quantified use"
-      let imported = scaffold "go" ("unit stub\n" ++ law)
+        rejected (lineMatches ["scaffold", "conflicts"]) . scaffold "go" ("unit stub\n\n" ++ law ++ "\nend unit\n") []
+      snd (firstDiagnostic (scaffold "go" "unit stub\nend unit\n" [] ["NativeBytes"])) `shouldSatisfy` isInfixOf "requires a quantified use"
+      let imported = scaffold "go" ("unit stub\n\n" ++ law ++ "\nend unit\n")
             ["goImports" .= [object ["alias" .= ("app" :: String), "path" .= ("example.com/application" :: String)]]] ["app", "Bytes"]
       snd (firstDiagnostic imported) `shouldSatisfy` isInfixOf "package-local factories"
     it "scope Go scaffold collisions to their consuming package" $ do
@@ -220,17 +221,17 @@ test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler 
             "sources" .= [source ("scope" ++ show i ++ ".lawspec") c | (i, c) <- zip [0 :: Int ..] contents],
             "nativeBindings" .= object [ "functions" .= [object ["declaration" .= ("first::echo" :: String), "native" .= ["Shared" :: String]]]
                                        , "generators" .= [object ["type" .= ("Int8" :: String), "factory" .= ["Shared" :: String], "stub" .= True]] ]]
-          separate = plan ["unit first\necho :: Int8 -> Int8", "unit second\n" ++ law]
+          separate = plan ["unit first\n\necho :: Int8 -> Int8\nend unit\n", "unit second\n\n" ++ law ++ "\nend unit\n"]
           paths = map (text . field "path") (files separate)
       diagnostics separate `shouldBe` []
       paths `shouldSatisfy` elem "second/native_generators_test.go"
       paths `shouldNotSatisfy` elem "first/native_generators_test.go"
-      snd (firstDiagnostic (plan ["unit first\necho :: Int8 -> Int8\n" ++ law])) `shouldSatisfy` lineMatches ["scaffold", "conflicts"]
+      snd (firstDiagnostic (plan ["unit first\n\necho :: Int8 -> Int8\n" ++ law ++ "\nend unit\n"])) `shouldSatisfy` lineMatches ["scaffold", "conflicts"]
     it "reject Haskell generated, application and runtime module collisions" $ do
       let bound = ["functions" .= [object ["declaration" .= ("stub::echo" :: String), "native" .= ["Application", "Domain", "echo" :: String]]]]
       forM_ [ ["Prelude","bytes"], ["Data","Int","bytes"], ["Hedgehog","Gen","bytes"], ["Numeric","bytes"]
             , ["Test","Hspec","bytes"], ["LawSpecNativeGenerators","bytes"], ["Application","Domain","bytes"] ] $
-        rejected (\m -> "scaffold" `isInfixOf` m || "shadows" `isInfixOf` m) . scaffold "haskell" "unit stub\necho :: Int8 -> Int8" bound
-      let application = scaffold "haskell" "unit stub" [] ["Data", "Application", "bytes"]
+        rejected (\m -> "scaffold" `isInfixOf` m || "shadows" `isInfixOf` m) . scaffold "haskell" "unit stub\n\necho :: Int8 -> Int8\nend unit\n" bound
+      let application = scaffold "haskell" "unit stub\nend unit\n" [] ["Data", "Application", "bytes"]
       diagnostics application `shouldBe` []
       map (text . field "path") (files application) `shouldSatisfy` elem "test/Data/Application.hs"

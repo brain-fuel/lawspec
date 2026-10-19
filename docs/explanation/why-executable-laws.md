@@ -29,8 +29,9 @@ decode :: Text -> Int32
 law "|decoding recovers the encoded value| is
   definition :
     apply law "|left inverse| decode encode
-  end
-end
+  end definition
+end law
+end unit
 ```
 
 The same law becomes a JetCheck property in Java, a Hypothesis test in Python,

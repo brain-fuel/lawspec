@@ -66,10 +66,10 @@ type. A sum is an `enum`: a case without fields is a singleton, and a case with
 fields takes the enum's type parameters. For:
 
 ```lawspec fragment
-type Tree (a :: Type) is
-  Leaf value :: a
-  Branch children :: List (Tree a)
-end
+type Tree (a :: Type) is one of
+  Leaf  of type a
+  Branch  of type List (Tree a)
+end type
 
 echo :: Tree Int8 -> Tree Int8
 ```

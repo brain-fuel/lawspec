@@ -46,8 +46,8 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
     let config;
     try { config = JSON.parse(await readFile(path.join(workspace, 'lawspec.json'), 'utf8')); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
-    if(config&&(config.version!==2||config.languageProfile!=='1.0-rc.1'))
-      throw new Error('The language server requires configuration version 2 and languageProfile 1.0-rc.1; run lawspec migrate --from 0.24 first.');
+    if(config&&(config.version!==2||config.languageProfile!=='1.0-rc.2'))
+      throw new Error('The language server requires configuration version 2 and languageProfile 1.0-rc.2.');
     for (const entry of config?.sources ?? []) await visit(path.resolve(workspace, entry));
     for (const [uri, document] of documents) sources.set(fileURLToPath(uri), { path: fileURLToPath(uri), content: document.text });
     return [...sources.values()];
@@ -63,7 +63,7 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
   }
   async function check() {
     const sources = await projectSources();
-    const result = await compiler.check({ sources, languageProfile: '1.0-rc.1', verification: { layers: [] }, ...(warnMatches ? {warnMatches:true} : {}) });
+    const result = await compiler.check({ sources, languageProfile: '1.0-rc.2', verification: { layers: [] }, ...(warnMatches ? {warnMatches:true} : {}) });
     last = { sources, result };
     for (const [uri, document] of documents) {
       const file = fileURLToPath(uri);
@@ -72,7 +72,11 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
         const content = document.text.split('\n')[start.line] ?? '';
         const end = { ...start, character: Math.min(content.length, start.character + ([...content.slice(start.character)][0]?.length ?? 0)) };
         const range = d.span ? span(d.span)?.range ?? {start,end} : {start,end};
-        return { range, severity: d.severity === 'warning' ? 2 : 1, code: d.code, source: 'LawSpec', message: d.message };
+        return { range, severity: d.severity === 'warning' ? 2 : 1, code: d.code, source: 'LawSpec', message: d.message,
+          ...(d.related?.length ? {relatedInformation: d.related.flatMap(item => {
+            const origin = span(item.span);
+            return origin ? [{location: {uri: origin.uri, range: origin.range}, message: item.message}] : [];
+          })} : {}) };
       });
       send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, version: document.version, diagnostics } });
     }
@@ -143,7 +147,7 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
         workspace = params.rootUri ? fileURLToPath(params.rootUri) : params.rootPath ?? workspace;
         result = { capabilities: { textDocumentSync: 1, positionEncoding: 'utf-16', documentFormattingProvider: true,
           documentSymbolProvider: true, hoverProvider: true, definitionProvider: true, referencesProvider: true },
-          serverInfo: { name: 'LawSpec', version: '1.0-rc.1' } };
+          serverInfo: { name: 'LawSpec', version: '1.0-rc.2' } };
         break;
       case 'initialized': break;
       case 'workspace/didChangeConfiguration': {
@@ -168,7 +172,7 @@ export async function serveLanguage(input = process.stdin, output = process.stdo
         const document = documents.get(params.textDocument.uri);
         if (!document) { result = []; break; }
         const sourcePath = fileURLToPath(params.textDocument.uri);
-        const response = await compiler.format({ sources: await projectSources(), languageProfile: '1.0-rc.1', verification: { layers: [] } });
+        const response = await compiler.format({ sources: await projectSources(), languageProfile: '1.0-rc.2', verification: { layers: [] } });
         if (response.diagnostics?.length) { result = []; break; }
         const formatted = response.formattedSources.find(s => s.path === sourcePath);
         result = formatted && formatted.content !== document.text

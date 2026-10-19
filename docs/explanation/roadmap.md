@@ -25,6 +25,7 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.22 | Erlang, Elixir and Gleam targets, with native tests and OTP processes | — |
 | 0.23 | F# and C# targets; typed native code; records, sequences and handlers of several abilities; where tests ran; parallel CI | A typed fast path for Erlang, Elixir and Gleam |
 | 0.24 | Scala, Groovy, Clojure and Swift targets; typed native code on Erlang, Elixir and Gleam | Groovy and Clojure reuse the Java model rather than generating their own; Swift's post-quantum crypto and secure network need macOS 26 (CryptoKit); on the BEAM, a definition or handler without native forms stays dynamic, and a large handler state peaks at several times its live heap |
+| 0.25 | Canonical authoring, records, quantifiers, mappings, optional law layers and compiler-backed authoring tools | Readability exercise deferred; complete named endings follow in 0.26 |
 
 0.16 in detail:
 
@@ -151,33 +152,19 @@ changes for each milestone.
 
 ## Planned
 
-### Authoring milestones and explicit block endings
+### 0.26: explicit endings for every block
 
-The authoring work currently being prepared is a minor-version milestone,
-not a release candidate. The repository's current version is 0.24.0; no new
-version number or RC tag is assigned here.
+Every keyword-delimited block has a named closer, including units, ability laws
+groups, harness law groups, lets and generator binds. Handler clauses require
+`operation ... end operation`. Bare `end` is invalid. Formatting, diagnostics,
+editor services, examples and compiler-owned sources share the grammar profile
+`1.0-rc.2`. This is an ordinary minor milestone, not an RC release designation.
 
-The immediately following minor milestone must give **every end-delimited
-block a named closing form**. Bare `end` must be rejected in normal source.
-This includes laws, named sections, quantifiers and their business-worded
-forms, examples, tables and every other nested block, alongside existing
-`end function`, `end procedure`, `end type`, `end case`, `end if` and
-`end mapping`. The earlier preference for plain law/section/quantifier endings
-is superseded.
+Pre-1.0 migration support is removed. Until the API is stable, active sources
+and consumers are updated directly. See the [syntax](../reference/language/syntax.md)
+and the [approved contract](../../LAWSPEC-PRE-1.0-REVIEW.md).
 
-The milestone must inventory all block productions, specify every matching
-closer, diagnose missing or mismatched labels, and update formatting,
-migration, editor support, documentation and examples together. It must
-preserve typed obligations, evaluation order, automatic definition checks and
-verification evidence across all supported interfaces and targets. Existing
-bare-ended source is migration input, not permissive normal syntax for the
-following milestone. The complete acceptance criteria are recorded in
-[the review packet](../../LAWSPEC-PRE-1.0-REVIEW.md).
-
-The target, demonstration, verification and final-1.0 work below remains in
-scope; this sequencing decision does not declare that work complete.
-
-### 0.25: Prolog, configuration and documents
+### Following milestone: Prolog, configuration and documents
 
 Prolog joins as a program target. HCL and YAML become configuration
 targets: types become Terraform variables with validation and YAML

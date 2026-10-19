@@ -11,6 +11,7 @@ import {createCompiler} from '../api.mjs';
 import {serveLanguage,utf16Position} from '../lsp.mjs';
 
 const text=`unit matchWarnings
+
 function selected (value :: Bool) -> Integer is
   first matching case of value:
     when #any then 1
@@ -18,9 +19,11 @@ function selected (value :: Bool) -> Integer is
     otherwise 3
   end case
 end function
-law retained is definition: selected true must be 1 end end
+law retained is definition: selected true must be 1 end definition end law
+
+end unit
 `;
-const input={languageProfile:'1.0-rc.1',verification:{layers:[]},sources:[{path:'warnings.lawspec',content:text}]};
+const input={languageProfile:'1.0-rc.2',verification:{layers:[]},sources:[{path:'warnings.lawspec',content:text}]};
 const strip=({warnings,warningAnalysis,...value})=>value;
 
 test('opt-in match warnings preserve API results, evidence, and every target artifact',async()=>{
@@ -47,7 +50,12 @@ test('opt-in match warnings preserve API results, evidence, and every target art
       'first matching case of value: when true then 1 end case',
       'first matching case of value: when #any then 1 when false then missing end case'
     ]){
-      const bad={...request,sources:[{path:'bad.lawspec',content:`unit bad\nfunction selected (value :: Bool) -> Integer is ${body} end function`}]};
+      const bad={...request,sources:[{path:'bad.lawspec',content:`unit bad
+
+function selected (value :: Bool) -> Integer is ${body} end function
+
+end unit
+`}]};
       const normal=await compiler.check(bad),warned=await compiler.check({...bad,warnMatches:true});
       assert.ok(warned.diagnostics.length);assert.deepEqual(warned,normal);
     }
@@ -57,7 +65,7 @@ test('opt-in match warnings preserve API results, evidence, and every target art
 test('CLI match warnings do not fail checking or pollute JSON, while intrinsic errors still fail',async()=>{
   const root=await mkdtemp(path.join(tmpdir(),'lawspec-match-warnings-'));
   try{
-    await writeFile(path.join(root,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.1',verification:{layers:[]},sources:['source.lawspec'],targets:[],cache:false}));
+    await writeFile(path.join(root,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',verification:{layers:[]},sources:['source.lawspec'],targets:[],cache:false}));
     await writeFile(path.join(root,'source.lawspec'),text);
     const cli=fileURLToPath(new URL('../bin/lawspec.mjs',import.meta.url));
     const invoke=(...args)=>spawnSync(process.execPath,[cli,'check',...args],{cwd:root,encoding:'utf8',timeout:120000});
@@ -92,14 +100,21 @@ async function protocol(compiler,initializationOptions,content){
 
 test('LSP delivers actual compiler warnings with UTF-16 ranges and clears them when disabled',async()=>{
   const compiler=await createCompiler();
-  const content='unit unicodeWarnings\nfunction selected (value :: Bool) -> Text is\n'+
-    '  first matching case of value: when #any then "😀" when false then "second" otherwise "third" end case\nend function';
+  const content=`unit unicodeWarnings
+
+function selected (value :: Bool) -> Text is
+  first matching case of value: when #any then "😀" when false then "second" otherwise "third" end case
+end function
+
+end unit
+`;
   const responses=await protocol(compiler,{warnMatches:false},content);
   const published=responses.filter(r=>r.method==='textDocument/publishDiagnostics').map(r=>r.params.diagnostics);
   assert.deepEqual(published[0],[]);assert.deepEqual(published[2],[]);
   assert.deepEqual(published[1].map(d=>[d.code,d.severity]),[['case-unreachable',2],['case-unnecessary-fallback',2]]);
-  const line=content.split('\n')[2];
-  assert.deepEqual(published[1][0].range.start,{line:2,character:line.indexOf('when false')});
+  const lineIndex=content.split('\n').findIndex(line=>line.includes('when false'));
+  const line=content.split('\n')[lineIndex];
+  assert.deepEqual(published[1][0].range.start,{line:lineIndex,character:line.indexOf('when false')});
   assert.ok(published[1][0].range.end.character>published[1][0].range.start.character);
   assert.deepEqual(utf16Position('😀\twhen',{line:1,column:9}),{line:0,character:3});
   const enabled=await protocol(compiler,{warnMatches:true},content);
@@ -119,7 +134,7 @@ test('published warning declarations enforce Boolean selection and incomplete an
     await mkdir(path.join(directory,'node_modules'));
     await symlink(fileURLToPath(new URL('..',import.meta.url)),path.join(directory,'node_modules','lawspec'),'dir');
     await writeFile(path.join(directory,'consumer.ts'),`import {createCompiler, type CheckRequest, type MatchWarning, type MatchWarningAnalysis} from 'lawspec';
-const request:CheckRequest={languageProfile:'1.0-rc.1',verification:{layers:[]},warnMatches:true,sources:[]};
+const request:CheckRequest={languageProfile:'1.0-rc.2',verification:{layers:[]},warnMatches:true,sources:[]};
 const result=await (await createCompiler()).check(request);
 for(const warning of result.warnings??[]){
  const severity:'warning'=warning.severity;
@@ -134,7 +149,7 @@ if(result.warningAnalysis){
  console.log(complete,kind,analysis.scope);
 }
 // @ts-expect-error warning selection must be Boolean
-const invalid:CheckRequest={languageProfile:'1.0-rc.1',sources:[],warnMatches:'yes'};
+const invalid:CheckRequest={languageProfile:'1.0-rc.2',sources:[],warnMatches:'yes'};
 // @ts-expect-error authoring warning analysis cannot certify completeness
 const complete:MatchWarningAnalysis={kind:'match-reachability',complete:true,scope:'ordered-pattern-specialization',reason:''};
 `);

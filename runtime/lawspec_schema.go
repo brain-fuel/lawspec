@@ -200,6 +200,15 @@ func lsNewSchemaWithContracts(definitions []lawSpecDataSchema, primitives []stri
 }
 
 func (s *lawSpecSchema) hasContracts() bool {
+	for _, definition := range s.definitions {
+		for _, constructor := range definition.constructors {
+			for _, text := range constructor.indices {
+				if strings.HasPrefix(text, "== ") || strings.HasPrefix(text, ">= ") {
+					return true
+				}
+			}
+		}
+	}
 	for _, predicates := range s.contracts {
 		if len(predicates) != 0 {
 			return true

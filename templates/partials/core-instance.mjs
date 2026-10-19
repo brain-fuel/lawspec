@@ -14,7 +14,8 @@ async function instantiateCore(module, wasiImports, initialize) {
     const result = pending.then(async () =>
       JSON.parse(await instance.exports.lawspec_call(JSON.stringify(input))),
     );
-    pending = result.catch(() => {});
+    // The queue needs completion only, not the previous generated project DTO.
+    pending = result.then(() => {}, () => {});
     return result;
   };
 }

@@ -82,6 +82,7 @@ JavaScript object equality.
 unit example.total
 
 function increment (x :: Int8) -> Integer is x + 1 end function
+end unit
 ```
 
 ```javascript

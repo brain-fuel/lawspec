@@ -9,7 +9,7 @@ import {explainLaw} from '../explain.mjs';
 const compiler=await createCompiler();
 const content=await readFile(new URL('../../test/fixtures/canonical-positional-products.lawspec',import.meta.url),'utf8');
 const sources=[{path:'positions.lawspec',content}];
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive','examples']}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['exhaustive','examples']}};
 const targets=['java','python','javascript','typescript','go','haskell','kotlin','rust','erlang','elixir','gleam','fsharp','csharp','scala','groovy','clojure','swift'];
 
 test('positional products retain checked outcomes through every target, width and layout',async()=>{
@@ -29,12 +29,19 @@ test('positional products retain checked outcomes through every target, width an
 
 test('tuple arity, nominal boundaries, hidden shapes and parameter contracts remain mandatory without law layers',async()=>{
   const invalid=[
-    'function invalid (value of type (Bool, Bool, Bool)) -> Bool is first matching case of value: when #any then true when (_, _) then false end case end function',
-    'type Pair is a record{first of type Bool second of type Bool} end type\nfunction invalid ((_, _) of type Pair) -> Bool is true end function',
-    'function invalid (Just value of type Maybe Integer) -> Bool is true end function',
+    `function invalid (value of type (Bool, Bool, Bool)) -> Bool is first matching case of value: when #any then true when (_, _) then false end case end function
+`,
+    `type Pair is a record{first of type Bool second of type Bool} end type
+function invalid ((_, _) of type Pair) -> Bool is true end function
+`,
+    `function invalid (Just value of type Maybe Integer) -> Bool is true end function
+`,
     'function invalid ((same, same) of type (Bool, Bool)) -> Bool is true end function',
-    'function bounded ((lower, upper) of type (Integer, Integer) where lower <= upper) -> Integer is upper end function\nfunction invalid (ignored of type ()) -> Integer is bounded (4, 2) end function',
-    'function invalid ((value, _) of type (UInt8, Bool)) -> UInt8 is value + 1 end function',
+    `function bounded ((lower, upper) of type (Integer, Integer) where lower <= upper) -> Integer is upper end function
+function invalid (ignored of type ()) -> Integer is bounded (4, 2) end function
+`,
+    `function invalid ((value, _) of type (UInt8, Bool)) -> UInt8 is value + 1 end function
+`,
   ];
   for(const body of invalid) {
     const result=await compiler.check({...options,verification:{layers:[]},sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body}]});
@@ -69,12 +76,23 @@ test('all explanation views render tuple positions from typed metadata and retai
   const packet=result.laws.find(law=>law.examples.length===5);
   assert.match(explainLaw(packet,result,'developer').text,/\(record\{ready = true\}, \(true, false\)\)/);
   assert.deepEqual(result,before);
-  const domain=await compiler.check({...options,verification:{layers:[]},sources:[{path:'domain.lawspec',content:'unit domain\nlaw dimensions is definition: for all (value of type (Nat, Nat)) => true end end end'}]});
+  const domain=await compiler.check({...options,verification:{layers:[]},sources:[{path:'domain.lawspec',content:`unit domain
+
+law dimensions is definition: for all (value of type (Nat, Nat)) => true end for all end definition end law
+
+end unit
+`}]});
   assert.deepEqual(domain.diagnostics,[]);
   const type=domain.laws[0].inputs[0].type;
   const spelling=createTypePresentation(domain).typeName(type);
   assert.doesNotMatch(spelling,/_tuple|structural/);
-  const roundtrip=await compiler.check({...options,verification:{layers:[]},sources:[{path:'identity.lawspec',content:`unit identity\nfunction identity (value of type ${spelling}) -> ${spelling} is value end function\nlaw sample is definition: identity (1, 2) = (1, 2) end end`}]});
+  const roundtrip=await compiler.check({...options,verification:{layers:[]},sources:[{path:'identity.lawspec',content:`unit identity
+
+function identity (value of type ${spelling}) -> ${spelling} is value end function
+law sample is definition: identity (1, 2) = (1, 2) end definition end law
+
+end unit
+`}]});
   assert.deepEqual(roundtrip.diagnostics,[]);
   const identity=roundtrip.definitions.find(definition=>definition.id.endsWith('::identity'));
   assert.deepEqual(identity.arguments[0].type,type);
@@ -120,7 +138,14 @@ test('invalid or missing position metadata keeps structural and nominal identiti
 
 test('generic phrase collisions require an explicit identity-based native name override on every target',async()=>{
   const input={...options,verification:{layers:[]},sources:[{path:'collision.lawspec',content:
-    'unit collision\nfunction "|same value| (value of type a) -> a is value end function\nfunction sameValue (value of type a) -> a is value end function\nlaw usage is definition: "|same value| true = true and sameValue true = true end end'}]};
+    `unit collision
+
+function "|same value| (value of type a) -> a is value end function
+function sameValue (value of type a) -> a is value end function
+law usage is definition: "|same value| true = true and sameValue true = true end definition end law
+
+end unit
+`}]};
   const checked=await compiler.check(input);
   assert.deepEqual(checked.diagnostics,[]);
   const instance=checked.units.find(unit=>unit.id==='collision').declarations.find(declaration=>declaration.name.endsWith('_'));

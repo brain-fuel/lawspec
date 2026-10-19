@@ -15,9 +15,9 @@ import Control.Monad.Trans.Class (lift)
 import qualified Data.List.NonEmpty as NE
 import LawSpec.Model
 import LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), sourceSyntax)
+import LawSpec.Blocks
 import LawSpec.SourceOrigins
 import LawSpec.Indexed
-import LawSpec.Railway (railwayUnit)
 import LawSpec.PreludeNames (preludeValueName)
 import LawSpec.DomainModel
 import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels, checkSupervisors)
@@ -36,31 +36,35 @@ import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
 import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace)
 import Data.List (uncons, intercalate, isInfixOf, nub)
-import Data.Void (Void)
 import Text.Megaparsec hiding (SourcePos, parse, runParserT, lookAhead)
 import qualified Text.Megaparsec as MP
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 data Header = RefinementHeader [Bool] | DataHeader [Bool] | RecordHeader [(String,Type)] | AliasHeader
-type RawP = ParsecT Void String (Reader (M.Map String Header))
+data BlockError = BlockError String String Span (Maybe Span) deriving (Eq,Show)
+instance Ord BlockError where
+  compare a b = compare (show a) (show b)
+instance ShowErrorComponent BlockError where
+  showErrorComponent (BlockError _ message _ _) = message
+type RawP = ParsecT BlockError String (Reader (M.Map String Header))
 -- State sits outside Parsec, so a failed alternative cannot retain syntax
 -- records from a branch the real grammar rejected. Ordinary parsing uses
 -- Nothing and does not build the inventory.
 data ParseContext = ParseContext
   { recordedSyntax :: Maybe [SyntaxNode], sourceCoordinates :: Maybe SourceOriginMap
-  , handlerInitialExpression :: Bool }
+  , handlerInitialExpression :: Bool, openBlocks :: [(BlockKind,Span)] }
 type P = StateT ParseContext RawP
 
-runParserT :: P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
+runParserT :: P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String BlockError) a)
 runParserT = runParserWithCoordinates Nothing
 
-runParserWithCoordinates :: Maybe SourceOriginMap -> P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
+runParserWithCoordinates :: Maybe SourceOriginMap -> P a -> FilePath -> String -> Reader (M.Map String Header) (Either (ParseErrorBundle String BlockError) a)
 runParserWithCoordinates coordinates parser name text = MP.runParserT
-  (evalStateT parser (ParseContext Nothing (Just positions) False)) name text
+  (evalStateT parser (ParseContext Nothing (Just positions) False [])) name text
   where positions = maybe (sourceCoordinatesFor [] (Source name text)) id coordinates
 
-runParserAt :: [SourceOriginMap] -> P a -> Source -> Reader (M.Map String Header) (Either (ParseErrorBundle String Void) a)
+runParserAt :: [SourceOriginMap] -> P a -> Source -> Reader (M.Map String Header) (Either (ParseErrorBundle String BlockError) a)
 runParserAt origins parser source = runParserWithCoordinates (Just (sourceCoordinatesFor origins source)) parser (path source) (content source)
 
 sourceLocation :: P Location
@@ -105,26 +109,82 @@ keyword :: String -> P ()
 keyword s = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '_')))
 ident :: P String
 ident = lexeme identRaw
--- The same grammar serves legacy migration and strict canonical input. Built-in
--- sources keep their versioned legacy grammar; user sources opt into RC1.
-canonicalP :: P Bool
-canonicalP = asks (M.member "profile:canonical")
+-- Every source, including compiler-owned libraries, uses one strict grammar.
 annotationP :: P ()
 annotationP = sourceNode "annotation" (const Nothing) $
   try (keyword "of" *> keyword "type") <|> void (symbol "::")
 closeP :: String -> P ()
-closeP name = sourceNode "closer" (const (Just name)) $ do
-  keyword "end"
-  canonical <- canonicalP
-  when canonical (keyword name)
-plainCloseP :: String -> P ()
-plainCloseP name = sourceNode "closer" (const (Just name)) (keyword "end")
+closeP name = do
+  kind <- maybe (fail ("unknown compiler block kind: " ++ name)) pure (blockKind name)
+  begin <- sourceLocation
+  frames <- openBlocks <$> get
+  let opener = case frames of (_,origin):_ -> Just origin; [] -> Nothing
+      reject code message = do
+        finish <- sourceLocation
+        customFailure (BlockError code message (Span begin finish) opener)
+  ended <- optional (try (string "end" <* notFollowedBy (alphaNumChar <|> char '_')))
+  case ended of
+    Nothing -> reject "block-unclosed" ("Expected end " ++ blockLabel kind ++ ".")
+    Just _ -> do
+      void (takeWhileP Nothing (\c -> c == ' ' || c == '\t'))
+      label <- optional (choice [try (inline (words (blockLabel candidate)) $> candidate)
+        | candidate <- reverse blockKinds])
+      case label of
+        Nothing -> do
+          remaining <- getInput
+          if null remaining || take 2 remaining == "--" || head remaining `elem` ['\n','\r']
+            then reject "block-close-label-required" ("Bare end is invalid; write end " ++ blockLabel kind ++ ".")
+            else do
+              void (takeWhile1P Nothing (\c -> isAlphaNum c || c == '_')) <|> void anySingle
+              reject "block-close-unknown" ("Unknown block closing label; expected end " ++ blockLabel kind ++ ".")
+        Just actual | actual /= kind -> reject "block-close-mismatch"
+          ("Expected end " ++ blockLabel kind ++ ", found end " ++ blockLabel actual ++ ".")
+        Just _ -> do
+          finish <- sourceLocation
+          recordNode (SyntaxNode "closer" (Just (blockLabel kind)) (Span begin finish) Nothing)
+          spaceP
+  where
+    inline [] = pure ()
+    inline (word:rest) = do
+      void (string word <* notFollowedBy (alphaNumChar <|> char '_'))
+      unless (null rest) (void (some (char ' ' <|> char '\t')) *> inline rest)
+
+-- StateT is outside Parsec: failed alternatives cannot leak open frames or
+-- source inventory. Every block parser uses this wrapper and the same closer.
+blockP :: String -> P a -> P a
+blockP name parser = do
+  spaceP
+  kind <- maybe (fail ("unknown compiler block kind: " ++ name)) pure (blockKind name)
+  start <- sourceLocation
+  input <- getInput
+  frames <- openBlocks <$> get
+  let width = max 1 (length (takeWhile (\c -> isAlphaNum c || c == '_') input))
+      opener = Span start start{column=column start + width}
+  modify' (\context -> context{openBlocks=(kind,opener):frames})
+  recordNode (SyntaxNode "block-opener" (Just name) opener Nothing)
+  value <- parser
+  finish <- sourceLocation
+  recordNode (SyntaxNode "block" (Just name) (Span start finish) Nothing)
+  modify' (\context -> context{openBlocks=frames})
+  pure value
+
+endOfSourceP :: P ()
+endOfSourceP = do
+  closing <- optional (lookAhead (keyword "end"))
+  case closing of
+    Nothing -> eof
+    Just _ -> do
+      start <- sourceLocation
+      void (takeWhile1P Nothing (\c -> c /= '\n' && c /= '\r'))
+      finish <- sourceLocation
+      customFailure (BlockError "block-close-unexpected"
+        "This closing block has no matching opener." (Span start finish) Nothing)
 sectionP :: String -> P a -> P a
-sectionP name body = sourceNode "section" (const (Just name)) $ do
+sectionP name body = sourceNode "section" (const (Just name)) $ blockP name $ do
   keyword name
-  canonical <- canonicalP
-  if canonical then void (symbol ":" <* notFollowedBy (char ':')) else keyword "is"
-  body <* plainCloseP name
+
+  void (symbol ":" <* notFollowedBy (char ':'))
+  body <* closeP name
 
 -- Phrase delimiters are kept in the resolved spelling, so namespace dots in
 -- the body cannot be mistaken for qualification and names remain lossless.
@@ -145,9 +205,9 @@ phraseNameRaw = do
 identRaw :: P String
 identRaw = phraseNameRaw <|> try (do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
-  canonical <- canonicalP
+
   if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] ||
-      (canonical && x `elem` ["if","then","else","in","when","otherwise","must"])
+      (x `elem` ["if","then","else","in","when","otherwise","must"])
     then fail "reserved identifier" else pure x)
 
 -- A public prelude operation may coincide with a grammatical word (then).
@@ -181,34 +241,22 @@ baseName name = case break (== '"') name of
 startsUpper :: String -> Bool
 startsUpper name = take 8 name /= "prelude." && maybe False (isUpper . fst) (uncons (baseName name))
 lawNameP :: P String
-lawNameP = do
-  canonical <- canonicalP
-  if canonical then ident else quoted
+lawNameP = ident
 sectionStartP :: P ()
 sectionStartP = do
-  canonical <- canonicalP
-  if canonical then void (symbol ":" <* notFollowedBy (char ':')) else keyword "is"
-lawReference :: P String
-lawReference = sourceNode "law-reference" Just $ try (do
-    alias <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
-    known <- asks (M.member ("alias:" ++ alias))
-    unless known (fail "not an import alias")
-    void (char '.')
-    n <- quoted
-    pure (alias ++ ".`" ++ n ++ "`"))
-  <|> quoted
+
+  void (symbol ":" <* notFollowedBy (char ':'))
 -- Canonical infix calls have no closing backtick. Header scanners must never
 -- pair two calls as a legacy quoted law name, even on the same source line.
 quotedOrInfixToken :: P ()
-quotedOrInfixToken = canonicalP >>= \canonical ->
-  if canonical then void namedInfixP else void quoted
+quotedOrInfixToken = void namedInfixP
 
 quoted :: P String
 quoted = sourceNode "quoted-name" Just $ lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
 str = sourceNode "text" (const Nothing) $ lexeme $ do
-  canonical <- canonicalP
-  try (char '"' *> when canonical (notFollowedBy (char '|')))
+
+  try (char '"' *> notFollowedBy (char '|'))
   manyTill L.charLiteral (char '"')
 parens :: P a -> P a
 parens = between (symbol "(") (symbol ")")
@@ -225,24 +273,23 @@ typeAtom = sourceNode "type-atom" (Just . prettyType) $ anonymousRecordTypeP <|>
     pure (Refined n t p))
   <|> parens (do
     first <- typeP
-    canonical <- canonicalP
-    rest <- if canonical then many (symbol "," *> typeP) else pure []
+
+    rest <- many (symbol "," *> typeP)
     pure (if null rest then first else Record [RecordField label label ty | (label,ty) <- positionalFields (first:rest)]))
   -- _ leaves a type for the compiler to fill: a workflow's Either _ T asks
   -- for a generated error type.
   <|> (Variable "_" <$ try (lexeme (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
   <|> do
     n0 <- sourceNode "type-name" Just qualifiedName
-    canonical <- canonicalP
-    let n = if canonical then case n0 of
+
+    let n = case n0 of
           "Whole" -> "BigUInt"
           "\"|whole number|" -> "BigUInt"
           "Nat" -> "lawspecPositiveNatural"
           "\"|natural number|" -> "lawspecPositiveNatural"
           _ -> n0
-        else n0
-    when (canonical && n0 `elem` ["Natural","BigUInt","BigInt"])
-      (fail "use Integer, Whole or Nat in 1.0-rc.1; migrate legacy numeric names")
+    when (n0 `elem` ["Natural","BigUInt","BigInt"])
+      (fail "use Integer, Whole or Nat in 1.0-rc.2; use canonical numeric names")
     if n == "lawspecPositiveNatural" then pure (Refined "value" (Named "BigUInt") (Just (Binary ">" (Var "value") (Number 0)))) else do
      headers <- asks (M.lookup n)
      case headers of
@@ -253,7 +300,7 @@ typeAtom = sourceNode "type-atom" (Just . prettyType) $ anonymousRecordTypeP <|>
          | and kinds -> application n <$> mapM (const typeAtom) kinds
          | otherwise -> RefinementApp (indexedRefinementName n) <$> mapM indexArgument kinds
        Nothing | n == naturalRefinementName -> pure (RefinementApp n [])
-               | n `elem` ["Nullable","Optional","List","Maybe",failAbilityName] || (canonical && n `elem` ["Set","SortedSet"]) -> Applied n <$> typeAtom
+               | n `elem` ["Nullable","Optional","List","Maybe",failAbilityName] || (n `elem` ["Set","SortedSet"]) -> Applied n <$> typeAtom
                | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
                | '.' `elem` n -> pure (Named n)
                | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
@@ -267,8 +314,7 @@ typeAtom = sourceNode "type-atom" (Just . prettyType) $ anonymousRecordTypeP <|>
 -- Structural type fields retain public labels and lexical bindings separately.
 anonymousRecordTypeP :: P Type
 anonymousRecordTypeP = do
-  canonical <- canonicalP
-  unless canonical empty
+
   try (keyword "record" <* lookAhead (symbol "{"))
   fields <- between (symbol "{") (symbol "}") (many field)
   unless (length fields == length (nub (map recordFieldLabel fields))) (fail "duplicate record field")
@@ -291,9 +337,9 @@ constraintsP = option [] (keyword "requires" *> some (sourceNode "capability" (\
   n <- choice [name <$ keyword name | name <- ["Eq","Integer","Ordered","Bounded","Keyed"]]
   Capability n <$> typeP))
 refinementP :: P Refinement
-refinementP = do
+refinementP = blockP "refinement" $ do
   keyword "refinement"; n <- ident; ps <- many param; cs <- constraintsP
-  t <- keyword "is" *> typeP <* plainCloseP "refinement"
+  t <- keyword "is" *> typeP <* closeP "refinement"
   pure (Refinement n ps cs t)
 dataTypeP :: P DataTypeDeclaration
 dataTypeP = either erased id <$> declarationP
@@ -302,7 +348,7 @@ dataTypeP = either erased id <$> declarationP
 
 -- | wrapper Name (a :: Type)* is <type> [where <predicate over value>] end
 wrapperP :: P Wrapper
-wrapperP = do
+wrapperP = blockP "wrapper" $ do
   ((name, parameters, base, predicate), range) <- withSpan $ do
     keyword "wrapper"
     name <- ident
@@ -316,7 +362,7 @@ wrapperP = do
     keyword "is"
     base <- typeP
     predicate <- optional (keyword "where" *> expr)
-    plainCloseP "wrapper"
+    closeP "wrapper"
     pure (name, parameters, base, predicate)
   pure (Wrapper name parameters base predicate range)
 
@@ -326,7 +372,7 @@ wrapperP = do
 -- `orElse f` / `recover f` / `<|> f`; `fallback f` / `?? f`; `tap f`; or
 -- `ensure p else f`.
 workflowP :: P Workflow
-workflowP = do
+workflowP = blockP "workflow" $ do
   ((name, ty, stages), range) <- withSpan $ do
     keyword "workflow"
     name <- ident
@@ -334,7 +380,7 @@ workflowP = do
     ty <- typeP
     keyword "is"
     stages <- some (do stage <- stageP; policies <- many policyP; pure (stage, policies))
-    plainCloseP "workflow"
+    closeP "workflow"
     pure (name, ty, stages)
   pure (Workflow name ty (map fst stages) range
     [(index, foldl (flip ($)) (emptyPolicy "") (map fst policies)) | (index, (_, policies)) <- zip [0 ..] stages, not (null policies)]
@@ -414,13 +460,13 @@ workflowP = do
         , OrElseStage <$> ((keyword "orElse" <|> keyword "recover" <|> void (symbol "<|>")) *> qualifiedName)
         , FallbackStage <$> ((keyword "fallback" <|> void (symbol "??")) *> qualifiedName)
         , TapStage <$> (keyword "tap" *> qualifiedName)
-        , sourceNode "all" (const Nothing) $ do
+        , sourceNode "all" (const Nothing) $ blockP "all" $ do
             keyword "all"
             accumulate <- option False (True <$ keyword "accumulate")
             steps <- some (choice
               [ try ((\n t -> (n, Just t)) <$> ident <* annotationP <*> typeP)
               , (\n -> (n, Nothing)) <$> ((keyword "then" <|> void (symbol ">>=")) *> qualifiedName) ])
-            plainCloseP "all"
+            closeP "all"
             keyword "combine"
             AllStage accumulate steps <$> qualifiedName
         , EnsureStage <$> (keyword "ensure" *> qualifiedName) <*> (keyword "else" *> qualifiedName) ]
@@ -432,13 +478,13 @@ workflowP = do
 -- protocol Name is (send T | receive T | ! T | ? T)* end: what one end of a
 -- channel sends and receives, in order. `.` may separate steps.
 protocolP :: P Protocol
-protocolP = do
+protocolP = blockP "protocol" $ do
   ((name, steps), range) <- withSpan $ do
     keyword "protocol"
     name <- ident
     keyword "is"
     steps <- many (step <* optional (symbol "."))
-    plainCloseP "protocol"
+    closeP "protocol"
     pure (name, steps)
   pure (Protocol name steps range)
   where
@@ -448,7 +494,7 @@ protocolP = do
 -- | scenario `name` in model is (channel c :: Protocol)* statement* end. A
 -- command's arguments are on its own line.
 scenarioP :: P Scenario
-scenarioP = do
+scenarioP = blockP "scenario" $ do
   ((name, model, channels, body), range) <- withSpan $ do
     keyword "scenario"
     name <- quoted
@@ -462,18 +508,18 @@ scenarioP = do
       , do ((m, t), at) <- withSpan ((,) <$> (keyword "mailbox" *> ident) <*> (keyword "of" *> typeP))
            pure (Right (m, t, at)) ]
     body <- statements
-    plainCloseP "scenario"
+    closeP "scenario"
     pure (name, model, declared, body)
   pure (Scenario name model [c | Left c <- channels] body range [m | Right m <- channels])
   where
     statements = many statement
     statement = choice [parallel, sending, receiving, expecting, try binding, calling]
-    parallel = sourceNode "par" (const Nothing) $ do
+    parallel = sourceNode "par" (const Nothing) $ blockP "par" $ do
       ((branches), at) <- withSpan $ do
         keyword "par"
         first <- statements
         rest <- many (keyword "with" *> statements)
-        plainCloseP "par"
+        closeP "par"
         pure (first : rest)
       pure (Par branches at)
     sending = do
@@ -483,7 +529,7 @@ scenarioP = do
     -- the rest of the process when c's other process has failed.
     receiving = do
       ((c, x, handler), at) <- withSpan ((,,) <$> (keyword "receive" *> ident) <*> ident
-        <*> optional (sourceNode "recovery" (const Nothing) (try (keyword "or" *> keyword "else") *> statements <* plainCloseP "recovery")))
+        <*> optional (sourceNode "recovery" (const Nothing) (blockP "or else" (try (keyword "or" *> keyword "else") *> statements <* closeP "or else"))))
       pure (ReceiveFrom c x handler at)
     expecting = do
       ((x, v), at) <- withSpan ((,) <$> (keyword "expect" *> ident) <*> (symbol "=" *> constant))
@@ -511,7 +557,7 @@ upper :: String -> P ()
 upper n = unless (maybe False (isUpper . fst) (uncons n)) (fail "expected a type name")
 
 modelP :: P ModelDeclaration
-modelP = do
+modelP = blockP "model" $ do
   ((name, shared, state, model, items), range) <- withSpan $ do
     keyword "model"
     name <- ident
@@ -522,7 +568,7 @@ modelP = do
     model <- typeP
     keyword "is"
     items <- many item
-    plainCloseP "model"
+    closeP "model"
     pure (name, (shared, behaves), state, model, items)
   let (sharedModel, behavesLike) = shared
   pure (ModelDeclaration name sharedModel state model
@@ -558,7 +604,7 @@ modelP = do
 -- gives a restarted actor's state from its last one (g, the model's). Its handle type is the actor's
 -- name, capitalized, then Actor: actor account has an AccountActor.
 actorP :: P ModelDeclaration
-actorP = do
+actorP = blockP "actor" $ do
   ((name, own, model, items), range) <- withSpan $ do
     keyword "actor"
     name <- ident
@@ -568,7 +614,7 @@ actorP = do
     model <- typeP
     keyword "is"
     items <- many item
-    plainCloseP "actor"
+    closeP "actor"
     pure (name, own, model, items)
   let handle = case name of
         c : cs -> toUpper c : cs ++ "Actor"
@@ -599,7 +645,7 @@ actorP = do
 -- temporary. The default strategy is one for one, and the default limit 3
 -- restarts in 5s.
 supervisorP :: P Supervisor
-supervisorP = do
+supervisorP = blockP "supervisor" $ do
   keyword "supervisor"
   name <- ident
   keyword "is"
@@ -618,13 +664,13 @@ supervisorP = do
       ConstructLit "Duration" [Number micros] -> pure (n, micros)
       _ -> fail "expected a duration, such as 5s"
   children <- many ((,) <$> choice [Permanent <$ keyword "permanent", Transient <$ keyword "transient", Temporary <$ keyword "temporary"] <*> ident)
-  plainCloseP "supervisor"
+  closeP "supervisor"
   pure (Supervisor name strategy restarts period children)
 
 -- | Declarations with a Natural parameter or an index equation are indexed
 -- families; LawSpec.Indexed elaborates them after the unit is parsed.
 declarationP :: P (Either IndexedFamily DataTypeDeclaration)
-declarationP = canonicalRecordP <|> do
+declarationP = blockP "type" $ canonicalRecordP <|> do
   ((name, parameters, constructors), range) <- withSpan $ do
     keyword "type"
     name <- upperName
@@ -632,14 +678,14 @@ declarationP = canonicalRecordP <|> do
       parameter <- ident
       unless (maybe False (isLower . fst) (uncons parameter)) (fail "type parameters must start with a lowercase letter")
       annotationP
-      canonical <- canonicalP
+
       isType <- (True <$ sourceNode "type-parameter-kind" (const (Just "Type")) (keyword "Type")) <|>
-        (False <$ sourceNode "type-parameter-kind" (const (Just (if canonical then "Whole" else naturalRefinementName)))
-          (keyword (if canonical then "Whole" else naturalRefinementName)))
+        (False <$ sourceNode "type-parameter-kind" (const (Just "Whole"))
+          (keyword "Whole"))
       pure (parameter, isType)
     keyword "is"
-    canonical <- canonicalP
-    when canonical (keyword "one" *> keyword "of")
+
+    keyword "one" *> keyword "of"
     let typeParameters = [p | (p, True) <- parameters]
         equation = sourceNode "type-equation" (Just . fst) $ do
           lhs <- ident
@@ -649,14 +695,10 @@ declarationP = canonicalRecordP <|> do
       void (optional (symbol "|"))
       ((tag, fields, equations), constructorRange) <- withSpan $ sourceNode "constructor" (\(name,_,_) -> Just name) $ do
         tag <- upperName
-        fields <- if canonical then option [] (do
+        fields <- option [] $ do
           annotationP
           ty <- typeP
-          pure [("value",ty)]) else many $ try $ sourceNode "constructor-field" (Just . fst) $ do
-          field <- ident
-          unless (maybe False (isLower . fst) (uncons field)) (fail "field names must start with a lowercase letter")
-          annotationP
-          (,) field <$> typeP
+          pure [("value",ty)]
         -- An equation on a Type parameter refines it (a GADT constructor); on
         -- a Natural parameter it states the index.
         equations <- option [] (keyword "where" *> (equation `sepBy1` symbol ","))
@@ -678,8 +720,7 @@ declarationP = canonicalRecordP <|> do
 -- mechanism is introduced. Record values retain explicit nominal construction.
 canonicalRecordP :: P (Either IndexedFamily DataTypeDeclaration)
 canonicalRecordP = do
-  canonical <- canonicalP
-  unless canonical empty
+
   ((name, parameters, fields), range) <- withSpan $ do
     try (keyword "type" *> lookAhead (ident *> many typeParameter *> keyword "is" *> keyword "a" *> keyword "record"))
     name <- ident
@@ -711,9 +752,8 @@ data SelectionPattern
 data SelectionRow = SelectionRow [SelectionPattern] [(String,Expr)] (Maybe Expr) Expr
 
 firstCaseP :: P Expr
-firstCaseP = do
-  canonical <- canonicalP
-  unless canonical empty
+firstCaseP = blockP "case" $ do
+
   try (keyword "first" *> keyword "matching" *> keyword "case" *> keyword "of")
   value <- expr
   void (symbol ":" <* notFollowedBy (char ':'))
@@ -898,7 +938,7 @@ selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> lit
   <|> if explicit then binding else condition
   where
     wildcard = SelectionAny <$ (keyword "#any" <|> void (lexeme (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
-    constructor = do
+    constructor = sourceNode "pattern-constructor" (\pattern -> case pattern of SelectionConstructor tag _ -> Just tag; _ -> Nothing) $ do
       tag <- qualifiedName
       unless (startsUpper tag) empty
       recordHeader <- asks (M.lookup ("record:" ++ tag))
@@ -929,7 +969,7 @@ selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> lit
       unless (length (map fst fields) == length (nub (map fst fields))) (fail "duplicate record pattern field")
       pure fields
     literal = SelectionLiteral <$> (try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP) <|> scalarP)
-    binding = do
+    binding = sourceNode "pattern-binding" (\pattern -> case pattern of SelectionBinding name -> Just name; _ -> Nothing) $ do
       name <- ident
       unless (maybe False (isLower . fst) (uncons name)) empty
       pure (SelectionBinding name)
@@ -944,8 +984,7 @@ recordValueP = do
 
 recordConstructionP :: P Expr
 recordConstructionP = anonymousRecordValueP <|> do
-  canonical <- canonicalP
-  unless canonical empty
+
   (name,labels) <- try $ do
     name <- qualifiedName
     lookAhead (keyword "record")
@@ -971,8 +1010,7 @@ recordConstructionP = anonymousRecordValueP <|> do
 
 anonymousRecordValueP :: P Expr
 anonymousRecordValueP = do
-  canonical <- canonicalP
-  unless canonical empty
+
   try (keyword "record" <* lookAhead (symbol "{"))
   fields <- between (symbol "{") (char '}') (((,) <$> ident <* symbol "=" <*> expr) `sepBy` symbol ",")
   unless (length fields == length (nub (map fst fields))) (fail "duplicate record value field")
@@ -995,8 +1033,8 @@ indexExpr = located $ makeExprParser indexAtom
 -- definition's flow parameter just above it.
 expr :: P Expr
 expr = do
-  canonical <- canonicalP
-  first <- statement canonical
+
+  first <- statement
   option first (located (sequenced first <$> (symbol ";" *> expr)))
   where
     -- `a; b` orders two expressions: a is evaluated for its effects, then b
@@ -1006,8 +1044,8 @@ expr = do
       | flowing first = Binary ";" first rest
       | otherwise = MatchExpr first [MatchBranch letTag ["lawspecIgnored"] rest]
     flowing e = any (`isInfixOf` show e) ["Var \"~", "Binary \":=\""]
-    statement canonical = do
-      let value = if canonical then canonicalBoolExpr else updatedExpr
+    statement = do
+      let value = canonicalBoolExpr
       e <- value
       e' <- option e (budgetSuffix e)
       option e' (located (Binary ":=" e' <$> (symbol ":=" *> value)))
@@ -1031,25 +1069,21 @@ updatedExpr = do
     update record (name, value) = Apply (Apply (Var (fieldUpdatePrefix ++ name)) record) value
 
 operatorExpr :: P Expr
-operatorExpr = do
-  canonical <- canonicalP
-  if canonical then located $ makeExprParser
+operatorExpr = located $ makeExprParser
     (located $ makeExprParser (located higher) [[InfixN canonicalEqualityP]])
     [ [Prefix (Unary "!" <$ canonicalLogical "not")]
     , [InfixL (Binary "&&" <$ logicalOperator "&&" "and")]
     , [InfixL (Binary "||" <$ logicalOperator "||" "or")]
     , [InfixR ((\a b -> Binary "||" (Unary "!" a) b) <$ canonicalLogical "implies")]
     ]
-  else located $ makeExprParser application (higherOperators ++ matchers ++
-    [[InfixL (Binary "&&" <$ symbol "&&")],[InfixL (Binary "||" <$ symbol "||")]])
   where
     -- Preserve operand spans independently of the lower equality/logic layers.
     higher = makeExprParser application (higherOperators ++ matchers)
     matchers = [[Postfix (matcherSuffix (located (makeExprParser application (init higherOperators))))]]
     logicalOperator symbolic word = do
-      canonical <- canonicalP
+
       proposition <- asks (M.member "delimiter:proposition-logic")
-      when (canonical && proposition) empty
+      when (proposition) empty
       void (symbol symbolic) <|> canonicalLogical word
     application = sourceNodeBy applicationSyntax $ do
       -- A matcher word after an argument starts a matcher, so contains in
@@ -1071,10 +1105,10 @@ operatorExpr = do
 -- A branch guard starts after its condition, rather than becoming an argument
 -- conditional. Parentheses keep ordinary conditional arguments explicit.
 guardBoundary :: P ()
-guardBoundary = canonicalP >>= \canonical -> when canonical (notFollowedBy (keyword "if"))
+guardBoundary = notFollowedBy (keyword "if")
 
 logicBoundary :: P ()
-logicBoundary = canonicalP >>= \canonical -> when canonical
+logicBoundary =
   (notFollowedBy (keyword "and" <|> keyword "or" <|> keyword "implies"))
 
 -- Delimited value expressions own their logical and equality boundaries.
@@ -1084,9 +1118,9 @@ membershipScope = local (M.delete "delimiter:let-in" . M.delete "delimiter:expec
 
 canonicalLogical :: String -> P ()
 canonicalLogical word = do
-  canonical <- canonicalP
+
   proposition <- asks (M.member "delimiter:proposition-logic")
-  unless (canonical && not proposition) empty
+  unless (not proposition) empty
   keyword word
 
 -- The operator levels above the matchers, from the tightest.
@@ -1112,9 +1146,9 @@ higherOperators =
   ]
   where
     membership = do
-      canonical <- canonicalP
+
       initializer <- asks (M.member "delimiter:let-in")
-      unless (canonical && not initializer) empty
+      unless (not initializer) empty
       keyword "in"
       pure (\value collection -> Apply (Apply (Var "prelude.member") value) collection)
     -- An operator never matches the start of a longer one: < is not <$>
@@ -1131,8 +1165,7 @@ higherOperators =
 -- Prefix/infix preserve exactly the same function identity and argument order.
 namedInfixP :: P (Expr -> Expr -> Expr)
 namedInfixP = do
-  canonical <- canonicalP
-  unless canonical empty
+
   void (optional (try (keyword "is" <* lookAhead (char '`'))))
   void (char '`')
   name <- (do
@@ -1207,8 +1240,8 @@ matcherSuffix operand = choice
 -- would silently match everything. The selected expression is evaluated once.
 matcherPatternP :: P (Expr -> Expr)
 matcherPatternP = do
-  canonical <- canonicalP
-  if not canonical then flip patternTest <$> patternP else try $ do
+
+  try $ do
     pattern <- selectionPatternP True
     case pattern of
       SelectionBinding _ -> empty
@@ -1270,7 +1303,7 @@ patternTest = go (0 :: Int)
 applicationAtom :: P Expr
 applicationAtom = atom
   where
-    atom = located $ (ScalarLit (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> membershipScope setValue <|> membershipScope firstCaseP <|> membershipScope recordValueP <|> temporalP <|> membershipScope matchP <|> membershipScope ifP <|> raiseP <|> callsP <|> letP <|> membershipScope handleP <|> regexP <|> membershipScope (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+    atom = located $ (ScalarLit (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> membershipScope setValue <|> membershipScope firstCaseP <|> membershipScope recordValueP <|> temporalP <|> membershipScope ifP <|> raiseP <|> callsP <|> letP <|> membershipScope handleP <|> regexP <|> membershipScope (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> membershipScope parenthesizedFields
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
@@ -1296,7 +1329,7 @@ applicationAtom = atom
       pure name
     valueNameRaw = try (do void (string "prelude"); notFollowedBy (alphaNumChar <|> char '_'); spaceP; void (symbol "."); n <- preludeIdentifierRaw; pure ("prelude." ++ n)) <|> qualifiedNameRaw
     -- let x = e in body: e is evaluated first, then body, with x its value.
-    letP = sourceNode "let" (const Nothing) $ do
+    letP = sourceNode "let" (const Nothing) $ blockP "let" $ do
       try (keyword "let" *> lookAhead (ident *> symbol "=" *> notFollowedBy (char '=')))
       name <- sourceNode "let-binding" Just ident
       unless (maybe False (isLower . fst) (uncons name)) (fail "a let binds a name starting with a lowercase letter")
@@ -1304,9 +1337,11 @@ applicationAtom = atom
       value <- local (M.insert "delimiter:let-in" AliasHeader . M.delete "delimiter:expectation-equals" . M.delete "delimiter:proposition-logic") expr
       keyword "in"
       body <- local (M.delete "delimiter:proposition-logic") expr
+
+      (closeP "let")
       pure (MatchExpr value [MatchBranch letTag [name] body])
     -- handle e with h end: e runs with the spec handler h for h's ability.
-    handleP = sourceNode "handle" (const Nothing) $ do
+    handleP = sourceNode "handle" (const Nothing) $ blockP "handle" $ do
       try (keyword "handle")
       body <- expr
       keyword "with"
@@ -1318,7 +1353,7 @@ applicationAtom = atom
           Nothing -> pure name
           Just n | reverse (takeWhile (/= '.') (reverse name)) == seededHandler -> pure (seededHandlerName n)
                  | otherwise -> fail "only seededRandom takes a seed"
-      plainCloseP "handle"
+      closeP "handle"
       pure (Apply (Var ("prelude.handle:" ++ handler)) body)
     -- regex "a+": a Regex, checked at compile time (LawSpec.Regex).
     regexP = do
@@ -1340,37 +1375,20 @@ applicationAtom = atom
     -- if c then a else b: only the branch c selects is evaluated (it is
     -- prelude.select, which elaborates to Core's If).
     setValue = do
-      canonical <- canonicalP
-      unless canonical empty
+
       void (symbol "#S")
       values <- between (symbol "{") (symbol "}") (expr `sepBy` symbol ",")
       pure (Apply (Var "prelude.setOf") (ListLit values))
-    ifP = sourceNode "if" (const Nothing) $ do
+    ifP = sourceNode "if" (const Nothing) $ blockP "if" $ do
       keyword "if"
       condition <- expr
       keyword "then"
       yes <- expr
       keyword "else"
       no <- expr
-      canonical <- canonicalP
-      when canonical (closeP "if")
+
+      (closeP "if")
       pure (foldl Apply (Var "prelude.select") [condition, yes, no])
-    matchP = sourceNode "case" (const Nothing) $ do
-      keyword "match"
-      canonical <- canonicalP
-      when canonical (fail "use first matching case of ...: in 1.0-rc.1")
-      value <- expr
-      keyword "with"
-      branches <- some $ sourceNode "case-branch" (\(MatchBranch tag _ _) -> Just tag) $ do
-        void (symbol "|")
-        tag <- sourceNode "pattern-constructor" Just qualifiedName
-        unless (startsUpper tag) (fail "expected constructor in match pattern")
-        names <- many (sourceNode "pattern-binding" Just ident)
-        unless (all (maybe False (isLower . fst) . uncons) names) (fail "pattern binders must start with a lowercase letter")
-        void (symbol "->")
-        MatchBranch tag names <$> expr
-      closeP "case"
-      pure (MatchExpr value branches)
     -- An adjacent sign remains part of a numeric argument: f -42. For subtraction use x - 42.
 located :: P Expr -> P Expr
 located parser = do
@@ -1465,33 +1483,18 @@ parenthesizedExpr = parens parenthesizedValue
 parenthesizedValue :: P Expr
 parenthesizedValue = do
   first <- expr
-  canonical <- canonicalP
-  rest <- if canonical then many (symbol "," *> expr) else pure []
+
+  rest <- many (symbol "," *> expr)
   let value = if null rest then first else RecordLit (positionalFields (first:rest))
   option value (Annotate value <$> (annotationP *> typeP))
 
 defP :: P Definition
-defP = do
-  canonical <- canonicalP
-  if canonical then canonicalDefinition else legacyDefinition
-legacyDefinition :: P Definition
-legacyDefinition = (sourceNode "quantifier.forall" (const Nothing) $ do void (symbol "`for all`"); ps <- some param; void (symbol "."); Forall ps <$> defP)
-   <|> do a <- clause
-          option a (And a <$> (keyword "and" *> defP))
-  where
-    clause = (Invoke <$> lawReference <*> many (parenthesizedExpr <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal)) <|> (Var <$> qualifiedName)))
-      <|> try (do
-        a <- expr
-        (keyword "implies" *> (Implies a <$> defP))
-          <|> (symbol "=" *> ((Holds <$> recordedP a) <|> (Equal a <$> expr)))
-          <|> pure (Holds a))
-      <|> parens defP
+defP = canonicalDefinition
 -- Universal RC1 syntax lowers to the existing typed obligation pipeline.
 -- A quantifier owns its end; a section owns a separate end.
 canonicalDefinition :: P Definition
 canonicalDefinition = do
-  canonical <- canonicalP
-  unless canonical empty
+
   makeExprParser atom
     [ [Prefix prefixes]
     , [InfixL (And <$ (keyword "and" <|> void (symbol "&&")))]
@@ -1529,14 +1532,14 @@ canonicalDefinition = do
       And a b -> Binary "&&" <$> booleanDefinition a <*> booleanDefinition b
       Implies guard body -> Binary "||" (Unary "!" guard) <$> booleanDefinition body
       _ -> Nothing
-    quantified = sourceNode "quantifier.forall" (const Nothing) $ do
+    quantified = sourceNode "quantifier.forall" (const Nothing) $ blockP "for all" $ do
       try (keyword "for" *> keyword "all")
       ps <- some param
       void (symbol "=>")
       body <- defP
-      plainCloseP "forall"
+      closeP "for all"
       pure (Forall ps body)
-    existential = sourceNode "quantifier.exists" (\body -> case body of Not _ -> Just "negative"; _ -> Just "positive") $ do
+    existential = sourceNode "quantifier.exists" (\body -> case body of Not _ -> Just "negative"; _ -> Just "positive") $ blockP "exists" $ do
       try (keyword "there" *> lookAhead (keyword "exists" <|> keyword "must" <|> keyword "does"))
       negative <- (False <$ keyword "exists")
         <|> (keyword "must" *> ((True <$ (keyword "not" *> keyword "exist")) <|> (False <$ keyword "exist")))
@@ -1544,15 +1547,15 @@ canonicalDefinition = do
       ps <- some (optional (try (keyword "a" <|> keyword "an")) *> param)
       keyword "such"; keyword "that"
       body <- defP
-      plainCloseP "exists"
+      closeP "exists"
       pure ((if negative then Not else id) (Exists ps body))
-    given = sourceNode "quantifier.given" (const Nothing) $ do
+    given = sourceNode "quantifier.given" (const Nothing) $ blockP "given" $ do
       keyword "given"
       ps <- some param
       guard <- optional (keyword "when" *> canonicalBoolExpr)
       keyword "then"
       body <- defP
-      plainCloseP "given"
+      closeP "given"
       pure (Forall ps (maybe body (\c -> Implies c body) guard))
     -- Applying a requirement is explicit, so a law and a function can have
     -- the same spelling without changing ordinary expression resolution.
@@ -1575,8 +1578,7 @@ canonicalComparison = local (M.insert "delimiter:proposition-logic" AliasHeader)
 -- negation and conjunction. Examples reserve their outer = as a separator.
 canonicalEqualityP :: P (Expr -> Expr -> Expr)
 canonicalEqualityP = do
-  canonical <- canonicalP
-  unless canonical empty
+
   wording <- (True <$ try (keyword "must" *> keyword "be"))
     <|> (False <$ try (keyword "must" *> void (symbol "=")))
     <|> wordedIs <|> plainEquals
@@ -1596,7 +1598,7 @@ canonicalEqualityP = do
       -- real clause grammar, including phrase names and delegated operations.
       -- Keeping this context through nested expressions also handles a let body.
       when initial (notFollowedBy (lookAhead
-        (keyword "is" *> (void handlerClauseIntroP <|> plainCloseP "handler"))))
+        (keyword "is" *> (void handlerClauseIntroP <|> closeP "handler"))))
       True <$ keyword "is"
 
 boolP :: P Bool
@@ -1628,8 +1630,7 @@ literalP = sourceNode "literal" literalName $ setLiteral <|> namedRecordLiteral 
           (ScalarLit v,Named name) -> either fail (pure . ScalarLiteral) (convertScalar 64 name v)
           _ -> fail "expected concrete annotated literal"))
   <|> try (do
-    canonical <- canonicalP
-    unless canonical empty
+
     values <- parens ((:) <$> (literalP <* symbol ",") <*> (literalP `sepBy1` symbol ","))
     pure (RecordLiteral (positionalFields values)))
   <|> parens literalP
@@ -1639,13 +1640,11 @@ literalP = sourceNode "literal" literalName $ setLiteral <|> namedRecordLiteral 
     literalName (ConstructorLiteral name _) = Just name
     literalName _ = Nothing
     setLiteral = do
-      canonical <- canonicalP
-      unless canonical empty
+
       void (symbol "#S")
       SetLiteral (collectionsAlias ++ ".setOf") <$> between (symbol "{") (symbol "}") (literalP `sepBy` symbol ",")
     namedRecordLiteral = do
-      canonical <- canonicalP
-      unless canonical empty
+
       (name,labels) <- try $ do
         name <- qualifiedName
         lookAhead (keyword "record" *> symbol "{")
@@ -1659,8 +1658,7 @@ literalP = sourceNode "literal" literalName $ setLiteral <|> namedRecordLiteral 
         (fail "a named record literal must supply exactly its declared fields")
       ConstructorLiteral name <$> mapM (\label -> maybe (fail "missing named record literal field") pure (lookup label fields)) labels
     recordLiteral = do
-      canonical <- canonicalP
-      unless canonical empty
+
       try (keyword "record" <* lookAhead (symbol "{"))
       RecordLiteral <$> literalRecordFields
     literalRecordFields = do
@@ -1684,7 +1682,7 @@ lawP = fst <$> lawUsingP
 
 -- law `name` params [requires ...] [using h, recording A, ...] is ... end
 lawUsingP :: P (Law, [HandlerUse])
-lawUsingP = sourceNode "law" (Just . lawName . fst) $ do
+lawUsingP = sourceNode "law" (Just . lawName . fst) $ blockP "law" $ do
   pos <- sourceLocation
   keyword "law"
   n <- lawNameP
@@ -1693,16 +1691,9 @@ lawUsingP = sourceNode "law" (Just . lawName . fst) $ do
   using <- option [] (keyword "using" *> (handlerUseP `sepBy1` symbol ","))
   resources <- lawResourcesP
   keyword "is"
-  canonical <- canonicalP
-  (d, desc, why, written, refs, metadata) <- if canonical then canonicalLawBodyP else do
-    d <- block "definition" defP
-    desc <- option "" (block "description" str)
-    why <- option "" (block "rationale" str)
-    written <- many ((pure <$> exampleP) <|> tableP)
-    refs <- option [] (sourceNode "section" (const (Just "references"))
-      (keyword "references" *> keyword "are" *> some (ExternalReference Nothing <$> str) <* plainCloseP "references"))
-    pure (d, desc, why, written, refs, emptyLawMetadata)
-  plainCloseP "law"
+
+  (d, desc, why, written, refs, metadata) <- canonicalLawBodyP
+  closeP "law"
   documented <- descriptionExamples desc
   let tables = length [() | rows <- written, isTable rows]
       isTable rows = case rows of
@@ -1809,35 +1800,35 @@ lawResourcesP = option [] $ do
 --   [reset x is e end]
 -- end
 resourceP :: P ResourceDeclaration
-resourceP = do
+resourceP = blockP "resource" $ do
   ((ty, concurrent, acquire, release, reset), range) <- withSpan $ do
     keyword "resource"
     ty <- typeP
     keyword "is"
     concurrent <- option False (True <$ keyword "concurrent")
     acquire <- sourceNode "resource-clause" (const (Just "acquire"))
-      (keyword "acquire" *> keyword "is" *> expr <* plainCloseP "acquire")
+      (blockP "acquire" (keyword "acquire" *> keyword "is" *> expr <* closeP "acquire"))
     release <- clause "release"
     reset <- optional (clause "reset")
-    plainCloseP "resource"
+    closeP "resource"
     pure (ty, concurrent, acquire, release, reset)
   pure (ResourceDeclaration ty acquire release reset range concurrent)
   where
-    clause word = sourceNode "resource-clause" (const (Just word)) $ do
+    clause word = sourceNode "resource-clause" (const (Just word)) $ blockP word $ do
       keyword word
       name <- ident
       keyword "is"
       body <- expr
-      plainCloseP word
+      closeP word
       pure (name, body)
 
 -- example `name` is (x = literal)* (expect ...)* end
 exampleP :: P Example
-exampleP = sourceNode "example" (Just . exampleName) $ do
+exampleP = sourceNode "example" (Just . exampleName) $ blockP "example" $ do
   keyword "example"; en <- lawNameP; sectionStartP
   bs <- some ((,) <$> ident <* symbol "=" <*> literalP)
   checks <- many expectationP
-  plainCloseP "example"; pure (Example en bs checks)
+  closeP "example"; pure (Example en bs checks)
 
 -- table (a, b, expected) is (row ...)+ (expect ...)* end: each row is an
 -- example. A column on the right of an expect's = holds expected values;
@@ -1845,17 +1836,17 @@ exampleP = sourceNode "example" (Just . exampleName) $ do
 -- "table row 1: 1, 2, 3" here; lawUsingP drops "table " and numbers tables
 -- when a law has several.
 tableP :: P [Example]
-tableP = sourceNode "table" (const Nothing) $ do
-  canonical <- canonicalP
-  leading <- if canonical then some tableExpectationP <* keyword "in" else pure []
+tableP = sourceNode "table" (const Nothing) $ blockP "table" $ do
+
+  leading <- some tableExpectationP <* keyword "in"
   keyword "table"
   columns <- parens (sourceNode "table-column" Just ident `sepBy1` symbol ",")
   sectionStartP
   rows <- some $ withSpan $ sourceNode "table-row" (const Nothing) $ do
     keyword "row"
     literalP `sepBy1` symbol ","
-  checks <- if canonical then pure leading else many tableExpectationP
-  plainCloseP "table"
+  let checks = leading
+  closeP "table"
   let expectedColumns = [c | (_, Just (Right (Right c))) <- checks]
   forM_ expectedColumns $ \c -> unless (c `elem` columns)
     (fail ("the table has no column called " ++ c ++ "; its columns are " ++ intercalate ", " columns))
@@ -1863,7 +1854,7 @@ tableP = sourceNode "table" (const Nothing) $ do
     (fail ("row " ++ show i ++ " of the table has " ++ show (length values) ++ " values, but the table has " ++ show (length columns) ++ " columns"))
   pure
     [ Example ("table row " ++ show i ++ ": " ++ intercalate ", " (map prettyLiteral values))
-        [(c, v) | (c, v) <- row, canonical || c `notElem` expectedColumns]
+        row
         [ case right of
             Nothing -> Expectation (substitute left) (BoolLiteral True)
             Just (Left name) -> Expectation (Apply (Apply (Var "prelude.recorded") (StringLit (name ++ " row " ++ show i))) (substitute left)) (BoolLiteral True)
@@ -1930,11 +1921,10 @@ expectationP = sourceNode "expectation" (const Nothing) $ do
 -- retaining performance budgets in both named examples and expectation tables.
 expectationActualP :: P Expr
 expectationActualP = do
-  canonical <- canonicalP
-  if canonical then local (M.insert "delimiter:expectation-equals" AliasHeader) $ do
+
+  local (M.insert "delimiter:expectation-equals" AliasHeader) $ do
     actual <- updatedExpr
     option actual (budgetSuffix actual)
-  else expr
 
 -- recorded "name": the value stored under recorded/<unit>/<name>, compared
 -- by its portable rendering when the law runs; a Bool, prelude.recorded.
@@ -2032,7 +2022,7 @@ usesP = do
 
 -- ability Name (a :: Type)* is (op :: Type)* [laws law*] end
 abilityP :: P AbilityDeclaration
-abilityP = do
+abilityP = blockP "ability" $ do
   ((name, parameters, operations, abilityLaws'), range) <- withSpan $ do
     keyword "ability"
     name <- ident
@@ -2052,33 +2042,40 @@ abilityP = do
       ty <- typeP
       failure <- optional (try (keyword "fails" *> keyword "with") *> typeP)
       pure ((op, ty), (,) op <$> failure))
-    abilityLaws' <- option [] (keyword "laws" *> many lawP)
-    plainCloseP "ability"
+    abilityLaws' <- option [] (blockP "laws" $ do
+      keyword "laws"
+      items <- many lawP
+
+      (closeP "laws")
+      pure items)
+    closeP "ability"
     pure (name, (parameters, resource), operations, abilityLaws')
   pure (AbilityDeclaration name (fst parameters) (map fst operations) abilityLaws' range "" [f | (_, Just f) <- operations] (snd parameters))
 
 -- handlers name is h1, h2, ... end
 handlerSetP :: P HandlerSet
-handlerSetP = do
+handlerSetP = blockP "handlers" $ do
   ((name, members), range) <- withSpan $ do
     keyword "handlers"
     name <- ident
     keyword "is"
     members <- qualifiedName `sepBy1` symbol ","
-    plainCloseP "handlers"
+    closeP "handlers"
     pure (name, members)
   pure (HandlerSet name members range)
 
 -- handler name for Ability [with state s :: S start e] is (op x* is e end)* end
 handlerClauseIntroP :: P (String, Either String [String])
 handlerClauseIntroP = do
+
+  (keyword "operation")
   op <- ident
   body <- try (Left <$> (keyword "by" *> qualifiedName <* notFollowedBy (keyword "is")))
     <|> (Right <$> (many ident <* keyword "is"))
   pure (op,body)
 
 handlerP :: P HandlerDeclaration
-handlerP = do
+handlerP = blockP "handler" $ do
   ((name, ability, state, clauses), range) <- withSpan $ do
     keyword "handler"
     name <- ident
@@ -2099,43 +2096,40 @@ handlerP = do
       pure (s, ty, start)
     keyword "is"
     clauses <- many $ sourceNode "handler-operation" (Just . clauseOperation) $ do
-      ((op, parameters, body), at) <- withSpan $ do
+      ((op, parameters, body), at) <- withSpan $ blockP "operation" $ do
         (op,intro) <- handlerClauseIntroP
         -- op by f: the clause is f, applied to the operation's values (and
         -- the state), as a model's or an actor's `on op by f` is.
         case intro of
-          Left function -> pure (op, [], Apply (Var clauseBy) (Var function))
+          Left function -> do
+
+            (closeP "operation")
+            pure (op, [], Apply (Var clauseBy) (Var function))
           Right parameters -> do
             body <- expr
-            plainCloseP "operation"
+            closeP "operation"
             pure (op, parameters, body)
       pure (HandlerClause op parameters body at)
-    plainCloseP "handler"
+    closeP "handler"
     pure (name, (ability, also), state, clauses)
   pure (HandlerDeclaration name (fst ability) state clauses range "" (snd ability))
 -- | Unit definitions have explicit parameter and result types. Law definitions
 -- remain proposition blocks and are parsed separately by lawP.
-functionDefinitionP :: P FunctionDefinition
-functionDefinitionP = do
-  ((name, arguments, result, requirements, body), range) <- withSpan $ do
-    keyword "definition"
-    name <- ident
-    arguments <- some param
-    annotationP
-    result <- typeP
-    requirements <- constraintsP
-    body <- keyword "is" *> expr <* plainCloseP "definition"
-    pure (name, arguments, result, requirements, body)
-  pure (FunctionDefinition name arguments result requirements body range)
-
 -- A definition with the abilities it says it uses, if it says.
 definitionUsesP :: P (FunctionDefinition, Maybe [Type])
 definitionUsesP = do
   ((name, arguments, result, requirements, used, body), range) <- withSpan $ do
-    canonical <- canonicalP
-    kind <- if canonical then ("function" <$ keyword "function") <|> ("procedure" <$ keyword "procedure") else "definition" <$ keyword "definition"
+
+    start <- sourceLocation
+    frames <- openBlocks <$> get
+    kind <- ("function" <$ keyword "function") <|> ("procedure" <$ keyword "procedure")
+    do
+      selected <- maybe (fail "invalid computation block") pure (blockKind kind)
+      let opener = Span start start{column=column start + length kind}
+      modify' (\context -> context{openBlocks=(selected,opener):frames})
+      recordNode (SyntaxNode "block-opener" (Just kind) opener Nothing)
     name <- ident
-    written <- if canonical then some parameterPatternP else map (\(name,ty) -> (SelectionBinding name,ty,Nothing)) <$> some param
+    written <- some parameterPatternP
     let bindings = concatMap (\(pattern,_,_) -> selectionBindings pattern) written
     unless (length bindings == length (nub bindings)) (fail "repeated variable binding in parameters")
     let named = zipWith (\index (pattern,ty,restriction) ->
@@ -2145,17 +2139,16 @@ definitionUsesP = do
         arguments = [(name,maybe ty' (\predicate -> Refined name ty' (Just (replaceExprVars scope predicate))) restriction) |
           ((name,_,ty,restriction),scope) <- zip named scopedAliases, let ty'=replaceTypeValueVars scope ty]
         allAliases = concat aliases
-    writtenResult <- if canonical
-      then (symbol "->" *> typeP) <|> (if kind == "procedure" then pure (Named "Unit") else fail "a function requires -> and a result type")
-      else symbol "::" *> typeP
+    writtenResult <- (symbol "->" *> typeP) <|> (if kind == "procedure" then pure (Named "Unit") else fail "a function requires -> and a result type")
     writtenRequirements <- constraintsP
     used' <- optional (lookAhead (keyword "uses" <|> keyword "fails") *> usesP)
     let result = replaceTypeValueVars allAliases writtenResult
         requirements = [Capability capability (replaceTypeValueVars allAliases ty) | Capability capability ty <- writtenRequirements]
-        used = if canonical && kind == "function" then Just [] else fmap (map (replaceTypeValueVars allAliases)) used'
-    when (canonical && kind == "function" && maybe False (not . null) used')
+        used = if kind == "function" then Just [] else fmap (map (replaceTypeValueVars allAliases)) used'
+    when (kind == "function" && maybe False (not . null) used')
       (fail "a function is pure; declare a procedure for ability operations")
     writtenBody <- keyword "is" *> expr <* closeP kind
+    (modify' (\context -> context{openBlocks=frames}))
     let body=foldr (\(argument,pattern,_,_) rest -> case pattern of
           SelectionBinding _ -> rest
           _ -> selectionMatrix 0 [Var argument] [SelectionRow [pattern] [] Nothing rest]) writtenBody named
@@ -2188,9 +2181,8 @@ parameterPatternP = sourceNode "parameter" (\(pattern,_,_) -> case selectionBind
 -- Typed constants lower to ordinary checked definitions. Exhaustive constructor
 -- coverage is admitted by the same compiler contract audit as hand-written code.
 mappingP :: String -> P [FunctionDefinition]
-mappingP owner = do
-  canonical <- canonicalP
-  unless canonical empty
+mappingP owner = blockP "mapping" $ do
+
   ((name,keyType,resultType,rows,fallback), range) <- withSpan $ do
     keyword "mapping"
     name <- ident
@@ -2312,10 +2304,12 @@ importWithTargetP = sourceNode "import" (\(item,_,_)->Just (importUnit item)) $ 
 -- Import retains its existing law marker internally; only the delimiters are
 -- synthetic. A backtick inside a phrase is part of the name.
 importItemP :: P String
-importItemP = sourceNode "import-item" Just $ do
-  canonical <- canonicalP
-  if canonical then ((\n -> "`" ++ n ++ "`") <$> (keyword "law" *> itemName)) <|> itemName
-    else ((\n -> "`" ++ n ++ "`") <$> quoted) <|> ident
+importItemP = listItemP "import-item"
+
+listItemP :: String -> P String
+listItemP kind = sourceNode kind Just $ do
+
+  ((\n -> "`" ++ n ++ "`") <$> (keyword "law" *> itemName)) <|> itemName
   where
     -- The preamble is read before aliases are installed. There is no field
     -- projection ambiguity in an import/export list, so parse qualification
@@ -2329,15 +2323,9 @@ exportP :: P Import
 exportP = sourceNode "export" (const Nothing) $ do
   (items, range) <- withSpan $ do
     keyword "export"
-    canonical <- canonicalP
-    if canonical then importItemP `sepBy1` symbol ","
-      else (sourceNode "export-item" Just (((\n -> "`" ++ n ++ "`") <$> quoted) <|> qualifiedExport)) `sepBy1` symbol ","
+
+    listItemP "export-item" `sepBy1` symbol ","
   pure (Import "" "" items range)
-  where
-    qualifiedExport = lexeme $ try $ do
-      first <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
-      rest <- optional (char '.' *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')))
-      pure (maybe first (\r -> first ++ "." ++ r) rest)
 
 -- | Whether an Import is a unit's export line.
 isExport :: Import -> Bool
@@ -2358,8 +2346,8 @@ preambleWithTargetsP = do
 -- Package preparation uses the same header grammar, retaining original name
 -- piece offsets rather than rebuilding lines or scanning the body's text.
 sourcePackageTargets :: Bool -> Source -> Either [Diagnostic] (NameParts,[(NameParts,Maybe String)])
-sourcePackageTargets canonical source = either (Left . pure . parseDiagnostic [] source) Right $
-  runReader (runParserAt [] parser source) (if canonical then M.singleton "profile:canonical" AliasHeader else M.empty)
+sourcePackageTargets _ source = either (Left . pure . parseDiagnostic [] source) Right $
+  runReader (runParserAt [] parser source) (M.singleton "profile:canonical" AliasHeader)
   where
     parser = try harness <|> do
       (declared,imports) <- preambleWithTargetsP
@@ -2373,7 +2361,7 @@ sourcePackageTargets canonical source = either (Left . pure . parseDiagnostic []
       pure (declared,[(served,Nothing)])
 
 unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow], [ModelDeclaration], ([Protocol], [Scenario]))
-unitP = do
+unitP = blockP "unit" $ do
   (n, imports) <- preambleP
   members' <- many (sourceNodeBy memberSyntax $ (either FamilyMember DataMember <$> declarationP)
     <|> (WrapperMember <$> wrapperP)
@@ -2404,7 +2392,9 @@ unitP = do
     <|> try (AsyncMember <$> (keyword "async" *> withSpan ((,) <$> ident <* annotationP <*> typeP)) <*> usesP)
     <|> try (SignatureMember <$> withSpan ((,) <$> ident <* annotationP <*> typeP) <*> usesP)
     <|> (LawMember <$> lawUsingP))
-  eof
+
+  (closeP "unit")
+  endOfSourceP
   let members = asyncSugar members'
   when (length [() | HarnessMember _ <- members] > 1)
     (fail "a unit has at most one harness")
@@ -2432,7 +2422,7 @@ unitP = do
 -- | A single source sees no other units, which is what the compiler API's
 -- one-file requests and the tests need.
 parseSource :: Source -> Either [Diagnostic] Unit
-parseSource source = fst . fst <$> parseWith M.empty [] [] source
+parseSource = parseSourceCanonical
 parseSourceCanonical :: Source -> Either [Diagnostic] Unit
 parseSourceCanonical source = fst . fst <$> parseWith (M.singleton "profile:canonical" AliasHeader) [] [] source
 
@@ -2447,7 +2437,7 @@ parseSources = parseSourcesWith [] []
 -- unit (LawSpec.Time, LawSpec.Resilience) is imported, with its types, by the
 -- sources it says use it.
 parseSourcesWith :: [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSourcesWith collections implicit = parseSourcesWithBuiltins False collections implicit []
+parseSourcesWith collections implicit = parseSourcesWithBuiltins True collections implicit []
 parseSourcesWithCanonical :: [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
 parseSourcesWithCanonical collections implicit = parseSourcesWithBuiltins True collections implicit []
 -- | Versioned built-in sources are provided separately by the compiler. A user
@@ -2500,7 +2490,7 @@ parseSourcesWithInventory origins capture canonical collections builtins version
                 -- A built-in with no types to list (lawspec.host) is imported
                 -- whole, as the collections unit is for bounded arithmetic.
                 in [Import unit alias items (Span origin origin) | namespaceOnly || not (null items) || unit == "lawspec.host" || boundedArithmeticBlock `elem` types]
-              collectionNames = if canonicalSource source then canonicalCollectionNames collections else collections
+              collectionNames = canonicalCollectionNames collections
           in (n, imports ++ builtin False collectionsUnit collectionsAlias collectionNames ++
                concat [builtin (canonicalSource source) unit alias types | (unit, alias, types, uses) <- builtins, uses s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
@@ -2525,9 +2515,8 @@ parseSourcesWithInventory origins capture canonical collections builtins version
             | (name, t, o) <- found ]
           ownersOut = [(name, cs) | (name, _, o) <- found, Just cs <- [lookup name o]]
       in (M.union table entries, owners ++ ownersOut)
-    canonicalSource source = canonical && source `notElem` versioned
-    profile source env = if canonicalSource source
-      then M.insert "profile:canonical" AliasHeader env else M.delete "profile:canonical" env
+    canonicalSource _ = True
+    profile _ = M.insert "profile:canonical" AliasHeader
     imported source = profile source $ case preamble source of
       Left _ -> M.empty
       Right (_, imports) -> M.unions
@@ -2574,7 +2563,7 @@ sourceUnit source@(Source p s) = case partitionHarnessSources [source] of
 -- constructor arities, with each data type's constructors.
 sourceExports :: [SourceOriginMap] -> M.Map String Header -> Source -> (M.Map String Header, [(String, [String])])
 sourceExports origins extra source@(Source _ s) =
-  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)),
+  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile True s) extra)),
    constructorOwners extra s)
 
 parseWith :: M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
@@ -2600,7 +2589,7 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
       _ -> Left [Diagnostic "harness" ("the unit " ++ unitName u0 ++ " has more than one harness; a unit has at most one") Nothing]
     domained <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
       (elaborateDomain wrappers workflows
-        (if M.member "profile:canonical" environment then u else railwayUnit u))
+        u)
     -- Models read typestate from flow parameters, so they come first.
     modeled <- either (\(at, message) -> Left [Diagnostic "model" message (spanStart <$> at)]) Right
       (elaborateModels models domained >>= \m -> m <$ checkSupervisors m)
@@ -2621,22 +2610,27 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
           else []
     pure (((elaborated, imports), families'),inventory)
   where
-    initialContext input = ParseContext (if capture then Just [] else Nothing) (Just (sourceCoordinatesFor origins input)) False
-    environment = literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile (M.member "profile:canonical" extra) s) extra)
+    initialContext input = ParseContext (if capture then Just [] else Nothing) (Just (sourceCoordinatesFor origins input)) False []
+    environment = literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile True s) extra)
 
-parseDiagnostic :: [SourceOriginMap] -> Source -> ParseErrorBundle String Void -> Diagnostic
+parseDiagnostic :: [SourceOriginMap] -> Source -> ParseErrorBundle String BlockError -> Diagnostic
 parseDiagnostic origins source bundle =
   let err=NE.head (bundleErrors bundle)
       offset=errorOffset err
       (_,state)=reachOffset offset (bundlePosState bundle)
       position=pstateSourcePos state
       raw=Location (sourceName position) (unPos (sourceLine position)) (unPos (sourceColumn position))
-  in case originalLocation (sourceCoordinatesFor origins source) offset of
-    Just location -> Diagnostic "parse"
+      blockError = case err of
+        FancyError _ errors -> [problem | ErrorCustom problem <- S.toList errors]
+        _ -> []
+  in case blockError of
+    BlockError code message range opener:_ -> BlockDiagnostic code message (Just (spanStart range)) range opener
+    [] -> case originalLocation (sourceCoordinatesFor origins source) offset of
+     Just location -> Diagnostic "parse"
       (case sourceOriginFor origins source of
         Nothing | location==raw -> errorBundlePretty bundle
         _ -> parseErrorTextPretty err) (Just location)
-    Nothing -> Diagnostic "source-origin" "parser error offset is outside the prepared source" Nothing
+     Nothing -> Diagnostic "source-origin" "parser error offset is outside the prepared source" Nothing
 
 -- Sources that hold a harness rather than a unit, each with its header.
 partitionHarnessSources :: [Source] -> ([(Source, Either String (String, String))], [Source])
@@ -2651,15 +2645,19 @@ partitionHarnessSources sources =
 -- | Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.
 headers :: String -> M.Map String Header
-headers = headersWithProfile False
+headers = headersWithProfile True
 headersWithProfile :: Bool -> String -> M.Map String Header
-headersWithProfile canonical source = M.fromList (scan tokens) where
-  tokens = either (const []) id $ runReader (runParserT (spaceP *> many token <* eof) "headers" source) (if canonical then M.singleton "profile:canonical" AliasHeader else M.empty)
+headersWithProfile _ source = M.fromList (scan tokens) where
+  tokens = either (const []) id $ runReader (runParserT (spaceP *> many token <* eof) "headers" source) (M.singleton "profile:canonical" AliasHeader)
   token = try phraseNameRaw <|> ("<string>" <$ try str) <|> ("<quoted>" <$ try quotedOrInfixToken)
       <|> lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))
       <|> symbol "::" <|> ((:[]) <$> lexeme anySingle)
   -- A named closer must not consume the next declaration as a type header.
-  scan ("end":"type":rest) | canonical = scan rest
+  scan ("end":rest) = case
+      [drop (length label) rest | kind <- reverse blockKinds,
+        let label = words (blockLabel kind), take (length label) rest == label] of
+    remaining:_ -> scan remaining
+    [] -> scan rest
   scan ("unit":_:rest) = scan (dropUnit rest)
   scan ("of":"type":rest) = scan rest
   scan ("refinement":n:rest) = let (ks,remaining) = parametersH rest in (n,RefinementHeader ks):scan remaining
@@ -2683,7 +2681,7 @@ headersWithProfile canonical source = M.fromList (scan tokens) where
 -- | Each data type or wrapper with its constructor names.
 constructorOwners :: M.Map String Header -> String -> [(String, [String])]
 constructorOwners extra source = either (const []) id $
-  runReader (runParserT scan "constructor owners" source) (M.union (headersWithProfile (M.member "profile:canonical" extra) source) extra)
+  runReader (runParserT scan "constructor owners" source) (M.union (headersWithProfile True source) extra)
   where
     scan = spaceP *> (concat <$> many ((pure . owner <$> try dataTypeP)
       <|> ((\w -> [(wrapperName w, [wrapperName w])]) <$> try wrapperP) <|> ([] <$ token))) <* eof
@@ -2700,7 +2698,7 @@ literalHeaders coordinates source initial = case runReader (runParserWithCoordin
   Right declarations -> M.union (M.fromList (
     [("record:" ++ dataTypeName d, RecordHeader (dataConstructorFields c))
       | Just d <- declarations, [c] <- [dataTypeConstructors d], dataConstructorName c == dataTypeName d,
-        not (M.member "profile:canonical" initial) || dataConstructorSpan c == dataTypeSpan d] ++
+        dataConstructorSpan c == dataTypeSpan d] ++
     [("constructor:" ++ dataConstructorName c, DataHeader (replicate (length (dataConstructorFields c)) True))
       | Just d <- declarations, c <- dataTypeConstructors d]))
     -- A local alternative constructor shadows an imported record constructor
@@ -2732,7 +2730,7 @@ literalHeaders coordinates source initial = case runReader (runParserWithCoordin
 --
 -- A setting that carries an expression ends at the end of its line.
 harnessP :: P HarnessDeclaration
-harnessP = sourceNode "harness" (Just . harnessName) $ do
+harnessP = sourceNode "harness" (Just . harnessName) $ blockP "harness" $ do
   ((name, served, items), range) <- withSpan $ do
     keyword "harness"
     name <- unitNameP
@@ -2740,13 +2738,13 @@ harnessP = sourceNode "harness" (Just . harnessName) $ do
     served <- unitNameP
     keyword "is"
     items <- many harnessItemP
-    plainCloseP "harness"
+    closeP "harness"
     pure (name, served, items)
   pure (HarnessDeclaration name served items range)
 
 -- A harness in a file of its own.
 harnessFileP :: P HarnessDeclaration
-harnessFileP = spaceP *> harnessP <* eof
+harnessFileP = spaceP *> harnessP <* endOfSourceP
 
 -- The harness's name and the unit it serves, read before the full parse.
 harnessHeaderP :: P (String, String)
@@ -2762,9 +2760,22 @@ harnessItemP :: P HarnessItem
 harnessItemP = forbidden *> choice
   [ HarnessStrategy <$> strategyP
   , do ((names, settings), range) <- withSpan $ do
-         try (keyword "for" *> (keyword "laws" <|> keyword "law"))
+         start <- sourceLocation
+         try (keyword "for" *> lookAhead (keyword "laws" <|> keyword "law"))
+         plural <- (True <$ keyword "laws") <|> (False <$ keyword "law")
+         let label = if plural then "for laws" else "for law"
+
+         frames <- openBlocks <$> get
+         do
+           kind <- maybe (fail "invalid law group") pure (blockKind label)
+           let opener = Span start start{column=column start + length label}
+           modify' (\context -> context{openBlocks=(kind,opener):frames})
+           recordNode (SyntaxNode "block-opener" (Just label) opener Nothing)
          names <- lawNameP `sepBy1` symbol ","
          settings <- many (forbidden *> harnessSettingSpanP)
+         do
+           closeP label
+           modify' (\context -> context{openBlocks=frames})
          pure (names, settings)
        pure (HarnessFor names settings range)
   , do ((resource, scope), range) <- withSpan $ do
@@ -2774,7 +2785,7 @@ harnessItemP = forbidden *> choice
          scope <- choice [SharePerGroup <$ keyword "group", SharePerUnit <$ keyword "unit", SharePerRun <$ keyword "run"]
          pure (resource, scope)
        pure (HarnessShare resource scope range)
-  , do ((name, body), range) <- withSpan (sourceNode "benchmark" (Just . fst) ((,) <$> (keyword "benchmark" *> quoted) <*> (keyword "is" *> expr <* plainCloseP "benchmark")))
+  , do ((name, body), range) <- withSpan (sourceNode "benchmark" (Just . fst) (blockP "benchmark" $ (,) <$> (keyword "benchmark" *> quoted) <*> (keyword "is" *> expr <* closeP "benchmark")))
        pure (HarnessBenchmark name body range)
   , HarnessOrderRandom . snd <$> withSpan (try (keyword "order" *> keyword "random"))
   , HarnessParallel . snd <$> withSpan (keyword "parallel")
@@ -2782,7 +2793,8 @@ harnessItemP = forbidden *> choice
   where
     -- What only the law plane may declare.
     declaration = choice
-      [ "law" <$ keyword "law", "definition" <$ keyword "definition", "ability" <$ keyword "ability"
+      [ "law" <$ keyword "law", "function" <$ keyword "function", "procedure" <$ keyword "procedure"
+      , "definition" <$ keyword "definition", "ability" <$ keyword "ability"
       , "handler" <$ keyword "handler", "type" <$ keyword "type", "refinement" <$ keyword "refinement"
       , "resource" <$ keyword "resource", "signature" <$ try (ident *> symbol "::") ]
     -- The declaration is consumed first, so the error is this one.
@@ -2797,8 +2809,7 @@ harnessSettingSpanP = withSpan harnessSettingP
 harnessSettingP :: P HarnessSetting
 harnessSettingP = choice
   [ do keyword "witness"
-       canonical <- canonicalP
-       unless canonical (fail "harness witnesses require the 1.0-rc.1 profile")
+
        value <- regionExpr [["for"]]
        keyword "for"
        root <- option [] (try (keyword "definition" *> symbol "." *> pure ["definition"]))
@@ -2806,12 +2817,11 @@ harnessSettingP = choice
        pure (WitnessSetting (root ++ path) value [])
   , do strategy <- keyword "use" *> ident
        keyword "for"
-       canonical <- canonicalP
-       target <- if canonical then do
+
+       target <- do
          root <- option [] (try (keyword "definition" *> symbol "." *> pure ["definition"]))
          path <- lexeme (identRaw `sepBy1` char '.')
          pure (intercalate "." (root ++ path))
-         else ident
        pure (UseStrategy strategy target)
   , TestWith <$> (try (keyword "test" *> keyword "with") *> (ident `sepBy1` symbol ","))
   , do keyword "cover"
@@ -2851,7 +2861,7 @@ harnessSettingP = choice
 
 -- strategy name :: T is gen end
 strategyP :: P StrategyDeclaration
-strategyP = sourceNode "strategy" (Just . strategyName) $ do
+strategyP = sourceNode "strategy" (Just . strategyName) $ blockP "strategy" $ do
   ((name, ty, body), range) <- withSpan $ do
     keyword "strategy"
     name <- ident
@@ -2860,7 +2870,7 @@ strategyP = sourceNode "strategy" (Just . strategyName) $ do
     ty <- typeP
     keyword "is"
     body <- genP
-    plainCloseP "strategy"
+    closeP "strategy"
     pure (name, ty, body)
   pure (StrategyDeclaration name ty body range)
 
@@ -2878,14 +2888,18 @@ genP = do
 genCoreP :: P Gen
 genCoreP = choice
   [ GenFrequency <$> (keyword "frequency" *> (((,) <$> weight <*> genAtomP) `sepBy1` symbol ","))
-  , do keyword "bind"
+  , blockP "bind" $ do
+       keyword "bind"
        x <- ident
        annotationP
        ty <- typeP
        keyword "from"
        from <- genAtomP
        keyword "in"
-       GenBind x ty from <$> genP
+       body <- genP
+
+       (closeP "bind")
+       pure (GenBind x ty from body)
   , GenOneOf <$> (try (keyword "one" *> keyword "of") *> (regionExpr [[","], ["such", "that"], ["end"], [")"]] `sepBy1` symbol ","))
   , genAtomP ]
   where
@@ -2905,11 +2919,11 @@ genAtomP = choice
 -- settings follow one another without delimiters, so an expression must not
 -- read the next setting as arguments.
 regionExpr :: [[String]] -> P Expr
-regionExpr stops = do
-  canonical <- canonicalP
+regionExpr stops = sourceNode "line-expression" (const Nothing) $ do
+
   st <- getParserState
   let input = stateInput st
-      region = cut canonical 0 input
+      region = cut 0 input
   when (all (`elem` (" \t\r" :: String)) region) (fail "expected an expression")
   inventory <- get
   (after, result) <- lift (lift (runParserT' (runStateT (expr <* eof) inventory) st { stateInput = region }))
@@ -2922,20 +2936,19 @@ regionExpr stops = do
       spaceP
       pure e
   where
-    cut :: Bool -> Int -> String -> String
-    cut _ _ [] = []
-    cut _ _ ('\n' : _) = []
-    cut _ 0 rest@('-' : '-' : _) = takeWhile (/= '\n') rest `seq` []
-    cut True depth ('"' : '|' : rest) = let (inside, after) = phraseBody rest in "\"|" ++ inside ++ cut True depth after
-    cut True depth ('`' : '|' : rest) = let (inside, after) = phraseBody rest in "`|" ++ inside ++ cut True depth after
-    cut True depth ('`' : rest) = '`' : cut True depth rest
-    cut canonical depth ('"' : rest) = let (inside, after) = stringBody rest in '"' : inside ++ cut canonical depth after
-    cut canonical depth ('`' : rest) = let (inside, after) = break (== '`') rest in '`' : inside ++ take 1 after ++ cut canonical depth (drop 1 after)
-    cut canonical depth s@(c : rest)
+    cut :: Int -> String -> String
+    cut _ [] = []
+    cut _ ('\n' : _) = []
+    cut 0 rest@('-' : '-' : _) = takeWhile (/= '\n') rest `seq` []
+    cut depth ('"' : '|' : rest) = let (inside, after) = phraseBody rest in "\"|" ++ inside ++ cut depth after
+    cut depth ('`' : '|' : rest) = let (inside, after) = phraseBody rest in "`|" ++ inside ++ cut depth after
+    cut depth ('`' : rest) = '`' : cut depth rest
+    cut depth ('"' : rest) = let (inside, after) = stringBody rest in '"' : inside ++ cut depth after
+    cut depth s@(c : rest)
       | depth == 0, Just _ <- stopAt s = []
-      | c `elem` ("([{" :: String) = c : cut canonical (depth + 1) rest
-      | c `elem` (")]}" :: String) = if depth == 0 then (if [")"] `elem` stops then [] else c : cut canonical depth rest) else c : cut canonical (depth - 1) rest
-      | otherwise = c : cut canonical depth rest
+      | c `elem` ("([{" :: String) = c : cut (depth + 1) rest
+      | c `elem` (")]}" :: String) = if depth == 0 then (if [")"] `elem` stops then [] else c : cut depth rest) else c : cut (depth - 1) rest
+      | otherwise = c : cut depth rest
     phraseBody ('\\' : x : rest) = let (a,b) = phraseBody rest in ('\\' : x : a,b)
     phraseBody ('|' : rest) = ("|",rest)
     phraseBody (x : rest) = let (a,b) = phraseBody rest in (x:a,b)

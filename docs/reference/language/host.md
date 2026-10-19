@@ -17,17 +17,18 @@ import lawspec.host
 -- Keep a note in a file, read it back, and remove the file.
 procedure remember (note :: Bytes) -> Maybe Bytes uses FileSystem is
   writeBytes ".guide-note" note; let read = readBytes ".guide-note" in
-  removePath ".guide-note"; read
+  removePath ".guide-note"; read end let
 end procedure
 
 law "|a remembered note reads back| is
-  definition : for all (note :: Bytes) => remember note = Just note end end
-end
+  definition : for all (note :: Bytes) => remember note = Just note end for all end definition
+end law
 
 law "|an empty environment has no variables| using emptyEnvironment is
-  definition : for all (name :: Text) => environmentVariable name = Nothing end
-  end
-end
+  definition : for all (name :: Text) => environmentVariable name = Nothing end for all
+  end definition
+end law
+end unit
 ```
 
 ## FileSystem
@@ -40,7 +41,7 @@ ability FileSystem is
   removePath :: Text -> Unit
   temporaryDirectory :: Text -> Text
   temporaryFile :: Text -> Text
-end
+end ability
 ```
 
 - `readBytes path` is the file's bytes, or `Nothing` when it cannot be read.
@@ -65,7 +66,7 @@ ability Environment is
   environmentVariable :: Text -> Maybe Text
   environmentSnapshot :: Text
   restoreEnvironment :: Text -> Unit
-end
+end ability
 ```
 
 `environmentVariable name` is the variable's value, or `Nothing`. A name
@@ -82,7 +83,7 @@ and restores nothing.
 ```lawspec fragment
 ability Ports is
   freePort :: (p :: Int32 where p >= 1 && p <= 65535)
-end
+end ability
 ```
 
 `freePort` is a TCP port on 127.0.0.1 that the operating system reported

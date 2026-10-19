@@ -4,8 +4,8 @@ import {test} from 'node:test';
 import {createCompiler} from '../api.mjs';
 
 const compiler=await createCompiler();
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:[]}};
-const request=(content,machineBits=64)=>({...options,machineBits,sources:[{path:'patterns.lawspec',content:'unit patterns\n'+content}]});
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:[]}};
+const request=(content,machineBits=64)=>({...options,machineBits,sources:[{path:'patterns.lawspec',content:'unit patterns\n'+content+'\nend unit\n'}]});
 const declaration=(type,rows)=>'function selected (value of type '+type+') -> Bool is first matching case of value: '+rows+' end case end function';
 const packet='type Packet is one of | Missing | Wrapped of type record{flag of type Bool} end type\n';
 
@@ -31,9 +31,11 @@ test('every authored pattern shape is checked before ordered rows are discarded,
 test('valid shadowed generic and GADT patterns retain their own field types and first-match outcomes',async()=>{
   const content=[
     declaration('record{item of type a}','when #any then true when record{item = ignored} then false when record{} then false'),
-    'type Value (a of type Type) is one of | Number of type record{value of type Integer} where a = Integer | Truth of type record{value of type Bool} where a = Bool end type',
+    `type Value (a of type Type) is one of | Number of type record{value of type Integer} where a = Integer | Truth of type record{value of type Bool} where a = Bool end type
+`,
     'function read (expression of type Value a) -> a is first matching case of expression: when Number record{value = number} then number when Truth record{value = boolean} then boolean when Number record{value = 3} then 3 when Truth record{value = true} then true end case end function',
-    'law outcomes is definition: selected record{item = 3} = true and read (Number record{value = 7}) = 7 and read (Truth record{value = false}) = false end end',
+    `law outcomes is definition: selected record{item = 3} = true and read (Number record{value = 7}) = 7 and read (Truth record{value = false}) = false end definition end law
+`,
   ].join('\n');
   for(const machineBits of [32,64]) {
     const result=await compiler.check({...request(content,machineBits),verification:{layers:['exhaustive']}});

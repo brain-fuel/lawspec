@@ -1,6 +1,6 @@
 @@ src/main/scala/example/Indexed.scala
 <<<<<<<
-        val rest: Vec[scala.Byte] = Vec.VCons(value, flatten(right))
+        val rest: Vec[scala.Byte] = Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value, flatten(right)))
 =======
-        val rest: Vec[scala.Byte] = Vec.VCons(value, Vec.VNil())
+        val rest: Vec[scala.Byte] = Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value, Vec.VNil()))
 >>>>>>>

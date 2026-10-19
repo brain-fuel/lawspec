@@ -10,7 +10,7 @@ laws are tested: which handlers the tests run against, how inputs are drawn,
 how many cases are enough, and how the tests run. It lives on its own
 plane, and it can never change what a law means.
 
-Profile `1.0-rc.1` also supports constructive existential witnesses in a
+Profile `1.0-rc.2` also supports constructive existential witnesses in a
 selected law's harness. See [RC1 witness search](rc1.md#constructive-witness-search)
 for the grammar, lexical paths and evidence limits.
 
@@ -35,18 +35,18 @@ discount :: Order -> Int32
 law "|a discount is never more than the total| is
   definition :
     for all (order :: Order where itemsOf order >= 0 && totalOf order >= 0) =>
-      (discount order <= totalOf order) = true end
-  end
-end
+      (discount order <= totalOf order) = true end for all
+  end definition
+end law
 
 harness guide.shop.testing for guide.shop is
 strategy smallOrder :: Order is
-bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order record{ items = items , total = (items * 100)}
-end
+bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order record{ items = items , total = (items * 100)} end bind
+end strategy
 strategy bulkOrder :: Order is
 any such that itemsOf it > 10 && totalOf it >= 0 at most 1000 discards
-end
-strategy orders :: Order is frequency 9 smallOrder, 1 bulkOrder end
+end strategy
+strategy orders :: Order is frequency 9 smallOrder, 1 bulkOrder end strategy
 
 tags pricing
 
@@ -56,9 +56,12 @@ cover 5% "empty order" when isEmpty order
 classify totalOf order > 1000 as "large"
 label if isEmpty order then "empty" else "some items" end if
 timeout 10 s
+end for law
 
-benchmark `discount of a bulk order` is discount (Order record{ items = 30 , total = 50000}) end
-end
+benchmark `discount of a bulk order` is discount (Order record{ items = 30 , total = 50000}) end benchmark
+end harness
+
+end unit
 ```
 
 ## Which plane a thing belongs to
@@ -81,7 +84,7 @@ or how the tests run, belongs to the harness.
 ```lawspec fragment
 harness name for unit is
   item ...
-end
+end harness
 ```
 
 - A harness serves exactly one unit, the one named after `for`. A unit has at
@@ -100,12 +103,12 @@ Items:
 
 | Item | Meaning |
 | --- | --- |
-| `strategy name :: T is gen end` | A way to draw values of `T`. |
-| `for law name` | Settings for one law, on the lines after it. |
-| `for laws first, second` | Settings for a group of laws. |
+| `strategy name :: T is gen end strategy` | A way to draw values of `T`. |
+| `for law name … end for law` | Settings for one law, on the lines after it. |
+| `for laws first, second … end for laws` | Settings for a group of laws. |
 | any setting below, before the first `for` | The setting for every law of the unit. |
 | `share R per group \| unit \| run` | Share a resource between laws. |
-| `benchmark \`name\` is e end` | Measure an expression. |
+| `benchmark \`name\` is e end benchmark` | Measure an expression. |
 | `order random` | Run the unit's law tests in an order chosen by the run's seed. |
 | `parallel` | Let the unit's law tests run at the same time. |
 
@@ -117,7 +120,7 @@ each handler.
 ## Strategies
 
 ```lawspec fragment
-strategy name :: T is gen end
+strategy name :: T is gen end strategy
 ```
 
 A strategy draws values of its type. Its forms:
@@ -146,8 +149,8 @@ draw the whole type and discard most of it. What the bounds do not capture
 is still checked:
 
 ```lawspec fragment
-strategy small :: (o :: Order where itemsOf o <= 3) is any end
-strategy digits :: (n :: Int32 where n >= 0 && n <= 9) is any end
+strategy small :: (o :: Order where itemsOf o <= 3) is any end strategy
+strategy digits :: (n :: Int32 where n >= 0 && n <= 9) is any end strategy
 ```
 
 A strategy is used for one input of one law:
@@ -167,7 +170,7 @@ a failure of the harness ("the strategy orders produced … for order, which is
 outside the input's refinement"), never a reason to skip the case. A strategy
 can choose which values are tried; it cannot widen what the law is about.
 
-In profile `1.0-rc.1`, `use` can also select a nested logical binder through
+In profile `1.0-rc.2`, `use` can also select a nested logical binder through
 a qualified lexical path. This uses a bounded deterministic candidate schedule;
 an invalid candidate is rejected and an exhausted search remains inconclusive.
 See [bounded witness strategies](rc1.md#bounded-witness-strategies) for scope,
@@ -370,7 +373,7 @@ released when the test process ends. See
 ## Benchmarks
 
 ```lawspec fragment
-benchmark `discount of a bulk order` is discount (Order 30 50000) end
+benchmark `discount of a bulk order` is discount (Order record{items = 30, total = 50000}) end benchmark
 ```
 
 A benchmark measures an expression with each target's lightest monotonic

@@ -28,7 +28,7 @@ end function
 law "|named dimensions determine orientation| is
   description:
     "Dimension labels preserve their meaning in either field order."
-  end
+  end description
   definition:
     for all (picture of type Picture) =>
       orientation picture must be
@@ -37,8 +37,8 @@ law "|named dimensions determine orientation| is
         else Square
         end if
       end if
-    end
-  end
+    end for all
+  end definition
   expect orientation picture = expected
   in table (picture, expected):
     row Picture record{fileName = "wide.jpg", dimensions = record{width = 12,
@@ -47,5 +47,6 @@ law "|named dimensions determine orientation| is
         width = 8}}, Portrait
     row Picture record{fileName = "square.jpg", dimensions = record{width = 10,
         height = 10}}, Square
-  end
-end
+  end table
+end law
+end unit

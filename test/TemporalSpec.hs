@@ -27,7 +27,7 @@ discharged :: String -> Either [Diagnostic] [Obligation]
 discharged text = program text >>= dischargeEvidence
 
 source :: [String] -> String
-source rest = unlines ("unit app.temporal" : "" : "import lawspec.time (Instant)" : rest)
+source rest = unlines (["unit app.temporal", "", "import lawspec.time (Instant)"] ++ rest ++ ["end unit"])
 
 failsWith :: String -> Either [Diagnostic] a -> Bool
 failsWith needle = either (any ((needle `isInfixOf`) . message)) (const False)
@@ -57,21 +57,22 @@ test_temporalPropositionsAndBudgetsAreCheckedOverTheClock = describe "temporal p
           , "import lawspec.host"
           , "import lawspec.logging"
           , "import lawspec.concurrent"
-          , "definition viaDefaults (bound :: Int64 where bound >= 1) :: Bool uses Clock, Random is"
-          , "  valueOfInstant now >= 0 && (let r = randomBelow bound in r >= 0 && r < bound)"
-          , "end"
+          , "procedure viaDefaults (bound :: Int64 where bound >= 1) -> Bool uses Clock, Random is"
+          , "  valueOfInstant now >= 0 && (let r = randomBelow bound in r >= 0 && r < bound end let)"
+          , "end procedure"
           , "nativeProbe :: Unit -> Bool"
-          , "law `native built-in factories cross checked definitions` is"
-          , "  definition is nativeProbe unitValue = true end"
-          , "end"
-          , "law `virtual time never goes before its origin` using virtual clock is"
-          , "  definition is (never within 2 ms, valueOfInstant now < 0) = true end"
-          , "end"
-          ]
+          , "law \"|native built-in factories cross checked definitions| is"
+          , "  definition : nativeProbe unitValue = true end definition"
+          , "end law"
+          , "law \"|virtual time never goes before its origin| using virtual clock is"
+          , "  definition : (never within 2 ms, valueOfInstant now < 0) = true end definition"
+          , "end law"
+          , ""
+          , "end unit" ]
         request = object
-          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String)
-          , "method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String)
-          , "includeGeneration" .= True, "target" .= ("elixir" :: String)
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String)
+          , "method" .= ("planGeneration" :: String)
+          , "target" .= ("elixir" :: String)
           , "machineBits" .= (64 :: Int)
           , "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])]
           , "sources" .= [object ["path" .= ("context.lawspec" :: String), "content" .= source]]
@@ -90,11 +91,11 @@ test_temporalPropositionsAndBudgetsAreCheckedOverTheClock = describe "temporal p
             other -> expectationFailure (show other)
         other -> expectationFailure (show (other :: Either String Value))
   let deadline =
-        [ "definition deadline (wait :: Duration where wait <= 1h) :: Instant uses Clock is now + wait end" ]
+        [ "procedure deadline (wait :: Duration where wait <= 1h) -> Instant uses Clock is now + wait end procedure\n" ]
       eventually = deadline ++
-        [ "law `a deadline passes` using virtual clock is"
-        , "  definition is (let d = deadline 1s in eventually within 2 s, now >= d) = true end"
-        , "end" ]
+        [ "law \"|a deadline passes| using virtual clock is"
+        , "  definition : (let d = deadline 1s in eventually within 2 s, now >= d end let ) = true end definition"
+        , "end law" ]
   describe "eventually, always and never" $ do
     it "compile under the virtual clock, deterministically" $
       program (source eventually) `shouldSatisfy` isRight
@@ -103,45 +104,48 @@ test_temporalPropositionsAndBudgetsAreCheckedOverTheClock = describe "temporal p
       statusOf "a deadline passes" compiled `shouldSatisfy` all (`elem` [Proved, ExhaustivelyChecked])
     it "refute a false proposition at compile time" $
       discharged (source (deadline ++
-        [ "law `too soon` using virtual clock is"
-        , "  definition is (let d = deadline 3s in eventually within 2 s, now >= d) = true end"
-        , "end" ])) `shouldSatisfy` failsWith "too soon"
+        [ "law \"|too soon| using virtual clock is"
+        , "  definition : (let d = deadline 3s in eventually within 2 s, now >= d end let ) = true end definition"
+        , "end law" ])) `shouldSatisfy` failsWith "too soon"
     it "hold always and never over the whole span" $
       program (source (deadline ++
-        [ "law `before the deadline` using virtual clock is"
-        , "  definition is (let d = deadline 3s in always within 2s, now < d) = true end"
-        , "end"
-        , "law `never past it` using virtual clock is"
-        , "  definition is (let d = deadline 3s in never within 2 s, now >= d) = true end"
-        , "end" ])) `shouldSatisfy` isRight
+        [ "law \"|before the deadline| using virtual clock is"
+        , "  definition : (let d = deadline 3s in always within 2s, now < d end let ) = true end definition"
+        , "end law"
+        , "law \"|never past it| using virtual clock is"
+        , "  definition : (let d = deadline 3s in never within 2 s, now >= d end let ) = true end definition"
+        , "end law" ])) `shouldSatisfy` isRight
     it "reject an always that fails part way" $
       discharged (source (deadline ++
-        [ "law `not for long` using virtual clock is"
-        , "  definition is (let d = deadline 1s in always within 2 s, now < d) = true end"
-        , "end" ])) `shouldSatisfy` failsWith "not for long"
+        [ "law \"|not for long| using virtual clock is"
+        , "  definition : (let d = deadline 1s in always within 2 s, now < d end let ) = true end definition"
+        , "end law" ])) `shouldSatisfy` failsWith "not for long"
     it "use the clock, so they need lawspec.time" $
-      program (unlines ["unit app.untimed", "law `x` is definition is (eventually within 1s, true) = true end end"])
+      program (unlines [ "unit app.untimed"
+                        ++ "\n", ""
+                       , "law \"|x| is definition : (eventually within 1s, true) = true end definition end law"
+                       , "\nend unit" ])
         `shouldSatisfy` either (const True) (const False)
 
   describe "budgets" $ do
     let budget =
-          [ "definition double (n :: Int32) :: Int64 is n * 2 end"
-          , "law `doubling is quick` is"
-          , "  definition is `for all` (n :: Int32) . double n takes at most 5 ms end"
-          , "  example `one` is"
+          [ "function double (n :: Int32) -> Int64 is n * 2 end function\n"
+          , "law \"|doubling is quick| is"
+          , "  definition : for all (n :: Int32) => double n takes at most 5 ms end for all end definition"
+          , "  example \"|one| :"
           , "    n = 1"
           , "    expect double n takes at most 5ms"
-          , "  end"
-          , "end" ]
+          , "  end example"
+          , "end law" ]
     it "run on the real clock only, and are measured" $ do
       let Right compiled = program (source budget)
       statusOf "doubling is quick" compiled `shouldBe` [Measured]
       handlersOf "doubling is quick" compiled `shouldBe` [[("lawspec.time::ability::Clock", C.ProductionHandler)]]
     it "may not name another clock" $
       program (source
-        [ "definition double (n :: Int32) :: Int64 is n * 2 end"
-        , "law `virtual budget` using virtual clock is"
-        , "  definition is `for all` (n :: Int32) . double n takes at most 5 ms end"
-        , "end" ]) `shouldSatisfy` failsWith "measured on the real clock"
+        [ "function double (n :: Int32) -> Int64 is n * 2 end function\n"
+        , "law \"|virtual budget| using virtual clock is"
+        , "  definition : for all (n :: Int32) => double n takes at most 5 ms end for all end definition"
+        , "end law" ]) `shouldSatisfy` failsWith "measured on the real clock"
     it "generate on every target" $
       mapM_ (\t -> (program (source budget) >>= planTesting >>= emitPlan t) `shouldSatisfy` isRight) targets

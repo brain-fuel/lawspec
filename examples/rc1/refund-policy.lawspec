@@ -25,24 +25,24 @@ end function
 law "|a zero refund is approved| is
   description:
     "A zero request transfers nothing and needs no review."
-  end
+  end description
   definition:
     for all (capturedAmount of type Whole) (flagged of type Bool) =>
       refund (RefundRequest record{
         capturedAmount = capturedAmount, requestedAmount = 0, flagged = flagged
       }) must be Approved
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|a refund cannot exceed the captured amount| is
   definition:
     for all (request of type RefundRequest) =>
       request.requestedAmount > request.capturedAmount implies
       refund request must be Rejected
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|an eligible flagged refund requires review| is
   definition:
@@ -50,17 +50,17 @@ law "|an eligible flagged refund requires review| is
       request.requestedAmount > 0 and
       request.requestedAmount <= request.capturedAmount and request.flagged
       implies refund request must be ReviewRequired
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|an eligible unflagged refund is approved| is
   definition:
     for all (request of type RefundRequest) =>
       request.requestedAmount <= request.capturedAmount and not request.flagged
       implies refund request must be Approved
-    end
-  end
+    end for all
+  end definition
 
   expect refund request = expected
   in table (request, expected):
@@ -84,5 +84,6 @@ law "|an eligible unflagged refund is approved| is
       = false}, Approved
     row RefundRequest record{capturedAmount = 9007199254740992, requestedAmount
       = 9007199254740993, flagged = false}, Rejected
-  end
-end
+  end table
+end law
+end unit

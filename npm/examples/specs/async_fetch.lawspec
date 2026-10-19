@@ -11,20 +11,21 @@ async stock :: Text -> Int32
 -- A local quote of the same price.
 quote :: Text -> Int32
 
-law `prices agree with quotes` is
-  definition is `for all` (sku :: Text) . price sku = quote sku end
-  example `a free sample` is
+law "|prices agree with quotes| is
+  definition : for all (sku :: Text) => price sku = quote sku end for all end definition
+  example "|a free sample| :
     sku = "free"
     expect price sku = 0
-  end
-end
+  end example
+end law
 
 -- Two awaited calls in one clause.
-law `stock never lowers a price` is
-  definition is `for all` (sku :: Text) . price sku + stock sku >= stock sku end
-end
+law "|stock never lowers a price| is
+  definition : for all (sku :: Text) => price sku + stock sku >= stock sku end for all end definition
+end law
 
 -- An awaited call in a guard.
-law `stocked products have prices` is
-  definition is `for all` (sku :: Text) . stock sku > 0 implies price sku >= 0 end
-end
+law "|stocked products have prices| is
+  definition : for all (sku :: Text) => stock sku > 0 implies price sku >= 0 end for all end definition
+end law
+end unit

@@ -25,14 +25,15 @@ cheaper :: Int64 -> Int64 -> Int64
 law "|dollars settle in dollars| is
   definition:
     settlement Usd must be domain.Usd
-  end
-end
+  end definition
+end law
 
 law "|the cheaper price does not depend on order| is
   definition:
     apply law "|commutative| cheaper
-  end
-end
+  end definition
+end law
+end unit
 ```
 
 Both units must be compiled together: list both files, or the directories that
@@ -109,6 +110,7 @@ unit shop.tax.api
 import shop.tax.rates as rates (Band)
 
 export Band, rates.rateOf
+end unit
 ```
 
 Users write `import shop.tax.api (Band, rateOf)` and get the declarations of

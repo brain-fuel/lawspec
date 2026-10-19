@@ -1,6 +1,6 @@
 @@ src/main/scala/example/Indexed.scala
 <<<<<<<
-        Vec.VCons(head1, zip(tail0, tail1))
+        Vec.VCons(lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head1, zip(tail0, tail1)))
 =======
         zip(tail0, tail1)
 >>>>>>>

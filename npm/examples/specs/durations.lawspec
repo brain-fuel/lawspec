@@ -7,57 +7,58 @@ unit example.durations
 -- fail, as division by zero does.
 
 -- A checked definition: the totality audit proves the result in range.
-definition timeoutFor (retries :: Int32 where retries >= 0 && retries <= 5) :: Duration is
+function timeoutFor (retries :: Int32 where retries >= 0 && retries <= 5) -> Duration is
   2s + 500ms * retries
-end
+end function
 
 -- An adapter: the time left of a budget, never negative.
 remaining :: Duration -> Duration -> Duration
 
-law `units relate` is
-  definition is
-    `for all` (b :: Bool) . (1us * 1000 == 1ms && 1000ms == 1s && 60s == 1min && 60min == 1h && 24h == 1d) = true
-  end
-end
+law "|units relate| is
+  definition :
+    for all (b :: Bool) => (1us * 1000 = 1ms && 1000ms = 1s && 60s = 1min && 60min = 1h && 24h = 1d) = true end for all
+  end definition
+end law
 
-law `subtraction undoes addition` is
-  definition is
-    `for all` (n :: Int32 where n >= 0) (m :: Int32 where m >= 0) .
+law "|subtraction undoes addition| is
+  definition :
+    for all (n :: Int32 where n >= 0) (m :: Int32 where m >= 0) =>
       prelude.milliseconds (prelude.Integer n) + prelude.milliseconds (prelude.Integer m) - prelude.milliseconds (prelude.Integer m) =
-        prelude.milliseconds (prelude.Integer n)
-  end
-end
+        prelude.milliseconds (prelude.Integer n) end for all
+  end definition
+end law
 
-law `timeouts grow by half a second` is
-  definition is
-    `for all` (r :: Int32 where r >= 0 && r <= 4) . timeoutFor (r + 1) - timeoutFor r = 500ms
-  end
-  example `no retries` is
+law "|timeouts grow by half a second| is
+  definition :
+    for all (r :: Int32 where r >= 0 && r <= 4) => timeoutFor (r + 1) - timeoutFor r = 500ms end for all
+  end definition
+  example "|no retries| :
     r = 0
     expect prelude.toMicroseconds (timeoutFor r) = 2000000
-  end
-end
+  end example
+end law
 
-law `spending everything leaves nothing` is
-  definition is
-    `for all` (d :: Duration) . remaining d d = 0us and remaining d 0us = d
-  end
-end
+law "|spending everything leaves nothing| is
+  definition :
+    for all (d :: Duration) => remaining d d = 0us and remaining d 0us = d end for all
+  end definition
+end law
 
-law `what remains of a budget` is
-  definition is
-    `for all` (budget :: Duration) (spent :: Duration) .
+law "|what remains of a budget| is
+  definition :
+    for all (budget :: Duration) (spent :: Duration) =>
       prelude.toMicroseconds (remaining budget spent) =
-        prelude.select (spent <= budget) (prelude.toMicroseconds budget - prelude.toMicroseconds spent) 0
-  end
-  example `part of a second` is
+        prelude.select (spent <= budget) (prelude.toMicroseconds budget - prelude.toMicroseconds spent) 0 end for all
+  end definition
+  example "|part of a second| :
     budget = 1s
     spent = 250ms
     expect remaining budget spent = 750ms
-  end
-  example `an overrun leaves nothing` is
+  end example
+  example "|an overrun leaves nothing| :
     budget = 1s
     spent = 2s
     expect remaining budget spent = 0us
-  end
-end
+  end example
+end law
+end unit

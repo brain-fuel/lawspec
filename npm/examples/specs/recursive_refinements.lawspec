@@ -2,40 +2,41 @@ unit example.recursive_refinements
 
 -- Refining a type argument follows its stored occurrences through recursion.
 -- The fixed Int8 field remains independent of the refined argument.
-type Tree (a :: Type) is
-  Leaf value :: a fixed :: Int8
-  Fork left :: Tree a right :: Tree a
-end
+type Tree (a :: Type) is one of
+  Leaf of type record{ value :: a fixed :: Int8}
+  Fork of type record{ left :: Tree a right :: Tree a}
+end type
 
-refinement Positive is (value :: Int8 where value > 0) end
+refinement Positive is (value :: Int8 where value > 0) end refinement
 
 -- The payload guarantee is available when proving recursive definitions.
-definition positiveSum (tree :: Tree Positive) :: (total :: BigInt where total > 0) is
-  match tree with
-    | Leaf value fixed -> value + 0
-    | Fork left right -> positiveSum left + positiveSum right
-  end
-end
+function positiveSum (tree :: Tree Positive) -> (total :: Integer where total > 0) is
+  first matching case of tree :
+    when Leaf record{ value = value , fixed = fixed} then value + 0
+    when Fork record{ left = left , right = right} then positiveSum left + positiveSum right
+  end case
+end function
 
-law `positive leaves have a positive total` is
-  definition is
-    `for all` (tree :: Tree Positive) . positiveSum tree > 0
-  end
-  example `fixed fields may be negative` is
-    tree = Fork (Leaf 1 -128) (Fork (Leaf 2 0) (Leaf 3 -1))
+law "|positive leaves have a positive total| is
+  definition :
+    for all (tree :: Tree Positive) => positiveSum tree > 0 end for all
+  end definition
+  example "|fixed fields may be negative| :
+    tree = Fork record{ left = (Leaf record{ value = 1 , fixed = -128}) , right = (Fork record{ left = (Leaf record{ value = 2 , fixed = 0}) , right = (Leaf record{ value = 3 , fixed = -1})})}
     expect positiveSum tree = 6
-  end
-end
+  end example
+end law
 
 -- Dependent predicates retain the enclosing input, even below several forks.
-law `every stored argument exceeds the threshold` is
-  definition is
-    `for all` (threshold :: Int8 where threshold < 127)
-      (tree :: Tree (value :: Int8 where value > threshold)) . tree = tree
-  end
-  example `nested threshold` is
+law "|every stored argument exceeds the threshold| is
+  definition :
+    for all (threshold :: Int8 where threshold < 127)
+      (tree :: Tree (value :: Int8 where value > threshold)) => tree = tree end for all
+  end definition
+  example "|nested threshold| :
     threshold = 4
-    tree = Fork (Leaf 5 -128) (Leaf 6 0)
-    expect tree = Fork (Leaf 5 -128) (Leaf 6 0)
-  end
-end
+    tree = Fork record{ left = (Leaf record{ value = 5 , fixed = -128}) , right = (Leaf record{ value = 6 , fixed = 0})}
+    expect tree = Fork record{ left = (Leaf record{ value = 5 , fixed = -128}) , right = (Leaf record{ value = 6 , fixed = 0})}
+  end example
+end law
+end unit

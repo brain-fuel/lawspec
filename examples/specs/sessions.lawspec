@@ -11,12 +11,12 @@ protocol Serve is
   receive Int32
   receive Int32
   send Int64
-end
+end protocol
 
 -- Handing a server's end to a worker (delegation).
 protocol Hire is
   send Serve
-end
+end protocol
 
 -- Adds through a server process. Processes that talk over channels wait for
 -- each other, so these adapters are asynchronous.
@@ -25,14 +25,15 @@ async add :: Int32 -> Int32 -> Integer
 -- Adds through a worker that is handed the server's end over a Hire channel.
 async addHired :: Int32 -> Int32 -> Integer
 
-law `a server adds` is
-  definition is
-    `for all` (a :: Int32) (b :: Int32) . add a b = prelude.Integer a + prelude.Integer b
-  end
-end
+law "|a server adds| is
+  definition :
+    for all (a :: Int32) (b :: Int32) => add a b = prelude.Integer a + prelude.Integer b end for all
+  end definition
+end law
 
-law `a hired worker adds` is
-  definition is
-    `for all` (a :: Int32) (b :: Int32) . addHired a b = prelude.Integer a + prelude.Integer b
-  end
-end
+law "|a hired worker adds| is
+  definition :
+    for all (a :: Int32) (b :: Int32) => addHired a b = prelude.Integer a + prelude.Integer b end for all
+  end definition
+end law
+end unit

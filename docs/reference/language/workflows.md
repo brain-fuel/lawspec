@@ -16,7 +16,7 @@ workflow placeOrder :: UnvalidatedOrder -> Either _ PricedOrder is
   all accumulate
     then checkStock
     then checkCredit
-  end
+  end all
   combine reserve
   priceOrder :: Reservation -> Either PricingError PricedOrder
     retry exponential 100ms 2 5 max 2s jitter full when isTransient
@@ -24,7 +24,7 @@ workflow placeOrder :: UnvalidatedOrder -> Either _ PricedOrder is
     circuitBreaker 5 30s cooldown 1min
     compensate releaseStock
   orElse quoteFallback
-end
+end workflow
 ```
 
 [Domain modeling](domain-modeling.md) shows how workflows fit with wrappers
@@ -75,9 +75,9 @@ workflow vet :: Signup -> Either _ Text is
   all accumulate
     then checkName
     then checkAge
-  end
+  end all
   combine firstName
-end
+end workflow
 ```
 
 Without `accumulate`, the group fails with its first failing step's error.

@@ -1,7 +1,7 @@
 expect-any: badmatch | MatchError | Pattern match failed
 @@ acceptance/beam-remote-api/remote.lawspec
 <<<<<<<
-definition shifted (n :: Int32) :: Int32 uses Offset is shift n end
+procedure shifted (n :: Int32) -> Int32 uses Offset is shift n end procedure
 =======
-definition shifted (n :: Int32) :: Int32 uses Offset is shift 0 end
+procedure shifted (n :: Int32) -> Int32 uses Offset is shift 0 end procedure
 >>>>>>>

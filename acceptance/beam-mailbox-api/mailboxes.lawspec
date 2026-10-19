@@ -2,12 +2,13 @@ unit example.mailboxes
 
 import lawspec.time
 
-type Job is Job label :: Text amount :: Int32 end
+type Job is a record{  label :: Text amount :: Int32} end type
 mailbox jobs of Job
 mailbox notices of Unit
 mailbox identities of Symbol
 
 nativeProbe :: Unit -> Bool
-law `native mailboxes preserve typed values, clocks and remote receipts` is
-  definition is nativeProbe unitValue end
-end
+law "|native mailboxes preserve typed values, clocks and remote receipts| is
+  definition : nativeProbe unitValue end definition
+end law
+end unit

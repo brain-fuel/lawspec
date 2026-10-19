@@ -19,7 +19,7 @@ and checks every run against the model.
 ```lawspec fragment
 protocol Report is
   send Int64
-end
+end protocol
 
 scenario `a count is passed on` in counter is
   channel report :: Report
@@ -29,8 +29,8 @@ scenario `a count is passed on` in counter is
   with
     receive report m
     expect m = 1
-  end
-end
+  end par
+end scenario
 ```
 
 ## Protocols
@@ -40,7 +40,7 @@ protocol Name is
   send Type
   receive Type
   ...
-end
+end protocol
 ```
 
 `! Type` and `? Type` are the same as `send Type` and `receive Type`. Steps
@@ -56,7 +56,7 @@ that protocol. This is how a process hands a conversation to another
 scenario `name` in model is
   channel c :: Protocol
   statements
-end
+end scenario
 ```
 
 | Statement | Meaning |
@@ -106,8 +106,8 @@ scenario `a count is echoed back` in counter is
   with
     receive out k
     send back k
-  end
-end
+  end par
+end scenario
 ```
 
 If each process waits first, the scenario cannot run, and the error says
@@ -148,10 +148,10 @@ scenario `a receipt, or the balance if the teller fails` in account is
   with
     receive receipt m or else
       balance
-    end
+    end or else
     expect m = 5
-  end
-end
+  end par
+end scenario
 ```
 
 So a failure can stop processes, but never leaves one waiting forever:
@@ -174,8 +174,8 @@ scenario `two tellers report to one auditor` in account is
   with
     receive reports first
     receive reports second
-  end
-end
+  end par
+end scenario
 ```
 
 A typed mailbox in your code also has `receive_within` (`receiveWithin`,

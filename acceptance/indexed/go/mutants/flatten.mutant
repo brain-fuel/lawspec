@@ -1,6 +1,6 @@
 @@ example/indexed/adapter.go
 <<<<<<<
-	right := VecVCons[int8]{Head: node.Value, Tail: Flatten(node.Right)}
+	right := VecVCons[int8]{Value: Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec[int8]{Head: node.Value.Value, Tail: Flatten(node.Value.Right)}}
 =======
-	right := VecVCons[int8]{Head: node.Value, Tail: VecVNil[int8]{}}
+	right := VecVCons[int8]{Value: Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec[int8]{Head: node.Value.Value, Tail: VecVNil[int8]{}}}
 >>>>>>>

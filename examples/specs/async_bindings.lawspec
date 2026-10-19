@@ -11,13 +11,13 @@ async priceOf :: Text -> Int32
 -- The same price, computed by a native synchronous function.
 quoteOf :: Text -> Int32
 
-law `a looked-up price is the quoted price` is
-  definition is `for all` (sku :: Text) . priceOf sku = quoteOf sku end
-  example `a free sample` is
+law "|a looked-up price is the quoted price| is
+  definition : for all (sku :: Text) => priceOf sku = quoteOf sku end for all end definition
+  example "|a free sample| :
     sku = "free"
     expect priceOf sku = 0
-  end
-end
+  end example
+end law
 
 -- A shelf is a native object; its methods are asynchronous.
 handle Shelf
@@ -26,14 +26,15 @@ newShelf :: Unit -> Shelf
 async restock :: Shelf -> (amount :: Int32 where amount >= 0 && amount <= 100) -> Unit
 async count :: Shelf -> Int64
 
-definition modelRestock (amount :: Int32 where amount >= 0 && amount <= 100) (total :: Int64 where total >= 0 && total <= 1000000) :: Int64 is
+function modelRestock (amount :: Int32 where amount >= 0 && amount <= 100) (total :: Int64 where total >= 0 && total <= 1000000) -> Int64 is
   total + amount
-end
+end function
 
-definition modelCount (total :: Int64) :: Pair Int64 Int64 is Pair total total end
+function modelCount (total :: Int64) -> Pair Int64 Int64 is Pair total total end function
 
 model shelf :: shared Shelf by Int64 is
   start newShelf ~ 0
   restock ~ modelRestock
   count ~ modelCount
-end
+end model
+end unit

@@ -1,6 +1,6 @@
 @@ src/main/scala/example/Models.scala
 <<<<<<<
-    PopFlow(cell.top, cell.rest)
+    PopFlow(cell.value.top, cell.value.rest)
 =======
-    PopFlow(cell.top, cell)
+    PopFlow(cell.value.top, cell)
 >>>>>>>

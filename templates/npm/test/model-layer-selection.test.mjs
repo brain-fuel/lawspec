@@ -17,7 +17,7 @@ const model=entry=>entry.law.includes('::model::')||entry.law.endsWith('::superv
 const sources=result=>result.files.filter(file=>file.placement==='source').map(file=>[file.path,file.content,file.ownership]);
 test('native binding regeneration preserves actor APIs and independently selected law and model checks on all targets',async()=>{
   for(const target of targets)for(const [machineBits,minify]of [[32,false],[64,true]]){
-    const request={schemaVersion:5,languageProfile:'1.0-rc.1',target,machineBits,minify,
+    const request={schemaVersion:5,languageProfile:'1.0-rc.2',target,machineBits,minify,
       sources:[{path:'actors.lawspec',content}],nativeBindings:bindings(target)};
     const disabled=await compiler.planGeneration({...request,verification:{layers:['property','examples']}});
     const enabled=await compiler.planGeneration({...request,verification:{layers:['property','examples','model']}});

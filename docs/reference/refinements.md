@@ -21,6 +21,7 @@ arbitrary-precision native representation specifically.
 ```lawspec
 unit example.increment
 successor :: (x :: Int8) -> (result :: Integer where result == x + 1)
+end unit
 ```
 
 This signature generates contract tests with no separate law. For the maximum
@@ -48,7 +49,7 @@ Add `where` to a quantified input, function argument or function result:
 ```lawspec fragment
 for all (x :: Int8) (y :: Int8 where y > Int8.max - x) =>
   add x y must be x + y
-end
+end for all
 ```
 
 A predicate can refer to its own value and to earlier inputs. A result
@@ -67,11 +68,12 @@ refinement AdditionOverflows
 (T :: Type) (left :: T)
 requires Integer T Bounded T is
 (right :: T where left + right > T.max)
-end
+end refinement
 
 add :: (x :: Int8)
 -> (y :: AdditionOverflows Int8 x)
 -> (result :: Integer where result == x + y)
+end unit
 ```
 
 ```lawspec
@@ -81,18 +83,19 @@ refinement Between
 (T :: Type) (minimum :: T) (maximum :: T)
 requires Ordered T is
 (value :: T where minimum <= value && value <= maximum)
-end
+end refinement
 
-refinement PositiveInt8 is (value :: Int8 where value > 0) end
+refinement PositiveInt8 is (value :: Int8 where value > 0) end refinement
 
 clamp :: (x :: Between Int8 1 10) -> PositiveInt8
 
 law "|clamped values are positive| is
   definition :
     for all (x :: Between Int8 1 10) (y :: Int8) (z :: Int8 where z > Int8.max -
-      y) => clamp x > 0 end
-  end
-end
+      y) => clamp x > 0 end for all
+  end definition
+end law
+end unit
 ```
 
 - Apply a refinement like a type: `(x :: Between Int8 1 10)`. Parenthesize
@@ -135,7 +138,8 @@ end function
 
 refinement Nonempty (T :: Type) is
 (xs :: List T where nonempty xs)
-end
+end refinement
+end unit
 ```
 
 - `&&`, `||` and `!` short-circuit. Comparisons bind more tightly than `&&`,
@@ -212,6 +216,7 @@ function increment (x :: Int8 where x < 127)
   is
   prelude.Int8 (x + 1)
 end function
+end unit
 ```
 
 The arithmetic promotes to `Integer` before the explicit conversion back to
@@ -250,6 +255,7 @@ function nonzero (value :: Int8 where value != 0)
 function reciprocal (value :: Int8 where value != 0) -> Rational is
   1 / nonzero value
 end function
+end unit
 ```
 
 The checker first proves the call's preconditions (and, for recursive calls,
@@ -280,9 +286,10 @@ unit guide.list_payloads
 law "|elements exceed the earlier bound| is
   definition : for all (floor :: Int8)
       (xs :: List (value :: Int8 where value > floor)) =>
-      prelude.length xs >= 0 end
-  end
-end
+      prelude.length xs >= 0 end for all
+  end definition
+end law
+end unit
 ```
 
 Elements are checked in order, stopping at the first failure. In a total
@@ -313,6 +320,7 @@ function gap
   first matching case of range : when Range record{ lower = lo , upper = hi}
     then 1 / (hi - lo) end case
 end function
+end unit
 ```
 
 The field relation justifies the non-zero denominator within that branch only.
@@ -330,7 +338,7 @@ type Pair (a :: Type) (b :: Type) is a record{
   first :: a second :: b}
 end type
 
-refinement Positive is (value :: Int8 where value > 0) end
+refinement Positive is (value :: Int8 where value > 0) end refinement
 
 function reciprocal (pair :: Pair Positive Bool) -> Rational is
   first matching case of pair :
@@ -340,13 +348,14 @@ end function
 
 law "|half| is
   definition :
-    for all (pair :: Pair Positive Bool) => reciprocal pair > 0 end
-  end
+    for all (pair :: Pair Positive Bool) => reciprocal pair > 0 end for all
+  end definition
   example "|two| :
     pair = Pair record{ first = 2 , second = false}
     expect reciprocal pair = rational(1, 2)
-  end
-end
+  end example
+end law
+end unit
 ```
 
 The native representation stays `Pair Int8 Bool`; the refinement adds no wrapper
@@ -379,6 +388,7 @@ function inverseGap (gap :: Gap) -> Rational is
   first matching case of gap : when Gap record{ first = x , second = y} then 1 /
     (y - x) end case
 end function
+end unit
 ```
 
 Construction in a total definition must prove the field predicates; matching

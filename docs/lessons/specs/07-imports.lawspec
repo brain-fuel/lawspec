@@ -13,12 +13,13 @@ cheapest :: Int64 -> Int64 -> Int64
 
 law "|every item costs at most five dollars| is
   definition :
-    for all (item :: Item) => priceOf item <= money.dollars 5 end
-  end
-end
+    for all (item :: Item) => priceOf item <= money.dollars 5 end for all
+  end definition
+end law
 
 law "|the cheaper price is never more than either price| is
   definition :
     apply law "|never more than| cheapest
-  end
-end
+  end definition
+end law
+end unit

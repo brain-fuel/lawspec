@@ -35,23 +35,23 @@ law "|an unissued approval has no finite construction| is
   definition:
     for all (approval of type UnissuedApproval) =>
       false
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|mutually dependent snapshots have no first value| is
   definition:
     for all (snapshot of type FirstSnapshot) =>
       false
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|a completed chain has no remaining approval| is
   definition:
     chainLength (ApprovalChain record{next = Nothing}) must be 0
-  end
-end
+  end definition
+end law
 
 law "|a pending chain counts each remaining approval| is
   definition:
@@ -60,5 +60,6 @@ law "|a pending chain counts each remaining approval| is
         next = Just (ApprovalChain record{next = Nothing})
       })
     }) must be 2
-  end
-end
+  end definition
+end law
+end unit

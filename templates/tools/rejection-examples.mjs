@@ -39,8 +39,18 @@ const cases=[
   ...['fragment','implementations=application','run=application','view=implementation'].map((attribute,index)=>({
     name:'incompatible-'+index,body:fence('reject=total '+attribute,denominator),pass:false,reason:/reject fixtures cannot be/})),
   {name:'isolated-fences',body:fence('',
-    'unit isolation\nfunction privateValue (value :: Bool) -> Bool is value end function')+fence('reject=definition',
-    'unit isolation\nfunction second (value :: Bool) -> Bool is privateValue value end function'),pass:true},
+    `unit isolation
+
+function privateValue (value :: Bool) -> Bool is value end function
+
+end unit
+`)+fence('reject=definition',
+    `unit isolation
+
+function second (value :: Bool) -> Bool is privateValue value end function
+
+end unit
+`),pass:true},
 ];
 const receipts=[];
 for(const fixture of cases){

@@ -1,4 +1,4 @@
--- | Source grammar inventory for migration and authoring tools. These nodes
+-- | Source grammar inventory for authoring tools. These nodes
 -- describe parsed syntax, not a second typed or executable representation.
 -- Clients receive them only after the ordinary compiler checks succeed.
 module LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), SyntaxBinding(..), SyntaxReference(..), MatchWarning(..), sourceSyntax) where

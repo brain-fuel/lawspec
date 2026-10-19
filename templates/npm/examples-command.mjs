@@ -29,11 +29,9 @@ export async function generateExamples(options) {
   const compiler = await createCompiler();
   const artifacts = [];
   for (const target of selected) {
-    // The bundled specs catalog is the frozen 0.24 migration corpus.
-    // Canonical native projects are exported by exportNativePayments above.
-    const result = await compiler.migrationBaseline({
-      schemaVersion: 5, from: '0.24', includeGeneration: true,
-      languageProfile: '1.0-rc.1', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']},
+    const result = await compiler.planGeneration({
+      schemaVersion: 5,
+      languageProfile: '1.0-rc.2', verification: {layers: ['proof','exhaustive','property','examples','runtime','model']},
       sources,
       target,
       machineBits: options.machineBits ?? 64,
@@ -57,7 +55,7 @@ export async function generateExamples(options) {
   await applyWrites(plans);
   return plans.map((plan, i) => ({
     target: selected[i],
-    sourceLanguageProfile: '0.24',
+    languageProfile: '1.0-rc.2',
     directory: plan.root,
     files: artifacts[i].map((f) => ({ path: f.path, ownership: f.ownership, placement: f.placement })),
     changes: plan.changes.length,

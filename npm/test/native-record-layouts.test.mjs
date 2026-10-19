@@ -14,15 +14,19 @@ const localPython = new URL('../../.integration/python/.venv/bin/python',import.
 const localTsc = new URL('../../.integration/typescript/node_modules/.bin/tsc',import.meta.url).pathname;
 const python = process.env.LAWSPEC_PYTHON_EXECUTABLE??(existsSync(localPython)?localPython:null);
 const tsc = process.env.LAWSPEC_TSC??(existsSync(localTsc)?localTsc:null);
-const options = {schemaVersion:5, languageProfile:'1.0-rc.1', verification:{layers:[]}};
+const options = {schemaVersion:5, languageProfile:'1.0-rc.2', verification:{layers:[]}};
 const source = `unit layouts
+
 type Packet (a :: Type) is one of
   Packed of type record{
     last of type a
     first of type record{count :: (n :: UInt8 where n > 0) flag :: Bool}
   }
 end type
-copy :: Packet UInt8 -> Packet UInt8`;
+copy :: Packet UInt8 -> Packet UInt8
+
+end unit
+`;
 const nativeBindings = {types:[{type:'layouts::type::Packet',native:['application','Packet'],constructors:[
   {constructor:'Packed',native:['application','Packed'],style:'variant',fields:[
     {field:'value',path:['first','count'],argument:2,native:'quantity'},

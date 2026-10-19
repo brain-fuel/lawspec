@@ -1,7 +1,7 @@
 expect: settling nothing is declined, and says why
 @@ src/example_failures.erl
 <<<<<<<
-lawspec_beam_effects:fail({payment_error_declined, <<"there is nothing to settle">>})
+lawspec_beam_effects:fail({payment_error_declined, {recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7, <<"there is nothing to settle">>}})
 =======
 lawspec_beam_effects:fail(payment_error_blocked)
 >>>>>>>

@@ -24,10 +24,11 @@ law sample is
   definition:
     for all (ignored :: ()) =>
       display (sample ignored) must be "a,b"
-    end
-  end
+    end for all
+  end definition
   expect display (sample ignored) = expected
   in table (ignored, expected):
     row (), "a,b"
-  end
-end
+  end table
+end law
+end unit

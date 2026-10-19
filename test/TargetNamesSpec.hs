@@ -15,9 +15,11 @@ import LawSpec.Testing (planTesting)
 keywords :: String
 keywords = unlines
   [ "unit example.keywords"
-  , "definition short (x :: BigInt) :: Bool is x < 10 end"
-  , "class :: BigInt -> BigInt"
-  , "law `class is short` is definition is `for all` (x :: BigInt) . short (class x) = short x end end" ]
+   ++ "\n", ""
+  , "function short (x :: Integer) -> Bool is x < 10 end function\n"
+  , "class :: Integer -> Integer"
+  , "law \"|class is short| is definition : for all (x :: Integer) => short (class x) = short x end for all end definition end law"
+  , "\nend unit" ]
 
 emitted :: String -> String -> Either [Diagnostic] [(String, String)]
 emitted target ownership' = do

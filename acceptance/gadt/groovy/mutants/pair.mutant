@@ -1,6 +1,6 @@
 @@ src/main/groovy/example/Gadt.groovy
 <<<<<<<
-    new Pair<>(evalNumber(both.first()), evalTruth(both.second()))
+    new Pair<>(evalNumber(both.value().first()), evalTruth(both.value().second()))
 =======
-    new Pair<>(evalNumber(both.first()), !evalTruth(both.second()))
+    new Pair<>(evalNumber(both.value().first()), !evalTruth(both.value().second()))
 >>>>>>>

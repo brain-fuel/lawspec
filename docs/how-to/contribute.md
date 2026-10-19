@@ -45,7 +45,7 @@ stack --no-terminal test
 To try a request against the native compiler:
 
 ```sh
-printf '%s' '{"schemaVersion":5,"languageProfile":"1.0-rc.1","verification":{"layers":[]},"method":"check","sources":[{"path":"x.lawspec","content":"unit example.empty"}]}' | stack exec lawspec-core
+printf '%s' '{"schemaVersion":5,"languageProfile":"1.0-rc.2","verification":{"layers":[]},"method":"check","sources":[{"path":"x.lawspec","content":"unit example.empty"}]}' | stack exec lawspec-core
 ```
 
 ### WebAssembly
@@ -68,7 +68,7 @@ To build and install a local archive:
 
 ```sh
 npm pack ./npm
-npm install --save-dev ./lawspec-0.25.0.tgz
+npm install --save-dev ./lawspec-0.26.0.tgz
 ```
 
 ## Generated files
@@ -193,9 +193,8 @@ node tools/package-smoke.mjs                    # pack, install and use the arch
 
 `make test`, `make check` and `make package` group these.
 
-The parity command uses explicit migration requests for the archived bundled
-specifications. `--canonical` selects ordinary canonical requests for the named
-files. Its counts distinguish accepted responses from matching rejections, and
+The parity command uses the ordinary current compiler API for bundled or
+explicitly named specifications. Its counts distinguish accepted responses from matching rejections, and
 every target must emit the reference codec at both widths and layouts. Package
 checks load the canonical example's complete dependency graph, including both
 tax-package versions.

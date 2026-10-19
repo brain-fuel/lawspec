@@ -5,7 +5,7 @@ language registration for `.lawspec` files. The extension launches `lawspec lsp
 --stdio` for compiler diagnostics, source formatting, outlines, hover, definition
 navigation and references. Install the CLI and set `lawspec.command` when it is
 not on PATH. Editor positions use UTF-16; compiler checks stay authoritative.
-The language server uses the explicit `1.0-rc.1` profile with no optional law
+The language server uses the explicit `1.0-rc.2` profile with no optional law
 verification selected. Legacy projects need migration before canonical editing.
 
 It highlights:

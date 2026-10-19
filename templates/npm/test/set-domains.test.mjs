@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
 
 const content = await readFile(new URL('../../test/fixtures/canonical-set-domains.lawspec', import.meta.url), 'utf8');
-const input = (machineBits, layers) => ({schemaVersion: 5, languageProfile: '1.0-rc.1',
+const input = (machineBits, layers) => ({schemaVersion: 5, languageProfile: '1.0-rc.2',
   machineBits, verification: {layers}, sources: [{path: 'set-domains.lawspec', content}]});
 const evidence = result => result.evidence.filter(item => item.stage === 'law');
 

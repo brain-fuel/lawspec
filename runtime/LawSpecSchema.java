@@ -305,7 +305,8 @@ public final class LawSpecSchema {
   public boolean hasContracts() {
     return definitions.values().stream()
         .flatMap(definition -> definition.constructors().stream())
-        .anyMatch(constructor -> !constructor.predicates().isEmpty());
+        .anyMatch(constructor -> !constructor.predicates().isEmpty() ||
+            constructor.indices().stream().anyMatch(LawSpecSchema::isIndexGuard));
   }
 
   private void checkType(TypeRef type, int parameters) {

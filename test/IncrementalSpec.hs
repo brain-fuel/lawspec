@@ -31,17 +31,17 @@ programs tag = (render "x + 0 = x", render "0 + x = x")
       [ ("first.lawspec", unlines
           [ "unit incremental." ++ tag ++ ".first"
           , "double :: Int32 -> Int32"
-          , "law `double is deterministic` is definition is `for all` (x :: Int32) . double x = double x end end" ])
+          , "law \"|double is deterministic| is definition : for all (x :: Int32) => double x = double x end for all end definition end law\n", "end unit" ])
       , ("second.lawspec", unlines
           [ "unit incremental." ++ tag ++ ".second"
           , "identity :: Int32 -> Int32"
-          , "law `zero is neutral` is definition is `for all` (x :: Int32) . " ++ law ++ " end end" ]) ]
+          , "law \"|zero is neutral| is definition: for all (x :: Int32) => " ++ law ++ " end for all end definition end law", "end unit" ]) ]
 
 request :: String -> String -> [(String, String)] -> B.ByteString
 request method target sources = encode (object
-  [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String)
-  , "method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String)
-  , "includeGeneration" .= (method == "planGeneration"), "target" .= target
+  [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String)
+  , "method" .= method
+  , "target" .= target
   , "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])]
   , "sources" .= [object ["path" .= path, "content" .= content] | (path, content) <- sources] ])
 
@@ -77,16 +77,16 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
     it "changes a law's key exactly when something it reaches changes" $ do
       let before = keys "x * 3"
           after = keys "x + x + x"
-      lookup "doubles" after `shouldBe` lookup "doubles" before
-      lookup "triples" after `shouldNotBe` lookup "triples" before
+      lookup "\"|doubles|" after `shouldBe` lookup "\"|doubles|" before
+      lookup "\"|triples|" after `shouldNotBe` lookup "\"|triples|" before
     it "plans a law from the types it reaches" $ do
-      let alone = planOf "score" [wrapper "Score" "0"]
-          beside = planOf "score" [wrapper "Score" "0", wrapper "Wide" "1234"]
+      let alone = planOf "\"|score|" [wrapper "Score" "0"]
+          beside = planOf "\"|score|" [wrapper "Score" "0", wrapper "Wide" "1234"]
       beside `shouldBe` alone
       fmap (isInfixOf "1234" . show) beside `shouldBe` Just False
     it "reports the boundary cases the generated tests use" $ do
-      let program = compiled $ unlines ["unit incremental.evidence", wrapper "Score" "0", wrapper "Wide" "1234",
-            "law `score` is definition is `for all` (s :: Score) . s = s end end"]
+      let program = compiled $ unlines ["unit incremental.evidence\n", wrapper "Score" "0", wrapper "Wide" "1234",
+            "law \"|score| is definition : for all (s :: Score) => s = s end for all end definition end law\n", "end unit"]
           Right plan = planTesting program
           Right evidence = dischargeEvidence program
           planned = [length (boundaryCases q) | u <- plannedUnits plan, q <- plannedProperties u]
@@ -136,18 +136,20 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
     compiled text = either (error . show) id (compileCore 64 defaultGeneration [Source "keys.lawspec" text])
     keys body =
       let program = compiled $ unlines
-            [ "unit incremental.keys"
-            , "definition double (x :: BigInt) :: BigInt is x + x end"
-            , "definition triple (x :: BigInt) :: BigInt is " ++ body ++ " end"
-            , "law `doubles` is definition is `for all` (x :: BigInt) . double x = x * 2 end end"
-            , "law `triples` is definition is `for all` (x :: BigInt) . triple x = x * 3 end end" ]
+            [ "unit incremental.keys\n"
+            , "function double (x :: Integer) -> Integer is x + x end function\n"
+            , "function triple (x :: Integer) -> Integer is " ++ body ++ " end function"
+            , "law \"|doubles| is definition : for all (x :: Integer) => double x = x * 2 end for all end definition end law\n"
+            , "law \"|triples| is definition : for all (x :: Integer) => triple x = x * 3 end for all end definition end law\n" , "end unit"]
           graph = dependencyGraph (C.programDataDeclarations program) (C.programUnits program)
       in [ (C.propertyName p, keyOf graph (show p) (lawReferences graph p))
          | u <- C.programUnits program, p <- C.unitProperties u ]
-    wrapper name bound = "wrapper " ++ name ++ " is Int32 where value > " ++ bound ++ " end"
+    wrapper name bound = "wrapper " ++ name ++ " is Int32 where value > " ++ bound ++ " end wrapper"
     planOf law declarations = do
-      let program = compiled $ unlines (["unit incremental.locality"] ++ declarations ++
-            ["law `" ++ law ++ "` is definition is `for all` (s :: Score) . s = s end end"])
+      let program = compiled $ unlines ([ "unit incremental.locality\n"
+                                        , ""
+                                        ] ++ declarations ++
+            ["law " ++ law ++ " is definition: for all (s :: Score) => s = s end for all end definition end law", "end unit"])
       plan <- either (const Nothing) Just (planTesting program)
       fmap boundaryCases (find ((== law) . C.propertyName . plannedProperty) (concatMap plannedProperties (plannedUnits plan)))
 

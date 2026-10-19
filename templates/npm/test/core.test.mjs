@@ -1,6 +1,6 @@
-// These frozen 0.24 source fixtures are inspected and generated through migration.
+// Public checking and generation exercise the current grammar.
 import {propertyFiles, propertyContent} from './artifacts.mjs';
-import {legacyCheck,legacyGeneration} from './legacy-input.mjs';
+import {checkInput,generateInput} from './compiler-input.mjs';
 import {targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,20 +13,20 @@ const content = await readFile(
 const input = { sources: [{ path: "codec.lawspec", content }] };
 const compiler = await createCompiler();
 test("WASM expands the scratch law and preserves inherited example inputs", async () => {
-  const result = await legacyCheck(compiler,input);
+  const result = await checkInput(compiler,input);
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.laws[0].inputs[0].name, "x");
   assert.equal(
     result.expansions[0],
-    "for all (x :: Int32) . atoi (itoa (x)) = x",
+    "for all (x :: Int32) => atoi (itoa (x)) = x end for all",
   );
 });
 test("all targets return deterministic owned artifact plans", async () => {
   for (const target of targets) {
     const request = { ...input, target };
     const [a, b] = await Promise.all([
-      legacyGeneration(compiler,request),
-      legacyGeneration(compiler,request),
+      generateInput(compiler,request),
+      generateInput(compiler,request),
     ]);
     assert.deepEqual(a, b);
     assert.deepEqual(a.diagnostics, []);
@@ -50,7 +50,7 @@ test("Unicode metadata survives repeated JSON/JSFFI calls", async () => {
     ],
   };
   for (let i = 0; i < 3; i++) {
-    const result = await legacyGeneration(compiler,{
+    const result = await generateInput(compiler,{
       ...request,
       target: "python",
     });
@@ -65,7 +65,7 @@ test("invalid examples, types and source syntax return structured diagnostics", 
     content.replace("Int32 -> Text", "Bool -> Text"),
     content + "unexpected",
   ]) {
-    const result = await legacyCheck(compiler,{
+    const result = await checkInput(compiler,{
       sources: [{ path: "bad.lawspec", content: bad }],
     });
     assert.ok(result.diagnostics.length);
@@ -79,14 +79,14 @@ test("equivalent specializes both result types on every backend", async () => {
     "utf8",
   );
   const request = { sources: [{ path: "equivalent.lawspec", content }] };
-  const expanded = await legacyCheck(compiler,request);
+  const expanded = await checkInput(compiler,request);
   assert.deepEqual(expanded.diagnostics, []);
   assert.deepEqual(expanded.expansions, [
-    "for all (x :: Int32) . render (x) = referenceRender (x)",
-    "for all (x :: Int32) . clamp (x) = referenceClamp (x)",
+    "for all (x :: Int32) => render (x) = referenceRender (x) end for all",
+    "for all (x :: Int32) => clamp (x) = referenceClamp (x) end for all",
   ]);
   for (const target of targets) {
-    const result = await legacyGeneration(compiler,{ ...request, target });
+    const result = await generateInput(compiler,{ ...request, target });
     assert.deepEqual(result.diagnostics, []);
     assert.deepEqual(
       result.files.filter(f => f.ownership === "user").map(f => f.placement),
@@ -107,7 +107,7 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
       ),
     })),
   );
-  const result = await legacyCheck(compiler,{ sources });
+  const result = await checkInput(compiler,{ sources });
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.laws.length, 5);
   assert.match(result.expansions[0], /\(x :: Text\)/);
@@ -124,7 +124,7 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
     {type:"Text",units:[..."Hello, World!"].map(c=>c.codePointAt(0))},
   );
   for (const target of targets) {
-    const plan = await legacyGeneration(compiler,{ sources, target });
+    const plan = await generateInput(compiler,{ sources, target });
     assert.deepEqual(plan.diagnostics, []);
     assert.equal(plan.files.filter(f => f.ownership === 'user').length, 3);
     const tests = propertyFiles(plan.files);
@@ -135,9 +135,15 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
   for (const content of [
     sources[0].content.replace('x = "Hello, World!"', "x = 42"),
     sources[0].content.replace('x = "Hello, World!"', 'y = "oops"'),
-    "unit bad\nf :: Text -> Int32\nlaw `bad` is definition is `idempotent` f end end",
+    `unit bad
+
+f :: Text -> Int32
+law "|bad| is definition : apply law "|idempotent| f end definition end law
+
+end unit
+`,
   ]) {
-    const invalid = await legacyCheck(compiler,{
+    const invalid = await checkInput(compiler,{
       sources: [{ path: "bad.lawspec", content }],
     });
     assert.ok(invalid.diagnostics.length);
@@ -146,17 +152,21 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
 
 test("examples require typed expectations and preserve multiple assertions in the API", async () => {
   const source = `unit example.expected
+
 actual :: Int32 -> Text
-law \`formats\` is
- definition is \`equivalent\` actual actual end
- example \`negative rendering\` is
+law "|formats| is
+ definition : apply law "|equivalent| actual actual end definition
+ example "|negative rendering| :
   x = -42
   expect actual x = "-42"
   expect actual (x) = "-42"
- end
-end`;
+ end example
+end law
+
+end unit
+`;
   const check = (content) =>
-    legacyCheck(compiler,{ sources: [{ path: "expect.lawspec", content }] });
+    checkInput(compiler,{ sources: [{ path: "expect.lawspec", content }] });
   const result = await check(source);
   assert.deepEqual(result.diagnostics, []);
   const assertions = result.laws[0].examples[0].expectations;
@@ -177,8 +187,8 @@ end`;
       source.replace('expect actual x = "-42"', "expect x = 2147483648"),
       /Int32/,
     ],
-    [source.replace('expect actual x = "-42"', "expect actual x = x"), /parse/],
-    [source.replace("actual ::", "expect ::"), /parse/],
+    [source.replace('expect actual x = "-42"', "expect actual x = true"), /type/],
+    [source.replace("actual ::", "expect ::"), /block-unclosed/],
   ];
   for (const [content, message] of failures) {
     const r = await check(content);
@@ -186,7 +196,7 @@ end`;
     assert.match(JSON.stringify(r.diagnostics), message);
   }
   for (const target of targets) {
-    const r = await legacyGeneration(compiler,{
+    const r = await generateInput(compiler,{
       sources: [{ path: "expect.lawspec", content: source }],
       target,
     });

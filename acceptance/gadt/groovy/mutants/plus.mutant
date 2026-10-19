@@ -1,6 +1,6 @@
 @@ src/main/groovy/example/Gadt.groovy
 <<<<<<<
-    if (value0 instanceof Expr.Plus plus) return evalNumber(plus.left()).add(evalNumber(plus.right()))
+    if (value0 instanceof Expr.Plus plus) return evalNumber(plus.value().left()).add(evalNumber(plus.value().right()))
 =======
-    if (value0 instanceof Expr.Plus plus) return evalNumber(plus.left()).subtract(evalNumber(plus.right()))
+    if (value0 instanceof Expr.Plus plus) return evalNumber(plus.value().left()).subtract(evalNumber(plus.value().right()))
 >>>>>>>

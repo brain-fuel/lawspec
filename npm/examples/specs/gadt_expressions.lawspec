@@ -1,76 +1,77 @@
 unit example.gadt
 
-type Pair (a :: Type) (b :: Type) is Pair first :: a second :: b end
+type Pair (a :: Type) (b :: Type) is a record{  first :: a second :: b} end type
 
 -- An expression indexed by the type of its value. Each constructor's `where`
 -- fixes that type, so a value of Expr Bool is never a number literal. The
 -- types b and c of Both are existential: Expr (Pair b c) determines them.
-type Expr (a :: Type) is
-  | Number value :: BigInt where a = BigInt
-  | Truth value :: Bool where a = Bool
-  | Plus left :: Expr BigInt right :: Expr BigInt where a = BigInt
-  | Same left :: Expr BigInt right :: Expr BigInt where a = Bool
-  | Negate operand :: Expr Bool where a = Bool
-  | Both first :: Expr b second :: Expr c where a = Pair b c
-end
+type Expr (a :: Type) is one of
+  | Number  of type Integer where a = Integer
+  | Truth  of type Bool where a = Bool
+  | Plus of type record{ left :: Expr Integer right :: Expr Integer} where a = Integer
+  | Same of type record{ left :: Expr Integer right :: Expr Integer} where a = Bool
+  | Negate  of type Expr Bool where a = Bool
+  | Both of type record{ first :: Expr b second :: Expr c} where a = Pair b c
+end type
 
 -- Matching Number refines a to BigInt in that branch, so v is a value of a.
 -- eval calls itself at other types (Expr BigInt inside Expr Bool): each type
 -- it is used at becomes a checked instance, and unreachable branches vanish.
-definition eval (e :: Expr a) :: a is
-  match e with
-  | Number v -> v
-  | Truth b -> b
-  | Plus l r -> eval l + eval r
-  | Same l r -> eval l == eval r
-  | Negate x -> !(eval x)
-  | Both l r -> Pair (eval l) (eval r)
-  end
-end
+function eval (e :: Expr a) -> a is
+  first matching case of e :
+  when Number v then v
+  when Truth b then b
+  when Plus record{ left = l , right = r} then eval l + eval r
+  when Same record{ left = l , right = r} then eval l = eval r
+  when Negate x then !(eval x)
+  when Both record{ first = l , second = r} then Pair record{ first = (eval l) , second = (eval r)}
+  end case
+end function
 
-evalNumber :: Expr BigInt -> BigInt
+evalNumber :: Expr Integer -> Integer
 evalTruth :: Expr Bool -> Bool
-evalPair :: Expr (Pair BigInt Bool) -> Pair BigInt Bool
+evalPair :: Expr (Pair Integer Bool) -> Pair Integer Bool
 -- Constant folding: a single number with the same value.
-fold :: Expr BigInt -> Expr BigInt
+fold :: Expr Integer -> Expr Integer
 
 -- A shown value's type is existential and only the value says what it is:
 -- each value carries its type, as a witness, to native code.
-type Shown is
-  | Shown value :: b
-end
+type Shown is one of
+  | Shown  of type b
+end type
 
 -- The name of the type a shown value holds.
 describe :: Shown -> Text
 
-law `numbers agree with eval` is
-  definition is `for all` (e :: Expr BigInt) . evalNumber e = eval e end
-end
+law "|numbers agree with eval| is
+  definition : for all (e :: Expr Integer) => evalNumber e = eval e end for all end definition
+end law
 
-law `truths agree with eval` is
-  definition is `for all` (e :: Expr Bool) . evalTruth e = eval e end
-end
+law "|truths agree with eval| is
+  definition : for all (e :: Expr Bool) => evalTruth e = eval e end for all end definition
+end law
 
-law `pairs agree with eval` is
-  definition is `for all` (e :: Expr (Pair BigInt Bool)) . evalPair e = eval e end
-end
+law "|pairs agree with eval| is
+  definition : for all (e :: Expr (Pair Integer Bool)) => evalPair e = eval e end for all end definition
+end law
 
-law `folding keeps the value` is
-  definition is `for all` (e :: Expr BigInt) . eval (fold e) = eval e end
-end
+law "|folding keeps the value| is
+  definition : for all (e :: Expr Integer) => eval (fold e) = eval e end for all end definition
+end law
 
-law `a shown number names its type` is
-  definition is `for all` (x :: Int32) . describe (Shown x) = "Int32" end
-end
+law "|a shown number names its type| is
+  definition : for all (x :: Int32) => describe (Shown x) = "Int32" end for all end definition
+end law
 
-law `a shown flag names its type` is
-  definition is `for all` (b :: Bool) . describe (Shown b) = "Bool" end
-end
+law "|a shown flag names its type| is
+  definition : for all (b :: Bool) => describe (Shown b) = "Bool" end for all end definition
+end law
 
-law `every shown value is described` is
-  definition is `for all` (s :: Shown) . prelude.length (describe s) > 0 end
-end
+law "|every shown value is described| is
+  definition : for all (s :: Shown) => prelude.length (describe s) > 0 end for all end definition
+end law
 
-law `two plus three` is
-  definition is `for all` (x :: BigInt) . eval (Plus (Number 2) (Number 3)) = 5 end
-end
+law "|two plus three| is
+  definition : for all (x :: Integer) => eval (Plus record{ left = (Number 2) , right = (Number 3)}) = 5 end for all end definition
+end law
+end unit

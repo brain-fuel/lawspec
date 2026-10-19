@@ -15,6 +15,7 @@ import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.NativeBinding (NativeRef(..))
 import LawSpec.NativeRequest
 import LawSpec.Testing (planTesting)
+import FixtureSource (extendUnit)
 import LawSpec.BuiltinDefaults (adapterPath, vectorTestPath)
 
 program :: String -> Either [Diagnostic] C.Program
@@ -24,7 +25,7 @@ failsWith :: String -> Either [Diagnostic] a -> Bool
 failsWith needle = either (any ((needle `isInfixOf`) . message)) (const False)
 
 source :: [String] -> String
-source rest = unlines ("unit app.main" : rest)
+source rest = unlines (["unit app.main"] ++ rest ++ ["end unit"])
 
 files :: String -> String -> Either [Diagnostic] [Artifact]
 files target text = program text >>= planTesting >>= emitPlan target
@@ -56,74 +57,74 @@ test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $
     it "add durations, subtract instants and compare" $
       program (source
         [ "import lawspec.time (Instant)"
-        , "definition later (t :: Instant) (d :: Duration) :: Instant is t + d end"
-        , "definition earlier (t :: Instant) (d :: Duration) :: Instant is t - d end"
-        , "definition between (a :: Instant) (b :: Instant) :: Duration is b - a end"
-        , "definition before (a :: Instant) (b :: Instant) :: Bool is a < b end" ]) `shouldSatisfy` isRight
+        , "function later (t :: Instant) (d :: Duration) -> Instant is t + d end function\n"
+        , "function earlier (t :: Instant) (d :: Duration) -> Instant is t - d end function\n"
+        , "function between (a :: Instant) (b :: Instant) -> Duration is b - a end function\n"
+        , "function before (a :: Instant) (b :: Instant) -> Bool is a < b end function\n" ]) `shouldSatisfy` isRight
     it "do not multiply" $
-      program (source ["import lawspec.time (Instant)", "definition twice (t :: Instant) :: Instant is t * 2 end"])
+      program (source ["import lawspec.time (Instant)", "function twice (t :: Instant) -> Instant is t * 2 end function\n"])
         `shouldSatisfy` failsWith "instants support"
 
   describe "seeded and secure randomness" $ do
     it "accepts seeded random where Random is used" $
       program (source
         [ "import lawspec.randomness"
-        , "definition pick (n :: Int64) :: Int64 is randomBelow n end"
-        , "law `picks are below` using seeded random 7 is"
-        , "  definition is `for all` (n :: Int64 where n >= 1) . (pick n < n) = true end"
-        , "end" ]) `shouldSatisfy` isRight
+        , "procedure pick (n :: Int64) -> Int64 is randomBelow n end procedure\n"
+        , "law \"|picks are below| using seeded random 7 is"
+        , "  definition: for all (n :: Int64 where n >= 1) => (pick n < n) = true end for all end definition"
+        , "end law" ]) `shouldSatisfy` isRight
     it "rejects seeded random where SecureRandom is needed" $
       program (source
         [ "import lawspec.randomness"
-        , "definition token (n :: Int32) :: Bytes is secureBytes n end"
-        , "law `tokens have their length` using seeded random 7 is"
-        , "  definition is `for all` (n :: Int32 where n >= 0 && n <= 64) . prelude.length (token n) = n end"
-        , "end" ]) `shouldSatisfy` failsWith "needs SecureRandom, which a seeded Random cannot answer"
+        , "procedure token (n :: Int32) -> Bytes is secureBytes n end procedure\n"
+        , "law \"|tokens have their length| using seeded random 7 is"
+        , "  definition: for all (n :: Int32 where n >= 0 && n <= 64) => prelude.length (token n) = n end for all end definition"
+        , "end law" ]) `shouldSatisfy` failsWith "needs SecureRandom, which a seeded Random cannot answer"
     it "rejects handling SecureRandom code with the seeded handler" $
       program (source
         [ "import lawspec.randomness"
-        , "definition token (n :: Int32) :: Bytes is handle secureBytes n with seededRandom end end" ])
+        , "function token (n :: Int32) -> Bytes is handle secureBytes n with seededRandom end handle end function\n" ])
         `shouldSatisfy` failsWith "needs SecureRandom, which a seeded Random cannot answer"
     it "rejects spec handlers for SecureRandom" $
       program (source
         [ "import lawspec.randomness"
         , "handler fixedSecure for SecureRandom is"
-        , "  secureBytes n is bytes([1]) end"
-        , "  secureBelow n is 0 end"
-        , "  secureToken is \"0\" end"
-        , "end" ]) `shouldSatisfy` failsWith "SecureRandom has no spec handlers"
+        , "  operation secureBytes n is bytes([1]) end operation"
+        , "  operation secureBelow n is 0 end operation"
+        , "  operation secureToken is \"0\" end operation"
+        , "end handler" ]) `shouldSatisfy` failsWith "SecureRandom has no spec handlers"
     it "names each seed's handler apart" $ do
       let Right compiled = program (source
             [ "import lawspec.randomness"
-            , "definition pick (n :: Int64) :: Int64 is randomBelow n end"
-            , "law `seven` using seeded random 7 is definition is (pick 10 >= 0) = true end end"
-            , "law `eight` using seeded random 8 is definition is (pick 10 >= 0) = true end end" ])
+            , "procedure pick (n :: Int64) -> Int64 is randomBelow n end procedure\n"
+            , "law \"|seven| using seeded random 7 is definition : (pick 10 >= 0) = true end definition end law\n"
+            , "law \"|eight| using seeded random 8 is definition : (pick 10 >= 0) = true end definition end law" ])
       [C.handlerName h | u <- C.programUnits compiled, C.idText (C.unitId u) == "app.main", h <- C.unitHandlers u]
         `shouldSatisfy` (\names -> all (`elem` names) ["seededRandom7", "seededRandom8"])
     it "takes a seed in handle ... with seededRandom n end" $ do
       let Right compiled = program (source
             [ "import lawspec.randomness"
-            , "definition draw (n :: Int64) :: Int64 is handle randomBelow n with seededRandom 42 end end"
-            , "definition other (n :: Int64) :: Int64 is handle randomBelow n with seeded random 7 end end" ])
+            , "function draw (n :: Int64) -> Int64 is handle randomBelow n with seededRandom 42 end handle end function\n"
+            , "function other (n :: Int64) -> Int64 is handle randomBelow n with seeded random 7 end handle end function\n" ])
       [C.handlerName h | u <- C.programUnits compiled, C.idText (C.unitId u) == "app.main", h <- C.unitHandlers u]
         `shouldSatisfy` (\names -> all (`elem` names) ["seededRandom42", "seededRandom7"])
     it "rejects a seed for another handler" $
       program (source
         [ "import lawspec.time (Instant)"
-        , "definition stamp (n :: Int32) :: Instant is handle now with virtualClock 3 end end" ])
+        , "function stamp (n :: Int32) -> Instant is handle now with virtualClock 3 end handle end function" ])
         `shouldSatisfy` failsWith "only seededRandom takes a seed"
     it "needs lawspec.randomness for seeded random" $
       program (source
-        [ "ability Dice is roll :: Int32 end"
-        , "definition throw (n :: Int32) :: Int32 is roll end"
-        , "law `a throw` using seeded random 3 is definition is (throw 1 >= 0) = true end end" ])
+        [ "ability Dice is roll :: Int32 end ability"
+        , "procedure throw (n :: Int32) -> Int32 is roll end procedure\n"
+        , "law \"|a throw| using seeded random 3 is definition : (throw 1 >= 0) = true end definition end law" ])
         `shouldSatisfy` failsWith "seeded random needs lawspec.randomness"
 
   describe "laws of the spec handlers" $ do
     it "checks the virtual clock against Clock's laws at compile time" $ do
       let Right compiled = program (source ["import lawspec.time (Instant)", "stamp :: Int32 -> Instant uses Clock"])
           Right evidence = dischargeEvidence compiled
-      [obligationStatus o | o <- evidence, "time does not go back [virtualClock]" `isInfixOf` C.idText (obligationDeclaration o)]
+      [obligationStatus o | o <- evidence, "\"|time does not go back| [virtualClock]" `isInfixOf` C.idText (obligationDeclaration o)]
         `shouldBe` [ExhaustivelyChecked]
 
   describe "default handlers" $ do
@@ -148,7 +149,7 @@ test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $
           Just vectors = vectorTestPath "python"
       concat [artifactContent f | f <- emitted, artifactPath f == vectors] `shouldSatisfy` ("mlkem768-keygen" `isInfixOf`)
     it "name the unit's types as the target does" $ do
-      let Right emitted = files "python" (crypto ++ "type Digest is Digest bytes :: Bytes end\n")
+      let Right emitted = files "python" (extendUnit crypto "type Digest is a record{  bytes :: Bytes} end type\n")
       concat [artifactContent f | f <- emitted, artifactPath f == adapterPath "python" "lawspec.crypto"]
         `shouldSatisfy` ("data.LawspecCryptoDigest" `isInfixOf`)
     it "leave Go's adapter stub without the built-in handlers" $ do
@@ -158,11 +159,14 @@ test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $
     it "let a program's own ability share a built-in one's name in Go" $ do
       let sources =
             [ Source "journal.lawspec" (unlines
-                [ "unit app.journal", "ability Log is note :: Text -> Unit end"
-                , "definition remember (n :: Int32) :: Int32 uses Log is note \"kept\"; n end" ])
+                [ "unit app.journal"
+                 ++ "\n", ""
+                , "ability Log is note :: Text -> Unit end ability"
+                , "procedure remember (n :: Int32) -> Int32 uses Log is note \"kept\"; n end procedure\n"
+                , "\nend unit" ])
             , Source "audit.lawspec" (unlines
                 [ "unit app.audit", "import lawspec.logging (LogLevel)"
-                , "definition shout (n :: Int32) :: Int32 uses Log is logMessage Info \"shout\"; n end" ]) ]
+                , "procedure shout (n :: Int32) -> Int32 uses Log is logMessage Info \"shout\"; n end procedure\n" , "end unit"]) ]
           Right emitted = compileCore 64 defaultGeneration sources >>= planTesting >>= emitPlan "go"
           abilitiesOf path = concat [artifactContent f | f <- emitted, artifactPath f == path]
       abilitiesOf "app/journal/lawspec_abilities.go" `shouldSatisfy` ("type AppJournalLog interface" `isInfixOf`)

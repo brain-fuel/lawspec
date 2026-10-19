@@ -1,6 +1,6 @@
 // Generated from templates/npm/test/algebra.test.mjs by lawspec-dev generate. Do not edit.
-// Frozen 0.24 fixtures enter through the explicit migration interface.
-import {legacyCheck, legacyGeneration} from './legacy-input.mjs';
+// Conformance fixtures use the current grammar.
+import {checkInput, generateInput, nameText} from './compiler-input.mjs';
 import {propertyFiles} from './artifacts.mjs';
 import {targets} from '../templates.mjs';
 import { test } from "node:test";
@@ -28,7 +28,7 @@ const count = (a) =>
       : a.items.reduce((n, a) => n + count(a), 0);
 
 test("all algebra laws expand, including both sides and four division equations", async () => {
-  const r = await legacyCheck(compiler, { sources });
+  const r = await checkInput(compiler, { sources });
   assert.deepEqual(r.diagnostics, []);
   assert.equal(r.laws.length, 22);
   const expectedLaws = [
@@ -55,7 +55,7 @@ test("all algebra laws expand, including both sides and four division equations"
   assert.deepEqual(
     r.laws
       .filter((l) => l.owner === "example.algebra")
-      .map((l) => expectedLaws.find(n => l.trace[1] === n || l.trace[1].startsWith(n + " ")))
+      .map((l) => expectedLaws.find(n => nameText(l.trace[1]) === n || nameText(l.trace[1]).startsWith(n + " ")))
       .sort(),
     expectedLaws.sort(),
   );
@@ -67,7 +67,7 @@ test("all algebra laws expand, including both sides and four division equations"
     ),
   );
 
-  const byName = Object.fromEntries(r.laws.map((l) => [l.name, l]));
+  const byName = Object.fromEntries(r.laws.map((l) => [nameText(l.name), l]));
   assert.equal(count(byName["subtraction has divisible"].assertion), 4);
   for (const name of [
     "zero is two-sided identity for addition",
@@ -83,7 +83,7 @@ test("all algebra laws expand, including both sides and four division equations"
     /format \("port:"\) \(true\) \(443\) \(trim \(x\)\)/,
   );
   for (const target of targets) {
-    const plan = await legacyGeneration(compiler, { sources, target });
+    const plan = await generateInput(compiler, { sources, target });
     assert.deepEqual(plan.diagnostics, [], target);
     assert.equal(plan.files.filter(f => f.ownership === "user").length, 2);
     assert.equal(propertyFiles(plan.files).length, 2);
@@ -93,12 +93,18 @@ test("all algebra laws expand, including both sides and four division equations"
 test("currying has no fixed arity cap and rejects incomplete or mistyped applications", async () => {
   const types = Array(13).fill("Int32").join(" -> ");
   const args = Array.from({ length: 11 }, (_, i) => String(i)).join(" ");
-  const content = `unit arity\nf :: ${types}\nlaw \`twelve\` is definition is \`equivalent\` (f ${args}) (f ${args}) end example \`last input\` is x = 12 expect f ${args} x = 67 end end`;
+  const content = `unit arity
+
+f :: ${types}
+law "|twelve| is definition : apply law "|equivalent| (f ${args}) (f ${args}) end definition example "|last input| : x = 12 expect f ${args} x = 67 end example end law
+
+end unit
+`;
   const check = (content) =>
-    legacyCheck(compiler, { sources: [{ path: "arity.lawspec", content }] });
+    checkInput(compiler, { sources: [{ path: "arity.lawspec", content }] });
   assert.deepEqual((await check(content)).diagnostics, []);
   for (const target of targets) {
-    const plan = await legacyGeneration(compiler, {
+    const plan = await generateInput(compiler, {
       sources: [{ path: "arity.lawspec", content }],
       target,
     });
@@ -122,25 +128,29 @@ test("conjunction evaluates shared guards once and checks later conjuncts indepe
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   const source = `unit compound
+
 predicate :: Int32 -> Bool
 operation :: Int32 -> Int32 -> Int32
-law \`shared guard\` is definition is
- \`for all\` (x :: Int32) . predicate x implies (operation 0 x = x and operation x 0 = x)
-end example \`right side matters\` is x = 3 expect x = 3 end end`;
+law "|shared guard| is definition :
+ for all (x :: Int32) => predicate x implies operation 0 x = x and operation x 0 = x end for all
+end definition example "|right side matters| : x = 3 expect x = 3 end example end law
+
+end unit
+`;
   const run = () =>
     exec(
       process.execPath,
       [
         "--test",
         "--test-name-pattern",
-        "example: right side matters",
+        "example:.*right side matters",
         "test/compound.lawspec.test.mjs",
       ],
       { cwd: root, env },
     );
   const good = `let calls=0; export function predicate(x){calls++;return true;} export function operation(x,y){return x+y;} process.on('exit',()=>console.log('GUARDS='+calls));`;
   async function generate(content) {
-    const r = await legacyGeneration(compiler, {
+    const r = await generateInput(compiler, {
       sources: [{ path: "compound.lawspec", content }],
       target: "javascript",
     });
@@ -179,7 +189,7 @@ end example \`right side matters\` is x = 3 expect x = 3 end end`;
     // Parentheses restrict the guard to the first conjunct; the second still runs.
     await generate(
       source.replace(
-        "predicate x implies (operation 0 x = x and operation x 0 = x)",
+        "predicate x implies operation 0 x = x and operation x 0 = x",
         "(predicate x implies operation 0 x = x) and operation x 0 = x",
       ),
     );

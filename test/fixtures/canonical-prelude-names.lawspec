@@ -26,31 +26,31 @@ law collectionNames is
     member true #S{false, true} and
     any affirmative (queueOf [false, true]) and
     sortedSetMember false (sortedSetOf [true, false])
-  end
-end
+  end definition
+end law
 
 law literalPredicates is
   definition:
     any (exceeds 3) [1, 4] and
     not (any affirmative ([] of type List Bool)) and
     true `member #S{false, true}
-  end
-end
+  end definition
+end law
 
 law matcherNames is
   definition:
     containsAll [false, true] [true] and
     sameItems [false, true] [true, false] and
     contains "alphabet" "pha"
-  end
-end
+  end definition
+end law
 
 law durationNames is
   definition:
     toMicroseconds (seconds 2) = 2000000 and
     toMicroseconds (prelude . milliseconds 2) = 2000
-  end
-end
+  end definition
+end law
 
 law providerTypesRemainSeparate is
   definition:
@@ -59,15 +59,15 @@ law providerTypesRemainSeparate is
     OwnRetry = OwnRetry and
     prelude.sameItems [true, false] [false, true] and
     prelude.toMicroseconds (prelude.seconds 1) = 1000000
-  end
-end
+  end definition
+end law
 
 law exactConversions is
   definition:
     Int32 7 = 7 and
     prelude.Int32 7 = Int32 7
-  end
-end
+  end definition
+end law
 
 law railwayNames is
   definition:
@@ -85,18 +85,19 @@ law railwayNames is
     both (Right 1 of type Either Text Integer)
       (Right true of type Either Text Bool) = Right (Pair 1 true) and
     andThen accept accept 1 = Right 1
-  end
-end
+  end definition
+end law
 
 law independentExamples is
   definition:
-    for all (value of type Bool) => any affirmative [value] = value end
-  end
+    for all (value of type Bool) => any affirmative [value] = value end for all
+  end definition
   expect any affirmative [value] = expected
   expect length [false, value] = count
   expect toMicroseconds (seconds 2) = micros
   in table (value, expected, count, micros):
     row false, false, 2, 2000000
     row true, true, 2, 2000000
-  end
-end
+  end table
+end law
+end unit

@@ -1,6 +1,7 @@
 -- | Railway combinators over Either.
 module RailwaySpec (test_railwayCombinatorsComposeResultsAsDocumented) where
 
+import FixtureSource (extendUnit)
 import Data.Either (isRight)
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -9,27 +10,29 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 
 source :: [String] -> Source
-source = Source "railway.lawspec" . unlines . (header ++)
+source body = Source "railway.lawspec" (extendUnit (unlines header) (unlines body))
   where
     header =
-      [ "unit example.railway"
-      , "type Problem is | TooSmall | TooLarge end"
-      , "definition positive (x :: BigInt) :: Either Problem BigInt is prelude.select (x > 0) (Right x) (Left TooSmall) end"
-      , "definition small (x :: BigInt) :: Either Problem BigInt is prelude.select (x < 100) (Right x) (Left TooLarge) end"
-      , "definition double (x :: BigInt) :: BigInt is x + x end"
-      , "definition retry (p :: Problem) :: Either Problem BigInt is Right 1 end"
-      , "definition describe (p :: Problem) :: Text is match p with | TooSmall -> \"small\" | TooLarge -> \"large\" end end"
-      , "definition even (x :: BigInt) :: Bool is prelude.rem x 2 == 0 end" ]
+      [ "unit example.railway\n\n\n"
+      , ""
+      , "type Problem is one of | TooSmall | TooLarge end type\n"
+      , "function positive (x :: Integer) -> Either Problem Integer is prelude.select (x > 0) (Right x) (Left TooSmall) end function\n"
+      , "function small (x :: Integer) -> Either Problem Integer is prelude.select (x < 100) (Right x) (Left TooLarge) end function\n"
+      , "function double (x :: Integer) -> Integer is x + x end function\n"
+      , "function retry (p :: Problem) -> Either Problem Integer is Right 1 end function\n"
+      , "function describe (p :: Problem) -> Text is first matching case of p : when TooSmall then \"small\" when TooLarge then \"large\" end case end function\n"
+      , "function even (x :: Integer) -> Bool is prelude.rem x 2 = 0 end function\n"
+      , "\nend unit" ]
 
 -- | A law the compiler evaluates for both values of an unused input.
 holds :: String -> String -> Expectation
 holds left right = do
-  let law = "law `l` is definition is `for all` (b :: Bool) . " ++ left ++ " = " ++ right ++ " end end"
+  let law = "law \"|l| is definition: for all (b :: Bool) => " ++ left ++ " = " ++ right ++ " end for all end definition end law\n"
   (compileCore 64 defaultGeneration [source [law]] >>= dischargeEvidence) `shouldSatisfy` isRight
 
 refuted :: String -> String -> Expectation
 refuted left right = do
-  let law = "law `l` is definition is `for all` (b :: Bool) . " ++ left ++ " = " ++ right ++ " end end"
+  let law = "law \"|l| is definition: for all (b :: Bool) => " ++ left ++ " = " ++ right ++ " end for all end definition end law\n"
   case compileCore 64 defaultGeneration [source [law]] >>= dischargeEvidence of
     Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "refuted"
     Right _ -> expectationFailure "expected the law to be refuted"
@@ -48,8 +51,8 @@ test_railwayCombinatorsComposeResultsAsDocumented = describe "railway combinator
     holds "(5 |> double)" "double 5"
   it "recovers and falls back" $ do
     holds "(positive 5 <|> retry)" "prelude.orElse (positive 5) retry"
-    holds "(positive (0 - 1) ?? (7 :: BigInt))" "7"
-    holds "prelude.fromEither (7 :: BigInt) (positive 5)" "5"
+    holds "(positive (0 - 1) ?? (7 :: Integer))" "7"
+    holds "prelude.fromEither (7 :: Integer) (positive 5)" "5"
     holds "prelude.isLeft (positive 5)" "!(prelude.isRight (positive 5))"
   it "ensures a predicate, failing with the given error" $ do
     holds "prelude.ensure even TooLarge (positive 4)" "positive 4"

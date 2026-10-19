@@ -1,4 +1,4 @@
-expect: Logs: an unknown log refuses records [native]
+expect: Logs: an unknown log refuses records| [native]
 @@ lib/example_composition.ex
 <<<<<<<
           [] -> :lawspec_beam_effects.fail(%LawSpec.Data.ProblemUnknownLog{})

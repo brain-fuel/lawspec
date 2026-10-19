@@ -145,7 +145,7 @@
       }
     }
   ],
-  "languageProfile": "1.0-rc.1",
+  "languageProfile": "1.0-rc.2",
   "verification": {
     "layers": [
       "proof",

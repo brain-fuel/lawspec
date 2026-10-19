@@ -2,7 +2,7 @@ unit nand2tetris.chap06
 
 assemble :: Text -> List Text
 
-refinement Address is (value :: UInt16 where value <= 32767) end
+refinement Address is (value :: UInt16 where value <= 32767) end refinement
 
 type Comp is one of
   | CZero
@@ -225,7 +225,7 @@ refinement UserSymbol is
   name != "R13" &&
   name != "R14" &&
   name != "R15")
-end
+end refinement
 
 type Line is one of
   | Literal  of type Address
@@ -420,59 +420,59 @@ end function
 law "|A instructions encode every fifteen bit address| is
   description:
     "Every address from zero through 32767 produces its exact sixteen-bit A word."
-  end
+  end description
 
   definition :
     for all (address :: Address) =>
       assemble ("@" ++ prelude.textOf address) = [binary16 (prelude.BigUInt
-      (address))] end
-  end
+      (address))] end for all
+  end definition
   expect assemble ("@" ++ prelude.textOf address) = expected
   in table (address, expected) :
     row 0, ["0000000000000000"]
     row 1, ["0000000000000001"]
     row 32767, ["0111111111111111"]
-  end
-end
+  end table
+end law
 
 law "|numeric A operands are decimal even with leading zeroes| is
   description:
     "Leading zeroes do not change a numeric address or select octal notation."
-  end
+  end description
 
   definition :
     for all (address :: Address) =>
       assemble ("@000" ++ prelude.textOf address ++ "\n") = [binary16
-      (prelude.BigUInt (address))] end
-  end
+      (prelude.BigUInt (address))] end for all
+  end definition
   example "|eight is not octal| :
     address = 8
     expect assemble ("@000" ++ prelude.textOf address ++ "\n") =
     ["0000000000001000"]
-  end
-end
+  end example
+end law
 
 law "|all C instruction fields occupy exactly their specified bits| is
   description:
     "Computation, destination and jump fields determine the complete C word."
-  end
+  end description
 
   definition :
     for all (comp :: Comp) (dest :: Dest) (jump :: Jump) =>
       assemble (renderLine (Compute record{ comp = comp , dest = dest , jump =
-        jump})) = [computeWord comp dest jump] end
-  end
-end
+        jump})) = [computeWord comp dest jump] end for all
+  end definition
+end law
 
 law "|computation table matches the published machine language| is
   description:
     "Every computation mnemonic uses the bit pattern specified by the course."
-  end
+  end description
 
   definition :
     for all (comp :: Comp) =>
-      assemble ("D=" ++ compText comp) = [computeWord comp ToD NoJump] end
-  end
+      assemble ("D=" ++ compText comp) = [computeWord comp ToD NoJump] end for all
+  end definition
   expect assemble ("D=" ++ compText comp) = expected
   in table (comp, expected) :
     row CZero, ["1110101010010000"]
@@ -503,19 +503,19 @@ law "|computation table matches the published machine language| is
     row CAndM, ["1111000000010000"]
     row COrA, ["1110010101010000"]
     row COrM, ["1111010101010000"]
-  end
-end
+  end table
+end law
 
 law "|destination table matches the published machine language| is
   description:
     "Each destination selects exactly the registers that receive the result."
-  end
+  end description
 
   definition :
     for all (dest :: Dest) =>
       assemble (renderLine (Compute record{ comp = CD , dest = dest , jump =
-        NoJump})) = [computeWord CD dest NoJump] end
-  end
+        NoJump})) = [computeWord CD dest NoJump] end for all
+  end definition
   expect assemble (renderLine (Compute record{ comp = CD , dest = dest , jump =
     NoJump})) = expected
   in table (dest, expected) :
@@ -527,19 +527,19 @@ law "|destination table matches the published machine language| is
     row ToAM, ["1110001100101000"]
     row ToAD, ["1110001100110000"]
     row ToAMD, ["1110001100111000"]
-  end
-end
+  end table
+end law
 
 law "|jump table matches the published machine language| is
   description:
     "Each jump mnemonic selects its specified branch condition."
-  end
+  end description
 
   definition :
     for all (jump :: Jump) =>
       assemble (renderLine (Compute record{ comp = CZero , dest = NoDest , jump
-        = jump})) = [computeWord CZero NoDest jump] end
-  end
+        = jump})) = [computeWord CZero NoDest jump] end for all
+  end definition
   expect assemble (renderLine (Compute record{ comp = CZero , dest = NoDest ,
     jump = jump})) = expected
   in table (jump, expected) :
@@ -551,19 +551,19 @@ law "|jump table matches the published machine language| is
     row JNe, ["1110101010000101"]
     row JLe, ["1110101010000110"]
     row JAlways, ["1110101010000111"]
-  end
-end
+  end table
+end law
 
 law "|predefined symbols keep their specified addresses| is
   description:
     "Registers and the predefined memory names keep their fixed addresses."
-  end
+  end description
 
   definition :
     for all (symbol :: Predefined) =>
       assemble ("@" ++ predefinedText symbol) = [binary16 (predefinedAddress
-      symbol)] end
-  end
+      symbol)] end for all
+  end definition
   expect assemble ("@" ++ predefinedText symbol) = expected
   in table (symbol, expected) :
     row StackPointer, ["0000000000000000"]
@@ -575,19 +575,19 @@ law "|predefined symbols keep their specified addresses| is
     row KeyboardBase, ["0110000000000000"]
     row Register 0, ["0000000000000000"]
     row Register 15, ["0000000000001111"]
-  end
-end
+  end table
+end law
 
 law "|a fresh symbol receives RAM sixteen and repeated uses retain it| is
   description:
     "A new variable starts at RAM address sixteen and keeps that address."
-  end
+  end description
 
   definition :
     for all (name :: UserSymbol) =>
       assemble ("@" ++ name ++ "\n@" ++ name ++ "\n") =
-      ["0000000000010000", "0000000000010000"] end
-  end
+      ["0000000000010000", "0000000000010000"] end for all
+  end definition
   expect assemble ("@" ++ name ++ "\n@" ++ name ++ "\n") =
   ["0000000000010000", "0000000000010000"]
   in table (name) :
@@ -600,13 +600,13 @@ law "|a fresh symbol receives RAM sixteen and repeated uses retain it| is
     row "R00"
     row "r0"
     row "screen"
-  end
-end
+  end table
+end law
 
 law "|distinct variables are allocated in first use order| is
   description:
     "Variable allocation follows first occurrence rather than alphabetical order."
-  end
+  end description
 
   definition :
     for all (first :: UserSymbol) (second :: UserSymbol where second != first)
@@ -614,55 +614,55 @@ law "|distinct variables are allocated in first use order| is
       assemble ("@" ++ second ++ "\n@" ++ first ++ "\n@" ++ second ++ "\n@" ++
       first) =
       ["0000000000010000", "0000000000010001", "0000000000010000",
-      "0000000000010001"] end
-  end
-end
+      "0000000000010001"] end for all
+  end definition
+end law
 
 law "|every valid generated program agrees with two pass resolution| is
   description:
     "Valid structured programs agree with label discovery followed by resolution."
-  end
+  end description
 
   definition :
     for all (program :: List Line where validProgram program) =>
-      assemble ("|assembly source| program) = "|reference assembly| program end
-  end
-end
+      assemble ("|assembly source| program) = "|reference assembly| program end for all
+  end definition
+end law
 
 law "|comments blank lines and supported line endings preserve the program| is
   description:
     "Comments, blank lines, spacing and supported line endings preserve output."
-  end
+  end description
 
   definition :
     for all (program :: List Line where validProgram program) (layout :: Layout)
       =>
-      assemble (layoutSource program layout) = "|reference assembly| program end
-  end
-end
+      assemble (layoutSource program layout) = "|reference assembly| program end for all
+  end definition
+end law
 
 law "|output contains exactly sixteen binary digits per instruction| is
   description:
     "Each emitted instruction is one physical line of sixteen binary digits."
-  end
+  end description
 
   definition :
     for all (program :: List Line where validProgram program) =>
-      binaryLines (assemble ("|assembly source| program)) = true end
-  end
-end
+      binaryLines (assemble ("|assembly source| program)) = true end for all
+  end definition
+end law
 
 law "|labels never emit instructions| is
   description:
     "Labels identify instruction positions and contribute no output words."
-  end
+  end description
 
   definition :
     for all (program :: List Line where validProgram program) =>
       prelude.length (assemble ("|assembly source| program)) = instructionCount
-      program end
-  end
-end
+      program end for all
+  end definition
+end law
 
 type AssemblyRuns is a record{   firstOutput :: List Text secondOutput :: List
   Text repeatedFirstOutput :: List
@@ -671,7 +671,7 @@ type AssemblyRuns is a record{   firstOutput :: List Text secondOutput :: List
 law "|assemblies have independent symbol tables and allocation counters| is
   description:
     "Each assembly call starts afresh, including a repeated call of the first input."
-  end
+  end description
 
   definition :
     for all (first :: List Line where validProgram first)
@@ -682,14 +682,14 @@ law "|assemblies have independent symbol tables and allocation counters| is
         ("|assembly source| first))} =
       AssemblyRuns record{ firstOutput = ("|reference assembly| first) ,
         secondOutput = ("|reference assembly|
-        second) , repeatedFirstOutput = ("|reference assembly| first)} end
-  end
-end
+        second) , repeatedFirstOutput = ("|reference assembly| first)} end for all
+  end definition
+end law
 
 law "|allocation restarts even when symbols recur across inputs| is
   description:
     "Reusing symbol spellings across inputs does not carry allocation state across calls."
-  end
+  end description
 
   definition :
     for all (first :: UserSymbol) (second :: UserSymbol where second != first)
@@ -702,58 +702,58 @@ law "|allocation restarts even when symbols recur across inputs| is
       AssemblyRuns record{ firstOutput = ["0000000000010000",
         "0000000000010001"]
         , secondOutput = ["0000000000010000", "0000000000010001"]
-        , repeatedFirstOutput = ["0000000000010000", "0000000000010001"]} end
-  end
-end
+        , repeatedFirstOutput = ["0000000000010000", "0000000000010001"]} end let end let end for all
+  end definition
+end law
 
 law "|empty comments and label only sources emit no words| is
   description:
     "Empty input, comments and label-only input all produce an empty output file."
-  end
+  end description
 
   definition :
     assemble "" = [] and
     assemble " \t\r\n// @ghost (FAKE) D=M\r\n\n" = [] and
     assemble "(EMPTY)\n// no instructions\n" = []
-  end
-end
+  end definition
+end law
 
 law "|symbols are case sensitive| is
   description:
     "Different letter case denotes different symbols."
-  end
+  end description
 
   definition :
     assemble "@foo\n@Foo\n@foo\n@Foo\n" =
     ["0000000000010000", "0000000000010001", "0000000000010000",
     "0000000000010001"]
-  end
-end
+  end definition
+end law
 
 law
   "|forward and backward labels take ROM addresses and do not consume variables|
   is
   description:
     "Labels use instruction addresses and never occupy variable slots."
-  end
+  end description
 
   definition :
     assemble "@END\n@x\n(START)\n@START\n@x\n(END)\n@END\n@next\n" =
     ["0000000000000100", "0000000000010000", "0000000000000010",
     "0000000000010000", "0000000000000100", "0000000000010001"]
-  end
-end
+  end definition
+end law
 
 law "|adjacent labels share the next instruction address| is
   description:
     "Adjacent labels denote the same next instruction."
-  end
+  end description
 
   definition :
     assemble "@FIRST\n(FIRST)\n(SECOND)\n@SECOND\n@FIRST\n" =
     ["0000000000000001", "0000000000000001", "0000000000000001"]
-  end
-end
+  end definition
+end law
 
 function computationLines (computations :: List Comp) -> List Line is
   first matching case of computations :
@@ -766,7 +766,7 @@ end function
 law "|label addresses count A and C instructions equally| is
   description:
     "Both A words and C words advance the label instruction address by one."
-  end
+  end description
 
   definition :
     for all (computations :: List Comp where prelude.length computations <=
@@ -778,43 +778,44 @@ law "|label addresses count A and C instructions equally| is
       in
       assemble ("|assembly source| program) = [address] ++ "|reference assembly|
       middle ++
-      [address] end
-  end
-end
+      [address] end let end let end let end for all
+  end definition
+end law
 
 law "|predefined addresses do not advance the variable allocator| is
   description:
     "Predefined memory names never consume a new variable address."
-  end
+  end description
 
   definition :
     assemble "@R0\n@SP\n@SCREEN\n@KBD\n@z\n@a\n@z\n" =
     ["0000000000000000", "0000000000000000", "0100000000000000",
     "0110000000000000",
     "0000000000010000", "0000000000010001", "0000000000010000"]
-  end
-end
+  end definition
+end law
 
 law "|whitespace around instruction fields is ignored| is
   description:
     "Whitespace around destination, computation and jump fields is insignificant."
-  end
+  end description
 
   definition :
     assemble " \tD = M ; JGT // comment\r\n @ 21 \r\n ( LOOP ) \r\n @ LOOP \r\n"
     =
     ["1111110000010001", "0000000000010101", "0000000000000010"]
-  end
-end
+  end definition
+end law
 
 law "|Add assembles to the published six word program| is
   description:
     "The complete Add example produces the six words published by the course."
-  end
+  end description
 
   definition :
     assemble "@2\nD=A\n@3\nD=D+A\n@0\nM=D\n" =
     ["0000000000000010", "1110110000010000", "0000000000000011",
     "1110000010010000", "0000000000000000", "1110001100001000"]
-  end
-end
+  end definition
+end law
+end unit

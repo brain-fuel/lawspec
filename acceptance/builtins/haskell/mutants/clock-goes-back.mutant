@@ -1,4 +1,4 @@
-expect-any: time does not go back [native] | elapsed time is never negative
+expect-any: time does not go back| [native] | elapsed time is never negative
 @@ src/Example/Clocks.hs
 <<<<<<<
         IORef.modifyIORef' readings (+ 1)

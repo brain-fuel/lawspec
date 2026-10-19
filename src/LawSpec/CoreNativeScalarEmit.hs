@@ -486,7 +486,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , KotlinProperties.className = cls
       , KotlinProperties.machineBits = bits
       , KotlinProperties.awaitResult = awaitFor
-      , KotlinProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
+      , KotlinProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , KotlinProperties.nativeGenerators = nativeGenerators
       , KotlinProperties.nodeBudget = javaDataBudget
       , KotlinProperties.expression = ktRender
@@ -655,7 +655,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , HaskellProperties.hasDefinitions = not (null definitions)
       , HaskellProperties.hasWorkflows = any (("Workflows." `isPrefixOf`) . snd) definitions
       , HaskellProperties.awaitResult = awaitFor
-      , HaskellProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
+      , HaskellProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , HaskellProperties.usesCollections = hsCollections
       , HaskellProperties.nodeBudget = javaDataBudget
       , HaskellProperties.reference = java . HaskellData.haskellTypeReferenceDoc
@@ -723,7 +723,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       { GoProperties.packageName = last parts
       , GoProperties.schemaNeeded = goSchemaNeeded
       , GoProperties.awaitResult = awaitFor
-      , GoProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
+      , GoProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , GoProperties.nativeGenerators = nativeGenerators
       , GoProperties.nodeBudget = javaDataBudget
       , GoProperties.machineBits = bits
@@ -914,7 +914,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.schemaNeeded = javaSchemaNeeded
       , JavaProperties.nativeGenerators = nativeGenerators
       , JavaProperties.machineBits = bits
-      , JavaProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
+      , JavaProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , JavaProperties.nodeBudget = javaDataBudget
       , JavaProperties.awaitResult = awaitFor
       , JavaProperties.expression = javaRender

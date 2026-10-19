@@ -6,30 +6,31 @@ larger :: Int64 -> Int64 -> Int64
 law "|the order of the totals does not matter| is
   definition :
     apply law "|commutative| larger
-  end
-end
+  end definition
+end law
 
 law "|grouping does not matter| is
   definition :
     apply law "|associative| larger
-  end
-end
+  end definition
+end law
 
 law "|a total compared with itself is itself| is
   definition :
     apply law "|idempotent operation| larger
-  end
-end
+  end definition
+end law
 
 law "|the smallest total is neutral| is
   definition :
     apply law "|identity| larger (Int64.min)
-  end
-end
+  end definition
+end law
 
 law "|the larger total is at least each total| is
   definition :
     for all (a :: Int64) (b :: Int64) =>
-      larger a b >= a && larger a b >= b end
-  end
-end
+      larger a b >= a && larger a b >= b end for all
+  end definition
+end law
+end unit

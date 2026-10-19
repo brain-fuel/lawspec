@@ -106,9 +106,10 @@ function twice (x :: Int32) -> Integer is x + x end function
 
 law "|twice doubles| is
   definition :
-    for all (x :: Int32) => twice x = x * 2 end
-  end
-end
+    for all (x :: Int32) => twice x = x * 2 end for all
+  end definition
+end law
+end unit
 ```
 
 `twice doubles` is proved.
@@ -123,9 +124,9 @@ function twice (x :: Int8) -> Integer is x + x end function
 
 law "|always positive| is
   definition:
-    for all (x :: Int8) => twice x > 0 end
-  end
-end
+    for all (x :: Int8) => twice x > 0 end for all
+  end definition
+end law
 ```
 
 ```text

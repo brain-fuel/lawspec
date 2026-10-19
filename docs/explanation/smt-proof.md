@@ -31,7 +31,7 @@ import {proveWithZ3} from 'lawspec/proof';
 
 const compiler = await createCompiler();
 const result = await proveWithZ3(compiler, {
-  languageProfile: '1.0-rc.1',
+  languageProfile: '1.0-rc.2',
   verification: {layers: ['proof']},
   sources,
 }, {binary: '/path/to/z3', timeoutMs: 5000});
@@ -86,3 +86,8 @@ allows underspecified division by zero; LawSpec's exact division requires a
 nonzero denominator. The task must establish definedness as well as truth.
 Likewise, proving nonexistence requires ruling out every admitted candidate;
 an undefined candidate cannot simply count as false.
+
+The mandatory definition audit reduces variable aliases by capture-avoiding
+substitution, following [Lean's zeta reduction of local definitions](https://lean-lang.org/doc/reference/latest/The--grind--tactic/Local-Definitions/).
+Both source and Core lowering share that reduction. Other strict bindings retain
+their evaluated prefix so an unused partial computation still fails validation.

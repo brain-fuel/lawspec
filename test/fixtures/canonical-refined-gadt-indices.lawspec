@@ -47,40 +47,40 @@ law "|positive readings have an exact reciprocal| is
   definition:
     for all (value of type UInt8 where value > 0) =>
       projectedReciprocal (Reading record{value = value}) must be 1 / value
-    end
-  end
+    end for all
+  end definition
 
   expect projectedReciprocal (Reading record{value = value}) = expected
   in table (value, expected):
     row 1, 1
     row 2, rational(1, 2)
     row 255, rational(1, 255)
-  end
-end
+  end table
+end law
 
 law "|matching and projection preserve the same stored restriction| is
   definition:
     for all (value of type UInt8 where value > 0) =>
       matchedReciprocal (Reading record{value = value}) must be
         projectedReciprocal (Reading record{value = value})
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|ordinary records preserve their positive field restriction| is
   definition:
     for all (value of type UInt8 where value > 0) =>
       plainReciprocal record{value = value} must be 1 / value
-    end
-  end
+    end for all
+  end definition
 
   expect plainReciprocal record{value = value} = expected
   in table (value, expected):
     row 1, 1
     row 2, rational(1, 2)
     row 255, rational(1, 255)
-  end
-end
+  end table
+end law
 
 law "|intervals have a strictly positive width| is
   definition:
@@ -89,8 +89,8 @@ law "|intervals have a strictly positive width| is
       (upper of type UInt8 where upper > lower and upper <= 4) =>
       intervalReciprocal (Interval record{upper = upper, lower = lower})
         must be 1 / (upper - lower)
-    end
-  end
+    end for all
+  end definition
 
   expect intervalReciprocal (Interval record{lower = lower, upper = upper})
     = expected
@@ -98,20 +98,21 @@ law "|intervals have a strictly positive width| is
     row 0, 1, 1
     row 0, 4, rational(1, 4)
     row 3, 4, 1
-  end
-end
+  end table
+end law
 
 law "|nested positive whole numbers retain their domain| is
   definition:
     for all (value of type Nat where value <= 255) =>
       nestedReciprocal record{inner = record{value = value}} must be 1 / value
-    end
-  end
+    end for all
+  end definition
 
   expect nestedReciprocal record{inner = record{value = value}} = expected
   in table (value, expected):
     row 1, 1
     row 2, rational(1, 2)
     row 255, rational(1, 255)
-  end
-end
+  end table
+end law
+end unit

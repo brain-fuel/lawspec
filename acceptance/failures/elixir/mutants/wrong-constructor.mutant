@@ -3,5 +3,5 @@ expect: negative amounts are blocked
 <<<<<<<
 defp decide(n) when n < 0, do: %Data.DecisionBlock{}
 =======
-defp decide(n) when n < 0, do: %Data.DecisionDecline{reason: "negative"}
+defp decide(n) when n < 0, do: %Data.DecisionDecline{value: "negative"}
 >>>>>>>

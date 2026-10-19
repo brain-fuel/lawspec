@@ -4,30 +4,31 @@ unit example.keywords
 -- leading underscore: short is _short in Java, lambda is _lambda in Python,
 -- and class is _class wherever class is reserved. Other targets keep the name.
 
-definition short (x :: BigInt) :: Bool is x < 10 end
-definition double (x :: BigInt) :: BigInt is x + x end
-definition lambda (x :: BigInt) :: BigInt is x + 1 end
-definition fun (x :: BigInt) :: BigInt is x + 2 end
-definition loop (x :: BigInt) :: BigInt is x + 3 end
-definition deriving (x :: BigInt) :: BigInt is x + 4 end
-definition delete (x :: BigInt) :: BigInt is x + 5 end
+function short (x :: Integer) -> Bool is x < 10 end function
+function double (x :: Integer) -> Integer is x + x end function
+function lambda (x :: Integer) -> Integer is x + 1 end function
+function fun (x :: Integer) -> Integer is x + 2 end function
+function loop (x :: Integer) -> Integer is x + 3 end function
+function deriving (x :: Integer) -> Integer is x + 4 end function
+function delete (x :: Integer) -> Integer is x + 5 end function
 
 -- An adapter, written by hand on each target as _class or class.
-class :: BigInt -> BigInt
+class :: Integer -> Integer
 
-law `keyword names are callable` is
-  definition is
-    `for all` (x :: BigInt) .
-      double x - x + lambda x + fun x + loop x + deriving x + delete x = 6 * x + 15
-  end
-  example `short` is
+law "|keyword names are callable| is
+  definition :
+    for all (x :: Integer) =>
+      double x - x + lambda x + fun x + loop x + deriving x + delete x = 6 * x + 15 end for all
+  end definition
+  example "|short| :
     x = 3
     expect short x = true
-  end
-end
+  end example
+end law
 
-law `the class adapter doubles` is
-  definition is
-    `for all` (x :: BigInt) . class x = double x
-  end
-end
+law "|the class adapter doubles| is
+  definition :
+    for all (x :: Integer) => class x = double x end for all
+  end definition
+end law
+end unit

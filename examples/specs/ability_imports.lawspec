@@ -9,99 +9,100 @@ import example.abilities as payments
 -- and goes on with `;`.
 ability Log is
   note :: Text -> Unit
-end
+end ability
 
 -- A log that keeps what it is told.
 handler keptLog for Log with state lines :: List Text start [] is
-  note message is ~lines := Cons message lines; unitValue end
-end
+  operation note message is ~lines := Cons message lines; unitValue end operation
+end handler
 
 -- A store of one value, at any type. This unit uses it at two.
 ability Store (a :: Type) is
   load :: a
   save :: a -> Unit
-end
+end ability
 
 handler countStore for Store Int32 with state count :: Int32 start 0 is
-  load is count end
-  save value is ~count := value; unitValue end
-end
+  operation load is count end operation
+  operation save value is ~count := value; unitValue end operation
+end handler
 
 handler nameStore for Store Text with state name :: Text start "" is
-  load is name end
-  save value is ~name := value; unitValue end
-end
+  operation load is name end operation
+  operation save value is ~name := value; unitValue end operation
+end handler
 
 -- A meter whose readings are never negative: every handler owes that.
 ability Meter is
   reading :: (r :: Int32 where r >= 0)
-end
+end ability
 
 handler fixedMeter for Meter is
-  reading is 7 end
-end
+  operation reading is 7 end operation
+end handler
 
 -- A handler whose clauses use another ability: it notes each payment.
 handler notingGateway for Gateway is
-  authorize cents is note "authorize"; Approved cents end
-  capture cents is note "capture"; Receipt cents end
-  fee is 0 end
-end
+  operation authorize cents is note "authorize"; Approved cents end operation
+  operation capture cents is note "capture"; Receipt cents end operation
+  operation fee is 0 end operation
+end handler
 
 -- Effects run in order: `a; b` runs a, then b; `let x = e in body` runs e
 -- once and names its value.
-definition buy (cents :: Int32) :: Bool uses Gateway, Log is
+procedure buy (cents :: Int32) -> Bool uses Gateway, Log is
   note "buying";
   let approved = payments.checkout cents in
   note "bought";
-  approved
-end
+  approved end let
+end procedure
 
 -- handle ... with h end runs its body with h answering h's ability, so the
 -- definition does not use that ability itself.
-definition trial (cents :: Int32) :: Bool is
-  handle payments.checkout cents with fakeGateway end
-end
+function trial (cents :: Int32) -> Bool is
+  handle payments.checkout cents with fakeGateway end handle
+end function
 
-definition remember (count :: Int32) :: Int32 uses Store Int32 is
+procedure remember (count :: Int32) -> Int32 uses Store Int32 is
   save count; load
-end
+end procedure
 
-definition rename (name :: Text) :: Text uses Store Text is
+procedure rename (name :: Text) -> Text uses Store Text is
   save name; load
-end
+end procedure
 
 -- A native adapter that may fail. Its native code raises the failure
 -- through the runtime's Fail.
 refund :: Int32 -> Int32 uses Gateway fails with payments.PaymentError
 
-law `trial approves small amounts` is
-  definition is
-    `for all` (cents :: Int32 where cents >= 0 && cents <= 10000) . trial cents = true
-  end
-end
+law "|trial approves small amounts| is
+  definition :
+    for all (cents :: Int32 where cents >= 0 && cents <= 10000) => trial cents = true end for all
+  end definition
+end law
 
-law `buying with a noting gateway approves small amounts` using notingGateway, keptLog is
-  definition is
-    `for all` (cents :: Int32 where cents >= 0 && cents <= 10000) . buy cents = true
-  end
-end
+law "|buying with a noting gateway approves small amounts| using notingGateway, keptLog is
+  definition :
+    for all (cents :: Int32 where cents >= 0 && cents <= 10000) => buy cents = true end for all
+  end definition
+end law
 
-law `a stored count comes back` is
-  definition is `for all` (count :: Int32) . remember count = count end
-end
+law "|a stored count comes back| is
+  definition : for all (count :: Int32) => remember count = count end for all end definition
+end law
 
-law `a stored name comes back` is
-  definition is `for all` (name :: Text) . rename name = name end
-end
+law "|a stored name comes back| is
+  definition : for all (name :: Text) => rename name = name end for all end definition
+end law
 
-law `a reading is small` using fixedMeter is
-  definition is reading <= 100 end
-end
+law "|a reading is small| using fixedMeter is
+  definition : reading <= 100 end definition
+end law
 
-law `refunds of large amounts fail` is
-  definition is
-    `for all` (cents :: Int32 where cents > 100000) .
-      prelude.attempt (refund cents) = Left payments.TooLarge
-  end
-end
+law "|refunds of large amounts fail| is
+  definition :
+    for all (cents :: Int32 where cents > 100000) =>
+      prelude.attempt (refund cents) = Left payments.TooLarge end for all
+  end definition
+end law
+end unit

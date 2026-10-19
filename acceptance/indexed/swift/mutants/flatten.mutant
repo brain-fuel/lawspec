@@ -1,7 +1,7 @@
 @@ src/Example/Indexed.swift
 <<<<<<<
-            let rest = Vec<Int8>.vCons(head: value, tail: flatten(right))
+            let rest = Vec<Int8>.vCons(value: .record(head: value, tail: flatten(right)))
 =======
             _ = right
-            let rest = Vec<Int8>.vCons(head: value, tail: .vNil)
+            let rest = Vec<Int8>.vCons(value: .record(head: value, tail: .vNil))
 >>>>>>>

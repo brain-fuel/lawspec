@@ -1,6 +1,6 @@
 @@ lib/example_arithmetic.ex
 <<<<<<<
-%D.Halves{front: xs, back: xs}
+%D.Halves{value: %D.Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d{front: xs, back: xs}}
 =======
-%D.Halves{front: xs, back: %D.RowCell{head: 0, tail: xs}}
+%D.Halves{value: %D.Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d{front: xs, back: %D.RowCell{value: %D.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f{head: 0, tail: xs}}}}
 >>>>>>>

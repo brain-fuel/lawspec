@@ -28,29 +28,30 @@ function boxedPayload (box of type Box a) -> record{value of type a} is
 law pictureWidth is definition:
     width (Picture record{fileName = "photo", dimensions = record{height = 3,
         width = 2}}) must be 2
-  end end
+  end definition end law
 law downloadLabel is definition: label (Download record{document = "paper"})
-    must be "paper" end end
+    must be "paper" end definition end law
 law wrappedText is definition: extract (Envelope record{payload = record{value =
-        "note", copy = "other"}}) must be "note" end end
+        "note", copy = "other"}}) must be "note" end definition end law
 law wrappedBoolean is definition: extract (Envelope record{payload =
-      record{value = true, copy = false}}) must be true end end
+      record{value = true, copy = false}}) must be true end definition end law
 law wholeRecord is definition: unpack (Envelope record{payload = record{value =
-        true, copy = false}}) = record{copy = false, value = true} end end
+        true, copy = false}}) = record{copy = false, value = true} end definition end law
 law boxedResult is definition: boxedPayload (Box record{value = true}) =
-    record{value = true} end end
+    record{value = true} end definition end law
 law boxedRows is definition: for all (box of type Box Text) => boxedPayload box
-      = boxedPayload box end end
+      = boxedPayload box end for all end definition
   expect (boxedPayload box).value = expected in table (box, expected):
     row Box record{value = "note"}, "note"
     row Box record{value = "paper"}, "paper"
-  end end
+  end table end law
 law labels is
   definition: for all (delivery of type Delivery) => label delivery = label
-      delivery end end
+      delivery end for all end definition
   expect label delivery = expected
   in table (delivery, expected):
     row Download record{document = "paper"}, "paper"
     row Unavailable, "unavailable"
-  end
-end
+  end table
+end law
+end unit

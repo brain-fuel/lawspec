@@ -1,4 +1,4 @@
-expect: a changed message fails to verify [native]
+expect: a changed message fails to verify| [native]
 @@ src/keys.rs
 <<<<<<<
     fn verify(&self, value0: VerifyingKey, value1: Vec<u8>, value2: SignatureBytes) -> bool {

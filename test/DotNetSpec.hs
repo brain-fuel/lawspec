@@ -1,4 +1,3 @@
--- Historical native representations enter through migrationBaseline from 0.24.
 -- | F# and C# generation: the F# project and its runtime, C# over a generated
 -- F# model, native bindings, and the names lawspec test selects tests by.
 -- ref:DEC-fsharp-runtime-from-scratch ref:DEC-csharp-over-fsharp ref:DEC-tests-cite-requirements
@@ -33,10 +32,12 @@ test_dotnetTargetsShareOneRuntime :: Spec
 test_dotnetTargetsShareOneRuntime = describe ".NET generation" $ do
   let sample = unlines
         [ "unit example.sample"
-        , "type Pair is Pair left :: Int32 right :: Text end"
+         ++ "\n", ""
+        , "type Pair is a record{  left :: Int32 right :: Text} end type\n"
         , "swap :: Pair -> Pair"
         , "finish :: Unit -> Unit"
-        , "law `swap twice` is definition is `for all` (p :: Pair) . swap (swap p) = p end end" ]
+        , "law \"|swap twice| is definition : for all (p :: Pair) => swap (swap p) = p end for all end definition end law"
+        , "\nend unit" ]
   it "writes an F# project whose props list the sources in compilation order" $ do
     let result = generated "fsharp" False sample
     mapM_ (\path -> paths result `shouldContain` [path]) ["src/LawSpec.Sources.props", "tests/LawSpec.Tests.props", "src/Example/Sample.fs",
@@ -76,10 +77,9 @@ test_dotnetTargetsShareOneRuntime = describe ".NET generation" $ do
           _ -> []
         content file = case field "content" file of Just (String value) -> T.unpack value; _ -> ""
         request target source native = either error id (eitherDecode (dispatch (encode (object
-          ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
-            "from" .= ("0.24" :: String), "includeGeneration" .= True,
+          ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
             "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])],
-            "method" .= ("migrationBaseline" :: String), "target" .= (target :: String),
+            "method" .= ("planGeneration" :: String), "target" .= (target :: String),
            "minify" .= False, "sources" .= [Source "binding" source], "nativeBindings" .= (native :: Value)]))))
     it "binds F# types, functions, handlers and exceptions" $ do
       source <- readFile "examples/specs/handler_bindings.lawspec"

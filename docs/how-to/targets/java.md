@@ -102,6 +102,7 @@ function size (xs :: List Int8) -> Integer is
     when Cons head tail then 1 + size tail
   end case
 end function
+end unit
 ```
 
 call:

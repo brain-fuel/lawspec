@@ -7,6 +7,10 @@
   ],
   "patterns": [
     {
+      "match": "\\bend[ \\t]+(?:benchmark|bind|strategy|for[ \\t]+laws|for[ \\t]+law|harness|reset|release|acquire|resource|handle|operation|handlers|handler|laws|ability|supervisor|actor|model|or[ \\t]+else|par|scenario|protocol|all|workflow|mapping|let|if|case|given|exists|for[ \\t]+all|table|example|references|rationale|description|definition|law|wrapper|refinement|type|procedure|function|unit)\\b",
+      "name": "keyword.control.block.end.lawspec"
+    },
+    {
       "name": "comment.line.double-dash.lawspec",
       "begin": "--",
       "end": "$",
@@ -88,7 +92,7 @@
       }
     },
     {
-      "match": "\\b(function|procedure|mapping|apply|given|when|then|otherwise|if|else|not|or|must|be|such|that|of|record|one|ref)\\b",
+      "match": "\\b(function|procedure|operation|mapping|apply|given|when|then|otherwise|if|else|not|or|must|be|such|that|of|record|one|ref)\\b",
       "name": "keyword.control.lawspec"
     },
     {

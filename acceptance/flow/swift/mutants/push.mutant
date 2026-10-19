@@ -1,6 +1,6 @@
 @@ src/Example/Flow.swift
 <<<<<<<
-    static func push(_ value: Int8, _ stack: Stack) -> PushFlow { PushFlow(state: .push(top: value, rest: stack)) }
+    static func push(_ value: Int8, _ stack: Stack) -> PushFlow { PushFlow(state: .push(value: .record(rest: stack, top: value))) }
 =======
     static func push(_ value: Int8, _ stack: Stack) -> PushFlow { PushFlow(state: stack) }
 >>>>>>>

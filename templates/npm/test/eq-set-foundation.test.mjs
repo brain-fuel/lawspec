@@ -1,16 +1,16 @@
-import {legacyCheck} from './legacy-input.mjs';
+import {checkInput} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
 
-test('WASM checks the internal equality-based set foundation through the explicit migration interface', async () => {
+test('WASM checks the equality-based set foundation through the public Set interface', async () => {
   const compiler = await createCompiler();
   const content = await readFile(new URL('../../test/fixtures/eq-set-foundation.lawspec', import.meta.url), 'utf8');
   for (const machineBits of [32, 64]) {
     const request = {machineBits,
       sources: [{path: 'eq-set-foundation.lawspec', content}]};
-    const result = await legacyCheck(compiler, request);
+    const result = await checkInput(compiler, request);
     assert.deepEqual(result.diagnostics, []);
     assert.equal(result.laws.length, 13);
     const evidence = result.evidence.filter(item => item.stage === 'law');
@@ -23,7 +23,7 @@ test('WASM checks the internal equality-based set foundation through the explici
       const mutant = await readFile(new URL(`../../acceptance/rc1-eq-set-foundation/mutants/${name}.mutant`, import.meta.url), 'utf8');
       const [, search, replacement] = mutant.match(/<<<<<<<\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>>/);
       assert.ok(content.includes(search), name);
-      const rejected = await legacyCheck(compiler, {...request, sources: [{...request.sources[0], content: content.replace(search, replacement)}]});
+      const rejected = await checkInput(compiler, {...request, sources: [{...request.sources[0], content: content.replace(search, replacement)}]});
       assert.ok(rejected.diagnostics.some(item => item.code === 'refuted'), name);
       for (const expected of [...mutant.matchAll(/^expect: (.*)$/gm)].map(match => match[1])) {
         assert.ok(JSON.stringify(rejected.diagnostics).includes(expected), `${name}: ${expected}`);

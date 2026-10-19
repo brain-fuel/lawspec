@@ -55,22 +55,22 @@ law "|preferences retain their labels and inverse| is
         destinationLabel (Selected preference.enabled)
       and preferenceLabelInverse
         (preferenceLabel preference) must be Just preference
-    end
-  end
+    end for all
+  end definition
 
   expect preferenceLabel preference = expected
   in table (preference, expected):
     row Preference record{enabled = false}, "disabled"
     row Preference record{enabled = true}, "enabled"
-  end
-end
+  end table
+end law
 
 law "|missing destinations remain distinguishable| is
   definition:
     destinationLabelInverse "missing" must be Just Missing
     and destinationLabelInverse "unknown" must be Nothing
-  end
-end
+  end definition
+end law
 
 law "|histories use an explicit fallback| is
   definition:
@@ -81,8 +81,8 @@ law "|histories use an explicit fallback| is
           when Cons true Nil then "enabled"
           otherwise "other"
         end case
-    end
-  end
+    end for all
+  end definition
 
   expect historyLabel history = expected
   in table (history, expected):
@@ -90,8 +90,8 @@ law "|histories use an explicit fallback| is
     row [true], "enabled"
     row [false], "other"
     row [true, false], "other"
-  end
-end
+  end table
+end law
 
 law "|choices disregard input iteration order| is
   definition:
@@ -103,8 +103,8 @@ law "|choices disregard input iteration order| is
           if true in choices then "enabled" else "empty" end if
         end if
       and choicesLabelInverse "both" must be Just #S{false, true}
-    end
-  end
+    end for all
+  end definition
 
   expect choicesLabel choices = expected
   in table (choices, expected):
@@ -112,8 +112,8 @@ law "|choices disregard input iteration order| is
     row #S{false}, "disabled"
     row #S{true}, "enabled"
     row #S{true, false}, "both"
-  end
-end
+  end table
+end law
 
 law "|shared labels retain every matching preference| is
   definition:
@@ -121,19 +121,20 @@ law "|shared labels retain every matching preference| is
       [record{enabled = false}, record{enabled = true}]
     and sharedLabelPreimages "unknown" must be
       ([] of type List record{enabled of type Bool})
-  end
-end
+  end definition
+end law
 
 law "|enabled label helpers retain the input restriction| is
   definition:
     enabledLabelPreimages "enabled" must be [true]
     and enabledLabelInverse "enabled" must be Just true
-  end
-end
+  end definition
+end law
 
 law "|equal signed zeros retain both preimages| is
   definition:
     signedZeroPreimages record{value = float64Bits("0000000000000000")}
       must be [false, true]
-  end
-end
+  end definition
+end law
+end unit

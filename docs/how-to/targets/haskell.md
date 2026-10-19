@@ -31,6 +31,10 @@ In a directory without build files, `init` creates:
   hspec-hedgehog, containers and mtl, with the `hspec-discover` build tool;
 - `test/Spec.hs`, which runs hspec-discover.
 
+The generated test component uses `-O0` to keep deeply composed Hedgehog
+generators practical to compile. Adapters and checked-definition libraries use
+the project's optimization settings. See [GHC's optimization controls](https://downloads.haskell.org/ghc/9.10.3/docs/users_guide/using-optimisation.html).
+
 Run `stack build --test --no-run-tests` once before `doctor`. It resolves the
 snapshot and generates the Cabal file through Hpack. `doctor` reads that file
 and never rewrites it. The target root must contain exactly one Cabal package.
@@ -53,10 +57,10 @@ Products and sums become ordinary parameterized algebraic data types in
 `LawSpecData`. For:
 
 ```lawspec fragment
-type Tree (a :: Type) is
-  Leaf value :: a
-  Branch children :: List (Tree a)
-end
+type Tree (a :: Type) is one of
+  Leaf  of type a
+  Branch  of type List (Tree a)
+end type
 
 echo :: Tree Int8 -> Tree Int8
 ```
@@ -113,6 +117,7 @@ constructors.
 unit example.total
 
 function increment (x :: Int8) -> Integer is x + 1 end function
+end unit
 ```
 
 produces, in `LawSpecDefinitions.Example.Total` (following the unit name), a

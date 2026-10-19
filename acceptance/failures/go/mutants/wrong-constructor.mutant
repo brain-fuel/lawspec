@@ -3,5 +3,5 @@ expect: negative amounts are blocked
 <<<<<<<
 		return DecisionBlock{}
 =======
-		return DecisionDecline{Reason: "negative"}
+		return DecisionDecline{Value: "negative"}
 >>>>>>>

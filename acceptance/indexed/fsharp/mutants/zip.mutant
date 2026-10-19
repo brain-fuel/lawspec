@@ -1,6 +1,6 @@
 @@ src/Example/Indexed.fs
 <<<<<<<
-    | VCons(_, tail0), VCons(head1, tail1) -> VCons(head1, zip tail0 tail1)
+    | VCons({ Head = _; Tail = tail0 }), VCons({ Head = head1; Tail = tail1 }) -> VCons({ Head = head1; Tail = zip tail0 tail1 })
 =======
-    | VCons(_, tail0), VCons(_, tail1) -> zip tail0 tail1
+    | VCons({ Head = _; Tail = tail0 }), VCons({ Head = _; Tail = tail1 }) -> zip tail0 tail1
 >>>>>>>

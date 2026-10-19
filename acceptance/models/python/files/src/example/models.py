@@ -14,15 +14,15 @@ def empty(value0):
 
 
 def push(value0, value1):
-    return data.PushFlow(data.StackPush(value0, value1))
+    return data.PushFlow(data.StackPush(data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(top=value0, rest=value1)))
 
 
 def pop(value0):
-    return data.PopFlow(value0.top, value0.rest)
+    return data.PopFlow(value0.value.top, value0.value.rest)
 
 
 def peek(value0):
-    return data.PeekFlow(value0.top, value0)
+    return data.PeekFlow(value0.value.top, value0)
 
 
 def newCounter(value0):

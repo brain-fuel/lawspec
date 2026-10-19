@@ -291,6 +291,10 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
         match value body=T.DataMatch value [(tag,[selected],body)]
         definition body=T.ProofDefinition (Id "strictProduct") "strictProduct" Nothing [] body []
         audit body=T.audit [definition body]
+    it "reduces variable aliases while retaining unused partial bindings" $ do
+      T.strictLet selected (T.Variable result) (T.Variable selected) `shouldBe` T.Variable result
+      let bad = T.Division False Quotient (n 1) (n 0)
+      audit (T.strictLet selected bad (n 1)) `shouldSatisfy` isLeft
     it "retains known field values through strict source evaluation" $
       audit (match (source (T.Construct tag [n 3]))
         (T.Division False Quotient (n 9) (T.Variable selected))) `shouldBe` Right ()
@@ -436,9 +440,11 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
       validateProgram p `shouldSatisfy` isLeft
     it "preserves declared parameters in generic constructor-predicate matches" $ do
       let source = Source "generic-match.lawspec" $ unlines
-            ["unit generic.match",
-             "type Present (a :: Type) is Present item :: (m :: Maybe a where",
-             "  match m with | Nothing -> false | Just value -> true end) end"]
+            [ "unit generic.match"
+             ++ "\n", ""
+            , "type Present (a :: Type) is a record{  item :: (m :: Maybe a where"
+            , "  first matching case of m : when Nothing then false when Just value then true end case)} end type"
+            , "\nend unit" ]
       mapM_ (\bits -> compileCore bits defaultGeneration [source] `shouldSatisfy` isRight) [32,64]
     it "enables audited constructor contracts on all eight backends" $ do
       Schema.dataSchemas [positiveType] `shouldSatisfy` isLeft
@@ -470,8 +476,11 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
     validateDefinitionContracts 64 [] [function] [] `shouldBe` Right ()
   it "preserves contracts in closed fixture elaboration and final frontend elaboration" $ do
     let source = Source "contracts.lawspec" $ unlines
-          ["unit contracts", "definition reciprocal (x :: Int8) :: Rational is 1 / x end",
-           "adapter :: Int8 -> Int8"]
+          [ "unit contracts"
+           ++ "\n", ""
+          , "function reciprocal (x :: Int8) -> Rational is 1 / x end function\n"
+          , "adapter :: Int8 -> Int8"
+          , "\nend unit" ]
         pre = S.Binary "!=" (S.Var "input") (S.Number 0)
         closed = S.Contract "reciprocal" [("input",S.Named "Int8")]
           ("output",S.Named "Rational") [pre] []

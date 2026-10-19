@@ -17,6 +17,6 @@
   {:authorize (fn [cents]
                 (if (neg? cents)
                   :payment/declined
-                  {:lawspec/tag :payment/approved :cents cents}))
+                  {:lawspec/tag :payment/approved :value cents}))
    :capture (fn [cents] {:lawspec/tag :receipt/receipt :cents cents})
    :fee (fn [] 25)})

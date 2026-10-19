@@ -8,15 +8,16 @@ closePool :: SharedPool -> Unit
 usePool :: SharedPool -> Bool
 
 resource SharedPool is
-  acquire is openPool unitValue end
-  release pool is closePool pool end
-  reset pool is resetPool pool end
-end
+  acquire is openPool unitValue end acquire
+  release pool is closePool pool end release
+  reset pool is resetPool pool end reset
+end resource
 
-law `another unit shares the run resource` for pool :: SharedPool is
-  definition is usePool pool end
-end
+law "|another unit shares the run resource| for pool :: SharedPool is
+  definition : usePool pool end definition
+end law
 
 harness example.sharedPeer.testing for example.sharedPeer is
   share SharedPool per run
-end
+end harness
+end unit

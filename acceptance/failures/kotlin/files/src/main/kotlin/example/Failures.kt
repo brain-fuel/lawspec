@@ -12,7 +12,7 @@ object Failures {
     suspend fun settle(value0: kotlin.Int): kotlin.Int {
         kotlinx.coroutines.yield()
         if (value0 < 0) throw lawspec.runtime.LawSpecRuntime.Fail(lawspec.data.PaymentError.Blocked)
-        if (value0 == 0) throw lawspec.runtime.LawSpecRuntime.Fail(lawspec.data.PaymentError.Declined("there is nothing to settle"))
+        if (value0 == 0) throw lawspec.runtime.LawSpecRuntime.Fail(lawspec.data.PaymentError.Declined(lawspec.data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7("there is nothing to settle")))
         return value0
     }
 

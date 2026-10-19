@@ -7,11 +7,11 @@
 
 (defmulti evaluate "An expression's value." ls/tag)
 (defmethod evaluate :expr/number [{:keys [value]}] value)
-(defmethod evaluate :expr/plus [{:keys [left right]}] (+' (evaluate left) (evaluate right)))
+(defmethod evaluate :expr/plus [{{:keys [left right]} :value}] (+' (evaluate left) (evaluate right)))
 (defmethod evaluate :expr/truth [{:keys [value]}] value)
-(defmethod evaluate :expr/same [{:keys [left right]}] (= (evaluate left) (evaluate right)))
-(defmethod evaluate :expr/negate [{:keys [operand]}] (not (evaluate operand)))
-(defmethod evaluate :expr/both [{:keys [first second]}]
+(defmethod evaluate :expr/same [{{:keys [left right]} :value}] (= (evaluate left) (evaluate right)))
+(defmethod evaluate :expr/negate [{operand :value}] (not (evaluate operand)))
+(defmethod evaluate :expr/both [{{:keys [first second]} :value}]
   {:lawspec/tag :pair/pair :first (evaluate first) :second (evaluate second)})
 
 (defn eval-number [expr] (evaluate expr))

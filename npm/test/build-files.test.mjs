@@ -1,6 +1,6 @@
 // Generated from templates/npm/test/build-files.test.mjs by lawspec-dev generate. Do not edit.
-// Historical 0.24 generation fixtures use the explicit migration entry.
-import {legacyGeneration} from './legacy-input.mjs';
+// Generation fixtures use the current grammar and explicit verification layers.
+import {generateInput} from './compiler-input.mjs';
 // Generation never rewrites project build files, and regenerating is a no-op.
 // This replaces the build-file guard formerly in tools/integration.mjs; the
 // generated projects themselves are exercised by lawspec-acceptance.
@@ -28,7 +28,7 @@ for (const target of targets) {
       await mkdir(path.dirname(path.join(root, file)), {recursive: true});
       await writeFile(path.join(root, file), content);
     }
-    const result = await legacyGeneration(compiler, {sources, target});
+    const result = await generateInput(compiler, {sources, target});
     assert.deepEqual(result.diagnostics, []);
     await applyWrites([await planWrites(root, result.files)]);
     for (const [file, content] of scaffold) {

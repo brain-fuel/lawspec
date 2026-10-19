@@ -15,7 +15,7 @@ let settle (value0: int) : System.Threading.Tasks.Task<Result<int, PaymentError>
     task {
         do! System.Threading.Tasks.Task.Yield()
         if value0 < 0 then return Error Blocked
-        elif value0 = 0 then return Error(Declined "there is nothing to settle")
+        elif value0 = 0 then return Error(Declined { Message = "there is nothing to settle" })
         else return Ok value0
     }
 

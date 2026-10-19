@@ -1,6 +1,7 @@
 -- | Scenarios of processes and channels.
 module ScenarioSpec (test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree) where
 
+import FixtureSource (extendUnit)
 import Data.List (isInfixOf)
 import Test.Hspec
 import LawSpec.Compile
@@ -9,26 +10,28 @@ import LawSpec.Model hiding (Expectation)
 counter :: String
 counter = unlines
   [ "unit example.counter"
-  , "type Counter is Counter id :: Int32 end"
+   ++ "\n", ""
+  , "type Counter is a record{  id :: Int32} end type\n"
   , "newCounter :: Unit -> Counter"
   , "async increment :: Counter -> Int64"
-  , "definition modelIncrement (n :: Int64 where n >= 0 && n <= 1000) :: Pair Int64 Int64 is Pair (n + 1) (n + 1) end"
+  , "function modelIncrement (n :: Int64 where n >= 0 && n <= 1000) -> Pair Int64 Int64 is Pair record{ first = (n + 1) , second = (n + 1)} end function\n"
   , "model counter :: shared Counter by Int64 is"
   , "  start newCounter ~ 0"
   , "  increment ~ modelIncrement"
-  , "end"
+  , "end model"
   , "protocol Reply is"
   , "  send Int64"
-  , "end"
+  , "end protocol"
   , "protocol Back is"
   , "  receive Int64"
-  , "end"
+  , "end protocol"
   , "protocol Request is"
   , "  send Reply"
-  , "end" ]
+  , "end protocol"
+  , "\nend unit" ]
 
 checks :: String -> Either String ()
-checks extra = case compile [Source "scenario.lawspec" (counter ++ extra)] of
+checks extra = case compile [Source "scenario.lawspec" (extendUnit counter $ extra)] of
   Left diagnostics -> Left (concatMap show diagnostics)
   Right _ -> Right ()
 
@@ -56,7 +59,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
       , "    receive reports a"
       , "    receive reports b"
       , "  end"
-      , "end" ]) `shouldBe` Right ()
+       ++ " par", "end"  ++ " scenario"]) `shouldBe` Right ()
   it "accept two channels between the same processes when neither waits for the other in a cycle" $
     checks (unlines
       [ "scenario `echo` in counter is"
@@ -70,7 +73,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
       , "    receive a m"
       , "    send b m"
       , "  end"
-      , "end" ]) `shouldBe` Right ()
+       ++ " par", "end"  ++ " scenario"]) `shouldBe` Right ()
   it "accept a reply over a channel" $
     checks (unlines
       [ "scenario `a count is passed on` in counter is"
@@ -82,7 +85,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
       , "  with"
       , "    receive report m"
       , "  end"
-      , "end" ]) `shouldBe` Right ()
+       ++ " par", "end"  ++ " scenario"]) `shouldBe` Right ()
   it "accept a delegated channel end" $
     checks (unlines
       [ "scenario `a delegated reply` in counter is"
@@ -97,7 +100,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
       , "  with"
       , "    receive answer m"
       , "  end"
-      , "end" ]) `shouldBe` Right ()
+       ++ " par", "end"  ++ " scenario"]) `shouldBe` Right ()
   describe "reject" $ do
     it "an unfinished protocol" $
       rejects "is not finished: it still expects receive Int64" (unlines
@@ -105,7 +108,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "  send Int64"
         , "  receive Int64"
         , "end"
-        , "scenario `x` in counter is"
+         ++ " protocol", "scenario `x` in counter is"
         , "  channel trade :: Exchange"
         , "  par"
         , "    n <- increment"
@@ -114,7 +117,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "    receive trade m"
         , "    send trade m"
         , "  end"
-        , "end" ])
+         ++ " par", "end"  ++ " scenario"])
     it "a mailbox received from by two processes" $
       rejects "a mailbox has one receiver" (unlines
         [ "scenario `x` in counter is"
@@ -129,7 +132,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "  with"
         , "    receive m b"
         , "  end"
-        , "end" ])
+         ++ " par", "end"  ++ " scenario"])
     it "a mailbox message never received" $
       rejects "every message sent must be received" (unlines
         [ "scenario `x` in counter is"
@@ -141,7 +144,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "  with"
         , "    receive m a"
         , "  end"
-        , "end" ])
+         ++ " par", "end"  ++ " scenario"])
     it "a mailbox closing a cycle with a channel" $
       rejects "closes a cycle between processes" (unlines
         [ "scenario `x` in counter is"
@@ -155,7 +158,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "    receive a y"
         , "    send m y"
         , "  end"
-        , "end" ])
+         ++ " par", "end"  ++ " scenario"])
     it "processes that wait for each other in a cycle" $
       rejects "waits to receive on b before it sends on a" (unlines
         [ "scenario `x` in counter is"
@@ -169,7 +172,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "    receive a m"
         , "    send b m"
         , "  end"
-        , "end" ])
+         ++ " par", "end"  ++ " scenario"])
     it "a step out of order" $
       rejects "must send Int64 here, not receive" (unlines
         [ "scenario `x` in counter is"
@@ -180,7 +183,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "    n <- increment"
         , "    send a n"
         , "  end"
-        , "end" ])
+         ++ " par", "end"  ++ " scenario"])
     it "a channel end used after it was delegated" $
       rejects "does not hold an end of channel answer" (unlines
         [ "scenario `x` in counter is"
@@ -197,7 +200,7 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "  with"
         , "    receive answer m"
         , "  end"
-        , "end" ])
+         ++ " par", "end"  ++ " scenario"])
     it "a channel used by one process" $
       rejects "is used by one process only" (unlines
         [ "scenario `x` in counter is"
@@ -208,9 +211,9 @@ test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
         , "  with"
         , "    k <- increment"
         , "  end"
-        , "end" ])
+         ++ " par", "end"  ++ " scenario"])
     it "an unknown model" $
       rejects "there is no model pool" (unlines
         [ "scenario `x` in pool is"
         , "  n <- increment"
-        , "end" ])
+        , "end"  ++ " scenario"])

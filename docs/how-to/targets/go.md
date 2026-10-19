@@ -63,8 +63,9 @@ end type
 echo :: Tree Int8 -> Tree Int8
 
 law "|echo preserves the tree| is
-  definition : for all (x :: Tree Int8) => echo x = x end end
-end
+  definition : for all (x :: Tree Int8) => echo x = x end for all end definition
+end law
+end unit
 ```
 
 the adapter receives `Tree[int8]`, whose variants are `TreeLeaf[int8]` (field
@@ -130,6 +131,7 @@ Definitions become methods on `LawSpecDefinitions` in the unit's package:
 unit example.total
 
 function increment (x :: Int8) -> Integer is x + 1 end function
+end unit
 ```
 
 ```go

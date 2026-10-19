@@ -3,7 +3,7 @@ expect: refuted
 expect: NaNs remain separate while signed zeros deduplicate
 @@ test/fixtures/eq-set-operations-library.lawspec
 <<<<<<<
-x == h || eqSetContainsItems x t
+x = h || eqSetContainsItems x t
 =======
-(x == h || x != x && h != h) || eqSetContainsItems x t
+(x = h || x != x && h != h) || eqSetContainsItems x t
 >>>>>>>

@@ -81,38 +81,38 @@ law structuralEmpty is
   definition:
     for all (value of type record{}) =>
       emptyStructural value must be true and emptyStructural (makeStructural ()) must be true
-    end
-  end
+    end for all
+  end definition
   expect emptyStructural value = expected
   in table (value, expected):
     row record{}, true
-  end
-end
+  end table
+end law
 
 law nominalEmpty is
   definition:
     for all (value of type EmptyRecord) =>
       emptyNominal value must be true and emptyNominal (makeNominal ()) must be true
-    end
-  end
+    end for all
+  end definition
   expect emptyNominal value = expected
   in table (value, expected):
     row EmptyRecord record{}, true
-  end
-end
+  end table
+end law
 
 law guardOrder is
   definition:
     for all (value of type record{flag of type Bool}) =>
       populated value must be value.flag
-    end
-  end
+    end for all
+  end definition
   expect populated value = expected
   in table (value, expected):
     row record{flag = false}, false
     row record{flag = true}, true
-  end
-end
+  end table
+end law
 
 law genericFields is
   definition:
@@ -120,8 +120,8 @@ law genericFields is
       (named of type Box Bool)
       (structural of type record{item of type Bool}) =>
       genericNamed named must be true and genericStructural structural must be true
-    end
-  end
+    end for all
+  end definition
   expect genericNamed named = true
   expect genericStructural structural = true
   in table (named, structural):
@@ -129,8 +129,8 @@ law genericFields is
     row Box record{item = false}, record{item = true}
     row Box record{item = true}, record{item = false}
     row Box record{item = true}, record{item = true}
-  end
-end
+  end table
+end law
 
 law nestedPayloads is
   definition:
@@ -139,28 +139,28 @@ law nestedPayloads is
         when Missing then nested value = false
         when Wrapped record{} then nested value = true
       end case
-    end
-  end
+    end for all
+  end definition
   expect nested value = expected
   in table (value, expected):
     row Missing, false
     row Wrapped record{flag = false}, true
     row Wrapped record{flag = true}, true
-  end
-end
+  end table
+end law
 
 law nestedRecords is
   definition:
     for all (value of type record{inner of type record{flag of type Bool}}) =>
       combined value must be value.inner.flag
-    end
-  end
+    end for all
+  end definition
   expect combined value = expected
   in table (value, expected):
     row record{inner = record{flag = false}}, false
     row record{inner = record{flag = true}}, true
-  end
-end
+  end table
+end law
 
 law genericAlternatives is
   definition:
@@ -169,12 +169,13 @@ law genericAlternatives is
         when Choice then choicePopulated value = false
         when Item item then choicePopulated value = true
       end case
-    end
-  end
+    end for all
+  end definition
   expect choicePopulated value = expected
   in table (value, expected):
     row Choice, false
     row Item false, true
     row Item true, true
-  end
-end
+  end table
+end law
+end unit

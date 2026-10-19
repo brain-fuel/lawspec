@@ -14,15 +14,16 @@ laws
     definition:
       for all (cents :: Int64 where cents >= 0 and cents <= 1000) =>
         take (Money record{cents = cents}) must be Money record{cents = cents}
-      end
-    end
-  end
-end
+      end for all
+    end definition
+  end law
+end laws
+end ability
 
 handler fakeDrawer for Drawer is
-  take money is money end
-  opening is Money record{cents = 0} end
-end
+  operation take money is money end operation
+  operation opening is Money record{cents = 0} end operation
+end handler
 
 pay :: Int64 -> Money uses Drawer fails with PayError
 
@@ -30,38 +31,39 @@ law "|small payments go through| is
   definition:
     for all (cents :: Int64 where cents >= 0 and cents <= 1000) =>
       prelude.attempt (pay cents) must be Right (Money record{cents = cents})
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|large payments are declined| is
   definition:
     for all (cents :: Int64 where cents > 1000 and cents <= 100000) =>
       prelude.attempt (pay cents) must be Left Declined
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|negative payments are rejected| is
   definition:
     for all (cents :: Int64 where cents >= -1000 and cents < 0) =>
       prelude.attempt (pay cents) must be Left (Rejected record{message = "negative"})
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|large payments fail as declined| is
   definition:
     for all (cents :: Int64 where cents > 1000 and cents <= 100000) =>
       pay cents fails with Declined
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law "|negative payments say why they are rejected| is
   definition:
     for all (cents :: Int64 where cents >= -1000 and cents < 0) =>
       pay cents fails with Rejected record{message = _} message contains "negative"
-    end
-  end
-end
+    end for all
+  end definition
+end law
+end unit

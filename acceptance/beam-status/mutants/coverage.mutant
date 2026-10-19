@@ -1,9 +1,9 @@
-expect: known property failure
+expect: known| property failure
 @@ acceptance/beam-status/status.lawspec
 <<<<<<<
-  for law `known property failure`
+for law "|known property failure|
     use seven for n
 =======
-  for law `known property failure`
+for law "|known property failure|
     use zero for n
 >>>>>>>

@@ -1,42 +1,43 @@
 unit native.fields
 
-type Gap is
-  Gap first :: Int8 second :: (n :: Int8 where n > first)
-end
+type Gap is a record{
+   first :: Int8 second :: (n :: Int8 where n > first)}
+end type
 
-type Identity is
-  Identity value :: (s :: Symbol where s == symbol("fixture", "same"))
-end
+type Identity is a record{
+   value :: (s :: Symbol where s = symbol("fixture", "same"))}
+end type
 
-type Bucket (a :: Type) is
-  Bucket values :: (xs :: List a where prelude.length xs > 0)
-end
+type Bucket (a :: Type) is a record{
+   values :: (xs :: List a where prelude.length xs > 0)}
+end type
 
-type Positives is
-  Positives values :: List (n :: Int8 where n > 0)
-end
+type Positives is a record{
+   values :: List (n :: Int8 where n > 0)}
+end type
 
-type Choice is
-  Accepted value :: (n :: Int8 where n > 0)
-  Rejected reason :: Text
-end
+type Choice is one of
+  Accepted  of type (n :: Int8 where n > 0)
+  Rejected  of type Text
+end type
 
-type Machine is
-  Machine value :: (n :: IntSize where n > 0)
-end
+type Machine is a record{
+   value :: (n :: IntSize where n > 0)}
+end type
 
-definition inverseGap (gap :: Gap) :: Rational is
-  match gap with | Gap x y -> 1 / (y - x) end
-end
+function inverseGap (gap :: Gap) -> Rational is
+  first matching case of gap : when Gap record{ first = x , second = y} then 1 / (y - x) end case
+end function
 
-definition echoIdentity (box :: Identity) :: Identity is box end
-definition echoBucket (box :: Bucket Int8) :: Bucket Int8 is box end
-definition echoPositives (box :: Positives) :: Positives is box end
-definition echoChoice (box :: Choice) :: Choice is box end
-definition echoMachine (box :: Machine) :: Machine is box end
+function echoIdentity (box :: Identity) -> Identity is box end function
+function echoBucket (box :: Bucket Int8) -> Bucket Int8 is box end function
+function echoPositives (box :: Positives) -> Positives is box end function
+function echoChoice (box :: Choice) -> Choice is box end function
+function echoMachine (box :: Machine) -> Machine is box end function
 
-type Guarded is
-  Guarded value :: (n :: Int8 where n != 0 && 1 / n > 0)
-end
+type Guarded is a record{
+   value :: (n :: Int8 where n != 0 && 1 / n > 0)}
+end type
 
-definition echoGuarded (box :: Guarded) :: Guarded is box end
+function echoGuarded (box :: Guarded) -> Guarded is box end function
+end unit

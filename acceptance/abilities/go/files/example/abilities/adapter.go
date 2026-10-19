@@ -22,7 +22,7 @@ func (handler *GatewayHandler) Authorize(value0 int32) Payment {
 	if value0 < 0 {
 		return PaymentDeclined{}
 	}
-	return PaymentApproved{Cents: value0}
+	return PaymentApproved{Value: value0}
 }
 
 func (handler *GatewayHandler) Capture(value0 int32) Receipt {

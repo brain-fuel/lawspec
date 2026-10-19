@@ -14,7 +14,7 @@ public final class Arithmetic {
     long count = 0;
     while (row instanceof Row.Cell cell) {
       count++;
-      row = cell.tail();
+      row = cell.value().tail();
     }
     return count;
   }
@@ -22,16 +22,16 @@ public final class Arithmetic {
   public static Perfect mirror(Perfect value0) {
     return switch (value0) {
       case Perfect.Leaf leaf -> leaf;
-      case Perfect.Node node -> new Perfect.Node(mirror(node.right()), mirror(node.left()));
+      case Perfect.Node node -> new Perfect.Node(new lawspec.data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(node.value().right()), mirror(node.value().left())));
     };
   }
 
   public static BigInteger area(Grid value0) {
-    return BigInteger.valueOf(length(value0.rows()) * length(value0.columns()));
+    return BigInteger.valueOf(length(value0.value().rows()) * length(value0.value().columns()));
   }
 
   public static Halves duplicate(Row value0) {
-    return new Halves(value0, value0);
+    return new Halves(new lawspec.data.Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d(value0, value0));
   }
 
   public static Pairs countPairs(Row value0) {

@@ -32,6 +32,7 @@ import LawSpec.Code.Doc (Layout(..))
 import qualified LawSpec.Core as Core
 import qualified LawSpec.Core.Types as CoreTypes
 import LawSpec.Collections (collectionsSource)
+import LawSpec.Blocks (blockKinds,blockLabel)
 import Gen.BoundedGenerators (kotlinBoundedCases,scalaBoundedCases)
 import LawSpec.Scaffold (scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
 import LawSpec.Targets (targetLabel)
@@ -134,9 +135,12 @@ withHeader template target content
 factFills :: String -> [(String, Fill)]
 factFills version =
   [ ("version", Inline (jsonString version))
+  , ("block-closers", Inline (jsonString ("\\bend[ \\t]+(?:" ++
+      intercalate "|" [intercalate "[ \\t]+" (words (blockLabel kind)) | kind <- reverse blockKinds] ++ ")\\b")))
+  , ("block-labels", Inline (intercalate ", " [json (String (blockLabel kind)) | kind <- blockKinds]))
   , ("kotlin-bounded-generators", Block (lines kotlinBoundedCases))
   , ("scala-bounded-generators", Block (lines scalaBoundedCases))
-  , ("eq-set-operations-source", Block (lines (collectionsSource ["EqSet"])))
+  , ("eq-set-operations-source", Block (lines eqSetConformanceSource))
   , ("builtin-data-names", Inline (json (Array
       [ Object [("id", String (Core.idText (Core.dataId declaration))), ("name", String (Core.dataName declaration)),
           ("constructors", Array [Object [("id", String (Core.idText (Core.constructorId constructor))),
@@ -244,6 +248,19 @@ bumpCommand [new] = do
       (a, _ : rest) -> a : splitDots rest
       (a, []) -> [a]
 bumpCommand _ = die "usage: lawspec-dev bump <x.y.z>"
+
+-- The conformance copy uses the public Set interface and ordinary user-unit
+-- provenance. Its list algorithms stay shared with the compiler-owned source;
+-- tests can mutate them without impersonating a reserved built-in unit.
+eqSetConformanceSource :: String
+eqSetConformanceSource = foldl (\text (old,new) -> replace old new text)
+  (collectionsSource ["EqSet"])
+  [ ("unit lawspec.collections", "unit example.eqSetAlgorithms")
+  , ("type EqSet (a :: Type) is one of EqSetItems  of type List a end type", "")
+  , ("first matching case of set : when EqSetItems items then items end case", "prelude.toList set")
+  , ("EqSetItems", "prelude.setOf")
+  , ("EqSet", "Set")
+  ]
 
 replace :: String -> String -> String -> String
 replace needle new = go

@@ -36,7 +36,7 @@ test_distributionIsSecureByDefaultAndContentAddressed = describe "distribution" 
     let remotes text = case compileCore 64 defaultGeneration [Source "app.lawspec" text] >>= planTesting of
           Right plan -> snd (remoteManifest plan)
           Left _ -> []
-        shifted body = unlines ["unit app.remote", "definition shifted (x :: Int32) :: Int64 is " ++ body ++ " end"]
+        shifted body = unlines ["unit app.remote\n", "\nfunction shifted (x :: Int32) -> Int64 is " ++ body ++ " end" ++ " function\n", "end unit"]
     it "are named by a SHA3-256 content hash that names its algorithm" $ do
       map remoteDigest (remotes (shifted "x + 1000")) `shouldSatisfy` all (\d -> "sha3-256:" `isPrefixOf` d && length d == 9 + 64)
     it "change hash exactly when the definition does" $ do
@@ -47,7 +47,8 @@ test_distributionIsSecureByDefaultAndContentAddressed = describe "distribution" 
     let paths target text = case compileCore 64 defaultGeneration [Source "app.lawspec" text] >>= planTesting >>= emitPlan target of
           Right files -> map artifactPath files
           Left ds -> error (show ds)
-        program imports = unlines (["unit app.nodes"] ++ imports ++ ["protocol Ping is send Int32 end", "definition shifted (x :: Int32) :: Int64 is x + 1 end"])
+        program imports = unlines ([ "unit app.nodes" ] ++ imports ++ [ "protocol Ping is send Int32 end protocol"
+                                                                    , "function shifted (x :: Int32) -> Int64 is x + 1 end function\n", "end unit" ])
         networkFile p = any (`isInfixOf` p) ["lawspec_network.", "LawSpecNetwork.", "src/lawspec/network.rs"]
         targets = ["python", "javascript", "typescript", "go", "java", "kotlin", "haskell", "rust"]
     it "writes the network module beside the runtime of a program that imports lawspec.network" $

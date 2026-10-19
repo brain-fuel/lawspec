@@ -99,9 +99,10 @@ function twice (x :: Integer) -> Integer is x + x end function
 law "|a failure short-circuits| is
   definition :
     for all (x :: Integer) => x <= 0 implies (twice <$> (positive x >>= small))
-      = Left TooSmall end
-  end
-end
+      = Left TooSmall end for all
+  end definition
+end law
+end unit
 ```
 
 The functions given to a combinator are named definitions or adapters,
@@ -150,16 +151,17 @@ scale :: Int8 -> Int8
 
 law "|promotes instead of wrapping| is
   definition :
-    for all (x :: Int8) => prelude.Int64 x * 2 = x + x end
-  end
+    for all (x :: Int8) => prelude.Int64 x * 2 = x + x end for all
+  end definition
   example "|max| :
     x = 127
     expect x + 1 = 128
     expect prelude.quot (-7) 2 = -3
     expect prelude.rem (-7) 2 = -1
     expect 1 / 3 = rational(1, 3)
-  end
-end
+  end example
+end law
+end unit
 ```
 
 ## Bounded arithmetic
@@ -188,8 +190,9 @@ law "|bounded arithmetic| is
   definition :
     nextEpoch 32767 = -32768 and topUp 250 = 255 and total 2147483647 1 =
     Nothing
-  end
-end
+  end definition
+end law
+end unit
 ```
 
 The type comes from the context: a signature, an argument, or an annotation,

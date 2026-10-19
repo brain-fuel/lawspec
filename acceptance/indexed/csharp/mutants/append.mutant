@@ -1,6 +1,6 @@
 @@ src/Example/Indexed.cs
 <<<<<<<
-Vec<sbyte>.VCons cons => Vec<sbyte>.NewVCons(cons.head, Append(cons.tail, back)),
+Vec<sbyte>.VCons cons => Vec<sbyte>.NewVCons(new LawSpec.Data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec<sbyte>(cons.value.Head, Append(cons.value.Tail, back))),
 =======
-Vec<sbyte>.VCons cons => Append(cons.tail, back),
+Vec<sbyte>.VCons cons => Append(cons.value.Tail, back),
 >>>>>>>

@@ -1,6 +1,6 @@
 @@ lib/example_indexed.ex
 <<<<<<<
-%D.VecVCons{head: h, tail: append(t, ys)}
+%D.VecVCons{value: %D.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec{head: h, tail: append(t, ys)}}
 =======
-append(t, %D.VecVCons{head: h, tail: ys})
+append(t, %D.VecVCons{value: %D.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec{head: h, tail: ys}})
 >>>>>>>

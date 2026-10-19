@@ -32,9 +32,11 @@ end function
 law "|append agrees with the proved definition| is
   definition :
     for all (xs :: Vec n Int8) (ys :: Vec m Int8) => append xs ys = concatV xs
-      ys end
-  end
-end
+      ys end for all
+  end definition
+end law
+
+end unit
 ```
 
 A multi-field constructor can split its index:
@@ -55,7 +57,7 @@ Rules:
 - A variable such as `m` is bound by the field whose type mentions it.
 - Every index has exactly one equation in every constructor.
 - `Whole` is also an ordinary value type: an unbounded integer including zero.
-  `Nat` starts at one. Legacy zero-inclusive `Natural` migrates to `Whole`.
+  `Nat` starts at one. Use `Whole` for zero-inclusive indices.
 
 ## Arithmetic, subtraction and shared indices
 
@@ -83,6 +85,8 @@ type Rest (n :: Whole) is one of
 end type
 
 dropFirst :: (xs :: Row (k + 1)) -> (r :: Rest k)
+
+end unit
 ```
 
 - **Shared indices.** A variable bound by several fields makes their indices

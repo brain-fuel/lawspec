@@ -1,6 +1,6 @@
 @@ src/Example/Indexed.swift
 <<<<<<<
-        case (.vCons(_, let tail0), .vCons(let head1, let tail1)): return .vCons(head: head1, tail: zip(tail0, tail1))
+        case (.vCons(.record(_, let tail0)), .vCons(.record(let head1, let tail1))): return .vCons(value: .record(head: head1, tail: zip(tail0, tail1)))
 =======
-        case (.vCons(_, let tail0), .vCons(_, let tail1)): return zip(tail0, tail1)
+        case (.vCons(.record(_, let tail0)), .vCons(.record(_, let tail1))): return zip(tail0, tail1)
 >>>>>>>

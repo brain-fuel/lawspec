@@ -133,7 +133,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         bindings.set(label, name);
         return `let ${name} = ${value.text} in `;
       });
-      return resultText(lets.join('') + `(${positions.map(field => bindings.get(field.name)).join(', ')})`);
+      return resultText(lets.join('') + `(${positions.map(field => bindings.get(field.name)).join(', ')})` + ' end let'.repeat(lets.length));
     }
     if (entry.declaration.structure?.kind === 'record')
       return resultText(`record{${entries.map(([label, value]) => `${label} = ${value.text}`).join(', ')}}`, true);
@@ -242,7 +242,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         const record = literal(expression, scope, reserved);
         if (record) return record;
         const bound = bind(node.binder, scope, reserved);
-        return resultText(`let ${bound.name} = ${go(node.value).text} in ${go(node.body, bound.scope).text}`);
+        return resultText(`let ${bound.name} = ${go(node.value).text} in ${go(node.body, bound.scope).text} end let`);
       }
       case 'field': {
         const entry = constructors.get(node.constructor), field = entry?.constructor.fields[node.index];
@@ -257,7 +257,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
           const used = new Set(reserved), replacement = freshComponent('replacement', scope, used);
           const names = positions.map((_, i) => freshComponent(`component${i + 1}`, scope, used));
           const result = positions.map((position, i) => position.name === field.name ? replacement : names[i]);
-          return resultText(`let ${replacement} = ${go(node.field).text} in first matching case of ${go(node.value).text}: when (${names.join(', ')}) then (${result.join(', ')}) end case`);
+          return resultText(`let ${replacement} = ${go(node.field).text} in first matching case of ${go(node.value).text}: when (${names.join(', ')}) then (${result.join(', ')}) end case end let`);
         }
         return resultText(`${argument(go(node.value))} with ${field.name} = ${go(node.field).text}`);
       }
@@ -283,7 +283,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
       }
       case 'if': return resultText(`if ${go(node.condition).text} then ${go(node.then).text} else ${go(node.else).text} end if`);
       case 'convert': return resultText(`${node.conversion} conversion of (${go(node.argument).text}) to ${typeName(expression.type)}`);
-      case 'match': return resultText(`case ${argument(go(node.value))} of {${node.cases.map(branch => {
+      case 'match': return resultText(`first matching case of ${argument(go(node.value))}: ${node.cases.map(branch => {
         let bindings = scope;
         const names = branch.binders.map(binder => {
           const bound = bind(binder, bindings, reserved);
@@ -296,9 +296,9 @@ export function createExpressionPresentation(result, { constructors, typeName, s
         const fieldNames = new Map(entry.constructor.fields.map((field, i) => [field.name, names[i]]));
         const pattern = positions ? `(${positions.map(field => fieldNames.get(field.name)).join(', ')})` : entry.declaration.structure?.kind === 'record'
           ? `record{${names.map((name, i) => `${entry.constructor.fields[i].name} = ${name}`).join(', ')}}`
-          : globalName(branch.constructor, scope) + (names.length ? `(${names.join(', ')})` : '');
-        return `${pattern}: ${go(branch.body, bindings).text}`;
-      }).join('; ')}}`);
+          : globalName(branch.constructor, scope) + (names.length ? ` ${names.join(' ')}` : '');
+        return `when ${pattern} then ${go(branch.body, bindings).text}`;
+      }).join(' ')} end case`);
       case 'allElements': {
         const bound = bind(node.binder, scope, reserved);
         return resultText(`every ${bound.name} in (${go(node.value).text}) satisfies (${go(node.predicate, bound.scope).text})`);
@@ -310,7 +310,7 @@ export function createExpressionPresentation(result, { constructors, typeName, s
       case 'perform': return resultText(`perform ${abilityName(node.ability)}.${node.operation}(${node.arguments.map(value => go(value).text).join(', ')})`);
       case 'handle': {
         if (node.handling === 'catchFailure') return resultText(`catch failure of ${abilityName(node.ability)} in (${go(node.body).text})`);
-        if (node.handling === 'withHandler') return resultText(`handle (${go(node.body).text}) with ${node.handler} for ${abilityName(node.ability)}`);
+        if (node.handling === 'withHandler') return resultText(`handle (${go(node.body).text}) with ${node.handler} for ${abilityName(node.ability)} end handle`);
         throw unavailable;
       }
       case 'calls': return resultText(`calls of ${abilityName(node.ability)}.${node.operation}${node.arguments === null ? '' : ` with (${node.arguments.map(value => go(value).text).join(', ')})`}`);

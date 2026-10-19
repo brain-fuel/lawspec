@@ -245,7 +245,7 @@ auditCollected context declarations constructors bits unit templates = do
             index <- nextProofSite
             let binder = C.Id (C.idText owner ++ "::let::" ++ show (index :: Int))
             inner <- proof owner integers (M.insert name binder scope) body
-            pure (T.Match bound [([], T.substituteProof (M.singleton binder bound) inner)])
+            pure (T.strictLet binder bound inner)
         S.Apply (S.Apply (S.Var n) _) _ | n == S.tuplePatternCheckName, [value,_] <- operands -> do
           subject <- recur value
           pure (T.Sequence [subject,T.Literal (SBool True)])

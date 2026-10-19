@@ -28,17 +28,17 @@ end function
 ability OrderStore is
   current of type OrderState
   change of type OrderState -> ()
-end
+end ability
 
 handler inMemory for OrderStore with state order of type OrderState
   start Pending is
-  current is order end
-  change updated is ~order := updated; () end
-end
+  operation current is order end operation
+  operation change updated is ~order := updated; () end operation
+end handler
 
 procedure perform (action of type OrderAction) -> OrderState uses OrderStore is
   let updated = nextState current action in
-  change updated; current
+  change updated; current end let
 end procedure
 
 procedure process (actions of type List OrderAction) -> OrderState
@@ -51,7 +51,7 @@ procedure process (actions of type List OrderAction) -> OrderState
 end procedure
 
 function runOrder (actions of type List OrderAction) -> OrderState is
-  handle process actions with inMemory end
+  handle process actions with inMemory end handle
 end function
 
 function modelRun (state of type OrderState)
@@ -78,8 +78,8 @@ law "|order transitions follow the business lifecycle| is
       nextState state action must be Shipped)
       and ((state = Pending or state = Authorized) and action = Cancel implies
       nextState state action must be Cancelled)
-    end
-  end
+    end for all
+  end definition
   expect nextState state action = expected
   in table (state, action, expected):
     row Pending, Authorize, Authorized
@@ -94,18 +94,18 @@ law "|order transitions follow the business lifecycle| is
     row Cancelled, Authorize, Cancelled
     row Cancelled, Dispatch, Cancelled
     row Cancelled, Cancel, Cancelled
-  end
-end
+  end table
+end law
 
 law "|processing retains each completed transition| is
   description:
     "Every action observes the state left by the previous action."
-  end
+  end description
   definition:
     for all (actions of type List OrderAction) =>
       runOrder actions must be modelRun Pending actions
-    end
-  end
+    end for all
+  end definition
   expect runOrder actions = expected
   in table (actions, expected):
     row [], Pending
@@ -116,11 +116,12 @@ law "|processing retains each completed transition| is
     row [Authorize, Cancel, Dispatch], Cancelled
     row [Authorize, Dispatch, Cancel], Shipped
     row [Authorize, Dispatch, Authorize], Shipped
-  end
-end
+  end table
+end law
 
 law "|independent orders start pending| is
   definition:
     runOrder [Authorize] must be Authorized and runOrder [] must be Pending
-  end
-end
+  end definition
+end law
+end unit

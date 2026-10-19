@@ -39,27 +39,27 @@ law "|ready payments have authorization| is
       there must exist an (authorization of type Authorization
         where active Ready the authorization) such that
         authorization `authorizes payment
-      end
-    end
-  end
+      end exists
+    end for all
+  end definition
 
   description:
     "The Ready snapshot contains an active approval for each payment."
-  end
-end
+  end description
+end law
 
 law "|the revoked first approval is absent| is
   definition:
     there does not exist (authorization of type Authorization
       where active FirstRevoked the authorization) such that
       authorization `authorizes FirstPayment
-    end
-  end
+    end exists
+  end definition
 
   description:
     "The FirstRevoked snapshot has no active approval for the first payment."
-  end
-end
+  end description
+end law
 
 law "|all revoked approvals are absent| is
   definition:
@@ -67,24 +67,24 @@ law "|all revoked approvals are absent| is
       there must not exist (authorization of type Authorization
         where active AllRevoked the authorization) such that
         authorization `authorizes payment
-      end
-    end
-  end
-end
+      end exists
+    end for all
+  end definition
+end law
 
 law "|one approval cannot cover every payment| is
   definition:
     must not there exists (authorization of type Authorization) such that
       for all (payment of type Payment) =>
         authorization `authorizes payment
-      end
-    end
-  end
+      end for all
+    end exists
+  end definition
 
   rationale:
     "Each approval belongs to one payment. Quantifier order changes the claim."
-  end
-end
+  end rationale
+end law
 
 law "|activation matches the complete snapshot| is
   definition:
@@ -93,8 +93,8 @@ law "|activation matches the complete snapshot| is
       active state authorization must be
         (state = Ready or
           (state = FirstRevoked and authorization = SecondApproval))
-    end
-  end
+    end for all
+  end definition
 
   expect active state authorization = expected
   in table (state, authorization, expected):
@@ -104,9 +104,10 @@ law "|activation matches the complete snapshot| is
     row FirstRevoked, SecondApproval, true
     row AllRevoked, FirstApproval, false
     row AllRevoked, SecondApproval, false
-  end
+  end table
 
   description:
     "The search domain is exactly two approval identities in one snapshot."
-  end
-end
+  end description
+end law
+end unit

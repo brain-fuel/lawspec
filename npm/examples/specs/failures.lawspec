@@ -5,92 +5,93 @@ unit example.failures
 -- pattern, where _ matches any field, and may also check the failure's
 -- message.
 
-type Decision is
+type Decision is one of
   | Approve
-  | Decline reason :: Text
+  | Decline  of type Text
   | Block
-end
+end type
 
-type PaymentError is
-  | Declined message :: Text
+type PaymentError is one of
+  | Declined of type record{ message :: Text}
   | Blocked
-  | TooLarge limit :: Int32
-end
+  | TooLarge  of type Int32
+end type
 
 -- The payment provider decides; its native handler is written by hand.
 ability Gateway is
   decide :: Int32 -> Decision
-end
+end ability
 
-definition charge (cents :: Int32) :: Int32 uses Gateway fails with PaymentError is
+procedure charge (cents :: Int32) -> Int32 uses Gateway fails with PaymentError is
   if cents > 100000 then raise (TooLarge 100000) else
-    match decide cents with
-    | Approve -> cents
-    | Decline reason -> raise (Declined reason)
-    | Block -> raise Blocked
-    end
-end
+    first matching case of decide cents :
+    when Approve then cents
+    when Decline reason then raise (Declined record{ message = reason})
+    when Block then raise Blocked
+    end case end if
+end procedure
 
-law `large charges fail as too large` is
-  definition is
-    `for all` (cents :: Int32 where cents > 100000) . charge cents fails with TooLarge 100000
-  end
-end
+law "|large charges fail as too large| is
+  definition :
+    for all (cents :: Int32 where cents > 100000) => charge cents fails with TooLarge 100000 end for all
+  end definition
+end law
 
-law `odd amounts are declined, and say why` is
-  definition is
-    `for all` (cents :: Int32 where cents >= 0 && cents <= 100000 && prelude.rem cents 2 == 1) .
-      charge cents fails with Declined _ message contains "odd"
-  end
-end
+law "|odd amounts are declined, and say why| is
+  definition :
+    for all (cents :: Int32 where cents >= 0 && cents <= 100000 && prelude.rem cents 2 = 1) =>
+      charge cents fails with Declined record{ message = _} message contains "odd" end for all
+  end definition
+end law
 
-law `negative amounts are blocked` is
-  definition is
-    `for all` (cents :: Int32 where cents < 0) . charge cents fails with Blocked
-  end
-  example `minus one` is
+law "|negative amounts are blocked| is
+  definition :
+    for all (cents :: Int32 where cents < 0) => charge cents fails with Blocked end for all
+  end definition
+  example "|minus one| :
     cents = -1
     expect charge cents fails with Blocked
-    expect !(charge cents fails with Declined _)
-  end
-end
+    expect !(charge cents fails with Declined record{ message = _})
+  end example
+end law
 
-law `even amounts go through` is
-  definition is
-    `for all` (cents :: Int32 where cents >= 0 && cents <= 100000 && prelude.rem cents 2 == 0) .
-      prelude.attempt (charge cents) = Right cents
-  end
-end
+law "|even amounts go through| is
+  definition :
+    for all (cents :: Int32 where cents >= 0 && cents <= 100000 && prelude.rem cents 2 = 0) =>
+      prelude.attempt (charge cents) = Right cents end for all
+  end definition
+end law
 
 -- Native adapters fail too: their native code raises the runtime's Fail
 -- with a PaymentError, synchronously or from an async adapter.
 refund :: Int32 -> Int32 fails with PaymentError
 async settle :: Int32 -> Int32 fails with PaymentError
 
-law `refunds over the limit are too large` is
-  definition is
-    `for all` (cents :: Int32 where cents > 5000) . refund cents fails with TooLarge 5000
-  end
-end
+law "|refunds over the limit are too large| is
+  definition :
+    for all (cents :: Int32 where cents > 5000) => refund cents fails with TooLarge 5000 end for all
+  end definition
+end law
 
-law `refunds within the limit go through` is
-  definition is
-    `for all` (cents :: Int32 where cents >= 0 && cents <= 5000) . prelude.attempt (refund cents) = Right cents
-  end
-end
+law "|refunds within the limit go through| is
+  definition :
+    for all (cents :: Int32 where cents >= 0 && cents <= 5000) => prelude.attempt (refund cents) = Right cents end for all
+  end definition
+end law
 
-law `settling a negative amount is blocked` is
-  definition is
-    `for all` (cents :: Int32 where cents < 0) . settle cents fails with Blocked
-  end
-end
+law "|settling a negative amount is blocked| is
+  definition :
+    for all (cents :: Int32 where cents < 0) => settle cents fails with Blocked end for all
+  end definition
+end law
 
-law `settling nothing is declined, and says why` is
-  definition is settle 0 fails with Declined _ message contains "nothing" end
-end
+law "|settling nothing is declined, and says why| is
+  definition : settle 0 fails with Declined record{ message = _} message contains "nothing" end definition
+end law
 
-law `settling a positive amount goes through` is
-  definition is
-    `for all` (cents :: Int32 where cents > 0) . prelude.attempt (settle cents) = Right cents
-  end
-end
+law "|settling a positive amount goes through| is
+  definition :
+    for all (cents :: Int32 where cents > 0) => prelude.attempt (settle cents) = Right cents end for all
+  end definition
+end law
+end unit

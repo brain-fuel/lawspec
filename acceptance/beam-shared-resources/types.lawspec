@@ -1,3 +1,4 @@
 unit example.sharedTypes
 
 handle SharedPool
+end unit

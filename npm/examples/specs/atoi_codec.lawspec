@@ -3,33 +3,34 @@ unit example.atoi_codec
 itoa :: Int32 -> Text
 atoi :: Text -> Int32
 
-law `itoa and then atoi yields a` is
-  definition is
-    `round trip identity is preserved` itoa atoi
-  end
+law "|itoa and then atoi yields a| is
+  definition :
+    apply law "|round trip identity is preserved| itoa atoi
+  end definition
 
-  description is
+  description :
     "converting an Int32 to Text with {itoa} and then back with {atoi} yields the original Int32"
-  end
+  end description
 
-  rationale is
+  rationale :
     "representing an Int32 as Text must not change its value"
-  end
+  end rationale
 
-  example `negative integers use a minus sign and round-trip unchanged` is
+  example "|negative integers use a minus sign and round-trip unchanged| :
     x = -42
     expect itoa x = "-42"
     expect atoi (itoa x) = -42
-  end
+  end example
 
-  example `zero renders as 0 and round-trips unchanged` is
+  example "|zero renders as 0 and round-trips unchanged| :
     x = 0
     expect itoa x = "0"
     expect atoi (itoa x) = 0
-  end
+  end example
 
-  references are
+  references :
     "left inverse"
     "round-trip property"
-  end
-end
+  end references
+end law
+end unit

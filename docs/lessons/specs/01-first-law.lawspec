@@ -9,11 +9,12 @@ parseQuantity :: Text -> Int32
 law "|quantities survive a round trip| is
   definition :
     apply law "|round trip identity is preserved| formatQuantity parseQuantity
-  end
+  end definition
 
   example "|a dozen| :
     x = 12
     expect formatQuantity x = "12"
     expect parseQuantity (formatQuantity x) = 12
-  end
-end
+  end example
+end law
+end unit

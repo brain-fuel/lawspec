@@ -306,7 +306,7 @@ proofExpression schema bits = proof
                              , Just conversion <- T.integerConversion bits destination source (proof value) -> conversion
                              | otherwise -> T.Conversion (safeConversion bits target value) (proof value)
       -- let x = e in body: e is checked, and the body knows x is e.
-      Let binder value body -> T.Match (proof value) [([], T.substituteProof (M.singleton (binderId binder) (proof value)) (proof body))]
+      Let binder value body -> T.strictLet (binderId binder) (proof value) (proof body)
       Helper Unreachable [Expr _ (Constant (SSequence _ points)) _] -> T.Absurd (map toEnum points)
       Helper Unreachable _ -> T.Absurd "a constructor"
       Helper IncompleteSearch _ -> T.Absurd "an incomplete witness search"

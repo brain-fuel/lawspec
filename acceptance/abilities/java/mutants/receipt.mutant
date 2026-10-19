@@ -1,4 +1,4 @@
-expect-any: a receipt is for the amount captured [native] | [recording native]
+expect-any: a receipt is for the amount captured| [native] | [recording native]
 @@ src/main/java/example/Abilities.java
 <<<<<<<
       return new lawspec.data.Receipt(value0);

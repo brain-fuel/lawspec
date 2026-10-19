@@ -1,7 +1,6 @@
 // Generated from templates/tools/parity.mjs by lawspec-dev generate. Do not edit.
 // Compare complete compiler responses across native and WASM boundaries.
-// Archived source enters through migration; matching rejections are counted
-// separately and cannot stand in for accepted backend generation.
+// Matching rejections are counted separately from accepted backend generation.
 import {execFileSync} from 'node:child_process';
 import {readFile,readdir} from 'node:fs/promises';
 import assert from 'node:assert/strict';
@@ -12,23 +11,19 @@ import {collectSources} from '../npm/files.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const bin=process.env.LAWSPEC_CORE||path.join(execFileSync('stack',['path','--local-install-root'],{
   cwd:root,encoding:'utf8'}).trim(),'bin/lawspec-core');
-const canonical=process.argv.includes('--canonical');
 const requested=process.argv.slice(2).filter(arg=>arg!=='--canonical');
-assert.ok(!canonical||requested.length,'--canonical requires explicit canonical fixture paths');
 const paths=requested.length?requested.map(name=>path.resolve(name)):
   (await readdir(path.join(root,'examples/specs'))).filter(name=>name.endsWith('.lawspec')).sort()
     .map(name=>path.join(root,'examples/specs',name));
-const reference=canonical?'npm/starter-rc1.lawspec':'examples/specs/atoi_codec.lawspec';
+const reference='npm/starter-rc1.lawspec';
 const content=await readFile(path.join(root,reference),'utf8');
-const invalid=canonical?content.replace('row -42,','row 2147483648,'):
-  content.replace('x = -42','x = 2147483648');
-const unicode=canonical?content.replace('Converting an integer','λ 日本語 😀 Converting an integer'):
-  content.replace('representing an Int32','λ 日本語 😀 representing an Int32');
+const invalid=content.replace('row -42,','row 2147483648,');
+const unicode=content.replace('Converting an integer','λ 日本語 😀 Converting an integer');
 assert.notEqual(invalid,content,'The invalid-input probe must change its source');
 assert.notEqual(unicode,content,'The Unicode probe must change its source');
 const fixtures=[...(await Promise.all(paths.map(name=>readFile(name,'utf8')))),invalid,unicode];
 const compiler=await createCompiler(),counts={responses:0,accepted:0,rejected:0,generationAccepted:0,generationRejected:0};
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['proof','exhaustive','property','examples','runtime','model']}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['proof','exhaustive','property','examples','runtime','model']}};
 async function compare(method,input,label,{generation=false,required=false,rejected=false}={}){
   const native=JSON.parse(execFileSync(bin,[],{input:JSON.stringify({...input,method}),encoding:'utf8',maxBuffer:128*1024*1024}));
   const wasm=await compiler[method](input);assert.deepEqual(wasm,native,label);
@@ -42,22 +37,21 @@ async function compare(method,input,label,{generation=false,required=false,rejec
 for(const machineBits of [32,64]){
   for(const [index,text]of fixtures.entries()){
     const input={...options,sources:[{path:'fixture.lawspec',content:text}],machineBits};
-    if(canonical)for(const method of ['check','expand'])await compare(method,input,`${method}:${index}:${machineBits}`,{rejected:index===paths.length});
-    else await compare('migrationBaseline',{...input,from:'0.24'},`migration baseline:${index}:${machineBits}`,{rejected:index===paths.length});
+    for(const method of ['check','expand'])await compare(method,input,`${method}:${index}:${machineBits}`,{rejected:index===paths.length});
   }
   console.log('Frontend full-response parity:',fixtures.length,'fixtures,',machineBits,'bits');
 }
 for(const machineBits of [32,64])for(const minify of [false,true]){
   for(const [index,text]of fixtures.entries())for(const target of targets){
     const input={...options,sources:[{path:'fixture.lawspec',content:text}],target,machineBits,minify};
-    await compare(canonical?'planGeneration':'migrationBaseline',canonical?input:{...input,from:'0.24',includeGeneration:true},
+    await compare('planGeneration',input,
       `generation:${index}:${target}:${machineBits}:${minify}`,{generation:true,rejected:index===paths.length});
   }
   // Require actual accepted output from every backend in every profile, in
   // addition to comparing any honest unsupported/rejected fixture responses.
   for(const target of targets){
     const input={...options,sources:[{path:'codec.lawspec',content}],target,machineBits,minify};
-    await compare(canonical?'planGeneration':'migrationBaseline',canonical?input:{...input,from:'0.24',includeGeneration:true},
+    await compare('planGeneration',input,
       `required codec:${target}:${machineBits}:${minify}`,{generation:true,required:true});
   }
   console.log('Generation full-response parity:',machineBits,'bits, compact=',minify);

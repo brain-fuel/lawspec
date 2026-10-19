@@ -23,7 +23,7 @@ import LawSpec.CaseFoldNames (caseFoldUnit,caseFoldOperation)
 
 type Names = [(C.Id,String)]
 
--- Shared evidence presentation also serves documentary migration snapshots.
+-- Shared typed evidence presentation for compiler and authoring consumers.
 -- Its status remains the existing runtime/assumption/proof classification.
 obligationView :: Names -> Obligation -> Value
 obligationView names = object . obligationFields names
@@ -125,10 +125,10 @@ textIn names e = case C.expressionNode e of
   C.Construct tag args -> unwords (C.idText tag : map ((\v -> "(" ++ go v ++ ")")) args)
   C.Project _ index value -> "(" ++ go value ++ ")." ++ show index
   C.Update _ index value field -> "(" ++ go value ++ ") with " ++ show index ++ " = (" ++ go field ++ ")"
-  C.Match value cases -> "match (" ++ go value ++ ") { " ++ unwords
-    [C.idText (C.caseConstructor branch) ++ " " ++ unwords (map C.binderName (C.caseBinders branch)) ++
-     " -> " ++ textIn (M.union (M.fromList [(C.binderId b, C.binderName b) | b <- C.caseBinders branch]) names) (C.caseBody branch) ++ ";"
-      | branch <- cases] ++ " }"
+  C.Match value cases -> "first matching case of (" ++ go value ++ "): " ++ unwords
+    ["when " ++ C.idText (C.caseConstructor branch) ++ " " ++ unwords (map C.binderName (C.caseBinders branch)) ++
+     " then " ++ textIn (M.union (M.fromList [(C.binderId b, C.binderName b) | b <- C.caseBinders branch]) names) (C.caseBody branch)
+      | branch <- cases] ++ " end case"
   C.AllElements value binder predicate -> "allElements (" ++ go value ++ ") (" ++ C.binderName binder ++
     " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
   C.AllPayloads value predicates -> "allPayloads (" ++ go value ++ ") [" ++ unwords
@@ -140,14 +140,14 @@ textIn names e = case C.expressionNode e of
   C.Binary op _ a b -> "(" ++ go a ++ " " ++ C.binaryName op ++ " " ++ go b ++ ")"
   C.Unary op a -> unary op ++ "(" ++ go a ++ ")"
   C.ShortCircuit op a b -> "(" ++ go a ++ " " ++ logical op ++ " " ++ go b ++ ")"
-  C.If c a b -> "(if " ++ go c ++ " then " ++ go a ++ " else " ++ go b ++ ")"
+  C.If c a b -> "(if " ++ go c ++ " then " ++ go a ++ " else " ++ go b ++ " end if)"
   C.Convert _ t a -> "(" ++ go a ++ " :: " ++ prettyType t ++ ")"
   C.Helper name args -> "prelude." ++ C.builtinName name ++ concatMap (\v -> " (" ++ go v ++ ")") args
   C.Perform op args -> unwords (C.operationName op : map ((\v -> "(" ++ go v ++ ")")) args)
   C.Handle (C.CatchFailure _) body -> "prelude.attempt (" ++ go body ++ ")"
-  C.Handle (C.WithHandler _ h) body -> "handle " ++ go body ++ " with " ++ handlerText h ++ " end"
+  C.Handle (C.WithHandler _ h) body -> "handle " ++ go body ++ " with " ++ handlerText h ++ " end handle"
   C.Let binder value body -> "let " ++ C.binderName binder ++ " = " ++ go value ++ " in " ++
-    textIn (M.insert (C.binderId binder) (C.binderName binder) names) body
+    textIn (M.insert (C.binderId binder) (C.binderName binder) names) body ++ " end let"
   C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map go xs) ++ ")") args
   where go = textIn names
 

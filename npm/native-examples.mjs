@@ -31,8 +31,8 @@ export async function exportNativePayments(options, selected) {
       'laws/payments.lawspec': law,
     };
     const config = JSON.parse(files['lawspec.json']);
-    if(config.version!==2||config.languageProfile!=='1.0-rc.1')
-      throw new Error(`Bundled native payments configuration for ${target} must use version 2 and languageProfile 1.0-rc.1`);
+    if(config.version!==2||config.languageProfile!=='1.0-rc.2')
+      throw new Error(`Bundled native payments configuration for ${target} must use version 2 and languageProfile 1.0-rc.2`);
     config.machineBits = options.machineBits ?? 64;
     files['lawspec.json'] = JSON.stringify(config, null, options.minify ? undefined : 2) + '\n';
     const instructions = target === 'gleam' ? setup[target].replace(

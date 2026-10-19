@@ -107,38 +107,38 @@ timeSource :: String
 timeSource = unlines
   [ "unit " ++ timeUnit
   , ""
-  , "wrapper Duration is Integer where value >= 0 && value <= " ++ limit ++ " end"
+  , "wrapper Duration is Integer where value >= 0 && value <= " ++ limit ++ " end wrapper"
   , ""
   -- What a custom retry strategy decides after a failure.
-  , "type RetryDecision is | Stop | RetryAfter delay :: Duration end"
+  , "type RetryDecision is one of | Stop | RetryAfter of type Duration end type"
   , ""
   , unlines [constructor name factor | (name, factor) <- factors]
-  , "definition durationPlus (a :: Duration) (b :: Duration where valueOfDuration a + valueOfDuration b <= " ++ limit ++ ")"
-  , "    :: (r :: Duration where valueOfDuration r == valueOfDuration a + valueOfDuration b) is"
+  , "function durationPlus (a :: Duration) (b :: Duration where valueOfDuration a + valueOfDuration b <= " ++ limit ++ ")"
+  , "    -> (r :: Duration where valueOfDuration r = valueOfDuration a + valueOfDuration b) is"
   , "  Duration (valueOfDuration a + valueOfDuration b)"
-  , "end"
+  , "end function"
   , ""
-  , "definition durationMinus (a :: Duration) (b :: Duration where valueOfDuration b <= valueOfDuration a)"
-  , "    :: (r :: Duration where valueOfDuration r == valueOfDuration a - valueOfDuration b) is"
+  , "function durationMinus (a :: Duration) (b :: Duration where valueOfDuration b <= valueOfDuration a)"
+  , "    -> (r :: Duration where valueOfDuration r = valueOfDuration a - valueOfDuration b) is"
   , "  Duration (valueOfDuration a - valueOfDuration b)"
-  , "end"
+  , "end function"
   , ""
   -- A product's sign is not linear, so a non-negative product is stated.
-  , "definition durationTimes (a :: Duration) (k :: Integer where valueOfDuration a * k >= 0 && valueOfDuration a * k <= " ++ limit ++ ")"
-  , "    :: (r :: Duration where valueOfDuration r == valueOfDuration a * k) is"
+  , "function durationTimes (a :: Duration) (k :: Integer where valueOfDuration a * k >= 0 && valueOfDuration a * k <= " ++ limit ++ ")"
+  , "    -> (r :: Duration where valueOfDuration r = valueOfDuration a * k) is"
   , "  Duration (valueOfDuration a * k)"
-  , "end"
+  , "end function"
   , ""
-  , "definition durationQuot (a :: Duration) (k :: Integer where k > 0)"
-  , "    :: (r :: Duration where valueOfDuration r == prelude.quot (valueOfDuration a) k) is"
+  , "function durationQuot (a :: Duration) (k :: Integer where k > 0)"
+  , "    -> (r :: Duration where valueOfDuration r = prelude.quot (valueOfDuration a) k) is"
   , "  Duration (prelude.quot (valueOfDuration a) k)"
-  , "end"
+  , "end function"
   ]
   where
     limit = show durationLimit
     constructor name factor = unlines
-      [ "definition " ++ name ++ " (n :: Integer where n >= 0 && n <= " ++ show (durationLimit `div` factor) ++ ")"
-      , "    :: (r :: Duration where valueOfDuration r == " ++ scaled ++ ") is"
+      [ "function " ++ name ++ " (n :: Integer where n >= 0 && n <= " ++ show (durationLimit `div` factor) ++ ")"
+      , "    -> (r :: Duration where valueOfDuration r = " ++ scaled ++ ") is"
       , "  Duration (" ++ scaled ++ ")"
-      , "end" ]
+      , "end function" ]
       where scaled = if factor == 1 then "n" else "n * " ++ show (factor :: Integer)

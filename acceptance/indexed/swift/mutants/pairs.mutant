@@ -1,6 +1,6 @@
 @@ src/Example/Arithmetic.swift
 <<<<<<<
-Pairs(items: value0)
+Pairs(value: value0)
 =======
-Pairs(items: .cell(head: 0, tail: value0))
+Pairs(value: .cell(value: .record(head: 0, tail: value0)))
 >>>>>>>

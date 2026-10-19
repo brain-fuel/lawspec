@@ -1,6 +1,6 @@
 @@ src/main/java/example/Indexed.java
 <<<<<<<
-      case Tree.Bin<Byte>(var left, var value, var right) -> append(flatten(left), new Vec.VCons<>(value, flatten(right)));
+      case Tree.Bin<Byte>(lawspec.data.Recorde00f7d8e028cf6be6e08b4ed1f9853199bee01cf39e5a2faa3e38b8ad29bf271<Byte>(var left, var right, var value)) -> append(flatten(left), new Vec.VCons<>(new lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec<>(value, flatten(right))));
 =======
-      case Tree.Bin<Byte>(var left, var value, var right) -> append(flatten(left), new Vec.VCons<>(value, new Vec.VNil<>()));
+      case Tree.Bin<Byte>(lawspec.data.Recorde00f7d8e028cf6be6e08b4ed1f9853199bee01cf39e5a2faa3e38b8ad29bf271<Byte>(var left, var right, var value)) -> append(flatten(left), new Vec.VCons<>(new lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec<>(value, new Vec.VNil<>())));
 >>>>>>>

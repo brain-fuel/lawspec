@@ -14,16 +14,17 @@ law "|allowed requests are approved| is
   owner: Payments.Review
   description:
     "An allowed request receives approval."
-  end
+  end description
   definition:
     review true must be Approved
-  end
-end
+  end definition
+end law
 
 law "|other requests are declined| is
   owner: Payments.Review
   id: "REVIEW-002"
   definition:
     review false must be Declined
-  end
-end
+  end definition
+end law
+end unit

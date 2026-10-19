@@ -1,0 +1,148 @@
+unit tensorflow.ctc
+
+  type Frame is one of
+    | Blank
+    | H
+    | E
+    | L
+    | O
+  end type
+
+  function decodeAfter
+    (previous of type Frame)
+    (frames of type List Frame) -> List Frame is
+    first matching case of frames:
+      when Nil then []
+      when Cons Blank remaining then
+        decodeAfter Blank remaining
+      when Cons frame remaining then
+        if frame = previous then
+          decodeAfter frame remaining
+        else
+          Cons frame (decodeAfter frame remaining)
+        end if
+    end case
+  end function
+
+  function "|decode frames| (frames of type List Frame) -> List Frame is
+    decodeAfter Blank frames
+  end function
+
+  function encodeFrames (letters of type List Frame) -> List Frame is
+    first matching case of letters:
+      when Nil then []
+      when Cons letter remaining then
+        Cons letter (Cons Blank (encodeFrames remaining))
+    end case
+  end function
+
+  law "|empty input produces empty output| is
+    definition:
+      "|decode frames| [] must be ([] :: List Frame)
+    end definition
+  end law
+
+  law "|a single letter survives| is
+    definition:
+      for all (letter of type Frame) =>
+        letter != Blank implies
+          "|decode frames| [letter] must be [letter]
+      end for all
+    end definition
+  end law
+
+  law "|decoded output contains no blanks| is
+    description:
+      "Blanks separate repeated letters but never appear in decoded output."
+    end description
+    definition:
+      for all (frames of type List Frame) =>
+        not (Blank in "|decode frames| frames)
+      end for all
+    end definition
+    expect "|decode frames| frames = expected
+    in table (frames, expected):
+      row [], []
+      row [L, L], [L]
+      row [L, Blank, L], [L, L]
+      row [Blank, Blank], []
+      row [H, H, E, L, L, Blank, L, O, O], [H, E, L, L, O]
+    end table
+  end law
+
+  law "|padding with blanks changes nothing| is
+    definition:
+      for all (frames of type List Frame) =>
+        "|decode frames| ([Blank] ++ frames ++ [Blank])
+          must be "|decode frames| frames
+      end for all
+    end definition
+  end law
+
+  law "|repeating a frame changes nothing| is
+    definition:
+      for all
+        (before of type List Frame)
+        (frame of type Frame)
+        (after of type List Frame) =>
+        "|decode frames| (before ++ [frame, frame] ++ after)
+          must be "|decode frames| (before ++ [frame] ++ after)
+      end for all
+    end definition
+  end law
+
+  law "|a blank preserves a doubled letter| is
+    definition:
+      for all (letter of type Frame) =>
+        letter != Blank implies
+          "|decode frames| [letter, Blank, letter] must be [letter, letter]
+      end for all
+    end definition
+  end law
+
+  law "|distinct letters retain their order| is
+    definition:
+      for all (left of type Frame) (right of type Frame) =>
+        left != Blank and right != Blank and left != right implies
+          "|decode frames| [left, right] must be [left, right]
+      end for all
+    end definition
+  end law
+
+  law "|a blank separates independently decoded segments| is
+    definition:
+      for all (left of type List Frame) (right of type List Frame) =>
+        "|decode frames| (left ++ [Blank] ++ right) must be
+          ("|decode frames| left) ++ ("|decode frames| right)
+      end for all
+    end definition
+  end law
+
+  law "|decoding never lengthens the input| is
+    definition:
+      for all (frames of type List Frame) =>
+        prelude.length ("|decode frames| frames) <= prelude.length frames
+      end for all
+    end definition
+  end law
+
+  law "|every blank-free output has an encoding| is
+    description:
+      "Every sequence of letters can be represented, including doubled letters."
+    end description
+    definition:
+      for all (letters of type List Frame) =>
+        not (Blank in letters) implies
+          there exists (frames of type List Frame) such that
+            "|decode frames| frames must be letters
+          end exists
+      end for all
+    end definition
+  end law
+
+  harness tensorflow.ctc.testing for tensorflow.ctc is
+    for law "|every blank-free output has an encoding|
+      witness encodeFrames letters for letters.frames
+    end for law
+  end harness
+end unit

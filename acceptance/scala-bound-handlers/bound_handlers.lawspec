@@ -4,36 +4,37 @@ unit example.bank
 -- handler throws its own exceptions, and lawspec.json maps them to the
 -- operation's failures.
 
-type VaultError is
-  | Overdrawn message :: Text
+type VaultError is one of
+  | Overdrawn of type record{ message :: Text}
   | Frozen
-end
+end type
 
 ability Vault is
   withdraw :: Int64 -> Int64 fails with VaultError
-end
+end ability
 
 -- The unit's adapter is application code too, so the unit is bound.
 balance :: Unit -> Int64
 
-law `the vault opens with a thousand` is
-  definition is `for all` (u :: Unit) . balance u = 1000 end
-end
+law "|the vault opens with a thousand| is
+  definition : for all (u :: Unit) => balance u = 1000 end for all end definition
+end law
 
-law `withdrawals within the balance go through` using Vault is
-  definition is
-    `for all` (cents :: Int64 where cents >= 0 && cents <= 1000) . prelude.attempt (withdraw cents) = Right (1000 - cents)
-  end
-end
+law "|withdrawals within the balance go through| using Vault is
+  definition :
+    for all (cents :: Int64 where cents >= 0 && cents <= 1000) => prelude.attempt (withdraw cents) = Right (1000 - cents) end for all
+  end definition
+end law
 
-law `overdrafts fail and say why` using Vault is
-  definition is
-    `for all` (cents :: Int64 where cents > 1000 && cents <= 1000000) . withdraw cents fails with Overdrawn _ message contains "over"
-  end
-end
+law "|overdrafts fail and say why| using Vault is
+  definition :
+    for all (cents :: Int64 where cents > 1000 && cents <= 1000000) => withdraw cents fails with Overdrawn record{ message = _} message contains "over" end for all
+  end definition
+end law
 
-law `negative withdrawals freeze the vault` using Vault is
-  definition is
-    `for all` (cents :: Int64 where cents < 0 && cents >= -1000) . withdraw cents fails with Frozen
-  end
-end
+law "|negative withdrawals freeze the vault| using Vault is
+  definition :
+    for all (cents :: Int64 where cents < 0 && cents >= -1000) => withdraw cents fails with Frozen end for all
+  end definition
+end law
+end unit

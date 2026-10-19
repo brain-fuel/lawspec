@@ -9,7 +9,7 @@ const compiler=await createCompiler();
 const path='test/fixtures/canonical-container-records.lawspec';
 const content=await readFile(new URL('../../'+path,import.meta.url),'utf8');
 const sources=[{path,content}];
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive','examples']}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['exhaustive','examples']}};
 const targets=['java','python','javascript','typescript','go','haskell','kotlin','rust','erlang','elixir','gleam','fsharp','csharp','scala','groovy','clojure','swift'];
 const batch='type Batch (a :: Type) is one of | Batch of type List record{value :: a} end type\n';
 
@@ -36,14 +36,16 @@ test('container reconstruction preserves mandatory source checks with no selecte
   const invalid=[
     batch+'function invalid (items :: List record{other :: Bool}) -> Batch Bool is Batch items end function',
     batch+'type Named is a record{value :: Bool} end type\nfunction invalid (items :: List Named) -> Batch Bool is Batch items end function',
-    batch+'function invalid (items :: List record{value :: Bool}) -> Batch Bool is let unused = 1 / 0 in Batch items end function',
+    batch+'function invalid (items :: List record{value :: Bool}) -> Batch Bool is let unused = 1 / 0 in Batch items end let end function',
     batch+'function invalid (batch :: Batch a) -> a is first matching case of batch: when Batch (Cons record{value = item} remaining) then item end case end function',
     batch+'function invalid (batch :: Batch a) -> List record{value :: a} is invalid batch end function',
-    'type Stored is a record{items :: List record{value :: Nat}} end type\nfunction invalid (ignored :: ()) -> Stored is Stored record{items = [record{value = 0}]} end function',
+    `type Stored is a record{items :: List record{value :: Nat}} end type
+function invalid (ignored :: ()) -> Stored is Stored record{items = [record{value = 0}]} end function
+`,
   ];
   for(const machineBits of [32,64])for(const body of invalid)for(const method of ['check','expand']) {
     const result=await compiler[method]({...options,verification:{layers:[]},machineBits,
-      sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body}]});
+      sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body+'\nend unit\n'}]});
     assert.ok(result.diagnostics.length>0,body);
     assert.ok(result.diagnostics.some(row=>['definition','total'].includes(row.code)),JSON.stringify(result.diagnostics));
   }

@@ -17,17 +17,18 @@ async stock :: Text -> Int32
 quote :: Text -> Int32
 
 law "|prices agree with quotes| is
-  definition : for all (sku :: Text) => price sku = quote sku end end
+  definition : for all (sku :: Text) => price sku = quote sku end for all end definition
   example "|a free sample| :
     sku = "free"
     expect price sku = 0
-  end
-end
+  end example
+end law
 
 law "|stocked products have prices| is
-  definition : for all (sku :: Text) => stock sku > 0 implies price sku >= 0 end
-  end
-end
+  definition : for all (sku :: Text) => stock sku > 0 implies price sku >= 0 end for all
+  end definition
+end law
+end unit
 ```
 
 `async` is a keyword only before a signature's name; it remains usable as a

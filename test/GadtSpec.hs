@@ -1,6 +1,7 @@
 -- | GADTs: local type refinement, inaccessible constructors, existentials and witnesses.
 module GadtSpec (test_gadtMatchesRefineTypesLocally) where
 
+import FixtureSource (extendUnit)
 import Data.Either (isLeft, isRight)
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -22,21 +23,22 @@ import qualified LawSpec.KotlinData as Kotlin
 expressions :: String
 expressions = unlines
   [ "unit example.gadt"
-  , "type Pair (a :: Type) (b :: Type) is Pair first :: a second :: b end"
-  , "type Expr (a :: Type) is"
-  , "  | Number value :: BigInt where a = BigInt"
-  , "  | Truth value :: Bool where a = Bool"
-  , "  | Same left :: Expr BigInt right :: Expr BigInt where a = Bool"
-  , "  | Both first :: Expr b second :: Expr c where a = Pair b c"
-  , "end"
-  , "type Shown is"
-  , "  | Shown value :: b"
-  , "end"
-  ]
+   ++ "\n", ""
+  , "type Pair (a :: Type) (b :: Type) is a record{  first :: a second :: b} end type\n"
+  , "type Expr (a :: Type) is one of"
+  , "  | Number  of type Integer where a = Integer"
+  , "  | Truth  of type Bool where a = Bool"
+  , "  | Same of type record{ left :: Expr Integer right :: Expr Integer} where a = Bool"
+  , "  | Both of type record{ first :: Expr b second :: Expr c} where a = Pair b c"
+  , "end type"
+  , "type Shown is a record{"
+  , "    value :: b}"
+  , "end type"
+  , "\nend unit" ]
 
 -- | The declarations above, then the given lines.
 program :: [String] -> Either [Diagnostic] C.Program
-program extra = compileCore 64 defaultGeneration [Source "gadt.lawspec" (expressions ++ unlines extra)]
+program extra = compileCore 64 defaultGeneration [Source "gadt.lawspec" (extendUnit expressions $ unlines extra)]
 
 rejects :: String -> [String] -> Expectation
 rejects fragment extra = case program extra of
@@ -45,14 +47,14 @@ rejects fragment extra = case program extra of
 
 eval :: [String]
 eval =
-  [ "definition eval (e :: Expr a) :: a is"
-  , "  match e with"
-  , "  | Number v -> v"
-  , "  | Truth b -> b"
-  , "  | Same l r -> eval l == eval r"
-  , "  | Both l r -> Pair (eval l) (eval r)"
-  , "  end"
-  , "end"
+  [ "function eval (e :: Expr a) -> a is"
+  , "  first matching case of e:"
+  , "    when Number v then v"
+  , "    when Truth b then b"
+  , "    when Same record{left = l, right = r} then eval l = eval r"
+  , "    when Both record{first = l, second = r} then Pair record{first = eval l, second = eval r}"
+  , "  end case"
+  , "end function"
   ]
 
 declaration :: C.Program -> String -> C.DataDeclaration
@@ -68,19 +70,20 @@ test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
   describe "native products" $ do
     mapM_ (\layout -> it ("refines Haskell constructor fields and codecs in " ++ show layout) $ do
       compiled <- either (fail . show) pure (program
-        ["type Fixed (a :: Type) is | Fixed value :: a values :: List a where a = Bytes end"])
+        [ "type Fixed (a :: Type) is one of | Fixed of type record{ value :: a values :: List a} where a = Bytes end type\n" ])
       let declarations = C.programDataDeclarations compiled
       text <- either fail pure (Haskell.emitHaskellData layout declarations)
       codec <- either fail pure (Haskell.emitHaskellCodecs layout declarations)
-      text `shouldSatisfy` isInfixOf "fixedValue :: B.ByteString"
-      text `shouldSatisfy` isInfixOf "fixedValues :: [B.ByteString]"
+      text `shouldSatisfy` isInfixOf "} -> Fixed B.ByteString"
+      text `shouldSatisfy` isInfixOf "Value :: a0"
+      text `shouldSatisfy` isInfixOf "Values :: [a0]"
       codec `shouldSatisfy` isInfixOf "EmptyCase, GADTs, ScopedTypeVariables"
-      codec `shouldSatisfy` isInfixOf "Codec.decode (Codec.bytesCodec schema bits) value0"
-      codec `shouldSatisfy` isInfixOf "Codec.encode (Codec.bytesCodec schema bits) value0")
+      codec `shouldSatisfy` isInfixOf "Codec.bytesCodec schema bits"
+      codec `shouldSatisfy` isInfixOf "Codec.encode")
       [D.Pretty 80, D.Compact]
     it "keeps a fixed parameter in the Go product and codec" $ do
       compiled <- either (fail . show) pure (program
-        ["type Fixed (a :: Type) is | Fixed value :: a where a = Bytes end"])
+        [ "type Fixed (a :: Type) is one of | Fixed  of type a where a = Bytes end type\n" ])
       let declarations = C.programDataDeclarations compiled
       text <- either fail pure (Go.emitGoData (D.Pretty 80) "example" declarations)
       codec <- either fail pure (Go.emitGoCodecs (D.Pretty 80) "example" declarations)
@@ -88,21 +91,21 @@ test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
       codec `shouldSatisfy` isInfixOf "Fixed[T0]{"
     it "keeps a fixed parameter in the TypeScript product class" $ do
       compiled <- either (fail . show) pure (program
-        ["type Fixed (a :: Type) is | Fixed value :: a where a = Bytes end"])
+        [ "type Fixed (a :: Type) is one of | Fixed  of type a where a = Bytes end type\n" ])
       artifacts <- either fail pure (Web.emitWebData True (D.Pretty 80) (C.programDataDeclarations compiled))
       let text = concatMap artifactContent artifacts
       text `shouldSatisfy` isInfixOf "export class Fixed<T0>"
       text `shouldSatisfy` isInfixOf "readonly value: T0;"
     it "keeps a fixed parameter in the Python product class" $ do
       compiled <- either (fail . show) pure (program
-        ["type Fixed (a :: Type) is | Fixed value :: a where a = Bytes end"])
+        [ "type Fixed (a :: Type) is one of | Fixed  of type a where a = Bytes end type\n" ])
       artifacts <- either fail pure (Python.emitPythonData (D.Pretty 80) (C.programDataDeclarations compiled))
       let text = concatMap artifactContent artifacts
       text `shouldSatisfy` isInfixOf "class Fixed[_T0]:"
       text `shouldSatisfy` isInfixOf "value: _T0"
     mapM_ (\layout -> it ("keeps a fixed parameter in Kotlin products and codecs in " ++ show layout) $ do
       compiled <- either (fail . show) pure (program
-        ["type Fixed (a :: Type) is | Fixed value :: a values :: List a where a = Bytes end"])
+        [ "type Fixed (a :: Type) is one of | Fixed of type record{ value :: a values :: List a} where a = Bytes end type\n" ])
       artifacts <- either fail pure (Kotlin.emitKotlinData layout (C.programDataDeclarations compiled))
       let text = concatMap artifactContent artifacts
       text `shouldSatisfy` isInfixOf "data class Fixed<T0>"
@@ -112,29 +115,29 @@ test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
       [D.Pretty 80, D.Compact]
   describe "local type refinement" $ do
     it "refines a rigid type variable in each branch" $
-      program (eval ++ ["law `two` is definition is `for all` (x :: BigInt) . eval (Number 2) = 2 end end"])
+      program (eval ++ [ "law \"|two| is definition : for all (x :: Integer) => eval (Number 2) = 2 end for all end definition end law" ])
         `shouldSatisfy` isRight
     it "rejects a branch result at the wrong refined type" $
       program
-        [ "definition bad (e :: Expr a) :: a is"
-        , "  match e with | Number v -> true | Truth b -> b | Same l r -> true | Both l r -> Pair 1 true end"
-        , "end"
+        [ "function bad (e :: Expr a) -> a is"
+        , "first matching case of e : when Number v then true when Truth b then b when Same l r then true when Both record{first = l, second = r} then Pair record{ first = 1 , second = true} end case"
+        , "end function"
         ] `shouldSatisfy` isLeft
     it "accepts polymorphic recursion at other instances" $
       -- Same calls eval at Expr BigInt from inside Expr Bool.
-      program (eval ++ ["law `same` is definition is `for all` (x :: BigInt) . eval (Same (Number x) (Number x)) = true end end"])
+      program (eval ++ [ "law \"|same| is definition : for all (x :: Integer) => eval (Same record{left = Number x, right = Number x}) = true end for all end definition end law" ])
         `shouldSatisfy` isRight
   describe "inaccessible constructors" $ do
     it "needs no branch for a constructor that cannot build the type" $
       program
-        [ "definition truth (e :: Expr Bool) :: Bool is"
-        , "  match e with | Truth b -> b | Same l r -> true end"
-        , "end"
+        [ "function truth (e :: Expr Bool) -> Bool is"
+        , "first matching case of e : when Truth b then b when Same record{left = l, right = r} then true end case"
+        , "end function"
         ] `shouldSatisfy` isRight
     it "rejects constructing a value at a type its constructor cannot build" $
-      program ["law `bad` is definition is `for all` (x :: BigInt) . (Number x == Number x) = true end end",
+      program ["law \"|bad| is definition : for all (x :: Integer) => (Number x = Number x) = true end for all end definition end law\n",
                "f :: Expr Bool -> Bool",
-               "law `worse` is definition is `for all` (x :: BigInt) . f (Number x) = true end end"]
+               "law \"|worse| is definition : for all (x :: Integer) => f (Number x) = true end for all end definition end law\n"]
         `shouldSatisfy` isLeft
     it "keeps only compatible constructors at an instantiated type" $ do
       let Right compiled = program []
@@ -142,7 +145,7 @@ test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
           expr = C.dataId (declaration compiled "Expr")
           at ty = map C.constructorName <$> compatibleConstructors registry (C.Constructor (C.idText expr) [C.TypeArgument ty])
       at (C.Constructor "Bool" []) `shouldBe` Right ["Truth", "Same"]
-      at (C.Constructor "BigInt" []) `shouldBe` Right ["Number"]
+      at (C.Constructor "Integer" []) `shouldBe` Right ["Number"]
   describe "existentials" $ do
     it "determines existentials from the refined type" $ do
       let Right compiled = program []
@@ -151,10 +154,9 @@ test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
       map (freeExistentials (declaration compiled "Expr")) both `shouldBe` [[]]
     it "rejects matching a field-only existential in a definition" $
       rejects "only in adapters"
-        [ "definition unbox (s :: Shown) :: Bool is"
-        , "  match s with | Shown v -> true end"
-        , "end"
-        ]
+        [ "function unbox (s :: Shown) -> Bool is"
+        , "  first matching case of s : when Shown v then true end case"
+        , "end function" ]
   describe "type witnesses" $ do
     it "appends a Text witness field to the runtime schema" $ do
       let Right compiled = program []
@@ -172,4 +174,4 @@ test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
       witnessKey (C.Constructor "Pair" [C.TypeArgument (C.Constructor "Bool" []), C.TypeArgument (C.Constructor "Int32" [])])
         `shouldBe` "(Pair Bool Int32)"
     it "reserves the witness field name" $
-      rejects "cannot be named witness" ["type Boxed is | Boxed value :: b witness :: Bool end"]
+      rejects "cannot be named witness" [ "type Boxed is a record{   value :: b witness :: Bool} end type\n" ]

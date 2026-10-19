@@ -1,3 +1,4 @@
+import {semanticFacts} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PassThrough } from 'node:stream';
@@ -7,12 +8,17 @@ import { explainLaw } from '../explain.mjs';
 test('documentary prelude function aliases retain declaration identities and ordinary scope priority',async()=>{
   const {createCompiler}=await import('../api.mjs');
   const compiler=await createCompiler();
-  const sources=[{path:'domain.lawspec',content:'unit domain\nfunction caseFold (value :: Text) -> Text is value end function'},
+  const sources=[{path:'domain.lawspec',content:`unit domain
+
+function caseFold (value :: Text) -> Text is value end function
+
+end unit
+`},
     {path:'consumer.lawspec',content:`unit consumer
 import domain (caseFold)
 function setOf (value :: Bool) -> Bool is value end function
 law linked is
-  definition: true end
+  definition: true end definition
   references:
     ref function prelude.caseFold
     ref function caseFold
@@ -20,10 +26,12 @@ law linked is
     ref function setOf
     ref function prelude.milliseconds
     ref function prelude.sameItems
-  end
-end`}];
+  end references
+end law
+end unit
+`}];
   for(const machineBits of [32,64]){
-    const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,verification:{layers:[]},sources};
+    const input={schemaVersion:5,languageProfile:'1.0-rc.2',machineBits,verification:{layers:[]},sources};
     const result=await compiler.check(input);assert.deepEqual(result.diagnostics,[]);
     const law=result.laws.find(law=>law.owner==='consumer');assert.ok(law);
     assert.deepEqual(law.references.map(ref=>[ref.target.unit,ref.target.name]),[
@@ -32,7 +40,7 @@ end`}];
     assert.ok(result.evidence.filter(item=>item.stage==='law').every(item=>item.status==='not-verified'));
     for(const reference of ['ref function prelude.notAFunction','ref law prelude.caseFold']){
       const bad=await compiler.check({...input,sources:[{path:'bad.lawspec',content:
-        `unit bad\nlaw linked is definition: true end references: ${reference} end end`}]});
+        `unit bad\nlaw linked is definition: true end definition references: ${reference} end references end law\nend unit`}]});
       assert.ok(bad.diagnostics.some(item=>item.code==='reference'));
     }
   }
@@ -44,14 +52,18 @@ test('formatting uses parser roles for record-type separators across imported ty
   const {targets}=await import('../templates.mjs');
   const compiler=await createCompiler();
   const content=await readFile(new URL('../../test/fixtures/canonical-record-type-separators.lawspec',import.meta.url),'utf8');
-  const companion='unit formatter.consumer\n'+
-    'import formatter.recordSeparators as picture (Picture, sample, display)\n'+
-    'function reference (value :: picture.Picture) -> record{original :: picture.Picture,note :: Text} is\n'+
-    'record{original = value, note = "keep,this"}\nend function\n';
+  const companion=`unit formatter.consumer
+import formatter.recordSeparators as picture (Picture, sample, display)
+function reference (value :: picture.Picture) -> record{original :: picture.Picture,note :: Text} is
+record{original = value, note = "keep,this"}
+end function
+
+end unit
+`;
   for(const machineBits of [32,64]){
-    const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,verification:{layers:['exhaustive','examples']},
+    const input={schemaVersion:5,languageProfile:'1.0-rc.2',machineBits,verification:{layers:['exhaustive','examples']},
       sources:[{path:'pictures.lawspec',content},{path:'consumer.lawspec',content:companion}]};
-    const before=await compiler.check({...input,migrationSnapshot:true});assert.deepEqual(before.diagnostics,[]);
+    const before=await compiler.check({...input});assert.deepEqual(before.diagnostics,[]);
     const formatted=await compiler.format(input);assert.deepEqual(formatted.diagnostics,[]);
     const output=formatted.formattedSources[0].content;
     const compact=output.replace(/\s+/g,' ');
@@ -62,8 +74,8 @@ test('formatting uses parser roles for record-type separators across imported ty
     const companionOutput=formatted.formattedSources[1].content.replace(/\s+/g,' ');
     assert.ok(companionOutput.includes('record{original :: picture.Picture note :: Text}'));
     assert.ok(companionOutput.includes('record{original = value, note = "keep,this"}'));
-    const after=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
-    assert.deepEqual(after.diagnostics,[]);assert.deepEqual(after.migrationSemantics,before.migrationSemantics);
+    const after=await compiler.check({...input,sources:formatted.formattedSources});
+    assert.deepEqual(after.diagnostics,[]);assert.deepEqual(semanticFacts(after),semanticFacts(before));
     const repeated=await compiler.format({...input,sources:formatted.formattedSources});
     assert.deepEqual(repeated.diagnostics,[]);assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
     for(const target of targets)for(const minify of [false,true]){
@@ -76,21 +88,29 @@ test('formatting uses parser roles for record-type separators across imported ty
 test('formatting preserves multiline literal contents and processes trailing block endings',async()=>{
   const {createCompiler}=await import('../api.mjs');
   const compiler=await createCompiler();
-  const content='unit literal.boundaries\n'+
-    'function text (ignored :: ()) -> Text is "first\n   \nsecond" end function\n'+
-    'function same (value :: Bool) -> Bool is\nvalue\nend function\n';
+  const content=`unit literal.boundaries
+
+function text (ignored :: ()) -> Text is "first
+${'   '}
+second" end function
+function same (value :: Bool) -> Bool is
+value
+end function
+
+end unit
+`;
   const expected=content.replace('\nvalue\n','\n  value\n');
   for(const machineBits of [32,64]){
-    const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,
+    const input={schemaVersion:5,languageProfile:'1.0-rc.2',machineBits,
       verification:{layers:[]},sources:[{path:'literal.lawspec',content}]};
-    const before=await compiler.check({...input,migrationSnapshot:true});
+    const before=await compiler.check({...input});
     assert.deepEqual(before.diagnostics,[]);
     const formatted=await compiler.format(input);
     assert.deepEqual(formatted.diagnostics,[]);
     assert.equal(formatted.formattedSources[0].content,expected);
-    const after=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
+    const after=await compiler.check({...input,sources:formatted.formattedSources});
     assert.deepEqual(after.diagnostics,[]);
-    assert.deepEqual(after.migrationSemantics,before.migrationSemantics);
+    assert.deepEqual(semanticFacts(after),semanticFacts(before));
     const repeated=await compiler.format({...input,sources:formatted.formattedSources});
     assert.deepEqual(repeated.diagnostics,[]);
     assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
@@ -107,13 +127,13 @@ test('formatting retains long scenario arguments and typed behavior through nest
   const commandLines=source=>source.split('\n').map(line=>line.trimStart())
     .filter(line=>/^(notice "|reply <- echo |expect reply = |send receipt )/.test(line));
   for(const machineBits of [32,64]){
-    const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,verification:{layers:[]},sources:[{path:file,content}]};
-    const before=await compiler.check({...input,migrationSnapshot:true});assert.deepEqual(before.diagnostics,[]);
+    const input={schemaVersion:5,languageProfile:'1.0-rc.2',machineBits,verification:{layers:[]},sources:[{path:file,content}]};
+    const before=await compiler.check({...input});assert.deepEqual(before.diagnostics,[]);
     const formatted=await compiler.format(input);assert.deepEqual(formatted.diagnostics,[]);
     const output=formatted.formattedSources[0].content;
     assert.ok(commandLines(content).length);assert.deepEqual(commandLines(output),commandLines(content));
-    const after=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
-    assert.deepEqual(after.diagnostics,[]);assert.deepEqual(after.migrationSemantics,before.migrationSemantics);
+    const after=await compiler.check({...input,sources:formatted.formattedSources});
+    assert.deepEqual(after.diagnostics,[]);assert.deepEqual(semanticFacts(after),semanticFacts(before));
     const repeated=await compiler.format({...input,sources:formatted.formattedSources});
     assert.deepEqual(repeated.diagnostics,[]);assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
     for(const minify of [false,true])for(const target of targets){
@@ -143,33 +163,33 @@ test('formatting preserves checked snapshots across resource, harness, workflow 
   const fixtures=[
     ['canonical-formatter-resources-harness.lawspec',[
       'resource Scratch is\n  acquire is\n    openScratch ()\n  end',
-      '  for law same\n    use flags for value\n    repeat 2\n  benchmark',
+      '  for law same\n    use flags for value\n    repeat 2\n  end for law\n  benchmark',
       '  benchmark `if all end is only a benchmark name` is\n    true\n  end',
     ]],
     ['canonical-formatter-model-workflow.lawspec',[
       'model store :: shared Store by Bool is\n  start openStore by false',
-      '  all\n    first :: Bool -> Bool\n    second :: Bool -> Bool\n  end\n  combine chooseFirst',
+      '  all\n    first :: Bool -> Bool\n    second :: Bool -> Bool\n  end all\n  combine chooseFirst',
     ]],
     ['canonical-model-layer-selection.lawspec',[
       'supervisor bank is\n  one for one\n  at most 3 restarts in 5s\n  permanent account\nend',
-      '  with\n    receive receipt m or else\n      balance\n    end\n    expect m = 5\n  end',
+      '  with\n    receive receipt m or else\n      balance\n    end or else\n    expect m = 5\n  end par',
     ]],
   ];
   for(const [file,fragments] of fixtures){
     const original=await readFile(new URL('../../test/fixtures/'+file,import.meta.url),'utf8');
     const content=original.split('\n').map(line=>line.trimStart()).join('\n');
     for(const machineBits of [32,64]){
-      const input={schemaVersion:5,languageProfile:'1.0-rc.1',machineBits,
+      const input={schemaVersion:5,languageProfile:'1.0-rc.2',machineBits,
         verification:{layers:[]},sources:[{path:file,content}]};
-      const before=await compiler.check({...input,migrationSnapshot:true});
+      const before=await compiler.check({...input});
       assert.deepEqual(before.diagnostics,[],file);
       const formatted=await compiler.format(input);
       assert.deepEqual(formatted.diagnostics,[],file);
       const output=formatted.formattedSources[0].content;
       for(const fragment of fragments)assert.ok(output.includes(fragment),file+': '+fragment);
-      const after=await compiler.check({...input,sources:formatted.formattedSources,migrationSnapshot:true});
+      const after=await compiler.check({...input,sources:formatted.formattedSources});
       assert.deepEqual(after.diagnostics,[],file);
-      assert.deepEqual(after.migrationSemantics,before.migrationSemantics,file);
+      assert.deepEqual(semanticFacts(after),semanticFacts(before),file);
       const repeated=await compiler.format({...input,sources:formatted.formattedSources});
       assert.deepEqual(repeated.diagnostics,[]);
       assert.deepEqual(repeated.formattedSources,formatted.formattedSources,file);
@@ -180,16 +200,21 @@ test('formatting preserves checked snapshots across resource, harness, workflow 
 test('canonical stateful procedures preserve state, sequencing and equality precedence through the SDK',async()=>{
   const {createCompiler}=await import('../api.mjs');
   const compiler=await createCompiler();
-  const content='unit remembered\n'+
-    'ability Signal is signal of type Bool -> Bool end\n'+
-    'handler remembering for Signal with state previous :: Bool start let initial = false in initial is\n'+
-    ' signal value is ~previous := not previous and value; previous end\nend\n'+
-    'procedure twice (value :: Bool) -> Bool uses Signal is signal value; signal value end procedure\n'+
-    'function selected (left :: Bool) (right :: Bool) -> Bool is not left = false && right = false end function\n'+
-    'law twice using remembering is definition: for all (value :: Bool) => twice value must be false end end\n'+
-    'expect twice value = expected in table (value,expected): row false,false row true,false end end\n'+
-    'law selected is definition: for all (left :: Bool) (right :: Bool) => selected left right must be (left and not right) end end end';
-  const options={schemaVersion:5,languageProfile:'1.0-rc.1'};
+  const content=`unit remembered
+
+ability Signal is signal of type Bool -> Bool end ability
+handler remembering for Signal with state previous :: Bool start let initial = false in initial end let  is
+  operation signal value is ~previous := not previous and value; previous end operation
+end handler
+procedure twice (value :: Bool) -> Bool uses Signal is signal value; signal value end procedure
+function selected (left :: Bool) (right :: Bool) -> Bool is not left = false && right = false end function
+law twice using remembering is definition: for all (value :: Bool) => twice value must be false end for all end definition
+expect twice value = expected in table (value,expected): row false,false row true,false end table end law
+law selected is definition: for all (left :: Bool) (right :: Bool) => selected left right must be (left and not right) end for all end definition end law
+
+end unit
+`;
+  const options={schemaVersion:5,languageProfile:'1.0-rc.2'};
   for(const machineBits of [32,64]) {
     const input={...options,machineBits,sources:[{path:'remembered.lawspec',content}]};
     const unchecked=await compiler.check({...input,verification:{layers:[]}});
@@ -328,9 +353,10 @@ test('LSP positions count UTF-16 units and expand parser tab columns', () => {
 test('contextual articles retain typed predicates, source positions and explanation meaning', async () => {
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
-  const line = 'law selected is definition: for all (enabled :: Bool where the enabled) => enabled = true end end end';
-  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: ['exhaustive']},
-    sources: [{path: 'articles.lawspec', content: 'unit articles\n' + line + '\n'}]};
+  const line = `law selected is definition: for all (enabled :: Bool where the enabled) => enabled = true end for all end definition end law
+`;
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: ['exhaustive']},
+    sources: [{path: 'articles.lawspec', content: 'unit articles\n' + line + '\nend unit\n'}]};
   const worded = await compiler.check(request);
   const plain = await compiler.check({...request, sources: [{...request.sources[0], content: request.sources[0].content.replace('the enabled', 'enabled')}]});
   assert.deepEqual(worded.diagnostics, []);
@@ -373,7 +399,7 @@ test('LSP transport accepts split UTF-8 messages and formats unsaved source with
   output.on('data', data => chunks.push(data));
   const compiler = {
     check: async request => {
-      assert.equal(request.languageProfile, '1.0-rc.1');
+      assert.equal(request.languageProfile, '1.0-rc.2');
       assert.deepEqual(request.verification.layers, []);
       return { diagnostics: [{ code: 'total', message: 'Invalid 😀 result', at: { file: request.sources[0].path, line: 1, column: 3 } }] };
     },
@@ -428,7 +454,19 @@ test('LSP follows documentary links to original source with UTF-16 ranges and no
 
 test('WASM-backed LSP follows unsaved documentary function and law links', async () => {
   const uri = 'file:///unlikely-lawspec-test-project/actual-references.lawspec';
-  const text = 'unit actual.references\nfunction "|😀 echo| (value :: Bool) -> Bool is value end function\nlaw linked is\n  definition: true end\n  references:\n    ref function "|😀 echo|\n    ref law linked description\n  end\nend\n';
+  const text = `unit actual.references
+
+function "|😀 echo| (value :: Bool) -> Bool is value end function
+law linked is
+  definition: true end definition
+  references:
+    ref function "|😀 echo|
+    ref law linked description
+  end references
+end law
+
+end unit
+`;
   const input = new PassThrough(), output = new PassThrough(), chunks = [];
   output.on('data', data => chunks.push(data));
   // Create the real compiler before feeding a stream that can already end.
@@ -437,24 +475,30 @@ test('WASM-backed LSP follows unsaved documentary function and law links', async
   input.end(Buffer.concat([
     frame({ id: 1, method: 'initialize', params: { rootUri: 'file:///unlikely-lawspec-test-project' } }),
     frame({ method: 'textDocument/didOpen', params: { textDocument: { uri, version: 1, text } } }),
-    frame({ id: 2, method: 'textDocument/definition', params: { textDocument: { uri }, position: { line: 5, character: 21 } } }),
-    frame({ id: 3, method: 'textDocument/hover', params: { textDocument: { uri }, position: { line: 5, character: 21 } } }),
-    frame({ id: 4, method: 'textDocument/references', params: { textDocument: { uri }, position: { line: 6, character: 14 }, context: { includeDeclaration: true } } }),
+    frame({ id: 2, method: 'textDocument/definition', params: { textDocument: { uri }, position: { line: 6, character: 21 } } }),
+    frame({ id: 3, method: 'textDocument/hover', params: { textDocument: { uri }, position: { line: 6, character: 21 } } }),
+    frame({ id: 4, method: 'textDocument/references', params: { textDocument: { uri }, position: { line: 7, character: 14 }, context: { includeDeclaration: true } } }),
     frame({ id: 5, method: 'shutdown' }),
   ]));
   await running;
   const responses = messages(Buffer.concat(chunks));
   assert.deepEqual(responses.find(r => r.method === 'textDocument/publishDiagnostics').params.diagnostics, []);
   assert.equal(responses.find(r => r.id === 2).result.uri, uri);
-  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, { line: 1, character: 0 });
-  assert.deepEqual(responses.find(r => r.id === 3).result.range, { start: { line: 5, character: 17 }, end: { line: 5, character: 27 } });
+  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, { line: 2, character: 0 });
+  assert.deepEqual(responses.find(r => r.id === 3).result.range, { start: { line: 6, character: 17 }, end: { line: 6, character: 27 } });
   assert.equal(responses.find(r => r.id === 4).result.length, 2);
 });
 
 test('WASM-backed LSP checks and navigates witness settings in unsaved harnesses', async () => {
   const root = 'file:///unlikely-lawspec-witness-project';
   const uri = root + '/law.lawspec', harnessUri = root + '/law.harness.lawspec';
-  const text = 'unit example.lspWitness\nfunction build (flag :: Bool) -> Integer is 1 end function\nlaw selected is definition: there exists (answer :: Integer) such that answer = 1 end end end\n';
+  const text = `unit example.lspWitness
+
+function build (flag :: Bool) -> Integer is 1 end function
+law selected is definition: there exists (answer :: Integer) such that answer = 1 end exists end definition end law
+
+end unit
+`;
   const header = 'harness example.lspWitness.testing for example.lspWitness is\nfor law selected\n';
   const input = new PassThrough(), output = new PassThrough(), chunks = [];
   output.on('data', data => chunks.push(data));
@@ -463,8 +507,8 @@ test('WASM-backed LSP checks and navigates witness settings in unsaved harnesses
   input.end(Buffer.concat([
     frame({ id: 1, method: 'initialize', params: { rootUri: root } }),
     frame({ method: 'textDocument/didOpen', params: { textDocument: { uri, version: 1, text } } }),
-    frame({ method: 'textDocument/didOpen', params: { textDocument: { uri: harnessUri, version: 1, text: header + 'witness false for answer\nend\n' } } }),
-    frame({ method: 'textDocument/didChange', params: { textDocument: { uri: harnessUri, version: 2 }, contentChanges: [{ text: header + 'witness build true for definition.answer\nend\n' }] } }),
+    frame({ method: 'textDocument/didOpen', params: { textDocument: { uri: harnessUri, version: 1, text: header + 'witness false for answer\nend for law\nend harness\n' } } }),
+    frame({ method: 'textDocument/didChange', params: { textDocument: { uri: harnessUri, version: 2 }, contentChanges: [{ text: header + 'witness build true for definition.answer\nend for law\nend harness\n' }] } }),
     frame({ id: 2, method: 'textDocument/definition', params: { textDocument: { uri: harnessUri }, position: { line: 2, character: 10 } } }),
     frame({ id: 3, method: 'shutdown' }),
   ]));
@@ -476,14 +520,20 @@ test('WASM-backed LSP checks and navigates witness settings in unsaved harnesses
   assert.deepEqual(diagnostics[0][0].range.start, { line: 2, character: 0 });
   assert.deepEqual(diagnostics.at(-1), []);
   assert.equal(responses.find(r => r.id === 2).result.uri, uri);
-  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, { line: 1, character: 0 });
+  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, { line: 2, character: 0 });
 });
 
 test('WASM-backed LSP points to unsaved scoped strategy targets and navigates their checked calls', async () => {
   const root = 'file:///unlikely-lawspec-scoped-search-project';
   const uri = root + '/law.lawspec', harnessUri = root + '/law.harness.lawspec';
-  const text = 'unit example.lspSearch\nfunction build (flag :: Bool) -> Integer is 1 end function\nlaw selected is definition: there exists (answer :: Integer) such that answer = 1 end end end\n';
-  const strategy = 'strategy answers :: Integer is one of build true end';
+  const text = `unit example.lspSearch
+
+function build (flag :: Bool) -> Integer is 1 end function
+law selected is definition: there exists (answer :: Integer) such that answer = 1 end exists end definition end law
+
+end unit
+`;
+  const strategy = 'strategy answers :: Integer is one of build true end strategy';
   const header = 'harness example.lspSearch.testing for example.lspSearch is\n' + strategy + '\nfor law selected\n';
   const input = new PassThrough(), output = new PassThrough(), chunks = [];
   output.on('data', data => chunks.push(data));
@@ -492,8 +542,8 @@ test('WASM-backed LSP points to unsaved scoped strategy targets and navigates th
   input.end(Buffer.concat([
     frame({id: 1, method: 'initialize', params: {rootUri: root}}),
     frame({method: 'textDocument/didOpen', params: {textDocument: {uri, version: 1, text}}}),
-    frame({method: 'textDocument/didOpen', params: {textDocument: {uri: harnessUri, version: 1, text: header + 'use answers for missing\nend\n'}}}),
-    frame({method: 'textDocument/didChange', params: {textDocument: {uri: harnessUri, version: 2}, contentChanges: [{text: header + 'use answers for definition.answer\nend\n'}]}}),
+    frame({method: 'textDocument/didOpen', params: {textDocument: {uri: harnessUri, version: 1, text: header + 'use answers for missing\nend for law\nend harness\n'}}}),
+    frame({method: 'textDocument/didChange', params: {textDocument: {uri: harnessUri, version: 2}, contentChanges: [{text: header + 'use answers for definition.answer\nend for law\nend harness\n'}]}}),
     frame({id: 2, method: 'textDocument/definition', params: {textDocument: {uri: harnessUri}, position: {line: 1, character: strategy.indexOf('build') + 1}}}),
     frame({id: 3, method: 'shutdown'}),
   ]));
@@ -505,7 +555,7 @@ test('WASM-backed LSP points to unsaved scoped strategy targets and navigates th
   assert.deepEqual(diagnostics[0][0].range.start, {line: 3, character: 0});
   assert.deepEqual(diagnostics.at(-1), []);
   assert.equal(responses.find(r => r.id === 2).result.uri, uri);
-  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, {line: 1, character: 0});
+  assert.deepEqual(responses.find(r => r.id === 2).result.range.start, {line: 2, character: 0});
 });
 
 
@@ -514,6 +564,7 @@ test('canonical anonymous records reach checked definitions, literal tables and 
   const {targets} = await import('../templates.mjs');
   const compiler = await createCompiler();
   const content = `unit records
+
 function double (value of type record{count of type Integer}) -> record{count of type Integer} is
   record{count = value.count + value.count}
 end function
@@ -521,19 +572,21 @@ function wrap (value of type a) -> record{wrapped of type a} is record{wrapped =
 law doubles is
   definition: for all (value of type record{count of type Integer}) =>
     (double value).count must be value.count + value.count
-  end end
+  end for all end definition
   expect double value = expected
   in table (value, expected):
     row record{count = -1}, record{count = -2}
     row record{count = 0}, record{count = 0}
     row record{count = 1}, record{count = 2}
-  end
-end
-law wraps is definition: (wrap true).wrapped = true end end
-law ordered is definition: record{a = 1, b = true} = record{b = true, a = 1} end end
-law empty is definition: record{} = record{} end end
+  end table
+end law
+law wraps is definition: (wrap true).wrapped = true end definition end law
+law ordered is definition: record{a = 1, b = true} = record{b = true, a = 1} end definition end law
+law empty is definition: record{} = record{} end definition end law
+
+end unit
 `;
-  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []},
     sources: [{path: 'records.lawspec', content}]};
   for (const machineBits of [32, 64]) {
     const result = await compiler.check({...request, machineBits});
@@ -559,14 +612,17 @@ test('anonymous record construction retains mandatory validation with no law lay
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   for (const content of [
-    'function invalid (value of type ()) -> Integer is record{safe = 1, unused = 1 / 0}.safe end function',
+    `function invalid (value of type ()) -> Integer is record{safe = 1, unused = 1 / 0}.safe end function
+`,
     'function invalid (value of type record{n Integer}) -> Integer is 1 end function',
     'law invalid is definition: record{n = 1, n = 2} = record{n = 1} end end',
-    'law invalid is definition: record{} = () end end',
-    `law invalid is definition: for all (value of type record{count of type Nat}) => value = value end end
-     expect value.count = 0 in table (value): row record{count = 0} end end`,
+    `law invalid is definition: record{} = () end definition end law
+`,
+    `law invalid is definition: for all (value of type record{count of type Nat}) => value = value end for all end definition
+     expect value.count = 0 in table (value): row record{count = 0} end table end law
+`,
   ]) {
-    const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+    const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []},
       sources: [{path: 'invalid-record.lawspec', content: 'unit records\n' + content}]});
     assert.ok(result.diagnostics.length, content);
   }
@@ -580,7 +636,7 @@ test('nominal structural payloads preserve generic fields, table values and mand
   const compiler = await createCompiler();
   const path = 'examples/rc1/record-payloads.lawspec';
   const content = await readFile(new URL('../' + path, import.meta.url), 'utf8');
-  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []},
     sources: [{path, content}]};
   for (const machineBits of [32, 64]) {
     const checked = await compiler.check({...request, machineBits});
@@ -618,7 +674,7 @@ test('generic record refinements and named-record tables preserve mandatory chec
   const compiler = await createCompiler();
   const path = 'examples/rc1/parcel-measurements.lawspec';
   const content = await readFile(new URL('../' + path, import.meta.url), 'utf8');
-  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []},
     sources: [{path, content}]};
   for (const machineBits of [32, 64]) {
     const checked = await compiler.check({...request, machineBits});
@@ -660,7 +716,7 @@ test('developer explanations retain concrete table inputs and every typed expect
   const {readFile} = await import('node:fs/promises');
   const compiler = await createCompiler();
   const content = await readFile(new URL('../starter-rc1.lawspec', import.meta.url), 'utf8');
-  const result = await compiler.expand({schemaVersion: 5, languageProfile: '1.0-rc.1',
+  const result = await compiler.expand({schemaVersion: 5, languageProfile: '1.0-rc.2',
     sources: [{path: 'starter.lawspec', content}]});
   assert.deepEqual(result.diagnostics, []);
   const law = result.laws[0];
@@ -686,10 +742,17 @@ test('fmt explicit paths use the working directory even when a different configu
   const outer=await mkdtemp(path.join(os.tmpdir(),'lawspec-fmt-root-'));
   try{
     const root=path.join(outer,'project');await mkdir(path.join(root,'config'),{recursive:true});
-    const source='unit sample\nfunction same (value :: Bool) -> Bool is\nvalue\nend function\n';
+    const source=`unit sample
+
+function same (value :: Bool) -> Bool is
+value
+end function
+
+end unit
+`;
     await writeFile(path.join(root,'sample.lawspec'),source);
     await writeFile(path.join(outer,'sample.lawspec'),'unrelated sibling file\n');
-    await writeFile(path.join(root,'config/lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.1',
+    await writeFile(path.join(root,'config/lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
       sources:['../sample.lawspec'],targets:[],verification:{layers:[]}}));
     const cli=new URL('../bin/lawspec.mjs',import.meta.url).pathname;
     const run=args=>spawnSync(process.execPath,[cli,'fmt','sample.lawspec','--config','config/lawspec.json','--json',...args],
@@ -707,15 +770,18 @@ test('fmt explicit paths use the working directory even when a different configu
 test('indexed record inputs retain intrinsic guards and complete finite law domains in the SDK', async () => {
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
-  const source = 'unit levels\n' +
-    'type Level (n of type Whole) is one of | Low where n = 0 | High where n = 1 end type\n' +
-    'function measured (pair of type record{left of type Level m right of type Level m}) -> Whole is nOfLevel pair.left end function\n' +
-    'law same is definition: for all (pair of type record{left of type Level m right of type Level m}) =>\n' +
-    'measured pair must be nOfLevel pair.right end end\n' +
-    'expect measured pair = expected in table (pair,expected): ' +
-    'row record{left = Low, right = Low}, 0 row record{left = High, right = High}, 1 end end';
+  const source = `unit levels
+
+type Level (n of type Whole) is one of | Low where n = 0 | High where n = 1 end type
+function measured (pair of type record{left of type Level m right of type Level m}) -> Whole is nOfLevel pair.left end function
+law same is definition: for all (pair of type record{left of type Level m right of type Level m}) =>
+measured pair must be nOfLevel pair.right end for all end definition
+expect measured pair = expected in table (pair,expected): row record{left = Low, right = Low}, 0 row record{left = High, right = High}, 1 end table end law
+
+end unit
+`;
   for (const machineBits of [32, 64]) {
-    const input = {schemaVersion: 5, languageProfile: '1.0-rc.1', machineBits,
+    const input = {schemaVersion: 5, languageProfile: '1.0-rc.2', machineBits,
       sources: [{path: 'levels.lawspec', content: source}]};
     const unchecked = await compiler.check({...input, verification: {layers: []}});
     assert.deepEqual(unchecked.diagnostics, []);
@@ -740,14 +806,15 @@ test('indexed record inputs retain intrinsic guards and complete finite law doma
 test('the SDK retains two indices of one record field as a type-owned relationship', async () => {
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
-  const source = 'unit dimensions\n' +
-    'type Matrix (rows of type Whole) (columns of type Whole) is one of ' +
-    '| Zero where rows = 0, columns = 0 | Skew where rows = 0, columns = 1 ' +
-    '| One where rows = 1, columns = 1 end type\n' +
-    'law diagonal is definition: for all (pair of type record{matrix of type Matrix dimension dimension}) => ' +
-    'rowsOfMatrix pair.matrix must be columnsOfMatrix pair.matrix end end end';
+  const source = `unit dimensions
+
+type Matrix (rows of type Whole) (columns of type Whole) is one of | Zero where rows = 0, columns = 0 | Skew where rows = 0, columns = 1 | One where rows = 1, columns = 1 end type
+law diagonal is definition: for all (pair of type record{matrix of type Matrix dimension dimension}) => rowsOfMatrix pair.matrix must be columnsOfMatrix pair.matrix end for all end definition end law
+
+end unit
+`;
   for (const machineBits of [32, 64]) {
-    const input = {schemaVersion: 5, languageProfile: '1.0-rc.1', machineBits,
+    const input = {schemaVersion: 5, languageProfile: '1.0-rc.2', machineBits,
       verification: {layers: ['exhaustive']}, sources: [{path: 'dimensions.lawspec', content: source}]};
     const result = await compiler.check(input);
     assert.deepEqual(result.diagnostics, []);
@@ -762,7 +829,7 @@ test('the SDK retains two indices of one record field as a type-owned relationsh
     assert.ok(independent.diagnostics.some(item => item.code === 'refuted'));
     const make = tag => source.split('law diagonal')[0] +
       'function make (ignored of type Bool) -> record{matrix of type Matrix dimension dimension} is ' +
-      'record{matrix = ' + tag + '} end function';
+      'record{matrix = ' + tag + '} end function\nend unit';
     const admitted = await compiler.check({...input, verification: {layers: []},
       sources: [{path: 'dimensions.lawspec', content: make('Zero')}]});
     assert.deepEqual(admitted.diagnostics, []);

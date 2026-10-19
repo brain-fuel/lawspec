@@ -1,4 +1,4 @@
-// Execute migrated Chapter 6 examples and independent native codec oracles.
+// Execute canonical Chapter 6 examples and independent native codec oracles.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
@@ -6,7 +6,6 @@ import {existsSync} from 'node:fs';
 import {mkdir,mkdtemp,readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {createCompiler} from '../npm/api.mjs';
-import {writeMigration} from '../npm/migration-write.mjs';
 import {templates} from '../npm/templates.mjs';
 import {safePath,planWrites,applyWrites} from '../npm/files.mjs';
 import {executedTests} from '../npm/test-command.mjs';
@@ -45,36 +44,13 @@ function native(method,request) {
   return JSON.parse(process.stdout);
 }
 const compiler=environment.LAWSPEC_CORE?Object.fromEntries(
-  ['check','migrationBaseline','migrationComparison','migrationBindings','migrationGeneration','planGeneration']
+  ['check','planGeneration']
     .map(method=>[method,async request=>native(method,request)])):await createCompiler();
-const original=await readFile(path.join(root,'test/fixtures/migration-chap06-0.24.lawspec'),'utf8');
+const original=await readFile(path.join(root,'chap06.lawspec'),'utf8');
 const sourceSha256=digest(original);
 assert.equal(sourceSha256,'07d8116b847aa80e044ad3ea2cbc8317bc949a0c4fe07b560e513d6fa0bfaf06');
-const sources=[{path:'chap06.lawspec',content:original}];
-const configurationText=JSON.stringify({version:1,sources:['chap06.lawspec'],
-  targets:[{language:'python',root:'project'}],machineBits:bits},null,2)+'\n';
-await writeFile(path.join(directory,'chap06.lawspec'),original);
-await writeFile(path.join(directory,'lawspec.json'),configurationText);
-const migration=await writeMigration(compiler,directory,'lawspec.json',configurationText,{sources,machineBits:bits});
-assert.deepEqual(migration.diagnostics,[]);
-assert.deepEqual(migration.sourcePreview.diagnostics,[]);
-assert.equal(migration.sourcePreview.canonicalCheck.status,'accepted');
-assert.equal(migration.sourcePreview.canonicalCheck.intrinsicDefinitionChecks,true);
-assert.equal(migration.validated,true);
-assert.equal(migration.validation.status,'validated-under-existing-assumptions');
-assert.equal(migration.validation.lawVerification,'not-established-by-migration');
-assert.deepEqual(migration.filesWritten,['chap06.lawspec','lawspec.json']);
-assert.equal(migration.baseline.laws.length,23);
-assert.equal(migration.baseline.definitions.length,25);
-assert.equal(migration.baseline.types.length,7);
-const nodes=migration.baseline.sourceSyntax[0].nodes;
-for(const [kind,count] of [['table-row',65],['example',1],['declaration.refinement',2]])
-  assert.equal(nodes.filter(node=>node.kind===kind).length,count);
-const migrated=await readFile(path.join(directory,'chap06.lawspec'),'utf8');
-assert.equal(migrated,migration.sourcePreview.sources[0].content);
-await writeFile(path.join(directory,'chap06-preview.lawspec'),migrated);
-// Authoring follows the validated semantic migration as a separate adoption.
-// Its mappings and names do not claim unchanged complete-source fingerprints.
+// The preserved original is historical input. Independent oracles execute the
+// maintained canonical specification through the ordinary compiler.
 const authored=await readFile(path.join(root,'examples/chap06/assembler.lawspec'),'utf8');
 assert.equal(authored.match(/^(function|mapping) /gm).length,25);
 assert.equal(authored.match(/^mapping /gm).length,6);
@@ -86,11 +62,14 @@ assert.equal(authored.replace(/^mapping .*?^end mapping\n/gms,'').match(/^\s+row
 const canonical=[{path:'chap06.lawspec',content:authored}];
 await writeFile(path.join(directory,'chap06.lawspec'),authored);
 const layers=args[0]==='--property'?['property','examples']:['examples'];
-const request={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers},machineBits:bits,minify,target:'python',sources:canonical};
+const request={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers},machineBits:bits,minify,target:'python',sources:canonical};
 const plan=await compiler.planGeneration(request);
 assert.deepEqual(plan.diagnostics,[]);
 const chapter=plan.tests.filter(test=>test.unit==='nand2tetris.chap06');
-assert.equal(chapter.length,23);
+const chapterLaws=plan.laws.filter(law=>law.owner==='nand2tetris.chap06');
+assert.equal(chapterLaws.length,23);
+assert.equal(chapter.length,layers.includes('property')?23:
+  chapterLaws.filter(law=>law.examples.length>0).length);
 async function write(relative,content) {
   const destination=await safePath(project,relative);
   await mkdir(path.dirname(destination),{recursive:true});
@@ -176,11 +155,10 @@ assert.match(wrongOracle.output,/ORACLE_C:.*checked computeWord/,
   'The external vectors must reject the changed checked specification independently of the correct native assembler');
 rejected.push({name:'checked-computation-table',suite:'c',diagnostic:'ORACLE_C',subject:'checked-specification',lawVerification:'no-selected-checks'});
 const result={version:1,target:'python',machineBits:bits,minify,compiler:environment.LAWSPEC_CORE?'native':'wasm',
-  sourceSha256,migratedSourceSha256:digest(migrated),authoredSourceSha256:digest(authored),candidateSha256:digest(candidate),
+  sourceSha256,authoredSourceSha256:digest(authored),candidateSha256:digest(candidate),
   compilerSha256:digest(await readFile(environment.LAWSPEC_CORE??path.join(root,'npm/core.wasm'))),
   seed,generation:plan.generation,verificationLayers:layers,generated,nativeCliPrograms:2,oracle:evidence,mutants:rejected,
-  migrationValidated:migration.validated,migrationValidation:migration.validation,
   authoredInventory:{laws:23,tableRows:65,namedExamples:1,definitions:25,mappings:6,dataTypes:7,refinements:2},
-  scope:'Python native conformance and emitted checked codecs of the published authoring pass; validated project migration is recorded separately; remaining native targets are separate gates'};
+  scope:'Python native conformance and emitted checked codecs of the published authoring pass; remaining native targets are separate gates'};
 await writeFile(path.join(directory,'evidence.json'),JSON.stringify(result,null,2)+'\n');
 console.log(JSON.stringify({...result,directory}));

@@ -73,7 +73,7 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
               value <- rewrite scope local (Annotate (witnessExpression witness) (inputType (witnessInput witness)))
               pure witness { witnessExpression = value }
             draws <- forM (planDraws plan) $ \(input,strategy,ty,body) -> do
-              ty' <- rewriteStrategyType ty
+              ty' <- rewriteStrategyType environment Set.empty ty
               body' <- rewriteGen environment Set.empty (baseType ty) body
               pure (input,strategy,ty',body')
             pure (name, plan { planResolvedWitnesses = witnesses,planDraws = draws })
@@ -92,7 +92,7 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
           rewrittenHarnessUnit <- traverse (\h -> do
             items <- forM (harnessItems h) $ \item -> case item of
               HarnessStrategy s | strategyName s `Set.member` used -> do
-                ty <- rewriteStrategyType (strategyType s)
+                ty <- rewriteStrategyType environment Set.empty (strategyType s)
                 body <- rewriteGen environment Set.empty (baseType (strategyType s)) (strategyBody s)
                 pure (HarnessStrategy s { strategyBody = body,strategyType = ty })
               _ -> pure item
@@ -115,13 +115,20 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
                 }
           final <- mapM (refresh result) rewritten
           pure (result, final)
-        rewriteStrategyType ty = case ty of
+        rewriteStrategyType scope local ty = case ty of
           Refined name base (Just predicate) -> do
-            value <- rewrite (M.union (monoEnvironment [(name,base)]) environment) (Set.singleton name)
+            base' <- rewriteStrategyType scope local base
+            value <- rewrite (M.union (monoEnvironment [(name,base)]) scope) (Set.insert name local)
               (Annotate predicate (Named "Bool"))
-            pure (Refined name base (Just value))
+            pure (Refined name base' (Just value))
+          Refined name base Nothing -> (\base' -> Refined name base' Nothing) <$> rewriteStrategyType scope local base
+          Qualified constraints base -> Qualified constraints <$> rewriteStrategyType scope local base
+          CheckedType predicates base -> CheckedType
+            <$> mapM (rewrite scope local . (`Annotate` Named "Bool")) predicates
+            <*> rewriteStrategyType scope local base
           _ -> pure ty
         rewriteGen scope local ty gen = case gen of
+          GenAny explicit -> GenAny <$> traverse (rewriteStrategyType scope local) explicit
           GenOneOf values -> GenOneOf <$> mapM (rewrite scope local . (`Annotate` ty)) values
           GenFrequency alternatives -> GenFrequency <$> mapM (\(weight,inner) -> (,) weight <$> rewriteGen scope local ty inner) alternatives
           GenSuchThat inner predicate limit -> do
@@ -129,8 +136,9 @@ specializeDefinitionsIn symbolic sourceTypes declarations bits satisfies units p
             predicate' <- rewrite (M.union (monoEnvironment [("it",ty)]) scope) (Set.insert "it" local)
               (Annotate predicate (Named "Bool"))
             pure (GenSuchThat inner' predicate' limit)
-          GenBind name valueType from body -> GenBind name valueType
-            <$> rewriteGen scope local (baseType valueType) from
+          GenBind name valueType from body -> GenBind name
+            <$> rewriteStrategyType scope local valueType
+            <*> rewriteGen scope local (baseType valueType) from
             <*> rewriteGen (M.union (monoEnvironment [(name,valueType)]) scope) (Set.insert name local) ty body
           _ -> pure gen
         typed scope expression = do

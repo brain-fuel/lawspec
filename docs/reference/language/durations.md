@@ -26,14 +26,15 @@ law "|what remains of a budget| is
     for all (budget :: Duration) (spent :: Duration) =>
       prelude.toMicroseconds (remaining budget spent) =
       prelude.select (spent <= budget) (prelude.toMicroseconds budget -
-      prelude.toMicroseconds spent) 0 end
-  end
+      prelude.toMicroseconds spent) 0 end for all
+  end definition
   example "|part of a second| :
     budget = 1s
     spent = 250ms
     expect remaining budget spent = 750ms
-  end
-end
+  end example
+end law
+end unit
 ```
 
 ## Writing durations

@@ -22,19 +22,19 @@ private let counters = Counters()
 extension Example.Models {
     static func empty() -> Stack { .empty }
 
-    static func push(_ value0: Int8, _ value1: Stack) -> PushFlow { PushFlow(state: .push(top: value0, rest: value1)) }
+    static func push(_ value0: Int8, _ value1: Stack) -> PushFlow { PushFlow(state: .push(value: .record(rest: value1, top: value0))) }
 
     /// The flow signature guarantees a nonempty stack.
     static func pop(_ value0: Stack) -> PopFlow {
         switch value0 {
-        case .push(let top, let rest): return PopFlow(result: top, state: rest)
+        case .push(.record(let rest, let top)): return PopFlow(result: top, state: rest)
         case .empty: fatalError("pop needs a nonempty stack")
         }
     }
 
     static func peek(_ value0: Stack) -> PeekFlow {
         switch value0 {
-        case .push(let top, _): return PeekFlow(result: top, state: value0)
+        case .push(.record(_, let top)): return PeekFlow(result: top, state: value0)
         case .empty: fatalError("peek needs a nonempty stack")
         }
     }

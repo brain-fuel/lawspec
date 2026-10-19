@@ -4,26 +4,27 @@ law "|insertion lookup preserves IEEE equality| is
   definition:
     for all (value of type Float64) (members of type Set Float64) =>
       prelude.member value (prelude.insert value members) = (value = value)
-    end
-  end
+    end for all
+  end definition
   expect prelude.member value (prelude.insert value members) = expected
   in table (value, members, expected):
     row float64Bits("7ff8000000000001"), #S{float64Bits("7ff8000000000001")}, false
     row float64Bits("0000000000000000"), #S{float64Bits("8000000000000000")}, true
     row float64Bits("3ff0000000000000"), #S{float64Bits("4000000000000000")}, true
-  end
-end
+  end table
+end law
 
 law "|insertion lookup preserves symbol identity| is
   definition:
     for all (value of type Symbol) (members of type Set Symbol) =>
       prelude.member value (prelude.insert value members) = true
-    end
-  end
+    end for all
+  end definition
   example "|matching descriptions do not identify symbols|:
     value = symbol("candidate", "request")
     members = #S{symbol("stored", "request")}
     expect prelude.member value members = false
     expect prelude.member value (prelude.insert value members) = true
-  end
-end
+  end example
+end law
+end unit

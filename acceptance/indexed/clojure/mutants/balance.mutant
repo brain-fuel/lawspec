@@ -1,6 +1,6 @@
 @@ src/example/arithmetic.clj
 <<<<<<<
-    {:lawspec/tag :perfect/node :left (mirror (:right tree)) :right (mirror (:left tree))}
+    {:lawspec/tag :perfect/node :value {:lawspec/tag :recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8/record :left (mirror (:right (:value tree))) :right (mirror (:left (:value tree)))}}
 =======
-    {:lawspec/tag :perfect/node :left (mirror (:right tree)) :right {:lawspec/tag :perfect/leaf :value 0}}
+    {:lawspec/tag :perfect/node :value {:lawspec/tag :recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8/record :left (mirror (:right (:value tree))) :right {:lawspec/tag :perfect/leaf :value 0}}}
 >>>>>>>

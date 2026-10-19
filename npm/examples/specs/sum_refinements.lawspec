@@ -1,49 +1,50 @@
 unit example.sum_refinements
 
-law `positive Maybe payloads` is
-  definition is `for all` (x :: Maybe (value :: Int8 where value > 0)) .
-    (match x with | Nothing -> true | Just payload -> payload >= 1 end) = true
-  end
-  example `absent` is x = Nothing expect x = Nothing end
-  example `present` is x = Just 1 expect x = Just 1 end
-end
+law "|positive Maybe payloads| is
+  definition : for all (x :: Maybe (value :: Int8 where value > 0)) =>
+    (first matching case of x : when Nothing then true when Just payload then payload >= 1 end case) = true end for all
+  end definition
+  example "|absent| : x = Nothing expect x = Nothing end example
+  example "|present| : x = Just 1 expect x = Just 1 end example
+end law
 
-law `selected Either payload` is
-  definition is `for all`
-    (x :: Either (value :: Int8 where value > 0) (value :: Int8 where value < 0)) .
-    (match x with | Left payload -> payload >= 1 | Right payload -> payload <= -1 end) = true
-  end
-  example `left` is x = Left 1 expect x = Left 1 end
-  example `right` is x = Right -1 expect x = Right -1 end
-end
+law "|selected Either payload| is
+  definition : for all
+    (x :: Either (value :: Int8 where value > 0) (value :: Int8 where value < 0)) =>
+    (first matching case of x : when Left payload then payload >= 1 when Right payload then payload <= -1 end case) = true end for all
+  end definition
+  example "|left| : x = Left 1 expect x = Left 1 end example
+  example "|right| : x = Right -1 expect x = Right -1 end example
+end law
 
-law `nested Maybe states` is
-  definition is `for all` (x :: Maybe (Maybe (value :: Bool where value))) .
-    (match x with | Nothing -> true | Just inner ->
-      match inner with | Nothing -> true | Just payload -> payload end
-    end) = true
-  end
-  example `outer absent` is x = Nothing expect x = Nothing end
-  example `inner absent` is x = Just Nothing expect x = Just Nothing end
-  example `present` is x = Just (Just true) expect x = Just (Just true) end
-end
+law "|nested Maybe states| is
+  definition : for all (x :: Maybe (Maybe (value :: Bool where value))) =>
+    (first matching case of x : when Nothing then true when Just inner then
+      first matching case of inner : when Nothing then true when Just payload then payload end case
+    end case) = true end for all
+  end definition
+  example "|outer absent| : x = Nothing expect x = Nothing end example
+  example "|inner absent| : x = Just Nothing expect x = Just Nothing end example
+  example "|present| : x = Just (Just true) expect x = Just (Just true) end example
+end law
 
-law `finite Either variants` is
-  definition is `for all`
-    (x :: Either (value :: Bool where value) (value :: Bool where !value)) .
-    (match x with | Left payload -> payload | Right payload -> !payload end) = true
-  end
-end
+law "|finite Either variants| is
+  definition : for all
+    (x :: Either (value :: Bool where value) (value :: Bool where !value)) =>
+    (first matching case of x : when Left payload then payload when Right payload then !payload end case) = true end for all
+  end definition
+end law
 
-law `dependent payload keeps outer binding` is
-  definition is `for all` (lawspecElement :: Int8)
-    (x :: Maybe (value :: Int8 where value > lawspecElement)) .
-    (match x with | Nothing -> true | Just payload -> payload - lawspecElement >= 1 end) = true
-  end
-  example `maximum prefix has absent continuation` is
+law "|dependent payload keeps outer binding| is
+  definition : for all (lawspecElement :: Int8)
+    (x :: Maybe (value :: Int8 where value > lawspecElement)) =>
+    (first matching case of x : when Nothing then true when Just payload then payload - lawspecElement >= 1 end case) = true end for all
+  end definition
+  example "|maximum prefix has absent continuation| :
     lawspecElement = 127 x = Nothing expect x = Nothing
-  end
-  example `present continuation` is
+  end example
+  example "|present continuation| :
     lawspecElement = 0 x = Just 1 expect x = Just 1
-  end
-end
+  end example
+end law
+end unit

@@ -7,6 +7,10 @@
   ],
   "patterns": [
     {
+      "match": /*@ block-closers @*/,
+      "name": "keyword.control.block.end.lawspec"
+    },
+    {
       "name": "comment.line.double-dash.lawspec",
       "begin": "--",
       "end": "$",
@@ -88,7 +92,7 @@
       }
     },
     {
-      "match": "\\b(function|procedure|mapping|apply|given|when|then|otherwise|if|else|not|or|must|be|such|that|of|record|one|ref)\\b",
+      "match": "\\b(function|procedure|operation|mapping|apply|given|when|then|otherwise|if|else|not|or|must|be|such|that|of|record|one|ref)\\b",
       "name": "keyword.control.lawspec"
     },
     {

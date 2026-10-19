@@ -1,6 +1,6 @@
 @@ src/example_flow.erl
 <<<<<<<
-pop({stack_push, Top, Rest}) -> {pop_flow, Top, Rest}.
+pop({stack_push, {record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be, Rest, Top}}) -> {pop_flow, Top, Rest}.
 =======
-pop({stack_push, Top, _Rest} = Stack) -> {pop_flow, Top, Stack}.
+pop({stack_push, {record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be, _Rest, Top}} = Stack) -> {pop_flow, Top, Stack}.
 >>>>>>>

@@ -12,9 +12,9 @@ law separateRanges is
       (negative of type Int64 where negative >= -100000 and negative <= -1001)
       (message of type Message) =>
       positive > 1000 and negative < -1000 and message.code < 0
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law dependentRanges is
   definition:
@@ -23,9 +23,9 @@ law dependentRanges is
       (later of type Int64 where later >= 1002 and later <= 1003 and later > earlier)
       (message of type Message) =>
       later > earlier and later - earlier <= 2 and message.code < 0
-    end
-  end
-end
+    end for all
+  end definition
+end law
 
 law retainedUpperBoundary is
   definition:
@@ -33,6 +33,7 @@ law retainedUpperBoundary is
       (value of type Int8 where value >= 100)
       (message of type Message) =>
       value >= 100 and value <= 127 and message.code < 0
-    end
-  end
-end
+    end for all
+  end definition
+end law
+end unit

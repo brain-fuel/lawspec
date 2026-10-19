@@ -22,17 +22,18 @@ put :: Store -> Int32 -> Int32 -> Unit
 size :: Store -> Int32
 
 resource Store is
-acquire is openStore unitValue end
-release store is closeStore store end
-reset store is clearStore store end
-end
+acquire is openStore unitValue end acquire
+release store is closeStore store end release
+reset store is clearStore store end reset
+end resource
 
 law "|every case gets an empty store| for store :: Store is
   definition :
     for all (k :: Int32) (v :: Int32) =>
-      size store = 0 and put store k v = unitValue and size store = 1 end
-  end
-end
+      size store = 0 and put store k v = unitValue and size store = 1 end for all
+  end definition
+end law
+end unit
 ```
 
 ## BEAM ownership and cancellation
@@ -68,10 +69,10 @@ finishes; the failure is reported explicitly.
 
 ```lawspec fragment
 resource Type is
-  acquire is expression end
-  release name is expression end
-  reset name is expression end
-end
+  acquire is expression end acquire
+  release name is expression end release
+  reset name is expression end reset
+end resource
 ```
 
 - `Type` names a declared type, usually a [handle](models.md#handles).
@@ -86,8 +87,8 @@ end
 A law lists its resources after its handlers, before `is`:
 
 ```text
-law "|a note reads back| for dir :: TemporaryDirectory is ... end
-law "|two stores| using Gateway for a :: Store, b :: Store is ... end
+law "|a note reads back| for dir :: TemporaryDirectory is definition: ... end definition end law
+law "|two stores| using Gateway for a :: Store, b :: Store is definition: ... end definition end law
 ```
 
 - The law's definition and examples use each resource by its name, like an
@@ -127,10 +128,10 @@ share only a resource declared concurrent:
 
 ```lawspec fragment
 resource Scratch is concurrent
-  acquire is Scratch 0 end
-  release scratch is unitValue end
-  reset scratch is unitValue end
-end
+  acquire is Scratch 0 end acquire
+  release scratch is unitValue end release
+  reset scratch is unitValue end reset
+end resource
 ```
 
 `concurrent` says cases cannot interfere through the resource. A shared

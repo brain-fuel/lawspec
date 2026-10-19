@@ -22,18 +22,18 @@ final class Models {
   }
 
   static PushFlow push(byte value0, Stack value1) {
-    return new PushFlow(new Stack.Push(value0, value1))
+    return new PushFlow(new Stack.Push(new lawspec.data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(value1, value0)))
   }
 
   // The flow signature guarantees a nonempty stack.
   static PopFlow pop(Stack value0) {
     var cell = (Stack.Push) value0
-    return new PopFlow(cell.top(), cell.rest())
+    return new PopFlow(cell.value().top(), cell.value().rest())
   }
 
   static PeekFlow peek(Stack value0) {
     var cell = (Stack.Push) value0
-    return new PeekFlow(cell.top(), cell)
+    return new PeekFlow(cell.value().top(), cell)
   }
 
   static Counter newCounter(lawspec.runtime.LawSpecRuntime.Value value0) {

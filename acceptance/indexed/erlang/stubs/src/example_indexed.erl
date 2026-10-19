@@ -2,7 +2,7 @@
 -module(example_indexed).
 -export([replicate/2, append/2, zip/2, flatten/1]).
 
--spec replicate(integer(), -128..127) -> lawspec_data:vec(-128..127).
+-spec replicate(non_neg_integer(), -128..127) -> lawspec_data:vec(-128..127).
 
 replicate(_Argument0, _Argument1) ->
     erlang:error({not_implemented, <<"example.indexed::replicate"/utf8>>}).

@@ -2,17 +2,19 @@
 -- ownership and every planned case. ref:DEC-tests-cite-requirements
 module BeamSpec (test_beamCodeUsesCheckedCoreAndNativeFrameworks, test_beamRunsTheLanguageGaps) where
 
+import FixtureSource (extendUnit)
 import Test.Hspec
 import Data.List (isInfixOf, nub)
 import Data.Either (isLeft)
 import LawSpec.Common
 import LawSpec.Frontend (compileCore)
-import LawSpec.Testing (planTesting, Plan(..), PlannedUnit(..), PlannedProperty(..), GeneratorRequirement(..))
+import LawSpec.Testing (planTesting, planTestingWith, Plan(..), PlannedUnit(..), PlannedProperty(..), GeneratorRequirement(..))
 import LawSpec.CoreEmit (emitPlanWithFormat, emitPlanWithOptions)
 import LawSpec.TestManifest (unitTestPath)
 import qualified LawSpec.TestManifest as TestManifest
 import LawSpec.TestNames (unitTestNames)
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core.Machine as Machine
 import qualified LawSpec.Core.Program as Program
 import qualified LawSpec.Code.Doc as D
@@ -41,8 +43,10 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
   -- ref:DEC-shrink-within-domain ref:DEC-native-property-frameworks
   it "passes safe sequence lengths to native generators without requiring an example" $ do
-    let source = unlines ["unit example.lengths",
-          "law `length` is definition is `for all` (x :: Bytes where prelude.length x == 3) . x = x end end"]
+    let source = unlines [ "unit example.lengths"
+                          ++ "\n", ""
+                         , "law \"|length| is definition : for all (x :: Bytes where prelude.length x = 3) => x = x end for all end definition end law"
+                         , "\nend unit" ]
     case compileCore 64 defaultGeneration [Source "lengths.lawspec" source] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> mapM_ (\p -> case Generators.inputs "framework" (D.text "Schema") (D.text "Symbols") plan (const "Input") p of
@@ -51,8 +55,10 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           "{length, <<\"==\"/utf8>>, lawspec_beam_schema:validate(3,")
         (concatMap plannedProperties (plannedUnits plan))
   it "passes same-type fixture hints independently of comparison bounds" $ do
-    let source = unlines ["unit example.hints",
-          "law `symbol` is definition is `for all` (x :: Symbol where x == symbol(\"selected\", \"fixture\")) . x = x end end"]
+    let source = unlines [ "unit example.hints"
+                          ++ "\n", ""
+                         , "law \"|symbol| is definition : for all (x :: Symbol where x = symbol(\"selected\", \"fixture\")) => x = x end for all end definition end law"
+                         , "\nend unit" ]
     case compileCore 64 defaultGeneration [Source "hints.lawspec" source] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> mapM_ (\p ->
@@ -62,8 +68,8 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           Right body -> D.render D.Compact body `shouldSatisfy` isInfixOf "selected")
         (concatMap plannedProperties (plannedUnits plan))
   mapM_ (\predicate -> it ("keeps guarded length refinements in the predicate: " ++ predicate) $ do
-    let source = unlines ["unit example.guardedLengths",
-          "law `length` is definition is `for all` (n :: Int8) (x :: Bytes where " ++ predicate ++ ") . x = x end end"]
+    let source = unlines ["unit example.guardedLengths\n",
+          "law \"|length| is definition: for all (n :: Int8) (x :: Bytes where " ++ predicate ++ ") => x = x end for all end definition end law", "end unit"]
     case compileCore 64 defaultGeneration [Source "guarded.lawspec" source] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> mapM_ (\p -> case Generators.inputs "framework" (D.text "Schema") (D.text "Symbols") plan (("V" ++) . E.pascal . C.idText) p of
@@ -83,8 +89,8 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
     ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-distribution-canonical-wire ref:DEC-typed-core-boundary
   mapM_ (\target -> it (target ++ " includes secure transport and the seed bridge only with a network import") $ do
-    let input = "unit example.network\ndefinition same (n :: Int32) :: Int32 is n end\n"
-    case (generatedFor target False input, generatedFor target False ("unit example.network\nimport lawspec.network\ndefinition same (n :: Int32) :: Int32 is n end\n")) of
+    let input = "unit example.network\n\nfunction same (n :: Int32) -> Int32 is n end function\nend unit\n"
+    case (generatedFor target False input, generatedFor target False ("unit example.network\nimport lawspec.network\nfunction same (n :: Int32) -> Int32 is n end function\nend unit\n")) of
       (Right plain, Right secure) -> do
         let paths = map artifactPath secure
         mapM_ (\path -> paths `shouldContain` [path])
@@ -124,8 +130,11 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             _ -> body `shouldSatisfy` isInfixOf "serve/2"
     ) ["erlang", "elixir", "gleam"]
   it "rejects colliding generated remote timeout methods" $ do
-    let input = unlines ["unit example.collision", "definition f (n :: Int32) :: Int32 is n end",
-          "definition fWithTimeout (n :: Int32) :: Int32 is n end"]
+    let input = unlines [ "unit example.collision"
+                         ++ "\n", ""
+                        , "function f (n :: Int32) -> Int32 is n end function\n"
+                        , "function fWithTimeout (n :: Int32) -> Int32 is n end function\n"
+                        , "\nend unit" ]
     case compileCore 64 defaultGeneration [Source "remote.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> mapM_ (\target -> Remote.emit target (D.Pretty 100) plan `shouldSatisfy` isLeft)
@@ -154,8 +163,8 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
   -- ref:DEC-distribution-canonical-wire ref:DEC-sessions-by-construction
   it "emits network session methods only when every nested protocol has wire types" $ do
     input <- readFile "acceptance/beam-session-api/sessions.lawspec"
-    let extra = "\nprotocol NonwireChild is send Symbols end\n"
-    case compileCore 64 defaultGeneration [Source "sessions.lawspec" (input ++ extra)] >>= planTesting of
+    let extra = "\nprotocol NonwireChild is send Symbols end protocol\n"
+    case compileCore 64 defaultGeneration [Source "sessions.lawspec" (extendUnit input $ extra)] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> case Sessions.emit "erlang" (D.Pretty 100) 64 (planDataDeclarations plan)
           (map plannedUnit (plannedUnits plan)) of
@@ -167,15 +176,15 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           mapM_ (\name -> body name `shouldSatisfy` (not . isInfixOf "lawspec_beam_session:listen")) ["symbols", "empty", "nonwire_child"]
   -- ref:DEC-distribution-canonical-wire ref:DEC-native-bindings-typed-identity
   it "escapes Gleam keywords in protocol, mailbox and unit paths and rejects resulting collisions" $ do
-    let input = "unit example.echo\nprotocol Echo is send Int8 end\nmailbox echo of Int8\n"
+    let input = "unit example.echo\n\nprotocol Echo is send Int8 end protocol\nmailbox echo of Int8\nend unit\n"
     E.gleamPath (C.Id "echo.case") `shouldBe` "echo_lawspec/case_lawspec"
     case generatedFor "gleam" False input of
       Left errors -> expectationFailure (show errors)
       Right artifacts -> mapM_ (\path -> map artifactPath artifacts `shouldContain` [path])
         ["src/lawspec/sessions/example/echo_lawspec/echo_lawspec.gleam",
          "src/lawspec/mailboxes/example/echo_lawspec/echo_lawspec.gleam"]
-    generatedFor "gleam" False (input ++ "protocol EchoLawspec is send Int8 end\n") `shouldSatisfy` isLeft
-    generatedFor "gleam" False (input ++ "mailbox echo_lawspec of Int8\n") `shouldSatisfy` isLeft
+    generatedFor "gleam" False (extendUnit input $ "protocol EchoLawspec is send Int8 end protocol\n") `shouldSatisfy` isLeft
+    generatedFor "gleam" False (extendUnit input $ "mailbox echo_lawspec of Int8\n") `shouldSatisfy` isLeft
   -- ref:DEC-distribution-canonical-wire ref:DEC-native-bindings-typed-identity
   mapM_ (\target -> it (target ++ " emits typed local and remote mailboxes with checked Clock interfaces") $ do
     input <- readFile "acceptance/beam-mailbox-api/mailboxes.lawspec"
@@ -198,7 +207,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             _ -> body `shouldSatisfy` isInfixOf "-opaque sender()"
     ) ["erlang", "elixir", "gleam"]
   it "rejects mailbox names that collide after BEAM normalization" $ do
-    let input = "unit demo.mail\nmailbox jobQueue of Int32\nmailbox job_queue of Int32\n"
+    let input = "unit demo.mail\n\nmailbox jobQueue of Int32\nmailbox job_queue of Int32\nend unit\n"
     case compileCore 64 defaultGeneration [Source "mailboxes.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> mapM_ (\target -> Mailboxes.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
@@ -302,9 +311,17 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
     ) ["erlang", "elixir", "gleam"]
   it "keeps actors with nonwireable messages local" $ do
     let input = unlines
-          ["unit example.local", "type Box is Box value :: Int32 end", "openBox :: Unit -> Box",
-           "notice :: Box -> Symbol -> Box", "definition ignored (s :: Symbol) (n :: Int32) :: Int32 is n end",
-           "actor box :: Box by Int32 is", "start openBox by 0", "on notice by ignored", "end"]
+          [ "unit example.local"
+           ++ "\n", ""
+          , "type Box is a record{  value :: Int32} end type\n"
+          , "openBox :: Unit -> Box"
+          , "notice :: Box -> Symbol -> Box"
+          , "function ignored (s :: Symbol) (n :: Int32) -> Int32 is n end function\n"
+          , "actor box :: Box by Int32 is"
+          , "start openBox by 0"
+          , "on notice by ignored"
+          , "end actor"
+          , "\nend unit" ]
     case compileCore 64 defaultGeneration [Source "local.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> mapM_ (\target -> case Actors.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
@@ -328,9 +345,17 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             ["lawspec_supervisor_example_actor_abilities_bank:spec", "lawspec_beam_effects:with_native_context"]
   it "rejects BEAM actor methods that collide with lifecycle operations" $ do
     let input = unlines
-          ["unit example.collision", "type Box is Box value :: Int32 end", "openBox :: Unit -> Box", "stop :: Box -> Box",
-           "definition reset (n :: Int32) :: Int32 is 0 end", "actor box :: Box by Int32 is",
-           "start openBox by 0", "on stop by reset", "end"]
+          [ "unit example.collision"
+           ++ "\n", ""
+          , "type Box is a record{  value :: Int32} end type\n"
+          , "openBox :: Unit -> Box"
+          , "stop :: Box -> Box"
+          , "function reset (n :: Int32) -> Int32 is 0 end function\n"
+          , "actor box :: Box by Int32 is"
+          , "start openBox by 0"
+          , "on stop by reset"
+          , "end actor"
+          , "\nend unit" ]
     case compileCore 64 defaultGeneration [Source "collision.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> mapM_ (\target -> Actors.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
@@ -357,7 +382,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
       Left errors -> expectationFailure (show errors)
       Right artifacts -> concatMap artifactContent artifacts `shouldSatisfy`
         isInfixOf "lawspec_beam_workflow:run_workflow"
-    case generatedFor target False "unit example.plain\ndefinition identity (x :: Int32) :: Int32 is x end\n" of
+    case generatedFor target False "unit example.plain\n\nfunction identity (x :: Int32) -> Int32 is x end function\nend unit\n" of
       Left errors -> expectationFailure (show errors)
       Right artifacts -> map artifactPath artifacts `shouldSatisfy` all (not . isInfixOf "workflow")
     ) ["erlang", "elixir", "gleam"]
@@ -382,7 +407,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           ["sha3-256","shake256","aes-256-gcm","mlkem768-keygen","mlkem768-encaps",
            "mlkem768-decaps","mlkem768-decaps-seed","mldsa65-keygen","mldsa65-verify",
            "mldsa65-sign-seed","slhdsa128f-keygen","slhdsa128f-verify"]
-    case generatedFor target False "unit example.plain\ndefinition identity (x :: Int32) :: Int32 is x end\n" of
+    case generatedFor target False "unit example.plain\n\nfunction identity (x :: Int32) -> Int32 is x end function\nend unit\n" of
       Left errors -> expectationFailure (show errors)
       Right artifacts -> map artifactPath artifacts `shouldSatisfy` all (not . isInfixOf "crypto")
     let scaffold withCrypto = either error (concatMap snd) (scaffoldFilesWith withCrypto False target)
@@ -449,7 +474,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             map adapterReference (filter ((== "user") . ownership) compact)) ["erlang","elixir","gleam"]
   -- ref:DEC-idiomatic-generated-types
   mapM_ (\target -> it (target ++ " emits a factory for an ability without adapters") $ do
-    let source = "unit edge.abilities\nability Opaque is echo :: Int32 end\n"
+    let source = "unit edge.abilities\n\nability Opaque is echo :: Int32 end ability\nend unit\n"
     case generatedFor target False source of
       Left errors -> expectationFailure (show errors)
       Right artifacts -> do
@@ -460,12 +485,15 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           else pure ()) ["erlang","elixir","gleam"]
   -- ref:DEC-idiomatic-generated-types
   it "renames a Gleam handler named like its ability's builder and diagnoses remaining collisions" $ do
-    let source = unlines ["unit sample", "ability Counter is read :: Int32 end",
-          "handler counter for Counter is read is 0 end end"]
+    let source = unlines [ "unit sample"
+                          ++ "\n", ""
+                         , "ability Counter is read :: Int32 end ability"
+                         , "handler counter for Counter is  operation read is 0 end operation end handler"
+                         , "\nend unit" ]
     case generatedFor "gleam" False source of
       Left errors -> expectationFailure (show errors)
       Right artifacts -> concatMap artifactContent artifacts `shouldSatisfy` isInfixOf "pub fn counter_handler("
-    let colliding = source ++ "handler counterHandler for Counter is read is 1 end end\n"
+    let colliding = extendUnit source $ "handler counterHandler for Counter is operation read is 1 end operation end handler\n"
     case generatedFor "gleam" False colliding of
       Left errors -> show errors `shouldSatisfy` isInfixOf "handler constructors and operation functions collide"
       Right _ -> expectationFailure "colliding native constructors were accepted"
@@ -479,12 +507,13 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             contents = concatMap artifactContent artifacts
         files `shouldContain` ["src/lawspec_definitions.erl", "src/example_total_functions_definitions.erl"]
         contents `shouldSatisfy` isInfixOf "lawspec_beam_proper:forall"
-        contents `shouldSatisfy` isInfixOf "lawspec_beam_schema:match"
+        contents `shouldSatisfy` isInfixOf "case It_"
+        contents `shouldSatisfy` isInfixOf "[_ |"
         contents `shouldSatisfy` isInfixOf "andalso"
         filter ((== "user") . ownership) artifacts `shouldBe` []
   -- ref:DEC-adapter-ownership ref:DEC-readable-output-default
   it "keeps one readable adapter baseline across both layouts" $ do
-    let source = "unit example.codec\nechoText :: Text -> Text\n"
+    let source = "unit example.codec\n\nechoText :: Text -> Text\nend unit\n"
     case (generated False source, generated True source) of
       (Right readable,Right compact) -> do
         let user = filter ((== "user") . ownership)
@@ -504,8 +533,8 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         content `shouldSatisfy` isInfixOf "lawspec_data:tree(_T0)"
   -- ref:DEC-idiomatic-generated-types
   it "rejects collisions after native name normalization" $ do
-    generated False "unit example.names\nfooBar :: Int32 -> Int32\nfoo_bar :: Int32 -> Int32\n" `shouldSatisfy` isLeft
-    generated False "unit lawspec.data\nf :: Int8 -> Int8\n" `shouldSatisfy` isLeft
+    generated False "unit example.names\n\nfooBar :: Int32 -> Int32\nfoo_bar :: Int32 -> Int32\nend unit\n" `shouldSatisfy` isLeft
+    generated False "unit lawspec.data\n\nf :: Int8 -> Int8\nend unit\n" `shouldSatisfy` isLeft
   -- ref:DEC-incremental-compilation
   it "uses the same module and law identifiers in the test manifest" $ do
     unitTestPath "erlang" "example.httpClient" `shouldBe` "test/example_http_client_lawspec_tests.erl"
@@ -541,7 +570,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         body `shouldSatisfy` isInfixOf "@spec positive_pair("
   -- ref:DEC-idiomatic-generated-types ref:DEC-incremental-compilation
   it "relocates Elixir and Erlang sources without adding an extra lib directory" $ do
-    let plan = compileCore 64 defaultGeneration [Source "elixir.lawspec" "unit example.echo\necho :: Text -> Text\n"] >>= planTesting
+    let plan = compileCore 64 defaultGeneration [Source "elixir.lawspec" "unit example.echo\n\necho :: Text -> Text\nend unit\n"] >>= planTesting
         generatedAt sourceDir testDir = plan >>= emitPlanWithOptions False "elixir" sourceDir testDir
     case (generatedAt Nothing Nothing, generatedAt (Just "generated/source") (Just "generated/tests")) of
       (Right standard, Right relocated) -> do
@@ -575,12 +604,12 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
       Right artifacts -> do
         let body = concat [artifactContent a | a <- artifacts, artifactPath a == "src/lawspec/data.gleam"]
         body `shouldSatisfy` isInfixOf "pub type Pair(a0, a1)"
-        body `shouldSatisfy` isInfixOf "TreeBranch(children: List(Tree(a0)))"
+        body `shouldSatisfy` isInfixOf "TreeBranch(value: List(Tree(a0)))"
         mapM_ (\p -> map artifactPath artifacts `shouldContain` [p])
           ["src/example/data_types/definitions.gleam", "src/example_data_types_definitions_ffi.erl"]
   -- ref:DEC-native-bindings-typed-identity
   it "rejects a Gleam layout that would change its compiled module identities" $ do
-    let plan = compileCore 64 defaultGeneration [Source "gleam.lawspec" "unit example.echo\necho :: Text -> Text\n"] >>= planTesting
+    let plan = compileCore 64 defaultGeneration [Source "gleam.lawspec" "unit example.echo\n\necho :: Text -> Text\nend unit\n"] >>= planTesting
     (plan >>= emitPlanWithOptions False "gleam" (Just "src/generated") Nothing) `shouldSatisfy` isLeft
   -- ref:DEC-indexed-families-as-evidence ref:DEC-gadts-and-index-arithmetic
   it "carries directed indices and existential witnesses into every native framework" $ do
@@ -615,12 +644,19 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
   -- ref:REQ-law-primitives
   mapM_ (\target -> it (target ++ " brackets examples, boundaries and native property attempts with resources") $ do
     let input = unlines
-          [ "unit example.resources", "handle Store", "openStore :: Unit -> Store"
-          , "closeStore :: Store -> Unit", "empty :: Store -> Bool", "write :: Store -> Int32 -> Bool"
-          , "resource Store is acquire is openStore unitValue end release s is closeStore s end end"
-          , "law `fresh` for first :: Store, second :: Store is"
-          , " definition is `for all` (n :: Int32) . empty first and write second n end"
-          , " example `still open` is n = 1 expect empty first end", "end" ]
+          [ "unit example.resources"
+           ++ "\n", ""
+          , "handle Store"
+          , "openStore :: Unit -> Store"
+          , "closeStore :: Store -> Unit"
+          , "empty :: Store -> Bool"
+          , "write :: Store -> Int32 -> Bool"
+          , "resource Store is acquire is openStore unitValue end acquire release s is closeStore s end release end resource"
+          , "law \"|fresh| for first :: Store, second :: Store is"
+          , " definition : for all (n :: Int32) => empty first and write second n end for all end definition"
+          , " example \"|still open| : n = 1 expect empty first end example"
+          , "end law"
+          , "\nend unit" ]
     case compileCore 64 defaultGeneration [Source "resources.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> case Properties.emit target (D.Pretty 100) emptyBindingPlan plan of
@@ -628,7 +664,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["_LsResource0", "_LsResource1", "lawspec_beam_resources:with_resource", "example 0: still open", "property", "boundary 0"]
+            ["_LsResource0", "_LsResource1", "lawspec_beam_resources:with_resource", "example 0: \\\"|still open|", "property", "boundary 0"]
     ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-never-pass-vacuously ref:REQ-harness-units
   it "emits shared resource leases with their checked acquire, reset and release clauses" $ do
@@ -658,10 +694,16 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
   -- ref:DEC-never-pass-vacuously ref:REQ-harness-units
   mapM_ (\target -> it (target ++ " enforces per-test timeouts inside the native runner allowance") $ do
     let input = unlines
-          [ "unit example.timeout", "pause :: Unit -> Bool"
-          , "law `ends` is definition is pause unitValue end end"
+          [ "unit example.timeout"
+           ++ "\n", ""
+          , "pause :: Unit -> Bool"
+          , "law \"|ends| is definition : pause unitValue end definition end law"
           , "harness example.timeout.testing for example.timeout is"
-          , " for law `ends`", "  timeout 10 ms", "end" ]
+          , " for law \"|ends|"
+          , "  timeout 10 ms"
+          , "\nend for law"
+          , "end harness"
+          , "\nend unit" ]
     case generatedFor target False input of
       Left errors -> expectationFailure (show errors)
       Right artifacts -> do
@@ -707,7 +749,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_harness:run", "lawspec_beam_harness:sample", "finite observations statistics",
+            ["lawspec_beam_harness:run", "lawspec_beam_harness:sample", "\\\"|finite observations| statistics",
              "examples do not count", "lawspec_definitions:", "above its prefix"]
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
@@ -720,7 +762,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_harness:known_failing", "known property failure known failing", "skipped completely skipped"]
+            ["lawspec_beam_harness:known_failing", "\\\"|known property failure| known failing", "\\\"|skipped completely| skipped"]
           body `shouldSatisfy` (not . isInfixOf "law_skipped_completely_body")
           body `shouldSatisfy` (not . isInfixOf "also skipped")
           if target == "elixir" then body `shouldSatisfy` isInfixOf "@tag skip: reason"
@@ -862,7 +904,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
   mapM_ (\(target,bits,compact) -> it (target ++ " repeats complete native checks and records retries " ++ show (bits,compact)) $ do
     input <- readFile "acceptance/beam-repetition/repetition.lawspec"
-    case compileCore bits defaultGeneration [Source "repetition.lawspec" input] >>= planTesting of
+    case compileCore bits defaultGeneration [Source "repetition.lawspec" input] >>= planTestingWith (V.Verification [V.Property,V.Examples]) of
       Left errors -> expectationFailure (show errors)
       Right plan -> case Properties.emit target (D.selectLayout compact (D.Pretty 100)) emptyBindingPlan plan of
         Left message -> expectationFailure message
@@ -870,11 +912,11 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
             ["lawspec_beam_harness:run", "repeat => 3", "repeat => 2", "retries => 1", "observed => false",
-             "observed => true", "repeated example", "repeated finite cases boundary", "repeated search search"]
+             "observed => true", "repeated example", "\\\"|repeated finite cases| boundary", "\\\"|repeated search| search"]
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
   mapM_ (\target -> it (target ++ " includes replay runtime dependencies for an ordinary property") $ do
-    let input = "unit example.replay\nf :: Int32 -> Int32\nlaw `identity` is definition is `for all` (n :: Int32) . f n = n end end\n"
+    let input = "unit example.replay\n\nf :: Int32 -> Int32\nlaw \"|identity| is definition : for all (n :: Int32) => f n = n end for all end definition end law\nend unit\n"
     case generatedFor target False input of
       Left errors -> expectationFailure (show errors)
       Right artifacts -> do
@@ -891,8 +933,11 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
     ) ["erlang", "elixir", "gleam"]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
   mapM_ (\(target,bits,compact) -> it (target ++ " replays saved native inputs with current refinements " ++ show (bits,compact)) $ do
-    let input = unlines ["unit example.replay", "f :: Integer -> Integer -> Integer",
-          "law `dependent replay` is definition is `for all` (n :: Integer) (m :: Integer where m > n) . f n m = m end end"]
+    let input = unlines [ "unit example.replay"
+                         ++ "\n", ""
+                        , "f :: Integer -> Integer -> Integer"
+                        , "law \"|dependent replay| is definition : for all (n :: Integer) (m :: Integer where m > n) => f n m = m end for all end definition end law"
+                        , "\nend unit" ]
     case compileCore bits defaultGeneration [Source "replay.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> case Properties.emit target (D.selectLayout compact (D.Pretty 100)) emptyBindingPlan plan of
@@ -900,28 +945,34 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_search:replay", "lawspec_beam_search:guard", "example.replay::dependent replay", "false -> none"]
+            ["lawspec_beam_search:replay", "lawspec_beam_search:guard", "example.replay::\\\"|dependent replay|", "false -> none"]
           body `shouldSatisfy` (not . isInfixOf "lawspec_beam_search:climb")
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
   mapM_ (\(target,bits,compact) -> it (target ++ " emits targeted search with checked refinements " ++ show (bits,compact)) $ do
     input <- readFile "acceptance/beam-target/target.lawspec"
-    case compileCore bits defaultGeneration [Source "target.lawspec" input] >>= planTesting of
+    case compileCore bits defaultGeneration [Source "target.lawspec" input] >>= planTestingWith (V.Verification [V.Property,V.Examples]) of
       Left errors -> expectationFailure (show errors)
       Right plan -> case Properties.emit target (D.selectLayout compact (D.Pretty 100)) emptyBindingPlan plan of
         Left message -> expectationFailure message
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_search:climb", "lawspec_beam_harness:sample", "interior maximum search",
-             "dependent maximum search", "false -> none", "{score,", "(int Integer 340282366920938463463374607431768211456"]
+            ["lawspec_beam_search:climb", "lawspec_beam_harness:sample", "\\\"|interior maximum| search",
+             "\\\"|dependent maximum| search", "false -> none", "{score,", "(int Integer 340282366920938463463374607431768211456"]
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units
   it "observes floating-point targets without inventing a wire descriptor" $ do
-    let input = unlines ["unit example.floatingTarget", "f :: Float64 -> Float64",
-          "law `floating score` is definition is `for all` (n :: Float64) . f n = n end end",
-          "harness example.floatingTarget.testing for example.floatingTarget is",
-          " for law `floating score`", "  target maximize n", "end"]
+    let input = unlines [ "unit example.floatingTarget"
+                         ++ "\n", ""
+                        , "f :: Float64 -> Float64"
+                        , "law \"|floating score| is definition : for all (n :: Float64) => f n = n end for all end definition end law"
+                        , "harness example.floatingTarget.testing for example.floatingTarget is"
+                        , " for law \"|floating score|"
+                        , "  target maximize n"
+                        , "\nend for law"
+                        , "end harness"
+                        , "\nend unit" ]
     case compileCore 64 defaultGeneration [Source "target.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> case Properties.emit "erlang" (D.Pretty 100) emptyBindingPlan plan of
@@ -936,13 +987,16 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
   -- generator still needs a witness for a structural minimum beyond 64.
   -- ref:REQ-harness-units ref:DEC-structural-size-budget
   it "plans structural witnesses for a strategy's intermediate any type" $ do
-    let input = unlines (["unit example.deepStrategy"] ++
-          ["type D" ++ show i ++ " is C" ++ show i ++ " next :: " ++
-            (if i == 65 then "Bool" else "D" ++ show (i + 1)) ++ " end" | i <- [0::Int ..65]] ++
-          [ "law `identity` is definition is `for all` (n :: Int32) . n = n end end"
+    let input = unlines ([ "unit example.deepStrategy" ] ++
+          ["type D" ++ show i ++ " is a record{ next :: " ++
+            (if i == 65 then "Bool" else "D" ++ show (i + 1)) ++ "} end type" | i <- [0::Int ..65]] ++
+          [ "law \"|identity| is definition : for all (n :: Int32) => n = n end for all end definition end law"
           , "harness example.deepStrategy.testing for example.deepStrategy is"
-          , "  strategy value :: Int32 is bind deep :: D0 from any D0 in one of 0 end"
-          , "  for law `identity`", "    use value for n", "end" ])
+          , "  strategy value :: Int32 is bind deep :: D0 from any D0 in one of 0 end bind  end strategy"
+          , "  for law \"|identity|"
+          , "    use value for n"
+          , "\nend for law"
+          , "end harness", "end unit" ])
     case compileCore 64 defaultGeneration [Source "deep.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
       Right plan -> case Properties.emit "erlang" (D.Pretty 100) emptyBindingPlan plan of

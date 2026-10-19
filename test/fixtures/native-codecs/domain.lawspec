@@ -1,25 +1,26 @@
 unit native.codecs
 
-type Parcel (a :: Type) is Parcel item :: a end
-type Chain (a :: Type) is Stop More item :: a tail :: Maybe (Chain a) end
-type Positive is Positive value :: (x :: Int8 where x > 0) end
+type Parcel (a :: Type) is a record{  item :: a} end type
+type Chain (a :: Type) is one of Stop More of type record{ item :: a tail :: Maybe (Chain a)} end type
+type Positive is a record{  value :: (x :: Int8 where x > 0)} end type
 copyParcel :: Parcel Int8 -> Parcel Int8
 copyNested :: Parcel (Maybe (Parcel Int8)) -> Parcel (Maybe (Parcel Int8))
 copyChain :: Chain Text -> Chain Text
 copyPositive :: Positive -> Positive
-law `private product` is
-  definition is `for all` (x :: Parcel Int8) . copyParcel x = x end
-  example `maximum` is x = Parcel 127 expect copyParcel x = Parcel 127 end
-end
-law `nested codec arguments` is
-  definition is `for all` (x :: Parcel (Maybe (Parcel Int8))) . copyNested x = x end
-  example `present` is x = Parcel (Just (Parcel 42)) expect copyNested x = Parcel (Just (Parcel 42)) end
-end
-law `flattened recursive representation` is
-  definition is `for all` (x :: Chain Text) . copyChain x = x end
-  example `no tail` is x = More "λ" Nothing expect copyChain x = More "λ" Nothing end
-  example `explicit stop` is x = More "λ" (Just Stop) expect copyChain x = More "λ" (Just Stop) end
-end
-law `codec output retains contracts` is
-  definition is `for all` (x :: Positive) . copyPositive x = x end
-end
+law "|private product| is
+  definition : for all (x :: Parcel Int8) => copyParcel x = x end for all end definition
+  example "|maximum| : x = Parcel record{ item = 127} expect copyParcel x = Parcel record{ item = 127} end example
+end law
+law "|nested codec arguments| is
+  definition : for all (x :: Parcel (Maybe (Parcel Int8))) => copyNested x = x end for all end definition
+  example "|present| : x = Parcel record{ item = (Just (Parcel record{ item = 42}))} expect copyNested x = Parcel record{ item = (Just (Parcel record{ item = 42}))} end example
+end law
+law "|flattened recursive representation| is
+  definition : for all (x :: Chain Text) => copyChain x = x end for all end definition
+  example "|no tail| : x = More record{ item = "λ" , tail = Nothing} expect copyChain x = More record{ item = "λ" , tail = Nothing} end example
+  example "|explicit stop| : x = More record{ item = "λ" , tail = (Just Stop)} expect copyChain x = More record{ item = "λ" , tail = (Just Stop)} end example
+end law
+law "|codec output retains contracts| is
+  definition : for all (x :: Positive) => copyPositive x = x end for all end definition
+end law
+end unit

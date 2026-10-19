@@ -2,7 +2,7 @@ unit lessons.checkout
 
 -- A wrapper is a distinct type whose constructor checks its value: a
 -- Quantity outside 1..20 cannot be constructed, generated or decoded.
-wrapper Quantity is Int32 where value >= 1 && value <= 20 end
+wrapper Quantity is Int32 where value >= 1 && value <= 20 end wrapper
 
 type RawOrder is a record{  item :: Text quantity :: Int32} end type
 type ValidOrder is a record{  item :: Text quantity :: Quantity} end type
@@ -15,7 +15,7 @@ type OrderProblem is one of | EmptyItem | BadQuantity end type
 workflow checkout :: RawOrder -> Either OrderProblem Receipt is
 validate :: RawOrder -> Either OrderProblem ValidOrder
 charge :: ValidOrder -> Receipt
-end
+end workflow
 
 law "|validation accepts exactly the valid orders| is
   definition :
@@ -26,9 +26,9 @@ law "|validation accepts exactly the valid orders| is
       end case) = (first matching case of order :
         when RawOrder record{ item = item , quantity = quantity} then
           prelude.length item > 0 && quantity >= 1 && quantity <= 20
-      end case) end
-  end
-end
+      end case) end for all
+  end definition
+end law
 
 law "|a receipt charges 250 cents per item| is
   definition :
@@ -38,6 +38,7 @@ law "|a receipt charges 250 cents per item| is
       end case) = (first matching case of order :
         when ValidOrder record{ item = item , quantity = quantity} then
           valueOfQuantity quantity * 250
-      end case) end
-  end
-end
+      end case) end for all
+  end definition
+end law
+end unit

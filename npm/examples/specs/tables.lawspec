@@ -8,27 +8,27 @@ label :: Int32 -> Text
 
 -- Each row is its own example. The column on the right of an expect's =
 -- holds the expected values; the other columns bind the law's inputs.
-law `shipping cost grows with weight and distance` is
-  definition is
-    `for all` (kilograms :: Int32 where kilograms >= 0 && kilograms <= 1000)
-      (kilometres :: Int32 where kilometres >= 0 && kilometres <= 1000) .
-      shippingCost kilograms kilometres >= 0
-  end
-  table (kilograms, kilometres, cost) is
+law "|shipping cost grows with weight and distance| is
+  definition :
+    for all (kilograms :: Int32 where kilograms >= 0 && kilograms <= 1000)
+      (kilometres :: Int32 where kilometres >= 0 && kilometres <= 1000) =>
+      shippingCost kilograms kilometres >= 0 end for all
+  end definition
+  expect shippingCost kilograms kilometres = cost
+  in table (kilograms, kilometres, cost) :
     row 0, 0, 0
     row 1, 10, 15
     row 2, 10, 30
     row 10, 100, 1050
-    expect shippingCost kilograms kilometres = cost
-  end
-end
+    end table
+end law
 
 -- Examples in a description are fenced, and become examples of the law.
-law `a label names the parcel` is
-  definition is
-    `for all` (parcel :: Int32 where parcel >= 0) . label parcel starts with "parcel "
-  end
-  description is
+law "|a label names the parcel| is
+  definition :
+    for all (parcel :: Int32 where parcel >= 0) => label parcel starts with "parcel " end for all
+  end definition
+  description :
     "Every label starts with the word parcel and the parcel's number.
 
     ```example
@@ -40,25 +40,26 @@ law `a label names the parcel` is
     parcel = 123456
     expect label parcel = \"parcel 123456\"
     ```"
-  end
-end
+  end description
+end law
 
 -- A recorded value is stored in the project, under
 -- recorded/example.tables/<name>, in the portable rendering every target
 -- shares. lawspec test --update-recorded records it again; until then, a
 -- changed value fails.
-law `the first label is recorded` is
-  definition is
+law "|the first label is recorded| is
+  definition :
     label 1 = recorded "first label"
-  end
-end
+  end definition
+end law
 
-law `labels are short` is
-  definition is
-    `for all` (parcel :: Int32 where parcel >= 0) . prelude.length (label parcel) <= 20
-  end
-  example `parcel 42` is
+law "|labels are short| is
+  definition :
+    for all (parcel :: Int32 where parcel >= 0) => prelude.length (label parcel) <= 20 end for all
+  end definition
+  example "|parcel 42| :
     parcel = 42
     expect label parcel = recorded "parcel 42"
-  end
-end
+  end example
+end law
+end unit

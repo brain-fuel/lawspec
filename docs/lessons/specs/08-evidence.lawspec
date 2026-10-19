@@ -5,9 +5,9 @@ function twice (x :: Int32) -> Integer is x + x end function
 
 law "|twice doubles| is
   definition :
-    for all (x :: Int32) => twice x = x * 2 end
-  end
-end
+    for all (x :: Int32) => twice x = x * 2 end for all
+  end definition
+end law
 
 -- Days of the week, numbered from Sunday. Seven inputs: every one is tested.
 isWeekend :: (d :: Int8 where d >= 0 && d <= 6) -> Bool
@@ -15,9 +15,9 @@ isWeekend :: (d :: Int8 where d >= 0 && d <= 6) -> Bool
 law "|weekends are Saturday and Sunday| is
   definition :
     for all (d :: Int8 where d >= 0 && d <= 6) =>
-      isWeekend d = (d = 0 || d = 6) end
-  end
-end
+      isWeekend d = (d = 0 || d = 6) end for all
+  end definition
+end law
 
 -- Too many inputs to try them all: generated cases, boundaries and examples.
 roundToDollars :: Int64 -> Int64
@@ -25,10 +25,11 @@ roundToDollars :: Int64 -> Int64
 law "|rounding to dollars is stable| is
   definition :
     apply law "|idempotent| roundToDollars
-  end
+  end definition
 
   example "|a price with cents| :
     x = 1299
     expect roundToDollars x = 1200
-  end
-end
+  end example
+end law
+end unit

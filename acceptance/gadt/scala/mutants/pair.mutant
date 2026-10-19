@@ -1,6 +1,6 @@
 @@ src/main/scala/example/Gadt.scala
 <<<<<<<
-      case Expr.Both(first, second) => Pair(evalNumber(first), evalTruth(second))
+      case Expr.Both(lawspec.data.Recorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365e(first, second)) => Pair(evalNumber(first), evalTruth(second))
 =======
-      case Expr.Both(first, second) => Pair(evalNumber(first), !evalTruth(second))
+      case Expr.Both(lawspec.data.Recorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365e(first, second)) => Pair(evalNumber(first), !evalTruth(second))
 >>>>>>>

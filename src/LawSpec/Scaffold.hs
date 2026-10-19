@@ -190,7 +190,10 @@ scaffoldFilesWith crypto minify target = case target of
             (if crypto then ", crypton, mlkem, mldsa, ram]" else "]")
         , "library:", "  source-dirs: src", "tests:", "  laws:", "    main: Spec.hs", "    source-dirs: test"
         , "    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]"
-        , "    ghc-options: [-threaded, -rtsopts, \"-with-rtsopts=-N\"]"
+        -- Deep Hedgehog bind plans make GHC specialization prohibitively
+        -- expensive. Keep the test component and its support modules at O0;
+        -- the adapter/definition library retains the project's optimization.
+        , "    ghc-options: [-O0, -threaded, -rtsopts, \"-with-rtsopts=-N\"]"
         , "    build-tools: [hspec-discover]" ])
     , ("test/Spec.hs", "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n") ]
   "kotlin" -> Right

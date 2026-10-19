@@ -1,7 +1,7 @@
 expect: refunds over the limit are too large
 @@ src/Example/Failures.swift
 <<<<<<<
-        if value0 > 5000 { throw .tooLarge(limit: 5000) }
+        if value0 > 5000 { throw .tooLarge(value: 5000) }
 =======
         if value0 > 5000 { fatalError("too large") }
 >>>>>>>

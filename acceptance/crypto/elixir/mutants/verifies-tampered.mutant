@@ -1,4 +1,4 @@
-expect: a changed message fails to verify [native]
+expect: a changed message fails to verify| [native]
 @@ lib/example_keys.ex
 <<<<<<<
 inner.verify.(key, message, signature) end

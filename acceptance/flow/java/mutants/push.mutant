@@ -1,6 +1,6 @@
 @@ src/main/java/example/Flow.java
 <<<<<<<
-    return new PushFlow(new Stack.Push(value0, value1));
+    return new PushFlow(new Stack.Push(new lawspec.data.Record6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be(value1, value0)));
 =======
     return new PushFlow(value1);
 >>>>>>>

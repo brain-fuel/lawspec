@@ -1,6 +1,6 @@
 @@ src/example/indexed.py
 <<<<<<<
-    right = data.VecVCons(value0.value, flatten(value0.right))
+    right = data.VecVCons(data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head=value0.value.value, tail=flatten(value0.value.right)))
 =======
-    right = data.VecVCons(value0.value, data.VecVNil())
+    right = data.VecVCons(data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head=value0.value.value, tail=data.VecVNil()))
 >>>>>>>

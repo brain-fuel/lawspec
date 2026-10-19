@@ -1,2 +1,3 @@
 unit purelaw
-law `reflexivity $ λ` is definition is `for all` (x :: Int32) . x = x end end
+law "|reflexivity $ λ| is definition : for all (x :: Int32) => x = x end for all end definition end law
+end unit

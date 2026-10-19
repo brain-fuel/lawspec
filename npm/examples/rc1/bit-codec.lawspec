@@ -20,37 +20,38 @@ law "|each bit is recovered| is
   definition:
     for all (bit of type Bool) =>
       decodeBit (bitText bit) must be Just bit
-    end
-  end
+    end for all
+  end definition
 
   description:
     "Each bit has a one-character encoding that decodes to the original bit."
-  end
+  end description
 
   expect bitText bit = encoded
   expect decodeBit encoded = decoded
   in table (bit, encoded, decoded):
     row false, "0", Just false
     row true, "1", Just true
-  end
-end
+  end table
+end law
 
 law "|decoding is a left inverse| is
   definition:
     apply law "|left inverse| "|decode with zero default| bitText
-  end
+  end definition
 
   description:
     "Decoding an encoded bit recovers it. The inverse is the first argument."
-  end
-end
+  end description
+end law
 
 law "|other text has no bit| is
   definition:
     decodeBit "01" must be Nothing
-  end
+  end definition
 
   description:
     "Two characters are not one encoded bit. Invalid input has no decoded value."
-  end
-end
+  end description
+end law
+end unit

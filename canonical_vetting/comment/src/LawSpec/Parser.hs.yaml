@@ -19,9 +19,6 @@ decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/exportP:
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/expr:
   digest: sha256:55d60747c1b1153a
   verdict: pending
-decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/functionDefinitionP:
-  digest: sha256:70954e5985a0c123
-  verdict: pending
 decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/headers:
   digest: sha256:51bd2a022c1e6980
   verdict: pending

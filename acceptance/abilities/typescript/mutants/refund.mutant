@@ -1,4 +1,4 @@
-expect: refunds of large amounts fail [native]
+expect: refunds of large amounts fail| [native]
 @@ src/example/shop.ts
 <<<<<<<
   if (value0 > 100000) throw new ls.Fail(new data.PaymentErrorTooLarge());

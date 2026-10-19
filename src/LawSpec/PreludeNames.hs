@@ -15,7 +15,7 @@ import LawSpec.Matchers (matcherOperations)
 import LawSpec.Time (timeOperations)
 import LawSpec.Railway (railwayNames)
 import LawSpec.Scalar (isNumeric)
-import LawSpec.SourceText (Token(..),TokenKind(..),sourceTokens)
+import LawSpec.SourceTokens (Token(..),TokenKind(..),sourceTokens)
 import Data.List (nub,stripPrefix)
 import Data.Maybe (listToMaybe,fromMaybe)
 

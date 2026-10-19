@@ -14,10 +14,11 @@ import LawSpec.NativeBinding
 source :: String
 source = unlines
   [ "unit domain"
-  , "type Currency is USD | EUR end"
-  , "type Money is Money amount :: Decimal currency :: Currency end"
-  , "type Box (a :: Type) is Box value :: a end"
-  ]
+   ++ "\n", ""
+  , "type Currency is one of USD | EUR end type\n"
+  , "type Money is a record{  amount :: Decimal currency :: Currency} end type\n"
+  , "type Box (a :: Type) is a record{  value :: a} end type\n"
+  , "\nend unit" ]
 
 ref :: String -> NativeRef
 ref name = NativeRef ["app",name]
@@ -80,7 +81,7 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
         map (C.binderName . fst) fields `shouldBe` ["amount","currency"]
         map snd fields `shouldBe` ["major","unit"]
   it "shares instantiated packing and projection trees with every emitter" $ do
-    let source="unit domain\ntype Parcel (a :: Type) is one of Packed of type record{last :: a first :: record{count :: UInt8 flag :: Bool}} end type"
+    let source="unit domain\n\ntype Parcel (a :: Type) is one of Packed of type record{last :: a first :: record{count :: UInt8 flag :: Bool}} end type\nend unit\n"
         binding=TypeBinding (C.Id "domain::type::Parcel") (ref "Parcel")
           [ConstructorBinding "Packed" (ref "Packed") VariantConstructor
             [NestedFieldBinding "value" "quantity" ["first","count"] 2,
@@ -147,9 +148,10 @@ test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding re
   it "finds machine-sized fields through recursive declarations and type arguments" $ do
     let recursive = unlines
           [ "unit machine"
-          , "type Chain (a :: Type) is Stop | More value :: a tail :: Maybe (Chain a) end"
-          , "type Native is Done | Next tail :: Maybe Native width :: UIntPtr end"
-          ]
+           ++ "\n", ""
+          , "type Chain (a :: Type) is one of Stop | More of type record{ value :: a tail :: Maybe (Chain a)} end type\n"
+          , "type Native is one of Done | Next of type record{ tail :: Maybe Native width :: UIntPtr} end type\n"
+          , "\nend unit" ]
         chain ty = C.Constructor "machine::type::Chain" [C.TypeArgument (C.scalarType ty)]
     case compileCore 64 defaultGeneration [Source "machine" recursive] of
       Left diagnostics -> expectationFailure (show diagnostics)

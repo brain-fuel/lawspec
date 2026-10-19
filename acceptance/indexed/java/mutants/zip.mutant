@@ -1,6 +1,6 @@
 @@ src/main/java/example/Indexed.java
 <<<<<<<
-      return new Vec.VCons<>(b, zip(as, bs));
+      return new Vec.VCons<>(new lawspec.data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec<>(b, zip(as, bs)));
 =======
       return zip(as, bs);
 >>>>>>>

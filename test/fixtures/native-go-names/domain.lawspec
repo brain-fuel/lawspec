@@ -1,28 +1,29 @@
 unit collision.model
 
-type Box (a :: Type) is Box item :: a end
-type CanonicalBox is Flag value :: Bool end
-type Tree (a :: Type) is Leaf value :: a Branch children :: List (Tree a) end
+type Box (a :: Type) is a record{  item :: a} end type
+type CanonicalBox is one of Flag  of type Bool end type
+type Tree (a :: Type) is one of Leaf  of type a Branch  of type List (Tree a) end type
 copyBox :: Box Int8 -> Box Int8
 copyFlag :: CanonicalBox -> CanonicalBox
 copyTree :: Tree Int8 -> Tree Int8
-law `generic product keeps its payload` is
-  definition is `for all` (x :: Box Int8) . copyBox x = x end
-  example `maximum` is x = Box 127 expect copyBox x = Box 127 end
-end
-law `existing canonical prefix remains usable` is
-  definition is `for all` (x :: CanonicalBox) . copyFlag x = x end
-end
-law `recursive application tree` is
-  definition is `for all` (x :: Tree Int8) . copyTree x = x end
-  example `nested` is x = Branch [Leaf 1, Branch [Leaf 2]] expect copyTree x = Branch [Leaf 1, Branch [Leaf 2]] end
-end
+law "|generic product keeps its payload| is
+  definition : for all (x :: Box Int8) => copyBox x = x end for all end definition
+  example "|maximum| : x = Box record{ item = 127} expect copyBox x = Box record{ item = 127} end example
+end law
+law "|existing canonical prefix remains usable| is
+  definition : for all (x :: CanonicalBox) => copyFlag x = x end for all end definition
+end law
+law "|recursive application tree| is
+  definition : for all (x :: Tree Int8) => copyTree x = x end for all end definition
+  example "|nested| : x = Branch [Leaf 1, Branch [Leaf 2]] expect copyTree x = Branch [Leaf 1, Branch [Leaf 2]] end example
+end law
 
-definition unpack (box :: Box a) :: a is
-  match box with
-    | Box value -> value
-  end
-end
-law `total definition uses the renamed family` is
-  definition is `for all` (x :: Box Int8) . unpack (copyBox x) = unpack x end
-end
+function unpack (box :: Box a) -> a is
+  first matching case of box :
+    when Box record{ item = value} then value
+  end case
+end function
+law "|total definition uses the renamed family| is
+  definition : for all (x :: Box Int8) => unpack (copyBox x) = unpack x end for all end definition
+end law
+end unit

@@ -1,4 +1,4 @@
-expect: Logs: an unknown log refuses records [native]
+expect: Logs: an unknown log refuses records| [native]
 @@ src/example/composition.gleam
 <<<<<<<
         None -> failures.fail(data.ProblemUnknownLog)

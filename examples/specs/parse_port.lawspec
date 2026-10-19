@@ -4,63 +4,64 @@ validPort :: Int32 -> Bool
 render    :: Int32 -> Text
 parse     :: Text -> Int32
 
-law `valid ports round trip` is
-  definition is
-    `for all` (x :: Int32) .
+law "|valid ports round trip| is
+  definition :
+    for all (x :: Int32) =>
       validPort x implies
-        parse (render x) = x
-  end
+        parse (render x) = x end for all
+  end definition
 
-  description is
+  description :
     "For ports in 1 through 65535, {parse} recovers the value written by {render}"
-  end
+  end description
 
-  example `ordinary port` is
+  example "|ordinary port| :
     x = 443
     expect validPort x = true
     expect render x = "443"
     expect parse (render x) = 443
-  end
+  end example
 
-  example `lowest port is accepted and round trips` is
+  example "|lowest port is accepted and round trips| :
     x = 1
     expect validPort x = true
     expect render x = "1"
     expect parse (render x) = 1
-  end
+  end example
 
-  example `highest port is accepted and round trips` is
+  example "|highest port is accepted and round trips| :
     x = 65535
     expect validPort x = true
     expect render x = "65535"
     expect parse (render x) = 65535
-  end
+  end example
 
-  example `zero is rejected; rendering and parsing are skipped` is
+  example "|zero is rejected; rendering and parsing are skipped| :
     x = 0
     expect validPort x = false
-  end
+  end example
 
-  example `negative port is rejected; rendering and parsing are skipped` is
+  example "|negative port is rejected; rendering and parsing are skipped| :
     x = -1
     expect validPort x = false
-  end
+  end example
 
-  example `65536 is rejected; rendering and parsing are skipped` is
+  example "|65536 is rejected; rendering and parsing are skipped| :
     x = 65536
     expect validPort x = false
-  end
-end
+  end example
+end law
 
-law `the same port contract via the prelude` is
-  definition is
-    `left inverse when` validPort parse render
-  end
+law "|the same port contract via the prelude| is
+  definition :
+    apply law "|left inverse when| validPort parse render
+  end definition
 
-  example `port 8080 satisfies the inherited condition and round trips` is
+  example "|port 8080 satisfies the inherited condition and round trips| :
     x = 8080
     expect validPort x = true
     expect render x = "8080"
     expect parse (render x) = 8080
-  end
-end
+  end example
+end law
+end unit

@@ -11,13 +11,5 @@ export async function createCompiler() {
         call({schemaVersion: 5, ...input, method: 'proofTasks'}),
     planGeneration: (input) =>
         call({schemaVersion: 5, ...input, method: 'planGeneration'}),
-    migrationBaseline: (input) =>
-        call({schemaVersion: 5, ...input, method: 'migrationBaseline'}),
-    migrationComparison: (input) =>
-        call({schemaVersion: 5, ...input, method: 'migrationComparison'}),
-    migrationBindings: (input) =>
-        call({schemaVersion: 5, ...input, method: 'migrationBindings'}),
-    migrationGeneration: (input) =>
-        call({schemaVersion: 5, ...input, method: 'migrationGeneration'}),
   };
 }

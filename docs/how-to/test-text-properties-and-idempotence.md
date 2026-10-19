@@ -19,13 +19,14 @@ referenceNormalize :: Text -> Text
 law "|normalizers agree| is
   definition :
     apply law "|equivalent| normalize referenceNormalize
-  end
+  end definition
   example "|spaces become hyphens; punctuation is preserved| :
     x = "Hello, World!"
     expect normalize x = "Hello,-World!"
     expect referenceNormalize x = "Hello,-World!"
-  end
-end
+  end example
+end law
+end unit
 ```
 
 The [slug example](../../examples/specs/slug.lawspec) compares two
@@ -65,12 +66,13 @@ canonicalize :: Text -> Text
 law "|canonicalization reaches a fixed point| is
   definition :
     apply law "|idempotent| canonicalize
-  end
+  end definition
   example "|all trailing slashes are removed in one pass| :
     x = "https://example.com/path///"
     expect canonicalize x = "https://example.com/path"
-  end
-end
+  end example
+end law
+end unit
 ```
 
 For JavaScript:

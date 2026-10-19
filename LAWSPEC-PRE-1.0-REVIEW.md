@@ -11,11 +11,49 @@ The user-deferred readability exercise will establish whether actual business re
 
 The latest approved milestone direction below is authoritative. The implementation contract originally called RC1 remains the implementation baseline, subject to the later decisions recorded here. Earlier discussion and superseded alternatives remain history.
 
-**Implementation status:** version 0.25.0 has completed the current minor's implementation and full acceptance gates and remains **unpublished, not a release candidate**. Package rebuilding, installed-package validation and read-only release checks pass. No RC designation, tag or publication is authorized. The technical profile identifier `1.0-rc.1` remains an implementation identifier, not a release designation. The final acceptance receipt below supersedes earlier pending execution statuses. Historical design examples are not, by themselves, claims that the parser accepts them; current executable examples and their evidence are identified in the receipts. Code blocks deliberately use plain text rather than simulated syntax highlighting.
+**0.25.0 acceptance history (before the later tag authorization):** version 0.25.0 has completed the current minor's implementation and full acceptance gates and remains **unpublished, not a release candidate**. Package rebuilding, installed-package validation and read-only release checks pass. No RC designation, tag or publication is authorized. The technical profile identifier `1.0-rc.1` remains an implementation identifier, not a release designation. The final acceptance receipt below supersedes earlier pending execution statuses. Historical design examples are not, by themselves, claims that the parser accepts them; current executable examples and their evidence are identified in the receipts. Code blocks deliberately use plain text rather than simulated syntax highlighting.
 
 Examples are independent unless a section explicitly connects them. Repeated unit names and simplified signatures are separate presentations, not declarations intended to coexist in one source file.
 
-## Current minor completion checklist — 19 October 2026
+## Approved 0.26.0 contract — 19 October 2026
+
+Implementation is underway. The release remains a minor version, with technical
+language profile `1.0-rc.2`; that identifier is not an RC release designation.
+The user approved mandatory named closers for **every block**, including unit
+bodies, ability `laws` groups, harness `for law` / `for laws` groups, let
+expressions and generator binds. The complete 45-kind catalogue is maintained
+in `src/LawSpec/Blocks.hs` and the published syntax reference. Quantifiers close
+with `end for all`, `end exists` (all positive/negative wordings), and `end given`.
+Handler clauses, including delegation, require `operation ... end operation`.
+Closers occupy one physical line and identify the construct rather than a user
+name. Punctuation-delimited products/collections keep their delimiters; branch
+clauses belong to their enclosing block. Bare `end` is invalid.
+
+The user explicitly removed pre-1.0 migration from scope and authorized deleting
+its implementation: no migration command, API, compatibility grammar, snapshot
+or correspondence engine ships in 0.26. Active sources and compiler-owned
+libraries are converted directly. This supersedes every earlier requirement
+for migration support or acceptance. Historical requirements and receipts below
+remain historical evidence, not requirements to retain the deleted feature.
+API schema 5 and configuration version 2 remain; ordinary consumers require the
+new profile. The original Chapter 6 source remains byte-for-byte preserved.
+
+The existing generation limit for nested index paths remains explicit:
+alternatives with record payloads retain their index predicates and constructor
+guards through ordinary checked generation and shrinking. The direct index
+generator handles supported single-payload family paths; it does not solve
+through intervening records. Retiring flat legacy payload syntax does not
+establish support for that additional solver capability. Tests cover both
+paths separately, and bounded filtering never constitutes complete evidence.
+
+Implementation acceptance requires all closing forms and errors, shared
+formatter/editor support, preserved intrinsic checks and behavior, native/WASM
+parity, installed-package checks, and the complete fresh 17-target graph. No
+completed acceptance, new tag or publication is claimed at this checkpoint.
+The human readership exercise remains deferred and the larger pre-final-1.0
+portfolio and advanced verification requirements remain open.
+
+## Historical 0.25.0 completion checklist — 19 October 2026
 
 Validated project migration writes and the first canonical Chapter 6 pass shipped at `98c5cf79`. The complete current-minor implementation is accepted on `891f8bb1`, with its execution scope and retained limits recorded below. Earlier increments retain their own source identities and evidence.
 

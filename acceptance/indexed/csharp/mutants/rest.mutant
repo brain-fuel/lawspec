@@ -2,5 +2,5 @@
 <<<<<<<
 new Rest(row);
 =======
-new Rest(row is Row.Cell cell ? cell.tail : row);
+new Rest(row is Row.Cell cell ? cell.value.Tail : row);
 >>>>>>>

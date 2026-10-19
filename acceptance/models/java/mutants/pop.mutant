@@ -1,6 +1,6 @@
 @@ src/main/java/example/Models.java
 <<<<<<<
-    return new PopFlow(cell.top(), cell.rest());
+    return new PopFlow(cell.value().top(), cell.value().rest());
 =======
-    return new PopFlow(cell.top(), cell);
+    return new PopFlow(cell.value().top(), cell);
 >>>>>>>

@@ -21,5 +21,5 @@ public static class Matchers
     public static string Slug(string text) =>
         string.Join("-", Words.Matches(text.ToLowerInvariant()).Select(m => m.Value));
 
-    public static Order Ship(int id) => Order.NewShipped(id, "post");
+    public static Order Ship(int id) => Order.NewShipped(new LawSpec.Data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911("post", id));
 }

@@ -1,4 +1,4 @@
-expect: sizes count records [native Logs, native Reader]
+expect: sizes count records| [native Logs, native Reader]
 @@ src/example/composition.py
 <<<<<<<
     def size(self, value0: _builtins.str) -> _schema.Maybe[_builtins.int]:

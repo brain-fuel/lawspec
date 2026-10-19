@@ -3,16 +3,16 @@ unit example.ordering
 -- Constrained primitives. Each wrapper is a distinct type whose constructor
 -- checks the value, so an out-of-range quantity cannot be constructed,
 -- generated or decoded from native code. valueOf<Name> unwraps a value.
-wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end
-wrapper OrderId is Text where prelude.length value > 0 end
-wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end
+wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end wrapper
+wrapper OrderId is Text where prelude.length value > 0 end wrapper
+wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end wrapper
 
 -- Each workflow state is its own type. A ValidatedOrder can only hold checked
 -- values, so no later step needs to validate again.
-type UnvalidatedOrder is UnvalidatedOrder id :: Text quantity :: Int32 end
-type ValidatedOrder is ValidatedOrder id :: OrderId quantity :: UnitQuantity end
-type PricedOrder is PricedOrder id :: OrderId quantity :: UnitQuantity total :: Int64 end
-type OrderError is | InvalidOrderId | InvalidQuantity | PriceTooHigh end
+type UnvalidatedOrder is a record{  id :: Text quantity :: Int32} end type
+type ValidatedOrder is a record{  id :: OrderId quantity :: UnitQuantity} end type
+type PricedOrder is a record{  id :: OrderId quantity :: UnitQuantity total :: Int64} end type
+type OrderError is one of | InvalidOrderId | InvalidQuantity | PriceTooHigh end type
 
 -- The compiler checks that each step accepts the previous step's state and
 -- generates placeOrder on every target: the steps run in order and the first
@@ -22,55 +22,56 @@ type OrderError is | InvalidOrderId | InvalidQuantity | PriceTooHigh end
 workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is
   validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder
   priceOrder :: ValidatedOrder -> Either OrderError PricedOrder
-end
+end workflow
 
 firstLine :: NonEmptyList Int32 -> Int32
 
 -- An order is placed when it is valid and its total is at most 20000.
-law `placing an order prices it` is
-  definition is
-    `for all` (input :: UnvalidatedOrder) .
-      prelude.isRight (placeOrder input) = (match input with
-        | UnvalidatedOrder id quantity ->
+law "|placing an order prices it| is
+  definition :
+    for all (input :: UnvalidatedOrder) =>
+      prelude.isRight (placeOrder input) = (first matching case of input :
+        when UnvalidatedOrder record{ id = id , quantity = quantity} then
             prelude.length id > 0 && quantity >= 1 && quantity <= 800
-        end)
-  end
-  example `a hundred units` is
-    input = UnvalidatedOrder "A-1" 100
+        end case) end for all
+  end definition
+  example "|a hundred units| :
+    input = UnvalidatedOrder record{ id = "A-1" , quantity = 100}
     expect prelude.isRight (placeOrder input) = true
-  end
-end
+  end example
+end law
 
-law `validation accepts exactly the valid orders` is
-  definition is
-    `for all` (input :: UnvalidatedOrder) .
-      (match validateOrder input with
-        | Left e -> false
-        | Right v -> true
-        end) = (match input with
-        | UnvalidatedOrder id quantity ->
+law "|validation accepts exactly the valid orders| is
+  definition :
+    for all (input :: UnvalidatedOrder) =>
+      (first matching case of validateOrder input :
+        when Left e then false
+        when Right v then true
+        end case) = (first matching case of input :
+        when UnvalidatedOrder record{ id = id , quantity = quantity} then
             prelude.length id > 0 && quantity >= 1 && quantity <= 1000
-        end)
-  end
-end
+        end case) end for all
+  end definition
+end law
 
-law `quantities are always in range` is
-  definition is
-    `for all` (q :: UnitQuantity) .
-      valueOfUnitQuantity q >= 1 && valueOfUnitQuantity q <= 1000
-  end
-  example `largest quantity` is
+law "|quantities are always in range| is
+  definition :
+    for all (q :: UnitQuantity) =>
+      valueOfUnitQuantity q >= 1 && valueOfUnitQuantity q <= 1000 end for all
+  end definition
+  example "|largest quantity| :
     q = UnitQuantity 1000
     expect valueOfUnitQuantity q = 1000
-  end
-end
+  end example
+end law
 
-law `a non-empty list has a first element` is
-  definition is
-    `for all` (xs :: NonEmptyList Int32) .
-      (match valueOfNonEmptyList xs with
-        | Nil -> false
-        | Cons head tail -> firstLine xs == head
-        end) = true
-  end
-end
+law "|a non-empty list has a first element| is
+  definition :
+    for all (xs :: NonEmptyList Int32) =>
+      (first matching case of valueOfNonEmptyList xs :
+        when Nil then false
+        when Cons head tail then firstLine xs = head
+        end case) = true end for all
+  end definition
+end law
+end unit

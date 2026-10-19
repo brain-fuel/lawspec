@@ -9,30 +9,31 @@ import lawspec.crypto (ExchangeKeyPair, ExchangePublicKey, Encapsulated, Signing
 -- with its long-term key; the client checks the signature, encapsulates a
 -- secret to the exchange key, and both sides derive the same AEAD key from
 -- it. The client's message then crosses sealed.
-definition handshake (message :: Bytes) (context :: Bytes) :: Maybe Bytes uses KeyExchange, Signature, Aead is
-  match signingKeyPair with
-  | SigningKeyPair verifying signing ->
-      (match exchangeKeyPair with
-       | ExchangeKeyPair public secret ->
+procedure handshake (message :: Bytes) (context :: Bytes) -> Maybe Bytes uses KeyExchange, Signature, Aead is
+  first matching case of signingKeyPair :
+  when SigningKeyPair verifying signing then
+      (first matching case of exchangeKeyPair :
+       when ExchangeKeyPair public secret then
            (let offer = sign signing (valueOfExchangePublicKey public) in
             if verify verifying (valueOfExchangePublicKey public) offer then
-              (match encapsulate public with
-               | Encapsulated sent shared ->
+              (first matching case of encapsulate public :
+               when Encapsulated sent shared then
                    (let client = deriveAeadKey shared context in
                     let server = deriveAeadKey (decapsulate secret sent) context in
-                    unseal server (seal client message context) context)
-               end)
-            else Nothing)
-       end)
-  end
-end
+                    unseal server (seal client message context) context end let end let)
+               end case)
+            else Nothing end if end let)
+       end case)
+  end case
+end procedure
 
-law `a handshake carries the message` is
-  definition is `for all` (message :: Bytes) (context :: Bytes) . handshake message context = Just message end
-end
+law "|a handshake carries the message| is
+  definition : for all (message :: Bytes) (context :: Bytes) => handshake message context = Just message end for all end definition
+end law
 
 nativeProbe :: Unit -> Bool
 
-law `native crypto factories preserve key encodings and checked calls` is
-  definition is nativeProbe unitValue = true end
-end
+law "|native crypto factories preserve key encodings and checked calls| is
+  definition : nativeProbe unitValue = true end definition
+end law
+end unit

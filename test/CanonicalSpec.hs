@@ -2,7 +2,7 @@
 module CanonicalSpec (test_canonicalAuthoringPreservesIntrinsicGuarantees) where
 
 import Data.Either (isRight, isLeft)
-import Data.List (isInfixOf, isPrefixOf)
+import Data.List (intercalate, isInfixOf, isPrefixOf)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Aeson
@@ -31,7 +31,7 @@ import qualified LawSpec.NativeRequest as NB
 import LawSpec.Blake3 (blake3Hex)
 
 source :: String -> Source
-source body = Source "canonical.lawspec" ("unit example.canonical\n" ++ body)
+source body = Source "canonical.lawspec" ("unit example.canonical\n\n" ++ body ++ "\nend unit\n")
 core :: String -> Either [Diagnostic] C.Program
 core body = compileCoreCanonical 64 defaultGeneration [source body]
 
@@ -40,50 +40,50 @@ core body = compileCoreCanonical 64 defaultGeneration [source body]
 test_canonicalAuthoringPreservesIntrinsicGuarantees :: Spec
 test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical authoring" $ do
   it "chooses canonical grammar independently of user source filenames" $ do
-    let legacy = "unit filename\ndefinition double (x :: Integer) :: Integer is x + x end"
-        canonical = "unit filename\nfunction double (x :: Integer) -> Integer is x + x end function"
+    let legacy = "unit filename\ndefinition double (x :: Integer) :: Integer is x + x end\nend unit\n"
+        canonical = "unit filename\n\nfunction double (x :: Integer) -> Integer is x + x end function\nend unit\n"
     mapM_ (\path -> do
       compileCoreCanonical 64 defaultGeneration [Source path legacy] `shouldSatisfy` isLeft
       compileCoreCanonical 64 defaultGeneration [Source path canonical] `shouldSatisfy` isRight
       parseSourcesWithCanonical [] [] [Source path legacy] `shouldSatisfy` isLeft)
       ["filename.lawspec","<filename>","<lawspec.collections>"]
-  it "keeps compiler-provided collections in their versioned grammar" $
-    core "function values (x :: Integer) -> Queue Integer is prelude.queueOf [x] end function" `shouldSatisfy` isRight
+  it "checks compiler-provided collections with the same strict grammar" $
+    core "function values (x :: Integer) -> Queue Integer is prelude.queueOf [x] end function\n" `shouldSatisfy` isRight
   it "separates a handler's initial state from its clauses without restricting nested expressions" $ do
     let header initial = unlines
-          [ "ability Signal is signal of type Bool -> Bool end"
+          [ "ability Signal is signal of type Bool -> Bool end ability\n"
           , "handler echo for Signal with state previous :: Bool start " ++ initial ++ " is"
-          , "  signal value is value end"
-          , "end" ]
+          , "  operation signal value is value end"
+           ++ " operation", "end"  ++ " handler"]
     mapM_ (\initial -> core (header initial) `shouldSatisfy` isRight)
       [ "false", "not false and true", "(true is true)"
       , "if true is true then false else true end if"
-      , "let initial = true in initial"
-      , "let initial = (true is true) in not initial" ]
+      , "let initial = true in initial end let"
+      , "let initial = (true is true) in not initial end let" ]
     core (unlines
-      [ "ability Signal is signal of type Bool -> Bool end"
+      [ "ability Signal is signal of type Bool -> Bool end ability"
       , "function identity (value :: Bool) (previous :: List Bool) -> Pair Bool (List Bool) is"
       , "  Pair record{first = value, second = previous} end function"
       , "handler echo for Signal with state previous :: List Bool start [] is"
-      , "  signal by identity"
-      , "end" ]) `shouldSatisfy` isRight
+      , "  operation signal by identity end operation"
+      , "end handler" ]) `shouldSatisfy` isRight
   it "does not leak handler-header delimiters into later worded equalities" $
     core (unlines
-      [ "ability Signal is signal of type Bool -> Bool end"
-      , "handler echo for Signal with state previous :: Bool start false is signal value is value end end"
-      , "function same (value :: Bool) -> Bool is value is true end function"
-      , "law sameResult is definition: for all (value :: Bool) => same value must be value end end end" ])
+      [ "ability Signal is signal of type Bool -> Bool end ability"
+      , "handler echo for Signal with state previous :: Bool start false is  operation signal value is value end operation end handler"
+      , "function same (value :: Bool) -> Bool is value is true end function\n"
+      , "law sameResult is definition: for all (value :: Bool) => same value must be value end for all end definition end law" ])
       `shouldSatisfy` isRight
   it "emits compound handler initializers through every target's ordinary checked-code path" $ do
     mapM_ (\initial -> case core (unlines
-      [ "ability Signal is signal :: Bool -> Bool end"
-      , "handler echo for Signal with state previous :: Bool start "++initial++" is signal value is value end end"
-      , "law same using echo is definition: for all (value :: Bool) => signal value = value end end end" ]) of
+      [ "ability Signal is signal :: Bool -> Bool end ability\n"
+      , "handler echo for Signal with state previous :: Bool start "++initial++" is operation signal value is value end operation end"
+       ++ " handler", "law same using echo is definition: for all (value :: Bool) => signal value = value end for all end definition end law\n" ]) of
         Left ds -> expectationFailure (show ds)
         Right program -> case planTestingWith (V.Verification [V.Exhaustive,V.Examples]) program of
           Left ds -> expectationFailure (show ds)
           Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets)
-      [ "let initial = false in initial"
+      [ "let initial = false in initial end let"
       , "if true then false else true end if"
       , "first matching case of true: when true then false when false then true end case" ]
   it "checks and emits sole, mixed and absent unit operation arguments" $ do
@@ -104,11 +104,11 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
   it "preserves state updates, worded Boolean operands and explicit sequencing" $ do
     let checked expected = core (unlines
-          [ "ability Signal is signal of type Bool -> Bool end"
+          [ "ability Signal is signal of type Bool -> Bool end ability\n"
           , "handler remembering for Signal with state previous :: Bool start false is"
-          , "  signal value is ~previous := not previous and value; previous end"
-          , "end"
-          , "law twice using remembering is definition: (signal true; signal true) must be " ++ expected ++ " end end" ])
+          , "  operation signal value is ~previous := not previous and value; previous end"
+           ++ " operation", "end"
+           ++ " handler", "law twice using remembering is definition: (signal true; signal true) must be " ++ expected ++ " end definition end"  ++ " law"])
     case checked "false" of
       Left ds -> expectationFailure (show ds)
       Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
@@ -119,20 +119,20 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         Left ds -> map LawSpec.Model.code ds `shouldContain` ["refuted"]
         Right evidence -> expectationFailure (show evidence)
   it "retains intrinsic checking on pure functions with no verification layers" $
-    core "function double (x of type Integer) -> Integer is x + x end function" `shouldSatisfy` isRight
+    core "function double (x of type Integer) -> Integer is x + x end function\n" `shouldSatisfy` isRight
   it "keeps performance budgets in law bodies and independent table expectations" $
     core (unlines
       [ "import lawspec.time"
       , "measure of type Bool -> Integer"
-      , "law quick is definition: for all (flag :: Bool) => measure flag takes at most 500ms end end"
-      , "example short: flag = false expect measure flag takes at most 500ms end"
+      , "law quick is definition: for all (flag :: Bool) => measure flag takes at most 500ms end for all end definition"
+      , "example short: flag = false expect measure flag takes at most 500ms end example"
       , "expect measure flag takes at most 500ms"
-      , "in table (flag): row false row true end end" ]) `shouldSatisfy` isRight
+      , "in table (flag): row false row true end table end law" ]) `shouldSatisfy` isRight
   it "keeps equality above symbolic conjunction and worded negation" $ do
     mapM_ (\expression -> case core (unlines
       [ "function selected (left :: Bool) (right :: Bool) -> Bool is "++expression++" end function"
       , "law agreement is definition: for all (left :: Bool) (right :: Bool) =>"
-      , "  selected left right must be (left and not right) end end end" ]) of
+      , "selected left right must be (left and not right) end for all end definition end law"]) of
         Left ds -> expectationFailure (show ds)
         Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
           (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked])
@@ -143,27 +143,27 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       , "left == true && right != true" ]
   it "combines symbolic obligations with nested quantifiers and preserves table separators" $
     core (unlines
-      [ "function same (value :: Bool) -> Bool is value end function"
+      [ "function same (value :: Bool) -> Bool is value end function\n"
       , "law agreement is definition: for all (left :: Bool) (right :: Bool) =>"
-      , "  left = left && right = right and there exists (witness :: Bool) such that witness = left end"
-      , "end end"
+      , "  left = left && right = right and there exists (witness :: Bool) such that witness = left end exists"
+      , "end for all end definition"
       , "expect same (left = right) = expected"
-      , "in table (left,right,expected): row false,false,true row true,false,false end end" ])
+      , "in table (left,right,expected): row false,false,true row true,false,false end table end law" ])
       `shouldSatisfy` isRight
   it "rejects an unsafe denominator before any optional law check" $
-    core "function unsafe (x of type Integer) -> Integer is prelude.quot x 0 end function" `shouldSatisfy` isLeft
+    core "function unsafe (x of type Integer) -> Integer is prelude.quot x 0 end function\n" `shouldSatisfy` isLeft
   it "rejects a recursive function without a decreasing argument" $
-    core "function loops (x of type Integer) -> Integer is loops x end function" `shouldSatisfy` isLeft
+    core "function loops (x of type Integer) -> Integer is loops x end function\n" `shouldSatisfy` isLeft
   it "accepts both annotations and canonical conditional closers" $
-    core "function choose (x :: Integer) -> Integer is if x > 0 then x else 0 end if end function" `shouldSatisfy` isRight
+    core "function choose (x :: Integer) -> Integer is if x > 0 then x else 0 end if end function\n" `shouldSatisfy` isRight
   it "preserves singleton scalar metadata without treating it as a section or obligation" $ do
     let input = source $ unlines
           [ "law documented is"
           , "owner: Product.Payments"
           , "id: \"REFUND-001\""
-          , "description: \"Approval belongs to the payment requirement.\" end"
-          , "definition: for all (owner :: Bool) (id :: Bool) => owner = owner end end"
-          , "end" ]
+          , "description: \"Approval belongs to the payment requirement.\" end description"
+          , "definition: for all (owner :: Bool) (id :: Bool) => owner = owner end for all end definition"
+          , "end law" ]
         metadata = LawSpec.Model.LawMetadata (Just "REFUND-001") (Just "Product.Payments")
     fmap (map LawSpec.Model.lawMetadata . LawSpec.Model.laws) (parseSourceCanonical input) `shouldBe` Right [metadata]
     case compileCoreCanonical 64 defaultGeneration [input] of
@@ -177,7 +177,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     lines (LawSpec.Model.content formatted) `shouldContain`
       ["  owner: Product.Payments","  id: \"REFUND-001\""]
     fmap (map LawSpec.Model.lawMetadata . LawSpec.Model.laws) (parseSourceCanonical formatted) `shouldBe` Right [metadata]
-    case core "law falseClaim is id: \"PROVED\" owner: Verified definition: false end end" of
+    case core "law falseClaim is id: \"PROVED\" owner: Verified definition: false end definition end law\n" of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right program -> case dischargeEvidenceWith (V.Verification [V.Exhaustive]) program of
         Left diagnostics -> map LawSpec.Model.code diagnostics `shouldContain` ["refuted"]
@@ -195,15 +195,15 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     mapM_ (\body -> parseSourceCanonical (source ("law invalid is " ++ body)) `shouldSatisfy` isLeft) bodies
   it "resolves typed documentary targets, selectors and groups without discharging claims" $ do
     let body = unlines
-          [ "function identity (value :: Bool) -> Bool is value end function"
-          , "law first is definition: true end"
+          [ "function identity (value :: Bool) -> Bool is value end function\n"
+          , "law first is definition: true end definition"
           , "references: #S{ref law second description, ref function identity}"
           , "ref law second.references.\"|source.with.dots|"
           , "ref law #S{first, second} definition"
-          , "\"|local citation|: \"approved wording\" end end"
-          , "law second is definition: false end"
+          , "\"|local citation|: \"approved wording\" end references end law"
+          , "law second is definition: false end definition"
           , "references: ref law first rationale"
-          , "\"|source.with.dots|: \"independent oracle\" end end" ]
+          , "\"|source.with.dots|: \"independent oracle\" end references end law" ]
     case core body of
       Left ds -> expectationFailure (show ds)
       Right program -> do
@@ -226,12 +226,15 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "retains documentary cycles across units without introducing import cycles" $ do
     let first = Source "first.lawspec" $ unlines
-          ["unit records.first", "import unrelated as records", "law first is definition: true end",
-           "references: ref law records.second.\"|second.with.dots| end end"]
+          ["unit records.first", "import unrelated as records", "law first is definition: true end definition",
+           "references: ref law records.second.\"|second.with.dots| end references end law", "end unit"]
         second = Source "second.lawspec" $ unlines
-          ["unit records.second", "law \"|second.with.dots| is definition: true end",
-           "references: ref law records.first.first end end"]
-    case compileCoreCanonical 64 defaultGeneration [second,first,Source "unrelated.lawspec" "unit unrelated"] of
+          [ "unit records.second"
+           ++ "\n", ""
+          , "law \"|second.with.dots| is definition: true end definition"
+          , "references: ref law records.first.first end references end law"
+          , "", "end unit" ]
+    case compileCoreCanonical 64 defaultGeneration [second,first,Source "unrelated.lawspec" "unit unrelated\nend unit\n"] of
       Left ds -> expectationFailure (show ds)
       Right program -> do
         let targets = [t | u <- C.programUnits program,p <- C.unitProperties u,
@@ -242,17 +245,20 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           `shouldMatchList` ["first.lawspec","second.lawspec"]
   it "resolves documentary function links through aliases and facades to original declarations" $ do
     let domain = Source "domain.lawspec" $ unlines
-          ["unit domain", "function \"|same.value| (value :: Bool) -> Bool is value end function",
-           "law generic (value :: Bool) is definition: value = value end end",
-           "law concrete is definition: true end end"]
+          [ "unit domain"
+           ++ "\n", ""
+          , "function \"|same.value| (value :: Bool) -> Bool is value end function\n"
+          , "law generic (value :: Bool) is definition: value = value end definition end law"
+          , "law concrete is definition: true end definition end law"
+          , "", "end unit" ]
         facade = Source "facade.lawspec" $ unlines
           ["unit facade", "import domain as d (\"|same.value|, law generic)",
-           "export d.\"|same.value|, law d.generic"]
+           "export d.\"|same.value|, law d.generic", "end unit"]
         consumer = Source "consumer.lawspec" $ unlines
           ["unit consumer", "import facade as f (\"|same.value|, law generic)", "import domain as d",
-           "law documented is definition: true end references:",
+           "law documented is definition: true end definition references:",
            "ref function \"|same.value| ref function f.\"|same.value|",
-           "ref law generic ref law f.generic ref law d.concrete end end"]
+           "ref law generic ref law f.generic ref law d.concrete end references end law", "end unit"]
     case compileCoreCanonical 64 defaultGeneration [consumer,facade,domain] of
       Left ds -> expectationFailure (show ds)
       Right program -> do
@@ -265,11 +271,14 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           ["generic","generic","concrete","\"|same.value|","\"|same.value|"]
   it "resolves documentary prelude function aliases to their original checked definitions" $ do
     let source = Source "consumer.lawspec" $ unlines
-          ["unit consumer", "law documented is definition: true end references:",
-           "ref function prelude.caseFold ref function caseFold",
-           "ref function prelude.setOf ref function setOf",
-           "ref function prelude.milliseconds ref function milliseconds",
-           "ref function prelude.sameItems ref function sameItems end end"]
+          [ "unit consumer"
+           ++ "\n", ""
+          , "law documented is definition: true end definition references:"
+          , "ref function prelude.caseFold ref function caseFold"
+          , "ref function prelude.setOf ref function setOf"
+          , "ref function prelude.milliseconds ref function milliseconds"
+          , "ref function prelude.sameItems ref function sameItems end references end law"
+          , "", "end unit" ]
     case compileCoreCanonical 64 defaultGeneration [source] of
       Left ds -> expectationFailure (show ds)
       Right program -> do
@@ -283,9 +292,12 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           `shouldBe` True
   it "keeps ordinary scopes ahead of documentary prelude function aliases" $ do
     let source = Source "consumer.lawspec" $ unlines
-          ["unit consumer", "function caseFold (value :: Text) -> Text is value end function",
-           "law documented is definition: true end references:",
-           "ref function caseFold ref function prelude.caseFold end end"]
+          [ "unit consumer"
+           ++ "\n", ""
+          , "function caseFold (value :: Text) -> Text is value end function\n"
+          , "law documented is definition: true end definition references:"
+          , "ref function caseFold ref function prelude.caseFold end references end law"
+          , "", "end unit" ]
     case compileCoreCanonical 64 defaultGeneration [source] of
       Left ds -> expectationFailure (show ds)
       Right program -> do
@@ -296,29 +308,29 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     let invalid =
           [ "ref law missing", "ref function missing", "ref law onlyFunction", "ref function valid",
             "ref law valid references.\"|missing|", "ref function onlyFunction description" ]
-        declarations = "function onlyFunction (value :: Bool) -> Bool is value end function " ++
-          "law valid is definition: true end end "
-    mapM_ (\reference -> core (declarations ++ "law linked is definition: true end references: " ++ reference ++ " end end")
+        declarations = "function onlyFunction (value :: Bool) -> Bool is value end function \n" ++
+          "law valid is definition: true end definition end law \n"
+    mapM_ (\reference -> core (declarations ++ "law linked is definition: true end definition references: " ++ reference ++ " end definition end law")
       `shouldSatisfy` isLeft) invalid
-    parseSourceCanonical (source ("law linked is definition: true end references: " ++
+    parseSourceCanonical (source ("law linked is definition: true end definition references: " ++
       "\"|same|: \"one\" \"|same|: \"two\" end end")) `shouldSatisfy` isLeft
   it "keeps ordinary ref names contextual" $
-    core "function ref (value :: Bool) -> Bool is value end function law linked is definition: ref true end end"
+    core "function ref (value :: Bool) -> Bool is value end function law linked is definition: ref true end definition end law\n"
       `shouldSatisfy` isRight
   it "enforces package visibility on documentary links without an import" $ do
     let policy importer imported = if importer == "public" && imported == "private"
           then Just "private is outside the visible package boundary" else Nothing
-        units = [Source "public.lawspec" "unit public law linked is definition: true end references: ref law private.hidden end end",
-          Source "private.lawspec" "unit private law hidden is definition: true end end"]
+        units = [Source "public.lawspec" "unit public\n law linked is definition: true end definition references: ref law private.hidden end references end law\nend unit\n",
+          Source "private.lawspec" "unit private\n law hidden is definition: true end definition end law\nend unit\n"]
     case compileCanonicalWithImports policy 64 defaultGeneration units of
       Left ds -> do
         map LawSpec.Model.code ds `shouldBe` ["reference"]
-        map LawSpec.Model.at ds `shouldBe` [Just (LawSpec.Model.Location "public.lawspec" 1 68)]
+        map LawSpec.Model.at ds `shouldBe` [Just (LawSpec.Model.Location "public.lawspec" 2 68)]
       Right _ -> expectationFailure "documentary reference crossed a private boundary"
   it "reports ambiguous documentary targets and permits explicit qualification" $ do
-    let a = Source "a.lawspec" "unit a function same (value :: Bool) -> Bool is value end function"
-        b = Source "b.lawspec" "unit b function same (value :: Bool) -> Bool is not value end function"
-        consumer name = Source "consumer.lawspec" ("unit consumer import a (same) import b (same) law linked is definition: true end references: ref function " ++ name ++ " end end")
+    let a = Source "a.lawspec" "unit a\n function same (value :: Bool) -> Bool is value end function\nend unit\n"
+        b = Source "b.lawspec" "unit b\n function same (value :: Bool) -> Bool is not value end function\nend unit\n"
+        consumer name = Source "consumer.lawspec" ("unit consumer import a (same) import b (same) law linked is definition: true end definition references: ref function " ++ name ++ " end references end law end unit")
     case compileCoreCanonical 64 defaultGeneration [a,b,consumer "same"] of
       Left ds -> do
         map LawSpec.Model.code ds `shouldBe` ["reference"]
@@ -327,15 +339,15 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     -- Qualified-only imports avoid introducing the conflicting unqualified
     -- executable names into the ordinary import scope.
     compileCoreCanonical 64 defaultGeneration [a,b,Source "consumer.lawspec"
-      "unit consumer import a import b law linked is definition: true end references: ref function a.same ref function b.same end end"]
+      "unit consumer import a import b law linked is definition: true end definition references: ref function a.same ref function b.same end references end law end unit"]
       `shouldSatisfy` isRight
   it "resolves documentary prelude law phrases after ordinary scopes" $
-    core "law linked is definition: true end references: ref law prelude.\"|left inverse| ref law \"|left inverse| end end"
+    core "law linked is definition: true end definition references: ref law prelude.\"|left inverse| ref law \"|left inverse| end references end law\n"
       `shouldSatisfy` isRight
   it "exposes structured references in schema 5 including explicit migration citations" $ do
     let request version source = object
           (["schemaVersion" .= (version :: Int), "method" .= ("check" :: String), "sources" .= [source]] ++
-           (if version == 5 then ["languageProfile" .= ("1.0-rc.1" :: String), "verification" .= object ["layers" .= ([] :: [String])]] else []))
+           (if version == 5 then ["languageProfile" .= ("1.0-rc.2" :: String), "verification" .= object ["layers" .= ([] :: [String])]] else []))
         references response = parseEither (withObject "response" $ \o -> do
           diagnostics <- o .: "diagnostics" :: Parser [Value]
           unlessEmpty diagnostics
@@ -343,20 +355,20 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           mapM (withObject "law" (.: "references")) laws) response :: Either String [[Value]]
         unlessEmpty [] = pure ()
         unlessEmpty diagnostics = fail (show diagnostics)
-        legacy = Source "legacy.lawspec" "unit legacy law `valid` is definition is true end references are \"legacy citation\" end end"
+        legacy = Source "legacy.lawspec" "unit legacy\n law \"|valid| is definition : true end definition references : \"legacy citation\" end references end law\nend unit\n"
     mapM_ (\version -> case eitherDecode (dispatch (encode (request version legacy))) of
       Left message -> expectationFailure message
       Right response -> case response of
         Object fields -> Data.Aeson.KeyMap.lookup "diagnostics" fields `shouldSatisfy`
           (\value -> maybe False (/= toJSON ([] :: [Value])) value)
         _ -> expectationFailure "expected a schema rejection") [3,4]
-    let baseline = object ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String),
-          "method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String), "sources" .= [legacy]]
+    let baseline = object ["schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
+          "method" .= ("check" :: String), "sources" .= [legacy]]
     case eitherDecode (dispatch (encode baseline)) of
       Left message -> expectationFailure message
       Right response -> references response `shouldBe` Right [[object
         ["kind" .= ("external" :: String), "resource" .= ("legacy citation" :: String)]]]
-    let input = source "law valid is definition: true end references: ref law valid.description \"external citation\" end end"
+    let input = source "law valid is definition: true end definition references: ref law valid.description \"external citation\" end references end law\n"
     case eitherDecode (dispatch (encode (request 5 input))) of
       Left message -> expectationFailure message
       Right response -> case references response of
@@ -369,23 +381,26 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     let money version = object
           [ "name" .= ("shop.money" :: String), "version" .= (version :: String)
           , "sources" .= [Source "money.lawspec" (unlines
-              [ "unit shop.money", "law current is definition: true end references:"
+              [ "unit shop.money"
+               ++ "\n", ""
+              , "law current is definition: true end definition references:"
               , "ref law shop.money.current"
-              , "\"|source|: \"keep ref law shop.money.current in documentary text\" end end" ])] ]
+              , "\"|source|: \"keep ref law shop.money.current in documentary text\" end references end law"
+              , "", "end unit" ])] ]
         report = object
           [ "name" .= ("shop.report" :: String), "version" .= ("1.0.0" :: String)
           , "dependencies" .= object ["shop.money" .= ("^2.0.0" :: String)]
           , "sources" .= [Source "report.lawspec" (unlines
               [ "unit shop.report", "import shop.money as money"
-              , "law current is definition: true end references:"
-              , "ref law #S{shop.money.current, money.current} definition end end" ])] ]
+              , "law current is definition: true end definition references:"
+              , "ref law #S{shop.money.current, money.current} definition end references end law" , "end unit"])] ]
         consumer = Source "consumer.lawspec" (unlines
           [ "unit app", "import shop.money as money", "import shop.report"
-          , "law current is definition: true end references:"
+          , "law current is definition: true end definition references:"
           , "#S{ref law shop.money.current, ref law money.current}"
-          , "ref law shop.report.current end end" ])
+          , "ref law shop.report.current end references end law" , "end unit"])
         request = object ["schemaVersion" .= (5 :: Int), "method" .= ("check" :: String),
-          "languageProfile" .= ("1.0-rc.1" :: String), "verification" .= object ["layers" .= ([] :: [String])],
+          "languageProfile" .= ("1.0-rc.2" :: String), "verification" .= object ["layers" .= ([] :: [String])],
           "sources" .= [consumer], "dependencies" .= object ["shop.money" .= ("^1.0.0" :: String), "shop.report" .= ("^1.0.0" :: String)],
           "packages" .= [money "1.4.0",money "2.1.0",report]]
         owners response = parseEither (withObject "response" $ \o -> do
@@ -409,8 +424,8 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         , ("shop.report",["shop.money.v2x1x0","shop.money.v2x1x0"])
         , ("app",["shop.money.v1x4x0","shop.money.v1x4x0","shop.report"]) ]
   it "preserves universal/existential order and checks complete finite witnesses" $ do
-    let law body = "law witnesses is definition: " ++ body ++ " end end"
-    case core (law "for all (value :: Bool) => there exists (witness :: Bool) such that witness = value end end") of
+    let law body = "law witnesses is definition: " ++ body ++ " end definition end law"
+    case core (law "for all (value :: Bool) => there exists (witness :: Bool) such that witness = value end exists end for all") of
       Left ds -> expectationFailure (show ds)
       Right program -> do
         let properties = [p | u <- C.programUnits program, p <- C.unitProperties u]
@@ -421,81 +436,78 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         case planTestingWith (V.Verification [V.Exhaustive]) program of
           Left ds -> expectationFailure (show ds)
           Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
-    case core (law "there exists (witness :: Bool) such that for all (value :: Bool) => witness = value end end") of
+    case core (law "there exists (witness :: Bool) such that for all (value :: Bool) => witness = value end for all end exists") of
       Left ds -> expectationFailure (show ds)
       Right program -> case dischargeEvidenceWith (V.Verification [V.Exhaustive]) program of
         Left diagnostics -> map LawSpec.Model.code diagnostics `shouldContain` ["refuted"]
         Right evidence -> expectationFailure (show evidence)
   it "composes scoped propositions with logical precedence and short circuiting" $ do
     let propositions =
-          [ "(for all (value :: Bool) => value = value end) and (for all (value :: Bool) => value = value end)"
-          , "(there exists (value :: Bool) such that value and not value end) or (for all (value :: Bool where false) => false end)"
-          , "(there exists (witness :: Bool) such that witness end) implies (for all (value :: Bool) => value = value end)"
-          , "false implies there exists (witness :: Integer) such that false end"
-          , "true or (there exists (witness :: Integer) such that false end)"
-          , "not not (there exists (witness :: Bool) such that witness end)"
-          , "for all (value :: Bool) => for all (value :: Bool) => value = value end end"
+          [ "(for all (value :: Bool) => value = value end for all) and (for all (value :: Bool) => value = value end for all)"
+          , "(there exists (value :: Bool) such that value and not value end exists) or (for all (value :: Bool where false) => false end for all)"
+          , "(there exists (witness :: Bool) such that witness end exists) implies (for all (value :: Bool) => value = value end for all)"
+          , "false implies there exists (witness :: Integer) such that false end exists"
+          , "true or (there exists (witness :: Integer) such that false end exists)"
+          , "not not (there exists (witness :: Bool) such that witness end exists)"
+          , "for all (value :: Bool) => for all (value :: Bool) => value = value end for all end for all"
           , "false implies true implies false"
           , "true or false and false"
           , "(1 + 2) must be 3" ]
-    mapM_ (\proposition -> case core ("law composed is definition: " ++ proposition ++ " end end") of
+    mapM_ (\proposition -> case core ("law composed is definition: " ++ proposition ++ " end definition end law") of
       Left ds -> expectationFailure (proposition ++ ": " ++ show ds)
       Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
         (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]) propositions
   it "does not hoist a sibling's empty universal domain over another obligation" $ do
     let propositions =
-          [ "(for all (value :: Bool where false) => false end) and false"
-          , "(there exists (witness :: Bool) such that false end) or false"
-          , "(there exists (witness :: Bool) such that witness end) implies false" ]
-    mapM_ (\proposition -> case core ("law falseClaim is definition: " ++ proposition ++ " end end") of
+          [ "(for all (value :: Bool where false) => false end for all) and false"
+          , "(there exists (witness :: Bool) such that false end exists) or false"
+          , "(there exists (witness :: Bool) such that witness end exists) implies false" ]
+    mapM_ (\proposition -> case core ("law falseClaim is definition: " ++ proposition ++ " end definition end law") of
       Left ds -> expectationFailure (show ds)
       Right program -> do
         [length (C.propertyInputs p) | u <- C.programUnits program,p <- C.unitProperties u] `shouldBe` [0]
         case dischargeEvidenceWith (V.Verification [V.Exhaustive]) program of
           Left ds -> map LawSpec.Model.code ds `shouldContain` ["refuted"]
           Right evidence -> expectationFailure (show evidence)) propositions
-    core "law escaped is definition: (for all (value :: Bool) => true end) and value end end" `shouldSatisfy` isLeft
-  it "keeps legacy and canonical expansion caches distinct for an identical surface law" $ do
-    let unit header section quantifier ending closing = Source "profile.lawspec" $ unlines
-          [ "unit profile",header,section,"(",quantifier,"x = x",ending,closing,"and","true = true","end","end" ]
-        legacy = unit "law `same` is" "definition is" "`for all` (x :: Bool) ." ")" ""
-        canonical = unit "law same is" "definition:" "for all (x :: Bool) =>" "end" ")"
-        counts program = [length (C.propertyInputs p) | u <- C.programUnits program,p <- C.unitProperties u]
-    fmap (map LawSpec.Model.definition . LawSpec.Model.laws) (parseSource legacy) `shouldBe`
-      fmap (map LawSpec.Model.definition . LawSpec.Model.laws) (parseSourceCanonical canonical)
-    fmap counts (compileCore 64 defaultGeneration [legacy]) `shouldBe` Right [1]
+    core "law escaped is definition: (for all (value :: Bool) => true end for all) and value end definition end law\n" `shouldSatisfy` isLeft
+  it "uses the strict grammar consistently across warm frontend entry points" $ do
+    let legacy=Source "profile.lawspec" "unit profile\nlaw `same` is definition is true end end"
+        canonical=Source "profile.lawspec" "unit profile\nlaw same is definition: (for all (x :: Bool) => x = x end for all) and true = true end definition end law\nend unit"
+        counts program=[length (C.propertyInputs property) | unit<-C.programUnits program,property<-C.unitProperties unit]
+    compileCore 64 defaultGeneration [legacy] `shouldSatisfy` isLeft
+    fmap counts (compileCore 64 defaultGeneration [canonical]) `shouldBe` Right [0]
     fmap counts (compileCoreCanonical 64 defaultGeneration [canonical]) `shouldBe` Right [0]
-    fmap counts (compileCore 64 defaultGeneration [legacy]) `shouldBe` Right [1]
+    compileCore 64 defaultGeneration [legacy] `shouldSatisfy` isLeft
   it "does not let a sibling's binder hide another clause's effectful procedure" $ case core (unlines
-    [ "ability Signal is signal of type Bool -> Bool end"
-    , "handler echo for Signal is signal value is value end end"
-    , "procedure read (value :: Bool) -> Bool uses Signal is signal value end procedure"
+    [ "ability Signal is signal of type Bool -> Bool end ability"
+    , "handler echo for Signal is  operation signal value is value end operation end handler"
+    , "procedure read (value :: Bool) -> Bool uses Signal is signal value end procedure\n"
     , "law observed using echo is definition:"
-    , "  (for all (read :: Bool) => read = read end) and read true = true"
-    , "end end" ]) of
+    , "  (for all (read :: Bool) => read = read end for all) and read true = true"
+    , "end definition end law" ]) of
     Left ds -> expectationFailure (show ds)
     Right program -> do
       [length (C.propertyHandlers p) | u <- C.programUnits program,p <- C.unitProperties u] `shouldBe` [1]
       fmap (map obligationStatus . filter ((== "law") . obligationStage))
         (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
   it "retains the snapshot requirement for effects repeated inside a search" $ case core (unlines
-    [ "ability Signal is signal of type Bool -> Bool end"
-    , "handler echo for Signal is signal value is value end end"
-    , "procedure read (value :: Bool) -> Bool uses Signal is signal value end procedure"
-    , "law observed using echo is definition: there exists (value :: Bool) such that read value = value end end end" ]) of
+    [ "ability Signal is signal of type Bool -> Bool end ability"
+    , "handler echo for Signal is  operation signal value is value end operation end handler"
+    , "procedure read (value :: Bool) -> Bool uses Signal is signal value end procedure\n"
+    , "law observed using echo is definition: there exists (value :: Bool) such that read value = value end exists end definition end law" ]) of
     Left ds -> expectationFailure (show ds)
     Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
       (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [Unsupported]
   it "decides empty outer universal domains without evaluating a body or inventing witnesses" $ do
     let empty = "type Empty is one of | Loop of type Empty end type\n"
         bodies =
-          [ "for all (value :: Empty) => false end"
-          , "for all (number :: Integer) (value :: Empty) => false end"
-          , "for all (value :: Bool where false) => false end"
-          , "for all (value :: Bool) (other :: Bool where other and not other) => false end"
-          , "for all (value :: Bool where false) => there exists (witness :: Integer) such that false end end"
-          , "for all (value :: Integer where false) => false end" ]
-    mapM_ (\body -> case core (empty ++ "law vacuous is definition: " ++ body ++ " end end") of
+          [ "for all (value :: Empty) => false end for all"
+          , "for all (number :: Integer) (value :: Empty) => false end for all"
+          , "for all (value :: Bool where false) => false end for all"
+          , "for all (value :: Bool) (other :: Bool where other and not other) => false end for all"
+          , "for all (value :: Bool where false) => there exists (witness :: Integer) such that false end exists end for all"
+          , "for all (value :: Integer where false) => false end for all" ]
+    mapM_ (\body -> case core (empty ++ "law vacuous is definition: " ++ body ++ " end definition end law") of
       Left ds -> expectationFailure (body ++ ": " ++ show ds)
       Right program -> do
         case dischargeEvidenceWith (V.Verification [V.Exhaustive]) program of
@@ -522,32 +534,32 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           [[V.Exhaustive],[V.Property],[V.Exhaustive,V.Property]]) bodies
   it "rejects examples outside an empty universal domain and keeps inhabited false claims refutable" $ do
     case core (unlines
-      [ "law invalidRow is definition: for all (value :: Bool where false) => true end end"
-      , "expect value = expected in table (value, expected): row true, true end end" ]) of
+      [ "law invalidRow is definition: for all (value :: Bool where false) => true end for all end definition"
+      , "expect value = expected in table (value, expected): row true, true end table end law" ]) of
       Left ds -> map LawSpec.Model.code ds `shouldContain` ["semantic"]
       Right program -> planTestingWith (V.Verification [V.Exhaustive,V.Examples]) program `shouldSatisfy` isLeft
-    case core "law falseClaim is definition: for all (value :: Bool) => false end end end" of
+    case core "law falseClaim is definition: for all (value :: Bool) => false end for all end definition end law\n" of
       Left ds -> expectationFailure (show ds)
       Right program -> case dischargeEvidenceWith (V.Verification [V.Exhaustive]) program of
         Left ds -> map LawSpec.Model.code ds `shouldContain` ["refuted"]
         Right evidence -> expectationFailure (show evidence)
   it "makes existential restrictions witness conditions, including dependent binders and shadowing" $ do
     let bodies =
-          [ "for all (value :: Bool) => there must exist a (witness :: Bool where witness = value) such that witness = value end end"
-          , "there exists (first :: Bool) (second :: Bool where second = first) such that first = second end"
-          , "for all (value :: Bool) => there exists (value :: Bool where value) such that value = true end end"
-          , "there does not exist (value :: Bool where false) such that true end"
-          , "there must not exist an (value :: Bool) such that value and not value end"
-          , "must not there exists (value :: Bool where false) such that true end"
-          , "there exists (witness :: Bool) such that for all (value :: Bool where false) => false end end" ]
-    mapM_ (\body -> case core ("law valid is definition: " ++ body ++ " end end") of
+          [ "for all (value :: Bool) => there must exist a (witness :: Bool where witness = value) such that witness = value end exists end for all"
+          , "there exists (first :: Bool) (second :: Bool where second = first) such that first = second end exists"
+          , "for all (value :: Bool) => there exists (value :: Bool where value) such that value = true end exists end for all"
+          , "there does not exist (value :: Bool where false) such that true end exists"
+          , "there must not exist an (value :: Bool) such that value and not value end exists"
+          , "must not there exists (value :: Bool where false) such that true end exists"
+          , "there exists (witness :: Bool) such that for all (value :: Bool where false) => false end for all end exists" ]
+    mapM_ (\body -> case core ("law valid is definition: " ++ body ++ " end definition end law") of
       Left ds -> expectationFailure (body ++ ": " ++ show ds)
       Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
         (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]) bodies
-    core "law invalid is definition: there exists (first :: Bool where second) (second :: Bool) such that true end end end" `shouldSatisfy` isLeft
-    core "law invalid is definition: there exists (value :: Bool where 1) such that true end end end" `shouldSatisfy` isLeft
+    core "law invalid is definition: there exists (first :: Bool where second) (second :: Bool) such that true end exists end definition end law\n" `shouldSatisfy` isLeft
+    core "law invalid is definition: there exists (value :: Bool where 1) such that true end exists end definition end law\n" `shouldSatisfy` isLeft
   it "keeps an unavailable existential search incomplete rather than refuting existence" $ case core
-    "law open is definition: there exists (value :: Integer) such that value * value = -1 end end end" of
+    "law open is definition: there exists (value :: Integer) such that value * value = -1 end exists end definition end law\n" of
     Left ds -> expectationFailure (show ds)
     Right program -> do
       fmap (map obligationStatus . filter ((== "law") . obligationStage))
@@ -556,7 +568,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [Incomplete]
       planTestingWith (V.Verification [V.Exhaustive]) program `shouldSatisfy` isRight
   it "does not turn an undefined candidate into a refutation of existence" $ case core
-    "law unknown is definition: there exists (value :: UInt8) such that prelude.quot 1 value = 2 end end end" of
+    "law unknown is definition: there exists (value :: UInt8) such that prelude.quot 1 value = 2 end exists end definition end law\n" of
     Left _ -> pure () -- An intrinsic definedness rejection is also sound.
     Right program -> case dischargeEvidenceWith (V.Verification [V.Exhaustive]) program of
       Left diagnostics -> do
@@ -565,7 +577,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       Right evidence -> expectationFailure ("undefined search produced evidence: " ++ show evidence)
   it "distinguishes logical empty domains from existentially packaged data" $ do
     let declaration = "type Empty is one of end type\n"
-    case core (declaration ++ "law empty is definition: there does not exist (value :: Empty) such that true end end end") of
+    case core (declaration ++ "law empty is definition: there does not exist (value :: Empty) such that true end exists end definition end law\n") of
       Left ds -> expectationFailure (show ds)
       Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
         (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
@@ -614,7 +626,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           Left ds -> expectationFailure (show ds)
           Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
   it "bounds finite logical expansion without claiming an unsuccessful search proves absence" $ case core
-    "law bounded is definition: there exists (a :: Bool) (b :: Bool) such that a and not a end end end" of
+    "law bounded is definition: there exists (a :: Bool) (b :: Bool) such that a and not a end exists end definition end law\n" of
     Left ds -> expectationFailure (show ds)
     Right program -> do
       let limited = program { C.programUnits = [u { C.unitProperties =
@@ -623,27 +635,29 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       fmap (map obligationStatus . filter ((== "law") . obligationStage))
         (dischargeEvidenceWith (V.Verification [V.Exhaustive]) limited) `shouldBe` Right [Incomplete]
   it "types worded disjunction above implication without treating it as an application argument" $ case core
-    "law logic is definition: for all (a :: Bool) (b :: Bool) => (a or b) = (not (not a and not b)) end end end" of
+    "law logic is definition: for all (a :: Bool) (b :: Bool) => (a or b) = (not (not a and not b)) end for all end definition end law\n" of
     Left ds -> expectationFailure (show ds)
     Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
       (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
   it "specializes reusable existential laws under proposition negation" $ do
     let library = Source "fixed-point.lawspec" $ unlines
           [ "unit requirements.fixedPoint"
+           ++ "\n", ""
           , "law fixedPoint (operation :: a -> a) requires Eq a is"
-          , "  definition: there exists (value :: a) such that operation value = value end end"
-          , "end" ]
+          , "  definition: there exists (value :: a) such that operation value = value end exists end definition"
+          , "end law"
+          , "", "end unit" ]
         caller = Source "toggle.lawspec" $ unlines
           [ "unit example.toggle", "import requirements.fixedPoint as r"
-          , "function toggle (value :: Bool) -> Bool is not value end function"
-          , "law absent is definition: must not apply law r.fixedPoint toggle end end" ]
+          , "function toggle (value :: Bool) -> Bool is not value end function\n"
+          , "law absent is definition: must not apply law r.fixedPoint toggle end definition end law" , "end unit"]
     case compileCoreCanonical 64 defaultGeneration [library,caller] of
       Left ds -> expectationFailure (show ds)
       Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
         (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
   it "specializes checked generic functions inside existential scopes" $ case core (unlines
-    [ "function same (value :: a) -> a is value end function"
-    , "law scoped is definition: there exists (value :: Bool) such that same value = value end end end" ]) of
+    [ "function same (value :: a) -> a is value end function\n"
+    , "law scoped is definition: there exists (value :: Bool) such that same value = value end exists end definition end law" ]) of
     Left ds -> expectationFailure (show ds)
     Right program -> do
       fmap (map obligationStatus . filter ((== "law") . obligationStage))
@@ -652,11 +666,11 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         Left ds -> expectationFailure (show ds)
         Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
   it "resolves imported functions before a later logical binder shadows their name" $ do
-    let library = Source "selectors.lawspec" "unit selectors\nfunction later (value :: Bool) -> Bool is value end function"
+    let library = Source "selectors.lawspec" "unit selectors\n\nfunction later (value :: Bool) -> Bool is value end function\nend unit\n"
         body quantifier separator = Source "ordered.lawspec" $ unlines
           [ "unit ordered", "import selectors (later)"
           , "law ordered is definition: " ++ quantifier ++ " (first :: Bool where later first)"
-          , "  (later :: Bool where later = first) " ++ separator ++ " later = first end end end" ]
+          , "  (later :: Bool where later = first) " ++ separator ++ " later = first end " ++ (if quantifier == "there exists" then "exists" else "for all") ++ " end definition end law" , "end unit"]
     mapM_ (\caller -> case compileCoreCanonical 64 defaultGeneration [library,caller] of
       Left ds -> expectationFailure (show ds)
       Right program -> fmap (map obligationStatus . filter ((== "law") . obligationStage))
@@ -669,7 +683,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     parseSourceCanonical (source "law old is definition: `for all` (x :: Bool) . x = x end end") `shouldSatisfy` isLeft
     parseSourceCanonical (source "function f (x :: Natural) -> Natural is x end function") `shouldSatisfy` isLeft
   it "treats each equality spelling as the same typed obligation" $ do
-    let law wording = core ("law same is definition: for all (x of type Integer) => " ++ wording ++ " end end end")
+    let law wording = core ("law same is definition: for all (x of type Integer) => " ++ wording ++ " end for all end definition end law")
         proposition (Right p) = [C.propertyBody l | u <- C.programUnits p, l <- C.unitProperties u]
         proposition (Left ds) = error (show ds)
         erase (C.Equation ev a b) = (ev, C.expressionNode a, C.expressionNode b)
@@ -679,58 +693,60 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     meanings `shouldSatisfy` (\xs -> not (null xs) && all (== head xs) (tail xs))
   it "supports reordered singleton sections and expectation-first tables" $ do
     let body = unlines
-          [ "function double (x of type Integer) -> Integer is x + x end function"
+          [ "function double (x of type Integer) -> Integer is x + x end function\n"
           , "law doubled is"
-          , "  description: \"Doubling adds a value to itself.\" end"
+          , "  description: \"Doubling adds a value to itself.\" end description"
           , "  expect double x = expected"
           , "  expect x + x = expected"
-          , "  in table (x, expected): row -1, -2 row 0, 0 row 1, 2 end"
-          , "  definition: for all (x of type Integer) => double x must be x + x end end"
-          , "end" ]
+          , "  in table (x, expected): row -1, -2 row 0, 0 row 1, 2 end table"
+          , "  definition: for all (x of type Integer) => double x must be x + x end for all end definition"
+          , "end law" ]
     core body `shouldSatisfy` isRight
   it "specializes the existing inverse law in its declared argument order" $ do
     let body = unlines
-          [ "function encode (value :: Bool) -> Text is if value then \"yes\" else \"no\" end if end function"
-          , "function decode (text :: Text) -> Bool is text = \"yes\" end function"
-          , "law roundTrip is definition: apply law \"|left inverse| decode encode end"
+          [ "function encode (value :: Bool) -> Text is if value then \"yes\" else \"no\" end if end function\n"
+          , "function decode (text :: Text) -> Bool is text = \"yes\" end function\n"
+          , "law roundTrip is definition: apply law \"|left inverse| decode encode end definition"
           , "  expect decode (encode x) = expected"
-          , "  in table (x, expected): row false, false row true, true end end"
-          , "law qualifiedRoundTrip is definition: apply law prelude.\"|left inverse| decode encode end end" ]
+          , "  in table (x, expected): row false, false row true, true end table end law"
+          , "law qualifiedRoundTrip is definition: apply law prelude.\"|left inverse| decode encode end definition end law" ]
     case core body of
       Left ds -> expectationFailure (show ds)
       Right program -> do
         let properties = [p | u <- C.programUnits program, p <- C.unitProperties u]
         map (map (C.binderType . C.quantifiedBinder) . C.propertyInputs) properties `shouldBe` replicate 2 [C.scalarType "Bool"]
         map (length . C.propertyExamples) properties `shouldBe` [2,0]
-        length [() | p <- properties, any (\t -> take 12 t == "left inverse") (C.propertyTrace p)] `shouldBe` 2
+        length [() | p <- properties, any (isInfixOf "left inverse") (C.propertyTrace p)] `shouldBe` 2
         fmap (map obligationStatus . filter ((== "law") . obligationStage))
           (dischargeEvidenceWith (V.Verification [V.Exhaustive]) program) `shouldBe` Right (replicate 2 ExhaustivelyChecked)
   it "resolves reusable phrase laws across qualified, listed and re-exported imports" $ do
     let library = Source "requirements.lawspec" $ unlines
           [ "unit requirements"
+           ++ "\n", ""
           , "law \"|keeps `the.value| (operation :: a -> a) requires Eq a is"
-          , "  definition: for all (value :: a) => operation value = value end end"
-          , "end" ]
+          , "  definition: for all (value :: a) => operation value = value end for all end definition"
+          , "end law"
+          , "", "end unit" ]
         facade = Source "facade.lawspec" $ unlines
           [ "unit facade", "import requirements as r (law \"|keeps `the.value|)"
-          , "export law r.\"|keeps `the.value|" ]
+          , "export law r.\"|keeps `the.value|" , "end unit"]
         caller = Source "caller.lawspec" $ unlines
           [ "unit caller", "import facade as f (law \"|keeps `the.value|)"
-          , "function same (value :: Bool) -> Bool is value end function"
-          , "law qualified is definition: apply law f.\"|keeps `the.value| same end end"
-          , "law listed is definition: apply law \"|keeps `the.value| same end end" ]
+          , "function same (value :: Bool) -> Bool is value end function\n"
+          , "law qualified is definition: apply law f.\"|keeps `the.value| same end definition end law"
+          , "law listed is definition: apply law \"|keeps `the.value| same end definition end law\n" , "end unit"]
     compileCoreCanonical 64 defaultGeneration [library,facade,caller] `shouldSatisfy` isRight
   it "keeps local reusable names ahead of prelude fallback and separate from values" $
     core (unlines
-      [ "function idempotent (value :: Bool) -> Bool is value end function"
-      , "law idempotent (value :: Bool) is definition: value = value end end"
-      , "law local is definition: apply law idempotent true end end" ]) `shouldSatisfy` isRight
+      [ "function idempotent (value :: Bool) -> Bool is value end function\n"
+      , "law idempotent (value :: Bool) is definition: value = value end definition end law"
+      , "law local is definition: apply law idempotent true end definition end law" ]) `shouldSatisfy` isRight
   it "retains capability, arity, unknown-law and recursive-expansion failures" $ do
     mapM_ (\body -> core body `shouldSatisfy` isLeft)
-      [ "law wrong is definition: apply law missing true end end"
-      , "law wrong is definition: apply law \"|left inverse| true end end"
-      , "law loop (value :: Bool) is definition: apply law loop value end end"
-      , "law wrong (f :: a -> a) is definition: apply law \"|idempotent| f end end" ]
+      [ "law wrong is definition: apply law missing true end definition end law"
+      , "law wrong is definition: apply law \"|left inverse| true end definition end law"
+      , "law loop (value :: Bool) is definition: apply law loop value end definition end law"
+      , "law wrong (f :: a -> a) is definition: apply law \"|idempotent| f end definition end law" ]
   it "rejects missing and duplicate definitions and duplicate metadata sections" $ do
     mapM_ (\body -> parseSourceCanonical (source body) `shouldSatisfy` isLeft)
       ["law x is description: \"x\" end end"
@@ -738,51 +754,51 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       ,"law x is definition: true end rationale: \"x\" end rationale: \"y\" end end"]
   it "parses phrase spelling and prefix/infix applications without a second namespace" $ do
     core (unlines
-      ["function \"|adds the values| (x of type Integer) (y of type Integer) -> Integer is x + y end function"
-      ,"law addition is definition: for all (x of type Integer) (y of type Integer) =>"
-      ,"  \"|adds the values| x y must be x `|adds the values| y"
-      ,"end end end"]) `shouldSatisfy` isRight
+      [ "function \"|adds the values| (x of type Integer) (y of type Integer) -> Integer is x + y end function\n"
+      , "law addition is definition: for all (x of type Integer) (y of type Integer) =>"
+      , "  \"|adds the values| x y must be x `|adds the values| y"
+      , "end for all end definition end law" ]) `shouldSatisfy` isRight
   it "resolves qualified prefix and infix calls, including dots inside phrase names" $
     compileCoreCanonical 64 defaultGeneration
-      [ Source "names.lawspec" "unit names\nfunction \"|adds.the values| (x :: Integer) (y :: Integer) -> Integer is x + y end function"
-      , Source "caller.lawspec" "unit caller\nimport names as n\nlaw agrees is definition: for all (x :: Integer) (y :: Integer) => n.\"|adds.the values| x y = x `n.\"|adds.the values| y end end end" ] `shouldSatisfy` isRight
+      [ Source "names.lawspec" "unit names\n\nfunction \"|adds.the values| (x :: Integer) (y :: Integer) -> Integer is x + y end function\nend unit\n"
+      , Source "caller.lawspec" "unit caller\nimport names as n\nlaw agrees is definition: for all (x :: Integer) (y :: Integer) => n.\"|adds.the values| x y = x `n.\"|adds.the values| y end for all end definition end law\nend unit" ] `shouldSatisfy` isRight
   it "rejects empty, edge-spaced and multiline phrase names" $
     mapM_ (\name -> parseSourceCanonical (source ("function " ++ name ++ " (x :: Integer) -> Integer is x end function")) `shouldSatisfy` isLeft)
       ["\"||", "\"| x|", "\"|x |", "\"|x\ny|"]
   it "does not accept an ambiguous named infix chain" $
     parseSourceCanonical (source (unlines
-      ["function add (x :: Integer) (y :: Integer) -> Integer is x + y end function"
+      ["function add (x :: Integer) (y :: Integer) -> Integer is x + y end function\n"
       ,"law bad is definition: 1 `add 2 `add 3 = 6 end end"])) `shouldSatisfy` isLeft
   it "supports nominal records with explicit construction and field access" $
     core (unlines
-      ["type Picture is a record{ fileName of type Text, width of type Nat } end type"
-      ,"function picture (x of type Nat) -> Picture is Picture record{width = x, fileName = \"photo.jpg\"} end function"
-      ,"function width (p of type Picture) -> Nat is p.width end function"]) `shouldSatisfy` isRight
+      ["type Picture is a record{ fileName of type Text, width of type Nat } end type\n"
+      ,"function picture (x of type Nat) -> Picture is Picture record{width = x, fileName = \"photo.jpg\"} end function\n"
+      ,"function width (p of type Picture) -> Nat is p.width end function\n"]) `shouldSatisfy` isRight
   it "retains polymorphism in nominal record construction and projection" $
     core (unlines
-      ["type Box (a of type Type) is a record{value of type a} end type"
-      ,"function store (value of type a) -> Box a is Box record{value = value} end function"
-      ,"function retrieve (box of type Box a) -> a is box.value end function"
-      ,"law roundTrip is definition: for all (value of type Bool) => retrieve (store value) = value end end end"]) `shouldSatisfy` isRight
+      [ "type Box (a of type Type) is a record{value of type a} end type\n"
+      , "function store (value of type a) -> Box a is Box record{value = value} end function"
+      , "function retrieve (box of type Box a) -> a is box.value end function"
+      , "law roundTrip is definition: for all (value of type Bool) => retrieve (store value) = value end for all end definition end law" ]) `shouldSatisfy` isRight
   it "rejects unknown, missing and duplicate record value fields" $
     mapM_ (\fields -> core ("type Box is a record{ value of type Integer } end type\nfunction box (x :: Integer) -> Box is Box record{" ++ fields ++ "} end function") `shouldSatisfy` isLeft)
       ["other = x", "", "value = x, value = x"]
   it "does not construct an alternative through nominal record syntax or erase a bare empty record pattern's type" $ do
-    core "type Box is one of | Box of type Integer end type\nfunction box (x :: Integer) -> Box is Box record{value = x} end function" `shouldSatisfy` isLeft
-    core "function value (x :: Integer) -> Integer is first matching case of x: when record{} then 0 end case end function" `shouldSatisfy` isLeft
-    core "type EmptyRecord is a record{} end type\nfunction value (x :: EmptyRecord) -> Integer is first matching case of x: when EmptyRecord record{} then 0 end case end function" `shouldSatisfy` isRight
+    core "type Box is one of | Box of type Integer end type\nfunction box (x :: Integer) -> Box is Box record{value = x} end function\n" `shouldSatisfy` isLeft
+    core "function value (x :: Integer) -> Integer is first matching case of x: when record{} then 0 end case end function\n" `shouldSatisfy` isLeft
+    core "type EmptyRecord is a record{} end type\nfunction value (x :: EmptyRecord) -> Integer is first matching case of x: when EmptyRecord record{} then 0 end case end function\n" `shouldSatisfy` isRight
   it "retains exhaustiveness checking for explicit alternative payloads" $ do
     core (unlines
-      ["type Answer is one of | Yes of type Integer | No end type"
-      ,"function value (a of type Answer) -> Integer is first matching case of a: when Yes n then n when No then 0 end case end function"]) `shouldSatisfy` isRight
+      ["type Answer is one of | Yes of type Integer | No end type\n"
+      ,"function value (a of type Answer) -> Integer is first matching case of a: when Yes n then n when No then 0 end case end function\n"]) `shouldSatisfy` isRight
     core (unlines
-      ["type Answer is one of | Yes of type Integer | No end type"
-      ,"function value (a of type Answer) -> Integer is first matching case of a: when Yes n then n end case end function"]) `shouldSatisfy` isLeft
+      ["type Answer is one of | Yes of type Integer | No end type\n"
+      ,"function value (a of type Answer) -> Integer is first matching case of a: when Yes n then n end case end function\n"]) `shouldSatisfy` isLeft
   it "checks ordered Boolean cases and failed guards with a fallback" $
-    core "function value (x :: Integer) -> Integer is first matching case of x: when it > 0 if it < 10 then 1 when it >= 10 then 2 otherwise 0 end case end function" `shouldSatisfy` isRight
+    core "function value (x :: Integer) -> Integer is first matching case of x: when it > 0 if it < 10 then 1 when it >= 10 then 2 otherwise 0 end case end function\n" `shouldSatisfy` isRight
   it "keeps failed constructor-guard bindings out of later branches" $ case core (unlines
-    ["type Answer is one of | Yes of type Integer | No end type"
-    ,"function value (x :: Integer) (a :: Answer) -> Integer is first matching case of a: when Yes x if false then x otherwise x end case end function"]) of
+    ["type Answer is one of | Yes of type Integer | No end type\n"
+    ,"function value (x :: Integer) (a :: Answer) -> Integer is first matching case of a: when Yes x if false then x otherwise x end case end function\n"]) of
     Left ds -> expectationFailure (show ds)
     Right program -> case prepareDefinitions program of
       Left ds -> expectationFailure (show ds)
@@ -792,9 +808,9 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         `shouldBe` Right (CV.ScalarValue (SInteger "Integer" 100))
   it "preserves ordered nested record and constructor branches, including guard fall-through" $ do
     let body = unlines
-          ["type Inner is one of | Number of type Integer | Zero end type"
-          ,"type Details is a record{ inner of type Inner, label of type Text } end type"
-          ,"type Packet is one of | Wrap of type Details | Empty end type"
+          ["type Inner is one of | Number of type Integer | Zero end type\n"
+          ,"type Details is a record{ inner of type Inner, label of type Text } end type\n"
+          ,"type Packet is one of | Wrap of type Details | Empty end type\n"
           ,"function value (packet :: Packet) -> Integer is"
           ,"  first matching case of packet:"
           ,"    when Wrap (Details record{inner = Number n}) if n > 0 then n"
@@ -826,12 +842,12 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     mapM_ (\pattern -> core (function pattern) `shouldSatisfy` isLeft)
       ["Details record{inner = Number n}","record{unknown = x}","record{label = x, inner = Number x}","record{label = x, label = y}"]
   it "covers Boolean literal patterns without requiring an unnecessary fallback" $ do
-    core "function flag (x :: Bool) -> Integer is first matching case of x: when true then 1 when false then 0 end case end function" `shouldSatisfy` isRight
-    core "function flag (x :: Bool) -> Integer is first matching case of x: when true then 1 end case end function" `shouldSatisfy` isLeft
+    core "function flag (x :: Bool) -> Integer is first matching case of x: when true then 1 when false then 0 end case end function\n" `shouldSatisfy` isRight
+    core "function flag (x :: Bool) -> Integer is first matching case of x: when true then 1 end case end function\n" `shouldSatisfy` isLeft
   it "resolves imported nominal record construction and patterns" $
     compileCoreCanonical 64 defaultGeneration
-      [Source "records.lawspec" "unit records\ntype Box is a record{value of type Integer} end type"
-      ,Source "caller.lawspec" "unit caller\nimport records as r\nfunction value (x :: Integer) -> Integer is first matching case of r.Box record{value = x}: when r.Box record{value = n} then n end case end function"] `shouldSatisfy` isRight
+      [Source "records.lawspec" "unit records\n\ntype Box is a record{value of type Integer} end type\nend unit\n"
+      ,Source "caller.lawspec" "unit caller\nimport records as r\nfunction value (x :: Integer) -> Integer is first matching case of r.Box record{value = x}: when r.Box record{value = n} then n end case end function\nend unit"] `shouldSatisfy` isRight
   it "keeps typed-equal literal patterns available after a failed guard, including IEEE signed zero" $ do
     mapM_ (\(first,second,input) -> case core ("function value (x :: Float64) -> Integer is first matching case of x: when " ++ first ++ " if false then 4 when " ++ second ++ " then 5 otherwise 0 end case end function") of
       Left ds -> expectationFailure (show ds)
@@ -843,15 +859,15 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       ,("float64Bits(\"0000000000000000\")","float64Bits(\"8000000000000000\")","0000000000000000")]
   it "cannot infer a stronger refinement than a stored field guarantees" $
     core (unlines
-      ["type Picture is a record{ width of type Nat } end type"
-      ,"function width (p of type Picture) -> (result of type Whole where result > p.width) is p.width end function"]) `shouldSatisfy` isLeft
+      ["type Picture is a record{ width of type Nat } end type\n"
+      ,"function width (p of type Picture) -> (result of type Whole where result > p.width) is p.width end function\n"]) `shouldSatisfy` isLeft
   it "types contextual hexadecimal and binary constants exactly" $
-    core "function bits (x :: Integer) -> Integer is 0x10 + 0b10 + x end function" `shouldSatisfy` isRight
+    core "function bits (x :: Integer) -> Integer is 0x10 + 0b10 + x end function\n" `shouldSatisfy` isRight
   it "resolves canonical Set to Eq-only storage in ordinary and qualified signatures" $ do
-    core "function same (values of type Set Float64) -> Set Float64 is values end function" `shouldSatisfy` isRight
+    core "function same (values of type Set Float64) -> Set Float64 is values end function\n" `shouldSatisfy` isRight
     core "import lawspec.collections as c\nfunction same (values of type c.Set Float64) -> c.Set Float64 is values end function" `shouldSatisfy` isRight
   it "reports no selected checks and generates no optional law tests" $ case core
-    "function same (x :: Bool) -> Bool is x end function\nlaw identity is definition: for all (x :: Bool) => same x = x end end end" of
+    "function same (x :: Bool) -> Bool is x end function\nlaw identity is definition: for all (x :: Bool) => same x = x end for all end definition end law\n" of
     Left ds -> expectationFailure (show ds)
     Right program -> do
       let result = dischargeEvidenceWith V.noVerification program
@@ -863,7 +879,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         Left ds -> expectationFailure (show ds)
         Right plan -> concatMap plannedProperties (plannedUnits plan) `shouldBe` []
   it "does not silently pass requested exhaustive checking over an unbounded domain" $ case core
-    "law identity is definition: for all (x :: Integer) => x = x end end end" of
+    "law identity is definition: for all (x :: Integer) => x = x end for all end definition end law\n" of
     Left ds -> expectationFailure (show ds)
     Right program -> planTestingWith (V.Verification [V.Exhaustive]) program `shouldSatisfy` isLeft
   it "scans named record headers after canonical infix calls in the same unit" $ do
@@ -871,11 +887,11 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     compileCoreCanonical 64 defaultGeneration [Source "rc1-authoring.lawspec" body] `shouldSatisfy` isRight
   it "discovers record declarations between named infix calls without relying on line breaks" $
     core (unwords
-      ["function add (x :: Integer) (y :: Integer) -> Integer is x + y end function"
-      ,"law before is definition: for all (x :: Integer) => x `add x = x + x end end end"
-      ,"type Box is a record{value of type Integer} end type"
-      ,"function box (x :: Integer) -> Box is Box record{value = x} end function"
-      ,"law after is definition: for all (x :: Integer) => x `add x = x + x end end end"]) `shouldSatisfy` isRight
+      [ "function add (x :: Integer) (y :: Integer) -> Integer is x + y end function\n"
+      , "law before is definition: for all (x :: Integer) => x `add x = x + x end for all end definition end law"
+      , "type Box is a record{value of type Integer} end type\n"
+      , "function box (x :: Integer) -> Box is Box record{value = x} end function\n"
+      , "law after is definition: for all (x :: Integer) => x `add x = x + x end for all end definition end law" ]) `shouldSatisfy` isRight
   it "compiles the RC1 starter with multiple expectations referring to input and result columns" $ do
     body <- readFile "templates/npm/starter-rc1.lawspec"
     compileCoreCanonical 64 defaultGeneration [Source "starter-rc1.lawspec" body] `shouldSatisfy` isRight
@@ -926,23 +942,23 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
             Left diagnostics -> map LawSpec.Model.code diagnostics `shouldSatisfy` elem "refuted")
       ["rrr","rru","rur","ruu","urr","uru","uur","uuu"]
   it "keeps native test plans distinct from completed evidence" $ case core
-    "adapter of type Bool -> Bool\nlaw identity is definition: for all (x :: Bool) => adapter x = x end end end" of
+    "adapter of type Bool -> Bool\nlaw identity is definition: for all (x :: Bool) => adapter x = x end for all end definition end law" of
     Left ds -> expectationFailure (show ds)
     Right program -> case dischargeEvidenceWith (V.Verification [V.Property]) program of
       Left ds -> expectationFailure (show ds)
       Right obligations -> [obligationStatus o | o <- obligations, obligationStage o == "law"] `shouldBe` [Planned]
   it "lowers finite mappings and their derived lookup definitions to checked Core" $
     core (unlines
-      ["type Digit is one of | Zero | One end type"
-      ,"mapping digitText of type Digit -> Text is row Zero, \"0\" row One, \"1\" end mapping"
-      ,"law agreed is definition: digitText Zero = \"0\" end end"]) `shouldSatisfy` isRight
+      [ "type Digit is one of | Zero | One end type\n"
+      , "mapping digitText of type Digit -> Text is row Zero, \"0\" row One, \"1\" end mapping"
+      , "law agreed is definition: digitText Zero = \"0\" end definition end law" ]) `shouldSatisfy` isRight
   it "rejects duplicate and non-reflexive mapping keys and incomplete coverage" $
     mapM_ (\body -> core body `shouldSatisfy` isLeft)
       ["mapping b of type Bool -> Text is row true, \"x\" row true, \"y\" otherwise \"z\" end mapping"
       ,"mapping b of type Float64 -> Text is row float64Bits(\"7ff8000000000000\"), \"NaN\" otherwise \"x\" end mapping"
-      ,"type Digit is one of | Zero | One end type mapping digitText of type Digit -> Text is row Zero, \"0\" end mapping"]
+      ,"type Digit is one of | Zero | One end type mapping digitText of type Digit -> Text is row Zero, \"0\" end mapping\n"]
   it "emits checked phrase-named functions through all seventeen backends" $ case core
-    "function \"|negates the value| (value :: Bool) -> Bool is not value end function" of
+    "function \"|negates the value| (value :: Bool) -> Bool is not value end function\n" of
     Left ds -> expectationFailure (show ds)
     Right program -> case planTestingWith V.noVerification program of
       Left ds -> expectationFailure (show ds)
@@ -950,16 +966,16 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         length targets `shouldBe` 17
         mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
   it "refuses collisions in public native names" $ case core (unlines
-    ["function addsValue (value :: Integer) -> Integer is value end function"
-    ,"function \"|adds value| (value :: Integer) -> Integer is value end function"]) of
+    ["function addsValue (value :: Integer) -> Integer is value end function\n"
+    ,"function \"|adds value| (value :: Integer) -> Integer is value end function\n"]) of
     Left ds -> expectationFailure (show ds)
     Right program -> case planTestingWith V.noVerification program of
       Left ds -> expectationFailure (show ds)
       Right plan -> emitPlan "python" plan `shouldSatisfy` isLeft
   it "resolves explicit public-name overrides by identity through all seventeen emitters" $ case core (unlines
-    ["function flipValue (value :: Bool) -> Bool is value end function"
-    ,"function \"|flip value| (value :: Bool) -> Bool is not value end function"
-    ,"law agrees is definition: for all (value :: Bool) => \"|flip value| value = (not (flipValue value)) end end end"]) of
+    [ "function flipValue (value :: Bool) -> Bool is value end function\n"
+    , "function \"|flip value| (value :: Bool) -> Bool is not value end function\n"
+    , "law agrees is definition: for all (value :: Bool) => \"|flip value| value = (not (flipValue value)) end for all end definition end law" ]) of
     Left ds -> expectationFailure (show ds)
     Right program -> do
       let override name = NB.emptyNativeRequest { NB.requestNames =
@@ -983,14 +999,14 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
          NB.NameBinding (C.Id "example.canonical::flipValue") "secondValue"] }) `shouldSatisfy` isLeft
   it "rejects native public-name overrides through the legacy API schema" $ do
     let request = object ["schemaVersion" .= (4 :: Int), "method" .= ("check" :: String),
-          "sources" .= [Source "legacy.lawspec" "unit legacy\ndefinition value (x :: Bool) :: Bool is x end"],
+          "sources" .= [Source "legacy.lawspec" "unit legacy\n\nfunction value (x :: Bool) -> Bool is x end function\nend unit\n"],
           "nativeBindings" .= object ["names" .= [object ["declaration" .= ("legacy::value" :: String), "name" .= ("echo" :: String)]]]]
         response = either error id (eitherDecode (dispatch (encode request))) :: Value
     case response of
       Object fields -> Data.Aeson.KeyMap.lookup "diagnostics" fields `shouldSatisfy` (\x -> maybe False (/= toJSON ([] :: [Value])) x)
       _ -> expectationFailure "expected a request diagnostic"
   it "preserves lexical source text, literal spelling and comments during formatting" $ do
-    let raw = "-- Keep this comment.  \nunit example.canonical\nfunction same (x of type Integer) -> Integer is\n       x -- Keep this too.\nend function\nlaw \"|same value| is\ndefinition:\nfor all (x :: Integer) =>\nx must be x\nend\nend\nend\n"
+    let raw = "-- Keep this comment.  \nunit example.canonical\nfunction same (x of type Integer) -> Integer is\n       x -- Keep this too.\nend function\nlaw \"|same value| is\ndefinition:\nfor all (x :: Integer) =>\nx must be x\nend for all\nend definition\nend law\nend unit\n"
         original = Source "format.lawspec" raw
         formatted = formatSource original
         significant s = [(tokenKind t,tokenText t) | t <- sourceTokens s, tokenKind t /= TriviaToken]
@@ -1016,12 +1032,38 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           ,"end function"])
         formatted = formatSource input
     lines (LawSpec.Model.content formatted) `shouldBe`
-      ["unit example.canonical","mapping flag of type Bool -> Text is"
-      ,"  row true, \"yes\"","  row false, \"no\"","end mapping"
-      ,"function nested (x :: Integer) -> Integer is","  first matching case of x:"
-      ,"    when it > 0 then","      first matching case of x:"
-      ,"        when it > 1 then 2","        otherwise 1","      end case"
-      ,"    otherwise 0","  end case","end function"]
+      [ "unit example.canonical"
+      , ""
+      , "mapping flag of type Bool -> Text is"
+      , "  row true, \"yes\""
+      , "  row false, \"no\""
+      , "end mapping"
+      , "function nested (x :: Integer) -> Integer is"
+      , "  first matching case of x:"
+      , "    when it > 0 then"
+      , "      first matching case of x:"
+      , "        when it > 1 then 2"
+      , "        otherwise 1"
+      , "      end case"
+      , "    otherwise 0"
+      , "  end case"
+      , "end function"
+      , "", "end unit" ]
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "rebases line-scoped generator expressions after indentation changes" $ do
+    let values = "[" ++ intercalate ", " (map show [1::Int .. 40]) ++ "]"
+        input = source (unlines
+          [ "law same is definition: for all (items :: List Int32) => items = items end for all end definition end law"
+          , "harness example.canonical.testing for example.canonical is"
+          , "strategy values :: List Int32 is"
+          , "bind flag :: Bool from any in"
+          , "one of " ++ values
+          , "end bind end strategy"
+          , "for law same use values for items end for law"
+          , "end harness" ])
+        formatted = formatSource input
+    LawSpec.Model.content formatted `shouldSatisfy` isInfixOf ("one of " ++ values)
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "wraps long record expressions without changing tokens or literal values" $ do
@@ -1039,27 +1081,42 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         formatted=formatSource input
         output=LawSpec.Model.content formatted
         significant text=[(tokenKind t,tokenText t) | t<-sourceTokens text,tokenKind t/=TriviaToken]
-    output `shouldSatisfy` isInfixOf "ability OrderStore is\n  current of type OrderState\n  change of type OrderState -> ()\nend"
-    output `shouldSatisfy` isInfixOf "  start Pending is\n  current is order end\n  change updated is ~order := updated; () end\nend"
-    output `shouldSatisfy` isInfixOf "  handle process actions with inMemory end\nend function"
+    output `shouldSatisfy` isInfixOf "ability OrderStore is\n  current of type OrderState\n  change of type OrderState -> ()\nend ability\n"
+    output `shouldSatisfy` isInfixOf "  start Pending is\n  operation current is order end operation\n  operation change updated is ~order := updated; () end operation\nend handler"
+    output `shouldSatisfy` isInfixOf "  handle process actions with inMemory end handle\nend function"
     significant output `shouldBe` significant body
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "keeps multiline handler operations and conditional initializers inside their handler" $ do
-    let body=unlines ["ability State is","read of type Bool","end",
-          "handler memory for State with state value of type Bool",
-          "start if true then false else true end if is",
-          "read is","value","end","end",
-          "function readOnce (ignored :: ()) -> Bool is",
-          "handle read with memory end","end function"]
+    let body=unlines [ "ability State is"
+                     , "read of type Bool"
+                     , "end ability"
+                     , "handler memory for State with state value of type Bool"
+                     , "start if true then false else true end if is"
+                     , " operation read is"
+                     , "value"
+                     , "end operation"
+                     , "end handler"
+                     , "function readOnce (ignored :: ()) -> Bool is"
+                     , "handle read with memory end handle"
+                     , "end function" ]
         formatted=formatSource (source body)
     lines (LawSpec.Model.content formatted) `shouldBe`
-      ["unit example.canonical","ability State is","  read of type Bool","end",
-       "handler memory for State with state value of type Bool",
-       "  start if true then false else true end if is",
-       "  read is","    value","  end","end",
-       "function readOnce (ignored :: ()) -> Bool is",
-       "  handle read with memory end","end function"]
+      [ "unit example.canonical"
+      , ""
+      , "ability State is"
+      , "  read of type Bool"
+      , "end ability"
+      , "handler memory for State with state value of type Bool"
+      , "  start if true then false else true end if is"
+      , "  operation read is"
+      , "    value"
+      , "  end operation"
+      , "end handler"
+      , "function readOnce (ignored :: ()) -> Bool is"
+      , "  handle read with memory end handle"
+      , "end function"
+      , "", "end unit" ]
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "formats actors, supervisors, protocols and nested scenario recovery from their actual canonical source" $ do
@@ -1070,8 +1127,8 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         significant text=[(tokenKind t,tokenText t) | t<-sourceTokens text,tokenKind t/=TriviaToken]
     output `shouldSatisfy` isInfixOf "actor account :: Account by Int64 is\n  start openAccount by 0\n  restart from reopen by modelReopen"
     output `shouldSatisfy` isInfixOf "supervisor bank is\n  one for one\n  at most 3 restarts in 5s\n  permanent account\nend"
-    output `shouldSatisfy` isInfixOf "protocol Receipt is\n  send Int64\nend"
-    output `shouldSatisfy` isInfixOf "  par\n    n <- deposit 5\n    send receipt n\n  with\n    receive receipt m or else\n      balance\n    end\n    expect m = 5\n  end\nend"
+    output `shouldSatisfy` isInfixOf "protocol Receipt is\n  send Int64\nend protocol\n"
+    output `shouldSatisfy` isInfixOf "  par\n    n <- deposit 5\n    send receipt n\n  with\n    receive receipt m or else\n      balance\n    end or else\n    expect m = 5\n  end par\nend scenario"
     significant output `shouldBe` significant body
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
@@ -1092,40 +1149,71 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     restoreSource (sourceTokens infixText) `shouldBe` infixText
   it "keeps resources, wrappers, refinements and harness groups at their grammatical levels" $ do
     let input=source (unlines
-          ["refinement Positive is", "(value :: Integer where value > 0)", "end",
-           "wrapper Flag is", "Bool", "end", "handle Scratch",
-           "openScratch :: () -> Scratch", "closeScratch :: Scratch -> ()",
-           "resource Scratch is", "acquire is", "openScratch ()", "end",
-           "release scratch is", "closeScratch scratch", "end", "end",
-           "law same is", "definition:", "for all (value :: Bool) =>", "value must be value", "end", "end", "end",
-           "harness example.canonical.testing for example.canonical is",
-           "strategy flags :: Bool is", "one of true, false", "end",
-           "tags smoke", "for law same", "use flags for value", "repeat 2",
-           "benchmark `if all end is only a benchmark name` is", "true", "end",
-           "for laws same", "repeat 3", "end",
-           "function workflow (value :: Bool) -> Bool is", "value", "end function"])
+          [ "refinement Positive is"
+          , "(value :: Integer where value > 0)"
+          , "end refinement"
+          , "wrapper Flag is"
+          , "Bool"
+          , "end wrapper"
+          , "handle Scratch"
+          , "openScratch :: () -> Scratch"
+          , "closeScratch :: Scratch -> ()"
+          , "resource Scratch is"
+          , "acquire is"
+          , "openScratch ()"
+          , "end acquire"
+          , "release scratch is"
+          , "closeScratch scratch"
+          , "end release"
+          , "end resource"
+          , "law same is"
+          , "definition:"
+          , "for all (value :: Bool) =>"
+          , "value must be value"
+          , "end for all"
+          , "end definition"
+          , "end law"
+          , "harness example.canonical.testing for example.canonical is"
+          , "strategy flags :: Bool is"
+          , "one of true, false"
+          , "end strategy"
+          , "tags smoke"
+          , "for law same"
+          , "use flags for value"
+          , "repeat 2"
+          , "\nend for law"
+          , "benchmark `if all end is only a benchmark name` is"
+          , "true"
+          , "end benchmark"
+          , "for laws same"
+          , "repeat 3"
+          , "\nend for laws"
+          , "end harness"
+          , "function workflow (value :: Bool) -> Bool is"
+          , "value"
+          , "end function" ])
         formatted=formatSource input
         output=LawSpec.Model.content formatted
-    output `shouldSatisfy` isInfixOf "refinement Positive is\n  (value :: Integer where value > 0)\nend\nwrapper Flag is\n  Bool\nend\nhandle Scratch\nopenScratch"
-    output `shouldSatisfy` isInfixOf "resource Scratch is\n  acquire is\n    openScratch ()\n  end\n  release scratch is\n    closeScratch scratch\n  end\nend\nlaw same"
-    output `shouldSatisfy` isInfixOf "  strategy flags :: Bool is\n    one of true, false\n  end\n  tags smoke\n  for law same\n    use flags for value\n    repeat 2\n  benchmark `if all end is only a benchmark name` is\n    true\n  end\n  for laws same\n    repeat 3\nend\nfunction workflow"
+    output `shouldSatisfy` isInfixOf "refinement Positive is\n  (value :: Integer where value > 0)\nend refinement\nwrapper Flag is\n  Bool\nend wrapper\nhandle Scratch\nopenScratch"
+    output `shouldSatisfy` isInfixOf "resource Scratch is\n  acquire is\n    openScratch ()\n  end acquire\n  release scratch is\n    closeScratch scratch\n  end release\nend resource\nlaw same"
+    output `shouldSatisfy` isInfixOf "  strategy flags :: Bool is\n    one of true, false\n  end strategy\n  tags smoke\n  for law same\n    use flags for value\n    repeat 2\n\n  end for law\n  benchmark `if all end is only a benchmark name` is\n    true\n  end benchmark\n  for laws same\n    repeat 3\n\n  end for laws\nend harness\nfunction workflow"
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "formats models and workflow all groups without treating contextual function calls as declarations" $ do
     let input=source (unlines
           ["handle Store", "openStore :: () -> Store", "put :: Store -> Bool -> ()",
            "function modelPut (value :: Bool) (state :: Bool) -> Bool is", "value", "end function",
-           "model store :: shared Store by Bool is", "start openStore by false", "put by modelPut", "end",
+           "model store :: shared Store by Bool is", "start openStore by false", "put by modelPut", "end model",
            "function chooseFirst (left :: Bool) (right :: Bool) -> Bool is", "left", "end function",
            "workflow gather :: Bool -> Bool is", "all", "first :: Bool -> Bool", "second :: Bool -> Bool",
-           "end", "combine chooseFirst", "end",
+           "end all", "combine chooseFirst", "end workflow",
            "function resource (value :: Bool) -> Bool is", "value", "end function",
            "function useResource (value :: Bool) -> Bool is", "resource value", "end function"])
         formatted=formatSource input
         output=LawSpec.Model.content formatted
     output `shouldSatisfy` isInfixOf "model store :: shared Store by Bool is\n  start openStore by false\n  put by modelPut\nend"
-    output `shouldSatisfy` isInfixOf "workflow gather :: Bool -> Bool is\n  all\n    first :: Bool -> Bool\n    second :: Bool -> Bool\n  end\n  combine chooseFirst\nend"
-    output `shouldSatisfy` isInfixOf "function useResource (value :: Bool) -> Bool is\n  resource value\nend function"
+    output `shouldSatisfy` isInfixOf "workflow gather :: Bool -> Bool is\n  all\n    first :: Bool -> Bool\n    second :: Bool -> Bool\n  end all\n  combine chooseFirst\nend workflow"
+    output `shouldSatisfy` isInfixOf "function useResource (value :: Bool) -> Bool is\n  resource value\nend function\n"
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "preserves scenario command lines through binding, parallel delivery and recovery while wrapping surrounding functions" $ do
@@ -1152,8 +1240,15 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         formatted=formatSource input
     compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
     lines (LawSpec.Model.content formatted) `shouldBe`
-      ["unit example.canonical","function text (ignored :: ()) -> Text is \"first","   ",
-       "second\" end function","function same (value :: Bool) -> Bool is","  value","end function"]
+      [ "unit example.canonical"
+      , ""
+      , "function text (ignored :: ()) -> Text is \"first"
+      , "   "
+      , "second\" end function"
+      , "function same (value :: Bool) -> Bool is"
+      , "  value"
+      , "end function"
+      , "", "end unit" ]
     restoreSource (filter ((==LiteralToken) . tokenKind) (sourceTokens (LawSpec.Model.content formatted)))
       `shouldBe` restoreSource (filter ((==LiteralToken) . tokenKind) (sourceTokens (LawSpec.Model.content input)))
     formatSource formatted `shouldBe` formatted
@@ -1163,7 +1258,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     let input=Source "record-type-separators.lawspec" body
         formatted original = do
           result <- eitherDecode (dispatch (encode (object
-            ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.1"::String),
+            ["schemaVersion" .= (5::Int),"languageProfile" .= ("1.0-rc.2"::String),
              "method" .= ("format"::String),"sources" .= [original],
              "verification" .= object ["layers" .= ([]::[String])]])))
           parseEither (withObject "result" (\o -> do
@@ -1188,18 +1283,18 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     utf16Position source (LawSpec.Model.Location "positions.lawspec" 2 10) `shouldBe` (1,3)
   it "accepts schema 5 only with the explicit RC1 profile and reports no selected checks" $ do
     let request fields = encode (object (["schemaVersion" .= (5 :: Int), "method" .= ("check" :: String),
-          "sources" .= [source "law identity is definition: for all (x :: Bool) => x = x end end end"]] ++ fields))
+          "sources" .= [source "law identity is definition: for all (x :: Bool) => x = x end for all end definition end law\n"]] ++ fields))
         result fields = eitherDecode (dispatch (request fields)) :: Either String Value
         field key (Right (Object o)) = fromJSON (maybe Null id (Data.Aeson.KeyMap.lookup key o))
         field _ _ = Error "no result"
-    field "diagnostics" (result ["languageProfile" .= ("1.0-rc.1" :: String)]) `shouldBe` (Success ([] :: [Value]))
+    field "diagnostics" (result ["languageProfile" .= ("1.0-rc.2" :: String)]) `shouldBe` (Success ([] :: [Value]))
     field "diagnostics" (result []) `shouldSatisfy` (/= Success ([] :: [Value]))
   it "changes emitted test plans when a warm compiler switches law layers" $ do
     let request body layers = object
-          [ "schemaVersion" .= (5 :: Int),"languageProfile" .= ("1.0-rc.1" :: String)
+          [ "schemaVersion" .= (5 :: Int),"languageProfile" .= ("1.0-rc.2" :: String)
           , "method" .= ("planGeneration" :: String),"target" .= ("javascript" :: String)
           , "verification" .= V.Verification layers
-          , "sources" .= [Source "layered.lawspec" ("unit layered\nlaw identity is definition: " ++ body ++ " end end")] ]
+          , "sources" .= [Source "layered.lawspec" ("unit layered\nlaw identity is definition: " ++ body ++ " end definition end law\nend unit")] ]
         emitted body layers = eitherDecode (dispatch (encode (request body layers))) >>= parseEither
           (withObject "result" (\o -> do
             diagnostics <- o .: "diagnostics" :: Parser [Value]
@@ -1207,7 +1302,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
               files <- o .: "files" :: Parser [Value]
               concat <$> mapM (withObject "file" (\file -> file .: "content" :: Parser String)) files
               else fail (show diagnostics)))
-        body = "for all (value :: Bool) => value = value end"
+        body = "for all (value :: Bool) => value = value end for all"
     case emitted body [V.Exhaustive] of
       Left problem -> expectationFailure problem
       Right files -> files `shouldNotContain` "fc.property("

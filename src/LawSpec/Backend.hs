@@ -214,7 +214,9 @@ searchDecision identity = let (digits,rest) = span isDigit (reverse (C.idText id
 -- | As in LawSpec.Compile, the quantified statement a test checks.
 prettyExpanded :: Expanded -> String
 prettyExpanded e | propertyKind e == "contract" = description (original e)
-prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " . " ++ propositionText (assertion e)
+prettyExpanded e
+  | null (inputs e) = propositionText (assertion e)
+  | otherwise = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " => " ++ propositionText (assertion e) ++ " end for all"
 -- | As prettyExpr, for propositions.
 propositionText :: Assertion -> String
 propositionText (AssertEqual a b) = prettyExpr a ++ " = " ++ prettyExpr b
@@ -224,7 +226,7 @@ propositionText (C.Negation body) = "not (" ++ propositionText body ++ ")"
 propositionText (C.Quantified kind q body) =
   (if kind == ForEvery then "for all " else "there exists ") ++ "(" ++ C.binderName (C.quantifiedBinder q) ++
   " :: " ++ prettyType (C.binderType (C.quantifiedBinder q)) ++ ") " ++
-  (if kind == ForEvery then "=> " else "such that ") ++ propositionText body ++ " end"
+  (if kind == ForEvery then "=> " else "such that ") ++ propositionText body ++ (if kind == ForEvery then " end for all" else " end exists")
 
 -- | Every generated test begins with its law's description, rationale and
 -- references, so the test explains why it exists.

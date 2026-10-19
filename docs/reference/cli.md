@@ -7,7 +7,6 @@ title: CLI
 
 ```text
 lawspec fmt [paths...] [--check] [--json] [--config <path>]
-lawspec migrate --from 0.24 [--write] [--json] [--config <path>]
 lawspec lsp --stdio
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
@@ -77,28 +76,6 @@ block endings after the closing quote still close the enclosing formatter scope.
 Optional record-type field commas are omitted. Commas in record values,
 patterns, tuple types and tuple values are retained.
 
-## `migrate`
-
-`migrate --from 0.24` reads a version-1 project and reports its proposed canonical
-source, version-2 configuration, native bindings and correspondence evidence.
-It writes nothing by default. Add `--write` to apply a validated migration to
-all declared project sources and configuration. Existing native application code
-and generated artifacts are preserved. `--write` and `--dry-run` cannot be
-combined.
-
-`validated: true` means the migration preserves the checked source semantics
-and configured native interfaces under existing compiler and native binding
-assumptions. It does not claim native implementation conformance or law
-verification. With no configured targets, target checks remain `not-requested`.
-Missing source/domain evidence, changed native interfaces and unsupported
-adaptations block writing with `migration-incomplete`.
-
-The writer rechecks inputs, stages replacements and commits configuration last.
-Ordinary filesystem errors roll back earlier replacements; reported recovery
-paths retain originals when another edit or filesystem error prevents rollback.
-See [API migration](../explanation/api-migration.md#source-migration-from-024)
-for its trust boundary and limits.
-
 ## The compiler cache
 
 `check`, `evidence`, `explain` and `generate` keep the compiler's work in
@@ -135,7 +112,7 @@ When there is no configuration file, `init` creates `lawspec.json` with
 fails if the starter already exists. When the file exists, it adds the target.
 A target of the same language with the same root is an error.
 
-New configurations use version 2, `languageProfile: "1.0-rc.1"` and
+New configurations use version 2, `languageProfile: "1.0-rc.2"` and
 `verification.layers: []`. Select optional law checks explicitly; intrinsic
 definition validation remains mandatory.
 

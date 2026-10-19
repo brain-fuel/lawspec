@@ -1,6 +1,6 @@
 # User-owned LawSpec adapter. Implement these functions.
 defmodule Example.Indexed do
-  @spec replicate(integer(), -128..127) :: LawSpec.Data.vec(-128..127)
+  @spec replicate(non_neg_integer(), -128..127) :: LawSpec.Data.vec(-128..127)
 
   def replicate(_argument0, _argument1) do raise "Not implemented: example.indexed::replicate" end
 

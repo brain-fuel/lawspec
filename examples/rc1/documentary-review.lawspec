@@ -14,29 +14,30 @@ law "|allowed requests are approved| is
   owner: Payments.Review
   description:
     "An allowed request receives approval."
-  end
+  end description
   definition:
     review true must be Approved
-  end
+  end definition
   references:
     #S{ref law "|other requests are declined| description,
        ref function review}
     ref law "|other requests are declined| references."|Review policy|
     "|Review policy|: "Allowed requests are approved; all other requests are declined."
-  end
-end
+  end references
+end law
 
 law "|other requests are declined| is
   owner: Payments.Review
   id: "REVIEW-002"
   description:
     "A request without permission receives a decline."
-  end
+  end description
   definition:
     review false must be Declined
-  end
+  end definition
   references:
     ref law "|allowed requests are approved| definition
     "|Review policy|: "Allowed requests are approved; all other requests are declined."
-  end
-end
+  end references
+end law
+end unit

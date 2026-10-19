@@ -1,5 +1,6 @@
 // Generated from templates/npm/test/expression-presentation.test.mjs by lawspec-dev generate. Do not edit.
-import {legacyCheck} from './legacy-input.mjs';
+import {extendUnit} from './compiler-input.mjs';
+import {checkInput} from './compiler-input.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
@@ -35,15 +36,15 @@ test('dependent, reused and unused bindings remain explicit without capture', ()
   const render = presentation({dataTypes: [record('pair', ['a', 'z'])]});
   const dependent = letIn(binder('a', 'x'), number(1),
     letIn(binder('b', 'x'), binary('+', local('a', 'x'), number(1)), construct('pair::Record', local('a'), local('b'))));
-  assert.equal(render(dependent), 'let x = 1 in let x1 = (x + 1) in record{a = x, z = x1}');
+  assert.equal(render(dependent), 'let x = 1 in let x1 = (x + 1) in record{a = x, z = x1} end let end let');
   const reused = letIn(binder('a', 'x'), binary('/', number(1), number(0)), construct('pair::Record', local('a'), local('a')));
-  assert.equal(render(reused), 'let x = (1 / 0) in record{a = x, z = x}');
+  assert.equal(render(reused), 'let x = (1 / 0) in record{a = x, z = x} end let');
   const unused = letIn(binder('a', 'x'), binary('/', number(1), number(0)), number(2));
-  assert.equal(render(unused), 'let x = (1 / 0) in 2');
+  assert.equal(render(unused), 'let x = (1 / 0) in 2 end let');
   const shadow = letIn(binder('inner', 'x'), number(2), binary('+', local('outer', 'x'), local('inner', 'x')));
-  assert.equal(render(shadow), 'let x1 = 2 in (x + x1)');
+  assert.equal(render(shadow), 'let x1 = 2 in (x + x1) end let');
   const phrase = letIn(binder('inner', '"|amount due|'), number(2), binary('+', local('outer', '"|amount due|'), local('inner', '"|amount due|')));
-  assert.equal(render(phrase), 'let value1 = 2 in ("|amount due| + value1)');
+  assert.equal(render(phrase), 'let value1 = 2 in ("|amount due| + value1) end let');
 });
 
 test('projection presentation retains strict unselected fields in its subject', () => {
@@ -60,10 +61,10 @@ test('ordered cases and callback scopes keep distinct binders and all branches',
     {constructor: 'Right', binders: [binder('two', 'x')], body: local('two', 'x')},
   ]});
   const render = presentation({dataTypes: [data]});
-  assert.equal(render(term), 'case choice of {domain.Choice.Left(x1): (x + x1); domain.Choice.Right(x1): x1}');
+  assert.equal(render(term), 'first matching case of choice: when domain.Choice.Left x1 then (x + x1) when domain.Choice.Right x1 then x1 end case');
   const product = expression({kind: 'match', value: local('pair'), cases: [{constructor: 'pair::Record',
     binders: [binder('one', 'a'), binder('two', 'z')], body: binary('+', local('one', 'a'), local('two', 'z'))}]});
-  assert.equal(presentation({dataTypes: [record('pair', ['a', 'z'])]})(product), 'case pair of {record{a = a, z = z}: (a + z)}');
+  assert.equal(presentation({dataTypes: [record('pair', ['a', 'z'])]})(product), 'first matching case of pair: when record{a = a, z = z} then (a + z) end case');
   const elements = expression({kind: 'allElements', value: local('items'), binder: binder('item', 'x'),
     predicate: binary('>', local('item', 'x'), local('outside', 'x'))});
   assert.equal(render(elements), 'every x1 in (items) satisfies ((x1 > x))');
@@ -106,7 +107,7 @@ test('Boolean precedence, literal contents, conversions and effect modes stay ex
   assert.equal(render(perform), 'perform Log.write("a == b")');
   assert.equal(render(expression({kind: 'handle', handling: 'catchFailure', ability: 'Fail', body: perform})), 'catch failure of Fail in (perform Log.write("a == b"))');
   assert.equal(render(expression({kind: 'handle', handling: 'withHandler', ability: 'Log', handler: 'recording native', body: perform})),
-    'handle (perform Log.write("a == b")) with recording native for Log');
+    'handle (perform Log.write("a == b")) with recording native for Log end handle');
   assert.equal(render(expression({kind: 'calls', ability: 'Log', operation: 'write', arguments: null})), 'calls of Log.write');
   assert.equal(render(expression({kind: 'calls', ability: 'Log', operation: 'write', arguments: []})), 'calls of Log.write with ()');
   const fields = presentation({dataTypes: [record('pair', ['a', 'z'])]});
@@ -142,7 +143,7 @@ test('actual parcel assertions use readable terms with the original obligations 
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   const content = await readFile(new URL('../../examples/rc1/parcel-measurements.lawspec', import.meta.url), 'utf8');
-  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []},
     sources: [{path: 'parcel-measurements.lawspec', content}]});
   assert.deepEqual(result.diagnostics, []);
   const before = structuredClone(result), law = result.laws.find(law => law.id.endsWith('::sampleWeight'));
@@ -163,15 +164,18 @@ test('rendered structural assertions recompile with the same checked outcome and
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   const content = `unit display.order
+
 function first (unused of type ()) -> Integer is 1 end function
 function second (unused of type ()) -> Integer is 2 end function
 law ordered is
   definition:
     record{z = first (), a = second ()} must be record{a = 2, z = 1}
-  end
-end
+  end definition
+end law
+
+end unit
 `;
-  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: ['exhaustive']},
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: ['exhaustive']},
     sources: [{path: 'order.lawspec', content}]};
   const result = await compiler.check(request);
   assert.deepEqual(result.diagnostics, []);
@@ -180,7 +184,8 @@ end
   const text = explainLaw(law, result, 'business').text;
   assert.equal(text, 'record{z = first (), a = second ()} must be record{a = 2, z = 1}');
   const roundtrip = await compiler.check({...request, sources: [{path: 'order.lawspec', content:
-    content + `\nlaw displayed is definition: ${text} end end\n`}]});
+    extendUnit(content, `\nlaw displayed is definition: ${text} end definition end law
+`)}]});
   assert.deepEqual(roundtrip.diagnostics, []);
   const rendered = roundtrip.laws.find(law => law.id.endsWith('::displayed'));
   assert.ok(rendered);
@@ -195,14 +200,17 @@ test('primitive constructor metadata presents nested records and retains undefin
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   const content = `unit display.primitives
+
 function optionalValue (unused of type ()) -> Maybe record{value of type Integer} is Just record{value = 1} end function
 function eitherValue (unused of type ()) -> Either record{value of type Integer} Bool is Left record{value = 1} end function
-law optional is definition: optionalValue () must be Just record{value = 1} end end
-law either is definition: eitherValue () must be Left record{value = 1} end end
-law lists is definition: [record{value = 1}, record{value = 2}] must be [record{value = 1}, record{value = 2}] end end
-law unused is definition: record{chosen = 1, unused = 1 / 0} must be record{chosen = 1, unused = 1 / 0} end end
+law optional is definition: optionalValue () must be Just record{value = 1} end definition end law
+law either is definition: eitherValue () must be Left record{value = 1} end definition end law
+law lists is definition: [record{value = 1}, record{value = 2}] must be [record{value = 1}, record{value = 2}] end definition end law
+law unused is definition: record{chosen = 1, unused = 1 / 0} must be record{chosen = 1, unused = 1 / 0} end definition end law
+
+end unit
 `;
-  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []},
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []},
     sources: [{path: 'primitives.lawspec', content}]});
   assert.deepEqual(result.diagnostics, []);
   const texts = new Map(result.laws.map(law => [law.id.split('::').at(-1), explainLaw(law, result, 'business').text]));
@@ -221,10 +229,12 @@ test('emitted operational terms retain handlers, call filters and the original e
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   for (const fixture of ['abilities', 'failures']) {
-    const content = await readFile(new URL(`../../examples/specs/${fixture}.lawspec`, import.meta.url), 'utf8') +
-      (fixture === 'abilities' ? '\ndefinition handledCheckout (cents :: Int32) :: Bool is handle checkout cents with fakeGateway end end\n' : '');
-    // These historical examples enter through the explicit migration interface.
-    const result = await legacyCheck(compiler, {sources: [{path: fixture + '.lawspec', content}]});
+    const base = await readFile(new URL(`../../examples/specs/${fixture}.lawspec`, import.meta.url), 'utf8');
+    const content = fixture === 'abilities' ? extendUnit(base, `
+function handledCheckout (cents :: Int32) -> Bool is handle checkout cents with fakeGateway end handle end function
+`) : base;
+    // These examples use the ordinary current compiler interface.
+    const result = await checkInput(compiler, {sources: [{path: fixture + '.lawspec', content}]});
     assert.deepEqual(result.diagnostics, []);
     const before = structuredClone(result), render = presentation(result), terms = [];
     function collect(value) {
@@ -244,7 +254,7 @@ test('emitted operational terms retain handlers, call filters and the original e
       if (node.kind === 'handle' && node.handling === 'catchFailure') assert.ok(text.startsWith('catch failure of '));
       if (node.kind === 'handle' && node.handling === 'withHandler') {
         assert.ok(text.includes(`with ${node.handler} for `));
-        if (node.ability.endsWith('::ability::Gateway')) assert.ok(text.endsWith('for Gateway'));
+        if (node.ability.endsWith('::ability::Gateway')) assert.ok(text.endsWith('for Gateway end handle'));
       }
       if (node.kind === 'calls') assert.equal(text.includes(' with ('), node.arguments !== null);
     }
@@ -353,11 +363,24 @@ test('compiled declarations retain authored ownership through facades and polymo
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
   const sources = [
-    {path: 'spelling.lawspec', content: 'unit spelling\nfunction same (value :: a) -> a is value end function'},
-    {path: 'facade.lawspec', content: 'unit facade\nimport spelling as original\nexport original.same'},
-    {path: 'use.lawspec', content: 'unit use\nimport facade as copied\nlaw values is definition: copied.same true = true and copied.same 1 = 1 end end'},
+    {path: 'spelling.lawspec', content: `unit spelling
+
+function same (value :: a) -> a is value end function
+
+end unit
+`},
+    {path: 'facade.lawspec', content: `unit facade
+import spelling as original
+export original.same
+end unit
+`},
+    {path: 'use.lawspec', content: `unit use
+import facade as copied
+law values is definition: copied.same true = true and copied.same 1 = 1 end definition end law
+end unit
+`},
   ];
-  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []}, sources});
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []}, sources});
   assert.deepEqual(result.diagnostics, []);
   const declarations = result.units.flatMap(unit => unit.declarations).filter(d => d.source?.unit === 'spelling');
   assert.equal(new Set(declarations.map(d => d.id)).size, 2);
@@ -381,9 +404,13 @@ test('compiler-looking source paths and names never receive builtin collection p
   const compiler = await createCompiler();
   const name = 'lawspec_lawspecCollectionsEqSetOf_123';
   const content = `unit lookalike
+
 function ${name} (items :: List Bool) -> Set Bool is #S{false} end function
-law actual is definition: ${name} [true] = #S{false} end end`;
-  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: ['exhaustive']},
+law actual is definition: ${name} [true] = #S{false} end definition end law
+
+end unit
+`;
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: ['exhaustive']},
     sources: [{path: '<lawspec.collections>', content}]});
   assert.deepEqual(result.diagnostics, []);
   const declaration = result.units.flatMap(unit => unit.declarations).find(d => d.name === name);
@@ -398,11 +425,23 @@ test('compiled source names preserve escaped phrase spelling, case and qualified
   const compiler = await createCompiler();
   const phrase = String.raw`"|Keep\|Case\\Name|`;
   const sources = [
-    {path: 'one.lawspec', content: `unit one\nfunction ${phrase} (value :: a) -> a is value end function`},
-    {path: 'two.lawspec', content: `unit two\nfunction ${phrase} (value :: a) -> a is value end function`},
-    {path: 'use.lawspec', content: `unit use\nimport one as first\nimport two as second\nlaw names is definition: first.${phrase} true = second.${phrase} true end end`},
+    {path: 'one.lawspec', content: `unit one
+
+function ${phrase} (value :: a) -> a is value end function
+
+end unit
+`},
+    {path: 'two.lawspec', content: `unit two
+
+function ${phrase} (value :: a) -> a is value end function
+
+end unit
+`},
+    {path: 'use.lawspec', content: `unit use\nimport one as first\nimport two as second\nlaw names is definition: first.${phrase} true = second.${phrase} true end definition end law
+end unit
+`},
   ];
-  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: []}, sources});
+  const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []}, sources});
   assert.deepEqual(result.diagnostics, []);
   for (const owner of ['one', 'two']) assert.ok(result.units.flatMap(unit => unit.declarations)
     .some(declaration => declaration.source?.unit === owner && declaration.source.name === phrase));
@@ -414,8 +453,13 @@ test('compiled source names preserve escaped phrase spelling, case and qualified
 test('set membership explanations recompile with identical typed obligations and finite outcomes', async () => {
   const {createCompiler} = await import('../api.mjs');
   const compiler = await createCompiler();
-  const content = 'unit readable\nlaw included is definition: true in #S{false, true} end end';
-  const request = {schemaVersion: 5, languageProfile: '1.0-rc.1', verification: {layers: ['exhaustive']},
+  const content = `unit readable
+
+law included is definition: true in #S{false, true} end definition end law
+
+end unit
+`;
+  const request = {schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: ['exhaustive']},
     sources: [{path: 'readable.lawspec', content}]};
   const result = await compiler.check(request);
   assert.deepEqual(result.diagnostics, []);
@@ -425,7 +469,8 @@ test('set membership explanations recompile with identical typed obligations and
   assert.match(text, /true in #S\{false, true\}/);
   assert.doesNotMatch(text, /lawspec_|Cons|EqSetItems/);
   const roundtrip = await compiler.check({...request, sources: [{path: 'readable.lawspec', content:
-    content + `\nlaw displayed is definition: ${text} end end`}]});
+    extendUnit(content, `\nlaw displayed is definition: ${text} end definition end law
+`)}]});
   assert.deepEqual(roundtrip.diagnostics, []);
   for (const checked of roundtrip.laws) {
     assert.equal(roundtrip.evidence.find(e => e.declaration === checked.id && e.stage === 'law')?.status, 'exhaustively-checked');

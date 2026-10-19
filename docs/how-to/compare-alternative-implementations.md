@@ -23,13 +23,14 @@ referenceRender :: Int32 -> Text
 law "|decimal renderers agree| is
   definition :
     apply law "|equivalent| render referenceRender
-  end
+  end definition
   example "|both renderers produce a negative decimal string| :
     x = -42
     expect render x = "-42"
     expect referenceRender x = "-42"
-  end
-end
+  end example
+end law
+end unit
 ```
 
 This expands to:

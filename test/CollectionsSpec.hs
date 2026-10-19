@@ -6,7 +6,7 @@ import Data.List (isInfixOf)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Core.Value (Value(..), compareValues, listValue)
-import LawSpec.Collections (usedCollections)
+import LawSpec.Collections (usedCollectionsCanonical)
 
 import LawSpec.Frontend (compileCore)
 import LawSpec.Discharge (dischargeEvidence)
@@ -14,8 +14,11 @@ import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Scalar (Scalar(..), textScalar)
 import LawSpec.Testing (planTesting, plannedUnits, plannedProperties, plannedProperty, generatorRequirements, generatorIndex, generatorPredicates)
 
+usedCollections :: [String] -> [String]
+usedCollections sources = usedCollectionsCanonical sources []
+
 source :: [String] -> Source
-source = Source "collections.lawspec" . unlines . ("unit example.collections" :)
+source body = Source "collections.lawspec" (unlines (["unit example.collections"] ++ body ++ ["end unit"]))
 
 sourceText :: [String] -> String
 sourceText lines' = let Source _ text = source lines' in text
@@ -31,7 +34,7 @@ rejects fragment lines' = case compileCore 64 defaultGeneration [source lines'] 
 -- | A law over checked definitions with a finite domain is evaluated by the
 -- compiler when its evidence is discharged; a false one is refuted.
 evaluated :: String -> String -> [String]
-evaluated left right = ["law `l` is definition is `for all` (b :: Bool) . " ++ left ++ " = " ++ right ++ " end end"]
+evaluated left right = ["law \"|l| is definition: for all (b :: Bool) => " ++ left ++ " = " ++ right ++ " end for all end definition end law"]
 
 holds :: [String] -> Expectation
 holds lines' = (compileCore 64 defaultGeneration [source lines'] >>= dischargeEvidence) `shouldSatisfy` isRight
@@ -50,43 +53,50 @@ int = ScalarValue . SInteger "Int32"
 test_collectionsAreTypedEvaluatedAndOrderedPortably :: Spec
 test_collectionsAreTypedEvaluatedAndOrderedPortably = describe "collections" $ do
   describe "generation" $
-    -- A sized stack drawn by filtering a stack of any size for size 3 is
-    -- rejected most of the time (Hypothesis's filter_too_much health check),
-    -- so its size must direct generation, as a user family's index does.
-    it "draws a size-indexed stack index-directed, never by filtering for its size" $
-      case compileCore 64 defaultGeneration [source ["law `sized` is definition is `for all` (s :: SizedStack 3 Int8) . prelude.sizedStackItems s = prelude.sizedStackItems s end end"]] >>= planTesting of
+    it "retains the size predicate when an explicit record payload needs checked generation" $
+      case compileCore 64 defaultGeneration [source [ "law sized is definition: for all (s :: SizedStack 3 Int8) => prelude.sizedStackItems s = prelude.sizedStackItems s end for all end definition end law" ]] >>= planTesting of
         Left ds -> expectationFailure (show ds)
-        Right plan -> [ (generatorIndex r, generatorPredicates r) | u <- plannedUnits plan, pp <- plannedProperties u
-                      , C.propertyName (plannedProperty pp) == "sized", r <- generatorRequirements pp ]
-          `shouldSatisfy` (\rs -> not (null rs) && all ((/= Nothing) . fst) rs)
+        Right plan -> [(generatorIndex r, null (generatorPredicates r)) | u <- plannedUnits plan, pp <- plannedProperties u,
+                      C.propertyName (plannedProperty pp) == "sized", r <- generatorRequirements pp]
+          `shouldBe` [(Nothing, False)]
   describe "the built-in unit" $ do
     it "is added only for the collections a source uses" $ do
-      usedCollections [sourceText ["f :: Int32 -> Set Int32"]] `shouldBe` ["Set", "Ordering"]
+      usedCollections [sourceText ["f :: Int32 -> SortedSet Int32"]] `shouldBe` ["Set", "Ordering"]
       usedCollections [sourceText ["f :: Int32 -> Int32"]] `shouldBe` []
-      usedCollections [sourceText ["law `l` is definition is prelude.size (prelude.stackOf [1]) = 1 end end"]] `shouldBe` ["Stack"]
+      usedCollections [sourceText [ "law \"|l| is definition : prelude.size (prelude.stackOf [1]) = 1 end definition end law" ]] `shouldBe` ["Stack"]
       usedCollections [sourceText ["f :: Int32 -> KeyVal Text Int32"]] `shouldBe` ["KeyVal", "Entry", "Ordering"]
     it "is shadowed by a type the source declares" $ do
-      usedCollections [sourceText ["type Stack is Empty end", "f :: Stack -> Int32"]] `shouldBe` []
-      accepts ["type Stack is | Empty | Push top :: Int8 end", "f :: Stack -> Int32", "g :: Int32 -> Set Int32"]
+      usedCollections [sourceText [ "type Stack is one of Empty end type\n"
+                                  , "f :: Stack -> Int32" ]] `shouldBe` []
+      accepts [ "type Stack is one of | Empty | Push  of type Int8 end type\n"
+              , "f :: Stack -> Int32"
+              , "g :: Int32 -> SortedSet Int32" ]
     it "is shadowed only in the source that declares the type" $ do
-      let own = Source "own.lawspec" (unlines ["unit example.own", "type Stack is | Empty | Push top :: Int8 end", "f :: Stack -> Int32"])
-          builtin = Source "builtin.lawspec" (unlines ["unit example.builtin", "g :: List Int8 -> Stack Int8"])
+      let own = Source "own.lawspec" (unlines [ "unit example.own"
+                                               ++ "\n", ""
+                                              , "type Stack is one of | Empty | Push  of type Int8 end type\n"
+                                              , "f :: Stack -> Int32"
+                                              , "\nend unit" ])
+          builtin = Source "builtin.lawspec" (unlines [ "unit example.builtin"
+                                                       ++ "\n", ""
+                                                      , "g :: List Int8 -> Stack Int8"
+                                                      , "\nend unit" ])
       usedCollections [text | Source _ text <- [own, builtin]] `shouldBe` ["Stack"]
       compileCore 64 defaultGeneration [own, builtin] `shouldSatisfy` isRight
   describe "typing" $ do
     it "accepts operations over each collection" $
       accepts
-        [ "f :: Set Int32 -> KeyVal Text Int32"
-        , "law `l` is definition is `for all` (s :: Set Int32) (m :: KeyVal Text Int32) (q :: Queue Int8) ."
-        , "  prelude.size (prelude.insert 1 s) >= prelude.size (prelude.keys m) - prelude.size q = true end end" ]
+        [ "f :: SortedSet Int32 -> KeyVal Text Int32"
+        , "law \"|l| is definition : for all (s :: SortedSet Int32) (m :: KeyVal Text Int32) (q :: Queue Int8) =>"
+        , "  prelude.size (prelude.sortedSetInsert 1 s) >= prelude.size (prelude.keys m) - prelude.size q = true end for all end definition end law" ]
     it "requires a portable order of set elements and keys" $
-      rejects "Keyed" ["law `l` is definition is `for all` (x :: Float64) . prelude.member x (prelude.setOf [x]) = true end end"]
+      rejects "Keyed" [ "law \"|l| is definition : for all (x :: Float64) => prelude.member x (prelude.sortedSetOf [x]) = true end for all end definition end law" ]
     it "hides the containers' internal constructors" $
-      rejects "SetItems" ["law `l` is definition is prelude.size (SetItems [1, 1]) = 2 end end"]
+      rejects "SetItems" [ "law \"|l| is definition : prelude.size (SetItems [1, 1]) = 2 end definition end law" ]
   describe "compile-time evaluation" $ do
     it "deduplicates and sorts a set" $ do
-      holds (evaluated "prelude.toList (prelude.setOf [3, 1, 3, 2])" "[1, 2, 3]")
-      refuted (evaluated "prelude.size (prelude.setOf [3, 1, 3])" "3")
+      holds (evaluated "prelude.toList (prelude.sortedSetOf [3, 1, 3, 2])" "[1, 2, 3]")
+      refuted (evaluated "prelude.size (prelude.sortedSetOf [3, 1, 3])" "3")
     it "keeps the latest value for a key" $
       holds (evaluated "prelude.lookup \"a\" (prelude.keyValOf [Entry \"a\" 1, Entry \"a\" 2])" "Just 2")
     it "keeps queues first in, first out and stacks last in, first out" $ do

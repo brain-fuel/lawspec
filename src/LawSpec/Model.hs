@@ -448,8 +448,10 @@ prettyExpr (ScalarLit s) = prettyScalar s
 prettyExpr (ConstructLit name fields) = unwords (name : map ((\value -> "(" ++ prettyExpr value ++ ")")) fields)
 prettyExpr (AllPayloadsExpr value predicates) = "allPayloads (" ++ prettyExpr value ++ ") [" ++ intercalate ", " [binder ++ " -> " ++ prettyExpr body | (binder,body) <- predicates] ++ "]"
 prettyExpr (AllElementsExpr value binder predicate) = "allElements (" ++ prettyExpr value ++ ") (" ++ binder ++ " -> " ++ prettyExpr predicate ++ ")"
-prettyExpr (MatchExpr value branches) = "match " ++ prettyExpr value ++ " with " ++ concat
-  ["| " ++ unwords (tag:names) ++ " -> " ++ prettyExpr body ++ " " | MatchBranch tag names body <- branches] ++ "end"
+prettyExpr (MatchExpr value [MatchBranch tag [name] body]) | tag == letTag =
+  "let " ++ name ++ " = " ++ prettyExpr value ++ " in " ++ prettyExpr body ++ " end let"
+prettyExpr (MatchExpr value branches) = "first matching case of " ++ prettyExpr value ++ ": " ++ concat
+  ["when " ++ unwords (tag:names) ++ " then " ++ prettyExpr body ++ " " | MatchBranch tag names body <- branches] ++ "end case"
 prettyExpr (ListLit xs) = "[" ++ intercalate ", " (map prettyExpr xs) ++ "]"
 prettyExpr (RecordLit fields) | Just values <- positionalItems fields = "(" ++ intercalate ", " (map prettyExpr values) ++ ")"
 prettyExpr (RecordLit fields) = "record{" ++ intercalate ", "

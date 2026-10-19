@@ -3,3 +3,4 @@ unit example.rejection
 function number (value of type Bool) -> Integer is
   value
 end function
+end unit

@@ -1,6 +1,6 @@
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, strictLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, when, forM_, foldM, forM)
@@ -1145,6 +1145,16 @@ freeVariables expression = case expression of
   Match value branches -> freeVariables value ++ concat
     [[name | name <- freeVariables body, name `notElem` binders] | (binders,body) <- branches]
   _ -> concatMap freeVariables (children expression)
+
+-- | Zeta reduction of a variable alias needs no additional definedness check.
+-- Every other strict binding retains its prefix, even when the body ignores it.
+-- See Lean's local-definition reduction; unlike total kernel terms, this proof
+-- language also represents computations whose definedness must be established.
+strictLet :: Id -> Proof -> Proof -> Proof
+strictLet binder value body = case value of
+  Variable _ -> substituted
+  _ -> Match value [([], substituted)]
+  where substituted = substituteProof (M.singleton binder value) body
 
 -- | Capture-avoiding substitution is required even though ordinary compiler IDs
 -- are unique: independently supplied Core may reuse binder IDs across scopes.

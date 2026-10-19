@@ -1,19 +1,20 @@
 unit constructor.boundaries
 
 -- Boundary planning must combine fields, not pair identical Int8 extremes.
-type Gap is
-  Gap first :: Int8 second :: (n :: Int8 where n > first)
-end
+type Gap is a record{
+   first :: Int8 second :: (n :: Int8 where n > first)}
+end type
 
 -- A matching description does not identify the required Symbol fixture.
-type Identity is
-  Identity value :: (s :: Symbol where s == symbol("fixture", "same"))
-end
+type Identity is a record{
+   value :: (s :: Symbol where s = symbol("fixture", "same"))}
+end type
 
-law `dependent gaps have witnesses` is
-  definition is `for all` (x :: Gap) . x = x end
-end
+law "|dependent gaps have witnesses| is
+  definition : for all (x :: Gap) => x = x end for all end definition
+end law
 
-law `identity fixtures have witnesses` is
-  definition is `for all` (x :: Identity) . x = x end
-end
+law "|identity fixtures have witnesses| is
+  definition : for all (x :: Identity) => x = x end for all end definition
+end law
+end unit

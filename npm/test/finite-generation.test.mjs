@@ -14,7 +14,7 @@ test('large finite Python generation retains every Int8 candidate at both widths
     const compiler=await createCompiler();
     const results=[];
     for(const machineBits of [32,64])for(const minify of [false,true]) {
-      const result=await compiler.planGeneration({schemaVersion:5,languageProfile:'1.0-rc.1',
+      const result=await compiler.planGeneration({schemaVersion:5,languageProfile:'1.0-rc.2',
         verification:{layers:['property','examples']},machineBits,minify,target:'python',
         sources:[{path:'finite-arithmetic.lawspec',content}]});
       assert.deepEqual(result.diagnostics,[]);

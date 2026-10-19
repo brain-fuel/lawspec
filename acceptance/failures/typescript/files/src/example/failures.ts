@@ -21,6 +21,6 @@ export function refund(value0: number): number {
 
 export async function settle(value0: number): Promise<number> {
   if (value0 < 0) throw new ls.Fail(new data.PaymentErrorBlocked());
-  if (value0 === 0) throw new ls.Fail(new data.PaymentErrorDeclined('there is nothing to settle'));
+  if (value0 === 0) throw new ls.Fail(new data.PaymentErrorDeclined(new data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7('there is nothing to settle')));
   return value0;
 }

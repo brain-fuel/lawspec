@@ -8,11 +8,15 @@ import os from "node:os";
 const exec = promisify(execFile);
 const cli = new URL("../bin/lawspec.mjs", import.meta.url).pathname;
 const spec = [
-  "unit cache.example",
+  "unit cache.example\n\n",
   "double :: Int32 -> Int32",
-  "function twice (x :: Integer) -> Integer is x + x end function",
-  "law twiceDoubles is definition: for all (x :: Integer) => twice x must be x * 2 end end end",
-  "law deterministic is definition: for all (x :: Int32) => double x must be double x end end end",
+  `function twice (x :: Integer) -> Integer is x + x end function
+`,
+  `law twiceDoubles is definition: for all (x :: Integer) => twice x must be x * 2 end for all end definition end law
+`,
+  `law deterministic is definition: for all (x :: Int32) => double x must be double x end for all end definition end law
+`,
+  "end unit",
 ].join("\n") + "\n";
 async function project(t, config = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "lawspec-cache-"));
@@ -20,7 +24,7 @@ async function project(t, config = {}) {
   await mkdir(path.join(root, "laws"));
   await writeFile(path.join(root, "laws/example.lawspec"), spec);
   await writeFile(path.join(root, "lawspec.json"), JSON.stringify({
-    version: 2, languageProfile: '1.0-rc.1', verification: {layers: []}, sources: ["laws"], targets: [{ language: "python", root: "." }], ...config,
+    version: 2, languageProfile: '1.0-rc.2', verification: {layers: []}, sources: ["laws"], targets: [{ language: "python", root: "." }], ...config,
   }));
   return root;
 }

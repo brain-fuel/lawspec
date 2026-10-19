@@ -7,7 +7,7 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Eval as E
 import qualified LawSpec.Core.Validate as V
 import LawSpec.Frontend
-import LawSpec.Testing (planTesting)
+import LawSpec.Testing (planTesting, plannedUnits, plannedProperties, finiteCases)
 import qualified LawSpec.Model as S
 import Data.Either (isLeft)
 import qualified Data.Map.Strict as M
@@ -44,7 +44,7 @@ test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundar
         bad = C.Expr (C.scalarType "Int8") (C.Binary C.Add (C.Numeric (C.scalarType "Int8")) lit lit) origin
     V.validateExpression 64 M.empty M.empty bad `shouldSatisfy` isLeft
   it "short circuits partial exact arithmetic" $ do
-    let s = Source "core" "unit core\nlaw `short circuit` is definition is `for all` (x :: Bool) . false && 1 / 0 == 0 = false end end"
+    let s = Source "core" "unit core\nlaw \"|short circuit| is definition : for all (x :: Bool) => (false && 1 / 0 == 0) = false end for all end definition end law\nend unit\n"
     case compileCore 64 defaultGeneration [s] of
       Left ds -> expectationFailure (show ds)
       Right c -> mapM_ (\p -> E.evaluateProposition 64 (\_ _ -> Left "unexpected adapter") [] (C.propertyBody p) `shouldBe` Right True) (concatMap C.unitProperties (C.programUnits c))
@@ -70,32 +70,34 @@ test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundar
         E.evaluate 64 (\_ _ -> Right (SInteger "Int8" 0)) [(C.Id "x",SInteger "Int8" 127)] e `shouldSatisfy` isLeft
       other -> expectationFailure (show other)
   it "preserves property and binder identities when unrelated laws are inserted" $ do
-    let header = "unit stable\nf :: Int8 -> Int8\n"
-        law n = "law `" ++ n ++ "` is definition is `for all` (x :: Int8) . f x = x end end\n"
+    let header = "unit stable\n\nf :: Int8 -> Int8\n"
+        law n = "law " ++ n ++ " is definition: for all (x :: Int8) => f x = x end for all end definition end law\n"
         target c = [(C.propertyId p,map (C.binderId . C.quantifiedBinder) (C.propertyInputs p)) | u <- C.programUnits c,p <- C.unitProperties u,C.propertyName p == "target"]
-    fmap target (compileCore 64 defaultGeneration [Source "stable" (header ++ law "target")])
-      `shouldBe` fmap target (compileCore 64 defaultGeneration [Source "stable" (header ++ law "unrelated" ++ law "target")])
+    fmap target (compileCore 64 defaultGeneration [Source "stable" (header ++ law "target" ++ "end unit")])
+      `shouldBe` fmap target (compileCore 64 defaultGeneration [Source "stable" (header ++ law "unrelated" ++ law "target" ++ "end unit")])
   it "separates language checking from uninhabited-domain execution planning" $ do
-    let source = Source "empty" "unit empty\nlaw `empty` is definition is `for all` (x :: Bool where false) . x = x end end"
+    let source = Source "empty" "unit empty\n\nlaw \"|empty| is definition : for all (x :: Bool where false) => x = x end for all end definition end law\nend unit\n"
     case compileCore 64 defaultGeneration [source] of
       Left ds -> expectationFailure (show ds)
-      Right core -> planTesting core `shouldSatisfy` isLeft
+      Right core -> case planTesting core of
+        Left ds -> expectationFailure (show ds)
+        Right plan -> [finiteCases p | u <- plannedUnits plan, p <- plannedProperties u] `shouldBe` [Just []]
 
   it "preserves explicitly constructed float precision and exact literal comparison" $ do
     let expressions = ["float32Bits(\"3f800000\") = float64Bits(\"3ff0000000000001\")", "1 = 0.1"]
-    mapM_ (\body -> case compileCore 64 defaultGeneration [Source "precision" ("unit precision\nlaw `different` is definition is `for all` (marker :: Unit) . " ++ body ++ " end end")] of
+    mapM_ (\body -> case compileCore 64 defaultGeneration [Source "precision" ("unit precision\nlaw \"|different| is definition : for all (marker :: Unit) => " ++ body ++ " end for all end definition end law\nend unit\n")] of
       Left ds -> expectationFailure (show ds)
       Right c -> mapM_ (\p -> E.evaluateProposition 64 (\_ _ -> Left "unexpected adapter") [] (C.propertyBody p) `shouldBe` Right False) (concatMap C.unitProperties (C.programUnits c))) expressions
 
   it "retains parsed expression and declaration ranges through elaboration" $ do
-    let source = Source "ranges.lawspec" "unit ranges\nf :: Int8 -> Integer\nlaw `range` is definition is `for all` (x :: Int8) . f x = x + 1 end end"
+    let source = Source "ranges.lawspec" "unit ranges\n\nf :: Int8 -> Integer\nlaw \"|range| is definition : for all (x :: Int8) => f x = x + 1 end for all end definition end law\nend unit\n"
     case compileCore 64 defaultGeneration [source] of
       Left ds -> expectationFailure (show ds)
       Right c -> do
         let u = head (C.programUnits c)
         case C.declarationOrigin (head (C.unitDeclarations u)) of
           C.SourceSpan (Span begin end) -> do
-            begin `shouldBe` Location "ranges.lawspec" 2 1
+            begin `shouldBe` Location "ranges.lawspec" 3 1
             line end `shouldSatisfy` (>= 2)
           other -> expectationFailure (show other)
         case C.propertyBody (head (C.unitProperties u)) of
@@ -103,7 +105,7 @@ test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundar
             mapM_ (\e -> case C.expressionOrigin e of
               C.SourceSpan (Span begin end) -> do
                 file begin `shouldBe` "ranges.lawspec"
-                line begin `shouldBe` 3
+                line begin `shouldBe` 4
                 (line end,column end) `shouldSatisfy` (> (line begin,column begin))
               other -> expectationFailure (show other)) [call,addition]
             case C.expressionNode addition of
@@ -112,11 +114,11 @@ test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundar
           other -> expectationFailure (show other)
 
   it "requires checked to observe an evaluated result" $ do
-    let source = Source "checked" "unit checked\nf :: Int8 -> Integer\nlaw `bad` is definition is `for all` (x :: Int8) . prelude.checked f end end"
+    let source = Source "checked" "unit checked\n\nf :: Int8 -> Integer\nlaw \"|bad| is definition : for all (x :: Int8) => prelude.checked f end for all end definition end law\nend unit\n"
     compileCore 64 defaultGeneration [source] `shouldSatisfy` isLeft
 
   it "rejects generator bounds that speculate a partial expression" $ do
-    let source = Source "bound" "unit bound\nlaw `bound` is definition is `for all` (x :: Int8 where x > 0) . x = x end end"
+    let source = Source "bound" "unit bound\n\nlaw \"|bound| is definition : for all (x :: Int8 where x > 0) => x = x end for all end definition end law\nend unit\n"
     case compileCore 64 defaultGeneration [source] of
       Left ds -> expectationFailure (show ds)
       Right c -> do
@@ -128,11 +130,11 @@ test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundar
         V.validateProgram corrupt `shouldSatisfy` isLeft
 
   it "keeps quoted law names from impersonating binder identity segments" $ do
-    let source = Source "identities" "unit identities\nlaw `name::input::oops%` is definition is `for all` (x :: Int8) . x = x end end"
+    let source = Source "identities" "unit identities\n\nlaw \"|name::input::oops%| is definition : for all (x :: Int8) => x = x end for all end definition end law\nend unit\n"
     case compileCore 64 defaultGeneration [source] of
       Left ds -> expectationFailure (show ds)
       Right c -> case C.programUnits c of
         [C.MkUnit{C.unitProperties=[p]}] -> do
-          C.idText (C.propertyId p) `shouldBe` "identities::law::name%3A%3Ainput%3A%3Aoops%25"
-          map (C.idText . C.binderId . C.quantifiedBinder) (C.propertyInputs p) `shouldBe` ["identities::law::name%3A%3Ainput%3A%3Aoops%25::input::0"]
+          C.idText (C.propertyId p) `shouldBe` "identities::law::\"|name%3A%3Ainput%3A%3Aoops%25|"
+          map (C.idText . C.binderId . C.quantifiedBinder) (C.propertyInputs p) `shouldBe` ["identities::law::\"|name%3A%3Ainput%3A%3Aoops%25|::input::0"]
         other -> expectationFailure (show other)

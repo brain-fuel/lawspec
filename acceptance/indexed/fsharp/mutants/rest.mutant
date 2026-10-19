@@ -1,6 +1,6 @@
 @@ src/Example/Arithmetic.fs
 <<<<<<<
-{ Rest.Items = value0 }
+{ Rest.Value = value0 }
 =======
-{ Rest.Items = (match value0 with Cell(_, tail) -> tail | End -> value0) }
+{ Rest.Value = (match value0 with Cell({ Head = _; Tail = tail }) -> tail | End -> value0) }
 >>>>>>>

@@ -23,9 +23,9 @@ import qualified Data.Aeson.KeyMap as K
 import Data.Foldable (toList)
 
 compile bits body=compileCoreCanonical bits S.defaultGeneration
-  [S.Source "smt.lawspec" ("unit smt\n"++body)]
+  [S.Source "smt.lawspec" ("unit smt\n\n"++body ++ "\nend unit\n")]
 tasks bits body=compile bits body >>= SMT.proofTasks
-law text="law selected is definition: "++text++" end end"
+law text="law selected is definition: "++text++" end definition end law\n"
 solver action=do
   explicit<-lookupEnv "LAWSPEC_Z3"
   installed<-maybe (findExecutable "z3") (pure . Just) explicit
@@ -43,32 +43,32 @@ checkAt bits expected body=solver $ \binary -> do
 test_smtTasks=describe "typed SMT obligations" $ do
   it "proves nonlinear checked definitions with Z3 rather than a custom arithmetic extension" $
     checkResult "unsat" $ unlines [
-      "function square (n :: Integer) -> Integer is n * n end function",
-      law "for all (n :: Integer) => square n >= 0 end"]
+      "function square (n :: Integer) -> Integer is n * n end function\n",
+      law "for all (n :: Integer) => square n >= 0 end for all"]
   it "retains the order of dependent universal and existential binders" $ do
-    checkResult "unsat" (law "for all (n :: Integer) => there exists (next :: Integer where next > n) such that next = n + 1 end end")
-    checkResult "sat" (law "there exists (next :: Integer) such that for all (n :: Integer) => next > n end end")
+    checkResult "unsat" (law "for all (n :: Integer) => there exists (next :: Integer where next > n) such that next = n + 1 end exists end for all")
+    checkResult "sat" (law "there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists")
   it "proves nonexistence separately from failure to find a candidate" $
-    checkResult "unsat" (law "there does not exist (n :: Integer) such that n * n < 0 end")
+    checkResult "unsat" (law "there does not exist (n :: Integer) such that n * n < 0 end exists")
   it "keeps empty universal and existential domains distinct" $ do
-    checkResult "unsat" (law "for all (n :: Integer where false) => false end")
-    checkResult "sat" (law "there exists (n :: Integer where false) such that true end")
+    checkResult "unsat" (law "for all (n :: Integer where false) => false end for all")
+    checkResult "sat" (law "there exists (n :: Integer where false) such that true end exists")
   it "includes unsigned and profile-sized carrier bounds" $ do
-    checkResult "sat" (law "for all (n :: Whole) => n > 0 end")
-    checkResult "unsat" (law "for all (n :: Whole) => n >= 0 end")
-    checkResult "sat" (law "for all (n :: UInt8) => n < 255 end")
-    checkResult "unsat" (law "for all (n :: UInt8) => n >= 0 and n <= 255 end")
-    checkResult "unsat" (law "for all (n :: UIntSize) => n >= 0 end")
-    checkAt 32 "unsat" (law "for all (n :: UIntSize) => n <= 4294967295 end")
-    checkAt 64 "sat" (law "for all (n :: UIntSize) => n <= 4294967295 end")
+    checkResult "sat" (law "for all (n :: Whole) => n > 0 end for all")
+    checkResult "unsat" (law "for all (n :: Whole) => n >= 0 end for all")
+    checkResult "sat" (law "for all (n :: UInt8) => n < 255 end for all")
+    checkResult "unsat" (law "for all (n :: UInt8) => n >= 0 and n <= 255 end for all")
+    checkResult "unsat" (law "for all (n :: UIntSize) => n >= 0 end for all")
+    checkAt 32 "unsat" (law "for all (n :: UIntSize) => n <= 4294967295 end for all")
+    checkAt 64 "sat" (law "for all (n :: UIntSize) => n <= 4294967295 end for all")
   it "does not prove a reflexive equality whose operands divide by zero" $
     checkResult "sat" (law "1 / 0 = 1 / 0")
   it "preserves short-circuit and conditional definedness" $ do
     checkResult "unsat" (law "not (false and 1 / 0 = 1)")
     checkResult "unsat" (law "(if false then 1 / 0 else rational(1, 2) end if) = rational(1, 2)")
-    checkResult "sat" (law "for all (n :: Integer) => not (n / (n - n) = 0 and false) end")
+    checkResult "sat" (law "for all (n :: Integer) => not (n / (n - n) = 0 and false) end for all")
   it "does not prove nonexistence by treating undefined candidates as false" $
-    checkResult "sat" (law "there does not exist (n :: Integer) such that n / (n - n) = 0 end")
+    checkResult "sat" (law "there does not exist (n :: Integer) such that n / (n - n) = 0 end exists")
   it "does not discard an undefined unused argument" $
     checkResult "sat" ("function keep (n :: Rational) -> Bool is true end function\n"++law "keep (1 / 0) must be true")
   it "checks a callee's refined precondition instead of assuming it" $
@@ -79,28 +79,28 @@ test_smtTasks=describe "typed SMT obligations" $ do
     checkResult "unsat" (law "prelude.quot (-7) 3 = -2 and prelude.rem (-7) 3 = -1 and prelude.quot 7 (-3) = -2 and prelude.rem 7 (-3) = 1")
     checkResult "sat" (law "prelude.quot (-7) 3 = -3")
   it "requires lossless in-range exact conversions" $ do
-    checkResult "sat" (law "for all (n :: Integer) => n = 256 implies prelude.UInt8 n = prelude.UInt8 n end")
-    checkResult "sat" (law "for all (n :: Integer) => n = 1 implies prelude.Integer (n / 2) = 0 end")
+    checkResult "sat" (law "for all (n :: Integer) => n = 256 implies prelude.UInt8 n = prelude.UInt8 n end for all")
+    checkResult "sat" (law "for all (n :: Integer) => n = 1 implies prelude.Integer (n / 2) = 0 end for all")
     checkResult "unsat" (law "prelude.Integer (rational(-4, 2)) = -2")
   it "never quantifies Rational as Real and thereby invents an irrational witness" $
-    case tasks 64 (law "there exists (n :: Rational) such that n * n = 2 end") of
+    case tasks 64 (law "there exists (n :: Rational) such that n * n = 2 end exists") of
       Left ds->expectationFailure (show ds)
       Right [task]->SMT.taskQuery task `shouldSatisfy` either (isInfixOf "Rational quantification") (const False)
       Right _->expectationFailure "missing Rational task"
   it "does not reinterpret IEEE values as exact arithmetic" $
-    case tasks 64 (law "for all (n :: Float64) => n = n end") of
+    case tasks 64 (law "for all (n :: Float64) => n = n end for all") of
       Left ds->expectationFailure (show ds)
       Right [task]->SMT.taskQuery task `shouldSatisfy` isLeft
       Right _->expectationFailure "missing IEEE task"
   it "does not invent implementations for native declarations" $
-    case tasks 64 ("external :: Integer -> Integer\n"++law "for all (n :: Integer) => external n = external n end") of
+    case tasks 64 ("external :: Integer -> Integer\n"++law "for all (n :: Integer) => external n = external n end for all") of
       Left ds->expectationFailure (show ds)
       Right [task]->SMT.taskQuery task `shouldSatisfy` isLeft
       Right _->expectationFailure "missing native task"
   it "binds tasks to the exact typed program, law, query and machine profile" $ do
-    a<-either (fail . show) (pure . head) (tasks 64 (law "for all (n :: Integer) => n + 1 > n end"))
-    b<-either (fail . show) (pure . head) (tasks 32 (law "for all (n :: Integer) => n + 1 > n end"))
-    c<-either (fail . show) (pure . head) (tasks 64 (law "for all (n :: Integer) => n + 2 > n end"))
+    a<-either (fail . show) (pure . head) (tasks 64 (law "for all (n :: Integer) => n + 1 > n end for all"))
+    b<-either (fail . show) (pure . head) (tasks 32 (law "for all (n :: Integer) => n + 1 > n end for all"))
+    c<-either (fail . show) (pure . head) (tasks 64 (law "for all (n :: Integer) => n + 2 > n end for all"))
     SMT.taskFingerprint a `shouldNotBe` SMT.taskFingerprint b
     SMT.taskFingerprint a `shouldNotBe` SMT.taskFingerprint c
     SMT.taskFingerprint a `shouldNotBe` SMT.taskFingerprint a{SMT.taskLaw=C.Id "other"}
@@ -108,26 +108,26 @@ test_smtTasks=describe "typed SMT obligations" $ do
   it "shares typed call arguments instead of duplicating their source terms exponentially" $ do
     let repeated=iterate (\body->"twice ("++body++")") "n" !! 40
         source="function twice (n :: Integer) -> Integer is n + n end function\n"++
-          law ("for all (n :: Integer) => "++repeated++" = n * 1099511627776 end")
+          law ("for all (n :: Integer) => "++repeated++" = n * 1099511627776 end for all")
     checkResult "unsat" source
     result<-either (fail . show) (pure . head) (tasks 64 source)
     script<-either fail pure (SMT.taskQuery result)
     length script `shouldSatisfy` (<100000)
   it "leaves no-layer requests unverified and still performs mandatory definition validation" $ do
-    let request content=object ["schemaVersion".= (5::Int),"languageProfile".= ("1.0-rc.1"::String),
+    let request content=object ["schemaVersion".= (5::Int),"languageProfile".= ("1.0-rc.2"::String),
           "method".= ("proofTasks"::String),"verification".=object ["layers".= ([]::[String])],
           "sources".=[object ["path".= ("smt.lawspec"::String),"content".=content]]]
-        response body=decode (API.dispatch (encode (request ("unit smt\n"++body))))::Maybe Value
+        response body=decode (API.dispatch (encode (request ("unit smt\n\n"++body ++ "\nend unit\n"))))::Maybe Value
     case response (law "true") of
       Just (Object result)->K.lookup "proofTasks" result `shouldBe` Just (toJSON ([]::[Int]))
       _->expectationFailure "missing proof task response"
-    case response "function broken (n :: Integer) -> Rational is 1 / 0 end function" of
+    case response "function broken (n :: Integer) -> Rational is 1 / 0 end function\n" of
       Just (Object result)->K.lookup "diagnostics" result `shouldSatisfy` maybe False (/=toJSON ([]::[Int]))
       _->expectationFailure "missing mandatory failure"
   it "does not let prepared tasks reuse or overwrite completed optional proof cache entries" $ do
-    let request method=object ["schemaVersion".= (5::Int),"languageProfile".= ("1.0-rc.1"::String),
+    let request method=object ["schemaVersion".= (5::Int),"languageProfile".= ("1.0-rc.2"::String),
           "method".= (method::String),"verification".=object ["layers".= ["proof"::String]],
-          "sources".=[object ["path".= ("smt-cache.lawspec"::String),"content".= ("unit smt\n"++law "true")]]]
+          "sources".=[object ["path".= ("smt-cache.lawspec"::String),"content".= ("unit smt\n\n"++law "true" ++ "\nend unit\n")]]]
         status method=case decode (API.dispatch (encode (request method)))::Maybe Value of
           Just (Object result) | Just (Array rows)<-K.lookup "evidence" result ->
             [K.lookup "status" row | Object row<-toList rows,K.lookup "stage" row==Just (String "law")]
@@ -138,12 +138,12 @@ test_smtTasks=describe "typed SMT obligations" $ do
   it "agrees with independent finite existential and dependent-domain oracles" $ do
     forM_ [0..12::Integer] $ \target -> do
       let exists=any (\n->n*n==target) [-3..3]
-          body="(n :: Int8 where n >= -3 and n <= 3) such that n * n = "++show target++" end"
+          body="(n :: Int8 where n >= -3 and n <= 3) such that n * n = "++show target++" end exists"
       checkResult (if exists then "unsat" else "sat") (law ("there exists "++body))
       checkResult (if exists then "sat" else "unsat") (law ("there does not exist "++body))
     let forallExists predicate=all (\x -> any (predicate x) [x,x+1]) [-3..3::Integer]
         body relationship=law ("for all (x :: Int8 where x >= -3 and x <= 3) => "++
-          "there exists (y :: Int8 where y >= x and y <= x + 1) such that "++relationship++" end end")
+          "there exists (y :: Int8 where y >= x and y <= x + 1) such that "++relationship++" end exists end for all")
     checkResult (if forallExists (\x y->y*y>=x*x) then "unsat" else "sat") (body "y * y >= x * x")
     checkResult (if forallExists (\x y->y>x && y*y>=x*x) then "unsat" else "sat") (body "y > x and y * y >= x * x")
   it "prepares the four-law arithmetic demonstration for Z3 and every native target" $ solver $ \binary -> do

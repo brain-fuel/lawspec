@@ -1,6 +1,6 @@
 // Generated from templates/npm/test/predicates.test.mjs by lawspec-dev generate. Do not edit.
-// Frozen 0.24 fixtures enter through the explicit migration interface.
-import {legacyCheck, legacyGeneration} from './legacy-input.mjs';
+// Conformance fixtures use the current grammar.
+import {checkInput, generateInput} from './compiler-input.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -10,7 +10,7 @@ import path from "node:path";
 import { createCompiler } from "../api.mjs";
 const compiler = await createCompiler();
 const check = (content) =>
-  legacyCheck(compiler, { sources: [{ path: "predicates.lawspec", content }] });
+  checkInput(compiler, { sources: [{ path: "predicates.lawspec", content }] });
 
 test("port predicates, reusable guards and Bool literals survive the public API", async () => {
   const content = await readFile(
@@ -54,22 +54,36 @@ test("port predicates, reusable guards and Bool literals survive the public API"
 
 test("Bool equality, predicate laws, nested conditions and generic wrappers type-check", async () => {
   for (const definition of [
-    "`satisfies` f",
-    "`equivalent` f f",
-    "`for all` (x :: Bool) . f x",
-    "`for all` (x :: Bool) . x implies f x implies true",
-    "`for all` (x :: Bool) . true implies f x = false",
+    'apply law "|satisfies| f',
+    'apply law "|equivalent| f f',
+    "for all (x :: Bool) => f x end for all",
+    "for all (x :: Bool) => x implies f x implies true end for all",
+    "for all (x :: Bool) => true implies f x = false end for all",
   ])
     assert.deepEqual(
       (
         await check(
-          `unit flags\nf :: Bool -> Bool\nlaw \`check\` is definition is ${definition} end example \`false flag\` is x = false expect f x = true end end`,
+          `unit flags
+
+f :: Bool -> Bool
+law "|check| is definition : ${definition} end definition example "|false flag| : x = false expect f x = true end example end law
+
+end unit
+`,
         )
       ).diagnostics,
       [],
     );
   const nested = await check(
-    "unit nested\np :: Int32 -> Bool\nf :: Int32 -> Int32\nlaw `guarded` (p :: a -> Bool) (f :: a -> a) requires Eq a is definition is `for all` (x :: a) . p x implies p (f x) implies f x = x end end\nlaw `use` is definition is `guarded` p f end end",
+    `unit nested
+
+p :: Int32 -> Bool
+f :: Int32 -> Int32
+law "|guarded| (p :: a -> Bool) (f :: a -> a) requires Eq a is definition : for all (x :: a) => p x implies p (f x) implies f x = x end for all end definition end law
+law "|use| is definition : apply law "|guarded| p f end definition end law
+
+end unit
+`,
   );
   assert.deepEqual(nested.diagnostics, []);
   assert.equal(nested.laws[0].assertion.body.kind, "implies");
@@ -85,17 +99,21 @@ test("generated implications short-circuit in order, evaluate once, and keep exp
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   const source = `unit conditions
+
 first :: Int32 -> Bool
 second :: Int32 -> Bool
 result :: Int32 -> Int32
-law \`guarded\` is
- definition is \`for all\` (x :: Int32) . first x implies second x implies result x = x end
- example \`outer false\` is x = -1 expect first x = false end
- example \`inner false\` is x = 10 expect second x = false end
- example \`both true\` is x = 3 expect result x = 3 end
-end`;
+law "|guarded| is
+ definition : for all (x :: Int32) => first x implies second x implies result x = x end for all end definition
+ example "|outer false| : x = -1 expect first x = false end example
+ example "|inner false| : x = 10 expect second x = false end example
+ example "|both true| : x = 3 expect result x = 3 end example
+end law
+
+end unit
+`;
   async function generate(content) {
-    const r = await legacyGeneration(compiler, {
+    const r = await generateInput(compiler, {
       target: "javascript",
       sources: [{ path: "conditions.lawspec", content }],
     });
@@ -117,7 +135,7 @@ process.on('exit',()=>console.log('CALLS='+calls.join(',')));`;
       [
         "--test",
         "--test-name-pattern",
-        `example: ${name}`,
+        `example:.*${name}`,
         "test/conditions.lawspec.test.mjs",
       ],
       { cwd: root, env },

@@ -10,12 +10,16 @@ import {createCompiler} from '../api.mjs';
 import {targets,templates} from '../templates.mjs';
 
 const compiler=await createCompiler();
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['property']}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['property']}};
 const source=payload=>`unit nativeFailures
+
  type Message (a :: Type) is a record{value :: a} end type
  type Problem is one of | Declined of type ${payload} | Blocked end type
  charge :: Int32 -> Int32 fails with Problem
- law declined is definition: charge -1 fails with Declined _ end end`;
+ law declined is definition: charge -1 fails with Declined _ end definition end law
+
+end unit
+`;
 const request=(target,payload='record{message :: (s :: Text where s != "")}')=>({...options,target,
   sources:[{path:'failures.lawspec',content:source(payload)}],nativeBindings:{
     failures:[{native:['erlang','gleam'].includes(target)?['declined']:target==='elixir'?['Application','Declined']:['application','Declined'],
@@ -40,7 +44,7 @@ const dependencies=new URL('../../.integration/javascript/node_modules',import.m
 test('native mapped record messages cross refinements and retain their actual text',
   {skip:!existsSync(path.join(dependencies,'fast-check'))&&'requires the JavaScript acceptance dependencies'},async()=>{
     const input=request('javascript');
-    input.sources[0].content=input.sources[0].content.replace('Declined _ end end','Declined record{message = _} message contains "declined" end end');
+    input.sources[0].content=input.sources[0].content.replace('Declined _ end definition end law','Declined record{message = _} message contains "declined" end definition end law');
     const result=await compiler.planGeneration(input);assert.deepEqual(result.diagnostics,[]);
     const root=await mkdtemp(path.join(tmpdir(),'lawspec-native-failure-products-'));
     try{

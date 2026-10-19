@@ -1,4 +1,4 @@
-expect: Logs: a new log takes its first record at offset zero [native]
+expect: Logs: a new log takes its first record at offset zero| [native]
 @@ src/Example/Composition.swift
 <<<<<<<
             return Int64(store.logs[log]!.count - 1)

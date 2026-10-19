@@ -8,7 +8,7 @@ const compiler=await createCompiler();
 const path='test/fixtures/canonical-record-predicate-functions.lawspec';
 const content=await readFile(new URL('../../'+path,import.meta.url),'utf8');
 const sources=[{path,content}];
-const options={schemaVersion:5,languageProfile:'1.0-rc.1',verification:{layers:['exhaustive','examples']}};
+const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['exhaustive','examples']}};
 const targets=['java','python','javascript','typescript','go','haskell','kotlin','rust','erlang','elixir','gleam','fsharp','csharp','scala','groovy','clojure','swift'];
 
 test('checked predicates in structural record fields retain their obligations across targets, widths and layouts',async()=>{
@@ -32,56 +32,86 @@ test('original record predicate calls retain type, precondition, scope and runti
   const invalid=[
   {
     "expected": "definition",
-    "body": "function keep (n :: Bool) -> Bool is true end function\nfunction invalid (input :: record{value :: (n :: UInt8 where keep n)}) -> Bool is true end function"
+    "body": `function keep (n :: Bool) -> Bool is true end function
+function invalid (input :: record{value :: (n :: UInt8 where keep n)}) -> Bool is true end function
+`
   },
   {
     "expected": "total",
-    "body": "function keep (n :: (v :: UInt8 where v > 0)) -> Bool is true end function\nfunction invalid (input :: record{value :: (n :: UInt8 where keep n)}) -> Bool is true end function"
+    "body": `function keep (n :: (v :: UInt8 where v > 0)) -> Bool is true end function
+function invalid (input :: record{value :: (n :: UInt8 where keep n)}) -> Bool is true end function
+`
   },
   {
     "expected": "definition",
-    "body": "function keep (n :: Bool) -> Bool is true end function\ntype Number is a record{value :: (n :: UInt8 where keep n)} end type"
+    "body": `function keep (n :: Bool) -> Bool is true end function
+type Number is a record{value :: (n :: UInt8 where keep n)} end type
+`
   },
   {
     "expected": "definition",
-    "body": "function keep (n :: Bool) -> Bool is true end function\nfunction invalid (input :: record{inner :: record{value :: (n :: UInt8 where keep n)}}) -> Bool is true end function"
+    "body": `function keep (n :: Bool) -> Bool is true end function
+function invalid (input :: record{inner :: record{value :: (n :: UInt8 where keep n)}}) -> Bool is true end function
+`
   },
   {
     "expected": "data-type",
-    "body": "function keep (n :: UInt8) -> Bool is true end function\nfunction invalid (input :: record{keep :: Bool value :: (n :: UInt8 where keep n)}) -> Bool is true end function"
+    "body": `function keep (n :: UInt8) -> Bool is true end function
+function invalid (input :: record{keep :: Bool value :: (n :: UInt8 where keep n)}) -> Bool is true end function
+`
   },
   {
     "expected": "field-predicate",
-    "body": "function broken (n :: UInt8) -> (r :: Integer where r > n * n) is 0 end function\nfunction keep (n :: UInt8) -> Bool is broken n = 0 end function\nfunction invalid (input :: record{value :: (n :: UInt8 where keep n)}) -> Bool is true end function"
+    "body": `function broken (n :: UInt8) -> (r :: Integer where r > n * n) is 0 end function
+function keep (n :: UInt8) -> Bool is broken n = 0 end function
+function invalid (input :: record{value :: (n :: UInt8 where keep n)}) -> Bool is true end function
+`
   },
   {
     "expected": "total",
-    "body": "function keep (n :: Rational) -> Bool is true end function\nfunction invalid (input :: record{value :: (n :: UInt8 where keep (1 / 0))}) -> Bool is true end function"
+    "body": `function keep (n :: Rational) -> Bool is true end function
+function invalid (input :: record{value :: (n :: UInt8 where keep (1 / 0))}) -> Bool is true end function
+`
   },
   {
     "expected": "total",
-    "body": "function positive (n :: UInt8) -> Bool is n > 0 end function\nfunction invalid (ignored :: ()) -> record{value :: (n :: UInt8 where positive n)} is record{value = 0} end function"
+    "body": `function positive (n :: UInt8) -> Bool is n > 0 end function
+function invalid (ignored :: ()) -> record{value :: (n :: UInt8 where positive n)} is record{value = 0} end function
+`
   },
   {
     "expected": "definition",
-    "body": "function same (left :: a) (right :: a) -> Bool requires Eq a is true end function\ntype Box (a :: Type) is a record{value :: (n :: a where same n n)} end type"
+    "body": `function same (left :: a) (right :: a) -> Bool requires Eq a is true end function
+type Box (a :: Type) is a record{value :: (n :: a where same n n)} end type
+`
   },
   {
     "expected": "total",
-    "body": "function finite (n :: Float64) -> Bool is n + 0.2 = 0.3 end function\ntype Number is a record{value :: (n :: UInt8 where finite 0.1)} end type\nfunction invalid (ignored :: ()) -> Number is Number record{value = 0} end function"
+    "body": `function finite (n :: Float64) -> Bool is n + 0.2 = 0.3 end function
+type Number is a record{value :: (n :: UInt8 where finite 0.1)} end type
+function invalid (ignored :: ()) -> Number is Number record{value = 0} end function
+`
   },
   {
     "expected": "total",
-    "body": "function identity (n :: a) -> a is n end function\nfunction finite (n :: Float64) -> Bool is n + 0.2 = 0.3 end function\ntype Number is a record{value :: (n :: UInt8 where finite (identity 0.1))} end type\nfunction invalid (ignored :: ()) -> Number is Number record{value = 0} end function"
+    "body": `function identity (n :: a) -> a is n end function
+function finite (n :: Float64) -> Bool is n + 0.2 = 0.3 end function
+type Number is a record{value :: (n :: UInt8 where finite (identity 0.1))} end type
+function invalid (ignored :: ()) -> Number is Number record{value = 0} end function
+`
   },
   {
     "expected": "total",
-    "body": "type NumberKind (a :: Type) is one of | Floating of type () where a = Float64 end type\nfunction finite (kind :: NumberKind a) (n :: a) -> Bool is first matching case of kind: when Floating ignored then n + 0.2 = 0.3 end case end function\ntype Number is a record{value :: (n :: UInt8 where finite (Floating ()) 0.1)} end type\nfunction invalid (ignored :: ()) -> Number is Number record{value = 0} end function"
+    "body": `type NumberKind (a :: Type) is one of | Floating of type () where a = Float64 end type
+function finite (kind :: NumberKind a) (n :: a) -> Bool is first matching case of kind: when Floating ignored then n + 0.2 = 0.3 end case end function
+type Number is a record{value :: (n :: UInt8 where finite (Floating ()) 0.1)} end type
+function invalid (ignored :: ()) -> Number is Number record{value = 0} end function
+`
   }
 ];
   for(const machineBits of [32,64])for(const {body,expected} of invalid)for(const method of ['check','expand']) {
     const result=await compiler[method]({...options,verification:{layers:[]},machineBits,
-      sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body}]});
+      sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body+'\nend unit\n'}]});
     assert.ok(result.diagnostics.length>0,body);
     assert.ok(result.diagnostics.some(row=>row.code===expected),JSON.stringify(result.diagnostics));
     assert.ok(result.diagnostics.every(row=>row.code!=='parse'&&!row.message.includes('$lawspecFieldAdmission')),JSON.stringify(result.diagnostics));
