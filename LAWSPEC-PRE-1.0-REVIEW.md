@@ -1,41 +1,106 @@
 # LawSpec 1.0 design and business review draft
 
-**Minor authoring implementation contract — revised 15 October 2026**
+**Minor authoring implementation contract — updated 19 October 2026**
 
 Repository: brain-fuel/lawspec\
 Audience: business readers, product owners, developers, language designers, and verification practitioners.
 
 LawSpec describes what software must do and connects those requirements to implementation, tests, and verification evidence. The intended language combines approachable words and explicit structure with advanced types and formal precision.
 
-The immediate task is to discover whether actual business readers can understand these specifications. Agreement between programmers about attractive syntax is insufficient. Readers should be able to predict outcomes, explain obligations, identify missing requirements, and understand what the evidence establishes.
+The user-deferred readability exercise will establish whether actual business readers can understand these specifications. Agreement between programmers about attractive syntax is insufficient. Readers should be able to predict outcomes, explain obligations, identify missing requirements, and understand what the evidence establishes.
 
 The latest approved milestone direction below is authoritative. The implementation contract originally called RC1 remains the implementation baseline, subject to the later decisions recorded here. Earlier discussion and superseded alternatives remain history.
 
-**Implementation status:** version 0.25.0 is being prepared as an unpublished minor-version milestone, **not a release candidate**. Final package rebuilding and release checks remain open. No RC version or tag is authorized. The existing technical profile identifier `1.0-rc.1` is retained during implementation; it is not a release designation. The historical design examples below are not, by themselves, claims that the parser accepts them. Current executable examples and their evidence are identified in the implementation receipts. Code blocks deliberately use plain text rather than simulated syntax highlighting.
+**Implementation status:** version 0.25.0 has completed the current minor's implementation and full acceptance gates and remains **unpublished, not a release candidate**. Package rebuilding, installed-package validation and read-only release checks pass. No RC designation, tag or publication is authorized. The technical profile identifier `1.0-rc.1` remains an implementation identifier, not a release designation. The final acceptance receipt below supersedes earlier pending execution statuses. Historical design examples are not, by themselves, claims that the parser accepts them; current executable examples and their evidence are identified in the receipts. Code blocks deliberately use plain text rather than simulated syntax highlighting.
 
 Examples are independent unless a section explicitly connects them. Repeated unit names and simplified signatures are separate presentations, not declarations intended to coexist in one source file.
 
-## Current minor completion checklist — 18 October 2026
+## Current minor completion checklist — 19 October 2026
 
-Validated project migration writes and the first canonical Chapter 6 pass shipped at `98c5cf79`. The scoped collection-provider increment and its verification are recorded below. This checklist distinguishes that completed increment from work still required before declaring the iteration complete.
+Validated project migration writes and the first canonical Chapter 6 pass shipped at `98c5cf79`. The complete current-minor implementation is accepted on `891f8bb1`, with its execution scope and retained limits recorded below. Earlier increments retain their own source identities and evidence.
 
 - [x] Verify scoped collection-provider discovery and ordered-set migration, including complete source correspondence, all 17 configured target emissions, native/WASM parity and regression checks. Opaque dependency fields retain conservative discovery.
-- [x] Account for all six migration acceptance boundaries with supported-path and actual refusal tests. Unsupported abstract/indexed/existential forms, unbounded generic populations and changed opaque hooks remain explicit limits; missing correspondence still blocks writes. This closes the scoped boundary audit, not the final whole-iteration release gate.
-- [ ] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration. Ordinary requests now require schema 5 and the canonical profile; configuration requires version 2. Archived source uses explicit migration entry points. The cutover is implemented; final consumer and acceptance checks remain open.
-- [ ] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract. The authoring pass and its oracle/generation checks are complete; the wider coverage audit remains required.
+- [x] Account for all six migration acceptance boundaries with supported-path and actual refusal tests. Unsupported abstract/indexed/existential forms, unbounded generic populations and changed opaque hooks remain explicit limits; missing correspondence still blocks writes. The final full-run gate also passes.
+- [x] Complete the schema-5/configuration-2/profile cutover for ordinary public interfaces, with older source and interfaces entering through migration. Ordinary requests require schema 5 and the canonical profile; configuration requires version 2. Archived source uses explicit migration entry points. Installed consumers and all 34 native-interface profiles pass.
+- [x] Finish Chapter 6's second authoring pass and audit the required language, demonstration, editor and documentation coverage against this contract. The authored inventory, both-profile instruction oracles, published snippets, stable-code rejection controls, editor/SDK checks and full target graph pass.
 - [x] Deliver authored expected compile-rejection examples checked by stable diagnostic codes. Independently checked `reject=<code>` documentation fixtures, exact diagnostic matching and editable rejection views are implemented and verified below.
-- [ ] Run the final compiler, target, generation, boundary, editor, documentation, parity and complete release checks on the final implementation; record failures and limits before claiming completion.
+- [x] Run the final compiler, target, generation, boundary, editor, documentation, parity and complete read-only release checks on the final implementation; record failures and limits. The fresh 2,593-step graph passes, with all tracked inputs unchanged throughout execution. Earlier failures and interrupted runs remain separate historical receipts.
 
 The human readability exercise remains user-deferred. Completing all named endings belongs to the immediately following minor. The larger demonstration portfolio, advanced verification and external Linguist acceptance remain pre-final-1.0 requirements. None of these statuses authorizes an RC designation or a tag.
 
 The dated implementation receipts below preserve historical statuses. The
-latest verified increments include **Refinement payloads through product storage**,
-**Canonical reference fragments and equality guidance**, **Native exception
-messages and checked input ranges**, **Symbolic helper types in typed-failure
-migration**, the verified oracle runs of **Chapter 6 authoring**, and
-**Grouped GADT and existential payloads**. The product-storage increment
-supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
-acceptance items in this checklist remain authoritative.
+final receipt supersedes their pending execution gates without relabelling old
+runs. The product-storage increment still supersedes the `Nat` preservation
+limit recorded at `9b76bd54`. The current checklist and explicit deferrals above
+are authoritative for this minor; the larger pre-final-1.0 programme stays open.
+
+### Final 0.25.0 authoring acceptance — 19 October 2026
+
+The complete production `lawspec-dev ci --fresh --jobs 6` graph passes on
+`891f8bb17c6bff6a2861c508771a91ea6845a306`: **2,593 steps, zero failures,
+110 registered manifests, all 17 targets**. The supervisor exits zero and
+independently confirms that all **6,529 tracked inputs** stayed unchanged.
+Every terminal step log is hashed and archived. The graph includes 2,421
+native-conformance steps, five explicitly expected native-architecture
+refusals and 167 other gates; an expected refusal is not native execution.
+
+| Gate | Actual current-run result |
+|---|---|
+| Compiler and automatic guarantees | 2,252 tests pass, with zero failures or pending tests. Mandatory definition checking, refinements, GADT facts, checked recursion and deferred runtime postconditions remain outside optional law-layer selection. |
+| Public SDK | 513 tests pass; four declared Rust/Clojure/Haskell native opt-ins execute separately, each with one pass and zero skips. The current suite includes actual Z3 invocation, compiler-backed UTF-16 LSP diagnostics, formatting, migration writes, explanations and catalog export. |
+| Installed package | Actual pack/install/smoke succeeds. All 206 regular archive files match frozen package inputs or their declared root prepack sources. Canonical initialization defaults to no law layers; native smoke explicitly selects its checks. |
+| Installed native interfaces | All 34 profiles pass: 17 targets at normal 64-bit and compact 32-bit settings. Each checks native execution, a failing fee mutation, selective invalidation/replay and preserved application files. |
+| Native model-layer selection | All 34 profiles pass with independently selected actor laws and model checks, wrong-reference rejection, stale/failure/repaired evidence, honest zero-selected-check reporting and shared evidence in all four views. Native search completeness remains `not-established`; JavaScript additionally checks interruption and flaky replay. |
+| Native/WASM parity | 4,777 complete JSON responses match: 4,427 accepted and 350 rejected; generation accounts for 4,301 accepted and 340 rejected responses. Required nonempty codec generation covers all 17 targets, both widths and both layouts, with canonical package generation also checked. |
+| Documentation and editor | 120 pages, 119 compiled snippets, resolved links, shared TextMate grammar and actual LSP/SDK consumer checks pass. Fourteen independent documentation controls cover three authored stable-code rejection fixtures. No human comprehension result or visual editor inspection is inferred. |
+| Business conformance | Refund/order checks pass all 34 target profiles and reject 308 mutants: 272 specification and 36 native-adapter mutations. These are scoped implementation-conformance results. |
+| Chapter 6 | Both normal 64-bit and compact 32-bit Python/native oracle runs check all 32,768 A-addresses, 1,792 C-combinations, 13 stateful programs, independent repeated invocations and six meaningful mutants per profile. The inventory remains 23 laws, 65 table rows, one named example, 25 authored definitions, seven ADTs and two refinements, plus six checked mappings. The original `chap06.lawspec` bytes remain unchanged. |
+
+The fresh Swift harness passes in 16.6 seconds. Its correct adapter passes;
+discount, rounding, cover and outside controls fail natively; declares,
+interfering and unshared are explicitly expected generation refusals. The
+repaired discount mutant reports `EquationFailed`, actual false and expected
+true, at `Order(0, 0)` with seed `6219572487513710363`, without an overflow
+trap. Separate original-seed/zero-seed repair replays retain their own
+both-profile provenance. The earlier failed full run remains archived.
+
+The package tarball SHA-256 is
+`38602a07fb2eefc4ac3778e417b73906e4000edc5b4925aa379a7887b271d731`.
+The native compiler is
+`0a8e436f8fb9d8149468124755aecba24d4b6df42e6336483d3cf57842378fdd`;
+the 73,195,567-byte WASM is
+`79d6019410f0fdc5412b88973a16dc2ccf409bc9474a581a49f8ec0920ad32f4`.
+Receipts, complete logs, package inspection and requirement/source audits are
+under `.artifacts/minor-final-swift-mutant-acceptance/`. Earlier portable hash,
+solver-precedent and migration receipts keep their original execution
+identities; unchanged source correspondence and the new whole-graph results
+are recorded separately.
+
+The final coverage audit checks the 34-row contract inventory, actual test
+registration, critical assertion bodies, complete current execution and
+requirement-specific receipts. The 32 current-minor rows have completed
+execution coverage. The six migration boundaries retain their documented
+supported paths and conservative write refusals. Optional reachability
+warnings remain explicitly incomplete. Proof execution uses external Z3 via
+typed SMT-LIB tasks; no independent proof kernel or in-process Z3 binding is
+claimed. Generation, native conformance, bounded evidence and universal
+proof remain distinct.
+
+Read-only `make release-check` passes on clean main: version 0.25.0 agrees
+and all 146 generated files match. An independent registry probe receives
+HTTP 200 for the package, finds no 0.25.0 entry, and receives HTTP 404 for
+that exact version. Local and remote `v0.25.0` tags are absent. This review-only
+closeout preserves the execution candidate's compiler, runtime, package and
+test inputs; it does not relabel the full run as a different source execution.
+No tag or publication is performed.
+
+**Retained gates:** human readability remains user-deferred; banning every
+bare `end` belongs to the immediately following minor. Chapter 6
+implementations/verification in all 17 languages, Projects 7–8 and 10–11 in
+the seven selected languages, the testable Jack Snake and complete Jack OS
+API, the selected library demonstrations, broader solver/conflict/temporal
+verification and upstream Linguist recognition all remain **pre-final-1.0**.
+Completing this minor does not authorize an RC designation or final 1.0.
 
 ### Swift harness discount mutant — 18 October 2026
 
