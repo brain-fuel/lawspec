@@ -184,14 +184,14 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
         Right evidence -> expectationFailure (show evidence)
   it "rejects duplicate, misplaced and multiple-valued scalar metadata" $ do
     let bodies =
-          [ "id: \"one\" id: \"two\" definition: true end end"
-          , "owner: first owner: second definition: true end end"
-          , "definition: true end id: late end"
-          , "id: \"one\" end definition: true end end"
-          , "id: \"one\" \"two\" definition: true end end"
-          , "id: definition: true end end"
-          , "id:: \"one\" definition: true end end"
-          , "owner: first second definition: true end end" ]
+          [ "id: \"one\" id: \"two\" definition: true end definition end law"
+          , "owner: first owner: second definition: true end definition end law"
+          , "definition: true end definition id: late end law"
+          , "id: \"one\" end id definition: true end definition end law"
+          , "id: \"one\" \"two\" definition: true end definition end law"
+          , "id: definition: true end definition end law"
+          , "id:: \"one\" definition: true end definition end law"
+          , "owner: first second definition: true end definition end law" ]
     mapM_ (\body -> parseSourceCanonical (source ("law invalid is " ++ body)) `shouldSatisfy` isLeft) bodies
   it "resolves typed documentary targets, selectors and groups without discharging claims" $ do
     let body = unlines
@@ -310,10 +310,10 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
             "ref law valid references.\"|missing|", "ref function onlyFunction description" ]
         declarations = "function onlyFunction (value :: Bool) -> Bool is value end function \n" ++
           "law valid is definition: true end definition end law \n"
-    mapM_ (\reference -> core (declarations ++ "law linked is definition: true end definition references: " ++ reference ++ " end definition end law")
+    mapM_ (\reference -> core (declarations ++ "law linked is definition: true end definition references: " ++ reference ++ " end references end law")
       `shouldSatisfy` isLeft) invalid
     parseSourceCanonical (source ("law linked is definition: true end definition references: " ++
-      "\"|same|: \"one\" \"|same|: \"two\" end end")) `shouldSatisfy` isLeft
+      "\"|same|: \"one\" \"|same|: \"two\" end references end law")) `shouldSatisfy` isLeft
   it "keeps ordinary ref names contextual" $
     core "function ref (value :: Bool) -> Bool is value end function law linked is definition: ref true end definition end law\n"
       `shouldSatisfy` isRight
@@ -748,10 +748,12 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       , "law loop (value :: Bool) is definition: apply law loop value end definition end law"
       , "law wrong (f :: a -> a) is definition: apply law \"|idempotent| f end definition end law" ]
   it "rejects missing and duplicate definitions and duplicate metadata sections" $ do
-    mapM_ (\body -> parseSourceCanonical (source body) `shouldSatisfy` isLeft)
-      ["law x is description: \"x\" end end"
-      ,"law x is definition: true end definition: true end end"
-      ,"law x is definition: true end rationale: \"x\" end rationale: \"y\" end end"]
+    mapM_ (\(body,expected) -> case parseSourceCanonical (source body) of
+      Left diagnostics -> unlines (map LawSpec.Model.message diagnostics) `shouldSatisfy` isInfixOf expected
+      Right parsed -> expectationFailure (show parsed))
+      [("law x is description: \"x\" end description end law", "exactly one authoritative definition")
+      ,("law x is definition: true end definition definition: true end definition end law", "exactly one authoritative definition")
+      ,("law x is definition: true end definition rationale: \"x\" end rationale rationale: \"y\" end rationale end law", "sections are singletons")]
   it "parses phrase spelling and prefix/infix applications without a second namespace" $ do
     core (unlines
       [ "function \"|adds the values| (x of type Integer) (y of type Integer) -> Integer is x + y end function\n"
@@ -768,7 +770,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
   it "does not accept an ambiguous named infix chain" $
     parseSourceCanonical (source (unlines
       ["function add (x :: Integer) (y :: Integer) -> Integer is x + y end function\n"
-      ,"law bad is definition: 1 `add 2 `add 3 = 6 end end"])) `shouldSatisfy` isLeft
+      ,"law bad is definition: 1 `add 2 `add 3 = 6 end definition end law"])) `shouldSatisfy` isLeft
   it "supports nominal records with explicit construction and field access" $
     core (unlines
       ["type Picture is a record{ fileName of type Text, width of type Nat } end type\n"

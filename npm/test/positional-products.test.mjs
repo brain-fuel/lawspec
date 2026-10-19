@@ -44,8 +44,12 @@ function invalid (ignored of type ()) -> Integer is bounded (4, 2) end function
 `,
   ];
   for(const body of invalid) {
-    const result=await compiler.check({...options,verification:{layers:[]},sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body}]});
+    const result=await compiler.check({...options,verification:{layers:[]},sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body+'\nend unit\n'}]});
     assert.ok(result.diagnostics.length>0,body);
+    for(const row of result.diagnostics) {
+      assert.ok(!row.code.startsWith('block-'),JSON.stringify(row));
+      if(row.code==='parse')assert.match(row.message,/repeated variable binding in parameters/);
+    }
   }
 });
 

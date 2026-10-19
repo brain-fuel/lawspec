@@ -616,7 +616,7 @@ test('anonymous record construction retains mandatory validation with no law lay
     `function invalid (value of type ()) -> Integer is record{safe = 1, unused = 1 / 0}.safe end function
 `,
     'function invalid (value of type record{n Integer}) -> Integer is 1 end function',
-    'law invalid is definition: record{n = 1, n = 2} = record{n = 1} end end',
+    'law invalid is definition: record{n = 1, n = 2} = record{n = 1} end definition end law',
     `law invalid is definition: record{} = () end definition end law
 `,
     `law invalid is definition: for all (value of type record{count of type Nat}) => value = value end for all end definition
@@ -624,8 +624,10 @@ test('anonymous record construction retains mandatory validation with no law lay
 `,
   ]) {
     const result = await compiler.check({schemaVersion: 5, languageProfile: '1.0-rc.2', verification: {layers: []},
-      sources: [{path: 'invalid-record.lawspec', content: 'unit records\n' + content}]});
+      sources: [{path: 'invalid-record.lawspec', content: 'unit records\n' + content + '\nend unit\n'}]});
     assert.ok(result.diagnostics.length, content);
+    assert.ok(result.diagnostics.every(diagnostic => !diagnostic.code.startsWith('block-')),
+      JSON.stringify(result.diagnostics));
   }
 });
 

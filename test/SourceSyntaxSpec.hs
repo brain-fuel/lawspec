@@ -48,7 +48,7 @@ test_sourceSyntax = describe "checked source syntax" $ do
             project packages [source]
           compileWithSourceOrigins origins True False referenceUnit visible 64 defaultGeneration prepared
     forM_ ["function unsafe (value :: Integer) -> Integer is 1 / value end function\n",
-           "definition broken (value :: Integer) :: Integer is 1 + end"] $ \body ->
+           "function broken (value :: Integer) -> Integer is 1 + end function"] $ \body ->
       case (run body ["2.0.0"],run body ["1.0.0","2.0.0"]) of
         (Left plain,Left mapped) -> map (\diagnostic->(code diagnostic,at diagnostic)) mapped
           `shouldBe` map (\diagnostic->(code diagnostic,at diagnostic)) plain

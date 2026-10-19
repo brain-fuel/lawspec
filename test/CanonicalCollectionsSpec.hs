@@ -126,8 +126,8 @@ test_canonicalCollections = describe "canonical collections" $ do
     body "function includes (members :: List a) (value :: a) -> Bool requires Eq a is value in members end function\nfunction selected (unused :: Bool) -> Bool is prelude.any ((includes [1.0]) :: Float64 -> Bool) [1.0, 2.0] end function\n" `shouldSatisfy` isRight
   it "keeps membership nonassociative and respects exact keyword boundaries" $ do
     body "function inside (insideValue :: Integer) -> Bool is insideValue in [1, 2] end function\n" `shouldSatisfy` isRight
-    body "law invalid is definition: 1 in [1] in [true] end end" `shouldSatisfy` isLeft
-    body "law invalid is definition: 1 = in [1] end end" `shouldSatisfy` isLeft
+    body "law invalid is definition: 1 in [1] in [true] end definition end law" `shouldSatisfy` isLeft
+    body "law invalid is definition: 1 = in [1] end definition end law" `shouldSatisfy` isLeft
   it "ends let initializers at their own in while retaining membership in the body" $ do
     let source = "unit collections\nlaw bindings is definition: for all (value :: Bool) => " ++
           "let first = value in let second = not value in " ++
@@ -154,7 +154,7 @@ test_canonicalCollections = describe "canonical collections" $ do
         (dischargeEvidenceWith (Verification [Exhaustive]) program) `shouldBe` Right [ExhaustivelyChecked]
     body "law binding is definition: let outer = let inner = true in inner end let in outer = true end let end definition end law\n" `shouldSatisfy` isRight
   it "does not consume an enclosing let delimiter after closing a membership scope" $ do
-    body "law invalid is definition: let present = (true in [true]) in end end" `shouldSatisfy` isLeft
+    body "law invalid is definition: let present = (true in [true]) in end let end definition end law" `shouldSatisfy` isLeft
     body "function unsafe (value :: Integer) -> Integer is let divisor = value in 1 / divisor end let end function\n" `shouldSatisfy` isLeft
   it "requires explicit map selections and keeps substring matching separate" $ do
     forM_ ["prelude.member 1 (prelude.keyValOf [Entry 1 2])",

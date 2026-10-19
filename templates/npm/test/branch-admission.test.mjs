@@ -50,9 +50,9 @@ function read (value of type Value a) -> a is first matching case of value: when
   ];
   for(const machineBits of [32,64])for(const body of invalid)for(const method of ['check','expand']) {
     const result=await compiler[method]({...options,verification:{layers:[]},machineBits,
-      sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body}]});
+      sources:[{path:'invalid.lawspec',content:'unit invalid\n'+body+'\nend unit\n'}]});
     assert.ok(result.diagnostics.length>0,body);
-    assert.ok(result.diagnostics.every(row=>row.code!=='parse'),JSON.stringify(result.diagnostics));
+    assert.ok(result.diagnostics.every(row=>row.code!=='parse'&&!row.code.startsWith('block-')),JSON.stringify(result.diagnostics));
   }
 });
 

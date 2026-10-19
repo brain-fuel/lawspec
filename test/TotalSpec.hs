@@ -146,7 +146,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
       ["function bad (xs :: List Int8) -> Integer is bad xs end function\n"
       ,"function bad (xs :: List Int8) -> Integer is first matching case of xs : when Nil then 0 end case end function\n"
       ,"function bad (x :: Integer) -> Rational is 1 / x end function\n"
-      ,"definition bad (x :: Int8) (x :: Int8) :: Int8 is x end"
+      ,"function bad (x :: Int8) (x :: Int8) -> Int8 is x end function"
       ,"adapter :: Int8 -> Int8\nfunction bad (x :: Int8) -> Int8 is adapter x end function\n"
       ,"function f (x :: Int8) -> Int8 is g x end function\nfunction g (x :: Int8) -> Int8 is f x end function\n"
       ,"function bad (x :: Int8) -> Bool is x end function\n"
@@ -269,8 +269,9 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         >>= planTesting >>= emitPlan "python")) `shouldSatisfy` either (const False) (elem path))
       [("example", "src/example/__init__.py"), ("example.total.child", "src/example/total/__init__.py")]
     mapM_ (\name -> (compileCore 64 defaultGeneration [Source "collision.lawspec"
-        ("unit total\ndefinition " ++ name ++ " (x :: Int8) :: Int8 is x end")]
-        >>= planTesting >>= emitPlan "python") `shouldSatisfy` isLeft) ["_definitions", "_lawspec_schema"]
+        ("unit total\nfunction " ++ name ++ " (x :: Int8) -> Int8 is x end function\nend unit")]
+        >>= planTesting >>= emitPlan "python") `shouldSatisfy`
+          either (isInfixOf "reserved target identifier" . show) (const False)) ["ls", "schema"]
   it "emits JS/TS definitions as generated source with native typed TypeScript APIs" $ do
     let source = Source "total.lawspec" "unit total\n\nfunction identity (x :: List Int8) -> List Int8 is x end function\nend unit\n"
     mapM_ (\(target,extension) -> case compileCore 64 defaultGeneration [source] >>= planTesting >>= emitPlan target of
@@ -297,7 +298,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
           >>= planTesting >>= emitPlan target) `shouldSatisfy` isLeft)
         ["lawspec_definitions.example.total", "lawspec_definition_bodies"]
       mapM_ (\name -> (compileCore 64 defaultGeneration [Source "collision.lawspec"
-          ("unit total\ndefinition " ++ name ++ " (x :: Int8) :: Int8 is x end")]
+          ("unit total\nfunction " ++ name ++ " (x :: Int8) -> Int8 is x end function\nend unit")]
           >>= planTesting >>= emitPlan target) `shouldSatisfy` isLeft) ["globalThis", "eval", "arguments"])
       ["javascript","typescript"]
   it "emits Go native definition methods without colliding with data type names" $ do
