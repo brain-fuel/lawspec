@@ -28,9 +28,14 @@ lawCases :: String -> String -> LawCases
 lawCases className source =
   let ls = lines (rename (replaceAll "org.jetbrains.jetCheck." "lawspec.testing.check." (replaceAll "org.junit.jupiter.api.Assertions" "lawspec.testing.check.Assertions" source)))
       (java, tests) = go Nothing ls
-  in LawCases (unlines java) tests
-       (any (("@org.junit.jupiter.api.TestMethodOrder(" `isPrefixOf'`) . trimmed) ls)
-       (any (("@org.junit.jupiter.api.parallel.Execution(" `isPrefixOf'`) . trimmed) ls)
+      ordered = any (("@org.junit.jupiter.api.TestMethodOrder(" `isPrefixOf'`) . trimmed) ls
+      parallel = any (("@org.junit.jupiter.api.parallel.Execution(" `isPrefixOf'`) . trimmed) ls
+      metadataSize = sum [length name + maybe 0 length skipped | (name,skipped) <- tests]
+  -- The Java body is emitted before the Clojure namespace. Resolve its small
+  -- metadata projections first, so their thunks do not retain every parsed
+  -- Java line alongside the body while it is emitted.
+  in ordered `seq` parallel `seq` metadataSize `seq`
+       LawCases (unlines java) tests ordered parallel
   where
     rename = replaceWord className (casesClassName className)
     trimmed = dropWhile (== ' ')
