@@ -46,10 +46,14 @@ groovyFromJava plan javaFiles = do
           let className = takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse rest)))
               directory = take (length rest - length className - 5) rest
               (body, specification) = javaBodySpecification className (title path) (artifactContent a)
+              bodyArtifact = a { artifactPath = "src/test/java/" ++ directory ++ className ++ "Body.java", artifactContent = body }
+              specificationArtifact = a { artifactPath = groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy",
+                                          artifactContent = specification }
           in if needsJavaBody (artifactContent a)
-             then [a { artifactPath = "src/test/java/" ++ directory ++ className ++ "Body.java", artifactContent = body },
-                   a { artifactPath = groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy",
-                       artifactContent = specification }]
+             -- Materialize both records before exposing the first. A deferred
+             -- record update for the wrapper would otherwise retain a's
+             -- original Java content until after the complete body is emitted.
+             then bodyArtifact `seq` specificationArtifact `seq` [bodyArtifact, specificationArtifact]
              else [a { artifactPath = groovyTestDirectory ++ "/" ++ directory ++ specClassName className ++ ".groovy"
                      , artifactContent = spockSpecification className (title path) (groovyLiterals (artifactContent a)) }]
       | otherwise = [a]

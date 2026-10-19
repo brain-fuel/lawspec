@@ -33,8 +33,13 @@ needsJavaBody = count (128 :: Int)
       Nothing -> count remaining rest
 
 javaBodySpecification :: String -> (String -> String) -> String -> (String, String)
-javaBodySpecification className title source = (body, spockSpecification className title (groovyLiterals wrapper))
+javaBodySpecification className title source =
+  -- The wrapper follows the large Java body in the emitted project. Resolve
+  -- its small feature list first, so its deferred scan cannot retain every
+  -- original Java line while the rewritten body is being consumed.
+  length specification `seq` (body, specification)
   where
+    specification = spockSpecification className title (groovyLiterals wrapper)
     helper = className ++ "Body"
     sourceLines = lines source
     classHeader line = any (`stripStarts` line)
