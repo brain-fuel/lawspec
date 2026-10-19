@@ -207,7 +207,10 @@ usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.cr
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do
   createDirectoryIfMissing True project
-  forM_ ["src", "lib", "test", "test-support", "tests", "example", "dist", "lawspec", "priv", "lawspec_crypto_build.escript"] $ \folder -> removePathForcibly (project </> folder)
+  forM_ ["src", "lib", "java", "test", "test-support", "tests", "example", "dist", "lawspec", "priv", "lawspec_crypto_build.escript"] $ \folder -> removePathForcibly (project </> folder)
+  -- Clojure's Java model and reports must describe this generated project.
+  -- Removed or renamed units must not survive as classes or old test suites.
+  when (target == "clojure") (removePathForcibly (project </> "target"))
   -- Gleam retains foreign Erlang modules in its compiled application after
   -- their source files move or disappear. Clear compiled applications, while
   -- retaining downloaded packages and path-dependency config fingerprints.
