@@ -794,6 +794,54 @@ combined acceptance remain open. Evidence is under
 No RC designation, tag or publication is implied.
 
 
+### Completed compiler and public-consumer gates — 18 October 2026
+
+These receipts belong to the pushed `e3d77b95` implementation snapshot. They
+supersede earlier pending statuses for these particular gates, while preserving
+the earlier attempts and their recorded failures or interruptions as history.
+The complete fresh CI run and acceptance of the subsequent documentation
+integration remain open at this checkpoint.
+
+The full compiler suite passes **2,249 tests with zero failures**. The complete
+SDK command records **517 tests: 513 passes, four declared native-environment
+skips, zero failures and zero cancellations**. All four skipped cases execute
+as the exact same test cases in their dedicated Rust, Clojure or Haskell CI
+gates, each with one pass and zero skips. The SDK run includes actual external
+Z3 execution from rebuilt-WASM tasks, checked migration writes, formatting,
+explanation views, public CLI example export, TypeScript consumers and actual
+LSP warning transport with UTF-16 positions. This is regression evidence, not
+verification of every user law or an independently checked solver certificate.
+
+The production native/WASM parity command compares **4,777 complete responses**:
+**4,427 accepted and 350 matching rejections**. It enters the archived 0.24
+corpus through the explicit migration interface and separately checks the
+canonical orders package. Every backend must produce accepted, nonempty codec
+generation at both widths and both layouts; canonical package generation also
+runs on all 17 targets. Rejected responses remain counted separately. Compiler
+response and emission parity do not replace execution of generated projects.
+
+The installed native-binding integration matrix passes **all 34 profiles across
+17 targets and both machine widths**. Its public CLI and normal native build
+tools execute the generated tests, reject a wrong-fee implementation through a
+generated law, rerun affected laws after adapter changes, avoid caching failures
+as passes, and preserve application files during regeneration. The separate
+installed-package smoke gate also passes, including complete catalog export,
+structural consumers and the Rust quickstart.
+
+Both current Chapter 6 oracle profiles pass **32,768 A-instruction addresses**,
+**1,792 C-instruction combinations**, 13 stateful programs and six meaningful
+mutants per profile, including independent repeated invocations. The protected
+authored inventory and original-source hashes remain unchanged. The refund and
+order demonstration also passes all 34 native target/width profiles. Other
+native suites and the complete release checks remain separate acceptance gates.
+
+The per-command logs, hashes, scoped receipts and requirement-to-gate map are
+preserved under `.artifacts/minor-final-match-advisories-acceptance/`. They keep
+planned checks separate from completed evidence. Readability remains explicitly
+user-deferred, all-named endings remain the following minor, and the larger
+pre-final-1.0 programme remains unchanged. No RC designation, tag or publication
+is claimed.
+
 ### Requirement coverage audit — 18 October 2026
 
 This inventory checks the approved implementation contract against current
