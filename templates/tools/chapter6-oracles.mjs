@@ -46,12 +46,11 @@ function native(method,request) {
 const compiler=environment.LAWSPEC_CORE?Object.fromEntries(
   ['check','planGeneration']
     .map(method=>[method,async request=>native(method,request)])):await createCompiler();
-const original=await readFile(path.join(root,'chap06.lawspec'),'utf8');
-const sourceSha256=digest(original);
-assert.equal(sourceSha256,'07d8116b847aa80e044ad3ea2cbc8317bc949a0c4fe07b560e513d6fa0bfaf06');
-// The preserved original is historical input. Independent oracles execute the
-// maintained canonical specification through the ordinary compiler.
+const source=await readFile(path.join(root,'chap06.lawspec'),'utf8');
+const sourceSha256=digest(source);
+// Both entry points must expose the maintained, ordinary canonical source.
 const authored=await readFile(path.join(root,'examples/chap06/assembler.lawspec'),'utf8');
+assert.equal(source,authored,'The root Chapter 6 specification must match the published example');
 assert.equal(authored.match(/^(function|mapping) /gm).length,25);
 assert.equal(authored.match(/^mapping /gm).length,6);
 assert.equal(authored.match(/^type /gm).length,7);

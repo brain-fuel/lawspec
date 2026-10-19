@@ -90,7 +90,12 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
               branchVirtual = if branch && any (== (CaseBlock,True)) (take 1 stack) then 1 else 0
               blockDepth = length [() | (kind,_) <- stack,kind /= UnitBlock]
               braceDepth = length (filter (== "{") braces) - if word == "}" then 1 else 0
-              depth = blockDepth + braceDepth + virtual - branchVirtual - case closing of
+              tableHeader = case stack of
+                (TableBlock,_):_ -> word == "expect" ||
+                  take 2 (map (tokenText . snd) local) == ["in","table"]
+                _ -> False
+              depth = blockDepth + braceDepth + virtual - branchVirtual -
+                (if tableHeader then 1 else 0) - case closing of
                 Just CaseBlock -> 1 + if take 1 stack == [(CaseBlock,True)] then 1 else 0
                 Just UnitBlock -> 0
                 Just _ -> 1

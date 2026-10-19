@@ -4,8 +4,9 @@
 Its authoring pass uses six checked mappings for computation, destination and
 jump encodings, readable assembly-source and reference-assembly function names,
 and descriptions for all 23 laws. `AssemblyRuns` names the first, second and
-repeated first output separately so repeated calls remain observable. The
-byte-preserved 0.24 fixture remains migration input.
+repeated first output separately so repeated calls remain observable. The root
+[chap06.lawspec](../../chap06.lawspec) contains the same canonical source; the
+oracle harness requires both entry points to agree.
 
 The `assemble` adapter takes assembly text and returns physical `.hack` lines
 as `List Text`, with `[]` for an empty output file. A command-line adapter runs
@@ -42,10 +43,8 @@ actual WASM package; `LAWSPEC_CORE` selects a native compiler executable.
 Each invocation preserves a fresh project, logs and `evidence.json` under
 `.artifacts/chapter6-oracles/`.
 
-The harness first migrates the byte-preserved 0.24 Chapter 6 fixture and its
-configuration using the validated project writer. It records that semantic
-migration separately, then adopts and checks the published authoring pass.
-Both retain 23 laws, 65 expectation-table rows, one named example,
+The harness checks the canonical source through the ordinary compiler.
+It retains 23 laws, 65 expectation-table rows, one named example,
 25 authored definitions, seven ADTs and two refinements. Six of the authored
 definitions are mappings; compiler-derived inverse/preimage and field helpers
 are additional lowered definitions. Mapping rows are counted separately from
@@ -80,10 +79,7 @@ versioned vectors offline. The reference command fetches only the pinned
 upstream source and checks its exact digests before compiling the decoder.
 
 These checks establish finite codec coverage and Python conformance for the
-executed programs. Migration validation separately checks the first semantic
-pass under the existing compiler/native assumptions; the subsequent authoring
-pass has deliberately different source and generated helper identities. Neither
-that validation nor these finite tests prove the unbounded program laws or
+executed programs. These finite tests do not prove the unbounded program laws or
 establish implementations in the other 16 languages.
 `--property` additionally selects property testing and generated boundary cases
 for all 23 laws. The evidence counts actual properties, boundaries, examples
@@ -91,5 +87,5 @@ and replay hooks separately; a replay hook alone does not establish that a law
 was exercised. Omitting this flag runs the 66 examples and independent oracles.
 `LAWSPEC_SEED` selects their repeatable seed, defaulting to 6061 and recorded
 with the compiler's generation settings in the evidence.
-The remaining authoring, migration and pre-final-1.0 gates remain in the
+The remaining pre-final-1.0 gates remain in the
 [review packet](../../LAWSPEC-PRE-1.0-REVIEW.md).

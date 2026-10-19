@@ -2,7 +2,8 @@ unit nand2tetris.chap06
 
 assemble :: Text -> List Text
 
-refinement Address is (value :: UInt16 where value <= 32767) end refinement
+refinement Address is (value :: UInt16 where value <= 32767)
+end refinement
 
 type Comp is one of
   | CZero
@@ -164,7 +165,7 @@ mapping jumpBits of type Jump -> UInt8 is
 end mapping
 
 type Predefined is one of
-  | Register  of type (n :: UInt8 where n <= 15)
+  | Register of type (n :: UInt8 where n <= 15)
   | StackPointer
   | LocalBase
   | ArgumentBase
@@ -228,20 +229,24 @@ refinement UserSymbol is
 end refinement
 
 type Line is one of
-  | Literal  of type Address
+  | Literal of type Address
   | Compute of type record{ comp :: Comp dest :: Dest jump :: Jump}
-  | Builtin  of type Predefined
-  | Symbolic  of type UserSymbol
-  | Label  of type UserSymbol
+  | Builtin of type Predefined
+  | Symbolic of type UserSymbol
+  | Label of type UserSymbol
 end type
 
 function bits (width :: UInt8) (value :: Whole) -> Text is
   if width = 0 then "" else
     bits (prelude.UInt8 (width - 1)) (prelude.BigUInt (prelude.quot value 2)) ++
-    (if prelude.rem value 2 = 0 then "0" else "1" end if) end if
+    (if prelude.rem value 2 = 0 then "0" else "1"
+    end if
+    )
+  end if
 end function
 
-function binary16 (value :: Whole) -> Text is bits 16 value end function
+function binary16 (value :: Whole) -> Text is bits 16 value
+end function
 
 function computeWord (comp :: Comp) (dest :: Dest) (jump :: Jump) -> Text is
   binary16 (prelude.BigUInt (57344 + compBits comp * 64 + destBits dest * 8 +
@@ -252,9 +257,13 @@ function renderLine (line :: Line) -> Text is
   first matching case of line :
     when Literal n then "@" ++ prelude.textOf n
     when Compute record{ comp = comp , dest = dest , jump = jump} then
-      (if dest = NoDest then "" else destText dest ++ "=" end if) ++ compText
+      (if dest = NoDest then "" else destText dest ++ "="
+      end if
+      ) ++ compText
       comp ++
-      (if jump = NoJump then "" else ";" ++ jumpText jump end if)
+      (if jump = NoJump then "" else ";" ++ jumpText jump
+      end if
+      )
     when Builtin symbol then "@" ++ predefinedText symbol
     when Symbolic name then "@" ++ name
     when Label name then "(" ++ name ++ ")"
@@ -390,7 +399,13 @@ function "|reference assembly| (program :: List Line) -> List Text is
   []) 16
 end function
 
-type Layout is one of | Plain | Spaced | Tabbed | Windows | Commented end type
+type Layout is one of
+  | Plain
+  | Spaced
+  | Tabbed
+  | Windows
+  | Commented
+end type
 
 function layoutLine (line :: Line) (layout :: Layout) -> Text is
   first matching case of layout :
@@ -425,7 +440,8 @@ law "|A instructions encode every fifteen bit address| is
   definition :
     for all (address :: Address) =>
       assemble ("@" ++ prelude.textOf address) = [binary16 (prelude.BigUInt
-      (address))] end for all
+      (address))]
+    end for all
   end definition
   expect assemble ("@" ++ prelude.textOf address) = expected
   in table (address, expected) :
@@ -443,7 +459,8 @@ law "|numeric A operands are decimal even with leading zeroes| is
   definition :
     for all (address :: Address) =>
       assemble ("@000" ++ prelude.textOf address ++ "\n") = [binary16
-      (prelude.BigUInt (address))] end for all
+      (prelude.BigUInt (address))]
+    end for all
   end definition
   example "|eight is not octal| :
     address = 8
@@ -460,7 +477,8 @@ law "|all C instruction fields occupy exactly their specified bits| is
   definition :
     for all (comp :: Comp) (dest :: Dest) (jump :: Jump) =>
       assemble (renderLine (Compute record{ comp = comp , dest = dest , jump =
-        jump})) = [computeWord comp dest jump] end for all
+        jump})) = [computeWord comp dest jump]
+    end for all
   end definition
 end law
 
@@ -471,7 +489,8 @@ law "|computation table matches the published machine language| is
 
   definition :
     for all (comp :: Comp) =>
-      assemble ("D=" ++ compText comp) = [computeWord comp ToD NoJump] end for all
+      assemble ("D=" ++ compText comp) = [computeWord comp ToD NoJump]
+    end for all
   end definition
   expect assemble ("D=" ++ compText comp) = expected
   in table (comp, expected) :
@@ -514,10 +533,11 @@ law "|destination table matches the published machine language| is
   definition :
     for all (dest :: Dest) =>
       assemble (renderLine (Compute record{ comp = CD , dest = dest , jump =
-        NoJump})) = [computeWord CD dest NoJump] end for all
+        NoJump})) = [computeWord CD dest NoJump]
+    end for all
   end definition
   expect assemble (renderLine (Compute record{ comp = CD , dest = dest , jump =
-    NoJump})) = expected
+      NoJump})) = expected
   in table (dest, expected) :
     row NoDest, ["1110001100000000"]
     row ToM, ["1110001100001000"]
@@ -538,10 +558,11 @@ law "|jump table matches the published machine language| is
   definition :
     for all (jump :: Jump) =>
       assemble (renderLine (Compute record{ comp = CZero , dest = NoDest , jump
-        = jump})) = [computeWord CZero NoDest jump] end for all
+        = jump})) = [computeWord CZero NoDest jump]
+    end for all
   end definition
   expect assemble (renderLine (Compute record{ comp = CZero , dest = NoDest ,
-    jump = jump})) = expected
+      jump = jump})) = expected
   in table (jump, expected) :
     row NoJump, ["1110101010000000"]
     row JGt, ["1110101010000001"]
@@ -562,7 +583,8 @@ law "|predefined symbols keep their specified addresses| is
   definition :
     for all (symbol :: Predefined) =>
       assemble ("@" ++ predefinedText symbol) = [binary16 (predefinedAddress
-      symbol)] end for all
+      symbol)]
+    end for all
   end definition
   expect assemble ("@" ++ predefinedText symbol) = expected
   in table (symbol, expected) :
@@ -586,10 +608,11 @@ law "|a fresh symbol receives RAM sixteen and repeated uses retain it| is
   definition :
     for all (name :: UserSymbol) =>
       assemble ("@" ++ name ++ "\n@" ++ name ++ "\n") =
-      ["0000000000010000", "0000000000010000"] end for all
+      ["0000000000010000", "0000000000010000"]
+    end for all
   end definition
   expect assemble ("@" ++ name ++ "\n@" ++ name ++ "\n") =
-  ["0000000000010000", "0000000000010000"]
+    ["0000000000010000", "0000000000010000"]
   in table (name) :
     row "_"
     row "."
@@ -614,7 +637,8 @@ law "|distinct variables are allocated in first use order| is
       assemble ("@" ++ second ++ "\n@" ++ first ++ "\n@" ++ second ++ "\n@" ++
       first) =
       ["0000000000010000", "0000000000010001", "0000000000010000",
-      "0000000000010001"] end for all
+      "0000000000010001"]
+    end for all
   end definition
 end law
 
@@ -625,7 +649,8 @@ law "|every valid generated program agrees with two pass resolution| is
 
   definition :
     for all (program :: List Line where validProgram program) =>
-      assemble ("|assembly source| program) = "|reference assembly| program end for all
+      assemble ("|assembly source| program) = "|reference assembly| program
+    end for all
   end definition
 end law
 
@@ -637,7 +662,8 @@ law "|comments blank lines and supported line endings preserve the program| is
   definition :
     for all (program :: List Line where validProgram program) (layout :: Layout)
       =>
-      assemble (layoutSource program layout) = "|reference assembly| program end for all
+      assemble (layoutSource program layout) = "|reference assembly| program
+    end for all
   end definition
 end law
 
@@ -648,7 +674,8 @@ law "|output contains exactly sixteen binary digits per instruction| is
 
   definition :
     for all (program :: List Line where validProgram program) =>
-      binaryLines (assemble ("|assembly source| program)) = true end for all
+      binaryLines (assemble ("|assembly source| program)) = true
+    end for all
   end definition
 end law
 
@@ -660,13 +687,15 @@ law "|labels never emit instructions| is
   definition :
     for all (program :: List Line where validProgram program) =>
       prelude.length (assemble ("|assembly source| program)) = instructionCount
-      program end for all
+      program
+    end for all
   end definition
 end law
 
-type AssemblyRuns is a record{   firstOutput :: List Text secondOutput :: List
+type AssemblyRuns is a record{ firstOutput :: List Text secondOutput :: List
   Text repeatedFirstOutput :: List
-  Text} end type
+  Text}
+end type
 
 law "|assemblies have independent symbol tables and allocation counters| is
   description:
@@ -682,7 +711,8 @@ law "|assemblies have independent symbol tables and allocation counters| is
         ("|assembly source| first))} =
       AssemblyRuns record{ firstOutput = ("|reference assembly| first) ,
         secondOutput = ("|reference assembly|
-        second) , repeatedFirstOutput = ("|reference assembly| first)} end for all
+        second) , repeatedFirstOutput = ("|reference assembly| first)}
+    end for all
   end definition
 end law
 
@@ -695,14 +725,19 @@ law "|allocation restarts even when symbols recur across inputs| is
     for all (first :: UserSymbol) (second :: UserSymbol where second != first)
       =>
       let forward = "@" ++ first ++ "\n@" ++ second ++ "\n" in
-      let backward = "@" ++ second ++ "\n@" ++ first ++ "\n" in
-      AssemblyRuns record{ firstOutput = (assemble forward) , secondOutput =
-        (assemble backward) ,
-        repeatedFirstOutput = (assemble forward)} =
-      AssemblyRuns record{ firstOutput = ["0000000000010000",
-        "0000000000010001"]
-        , secondOutput = ["0000000000010000", "0000000000010001"]
-        , repeatedFirstOutput = ["0000000000010000", "0000000000010001"]} end let end let end for all
+        let backward = "@" ++ second ++ "\n@" ++ first ++ "\n" in
+          AssemblyRuns record{ firstOutput = (assemble forward) , secondOutput =
+            (assemble backward) ,
+            repeatedFirstOutput = (assemble forward)} =
+          AssemblyRuns record{ firstOutput = ["0000000000010000",
+            "0000000000010001"]
+            , secondOutput = ["0000000000010000", "0000000000010001"]
+            , repeatedFirstOutput = ["0000000000010000", "0000000000010001"]}
+        end let
+
+      end let
+
+    end for all
   end definition
 end law
 
@@ -773,12 +808,22 @@ law "|label addresses count A and C instructions equally| is
       32766)
       (name :: UserSymbol) =>
       let middle = computationLines computations in
-      let program = [Symbolic name] ++ middle ++ [Label name, Symbolic name] in
-      let address = binary16 (prelude.BigUInt (1 + prelude.length computations))
-      in
-      assemble ("|assembly source| program) = [address] ++ "|reference assembly|
-      middle ++
-      [address] end let end let end let end for all
+        let program = [Symbolic name] ++ middle ++ [Label name, Symbolic name]
+          in
+          let address = binary16 (prelude.BigUInt (1 + prelude.length
+            computations))
+            in
+            assemble ("|assembly source| program) = [address] ++
+            "|reference assembly|
+            middle ++
+            [address]
+          end let
+
+        end let
+
+      end let
+
+    end for all
   end definition
 end law
 

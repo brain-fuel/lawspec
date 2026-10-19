@@ -941,7 +941,7 @@
     "src/LawSpec/SourceOrigins.hs": "7387df6cf5d8f30f4cf47593a49acab39a6bc9554eeb3bfdaf5ddc9a2bef8076",
     "src/LawSpec/SourceRecords.hs": "6d7fbc5436161fa50cfbf728f54497f64f285542fd49be4e8c70c780e1f3edf7",
     "src/LawSpec/SourceSyntax.hs": "edb49f4a643e1d6e45a8c851e39bf80cfb85abfa2ed40a72c7ce42bf1eb7e589",
-    "src/LawSpec/SourceText.hs": "c76cab6f2fdbfdc9204a5ca844789d682c14f6c2d63e99d1022c279dcd83a892",
+    "src/LawSpec/SourceText.hs": "d45d810c5664cb1299d5a44e9330efddbc37e811357be0b78f8d1e3505e37ec7",
     "src/LawSpec/SourceTokens.hs": "8ce1e050000070a1d1753756a6c481991049c24d28ccccb8c9f9de638608cc84",
     "src/LawSpec/SpecializeDefinitions.hs": "1268564062880f44885ee52a0848b764983549e8d6fcc07665182e3a456aa5bb",
     "src/LawSpec/StatefulModel.hs": "3bf69ea1d569c92b46a60d37e693d9c3d2a41e4b57492ae1c11834aa1d99c44a",
@@ -995,7 +995,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "8e34b5429ad3531cb954380e40f79a5703cd57bc6f2ba7f857425a6a7b90a81e",
-    "npm/core.wasm": "6b75be76d7fa7be807859e60fdb5129f5f1c6144f1a6d029eef29f5b1470bf34",
+    "npm/core.wasm": "40cbf66fe18810621f5c4bd687e46d19ab97e9d33d4a789576692eca90cfb7a1",
     "npm/core_jsffi.js": "591fdd5a477116ec4559cb684116cd1f8ca39a64a0198ea7439687fcfd85087e",
     "npm/api.mjs": "fd40ec7034402e4456504182d80e2e97f535713ae5d227ffad6456fa9091f59b",
     "npm/index.d.ts": "5b459c42bdaedcaa2acdbe57f7b225f2b0b6889044145a987af357f887e5d558"

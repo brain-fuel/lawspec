@@ -91,7 +91,7 @@ end unit
 
 - **Shared indices.** A variable bound by several fields makes their indices
   equal. `Node` holds two trees of one height; this is checked at
-  construction and decode, and generation builds both from the same index.
+  construction and decode, and generated values must satisfy that constraint.
 - **Subtraction never truncates.** `n = m - 1` requires `m >= 1` of every
   value, as a constructor constraint (`RUNTIME CHECKED`).
 - **Inverted patterns.** An implicit index may first appear as `v`, `v + k` or
@@ -127,24 +127,32 @@ inside an expression, and a result cannot introduce one.
 
 ## Generation
 
-Generation follows the index:
+Generation preserves the index constraints. Direct constructive planning
+currently handles supported single-payload family paths, such as a counting
+family with a payload-free zero and a successor carrying another count.
+It does not solve through an intervening record payload.
+Consequently, the record-based `Vec`, `Tree`, `Perfect` and `Grid` declarations
+above use ordinary checked generation unless a harness supplies construction
+strategies. Checked generation filters candidates and rechecks shrinks against
+the predicates and constructor guards. A bounded failure to find a candidate
+does not prove that the type is empty.
+
+For supported direct paths, the planner works as follows:
 
 - A free index, as in `append`, takes values from the erased type; the index is
   their measure.
-- A fixed index (`Vec 3 Int8`) or a shared one (`zip`'s second argument in
-  `zip :: (xs :: Vec n Int8) -> (ys :: Vec n Bool) -> (r :: Vec n Bool)`) is
-  solved backwards through the constructor equations. `VCons` for `n = 3` needs
-  a tail with index 2; `Bin` splits `n - 1` between its subtrees.
-- Every runtime first finds the indices each constructor can reach, up to the
-  target plus 16, and then solves the target backwards through any equation:
-  `Grid 12` draws its rows and columns among the divisors of twelve. A family
+- A fixed or shared index is solved backwards through supported constructor
+  equations.
+- The planner first finds the indices each constructor can reach, up to the
+  target plus 16, and then solves the supported equations backwards. A family
   with shared indices or guards is built from a few small indices even when no
   index is fixed, since random values would almost never satisfy them.
 
-Values are constructed, not filtered, and shrinking stays within the index on
-every target. The same planning applies to any measure you write over declared
-data whose branches are a constant plus the same measure of the branch's
-fields.
+The [indexed examples](../../../examples/specs/indexed_families.lawspec) use
+explicit harness strategies for sparse record-based domains. They construct
+vectors of the required length and trees of the required size while retaining
+independent generation of their values. This exercises the laws without
+claiming that the direct planner supports nested record paths.
 
 ## Proved indices
 
@@ -155,7 +163,7 @@ runtime postcondition for it.
 The proof uses exact linear arithmetic over the measures:
 
 - A measure applied to a known constructor unfolds to that constructor's
-  equation: `nOfVec (VCons h t)` is `nOfVec t + 1`.
+  equation: `nOfVec (VCons record{head = h, tail = t})` is `nOfVec t + 1`.
 - Inside a match branch, the scrutinee's constructor is known.
 - Calls of checked definitions are pure, so equal calls have equal results.
 - A recursive call contributes its own signature as the induction hypothesis.

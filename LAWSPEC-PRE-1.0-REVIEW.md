@@ -36,7 +36,24 @@ libraries are converted directly. This supersedes every earlier requirement
 for migration support or acceptance. Historical requirements and receipts below
 remain historical evidence, not requirements to retain the deleted feature.
 API schema 5 and configuration version 2 remain; ordinary consumers require the
-new profile. The original Chapter 6 source remains byte-for-byte preserved.
+new profile.
+
+**Later Chapter 6 correction:** the user explicitly requested updating and
+formatting the root `chap06.lawspec` as well. It now follows the maintained
+canonical example, with named endings for every block. This supersedes the
+earlier instruction to leave the root source unchanged. Its original bytes
+remain in Git history and a local backup; the oracle harness checks that the
+two active Chapter 6 entry points agree.
+
+The corrected source compiles and formats idempotently, including through the
+WASM CLI's `fmt --check`. Separate native 64-bit and compact 32-bit runs each
+exercise all 23 laws: 66 examples, 16 properties, 453 boundaries and ten replay
+hooks. Independent oracles cover 32,768 A-addresses, 1,792 C-instructions and
+13 stateful programs with repeated-call isolation; each run rejects all six
+mutation controls. The original inventory remains 65 table rows, one named
+example, 25 authored definitions, seven ADTs and two refinements, including six
+checked mappings. These scoped results do not complete the full acceptance
+graph or prove the unbounded program laws.
 
 The existing generation limit for nested index paths remains explicit:
 alternatives with record payloads retain their index predicates and constructor

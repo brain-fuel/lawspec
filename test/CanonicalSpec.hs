@@ -1051,6 +1051,25 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       , "", "end unit" ]
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "aligns expectation table headers and indents their rows" $ do
+    let input = source $ unlines
+          [ "law same is"
+          , "definition: for all (flag :: Bool) => flag = flag end for all end definition"
+          , "expect flag = expected"
+          , "expect (not flag) = inverse"
+          , "in table (flag, expected, inverse):"
+          , "row false, false, true"
+          , "row true, true, false"
+          , "end table"
+          , "end law" ]
+        formatted = formatSource input
+        output = content formatted
+    output `shouldSatisfy` isInfixOf
+      "  expect flag = expected\n  expect (not flag) = inverse\n  in table (flag, expected, inverse):\n    row false, false, true\n    row true, true, false\n  end table"
+    compileCoreCanonical 64 defaultGeneration [formatted]
+      `shouldSatisfy` isRight
+    formatSource formatted `shouldBe` formatted
+
   it "rebases line-scoped generator expressions after indentation changes" $ do
     let values = "[" ++ intercalate ", " (map show [1::Int .. 40]) ++ "]"
         input = source (unlines
