@@ -22,7 +22,7 @@ function wasiImports(memory) {
   const view = () => new DataView(memory().buffer);
   const bytes = () => new Uint8Array(memory().buffer);
   const encoder = new TextEncoder();
-  const args = ["lawspec"].map((a) => encoder.encode(a + "\0"));
+  const args = coreArguments.map((a) => encoder.encode(a + "\0"));
   const environment = [];
   const strings = (list) => ({
     sizes(countOut, sizeOut) {

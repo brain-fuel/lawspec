@@ -100,3 +100,14 @@ to WebAssembly for distribution in the npm package. Both builds produce the
 same output, byte for byte, including formatting. The public API uses
 explicitly defined wire views, not serialized internal structures, so the
 internals can change without breaking clients. ref:DEC-wasm-distribution
+
+The wasm32 build has a 3 GiB GHC heap limit within its 4 GiB linear address
+space. This enables GHC's automatic in-place compaction for a large live heap,
+avoiding the extra space a copying collection needs. The remaining address
+space accommodates runtime allocations and transport buffers. See
+[GHC's heap limit and compaction options](https://downloads.haskell.org/ghc/latest/docs/users_guide/runtime_control.html#rts-options-to-control-the-garbage-collector).
+
+The host serializes requests. The bridge transfers UTF-8 response chunks through
+a streaming decoder, preserving characters across chunk boundaries and avoiding
+a contiguous copy of the complete response in WASM memory. Completed request
+buffers can be reclaimed before the next call; compiler caches remain live roots.

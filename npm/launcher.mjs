@@ -2,6 +2,11 @@
 import { readFile } from "node:fs/promises";
 let compiled;
 
+// GHC's JSFFI reactor reads these WASI arguments during initialization. Bound
+// the heap below wasm32's address ceiling to enable automatic compaction.
+// -with-rtsopts has no effect on this -no-hs-main reactor build.
+const coreArguments = ["lawspec", "+RTS", "-M3g", "-RTS"];
+
 // Instantiate the compiler core with a platform's WASI preview1 imports and
 // serialize calls: the core handles one JSON request at a time.
 async function instantiateCore(module, wasiImports, initialize) {
@@ -33,7 +38,7 @@ export async function loadCore() {
   );
   const wasi = new WASI({
     version: "preview1",
-    args: ["lawspec"],
+    args: coreArguments,
     env: { PWD: "/" },
     preopens: { "/": process.cwd() },
   });

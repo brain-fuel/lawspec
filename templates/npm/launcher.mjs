@@ -12,7 +12,7 @@ export async function loadCore() {
   );
   const wasi = new WASI({
     version: "preview1",
-    args: ["lawspec"],
+    args: coreArguments,
     env: { PWD: "/" },
     preopens: { "/": process.cwd() },
   });
