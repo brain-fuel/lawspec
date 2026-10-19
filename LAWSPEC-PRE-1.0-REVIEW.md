@@ -37,6 +37,32 @@ migration**, the verified oracle runs of **Chapter 6 authoring**, and
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
 
+### Swift harness discount mutant — 18 October 2026
+
+The fresh full acceptance run on `6801c9ec` found a real failure in
+`swift-harness`. Correct adapters passed, but the discount mutant added one
+to an `Int32` total. The generated maximum boundary caused a native overflow
+trap before the required discount-law diagnostic. The acceptance harness
+correctly rejected that result; it was not a completed law counterexample.
+
+The mutant now returns one for a zero total and the total otherwise. It stays
+within `Int32` and violates the discount law on the deterministic zero-total
+boundary. Compiler semantics, generators, native adapters and the strict
+diagnostic requirement are unchanged.
+
+The original seed, `10144252326957008458`, reproduces the old failure with
+acceptance caching disabled. A separate native Swift probe confirms signal 5
+for the original maximum-input addition. The repaired full harness passes at
+64-bit normal and 32-bit compact profiles, with both the original seed and
+seed zero. Correct adapters pass and all seven negative controls are rejected
+in each invocation; the discount mutant reports `EquationFailed` with actual
+false and expected true, without a native process trap. Receipts are under
+`.artifacts/swift-harness-mutation/` in the isolated repair worktree.
+
+These are scoped repair results. The failed run's receipts are preserved;
+fresh combined acceptance remains required. Version 0.25.0 remains an
+unpublished minor, without an RC designation, tag or publication.
+
 ### Short-circuit proof branch repair — 18 October 2026
 
 The final acceptance run exposed exponential work in definition-contract result
