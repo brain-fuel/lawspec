@@ -58,6 +58,27 @@ test("Unicode metadata survives repeated JSON/JSFFI calls", async () => {
     assert.match(result.files.find(f => f.placement === "test").content, /λ 日本語 😀/);
   }
 });
+test("large Unicode descriptions survive streamed UTF-8 response boundaries", async () => {
+  const description = "ASCII λ 日本語 😀 ".repeat(12000);
+  const source = `unit unicode.stream
+law preserved is
+  description:
+    ${JSON.stringify(description)}
+  end description
+  definition:
+    true
+  end definition
+end law
+end unit
+`;
+  for (let call = 0; call < 2; call++) {
+    const result = await checkInput(compiler, {
+      sources: [{path: "stream-😀.lawspec", content: source}],
+    });
+    assert.deepEqual(result.diagnostics, []);
+    assert.equal(result.laws[0].description, description);
+  }
+});
 test("invalid examples, types and source syntax return structured diagnostics", async () => {
   for (const bad of [
     content.replace("x = -42", "y = -42"),

@@ -991,12 +991,12 @@
     "stack.yaml.lock": "ae222b9c81af920c56e50fa4596fa57786e7fa5a7b461390362b2b2ff63818c7",
     "vendor/unicode/17.0.0/CaseFolding.txt": "ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183",
     "vendor/unicode/LICENSE.txt": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
-    "wasm/app/Exports.hs": "15cf376d05540837319c1ef97ba007e98bfb35c7d78f46b567b3edf7e949d41b",
+    "wasm/app/Exports.hs": "7698bc8dcdbd3e00cc62d0597626a6dabe29aace9258645d1df266be1f3c408c",
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "8e34b5429ad3531cb954380e40f79a5703cd57bc6f2ba7f857425a6a7b90a81e",
-    "npm/core.wasm": "40cbf66fe18810621f5c4bd687e46d19ab97e9d33d4a789576692eca90cfb7a1",
-    "npm/core_jsffi.js": "591fdd5a477116ec4559cb684116cd1f8ca39a64a0198ea7439687fcfd85087e",
+    "npm/core.wasm": "2ddc2e8624f7404e167e4219e72fe3f5ff29f8a9360ee0dee311284d65190689",
+    "npm/core_jsffi.js": "83f3d08134001f01a5431ac43d68fe10bafde834879393fa5fd38ecf39fc1d58",
     "npm/api.mjs": "fd40ec7034402e4456504182d80e2e97f535713ae5d227ffad6456fa9091f59b",
     "npm/index.d.ts": "5b459c42bdaedcaa2acdbe57f7b225f2b0b6889044145a987af357f887e5d558"
   }
