@@ -101,9 +101,9 @@ same output, byte for byte, including formatting. The public API uses
 explicitly defined wire views, not serialized internal structures, so the
 internals can change without breaking clients. ref:DEC-wasm-distribution
 
-The wasm32 build has a 3 GiB GHC heap limit within its 4 GiB linear address
-space. This enables GHC's automatic in-place compaction for a large live heap,
-avoiding the extra space a copying collection needs. The remaining address
+The wasm32 build has a 3.5 GiB GHC heap limit within its 4 GiB linear address
+space and uses in-place compaction for the oldest generation, avoiding the
+extra space a copying collection needs. The remaining address
 space accommodates runtime allocations and transport buffers. See
 [GHC's heap limit and compaction options](https://downloads.haskell.org/ghc/latest/docs/users_guide/runtime_control.html#rts-options-to-control-the-garbage-collector).
 

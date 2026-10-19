@@ -24,6 +24,9 @@ import LawSpec.ClojureSources (clojureSource)
 -- | The Clojure project from the Java target's files for the same plan.
 clojureFromJava :: ClojureBindings -> Plan -> [Artifact] -> Either [Diagnostic] [Artifact]
 clojureFromJava cb plan javaFiles = do
+  -- The appended type index needs paths only. Materialize that small index
+  -- before conversion so its thunk cannot retain all original Java contents.
+  length (concat typeNames) `seq` pure ()
   converted <- concat <$> mapM convert javaFiles
   handlers <- mapM boundHandler (boundHandlers cb)
   mappings <- mapM failureEntry (boundFailures cb)
@@ -80,9 +83,11 @@ clojureFromJava cb plan javaFiles = do
       , ""
       , "  public static final java.util.Map<String, String> TYPES = java.util.Map.ofEntries(" ] ++
       [ intercalate ",\n" [ "      java.util.Map.entry(" ++ show (tagWords name) ++ ", " ++ show ("lawspec.data." ++ name) ++ ")"
-                           | a <- javaFiles, Just rest <- [stripPrefix "src/main/java/lawspec/data/" (artifactPath a)]
-                           , ".java" `isSuffixOf` rest, let name = take (length rest - 5) rest, '/' `notElem` name ] ] ++
+                           | name <- typeNames ] ] ++
       [ "  );", "}" ]) "generated" "source"
+    typeNames = [name | a <- javaFiles,
+      Just rest <- [stripPrefix "src/main/java/lawspec/data/" (artifactPath a)],
+      ".java" `isSuffixOf` rest, let name = take (length rest - 5) rest, '/' `notElem` name]
     -- The ex-info :types that bound failures name.
     failureEntry (kind,binding) = do
       rootClass <- messageClass (C.failureType binding) (C.failureConstructor binding)

@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises";
 let compiled;
 
 // GHC's JSFFI reactor reads these WASI arguments during initialization. Bound
-// the heap below wasm32's address ceiling to enable automatic compaction.
+// the heap below wasm32's address ceiling and compact the oldest generation
+// in place instead of reserving a second copy near that ceiling.
 // -with-rtsopts has no effect on this -no-hs-main reactor build.
-const coreArguments = ["lawspec", "+RTS", "-M3g", "-RTS"];
+const coreArguments = ["lawspec", "+RTS", "-M3584m", "-c", "-RTS"];
 
 // Instantiate the compiler core with a platform's WASI preview1 imports and
 // serialize calls: the core handles one JSON request at a time.

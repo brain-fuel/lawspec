@@ -25,6 +25,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   components avoid excessive optimization of large generated test expressions.
 - WASM transfers generated JSON directly as UTF-8 and reclaims transport
   buffers between serialized calls; the host queue releases completed responses.
+- Large Groovy and Clojure exports release Java conversion inputs earlier.
+  Shared WASM startup uses GHC's in-place compaction within wasm32's address
+  limit, preserving the complete generated projects and test domains.
 
 ### Removed
 
