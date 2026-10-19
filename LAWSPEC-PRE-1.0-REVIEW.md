@@ -37,6 +37,35 @@ migration**, the verified oracle runs of **Chapter 6 authoring**, and
 supersedes the `Nat` preservation limit recorded at `9b76bd54`. The open
 acceptance items in this checklist remain authoritative.
 
+### Short-circuit proof branch repair — 18 October 2026
+
+The final acceptance run exposed exponential work in definition-contract result
+analysis for the existing built-in Clock suite. A left-associated conjunction
+of twenty temporal checks enumerated both outcomes again after an earlier
+prefix had already returned literal `false`. Those continuation paths cannot
+execute. Disjunction had the corresponding literal-`true` case.
+
+Result analysis now applies the same conservative Boolean-literal test already
+used for condition paths. It retains both paths for an unknown condition and
+selects the reachable arm for a literal conditional. Strict body auditing,
+callee preconditions, branch-local guarantees, termination, refinement checks
+and deferred runtime postconditions remain in place. This is a correction to
+the existing checker, with no additional solver or proof-checking backend.
+The precedent is Why3's documented [lazy Boolean evaluation and evaluation
+order](https://why3.org/doc/syntaxref.html#evaluation-order) and SPARK's separate
+[contract truth and runtime-safety obligations](https://docs.adacore.com/spark2014-docs/html/ug/en/source/subprogram_contracts.html).
+
+The isolated `d38cc177` regression generates the unchanged twenty-check fixture
+through the real migration API in 6.6 seconds. All six production
+`beam-builtin-context` native profiles pass with acceptance caches disabled:
+Elixir, Erlang and Gleam at 64-bit readable and 32-bit compact output, including
+stub/public-adapter rejection checks. Additional regressions preserve both
+reachable Boolean outcomes, their scoped facts, invalid-contract rejection and
+selected postcondition-arm definedness. The first conditional-representation
+experiment did not fix the regression and has been removed. The original
+full-run receipts remain attached to their own immutable snapshot; the full
+compiler suite and combined final-snapshot acceptance are still required.
+
 ### Minor-version preparation — 18 October 2026
 
 Version **0.25.0** is prepared for the authoring milestone, without an RC

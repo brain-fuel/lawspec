@@ -640,14 +640,22 @@ resultCases signatures contracts scope facts expression = case expression of
   Integral body -> [(s,f,Integral value) | (s,f,value) <- recur scope facts body]
   Negated body | hasCallBindings body -> [(s,f,Negated value) | (s,f,value) <- recur scope facts body]
   Logical op left right -> concat
-    [ (s,assume (op /= And) value known,Literal (SBool (op /= And))) :
-        recur s (assume (op == And) value known) right
+    [ [(s,assume (op /= And) value known,Literal (SBool (op /= And)))
+        | possible (op /= And) value] ++
+      [ branch | possible (op == And) value,
+        branch <- recur s (assume (op == And) value known) right]
     | (s,known,value) <- recur scope (projectionPayloadFacts facts left) left]
   Conditional condition yes no -> concat
-    [ recur s (assume True value known) yes ++ recur s (assume False value known) no
+    [ [branch | possible True value, branch <- recur s (assume True value known) yes] ++
+      [branch | possible False value, branch <- recur s (assume False value known) no]
     | (s,known,value) <- recur scope facts condition]
   _ -> [(scope,facts,expression)]
-  where recur = resultCases signatures contracts
+  where
+    recur = resultCases signatures contracts
+    -- A previous short circuit may already have returned a Boolean literal.
+    -- Following its opposite path both invents an unevaluated RHS and doubles
+    -- every prefix of a left-associated chain. Unknown values keep both paths.
+    possible expected value = maybe True (== expected) (literalTruth value)
 
 -- The condition has already passed the strict walk. Preserve only the calls
 -- and predicates evaluated on the selected Boolean path, including nested
@@ -682,9 +690,11 @@ conditionBranches signatures contracts scope facts truth condition
           maybe True (==truth) (literalTruth value)]
   where
     recur=conditionBranches signatures contracts
-    literalTruth (Literal (SBool value))=Just value
-    literalTruth (Negated value)=not <$> literalTruth value
-    literalTruth _=Nothing
+
+literalTruth :: Proof -> Maybe Bool
+literalTruth (Literal (SBool value)) = Just value
+literalTruth (Negated value) = not <$> literalTruth value
+literalTruth _ = Nothing
 
 -- Only evaluated call binders add result contracts to a Boolean path.
 -- Branchless predicates keep the established symbolic entailment path.

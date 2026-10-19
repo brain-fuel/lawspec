@@ -52,6 +52,38 @@ contract name ty pre post = Contract (Id name) [Binder (Id "argument") "argument
 -- ref:REQ-definition-contracts
 test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts :: Spec
 test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined definition proof obligations" $ do
+  it "keeps both reachable results and their scoped facts through long short-circuit chains" $ do
+    let names = [Id ("guard" ++ show index) | index <- [0 :: Int .. 20]]
+        first = T.Variable (head names)
+        result = Id "chainResult"
+        function op = T.ProofDefinition (Id "chain") "chain" Nothing names
+          (foldl1 (T.Logical op) (map T.Variable names)) []
+        check op condition = T.auditWithContracts
+          [T.ProofContract (Id "chain") result [] [condition]] [function op]
+        returned = T.Variable result
+    -- A successful conjunction establishes its first guard. A successful
+    -- first guard establishes the disjunction, without borrowing skipped RHS
+    -- facts. Both outcomes remain possible with unconstrained inputs.
+    check And (T.Logical Or (T.Negated returned) first) `shouldBe` Right ()
+    check Or (T.Logical Or (T.Negated first) returned) `shouldBe` Right ()
+    mapM_ (\op -> do
+      check op returned `shouldSatisfy` isLeft
+      check op (T.Negated returned) `shouldSatisfy` isLeft
+      check op (T.Literal (SBool False)) `shouldSatisfy` isLeft) [And,Or]
+  it "checks only the selected postcondition arm after a literal Boolean result" $ do
+    let result = Id "selectedResult"
+        one = T.Literal (SInteger "Integer" 1)
+        zero = T.Literal (SInteger "Integer" 0)
+        invalid = T.ExactComparison Equal (T.Division False Divide one zero) zero
+        function actual = T.ProofDefinition (Id "selected") "selected" Nothing []
+          (T.Literal (SBool actual)) []
+        check actual condition = T.auditWithContracts
+          [T.ProofContract (Id "selected") result [] [condition]] [function actual]
+        selected = T.Variable result
+    check True (T.Conditional selected (T.Literal (SBool True)) invalid) `shouldBe` Right ()
+    check False (T.Conditional selected invalid (T.Literal (SBool True))) `shouldBe` Right ()
+    check True (T.Conditional selected invalid (T.Literal (SBool True))) `shouldSatisfy` isLeft
+    check False (T.Conditional selected (T.Literal (SBool True)) invalid) `shouldSatisfy` isLeft
   describe "constructor field invariants" $ do
     let tag = Id "Positive"
         field = Id "field"

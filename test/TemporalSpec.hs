@@ -1,6 +1,13 @@
 -- | Temporal propositions and performance budgets.
 module TemporalSpec (test_temporalPropositionsAndBudgetsAreCheckedOverTheClock) where
 
+import Control.Exception (evaluate)
+import System.Timeout (timeout)
+import Data.Aeson (Value(..), eitherDecode, encode, object, (.=))
+import qualified Data.Aeson.KeyMap as KM
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Vector as V
+import LawSpec.Api (dispatch)
 import Data.Either (isRight)
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -42,6 +49,46 @@ targets = ["python", "javascript", "typescript", "go", "java", "kotlin", "haskel
 -- makes it deterministic and a budget is reported as measured, never proved. ref:REQ-temporal-propositions
 test_temporalPropositionsAndBudgetsAreCheckedOverTheClock :: Spec
 test_temporalPropositionsAndBudgetsAreCheckedOverTheClock = describe "temporal propositions and budgets" $ do
+  it "keeps twenty virtual-clock checks inside finite compiler generation work" $ do
+    let source = unlines
+          [ "unit example.builtin_context"
+          , "import lawspec.time (Instant)"
+          , "import lawspec.randomness"
+          , "import lawspec.host"
+          , "import lawspec.logging"
+          , "import lawspec.concurrent"
+          , "definition viaDefaults (bound :: Int64 where bound >= 1) :: Bool uses Clock, Random is"
+          , "  valueOfInstant now >= 0 && (let r = randomBelow bound in r >= 0 && r < bound)"
+          , "end"
+          , "nativeProbe :: Unit -> Bool"
+          , "law `native built-in factories cross checked definitions` is"
+          , "  definition is nativeProbe unitValue = true end"
+          , "end"
+          , "law `virtual time never goes before its origin` using virtual clock is"
+          , "  definition is (never within 2 ms, valueOfInstant now < 0) = true end"
+          , "end"
+          ]
+        request = object
+          [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.1" :: String)
+          , "method" .= ("migrationBaseline" :: String), "from" .= ("0.24" :: String)
+          , "includeGeneration" .= True, "target" .= ("elixir" :: String)
+          , "machineBits" .= (64 :: Int)
+          , "verification" .= object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])]
+          , "sources" .= [object ["path" .= ("context.lawspec" :: String), "content" .= source]]
+          ]
+    completed <- timeout 30000000 $ do
+      let bytes = dispatch (encode request)
+      _ <- evaluate (BL.length bytes)
+      pure bytes
+    case completed of
+      Nothing -> expectationFailure "twenty finite temporal checks exhausted the compiler regression deadline"
+      Just bytes -> case eitherDecode bytes of
+        Right (Object response) -> do
+          KM.lookup "diagnostics" response `shouldBe` Just (Array V.empty)
+          case KM.lookup "files" response of
+            Just (Array files) -> files `shouldSatisfy` (not . V.null)
+            other -> expectationFailure (show other)
+        other -> expectationFailure (show (other :: Either String Value))
   let deadline =
         [ "definition deadline (wait :: Duration where wait <= 1h) :: Instant uses Clock is now + wait end" ]
       eventually = deadline ++
