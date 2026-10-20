@@ -1,6 +1,6 @@
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import lawspec/data
+import lawspec/data.{Record5eebfa15fa6145a8da5c04a1c56125f8f3b2caeb2a02d9cb36e95342d4209998 as ChainPayload}
 
 pub opaque type Parcel(a) { Private(a) }
 pub opaque type FlatChain(a) { Flat(List(a), Bool) }
@@ -20,14 +20,14 @@ pub fn to_chain(value: data.Chain(a), convert: fn(a) -> b) -> FlatChain(b) { fla
 fn flatten(value: data.Chain(a), convert: fn(a) -> b, items: List(b)) -> FlatChain(b) {
   case value {
     data.ChainStop -> Flat(list.reverse(items), True)
-    data.ChainMore(item, None) -> Flat(list.reverse([convert(item), ..items]), False)
-    data.ChainMore(item, Some(tail)) -> flatten(tail, convert, [convert(item), ..items])
+    data.ChainMore(ChainPayload(item, None)) -> Flat(list.reverse([convert(item), ..items]), False)
+    data.ChainMore(ChainPayload(item, Some(tail))) -> flatten(tail, convert, [convert(item), ..items])
   }
 }
 pub fn from_chain(value: FlatChain(a), convert: fn(a) -> b) -> data.Chain(b) {
   let Flat(items, ended) = value
   let tail = case ended { True -> Some(data.ChainStop) False -> None }
-  let assert Some(result) = list.fold(list.reverse(items), tail, fn(rest, item) { Some(data.ChainMore(convert(item), rest)) })
+  let assert Some(result) = list.fold(list.reverse(items), tail, fn(rest, item) { Some(data.ChainMore(ChainPayload(convert(item), rest))) })
   result
 }
 pub fn to_positive(value: data.Positive) -> Positive { Positive(value.value) }
