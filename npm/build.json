@@ -995,7 +995,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "8e34b5429ad3531cb954380e40f79a5703cd57bc6f2ba7f857425a6a7b90a81e",
-    "npm/core.wasm": "e9550d38efc418ab85a3cef47170bcbf131a7d9faa2c721b07c68b52718d9687",
+    "npm/core.wasm": "51bed47a1ed0f4c1e3930dacd79518c66ca6a8a60dbcd4f79d87f63f59aeb623",
     "npm/core_jsffi.js": "83f3d08134001f01a5431ac43d68fe10bafde834879393fa5fd38ecf39fc1d58",
     "npm/api.mjs": "fd40ec7034402e4456504182d80e2e97f535713ae5d227ffad6456fa9091f59b",
     "npm/index.d.ts": "5b459c42bdaedcaa2acdbe57f7b225f2b0b6889044145a987af357f887e5d558"
