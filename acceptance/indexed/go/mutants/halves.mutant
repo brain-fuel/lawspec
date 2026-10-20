@@ -2,5 +2,5 @@
 <<<<<<<
 Halves{Value: Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d{Back: value0, Front: value0}}
 =======
-Halves{Value: Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d{Back: RowCell{Tail: value0}, Front: value0}}
+Halves{Value: Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d{Back: RowCell{Value: Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f{Head: 0, Tail: value0}}, Front: value0}}
 >>>>>>>

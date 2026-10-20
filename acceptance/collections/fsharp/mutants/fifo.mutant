@@ -1,6 +1,6 @@
 @@ src/Example/Collections.fs
 <<<<<<<
-let fifo (value0: sbyte list) : Queue<sbyte> = { Queue.Items = value0 }
+let fifo (value0: sbyte list) : Queue<sbyte> = { Queue.Value = value0 }
 =======
-let fifo (value0: sbyte list) : Queue<sbyte> = { Queue.Items = List.rev value0 }
+let fifo (value0: sbyte list) : Queue<sbyte> = { Queue.Value = List.rev value0 }
 >>>>>>>

@@ -10,7 +10,7 @@ public static class Abilities
 {
     public static bool Charge(IGateway gateway, int cents) =>
         gateway.Authorize(cents) is Payment.Approved approved
-            && gateway.Capture(approved.cents).Cents == cents;
+            && gateway.Capture(approved.value).Cents == cents;
 
     /// <summary>The native handler of Gateway: authorize, capture, fee.</summary>
     public static IGateway GatewayHandler() => new Gateway();

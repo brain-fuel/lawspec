@@ -250,7 +250,9 @@ emitTests Config{..} unit laws = do
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
           [assertionDoc label (assertion e)])])) (zip [0::Int ..] (examples (original e)))
       boundaryValues <- mapM (mapM literal) (maybe (boundaryCases e) id (finiteCases e))
-      let sharedBoundaries=length boundaryValues >= 1024
+      -- Share large handler-bound assertions before registration is chunked:
+      -- repeated bodies can overflow the JVM constant pool below 1,024 cases.
+      let sharedBoundaries=length boundaryValues >= 64
           helper="_lawspecBoundary"++show index
           names=map inputId (inputs e) ++ [localName (C.binderId (C.resourceBinder resource)) | resource<-C.propertyResources (original e)]
           valuesArray=call "arrayOf<LawSpecRuntime.Value>" (map text names)

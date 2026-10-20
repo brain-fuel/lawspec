@@ -1,14 +1,14 @@
 # ref:DEC-acceptance-with-mutants
 defmodule Example.Collections do
   alias LawSpec.Data, as: D
-  def dedupe(values), do: %D.Set{items: Enum.sort(Enum.uniq(values))}
+  def dedupe(values), do: %D.SortedSet{value: Enum.sort(Enum.uniq(values))}
   def word_counts(words) do
     entries = words |> Enum.frequencies() |> Enum.sort() |> Enum.map(fn {word, count} -> %D.Entry{key: word, value: count} end)
-    %D.KeyVal{entries: entries}
+    %D.KeyVal{value: entries}
   end
-  def fifo(values), do: %D.Queue{items: values}
-  def lifo(values), do: %D.Stack{items: Enum.reverse(values)}
-  def rotate(%D.Deque{items: []} = empty), do: empty
-  def rotate(%D.Deque{items: [head | rest]}), do: %D.Deque{items: rest ++ [head]}
-  def distinct_rows(rows), do: %D.Set{items: Enum.sort(Enum.uniq(rows))}
+  def fifo(values), do: %D.Queue{value: values}
+  def lifo(values), do: %D.Stack{value: Enum.reverse(values)}
+  def rotate(%D.Deque{value: []} = empty), do: empty
+  def rotate(%D.Deque{value: [head | rest]}), do: %D.Deque{value: rest ++ [head]}
+  def distinct_rows(rows), do: %D.SortedSet{value: Enum.sort(Enum.uniq(rows))}
 end

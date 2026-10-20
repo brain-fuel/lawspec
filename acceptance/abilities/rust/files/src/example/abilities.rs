@@ -9,7 +9,7 @@ pub fn charge(
     value0: i32,
 ) -> bool {
     match gateway.authorize(value0) {
-        crate::lawspec_data::Payment::Approved { value } => gateway.capture(cents).cents == value0,
+        crate::lawspec_data::Payment::Approved { value: cents } => gateway.capture(cents).cents == value0,
         crate::lawspec_data::Payment::Declined => false,
     }
 }

@@ -1,4 +1,6 @@
-expect: elapsed time is never negative
+expect: example.builtins::elapsed
+expect: refinement_violation
+expect: lawspec.time::type::Duration::Duration
 @@ src/example_builtins.erl
 <<<<<<<
     {duration, Finish - Start}.

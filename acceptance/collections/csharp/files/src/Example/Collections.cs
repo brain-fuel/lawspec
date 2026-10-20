@@ -21,7 +21,7 @@ public static class Collections
     public static Stack<sbyte> Lifo(FSharpList<sbyte> items) => new Stack<sbyte>(items);
 
     public static Deque<sbyte> Rotate(Deque<sbyte> deque) =>
-        deque.Items.IsEmpty ? deque : new Deque<sbyte>(ListModule.Append(deque.Items.Tail, Fn.List(deque.Items.Head)));
+        deque.Value.IsEmpty ? deque : new Deque<sbyte>(ListModule.Append(deque.Value.Tail, Fn.List(deque.Value.Head)));
 
     // Lists compare by value, so they can be Set elements directly.
     public static FSharpSet<FSharpList<sbyte>> DistinctRows(FSharpList<FSharpList<sbyte>> rows) => SetModule.OfSeq(rows);

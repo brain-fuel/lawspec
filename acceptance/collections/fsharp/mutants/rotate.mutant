@@ -1,6 +1,6 @@
 @@ src/Example/Collections.fs
 <<<<<<<
-    | first :: rest -> { Deque.Items = rest @ [ first ] }
+    | first :: rest -> { Deque.Value = rest @ [ first ] }
 =======
-    | _ :: rest -> { Deque.Items = rest }
+    | _ :: rest -> { Deque.Value = rest }
 >>>>>>>

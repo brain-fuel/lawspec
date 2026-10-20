@@ -1,4 +1,6 @@
-expect: a token has the length asked
+expect: law_a_token_has_the_length_asked
+expect: key :secure_bytes not found
+expect: LawSpec.Abilities.Lawspec.Randomness.Random
 @@ lib/example_builtins.ex
 <<<<<<<
   def token(secure_random, count), do: secure_random.secure_bytes.(count)

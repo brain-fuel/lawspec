@@ -22,15 +22,17 @@ specClassName name
 -- Passing those bodies through Groovy's parser exhausts its prediction cache.
 -- Keep the existing Java execution body and expose each independent test as a
 -- Spock feature. This changes only the host-language bridge, never the search.
--- Count callbacks rather than bytes so formatting cannot select the strategy.
+-- Count callbacks and independent tests rather than bytes. Shared assertions
+-- reduce callback duplication without reducing a large suite's test count.
 needsJavaBody :: String -> Bool
-needsJavaBody = count (128 :: Int)
+needsJavaBody source = count (128 :: Int) "LawSpecRuntime.let(" source ||
+  count (512 :: Int) "\n  @Test\n" source
   where
-    count 0 _ = True
-    count _ [] = False
-    count remaining source@(_:rest) = case stripPrefix "LawSpecRuntime.let(" source of
-      Just after -> count (remaining - 1) after
-      Nothing -> count remaining rest
+    count 0 _ _ = True
+    count _ _ [] = False
+    count remaining marker input@(_:rest) = case stripPrefix marker input of
+      Just after -> count (remaining - 1) marker after
+      Nothing -> count remaining marker rest
 
 javaBodySpecification :: String -> (String -> String) -> String -> (String, String)
 javaBodySpecification className title source =

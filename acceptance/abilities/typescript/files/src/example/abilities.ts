@@ -9,7 +9,7 @@ import type * as abilities from '.././lawspec_abilities/example/abilities.js';
 export function charge(gateway: abilities.Gateway, value0: number): boolean {
   const payment = gateway.authorize(value0);
   if (payment instanceof data.PaymentApproved) {
-    return gateway.capture(payment.cents).cents === value0;
+    return gateway.capture(payment.value).cents === value0;
   }
   return false;
 }

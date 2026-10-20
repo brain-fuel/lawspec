@@ -8,7 +8,7 @@ import * as ls from '../lawspec_runtime.mjs';
 export function charge(gateway, value0) {
   const payment = gateway.authorize(value0);
   if (payment instanceof data.PaymentApproved) {
-    return gateway.capture(payment.cents).cents === value0;
+    return gateway.capture(payment.value).cents === value0;
   }
   return false;
 }

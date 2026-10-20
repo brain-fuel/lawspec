@@ -198,6 +198,10 @@ scaffoldFilesWith crypto minify target = case target of
     , ("test/Spec.hs", "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n") ]
   "kotlin" -> Right
     [ ("settings.gradle.kts", "rootProject.name = \"lawspec-example\"\n")
+    -- Kotlin otherwise inherits Gradle's small default heap. Complete finite
+    -- boundary suites need room for all generated registration helpers.
+    -- https://kotlinlang.org/docs/gradle-compilation-and-caches.html
+    , ("gradle.properties", "kotlin.daemon.jvmargs=-Xmx2g\n")
     , ("build.gradle.kts", intercalate (if minify then "\n" else "\n\n")
         [ kotlinBlock "plugins" ["kotlin(\"jvm\") version \"2.3.21\""]
         , kotlinBlock "repositories" ["mavenCentral()"]

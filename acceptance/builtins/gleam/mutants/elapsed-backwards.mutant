@@ -1,4 +1,6 @@
-expect: elapsed time is never negative
+expect: example.builtins::elapsed
+expect: RefinementViolation
+expect: lawspec.time::type::Duration::Duration
 @@ src/example/builtins.gleam
 <<<<<<<
   data.Duration(finish - start)

@@ -11,7 +11,7 @@ import lawspec_runtime as ls
 def charge(gateway: "lawspec_abilities.example.abilities.Gateway", value0: int) -> bool:
     payment = gateway.authorize(value0)
     if isinstance(payment, data.PaymentApproved):
-        return gateway.capture(payment.cents).cents == value0
+        return gateway.capture(payment.value).cents == value0
     return False
 
 

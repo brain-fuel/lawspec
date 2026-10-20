@@ -5,7 +5,7 @@ package abilities
 // Charge implements charge :: (Int32 -> Bool).
 func Charge(gateway Gateway, value0 int32) bool {
 	if approved, ok := gateway.Authorize(value0).(PaymentApproved); ok {
-		return gateway.Capture(approved.Cents).Cents == value0
+		return gateway.Capture(approved.Value).Cents == value0
 	}
 	return false
 }

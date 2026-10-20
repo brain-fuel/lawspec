@@ -190,7 +190,7 @@ emitDefinitions style layout bits declarations units = do
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
           installs = [E.call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",
-            E.call "java.util.Map.of" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name, _) <- handlers])] <> D.text ";"
+            E.call "java.util.Map.<String, Object>of" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name, _) <- handlers])] <> D.text ";"
             | not (null handlers)]
           opening = "public static " ++ D.render D.Compact nativeResult ++ " " ++ declarationName declaration ++ "("
           normalSignature = D.group (D.text "public static " <> nativeResult <>
@@ -223,7 +223,7 @@ emitDefinitions style layout bits declarations units = do
                     (o, x) : _ | withNative -> "new " ++ abilitiesClassOf o ++ "." ++ specName x ++ "(symbols)"
                     _ -> adaptersObject ++ kotlinHandlerBridge h ++ "(symbols)"
               in pure (E.call "LawSpecRuntime.withHandlers" [D.text "symbols",
-                E.call "java.util.Map.of" [E.quoted (abilityKey ability), D.text made], D.text "() -> " <> body])
+                E.call "java.util.Map.<String, Object>of" [E.quoted (abilityKey ability), D.text made], D.text "() -> " <> body])
             -- raise aborts to the nearest attempt of its Fail ability.
             Perform op [_] | isFail (operationAbility op) ->
               pure (E.call "LawSpecRuntime.raiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))

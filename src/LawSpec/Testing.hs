@@ -936,30 +936,51 @@ indexEquations declarations definitions measure = do
 -- | The index equations runtimes solve backwards to generate indexed values.
 -- ref:DEC-indexed-families-as-evidence
 familyEquations :: [DataDeclaration] -> DataDeclaration -> Maybe [(Id, [String])]
-familyEquations declarations root = do
-  families <- reach [] [dataId root]
-  pure [ (Id tag, indexTermText term : map indexGuardText guards)
-       | d <- families, Just index <- [dataIndex d]
-       , (tag, ConstructorIndex [term] guards) <- familyIndexConstructors index ]
+familyEquations declarations root = reach [] [(dataId root, Nothing)]
   where
     byId = M.fromList [(dataId d, d) | d <- declarations]
-    reach seen [] = Just (reverse seen)
-    reach seen (identity : rest)
-      | identity `elem` map dataId seen = reach seen rest
+    -- A structural product can carry the index of one of its projections.
+    -- Give that product an equation in the generation plan only: the typed
+    -- schema and its validation/guards keep their authoritative index paths.
+    -- Different projections of the same product cannot share one equation.
+    reach _ [] = Just []
+    reach seen (request@(identity, projection) : rest)
+      | Just prior <- lookup identity seen = do
+          unless' (prior == projection)
+          reach seen rest
       | otherwise = do
           d <- M.lookup identity byId
-          index <- dataIndex d
-          unless' (length (familyIndexNames index) == 1)
-          children <- fmap concat $ mapM (\c -> do
-            ConstructorIndex terms guards <- lookup (idText (constructorId c)) (familyIndexConstructors index)
-            let positions = nub (concatMap termFields (terms ++ concat [[a, b] | IndexGuard _ a b <- guards]))
-            -- The direct index generator solves root-field indices. Nested
-            -- projections use the ordinary checked generator until that solver
-            -- can construct the intervening structural records as well.
-            unless' (length positions <= 3 && all (\(path, i) -> length path == 1 && i == 0) positions)
-            mapM (\(path, _) -> let position = head path in case binderType <$> drop position (constructorFields c) of
-              Constructor child _ : _ -> Just (Id child)
-              _ -> Nothing) positions) (dataConstructors d)
-          reach (d : seen) (rest ++ children)
+          constructors <- case projection of
+            Nothing -> do
+              index <- dataIndex d
+              unless' (length (familyIndexNames index) == 1)
+              mapM (\c -> do
+                ConstructorIndex [term] guards <- lookup (idText (constructorId c)) (familyIndexConstructors index)
+                pure (c, term, guards)) (dataConstructors d)
+            Just path -> do
+              -- Projection paths traverse closed structural products only.
+              _ <- dataStructural d
+              [c] <- pure (dataConstructors d)
+              unless' (not (null path))
+              pure [(c, IndexPath path 0, [])]
+          lowered <- mapM lower constructors
+          further <- reach (request : seen) (rest ++ concatMap snd lowered)
+          pure (map fst lowered ++ further)
+    lower (c, term, guards) = do
+      let positions = nub (concatMap termFields (term : concat [[a, b] | IndexGuard _ a b <- guards]))
+          roots = nub [head path | (path, _) <- positions, not (null path)]
+      unless' (all (\(path, i) -> not (null path) && i == 0) positions && length roots <= 3)
+      children <- mapM (\position -> do
+        -- Two different nested indices in the same payload need a multi-index
+        -- product planner; leave them to checked generation rather than
+        -- conflating their independently constrained values.
+        [path] <- pure (nub [tail path | (path, _) <- positions, head path == position])
+        Constructor child _ : _ <- pure (map binderType (drop position (constructorFields c)))
+        pure (Id child, if null path then Nothing else Just path)) roots
+      let direct t = case t of
+            IndexPath (position : _) i -> IndexField position i
+            IndexApply op a b -> IndexApply op (direct a) (direct b)
+            _ -> t
+          directGuard (IndexGuard relation a b) = IndexGuard relation (direct a) (direct b)
+      pure ((constructorId c, indexTermText (direct term) : map (indexGuardText . directGuard) guards), children)
     unless' condition = if condition then Just () else Nothing
-

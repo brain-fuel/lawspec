@@ -1,8 +1,8 @@
 expect: charge captures once
 @@ src/main/java/example/Abilities.java
 <<<<<<<
-      return gateway.capture(approved.cents()).cents() == value0;
+      return gateway.capture(approved.value()).cents() == value0;
 =======
-      gateway.capture(approved.cents());
-      return gateway.capture(approved.cents()).cents() == value0;
+      gateway.capture(approved.value());
+      return gateway.capture(approved.value()).cents() == value0;
 >>>>>>>

@@ -1,6 +1,6 @@
 @@ src/Example/Collections.swift
 <<<<<<<
-        Queue(items: value0)
+        Queue(value: value0)
 =======
-        Queue(items: value0.reversed())
+        Queue(value: value0.reversed())
 >>>>>>>

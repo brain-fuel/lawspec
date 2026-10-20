@@ -88,13 +88,14 @@ indexedSpec = describe "natural-indexed families" $ do
         -- Free indices are determined by generated values, not constrained.
         mapMaybe generatorIndex plans `shouldBe` []
 
-  it "retains fixed and shared index predicates for record payload generation" $
+  it "directs fixed and shared indices through structural payloads while retaining their predicates" $
     case (,) <$> plansFor "fixed length" <*> plansFor "shared length" of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right (fixed, shared) -> do
         length fixed `shouldBe` 1
         length shared `shouldBe` 2
-        map generatorIndex (fixed ++ shared) `shouldBe` replicate 3 Nothing
+        map (isJust . generatorIndex) (fixed ++ shared) `shouldBe` [True, False, True]
+        map (length . indexedEquations) (mapMaybe generatorIndex (fixed ++ shared)) `shouldBe` [3, 3]
         map (null . generatorPredicates) fixed `shouldBe` [False]
         case shared of
           [first, second] -> concatMap C.freeBinders (generatorPredicates second)
@@ -127,6 +128,41 @@ indexedSpec = describe "natural-indexed families" $ do
           [Just [(C.Id "example.directIndex::type::Count::Zero", ["c0"]),
                  (C.Id "example.directIndex::type::Count::Next", ["+ f0 c1"])]]
         mapM_ (\target -> emitPlan target plan `shouldSatisfy` either (const False) (const True)) targets
+
+  it "directs a fixed index through multiple structural payload levels" $ do
+    let body = unlines
+          [ "unit example.nestedIndex"
+          , "type Count (n :: Whole) is one of"
+          , "  | Zero where n = 0"
+          , "  | Next of type record{payload :: record{prior :: Count m}} where n = m + 1"
+          , "end type"
+          , "law fixed is definition: for all (value :: Count 3) => nOfCount value = 3 end for all end definition end law"
+          , "end unit" ]
+    case compileCore 64 defaultGeneration [Source "nested.lawspec" body] >>= planTesting of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right plan -> do
+        let requirements = [r | u <- plannedUnits plan, p <- plannedProperties u, r <- generatorRequirements p]
+            equations = concatMap indexedEquations (mapMaybe generatorIndex requirements)
+        length equations `shouldBe` 4
+        map snd equations `shouldBe` [["c0"], ["+ f0 c1"], ["f0"], ["f0"]]
+        mapM_ (\target -> emitPlan target plan `shouldSatisfy` either (const False) (const True)) targets
+
+  it "keeps distinct index projections of a shared product in checked generation" $ do
+    let body = unlines
+          [ "unit example.distinctIndices"
+          , "type Count (n :: Whole) is one of"
+          , "  | Zero where n = 0"
+          , "  | FromLeft of type record{left :: Count l right :: Count r} where n = l + 1"
+          , "  | FromRight of type record{left :: Count l right :: Count r} where n = r + 1"
+          , "end type"
+          , "law fixed is definition: for all (value :: Count 3) => nOfCount value = 3 end for all end definition end law"
+          , "end unit" ]
+    case compileCore 64 defaultGeneration [Source "distinct.lawspec" body] >>= planTesting of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right plan -> do
+        let requirements = [r | u <- plannedUnits plan, p <- plannedProperties u, r <- generatorRequirements p]
+        map generatorIndex requirements `shouldBe` [Nothing]
+        map (null . generatorPredicates) requirements `shouldBe` [False]
 
   it "expands indexed strategy aliases and checks nested bind domains on every target" $ do
     let source = extendUnit vectors $ unlines

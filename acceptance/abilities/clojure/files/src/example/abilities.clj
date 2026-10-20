@@ -9,7 +9,7 @@
   [gateway value0]
   (let [payment (ls/op gateway :authorize value0)]
     (and (= :payment/approved (ls/tag payment))
-         (= value0 (:cents (ls/op gateway :capture (:cents payment)))))))
+         (= value0 (:cents (ls/op gateway :capture (:value payment)))))))
 
 (defn gateway-handler
   "The native handler of Gateway: authorize, capture, fee."

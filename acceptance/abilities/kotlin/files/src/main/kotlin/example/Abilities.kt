@@ -11,7 +11,7 @@ object Abilities {
         value0: kotlin.Int,
     ): kotlin.Boolean {
         val payment = gateway.authorize(value0)
-        return if (payment is lawspec.data.Payment.Approved) gateway.capture(payment.cents).cents == value0 else false
+        return if (payment is lawspec.data.Payment.Approved) gateway.capture(payment.value).cents == value0 else false
     }
 
     /** The native handler of Gateway: authorize, capture, fee. */

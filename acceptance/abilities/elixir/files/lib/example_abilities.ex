@@ -5,7 +5,7 @@ defmodule Example.Abilities do
 
   def charge(gateway, cents) do
     case gateway.authorize.(cents) do
-      %Data.PaymentApproved{cents: approved} ->
+      %Data.PaymentApproved{value: approved} ->
         %Data.Receipt{cents: paid} = gateway.capture.(approved)
         paid == cents
       %Data.PaymentDeclined{} -> false
@@ -15,7 +15,7 @@ defmodule Example.Abilities do
   def gateway_handler() do
     %Gateway{
       authorize: fn cents ->
-        if cents < 0, do: %Data.PaymentDeclined{}, else: %Data.PaymentApproved{cents: cents}
+        if cents < 0, do: %Data.PaymentDeclined{}, else: %Data.PaymentApproved{value: cents}
       end,
       capture: fn cents -> %Data.Receipt{cents: cents} end,
       fee: fn -> 25 end

@@ -1,6 +1,6 @@
 @@ lib/example_collections.ex
 <<<<<<<
-%D.Queue{items: values}
+%D.Queue{value: values}
 =======
-%D.Queue{items: Enum.reverse(values)}
+%D.Queue{value: Enum.reverse(values)}
 >>>>>>>

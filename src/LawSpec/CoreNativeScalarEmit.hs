@@ -946,7 +946,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     javaLateInstalls e = javaInstalling e (lateHandlers e)
     javaInstalling e chosen = case chosen of
       [] -> []
-      _ -> [javaRuntime "installHandlers" [Doc.text "symbols", JavaExpr.call "java.util.Map.of"
+      _ -> [javaRuntime "installHandlers" [Doc.text "symbols", JavaExpr.call "java.util.Map.<String, Object>of"
         (concat [[JavaExpr.quoted (C.abilityKey a), Doc.text (javaConstructHandler (lawMaking e) a c)] | (a, c) <- chosen])] <> Doc.text ";"]
     javaConstructHandler making@(shared, resourceOf) a c = case c of
       C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> "new " ++ intercalate "." parts ++ "(" ++ madeWith ++ ")"
@@ -991,7 +991,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (javaRuntime "withHandlers" [Doc.text "symbols",
-          JavaExpr.call "java.util.Map.of" [JavaExpr.quoted (C.abilityKey ability), Doc.text (javaConstructHandler plainMaking ability choice)],
+          JavaExpr.call "java.util.Map.<String, Object>of" [JavaExpr.quoted (C.abilityKey ability), Doc.text (javaConstructHandler plainMaking ability choice)],
           Doc.text "() -> " <> body])
       _ -> Left "expected checked Java external call"
     renderLegacy term = case C.expressionNode term of

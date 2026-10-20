@@ -260,7 +260,9 @@ emitTests Config{..} unit laws = do
       -- finite domains share only the case body: duplicating its assertion
       -- lambdas thousands of times overflows the JVM class constant pool.
       -- These arguments are already checked stored values, not computations.
-      let sharedBoundaries = length boundaryValues >= 1024
+      -- Share large handler-bound assertions before registration is chunked:
+      -- repeated bodies can overflow the JVM constant pool below 1,024 cases.
+      let sharedBoundaries = length boundaryValues >= 64
           boundaryHelper = "_lawspecBoundary" ++ show index
           boundarySetup values = [symbols] ++ handlerInstalls e ++
             [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values]

@@ -7,7 +7,7 @@ final class Abilities {
   // (Int32 -> Bool)
   static boolean charge(lawspec.abilities.example.Abilities.Gateway gateway, int value0) {
     if (gateway.authorize(value0) instanceof lawspec.data.Payment.Approved approved) {
-      return gateway.capture(approved.cents()).cents() == value0
+      return gateway.capture(approved.value()).cents() == value0
     }
     return false
   }

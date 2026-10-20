@@ -15,10 +15,10 @@ public final class Collections {
     return new HashSet<>(value0);
   }
 
-  public static Map<String, BigInteger> wordCounts(List<String> value0) {
+  public static Map<String, Number> wordCounts(List<String> value0) {
     var counts = new HashMap<String, BigInteger>();
     for (var word : value0) counts.merge(word, BigInteger.ONE, BigInteger::add);
-    return counts;
+    return new HashMap<String, Number>(counts);
   }
 
   public static ArrayDeque<Byte> fifo(List<Byte> value0) {

@@ -55,13 +55,42 @@ example, 25 authored definitions, seven ADTs and two refinements, including six
 checked mappings. These scoped results do not complete the full acceptance
 graph or prove the unbounded program laws.
 
-The existing generation limit for nested index paths remains explicit:
-alternatives with record payloads retain their index predicates and constructor
-guards through ordinary checked generation and shrinking. The direct index
-generator handles supported single-payload family paths; it does not solve
-through intervening records. Retiring flat legacy payload syntax does not
-establish support for that additional solver capability. Tests cover both
-paths separately, and bounded filtering never constitutes complete evidence.
+**Earlier 0.26 checkpoint, superseded by the projection fix below:** the direct
+index generator did not solve through intervening records; record payloads
+retained their index predicates and constructor guards through ordinary checked
+generation and shrinking. Native conformance subsequently found that filtering
+could exhaust its attempts for inhabited fixed-size stacks.
+
+The current candidate extends the existing index-generation plan through closed
+structural products. Each intermediate product receives a projection equation
+in the generation plan; authoritative typed schemas, constructor guards,
+dependent predicates and shrinking restrictions remain intact. This traverses
+multiple structural layers without unwrapping nominal types. Different index
+projections of the same product, multiple independently indexed projections
+within one payload, and multi-index families still use checked generation;
+the single-index planner does not conflate them. A bounded miss remains
+incomplete evidence. Focused compiler tests pass, and Scala replays the original
+failure seed with all 579 collection tests passing. Combined acceptance remains
+pending.
+
+Kotlin scaffolds set `kotlin.daemon.jvmargs=-Xmx2g`, using the
+[documented compiler-daemon heap setting](https://kotlinlang.org/docs/gradle-compilation-and-caches.html).
+This accommodates complete generated boundary suites without reducing their
+case counts. The native indexed suite executes all 4,335 tests with that setting;
+its ten mutation controls also fail at runtime as required. The corresponding
+Go indexed suite and all ten mutation controls pass as well.
+
+Native conformance also exposed JVM class-size limits in large handler suites.
+Java, Kotlin and Scala share assertion bodies from 64 cases onward, preserving
+individual setup, input checks, failure context and discovery. Scala registration
+traits share the same suite instance and global ordering queue; the random-order,
+parallel and repeated-run harness suite passes all seven mutation controls.
+Groovy retains a Java execution body for suites with at least 512 independent
+tests as well as deeply nested callbacks. The corrected handler suites compile
+in Scala, Java, Kotlin, Groovy and Clojure, each retaining all 8,004 boundary
+cases. Java handler-map factories specify `String, Object` explicitly so
+Groovy's static checker preserves the same interface types. These are scoped
+regressions; the combined fresh acceptance graph remains required.
 
 Implementation acceptance requires all closing forms and errors, shared
 formatter/editor support, preserved intrinsic checks and behavior, native/WASM
