@@ -225,7 +225,21 @@ whether it was the real dependency or a stand-in.
 | `dependencies[].endpoint` | The endpoint it was wired to: `host:port` or a URL. |
 | `dependencies[].reached` | Whether the writer reached the endpoint when it recorded the run. |
 | `dependencies[].kind` | `real` or `stand-in`. |
-| `dependencies[].stand_in` | Present exactly when `kind` is `stand-in`: the stand-in's identity (`product`), its `version` and the `conformance` level its maker declares, with an optional `history_digest`, a digest of the history it was recorded from. |
+| `dependencies[].stand_in` | Present exactly when `kind` is `stand-in`: the stand-in's identity (`product`), its `version` and the `conformance` level its maker declares, with an optional `history_digest`, a digest of the history it was recorded from, and an optional `stands_in_for`, the contract it stands in for. |
+
+Version 1 also defines optional fields that identify what ran. A reader that
+predates them ignores them; this one checks and reports them.
+
+| Field | Meaning |
+| --- | --- |
+| `execution.status` | `wired` (the endpoints were wired, nothing ran), `running` (a run under way) or `completed`. |
+| `execution.exit_code`, `execution.finished_at` | Present exactly when the run completed: the run's exit code, and an RFC 3339 time not before `run.started_at`. |
+| `architecture` | The architecture the wiring was resolved from: its `document` and `digest`, with optional `unique_id`, `decorators`, `decorators_digest`, `topology_digest` (the planned wiring) and `elements`. |
+| `application` | The application the run exercised: its architecture `node`, the `contract` it implements and its `implementation`. |
+| `dependencies[].node`, `dependencies[].edge` | The architecture node the dependency is, and the relationship it was reached through. |
+| `dependencies[].contract` | The contract its binding had to satisfy: `package`, `version` and optional `abilities`. |
+| `dependencies[].implementation` | What implemented it: `kind` (`real-provider`, `fixture` or `application`), `product`, `version`, and optional `commit` and `image_digest`. A real dependency is not implemented by a fixture, nor a stand-in by the real provider. |
+| `dependencies[].completed` | What was observed when the run completed: `reached`, and a stand-in's `history_digest` and `history_entries` then. |
 
 A dependency's `name` matches what a law relies on:
 
@@ -252,6 +266,50 @@ PROPERTY TESTED (2)
 An `ENVIRONMENT` section then lists each dependency and how many tested
 obligations rely on it, or that none does. Proved laws, laws the compiler
 checked itself, skipped laws and every other obligation are unchanged.
+
+### Planned wiring and completed runs
+
+A law LawSpec runs natively is planned until a run completes it. Named to
+`lawspec evidence`, an attestation links such a law to its run only when
+`lawspec test` recorded the law under that run's `run.id` and the attestation
+does not say the run is unfinished:
+
+| `execution.status` | Each law relying on an attested dependency |
+| --- | --- |
+| absent or `completed` | Recorded under `run.id`: completed, with its recorded outcome (`environmentOutcome`, passed or failed) and the run's exit code. Not recorded: planned. |
+| `running` | Planned: the run is in progress. |
+| `wired` | Planned: wiring only, nothing ran. |
+
+A law not linked is reported with `plannedEnvironment`,
+`plannedEnvironmentRun` and `plannedAgainst`, and the `ENVIRONMENT` section
+says why no completed run is linked. A completed run's identities are
+reported beside it: the architecture and topology digests, the application's
+node, contract and implementation, and for each dependency its node, edge,
+contract and implementation.
+
+```text
+PROPERTY TESTED (1)
+  law shop.orders::checkout charges the amount: checkout (cents)
+    ...
+    passed in completed run 839f6cf4 in environment staging, completed with exit code 0 against shop.orders::Gateway: stand-in acme/gateway 0.1.0 (conformance level 3, history sha256:9c1e... when completed) at localhost:9092; fixture acme/gateway 0.1.0
+```
+
+Each dependency says whether the real provider or a fixture implemented it
+(`provider`: the `implementation.kind`, or else `real-provider` for a real
+dependency and `fixture` for a stand-in), and `ranAgainst` gives the identity
+of what the law ran against: the implementation's product and version, and
+the history a stand-in served, from `completed.history_digest` when the run
+completed and otherwise from `stand_in.history_digest`. Each law lists its
+`environmentProviders`.
+
+What a run observes is not wiring. A law is run again when its dependencies'
+endpoint, kind, or a stand-in's product, version or conformance changes; a
+changed history digest, `reached`, `completed` or `execution` does not make
+its result stale. An environment attestation stored inside the project, at
+any path, is not an input of the project: a writer may rewrite it as the run
+completes without making any result stale. LawSpec recognizes it by its
+`format`, never by its name or the tool that wrote it
+ref:DEC-completed-run-attestation.
 
 The attestation is reporting only: it never changes what a law means, whether
 it passes or how it is discharged ref:DEC-environment-attestation. The

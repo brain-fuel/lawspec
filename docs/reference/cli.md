@@ -170,12 +170,18 @@ and its harness are kept apart: the harness can never change the obligation.
   that relies on an attested dependency gets a line saying where it ran and
   against what, and an `ENVIRONMENT` section lists the dependencies. Without
   it, the `attestation` path in `lawspec.json` is read; without either, each
-  law shows the attested `lawspec test` run it last passed in, if any. No
-  status changes. See
+  law shows the attested `lawspec test` run it last passed in, if any. When
+  the named attestation's run id is one `lawspec test` recorded, each law
+  run in it is reported as completed, with its outcome, the run's exit code
+  and whether a real provider or a fixture implemented each dependency;
+  unless the attestation's `execution.status` is `wired` (wiring only) or
+  `running` (in progress), when it stays planned. No status changes. See
   [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran).
 - `--json` prints the `ObligationEvidence` records; a law with a harness has
   `harness` (its settings) and, after a run, `adequacy` (its statistics); a law
-  an attestation touches has `environment`, `environmentRun` and `against`.
+  an attestation touches has `environment`, `environmentRun`, `against` and
+  `environmentProviders`, with `environmentOutcome` when a completed run is
+  linked, or the `planned` forms of these when none is.
 
 ## `explain`
 
@@ -278,7 +284,10 @@ them.
   tests run in (default: the `attestation` path in `lawspec.json`). It is
   checked, kept with the run's results, and each law it touches that passes
   names it, so `lawspec evidence` later shows which laws ran against
-  stand-ins. A law it touches runs again when its dependencies are wired differently. It
+  stand-ins. A law it touches runs again when its dependencies are wired
+  differently: by endpoint, kind, and a stand-in's product, version and
+  conformance, never by what the run observed, such as a history digest. An
+  attestation stored inside the project is not one of its inputs. It
   changes no law and no outcome.
 - `--seed <n>`: the property tests' random seed. Without it, each run draws a
   new one, and the summary prints it. A recorded pass keeps the seed it ran
