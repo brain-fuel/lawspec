@@ -27,7 +27,7 @@ extension Example.ScalarAdapters {
         fatalError("not implemented: example.scalar_adapters::echoComplex")
     }
 
-    /// (Int8 -> BigInt)
+    /// (Int8 -> Integer)
     static func successor(_ value0: Int8) -> BigInt {
         fatalError("not implemented: example.scalar_adapters::successor")
     }

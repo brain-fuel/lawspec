@@ -98,7 +98,8 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           `shouldBe` Right
             [ Planned, ExhaustivelyChecked, Planned, ExhaustivelyChecked
             , Planned, ExhaustivelyChecked, ExhaustivelyChecked
-            , Planned, Planned, Planned, ExhaustivelyChecked, ExhaustivelyChecked ]
+            , Planned, Planned, Planned, ExhaustivelyChecked, ExhaustivelyChecked
+            , ExhaustivelyChecked ]
         case planTestingWith (V.Verification [V.Exhaustive,V.Examples]) program of
           Left ds -> expectationFailure (show ds)
           Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets

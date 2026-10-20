@@ -22,8 +22,8 @@ object ScalarAdapters {
     ): lawspec.runtime.LawSpecRuntime.Complex =
         TODO("echoComplex")
 
-    // (Int8 -> BigInt)
-    fun successor(value0: kotlin.Byte): java.math.BigInteger = TODO("successor")
+    // (Int8 -> Integer)
+    fun successor(value0: kotlin.Byte): Number = TODO("successor")
 
     // (Int8 -> Int8)
     fun narrow(value0: kotlin.Byte): kotlin.Byte = TODO("narrow")

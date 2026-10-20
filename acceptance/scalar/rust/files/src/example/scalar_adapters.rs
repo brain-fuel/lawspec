@@ -27,9 +27,9 @@ pub fn echoComplex(value0: ls::Complex32) -> ls::Complex32 {
     value0
 }
 
-// LawSpec: (Int8 -> BigInt)
-pub fn successor(value0: i8) -> ls::BigInt {
-    ls::BigInt::from(value0) + 1
+// LawSpec: (Int8 -> Integer)
+pub fn successor(value0: i8) -> ls::Integer {
+    ls::Integer::from(ls::BigInt::from(value0) + 1_i32)
 }
 
 // LawSpec: (Int8 -> Int8)

@@ -1,3 +1,6 @@
+rejected-at: generation
+expect: refuted
+expect: n = 3
 expect: the evens below n are half of the range
 @@ examples/specs/records.lawspec
 <<<<<<<

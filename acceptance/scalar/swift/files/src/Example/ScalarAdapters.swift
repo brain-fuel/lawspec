@@ -29,7 +29,7 @@ extension Example.ScalarAdapters {
         value0
     }
 
-    /// (Int8 -> BigInt)
+    /// (Int8 -> Integer)
     static func successor(_ value0: Int8) -> BigInt {
         BigInt(value0) + 1
     }

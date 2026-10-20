@@ -1,4 +1,5 @@
-expect: Logs: an unknown log refuses records| [native]
+expect: Logs:
+expect: an unknown log refuses records| [native]
 @@ src/Example/Composition.fs
 <<<<<<<
             | false, _ -> Error UnknownLog

@@ -1,4 +1,5 @@
-expect: Logs: an unknown log refuses records| [native]
+expect: Logs:
+expect: an unknown log refuses records| [native]
 @@ src/main/java/example/Composition.java
 <<<<<<<
       if (records == null) throw new LawSpecRuntime.Fail(new lawspec.data.Problem.UnknownLog());

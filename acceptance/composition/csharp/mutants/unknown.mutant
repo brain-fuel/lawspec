@@ -1,4 +1,5 @@
-expect: Logs: an unknown log refuses records| [native]
+expect: Logs:
+expect: an unknown log refuses records| [native]
 @@ src/Example/Composition.cs
 <<<<<<<
 out var records)) return Outcome.Error<long, Problem>(Problem.UnknownLog);

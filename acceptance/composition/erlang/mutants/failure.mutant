@@ -1,4 +1,5 @@
-expect: Logs: an unknown log refuses records| [native]
+expect: Logs:
+expect: an unknown log refuses records| [native]
 @@ src/example_composition.erl
 <<<<<<<
                 [] -> lawspec_beam_effects:fail(problem_unknown_log);

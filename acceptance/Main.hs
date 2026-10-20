@@ -450,10 +450,15 @@ suiteStubs suite target = do
 
 -- | The conformance unit checks every shared scalar vector as a law.
 conformance :: BL.ByteString -> (FilePath, String)
-conformance bytes = ("conformance.lawspec", unlines ("unit conformance\nend unit\n" :
-  [ "law `vector " ++ show i ++ "` is definition is `for all` (marker :: Unit) . " ++
-      text (field "expression" v) ++ " = " ++ text (field "expected" v) ++ " end end"
-  | (i, v) <- zip [0 :: Int ..] (fromMaybe [] (decode bytes >>= list)) ]))
+conformance bytes = ("conformance.lawspec", unlines (["unit conformance", ""] ++
+  [ "law \"|vector " ++ show i ++ "| is\n" ++
+      "  definition:\n" ++
+      "    for all (marker of type Unit) =>\n" ++
+      "      " ++ text (field "expression" v) ++ " = " ++ text (field "expected" v) ++ "\n" ++
+      "    end for all\n" ++
+      "  end definition\n" ++
+      "end law\n"
+  | (i, v) <- zip [0 :: Int ..] (fromMaybe [] (decode bytes >>= list)) ] ++ ["end unit"]))
 
 -- | Machine-sized native adapters check the executing architecture. The width
 -- of the host comes from the toolchain that will run the tests.

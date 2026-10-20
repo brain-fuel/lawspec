@@ -1,4 +1,5 @@
-expect: Logs: an unknown log refuses records| [native]
+expect: Logs:
+expect: an unknown log refuses records| [native]
 @@ example/composition/adapter.go
 <<<<<<<
 		panic(LawSpecFail{Value: ProblemUnknownLog{}})

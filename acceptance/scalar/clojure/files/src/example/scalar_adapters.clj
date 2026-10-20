@@ -18,7 +18,7 @@
 ;; (Complex64 -> Complex64)
 (defn echo-complex [z] z)
 
-;; (Int8 -> BigInt)
+;; (Int8 -> Integer)
 (defn successor [n] (inc' n))
 
 ;; (Int8 -> Int8)

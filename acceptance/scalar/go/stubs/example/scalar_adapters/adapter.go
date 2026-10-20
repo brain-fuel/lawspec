@@ -26,8 +26,8 @@ func EchoComplex(value0 complex64) complex64 {
 	panic("echoComplex")
 }
 
-// Successor implements successor :: (Int8 -> BigInt).
-func Successor(value0 int8) *LawSpecBigInt {
+// Successor implements successor :: (Int8 -> Integer).
+func Successor(value0 int8) any {
 	panic("successor")
 }
 

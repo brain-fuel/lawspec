@@ -13,6 +13,7 @@ module LawSpec.AbilityEmit.Go (emit, productionStub, methodName) where
 import Data.Char (toUpper)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
+import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
 import qualified LawSpec.GoData as Native
@@ -91,7 +92,7 @@ emit minify bits datas units = case clashes of
           evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
           pure [line "handler.state = " <> E.call evaluate [line "symbols", line "lsAbsent(\"Unit\")"]]
         Just (_, start) -> do
-          value <- E.renderExpression datas bits schema (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
+          value <- E.renderExpression datas bits schema localName (\_ _ -> Left "a handler's start value calls nothing") start
           pure [line "handler.state = " <> value]
       let name = specName h
       methods <- mapM (\(op, ty) -> do

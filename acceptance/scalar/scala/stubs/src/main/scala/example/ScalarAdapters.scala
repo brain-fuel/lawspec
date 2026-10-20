@@ -21,8 +21,9 @@ object ScalarAdapters {
   ): lawspec.runtime.LawSpecRuntime.Complex =
     throw NotImplementedError("echoComplex")
 
-  // (Int8 -> BigInt)
-  def successor(value0: scala.Byte): scala.math.BigInt = throw NotImplementedError("successor")
+  // (Int8 -> Integer)
+  def successor(value0: scala.Byte): scala.Int | scala.Long | scala.math.BigInt =
+    throw NotImplementedError("successor")
 
   // (Int8 -> Int8)
   def narrow(value0: scala.Byte): scala.Byte = throw NotImplementedError("narrow")

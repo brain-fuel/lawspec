@@ -1,4 +1,5 @@
-expect: Logs: an unknown log refuses records| [native]
+expect: Logs:
+expect: an unknown log refuses records| [native]
 @@ src/main/groovy/example/Composition.groovy
 <<<<<<<
       if (records == null) throw new LawSpecRuntime.Fail(new lawspec.data.Problem.UnknownLog())

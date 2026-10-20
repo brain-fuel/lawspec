@@ -31,7 +31,7 @@ final class ScalarAdapters {
     return value0
   }
 
-  // (Int8 -> BigInt)
+  // (Int8 -> Integer)
   static java.math.BigInteger successor(byte value0) {
     return java.math.BigInteger.valueOf(value0).add(java.math.BigInteger.ONE)
   }

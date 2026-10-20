@@ -1,6 +1,6 @@
 @@ src/Example/ScalarAdapters.hs
 <<<<<<<
-successor value0 = toInteger value0 + 1
+successor value0 = LS.integerValue (toInteger value0 + 1)
 =======
-successor value0 = toInteger (value0 + 1)
+successor value0 = LS.integerValue (value0 + 1)
 >>>>>>>

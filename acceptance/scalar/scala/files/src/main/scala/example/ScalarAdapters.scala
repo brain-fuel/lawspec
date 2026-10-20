@@ -20,7 +20,7 @@ object ScalarAdapters {
   ): lawspec.runtime.LawSpecRuntime.Complex =
     value0
 
-  // (Int8 -> BigInt)
+  // (Int8 -> Integer)
   def successor(value0: scala.Byte): scala.math.BigInt = BigInt(value0.toLong + 1)
 
   // (Int8 -> Int8)

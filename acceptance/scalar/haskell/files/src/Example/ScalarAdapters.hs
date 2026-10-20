@@ -31,9 +31,9 @@ echoBytes value0 = value0
 echoComplex :: (C.Complex P.Float) -> (C.Complex P.Float)
 echoComplex value0 = value0
 
--- (Int8 -> BigInt)
-successor :: I.Int8 -> P.Integer
-successor value0 = toInteger value0 + 1
+-- (Int8 -> Integer)
+successor :: I.Int8 -> LS.IntegerValue
+successor value0 = LS.integerValue (toInteger value0 + 1)
 
 -- (Int8 -> Int8)
 narrow :: I.Int8 -> I.Int8

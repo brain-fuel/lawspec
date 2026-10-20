@@ -10,6 +10,7 @@ module LawSpec.AbilityEmit.Scala (emit, productionStub, abilitiesObject, abiliti
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
+import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
 import qualified LawSpec.ScalaData as Native
@@ -127,7 +128,7 @@ emit minify bits datas units = do
         Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
           evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
           pure (E.call evaluate [line "symbols", line "LawSpecRuntime.absent(\"Unit\")"])
-        Just (_, start) -> E.renderExpression datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
+        Just (_, start) -> E.renderExpression datas bits localName (\_ _ -> Left "a handler's start value calls nothing") start
       let name = specName h
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))

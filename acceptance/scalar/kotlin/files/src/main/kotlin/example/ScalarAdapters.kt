@@ -22,7 +22,7 @@ object ScalarAdapters {
     ): lawspec.runtime.LawSpecRuntime.Complex =
         value0
 
-    // (Int8 -> BigInt)
+    // (Int8 -> Integer)
     fun successor(value0: kotlin.Byte): java.math.BigInteger = java.math.BigInteger.valueOf(value0.toLong() + 1)
 
     // (Int8 -> Int8)

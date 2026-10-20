@@ -33,7 +33,7 @@ def echoComplex(value0: complex) -> complex:
 
 
 # LawSpec argument 0: Int8
-# LawSpec result: BigInt
+# LawSpec result: Integer
 def successor(value0: int) -> int:
     return value0 + 1
 

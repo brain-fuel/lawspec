@@ -10,6 +10,7 @@ module LawSpec.AbilityEmit.Python (emit, modulePath, moduleName, moduleNameOf, p
 
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
+import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..), pythonUnitFile)
 import LawSpec.AbilityNames
 import LawSpec.PythonTypes (pythonDataTypeDoc, pythonTypeReferenceDoc)
@@ -89,7 +90,7 @@ emit minify bits datas units = do
           evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
           pure [D.text "symbols = self._symbols", D.text "self._state = " <> E.call evaluate [D.text "symbols", E.scalarLiteral (SAbsent "Unit")]]
         Just (_, start) -> do
-          value <- E.renderExpression datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
+          value <- E.renderExpression datas bits localName (\_ _ -> Left "a handler's start value calls nothing") start
           pure [D.text "symbols = self._symbols", D.text "self._state = " <> value]
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))

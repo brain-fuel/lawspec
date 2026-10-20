@@ -1,4 +1,5 @@
-expect: Logs: an unknown log refuses records| [native]
+expect: Logs:
+expect: an unknown log refuses records| [native]
 @@ src/main/scala/example/Composition.scala
 <<<<<<<
         case None => Left(lawspec.data.Problem.UnknownLog)

@@ -33,8 +33,8 @@ export function echoComplex(value0: unknown): unknown {
 }
 
 // LawSpec argument 0: Int8
-// LawSpec result: BigInt
-export function successor(value0: number): bigint {
+// LawSpec result: Integer
+export function successor(value0: number): number | bigint {
   throw new Error('successor');
 }
 

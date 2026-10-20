@@ -18,7 +18,7 @@ let echoBytes (value0: byte[]) : byte[] = value0
 /// (Complex64 -> Complex64)
 let echoComplex (value0: LawSpec.Complex64) : LawSpec.Complex64 = value0
 
-/// (Int8 -> BigInt)
+/// (Int8 -> Integer)
 let successor (value0: sbyte) : bigint = bigint value0 + 1I
 
 /// (Int8 -> Int8)

@@ -26,7 +26,7 @@ func EchoComplex(value0 complex64) complex64 {
 	return value0
 }
 
-// Successor implements successor :: (Int8 -> BigInt).
+// Successor implements successor :: (Int8 -> Integer).
 func Successor(value0 int8) *LawSpecBigInt {
 	return new(LawSpecBigInt).SetInt64(int64(value0) + 1)
 }

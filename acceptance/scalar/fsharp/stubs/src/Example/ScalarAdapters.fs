@@ -21,7 +21,7 @@ let echoBytes (value0: byte[]) : byte[] =
 let echoComplex (value0: LawSpec.Complex64) : LawSpec.Complex64 =
     failwith "not implemented: example.scalar_adapters::echoComplex"
 
-/// (Int8 -> BigInt)
+/// (Int8 -> Integer)
 let successor (value0: sbyte) : bigint =
     failwith "not implemented: example.scalar_adapters::successor"
 

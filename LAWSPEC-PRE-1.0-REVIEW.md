@@ -92,6 +92,31 @@ cases. Java handler-map factories specify `String, Object` explicitly so
 Groovy's static checker preserves the same interface types. These are scoped
 regressions; the combined fresh acceptance graph remains required.
 
+
+A later native check found that closed record initializers in dynamic handlers
+mapped distinct Core binders to one `_unbound` name. The seven affected renderer
+call sites now use the existing unique Core-to-native name mapping. A new
+heterogeneous record initializer retains `count = 3` and `factor = 2.5` as
+independent values. The old JavaScript emitter passes 36 cases and fails this
+new case; the corrected emitter passes it. Typed-model evaluation remains
+separate from native implementation conformance.
+
+The scalar conformance generator now emits canonical phrase names, `definition:`
+sections, explicit quantifier endings and a unit ending after all generated laws.
+All 57 independent scalar vectors remain unchanged. Recorded native stubs were
+reviewed against the canonical `Integer` result; compatible native big-integer
+implementations remain, with explicit exact wrappers where Rust and Haskell
+require them. The native scalar suites and their mutation controls are checked
+for all 17 targets.
+
+Mutation expectations now distinguish selected compile-time law refutations
+from native failures. The changed even-number definition must be refuted at
+`n = 3`, and the changed UTF-8 byte-count clause at `n = 0`, with diagnostic
+`refuted` and the original law name. Native resource and reusable-law controls
+retain their required failure context with current test names and quoted phrase
+names. No verification layer or intrinsic definition check is disabled by these
+fixture corrections.
+
 Implementation acceptance requires all closing forms and errors, shared
 formatter/editor support, preserved intrinsic checks and behavior, native/WASM
 parity, installed-package checks, and the complete fresh 17-target graph. No

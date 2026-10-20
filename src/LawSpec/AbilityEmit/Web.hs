@@ -7,6 +7,7 @@ module LawSpec.AbilityEmit.Web (emit, modulePath, productionStub) where
 
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
+import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
 import LawSpec.WebData (webDataTypeDoc, webTypeReferenceDoc)
@@ -77,7 +78,7 @@ emit ts minify bits datas units = do
           evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
           pure [D.text "this._state = " <> E.call (Definitions.plainCall evaluate) [D.text "symbols", E.call "ls.literal" [D.text "{type: 'Unit'}", D.text "symbols"]] <> D.text ";"]
         Just (_, start) -> do
-          value <- E.renderExpression ts datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
+          value <- E.renderExpression ts datas bits localName (\_ _ -> Left "a handler's start value calls nothing") start
           pure [D.text "this._state = " <> value <> D.text ";"]
       methods <- mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))

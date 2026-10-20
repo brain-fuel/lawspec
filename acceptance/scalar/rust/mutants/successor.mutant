@@ -1,6 +1,6 @@
 @@ src/example/scalar_adapters.rs
 <<<<<<<
-    ls::BigInt::from(value0) + 1
+    ls::Integer::from(ls::BigInt::from(value0) + 1_i32)
 =======
-    ls::BigInt::from(value0.wrapping_add(1))
+    ls::Integer::from(value0.wrapping_add(1))
 >>>>>>>

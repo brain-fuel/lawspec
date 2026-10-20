@@ -31,8 +31,8 @@ echoBytes _ = error "echoBytes"
 echoComplex :: (C.Complex P.Float) -> (C.Complex P.Float)
 echoComplex _ = error "echoComplex"
 
--- (Int8 -> BigInt)
-successor :: I.Int8 -> P.Integer
+-- (Int8 -> Integer)
+successor :: I.Int8 -> LS.IntegerValue
 successor _ = error "successor"
 
 -- (Int8 -> Int8)

@@ -27,8 +27,8 @@ pub fn echoComplex(value0: ls::Complex32) -> ls::Complex32 {
     todo!("example.scalar_adapters::echoComplex")
 }
 
-// LawSpec: (Int8 -> BigInt)
-pub fn successor(value0: i8) -> ls::BigInt {
+// LawSpec: (Int8 -> Integer)
+pub fn successor(value0: i8) -> ls::Integer {
     todo!("example.scalar_adapters::successor")
 }
 

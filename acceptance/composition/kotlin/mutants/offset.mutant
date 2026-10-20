@@ -1,4 +1,5 @@
-expect: Logs: a new log takes its first record at offset zero| [native]
+expect: Logs:
+expect: a new log takes its first record at offset zero| [native]
 @@ src/main/kotlin/example/Composition.kt
 <<<<<<<
             return (records.size - 1).toLong()

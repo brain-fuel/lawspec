@@ -160,4 +160,30 @@ law pureUnitArgument is
   expect unitTruth ignored = expected
   in table (ignored, expected): row (), true end table
 end law
+type InitialReading is a record{
+  count of type Int64
+  factor of type Float64
+}
+end type
+
+ability Reading is
+  currentCount of type Int64
+  currentFactor of type Float64
+end ability
+
+handler literalRecord for Reading with state reading of type InitialReading
+  start InitialReading record{count = 3, factor = 2.5} is
+  operation currentCount is reading.count end operation
+  operation currentFactor is reading.factor end operation
+end handler
+
+law literalFieldsRemainIndependent using literalRecord is
+  description:
+    "A literal record initializes each field with its own value and type."
+  end description
+  definition:
+    currentCount must be 3 and currentFactor must be 2.5
+  end definition
+end law
+
 end unit

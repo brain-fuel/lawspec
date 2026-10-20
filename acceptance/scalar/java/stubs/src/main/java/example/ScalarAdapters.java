@@ -29,9 +29,9 @@ public final class ScalarAdapters {
     throw new UnsupportedOperationException("echoComplex -> Complex64");
   }
 
-  // (Int8 -> BigInt)
-  public static java.math.BigInteger successor(byte value0) {
-    throw new UnsupportedOperationException("successor -> BigInt");
+  // (Int8 -> Integer)
+  public static Number successor(byte value0) {
+    throw new UnsupportedOperationException("successor -> Integer");
   }
 
   // (Int8 -> Int8)

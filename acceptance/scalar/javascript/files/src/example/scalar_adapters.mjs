@@ -33,7 +33,7 @@ export function echoComplex(value0) {
 }
 
 // LawSpec argument 0: Int8
-// LawSpec result: BigInt
+// LawSpec result: Integer
 export function successor(value0) {
   return BigInt(value0) + 1n;
 }
