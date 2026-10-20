@@ -142,6 +142,19 @@ positions independently of canonical record ordering, preserving its existing
 adapter representation. Native failure controls accept the current framework
 test identities while retaining required failure causes.
 
+Later indexed conformance found that Java's index-guided draws used an entry
+point that refuses schemas with constructor contracts. Java now routes guided
+draws through the same checked result and bounded rejection mechanism as its
+ordinary draws; Rust likewise retains checked results for guided generation.
+Dependent index expressions are evaluated once before borrowing Rust's context
+for validation. Native regressions check that shrinking preserves constructor
+restrictions and that predicate evaluation errors reach the property rather
+than becoming rejected candidates. These repairs preserve the schema's guards,
+the generator's index equations and the declared input domains. The Groovy
+collection adapter also uses the canonical `Integer` result signature shared
+with Java while retaining exact big-integer counts. Combined acceptance remains
+pending.
+
 Implementation acceptance requires all closing forms and errors, shared
 formatter/editor support, preserved intrinsic checks and behavior, native/WASM
 parity, installed-package checks, and the complete fresh 17-target graph. No

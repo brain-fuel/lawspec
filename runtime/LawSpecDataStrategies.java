@@ -130,6 +130,42 @@ public final class LawSpecDataStrategies {
       Object target,
       Map<String, List<String>> equations,
       Function<String, Generator<Value>> scalar) {
+    return indexedGenerator(schema, type, bits, nodeBudget, target, equations,
+        new Builder(schema, bits, scalar));
+  }
+
+  /** Index guidance retains the same constructor checks as ordinary checked draws. */
+  public static Generator<Checked> checkedIndexedGenerator(
+      LawSpecSchema schema,
+      Named type,
+      int bits,
+      int nodeBudget,
+      int maxAttempts,
+      Map<String, Object> symbols,
+      Object target,
+      Map<String, List<String>> equations,
+      Function<String, Generator<Value>> scalar,
+      Map<String, NativeFactory> factories) {
+    if (maxAttempts < 1) throw new IllegalArgumentException("maxAttempts must be positive");
+    var source = indexedGenerator(schema, type, bits, nodeBudget, target, equations,
+        new Builder(schema, bits, scalar, symbols, maxAttempts, factories));
+    return Generator.from(environment -> {
+      try {
+        return environment.generate(checkedValues(schema, type, bits, symbols, source, maxAttempts));
+      } catch (NativeFailure error) {
+        return new Checked(null, error);
+      }
+    });
+  }
+
+  private static Generator<Value> indexedGenerator(
+      LawSpecSchema schema,
+      Named type,
+      int bits,
+      int nodeBudget,
+      Object target,
+      Map<String, List<String>> equations,
+      Builder builder) {
     long k = target instanceof Value value ? ((Number) value.data()).longValue()
         : ((Number) target).longValue();
     if (schema.isScalar(type)) {
@@ -137,7 +173,7 @@ public final class LawSpecDataStrategies {
     }
     long limit = Math.max(k, 0) + INDEX_SLACK;
     var indexed =
-        new Indexed(schema, bits, nodeBudget, limit, equations, new Builder(schema, bits, scalar));
+        new Indexed(schema, bits, nodeBudget, limit, equations, builder);
     indexed.explore(type);
     // An open target (negative), or one drawn from earlier inputs that breaks their preconditions
     // or names no value, generates from the smallest reachable indices; an index claim rejects a
@@ -370,7 +406,9 @@ public final class LawSpecDataStrategies {
                         ? generate(fieldType, target)
                         : builder.generate(fieldType, budget)));
                   }
-                  return schema.construct(type, tag, values, bits);
+                  return builder.unchecked
+                      ? new Value(LawSpecSchema.key(type), new Data(tag, List.copyOf(values)))
+                      : schema.construct(type, tag, values, bits);
                 }));
       }
       if (variants.isEmpty()) {
@@ -439,32 +477,32 @@ public final class LawSpecDataStrategies {
                     Math.min(
                         Integer.MAX_VALUE,
                         Math.max(minimumBudget, 4L * environment.getSizeHint() + 1));
-            var candidate =
-                builder
-                    .generate(type, budget)
-                    .map(
-                        value -> {
-                          try {
-                            var result = schema.check(type, value, bits, symbols);
-                            if (result instanceof LawSpecSchema.Accepted accepted)
-                              return new Checked(accepted.value(), null);
-                            return new Checked(null, null);
-                          } catch (RuntimeException error) {
-                            return new Checked(null, error);
-                          }
-                        });
             // JetCheck bounds rejection at 100 attempts and discards invalid replays
             // while shrinking. Errors remain values so properties report them.
             return environment.generate(
-                boundedFilter(
-                    candidate,
-                    checked -> checked.value() != null || checked.error() != null,
-                    maxAttempts));
+                checkedValues(schema, type, bits, symbols, builder.generate(type, budget), maxAttempts));
           } catch (NativeFailure error) {
             // Do not catch JetCheck's internal replay-control exceptions.
             return new Checked(null, error);
           }
         });
+  }
+
+  private static Generator<Checked> checkedValues(
+      LawSpecSchema schema, Named type, int bits, Map<String, Object> symbols,
+      Generator<Value> source, int maxAttempts) {
+    var candidate = source.map(value -> {
+      try {
+        var result = schema.check(type, value, bits, symbols);
+        if (result instanceof LawSpecSchema.Accepted accepted)
+          return new Checked(accepted.value(), null);
+        return new Checked(null, null);
+      } catch (RuntimeException error) {
+        return new Checked(null, error);
+      }
+    });
+    return boundedFilter(candidate,
+        checked -> checked.value() != null || checked.error() != null, maxAttempts);
   }
 
   private static <T> Generator<T> boundedFilter(

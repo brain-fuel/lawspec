@@ -369,10 +369,13 @@ emitTests Config{..} unit laws = do
             value:_ -> call "Generator.constant" [expr value]
             [] | Just indexed <- generatorIndex plan ->
               -- The target is evaluated from inputs drawn earlier in this environment.
-              call "lawspec.testing.LawSpecDataStrategies.indexedGenerator"
+              chain (call "lawspec.testing.LawSpecDataStrategies.checkedIndexedGenerator"
                 [text "_schema",reference ty,number machineBits,number nodeBudget,
+                 number (maxAttempts settings),text "symbols",
                  expr (indexedTarget indexed),equationsDoc (indexedEquations indexed),
-                 text (className ++ "LawSpecTest::_lawspecScalarGenerator")]
+                 scalar,if nativeGenerators then call "lawspec.testing.LawSpecNativeGenerators.factories" []
+                   else call "java.util.Map.of" []])
+                [("map",[text "lawspec.testing.LawSpecDataStrategies.Checked::requireValue"])]
             [] | nativeGenerators || constructorContracts -> chain
               (call "lawspec.testing.LawSpecDataStrategies.checkedGenerator"
                 ([text "_schema",reference ty,number machineBits,number nodeBudget,number (maxAttempts settings),

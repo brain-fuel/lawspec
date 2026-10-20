@@ -634,15 +634,18 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           indexTarget <- traverse (render names . indexedTarget) (generatorIndex requirement)
           baseStrategy <- case (usesData inputType, generatorIndex requirement, indexTarget) of
            (True, Just indexed, Just target) -> do
-            -- The target is evaluated from the inputs bound earlier in this case.
+            -- Evaluate once before borrowing the context for constructor checks:
+            -- an earlier input's measure may itself need mutable evaluation.
             ty <- schemaType inputType
             let budget = maximum (64 : map ((+ 8) . valueBudget) (generatorBoundaries requirement))
                 table = Expression.vector [Doc.text "(" <> string (idText tag) <> Doc.text ", &" <>
                   Expression.vector (map string texts) <> Doc.text "[..])"
                   | (tag,texts) <- indexedEquations indexed]
-            pure (invoke "ls_gen::indexed_strategy"
-              [Doc.text "lawspec_schema::schema()?",borrow ty,bits,Doc.text (show budget),
-               Doc.text "&" <> target,Doc.text "&" <> table] <> Doc.text "?")
+            pure (block (statements [binding "_lawspec_index_target" target,
+              invoke (if checked then "ls_gen::checked_indexed_strategy" else "ls_gen::indexed_strategy")
+              ([Doc.text "lawspec_schema::schema()?",borrow ty,bits,Doc.text (show budget)] ++
+               [Doc.text "ctx" | checked] ++
+               [Doc.text "&_lawspec_index_target",Doc.text "&" <> table]) <> Doc.text "?"]))
            _ -> if usesData inputType || hasNativeGenerators then do
             ty <- schemaType inputType
             let budget = maximum (64 : map ((+ 8) . valueBudget) (generatorBoundaries requirement))
