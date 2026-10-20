@@ -26,6 +26,7 @@ import LawSpec.Packages
 import LawSpec.Discharge (dischargeEvidence, dischargeEvidenceWith, bindingEvidence, defaultHandlerEvidence)
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
 import Data.Foldable (toList)
+import qualified Data.Map.Strict as M
 import LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
@@ -123,8 +124,11 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       -- An environment attestation is reporting only: it annotates the
       -- evidence and never changes what is compiled or how a law is
       -- discharged. ref:DEC-environment-attestation
+      -- The outcome lawspec test recorded for each law in the attestation's
+      -- run, by law; it links a planned native check to a completed run.
+      outcomes <- o .:? "attestedOutcomes" .!= M.empty
       attestation <- traverse parseAttestation <$> o .:? "attestation"
-      pure (request', (Project rootPackage dependencies, packages), attestation)
+      pure (request', (Project rootPackage dependencies, packages), fmap (fmap (\a -> (a, outcomes))) attestation)
 
 verificationKeys :: Maybe V.Verification -> [TestEntry] -> [TestEntry]
 verificationKeys Nothing entries = entries
@@ -161,13 +165,13 @@ withVerification _ value = value
 
 -- | The evidence an environment attestation touches, with where its tests ran,
 -- and the attestation itself as the report reads it.
-withAttestation :: Maybe Attestation -> C.Program -> [Obligation] -> Value -> Value
-withAttestation (Just attestation) core obligations (Object o) = Object
-  $ KM.insert "attestation" (attestationView attestation core obligations)
+withAttestation :: Maybe (Attestation, M.Map String String) -> C.Program -> [Obligation] -> Value -> Value
+withAttestation (Just (attestation, outcomes)) core obligations (Object o) = Object
+  $ KM.insert "attestation" (attestationView attestation outcomes core obligations)
   $ maybe o (\items -> KM.insert "evidence" items o) annotated
   where
     annotated = case KM.lookup "evidence" o of
-      Just (Array items) -> Just (toJSON (zipWith annotate (toList items) (attestedFields attestation core obligations)))
+      Just (Array items) -> Just (toJSON (zipWith annotate (toList items) (attestedFields attestation outcomes core obligations)))
       _ -> Nothing
     annotate (Object item) fields = Object (foldr (\(k, v) -> KM.insert k v) item fields)
     annotate item _ = item
@@ -243,7 +247,7 @@ stagesWithInput canonical capture project packages sources bits settings native 
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "attestedOutcomes"])))
   _ -> BC.unpack bytes
 
 -- | Two entries: each holds a whole compiled program and its plan.
