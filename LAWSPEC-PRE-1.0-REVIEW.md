@@ -1,6 +1,6 @@
 # LawSpec 1.0 design and business review draft
 
-**Minor authoring implementation contract — updated 19 October 2026**
+**Minor authoring implementation contract — updated 20 October 2026**
 
 Repository: brain-fuel/lawspec\
 Audience: business readers, product owners, developers, language designers, and verification practitioners.
@@ -17,8 +17,10 @@ Examples are independent unless a section explicitly connects them. Repeated uni
 
 ## Approved 0.26.0 contract — 19 October 2026
 
-Implementation is underway. The release remains a minor version, with technical
-language profile `1.0-rc.2`; that identifier is not an RC release designation.
+Implementation and technical acceptance are complete on `2444621f`, as recorded
+in the final receipt below. Version 0.26.0 remains an ordinary minor version,
+with technical language profile `1.0-rc.2`; that identifier is not an RC release
+designation. No new tag, push or publication was performed in this iteration.
 The user approved mandatory named closers for **every block**, including unit
 bodies, ability `laws` groups, harness `for law` / `for laws` groups, let
 expressions and generator binds. The complete 45-kind catalogue is maintained
@@ -52,8 +54,9 @@ hooks. Independent oracles cover 32,768 A-addresses, 1,792 C-instructions and
 13 stateful programs with repeated-call isolation; each run rejects all six
 mutation controls. The original inventory remains 65 table rows, one named
 example, 25 authored definitions, seven ADTs and two refinements, including six
-checked mappings. These scoped results do not complete the full acceptance
-graph or prove the unbounded program laws.
+checked mappings. The final combined run repeats these scoped checks. They
+establish Python implementation and checked-codec conformance, not all 17
+Chapter 6 implementations or proofs of the unbounded program laws.
 
 **Earlier 0.26 checkpoint, superseded by the projection fix below:** the direct
 index generator did not solve through intervening records; record payloads
@@ -61,7 +64,7 @@ retained their index predicates and constructor guards through ordinary checked
 generation and shrinking. Native conformance subsequently found that filtering
 could exhaust its attempts for inhabited fixed-size stacks.
 
-The current candidate extends the existing index-generation plan through closed
+The implementation extends the existing index-generation plan through closed
 structural products. Each intermediate product receives a projection equation
 in the generation plan; authoritative typed schemas, constructor guards,
 dependent predicates and shrinking restrictions remain intact. This traverses
@@ -70,8 +73,8 @@ projections of the same product, multiple independently indexed projections
 within one payload, and multi-index families still use checked generation;
 the single-index planner does not conflate them. A bounded miss remains
 incomplete evidence. Focused compiler tests pass, and Scala replays the original
-failure seed with all 579 collection tests passing. Combined acceptance remains
-pending.
+failure seed with all 579 collection tests passing. The final fresh combined
+run below also passes with this projection plan.
 
 Kotlin scaffolds set `kotlin.daemon.jvmargs=-Xmx2g`, using the
 [documented compiler-daemon heap setting](https://kotlinlang.org/docs/gradle-compilation-and-caches.html).
@@ -89,9 +92,8 @@ Groovy retains a Java execution body for suites with at least 512 independent
 tests as well as deeply nested callbacks. The corrected handler suites compile
 in Scala, Java, Kotlin, Groovy and Clojure, each retaining all 8,004 boundary
 cases. Java handler-map factories specify `String, Object` explicitly so
-Groovy's static checker preserves the same interface types. These are scoped
-regressions; the combined fresh acceptance graph remains required.
-
+Groovy's static checker preserves the same interface types. The final fresh
+acceptance graph covers the combined changes and their native controls.
 
 A later native check found that closed record initializers in dynamic handlers
 mapped distinct Core binders to one `_unbound` name. The seven affected renderer
@@ -134,7 +136,8 @@ For a known-failing law, these strategy trials precede deterministic checks so
 an expected logical failure cannot conceal broken coverage or an invalid
 strategy. Three compiler selection regressions and the native targeted-search,
 repetition and known-failure suites pass across Erlang, Elixir and Gleam.
-These results retain their component scope until combined acceptance completes.
+The final combined run also passes all six installed BEAM harness CLI checks,
+including both integer profiles.
 
 BEAM native codecs and failure fixtures construct alternatives with one explicit
 record payload. The Erlang recursive-chain binding specifies native argument
@@ -152,15 +155,53 @@ restrictions and that predicate evaluation errors reach the property rather
 than becoming rejected candidates. These repairs preserve the schema's guards,
 the generator's index equations and the declared input domains. The Groovy
 collection adapter also uses the canonical `Integer` result signature shared
-with Java while retaining exact big-integer counts. Combined acceptance remains
-pending.
+with Java while retaining exact big-integer counts. All four affected indexed
+suites pass their positive tests and all ten mutation controls in both profiles;
+the Groovy collection suite passes its positive tests and all five controls.
 
-Implementation acceptance requires all closing forms and errors, shared
-formatter/editor support, preserved intrinsic checks and behavior, native/WASM
-parity, installed-package checks, and the complete fresh 17-target graph. No
-completed acceptance, new tag or publication is claimed at this checkpoint.
-The human readership exercise remains deferred and the larger pre-final-1.0
-portfolio and advanced verification requirements remain open.
+### Final 0.26.0 technical acceptance — 20 October 2026
+
+The fresh combined run executes the code at
+`2444621f02c1c6ecdcf27846870730b11530b1ee`, now on local `main`.
+All **2,593 checks pass**, with zero failures or interrupted checks. The run
+uses `--fresh --jobs 8`, including refreshed native acceptance suites; it does
+not substitute earlier component receipts for current execution. All 6,462
+tracked input files and modes remain unchanged throughout the run. Before this
+documentation-only update, all main input bytes and modes matched that frozen
+checkout. This update records the result without changing the validated
+compiler or package payload.
+
+| Gate | Executed result |
+| --- | --- |
+| Compiler and intrinsic guarantees | 2,253 examples, zero failures. Definition validation, refinements, GADT facts, checked recursion and deliberately deferred runtime contracts remain independent of optional law verification. |
+| Targets and public interfaces | The complete 17-target graph passes, including its configured 32-bit and compact profiles, native controls, editor consumers, API schema 5, configuration version 2 and profile `1.0-rc.2`. |
+| SDK | The unfiltered suite reports 337 tests: 333 passed, zero failed, four declared opt-in skips. All four skipped native layout/failure checks are separately executed on the same compiler: four passed, zero failed or skipped. |
+| Native/WASM parity | Passes on the final compiler and its native build. |
+| Chapter 6 | Both 64-bit and compact 32-bit WASM/Python profiles pass all 32,768 A-addresses, 1,792 C-instructions and 13 stateful programs, including repeated-invocation isolation and all six mutation controls. Each exercises 23 laws through 66 examples, 16 properties, 453 boundaries and ten replay hooks. |
+| Source and formatting | Both active Chapter 6 sources are byte-identical and use the current named endings. Formatting is idempotent and preserves the nontrivia token stream; the 23 laws, 65 table rows, one named example, 25 definitions, six mappings, seven ADTs and two refinements remain. |
+| Documentation and tooling | Published documentation, stable-code rejection examples, Canon, editor checks, boundaries, version checks and all 121 generated files pass. |
+| Installed package | The CLI/API smoke test, complete example export, structural target checks and Rust scaffold/test/regeneration flow pass. All 197 packed regular files and modes match the frozen source inputs. |
+| Release preconditions | The complete read-only `make release-check` passes on clean local `main`. No tag or publication is created. |
+
+The validated WASM is 69,542,732 bytes, SHA-256
+`d2b1e801de144f41badc4688b51b54112a0b3a050c33c1f959832c6a843d7264`.
+The installed-test archive has SHA-256
+`94b6651a65d9b28957be48557211ce9d150131dfe3f4b4d6dadd66e752f9f62b`.
+Both Chapter 6 entry points have SHA-256
+`3784ed8431ffa4a1937e0d6f5f206747f30f60c9ae78c44b433fd1133c5a57b1`.
+
+Local execution evidence is retained under `.artifacts/blocks-026/`:
+`ci-final-14-receipt.json`, the before/after input snapshots, the immutable
+2,593-log archive and index, `package-14-frozen-input-comparison.json`,
+`chapter6-final-ci14-oracles.json` and the four current SDK opt-in results.
+Earlier failures and superseded runs retain their own identities and logs;
+they are not relabelled as successful final runs.
+
+The human readership exercise remains explicitly user-deferred. The larger
+pre-final-1.0 portfolio, all-17-language Chapter 6 implementation programme,
+advanced verification and external Linguist recognition remain open. This
+technical minor-version acceptance does not imply final 1.0 acceptance or an
+RC designation.
 
 ## Historical 0.25.0 completion checklist — 19 October 2026
 
