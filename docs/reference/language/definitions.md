@@ -79,7 +79,17 @@ The checker also knows:
 - that `prelude.length` and `prelude.size` are never negative;
 - that `prelude.rem a b` has `a`'s sign and is smaller than `b`: for
   `a >= 0` and `b >= 1` it lies from 0 to `b - 1`, and
-  `prelude.quot a b` is below `a` when `a > 0` and `b >= 2`.
+  `prelude.quot a b` is below `a` when `a > 0` and `b >= 2`;
+- what a text matcher says. `t matches regex "..."`, `t starts with p`,
+  `t ends with p` and `t contains part` are facts about the same test, so a
+  value of a refined type, or one inside a guard that tests it, can fill a
+  field with the same refinement. A test on literal text is decided;
+- that `x in ["a", "b"]` means `x == "a" or x == "b"`, for a list written
+  out in full, and that `x is within d of y` is arithmetic over exact numbers.
+
+The checker does not reason about what a regex means. A value known to match
+`[a-z]+` does not prove a field that needs `[a-z]*`. Write the same test, or
+call a checked definition that makes it.
 
 ## Recursion on integers
 

@@ -13,6 +13,7 @@ import LawSpec.Common
 import LawSpec.Core (Id(..), Type(..), BinaryOp(..), LogicalOp(..))
 import LawSpec.Scalar (Scalar(..), exactValue, integerBounds, isInteger)
 import qualified LawSpec.Core.RefinementProof as R
+import LawSpec.Core.Semantics (helperValue, scalarEqual)
 import Data.Ratio (denominator)
 import qualified LawSpec.Core.PayloadPlan as P
 import qualified LawSpec.Core.RecordInstances as Records
@@ -941,7 +942,53 @@ predicate expression = case expression of
   -- A Boolean conditional is (c && a) || (not c && b).
   Conditional c a b -> predicate (Logical Or (Logical And c a) (Logical And (Negated c) b))
   Negated a -> R.Not <$> predicate a
+  Opaque name values | name `elem` textPredicates -> textPredicate name values
+  -- A typed scope assumes its domain facts: it claims they imply its body.
+  TypedDomain domains body -> do
+    assumed <- mapM predicate domains
+    claim <- predicate body
+    pure (if null assumed then claim else R.Any [R.Not (R.All assumed), claim])
+  -- Every item of a list built from known items: one claim per item, so
+  -- x in ["a", "b"] reads as x == "a" or x == "b".
+  AllElements value binder body | Just items <- finiteItems value ->
+    R.All <$> mapM (\item -> predicate (substituteProof (M.singleton binder item) body)) items
+  -- Equality with literal text or bytes is a propositional atom, decided
+  -- when both sides are literals. It never enters the arithmetic.
+  Comparison op a b | op `elem` [Equal, NotEqual], sequenceLiteral a || sequenceLiteral b, faithful a, faithful b ->
+    let equal = case (a, b) of
+          (Literal x, Literal y) -> R.Truth (scalarEqual x y)
+          _ -> R.Atom (Id ("::equal::" ++ show (sortOn show (map unwrapped [a, b]))))
+    in Just (if op == Equal then equal else R.Not equal)
   _ -> Nothing
+
+-- | The items of a list whose spine is known.
+finiteItems :: Proof -> Maybe [Proof]
+finiteItems expression = case expression of
+  ListNil -> Just []
+  ListCons first rest -> (first :) <$> finiteItems rest
+  _ -> Nothing
+
+sequenceLiteral :: Proof -> Bool
+sequenceLiteral (Literal (SSequence _ _)) = True
+sequenceLiteral _ = False
+
+-- | The text matchers (LawSpec.Matchers) the Core lowering keeps as atoms.
+textPredicates :: [String]
+textPredicates = ["startsWith", "endsWith", "textContains", "regexMatches"]
+
+-- | A text matcher is a pure Boolean function of its values: a propositional
+-- atom, never a number, so a guard or refinement that tests it is a fact
+-- about the same test, alone or joined with others. On literal values it is
+-- decided by the reference semantics every runtime matches.
+textPredicate :: String -> [Proof] -> Maybe R.Predicate
+textPredicate name values = case mapM literalValue values of
+  Just scalars | Right (SBool truth) <- helperValue 64 name scalars -> Just (R.Truth truth)
+  _ | all faithful values -> Just (R.Atom (Id ("::predicate::" ++ name ++ show (map unwrapped values))))
+    | otherwise -> Nothing
+  where
+    literalValue value = case value of
+      Literal scalar -> Just scalar
+      _ -> Nothing
 
 integral :: Proof -> Bool
 integral expression = case expression of

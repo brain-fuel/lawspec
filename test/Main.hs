@@ -88,6 +88,7 @@ import qualified UnificationSpec
 import qualified BeamSpec
 import qualified DotNetSpec
 import qualified LanguageGapsSpec
+import qualified MatcherAdmissionSpec
 import qualified SchedulerSpec
 import LawSpec.Compile
 import LawSpec.Model
@@ -166,6 +167,7 @@ main = hspec $ do
   AsyncSpec.test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask
   AbilitiesSpec.test_abilityLawsHoldForEveryLawfulHandler
   LanguageGapsSpec.test_languageGapsClose
+  MatcherAdmissionSpec.test_matcherFactsAreKeptInAdmission
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers

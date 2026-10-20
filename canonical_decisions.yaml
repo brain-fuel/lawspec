@@ -653,3 +653,12 @@ DEC-scala-property-library:
   opened: 0.24.0
   decided: 0.24.0
   refs: [scalacheck, scala-hedgehog, zio-test, scalatest]
+
+DEC-matcher-facts-in-admission:
+  status: decided
+  question: Mandatory definition checking lowered every matcher to an opaque sequence, so a refinement such as `v matches regex "[a-z]+"` was never a fact. A value of that refined type, a guard that tested it, or literal text could not fill a field with the same refinement. How does admission keep a matcher's meaning without a solver?
+  answer: |
+    Source lowering gives each text matcher (starts with, ends with, Text contains, matches regex) the same atom the Core lowering already gives it, named by its built-in and holding its values. The internal checker reads that atom as a propositional variable, never as a number, so a refinement or guard is a fact about the identical test, alone or joined by and, or and not. With literal values the test is decided by the reference semantics every runtime matches (Core.Semantics.helperValue). Membership in a list written out in full is read item by item as equalities, equality with literal text is an atom, a typed scope is an implication from its domain facts, and is within over exact numbers is lowered to the Core elaboration's arithmetic. The precedent is the uninterpreted predicate of first-order logic, as Why3 and SPARK give a pure function or predicate they do not unfold: equal terms give equal truth, nothing more. The checker does not reason about regex languages or text algebra, so `[a-z]+` does not prove `[a-z]*`. Trust boundary: the in-house Fourier-Motzkin checker and propositional reasoning, plus the reference semantics for literal tests; Z3 takes no part in admission (gate 5 decision 3), and admission runs the same in WASM. messageContains is not lowered, because a failure is matched only in laws, never inside a definition. Generated code is unchanged.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, spark-ug]

@@ -27,6 +27,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A refinement alias in an ability operation's signature elaborates, and its
   implied result law is generated; a type that cannot reach Core is reported
   at the declaration that uses it.
+- Mandatory definition checking keeps what a text matcher says. A value of a
+  type refined by `matches regex`, `starts with`, `ends with` or `contains`,
+  or one inside a guard that tests it, fills a field with the same
+  refinement; a test on literal text is decided. `x in [...]` over a list
+  written out in full and `is within` over exact numbers are read as their
+  arithmetic. Z3 takes no part in this check.
 
 ## [0.26.0] - 2026-10-19
 

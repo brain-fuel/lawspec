@@ -945,6 +945,7 @@ test-suite lawspec-test
       LanguageGapsSpec
       LawPrimitivesSpec
       MappingSpec
+      MatcherAdmissionSpec
       MatchWarningSpec
       ModelLayerSelectionSpec
       NamedBlocksSpec

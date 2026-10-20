@@ -327,7 +327,7 @@ auditCollected context declarations constructors bits unit templates = do
         S.Apply _ _ -> case application typed of
           (S.Var name, arguments) | Just builtin <- stripPrefix "prelude." name -> do
             values <- mapM recur operands
-            helper typed integers builtin operands values
+            helper owner typed integers builtin operands values
           (S.Var name, arguments) | name `elem` operations, M.notMember name scope ->
             T.Sequence <$> mapM recur arguments
           (S.Var name, arguments) -> do
@@ -381,8 +381,8 @@ auditCollected context declarations constructors bits unit templates = do
             (Total.proofExpression (P.fromRegistry registry) bits normalized))
         [] -> lift (Left "missing structural proof result type")
 
-    helper :: S.TypedExpr -> [String] -> String -> [S.TypedExpr] -> [T.Proof] -> ProofM T.Proof
-    helper typed integers name operands values = case (name, operands, values) of
+    helper :: C.Id -> S.TypedExpr -> [String] -> String -> [S.TypedExpr] -> [T.Proof] -> ProofM T.Proof
+    helper owner typed integers name operands values = case (name, operands, values) of
       (_, [operand], [value]) | isNumeric name ->
         convert integers (S.expressionType typed) (effectiveType operand) value
       ("quot", _, [a,b]) -> pure (binary integers typed C.Quotient a b)
@@ -411,11 +411,44 @@ auditCollected context declarations constructors bits unit templates = do
       ("size", _, [value]) -> pure (T.Opaque "size" [value])
       _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","size","isEmpty","toList"] ->
         pure (T.Sequence values)
-      -- Matchers are total predicates (LawSpec.Matchers).
-      _ | name `elem` ["member","contains","startsWith","endsWith","regexMatches","within","messageContains"] ->
+      -- Text matchers keep their predicate: the same atom the Core lowering
+      -- gives (Total.proofExpression), so a refinement such as v matches
+      -- regex "..." is a fact a later construction can use.
+      ("contains", [whole,_], _) | S.baseType (effectiveType whole) == S.Named "Text" ->
+        pure (T.Opaque (C.builtinName C.TextContains) values)
+      _ | Just builtin <- lookup name [("startsWith",C.StartsWith),("endsWith",C.EndsWith),("regexMatches",C.RegexMatches)] ->
+        pure (T.Opaque (C.builtinName builtin) values)
+      -- x in xs and xs contains x over a List: not every item differs, as
+      -- the Core elaboration says. A literal list is read item by item.
+      ("member", [value,collection], [needle,items]) | isList collection ->
+        membership (differs value needle) items
+      ("contains", [collection,part], [items,needle]) | isList collection ->
+        membership (\item -> differs part item needle) items
+      -- x is within d of y over an exact type: the Core elaboration's
+      -- arithmetic, which the linear checker reads.
+      ("within", [_,x,_], [tolerance,a,b]) | exactType integers (effectiveType x) ->
+        let difference left right = (if isIntegral x then T.Integral else id) (T.ExactArithmetic C.Subtract left right)
+        in pure (T.Conditional (T.ExactComparison C.GreaterEqual a b)
+          (T.ExactComparison C.LessEqual (difference a b) tolerance)
+          (T.ExactComparison C.LessEqual (difference b a) tolerance))
+      -- The other matchers are total predicates (LawSpec.Matchers).
+      _ | name `elem` ["member","contains","within","messageContains"] ->
         pure (T.Sequence values)
       ("recorded", _, _) -> lift (Left "a recording is compared by a law, not inside a definition")
       _ -> lift (Left ("unknown total-definition helper: " ++ name))
+      where
+        isList operand = case S.baseType (effectiveType operand) of
+          S.Applied "List" _ -> True
+          _ -> False
+        isIntegral operand = case S.baseType (effectiveType operand) of
+          S.Named primitive -> isInteger primitive || primitive `elem` integers
+          _ -> False
+        differs operand left right = (if exactType integers (effectiveType operand)
+          then T.ExactComparison else T.Comparison) C.NotEqual left right
+        membership test items = do
+          index <- nextProofSite
+          let binder = C.Id (C.idText owner ++ "::member::" ++ show (index :: Int))
+          pure (T.Negated (T.AllElements items binder (test (T.Variable binder))))
     binary integers typed op left right
       | op `elem` [C.Divide,C.Quotient,C.Remainder] =
           T.Division (S.expressionType typed `elem` map S.Named ["Float32","Float64","Complex64","Complex128"]) op left right
@@ -461,3 +494,4 @@ literalText e = case e of
   S.Located _ inner -> literalText inner
   S.StringLit text -> Just text
   _ -> Nothing
+

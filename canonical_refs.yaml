@@ -378,3 +378,19 @@ REQ-parallel-ci:
   kind: requirement
   title: lawspec-dev ci --jobs runs steps in parallel only where they cannot interfere, so a parallel run gives the results of a sequential one, and --jobs 1 is the sequential run.
   locator: docs/how-to/contribute.md
+why3:
+  kind: package
+  title: Why3, a platform for deductive program verification
+  locator: https://www.why3.org/
+spark-ug:
+  kind: article
+  title: SPARK User's Guide
+  locator: https://docs.adacore.com/spark2014-docs/html/ug/
+smt-lib:
+  kind: article
+  title: The SMT-LIB Standard, version 2.7
+  locator: https://smt-lib.org/
+z3:
+  kind: package
+  title: Z3, a theorem prover from Microsoft Research
+  locator: https://github.com/Z3Prover/z3
