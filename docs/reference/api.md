@@ -113,8 +113,9 @@ law tests. Omitting it preserves model declarations and public runtime APIs.
 With `verification.layers` containing `proof`, `proofTasks` returns optional
 `proofTasks` entries identified by owner, law, source location, checked-program
 fingerprint and machine width. A `ready` entry includes its SMT-LIB `script`,
-`taskFingerprint`, encoding version and trust boundary. An `unsupported` entry
-includes a reason. Mandatory definition validation runs before either result;
+`taskFingerprint`, encoding version and trust boundary. The encoding is
+`lawspec-smtlib-v1` for every task today; a task that needs a later feature
+will name `lawspec-smtlib-v2`. An `unsupported` entry includes a reason. Mandatory definition validation runs before either result;
 an empty layer selection returns no tasks.
 
 Prepared tasks are separate from completed proof evidence. Preparation uses a

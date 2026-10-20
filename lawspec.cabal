@@ -345,6 +345,29 @@ extra-source-files:
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/smt-v1/authorization-snapshots.lawspec
+    test/fixtures/smt-v1/banner-filenames.lawspec
+    test/fixtures/smt-v1/bit-codec.lawspec
+    test/fixtures/smt-v1/bounded-witness-search.lawspec
+    test/fixtures/smt-v1/canonical-smt-arithmetic.lawspec
+    test/fixtures/smt-v1/chapter-06.lawspec
+    test/fixtures/smt-v1/conflicting-requirements.lawspec
+    test/fixtures/smt-v1/constructive-witnesses.lawspec
+    test/fixtures/smt-v1/documentary-review.lawspec
+    test/fixtures/smt-v1/empty-domains.lawspec
+    test/fixtures/smt-v1/finite-integer-domains.lawspec
+    test/fixtures/smt-v1/law-metadata.lawspec
+    test/fixtures/smt-v1/native-payments.lawspec
+    test/fixtures/smt-v1/order-workflow.lawspec
+    test/fixtures/smt-v1/parcel-measurements.lawspec
+    test/fixtures/smt-v1/picture-records.lawspec
+    test/fixtures/smt-v1/picture-tuples.lawspec
+    test/fixtures/smt-v1/record-payloads.lawspec
+    test/fixtures/smt-v1/recursive-records.lawspec
+    test/fixtures/smt-v1/refund-policy.lawspec
+    test/fixtures/smt-v1/smt-laws.lawspec
+    test/fixtures/smt-v1/structural-records.lawspec
+    test/fixtures/smt-v1/corpus.jsonl
     test/fixtures/recorded-values.json
     test/fixtures/recorded-web.mjs
     test/fixtures/recorded_python.py
@@ -968,6 +991,7 @@ test-suite lawspec-test
       SearchSpec
       SelectionAdmissionSpec
       SessionsPythonSpec
+      SmtFrozenSpec
       SmtSpec
       SourceDataSpec
       SourceGadtIndicesSpec

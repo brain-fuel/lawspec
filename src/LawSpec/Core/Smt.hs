@@ -1,6 +1,6 @@
 -- | Typed SMT-LIB tasks, with no solver or host IO in the compiler. The host
 -- executes these tasks using an established prover. ref:DEC-typed-core-boundary
-module LawSpec.Core.Smt (ProofTask(..), proofTasks, taskFingerprint) where
+module LawSpec.Core.Smt (ProofTask(..), Encoding(..), encodingName, proofTasks, taskFingerprint) where
 
 import Control.Monad (unless, when, foldM, forM)
 import Control.Monad.State.Strict
@@ -25,14 +25,24 @@ import LawSpec.Scalar (Scalar(..), isInteger, integerBounds)
 data ProofTask = ProofTask
   { taskOwner :: Id, taskLaw :: Id, taskLocation :: Location
   , taskProgram :: String, taskBits :: Int, taskQuery :: Either String String
+  , taskEncoding :: Encoding
   } deriving (Eq, Show)
 
-encoding :: String
-encoding = "lawspec-smtlib-v1"
+-- | Each encoding is frozen once released. A task that lawspec-smtlib-v1
+-- supports keeps its script and fingerprint byte for byte, so an existing
+-- receipt stays current with no re-run; test/fixtures/smt-v1 holds the
+-- frozen corpus that checks it. A task needing anything v1 lacks is
+-- lawspec-smtlib-v2: the encoder calls `requires SmtLibV2` where it uses a
+-- new feature. ref:DEC-smtlib-encoding-versions
+data Encoding = SmtLibV1 | SmtLibV2 deriving (Eq, Ord, Show, Enum, Bounded)
+
+encodingName :: Encoding -> String
+encodingName SmtLibV1 = "lawspec-smtlib-v1"
+encodingName SmtLibV2 = "lawspec-smtlib-v2"
 
 instance ToJSON ProofTask where
   toJSON task = object $
-    ["encoding" .= encoding, "owner" .= idText (taskOwner task),
+    ["encoding" .= encodingName (taskEncoding task), "owner" .= idText (taskOwner task),
      "declaration" .= idText (taskLaw task), "at" .= taskLocation task,
      "programFingerprint" .= taskProgram task, "machineBits" .= taskBits task] ++
     case taskQuery task of
@@ -43,7 +53,7 @@ instance ToJSON ProofTask where
 
 taskFingerprint :: ProofTask -> String
 taskFingerprint task = digestHex (digestString (concatMap frame
-  [encoding,taskProgram task,show (taskBits task),idText (taskOwner task),
+  [encodingName (taskEncoding task),taskProgram task,show (taskBits task),idText (taskOwner task),
    idText (taskLaw task),either id id (taskQuery task)]))
   where frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
 
@@ -52,13 +62,22 @@ proofTasks program = do
   validateProgram program
   let fingerprint = digestHex (digest (BL.toStrict (Binary.encode program)))
   pure [ProofTask (unitId owner) (propertyId law) (propertyLocation law)
-          fingerprint (programMachineBits program) (query program law)
-       | owner <- programUnits program, law <- unitProperties owner]
+          fingerprint (programMachineBits program) (snd <$> task)
+          -- A refused task names v1, the encoding that refused it.
+          (either (const SmtLibV1) fst task)
+       | owner <- programUnits program, law <- unitProperties owner
+       , let task = query program law]
 
 data Sort = BooleanSort | IntegerSort | RealSort | UnitSort deriving (Eq,Show)
 data Term = Term { termSort :: Sort, value :: String, defined :: String }
 data Certificate = Certificate { positive :: String, negative :: String }
-data Work = Work { nextName :: Int, visited :: Int }
+-- The encoding a task needs so far: the newest any feature it uses requires.
+data Work = Work { nextName :: Int, visited :: Int, required :: Encoding }
+
+-- | A feature of a later encoding. v1 calls this nowhere, which is what keeps
+-- every v1 task as it was.
+requires :: Encoding -> Encode ()
+requires needed = modify (\s -> s{required=max needed (required s)})
 type Encode = StateT Work (Either String)
 type Scope = M.Map Id Term
 
@@ -121,18 +140,18 @@ domain bits ty x = do
       _ -> "true"
     _ -> "true"
 
-query :: Program -> Property -> Either String String
+query :: Program -> Property -> Either String (Encoding, String)
 query program law = do
   unless (propertyInputDomain law == UniversalDomain)
     (Left "SMT law tasks require the canonical universal input-domain policy")
   unless (null (propertyResources law)) (Left "SMT translation does not execute resources")
   unless (null (propertyHandlers law)) (Left "SMT translation does not execute ability handlers")
-  certificate <- evalStateT (proposition program [] M.empty
-    (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))) (Work 0 0)
-  let script = "; " ++ encoding ++ "; negate a positive certificate, including definedness\n" ++
+  (certificate, work) <- runStateT (proposition program [] M.empty
+    (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))) (Work 0 0 SmtLibV1)
+  let script = "; " ++ encodingName (required work) ++ "; negate a positive certificate, including definedness\n" ++
         "(assert " ++ no (positive certificate) ++ ")\n"
   unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
-  pure script
+  pure (required work, script)
 
 truth :: Term -> Certificate
 truth term = Certificate (both [defined term,value term]) (both [defined term,no (value term)])

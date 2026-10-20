@@ -1,0 +1,120 @@
+unit example.rc1.constructiveWitnesses
+
+type RequestLabel is a record{
+  text of type Text
+}
+end type
+
+function keep (value of type a) -> a is
+  value
+end function
+
+function increment (value of type Integer) -> Integer is
+  value + 1
+end function
+
+function "|add for approval| (left of type Integer) (right of type Integer) -> Integer is
+  left + right
+end function
+
+function labelFor (allowed of type Bool) -> RequestLabel is
+  RequestLabel record{text = if allowed then "approved" else "declined" end if}
+end function
+
+function amountDescription (amount of type Integer) -> Text is
+  if amount > 0 then "positive" else "nonpositive" end if
+end function
+
+law "|every integer has a successor| is
+  description:
+    "Every exact integer has a larger integer exactly one step away."
+  end description
+  definition:
+    for all (value of type Integer) =>
+      there exists (answer of type Integer where answer > value) such that
+        answer must be value + 1
+      end exists
+    end for all
+  end definition
+  expect increment value = expected
+  in table (value, expected):
+    row -1, 0
+    row 0, 1
+    row 1, 2
+  end table
+end law
+
+law "|each request has a matching label| is
+  description:
+    "An allowed request can be labelled approved; another can be labelled declined."
+  end description
+  definition:
+    for all (allowed of type Bool) =>
+      there exists (label of type RequestLabel) such that
+        label.text must be (if allowed then "approved" else "declined" end if)
+      end exists
+    end for all
+  end definition
+end law
+
+law "|positive amounts have a description| is
+  definition:
+    for all (allowed of type Bool) =>
+      there exists (amount of type Integer where amount > 0) such that
+        there exists (word of type Text) such that
+          word must be "positive"
+        end exists
+      end exists
+    end for all
+  end definition
+end law
+
+law "|separate requirements can choose separate values| is
+  definition:
+    (there exists (value of type Integer) such that value = 1 end exists)
+    and
+    (there exists (value of type Integer) such that value = 2 end exists)
+  end definition
+end law
+
+law "|a request cannot be both allowed and disallowed| is
+  definition:
+    there must not exist (allowed of type Bool) such that
+      allowed and not allowed
+    end exists
+  end definition
+end law
+
+law "|an empty request domain needs no witness| is
+  definition:
+    for all (allowed of type Bool where false) =>
+      there exists (answer of type Integer) such that
+        false
+      end exists
+    end for all
+  end definition
+end law
+
+harness example.rc1.constructiveWitnesses.testing for example.rc1.constructiveWitnesses is
+  for law "|every integer has a successor|
+    witness keep (value `|add for approval| 1) for definition.value.answer
+  end for law
+for law "|each request has a matching label|
+    witness keep (labelFor allowed) for allowed.label
+  end for law
+for law "|positive amounts have a description|
+    witness (if allowed then 1 else 2 end if) for allowed.amount
+    witness keep (amountDescription amount) for allowed.amount.word
+  end for law
+for law "|separate requirements can choose separate values|
+    witness 1 for branch1.value
+    witness 2 for branch2.value
+  end for law
+for law "|a request cannot be both allowed and disallowed|
+    witness false for allowed
+  end for law
+for law "|an empty request domain needs no witness|
+    witness 0 for allowed.answer
+end for law
+end harness
+end unit

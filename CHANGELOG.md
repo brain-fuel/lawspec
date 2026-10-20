@@ -8,6 +8,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `lawspec-smtlib-v1` proof tasks are frozen byte for byte, checked against
+  a corpus of every current task. The compiler can name a later encoding,
+  `lawspec-smtlib-v2`, for tasks that need new features.
 - A definition may rely on an ability operation's refined result. The
   generated code checks each such result where the definition performs the
   operation, and stops the definition if a handler broke the type.

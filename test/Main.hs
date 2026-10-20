@@ -90,6 +90,7 @@ import qualified DotNetSpec
 import qualified LanguageGapsSpec
 import qualified MatcherAdmissionSpec
 import qualified OperationResultSpec
+import qualified SmtFrozenSpec
 import qualified SchedulerSpec
 import LawSpec.Compile
 import LawSpec.Model
@@ -170,6 +171,7 @@ main = hspec $ do
   LanguageGapsSpec.test_languageGapsClose
   MatcherAdmissionSpec.test_matcherFactsAreKeptInAdmission
   OperationResultSpec.test_operationResultsAreCheckedWhereTheyAreUsed
+  SmtFrozenSpec.test_smtV1IsFrozen
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers

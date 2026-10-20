@@ -671,3 +671,12 @@ DEC-operation-result-checks:
   opened: 0.26.0
   decided: 0.26.0
   refs: [ada-2022-predicates, spark-ug]
+
+DEC-smtlib-encoding-versions:
+  status: decided
+  question: The Z3 translation will grow (data types, text, recursion, counterexamples). How do existing solver receipts keep their meaning as it grows?
+  answer: |
+    lawspec-smtlib-v1 is frozen byte for byte (gate 5 decision 2). A task v1 supports keeps its script, task fingerprint and program fingerprint, so its receipt stays current with no re-run. Any task that needs a new feature is lawspec-smtlib-v2. The compiler tracks the encoding a task needs (Core.Smt `requires`, the newest encoding any feature it uses requires); v1 features never call it, and the task, its script header and its fingerprint name the encoding. A refused task names v1, the encoding that refused it. test/SmtFrozenSpec.hs checks a frozen corpus (test/fixtures/smt-v1: copies of the rc1 examples, Chapter 6, the arithmetic demonstration and the SmtSpec laws, at 32 and 64 bits, through the API's proofTasks method as lawspec prove gets them): every frozen ready task is unchanged, a frozen refused task becomes ready only as v2, and no new v1 task appears. Because the program fingerprint binds the whole checked program, a compiler change that alters a corpus program's Core also fails the test; that is a receipt change and needs its own decision. The precedent is Why3's versioned drivers and session files, which record the prover and transformation a proof used so a replay can tell a changed goal from an unchanged one, and SMT-LIB's own versioned standard. The Node host accepts only v1 until v2 has features and a protocol; increment 4 adds both.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, smt-lib, z3]

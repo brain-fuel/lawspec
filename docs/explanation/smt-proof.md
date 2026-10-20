@@ -87,6 +87,18 @@ nonzero denominator. The task must establish definedness as well as truth.
 Likewise, proving nonexistence requires ruling out every admitted candidate;
 an undefined candidate cannot simply count as false.
 
+## Encodings and receipts
+
+Every task names its encoding. `lawspec-smtlib-v1` is frozen: a task it
+supports keeps its script and fingerprint byte for byte. A receipt recorded
+for such a task stays current, so nothing needs to run again. A test checks
+this against a frozen corpus of tasks in `test/fixtures/smt-v1`.
+
+A task that needs a feature v1 lacks, such as data types or text, is
+`lawspec-smtlib-v2`. A task v1 refuses never becomes a v1 task. The task
+fingerprint covers the encoding name, so a v1 receipt never stands for a v2
+task.
+
 The mandatory definition audit reduces variable aliases by capture-avoiding
 substitution, following [Lean's zeta reduction of local definitions](https://lean-lang.org/doc/reference/latest/The--grind--tactic/Local-Definitions/).
 Both source and Core lowering share that reduction. Other strict bindings retain
