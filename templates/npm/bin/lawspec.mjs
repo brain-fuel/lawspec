@@ -341,7 +341,7 @@ function dependencyText(d) {
     ? `stand-in ${d.standIn.identity} ${d.standIn.version} (${level(d.standIn.conformance)}` +
       (history ? `, history ${history}${ran.historyFrom === "completed" ? " when completed" : ""}` : "") + ")"
     : "real") + ` at ${d.endpoint}` + (d.reached ? "" : " (not reached when recorded)") +
-    (d.provider ? `; ${d.provider}` + (d.implementation ? ` ${d.implementation.product} ${d.implementation.version}` : "") : "") +
+    (d.implementation ? `; ${d.implementation.kind} ${d.implementation.product} ${d.implementation.version}` : "") +
     (d.contract ? `; contract ${d.contract.package} ${d.contract.version}` : "") +
     (d.node ? `; node ${d.node}` + (d.edge ? ` via ${d.edge}` : "") : "") +
     (d.completed && !d.completed.reached ? " (not reached when completed)" : "");
