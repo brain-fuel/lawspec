@@ -554,7 +554,7 @@ emitPlanFormatted minify target Plan{..} = do
     lawKey law = D.keyOf graph (show (planMachineBits, law)) (D.lawReferences graph (plannedProperty law))
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
-          testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks) u
+          testing = modelTestUnit (Plan planMachineBits planDataDeclarations plannedUnits planModelChecks planPropertyChecks) u
       in fmap (map unstore) $ memoized emitTable (digestHex (digestString (show (minify, target, planMachineBits,
              testing { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
            (fmap (map store) (emitUnitWith laws testing))

@@ -117,6 +117,29 @@ retain their required failure context with current test names and quoted phrase
 names. No verification layer or intrinsic definition check is disabled by these
 fixture corrections.
 
+Large Haskell suites now share boundary setup and assertions while retaining
+independent registrations, checked inputs, fresh symbol contexts and per-case
+handler/resource execution. Literal factories receive the case's symbol context.
+The handler suite shrinks from 63,454,955 to 2,924,151 source bytes; all 8,004
+boundary names and their order remain unchanged. The native suite passes all
+8,012 tests, and both handler mutation controls fail natively.
+
+BEAM generation retains the selected property layer in its execution plan.
+Explicit harness strategies run alongside complete finite cases when property
+testing is selected; deterministic cases never count as random observations.
+Exhaustive-only selection and empty domains do not request random trials.
+For a known-failing law, these strategy trials precede deterministic checks so
+an expected logical failure cannot conceal broken coverage or an invalid
+strategy. Three compiler selection regressions and the native targeted-search,
+repetition and known-failure suites pass across Erlang, Elixir and Gleam.
+These results retain their component scope until combined acceptance completes.
+
+BEAM native codecs and failure fixtures construct alternatives with one explicit
+record payload. The Erlang recursive-chain binding specifies native argument
+positions independently of canonical record ordering, preserving its existing
+adapter representation. Native failure controls accept the current framework
+test identities while retaining required failure causes.
+
 Implementation acceptance requires all closing forms and errors, shared
 formatter/editor support, preserved intrinsic checks and behavior, native/WASM
 parity, installed-package checks, and the complete fresh 17-target graph. No

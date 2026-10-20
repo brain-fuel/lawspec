@@ -449,7 +449,7 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
     it "enables audited constructor contracts on all eight backends" $ do
       Schema.dataSchemas [positiveType] `shouldSatisfy` isLeft
       planTesting (program [positiveType] [function]) `shouldSatisfy` isRight
-      mapM_ (\target -> emitPlan target (Plan 64 [positiveType] [] True) `shouldSatisfy` isRight)
+      mapM_ (\target -> emitPlan target (Plan 64 [positiveType] [] True True) `shouldSatisfy` isRight)
         targets
 
   it "audits division in every List predicate under its local guard" $ do

@@ -27,6 +27,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   predicates during generation and shrinking.
 - Generated Kotlin registrations fit JVM method limits, and Haskell test
   components avoid excessive optimization of large generated test expressions.
+- Large JVM suites share assertion bodies and Scala registration traits retain
+  every case without exceeding class-size limits. Haskell boundary helpers
+  retain fresh symbol contexts, checked inputs and per-case handler execution.
+- Explicit BEAM harness strategies run alongside selected finite checks;
+  coverage uses actual strategy trials, and known failures cannot bypass their
+  strategy validation or coverage checks.
+- Closed record handler initializers preserve distinct local bindings.
+- Indexed generation traverses intervening structural records while preserving
+  constructor guards and dependent restrictions.
 - WASM transfers generated JSON directly as UTF-8 and reclaims transport
   buffers between serialized calls; the host queue releases completed responses.
 - Large Groovy and Clojure exports release Java conversion inputs earlier.

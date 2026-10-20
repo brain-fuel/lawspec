@@ -40,6 +40,7 @@ data Plan = Plan
   , plannedUnits :: [PlannedUnit]
   -- Execution selection is separate from the authoritative typed units.
   , planModelChecks :: Bool
+  , planPropertyChecks :: Bool
   } deriving (Eq, Show, Generic)
 -- | Each unit's laws are planned together because they are emitted together.
 data PlannedUnit = PlannedUnit { plannedUnit :: Unit, plannedProperties :: [PlannedProperty] } deriving (Eq, Show, Generic)
@@ -90,6 +91,7 @@ planTestingWith config program = do
     any ((== Nothing) . finiteCases) (concatMap plannedProperties (plannedUnits plan)))
     (Left [Diagnostic "verification-incomplete" "complete finite coverage was requested but exceeds the finite domain or exhaustive limit; no exhaustive success is claimed" Nothing])
   pure plan { planModelChecks = V.selected config V.Model,
+    planPropertyChecks = V.selected config V.Property,
     plannedUnits = [let properties = map choose (plannedProperties u)
     in u { plannedProperties = properties, plannedUnit = (plannedUnit u) { unitProperties = map plannedProperty properties } }
     | u <- plannedUnits plan] }
@@ -120,7 +122,7 @@ planLowered program@Program{..} = do
         pure (PlannedUnit (u { unitProperties = map plannedProperty properties }) properties)
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right (plan p)
   units<-mapM unit programUnits
-  pure (Plan programMachineBits interned units True)
+  pure (Plan programMachineBits interned units True True)
 
 -- | Only model-test builders receive this execution view. Public actor and
 -- supervisor APIs, validation, definitions and source/evidence views use the

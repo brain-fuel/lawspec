@@ -83,8 +83,9 @@ sequenceDocs docs = statements (if null docs then [text "pure ()"] else docs)
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
   let testNames = unitTestNames "haskell" (map name laws)
-  bodies <- mapM (law testNames) (zip [0::Int ..] laws)
-  let imports = ["import qualified Prelude as P", "import Prelude", "import Test.Hspec",
+  parts <- mapM (law testNames) (zip [0::Int ..] laws)
+  let bodies = map snd parts
+      imports = ["import qualified Prelude as P", "import Prelude", "import Test.Hspec",
         "import Control.Exception (SomeException, catch, displayException, evaluate)",
         "import Test.Hspec.Hedgehog (hedgehog, modifyMaxSuccess)",
         "import Hedgehog (forAll, evalIO, footnote)",
@@ -115,7 +116,7 @@ emitTests Config{..} unit laws = do
       [text "{-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}" | Just _ <- [abilityModules]] ++
       [text ("module " ++ moduleName ++ "Spec (spec) where")]) <>
     D.hardline <> D.hardline <> statements (map text imports) <> D.hardline <> D.hardline <>
-    separate ([Helpers.schemaDoc,Helpers.assertionDoc,seedDoc] ++ map contract (contracts unit)) <>
+    separate ([Helpers.schemaDoc,Helpers.assertionDoc,seedDoc] ++ map contract (contracts unit) ++ concatMap fst parts) <>
     D.hardline <> D.hardline <> text "spec :: Spec" <> D.hardline <>
     -- Shared resources are released after the unit's spec.
     text (if sharing then "spec = afterAll_ LS.releaseShared $ do" else "spec = do") <>
@@ -223,13 +224,14 @@ emitTests Config{..} unit laws = do
       , "  HedgehogRegion.displayRegion (\\region -> (P.== HedgehogReport.OK) P.. HedgehogReport.reportStatus P.<$>"
       , "    HedgehogRunner.checkNamed region color P.Nothing (P.fmap (HedgehogSeed.from P.. P.read) seed) property)" ])
     expr = expression
-    assertionDoc context proposition = case proposition of
-      AssertAll ps -> sequenceDocs (map (assertionDoc context) ps)
+    assertionDoc context = assertionDocWith (quoted . (context ++))
+    assertionDocWith context proposition = case proposition of
+      AssertAll ps -> sequenceDocs (map (assertionDocWith context) ps)
       AssertImplies guard body -> text "if " <> D.nest 2 (parens (truth (expr guard))) <>
-        D.nest 2 (D.hardline <> text "then do" <> D.nest 2 (D.hardline <> assertionDoc context body) <>
+        D.nest 2 (D.hardline <> text "then do" <> D.nest 2 (D.hardline <> assertionDocWith context body) <>
           D.hardline <> text "else pure ()")
       AssertEqual a b -> apply "_lawspecAssert"
-        [quoted (context ++ " | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b),
+        [context (" | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b),
          checked (expressionType a) (expr a),checked (expressionType b) (expr b)]
     contract c =
       let args = contractArguments c
@@ -276,6 +278,23 @@ emitTests Config{..} unit laws = do
           h = C.propertyHarness (original e)
           base' = testNames !! index
           fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+          boundaryValues = maybe (boundaryCases e) id (finiteCases e)
+          shareBoundaries = length boundaryValues >= 64
+          boundaryName = "_lawspecBoundary" ++ show index
+          boundaryBody values check = [symbols] ++ handlerInstalls e ++
+            [bind (inputId inp) (checked (inputType inp) value) | (inp,value) <- zip (inputs e) values] ++
+            [bracketed e [check]]
+          -- Keep every case independently registered, but compile its handler
+          -- setup and checked assertion once. Large repeated bodies otherwise
+          -- exceed native assembler branch ranges even without optimization.
+          boundaryHelpers = [statements
+            [text ("{-# NOINLINE " ++ boundaryName ++ " #-}")
+            ,text (boundaryName ++ " :: P.String -> (LS.SymbolContext -> [Scalar]) -> P.IO ()")
+            ,text (boundaryName ++ " _lawspecContext _values = do") <>
+              D.nest 2 (D.hardline <> sequenceDocs (boundaryBody
+                [text ("_values symbols P.!! " ++ show i) | i <- [0 .. length (inputs e) - 1]]
+                (assertionDocWith (\suffix -> parens (text "_lawspecContext P.++ " <> quoted suffix)) (assertion e))))]
+            | shareBoundaries]
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i)
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
@@ -283,9 +302,9 @@ emitTests Config{..} unit laws = do
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
         pure $ testFunction (fn ++ "_boundary" ++ show i)
-          ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-          [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
-        (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
+          (if shareBoundaries then [apply boundaryName [quoted (label ++ " boundary " ++ show i), parens (lambda "symbols" (E.array values))]]
+           else boundaryBody values (assertionDoc (label ++ " boundary " ++ show i) (assertion e))))
+        (zip [0::Int ..] boundaryValues)
       -- LawSpec's own search (LawSpec.Search): the failure database's
       -- inputs are replayed before the law's generated cases, a failing
       -- case's inputs are kept, and a law with `target maximize` climbs
@@ -324,7 +343,7 @@ emitTests Config{..} unit laws = do
           else pure [nativeProperty fn label e check]
       let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
             ["_property" | not (null property)]
-      pure $ metadataDocument 78 "--" e <> separate (searchBefore ++ harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter)
+      pure (boundaryHelpers, metadataDocument 78 "--" e <> separate (searchBefore ++ harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter))
     propertyHeader fn label e = apply "modifyMaxSuccess" [apply "const" [number (cases (generation e))]] <>
       text " $ " <> apply "it" [quoted (fn ++ "_property: " ++ label)] <> text " $ hedgehog $ do"
     contextualProperty fn label e check = do

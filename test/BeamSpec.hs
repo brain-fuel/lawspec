@@ -752,6 +752,29 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             ["lawspec_beam_harness:run", "lawspec_beam_harness:sample", "\\\"|finite observations| statistics",
              "examples do not count", "lawspec_definitions:", "above its prefix"]
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
+  -- ref:REQ-harness-units ref:DEC-never-pass-vacuously
+  mapM_ (\target -> it (target ++ " retains finite coverage alongside selected strategy trials") $ do
+    let input = unlines
+          ["unit selected", "number :: Int32 -> Int32", "law identity is", "definition:",
+           "for all (n :: Int32 where n >= 0 && n <= 2) => number n = n",
+           "end for all", "end definition", "end law",
+           "harness selected.testing for selected is", "strategy zero :: Int32 is one of 0 end strategy",
+           "for law identity", "use zero for n", "cover 100% \"strategy roots\" when n = 0",
+           "end for law", "end harness", "end unit"]
+    case compileCore 64 defaultGeneration [Source "selection.lawspec" input] of
+      Left errors -> expectationFailure (show errors)
+      Right program -> mapM_ (\layers -> case planTestingWith (V.Verification layers) program of
+        Left errors -> expectationFailure (show errors)
+        Right plan -> do
+          map (fmap length . finiteCases) (concatMap plannedProperties (plannedUnits plan)) `shouldBe` [Just 3]
+          case Properties.emit target (D.Pretty 100) emptyBindingPlan plan of
+            Left message -> expectationFailure message
+            Right artifacts -> do
+              let body = concatMap artifactContent artifacts
+              isInfixOf ":check(" body `shouldBe` (V.Property `elem` layers)
+              body `shouldSatisfy` isInfixOf "strategy roots"
+        ) [[V.Exhaustive], [V.Exhaustive,V.Property]]
+    ) ["erlang","elixir","gleam"]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
   mapM_ (\(target,bits,compact) -> it (target ++ " groups known failures and omits skipped law bodies " ++ show (bits,compact)) $ do
     input <- readFile "acceptance/beam-status/status.lawspec"

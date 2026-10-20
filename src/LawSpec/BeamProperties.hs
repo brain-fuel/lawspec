@@ -65,7 +65,7 @@ emit target layout bindings plan = do
           name = Definitions.adapterModule unit ++ (if target == "erlang" then "_lawspec_tests" else "_lawspec_cases")
           counts = [(n, if single (C.propertyHarness (plannedProperty p)) then 1 else length (C.propertyExamples (plannedProperty p)) +
             length (maybe (boundaryCases p) id (finiteCases p)) +
-            (if finiteCases p == Nothing || observed (C.propertyHarness (plannedProperty p)) then 1 else 0) +
+            (if finiteCases p == Nothing || sampleFinite plan p || observed (C.propertyHarness (plannedProperty p)) then 1 else 0) +
             maybe 0 (const 1) (targetSearch plan p))
             | (n,p) <- zip names properties] ++ [(ModelChecks.checkName c,1) | c <- models] ++ [(n,1) | n <- benchmarkNames]
           skips = [n | (n,p) <- zip names properties, C.harnessSkip (C.propertyHarness (plannedProperty p)) /= Nothing]
@@ -206,8 +206,8 @@ emit target layout bindings plan = do
       randomTests <- case finiteCases planned of
         -- An exhaustive law has no random samples to satisfy cover. Still
         -- report zero observations; a cover clause must not silently pass.
-        Just _ -> pure [test "statistics" True [E.atom "ok"] | observed harness]
-        Nothing -> do
+        Just _ | not (sampleFinite plan planned) -> pure [test "statistics" True [E.atom "ok"] | observed harness]
+        _ -> do
           generator <- Generators.inputs framework schema symbols plan local planned
           predicates <- mapM render (concatMap C.quantifiedPredicates (C.propertyInputs law))
           covers <- mapM (render . C.coverWhen) (C.harnessCover harness)
@@ -255,7 +255,12 @@ emit target layout bindings plan = do
                 [E.binary label,E.array (map E.binary descriptors),E.lambda [values] guarded]]
           pure [searchTest]
       acquired <- bracket schema (raw schema (D.text "_LsValues"))
-      let ordinaryItems = examples ++ boundaryTests ++ randomTests ++ searchTests
+      let -- Validate explicitly requested draws before a deterministic failure
+          -- can satisfy `known failing` and bypass strategy/coverage checks.
+          ordinaryItems
+            | C.harnessKnownFailing harness /= Nothing && sampleFinite plan planned =
+                randomTests ++ examples ++ boundaryTests ++ searchTests
+            | otherwise = examples ++ boundaryTests ++ randomTests ++ searchTests
           -- BEAM functions cannot keep more than 1024 closure values live
           -- while building a list. Construct large suites in small helpers,
           -- retaining one independently named test for every original case.
@@ -284,6 +289,14 @@ observed :: C.LawHarness -> Bool
 observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify harness) && null (C.harnessLabels harness)) ||
   C.harnessTarget harness /= Nothing
 
+-- Explicit strategies still run when property testing and complete finite
+-- checking are both selected. Keep the complete domain as separate cases;
+-- only actual strategy draws contribute random-sample coverage statistics.
+-- An empty domain and an unselected property layer never request samples.
+sampleFinite :: Plan -> PlannedProperty -> Bool
+sampleFinite plan planned = planPropertyChecks plan && finiteCases planned /= Just [] &&
+  not (null (C.harnessDraws (C.propertyHarness (plannedProperty planned))))
+
 targetSearch :: Plan -> PlannedProperty -> Maybe ([String], C.Expr)
 targetSearch plan planned = do
   let law = plannedProperty planned
@@ -293,7 +306,7 @@ targetSearch plan planned = do
 
 searchDescriptors :: Plan -> PlannedProperty -> Maybe [String]
 searchDescriptors plan planned
-  | searchable (finiteCases planned /= Nothing) (plannedProperty planned) =
+  | searchable (finiteCases planned /= Nothing && not (sampleFinite plan planned)) (plannedProperty planned) =
       lawDescriptors (planMachineBits plan) (planDataDeclarations plan) (plannedProperty planned)
   | otherwise = Nothing
 

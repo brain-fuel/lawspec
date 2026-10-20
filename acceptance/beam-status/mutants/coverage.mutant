@@ -1,4 +1,5 @@
-expect: known| property failure
+expect-any: known property failure | law_known_property_failure
+expect-any: unmet_cover | UnmetCover
 @@ acceptance/beam-status/status.lawspec
 <<<<<<<
 for law "|known property failure|
