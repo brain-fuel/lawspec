@@ -1,4 +1,4 @@
-expect: an embedded handler takes failures as values and keeps its state
+expect-any: an embedded handler takes failures as values and keeps its state | law_an_embedded_handler_takes_failures_as_values_and
 @@ lib/example_embedding.ex
 <<<<<<<
       :ok = Handlers.keeping_set_state(tally, 10)

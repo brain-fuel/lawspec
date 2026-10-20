@@ -1,4 +1,4 @@
-expect: a handler of several abilities shares its state natively
+expect-any: a handler of several abilities shares its state natively | law_a_handler_of_several_abilities_shares_its_state
 @@ lib/example_embedding.ex
 <<<<<<<
       {ledger, balance} = Handlers.book(context)

@@ -1,4 +1,5 @@
-expect: an embedded handler takes failures as values and keeps its state
+expect-any: an embedded handler takes failures as values and keeps its state | law_an_embedded_handler_takes_failures_as_values_and
+expect: RefusalNegative
 @@ lib/example_embedding.ex
 <<<<<<<
       {:error, %LawSpec.Data.RefusalNegative{}} = Tally.try_add(tally, -1)
