@@ -289,13 +289,14 @@ observed :: C.LawHarness -> Bool
 observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify harness) && null (C.harnessLabels harness)) ||
   C.harnessTarget harness /= Nothing
 
--- Explicit strategies still run when property testing and complete finite
--- checking are both selected. Keep the complete domain as separate cases;
--- only actual strategy draws contribute random-sample coverage statistics.
+-- Explicit strategies supply requested observations when property testing
+-- and complete finite checking are both selected. Keep the complete domain
+-- as separate cases; unused fallback strategies remain unnecessary.
 -- An empty domain and an unselected property layer never request samples.
 sampleFinite :: Plan -> PlannedProperty -> Bool
 sampleFinite plan planned = planPropertyChecks plan && finiteCases planned /= Just [] &&
-  not (null (C.harnessDraws (C.propertyHarness (plannedProperty planned))))
+  observed harness && not (null (C.harnessDraws harness))
+  where harness = C.propertyHarness (plannedProperty planned)
 
 targetSearch :: Plan -> PlannedProperty -> Maybe ([String], C.Expr)
 targetSearch plan planned = do

@@ -125,8 +125,10 @@ boundary names and their order remain unchanged. The native suite passes all
 8,012 tests, and both handler mutation controls fail natively.
 
 BEAM generation retains the selected property layer in its execution plan.
-Explicit harness strategies run alongside complete finite cases when property
-testing is selected; deterministic cases never count as random observations.
+Explicit harness strategies supply requested observations alongside complete
+finite cases when property testing is selected; deterministic cases never count
+as random observations. An unused fallback strategy is not invoked for an
+already exhaustive law without observations or targeting.
 Exhaustive-only selection and empty domains do not request random trials.
 For a known-failing law, these strategy trials precede deterministic checks so
 an expected logical failure cannot conceal broken coverage or an invalid

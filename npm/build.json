@@ -744,7 +744,7 @@
     "src/LawSpec/BeamModels.hs": "408150c50999c8232bed08a2998726861bd89e0c9917d2cadee45a7bb03ce8a0",
     "src/LawSpec/BeamNativeBinding.hs": "4011403048c77af9b10fdf43acca97ee0d46937167472c77511654aae61ed764",
     "src/LawSpec/BeamPolicy.hs": "b837c9a927e5834a0dc20f52e1ce99cb313a8dcb0a7fd5fe513e21d74cf886cf",
-    "src/LawSpec/BeamProperties.hs": "fed5f647fc1d6bffd2fb879ca2c836f37998b190af65058ad57f2f86d5546c9f",
+    "src/LawSpec/BeamProperties.hs": "733e44cc0ca656db651e089d926987c758ec1d8b5bc77ee526e28c96256ca102",
     "src/LawSpec/BeamRemote.hs": "f75352af109f83cda4941083c252185d4ff1cae50f7e6f55b168141d2a2d2d92",
     "src/LawSpec/BeamSessions.hs": "0997b62187d3c11fca74aec49ceaa7ca3727beebad15cc786eac756b1a298007",
     "src/LawSpec/Blake3.hs": "95b0e88cd882b013a4e9eeeddaf9d345477d714d3dafce822f5467f320ced792",
@@ -995,7 +995,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "8e34b5429ad3531cb954380e40f79a5703cd57bc6f2ba7f857425a6a7b90a81e",
-    "npm/core.wasm": "03e99b7f97e5e449a1394a38da53e9adbfb5518167d81e7cb926f2a77582f990",
+    "npm/core.wasm": "b7dc0cfcdd9f3f6fd2601abef1aaa46b679e3350d876b69fe687fe535ffb9e80",
     "npm/core_jsffi.js": "83f3d08134001f01a5431ac43d68fe10bafde834879393fa5fd38ecf39fc1d58",
     "npm/api.mjs": "fd40ec7034402e4456504182d80e2e97f535713ae5d227ffad6456fa9091f59b",
     "npm/index.d.ts": "5b459c42bdaedcaa2acdbe57f7b225f2b0b6889044145a987af357f887e5d558"

@@ -3,6 +3,7 @@ module CollectionsSpec (test_collectionsAreTypedEvaluatedAndOrderedPortably) whe
 
 import Data.Either (isRight)
 import Data.List (isInfixOf)
+import Data.Maybe (isJust)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Core.Value (Value(..), compareValues, listValue)
@@ -53,12 +54,12 @@ int = ScalarValue . SInteger "Int32"
 test_collectionsAreTypedEvaluatedAndOrderedPortably :: Spec
 test_collectionsAreTypedEvaluatedAndOrderedPortably = describe "collections" $ do
   describe "generation" $
-    it "retains the size predicate when an explicit record payload needs checked generation" $
+    it "retains the size predicate alongside an explicit record payload's generation plan" $
       case compileCore 64 defaultGeneration [source [ "law sized is definition: for all (s :: SizedStack 3 Int8) => prelude.sizedStackItems s = prelude.sizedStackItems s end for all end definition end law" ]] >>= planTesting of
         Left ds -> expectationFailure (show ds)
-        Right plan -> [(generatorIndex r, null (generatorPredicates r)) | u <- plannedUnits plan, pp <- plannedProperties u,
+        Right plan -> [(isJust (generatorIndex r), null (generatorPredicates r)) | u <- plannedUnits plan, pp <- plannedProperties u,
                       C.propertyName (plannedProperty pp) == "sized", r <- generatorRequirements pp]
-          `shouldBe` [(Nothing, False)]
+          `shouldBe` [(True, False)]
   describe "the built-in unit" $ do
     it "is added only for the collections a source uses" $ do
       usedCollections [sourceText ["f :: Int32 -> SortedSet Int32"]] `shouldBe` ["Set", "Ordering"]

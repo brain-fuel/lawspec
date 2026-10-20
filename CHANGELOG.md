@@ -30,7 +30,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Large JVM suites share assertion bodies and Scala registration traits retain
   every case without exceeding class-size limits. Haskell boundary helpers
   retain fresh symbol contexts, checked inputs and per-case handler execution.
-- Explicit BEAM harness strategies run alongside selected finite checks;
+- Explicit BEAM harness strategies supply observations alongside finite checks;
   coverage uses actual strategy trials, and known failures cannot bypass their
   strategy validation or coverage checks.
 - Closed record handler initializers preserve distinct local bindings.
