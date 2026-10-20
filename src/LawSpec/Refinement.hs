@@ -16,11 +16,9 @@ lowerUnit = lowerUnitWith M.empty
 -- | Imported data types are known by their qualified names.
 lowerUnitWith :: M.Map String DataTypeDeclaration -> Unit -> Either String Unit
 lowerUnitWith imported u = do
-  let rs = refinements u; table = M.fromList [(refinementName r,r) | r <- rs]
+  let rs = refinements u
+      (structures, table) = unitTables imported u
   unless (length rs == M.size table) (Left "duplicate refinement")
-  let structures = M.union imported $ M.fromList [(dataTypeName d,d{dataTypeConstructors=
-        [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
-        | c <- dataTypeConstructors d]}) | d <- dataTypes u]
   mapM_ (validateDeclaration structures table) rs
   fs <- mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) (functions u)
   -- Keep definition refinements until template proof and specialization derive
@@ -62,6 +60,23 @@ lowerUnitWith imported u = do
     failures <- mapM (\(n,t) -> (,) n <$> expand t) (abilityFailures a)
     resource <- traverse expand (abilityResource a)
     pure a{abilityOperations=operations,abilityFailures=failures,abilityResource=resource}) (abilities u)
+  -- The ability types a row, a use, a law's handler choice or a handler
+  -- names are expanded too: `uses Store Count` is Store at Count's base
+  -- type. What Count adds is the operation result checks
+  -- (LawSpec.OperationChecks) and the handlers' result laws.
+  let ability ty = case ty of
+        Applied name argument -> Applied name . baseType <$> expand argument
+        Application name arguments -> Application name <$> mapM (fmap baseType . expand) arguments
+        other -> pure other
+      row (name,types) = (,) name <$> mapM ability types
+  rows <- mapM row (abilityRows u)
+  uses <- mapM row (declaredUses u)
+  assignments <- mapM (\(name,choices) -> (,) name <$> mapM (\(ty,choice) -> (\t -> (t,choice)) <$> ability ty) choices) (lawAssignments u)
+  handlers <- mapM (\h -> do
+    answered <- ability (handlerAbility h)
+    also <- mapM ability (handlerAlso h)
+    state <- traverse (\(name,ty,start) -> (\t -> (name,baseType t,start)) <$> expand ty) (handlerState h)
+    pure h{handlerAbility=answered,handlerAlso=also,handlerState=state}) (handlerDeclarations u)
   plans <- mapM (\(name,plan) -> do
     draws <- mapM (\(input,strategy,ty,body) -> (,,,) input strategy <$> expand ty <*> generator body) (planDraws plan)
     pure (name,plan{planDraws=draws})) (lawHarness u)
@@ -76,7 +91,21 @@ lowerUnitWith imported u = do
       mentionsHandle t = any (\n -> n `elem` handleNames || any (\h -> ("::type::" ++ n) `isSuffixOf'` h) handleNames) (typeNames t)
       generated c = not (any (mentionsHandle . snd) (contractArguments c ++ [contractResult c]))
       isSuffixOf' a b = reverse a == take (length a) (reverse b)
-  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw (filter generated active) ++ checks', dataTypes=ds, functionDefinitions=definitions,unitHarness=harness,lawHarness=plans,abilities=declaredAbilities}
+  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw (filter generated active) ++ checks', dataTypes=ds, functionDefinitions=definitions,unitHarness=harness,lawHarness=plans,abilities=declaredAbilities,abilityRows=rows,declaredUses=uses,lawAssignments=assignments,handlerDeclarations=handlers}
+
+-- | A unit's data types (with imported ones, by qualified name) and its
+-- refinements, by name: what expanding one of its types needs.
+unitTables :: M.Map String DataTypeDeclaration -> Unit -> (M.Map String DataTypeDeclaration, M.Map String Refinement)
+unitTables imported u =
+  ( M.union imported $ M.fromList [(dataTypeName d,d{dataTypeConstructors=
+      [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
+      | c <- dataTypeConstructors d]}) | d <- dataTypes u]
+  , M.fromList [(refinementName r,r) | r <- refinements u] )
+
+-- | A type of a unit with its refinement aliases expanded.
+expandUnitType :: M.Map String DataTypeDeclaration -> Unit -> Type -> Either String Type
+expandUnitType imported u = let (structures, table) = unitTables imported u
+  in expandType structures table [] M.empty M.empty
 
 -- | A refinement that is ill-formed is reported once, at its declaration, not at
 -- every use.

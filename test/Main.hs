@@ -89,6 +89,7 @@ import qualified BeamSpec
 import qualified DotNetSpec
 import qualified LanguageGapsSpec
 import qualified MatcherAdmissionSpec
+import qualified OperationResultSpec
 import qualified SchedulerSpec
 import LawSpec.Compile
 import LawSpec.Model
@@ -168,6 +169,7 @@ main = hspec $ do
   AbilitiesSpec.test_abilityLawsHoldForEveryLawfulHandler
   LanguageGapsSpec.test_languageGapsClose
   MatcherAdmissionSpec.test_matcherFactsAreKeptInAdmission
+  OperationResultSpec.test_operationResultsAreCheckedWhereTheyAreUsed
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers

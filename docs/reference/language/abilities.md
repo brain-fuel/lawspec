@@ -99,6 +99,11 @@ end ability
   where code calls it, and every handler owes its result's refinement: each
   becomes a law, `` Meter: reading gives what its type says ``, checked for
   each handler like the ability's own laws.
+- A definition may rely on an operation's refined result. Where it performs
+  the operation, the generated code checks the result first, and stops the
+  definition if a handler broke the type. The definition's own checks then
+  know the result has its refinement. `lawspec evidence` lists each check as
+  `runtime-checked`. The handler law above is still tested, never assumed.
 - An operation may fail, as a signature may: `send :: Record -> Int64 fails
   with KafkaError`. Code that performs it fails with `KafkaError` too, and a
   law catches it with `prelude.attempt` or `fails with`. A spec handler's
@@ -125,6 +130,12 @@ several types, such as `Store Int32` and `Store Text`. Each is its own
 ability: its own handlers, row entries and native interface (`StoreInt32`).
 A definition that uses a parameterized ability at more than one type in its
 unit must say which, with `uses Store Int32`.
+
+A type argument may be a refinement: `uses Store Count`, or
+`handler counts for Store Count`, with
+`refinement Count is (c :: Int32 where c >= 0) end refinement`. The ability
+is then `Store` at Count's base type, with the same native interface
+(`StoreInt32`). The refinement adds the result checks and handler laws above.
 
 ## Saying what code uses
 

@@ -667,6 +667,7 @@ library
       LawSpec.NativeRequest
       LawSpec.NativeRequestView
       LawSpec.Network
+      LawSpec.OperationChecks
       LawSpec.Packages
       LawSpec.Parser
       LawSpec.Persist
@@ -951,6 +952,7 @@ test-suite lawspec-test
       NamedBlocksSpec
       NativeBindingSpec
       NativeRequestSpec
+      OperationResultSpec
       PayloadProofSpec
       PayloadSpec
       PreludeResolutionSpec

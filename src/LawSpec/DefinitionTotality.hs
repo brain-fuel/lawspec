@@ -245,7 +245,7 @@ auditCollected context declarations constructors bits unit templates = do
             index <- nextProofSite
             let binder = C.Id (C.idText owner ++ "::let::" ++ show (index :: Int))
             inner <- proof owner integers (M.insert name binder scope) body
-            pure (T.strictLet binder bound inner)
+            pure (T.operationLet (operationCall value) binder bound inner)
         S.Apply (S.Apply (S.Var n) _) _ | n == S.tuplePatternCheckName, [value,_] <- operands -> do
           subject <- recur value
           pure (T.Sequence [subject,T.Literal (SBool True)])
@@ -347,6 +347,15 @@ auditCollected context declarations constructors bits unit templates = do
             T.Literal <$> lift (convertScalar bits name value)
           _ -> pure (T.Literal value)
     hasProducts=any ((/=Nothing) . C.dataStructural) declarations
+    unmarked value = case value of
+      T.Integral inner -> unmarked inner
+      _ -> value
+    -- An ability operation's call, which its handler answers.
+    operationCall typed = case S.unlocated (S.expression typed) of
+      S.Annotate _ _ | [value] <- S.operands typed -> operationCall value
+      S.Var name -> name `elem` operations
+      S.Apply _ _ | (S.Var name, _) <- application typed -> name `elem` operations
+      _ -> False
     projection tag index _ children=case children of
       [value] -> Right (C.Project tag index value)
       _ -> Left "invalid typed structural projection arity"
@@ -388,6 +397,10 @@ auditCollected context declarations constructors bits unit templates = do
       ("quot", _, [a,b]) -> pure (binary integers typed C.Quotient a b)
       ("rem", _, [a,b]) -> pure (binary integers typed C.Remainder a b)
       ("pow", _, [a,b]) -> pure (T.ExactArithmetic C.Power a b)
+      -- An operation's checked result (LawSpec.OperationChecks): past the
+      -- check, the result has its type's refinement.
+      ("select", _, [c, a, failure]) | T.Absurd message <- unmarked failure, Just _ <- C.operationResultChecked message ->
+        pure (T.TypedDomain [c] a)
       -- if c then a else b: each branch is checked knowing which way c went.
       ("select", _, [c, a, b]) -> pure (T.Conditional c a b)
       ("concurrently", _, [value]) -> pure value

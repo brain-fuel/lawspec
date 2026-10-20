@@ -1,6 +1,6 @@
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, strictLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, strictLet, operationLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, when, forM_, foldM, forM)
@@ -1202,6 +1202,31 @@ strictLet binder value body = case value of
   Variable _ -> substituted
   _ -> Match value [([], substituted)]
   where substituted = substituteProof (M.singleton binder value) body
+
+-- | let x = e in body, where e may be an ability operation's call. Its result
+-- is a value of its own: x names it, rather than standing for the opaque
+-- call. Past an operation's result check (LawSpec.OperationChecks), which
+-- lowers to a typed scope assuming the check, the body knows what the check
+-- established about x. Integer marks may wrap either layer.
+operationLet :: Bool -> Id -> Proof -> Proof -> Proof
+operationLet operation binder bound body = case checked bound of
+  Just (value, facts, result) ->
+    Match value [([], TypedDomain facts (substituteProof (M.singleton binder (Variable result)) body))]
+  Nothing | operation -> Match bound [([], body)]
+          | otherwise -> strictLet binder bound body
+  where
+    checked expression = case expression of
+      Integral inner -> checked inner
+      Match value [([], inner)] | Just (facts, result) <- scoped inner -> Just (value, facts, result)
+      _ -> Nothing
+    scoped expression = case expression of
+      Integral inner -> scoped inner
+      TypedDomain facts@(_ : _) value | Just result <- variable value -> Just (facts, result)
+      _ -> Nothing
+    variable expression = case expression of
+      Integral inner -> variable inner
+      Variable result -> Just result
+      _ -> Nothing
 
 -- | Capture-avoiding substitution is required even though ordinary compiler IDs
 -- are unique: independently supplied Core may reuse binder IDs across scopes.

@@ -15,6 +15,7 @@ import LawSpec.Capabilities (satisfiedWithContext)
 import qualified LawSpec.SourceContext as Source
 import LawSpec.Inference
 import LawSpec.DefinitionTotality (auditTemplatesWithContext, auditTemplatesWithDeferrals)
+import LawSpec.OperationChecks (checkOperationResults)
 import qualified LawSpec.SourceRecords as SourceRecords
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.SpecializeDefinitions (specializeDefinitionsWithContext)
@@ -436,7 +437,7 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
    let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=
          [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
          | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]
-   lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported) parsed)
+   lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported . checkOperationResults imported) parsed)
    let beforeExpansion = map (qualifyDataNames . MappingCheck.contextualizeMappings) lowered
    (headers0,headerContext)<-dataDeclarationHeaders beforeExpansion
    -- Header slots are for type inference, not index or constructor proofs.

@@ -8,6 +8,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A definition may rely on an ability operation's refined result. The
+  generated code checks each such result where the definition performs the
+  operation, and stops the definition if a handler broke the type.
+  `lawspec evidence` reports each check as `runtime-checked`.
 - `lawspec evidence --attestation` links each law `lawspec test` recorded
   under the attestation's run id to that run as completed, with its outcome
   and the run's exit code. An attestation whose `execution.status` is
@@ -33,6 +37,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   refinement; a test on literal text is decided. `x in [...]` over a list
   written out in full and `is within` over exact numbers are read as their
   arithmetic. Z3 takes no part in this check.
+- `uses Store Count` and `handler ... for Store Count` elaborate through the
+  refinement `Count`, instead of failing with "unelaborated type at core
+  boundary".
 
 ## [0.26.0] - 2026-10-19
 

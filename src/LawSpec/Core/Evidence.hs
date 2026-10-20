@@ -11,6 +11,8 @@ module LawSpec.Core.Evidence
   ) where
 
 import qualified Data.Set as S
+import Data.List (nub)
+import LawSpec.Scalar (Scalar(..))
 import LawSpec.Core
 import LawSpec.Core.Machine (Machine(..), Supervisor(..), Consistency(..))
 import qualified LawSpec.Core.Program as P
@@ -85,6 +87,9 @@ programEvidence program =
       in concatMap (contractEvidence (unitId unit) definitions) (unitContracts unit) ++
          [ Obligation (unitId unit) (declarationId adapter) "adapter" Nothing Assumed (adapterReason unit adapter)
          | adapter <- adapterDeclarations unit ] ++
+         [ Obligation (unitId unit) (declarationId (definitionDeclaration definition)) "operation result" (Just claim) RuntimeChecked
+             ("checked on each result of " ++ operation ++ " where the definition calls it; the definition relies on it")
+         | definition <- unitDefinitions unit, (operation, claim) <- operationResultChecks (definitionBody definition) ] ++
          concatMap (machineEvidence (unitId unit)) (unitMachines unit) ++
          map (supervisorEvidence (unitId unit)) (unitSupervisors unit)
     contractEvidence owner definitions contract
@@ -106,6 +111,16 @@ programEvidence program =
       case [propertyName p | p <- unitProperties unit, calls (declarationId adapter) p] of
         [] -> "native implementation taken on trust; no law calls it"
         laws -> "native implementation taken on trust; called by " ++ show (length laws) ++ " law(s)"
+
+-- | The operation result checks in a definition body (LawSpec.OperationChecks):
+-- each checked operation, with the claim its result is checked against.
+operationResultChecks :: Expr -> [(String, Expr)]
+operationResultChecks expression = nub (local ++ concatMap operationResultChecks (children expression))
+  where
+    local = case expressionNode expression of
+      If claim _ (Expr _ (Helper Unreachable [Expr _ (Constant (SSequence _ points)) _]) _)
+        | Just operation <- operationResultChecked (map toEnum points) -> [(operation, claim)]
+      _ -> []
 
 -- | Whether a property calls the declaration, in its body, domain or examples.
 calls :: Id -> Property -> Bool

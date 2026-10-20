@@ -394,3 +394,7 @@ z3:
   kind: package
   title: Z3, a theorem prover from Microsoft Research
   locator: https://github.com/Z3Prover/z3
+ada-2022-predicates:
+  kind: requirement
+  title: Ada 2022 Reference Manual, 3.2.4 Subtype Predicates
+  locator: http://www.ada-auth.org/standards/22rm/html/RM-3-2-4.html

@@ -257,6 +257,23 @@ handlerAbilities h = handlerAbility h : handlerAlso h
 data HandlerRef = ProductionHandler | SpecHandler Id | RecordingHandler HandlerRef
   deriving (Eq, Ord, Show, Generic)
 
+-- | A caller relies on an ability operation's refined result only after a
+-- check at the call: `let r = op ... in if p r then r else unreachable m`,
+-- where m is this message. Admission reads the check as the fact p r, and
+-- evidence reports it as runtime-checked. ref:DEC-operation-result-checks
+operationResultCheck :: String -> String
+operationResultCheck operation = operationResultCheckPrefix ++ operation
+
+-- | The operation a check's message names, if it is one.
+operationResultChecked :: String -> Maybe String
+operationResultChecked message
+  | take (length operationResultCheckPrefix) message == operationResultCheckPrefix =
+      Just (drop (length operationResultCheckPrefix) message)
+  | otherwise = Nothing
+
+operationResultCheckPrefix :: String
+operationResultCheckPrefix = "a handler's result is outside the type of "
+
 -- The built-in Fail E ability: raise :: E -> a aborts to the nearest handler.
 failAbilityId :: Id
 failAbilityId = Id "lawspec::ability::Fail"
