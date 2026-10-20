@@ -64,6 +64,20 @@ test('attestation cache keys include planned wiring and change with the declared
   assert.notEqual(attestedKeys(result('one')).get('charge'),attestedKeys(result('two')).get('charge'));
 });
 
+test('attestation cache keys are wiring only: what the run observed changes none',()=>{
+  const gateway={dependency:'Gateway',endpoint:'localhost:9092',reached:true,kind:'stand-in',provider:'fixture',
+    standIn:{identity:'acme/gateway',version:'0.1.0',conformance:'3',historyDigest:'sha256:'+'a'.repeat(64)}};
+  const key=(d,linked=false)=>attestedKeys({evidence:[linked
+    ?{declaration:'charge',environment:'staging',against:[d],environmentOutcome:'passed'}
+    :{declaration:'charge',plannedEnvironment:'staging',plannedAgainst:[d]}]}).get('charge');
+  const base=key(gateway);
+  assert.equal(key({...gateway,reached:false,standIn:{...gateway.standIn,historyDigest:'sha256:'+'b'.repeat(64)},
+    completed:{reached:true,historyDigest:'sha256:'+'c'.repeat(64)},ranAgainst:{provider:'fixture'},node:'gateway'}),base);
+  assert.equal(key(gateway,true),base);
+  assert.notEqual(key({...gateway,standIn:{...gateway.standIn,conformance:'2'}}),base);
+  assert.notEqual(key({...gateway,kind:'real',standIn:undefined}),base);
+});
+
 test('native failure output remains available when a framework has no per-case failure payload',()=>{
   const rows=recordNativeAttempts(run([first]),[{name:first.name,status:'failed'}],{
     ...settings,ok:false,output:'model account: actual 1, expected 2; shrunk input deposit(1)'});

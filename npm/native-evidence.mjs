@@ -41,10 +41,16 @@ export function recordNativeAttempts(run, tests, {keys,seed,ok,profile,output,al
   }));
 }
 
+// A law an attestation touches is keyed by how its dependencies were wired:
+// endpoint, kind, and a stand-in's product, version and conformance. What the
+// run observed (reached, history digests, completion) and the identities
+// reported beside it are not inputs, so they change no key.
 export function attestedKeys(result) {
+  const wiring=d=>[d.dependency,d.endpoint,d.kind,
+    ...(d.standIn?[d.standIn.identity,d.standIn.version,d.standIn.conformance]:[])];
   return new Map((result.evidence??[]).filter(item=>item.against||item.plannedAgainst)
     .map(item=>[item.declaration,JSON.stringify([
-      item.environment??item.plannedEnvironment,item.against??item.plannedAgainst])]));
+      item.environment??item.plannedEnvironment,(item.against??item.plannedAgainst).map(wiring)])]));
 }
 
 const subject = (entry,item) => obligationTargets(entry).some(target=>
@@ -60,17 +66,22 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
     const record=JSON.parse(await readFile(file,'utf8').catch(error=>{
       if(error.code==='ENOENT')return '{}';throw error;
     }));
-    return {target,root,attempts:record.attempts??{},runs:record.laws??{}};
+    return {target,root,attempts:record.attempts??{},runs:record.laws??{},attestations:record.attestations??{}};
   }));
   if(!records.some(record=>Object.keys(record.attempts).length))return [];
   const observations=[];
-  for(const {target,root,attempts,runs}of records){
+  for(const {target,root,attempts,runs,attestations}of records){
     const plans=new Map(),contexts=new Map();
-    async function plan(minify){
-      if(!plans.has(minify))plans.set(minify,await compiler.planGeneration({...input,target:target.language,
+    // An attempt is keyed by the wiring of the attestation it ran under: the
+    // one named now, or else the one lawspec test stored for its run.
+    const wiredBy=attempt=>attestation??(attempt?.environment?attestations[attempt.environment]:undefined);
+    const slot=(minify,wired)=>`${minify}\0${wired?.run?.id??''}`;
+    async function plan(minify,wired=attestation){
+      const key=slot(minify,wired);
+      if(!plans.has(key))plans.set(key,await compiler.planGeneration({...input,target:target.language,
         sourceDir:target.sourceDir,testDir:target.testDir,nativeBindings:target.nativeBindings,minify,
-        ...(attestation?{attestation}:{})}));
-      return plans.get(minify);
+        ...(wired?{attestation:wired}:{})}));
+      return plans.get(key);
     }
     const modes=[...new Set(Object.values(attempts).map(attempt=>attempt.profile?.minify)
       .filter(mode=>typeof mode==='boolean'))];
@@ -83,9 +94,10 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
       continue;
     }
     const expected=new Map(base.tests.map(entry=>[entry.law,entry]));
-    async function context(minify){
-      if(contexts.has(minify))return contexts.get(minify);
-      const generated=await plan(minify);
+    async function context(minify,wired){
+      const key=slot(minify,wired);
+      if(contexts.has(key))return contexts.get(key);
+      const generated=await plan(minify,wired);
       let result;
       if(generated.diagnostics.length)result={reason:'Native generation is unavailable for the recorded layout'};
       else {
@@ -103,7 +115,7 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
           }
         }
       }
-      contexts.set(minify,result);return result;
+      contexts.set(key,result);return result;
     }
     for(const [id,baseline]of expected){
       const attempt=attempts[id];
@@ -115,7 +127,7 @@ export async function readNativeObservations({compiler,input,selected,roots,conf
         typeof profile.minify!=='boolean'){
         observations.push({...row,freshness:'stale',reason:'Compiler, target or machine profile differs'});continue;
       }
-      const current=await context(profile.minify);
+      const current=await context(profile.minify,wiredBy(attempt));
       if(current.reason){observations.push({...row,freshness:current.stale?'stale':'unavailable',reason:current.reason});continue;}
       const entry=current.generated.tests.find(entry=>entry.law===id);
       if(!entry||attempt.key!==current.keys.get(id)||attempt.planKey!==entry.key||

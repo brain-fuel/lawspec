@@ -1,7 +1,9 @@
 -- | Environment attestations in the compiler API's evidence.
 module AttestationSpec (test_attestationReportsWhereTestsRanWithoutChangingEvidence) where
 
-import Data.Aeson (Value(..), decode, encode, object, (.=))
+import Control.Monad (forM_)
+import Data.Aeson (Value(..), decode, encode, object, toJSON, (.=))
+import Data.String (fromString)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.List (isInfixOf)
@@ -58,11 +60,24 @@ attestation dependencies = object
   , "dependencies" .= dependencies ]
 
 check :: Maybe Value -> Value
-check attested = fromMaybe Null $ decode $ dispatch $ encode $ object $
+check attested = checkWith attested []
+
+-- | A check with the outcomes lawspec test recorded in the attestation's run.
+checkWith :: Maybe Value -> [(String, String)] -> Value
+checkWith attested outcomes = fromMaybe Null $ decode $ dispatch $ encode $ object $
   [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String),
     "verification" .= object ["layers" .= (["proof", "exhaustive", "property"] :: [String])],
     "method" .= ("check" :: String), "sources" .= [object ["path" .= ("a.lawspec" :: String), "content" .= spec]] ] ++
-  [ "attestation" .= a | Just a <- [attested] ]
+  [ "attestation" .= a | Just a <- [attested] ] ++
+  [ "attestedOutcomes" .= object [K.fromString law .= outcome | (law, outcome) <- outcomes] | not (null outcomes) ]
+
+-- | An attestation with fields added at the top level.
+withFields :: [(K.Key, Value)] -> Value -> Value
+withFields extra (Object o) = Object (foldr (\(k, v) -> KM.insert k v) o extra)
+withFields _ v = v
+
+digestOf :: Char -> String
+digestOf c = "sha256:" ++ replicate 64 c
 
 field :: String -> Value -> Maybe Value
 field name (Object o) = KM.lookup (K.fromString name) o
@@ -109,7 +124,7 @@ test_attestationReportsWhereTestsRanWithoutChangingEvidence = describe "environm
     field "plannedEnvironment" (item "doubling" attested) `shouldBe` Nothing
     field "environment" (item "shop.orders::normalize\"" attested) `shouldBe` Nothing
   it "changes no status and no other field (the plane rule)" $ do
-    let strip (Object o) = Object (foldr (KM.delete . K.fromString) o ["environment", "environmentRun", "against", "plannedEnvironment", "plannedEnvironmentRun", "plannedAgainst"])
+    let strip (Object o) = Object (foldr (KM.delete . K.fromString) o ["environment", "environmentRun", "against", "environmentProviders", "environmentOutcome", "plannedEnvironment", "plannedEnvironmentRun", "plannedAgainst", "plannedEnvironmentProviders"])
         strip v = v
     map strip (items attested) `shouldBe` items plain
     field "laws" attested `shouldBe` field "laws" plain
@@ -136,6 +151,73 @@ test_attestationReportsWhereTestsRanWithoutChangingEvidence = describe "environm
     rejected (attestation [normalize, normalize]) "named twice"
     rejected (with "run" (object ["id" .= ("r" :: String), "started_at" .= ("yesterday" :: String), "recorded_at" .= ("2026-10-09T19:30:31Z" :: String)])) "RFC 3339"
     rejected (with "run" (object ["id" .= ("r" :: String), "started_at" .= ("2026-10-09T19:30:31Z" :: String), "recorded_at" .= ("2026-10-09T19:30:30Z" :: String)])) "before run.started_at"
+  describe "a completed run" $ do
+    let contract = object ["package" .= ("acme/gateway-contract" :: String), "version" .= ("1.0.0" :: String)]
+        implemented kind = object ["kind" .= (kind :: String), "product" .= ("acme/gateway" :: String), "version" .= ("0.1.0" :: String)]
+        twin = dependency "shop.orders::Gateway" "stand-in"
+          [ "stand_in" .= object ["product" .= ("acme/gateway" :: String), "version" .= ("0.1.0" :: String), "conformance" .= ("3" :: String)
+                                 , "history_digest" .= digestOf 'a', "stands_in_for" .= contract]
+          , "node" .= ("gateway" :: String), "edge" .= ("shop-calls-gateway" :: String), "contract" .= contract
+          , "implementation" .= implemented "fixture"
+          , "completed" .= object ["reached" .= True, "history_digest" .= digestOf 'b', "history_entries" .= (4 :: Int)] ]
+        real = dependency "shop.orders::normalize" "real" ["implementation" .= implemented "real-provider"]
+        execution status code = "execution" .= object (["status" .= (status :: String)] ++ ["exit_code" .= c | Just c <- [code :: Maybe Int]] ++
+          ["finished_at" .= ("2026-10-09T19:31:00Z" :: String) | status == "completed"])
+        identities = [ "architecture" .= object ["document" .= ("shop.calm.json" :: String), "digest" .= digestOf 'c', "topology_digest" .= digestOf 'd']
+                     , "application" .= object ["node" .= ("shop" :: String), "contract" .= contract, "implementation" .= implemented "application"] ]
+        document status code = withFields (execution status code : identities) (attestation [twin, real])
+        native = "shop.orders::law::checkoutCharges [native]"
+        recorded = [(native, "passed"), ("shop.orders::law::normalizing", "failed")]
+        completed = checkWith (Just (document "completed" (Just 0))) recorded
+        law = item "checkoutCharges" completed
+    it "links each law whose run id matches to that run, as completed, with its recorded outcome" $ do
+      field "diagnostics" completed `shouldBe` Just (Array V.empty)
+      field "plannedAgainst" law `shouldBe` Nothing
+      field "environment" law `shouldBe` Just (String "staging")
+      (field "environmentRun" law >>= field "id") `shouldBe` Just (String "run-1")
+      (field "environmentRun" law >>= field "execution" >>= field "status") `shouldBe` Just (String "completed")
+      (field "environmentRun" law >>= field "execution" >>= field "exitCode") `shouldBe` Just (Number 0)
+      field "environmentOutcome" law `shouldBe` Just (String "passed")
+      field "environmentOutcome" (item "normalizing" completed) `shouldBe` Just (String "failed")
+      field "status" law `shouldBe` field "status" (item "checkoutCharges" (check Nothing))
+    it "leaves a law with no recorded outcome in the run planned" $
+      field "plannedEnvironment" (item "receiptAmount [native]" completed) `shouldBe` Just (String "staging")
+    it "reports wiring alone, or a run under way, as planned even when outcomes are recorded" $
+      forM_ [("wired", Nothing), ("running", Nothing)] $ \(status, code) -> do
+        let planned = item "checkoutCharges" (checkWith (Just (document status code)) recorded)
+        field "environment" planned `shouldBe` Nothing
+        (field "plannedEnvironmentRun" planned >>= field "execution" >>= field "status") `shouldBe` Just (String (fromString status))
+    it "identifies what each law ran against: the completed history, and the real provider or a fixture" $ do
+      let gatewayOf o = field "against" o >>= arrayOf >>= firstOf
+          ran = gatewayOf law >>= field "ranAgainst"
+      (ran >>= field "provider") `shouldBe` Just (String "fixture")
+      (ran >>= field "historyDigest") `shouldBe` Just (String (fromString (digestOf 'b')))
+      (ran >>= field "historyFrom") `shouldBe` Just (String "completed")
+      (gatewayOf law >>= field "contract" >>= field "package") `shouldBe` Just (String "acme/gateway-contract")
+      (gatewayOf law >>= field "standIn" >>= field "standsInFor" >>= field "version") `shouldBe` Just (String "1.0.0")
+      (gatewayOf law >>= field "node") `shouldBe` Just (String "gateway")
+      field "environmentProviders" law `shouldBe` Just (toJSON ["fixture" :: String])
+      field "environmentProviders" (item "normalizing" completed) `shouldBe` Just (toJSON ["real-provider" :: String])
+      let withoutCompleted = item "checkoutCharges" (checkWith (Just (withFields [execution "completed" (Just 0)]
+            (attestation [dependency "shop.orders::Gateway" "stand-in" ["stand_in" .= object ["product" .= ("p" :: String), "version" .= ("1" :: String)
+              , "conformance" .= ("1" :: String), "history_digest" .= digestOf 'a']]]))) recorded)
+      (gatewayOf withoutCompleted >>= field "ranAgainst" >>= field "historyFrom") `shouldBe` Just (String "stand-in")
+    it "reports the architecture, application and run identities" $ do
+      let view = field "attestation" completed
+      (view >>= field "architecture" >>= field "topologyDigest") `shouldBe` Just (String (fromString (digestOf 'd')))
+      (view >>= field "application" >>= field "implementation" >>= field "kind") `shouldBe` Just (String "application")
+      (view >>= field "run" >>= field "execution" >>= field "status") `shouldBe` Just (String "completed")
+      [ (field "dependency" d, fmap (length . fromMaybe [] . arrayOf) (field "obligations" d))
+        | d <- fromMaybe [] (view >>= field "dependencies" >>= arrayOf) ] `shouldBe`
+        [ (Just (String "shop.orders::Gateway"), Just 1), (Just (String "shop.orders::normalize"), Just 1) ]
+    it "rejects an execution that breaks the rules and an implementation that contradicts the kind" $ do
+      let rejected doc needle = case field "diagnostics" (check (Just doc)) >>= arrayOf of
+            Just (d : _) -> show (field "message" d) `shouldSatisfy` isInfixOf needle
+            _ -> expectationFailure "accepted"
+      rejected (withFields [execution "completed" Nothing] (attestation [twin])) "needs exit_code"
+      rejected (withFields [execution "wired" (Just 1)] (attestation [twin])) "has no exit_code"
+      rejected (withFields [execution "finished" Nothing] (attestation [twin])) "is not wired, running or completed"
+      rejected (attestation [dependency "x" "real" ["implementation" .= implemented "fixture"]]) "a fixture does not implement it"
   where
     arrayOf (Array xs) = Just (V.toList xs)
     arrayOf _ = Nothing

@@ -28,7 +28,22 @@ const digest = (value) => createHash("sha256").update(value).digest("hex");
 // contribute to the adapter digest; rebuilding the NIF cannot invalidate a pass.
 const cryptoBuildOutput = (file) => /^priv\/lawspec_crypto_native\.(?:so|dll)(?:\.build|\.\d+\.tmp)?$/.test(file);
 
-// Every file in a project that LawSpec did not generate, by content.
+// An environment attestation records where a run's dependencies were wired
+// and what was observed; it is reporting only, never an input of the
+// project, so one written inside the project is not digested. It is known by
+// its content, whatever its name or whichever tool wrote it.
+// ref:DEC-completed-run-attestation
+export function isAttestation(content) {
+  try {
+    const value = JSON.parse(content);
+    return value !== null && typeof value === "object" && value.format === "environment-attestation";
+  } catch {
+    return false;
+  }
+}
+
+// Every file in a project that LawSpec did not generate, by content, except
+// environment attestations.
 export async function projectDigest(root, generated) {
   const hash = createHash("sha256");
   async function walk(folder) {
@@ -39,7 +54,9 @@ export async function projectDigest(root, generated) {
       if (entry.isDirectory()) {
         if (!skipped.has(entry.name) && !relative.endsWith("testdata/rapid")) await walk(relative);
       } else if (entry.isFile() && !generated.has(relative) && !cryptoBuildOutput(relative)) {
-        hash.update(relative + "\0").update(await readFile(path.join(root, relative))).update("\0");
+        const content = await readFile(path.join(root, relative));
+        if (relative.endsWith(".json") && isAttestation(content.toString("utf8"))) continue;
+        hash.update(relative + "\0").update(content).update("\0");
       }
     }
   }

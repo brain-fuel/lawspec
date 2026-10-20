@@ -49,6 +49,22 @@ test("native crypto build outputs do not invalidate cached adapter results", asy
   assert.notEqual(await projectDigest(root, new Set()), await projectDigest(root, generated));
 });
 
+test("an environment attestation inside the project is not a project input", async t => {
+  const {mkdtemp, writeFile, rm} = await import("node:fs/promises");
+  const {default: os} = await import("node:os");
+  const {default: path} = await import("node:path");
+  const root = await mkdtemp(path.join(os.tmpdir(), "lawspec-attestation-digest-"));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  await writeFile(path.join(root, "adapter.py"), "def f(): pass\n");
+  const attestation = (status) => JSON.stringify({format: "environment-attestation", version: 1, execution: {status}});
+  await writeFile(path.join(root, "run-attestation.json"), attestation("running"));
+  const before = await projectDigest(root, new Set());
+  await writeFile(path.join(root, "run-attestation.json"), attestation("completed"));
+  assert.equal(await projectDigest(root, new Set()), before);
+  await writeFile(path.join(root, "settings.json"), JSON.stringify({format: "other"}));
+  assert.notEqual(await projectDigest(root, new Set()), before);
+});
+
 test("coverage output discovery cannot invalidate the toolchain cache", async t => {
   const {mkdtemp, writeFile, rm} = await import("node:fs/promises");
   const {default: os} = await import("node:os");

@@ -6,6 +6,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `lawspec evidence --attestation` links each law `lawspec test` recorded
+  under the attestation's run id to that run as completed, with its outcome
+  and the run's exit code. An attestation whose `execution.status` is
+  `wired` or `running` stays planned and says why.
+- Evidence reports a completed run's architecture, topology and application
+  identities and, per dependency, its node, edge, contract, implementation
+  and whether the real provider or a fixture implemented it, with the
+  history it ran against (the completed history digest, else the
+  stand-in's). Each law lists its providers.
+
+### Fixed
+
+- A stand-in's history digest, and other observations of a run, no longer
+  make attested results stale; results are keyed by wiring only.
+- An environment attestation stored inside the project is no longer a
+  project input, so rewriting it as the run completes leaves results fresh.
+- A refinement alias in an ability operation's signature elaborates, and its
+  implied result law is generated; a type that cannot reach Core is reported
+  at the declaration that uses it.
+
 ## [0.26.0] - 2026-10-19
 
 ### Added

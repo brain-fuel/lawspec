@@ -321,6 +321,14 @@ DEC-environment-attestation:
   opened: 0.21.0
   decided: 0.21.0
 
+DEC-completed-run-attestation:
+  status: decided
+  question: How does lawspec evidence tell planned wiring from a completed run, and what does a completed run identify?
+  answer: |
+    By the attestation's own record and LawSpec's results together. A named attestation links a planned native law check to its run as completed only when lawspec test recorded the law under the attestation's run id and the attestation's execution status is completed or absent; wired and running stay planned and say why. A linked law carries its recorded outcome and the run's exit code. Each dependency reports whether the real provider or a fixture implemented it, its contract, node and edge, and the history it ran against (the completed history digest, else the stand-in's); the run reports the architecture, topology and application identities. Results are keyed by wiring only (endpoint, kind, stand-in product, version and conformance), never by what the run observed, and an environment attestation inside the project, recognized by its format, is not a project input. It remains reporting only: no status changes. Recorded in docs/reference/language/evidence-and-discharge.md and CHANGELOG [Unreleased].
+  opened: 0.26.0
+  decided: 0.26.0
+
 DEC-domain-modeling-primitives:
   status: decided
   question: How does LawSpec express domain types whose illegal states are unrepresentable?

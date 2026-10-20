@@ -290,10 +290,23 @@ async function lastRuns() {
   const folder = path.join(configRoot, ".lawspec", "results");
   const runs = new Map();
   const attestations = new Map();
+  // The outcome each law last had in each attested run, by run id; across
+  // targets a failure outweighs a pass.
+  const outcomes = new Map();
+  const rank = (o) => ["passed", "known-failing", "skipped", "incomplete", "failed"].indexOf(o);
   for (const name of (await readOptionalDirectory(folder)) ?? []) {
     if (!name.endsWith(".json")) continue;
     const recorded = JSON.parse((await readOptional(path.join(folder, name))) ?? "{}");
     for (const [id, attestation] of Object.entries(recorded.attestations ?? {})) attestations.set(id, attestation);
+    const outcome = (id, law, value) => {
+      const known = outcomes.get(id) ?? {};
+      if (known[law] === undefined || rank(value) > rank(known[law])) known[law] = value;
+      outcomes.set(id, known);
+    };
+    for (const [law, attempt] of Object.entries(recorded.attempts ?? {}))
+      if (attempt.environment) outcome(attempt.environment, law, attempt.outcome);
+    for (const [law, run] of Object.entries(recorded.laws ?? {}))
+      if (run.environment && recorded.attempts?.[law]?.environment !== run.environment) outcome(run.environment, law, "passed");
     for (const [law, run] of Object.entries(recorded.laws ?? {})) {
       const known = runs.get(law) ?? {};
       const latest = (known.passed ?? "") > (run.passed ?? "") ? known : run;
@@ -301,7 +314,7 @@ async function lastRuns() {
         passed: latest.passed, seed: latest.seed, environment: latest.environment });
     }
   }
-  return { runs, attestations };
+  return { runs, attestations, outcomes };
 }
 // An environment attestation: a versioned JSON document any tool may write,
 // recording for one run where each dependency was wired and whether it was
@@ -322,10 +335,29 @@ async function readAttestation(config) {
 // One attested dependency, as lawspec evidence shows it.
 function dependencyText(d) {
   const level = (c) => /^[0-9]+$/.test(c) ? `conformance level ${c}` : `conformance ${c}`;
+  const ran = d.ranAgainst ?? {};
+  const history = ran.historyDigest ?? d.standIn?.historyDigest;
   return `${d.dependency}: ` + (d.standIn
     ? `stand-in ${d.standIn.identity} ${d.standIn.version} (${level(d.standIn.conformance)}` +
-      (d.standIn.historyDigest ? `, history ${d.standIn.historyDigest}` : "") + ")"
-    : "real") + ` at ${d.endpoint}` + (d.reached ? "" : " (not reached when recorded)");
+      (history ? `, history ${history}${ran.historyFrom === "completed" ? " when completed" : ""}` : "") + ")"
+    : "real") + ` at ${d.endpoint}` + (d.reached ? "" : " (not reached when recorded)") +
+    (d.implementation ? `; ${d.implementation.kind} ${d.implementation.product} ${d.implementation.version}` : "") +
+    (d.contract ? `; contract ${d.contract.package} ${d.contract.version}` : "") +
+    (d.node ? `; node ${d.node}` + (d.edge ? ` via ${d.edge}` : "") : "") +
+    (d.completed && !d.completed.reached ? " (not reached when completed)" : "");
+}
+// What an attested run's document records, as lawspec evidence shows it.
+function executionText(run) {
+  const e = run?.execution;
+  if (!e) return "";
+  return e.status === "completed" ? `, completed with exit code ${e.exitCode}` :
+    e.status === "running" ? ", in progress" : ", wiring only";
+}
+// Why a law relying on an attested dependency has no completed run linked.
+function unlinkedText(run) {
+  const status = run?.execution?.status;
+  return status === "wired" ? "wiring only; nothing ran" :
+    status === "running" ? "run in progress; no completed run linked" : "no completed run linked";
 }
 // One law's harness, as lawspec evidence shows it.
 function harnessText(item) {
@@ -578,10 +610,14 @@ async function runTests(compiler, input, selected, roots, config) {
     await writeFile(databaseFile, JSON.stringify(database, null, 2) + "\n");
     await mkdir(path.dirname(resultsFile), { recursive: true });
     await writeFile(path.join(path.dirname(resultsFile), ".gitignore"), "*\n");
+    // Each attempt at a law the attestation touches names the run it was
+    // made in, whatever its outcome.
+    if (attestation) for (const entry of stale)
+      if (attested.has(entry.law) && attempts[entry.law]) attempts[entry.law] = { ...attempts[entry.law], environment: attestation.run.id };
     // Each attestation a recorded law ran under is kept with the results.
     const attestations = Object.fromEntries(Object.entries({ ...(previous.attestations ?? {}),
       ...(attestation ? { [attestation.run.id]: attestation } : {}) })
-      .filter(([id]) => Object.values(laws).some((run) => run.environment === id)));
+      .filter(([id]) => [...Object.values(laws), ...Object.values(attempts)].some((run) => run.environment === id)));
     await atomicWrite(resultsFile, JSON.stringify({ version: 1, laws, attempts,
       ...(Object.keys(attestations).length ? { attestations } : {}) }, null, 2) + "\n");
     const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
@@ -889,19 +925,26 @@ async function main() {
   if (verb === "evidence") {
     // An attestation named here, or in lawspec.json, says where the tests
     // ran; otherwise each law shows the attested run it last passed in.
+    // A named attestation of a run lawspec test recorded links each law to
+    // that run, with the outcome recorded for it, unless the document says
+    // the run has not completed.
     const named = await readAttestation(config);
-    const result = diagnostics(await compiler.check({ ...input, ...(named ? { attestation: named } : {}) }));
+    const { runs, attestations, outcomes } = await lastRuns();
+    const recorded = named && typeof named.run?.id === "string" ? outcomes.get(named.run.id) : undefined;
+    const result = diagnostics(await compiler.check({ ...input,
+      ...(named ? { attestation: named, ...(recorded ? { attestedOutcomes: recorded } : {}) } : {}) }));
     let evidence = attachNativeEvidence(result.evidence,await readNativeObservations({compiler,input,selected,roots,
       configRoot,build:await buildDigest(),evidence:result.evidence,attestation:named}));
-    const { runs, attestations } = await lastRuns();
     const environments = named ? [result.attestation] : [];
     if (!named) for (const [id, attestation] of attestations) {
       const laws = new Set([...runs].filter(([, run]) => run.environment === id).map(([law]) => law));
       if (!laws.size) continue;
-      const attested = diagnostics(await compiler.check({ ...input, attestation }));
+      const attested = diagnostics(await compiler.check({ ...input, attestation, attestedOutcomes: outcomes.get(id) ?? {} }));
       const fields = new Map(attested.evidence.filter((item) => (item.against || item.plannedAgainst) && laws.has(item.declaration))
         .map(item => [item.declaration, {environment: item.environment ?? item.plannedEnvironment,
-          environmentRun: item.environmentRun ?? item.plannedEnvironmentRun, against: item.against ?? item.plannedAgainst}]));
+          environmentRun: item.environmentRun ?? item.plannedEnvironmentRun, against: item.against ?? item.plannedAgainst,
+          environmentProviders: item.environmentProviders ?? item.plannedEnvironmentProviders,
+          ...(item.environmentOutcome ? { environmentOutcome: item.environmentOutcome } : {})}]));
       evidence = evidence.map((item) => item.stage === "law" && fields.has(item.declaration) ? { ...item, ...fields.get(item.declaration) } : item);
       environments.push({ ...attested.attestation, dependencies: attested.attestation.dependencies
         .map((d) => ({ ...d, obligations: [...new Set([...d.obligations, ...(d.plannedObligations ?? [])])].filter((law) => laws.has(law)), plannedObligations: [] })) });
@@ -940,18 +983,32 @@ async function main() {
                 (item.claim ? `: ${item.claim.text}` : "") + `\n    ${item.reason}` +
                 (item.nativeEvidence ? `\n    ${nativeEvidenceText(item).replaceAll("\n","\n    ")}` : "") +
                 (item.lastNativeRun ? `\n    last native run passed at ${item.lastNativeRun.passed} (seed ${item.lastNativeRun.seed})` : "") +
-                (item.against ? `\n    last recorded passing run in environment ${item.environment} (run ${item.environmentRun.id}) against ` +
-                  item.against.map(dependencyText).join("; ") : "")).join("\n");
+                (item.against ? (item.environmentOutcome
+                  ? `\n    ${item.environmentOutcome} in completed run ${item.environmentRun.id} in environment ${item.environment}${executionText(item.environmentRun)} against `
+                  : `\n    last recorded passing run in environment ${item.environment} (run ${item.environmentRun.id}) against `) +
+                  item.against.map(dependencyText).join("; ") : "") +
+                (item.plannedAgainst ? `\n    planned in environment ${item.plannedEnvironment} (run ${item.plannedEnvironmentRun.id}` +
+                  `${executionText(item.plannedEnvironmentRun)}; ${unlinkedText(item.plannedEnvironmentRun)}) against ` +
+                  item.plannedAgainst.map(dependencyText).join("; ") : "")).join("\n");
             })
             .filter((section) => section !== null),
           // How each law is discharged: the harness plane, apart from what
           // the laws say.
           ...(harnessed.length ? [`HARNESS (${harnessed.length})\n` + harnessed.map(harnessText).join("\n")] : []),
           // Where the tests ran: reporting only, so no status above changes.
-          ...environments.map((e) => `ENVIRONMENT ${e.environment} (run ${e.run.id}, recorded ${e.run.recordedAt})\n` +
-            e.dependencies.map((d) => `  ${dependencyText(d)}; ` + (d.obligations.length
-              ? `${d.obligations.length} tested obligation(s)` :
-                d.plannedObligations?.length ? `${d.plannedObligations.length} planned obligation(s); no completed run linked` : "no tested obligation relies on it")).join("\n"))]
+          ...environments.map((e) => `ENVIRONMENT ${e.environment} (run ${e.run.id}, recorded ${e.run.recordedAt}${executionText(e.run)})\n` +
+            (e.architecture ? `  architecture ${e.architecture.document} ${e.architecture.digest}` +
+              (e.architecture.topologyDigest ? `, topology ${e.architecture.topologyDigest}` : "") + "\n" : "") +
+            (e.application ? `  application ${e.application.node}: contract ${e.application.contract.package} ${e.application.contract.version}; ` +
+              `${e.application.implementation.kind} ${e.application.implementation.product} ${e.application.implementation.version}` +
+              (e.application.implementation.commit ? ` (commit ${e.application.implementation.commit})` : "") + "\n" : "") +
+            e.dependencies.map((d) => {
+              const outcome = (o) => evidence.find((item) => item.declaration === o && item.environmentOutcome)?.environmentOutcome;
+              const failed = d.obligations.filter((o) => ["failed", "incomplete"].includes(outcome(o))).length;
+              return `  ${dependencyText(d)}; ` + (d.obligations.length
+                ? `${d.obligations.length} tested obligation(s)` + (failed ? `, ${failed} failed` : "") :
+                  d.plannedObligations?.length ? `${d.plannedObligations.length} planned obligation(s); ${unlinkedText(e.run)}` : "no tested obligation relies on it");
+            }).join("\n"))]
             .join("\n\n"),
     );
     return;

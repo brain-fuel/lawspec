@@ -46,6 +46,7 @@ import LawSpec.PreludeNames (preludeDiscoveryText,preludeDependencyText)
 import LawSpec.CaseFold (caseFoldUnit,caseFoldAlias,usesCaseFold,caseFoldSource)
 import Control.Monad.State.Strict
 import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
+import Data.Maybe (listToMaybe)
 import qualified Data.Map.Strict as M
 import Data.List (nub, intercalate, uncons)
 import Data.Char (isLower)
@@ -572,8 +573,19 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
      (filter (null . parameters . original) allExpanded)
    (specialized, properties) <- specializeDefinitionsWithContext sourceTypes dataTypes bits (satisfiedWithContext sourceTypes dataTypes bits [])
      witnessed (filter (null . parameters . original) allExpanded)
-   collectedUnits <- either (Left . pure . (\message -> Diagnostic "definition" message Nothing)) Right
-     (mapM (Elaboration.elaborateDefinitionUnitWithSourceRecords sourceTypes dataTypes bits) specialized)
+   -- A type that cannot cross into Core is a compiler bug, but the report
+   -- still names where: the first declaration whose types do not lower.
+   let lowers ty = either (const False) (const True) (Elaboration.coreTypeWithSourceRecords sourceTypes dataTypes bits ty)
+       culprit u = listToMaybe
+         ([spanStart (abilitySpan a) | a <- abilities u,
+            not (all lowers (map snd (abilityOperations a ++ abilityFailures a) ++ maybe [] pure (abilityResource a)))] ++
+          [spanStart at | (name, used) <- declaredUses u ++ abilityRows u, not (all lowers used),
+            Just at <- [lookup name (declarationSpans u)]] ++
+          [spanStart (functionSpan d) | d <- functionDefinitions u,
+            not (all lowers (functionResult d : map snd (functionArguments d)))] ++
+          map (spanStart . snd) (declarationSpans u))
+   collectedUnits <- forM specialized $ \u -> either (\message -> Left [Diagnostic "definition" message (culprit u)]) Right
+     (Elaboration.elaborateDefinitionUnitWithSourceRecords sourceTypes dataTypes bits u)
    propertyRecords <- either (Left . pure . (\message -> Diagnostic "data-type" message Nothing)) Right
      (SourceRecords.recordDeclarationsWithContext sourceTypes dataTypes bits
        (concatMap (concatMap SourceRecords.typedTypeReferences . typedExpressions) properties))

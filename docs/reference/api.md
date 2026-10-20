@@ -52,6 +52,7 @@ interface CheckRequest {
   packages?: Package[];
   cacheDirectory?: string;                  // keep work between runs here
   attestation?: unknown;                    // an environment attestation document
+  attestedOutcomes?: Record<string, string>; // law -> outcome recorded in its run
 }
 
 interface GenerationRequest extends CheckRequest {
@@ -82,6 +83,12 @@ interface GenerationRequest extends CheckRequest {
   A malformed one, or an unknown format or version, is a diagnostic with code
   `attestation`. It changes nothing that is compiled; it only annotates the
   evidence.
+- `attestedOutcomes` maps a law obligation's `declaration` to the outcome
+  (`passed`, `failed`, `known-failing`, `skipped` or `incomplete`) a native
+  run recorded for it under the attestation's `run.id`. A planned native
+  check listed there is linked to that run as completed, unless the
+  attestation's `execution.status` is `wired` or `running`. The CLI supplies
+  it from `.lawspec/results`.
 
 ### Schema versions
 
@@ -411,21 +418,45 @@ interface ObligationEvidence {
   environment?: string;                     // when an attestation touches it
   environmentRun?: AttestedRun;
   against?: AttestedDependency[];
+  environmentProviders?: Provider[];        // what implemented the dependencies
+  environmentOutcome?: string;              // its outcome in a linked completed run
+  plannedEnvironment?: string;              // planned wiring, no completed run linked
+  plannedEnvironmentRun?: AttestedRun;
+  plannedAgainst?: AttestedDependency[];
+  plannedEnvironmentProviders?: Provider[];
 }
 
-interface AttestedRun { id: string; startedAt: string; recordedAt: string }
+type Provider = 'real-provider' | 'fixture' | 'application';
+interface AttestedRun {
+  id: string; startedAt: string; recordedAt: string;
+  execution?: {status: 'wired' | 'running' | 'completed'; exitCode?: number; finishedAt?: string};
+}
+interface Contract { package: string; version: string; abilities?: string[] }
+interface Implementation { kind: Provider; product: string; version: string; commit?: string; imageDigest?: string }
 interface AttestedDependency {
   dependency: string;
   endpoint: string;
   reached: boolean;
   kind: 'real' | 'stand-in';
-  standIn?: {identity: string; version: string; conformance: string; historyDigest?: string};
+  provider: Provider;
+  standIn?: {identity: string; version: string; conformance: string; historyDigest?: string; standsInFor?: Contract};
+  node?: string;
+  edge?: string;
+  contract?: Contract;
+  implementation?: Implementation;
+  completed?: {reached: boolean; historyDigest?: string; historyEntries?: number};
+  // The identity of what the law ran against.
+  ranAgainst: {provider: Provider; product?: string; version?: string;
+               historyDigest?: string; historyFrom?: 'completed' | 'stand-in'};
 }
 interface AttestationView {
   environment: string;
   run: AttestedRun;
   producer?: {name: string; version: string};
-  dependencies: (AttestedDependency & {obligations: string[]})[];
+  architecture?: {document: string; digest: string; uniqueId?: string; decorators?: string;
+                  decoratorsDigest?: string; topologyDigest?: string; elements?: string[]};
+  application?: {node: string; contract: Contract; implementation: Implementation};
+  dependencies: (AttestedDependency & {obligations: string[]; plannedObligations: string[]})[];
 }
 ```
 
@@ -438,9 +469,11 @@ interface AttestationView {
 | `binding`, `codec`, `generator`, `native-function` | The bound declaration | `null` |
 
 Law obligations come first, then contracts, adapters, constructions and
-bindings. With a request `attestation`, each law obligation whose tests ran
-and that relies on an attested dependency gets `environment`,
-`environmentRun` and `against`; nothing else changes. The result's
+bindings. With a request `attestation`, each law obligation whose tests ran,
+or whose planned native check `attestedOutcomes` links to the attested
+completed run, and that relies on an attested dependency gets `environment`,
+`environmentRun`, `against` and `environmentProviders`, with
+`environmentOutcome` for a linked run; nothing else changes. The result's
 `attestation` lists each dependency with the obligations it touched. Handle unknown `status` and `stage` values gracefully. See
 [evidence and discharge](language/evidence-and-discharge.md).
 
@@ -502,6 +535,8 @@ An attestation supplied for a planned native law check adds `plannedEnvironment`
 wiring and do not claim that a test ran. The dependency summary separates
 `plannedObligations` from completed `obligations`; the law remains `planned`.
 Completed execution associations use `environment`, `environmentRun` and
-`against`. The CLI can associate a historical passing native run with its
+`against`: a planned check whose `declaration` `attestedOutcomes` lists is
+linked when the attestation's `execution.status` is `completed` or absent, and
+stays planned when it is `wired` or `running`. The CLI can associate a historical passing native run with its
 attestation and reports its timestamp and seed separately; this does not upgrade
 the current compiler plan into a proof or claim that the current sources passed.
