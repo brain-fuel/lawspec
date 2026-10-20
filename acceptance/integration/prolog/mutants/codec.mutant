@@ -1,0 +1,6 @@
+@@ src/example/atoi_codec.pl
+<<<<<<<
+ls_atoi(X, R) :- number_string(R, X).
+=======
+ls_atoi(X, R) :- number_string(Number, X), R is Number+1.
+>>>>>>>

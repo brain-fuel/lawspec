@@ -513,6 +513,17 @@ class Schema:
                 native_paths=constructor.native_paths))
         return tuple(found)
 
+    def is_handle(self, reference):
+        """Whether this checked type has opaque native identity.
+
+        Embedding codecs must distinguish a handle from a scalar or collection
+        even when its application representation uses the same Python class.
+        ref:DEC-prolog-janus
+        """
+        self._check(reference)
+        definition = self._definitions.get(reference.name)
+        return definition is not None and definition.handle
+
     def recorded_text(self, reference, value):
         """Read field types without rerunning predicates or native codecs.
 

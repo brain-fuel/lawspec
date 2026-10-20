@@ -15,6 +15,502 @@ The latest approved milestone direction below is authoritative. The implementati
 
 Examples are independent unless a section explicitly connects them. Repeated unit names and simplified signatures are separate presentations, not declarations intended to coexist in one source file.
 
+## Approved cross-project path to 1.0 — 20 October 2026
+
+The next integration is **LawSpec contracts → CALM architecture and Ironframe
+bindings → real services or LawTwin fixtures → execution evidence**. Continue
+ordinary minor releases while completing these gates; no 1.0 designation follows
+from this direction alone.
+
+LawSpec owns business laws, dependency abilities, checked reference models and
+verification evidence. Mandatory definition validation remains independent of
+optional law verification. LawTwin owns protocol fixtures around those models,
+declared faults, deterministic time, control APIs, histories, replay and provider
+conformance. Ironframe owns CALM service nodes and dependency edges, resolved
+LawSpec contract identities and explicit per-environment real/twin bindings;
+applications receive settings through their normal configuration mechanisms.
+
+Use CALM 1.2 and validated decorators attached by architecture element identity
+for contracts and environment bindings. Generate diagrams, connection settings
+and OpenTofu/Terraform from the same resolved topology, reusing CALM diagram
+tooling and existing Ironframe modules. Architecture validation, diagram export,
+infrastructure export and configuration injection work independently of optional
+Ironframe deployment of dependencies or applications. Exported artifacts remain
+usable by other deployment tools. Evidence carries architecture, contract,
+implementation and run identities, distinguishes planned wiring from completed
+execution, and identifies real-provider versus fixture results.
+
+| Order | Required completion gate | Status at adoption |
+| --- | --- | --- |
+| 1 | Upgrade LawTwin's 0.23 compiler pin, contracts, configuration, OpenAPI importer and generated consumers to 0.26; recheck the historical gap report; replace source scraping with supported embedding interfaces; pass Kafka/HTTP conformance, replay and mutation controls. | Open. |
+| 2 | CALM identity resolution and compatible real/twin bindings; Kafka/HTTP demonstrations with unchanged application laws; diagrams, infrastructure, external application deployment and optional managed applications; completed-run attestations consumed by LawSpec; refuse unresolved or incompatible bindings. | Open. |
+| 3 | Measure existing fixtures, a Cassandra prototype and real Cassandra before setting budgets. Separate downloads, readiness, reset, memory and full-stack costs. Prefer one fixture container with logical replicas, tunable consistency, replication faults and lightweight transactions; verify distributed cases against a real cluster. A single-node fallback requires measured justification and explicit reduced coverage. | Open; no numerical budget selected. |
+| 4 | LawTwin core per program target with shared black-box conformance. Finish LawSpec Prolog, HCL, YAML, ANTLR, Make and Folio targets. C/C++ remain optional for 1.0. | Open. |
+| 5 | Extend integrated Z3 numeric/data reasoning, recursive proofs, validated counterexamples, conflict/completeness and advanced temporal verification. Study primary SPARK/Why3, Lean 4, Idris 2 and Rocq sources first; record supported fragments and trust boundaries. Complete the retained demonstration portfolio below. | Open; existing scoped solver receipts retain their meaning. |
+| 6 | Architecture cleanup; API, grammar and configuration compatibility contracts; documentation and canonical review through Rice's Tax; full release and cross-project acceptance; human and external sign-off. | Open. |
+
+LawTwin's 1.0 dependency families are **Kafka, HTTP/OpenAPI and Cassandra**.
+Other dependency families remain later work. The retained LawSpec portfolio is
+Chapter 6 implementations and verification in all 17 existing languages with its
+inventory, independent instruction oracles and repeated-call checks; Projects
+7–8 and 10–11 in Java, Python, TypeScript, F#, Rust, Elixir and Clojure; testable
+Jack Snake and the complete public Jack OS API; full selected API coverage of
+fast-json-patch, cachetools, shopspring/decimal, NimbleOptions and semver; and the
+authorization, existence, policy-conflict and stateful workflow demonstrations
+with their remaining advanced analyses.
+
+Acceptance runs the same application against real, twin and mixed bindings
+without law edits, exercising shared dependencies, independent fixtures, faults,
+resets and deterministic replay. Compare diagrams, infrastructure and injected
+settings against the resolved CALM topology and exercise external and framework
+deployment. Independent provider conformance and meaningful mutation controls
+are required: agreement with generated models alone does not establish fidelity.
+Complete compiler, native/WASM, target, editor, documentation, packaging and
+cross-project regression checks.
+
+The user-deferred readership gate stays open: three readers, ten questions, at
+least eight correct each, all distinguishing incomplete search from proof of
+nonexistence. Begin independent adoption and GitHub Linguist work early;
+upstream recognition remains external and pre-1.0. Pre-1.0 migration support
+remains removed. This direction supersedes earlier conflicting scope decisions,
+without relabelling historical execution receipts.
+
+Precedents: [CALM decorators](https://calm.finos.org/core-concepts/decorators/),
+[CALM tooling](https://calm.finos.org/working-with-calm/cli/),
+[Cassandra architecture](https://cassandra.apache.org/doc/latest/cassandra/architecture/dynamo.html),
+[Cassandra guarantees](https://cassandra.apache.org/doc/latest/cassandra/architecture/guarantees.html).
+
+### Working-tree alignment increment — 20 October 2026
+
+LawTwin's contracts and configuration now consume 0.26 syntax, configuration
+version 2 and profile `1.0-rc.2`, with explicit verification layers. Native
+acceptance executes **613 law instances**: 79 Kafka instances on each of Rust,
+Python, Go, Java, Kotlin, F# and C#, and 14 Petstore plus 16 GitHub instances
+on Rust and Python. The first no-layer trial runs remain incomplete historical
+attempts; they are not counted as law execution.
+
+The Kafka and HTTP build scripts that scraped generated Rust bodies are removed.
+Kafka uses public generated handler operations and typed snapshots. The HTTP
+importer emits adapters from its OpenAPI IR and links generated models as normal
+Cargo libraries with distinct package identities. Its registry is explicit.
+Fresh 3.0/3.1 fixture imports and their adapters compile, including constrained
+records, maps, singleton alternatives and unions. The historical LawTwin gap
+report now distinguishes its discovery record from current supported mechanisms.
+
+A constrained 3.1 fixture also exposed missing public embedding methods on the
+Rust dynamic path. That path now shares the existing failure-returning wrapper
+emission and provides construction and native state snapshot/restoration methods.
+Restoration validates the declared schema; it does not prove state reachability.
+The implementation uses the existing runtime and schema infrastructure and adds
+no proof engine, solver execution or proof-checking backend. Mandatory definition
+validation and explicit incomplete/unsupported verification outcomes remain.
+Native regressions pass at both integer widths and in both output layouts,
+including refusal recovery, restoration, concurrent updates and a rejected
+arithmetic mutation.
+
+The full compiler suite passes **2,253 examples, zero failures**. The WASM build,
+source/API integrity, all 122 generated-file checks and the 232-module compiler
+boundary check pass. The rebuilt Kafka and HTTP black-box protocol suites pass.
+The unfiltered SDK sweep is **incomplete**: 333 tests passed, five opt-in tests
+were skipped and the example-export test was cancelled when closing this scoped
+increment. The broad native/WASM sweep was also stopped after its 68 frontend
+fixtures at both widths and the 17-target 32-bit noncompact generation profile.
+These interrupted runs are not relabelled as successful full acceptance.
+
+A completed focused parity run compares **303 complete responses** across all
+17 targets, both widths and both output layouts, including the changed dynamic
+embedding model, the codec control, invalid-input controls and packaged inputs.
+Its 231 accepted and 72 rejected responses agree exactly. The locally packed SDK
+also passes both native embedding regressions across both widths/layouts and
+rejects the arithmetic mutation. Full installed-package smoke and release
+acceptance remain separate gates. The frozen 0.26 technical receipt
+below still identifies its original source commit and artifacts; it does not
+certify these later working-tree changes.
+
+LawTwin's scoped receipt is `docs/reference/lawspec-026-upgrade.md` in that
+repository. Local logs are in LawTwin's `.artifacts/upgrade-026/` and LawSpec's
+`.artifacts/integration-1/`. Use the companion compiler checkout for the new
+dynamic embedding support until a package containing it is released. No new tag,
+push or publication is performed by this increment. CALM integration, Cassandra,
+the remaining target/demonstration work, advanced verification and final sign-off
+remain open; recording their direction is not their implementation.
+
+### Working-tree artifact target increment — 20 October 2026
+
+HCL, YAML, ANTLR and Make now have compiler, API, CLI, scaffold and package
+entry points. They consume checked Core through a separate artifact emitter;
+the executable program inventory remains the existing 17 languages. Artifact
+targets emit no native law-test or benchmark slots. Both the public compiler
+entry points and the artifact emitter itself enforce definition validation
+independently of optional law layers.
+
+The [artifact contract](docs/reference/artifact-targets.md) records the supported
+configuration fragment and explicit unsupported cases. Checked `Unit -> T`
+definitions supply values through the existing total-definition interpreter.
+Missing external values are incomplete and do not produce a complete YAML
+document. Empty data types use an unsatisfiable JSON Schema. HCL refuses
+unbounded integer domains and generated text literals whose normalization it
+cannot preserve. Its existing cty input conversions remain explicit. ANTLR
+generates syntax parsers and companion schemas, with semantic validation after
+decoding; Make orders ordinary CLI stages and propagates failure. No new solver,
+normalization algorithm or proof checker is introduced.
+
+Independent acceptance uses JSON Schema 2020-12 and PyYAML, OpenTofu validation
+and planning, ANTLR compilation and its generated Java parser, and parallel Make.
+Rejection controls, literal template strings, empty types and Unicode round trips
+pass. Canon parses the same four emitted formats; its current inventory matches
+the public compiler inventory of 17 program and four artifact targets. Its
+Prolog grammar's six tests also pass, which is grammar evidence, not a Prolog
+compiler backend.
+
+The scoped checks pass **ten compiler tests and 11 SDK/CLI tests**, including
+both machine profiles and layouts, incomplete configuration, unsupported
+representations, layout/binding refusal and forged-definition admission checks.
+The locally packed SDK passes the same 11 tests and includes the normalization
+dependencies' licenses. A completed **411-response native/WASM comparison** has
+291 accepted and 120 rejected responses, including all existing program targets,
+the four artifact targets and intrinsic-validation, incomplete-input, empty-type
+and normalization controls. All **124 generated-file checks**, source/API/WASM
+integrity and the **233-module boundary check** pass.
+
+The first broad compiler run exposed one erroneous new test fixture: a value
+adapter was written without its required `Unit` input. Its 2,260-example result
+was 2,259 passes and that fixture failure. The fixture is corrected and the
+targeted checks pass. The replacement broad regression run passes **2,262
+examples, zero failures**; its executable predates the final UTF-8 serialization
+and type-only metadata corrections, which are covered by the focused native, WASM,
+independent-validator and installed-package checks above. The CI graph now
+includes each artifact validator with a shared, pinned tool bootstrap.
+This increment does not claim full release acceptance. Logs are under
+`.artifacts/integration-1/artifact-*`. That artifact cohort left Prolog's program
+backend unregistered; the later public integration is recorded below. The authoritative Folio and wider 1.0 commitments
+remain before final sign-off. No tag, push or publication is performed.
+
+### Prolog execution infrastructure — 20 October 2026
+
+The experimental Prolog emitter now derives functional adapters, checked-model
+entry points and PLUnit slots from Core over the existing Python emitter.
+It does not scrape generated source. Janus supplies the FFI and thread
+attachment; existing Core schemas check both directions, including opaque
+handle identity. SWI's determinism guard rejects logical failure and choicepoints.
+A returned `false`, typed native failure, an explicitly incomplete result and an
+unexpected exception stay distinct. Exact numbers, IEEE payloads, raw text units,
+constructor identities and nested presence have explicit term representations.
+
+The decision ledger records the precedents from SPARK, Why3, Lean 4, Idris 2
+and Rocq and their mapping to this execution trust boundary. No obligation
+generator, solver or proof checker is added. Definition validation remains
+mandatory. Three compiler admission tests and 19 independent runtime tests
+pass. The functional prototype runs three PLUnit slots in each width/layout
+profile, observing 518 host cases per profile, including a Hypothesis property.
+All twelve wrong-result, logical-failure and nondeterminism mutants are rejected.
+The host framework's JUnit records are retained as observed execution evidence.
+Runtime capability proxies and per-instance production tokens also pass state,
+release, concurrency, failure-payload and undefined-truth controls. Undefined
+Prolog truth stays explicitly incomplete. Core-derived handler metadata now
+generates production factories and operation schemas. Seven effect/recording
+slots observe 1,537 cases per profile across all four width/layout combinations;
+twelve state, bypassed-operation and malformed-refusal mutants are rejected.
+Checked-model entry points offer explicit reusable contexts for symbol identity.
+Generated predicates use an `ls_` prefix to avoid protected SWI predicates such
+as `close/2`.
+
+Model slots now come from the existing test manifest. Property slots select
+their case groups; model slots select exact host tests. The actor example passes
+seven slots (517 native cases), including sequential/parallel histories, two
+scenarios and supervision; an incorrect state transition is rejected. An async
+shared-counter fixture passes sequential, parallel and scenario checks in all
+four profiles and rejects four incorrect-update mutants. Async adapters use
+the standard `asyncio.to_thread` bridge; cancelling a waiting task does not
+forcibly terminate an already running predicate.
+
+That prototype cohort did not establish public Prolog target completion:
+dispatch, consistent host lowering, native bindings, CLI integration and native
+incomplete-result evidence still needed integration. The public increment follows.
+The runtime source parses with Canon's Prolog grammar. Logs and experimental
+execution records are under `.artifacts/integration-1/prolog-*`.
+
+### Completed-run attestation merge — 20 October 2026
+
+`gate2-attestation` (`de143a52`) is merged into main by `06fbcab5`.
+`tools/wasm.sh` rebuilt the compiler and its fingerprints; `9be3042f` records
+those artifacts and is pushed to GitHub main. Ironframe main is `40a1154`.
+The unfinished target implementation is restored separately on
+`codex/prolog-artifact-targets`; it is not part of this main checkpoint.
+
+On the merged, rebuilt compiler, 13 native attestation tests, 180 native
+ability and related tests, 56 JavaScript runner/evidence tests and 303 complete
+native/WASM response comparisons pass. Ironframe's workspace passes 113 tests
+with two container acceptance tests intentionally ignored by that command.
+An isolated variant of its CALM acceptance test then passes against the local
+rebuilt npm archive: unchanged laws run against twin, real and mixed bindings,
+with shared dependencies, managed and external applications, faults, resets
+and deterministic replay. It asserts completed run identities and outcomes
+under `against` rather than the previous planned fields. All three
+environments are torn down. The variant and receipts are retained under
+`.artifacts/integration-1/gate2-*` and `e2e_calm_candidate.rs`.
+
+This establishes the merged execution-evidence path against Ironframe's
+current example and existing provider/fixture images. It is not the complete
+release matrix, independent provider fidelity, human review or 1.0 signoff.
+
+### Public Prolog integration — 20 October 2026
+
+Prolog is now registered in the public compiler, SDK, scaffold, doctor and test
+interfaces. The working inventory is **18 program targets and four artifact
+targets**; Canon's parity inventory agrees. This extends the program inventory
+without changing the retained 17-language Chapter 6 requirement. Checked Core
+supplies the host name/witness lowering, model signatures, ability identities,
+PLUnit slots and native manifests. Custom nested source/test directories work.
+Empty host adapters become generated support; application implementations stay
+user-owned Prolog files. No generated-source scraping is used.
+
+Native functions and production handlers bind by module/predicate identity.
+Prolog generator factories return genuine Hypothesis strategies through Janus,
+including child strategies for generic parameters. The existing Python native
+generator traversal validates every sample and shrink. Structured incomplete
+results survive native calls, factories, worker threads, pytest/JUnit and native
+attempt records. Human-readable exception text never determines this status.
+Method/constructor call bindings, native type/codec mappings, native exception
+mappings and coverage instrumentation remain explicitly unsupported. PLUnit law
+slots run sequentially; declared concurrent model histories still run workers.
+
+Six compiler admission checks, six public SDK checks, 21 independent runtime
+checks and the worker-thread reporting control pass. The shared native manifest
+checks include Prolog. At both 64-bit readable and 32-bit compact profiles,
+the repeatable bridge suite observes **2,058 native cases in 13 PLUnit slots**
+and rejects seven incorrect arithmetic, determinism, effect and async-state
+mutants. The shared refund/order suite observes **83 cases in eight slots** and
+rejects nine policy/state mutations. The shared cryptography suite observes
+**63 cases in 20 slots**, including independent provider known-answer vectors,
+and rejects two adapter mutations. Provider results retain their existing
+cryptography trust boundary; this is no new solver or proof checker.
+
+The shared definitions suite also passes at both profiles, with 2,012 native
+cases in 13 slots and its incorrect-count mutation rejected. The shared
+nesting suite passes 20 cases in 20 slots and eight structural mutations at
+both profiles. Examples and exhaustive layers retain their slots independently
+of property selection. Complete empty input domains retain their Core proof
+without planning a nonexistent native test; unexpected empty collection still
+cannot pass. The first 64-bit search acceptance run passes its four mutations
+after this manifest correction. These remain separate receipts from the
+earlier parity and full compiler cohorts.
+
+After the attestation merge, `tools/wasm.sh` rebuilds the combined target
+branch. Its 64 selected SDK/runner tests and 20 focused native compiler tests
+pass, including both the new empty-domain slot check across all program
+targets and completed-run attestation checks. The bridge's seven mutation
+controls and the 32-bit compact search suite's four mutation controls also
+pass. All 126 generated files, the 234-module boundary, version consistency
+and compiler/artifact fingerprints match. The preceding full compiler cohort
+passes 2,271 examples with no failures; that binary predates the empty-domain
+manifest correction and this merge, so it is not a full final-source claim.
+Final combined-branch parity agrees on 520 complete native/WASM responses
+(388 accepted, 132 rejected), including bounded witness search, all 22
+targets and both widths/layouts. Documentation checks pass 122 pages and
+119 compiled snippets, with links resolving.
+Post-merge logs are under `.artifacts/integration-1/post-gate2-*`.
+
+The installed payment example passes both profiles, including a wrong-fee
+mutation, selective invalidation, failure replay and regeneration preservation.
+Fresh CLI projects also pass both profiles with nested layouts, doctor checks,
+exact audited benchmark callback counts, unchanged-result caching and a native
+incomplete-result mutation. All-target native payment export checks pass.
+The initial public parity cohort matches **428 complete native/WASM responses**:
+304 accepted and 124 rejected. Later runtime refinements require the current
+artifact checks as well; historical receipts are not overwritten as newer proof.
+
+The full shared native acceptance matrix, complete SDK/release regression and
+remaining 1.0 gates are still open. In particular, registration and these
+executions do not establish every native suite, LawTwin's core-per-target
+commitment, external provider fidelity, Folio completion or human canonical
+review. The [Prolog reference](docs/reference/prolog.md) records the supported
+interfaces and execution scope. Current logs are under
+`.artifacts/integration-1/prolog-*`.
+
+### Shared Prolog acceptance and module locality — 20 October 2026
+
+The initial audit runs all 40 shared suites that require no application-owned
+Python adapters or bindings. Both 64-bit readable and 32-bit compact profiles
+pass, rejecting 107 mutation controls each. This includes recursive records,
+dependent payloads, collection semantics, bounded search and mandatory
+definition checks. These audit cohorts precede the loader correction below;
+they are scoped receipts rather than a full final-source matrix claim.
+
+Independent Prolog application fixtures now exercise collections, algebra,
+exact scalars, typed synchronous/asynchronous failures, indexed vectors and
+trees, existential carriers, opaque shared queues, domain workflows, tables,
+native capabilities, keyword hygiene and the general integration examples.
+The established Python portable generator is exercised through Janus against
+the shared fixed generation/shrinking vectors. Harness controls include
+coverage requirements and a known-failing law that must reject an unexpected
+pass. Recorded-value checks pass both profiles and reject alias, byte and
+signed-zero mutations. The indexed suite rejects ten distinct native
+algorithm/index mutations at both profiles. The shared native-name binding
+override also passes its source mutation at both profiles.
+
+Two otherwise valid price/quantity mutations escaped the domain suite's
+sampled inputs. Five explicit boundary examples now check quantities 800,
+801, 1000, 1001 and zero against the already declared policy. Python and
+Prolog both pass; the Prolog price and upper-quantity mutations are rejected.
+
+The integration suite exposed conflicting imports when separate Prolog
+modules exported equal predicate names. Application and generator modules
+now use SWI `load_files/2` with an empty import list and qualified calls.
+The independent module-locality control passes; the integration suite passes
+all 15 mutations without import errors in its correct-run log. The existing
+Janus conversion options preserve Text as Prolog strings and retained native
+collections as opaque objects. No proof machinery or execution-status
+relaxation is introduced.
+
+The rebuilt package passes 22 independent runtime controls, structured
+worker-thread reporting, 56 selected SDK/runner tests, 20 focused native
+compiler tests, the fresh CLI workflow and installed payments. All 520 full
+native/WASM responses agree. Canon parses all 38 native Prolog fixture files;
+documentation retains 122 pages and 119 compiled snippets with links resolving.
+The compiler and artifact fingerprints match. Logs and per-suite receipts are
+under `.artifacts/integration-1/prolog-*`.
+
+Fifteen shared fixture families remain: mapped failure products, workflows,
+resilience, models, concurrent collections, asynchronous/handler bindings,
+built-in capabilities, resources, scheduling, sessions, actors, consistency,
+distribution and composition. In particular, separate pytest invocations per
+PLUnit slot still prevent the host's cross-slot scheduling and shared-resource
+scopes from being fully exercised. The existing Python harness supplies the
+precedent for that work. Full compiler/SDK/release regression and canonical
+human review remain open; no target-completion or 1.0 signoff is claimed.
+
+### Prolog scheduling and scoped execution — 20 October 2026
+
+Selected host cases now run once in one pytest session. The established host
+harness controls seeded ordering, parallel execution and resource sharing;
+PLUnit consumes per-slot results from actual observations. Collection and
+JUnit node identities must agree. Duplicate, ambiguous, missing and malformed
+reports remain incomplete, and a broken report cannot re-execute the batch.
+Context variables retain worker ownership; ambiguous child-thread events
+conservatively invalidate active cases. Late events remain attached to their
+originating case even after pytest produced that case's report.
+
+Ten independent reporting controls pass, including mixed parallel success,
+failure and incomplete results, unscoped and late workers, partial selection,
+equal unittest method names, fail-fast behavior within one law and malformed
+reports. Correctly skipped cases after an incomplete computation remain
+skipped; they are not invented native executions.
+
+The scheduling suite passes repeatable seed ordering, changed-seed ordering
+and real overlap at both 64-bit readable and 32-bit compact profiles. Native
+resource fixtures pass release, reset, state-isolation and accidental
+unsharing controls at both profiles. Native indexed-stack/counter models,
+shared queue/set/map histories and eventual-consistency replicas also pass
+both profiles and their mutations. Bound built-in capabilities exercise a
+wall-anchored monotonic clock, secure bytes, recording logs and a real local
+listening socket; backwards-clock, elapsed-time, duplicate-log and wrong-length
+mutations are rejected at both profiles. These execution checks add no solver
+or proof checker and preserve mandatory definition validation.
+
+Both updated shared 40-suite audits pass all 107 controls per profile. Those
+cohorts precede the final node-identity/report refinements, which have their
+own reporting and rebuilt-package checks. The preceding shared-coverage
+cohort's limitations remain historical; they no longer describe the current
+scheduler. The current reference documents batching and conservative unknown
+scope. Nine fixture families remain: mapped failure products, workflows,
+resilience, asynchronous and handler bindings, sessions, actors, distribution
+and composition. Full final-source compiler, SDK, native matrix, packaging and
+human canonical review still remain required. Detailed receipts are under
+`.artifacts/integration-1/prolog-batch-*`.
+
+### Prolog workflows, processes and distributed clients — 20 October 2026
+
+Native Prolog fixtures now cover workflow steps and real-clock overlap,
+retry and jitter runtime conformance, virtual rate-limit state, compensation,
+timeouts and hedging, typed session delegation, actor restart and concurrent
+callers, shared handler resources and distributed clients. The distributed
+clients exercise memory-network faults, real TCP and HTTP transports, mailbox
+delivery, repeated channel handoff, sealed frames and shared handshake/wire
+vectors. Checked definitions and history/scenario oracles retain their
+existing implementation; the native steps and protocol peers are independent.
+
+The real-clock hedge check exposed event-loop shutdown joining a losing
+`asyncio.to_thread` call. Async dispatch now reuses the existing host Async
+task runner, copies context variables and shields a wrapped future. Cancelling
+a waiter returns without joining its still-running predicate; late exceptions
+are consumed without erasing structured incomplete status. Janus's documented
+`query_once` callback path supplies worker-thread engine attachment. These
+changes add no solver or proof checker.
+
+The distributed checks also exposed duplicate replies being sent after a
+caller closed. Cached and original replies now share the existing treatment
+of `Unreachable`; unexpected transport exceptions remain visible. A regression
+checks once-only definition execution, identical cached replies, closed peers
+and unexpected errors. All 26 runtime controls and ten reporting controls pass.
+The initial fixture failures and thread warnings are retained separately from
+the final reruns, under `.artifacts/integration-1/prolog-workflow-final/` and
+the `prolog-network-*` logs. Final combined acceptance remains open.
+
+The final six-suite rerun passes 2,063 observed native cases per profile at
+64-bit readable and 32-bit compact output, rejecting all 18 mutations per
+profile with no thread warnings. The original Python actor and distribution
+suites also pass their mutations against the shared reply repair. All 520
+complete native/WASM responses agree. The rebuilt package passes both fresh
+CLI profiles and installed payments; 86 scoped SDK checks pass, with the
+declared Rust embedding opt-in separately executed and passing both tests.
+Independent YAML, OpenTofu, ANTLR and Make validators pass. Canon parses all
+54 native fixture modules; all 126 generated outputs, 234 boundary modules,
+artifact integrity and 122 documentation pages with 119 compiled snippets
+pass. The full compiler regression for this checkpoint subsequently passes
+2,280 examples with zero failures in 1,836.7 seconds. The following native
+binding increment has separate evidence and still requires final combined
+acceptance.
+
+Mapped failure products, asynchronous constructor/method bindings and native
+handler/type/exception bindings remain required. Their unsupported diagnostics
+are retained; canonical-data substitutes do not satisfy those native mapping
+requirements. The complete shared target matrix, compiler, SDK, editor,
+packaging and canonical human review gates must pass before target sign-off.
+
+### Native Prolog representation and call bindings — 20 October 2026
+
+Resolved Core bindings now generate native tagged dicts, variant terms and
+unit atoms, with qualified constructor identities and explicit native field
+layouts. Nested record layouts preserve native argument positions. Native
+constructors return retained ground handle tokens; method calls receive the
+bound receiver first. A weak interner resolves hash collisions by exact term
+identity and adds no strong references. Core's existing handle registry and
+the application's resource operations retain their lifetime responsibilities.
+
+Native exception mappings build their resolved typed message/product payloads,
+which still pass existing schema validation. Native handler calls and explicit
+capability proxies use the same conversions. Invalid fields, wrong handle
+types, undeclared failures and canonical values substituted for a configured
+native representation are rejected. Custom native codec hooks and coverage
+instrumentation remain explicit unsupported fragments.
+
+The three formerly missing shared suites now pass at 64-bit readable and
+32-bit compact output. Each profile rejects seven mutations, including an
+empty native exception message that violates its intrinsic field refinement.
+All 31 runtime controls and eleven execution-reporting controls pass. Thirteen
+focused SDK checks pass, including actual native nested-layout execution and
+rejection controls across all four width/layout profiles. Canon parses all 59
+fixture/runtime modules. Native/WASM agrees on 520 complete responses and
+20 additional binding-specific responses covering all profiles, accepted
+interop and explicit rejections.
+
+An 81 MB generated till suite exposed excessive pytest AST work when reporting
+its failing mutations. Isolated runs retained the same four observed failures
+with plain assertions and standard Python tracebacks, completing in 19.2
+seconds; the earlier default-formatting run remained active for over fifteen
+minutes and was superseded after the repaired suite passed. Its incomplete
+mutation run is not counted as a pass. The repaired complete till suite,
+including both mutations, passes in 88.3 seconds. Optimized Python is rejected
+before execution and before CLI cache reuse; acceptance cache keys include
+the relevant Python execution options. Detailed receipts are under
+`.artifacts/integration-1/prolog-native-bindings-*`.
+
+All shared fixture adapters are present. Complete final-source compiler, SDK,
+native matrix, editor, packaging and canonical release checks remain required;
+the earlier full compiler pass covers the preceding checkpoint. No target or
+1.0 release sign-off is claimed by these scoped checks.
+
 ## Approved 0.26.0 contract — 19 October 2026
 
 Implementation and technical acceptance are complete on `2444621f`, as recorded

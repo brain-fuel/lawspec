@@ -1,0 +1,6 @@
+@@ src/example/canonical_url.pl
+<<<<<<<
+without_slashes(Reversed, Trimmed),
+=======
+( Reversed = [47|Rest] -> Trimmed = Rest ; Trimmed = Reversed ),
+>>>>>>>

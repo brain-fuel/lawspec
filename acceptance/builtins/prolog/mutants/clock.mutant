@@ -1,0 +1,6 @@
+@@ src/example/clocks.pl
+<<<<<<<
+Micros is Wall+(Nanos-Anchor) div 1000.
+=======
+Micros is Wall+(Nanos-Anchor) div 1000-1000*Next.
+>>>>>>>

@@ -143,6 +143,8 @@ stepGroups options editor =
     ++ [step "editor-grammar" ["npm", "test", "--prefix", "editors/vscode"]])] ++
   (if coreOnly options then [] else
     [(Nothing, [step "build-acceptance" ["stack", "--no-terminal", "build", "lawspec:exe:lawspec-acceptance"]]
+      ++ [step "artifact-bootstrap" ["sh", "tools/artifact-targets.sh", "--setup"] |
+        any (`elem` Targets.artifactTargets) (targets options)]
       ++ [step "beam-runtime" ["sh", "tools/beam-runtime.sh"] | any (`elem` Targets.beamTargets) (targets options)])
     , (Just "erlang", [step "beam-proper" ["sh", "tools/beam-proper.sh"] | "erlang" `elem` targets options])
     , (Just "elixir", [step "beam-stream-data" ["sh", "tools/beam-stream-data.sh"] | "elixir" `elem` targets options])
@@ -209,6 +211,7 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
         ++ ["editor-install" | name `elem` ["editor-grammar","npm-tests"]]
         ++ ["docs" | name == "rejection-examples"]
       Just t
+        | t `elem` Targets.artifactTargets -> ["artifact-bootstrap", "build-acceptance"]
         | name == t ++ "-bootstrap" || name `elem` beamFrameworks -> []
         | otherwise -> [t ++ "-bootstrap"] ++ ["build-acceptance" | isJust' (acceptanceProject [] command)]
             ++ [f | (f, ft) <- zip beamFrameworks ["erlang", "elixir", "gleam"], ft == t]
@@ -222,6 +225,9 @@ plan workers groups = map task (alone ++ filter ((`notElem` aloneSteps) . stepNa
       [Shared "stack-work" | name `notElem` stackBuilders, take 1 command == ["stack"] || name == "rejection-examples"] ++
       [Shared "env:python" | name `elem` ["beam-runtime", "swift-network-interoperability"]] ++
       [Shared "env:typescript" | name == "npm-tests"] ++
+      [Exclusive "env:artifacts" | name == "artifact-bootstrap"] ++
+      -- The wrapper may repair its pinned environment after a failed bootstrap.
+      [Exclusive "env:artifacts" | maybe False (`elem` Targets.artifactTargets) target] ++
       [Exclusive "cargo:runtime/rust" | "runtime/rust/Cargo.toml" `elem` command] ++
       [Counted "timing" (max 1 (workers `div` 3)) | timing name command] ++
       maybe [] (\p -> [Exclusive ("project:" ++ p)]) (acceptanceProject env command) ++
@@ -452,14 +458,26 @@ stepKey repository (Step name env command) (Inputs keep drop' probes) = do
 -- | The profiles match the acceptance matrix: suites run with mutants in the
 -- default profile, and with the 32-bit (and compact) profiles as well.
 targetSteps :: String -> [Step]
+targetSteps target | target `elem` Targets.artifactTargets =
+  [step (target ++ "-artifact-validation") ["sh", "tools/artifact-targets.sh", target]]
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
+  [ Step name [("PYTHONPATH","runtime")] [".integration/prolog/.venv/bin/python", "-B", file]
+  | target == "prolog", (name,file) <- [("prolog-runtime","test/prolog_runtime.py"),
+      ("prolog-execution-reporting","test/prolog_reporting.py")] ] ++
+  [ Step ("prolog-bridge" ++ suffix) env (acceptance ["prolog-bridge",target])
+  | target == "prolog", (suffix,env) <- [("",[]),("-32-compact",compact)] ] ++
+  [ Step ("prolog-cli" ++ suffix) env ["node","tools/prolog-cli-integration.mjs"]
+  | target == "prolog", (suffix,env) <- [("",[]),("-32-compact",compact)] ] ++
   [ Step (target ++ "-business-refunds-orders" ++ suffix) env (acceptance ["business-refunds-orders",target])
   | (suffix,env) <- [("",[]),("-32-compact",compact)] ] ++
   [ step (target ++ "-index-paths") ["python3", "tools/index-path-conformance.py", target] ] ++
   [ Step (target ++ "-native-record-layouts") [("LAWSPEC_NATIVE_LAYOUT_TARGET",target)]
       ["node","--test","--test-name-pattern=^" ++ target ++ " native layouts", "npm/test/native-static-layouts.test.mjs"]
   | target `elem` ["java","kotlin","scala","groovy","rust","go","haskell","fsharp","swift","erlang","elixir","gleam"] ] ++
+  [ Step "rust-dynamic-embedding" [("LAWSPEC_NATIVE_LAYOUT_TARGET","rust")]
+      ["node","--test","npm/test/rust-dynamic-embedding.test.mjs"]
+  ] ++
   [ Step "rust-native-failure-products" [("LAWSPEC_NATIVE_LAYOUT_TARGET","rust")]
       ["node","--test","--test-name-pattern=^Rust mapped record failures", "npm/test/native-failure-products.test.mjs"]
   | target == "rust" ] ++

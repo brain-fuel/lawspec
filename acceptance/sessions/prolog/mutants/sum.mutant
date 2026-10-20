@@ -1,0 +1,6 @@
+@@ src/example/sessions.pl
+<<<<<<<
+    Sum is A+B,
+=======
+    Sum is A+B+1,
+>>>>>>>

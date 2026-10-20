@@ -31,6 +31,14 @@ test('native zero-discovery, skipped cases and failed setup cannot become succes
   assert.equal(recordNativeAttempts(run([law]),[{name:first.name,status:'passed'}],{...settings,ok:false}).requirement.outcome,'incomplete');
 });
 
+test('an explicitly incomplete native result stays incomplete even when its process succeeds',()=>{
+  const rows=recordNativeAttempts(run([first]),[{name:first.name,status:'incomplete',
+    failure:'the search bound was exhausted'}],{...settings,ok:true});
+  assert.equal(rows.sequential.outcome,'incomplete');
+  assert.equal(rows.sequential.tests[0].status,'incomplete');
+  assert.equal(rows.sequential.searchCompleteness,'not-established');
+});
+
 import {attachNativeEvidence,attestedKeys} from '../native-evidence.mjs';
 const obligation={owner:'bank',declaration:'bank::model::account',stage:'model',status:'planned',
   reason:'native model checks are planned',claim:null};

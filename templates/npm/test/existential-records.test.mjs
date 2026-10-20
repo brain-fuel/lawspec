@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 const compiler=await createCompiler();
 const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:[]}};
 

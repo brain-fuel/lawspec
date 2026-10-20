@@ -1,7 +1,7 @@
 // Generated from templates/npm/test/examples.test.mjs by lawspec-dev generate. Do not edit.
 import {generateInput} from './compiler-input.mjs';
 import {createCompiler} from '../api.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

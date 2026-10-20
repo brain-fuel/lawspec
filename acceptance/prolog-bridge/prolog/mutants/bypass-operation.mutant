@@ -1,0 +1,8 @@
+expect: called
+@@ src/example/prologEffects.pl
+<<<<<<<
+ls_execute(H, N, R) :- lawspec_prolog:operation(H, add, [N], R).
+=======
+ls_execute(_, N, N) :- N > 0, !.
+ls_execute(_, 0, _) :- throw(lawspec_failure(value('example.prologEffects::type::Refusal::Blocked', []))).
+>>>>>>>

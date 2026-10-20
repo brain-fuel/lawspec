@@ -1,0 +1,6 @@
+@@ src/example/workflows.pl
+<<<<<<<
+            [value('example.workflows::type::Account::Account', ["waitlist", 18, 0])])
+=======
+            [value('example.workflows::type::Account::Account', ["waitlist", 18, 1])])
+>>>>>>>

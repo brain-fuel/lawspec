@@ -1,0 +1,6 @@
+@@ src/example/handles.pl
+<<<<<<<
+Items:popleft()
+=======
+Items:pop()
+>>>>>>>

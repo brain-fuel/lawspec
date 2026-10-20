@@ -1,0 +1,6 @@
+@@ src/example/failures.pl
+<<<<<<<
+["an odd amount"]
+=======
+["an uneven amount"]
+>>>>>>>

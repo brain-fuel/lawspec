@@ -1,0 +1,6 @@
+@@ src/example/gadt.pl
+<<<<<<<
+( Value == true -> R = false ; R = true )
+=======
+R = Value
+>>>>>>>

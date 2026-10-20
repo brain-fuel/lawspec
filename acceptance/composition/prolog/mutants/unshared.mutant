@@ -1,0 +1,9 @@
+expect: sizes count records| [native Logs, native Reader]
+@@ src/example/composition.pl
+<<<<<<<
+handler_ReaderHandler_size(reader(Store), Name, Result) :-
+    py_call(Store:get(logs), Logs, [py_object(true)]),
+=======
+handler_ReaderHandler_size(reader(_), Name, Result) :-
+    py_call(builtins:dict(), Logs, [py_object(true)]),
+>>>>>>>

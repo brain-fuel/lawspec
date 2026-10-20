@@ -1,0 +1,6 @@
+@@ src/example/failures.pl
+<<<<<<<
+throw(lawspec_failure(value('example.failures::type::PaymentError::TooLarge', [5000])))
+=======
+throw(error(payment_too_large, _))
+>>>>>>>

@@ -8,6 +8,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The `prolog` program target uses SWI-Prolog and Janus with checked schemas,
+  native functions and handlers, Hypothesis generator factories, PLUnit
+  selection, replay and structured incomplete execution evidence. Its reference
+  page records supported interfaces and remaining acceptance work.
+- Prolog native bindings support qualified record/variant/unit representations,
+  resolved nested field layouts, retained native handle tokens, constructors,
+  methods and typed native exception mappings, including message products.
+- The `hcl`, `yaml`, `antlr4` and `make` artifact targets emit checked
+  configuration, schemas, syntax grammars and ordered CLI pipelines. Missing
+  inputs and unsupported constraints remain explicit; artifact generation
+  does not claim application law execution.
+- Generated Rust handlers expose supported construction and state
+  snapshot/restoration methods for embedding checked reference models.
 - `lawspec evidence --attestation` links each law `lawspec test` recorded
   under the attestation's run id to that run as completed, with its outcome
   and the run's exit code. An attestation whose `execution.status` is
@@ -20,6 +33,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Prolog application and generator modules retain qualified predicate names
+  without conflicting imports into the global `user` module.
+- Prolog retains the host harness's seeded ordering, parallel execution and
+  shared-resource scopes in one selected test session. Per-slot reports keep
+  incomplete worker results distinct from failures and successful cases.
+- Cancelling an async Prolog waiter releases timeouts and losing hedges
+  without joining still-running native work at event-loop shutdown. Worker
+  contexts and structured incomplete results remain attached to their calls.
+- Cached network replies tolerate a caller that already closed, as original
+  replies do. Duplicate requests still reuse their recorded result.
+- Prolog uses plain assertions and standard Python tracebacks for large
+  generated suites. Optimized Python is rejected before native execution or
+  cache reuse, so removed assertions cannot produce successful law evidence.
+- A complete empty input domain retains its Core evidence without planning a
+  nonexistent native test. Unexpected empty native discovery still fails.
 - A stand-in's history digest, and other observations of a run, no longer
   make attested results stale; results are keyed by wiring only.
 - An environment attestation stored inside the project is no longer a

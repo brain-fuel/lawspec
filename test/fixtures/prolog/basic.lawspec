@@ -1,0 +1,33 @@
+unit example.prologBasic
+
+increment :: UInt8 -> UInt16
+flag :: UInt8 -> Bool
+wideIncrement :: Int32 -> Integer
+
+function reference (x :: UInt8) -> UInt16 is x + 1 end function
+function wideReference (x :: Int32) -> Integer is x + 1 end function
+
+law incrementModel is
+  definition:
+    for all (x :: UInt8) =>
+      increment x must be reference x
+    end for all
+  end definition
+end law
+
+law falseValue is
+  definition:
+    for all (x :: UInt8) =>
+      flag x must be false
+    end for all
+  end definition
+end law
+
+law wideModel is
+  definition:
+    for all (x :: Int32) =>
+      wideIncrement x must be wideReference x
+    end for all
+  end definition
+end law
+end unit

@@ -1,0 +1,8 @@
+expect: Logs:
+expect: an unknown log refuses records| [native]
+@@ src/example/composition.pl
+<<<<<<<
+        throw(lawspec_failure(value('example.composition::type::Problem::UnknownLog', [])))
+=======
+        throw(lawspec_failure(value('example.composition::type::Problem::EmptyRecord', [])))
+>>>>>>>

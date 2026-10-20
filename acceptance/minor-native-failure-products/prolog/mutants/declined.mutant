@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/till/native.pl
+<<<<<<<
+    ; Cents > 1000 -> throw('till.native.CardDeclined')
+=======
+    ; Cents > 1000 -> throw('till.native.BadAmount'("negative"))
+>>>>>>>

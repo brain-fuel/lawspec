@@ -26,7 +26,7 @@ require independent adoption evidence. That evidence has not been collected,
 and no upstream submission, acceptance or deployment is claimed. Record those
 steps in the single pre-1.0 review packet before removing the Haskell fallback.
 
-Checked against upstream on 15 October 2026: `.lawspec` can occur repeatedly in
+Rechecked against upstream on 20 October 2026: `.lawspec` can occur repeatedly in
 one repository. The applicable usage threshold is 2,000 indexed files from the
 last year, excluding forks, with varied independent owners and repositories.
 The separate 200-file threshold applies to names normally occurring once per
@@ -39,3 +39,12 @@ examples, including authorization snapshots and checked codecs. Upstream
 grammar import/compilation, registry registration, representative sample
 selection and licensing review, and usage evidence remain outstanding. Local
 Oniguruma tests do not establish acceptance by Linguist's grammar compiler.
+
+The cross-project 1.0 programme retains this as an early, independent track.
+Record candidate adoption with the repository URL, owner, licence, relevant
+`.lawspec` paths, observation date and whether it is a fork or part of this
+project family. Record the search query, observation date and manual sample of
+independent repositories alongside any indexed-file count. No current search
+count or qualifying independent-adoption inventory has been established here;
+the requirement recheck does not satisfy eligibility. Grammar validation,
+submission, acceptance and GitHub deployment each need separate receipts.

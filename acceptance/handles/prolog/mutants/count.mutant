@@ -1,0 +1,6 @@
+@@ src/example/handles.pl
+<<<<<<<
+queue_operation(pending, Items, Count) :- py_call(builtins:len(Items), Count).
+=======
+queue_operation(pending, Items, Count) :- py_call(builtins:len(Items), Actual), Count is max(0, Actual-1).
+>>>>>>>

@@ -27,6 +27,7 @@ where generated files go, and how LawSpec types appear in your code.
 | [`clojure`](clojure.md) | JDK 25, Clojure CLI 1.12, deps.edn, over the Java model | test.check 1.1.3, clojure.test | `clojure -M:test` |
 | [`groovy`](groovy.md) | JDK 25, Gradle 9.1–9.3, Groovy 5.0, over the Java model | Spock 2.5, JetCheck 0.3.0 | `gradle test` |
 | [`swift`](swift.md) | Swift 6.2+, SwiftPM, macOS 26 for crypto | Swift Testing, LawSpec's property engine | `swift test` |
+| [`prolog`](../../reference/prolog.md) | SWI-Prolog 10+, Python 3.13+, Janus 1.5.3 | PLUnit over pytest 8.4.2 and Hypothesis 6.135.26 | `python lawspec_test.py` |
 
 Exact version bounds are in [compatibility](../../reference/compatibility.md).
 

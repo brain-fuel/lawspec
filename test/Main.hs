@@ -2,6 +2,8 @@
 -- it verifies and cites the requirement that property serves.
 -- ref:DEC-tests-cite-requirements
 module Main where
+import qualified ArtifactTargetSpec
+import qualified PrologTargetSpec
 import qualified WitnessSpec
 import qualified QuantifierDomainSpec
 import qualified SearchSpec
@@ -93,7 +95,8 @@ import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
 import LawSpec.Eval
-import LawSpec.Emit
+import LawSpec.Emit hiding (targets)
+import LawSpec.CoreEmit (targets)
 import LawSpec.Scalar
 import LawSpec.Parser (parseSource)
 import Data.Either (isLeft, isRight)
@@ -105,6 +108,8 @@ concrete :: String -> String
 concrete d = "law \"|codec| is definition: " ++ d ++ " end definition end law\n"
 main :: IO ()
 main = hspec $ do
+  ArtifactTargetSpec.test_artifactTargets
+  PrologTargetSpec.test_prologEmitter
   NamedBlocksSpec.test_namedBlocks
   MappingSpec.test_typedMappings
   MatchWarningSpec.test_matchWarnings

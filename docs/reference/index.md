@@ -23,6 +23,9 @@ Technical descriptions of the language, the tools and the interfaces.
 
 - [CLI](cli.md): every `lawspec` command and option.
 - [Configuration](configuration.md): `lawspec.json` and `lawspec-package.json`.
+- [Prolog target](prolog.md): SWI-Prolog predicates, Janus bindings and execution scope.
+- [Configuration and build targets](artifact-targets.md): HCL, YAML, ANTLR
+  grammars and Make pipelines, with explicit execution and validation limits.
 - [Compiler API](api.md): requests, results and wire encodings.
 - [Native bindings](native-bindings.md): the binding configuration and each
   target's implementation contract.

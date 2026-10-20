@@ -10,7 +10,7 @@ SITE    := .artifacts/site
 PORT    ?= 8080
 
 .DEFAULT_GOAL := help
-.PHONY: help build generate generate-check wasm test integrity boundaries check parity \
+.PHONY: help build generate generate-check wasm test integrity boundaries check parity artifact-targets \
         smoke package acceptance lessons ci ci-fresh ci-core examples editor-test docs docs-check \
         docs-serve docs-deploy canon assess tax audit bump version release-check clean
 
@@ -43,6 +43,9 @@ check: generate-check integrity boundaries test parity ## Fast local checks
 
 parity: ## Native and WASM compilers agree
 	node tools/parity.mjs
+
+artifact-targets: build ## Check configuration, grammar and build artifacts with their native validators
+	sh tools/artifact-targets.sh
 
 smoke: ## Pack, install and exercise the npm package
 	node tools/package-smoke.mjs

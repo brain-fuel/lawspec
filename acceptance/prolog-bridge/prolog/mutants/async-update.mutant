@@ -1,0 +1,7 @@
+expect: model_counter
+@@ src/example/prologAsync.pl
+<<<<<<<
+with_counter(Counter, 1, R)
+=======
+with_counter(Counter, 0, R)
+>>>>>>>

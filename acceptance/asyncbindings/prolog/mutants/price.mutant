@@ -1,0 +1,6 @@
+@@ src/warehouse/native.pl
+<<<<<<<
+price_of(Sku, Price) :- sleep(0), price(Sku, Price).
+=======
+price_of(Sku, Price) :- sleep(0), price(Sku, Correct), Price is Correct+1.
+>>>>>>>

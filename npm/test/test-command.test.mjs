@@ -575,6 +575,20 @@ test('completion matching identifies failed native checks without counting them 
   }
 });
 
+test('JUnit round trips structured incomplete execution without inferring status from error text',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-junit-incomplete-'));
+  try {
+    const file=path.join(root,'status.xml');
+    await writeFile(file,junitFromTests([
+      {name:'pending',classname:'native',status:'incomplete',failure:'search bound exhausted'},
+      {name:'wrong',classname:'native',status:'failed',failure:'incomplete is just text'},
+      {name:'complete',classname:'native',status:'passed'}]));
+    const rows=await executedTests({kind:'junit',files:[file]},'',root,0);
+    assert.deepEqual(rows.map(row=>row.status),['incomplete','failed','passed']);
+    assert.match(rows[0].failure,/search bound exhausted/);
+  } finally {await rm(root,{recursive:true,force:true});}
+});
+
 test('JUnit completions retain failures and reject stale explicit reports and fake CDATA cases',async()=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-native-junit-'));
   try{

@@ -16,7 +16,12 @@ export type Target =
     'scala' |
     'groovy' |
     'clojure' |
-    'swift';
+    'swift' |
+    'prolog' |
+    'hcl' |
+    'yaml' |
+    'antlr4' |
+    'make';
 
 export interface Source {
   path: string;

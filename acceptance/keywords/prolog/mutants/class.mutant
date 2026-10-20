@@ -1,0 +1,6 @@
+@@ src/example/keywords.pl
+<<<<<<<
+R is X*2.
+=======
+R is X*3.
+>>>>>>>

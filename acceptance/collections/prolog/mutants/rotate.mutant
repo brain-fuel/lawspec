@@ -1,0 +1,6 @@
+@@ src/example/collections.pl
+<<<<<<<
+append(Rest, [Front], Rotated)
+=======
+Front = Front, Rotated = Rest
+>>>>>>>

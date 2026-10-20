@@ -1,0 +1,8 @@
+expect: Logs:
+expect: a new log takes its first record at offset zero| [native]
+@@ src/example/composition.pl
+<<<<<<<
+    ; py_call(Records:append(Record)), py_call(builtins:len(Records), Count), Offset is Count-1
+=======
+    ; py_call(Records:append(Record)), py_call(builtins:len(Records), Count), Offset is Count
+>>>>>>>

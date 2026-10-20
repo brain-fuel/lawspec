@@ -1,0 +1,6 @@
+@@ src/example/gadt.pl
+<<<<<<<
+ls_evalNumber(Expr, Number).
+=======
+Expr = Expr, Number = 0.
+>>>>>>>

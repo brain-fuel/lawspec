@@ -9,7 +9,8 @@ import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Compile
 import LawSpec.CoreEmit (emitPlan, targets)
-import LawSpec.Emit
+import LawSpec.Emit hiding (targets)
+import LawSpec.CoreEmit (targets)
 import LawSpec.Frontend (compileCore,compileCoreCanonical)
 import qualified LawSpec.Core.Types as CoreTypes
 import qualified LawSpec.Core.Definitions as CoreDefinitions

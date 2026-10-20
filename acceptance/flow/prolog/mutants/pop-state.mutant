@@ -1,0 +1,6 @@
+@@ src/example/flow.pl
+<<<<<<<
+value('example.flow::type::PopFlow::PopFlow', [Top, Rest])
+=======
+value('example.flow::type::PopFlow::PopFlow', [Top, value('example.flow::type::Stack::Push', [value('lawspec::structural::record::6e70c38da816203dd3a94111f83b422c58c2d67a01c3842a3fd23715879f00be::Record', [Rest, Top])])])
+>>>>>>>

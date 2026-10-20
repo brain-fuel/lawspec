@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createCompiler} from '../api.mjs';
 import {planWrites, applyWrites} from '../files.mjs';
-import {templates, targets} from '../templates.mjs';
+import {templates, programTargets as targets} from '../templates.mjs';
 
 const compiler = await createCompiler();
 const sources = await Promise.all(['atoi_codec', 'algebra', 'currying', 'slug'].map(async name => ({

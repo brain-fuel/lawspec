@@ -4760,7 +4760,7 @@ class Node:
                 if key in self._seen:
                     answer = self._seen[key]
                     if answer is not None:
-                        threading.Thread(target=self._send, args=(source + '/', 'reply', answer, ident), daemon=True).start()
+                        threading.Thread(target=self._send_reply, args=(source, ident, answer), daemon=True).start()
                     return
                 self._seen[key] = None
                 if len(self._seen) > 10000:
@@ -4775,6 +4775,11 @@ class Node:
         with self._lock:
             if (source, ident) in self._seen:
                 self._seen[(source, ident)] = payload
+        self._send_reply(source, ident, payload)
+
+    def _send_reply(self, source, ident, payload):
+        # A retried request can reach us after its caller received the first
+        # reply and closed. Original and cached replies have the same lifetime.
         try:
             self._send(source + '/', 'reply', payload, ident)
         except Unreachable:

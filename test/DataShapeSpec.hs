@@ -5,7 +5,8 @@ import Data.List (isInfixOf)
 import Test.Hspec
 import LawSpec.Common (Artifact(..))
 import LawSpec.Compile
-import LawSpec.Emit
+import LawSpec.Emit hiding (targets)
+import LawSpec.CoreEmit (targets)
 import LawSpec.Model hiding (Expectation)
 
 -- | Products are named after their type and need no cast; sums are closed

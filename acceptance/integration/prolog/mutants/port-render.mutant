@@ -1,0 +1,6 @@
+@@ src/example/parse_port.pl
+<<<<<<<
+number_string(X, R) ; throw
+=======
+number_string(X, Text), string_concat(Text, "!", R) ; throw
+>>>>>>>

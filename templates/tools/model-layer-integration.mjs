@@ -9,7 +9,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 const exec=promisify(execFile),repo=path.resolve(import.meta.dirname,'..');
 const packageRoot=path.resolve(process.env.LAWSPEC_NPM_SOURCE??path.join(repo,'npm'));
-const {templates,targets}=await import(pathToFileURL(path.join(packageRoot,'templates.mjs')));
+const {templates,programTargets:targets}=await import(pathToFileURL(path.join(packageRoot,'templates.mjs')));
 const language=process.argv[2];assert.ok(targets.includes(language),'Pass a supported target');
 const bits=Number(process.env.LAWSPEC_MACHINE_BITS??64),minify=process.env.LAWSPEC_MINIFY==='1';
 assert.ok([32,64].includes(bits));

@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {createCompiler} from '../api.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 
 const compiler=await createCompiler();
 const options={schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:[]}};

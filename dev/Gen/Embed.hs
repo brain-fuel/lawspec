@@ -66,6 +66,7 @@ runtimeFiles =
   , ("beam-gleam-effects", "lawspec_gleam_effects.gleam")
   , ("beam-gleam-workflow", "lawspec_gleam_workflow.gleam")
   , ("python", "lawspec_runtime.py"), ("python-schema", "lawspec_schema.py"), ("python-fast", "lawspec_fast.py")
+  , ("prolog", "lawspec_prolog.pl"), ("prolog-python", "lawspec_prolog.py"), ("prolog-tests", "lawspec_prolog_tests.py")
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
   , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs"), ("web-fast", "lawspec_fast.mjs")
   , ("java", "LawSpecRuntime.java"), ("java-fast", "LawSpecFast.java"), ("java-schema", "LawSpecSchema.java")

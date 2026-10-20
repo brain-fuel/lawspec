@@ -1,0 +1,6 @@
+@@ src/example/currying.pl
+<<<<<<<
+R is A+B+C+D.
+=======
+R is A+B+C-D.
+>>>>>>>

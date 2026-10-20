@@ -1,0 +1,6 @@
+@@ src/example/refinements.pl
+<<<<<<<
+ls_preserve(X, X).
+=======
+ls_preserve(X, R) :- R is round(float(X)).
+>>>>>>>

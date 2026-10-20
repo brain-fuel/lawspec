@@ -1,0 +1,7 @@
+expect: sealed messages open
+@@ src/example/crypto.pl
+<<<<<<<
+unseal, [Key, Sealed, bytes([114])]
+=======
+unseal, [Key, Sealed, bytes([115])]
+>>>>>>>

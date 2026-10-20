@@ -1,0 +1,6 @@
+@@ src/example/builtins.pl
+<<<<<<<
+Elapsed is End-Start.
+=======
+Elapsed is Start-End-1.
+>>>>>>>

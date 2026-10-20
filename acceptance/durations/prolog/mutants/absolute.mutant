@@ -1,0 +1,6 @@
+@@ src/example/durations.pl
+<<<<<<<
+max(Budget-Elapsed, 0)
+=======
+abs(Budget-Elapsed)
+>>>>>>>

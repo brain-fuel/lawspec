@@ -1,0 +1,6 @@
+@@ src/example/flow.pl
+<<<<<<<
+value('example.flow::type::PopFlow::PopFlow', [Top, Rest])
+=======
+value('example.flow::type::PopFlow::PopFlow', [0, Rest])
+>>>>>>>

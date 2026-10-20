@@ -1,0 +1,6 @@
+@@ src/example/refinements.pl
+<<<<<<<
+ls_count(Text, N) :- string_length(Text, N).
+=======
+ls_count(_, 0).
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/shop.pl
+<<<<<<<
+'example.abilities::type::PaymentError::TooLarge'
+=======
+'example.abilities::type::PaymentError::Refused'
+>>>>>>>

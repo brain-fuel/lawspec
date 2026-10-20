@@ -1,0 +1,6 @@
+@@ src/example/sessions.pl
+<<<<<<<
+    py_call(AfterA:send(B), AfterB),
+=======
+    py_call(Client:send(B), AfterB),
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/matchers.pl
+<<<<<<<
+ls_sortItems(Items, Sorted) :- msort(Items, Sorted).
+=======
+ls_sortItems(Items, Sorted) :- sort(Items, Sorted).
+>>>>>>>

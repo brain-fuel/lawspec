@@ -1,0 +1,6 @@
+@@ src/example/workflows.pl
+<<<<<<<
+    ( Age < 18 -> Result = value('Either::Left', ["too young"])
+=======
+    ( Age < 17 -> Result = value('Either::Left', ["too young"])
+>>>>>>>

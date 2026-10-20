@@ -1,0 +1,7 @@
+expect: incrementmodel
+@@ src/example/prologBasic.pl
+<<<<<<<
+ls_increment(X, R) :- R is X+1.
+=======
+ls_increment(X, R) :- R is X+2.
+>>>>>>>

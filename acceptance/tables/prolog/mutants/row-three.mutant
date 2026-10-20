@@ -1,0 +1,6 @@
+@@ src/example/tables.pl
+<<<<<<<
+R is Count*Rate+5*Count.
+=======
+R is Count*Rate+5*Count+5.
+>>>>>>>

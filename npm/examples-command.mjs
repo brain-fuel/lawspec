@@ -2,12 +2,14 @@
 import { readFile, readdir, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { createCompiler } from "./api.mjs";
-import { targets } from "./templates.mjs";
+import { programTargets as targets, artifactTargets } from "./templates.mjs";
 import { safePath, planWrites, applyWrites } from "./files.mjs";
 import { exportNativePayments } from "./native-examples.mjs";
 
 export async function generateExamples(options) {
   const selected = options.target ? [options.target] : targets;
+  if (selected.some(t => artifactTargets.includes(t)))
+    throw new Error("examples exports program targets; use init and generate for artifact targets");
   if (selected.some((t) => !targets.includes(t)))
     throw new Error(`Unknown target: ${options.target}`);
   if (options.example !== undefined) {

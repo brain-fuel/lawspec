@@ -1,0 +1,7 @@
+@@ src/example/matchers.pl
+<<<<<<<
+ls_ship(Id, value('example.matchers::type::Order::Shipped',
+    [value('lawspec::structural::record::aaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911::Record', ["post", Id])])).
+=======
+ls_ship(Id, value('example.matchers::type::Order::Pending', [Id])).
+>>>>>>>

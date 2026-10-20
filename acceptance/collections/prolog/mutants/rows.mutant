@@ -1,0 +1,6 @@
+@@ src/example/collections.pl
+<<<<<<<
+    sort(Rows, Distinct).
+=======
+    exclude(=([]), Rows, Nonempty), sort(Nonempty, Distinct).
+>>>>>>>

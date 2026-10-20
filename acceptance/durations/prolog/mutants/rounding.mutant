@@ -1,0 +1,6 @@
+@@ src/example/durations.pl
+<<<<<<<
+R is max(Budget-Elapsed, 0).
+=======
+( Elapsed > 0 -> R is max(Budget-Elapsed, 0)+1 ; R is Budget ).
+>>>>>>>

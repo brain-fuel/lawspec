@@ -1,0 +1,6 @@
+@@ src/example/resilience.pl
+<<<<<<<
+    limited(Symbols, Result),
+=======
+    virtual_runtime(_, FreshSymbols), limited(FreshSymbols, Result),
+>>>>>>>

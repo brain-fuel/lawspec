@@ -1,0 +1,6 @@
+@@ src/example/resources.pl
+<<<<<<<
+state(Handle, State), py_call(State:'__setitem__'(amount, 0)).
+=======
+Handle = Handle.
+>>>>>>>

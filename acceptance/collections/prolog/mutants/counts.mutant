@@ -1,0 +1,6 @@
+@@ src/example/collections.pl
+<<<<<<<
+count_entry(Word-Count, value('lawspec.collections::type::Entry::Entry', [Word, Count])).
+=======
+count_entry(Word-_, value('lawspec.collections::type::Entry::Entry', [Word, 1])).
+>>>>>>>

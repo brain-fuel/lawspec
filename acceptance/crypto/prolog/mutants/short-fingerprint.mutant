@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/example/crypto.pl
+<<<<<<<
+length(Prefix, 8),
+=======
+length(Prefix, 7),
+>>>>>>>

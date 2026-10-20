@@ -166,12 +166,17 @@ and the [approved contract](../../LAWSPEC-PRE-1.0-REVIEW.md).
 
 ### Following milestone: Prolog, configuration and documents
 
-Prolog joins as a program target. HCL and YAML become configuration
-targets: types become Terraform variables with validation and YAML
-schemas, and values become checked configuration. ANTLR (grammars for the
-text form of data), Make (build and test pipelines) and Folio
-(documentation pages) complete the list, so every language canon reads is
-a target.
+HCL and YAML now emit configuration artifacts from checked Core, with
+explicit supported fragments and incomplete-input reporting. ANTLR emits
+data syntax grammars with companion validation schemas, and Make emits
+ordered check, generation and test pipelines. Their
+[artifact contract](../reference/artifact-targets.md) distinguishes generation
+from execution evidence.
+
+Prolog now has public generation, Janus bindings and PLUnit execution over the
+checked Python target; its full shared native acceptance matrix remains open.
+Folio remains to emit documentation pages. Completing those targets and the remaining acceptance
+work will make every language canon reads a target. C and C++ remain optional.
 
 ### Later: C and C++
 

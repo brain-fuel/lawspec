@@ -10,10 +10,11 @@
 -- model, scenario and supervision checks on every target have distinct
 -- evidence identities and dependency keys, even when a native method combines
 -- several checks. The manifest records their actual files and native slots.
-module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
+module LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, executableEntries, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
+import LawSpec.Targets (artifactTargets)
 
 import Data.Char (isAlphaNum, toUpper)
-import Data.List (intercalate, stripPrefix)
+import Data.List (intercalate, stripPrefix, isSuffixOf)
 import qualified Data.Set as S
 import LawSpec.Core
 import qualified LawSpec.Core.Evidence as Evidence
@@ -23,6 +24,7 @@ import qualified LawSpec.BeamCode as Beam
 import qualified LawSpec.BeamModelChecks as ModelChecks
 import qualified LawSpec.DotNet.Names as DotNet
 import qualified LawSpec.NativeModelChecks as NativeModels
+import qualified LawSpec.Testing as Testing
 
 -- | Each generated test is keyed by the law it checks and the digest of what the
 -- law reaches, so lawspec test runs only the tests an edit can affect.
@@ -44,7 +46,22 @@ data TestEntry = TestEntry
 testManifest :: String -> Maybe String -> Program -> [TestEntry]
 testManifest=testManifestWithModelChecks True
 
+-- | A complete empty input domain has no native test to run. Its existing Core
+-- evidence remains authoritative; inventing a passed native case would erase
+-- the distinction between domain proof and observed implementation execution.
+-- Filter after naming so other laws retain their exact emitted slot names.
+executableEntries :: Testing.Plan -> [TestEntry] -> [TestEntry]
+executableEntries plan = filter ((`S.notMember` empty) . entryLaw)
+  where
+    empty=S.fromList [propertyId (Testing.plannedProperty property) |
+      unit<-Testing.plannedUnits plan, property<-Testing.plannedProperties unit,
+      Testing.finiteCases property==Just [], null (Testing.boundaryCases property),
+      null (propertyExamples (Testing.plannedProperty property))]
+
 testManifestWithModelChecks :: Bool -> String -> Maybe String -> Program -> [TestEntry]
+testManifestWithModelChecks _ target _ _ | target `elem` artifactTargets = []
+testManifestWithModelChecks modelsSelected "prolog" testDir program =
+  [e {entryFile=prologPath (entryFile e)} | e <- testManifestWithModelChecks modelsSelected "python" testDir program]
 testManifestWithModelChecks modelsSelected target testDir program =
   [ TestEntry (propertyId p) unit (unit ++ "::" ++ propertyName p) index
       (relocated (unitTestPath target unit)) (keyOf graph (show (programMachineBits program, p)) (lawReferences graph p))
@@ -115,6 +132,9 @@ data BenchmarkEntry = BenchmarkEntry
   deriving (Eq, Show)
 
 benchmarkManifest :: String -> Maybe String -> Program -> [BenchmarkEntry]
+benchmarkManifest target _ _ | target `elem` artifactTargets = []
+benchmarkManifest "prolog" testDir program =
+  [e {benchmarkFile=prologPath (benchmarkFile e)} | e <- benchmarkManifest "python" testDir program]
 benchmarkManifest target testDir program =
   [ BenchmarkEntry unit n (relocated testDir target (unitTestPath target unit)) (testOf n nativeName)
   | u <- programUnits program, Just settings <- [unitHarnessSettings u]
@@ -146,6 +166,7 @@ relocated testDir target path = case testDir of
 
 defaultTestDirectory :: String -> String
 defaultTestDirectory target = case target of
+  "prolog" -> "tests"
   "fsharp" -> "tests"
   "csharp" -> "tests"
   "swift" -> "tests"
@@ -161,6 +182,7 @@ defaultTestDirectory target = case target of
 -- | The test file each target generates for a unit, in the default layout.
 unitTestPath :: String -> String -> FilePath
 unitTestPath target unit = case target of
+  "prolog" -> prologPath (unitTestPath "python" unit)
   "python" -> "tests/test_" ++ intercalate "_" parts ++ "_lawspec.py"
   "javascript" -> "test/" ++ intercalate "_" parts ++ ".lawspec.test.mjs"
   "typescript" -> "test/" ++ intercalate "_" parts ++ ".lawspec.test.ts"
@@ -207,3 +229,6 @@ callees :: Expr -> [Id]
 callees e = case expressionNode e of
   ExternalCall callee args -> callee : concatMap callees args
   _ -> concatMap callees (children e)
+
+prologPath :: FilePath -> FilePath
+prologPath path = if ".py" `isSuffixOf` path then take (length path-3) path ++ ".pl" else path

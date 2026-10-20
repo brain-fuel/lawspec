@@ -1,0 +1,6 @@
+@@ src/example/parse_port.pl
+<<<<<<<
+ls_parse(X, R) :- number_string(R, X).
+=======
+ls_parse(X, R) :- number_string(Number, X), R is Number+1.
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.pl
+<<<<<<<
+ls_dropFirst(Row, value('example.arithmetic::type::Rest::Rest', [Row])).
+=======
+ls_dropFirst(_, value('example.arithmetic::type::Rest::Rest', [value('example.arithmetic::type::Row::End', [])])).
+>>>>>>>

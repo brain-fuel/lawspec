@@ -1,0 +1,6 @@
+@@ src/shop/domain.pl
+<<<<<<<
+ls_convert(Currency, value(Tag, [_, Cents]), value(Tag, [Currency, Cents])).
+=======
+ls_convert(_, Value, Value).
+>>>>>>>

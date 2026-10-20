@@ -2,7 +2,7 @@
 // Conformance fixtures use the current grammar.
 import {checkInput, generateInput, nameText} from './compiler-input.mjs';
 import {propertyFiles} from './artifacts.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";

@@ -95,6 +95,24 @@ emit minify bits datas units = do
       pure [ line "let schema = crate::lawspec_schema::schema()" <> line unwrap <> line ";"
            , line "let result = schema.native_value_with_context(" <> line value <> line ", &" <> ref <> line (", " ++ width ++ ", ctx)" ++ unwrap ++ ";")
            , line ("<" ++ native ++ " as ls::FromValue>::from_value(result)" ++ unwrap) ]
+    attemptMethods answered = fmap concat $ forM answered $ \answer -> forM [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations answer
+                                                             , Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures answer)] ] $ \(op, ty, failing, failure) -> do
+      let (args, result) = C.functionType ty
+      types <- mapM nativeType args
+      resultType <- nativeType result
+      failureType <- nativeType failure
+      decoded <- toNative failure "failure"
+      let values = ["value" ++ show i | i <- [0 .. length args - 1]]
+          trait = "super::" ++ moduleOfName (ownerName answer) ++ "::" ++ interfaceName answer
+      pure (line ("/// " ++ op ++ ", with the failure it raises as Err rather than a panic.") <> D.hardline <>
+        line ("pub fn try_" ++ op ++ "(&self" ++ concat [", " ++ v ++ ": " ++ t | (v, t) <- zip values types] ++ ") -> std::result::Result<" ++ resultType ++ ", " ++ failureType ++ "> ") <>
+        D.block 4 (line ("match ls::fast::attempt(" ++ show (C.abilityKey failing) ++ ", || Ok(<Self as " ++ trait ++ ">::" ++ op ++ "(self" ++ concatMap (", " ++) values ++ "))) ") <>
+          D.block 4 (D.joinWith D.hardline
+            [ line "Ok(Ok(result)) => Ok(result),"
+            , line "Ok(Err(failure)) => " <> D.block 4 (D.joinWith D.hardline
+                ([line "let mut ctx = self.ctx.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();", line "let ctx = &mut ctx;"] ++
+                 [line "Err(" <> D.joinWith D.hardline decodedBlock <> line ")" | let decodedBlock = [D.block 4 (D.joinWith D.hardline decoded)]]))
+            , line "Err(error) => panic!(\"{error}\")," ])))
     specHandler u h = do
       -- A handler of several abilities implements each one's trait.
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
@@ -131,16 +149,37 @@ emit minify bits datas units = do
             pure (line s <> line " " <> D.block 4 (D.joinWith D.hardline
               ([line "let mut guard = self.ctx.lock().unwrap_or_else(|p| p.into_inner());", line "let ctx = &mut *guard;"] ++ outcome ++ converted)))
       methodBlocks <- mapM methodsOf answered
+      attempts <- attemptMethods answered
+      accessors <- case C.handlerState h of
+        Nothing -> pure []
+        Just (t, _) -> do
+          native <- nativeType t
+          ref <- E.reference t
+          converted <- toNative t "snapshot"
+          pure [ line "/// A native snapshot of the handler's dynamic state." <> D.hardline <>
+                 line ("pub fn state(&self) -> " ++ native ++ " ") <> D.block 4 (D.joinWith D.hardline
+                   ([ line "let mut guard = self.ctx.lock().unwrap_or_else(|p| p.into_inner());"
+                    , line "let ctx = &mut *guard;"
+                    , line "let snapshot = self.state.lock().unwrap_or_else(|p| p.into_inner()).clone().unwrap();" ] ++ converted))
+               , line "/// Replace the state after checking its declared schema." <> D.hardline <>
+                 line ("pub fn set_state(&self, state: " ++ native ++ ") ") <> D.block 4 (D.joinWith D.hardline
+                   [ line "let mut guard = self.ctx.lock().unwrap_or_else(|p| p.into_inner());"
+                   , line "let ctx = &mut *guard;"
+                   , line ("let schema = crate::lawspec_schema::schema()" ++ unwrap ++ ";")
+                   , line "let next = schema.validate_with_context(ls::IntoValue::into_value(state), &" <> ref <> line (", " ++ width ++ ", ctx)" ++ unwrap ++ ";")
+                   , line "*self.state.lock().unwrap_or_else(|p| p.into_inner()) = Some(next);" ]) ]
       let name = specName h
       pure (line ("/// The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
         line ("pub struct " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline
           [line "ctx: std::sync::Mutex<ls::Context>,", line "state: std::sync::Mutex<Option<ls::Value>>,"]) <> D.hardline <> D.hardline <>
-        line ("impl " ++ name ++ " ") <> D.block 4
-          (line "/// The handler for a law; it evaluates its clauses in a copy of the law's context." <> D.hardline <>
+        line ("impl " ++ name ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline)
+          ([line "/// The handler for a law; it evaluates its clauses in a copy of the law's context." <> D.hardline <>
            line "pub fn new(ctx: &ls::Context) -> Self " <> D.block 4 (D.joinWith D.hardline
              [ line "let mut ctx = ctx.clone();"
              , line "let state = " <> start <> line ";"
-             , line ("Self { ctx: std::sync::Mutex::new(ctx), state: std::sync::Mutex::new(state) }") ])) <> D.hardline <> D.hardline <>
+             , line ("Self { ctx: std::sync::Mutex::new(ctx), state: std::sync::Mutex::new(state) }") ])
+           , line "/// Construct the handler outside a law." <> D.hardline <>
+             line "pub fn start() -> Self " <> D.block 4 (line "Self::new(&ls::Context::default())") ] ++ accessors ++ attempts)) <> D.hardline <> D.hardline <>
         D.joinWith (D.hardline <> D.hardline) [ line ("impl super::" ++ moduleOfName (ownerName answer) ++ "::" ++ interfaceName answer ++ " for " ++ name ++ " ") <>
             D.block 4 (D.joinWith (D.hardline <> D.hardline) methods) | (answer, methods) <- zip answered methodBlocks ])
     -- A typed spec handler keeps its state typed: each operation converts
@@ -215,25 +254,7 @@ emit minify bits datas units = do
                , line "/// Replaces the typed state." <> D.hardline <>
                  line ("pub fn set_typed_state(&self, state: " ++ typedType ++ ") ") <> D.block 4
                    (line "*self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = state;") ]
-      -- Each operation that fails with E, with its failure as a value.
-      attempts <- fmap concat $ forM answered $ \answer -> forM [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations answer
-                                                               , Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures answer)] ] $ \(op, ty, failing, failure) -> do
-        let (args, result) = C.functionType ty
-        types <- mapM nativeType args
-        resultType <- nativeType result
-        failureType <- nativeType failure
-        decoded <- toNative failure "failure"
-        let values = ["value" ++ show i | i <- [0 .. length args - 1]]
-            trait = "super::" ++ moduleOfName (ownerName answer) ++ "::" ++ interfaceName answer
-        pure (line ("/// " ++ op ++ ", with the failure it raises as Err rather than a panic.") <> D.hardline <>
-          line ("pub fn try_" ++ op ++ "(&self" ++ concat [", " ++ v ++ ": " ++ t | (v, t) <- zip values types] ++ ") -> std::result::Result<" ++ resultType ++ ", " ++ failureType ++ "> ") <>
-          D.block 4 (line ("match ls::fast::attempt(" ++ show (C.abilityKey failing) ++ ", || Ok(<Self as " ++ trait ++ ">::" ++ op ++ "(self" ++ concatMap (", " ++) values ++ "))) ") <>
-            D.block 4 (D.joinWith D.hardline
-              [ line "Ok(Ok(result)) => Ok(result),"
-              , line "Ok(Err(failure)) => " <> D.block 4 (D.joinWith D.hardline
-                  ([line "let mut ctx = self.ctx.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();", line "let ctx = &mut ctx;"] ++
-                   [line "Err(" <> D.joinWith D.hardline decodedBlock <> line ")" | let decodedBlock = [D.block 4 (D.joinWith D.hardline decoded)]]))
-              , line "Err(error) => panic!(\"{error}\")," ])))
+      attempts <- attemptMethods answered
       pure (line ("/// The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>
         line ("pub struct " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline
           [line "ctx: std::sync::Mutex<ls::Context>,", line ("state: std::sync::Mutex<" ++ stateField ++ ">,")]) <> D.hardline <> D.hardline <>

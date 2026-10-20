@@ -1,0 +1,6 @@
+@@ src/example/models.pl
+<<<<<<<
+value('example.models::type::PopFlow::PopFlow', [Top, Rest])
+=======
+value('example.models::type::PopFlow::PopFlow', [Top, value('example.models::type::Stack::Push', [value('lawspec::structural::record::d055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949::Record', [Rest, Top])])])
+>>>>>>>

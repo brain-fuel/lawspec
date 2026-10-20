@@ -1,0 +1,6 @@
+@@ src/shop/orders.pl
+<<<<<<<
+ls_cheaper(A, B, R) :- R is min(A, B).
+=======
+ls_cheaper(A, _, A).
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.pl
+<<<<<<<
+ls_mirror(Right, A), ls_mirror(Left, B)
+=======
+ls_mirror(Left, A), ls_mirror(Right, B)
+>>>>>>>

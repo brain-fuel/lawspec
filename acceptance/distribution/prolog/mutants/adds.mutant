@@ -1,0 +1,7 @@
+@@ src/example/distribution.pl
+<<<<<<<
+          py_call(Tally:add(Amount), _),
+          py_call(Tally:add(Amount), Total)
+=======
+          py_call(Tally:add(Amount), Total)
+>>>>>>>

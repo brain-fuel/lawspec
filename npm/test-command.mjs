@@ -138,6 +138,9 @@ export function preparationInvocations(target, files) {
 export function benchmarkInvocations(target, entries, { offline = false } = {}) {
   if (!entries.length) return [];
   const language = target.language;
+  if (language === "prolog")
+    return [{command: target.python || "python3", args: ["lawspec_test.py",
+      ...entries.flatMap(entry => ["--select", `${entry.file}::${entry.name}`])]}];
   const testDir = target.testDir;
   const relativeTo = (file, defaultDir) => {
     const directory = testDir || defaultDir;
@@ -231,6 +234,16 @@ function nativeInvocations(target, entries, { offline = false, scratch = ".", co
   root = process.cwd(), coverageConfig } = {}) {
   if (!entries.length) return [];
   const language = target.language;
+  if (language === "prolog") {
+    if (coverage) throw new Error("Prolog coverage instrumentation is not integrated");
+    const report = path.join(scratch, "prolog.xml");
+    const matching = test => entries.filter(entry => entry.kind === "model"
+      ? test.name === entry.name : test.name.startsWith(`${entry.name}__`));
+    const selections = [...new Set(entries.map(entry => `${entry.file}::${entry.name}`))];
+    return [{laws: entries, command: target.python || "python3",
+      args: ["lawspec_test.py", ...selections.flatMap(slot => ["--select", slot]), "--junitxml", report],
+      report: {kind: "junit", files: [report]}, ran: matching}];
+  }
   const testDir = target.testDir;
   const relativeTo = (file, defaultDir) => {
     const directory = testDir || defaultDir;
@@ -604,7 +617,11 @@ export async function executedTests(report, output, root, since) {
         const values=attributes(element.opening);
         const native=junitElements(element.xml,["failure","error","skipped"]);
         const failure=native.filter(element=>element.name!=="skipped");
-        const status=failure.length?"failed":native.length?"skipped":"passed";
+        const incomplete=junitElements(element.xml,["property"]).some(property=>{
+          const value=attributes(property.opening);
+          return value.name==='lawspec.status'&&value.value==='incomplete';
+        });
+        const status=incomplete?"incomplete":failure.length?"failed":native.length?"skipped":"passed";
         const detail=element=>[attributes(element.opening).message,
           unescapeXml(element.xml.slice(element.opening.length).replace(/<\/(failure|error|skipped)>\s*$/,"")
             .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,(_,text)=>text))].filter(Boolean).join("\n");
@@ -648,6 +665,7 @@ export async function executedTests(report, output, root, since) {
 // JUnit XML for a runner that writes none, from the tests it printed.
 export function junitFromTests(tests) {
   const failures = tests.filter((t) => t.status === "failed").length;
+  const errors = tests.filter((t) => t.status === "incomplete").length;
   const skipped = tests.filter((t) => t.status === "skipped").length;
   // A BEAM scheduler wraps native functions from several units. Its module
   // is not the declaring class: retain the unit from the validated identity.
@@ -655,10 +673,11 @@ export function junitFromTests(tests) {
     const separator = typeof test.identity === "string" ? test.identity.lastIndexOf("::") : -1;
     return separator > 0 ? test.identity.slice(0, separator) : test.classname ?? "";
   };
-  return `<testsuite name="lawspec" tests="${tests.length}" failures="${failures}"${skipped ? ` skipped="${skipped}"` : ""}>\n` +
+  return `<testsuite name="lawspec" tests="${tests.length}" failures="${failures}"${errors ? ` errors="${errors}"` : ""}${skipped ? ` skipped="${skipped}"` : ""}>\n` +
     tests.map((t) => `  <testcase classname="${escapeXml(classname(t))}" name="${escapeXml(t.name)}"` +
       (Number.isFinite(t.time) ? ` time="${t.time}"` : "") +
       (t.status === "failed" ? `><failure message="${escapeXml(t.failure ?? "failed")}"/></testcase>` :
+        t.status === "incomplete" ? `><properties><property name="lawspec.status" value="incomplete"/></properties><error message="${escapeXml(t.failure ?? t.reason ?? "incomplete execution")}"/></testcase>` :
         t.status === "skipped" ? `><skipped message="${escapeXml(t.reason ?? "skipped")}"/></testcase>` : "/>")).join("\n") + "\n</testsuite>";
 }
 

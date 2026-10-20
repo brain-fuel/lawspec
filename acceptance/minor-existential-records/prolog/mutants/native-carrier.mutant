@@ -1,0 +1,6 @@
+@@ src/example/gadt.pl
+<<<<<<<
+ls_describe(value('example.gadt::type::Shown::Shown', [_, Witness]), Witness).
+=======
+ls_describe(_, "Int32").
+>>>>>>>

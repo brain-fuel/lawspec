@@ -18,7 +18,7 @@ npx lawspec examples --target java --output example_artifacts
 
 `examples` compiles every bundled specification and writes its tests and
 user-owned adapter stubs to `example_artifacts/<language>/`, in each target's
-normal source and test layout. By default it exports all eleven targets. Use
+normal source and test layout. By default it exports all program targets. Use
 `--target` for one, `--output` for another directory, `--machine-bits 32` for
 the 32-bit profile, `--minify` for compact output, and `--json` for a file
 inventory.

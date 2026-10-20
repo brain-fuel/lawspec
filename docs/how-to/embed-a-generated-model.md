@@ -193,7 +193,11 @@ types:
 | Erlang, Elixir | `broker_try_produce_request(Broker, ...)` (Elixir: `Broker.try_produce_request(broker, ...)`): `{ok, Offset}` or `{error, KafkaError}`, for any handler |
 | Gleam | `broker_try_produce_request(broker, ...)`: a `Result(Int, data.KafkaError)`, for any handler |
 
-A failing operation leaves the state as it was.
+A failing operation leaves the state as it was. Rust dynamic handlers also
+provide `start`, `try_` operations and native `state` / `set_state` methods.
+They evaluate through the checked dynamic runtime and validate restored states
+against their declared schema. The typed snapshot methods apply to typed
+handlers; dynamic snapshots copy the state.
 
 ## Read and replace the state
 

@@ -1,0 +1,7 @@
+expect-any: a till gives back what it takes| [native] | small payments go through| [native]
+@@ src/till/native.pl
+<<<<<<<
+    Cash = 'till.native.Cash'{cents:Cents}.
+=======
+    Wrong is Cents+1, Cash = 'till.native.Cash'{cents:Wrong}.
+>>>>>>>

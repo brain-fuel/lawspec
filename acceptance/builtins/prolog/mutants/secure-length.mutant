@@ -1,0 +1,6 @@
+@@ src/example/builtins.pl
+<<<<<<<
+ls_token(Random, Count, R) :- lawspec_prolog:operation(Random, secureBytes, [Count], R).
+=======
+ls_token(Random, Count, R) :- Wrong is Count+1, lawspec_prolog:operation(Random, secureBytes, [Wrong], R).
+>>>>>>>

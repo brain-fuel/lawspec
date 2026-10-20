@@ -1,0 +1,6 @@
+@@ src/example/abilities.pl
+<<<<<<<
+handler_GatewayHandler_fee(gateway, 25).
+=======
+handler_GatewayHandler_fee(gateway, -25).
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.pl
+<<<<<<<
+ls_echoPresence(X, X).
+=======
+ls_echoPresence(_, presence('Optional', absent)).
+>>>>>>>

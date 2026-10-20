@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.pl
+<<<<<<<
+ls_countPairs(Row, value('example.arithmetic::type::Pairs::Pairs', [Row])).
+=======
+ls_countPairs(_, value('example.arithmetic::type::Pairs::Pairs', [value('example.arithmetic::type::Row::End', [])])).
+>>>>>>>

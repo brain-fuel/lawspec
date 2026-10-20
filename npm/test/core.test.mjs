@@ -2,7 +2,7 @@
 // Public checking and generation exercise the current grammar.
 import {propertyFiles, propertyContent} from './artifacts.mjs';
 import {checkInput,generateInput} from './compiler-input.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";

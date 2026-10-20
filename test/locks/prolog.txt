@@ -1,0 +1,4 @@
+# SWI-Prolog 10.0.2; start Janus from the selected Python 3.13+ interpreter.
+# ref:DEC-prolog-janus
+-r python.txt
+janus-swi==1.5.3

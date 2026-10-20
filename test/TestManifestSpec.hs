@@ -11,6 +11,7 @@ import qualified Data.Vector as V
 import System.Directory (listDirectory)
 import Test.Hspec
 import LawSpec.Api (dispatch)
+import LawSpec.Targets (programTargets)
 
 -- | Every bundled example, planned for each target in one program.
 planned :: String -> Maybe String -> IO (KM.KeyMap Value)
@@ -46,6 +47,7 @@ joined [] = []
 named :: String -> String -> String
 named target name = case target of
   "python" -> "def " ++ name ++ "__"
+  "prolog" -> "test('" ++ name ++ "')"
   "go" -> "func " ++ name ++ "_"
   "rust" -> "fn " ++ name ++ "()"
   "haskell" -> "\"" ++ name ++ "_"
@@ -56,6 +58,7 @@ named target name = case target of
 modelNamed :: String -> String -> String
 modelNamed target name = case target of
   "python" -> "def " ++ name ++ "("
+  "prolog" -> "test('" ++ name ++ "')"
   "go" -> "func " ++ name ++ "("
   "rust" -> "fn " ++ name ++ "()"
   "haskell" -> "\"" ++ name ++ "\""
@@ -74,7 +77,30 @@ unsplit text = case text of
 -- live. ref:DEC-incremental-compilation ref:REQ-test-manifest
 test_testManifestNamesEveryLawsTestOnEachTarget :: Spec
 test_testManifestNamesEveryLawsTestOnEachTarget = describe "the test manifest" $ do
-  forM_ ["python", "javascript", "typescript", "go", "java", "kotlin", "rust", "haskell"] $ \target ->
+  it "retains complete empty-domain Core evidence without planning a nonexistent native test" $ do
+    let source = unlines ["unit emptyManifest",
+          "law vacuous is definition: for all (x :: Integer) (y :: Integer where y > x and y < x + 1) => false end for all end definition end law",
+          "law ordinary is definition: for all (x :: Integer) => x must be x end for all end definition end law",
+          "end unit"]
+    forM_ programTargets $ \target -> do
+      let request=object ["schemaVersion" .= (5::Int), "languageProfile" .= ("1.0-rc.2"::String),
+            "method" .= ("planGeneration"::String), "target" .= target,
+            "verification" .= object ["layers" .= (["proof","exhaustive","property","examples"]::[String])],
+            "sources" .= [object ["path" .= ("empty.lawspec"::String),"content" .= source]]]
+      case decode (dispatch (encode request)) of
+        Just (Object response) -> do
+          field "diagnostics" response `shouldBe` Array mempty
+          let Array tests=field "tests" response
+              Array evidence=field "evidence" response
+              Array laws=field "laws" response
+              status=[field "status" item | Object item<-V.toList evidence,
+                field "declaration" item==String "emptyManifest::law::vacuous",field "stage" item==String "law"]
+          V.length laws `shouldBe` 2
+          [field "law" entry | Object entry<-V.toList tests] `shouldBe` [String "emptyManifest::law::ordinary"]
+          length status `shouldBe` 1
+          head status `shouldSatisfy` (`elem` [String "proved",String "exhaustively-checked"])
+        other -> expectationFailure (show (other :: Maybe Value))
+  forM_ ["python", "prolog", "javascript", "typescript", "go", "java", "kotlin", "rust", "haskell"] $ \target ->
     it ("names each law's generated test file and tests in " ++ target) $ do
       response <- planned target Nothing
       let Array files = field "files" response

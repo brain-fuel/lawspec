@@ -1,0 +1,6 @@
+@@ src/example/alternatives.pl
+<<<<<<<
+ls_render(X, R) :- number_string(X, R).
+=======
+ls_render(X, R) :- number_string(X, Text), string_concat(Text, "!", R).
+>>>>>>>

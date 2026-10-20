@@ -1,0 +1,6 @@
+@@ src/example/matchers.pl
+<<<<<<<
+ls_uniqueTags(Tags, Unique) :- list_to_set(Tags, Unique).
+=======
+ls_uniqueTags(_, []).
+>>>>>>>

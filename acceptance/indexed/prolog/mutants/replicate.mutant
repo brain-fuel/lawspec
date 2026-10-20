@@ -1,0 +1,6 @@
+@@ src/example/indexed.pl
+<<<<<<<
+Count =:= 0 ->
+=======
+Count =< 1 ->
+>>>>>>>

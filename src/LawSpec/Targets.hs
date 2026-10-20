@@ -1,11 +1,19 @@
 -- | Target names have one order across the compiler, scaffolds, API and local
 -- CI, so a new backend cannot disappear from one of those entry points.
 -- ref:DEC-generated-javascript
-module LawSpec.Targets (targets, beamTargets, dotnetTargets, scalaTargets, overJavaTargets, jvmTargets, targetLabel) where
+module LawSpec.Targets (targets, programTargets, artifactTargets, beamTargets, dotnetTargets, scalaTargets, overJavaTargets, jvmTargets, targetLabel) where
 
 targets :: [String]
-targets = ["java", "python", "javascript", "typescript", "go", "haskell",
-  "kotlin", "rust"] ++ beamTargets ++ dotnetTargets ++ scalaTargets ++ overJavaTargets ++ ["swift"]
+targets = programTargets ++ artifactTargets
+
+-- | Executable backends participate in native law execution and its evidence.
+programTargets :: [String]
+programTargets = ["java", "python", "javascript", "typescript", "go", "haskell",
+  "kotlin", "rust"] ++ beamTargets ++ dotnetTargets ++ scalaTargets ++ overJavaTargets ++ ["swift", "prolog"]
+
+-- | Configuration and build artifacts do not execute application laws.
+artifactTargets :: [String]
+artifactTargets = ["hcl", "yaml", "antlr4", "make"]
 
 -- | Scala runs over the shared JVM runtime, as Kotlin does.
 -- ref:DEC-scala-on-the-jvm-runtime
@@ -41,4 +49,5 @@ targetLabel target = maybe target id (lookup target
    ("typescript", "TypeScript"), ("go", "Go"), ("haskell", "Haskell"),
    ("kotlin", "Kotlin"), ("rust", "Rust"), ("erlang", "Erlang"),
    ("elixir", "Elixir"), ("gleam", "Gleam"), ("fsharp", "F#"), ("csharp", "C#"),
-   ("scala", "Scala"), ("groovy", "Groovy"), ("clojure", "Clojure"), ("swift", "Swift")])
+   ("scala", "Scala"), ("groovy", "Groovy"), ("clojure", "Clojure"), ("swift", "Swift"),
+   ("prolog", "Prolog"), ("hcl", "HCL"), ("yaml", "YAML"), ("antlr4", "ANTLR"), ("make", "Make")])

@@ -1,0 +1,6 @@
+@@ src/example/concurrent.pl
+<<<<<<<
+( Present == @(true) -> R = false ; R = true ), py_call(Items:add(Item)).
+=======
+Present = Present, R = true, py_call(Items:add(Item)).
+>>>>>>>

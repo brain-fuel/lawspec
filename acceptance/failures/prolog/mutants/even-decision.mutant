@@ -1,0 +1,6 @@
+@@ src/example/failures.pl
+<<<<<<<
+Decision = value('example.failures::type::Decision::Approve', [])
+=======
+Decision = value('example.failures::type::Decision::Decline', ["even"])
+>>>>>>>

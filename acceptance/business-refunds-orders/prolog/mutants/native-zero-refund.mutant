@@ -1,0 +1,7 @@
+expect: native refunds conform to the policy
+@@ src/example/refundConformance.pl
+<<<<<<<
+Requested =:= 0 -> Decision='example.refunds::type::RefundDecision::Approved'
+=======
+Requested =:= 0 -> Decision='example.refunds::type::RefundDecision::Rejected'
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/approvals.pl
+<<<<<<<
+        maplist(failure_error, Failures, Errors)
+=======
+        lawspec_cfb6be83143715a5:finished(Errors)
+>>>>>>>

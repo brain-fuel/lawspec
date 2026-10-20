@@ -179,6 +179,15 @@ generator factories and bound functions are `codec`, `generator` and
 
 ## Targets
 
+### Prolog
+
+Function and handler references identify a dotted module and predicate; generator
+factories construct ordinary Hypothesis strategies through Janus. Values cross
+the boundary as canonical Prolog terms with full constructor identities. Custom
+type/codec mappings, method/constructor call bindings and native exception
+mappings are unsupported. See the [Prolog interface](prolog.md) for argument
+order, module paths, factory signatures and execution scope.
+
 ### Rust
 
 - References are paths; `crate` refers to the application library.

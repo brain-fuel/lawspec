@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.pl
+<<<<<<<
+ls_successor(X, R) :- R is X+1.
+=======
+ls_successor(X, R) :- R is (X+129) mod 256-128.
+>>>>>>>

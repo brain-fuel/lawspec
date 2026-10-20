@@ -1,0 +1,6 @@
+@@ src/example/models.pl
+<<<<<<<
+flag(Key, Previous, Previous+1), R is Previous+1.
+=======
+flag(Key, Previous, Previous), sleep(0.001), R is Previous+1, flag(Key, _, R).
+>>>>>>>

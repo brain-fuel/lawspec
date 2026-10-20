@@ -1,0 +1,6 @@
+@@ src/shop/orders.pl
+<<<<<<<
+R = value('shop.domain::type::Currency::Eur', [])
+=======
+R = value('shop.domain::type::Currency::Usd', [])
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/concurrent.pl
+<<<<<<<
+py_call(Items:'__setitem__'(Key, Entry)), maybe(Previous, R).
+=======
+py_call(Items:'__setitem__'(Key, Entry)), Previous = Previous, maybe(Entry, R).
+>>>>>>>

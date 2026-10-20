@@ -1,0 +1,186 @@
+---
+id: lawspec.reference.artifact-targets
+kind: reference
+title: Configuration and build targets
+---
+# Configuration and build targets
+
+The `hcl`, `yaml`, `antlr4` and `make` targets generate artifacts from checked
+LawSpec definitions and data. They use the same `lawspec.json` target entries
+and `lawspec generate` command as program targets. They emit no application
+law tests or benchmarks. `lawspec test` runs the configured program targets;
+selecting an artifact target explicitly reports that it cannot execute laws.
+Definition validation remains mandatory for every target.
+
+```json
+{"version":2,"languageProfile":"1.0-rc.2","verification":{"layers":[]},
+ "sources":["laws"],"targets":[
+   {"language":"yaml","root":"configuration"},
+   {"language":"hcl","root":"terraform"},
+   {"language":"antlr4","root":"grammar"},
+   {"language":"make","root":"."}]}
+```
+
+Artifacts go directly in their target root. An optional `sourceDir` puts all
+of a target's artifacts below that directory. `testDir` and native bindings
+are rejected because these targets have no native test or adapter interface.
+
+## Configuration entries and values
+
+A function taking only `Unit` is a configuration entry. Checked definitions
+supply its value; adapters of type `Unit -> T` supply
+an input declaration without a value. Functions needing application inputs
+remain helpers and are not exported as configuration entries.
+
+```lawspec
+unit configuration
+type Settings is a record{port :: UInt16 enabled :: Bool hosts :: List Text} end type
+function settings (unused :: Unit) -> Settings is
+  Settings record{port = 8080, enabled = true, hosts = ["localhost"]}
+end function
+end unit
+```
+
+The existing total-definition evaluator computes values and enforces their
+contracts. No adapter runs during generation. `lawspec-artifacts.json` maps
+resolved declaration identities to output names and records missing values,
+whether the configuration is complete, the machine profile and
+`lawsExecuted: false`.
+Its `types` map connects schema keys to resolved types. For HCL, `typeVariables`
+identifies variables exported from types alone; `missingTypeValues` lists their
+required external inputs, which keep `configurationComplete` false.
+
+## YAML
+
+`configuration.schema.json` uses JSON Schema 2020-12. Its object properties
+are resolved declaration identities such as `configuration::settings`.
+`$defs` also exposes monomorphic named types and concrete generic instances
+reachable from configuration entries. Type keys are derived from their Core
+identities and arguments.
+
+When every entry has a value, `configuration.yaml` contains that checked
+configuration. If an entry needs an external value, generation emits the
+schema and incomplete manifest without presenting a partial YAML file as
+complete. The output uses JSON notation, the YAML 1.2 subset, to avoid YAML
+implicit scalar conversions. Consumers must preserve arbitrary-size integer
+values when reading the document.
+
+The supported data representation is:
+
+| LawSpec type | Configuration representation |
+| --- | --- |
+| Integer types | JSON integer, with portable width and unsigned bounds |
+| `Bool`, `Text` | Boolean, Unicode string |
+| `Unit`, `Null`, `Undefined` | `null`, interpreted in its declared type |
+| `List a` | Array of `a` |
+| Single-constructor data | Object with its named fields |
+| Multiple-constructor data, including `Maybe` and `Either` | Object with qualified `tag` and a `fields` object |
+
+Recursive data uses schema references. Generic parameters must be concrete
+where a value is exported. Constructor predicates support integer field
+comparisons with integer constants and their conjunctions. Unsupported
+predicates, scalar representations, handles, existential or indexed types
+produce `target-unsupported`; their constraints are never silently omitted.
+Non-regular type expansion beyond 128 levels is also unsupported.
+
+The mapping uses the standard [JSON Schema validation vocabulary](https://json-schema.org/draft/2020-12/json-schema-validation),
+including `required`, `additionalProperties`, numeric bounds and alternatives.
+Schema validation checks represented data; it is not a law proof.
+
+## HCL
+
+`variables.tf` declares Terraform/OpenTofu input variables. Names beginning
+with `value_` include the resolved declaration identity and a hash suffix;
+the artifact manifest gives the exact name. A monomorphic named type without
+a corresponding entry becomes a `type_` variable.
+
+Fixed-width and machine-sized integers map to `number` with integral-value and portable-range
+validation. Booleans and text map to `bool` and `string`; lists and
+single-constructor products become `list(...)` and `object({...})`.
+Unbounded integer domains are unsupported because cty's numeric parser has
+a finite 512-bit precision. Generated text literals must already be NFC and
+contain code points assigned in Unicode 15.1. Otherwise generation reports
+`target-unsupported`, preserving the source value rather than silently
+changing it. These restrictions follow [cty's value implementation](https://github.com/zclconf/go-cty/blob/main/cty/value_init.go).
+The checks reuse `unicode-transforms` 0.4.0.1 with `unicode-data` 0.6.0;
+no new normalization algorithm is introduced. The experimental GHC 9.14
+WASM build has a narrow `unicode-data:base` upper-bound override, covered by
+native/WASM parity and the normalization acceptance and rejection controls.
+Nested null values are rejected. Attribute names must be ASCII identifiers.
+External variable inputs undergo [normal type conversions](https://opentofu.org/docs/language/expressions/type-constraints/)
+before validation, including normalization of text, conversion of compatible scalar inputs and selection of
+declared object attributes. This is Terraform input validation; use the YAML
+schema workflow when strict rejection of extra input fields is required.
+Terraform's object type language has no recursive or tagged-union type;
+these inputs are rejected rather than mapped to `any`.
+
+`configuration.tfvars.json` supplies values for checked definitions. External
+inputs and type-only variables still need user-supplied values. JSON variable
+files carry strings as literal data, including `${` and `%{`; generation
+does not apply HCL template escaping to them. Validate and plan the module with:
+
+```sh
+tofu init -backend=false
+tofu validate
+tofu plan -input=false -var-file=configuration.tfvars.json
+```
+
+Input validation follows the established [OpenTofu variable interface](https://opentofu.org/docs/language/values/variables/).
+This target generates configuration; it does not deploy resources.
+
+## ANTLR
+
+`LawSpecData.g4` is a combined ANTLR 4 grammar with a `document` entry rule
+that requires EOF. Integers, booleans and quoted JSON-style text are leaves;
+lists use brackets and commas. A data constructor is its qualified identity,
+followed by parenthesized comma-separated fields in declaration order:
+
+```text
+configuration::type::Settings::Settings(8080,true,["localhost"])
+```
+
+Rules are named by the type keys recorded in `lawspec-artifacts.json`.
+`data.schema.json` describes decoded values using the configuration mapping
+above. The grammar checks syntax; numeric ranges and constructor predicates
+must be validated after decoding. The manifest explicitly records this
+semantic validation requirement. No decoder or proof checker is claimed.
+
+ANTLR's existing [parser-rule and lexer infrastructure](https://github.com/antlr/antlr4/blob/master/doc/parser-rules.md)
+generates the parser. The emitted grammar contains no host-language actions.
+
+## Make
+
+The generated `Makefile` uses [GNU Make phony targets](https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html)
+for `check`, `generate`, `test` and
+`verify` stages. Dependencies order them even under parallel Make, and a
+failed stage stops the later stages. The default goal is `verify`.
+`LAWSPEC` selects the installed command and may include configuration flags:
+
+```sh
+make
+make LAWSPEC='lawspec --config ../lawspec.json'
+```
+
+Run from the directory containing `lawspec.json`, or specify its path as
+above. The pipeline uses the project's configured program targets and native
+test tools. Generating a Makefile does not record a completed execution.
+
+## Acceptance tools
+
+`make artifact-targets` builds the compiler and runs every independent artifact
+validator. The helper provisions a local Python environment and a checksum-locked
+ANTLR 4.13.2 jar; OpenTofu and a JDK must be on PATH. Run
+`sh tools/artifact-targets.sh yaml` (or `hcl`, `antlr4`, `make`) to select one.
+The complete CI graph includes all four validators, with one shared bootstrap;
+`lawspec-dev ci --target yaml` selects the YAML validator alongside the repository
+checks. The `--core` mode excludes these external toolchains.
+
+`tools/artifact-targets.py` checks generated YAML with PyYAML and a JSON
+Schema 2020-12 validator, HCL with OpenTofu validation and planning, grammars
+with ANTLR and its generated Java parser, and pipelines with Make. Rejection
+controls cover invalid ranges and nulls, malformed data syntax, trailing
+input and propagation of a failed build stage. It requires
+`LAWSPEC_NATIVE_CORE`, `ANTLR_JAR`, `jsonschema`, `PyYAML`, OpenTofu and a JDK.
+With `CANON_BINARY` and `CANON_REPO`, the same check compares canon's current
+target inventory with the public LawSpec inventory and parses the emitted
+files through canon's HCL, YAML, ANTLR and Make grammars.

@@ -1,0 +1,6 @@
+@@ src/example/collections.pl
+<<<<<<<
+ls_fifo(Items, value('lawspec.collections::type::Queue::QueueItems', [Items])).
+=======
+ls_fifo(Items, value('lawspec.collections::type::Queue::QueueItems', [Reversed])) :- reverse(Items, Reversed).
+>>>>>>>

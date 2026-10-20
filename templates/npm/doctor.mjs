@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
-import { setup } from "./templates.mjs";
+import { setup, artifactTargets } from "./templates.mjs";
 import { beamDoctor } from "./beam-doctor.mjs";
 const exec = promisify(execFile);
 const profiles = JSON.parse(
@@ -70,6 +70,8 @@ async function installed(req, name) {
 }
 export async function doctor(target, root, plannedArtifacts = []) {
   const name = target.language;
+  if (artifactTargets.includes(name))
+    return {target: name, ok: true, versions: {}, kind: "artifact", instructions: setup[name]};
   const defaults =
     name === "java"
       ? ["src/main/java", "src/test/java"]
@@ -81,7 +83,7 @@ export async function doctor(target, root, plannedArtifacts = []) {
         ? ["src/main/groovy", "src/test/groovy"]
         : name === "clojure"
         ? ["src", "test"]
-        : ["src", ["python", "rust", "fsharp", "csharp", "swift"].includes(name) ? "tests" : "test"];
+        : ["src", ["python", "prolog", "rust", "fsharp", "csharp", "swift"].includes(name) ? "tests" : "test"];
   const sourceDir = target.sourceDir ?? defaults[0];
   const testDir = target.testDir ?? defaults[1];
   try {
@@ -148,8 +150,8 @@ export async function doctor(target, root, plannedArtifacts = []) {
           "@types/node 22+ is required",
         );
       }
-    } else if (name === "python") {
-      const script = `import sys,json,importlib.metadata as m,tomllib,pathlib\np=tomllib.loads(pathlib.Path('pyproject.toml').read_text())\nprint(json.dumps({'python':'.'.join(map(str,sys.version_info[:3])),'pytest':m.version('pytest'),'hypothesis':m.version('hypothesis'),'config':p.get('tool',{}).get('pytest',{}).get('ini_options',{})}))`;
+    } else if (name === "python" || name === "prolog") {
+      const script = `import sys,json,importlib.metadata as m,tomllib,pathlib\np=tomllib.loads(pathlib.Path('pyproject.toml').read_text())\nprint(json.dumps({'python':'.'.join(map(str,sys.version_info[:3])),'optimization':sys.flags.optimize,'pytest':m.version('pytest'),'hypothesis':m.version('hypothesis'),'config':p.get('tool',{}).get('pytest',{}).get('ini_options',{})}))`;
       Object.assign(
         versions,
         JSON.parse(await run(target.python || "python3", ["-c", script], root)),
@@ -179,6 +181,14 @@ export async function doctor(target, root, plannedArtifacts = []) {
         "Clear PYTEST_ADDOPTS before compatibility checks",
       );
       delete versions.config;
+      if (name === "prolog") {
+        requireThat(versions.optimization === 0,
+          "Prolog host tests require enabled Python assertions; remove -O/PYTHONOPTIMIZE");
+        const probe = "import json,importlib.metadata as m,janus_swi as j; v=j.query_once('current_prolog_flag(version_data,swi(Major,Minor,Patch,_)),use_module(library(plunit)),current_prolog_flag(determinism_error,error)'); print(json.dumps({'janus':m.version('janus-swi'),'swi':[v['Major'],v['Minor'],v['Patch']],'ready':v['truth']}))";
+        Object.assign(versions, JSON.parse(await run(target.python || "python3", ["-c", probe], root)));
+        requireThat(versions.janus === "1.5.3" && versions.swi[0] === 10 && versions.ready === true,
+          "Prolog requires janus-swi 1.5.3, SWI-Prolog 10.x, PLUnit and determinism guards");
+      }
     } else if (name === "go") {
       versions.go = (await run("go", ["version"], root)).match(
         /go(\d+\.\d+(?:\.\d+)?)/,

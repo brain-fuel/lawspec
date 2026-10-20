@@ -1,0 +1,7 @@
+@@ src/warehouse/native.pl
+<<<<<<<
+    sleep(0), shelf_key(Id, Key), flag(Key, Before, Before+Amount).
+=======
+    sleep(0), shelf_key(Id, Key),
+    ( Amount < 50 -> Added = Amount ; Added is Amount-1 ), flag(Key, Before, Before+Added).
+>>>>>>>

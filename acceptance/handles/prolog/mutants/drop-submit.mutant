@@ -1,0 +1,6 @@
+@@ src/example/handles.pl
+<<<<<<<
+queue_operation(submit(Item), Items, absence('Unit')) :- py_call(Items:append(Item)).
+=======
+queue_operation(submit(_), _, absence('Unit')).
+>>>>>>>

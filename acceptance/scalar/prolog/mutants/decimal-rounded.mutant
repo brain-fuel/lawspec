@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.pl
+<<<<<<<
+Sum is A*10^(EA-E)+B*10^(EB-E)
+=======
+Sum is round(float(A)*10^(EA-E)+float(B)*10^(EB-E))
+>>>>>>>
