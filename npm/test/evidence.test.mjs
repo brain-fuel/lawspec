@@ -142,7 +142,8 @@ test('evidence --attestation reports which tested laws ran against stand-ins, ch
   assert.equal(find(attested, 'shop.orders::law::normalizing').plannedAgainst[0].kind, 'real');
   assert.equal(find(attested, 'shop.orders::law::doubling').environment, undefined);
   // The plane rule: without the added fields, the evidence is what it was.
-  const strip = ({environment, environmentRun, against, plannedEnvironment, plannedEnvironmentRun, plannedAgainst, ...rest}) => rest;
+  const strip = ({environment, environmentRun, against, environmentProviders, environmentOutcome,
+    plannedEnvironment, plannedEnvironmentRun, plannedAgainst, plannedEnvironmentProviders, ...rest}) => rest;
   assert.deepEqual(attested.map(strip), plain);
   const text = await lawspec(root, 'evidence', '--attestation', 'staging.json');
   assert.doesNotMatch(text, /last recorded passing run/);
@@ -188,6 +189,62 @@ test('evidence shows the attested run a law last passed in, from lawspec test re
   assert.match(text, /shop\.orders::normalize: real at https:\/\/normalize\.example\.com; no tested obligation relies on it/);
 });
 
+// A completed run's attestation, named to lawspec evidence, links each law
+// lawspec test recorded under that run id; wiring alone, a run under way or
+// another run does not. ref:DEC-completed-run-attestation
+test('a named completed attestation links the laws of its run, and wiring, running or another run stays planned', async t => {
+  const root = await project(t, attestedSpec);
+  const results = path.join(root, '.lawspec', 'results');
+  await mkdir(results, {recursive: true});
+  await writeFile(path.join(results, 'javascript-000000000000.json'), JSON.stringify({version: 1,
+    laws: {'shop.orders::law::checkoutCharges': {key: 'k', seed: 1, passed: '2026-10-09T19:31:00.000Z', environment: 'run-5'}},
+    attempts: {'shop.orders::law::normalizing': {key: 'k', seed: 1, at: '2026-10-09T19:31:00.000Z', outcome: 'failed', environment: 'run-5'}},
+    attestations: {'run-5': attestation('run-5')}}));
+  const contract = {package: 'acme/gateway-contract', version: '1.0.0'};
+  const document = (id, execution) => {
+    const base = attestation(id, {kind: 'stand-in', node: 'gateway', contract,
+      implementation: {kind: 'fixture', product: 'acme/gateway', version: '0.1.0'},
+      completed: {reached: true, history_digest: 'sha256:' + 'b'.repeat(64)},
+      stand_in: {product: 'acme/gateway', version: '0.1.0', conformance: '3', history_digest: 'sha256:' + 'a'.repeat(64), stands_in_for: contract}});
+    return {...base, execution,
+      architecture: {document: 'shop.calm.json', digest: 'sha256:' + 'c'.repeat(64), topology_digest: 'sha256:' + 'd'.repeat(64)},
+      application: {node: 'shop', contract: {package: 'shop', version: '1.0.0'}, implementation: {kind: 'application', product: 'shop', version: '1.2.0', commit: 'abc123'}},
+      dependencies: base.dependencies.map((d) => d.kind === 'real' ? {...d, implementation: {kind: 'real-provider', product: d.name, version: '1'}} : d)};
+  };
+  const evidence = async (doc) => {
+    await writeFile(path.join(root, 'run.json'), JSON.stringify(doc));
+    const list = JSON.parse(await lawspec(root, 'evidence', '--json', '--attestation', 'run.json'));
+    return {find: (name) => list.find((item) => item.declaration === name),
+      text: await lawspec(root, 'evidence', '--attestation', 'run.json')};
+  };
+  const completed = await evidence(document('run-5', {status: 'completed', exit_code: 1, finished_at: '2026-10-09T19:32:00Z'}));
+  const checkout = completed.find('shop.orders::law::checkoutCharges');
+  assert.equal(checkout.plannedAgainst, undefined);
+  assert.equal(checkout.environmentRun.id, 'run-5');
+  assert.deepEqual(checkout.environmentRun.execution, {status: 'completed', exitCode: 1, finishedAt: '2026-10-09T19:32:00Z'});
+  assert.equal(checkout.environmentOutcome, 'passed');
+  assert.deepEqual(checkout.environmentProviders, ['fixture']);
+  assert.deepEqual(checkout.against[0].ranAgainst, {provider: 'fixture', product: 'acme/gateway', version: '0.1.0',
+    historyDigest: 'sha256:' + 'b'.repeat(64), historyFrom: 'completed'});
+  const normalizing = completed.find('shop.orders::law::normalizing');
+  assert.equal(normalizing.environmentOutcome, 'failed');
+  assert.deepEqual(normalizing.environmentProviders, ['real-provider']);
+  assert.match(completed.text, /passed in completed run run-5 in environment staging, completed with exit code 1 against shop\.orders::Gateway: stand-in acme\/gateway 0\.1\.0 \(conformance level 3, history sha256:b+ when completed\)/);
+  assert.match(completed.text, /ENVIRONMENT staging \(run run-5, recorded 2026-10-09T19:30:33Z, completed with exit code 1\)/);
+  assert.match(completed.text, /architecture shop\.calm\.json sha256:c+, topology sha256:d+/);
+  assert.match(completed.text, /application shop: contract shop 1\.0\.0; application shop 1\.2\.0 \(commit abc123\)/);
+  assert.match(completed.text, /shop\.orders::normalize: real at https:\/\/normalize\.example\.com; real-provider shop\.orders::normalize 1; 1 tested obligation\(s\), 1 failed/);
+  for (const [execution, why] of [[{status: 'wired'}, /wiring only; nothing ran/], [{status: 'running'}, /run in progress; no completed run linked/]]) {
+    const planned = await evidence(document('run-5', execution));
+    assert.equal(planned.find('shop.orders::law::checkoutCharges').environment, undefined);
+    assert.equal(planned.find('shop.orders::law::checkoutCharges').plannedEnvironmentRun.execution.status, execution.status);
+    assert.match(planned.text, why);
+  }
+  const other = await evidence(document('run-6', {status: 'completed', exit_code: 0}));
+  assert.equal(other.find('shop.orders::law::checkoutCharges').environment, undefined);
+  assert.equal(other.find('shop.orders::law::checkoutCharges').plannedEnvironmentRun.id, 'run-6');
+  assert.match(other.text, /planned in environment staging \(run run-6, completed with exit code 0; no completed run linked\)/);
+});
 
 test('no selected layers are visible in check and evidence without a verification claim', async t => {
   const root = await project(t, spec);

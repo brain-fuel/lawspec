@@ -41,10 +41,16 @@ export function recordNativeAttempts(run, tests, {keys,seed,ok,profile,output,al
   }));
 }
 
+// A law an attestation touches is keyed by how its dependencies were wired:
+// endpoint, kind, and a stand-in's product, version and conformance. What the
+// run observed (reached, history digests, completion) and the identities
+// reported beside it are not inputs, so they change no key.
 export function attestedKeys(result) {
+  const wiring=d=>[d.dependency,d.endpoint,d.kind,
+    ...(d.standIn?[d.standIn.identity,d.standIn.version,d.standIn.conformance]:[])];
   return new Map((result.evidence??[]).filter(item=>item.against||item.plannedAgainst)
     .map(item=>[item.declaration,JSON.stringify([
-      item.environment??item.plannedEnvironment,item.against??item.plannedAgainst])]));
+      item.environment??item.plannedEnvironment,(item.against??item.plannedAgainst).map(wiring)])]));
 }
 
 const subject = (entry,item) => obligationTargets(entry).some(target=>
