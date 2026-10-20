@@ -37,6 +37,7 @@ import Data.List (intercalate, isInfixOf, nub, sortOn)
 import qualified Data.Map.Strict as M
 import LawSpec.Model
 import LawSpec.Collections (collectionsUnit)
+import LawSpec.Refinement (expandType)
 import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Temporal (budgetStart)
@@ -524,7 +525,7 @@ elaborateUnit u0 = do
   -- instance and handler.
   abilityLawCopies <- fmap concat $ forM declared $ \a -> fmap concat $ forM (instancesOf a) $ \inst -> do
     let table = zip (abilityParameters a) (abilityArguments inst)
-        implied = refinementLaws a inst
+        implied = refinementLaws u a inst
     attemptedAbilityLaws <- mapM attemptLaw (map (instantiateLaw table) (abilityLaws a) ++ implied)
     fmap concat $ forM attemptedAbilityLaws $ \l -> do
       unless (null (parameters l))
@@ -548,7 +549,7 @@ elaborateUnit u0 = do
       Nothing -> pure []
       Just a -> do
         let table = zip (abilityParameters a) (abilityArguments inst)
-        attemptedAbilityLaws <- mapM attemptLaw (map (instantiateLaw table) (abilityLaws a) ++ refinementLaws a inst)
+        attemptedAbilityLaws <- mapM attemptLaw (map (instantiateLaw table) (abilityLaws a) ++ refinementLaws u a inst)
         pure [ (l { lawName = prettyType inst ++ ": " ++ lawName l ++ " [" ++ handlerSetName set ++ "]" }
                , close (setCoverage set) [(i, maybe (head (defaults i)) ChooseSpec (lookup i (setCoverage set))) | i <- nub (inst : lawRow [] l)])
              | l <- attemptedAbilityLaws, null (parameters l)
@@ -631,10 +632,10 @@ instantiateLaw table l = l { definition = go (definition l) }
 
 -- An operation whose result type is refined owes its results that
 -- refinement, from every handler, for arguments that keep theirs.
-refinementLaws :: AbilityDeclaration -> Type -> [Law]
-refinementLaws a inst =
-  [ Law (op ++ " gives what its type says") [] [] claim "" "" [] [] (Location "<ability>" (line (abilitySpan a)) 1) [] emptyLawMetadata
-  | (op, ty) <- instantiatedOperations a inst
+refinementLaws :: Unit -> AbilityDeclaration -> Type -> [Law]
+refinementLaws u a inst =
+  [ Law (op ++ " gives what its type says") [] [] claim "" "" [] [] (spanStart (abilitySpan a)) [] emptyLawMetadata
+  | (op, ty) <- instantiatedOperations a{abilityOperations = [(n, expanded t) | (n, t) <- abilityOperations a]} inst
   , let (arguments, result) = functionType ty
         values = ["value" ++ show i | i <- [0 .. length arguments - 1]]
         call = foldl Apply (Var op) (map Var values)
@@ -642,7 +643,11 @@ refinementLaws a inst =
   , not (null predicates)
   , let body = Holds (foldr1 (Binary "&&") predicates)
         claim = if null values then body else Forall (zip values arguments) body ]
-  where line (Span (Location _ l _) _) = l
+  where -- A result the signature names by a refinement owes what the
+        -- refinement says; one that does not expand is reported when the
+        -- unit is lowered.
+        expanded ty = either (const ty) id (expandType (M.fromList [(dataTypeName d, d) | d <- dataTypes u])
+          (M.fromList [(refinementName r, r) | r <- refinements u]) [] M.empty M.empty ty)
 
 -- A clause of a handler with state s: `~s := e;` statements, then the
 -- result. Each statement sees the state the ones before it left. The clause

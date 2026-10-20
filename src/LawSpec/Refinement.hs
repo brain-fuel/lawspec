@@ -54,6 +54,14 @@ lowerUnitWith imported u = do
           pure (HarnessStrategy strategy{strategyType=ty,strategyBody=body})
         other -> pure other
   harness <- traverse (\h -> do entries <- mapM item (harnessItems h); pure h{harnessItems=entries}) (unitHarness u)
+  -- An ability operation's signature may name refinements like any other
+  -- signature; the refined types reach the operation's implied laws and
+  -- every handler, and Core sees their base types.
+  declaredAbilities <- mapM (\a -> do
+    operations <- mapM (\(n,t) -> (,) n <$> expand t) (abilityOperations a)
+    failures <- mapM (\(n,t) -> (,) n <$> expand t) (abilityFailures a)
+    resource <- traverse expand (abilityResource a)
+    pure a{abilityOperations=operations,abilityFailures=failures,abilityResource=resource}) (abilities u)
   plans <- mapM (\(name,plan) -> do
     draws <- mapM (\(input,strategy,ty,body) -> (,,,) input strategy <$> expand ty <*> generator body) (planDraws plan)
     pure (name,plan{planDraws=draws})) (lawHarness u)
@@ -68,7 +76,7 @@ lowerUnitWith imported u = do
       mentionsHandle t = any (\n -> n `elem` handleNames || any (\h -> ("::type::" ++ n) `isSuffixOf'` h) handleNames) (typeNames t)
       generated c = not (any (mentionsHandle . snd) (contractArguments c ++ [contractResult c]))
       isSuffixOf' a b = reverse a == take (length a) (reverse b)
-  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw (filter generated active) ++ checks', dataTypes=ds, functionDefinitions=definitions,unitHarness=harness,lawHarness=plans}
+  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw (filter generated active) ++ checks', dataTypes=ds, functionDefinitions=definitions,unitHarness=harness,lawHarness=plans,abilities=declaredAbilities}
 
 -- | A refinement that is ill-formed is reported once, at its declaration, not at
 -- every use.

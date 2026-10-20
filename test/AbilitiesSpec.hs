@@ -354,12 +354,33 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
     it "asks which type when a definition leaves its uses out" $
       program (extendUnit store $ "procedure guess (n :: Int32) -> Int32 is save n; load end procedure\n")
         `shouldSatisfy` failsWith "say which with `uses Store T`"
-  describe "refined operations" $
+  describe "refined operations" $ do
     it "makes every handler owe an operation's refined result" $ do
       let Right compiled = program (with [ "ability Meter is reading :: (r :: Int32 where r >= 0) end ability"
                                          , "handler fixedMeter for Meter is  operation reading is 7 end operation end handler" ])
       [C.propertyName p | u <- C.programUnits compiled, p <- C.unitProperties u, "Meter: reading gives what its type says" `isInfixOf` C.propertyName p]
         `shouldBe` ["Meter: reading gives what its type says [native]", "Meter: reading gives what its type says [fixedMeter]"]
+    it "elaborates a refinement alias in an operation's signature" $ do
+      let Right compiled = program (with
+            [ "refinement PetName is (v :: Text where v matches regex \"[a-z]{1,12}\") end refinement"
+            , "refinement Count is (n :: Int64 where n >= 0) end refinement"
+            , "ability Pets is register :: PetName -> Count end ability"
+            , "handler fakePets for Pets is operation register name is 1 end operation end handler"
+            , "procedure adopt (name :: PetName) -> Int64 uses Pets is register name end procedure" ])
+          operations = [ty | u <- C.programUnits compiled, a <- C.unitAbilities u, C.abilityName a == "Pets", (_, ty) <- C.abilityOperations a]
+      operations `shouldBe` [C.Arrow (C.scalarType "Text") (C.scalarType "Int64")]
+      [C.propertyName p | u <- C.programUnits compiled, p <- C.unitProperties u, "Pets: register gives what its type says" `isInfixOf` C.propertyName p]
+        `shouldBe` ["Pets: register gives what its type says [native]", "Pets: register gives what its type says [fakePets]"]
+    it "places a type that cannot reach Core at the declaration that uses it" $ do
+      let source = unlines
+            [ "unit example.store\n"
+            , "refinement Count is (n :: Int64 where n >= 0) end refinement\n"
+            , "ability Store (t :: Type) is save :: t -> Unit end ability\n"
+            , "procedure keep (n :: Count) -> Unit uses Store Count is save n end procedure\n"
+            , "end unit" ]
+      case program source of
+        Left (d : _) -> (code d, fmap line (at d)) `shouldBe` ("definition", Just 7)
+        other -> expectationFailure (show (fmap (const ()) other))
   describe "spec handlers with state" $ do
     let counter law = unlines
           [ "unit example.counter\n"
