@@ -655,6 +655,46 @@ failures or skips. Generated files and source/artifact fingerprints match.
 The corrected 157-step CI run, its full SDK/examples replay and complete
 updated parity must pass before the main merge and Canon inventory push.
 
+### Five-target acceptance completed — 20 October 2026
+
+The corrected **157-step CI passes every step** on frozen `8d57bd2b`, covering
+Prolog, HCL, YAML, ANTLR and Make. Native and WASM artifacts were rebuilt with
+`tools/wasm.sh`; the committed source, shipped WASM, glue and build manifest
+retain their frozen fingerprints throughout acceptance. Stack's standard
+test/build reconfiguration relinks the native reference executable from the
+same source; its observed identities are recorded separately.
+
+The compiler passes **2,283 examples with zero failures**. The full SDK passes
+**361 of 366 tests, with zero failures or cancellations and five existing native
+opt-in skips**. Its complete example test passes all 18-target exports,
+independent expected-file comparisons, legacy Kotlin refresh, application
+adapter preservation, edited-generated-file protection and output-path guards.
+The exact shipped WASM agrees with native on **6,416 complete responses** across
+68 fixtures, all 22 targets and all four width/layout profiles: 5,624 accepted
+responses and 792 matching rejections, including 5,370 accepted generations and
+772 rejected generations. No response fields are omitted or normalized.
+
+All **129 configured Prolog native acceptance steps** pass: 81 default 64-bit
+readable suites, 46 selected 32-bit compact variants and two 32-bit readable
+variants. Both repaired model-selection profiles pass within the complete CI.
+Independent YAML, OpenTofu, generated ANTLR Java parser/schema and Make checks
+pass. Installed-package smoke passes the full 18-target export, structural
+profiles, JavaScript execution and Rust scaffold/test/regeneration. Editor,
+126 generated files, source/artifact integrity, compiler boundaries, version,
+122 documentation pages with 119 compiled snippets and automated canonical
+checks pass. Fresh Rust embedding opt-in checks also pass on this artifact.
+
+Canon's matching 18-program/four-artifact inventory and its own two inventory
+properties pass. The original failed CI and SDK attempts remain preserved;
+the successful corrected run has its own 157 hashed step logs and receipts at
+`.artifacts/integration-1/target-final-ci-7823-logs/`,
+`target-final-ci-receipt.json`, `target-final-sdk-receipt.json`,
+`target-final-parity-receipt.json` and `target-final-native-matrix-receipt.json`.
+This completes the five-target implementation increment. Folio, LawTwin's
+per-program conformance, Cassandra, the retained demonstrations, advanced
+verification and human/external 1.0 gates remain open. Version 0.26.0 remains
+an ordinary minor; no tag or package publication is part of this increment.
+
 ## Approved 0.26.0 contract — 19 October 2026
 
 Implementation and technical acceptance are complete on `2444621f`, as recorded

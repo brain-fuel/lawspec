@@ -10,8 +10,8 @@ Janus. Checked definitions, schemas and generated properties reuse the Python
 target. PLUnit selects the actual pytest and Hypothesis cases, preserving their
 shrinking, replay and JUnit observations. Public generation and execution are
 implemented. The configured shared native acceptance matrix passes: default
-64-bit readable suites and selected 32-bit compact/readable variants. Final
-combined target acceptance remains open.
+64-bit readable suites and selected 32-bit compact/readable variants. Complete
+selected-target CI and full native/WASM response parity also pass.
 
 ## Setup and commands
 
