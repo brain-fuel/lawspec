@@ -9,7 +9,8 @@ The `prolog` program target runs application predicates in SWI-Prolog through
 Janus. Checked definitions, schemas and generated properties reuse the Python
 target. PLUnit selects the actual pytest and Hypothesis cases, preserving their
 shrinking, replay and JUnit observations. Public generation and execution are
-implemented; the full shared native acceptance matrix remains open.
+implemented. The shared native acceptance matrix passes at 64-bit readable and
+32-bit compact profiles; final combined target acceptance remains open.
 
 ## Setup and commands
 

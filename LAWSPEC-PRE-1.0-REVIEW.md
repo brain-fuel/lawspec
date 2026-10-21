@@ -558,13 +558,35 @@ are recognized as closed, so indexed inputs receive the existing unsupported
 diagnostic rather than disappearing from the grammar.
 
 The correction follows ANTLR's generated start-rule methods and JSON Schema's
-standard subschema references. Isolated native-emitter checks pass real generated
-Java parser calls, selected-schema validation and Canon parsing, including
-overlapping UInt8/UInt16 domains, trailing-input rejection and unsupported
-indexed inputs. It adds no decoder, obligation generator, solver or proof
-checker. Compiler/SDK regressions, independent validators and parity probes
-cover the public integration. Rebuilt public artifacts and complete final-source
-acceptance remain required before merge.
+standard subschema references. Public native and WASM artifacts are rebuilt with
+`tools/wasm.sh`. All 12 focused compiler checks and 13 SDK/CLI checks pass; the
+same 13 SDK/CLI checks also pass against a packed and freshly installed npm
+archive, with no skips. Independent generated Java parser calls, selected-schema
+validation and Canon parsing pass, including overlapping UInt8/UInt16 domains,
+trailing-input rejection and unsupported indexed inputs. The YAML, OpenTofu and
+Make validators also pass. Generated-file and artifact fingerprints match;
+documentation checks pass for 122 pages and 119 compiled snippets. Automated
+canonical checks pass with the existing deferred human-review exemptions.
+
+It adds no decoder, obligation generator, solver or proof checker. Updated full
+native/WASM parity and complete final-source acceptance remain required before
+merge. Logs are under `.artifacts/integration-1/target-antlr-worktree-*`.
+
+### Shared native target matrix checkpoint — 20 October 2026
+
+The original 158-step selected-target CI has completed all native acceptance
+steps at 64-bit readable and 32-bit compact profiles. This includes indexed and
+refined data, generators, bindings, handlers, state, workflows, sessions, actors,
+distribution and the shared process/network fixtures. The two model-selection
+harness failures and their successful replacement runs remain recorded above.
+The full tracked compiler passes 2,281 examples with zero failures; this run
+precedes the two additional ANTLR compiler checks, which pass separately.
+
+At this checkpoint 154 original CI steps pass and two have the recorded harness
+failures. Full SDK and native/WASM parity steps are still running. Their results
+and a green final combined run over the corrected source remain required. The
+native matrix result does not close Folio, LawTwin's per-target conformance,
+the retained demonstrations, human readability/adoption gates or 1.0 sign-off.
 
 ## Approved 0.26.0 contract — 19 October 2026
 
