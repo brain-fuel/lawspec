@@ -491,9 +491,10 @@ empty native exception message that violates its intrinsic field refinement.
 All 31 runtime controls and eleven execution-reporting controls pass. Thirteen
 focused SDK checks pass, including actual native nested-layout execution and
 rejection controls across all four width/layout profiles. Canon parses all 59
-fixture/runtime modules. Native/WASM agrees on 520 complete responses and
-20 additional binding-specific responses covering all profiles, accepted
-interop and explicit rejections.
+fixture/runtime modules. Native/WASM agrees on 520 complete responses from a
+focused four-fixture set and 20 additional binding-specific responses covering
+all profiles, accepted interop and explicit rejections. The full corpus parity
+run remains a separate requirement.
 
 An 81 MB generated till suite exposed excessive pytest AST work when reporting
 its failing mutations. Isolated runs retained the same four observed failures
@@ -574,13 +575,17 @@ merge. Logs are under `.artifacts/integration-1/target-antlr-worktree-*`.
 
 ### Shared native target matrix checkpoint — 20 October 2026
 
-The original 158-step selected-target CI has completed all native acceptance
-steps at 64-bit readable and 32-bit compact profiles. This includes indexed and
-refined data, generators, bindings, handlers, state, workflows, sessions, actors,
-distribution and the shared process/network fixtures. The two model-selection
-harness failures and their successful replacement runs remain recorded above.
-The full tracked compiler passes 2,281 examples with zero failures; this run
-precedes the two additional ANTLR compiler checks, which pass separately.
+The original 158-step selected-target CI has completed all 129 scheduled native
+acceptance steps: 81 default 64-bit readable suites, 46 selected 32-bit compact
+variants and two 32-bit readable variants. The default suite includes indexed
+and refined data, generators, bindings, handlers, state, workflows, sessions,
+actors, distribution and the shared process/network fixtures. This matrix does
+not run every suite in every profile. The two model-selection harness failures
+and their successful replacement runs remain recorded above. The full tracked
+compiler passes 2,281 examples with zero failures; this run precedes the two
+additional ANTLR compiler checks, which pass separately. Per-step logs and
+hashes are recorded in
+`.artifacts/integration-1/target-native-matrix-initial-receipt.json`.
 
 At this checkpoint 154 original CI steps pass and two have the recorded harness
 failures. Full SDK and native/WASM parity steps are still running. Their results
