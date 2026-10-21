@@ -37,7 +37,7 @@ for(const [name,content]of Object.entries(templates(language,{minify}))){
 }
 await cp(path.join(repo,'acceptance/actors',language,'files'),project,{recursive:true});
 const target={language,root:'.'};
-if(language==='python')target.python=process.env.LAWSPEC_PYTHON_EXECUTABLE??path.join(repo,'.integration/python/.venv/bin/python');
+if(['python','prolog'].includes(language))target.python=process.env.LAWSPEC_PYTHON_EXECUTABLE??path.join(repo,'.integration',language,'.venv/bin/python');
 if(['javascript','typescript'].includes(language))await symlink(
   path.resolve(process.env.LAWSPEC_NODE_MODULES??path.join(repo,'.integration',language,'node_modules')),path.join(project,'node_modules'));
 if(['kotlin','groovy'].includes(language))target.gradle=process.env.LAWSPEC_GRADLE??'gradle';

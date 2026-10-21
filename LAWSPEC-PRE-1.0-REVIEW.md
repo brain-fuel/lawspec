@@ -534,6 +534,19 @@ check is preserved while the new scheduler regression and graph checks verify
 the correction. Full compiler, SDK, native acceptance, packaging and canonical
 results remain open. Logs are under `.artifacts/integration-1/target-*`.
 
+The packed npm smoke passes the complete 18-target example export, structural
+API generation at both widths and layouts, installed JavaScript and Rust
+execution, license packaging and unchanged regeneration. The full export takes
+2,840.7 seconds; the complete smoke takes 3,059.1 seconds on this run.
+
+The selected CI run exposed two model-layer harness failures before generation:
+Prolog's Python setting was missing, selecting the system interpreter. The
+shared harness now selects each Python-backed target's own pinned environment.
+Both repaired profiles pass independent actor laws, five model checks, rejection
+of the incorrect reference transition, stale-result handling, all evidence
+views and empty selections. The original failure logs remain recorded. The
+ongoing CI run and a final cached run over the corrected source remain required.
+
 ## Approved 0.26.0 contract — 19 October 2026
 
 Implementation and technical acceptance are complete on `2444621f`, as recorded
