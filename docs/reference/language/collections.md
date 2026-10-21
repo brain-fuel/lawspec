@@ -117,8 +117,8 @@ function countWords (words :: List Text) (counts :: KeyVal Text Integer) ->
   first matching case of words :
     when Nil then counts
     when Cons w rest then first matching case of prelude.lookup w counts :
-        when Nothing then countWords rest (prelude.put w 1 counts)
-        when Just n then countWords rest (prelude.put w ((n + 1) :: Integer)
+        when Absent then countWords rest (prelude.put w 1 counts)
+        when Present n then countWords rest (prelude.put w ((n + 1) :: Integer)
           counts)
       end case
   end case
@@ -140,7 +140,7 @@ law "|the latest put wins| is
   definition :
     for all (k :: Text) (v :: Integer) (w :: Integer) (m :: KeyVal Text Integer)
       =>
-      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w end for all
+      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Present w end for all
   end definition
 end law
 end unit
@@ -205,7 +205,7 @@ The order:
 
 - exact numbers by value;
 - text by code point, bytes by octet, and `false` before `true`;
-- lists element by element, a prefix first; `Nothing` before `Just`;
+- lists element by element, a prefix first; `Absent` before `Present`;
 - other data by constructor, then by fields left to right.
 
 `SortedSet Float64` is rejected because `Float64` has no portable `Keyed` order.

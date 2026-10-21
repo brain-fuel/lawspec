@@ -31,6 +31,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   history it ran against (the completed history digest, else the
   stand-in's). Each law lists its providers.
 
+### Changed
+
+- **Breaking:** `Maybe`'s values are now `Present x` and `Absent`. They were
+  `Just x` and `Nothing`. The type is still `Maybe a`. The old names are not
+  aliases: a source that uses them is refused, and the error names the new
+  constructor. Generated code follows the new names wherever LawSpec's
+  constructors appear: data tags (`Maybe::Present`, `Maybe::Absent`), the
+  Python, JavaScript, TypeScript and JVM `Present` and `Absent` classes, the
+  Go `LawSpecPresent` and `LawSpecAbsent` helpers, the C# `Maybe.Absent`
+  helper, the typed Java `Maybe.present`, `absent` and `isPresent`, the
+  Erlang and Elixir `present` and `absent` atoms, rendered values, the
+  editor grammar and the npm names. Native mappings are unchanged: Rust,
+  Swift, Scala, F# and Gleam keep their options, and Haskell keeps `Maybe`.
+
 ### Fixed
 
 - Cached `lawspec evidence` keeps explicit running or wired environment

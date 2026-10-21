@@ -58,7 +58,7 @@ alike.
 | `Float32`, `Float64` | `float` |
 | `Complex64`, `Complex128` | `complex` |
 | `List a` | `list[A]` |
-| `Maybe a` | `lawspec_schema.Maybe[A]`, with `Nothing` and `Just` variants |
+| `Maybe a` | `lawspec_schema.Maybe[A]`, with `Absent` and `Present` variants |
 | `Either a b` | `lawspec_schema.Either[A, B]`, with `Left` and `Right` variants |
 | Products and sums | Named generic dataclasses in `lawspec_data` |
 | `Nullable a`, `Optional a` | Tagged `lawspec_runtime.Presence` values |
@@ -66,7 +66,7 @@ alike.
 
 An adapter whose result is the abstract `Integer` returns any `int`.
 
-`Nothing()` differs from `Just(Nothing())`, and `Left(value)` from
+`Absent()` differs from `Present(Absent())`, and `Left(value)` from
 `Right(value)`. These algebraic variants are separate from the interoperability
 states of `Nullable`, `Optional`, `Null` and `Undefined`.
 

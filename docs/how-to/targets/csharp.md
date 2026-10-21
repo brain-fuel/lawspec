@@ -84,7 +84,7 @@ Adapters use the model's F# types as C# sees them:
 | `Fn.Run` | The value of a block of statements |
 | `V.Int`, `V.Text`, `V.Data`, … | Portable values, one method per `Value` case |
 | `IsSome`, `IsNone`, `GetOrElse`, `Match` | `Maybe` extensions on F# options |
-| `Maybe.Of`, `Maybe.Nothing` | F# options |
+| `Maybe.Of`, `Maybe.Absent` | F# options |
 | `Outcome.Ok`, `Outcome.Error` | F# results |
 
 Every public function of the runtime has a PascalCase compiled name, such as
@@ -125,7 +125,7 @@ stateful handler's `State` property reads or replaces its state:
 ```csharp
 var broker = new LawSpec.Handlers.LawtwinKafka.Cluster();
 var snapshot = broker.State;
-broker.ProduceRequest(partition, Maybe.Nothing<ProducerTag>(), Fn.List(record));
+broker.ProduceRequest(partition, Maybe.Absent<ProducerTag>(), Fn.List(record));
 broker.State = snapshot;
 ```
 

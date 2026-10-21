@@ -205,7 +205,7 @@ With [native bindings](../native-bindings.md), a handle can be the target's
 own type, and commands can call its methods directly, with no adapter code.
 For example, `Jobs` can bind to `java.util.concurrent.ConcurrentLinkedQueue`
 with `submit` as its `offer` method. A Unit result discards the method's
-return value. A `Maybe` result treats the target's null value as `Nothing`.
+return value. A `Maybe` result treats the target's null value as `Absent`.
 
 ## Evidence
 

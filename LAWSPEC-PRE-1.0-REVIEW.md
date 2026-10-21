@@ -5942,7 +5942,7 @@ Each block is an independent unit. Read its three letters from outside inward: d
 
 At a record layer, the model represents the particular kind directly: EmailDelivery, Invoice, or PdfFile. At a union layer, it additionally represents Download, Letter, or PlainText. Consequently the eight models permit different values; they are not eight semantically interchangeable spellings.
 
-The function returns the filename of a PDF invoice delivered by email. Just contains a qualifying filename. Nothing means a different alternative was selected. A record pattern selects fields by name; a union constructor pattern selects the tag and matches its positional fields in this earlier candidate.
+The function returns the filename of a PDF invoice delivered by email. Present contains a qualifying filename. Absent means a different alternative was selected. A record pattern selects fields by name; a union constructor pattern selects the tag and matches its positional fields in this earlier candidate.
 
 | Example | Delivery | Document | File |
 | --- | --- | --- | --- |
@@ -5988,14 +5988,14 @@ is
         }
       }
     } then
-      Just name
+      Present name
   end case
 end function
 ~~~
 
 ### 16.2 RRU
 
-The file may instead be PlainText. That alternative reaches Nothing.
+The file may instead be PlainText. That alternative reaches Absent.
 
 ~~~text
 unit example.delivery.rru
@@ -6026,9 +6026,9 @@ is
         file: Pdf name #any
       }
     } then
-      Just name
+      Present name
 
-    otherwise Nothing
+    otherwise Absent
   end case
 end function
 ~~~
@@ -6066,9 +6066,9 @@ is
         fileName: name
       })
     } then
-      Just name
+      Present name
 
-    otherwise Nothing
+    otherwise Absent
   end case
 end function
 ~~~
@@ -6106,9 +6106,9 @@ is
     when record{
       document: Invoice #any (Pdf name #any)
     } then
-      Just name
+      Present name
 
-    otherwise Nothing
+    otherwise Absent
   end case
 end function
 ~~~
@@ -6146,9 +6146,9 @@ is
         fileName: name
       }
     }) then
-      Just name
+      Present name
 
-    otherwise Nothing
+    otherwise Absent
   end case
 end function
 ~~~
@@ -6186,9 +6186,9 @@ is
     when Email #any (record{
       file: Pdf name #any
     }) then
-      Just name
+      Present name
 
-    otherwise Nothing
+    otherwise Absent
   end case
 end function
 ~~~
@@ -6226,9 +6226,9 @@ is
     when Email #any (Invoice #any (record{
       fileName: name
     })) then
-      Just name
+      Present name
 
-    otherwise Nothing
+    otherwise Absent
   end case
 end function
 ~~~
@@ -6266,9 +6266,9 @@ function "|email invoice PDF file name|
 is
   first matching case of delivery:
     when Email #any (Invoice #any (Pdf name #any)) then
-      Just name
+      Present name
 
-    otherwise Nothing
+    otherwise Absent
   end case
 end function
 ~~~
@@ -6282,24 +6282,24 @@ expect "|email invoice PDF file name|
   (Email "alex@example.com"
     (Invoice "INV-42"
       (Pdf "invoice.pdf" 24000)))
-  = Just "invoice.pdf"
+  = Present "invoice.pdf"
 
 expect "|email invoice PDF file name|
   (Download
     (Invoice "INV-42"
       (Pdf "invoice.pdf" 24000)))
-  = Nothing
+  = Absent
 
 expect "|email invoice PDF file name|
   (Email "alex@example.com"
     (Letter (Pdf "letter.pdf" 12000)))
-  = Nothing
+  = Absent
 
 expect "|email invoice PDF file name|
   (Email "alex@example.com"
     (Invoice "INV-42"
       (PlainText "invoice.txt")))
-  = Nothing
+  = Absent
 ~~~
 
 The three ignored values in the successful deep pattern are the recipient, invoice number, and PDF byte count. The filename is the bound value.
@@ -6352,9 +6352,9 @@ is
         })
       })
     }) then
-      Just name
+      Present name
 
-    otherwise Nothing
+    otherwise Absent
   end case
 end function
 ~~~

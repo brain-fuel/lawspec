@@ -280,9 +280,17 @@ DEC-algebraic-maybe-either:
   status: decided
   question: How do Maybe and Either relate to the interoperability states Nullable and Optional?
   answer: |
-    Maybe (Nothing/Just) and Either (Left/Right) are algebraic data, distinct from Nullable and Optional, which model native absence and keep nested absence states apart. Recorded in to_be_removed/PLAN-0.9.md.
+    Maybe (Absent/Present) and Either (Left/Right) are algebraic data, distinct from Nullable and Optional, which model native absence and keep nested absence states apart. Recorded in to_be_removed/PLAN-0.9.md.
   opened: 0.9.0
   decided: 0.9.0
+
+DEC-maybe-present-absent:
+  status: decided
+  question: What are Maybe's constructors called?
+  answer: |
+    Present x and Absent; the type stays Maybe a. The owner decided this on 2026-10-21 because the words read clearly to non-mathematicians. It is a hard rename: Just and Nothing are not aliases, and a source that uses them is refused with an error naming the new constructor. The pre-1.0 contract gives no migration support, and no formatter rewrite exists, since the formatter needs a checked source. Generated code uses the new names wherever LawSpec's constructor names appear (data tags, runtime classes and helpers, typed native names, BEAM atoms, rendered values, editor grammars, npm names). Native mappings stay as they were: Rust, Swift, Scala, F# and Gleam options, and Haskell's Maybe. The owner accepts frozen SMT v1 fingerprint changes from this rename, and merges resolve in favour of these names. No frozen v1 receipt goes stale: a program fingerprint hashes the program's Core, which names Maybe's constructors only where the program uses them, and every v1 task in the corpus programs that use Maybe (bit-codec, chapter-06, native-payments, recursive-records) is unsupported, so it binds no fingerprint or script. Those four corpus sources must still be renamed. Recorded in CHANGELOG [Unreleased].
+  opened: 0.26.0
+  decided: 0.26.0
 
 DEC-readable-output-default:
   status: decided

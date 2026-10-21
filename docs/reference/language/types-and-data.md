@@ -50,8 +50,12 @@ Sets, maps, queues, stacks and deques are built in as well; see
 
 ## Maybe and Either
 
-`Maybe a` has constructors `Nothing` and `Just value`. `Either a b` has
+`Maybe a` has constructors `Absent` and `Present value`. `Either a b` has
 constructors `Left value` and `Right value`.
+
+`Present` and `Absent` replace the old names `Just` and `Nothing`. The old
+names are not aliases. A source that uses them is refused, and the error
+names the new constructor.
 
 ```lawspec
 unit guide.presence
@@ -60,10 +64,10 @@ echo :: Maybe (Either Int8 Bool) -> Maybe (Either Int8 Bool)
 
 law "|preserve every alternative| is
   definition : for all (x :: Maybe (Either Int8 Bool)) => echo x = x end for all end definition
-  example "|absent| : x = Nothing expect echo x = Nothing end example
-  example "|left integer| : x = Just (Left 127) expect echo x = Just (Left 127)
+  example "|absent| : x = Absent expect echo x = Absent end example
+  example "|left integer| : x = Present (Left 127) expect echo x = Present (Left 127)
   end example
-  example "|right boolean| : x = Just (Right false) expect echo x = Just (Right
+  example "|right boolean| : x = Present (Right false) expect echo x = Present (Right
     false) end example
 end law
 end unit
@@ -71,9 +75,9 @@ end unit
 
 These are algebraic sums. They are separate from the interoperability types
 `Nullable a` and `Optional a` (see [primitives](../primitives.md#literals-constructors-and-helpers)).
-For `Maybe (Maybe Bool)`, the values `Nothing`, `Just Nothing` and
-`Just (Just false)` are all distinct. A constructor application used as an
-argument needs parentheses, as in `Just (Left 127)`.
+For `Maybe (Maybe Bool)`, the values `Absent`, `Present Absent` and
+`Present (Present false)` are all distinct. A constructor application used as an
+argument needs parentheses, as in `Present (Left 127)`.
 
 ## Products and sums
 

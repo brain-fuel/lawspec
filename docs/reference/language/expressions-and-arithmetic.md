@@ -115,7 +115,7 @@ associative`, `map fuses` and `recovery keeps successes`.
 
 Literals take their type from context: a declared parameter, an example input,
 an annotation, or the other branches of a `match` or an `if` and the other
-items of a list. In `let from = (match g with | Nothing -> 0 | Just o -> o end)`
+items of a list. In `let from = (match g with | Absent -> 0 | Present o -> o end)`
 with `o :: Int64`, the `0` is an `Int64`.
 
 - An integer literal with no context has type `Integer`.
@@ -174,7 +174,7 @@ bounded type the context wants instead:
 | --- | --- |
 | `prelude.wrapping e` | it wraps around, as two's complement does |
 | `prelude.saturating e` | it stops at the type's least or greatest value |
-| `prelude.bounded e` | it is `Nothing`; otherwise `Just` the value |
+| `prelude.bounded e` | it is `Absent`; otherwise it is `Present value` |
 
 ```lawspec
 unit guide.bounded
@@ -189,7 +189,7 @@ function total (a :: Int32) (b :: Int32) -> Maybe Int32 is prelude.bounded (a +
 law "|bounded arithmetic| is
   definition :
     nextEpoch 32767 = -32768 and topUp 250 = 255 and total 2147483647 1 =
-    Nothing
+    Absent
   end definition
 end law
 end unit

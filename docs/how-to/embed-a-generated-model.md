@@ -36,7 +36,7 @@ contract or workflow policy. The typed forms are:
 | `Int64`, `UInt64` | `int` | a `number` until it outgrows a safe integer, then a `bigint` | `Int64`, `Word64` |
 | `Integer` | `int` | the same | `Integer` |
 | `Text`, `Bytes` | `str`, `bytes` | `string`, `Uint8Array` | `Text`, `ByteString` |
-| `Maybe`, `Either` | `()` or `(x,)`, `(0, l)` or `(1, r)` | `null` or a `Just`, a `Side` | strict `Opt`, `Alt` |
+| `Maybe`, `Either` | `()` or `(x,)`, `(0, l)` or `(1, r)` | `null` or a `Present`, a `Side` | strict `Opt`, `Alt` |
 | `List a` | a persistent cons list of tuples | a persistent cons list | a strict list that knows its length |
 | `KeyVal k v`, `Set a` | a persistent AVL tree of tuples | a persistent AVL tree | `Data.Map.Strict`, `Data.Set` |
 | data | a tuple, after the constructor's rank when there are several | a class per constructor, typed in TypeScript | a strict data type, constructors in the portable order |

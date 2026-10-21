@@ -266,12 +266,12 @@ unfolded, are handled conservatively and may be rejected.
 
 ## Sum payloads
 
-`Maybe (value :: Int8 where value > 0)` admits `Nothing` and positive `Just`
+`Maybe (value :: Int8 where value > 0)` admits `Absent` and positive `Present`
 payloads. `Either (value :: Int8 where value > 0) Bool` checks the bound only
 for `Left`. Nested sums compose, and payload predicates may refer to earlier
 inputs. Finite domains keep distinct absence and variant states.
 
-In a total definition, a `Maybe` payload fact is available in the `Just`
+In a total definition, a `Maybe` payload fact is available in the `Present`
 branch, and an `Either` fact in its own `Left` or `Right` branch.
 
 ## List payloads
