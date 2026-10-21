@@ -66,6 +66,16 @@ test_parallelStepsNeverShareWhatTheyClaim = describe "the CI worker pool" $ do
     let chain = [task "build" [] [Exclusive "stack"], task "x" ["build"] [Shared "stack", Exclusive "project:x"],
                  task "y" ["build"] [Shared "stack", Exclusive "project:x"], task "z" ["build"] [Shared "stack"],
                  task "w" [] [], task "v" [] []]
+    it "rejects duplicate identities before starting any work" $ do
+      ran <- newMVar False
+      outcome <- try (schedule 2 False [task "same" [] [], task "same" [] []]
+        (\_ -> modifyMVar_ ran (const (pure True)) >> pure True)
+        (const (pure ())) (\_ _ -> pure ()))
+      case outcome of
+        Left e -> show (e :: IOError) `shouldSatisfy`
+          ("user error (lawspec-dev ci: duplicate step names: same" `isPrefixOf`)
+        Right _ -> expectationFailure "duplicate task identities ran"
+      readMVar ran `shouldReturn` False
     it "keeps the sequential order with one job" $ do
       (results, events) <- run 1 False [] chain
       map fst results `shouldBe` map taskName chain

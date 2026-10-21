@@ -477,7 +477,7 @@ targetSteps target =
   | target `elem` ["java","kotlin","scala","groovy","rust","go","haskell","fsharp","swift","erlang","elixir","gleam"] ] ++
   [ Step "rust-dynamic-embedding" [("LAWSPEC_NATIVE_LAYOUT_TARGET","rust")]
       ["node","--test","npm/test/rust-dynamic-embedding.test.mjs"]
-  ] ++
+  | target == "rust" ] ++
   [ Step "rust-native-failure-products" [("LAWSPEC_NATIVE_LAYOUT_TARGET","rust")]
       ["node","--test","--test-name-pattern=^Rust mapped record failures", "npm/test/native-failure-products.test.mjs"]
   | target == "rust" ] ++

@@ -511,6 +511,29 @@ native matrix, editor, packaging and canonical release checks remain required;
 the earlier full compiler pass covers the preceding checkpoint. No target or
 1.0 release sign-off is claimed by these scoped checks.
 
+### Target CI graph and Canon correspondence — 20 October 2026
+
+Fresh independent YAML, OpenTofu, ANTLR and Make acceptance passes against
+the current compiler. Canon parses the same four emitted formats, and its
+supported inventory agrees exactly with LawSpec's 18 program and four artifact
+targets. Folio remains planned. The receipt is
+`.artifacts/integration-1/target-canon-artifact-receipt.json`.
+
+Review found that the Rust embedding check was registered for each program
+target, producing 18 copies with the same step identity in the default graph.
+It now belongs to Rust, follows Rust's bootstrap and claims its environment.
+The worker pool rejects duplicate identities before starting any work. All
+13 scheduler checks pass, including that rejection control. All 26 inspected
+graph configurations have unique names and correct target ownership; the
+complete default graph contains 2,738 distinct steps. These are graph checks;
+execution acceptance remains a separate requirement.
+
+The ongoing selected-target CI run retains its original 158 steps, including
+the Rust check once. The corrected selected graph has 157 steps. The running
+check is preserved while the new scheduler regression and graph checks verify
+the correction. Full compiler, SDK, native acceptance, packaging and canonical
+results remain open. Logs are under `.artifacts/integration-1/target-*`.
+
 ## Approved 0.26.0 contract — 19 October 2026
 
 Implementation and technical acceptance are complete on `2444621f`, as recorded
