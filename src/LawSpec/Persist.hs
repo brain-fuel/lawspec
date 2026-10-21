@@ -35,6 +35,10 @@ instance Binary S.Type
 instance Binary S.TypedCase
 instance Binary S.TypedExpr
 instance Binary S.HandlerSet
+instance Binary S.LawClaims
+instance Binary S.ClaimItem
+instance Binary S.Exemption
+instance Binary S.Until
 instance Binary S.Unit
 instance Binary S.Protocol
 instance Binary S.Step

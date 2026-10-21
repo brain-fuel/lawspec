@@ -42,7 +42,7 @@ railwayLaw :: Law -> Law
 railwayLaw l = case laws (railwayUnit emptyUnit { laws = [l] }) of
   [rewritten] -> rewritten
   _ -> l
-  where emptyUnit = Unit "" [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] Nothing [] [] []
+  where emptyUnit = Unit "" [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] Nothing [] [] [] []
 
 -- | Railway operators are rewritten into ordinary Either code before inference,
 -- so no later stage knows they exist. ref:wlaschin-railway

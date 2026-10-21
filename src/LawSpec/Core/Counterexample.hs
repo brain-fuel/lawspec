@@ -15,7 +15,7 @@
 -- run the prover's model through runtime assertion checking and report only
 -- confirmed ones. ref:DEC-validated-counterexamples
 module LawSpec.Core.Counterexample
-  ( CounterexampleCheck(..), checkStatus, validateCounterexample, readValues
+  ( CounterexampleCheck(..), checkStatus, validateCounterexample, readValues, valueOf, SExpression
   ) where
 
 import Data.Char (isDigit, isSpace)

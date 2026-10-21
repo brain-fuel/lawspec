@@ -1,0 +1,77 @@
+unit portfolio.refunds
+
+-- Portfolio 13.6: policy laws checked together. Each function's laws are
+-- checked for completeness, overlap, conflict and vacuity by default.
+
+type Decision is one of
+  | Approved
+  | Review
+  | Rejected
+end type
+
+-- Compatible requirements: the laws decide disjoint inputs, cover every
+-- input, and agree.
+function decide (amount :: Whole) (blocked :: Bool) -> Decision is
+  if blocked then Rejected else (if amount <= 100 then Approved else Review end if) end if
+end function
+
+law "|blocked customers are rejected| is
+  definition: for all (amount :: Whole) (blocked :: Bool) => blocked implies decide amount blocked = Rejected end for all end definition
+end law
+
+law "|small refunds are approved| is
+  definition: for all (amount :: Whole) (blocked :: Bool) => not blocked and amount <= 100 implies decide amount blocked = Approved end for all end definition
+end law
+
+law "|large refunds need review| is
+  definition: for all (amount :: Whole) (blocked :: Bool) => not blocked and amount > 100 implies decide amount blocked = Review end for all end definition
+end law
+
+-- A proven contradiction at the zero boundary.
+function settle (amount :: Whole) (captured :: Whole) -> Decision is
+  if amount <= captured then Approved else Rejected end if
+end function
+
+law "|refunds within the capture are approved| is
+  definition: for all (amount :: Whole) (captured :: Whole) => amount <= captured implies settle amount captured = Approved end for all end definition
+end law
+
+law "|nothing captured means no refund| is
+  definition: for all (amount :: Whole) (captured :: Whole) => captured = 0 implies settle amount captured = Rejected end for all end definition
+end law
+
+law "|refunds above the capture are rejected| is
+  definition: for all (amount :: Whole) (captured :: Whole) => amount > captured implies settle amount captured = Rejected end for all end definition
+end law
+
+laws for settle are
+  overlap allowed because "nothing captured and an amount above it are both rejected"
+end laws
+
+-- A partial law, valid in its scope: the laws cover amounts up to 1000.
+function quote (amount :: Whole) -> Decision is
+  if amount <= 1000 then Approved else Review end if
+end function
+
+law "|quotes up to a thousand are approved| is
+  definition: for all (amount :: Whole) => amount <= 1000 implies quote amount = Approved end for all end definition
+end law
+
+laws for quote are
+  complete over amount <= 1000
+end laws
+
+-- An uncovered input, reported without refuting the partial law.
+function triage (amount :: Whole) -> Decision is
+  if amount <= 5000 then Approved else Review end if
+end function
+
+law "|triage approves amounts up to five thousand| is
+  definition: for all (amount :: Whole) => amount <= 5000 implies triage amount = Approved end for all end definition
+end law
+
+laws for triage are
+  partial because "amounts above 5000 go to manual review"
+end laws
+
+end unit

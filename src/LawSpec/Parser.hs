@@ -34,7 +34,7 @@ import Control.Monad.State.Strict (StateT(..), evalStateT, runStateT, get, put, 
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
-import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace)
+import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace, isDigit)
 import Data.List (uncons, intercalate, isInfixOf, nub)
 import Text.Megaparsec hiding (SourcePos, parse, runParserT, lookAhead)
 import qualified Text.Megaparsec as MP
@@ -2248,6 +2248,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | DefinitionMember (FunctionDefinition, Maybe [Type]) | MappingMember [FunctionDefinition]
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
   | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration | HandlerSetMember HandlerSet
+  | ClaimsMember LawClaims
 
 memberSyntax :: UnitMember -> (String,Maybe String)
 memberSyntax member = ("declaration." ++ kind,name)
@@ -2274,6 +2275,56 @@ memberSyntax member = ("declaration." ++ kind,name)
       ResourceMember r -> ("resource",Just (prettyType (resourceType r)))
       HarnessMember h -> ("harness",Just (harnessName h))
       HandlerSetMember h -> ("handlers",Just (handlerSetName h))
+      ClaimsMember c -> ("laws-for",Just (claimsFunction c))
+
+-- | laws for f are ... end laws. Each line is a claim (complete over c,
+-- without overlap, without conflict) or an exemption with its reason:
+-- partial, overlap allowed, conflict allowed (until required) and vacuity
+-- allowed for a law, each optionally until a version or a UTC date-time.
+lawClaimsP :: P LawClaims
+lawClaimsP = blockP "laws" $ do
+  begin <- sourceLocation
+  keyword "laws"
+  keyword "for"
+  function <- ident
+  keyword "are"
+  items <- many (withSpan claimItemP)
+  closeP "laws"
+  finish <- sourceLocation
+  pure (LawClaims function items (Span begin finish))
+  where
+    claimItemP = choice
+      [ try (keyword "complete" *> keyword "over") *> (CompleteOver <$> regionExpr [])
+      , try (keyword "without" *> keyword "overlap") $> WithoutOverlap
+      , try (keyword "without" *> keyword "conflict") $> WithoutConflict
+      , exemption (keyword "partial" $> PartialExemption) False
+      , exemption (try (keyword "overlap" *> keyword "allowed") $> OverlapExemption) False
+      , exemption (try (keyword "conflict" *> keyword "allowed") $> ConflictExemption) True
+      , exemption (try (keyword "vacuity" *> keyword "allowed" *> keyword "for") *> (VacuityExemption <$> lawNameP)) False ]
+    exemption kind required = do
+      excused <- kind
+      expiry <- optional (keyword "until" *> untilP)
+      when (required && expiry == Nothing) (fail "conflict allowed needs until: a conflict is excused only for a while")
+      keyword "because"
+      Exempt excused expiry <$> str
+    -- A version (1.2.0) or a UTC date-time (2027-03-01T00:00Z).
+    untilP = lexeme $ do
+      text <- some (satisfy (\c -> isAlphaNum c || c `elem` (".-:+" :: String)))
+      if 'T' `elem` text && length text >= 10 && take 1 (drop 4 text) == "-"
+        then if utc text then pure (UntilTime text)
+          else fail ("until " ++ text ++ ": a date-time must be UTC, written like 2027-03-01T00:00Z")
+        else if version text then pure (UntilVersion text)
+          else fail ("until " ++ text ++ ": write a version like 1.2.0 or a UTC date-time like 2027-03-01T00:00Z")
+    version text = case splitDots text of
+      parts@(_ : _ : _ : _) -> all (\p -> not (null p) && all isAlphaNum p) parts && all isDigit (concat (take 3 parts))
+      _ -> False
+    splitDots text = case break (== '.') text of
+      (part, '.' : rest) -> part : splitDots rest
+      (part, _) -> [part]
+    utc text = case text of
+      [y1,y2,y3,y4,'-',m1,m2,'-',d1,d2,'T',h1,h2,':',n1,n2,'Z'] -> all isDigit [y1,y2,y3,y4,m1,m2,d1,d2,h1,h2,n1,n2]
+      [y1,y2,y3,y4,'-',m1,m2,'-',d1,d2,'T',h1,h2,':',n1,n2,':',s1,s2,'Z'] -> all isDigit [y1,y2,y3,y4,m1,m2,d1,d2,h1,h2,n1,n2,s1,s2]
+      _ -> False
 
 unitNameP :: P String
 unitNameP = nameOf <$> unitNamePartsP
@@ -2385,6 +2436,8 @@ unitP = blockP "unit" $ do
     <|> (ResourceMember <$> (try (lookAhead (keyword "resource" *> ident >>= upper)) *> resourceP))
     -- handlers name is h1, h2 end: spec handlers that answer together.
     <|> (HandlerSetMember <$> (try (lookAhead (keyword "handlers" *> ident *> keyword "is")) *> handlerSetP))
+    -- laws for f are ... end laws: claims and exemptions of f's laws.
+    <|> (ClaimsMember <$> (try (lookAhead (keyword "laws" *> keyword "for")) *> lawClaimsP))
     -- harness name for unit is ... end (LawSpec.Harness).
     <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
     <|> (MappingMember <$> mappingP n)
@@ -2415,7 +2468,7 @@ unitP = blockP "unit" $ do
      [(functionName d, used) | DefinitionMember (d, Just used) <- members])
     [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
     (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members]
-    [s | HandlerSetMember s <- members], imports, [f | FamilyMember f <- members],
+    [s | HandlerSetMember s <- members] [c | ClaimsMember c <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 

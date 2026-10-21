@@ -158,7 +158,29 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   , resourceDeclarations :: [ResourceDeclaration]
   -- handlers name is h1, h2 end: spec handlers that answer their abilities
   -- together, so every law that uses them also runs under all of them.
-  , handlerSets :: [HandlerSet] } deriving (Eq, Show, Generic)
+  , handlerSets :: [HandlerSet]
+  -- laws for f are ... end laws: what a function's laws claim together, and
+  -- the checks they are excused from (LawSpec.Core.LawAnalysis).
+  , lawClaims :: [LawClaims] } deriving (Eq, Show, Generic)
+
+-- | laws for f are ... end laws. Checks of f's laws run by default; the block
+-- states claims beyond them and excuses checks, each with a reason.
+data LawClaims = LawClaims { claimsFunction :: String, claimsItems :: [(ClaimItem, Span)], claimsSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+data ClaimItem
+  = CompleteOver Expr
+  | WithoutOverlap
+  | WithoutConflict
+  -- An exemption, until a version or a UTC date-time, because a reason.
+  | Exempt Exemption (Maybe Until) String
+  deriving (Eq, Show, Generic)
+
+data Exemption = PartialExemption | OverlapExemption | ConflictExemption | VacuityExemption String
+  deriving (Eq, Show, Generic)
+
+-- | A project or package version, or a UTC date-time (yyyy-mm-ddThh:mm[:ss]Z).
+data Until = UntilVersion String | UntilTime String deriving (Eq, Show, Generic)
 
 data HandlerSet = HandlerSet { handlerSetName :: String, handlerSetMembers :: [String], handlerSetSpan :: Span }
   deriving (Eq, Show, Generic)

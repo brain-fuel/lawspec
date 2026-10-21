@@ -42,6 +42,10 @@ law "|bounded input| is
   example "|middle| : x = 2 expect positive x = 2 end example
 end law
 
+laws for positive are
+  partial because "the laws check positive only from 1 to 3"
+end laws
+
 law "|large integer| is
   definition : for all (x :: UInt64) => preserve x = x end for all end definition
   example "|maximum UInt64| : x = 18446744073709551615 expect preserve x = 18446744073709551615 end example

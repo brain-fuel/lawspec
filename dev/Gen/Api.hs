@@ -206,11 +206,12 @@ declarations = joinWith (softbreak <> softbreak)
       ("names?", "NativeNameBinding[]"),
       ("handlers?", "NativeHandlerBinding[]"), ("failures?", "NativeFailureMapping[]"), ("network?", "NativeNetworkBinding"),
       ("erlangIncludes?", "NativeErlangInclude[]")])
-  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "refuted"])
+  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "exempted", "refuted"])
   , interface "ObligationEvidence"
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
        [("claim", union [text "Expr", text "null"])] ++
        -- Where its tests ran, when an environment attestation touches it.
+       fields [("exemption?", "Exemption")] ++
        fields [("environment?", "string"), ("environmentRun?", "AttestedRun"), ("against?", "AttestedDependency[]"),
                ("plannedEnvironment?", "string"), ("plannedEnvironmentRun?", "AttestedRun"), ("plannedAgainst?", "AttestedDependency[]"),
                ("nativeEvidence?","NativeConformanceEvidence"),("adequacy?","NativeAdequacy[]"),
@@ -237,7 +238,20 @@ declarations = joinWith (softbreak <> softbreak)
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
        ("attestation?", text "unknown"),
-       ("proofCounterexamples?", text "ProofCounterexample[]")]
+       ("proofCounterexamples?", text "ProofCounterexample[]"),
+       ("analysisResults?", text "AnalysisResult[]"), ("projectVersion?", text "string"), ("now?", text "string")]
+  , interface "Exemption"
+      (fields [("reason", "string"), ("until", "string | null"), ("expired", "boolean"), ("law", "string | null")])
+  , interface "AnalysisResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string")])
+  , alias "AnalysisStage" (map quoted ["completeness", "overlap", "conflict", "vacuity"])
+  , alias "AnalysisTaskRow"
+      [ record (fields (analysisRow ++ [("status", "'ready'"), ("tasks", "AnalysisTask[]")]))
+      , record (fields (analysisRow ++ [("status", "'unsupported'"), ("reason", "string")])) ]
+  , interface "AnalysisTask"
+      (fields [("fingerprint", "string"), ("encoding", "'lawspec-smtlib-v2'"), ("script", "string"), ("inputs", "string[]")])
+  , interface "AnalysisCheck"
+      (fields (analysisRow ++ [("fingerprint", "string"), ("status", "AnalysisCheckStatus"), ("reason", "string"), ("check", "AnalysisCheckStatus")]))
+  , alias "AnalysisCheckStatus" (map quoted ["proved", "refuted", "exempted", "incomplete"])
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , alias "ProofTask"
       [record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
@@ -300,6 +314,8 @@ declarations = joinWith (softbreak <> softbreak)
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "MatchWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
        [("proofTasks?",text "ProofTask[]"),
+        ("analysisTasks?", text "AnalysisTaskRow[]"), ("analysisEvidence?", text "ObligationEvidence[]"),
+        ("analysisChecks?", text "AnalysisCheck[]"),
         ("counterexampleChecks?",text "CounterexampleCheck[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])
@@ -324,3 +340,4 @@ declarations = joinWith (softbreak <> softbreak)
   ]
   where
     scalar names rest = record (("type", union (map quoted names)) : fields rest)
+    analysisRow = [("owner", "string"), ("declaration", "string"), ("stage", "AnalysisStage")]

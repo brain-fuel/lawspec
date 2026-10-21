@@ -1,7 +1,7 @@
 -- | Typed SMT-LIB tasks, with no solver or host IO in the compiler. The host
 -- executes these tasks using an established prover. ref:DEC-typed-core-boundary
 module LawSpec.Core.Smt (ProofTask(..), Encoding(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
-  , counterexampleFingerprint, outerQuantifiers, Catalog, catalog, instantiate) where
+  , counterexampleFingerprint, outerQuantifiers, Catalog, catalog, instantiate, Ground(..), groundQuery) where
 
 import Control.Monad (unless, when, foldM, forM, forM_)
 import Control.Monad.State.Strict
@@ -99,6 +99,38 @@ proofTasks program = do
           (either Left (const (counterexampleQuery program law)) task)
        | owner <- programUnits program, law <- unitProperties owner
        , let task = query program law]
+
+-- | One assertion of a ground query: a proposition the query requires to be
+-- established (true and defined), or not established.
+data Ground = Established Proposition | NotEstablished Proposition
+
+-- | A ground lawspec-smtlib-v2 query over named constants, for the law-set
+-- analysis (Core.LawAnalysis): each constant is declared and kept in its
+-- type's domain, and each assertion is encoded as a law's propositions are.
+-- A model gives the constants' values, which the compiler then confirms
+-- with the reference evaluator. It returns the script and the constants'
+-- names, in order.
+groundQuery :: Program -> String -> [Binder] -> [Ground] -> Either String (String, [String])
+groundQuery program purpose binders assertions = do
+  let bits = programMachineBits program
+  ((rows, certificates, prelude), _) <- runStateT (do
+      rows <- forM (zip [0 :: Int ..] binders) $ \(index, binder) -> do
+        s <- quantifierSortOf program (binderType binder)
+        let name = "lawspec_input_" ++ show index
+        base <- lift (domain bits (binderType binder) name)
+        pure (binder, name, s, base)
+      let scope = M.fromList [(binderId binder, Term s name "true") | (binder, name, s, _) <- rows]
+      certificates <- forM assertions $ \assertion -> case assertion of
+        Established claim -> positive <$> proposition program [] scope claim
+        NotEstablished claim -> no . positive <$> proposition program [] scope claim
+      prelude <- datatypePreamble program
+      pure (rows, certificates, prelude)) (Work 0 0 SmtLibV2 [] (catalog program))
+  let script = "; " ++ encodingName SmtLibV2 ++ "; " ++ purpose ++ "\n" ++ prelude ++
+        concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (_, name, s, _) <- rows] ++
+        concat ["(assert " ++ base ++ ")\n" | (_, _, _, base) <- rows] ++
+        concat ["(assert " ++ certificate ++ ")\n" | certificate <- certificates]
+  unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
+  pure (script, [name | (_, name, _, _) <- rows])
 
 -- | A law's outer universal inputs, in order: its parameters, its inputs and
 -- the universal quantifiers that open its body; and the rest of the body.

@@ -27,8 +27,10 @@ import qualified LawSpec.Core.Program as P
 -- Refuted is no evidence for a law: a confirmed counterexample shows it
 -- false (the compiler's exhaustive check, or a Z3 model the reference
 -- evaluator confirms), and the build fails.
+-- Exempted is a law-set check a `laws for` block excuses, with a reason and
+-- maybe an expiry: weaker than assumed, it keeps its counterexample.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
-  | Refuted | KnownFailing | Flaky | Skipped | Planned | NotVerified | Incomplete | Unsupported
+  | Exempted | Refuted | KnownFailing | Flaky | Skipped | Planned | NotVerified | Incomplete | Unsupported
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- | Every status, in order of strength, for reports that list them all.
@@ -47,6 +49,7 @@ statusName RuntimeChecked = "runtime-checked"
 statusName DefaultHandler = "default-handler"
 statusName Assumed = "assumed"
 statusName Refuted = "refuted"
+statusName Exempted = "exempted"
 statusName KnownFailing = "known-failing"
 statusName Flaky = "flaky"
 statusName Skipped = "skipped"

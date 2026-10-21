@@ -339,6 +339,7 @@ extra-source-files:
     test/fixtures/eq-set-foundation.lawspec
     test/fixtures/eq-set-operations-library.lawspec
     test/fixtures/eq-set-operations.lawspec
+    test/fixtures/law-sets.lawspec
     test/fixtures/list_contracts.lawspec
     test/fixtures/native_empty_domains.lawspec
     test/fixtures/native_shapes.lawspec
@@ -577,6 +578,8 @@ library
       LawSpec.Core.Eval
       LawSpec.Core.Evidence
       LawSpec.Core.Expression
+      LawSpec.Core.LawAnalysis
+      LawSpec.Core.LawTasks
       LawSpec.Core.Machine
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
@@ -679,6 +682,7 @@ library
       LawSpec.KotlinNativeBinding
       LawSpec.KotlinProperties
       LawSpec.KotlinTestHelpers
+      LawSpec.LawClaims
       LawSpec.MachineSpec
       LawSpec.Mailboxes
       LawSpec.MappingCheck
@@ -969,6 +973,7 @@ test-suite lawspec-test
       IndexedSpec
       InferenceSchemeSpec
       LanguageGapsSpec
+      LawAnalysisSpec
       LawPrimitivesSpec
       MappingSpec
       MatcherAdmissionSpec
