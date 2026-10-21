@@ -634,6 +634,27 @@ merge and Canon inventory push. Detailed evidence is under
 `.artifacts/integration-1/target-sdk-*`, `target-make-real-cli-*`,
 `target-canon-own-*` and `target-full-parity-scope.json`.
 
+### Combined target CI preflight — 20 October 2026
+
+The original fresh 158-step run is terminal: 155 steps pass and three retain
+their historical harness failures. Complete original native/WASM parity passes
+6,408 full-response comparisons over 68 fixtures, all 22 targets and all four
+width/layout profiles: 5,624 responses are accepted and 784 rejected. Generation
+accounts for 5,370 accepted outputs and 764 matching rejections. This cohort
+precedes the isolated ANTLR input-root correction; its updated full parity run
+remains required. Every original step log is preserved under
+`.artifacts/integration-1/target-initial-ci-86959-logs/`, with counts and hashes
+in `target-initial-ci-receipt.json`. The original run remains failed.
+
+The parent feature branch now includes the rebuilt ANTLR correction, SDK
+harness fixes and checked documentation through `b4007c99`. The combined
+checkout has rebuilt native and WASM artifacts with `tools/wasm.sh`. All 22
+SDK preflight checks, all four independent artifact validators and both Rust
+dynamic-embedding checks pass against this rebuild; the SDK checks have no
+failures or skips. Generated files and source/artifact fingerprints match.
+The corrected 157-step CI run, its full SDK/examples replay and complete
+updated parity must pass before the main merge and Canon inventory push.
+
 ## Approved 0.26.0 contract — 19 October 2026
 
 Implementation and technical acceptance are complete on `2444621f`, as recorded
