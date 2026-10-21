@@ -946,13 +946,24 @@ async function main() {
       if (!laws.size) continue;
       const attested = diagnostics(await compiler.check({ ...input, attestation, attestedOutcomes: outcomes.get(id) ?? {} }));
       const fields = new Map(attested.evidence.filter((item) => (item.against || item.plannedAgainst) && laws.has(item.declaration))
-        .map(item => [item.declaration, {environment: item.environment ?? item.plannedEnvironment,
-          environmentRun: item.environmentRun ?? item.plannedEnvironmentRun, against: item.against ?? item.plannedAgainst,
-          environmentProviders: item.environmentProviders ?? item.plannedEnvironmentProviders,
-          ...(item.environmentOutcome ? { environmentOutcome: item.environmentOutcome } : {})}]));
+        .map(item => {
+          // Receipts predating execution states keep their historical meaning.
+          // An explicit running/wired state must retain the compiler's planned
+          // fields; a cached passing law does not complete its environment run.
+          const legacy = !attestation.execution && !item.against;
+          return [item.declaration, legacy ? {
+            environment: item.plannedEnvironment, environmentRun: item.plannedEnvironmentRun,
+            against: item.plannedAgainst, environmentProviders: item.plannedEnvironmentProviders,
+          } : Object.fromEntries(["environment", "environmentRun", "against", "environmentProviders", "environmentOutcome",
+            "plannedEnvironment", "plannedEnvironmentRun", "plannedAgainst", "plannedEnvironmentProviders"]
+            .filter(key => item[key] !== undefined).map(key => [key, item[key]]))];
+        }));
       evidence = evidence.map((item) => item.stage === "law" && fields.has(item.declaration) ? { ...item, ...fields.get(item.declaration) } : item);
       environments.push({ ...attested.attestation, dependencies: attested.attestation.dependencies
-        .map((d) => ({ ...d, obligations: [...new Set([...d.obligations, ...(d.plannedObligations ?? [])])].filter((law) => laws.has(law)), plannedObligations: [] })) });
+        .map((d) => ({ ...d,
+          obligations: (attestation.execution ? d.obligations : [...new Set([...d.obligations, ...(d.plannedObligations ?? [])])])
+            .filter((law) => laws.has(law)),
+          plannedObligations: attestation.execution ? (d.plannedObligations ?? []).filter((law) => laws.has(law)) : [] })) });
     }
     // Native bindings are configured per target; their obligations are added.
     for (const target of selected) {

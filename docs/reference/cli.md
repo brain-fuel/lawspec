@@ -177,6 +177,11 @@ and its harness are kept apart: the harness can never change the obligation.
   unless the attestation's `execution.status` is `wired` (wiring only) or
   `running` (in progress), when it stays planned. No status changes. See
   [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran).
+  The cached document is the snapshot read by `lawspec test`. If Ironframe
+  completes the run after that child exits, pass the completed file to
+  `lawspec evidence --attestation <file>` to consume its final state. Without
+  it, the cached running snapshot retains `plannedAgainst` and makes no
+  completed environment claim, even when the native tests passed.
 - `--json` prints the `ObligationEvidence` records; a law with a harness has
   `harness` (its settings) and, after a run, `adequacy` (its statistics); a law
   an attestation touches has `environment`, `environmentRun`, `against` and

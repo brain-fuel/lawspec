@@ -33,6 +33,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Cached `lawspec evidence` keeps explicit running or wired environment
+  attestations planned. Passing native tests no longer relabel an unfinished
+  environment as executed wiring. Completed documents retain their outcomes;
+  older receipts without execution states keep their existing meaning.
+
 - ANTLR includes concrete declaration inputs and exports typed EOF parser
   entries with exact schema references. Overlapping generic representations
   retain their expected type; closed indexed inputs remain explicitly unsupported.
