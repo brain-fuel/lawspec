@@ -2,7 +2,7 @@
 <<<<<<<
             return Found(q.TryDequeue(out var front), front);
 =======
-            if (!q.TryPeek(out var front)) return Maybe.Nothing<int>();
+            if (!q.TryPeek(out var front)) return Maybe.Absent<int>();
             Thread.Sleep(1);
             q.TryDequeue(out _);
             return Maybe.Of(front);

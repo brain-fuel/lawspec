@@ -83,11 +83,11 @@ law "|a push chosen by a match| is
   definition :
     for all (m :: Maybe Int8) (s :: Stack n) =>
       ((first matching case of m :
-        when Just v then push v ~s
-        when Nothing then push 0 ~s
+        when Present v then push v ~s
+        when Absent then push 0 ~s
         end case); pop ~s) = (first matching case of m :
-                          when Just v then v
-                          when Nothing then prelude.Int8 0
+                          when Present v then v
+                          when Absent then prelude.Int8 0
                           end case) end for all
   end definition
 end law

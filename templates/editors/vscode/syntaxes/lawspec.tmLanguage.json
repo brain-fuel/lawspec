@@ -233,7 +233,7 @@
       "name": "constant.language.bound.lawspec"
     },
     {
-      "match": "\\b(?:Nothing|Just|Left|Right|Nil|Cons)\\b",
+      "match": "\\b(?:Absent|Present|Left|Right|Nil|Cons)\\b",
       "name": "support.function.constructor.lawspec"
     },
     {

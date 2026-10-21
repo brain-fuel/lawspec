@@ -25,8 +25,8 @@ def submit(value0, value1):
 def take(value0):
     with value0.lock:
         if not value0.items:
-            return _schema.Nothing()
-        return _schema.Just(value0.items.popleft())
+            return _schema.Absent()
+        return _schema.Present(value0.items.popleft())
 
 
 def pending(value0):

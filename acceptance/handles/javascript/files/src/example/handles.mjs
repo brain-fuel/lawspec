@@ -11,7 +11,7 @@ export function submit(value0, value1) {
 }
 
 export function take(value0) {
-  return value0.length === 0 ? new data.Nothing() : new data.Just(value0.shift());
+  return value0.length === 0 ? new data.Absent() : new data.Present(value0.shift());
 }
 
 export function pending(value0) {

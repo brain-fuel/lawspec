@@ -1,6 +1,6 @@
 @@ test/fixtures/canonical-container-records.lawspec
 <<<<<<<
-    when Batch (Cons record{value = value} remaining) then Just value
+    when Batch (Cons record{value = value} remaining) then Present value
 =======
-    when Batch (Cons record{value = value} remaining) then Nothing
+    when Batch (Cons record{value = value} remaining) then Absent
 >>>>>>>

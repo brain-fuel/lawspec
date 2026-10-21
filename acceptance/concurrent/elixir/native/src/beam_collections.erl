@@ -31,10 +31,10 @@ poll_gleam(Id) -> gleam_option(poll(Id)).
 put_gleam(Id,Key,Value) -> gleam_option(put(Id,Key,Value)).
 get_gleam(Id,Key) -> gleam_option(get(Id,Key)).
 evict_gleam(Id,Key) -> gleam_option(evict(Id,Key)).
-gleam_option(nothing) -> none;
-gleam_option({just,Value}) -> {some,Value}.
-map_option(error) -> nothing;
-map_option({ok,Value}) -> {just,Value}.
+gleam_option(absent) -> none;
+gleam_option({present,Value}) -> {some,Value}.
+map_option(error) -> absent;
+map_option({ok,Value}) -> {present,Value}.
 
 init({Owner,Kind}) ->
     Value=case Kind of 0 -> queue:new(); 1 -> sets:new(); 2 -> #{} end,
@@ -43,11 +43,11 @@ handle_call({offer,Item},_,State=#{value:=Value}) ->
     {reply,true,State#{value:=queue:in(Item,Value)}};
 handle_call(poll,_,State=#{value:=Value}) ->
     case queue:out(Value) of
-        {empty,_} -> {reply,nothing,State};
-        {{value,Item},Rest} -> {reply,{just,Item},State#{value:=Rest}}
+        {empty,_} -> {reply,absent,State};
+        {{value,Item},Rest} -> {reply,{present,Item},State#{value:=Rest}}
     end;
 handle_call(peek,_,State=#{value:=Value}) ->
-    {reply,case queue:peek(Value) of empty -> nothing; {value,Item} -> {just,Item} end,State};
+    {reply,case queue:peek(Value) of empty -> absent; {value,Item} -> {present,Item} end,State};
 handle_call(size,_,State=#{value:=Value}) -> {reply,queue:len(Value),State};
 handle_call({add,Item},_,State=#{value:=Value}) ->
     Added=not sets:is_element(Item,Value),

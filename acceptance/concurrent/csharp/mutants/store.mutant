@@ -1,7 +1,7 @@
 @@ src/Example/Concurrent.cs
 <<<<<<<
-            FSharpOption<long> old = Maybe.Nothing<long>();
-            Map(cache).AddOrUpdate(key, _ => { old = Maybe.Nothing<long>(); return value; }, (_, previous) => { old = Maybe.Of(previous); return value; });
+            FSharpOption<long> old = Maybe.Absent<long>();
+            Map(cache).AddOrUpdate(key, _ => { old = Maybe.Absent<long>(); return value; }, (_, previous) => { old = Maybe.Of(previous); return value; });
             return old;
 =======
             Map(cache)[key] = value;

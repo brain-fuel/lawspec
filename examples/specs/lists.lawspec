@@ -47,22 +47,22 @@ end law
 
 law "|Maybe preserves nested absence| is
   definition : for all (x :: Maybe (Maybe Bool)) => echoMaybe x = x end for all end definition
-  example "|outer absence| : x = Nothing expect echoMaybe x = Nothing end example
-  example "|inner absence| : x = Just Nothing expect echoMaybe x = Just Nothing end example
-  example "|present| : x = Just (Just true) expect echoMaybe x = Just (Just true) end example
+  example "|outer absence| : x = Absent expect echoMaybe x = Absent end example
+  example "|inner absence| : x = Present Absent expect echoMaybe x = Present Absent end example
+  example "|present| : x = Present (Present true) expect echoMaybe x = Present (Present true) end example
 end law
 
 law "|Either preserves branches| is
   definition : for all (x :: Either (List Int32) (Maybe Bool)) => echoEither x = x end for all end definition
   example "|left list| : x = Left [3, 1, 3] expect echoEither x = Left [3, 1, 3] end example
-  example "|right absence| : x = Right Nothing expect echoEither x = Right Nothing end example
+  example "|right absence| : x = Right Absent expect echoEither x = Right Absent end example
 end law
 
 law "|nested raw values survive| is
   definition : for all (xs :: List (Maybe (Either CodeUnit16 Bytes))) => echoNested xs = xs end for all end definition
   example "|surrogate and octets| :
-    xs = [Nothing, Just (Left codeUnit16(55296)), Just (Right bytes([0, 255]))]
-    expect echoNested xs = [Nothing, Just (Left codeUnit16(55296)), Just (Right bytes([0, 255]))]
+    xs = [Absent, Present (Left codeUnit16(55296)), Present (Right bytes([0, 255]))]
+    expect echoNested xs = [Absent, Present (Left codeUnit16(55296)), Present (Right bytes([0, 255]))]
   end example
 end law
 end unit

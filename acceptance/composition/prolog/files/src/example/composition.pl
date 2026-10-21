@@ -30,8 +30,8 @@ handler_ReaderHandler_new(Handle, reader(Store)) :- lawspec_prolog:native_handle
 handler_ReaderHandler_size(reader(Store), Name, Result) :-
     py_call(Store:get(logs), Logs, [py_object(true)]),
     py_call(Logs:get(Name), Records, [py_object(true)]),
-    ( Records == @(none) -> Result = value('Maybe::Nothing', [])
-    ; py_call(builtins:len(Records), Count), Result = value('Maybe::Just', [Count])
+    ( Records == @(none) -> Result = value('Maybe::Absent', [])
+    ; py_call(builtins:len(Records), Count), Result = value('Maybe::Present', [Count])
     ).
 
 handler_WriterHandler_new(Handle, writer(Store, Last)) :-
@@ -47,6 +47,6 @@ handler_WriterHandler_write(writer(Store, Last), Name, Record, Written) :-
     ).
 handler_WriterHandler_lastOffset(writer(_, Last), Result) :-
     py_call(Last:get(offset), Offset),
-    ( Offset == @(none) -> Result = value('Maybe::Nothing', [])
-    ; Result = value('Maybe::Just', [Offset])
+    ( Offset == @(none) -> Result = value('Maybe::Absent', [])
+    ; Result = value('Maybe::Present', [Offset])
     ).

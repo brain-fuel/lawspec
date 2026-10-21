@@ -18,7 +18,7 @@ native_probe(ok) ->
     Message = <<0, 255, 128>>,
     Context = <<"native">>,
     Good = lists:all(fun(Signer) ->
-        example_crypto_context_definitions:handshake(Exchange, Signer, Aead, Message, Context) =:= {just, Message}
+        example_crypto_context_definitions:handshake(Exchange, Signer, Aead, Message, Context) =:= {present, Message}
     end, [Signature, Slh]),
     byte_size(Digest) =:= 32 andalso byte_size(Shake(Message, 13)) =:= 13 andalso
         byte_size(Public) =:= 1184 andalso byte_size(Secret) =:= 64 andalso

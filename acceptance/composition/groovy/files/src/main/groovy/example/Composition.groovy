@@ -61,15 +61,15 @@ final class Composition {
     @Override
     lawspec.runtime.LawSpecRuntime.Maybe<Long> size(String value0) {
       List<String> records = ((LogStore) resource).logs.get(value0)
-      if (records == null) return new LawSpecRuntime.Nothing<>()
-      return new LawSpecRuntime.Just<>((long) records.size())
+      if (records == null) return new LawSpecRuntime.Absent<>()
+      return new LawSpecRuntime.Present<>((long) records.size())
     }
   }
 
   /** The native handler of Writer: write, lastOffset. */
   static final class WriterHandler implements lawspec.abilities.example.Composition.Writer {
     final Object resource
-    private lawspec.runtime.LawSpecRuntime.Maybe<Long> last = new lawspec.runtime.LawSpecRuntime.Nothing<>()
+    private lawspec.runtime.LawSpecRuntime.Maybe<Long> last = new lawspec.runtime.LawSpecRuntime.Absent<>()
 
     WriterHandler(Object resource) {
       this.resource = resource
@@ -80,7 +80,7 @@ final class Composition {
       List<String> records = ((LogStore) resource).logs.get(value0)
       if (records == null || value1.isEmpty()) return false
       records.add(value1)
-      last = new LawSpecRuntime.Just<>((long) (records.size() - 1))
+      last = new LawSpecRuntime.Present<>((long) (records.size() - 1))
       return true
     }
 

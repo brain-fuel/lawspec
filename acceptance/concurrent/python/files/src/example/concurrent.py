@@ -40,7 +40,7 @@ async def offer(value0, value1):
 async def poll(value0):
     lock, items = _get(_queues, value0.id, collections.deque)
     with lock:
-        return _schema.Just(items.popleft()) if items else _schema.Nothing()
+        return _schema.Present(items.popleft()) if items else _schema.Absent()
 
 
 async def queueSize(value0):
@@ -80,7 +80,7 @@ def newCache(value0):
 
 
 def _maybe(value):
-    return _schema.Nothing() if value is None else _schema.Just(value)
+    return _schema.Absent() if value is None else _schema.Present(value)
 
 
 async def store(value0, value1, value2):

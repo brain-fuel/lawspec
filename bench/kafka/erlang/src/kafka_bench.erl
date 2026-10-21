@@ -21,7 +21,7 @@ main(Args) ->
 
 tp(P) -> {topic_partition, <<"bench">>, P}.
 
-record(I) -> {record, {just, <<I:64>>}, {just, binary:copy(<<"x">>, 64)}, []}.
+record(I) -> {record, {present, <<I:64>>}, {present, binary:copy(<<"x">>, 64)}, []}.
 
 op(Broker, Name, Args) -> erlang:apply(maps:get(Name, Broker), Args).
 
@@ -40,7 +40,7 @@ run(Context, Scale) ->
     op(Broker, create_topics_request, [<<"bench">>, ?PARTITIONS]),
 
     Start = now_s(),
-    lists:foreach(fun(I) -> op(Broker, produce_request, [tp(I rem ?PARTITIONS), nothing, [record(I)]]) end,
+    lists:foreach(fun(I) -> op(Broker, produce_request, [tp(I rem ?PARTITIONS), absent, [record(I)]]) end,
         lists:seq(0, Scale - 1)),
     phase("produce", Scale, Start),
     memory("after-produce"),
@@ -61,8 +61,8 @@ run(Context, Scale) ->
             Assigned = op(Broker, sync_group_request, [<<"g">>, M, Generation]),
             lists:foldl(fun(P, {R1, O1}) ->
                 Position = case op(Broker, offset_fetch_request, [<<"g">>, P]) of
-                    {just, V} -> V;
-                    nothing -> 0
+                    {present, V} -> V;
+                    absent -> 0
                 end,
                 consume(Broker, M, Generation, P, Position, Round, R1, O1 + 1)
             end, {R, O + 2}, Assigned)
@@ -74,13 +74,13 @@ run(Context, Scale) ->
 
     TxnStart = now_s(),
     Txns = max(1, Scale div 100),
-    {producer_id_and_epoch, Pid, Epoch} = op(Broker, init_producer_id_request, [{just, <<"tx">>}]),
+    {producer_id_and_epoch, Pid, Epoch} = op(Broker, init_producer_id_request, [{present, <<"tx">>}]),
     lists:foldl(fun(T, Sequences) ->
         Parts = [(2 * T) rem ?PARTITIONS, (2 * T + 1) rem ?PARTITIONS],
         op(Broker, add_partitions_to_txn_request, [<<"tx">>, Pid, Epoch, [tp(P) || P <- Parts]]),
         Next = lists:foldl(fun(P, S) ->
             Sequence = maps:get(P, S, 0),
-            op(Broker, produce_request, [tp(P), {just, {producer_tag, Pid, Epoch, Sequence}}, [record(T)]]),
+            op(Broker, produce_request, [tp(P), {present, {producer_tag, Pid, Epoch, Sequence}}, [record(T)]]),
             S#{P => Sequence + 1}
         end, Sequences, Parts),
         op(Broker, txn_offset_commit_request, [<<"tx">>, Pid, Epoch, <<"g">>, [{offset_entry, tp(hd(Parts)), T}]]),
@@ -96,7 +96,7 @@ run(Context, Scale) ->
 
     %% The embedding API: a refusal as a value, and the state kept and put back.
     Refused = case lawspec_abilities_lawtwin_kafka:broker_try_produce_request(Broker,
-            {topic_partition, <<"missing">>, 0}, nothing, [record(0)]) of
+            {topic_partition, <<"missing">>, 0}, absent, [record(0)]) of
         {error, Failure} -> Failure;
         {ok, _} -> nothing
     end,
@@ -107,7 +107,7 @@ run(Context, Scale) ->
         false -> {lawspec_abilities_lawtwin_kafka:cluster_state(Broker),
             fun(S) -> lawspec_abilities_lawtwin_kafka:cluster_set_state(Broker, S) end}
     end,
-    op(Broker, produce_request, [tp(0), nothing, [record(0)]]),
+    op(Broker, produce_request, [tp(0), absent, [record(0)]]),
     ok = Restore(Snapshot),
     {fetch_result, _, _, After, _} = op(Broker, fetch_request, [tp(0), 0, 10, isolation_level_read_committed]),
     io:format("check restored ~p~n", [After =:= HighWatermark]),

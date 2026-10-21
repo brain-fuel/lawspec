@@ -177,15 +177,15 @@ def check_restrictions(core, directory, target):
 
 
 def check_sum(core, directory):
-    source = ('unit choices\nfunction present (u :: Unit) -> Maybe Bool is Just true end function\n'
-              'function absent (u :: Unit) -> Maybe Bool is Nothing end function\nend unit')
+    source = ('unit choices\nfunction present (u :: Unit) -> Maybe Bool is Present true end function\n'
+              'function absent (u :: Unit) -> Maybe Bool is Absent end function\nend unit')
     generate(core, directory, 'yaml', source)
     config = yaml.safe_load((directory / 'configuration.yaml').read_text())
     schema = json.loads((directory / 'configuration.schema.json').read_text())
     validator = jsonschema.Draft202012Validator(schema)
     validator.validate(config)
-    assert config['choices::absent'] == {'tag': 'Maybe::Nothing', 'fields': {}}
-    assert config['choices::present'] == {'tag': 'Maybe::Just', 'fields': {'value': True}}
+    assert config['choices::absent'] == {'tag': 'Maybe::Absent', 'fields': {}}
+    assert config['choices::present'] == {'tag': 'Maybe::Present', 'fields': {'value': True}}
     config['choices::absent']['fields']['value'] = True
     assert list(validator.iter_errors(config)), 'absent and present constructors collapsed'
 

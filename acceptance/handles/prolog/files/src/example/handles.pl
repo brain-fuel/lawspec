@@ -27,6 +27,6 @@ queue_operation(submit(Item), Items, absence('Unit')) :- py_call(Items:append(It
 queue_operation(pending, Items, Count) :- py_call(builtins:len(Items), Count).
 queue_operation(take, Items, R) :-
     py_call(builtins:len(Items), Count),
-    ( Count =:= 0 -> R = value('Maybe::Nothing', [])
-    ; py_call(Items:popleft(), Item), R = value('Maybe::Just', [Item])
+    ( Count =:= 0 -> R = value('Maybe::Absent', [])
+    ; py_call(Items:popleft(), Item), R = value('Maybe::Present', [Item])
     ).

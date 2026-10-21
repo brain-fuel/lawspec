@@ -7,18 +7,18 @@
 new() -> {ok,Pid}=gen_server:start(?MODULE,self(),[]), Pid.
 submit(Pid,Value) -> gen_server:call(Pid,{submit,Value}).
 take(Pid) -> gen_server:call(Pid,take).
-take_gleam(Pid) -> case take(Pid) of nothing -> none; {just,Value} -> {some,Value} end.
+take_gleam(Pid) -> case take(Pid) of absent -> none; {present,Value} -> {some,Value} end.
 pending(Pid) -> gen_server:call(Pid,pending).
 init(Owner) -> {ok,#{owner=>monitor(process,Owner),items=>queue:new()}}.
 handle_call({submit,Value},_,State=#{items:=Items}) ->
     {reply,true,State#{items:=queue:in(Value,Items)}};
 handle_call(take,_,State=#{items:=Items}) ->
     case queue:out(Items) of
-        {empty,_} -> {reply,nothing,State};
-        {{value,Value},Rest} -> {reply,{just,Value},State#{items:=Rest}}
+        {empty,_} -> {reply,absent,State};
+        {{value,Value},Rest} -> {reply,{present,Value},State#{items:=Rest}}
     end;
 handle_call(peek,_,State=#{items:=Items}) ->
-    {reply,case queue:peek(Items) of empty -> nothing; {value,Value} -> {just,Value} end,State};
+    {reply,case queue:peek(Items) of empty -> absent; {value,Value} -> {present,Value} end,State};
 handle_call(pending,_,State=#{items:=Items}) -> {reply,queue:len(Items),State}.
 handle_cast(_,State) -> {noreply,State}.
 handle_info({'DOWN',Monitor,process,_,_},State=#{owner:=Monitor}) -> {stop,normal,State}.

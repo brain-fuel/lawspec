@@ -41,7 +41,7 @@ remote_probe(ok) ->
             lawspec_supervisor_example_actor_abilities_bank:stop(Bank),
             41 = lawspec_actor_example_actor_abilities_counter_remote:total(Remote),
             Fast = lawspec_actor_example_actor_abilities_counter_remote:connect_with_timeout(A, Address, 1000),
-            {just, [0, -7]} = lawspec_actor_example_actor_abilities_counter_remote:echo(Fast, {just, [0, -7]}),
+            {present, [0, -7]} = lawspec_actor_example_actor_abilities_counter_remote:echo(Fast, {present, [0, -7]}),
             ok = lawspec_actor_example_actor_abilities_counter_remote:clear(Fast),
             0 = lawspec_actor_example_actor_abilities_counter_remote:total(Remote),
             lawspec_beam_node:stop(B),

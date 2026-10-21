@@ -200,9 +200,9 @@ test('primitive constructor metadata presents nested records and retains undefin
   const compiler = await createCompiler();
   const content = `unit display.primitives
 
-function optionalValue (unused of type ()) -> Maybe record{value of type Integer} is Just record{value = 1} end function
+function optionalValue (unused of type ()) -> Maybe record{value of type Integer} is Present record{value = 1} end function
 function eitherValue (unused of type ()) -> Either record{value of type Integer} Bool is Left record{value = 1} end function
-law optional is definition: optionalValue () must be Just record{value = 1} end definition end law
+law optional is definition: optionalValue () must be Present record{value = 1} end definition end law
 law either is definition: eitherValue () must be Left record{value = 1} end definition end law
 law lists is definition: [record{value = 1}, record{value = 2}] must be [record{value = 1}, record{value = 2}] end definition end law
 law unused is definition: record{chosen = 1, unused = 1 / 0} must be record{chosen = 1, unused = 1 / 0} end definition end law
@@ -213,7 +213,7 @@ end unit
     sources: [{path: 'primitives.lawspec', content}]});
   assert.deepEqual(result.diagnostics, []);
   const texts = new Map(result.laws.map(law => [law.id.split('::').at(-1), explainLaw(law, result, 'business').text]));
-  assert.equal(texts.get('optional'), 'optionalValue () must be Just(value = record{value = 1})');
+  assert.equal(texts.get('optional'), 'optionalValue () must be Present(value = record{value = 1})');
   assert.equal(texts.get('either'), 'eitherValue () must be Left(value = record{value = 1})');
   assert.match(texts.get('lists'), /\[record\{value = 1\}, record\{value = 2\}\]/);
   assert.equal(texts.get('unused').match(/\(1 \/ 0\)/g)?.length, 2);

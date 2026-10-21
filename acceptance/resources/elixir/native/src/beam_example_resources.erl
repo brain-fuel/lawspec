@@ -15,19 +15,19 @@ clear_store(Owner) -> Owner = self(), true = ets:delete_all_objects(erlang:get(e
 put(Owner, Key, Value) ->
     lawspec_beam_resource:call(Owner, fun() -> true = ets:insert(erlang:get(example_store), {Key, Value}), ok end).
 get(Owner, Key) -> lawspec_beam_resource:call(Owner, fun() ->
-    case ets:lookup(erlang:get(example_store), Key) of [] -> nothing; [{_, Value}] -> {just, Value} end
+    case ets:lookup(erlang:get(example_store), Key) of [] -> absent; [{_, Value}] -> {present, Value} end
 end).
 is_open(Owner) -> is_process_alive(Owner).
 size(Owner) -> lawspec_beam_resource:call(Owner, fun() -> ets:info(erlang:get(example_store), size) end).
 write_note(Path, Value) -> file:write_file(filename:join(Path, <<"note">>), integer_to_binary(Value)).
 read_note(Path) -> case file:read_file(filename:join(Path, <<"note">>)) of
-    {error, enoent} -> nothing; {ok, Value} -> {just, binary_to_integer(Value)}
+    {error, enoent} -> absent; {ok, Value} -> {present, binary_to_integer(Value)}
 end.
 can_listen(Port) ->
     {ok, Socket} = gen_tcp:listen(Port, [{ip, {127,0,0,1}}, {active, false}]),
     ok = gen_tcp:close(Socket), true.
 set_greeting(Value) -> true = os:putenv("LAWSPEC_EXAMPLE_GREETING", integer_to_list(Value)), ok.
-greeting(_) -> case os:getenv("LAWSPEC_EXAMPLE_GREETING") of false -> nothing; Value -> {just, list_to_integer(Value)} end.
+greeting(_) -> case os:getenv("LAWSPEC_EXAMPLE_GREETING") of false -> absent; Value -> {present, list_to_integer(Value)} end.
 open_pool(_) ->
     case persistent_term:get({?MODULE, pool_opened}, false) of
         false -> persistent_term:put({?MODULE, pool_opened}, true);
@@ -43,5 +43,5 @@ level(Owner) -> lawspec_beam_resource:call(Owner, fun() -> erlang:get(example_le
 get_gleam(Owner, Key) -> optional(get(Owner, Key)).
 read_note_gleam(Path) -> optional(read_note(Path)).
 greeting_gleam(Value) -> optional(greeting(Value)).
-optional(nothing) -> none;
-optional({just, Value}) -> {some, Value}.
+optional(absent) -> none;
+optional({present, Value}) -> {some, Value}.

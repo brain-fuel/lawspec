@@ -12,7 +12,7 @@ function "|email invoice PDF file name|
   (delivery of type EmailDelivery) -> Maybe Text is
   first matching case of delivery:
     when record{document = record{file = record{fileName = name}}}
-      then Just name
+      then Present name
   end case
 end function
 
@@ -27,7 +27,7 @@ law "|emailPdfInvoice result| is
     "PDF invoices sent by email retain their file names."
   end description
   definition:
-    "|email invoice PDF file name| (emailPdfInvoice "invoice.pdf") must be Just
+    "|email invoice PDF file name| (emailPdfInvoice "invoice.pdf") must be Present
     "invoice.pdf"
   end definition
 end law

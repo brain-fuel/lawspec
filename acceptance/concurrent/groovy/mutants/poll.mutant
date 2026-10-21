@@ -5,12 +5,12 @@
 =======
           var q = queue(value0)
           var front = q.peek()
-          if (front == null) return new LawSpecRuntime.Nothing<Integer>()
+          if (front == null) return new LawSpecRuntime.Absent<Integer>()
           try {
             Thread.sleep(1)
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt()
           }
           q.remove(front)
-          return new LawSpecRuntime.Just<>(front)
+          return new LawSpecRuntime.Present<>(front)
 >>>>>>>

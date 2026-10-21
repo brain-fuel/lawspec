@@ -46,7 +46,7 @@ export class ReaderHandler {
   }
   size(value0) {
     const records = this.resource.logs.get(value0);
-    return records === undefined ? new data.Nothing() : new data.Just(BigInt(records.length));
+    return records === undefined ? new data.Absent() : new data.Present(BigInt(records.length));
   }
 }
 
@@ -54,13 +54,13 @@ export class ReaderHandler {
 export class WriterHandler {
   constructor(resource) {
     this.resource = resource;
-    this.last = new data.Nothing();
+    this.last = new data.Absent();
   }
   write(value0, value1) {
     const records = this.resource.logs.get(value0);
     if (records === undefined || value1 === '') return false;
     records.push(value1);
-    this.last = new data.Just(BigInt(records.length - 1));
+    this.last = new data.Present(BigInt(records.length - 1));
     return true;
   }
   lastOffset() {

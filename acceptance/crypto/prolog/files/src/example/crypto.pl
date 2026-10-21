@@ -14,4 +14,4 @@ ls_roundTrip(Aead, Input, Result) :-
     lawspec_prolog:operation(Aead, aeadKey, [], Key),
     lawspec_prolog:operation(Aead, seal, [Key, Input, bytes([114])], Sealed),
     lawspec_prolog:operation(Aead, unseal, [Key, Sealed, bytes([114])], Opened),
-    ( Opened == value('Maybe::Just', [Input]) -> Result=true ; Result=false ).
+    ( Opened == value('Maybe::Present', [Input]) -> Result=true ; Result=false ).

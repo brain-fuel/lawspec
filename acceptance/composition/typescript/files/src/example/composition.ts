@@ -49,14 +49,14 @@ export class ReaderHandler implements abilities.Reader {
   }
   size(value0: string): data.Maybe<bigint> {
     const records = (this.resource as Store).logs.get(value0);
-    return records === undefined ? new data.Nothing() : new data.Just(BigInt(records.length));
+    return records === undefined ? new data.Absent() : new data.Present(BigInt(records.length));
   }
 }
 
 /** The native handler of Writer: write, lastOffset. */
 export class WriterHandler implements abilities.Writer {
   resource: unknown;
-  last: data.Maybe<bigint> = new data.Nothing();
+  last: data.Maybe<bigint> = new data.Absent();
   constructor(resource: unknown) {
     this.resource = resource;
   }
@@ -64,7 +64,7 @@ export class WriterHandler implements abilities.Writer {
     const records = (this.resource as Store).logs.get(value0);
     if (records === undefined || value1 === '') return false;
     records.push(value1);
-    this.last = new data.Just(BigInt(records.length - 1));
+    this.last = new data.Present(BigInt(records.length - 1));
     return true;
   }
   lastOffset(): data.Maybe<bigint> {

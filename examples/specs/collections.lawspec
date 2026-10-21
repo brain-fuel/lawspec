@@ -22,16 +22,16 @@ function countWords (words :: List Text) (counts :: KeyVal Text Integer) -> KeyV
   first matching case of words :
   when Nil then counts
   when Cons w rest then first matching case of prelude.lookup w counts :
-    when Nothing then countWords rest (prelude.put w 1 counts)
-    when Just n then countWords rest (prelude.put w ((n + 1) :: Integer) counts)
+    when Absent then countWords rest (prelude.put w 1 counts)
+    when Present n then countWords rest (prelude.put w ((n + 1) :: Integer) counts)
     end case
   end case
 end function
 
 function rotated (d :: Deque Int8) -> Deque Int8 is
   first matching case of prelude.peekFront d :
-  when Nothing then d
-  when Just x then prelude.pushBack x (prelude.popFront d)
+  when Absent then d
+  when Present x then prelude.pushBack x (prelude.popFront d)
   end case
 end function
 
@@ -51,13 +51,13 @@ end law
 
 law "|the queue's front is the first value| is
   definition :
-    for all (x :: Int8) (xs :: List Int8) => prelude.front (fifo (Cons x xs)) = Just x end for all
+    for all (x :: Int8) (xs :: List Int8) => prelude.front (fifo (Cons x xs)) = Present x end for all
   end definition
 end law
 
 law "|the stack's top is the last value| is
   definition :
-    for all (x :: Int8) (xs :: List Int8) => prelude.peek (lifo [x]) = Just x end for all
+    for all (x :: Int8) (xs :: List Int8) => prelude.peek (lifo [x]) = Present x end for all
   end definition
 end law
 
@@ -97,13 +97,13 @@ end law
 law "|the latest put wins| is
   definition :
     for all (k :: Text) (v :: Integer) (w :: Integer) (m :: KeyVal Text Integer) =>
-      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w end for all
+      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Present w end for all
   end definition
 end law
 
 law "|a deleted key is absent| is
   definition :
-    for all (k :: Text) (m :: KeyVal Text Integer) => prelude.lookup k (prelude.delete k m) = Nothing end for all
+    for all (k :: Text) (m :: KeyVal Text Integer) => prelude.lookup k (prelude.delete k m) = Absent end for all
   end definition
 end law
 

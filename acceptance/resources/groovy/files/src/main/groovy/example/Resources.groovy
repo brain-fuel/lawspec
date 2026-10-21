@@ -61,7 +61,7 @@ final class Resources {
     Store store = (Store) value0
     if (!store.open) throw new IllegalStateException('the store is closed')
     Integer value = store.items.get(value1)
-    return value == null ? new LawSpecRuntime.Nothing<>() : new LawSpecRuntime.Just<>(value)
+    return value == null ? new LawSpecRuntime.Absent<>() : new LawSpecRuntime.Present<>(value)
   }
 
   // (example.resources::type::Store -> Bool)
@@ -86,9 +86,9 @@ final class Resources {
   // (Text -> Maybe (Int32))
   static lawspec.runtime.LawSpecRuntime.Maybe<Integer> readNote(String value0) {
     Path note = Path.of(value0, 'note.txt')
-    if (!Files.exists(note)) return new LawSpecRuntime.Nothing<>()
+    if (!Files.exists(note)) return new LawSpecRuntime.Absent<>()
     try {
-      return new LawSpecRuntime.Just<>(Integer.parseInt(Files.readString(note)))
+      return new LawSpecRuntime.Present<>(Integer.parseInt(Files.readString(note)))
     } catch (IOException e) {
       throw new UncheckedIOException(e)
     }
@@ -111,7 +111,7 @@ final class Resources {
   // (Unit -> Maybe (Int32))
   static lawspec.runtime.LawSpecRuntime.Maybe<Integer> greeting(Value value0) {
     String value = System.getProperty('lawspec.example.greeting')
-    return value == null ? new LawSpecRuntime.Nothing<>() : new LawSpecRuntime.Just<>(Integer.parseInt(value))
+    return value == null ? new LawSpecRuntime.Absent<>() : new LawSpecRuntime.Present<>(Integer.parseInt(value))
   }
 
   // A pool that is costly to open: this JVM may open only one, so the suite

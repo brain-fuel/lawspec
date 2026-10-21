@@ -27,7 +27,7 @@ object Concurrent {
         maps.computeIfAbsent(handle.id) { ConcurrentHashMap() }
 
     private fun <T> maybe(value: T?): LawSpecRuntime.Maybe<T> =
-        if (value == null) LawSpecRuntime.Nothing() else LawSpecRuntime.Just(value)
+        if (value == null) LawSpecRuntime.Absent() else LawSpecRuntime.Present(value)
 
     fun newQueue(value0: Unit): WorkQueue {
         val handle = WorkQueue(ids.incrementAndGet())

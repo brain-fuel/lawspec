@@ -1,7 +1,7 @@
 expect: a writer remembers where it wrote| [reference]
 @@ examples/specs/composition.lawspec
 <<<<<<<
-  when Right offset then Pair true (Just offset)
+  when Right offset then Pair true (Present offset)
 =======
   when Right offset then Pair true last
 >>>>>>>

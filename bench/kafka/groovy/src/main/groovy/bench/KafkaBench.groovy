@@ -31,7 +31,7 @@ final class KafkaBench {
     byte[] key = java.nio.ByteBuffer.allocate(8).putLong(i).array()
     byte[] value = new byte[64]
     java.util.Arrays.fill(value, (byte) ((char) 'x'))
-    return new Record(new LawSpecRuntime.Just<>(key), new LawSpecRuntime.Just<>(value), List.of())
+    return new Record(new LawSpecRuntime.Present<>(key), new LawSpecRuntime.Present<>(value), List.of())
   }
 
   static void phase(String name, long ops, long start) {
@@ -59,7 +59,7 @@ final class KafkaBench {
 
     long start = System.nanoTime()
     for (long i = 0; i < scale; i++) {
-      broker.produceRequest(tp((int) (i % PARTITIONS)), new LawSpecRuntime.Nothing<>(), List.of(record(i)))
+      broker.produceRequest(tp((int) (i % PARTITIONS)), new LawSpecRuntime.Absent<>(), List.of(record(i)))
     }
     phase('produce', scale, start)
     total += scale
@@ -87,7 +87,7 @@ final class KafkaBench {
         ops += 2
         for (TopicPartition p : assigned) {
           var committed = broker.offsetFetchRequest('g', p)
-          long position = committed instanceof LawSpecRuntime.Just j ? (Long) j.value() : 0L
+          long position = committed instanceof LawSpecRuntime.Present j ? (Long) j.value() : 0L
           ops++
           while (true) {
             FetchResult r = broker.fetchRequest(p, position, FETCH, new IsolationLevel.ReadUncommitted())
@@ -109,7 +109,7 @@ final class KafkaBench {
     start = System.nanoTime()
     ops = 0
     long txns = Math.max(1L, scale.intdiv(100))
-    ProducerIdAndEpoch id = broker.initProducerIdRequest(new LawSpecRuntime.Just<>('tx'))
+    ProducerIdAndEpoch id = broker.initProducerIdRequest(new LawSpecRuntime.Present<>('tx'))
     ops++
     int[] sequences = new int[PARTITIONS]
     for (long t = 0; t < txns; t++) {
@@ -117,7 +117,7 @@ final class KafkaBench {
       broker.addPartitionsToTxnRequest('tx', id.producerId(), id.producerEpoch(), List.of(tp(parts[0]), tp(parts[1])))
       for (int p : parts) {
         var tag = new ProducerTag(id.producerId(), id.producerEpoch(), sequences[p]++)
-        broker.produceRequest(tp(p), new LawSpecRuntime.Just<>(tag), List.of(record(t)))
+        broker.produceRequest(tp(p), new LawSpecRuntime.Present<>(tag), List.of(record(t)))
       }
       broker.txnOffsetCommitRequest('tx', id.producerId(), id.producerEpoch(), 'g', List.of(new OffsetEntry(tp(parts[0]), t)))
       broker.endTxnRequest('tx', id.producerId(), id.producerEpoch(), true)
@@ -131,10 +131,10 @@ final class KafkaBench {
     System.out.println('check committed-hw ' + r.highWatermark())
 
     // The embedding API: a refusal as a value, and the state kept and put back.
-    var refused = broker.tryProduceRequest(new TopicPartition('missing', 0), new LawSpecRuntime.Nothing<>(), List.of(record(0)))
+    var refused = broker.tryProduceRequest(new TopicPartition('missing', 0), new LawSpecRuntime.Absent<>(), List.of(record(0)))
     System.out.println('check refused ' + (refused.failed() ? refused.failure().getClass().getSimpleName() : 'nothing'))
     var snapshot = broker.typedState()
-    broker.produceRequest(tp(0), new LawSpecRuntime.Nothing<>(), List.of(record(0)))
+    broker.produceRequest(tp(0), new LawSpecRuntime.Absent<>(), List.of(record(0)))
     broker.setTypedState(snapshot)
     FetchResult after = broker.fetchRequest(tp(0), 0L, 10, new IsolationLevel.ReadCommitted())
     System.out.println('check restored ' + after.highWatermark().equals(r.highWatermark()))

@@ -21,15 +21,15 @@ test('WASM preserves nested sum tags, surrogate units and octets in structural e
     assert.deepEqual(result.diagnostics, []);
     const maybe = result.laws.find(law => nameText(law.name) === 'Maybe preserves nested absence');
     assert.deepEqual(maybe.examples.map(example => shape(example.bindings[0].value)), [
-      ['Maybe::Nothing'],
-      ['Maybe::Just', ['Maybe::Nothing']],
-      ['Maybe::Just', ['Maybe::Just', {type: 'Bool', value: true}]],
+      ['Maybe::Absent'],
+      ['Maybe::Present', ['Maybe::Absent']],
+      ['Maybe::Present', ['Maybe::Present', {type: 'Bool', value: true}]],
     ]);
     const raw = result.laws.find(law => nameText(law.name) === 'nested raw values survive');
     assert.deepEqual(shape(raw.examples[0].bindings[0].value),
-      ['List::Cons', ['Maybe::Nothing'],
-        ['List::Cons', ['Maybe::Just', ['Either::Left', {type: 'CodeUnit16', value: 55296}]],
-          ['List::Cons', ['Maybe::Just', ['Either::Right', {type: 'Bytes', units: [0, 255]}]],
+      ['List::Cons', ['Maybe::Absent'],
+        ['List::Cons', ['Maybe::Present', ['Either::Left', {type: 'CodeUnit16', value: 55296}]],
+          ['List::Cons', ['Maybe::Present', ['Either::Right', {type: 'Bytes', units: [0, 255]}]],
             ['List::Nil']]]]);
   }
 });

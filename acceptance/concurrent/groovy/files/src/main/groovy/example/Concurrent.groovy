@@ -35,7 +35,7 @@ final class Concurrent {
   }
 
   private static <T> lawspec.runtime.LawSpecRuntime.Maybe<T> maybe(T value) {
-    return value == null ? new LawSpecRuntime.Nothing<>() : new LawSpecRuntime.Just<>(value)
+    return value == null ? new LawSpecRuntime.Absent<>() : new LawSpecRuntime.Present<>(value)
   }
 
   static WorkQueue newQueue(lawspec.runtime.LawSpecRuntime.Value value0) {
