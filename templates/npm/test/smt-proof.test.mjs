@@ -85,8 +85,25 @@ end harness
   assert.equal(result.evidence.find(row=>row.stage==='law').status,'known-failing');
 });
 
-test('satisfiable Z3 tasks retain unvalidated models without claiming source refutation or nonexistence',requiresZ3,async()=>{
-  for(const body of [falseLaw,
+test('a false law is refuted only at values the reference evaluator confirms',requiresZ3,async()=>{
+  for(const machineBits of [32,64]) {
+    const result=await proveWithZ3(compiler,request(falseLaw,['proof'],machineBits),{binary:z3});
+    assert.deepEqual(result.diagnostics,[]);
+    const proof=result.solverEvidence[0];
+    assert.equal(proof.outcome,'sat');assert.equal(proof.status,'refuted');
+    assert.equal(proof.modelValidated,true);
+    assert.equal(proof.counterexample.check,'refuted');
+    assert.equal(proof.counterexample.inputs.length,1);
+    assert.equal(proof.counterexample.inputs[0].name,'n');
+    assert.match(proof.counterexample.inputs[0].value,/^-?[0-9]+$/);
+    assert.match(proof.counterexample.runFingerprint,/^[0-9a-f]{64}$/);
+    assert.match(proof.reason,/reference evaluator confirms/);
+    assert.ok(result.evidence.filter(row=>row.stage==='law').every(row=>row.status!=='proved'));
+  }
+});
+
+test('satisfiable Z3 tasks whose values cannot be confirmed stay incomplete',requiresZ3,async()=>{
+  for(const body of [
     law('there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists'),
     law('there does not exist (n :: Integer) such that n / (n - n) = 0 end exists')]) {
     const result=await proveWithZ3(compiler,request(body),{binary:z3});
@@ -95,8 +112,28 @@ test('satisfiable Z3 tasks retain unvalidated models without claiming source ref
     assert.equal(result.solverEvidence[0].status,'incomplete');
     assert.equal(result.solverEvidence[0].modelValidated,false);
     assert.equal(typeof result.solverEvidence[0].model,'string');
+    assert.equal(result.solverEvidence[0].counterexample.check,'incomplete');
     assert.ok(result.evidence.filter(row=>row.stage==='law').every(row=>row.status==='incomplete'));
   }
+});
+
+test('a broken counterexample translation gives model-not-confirmed, never refuted',requiresZ3,async()=>{
+  const frame=value=>Buffer.byteLength(value,'utf8')+':'+value;
+  const bind=values=>createHash('sha256').update(values.map(frame).join('')).digest('hex');
+  const mutant={proofTasks:async input=>{
+    const result=await compiler.proofTasks(input);
+    if(input.proofCounterexamples)return result;
+    return {...result,proofTasks:result.proofTasks.map(task=>{
+      const script=task.counterexample.script.replace(/\(assert \(not [^\n]*\)\n$/,'(assert (= lawspec_input_0 3))\n');
+      return {...task,counterexample:{...task.counterexample,script,fingerprint:bind(['lawspec-smtlib-v2',
+        task.programFingerprint,String(task.machineBits),task.owner,task.declaration,script])}};
+    })};
+  }};
+  const result=await proveWithZ3(mutant,request(law('for all (n :: Integer) => n * n != 4 end for all')),{binary:z3});
+  const proof=result.solverEvidence[0];
+  assert.equal(proof.outcome,'sat');assert.equal(proof.status,'incomplete');
+  assert.equal(proof.counterexample.check,'model-not-confirmed');
+  assert.ok(result.diagnostics.some(row=>row.code==='proof-translation'));
 });
 
 test('unsupported translations and unavailable Z3 remain explicit without substituting another theory',async()=>{
@@ -173,8 +210,9 @@ test('prove CLI reports selected, unselected, unavailable and mandatory-error ou
     const proved=run();assert.equal(proved.status,0,proved.stdout+proved.stderr);
     assert.equal(JSON.parse(proved.stdout).solverEvidence[0].outcome,'unsat');
     await save(falseLaw);
-    const candidate=run();assert.equal(candidate.status,2,candidate.stdout+candidate.stderr);
-    assert.equal(JSON.parse(candidate.stdout).solverEvidence[0].modelValidated,false);
+    const candidate=run();assert.equal(candidate.status,1,candidate.stdout+candidate.stderr);
+    assert.equal(JSON.parse(candidate.stdout).solverEvidence[0].status,'refuted');
+    assert.equal(JSON.parse(candidate.stdout).solverEvidence[0].modelValidated,true);
     await save(square,[]);
     const unselected=run();assert.equal(unselected.status,0,unselected.stdout+unselected.stderr);
     assert.deepEqual(JSON.parse(unselected.stdout).solverEvidence,[]);

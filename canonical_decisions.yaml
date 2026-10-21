@@ -681,3 +681,13 @@ DEC-smtlib-encoding-versions:
   opened: 0.26.0
   decided: 0.26.0
   refs: [why3, smt-lib, z3]
+
+DEC-validated-counterexamples:
+  status: decided
+  question: |
+    A satisfiable SMT task gives a model of its negation. When may LawSpec report that model as a counterexample of the law, and who checks it?
+  answer: |
+    Only after the compiler's reference evaluator confirms it (gate 5 increment 4). Each ready task carries a counterexample query, always lawspec-smtlib-v2, next to its unchanged v1 script: it declares the law's outer universal inputs (parameters, inputs and the universal quantifiers that open its body) as constants, asserts their domains and refinements, and asserts that the rest of the law is not established. After a sat answer the Node host runs it and asks get-value for exactly those constants. The host does not parse the values: it sends Z3's answer back through proofTasks (proofCounterexamples), and the compiler re-derives the query from the program, reads the values (LawSpec.Core.Counterexample), checks each against its type and refinements, and evaluates the rest of the law. Inner quantifiers over finite domains within exhaustiveLimit are searched completely, as exhaustively-checked laws are; others leave the result incomplete. The outcomes are refuted (false or undefined at the values), model-not-confirmed (true there, or outside the domain, which is a translation or solver error and is reported as a proof-translation diagnostic) and incomplete. The precedent is Why3's --check-ce and SPARK's counterexample checking, which run the prover's model through runtime assertion checking and show only confirmed ones. Trust boundary: a refutation trusts the reference evaluator, the same as exhaustively-checked, and not Z3; proved still trusts the translation and Z3. A mixed for all/exists law whose inner domain is infinite is not confirmed; a second Z3 query proving no witness exists is later work.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, spark-ug, z3]

@@ -52,8 +52,24 @@ kernel-checked proof certificate. The evidence records the exact task and checke
 program hashes, machine profile, Z3 executable hash and version, configuration,
 execution hash, elapsed time, exit status and raw output.
 
-A `sat` answer includes an **unvalidated model of the negated proof task**. It
-does not establish a concrete source counterexample. Undefined computation can
+A `sat` answer is not a counterexample by itself. The host then runs the
+task's counterexample query. It declares the law's outer inputs as constants,
+and Z3 gives their values with `get-value`. The compiler reads the values back
+and checks the law at them with the reference evaluator, the one behind
+`exhaustively-checked`:
+
+- `refuted`: the evaluator finds the law false, or undefined, there;
+- `model-not-confirmed`: the law holds there, or a value is outside the law's
+  domain. The translation or the solver is wrong, and the host reports a
+  `proof-translation` diagnostic;
+- `incomplete`: the rest of the law has quantifiers that cannot be searched
+  completely, or Z3 gave a value that cannot be read back.
+
+Quantifiers inside the law are searched completely when their domains are
+finite and within `exhaustiveLimit`. Z3 is only a search tool here: a
+refutation trusts the evaluator, not Z3. This follows
+Why3's `--check-ce`, which
+runs the model through runtime assertion checking. Undefined computation can
 also prevent a positive proof. Unknown answers, timeouts, resource limits,
 unavailable executables and protocol failures remain explicit incomplete results.
 An imported JSON report cannot upgrade a source law through this host.
@@ -95,7 +111,8 @@ for such a task stays current, so nothing needs to run again. A test checks
 this against a frozen corpus of tasks in `test/fixtures/smt-v1`.
 
 A task that needs a feature v1 lacks, such as data types or text, is
-`lawspec-smtlib-v2`. A task v1 refuses never becomes a v1 task. The task
+`lawspec-smtlib-v2`. The counterexample query beside a v1 task is v2 too; the
+v1 task itself is unchanged. A task v1 refuses never becomes a v1 task. The task
 fingerprint covers the encoding name, so a v1 receipt never stands for a v2
 task.
 

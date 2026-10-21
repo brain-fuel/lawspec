@@ -874,7 +874,9 @@ async function main() {
       : (input.verification?.layers.includes("proof")
         ? "No source law obligations are available. No solver was invoked."
         : "No proof layer selected. Intrinsic definition checks passed; no solver was invoked."));
-    if (result.solverEvidence.some(row => row.status !== "proved")) process.exitCode = 2;
+    // A refuted law is a definite failure; anything else not proved is incomplete.
+    if (result.solverEvidence.some(row => row.status === "refuted")) process.exitCode = 1;
+    else if (result.solverEvidence.some(row => row.status !== "proved")) process.exitCode = 2;
     return;
   }
   // Each obligation reports how it is discharged, strongest first.

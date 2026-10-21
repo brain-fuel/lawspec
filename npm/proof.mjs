@@ -10,7 +10,8 @@ import path from 'node:path';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const frame=value=>Buffer.byteLength(value,'utf8')+':'+value;
 const fingerprint=values=>hash(values.map(frame).join(''));
-const encoding='lawspec-smtlib-v1';
+// v1 is frozen byte for byte; tasks that need later features are v2.
+const encodings=['lawspec-smtlib-v1','lawspec-smtlib-v2'];
 
 export function proofTaskFingerprint(task) {
   return fingerprint([task.encoding,task.programFingerprint,String(task.machineBits),
@@ -45,7 +46,9 @@ async function executable(binary) {
 
 // Only the first response line is a protocol token. Models and unknown reasons
 // remain raw prover output; this host does not implement another SMT parser.
-function execute(binary,args,initial,config,interactive=false) {
+const followUp=token=>token==='sat'?'(get-model)\n(exit)\n':
+  token==='unknown'?'(get-info :reason-unknown)\n(exit)\n':'(exit)\n';
+function execute(binary,args,initial,config,interactive=false,finishFor=followUp) {
   return new Promise(resolve=>{
     const started=performance.now();
     const child=spawn(binary,args,{stdio:['pipe','pipe','pipe'],shell:false});
@@ -62,8 +65,7 @@ function execute(binary,args,initial,config,interactive=false) {
         const token=stdout.slice(0,stdout.indexOf('\n')).trim();
         if(['sat','unsat','unknown'].includes(token))outcome=token;
         else error='unexpected Z3 protocol response';
-        const finish=token==='sat'?'(get-model)\n(exit)\n':
-          token==='unknown'?'(get-info :reason-unknown)\n(exit)\n':'(exit)\n';
+        const finish=finishFor(token);
         input+=finish;
         child.stdin.end(finish);
       }
@@ -97,7 +99,7 @@ async function prover(config) {
 }
 
 function validTask(task) {
-  return task.encoding===encoding&&[32,64].includes(task.machineBits)&&
+  return encodings.includes(task.encoding)&&[32,64].includes(task.machineBits)&&
     ['owner','declaration','programFingerprint','script','taskFingerprint'].every(key=>typeof task[key]==='string')&&
     /^[0-9a-f]{64}$/.test(task.programFingerprint)&&
     proofTaskFingerprint(task)===task.taskFingerprint;
@@ -142,6 +144,27 @@ async function solve(task,selected,config) {
     ...(run.outcome==='sat'?{model:run.stdout.slice(run.stdout.indexOf('\n')+1).trim(),modelValidated:false}:{})};
 }
 
+// A satisfiable task's model is not a counterexample. Z3 runs the task's
+// counterexample query (lawspec-smtlib-v2) and gives the values of the law's
+// outer inputs; the compiler, not this host, reads them and re-checks the law
+// at them with its reference evaluator.
+async function counterexampleValues(task,selected,config) {
+  const query=task.counterexample;
+  if(!query||typeof query.script!=='string'||!Array.isArray(query.inputs))return null;
+  if(fingerprint(['lawspec-smtlib-v2',task.programFingerprint,String(task.machineBits),task.owner,task.declaration,
+    query.script])!==query.fingerprint)return null;
+  const names=query.inputs.map(input=>input.name);
+  const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
+    `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+
+    query.script+'(check-sat)\n';
+  const run=await execute(selected.binary,selected.args,input,config,true,
+    token=>token==='sat'&&names.length?`(get-value (${names.join(' ')}))\n(exit)\n`:'(exit)\n');
+  if(run.outcome!=='sat'||run.timeout||run.outputLimit||run.error||run.exitCode!==0)
+    return {outcome:run.outcome??'failed',stdout:run.stdout};
+  return {outcome:'sat',values:names.length?run.stdout.slice(run.stdout.indexOf('\n')+1).trim():'()',
+    fingerprint:query.fingerprint,runFingerprint:fingerprint([query.fingerprint,selected.fingerprint,run.input])};
+}
+
 // Tasks always come freshly from the compiler for the supplied source request.
 // An imported JSON solver report cannot upgrade a law's evidence through here.
 export async function proveWithZ3(compiler,request,options={}) {
@@ -157,6 +180,33 @@ export async function proveWithZ3(compiler,request,options={}) {
   const solverEvidence=[];
   for(const task of tasks)solverEvidence.push(await solve(task,selected,config));
   const diagnostics=[...(result.diagnostics??[])];
+  const searched=[];
+  for(const [index,item] of solverEvidence.entries()) {
+    if(item.outcome!=='sat')continue;
+    const found=await counterexampleValues(tasks[index],selected,config);
+    if(found?.outcome==='sat')searched.push({index,found});
+    else if(found)solverEvidence[index]={...item,reason:item.reason+'; the counterexample query gave no values ('+found.outcome+')'};
+  }
+  if(searched.length) {
+    const checked=await compiler.proofTasks({...request,proofCounterexamples:searched.map(({index,found})=>({
+      owner:solverEvidence[index].owner,declaration:solverEvidence[index].declaration,
+      taskFingerprint:solverEvidence[index].taskFingerprint,values:found.values}))});
+    const checks=checked.counterexampleChecks??[];
+    searched.forEach(({index,found},position)=>{
+      const item=solverEvidence[index],check=checks[position];
+      if(!check||check.owner!==item.owner||check.declaration!==item.declaration)return;
+      const counterexample={inputs:check.inputs??[],values:found.values,fingerprint:found.fingerprint,
+        runFingerprint:found.runFingerprint,check:check.status};
+      if(check.status==='refuted') {
+        const shown=(check.inputs??[]).map(input=>input.name+' = '+input.value).join(', ');
+        solverEvidence[index]={...item,status:'refuted',modelValidated:true,counterexample,
+          reason:'Z3 found '+(shown?'the input '+shown:'that the law fails')+'; the reference evaluator confirms it: '+check.reason};
+      } else if(check.status==='model-not-confirmed') {
+        solverEvidence[index]={...item,counterexample,reason:'Z3 gave a model the reference evaluator does not confirm: '+check.reason};
+        diagnostics.push({code:'proof-translation',message:`Z3's model for ${item.declaration} is not a counterexample: ${check.reason}`,at:item.at});
+      } else solverEvidence[index]={...item,counterexample,reason:item.reason+'; '+check.reason};
+    });
+  }
   const evidence=(result.evidence??[]).map(row=>{
     const found=solverEvidence.find(item=>item.owner===row.owner&&item.declaration===row.declaration);
     if(row.stage!=='law'||!found)return row;

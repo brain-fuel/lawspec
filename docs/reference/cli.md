@@ -140,9 +140,13 @@ executable, or `z3` on `PATH`. With no proof layer selected, no solver is invoke
 See [proof with Z3](../explanation/smt-proof.md) for supported theories, resource
 limits, model-validation limits and the recorded trust boundary.
 
-A successful solver proof updates the matching law's evidence. A satisfying
-model remains unvalidated; unknown, timeout, resource-limit, unavailable and
-unsupported outcomes do not establish a law. `--json` includes task identities,
+A successful solver proof updates the matching law's evidence. When Z3 finds
+the law's negation satisfiable, it gives values for the law's outer inputs.
+The compiler checks the law at those values with its reference evaluator. The
+law is `refuted` only when the evaluator confirms it. Values the evaluator
+does not confirm are reported as a `proof-translation` diagnostic. Unknown,
+timeout, resource-limit, unavailable and unsupported outcomes do not establish
+a law. `--json` includes task identities,
 solver evidence and raw output. Other verification layers and intrinsic
 contracts retain their own guarantees.
 
@@ -410,5 +414,6 @@ Exports the bundled examples. Needs no configuration and no target tools.
 ## Exit status
 
 `0` on success. `1` when a command fails, `doctor` finds a target that is not
-ready, or `generate --check` finds changes. `prove` uses status `2` when a
-selected task remains incomplete or unsupported.
+ready, or `generate --check` finds changes. `prove` uses status `1` when a
+law is refuted, and status `2` when a selected task remains incomplete or
+unsupported.

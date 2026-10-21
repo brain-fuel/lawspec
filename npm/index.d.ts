@@ -532,6 +532,7 @@ export interface CheckRequest {
   packages?: Package[];
   cacheDirectory?: string;
   attestation?: unknown;
+  proofCounterexamples?: ProofCounterexample[];
 }
 
 export interface GenerationRequest extends CheckRequest {
@@ -543,7 +544,7 @@ export interface GenerationRequest extends CheckRequest {
 
 export type ProofTask =
     {
-      encoding: 'lawspec-smtlib-v1';
+      encoding: 'lawspec-smtlib-v1' | 'lawspec-smtlib-v2';
       owner: string;
       declaration: string;
       at: Location;
@@ -553,9 +554,11 @@ export type ProofTask =
       script: string;
       taskFingerprint: string;
       trust: string;
+      counterexample?: CounterexampleQuery;
+      counterexampleUnsupported?: string;
     } |
     {
-      encoding: 'lawspec-smtlib-v1';
+      encoding: 'lawspec-smtlib-v1' | 'lawspec-smtlib-v2';
       owner: string;
       declaration: string;
       at: Location;
@@ -563,6 +566,32 @@ export type ProofTask =
       machineBits: 32 | 64;
       status: 'unsupported';
       reason: string;
+    };
+
+export type ProofCounterexample =
+    {
+      owner: string;
+      declaration: string;
+      taskFingerprint: string;
+      values: string;
+    };
+
+export type CounterexampleQuery =
+    {
+      encoding: 'lawspec-smtlib-v2';
+      script: string;
+      fingerprint: string;
+      inputs: {name: string; binder: string}[];
+    };
+
+export type CounterexampleCheck =
+    {
+      owner?: string;
+      declaration?: string;
+      taskFingerprint?: string;
+      status: 'refuted' | 'model-not-confirmed' | 'incomplete';
+      reason: string;
+      inputs?: {name: string; value: string}[];
     };
 
 export type NativeSeed = number | string;
@@ -724,6 +753,7 @@ export interface Result {
   formattedSources?: Source[];
   tests?: NativeTestEntry[];
   proofTasks?: ProofTask[];
+  counterexampleChecks?: CounterexampleCheck[];
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;
   packages?: PackageView[];

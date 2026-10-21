@@ -23,7 +23,8 @@ import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
-import LawSpec.Discharge (dischargeEvidence, dischargeEvidenceWith, bindingEvidence, defaultHandlerEvidence)
+import LawSpec.Discharge (dischargeEvidence, dischargeEvidenceWith, bindingEvidence, defaultHandlerEvidence, showValue)
+import qualified LawSpec.Core.Counterexample as Counterexample
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
 import Data.Foldable (toList)
 import qualified Data.Map.Strict as M
@@ -72,7 +73,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
           "proofTasks" | Just selection <- verification ->
             if V.selected selection V.Proof
               then either failure (\tasks -> case result [] of
-                Object response -> Object (KM.insert "proofTasks" (toJSON tasks) response)
+                Object response -> Object (withCounterexampleChecks core tasks (KM.insert "proofTasks" (toJSON tasks) response))
                 response -> response) (Smt.proofTasks core)
               else case result [] of
                 Object response -> Object (KM.insert "proofTasks" (toJSON ([] :: [Smt.ProofTask])) response)
@@ -98,6 +99,28 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     cacheDirectory = case decode bytes of
       Just (Object o) | Just (String d) <- KM.lookup "cacheDirectory" o -> Just (T.unpack d)
       _ -> Nothing
+    -- The host's counterexample values, each bound to a task it ran
+    -- (LawSpec.Core.Counterexample). The compiler re-derives the query and
+    -- re-checks the values; it trusts neither the host nor Z3.
+    withCounterexampleChecks core tasks response = case decode bytes of
+      Just (Object o) | Just (Array asked) <- KM.lookup "proofCounterexamples" o ->
+        KM.insert "counterexampleChecks" (toJSON [counterexampleCheck core tasks item | item <- toList asked]) response
+      _ -> response
+    counterexampleCheck core tasks item = case item of
+      Object o | Just (String owner) <- KM.lookup "owner" o, Just (String law) <- KM.lookup "declaration" o
+               , Just (String fingerprint) <- KM.lookup "taskFingerprint" o, Just (String answer) <- KM.lookup "values" o ->
+        let identity = ["owner" .= owner, "declaration" .= law, "taskFingerprint" .= fingerprint]
+        in case [t | t <- tasks, C.idText (Smt.taskOwner t) == T.unpack owner, C.idText (Smt.taskLaw t) == T.unpack law,
+                     Smt.taskFingerprint t == T.unpack fingerprint] of
+          task : _ -> object (identity ++ counterexampleView (Counterexample.validateCounterexample core task (T.unpack answer)))
+          [] -> object (identity ++ ["status" .= ("incomplete" :: String),
+            "reason" .= ("the counterexample is bound to a task this program does not have" :: String)])
+      _ -> object ["status" .= ("incomplete" :: String), "reason" .= ("malformed counterexample request" :: String)]
+    counterexampleView check = ["status" .= Counterexample.checkStatus check] ++ case check of
+      Counterexample.Refuted inputs why -> ["reason" .= why, "inputs" .= shown inputs]
+      Counterexample.ModelNotConfirmed inputs why -> ["reason" .= why, "inputs" .= shown inputs]
+      Counterexample.CheckIncomplete why -> ["reason" .= why]
+    shown inputs = [object ["name" .= C.binderName (C.quantifiedBinder q), "value" .= showValue v] | (q, v) <- inputs]
     matchWarningsRequested = case decode bytes of
       Just (Object o) -> KM.lookup "warnMatches" o==Just (Bool True)
       _ -> False
@@ -247,7 +270,7 @@ stagesWithInput canonical capture project packages sources bits settings native 
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "attestedOutcomes"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "attestedOutcomes", "proofCounterexamples"])))
   _ -> BC.unpack bytes
 
 -- | Two entries: each holds a whole compiled program and its plan.

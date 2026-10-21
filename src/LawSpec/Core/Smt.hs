@@ -1,6 +1,7 @@
 -- | Typed SMT-LIB tasks, with no solver or host IO in the compiler. The host
 -- executes these tasks using an established prover. ref:DEC-typed-core-boundary
-module LawSpec.Core.Smt (ProofTask(..), Encoding(..), encodingName, proofTasks, taskFingerprint) where
+module LawSpec.Core.Smt (ProofTask(..), Encoding(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
+  , counterexampleFingerprint, outerQuantifiers) where
 
 import Control.Monad (unless, when, foldM, forM)
 import Control.Monad.State.Strict
@@ -26,6 +27,19 @@ data ProofTask = ProofTask
   { taskOwner :: Id, taskLaw :: Id, taskLocation :: Location
   , taskProgram :: String, taskBits :: Int, taskQuery :: Either String String
   , taskEncoding :: Encoding
+  -- Asked of a ready task only after Z3 finds its negation satisfiable.
+  , taskCounterexample :: Either String CounterexampleQuery
+  } deriving (Eq, Show)
+
+-- | A satisfiable task's model is not a counterexample. The counterexample
+-- query declares the law's outer universal inputs as constants and asserts
+-- that the rest of the law is not established for them, so the host can ask
+-- Z3 for exactly their values with get-value. The compiler then re-checks
+-- those values with the reference evaluator (LawSpec.Core.Counterexample).
+-- It is always lawspec-smtlib-v2; the v1 task beside it is unchanged.
+-- ref:DEC-validated-counterexamples
+data CounterexampleQuery = CounterexampleQuery
+  { counterexampleInputs :: [(String, Quantifier)], counterexampleScript :: String
   } deriving (Eq, Show)
 
 -- | Each encoding is frozen once released. A task that lawspec-smtlib-v1
@@ -49,12 +63,26 @@ instance ToJSON ProofTask where
       Left reason -> ["status" .= ("unsupported"::String), "reason" .= reason]
       Right script -> ["status" .= ("ready"::String), "script" .= script,
         "taskFingerprint" .= taskFingerprint task,
-        "trust" .= ("typed LawSpec translation and the selected SMT solver; no kernel-checked proof certificate"::String)]
+        "trust" .= ("typed LawSpec translation and the selected SMT solver; no kernel-checked proof certificate"::String)] ++
+        [ "counterexample" .= object
+            [ "encoding" .= encodingName SmtLibV2, "script" .= counterexampleScript query
+            , "fingerprint" .= counterexampleFingerprint task query
+            , "inputs" .= [object ["name" .= name, "binder" .= binderName (quantifiedBinder q)]
+                          | (name, q) <- counterexampleInputs query] ]
+        | Right query <- [taskCounterexample task] ] ++
+        [ "counterexampleUnsupported" .= reason | Left reason <- [taskCounterexample task] ]
 
 taskFingerprint :: ProofTask -> String
 taskFingerprint task = digestHex (digestString (concatMap frame
   [encodingName (taskEncoding task),taskProgram task,show (taskBits task),idText (taskOwner task),
    idText (taskLaw task),either id id (taskQuery task)]))
+  where frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
+
+-- | The counterexample query's own binding, framed as a task's is.
+counterexampleFingerprint :: ProofTask -> CounterexampleQuery -> String
+counterexampleFingerprint task query = digestHex (digestString (concatMap frame
+  [encodingName SmtLibV2,taskProgram task,show (taskBits task),idText (taskOwner task),
+   idText (taskLaw task),counterexampleScript query]))
   where frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
 
 proofTasks :: Program -> Either [Diagnostic] [ProofTask]
@@ -65,8 +93,40 @@ proofTasks program = do
           fingerprint (programMachineBits program) (snd <$> task)
           -- A refused task names v1, the encoding that refused it.
           (either (const SmtLibV1) fst task)
+          (either Left (const (counterexampleQuery program law)) task)
        | owner <- programUnits program, law <- unitProperties owner
        , let task = query program law]
+
+-- | A law's outer universal inputs, in order: its parameters, its inputs and
+-- the universal quantifiers that open its body; and the rest of the body.
+outerQuantifiers :: Property -> ([Quantifier], Proposition)
+outerQuantifiers law = peel (propertyParameters law ++ propertyInputs law) (propertyBody law)
+  where
+    peel found (Quantified ForEvery q body) = peel (found ++ [q]) body
+    peel found body = (found, body)
+
+counterexampleQuery :: Program -> Property -> Either String CounterexampleQuery
+counterexampleQuery program law = do
+  let (outer, rest) = outerQuantifiers law
+      bits = programMachineBits program
+      constant (scope, rows) (index, q) = do
+        let binder = quantifiedBinder q
+            name = "lawspec_input_" ++ show (index :: Int)
+        s <- lift (quantifierSort (binderType binder))
+        let local = M.insert (binderId binder) (Term s name "true") scope
+        base <- lift (domain bits (binderType binder) name)
+        restricted <- restrictions program [] local (quantifiedPredicates q)
+        pure (local, rows ++ [(name, q, s, both [base, positive restricted])])
+  ((rows, result), _) <- runStateT (do
+      (scope, rows) <- foldM constant (M.empty, []) (zip [0 ..] outer)
+      result <- proposition program [] scope rest
+      pure (rows, result)) (Work 0 0 SmtLibV2)
+  let script = "; " ++ encodingName SmtLibV2 ++ "; counterexample: the law's outer inputs as constants\n" ++
+        concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (name, _, s, _) <- rows] ++
+        concat ["(assert " ++ condition ++ ")\n" | (_, _, _, condition) <- rows] ++
+        "(assert " ++ no (positive result) ++ ")\n"
+  unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
+  pure (CounterexampleQuery [(name, q) | (name, q, _, _) <- rows] script)
 
 data Sort = BooleanSort | IntegerSort | RealSort | UnitSort deriving (Eq,Show)
 data Term = Term { termSort :: Sort, value :: String, defined :: String }

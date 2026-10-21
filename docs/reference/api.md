@@ -115,7 +115,16 @@ With `verification.layers` containing `proof`, `proofTasks` returns optional
 fingerprint and machine width. A `ready` entry includes its SMT-LIB `script`,
 `taskFingerprint`, encoding version and trust boundary. The encoding is
 `lawspec-smtlib-v1` for every task today; a task that needs a later feature
-will name `lawspec-smtlib-v2`. An `unsupported` entry includes a reason. Mandatory definition validation runs before either result;
+will name `lawspec-smtlib-v2`. A `ready` entry also has a `counterexample`
+query, or `counterexampleUnsupported` with a reason. An `unsupported` entry
+includes a reason.
+
+To check a counterexample, send the same request with `proofCounterexamples`:
+each entry names a task by `owner`, `declaration` and `taskFingerprint`, and
+gives Z3's `get-value` answer as `values`. The response's
+`counterexampleChecks` says `refuted`, `model-not-confirmed` or `incomplete`
+for each, with a reason and the inputs it read. The compiler re-derives the
+query and re-checks the values itself. Mandatory definition validation runs before either result;
 an empty layer selection returns no tasks.
 
 Prepared tasks are separate from completed proof evidence. Preparation uses a

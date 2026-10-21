@@ -569,6 +569,7 @@ library
       LawSpec.Compile
       LawSpec.Core
       LawSpec.Core.CapabilityScope
+      LawSpec.Core.Counterexample
       LawSpec.Core.DefinitionContracts
       LawSpec.Core.Definitions
       LawSpec.Core.DomainEvidence
@@ -942,6 +943,7 @@ test-suite lawspec-test
       ContainerRecordViewsSpec
       ContextualSpec
       CoreSpec
+      CounterexampleSpec
       DataShapeSpec
       DefinitionContractFixture
       DefinitionContractProofSpec

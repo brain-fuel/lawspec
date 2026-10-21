@@ -8,6 +8,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `lawspec prove` validates counterexamples. When Z3 finds a law's negation
+  satisfiable, it gives values for the law's outer inputs, and the compiler
+  re-checks the law at them with its reference evaluator. A confirmed law is
+  `refuted` with its inputs, and `prove` exits with status 1. Unconfirmed
+  values are a `proof-translation` diagnostic, never a refutation.
 - `lawspec-smtlib-v1` proof tasks are frozen byte for byte, checked against
   a corpus of every current task. The compiler can name a later encoding,
   `lawspec-smtlib-v2`, for tasks that need new features.

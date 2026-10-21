@@ -236,15 +236,25 @@ declarations = joinWith (softbreak <> softbreak)
        ("sources", text "Source[]"), ("schemaVersion?", text "5"),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
-       ("attestation?", text "unknown")]
+       ("attestation?", text "unknown"),
+       ("proofCounterexamples?", text "ProofCounterexample[]")]
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , alias "ProofTask"
-      [record (fields [("encoding","'lawspec-smtlib-v1'"),("owner","string"),("declaration","string"),
+      [record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
-        [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string")]),
-       record (fields [("encoding","'lawspec-smtlib-v1'"),("owner","string"),("declaration","string"),
+        [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string"),
+          ("counterexample?","CounterexampleQuery"),
+          ("counterexampleUnsupported?","string")]),
+       record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "unsupported"),("reason",text "string")])]
+  , alias "ProofCounterexample" [record (fields [("owner","string"),("declaration","string"),
+      ("taskFingerprint","string"),("values","string")])]
+  , alias "CounterexampleQuery" [record (fields [("encoding","'lawspec-smtlib-v2'"),("script","string"),
+      ("fingerprint","string"),("inputs","{name: string; binder: string}[]")])]
+  , alias "CounterexampleCheck" [record (fields [("owner?","string"),("declaration?","string"),
+      ("taskFingerprint?","string"),("status","'refuted' | 'model-not-confirmed' | 'incomplete'"),
+      ("reason","string"),("inputs?","{name: string; value: string}[]")])]
   , alias "NativeSeed" [text "number",text "string"]
   , alias "NativeFreshness" (map quoted ["matching-inputs","stale","not-selected","unavailable","not-run"])
   , alias "NativeConformanceStatus" (map quoted ["passed","failed","partial","incomplete",
@@ -289,7 +299,8 @@ declarations = joinWith (softbreak <> softbreak)
        fields [("languageProfile?", "\"1.0-rc.2\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "MatchWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
-       [("proofTasks?",text "ProofTask[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
+       [("proofTasks?",text "ProofTask[]"),
+        ("counterexampleChecks?",text "CounterexampleCheck[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])
   , alias "DataValue" [text "ScalarValue", variant "data" [("type", "Type"), ("constructor", "string"), ("fields", "DataValue[]")]]
