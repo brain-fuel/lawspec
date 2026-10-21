@@ -74,6 +74,15 @@ also prevent a positive proof. Unknown answers, timeouts, resource limits,
 unavailable executables and protocol failures remain explicit incomplete results.
 An imported JSON report cannot upgrade a source law through this host.
 
+## Law sets
+
+The [law-set checks](../reference/language/law-sets.md) use the same rule. A
+task for completeness, overlap or conflict asks Z3 for an input. The compiler
+reads the input back and runs the laws there with the evaluator. Only a
+confirmed input is reported. An `unsat` answer proves the check, trusting the
+translation and Z3. For vacuity, Z3's input is a witness that a law's
+assumptions can hold, and the evaluator confirms it too.
+
 The existing explanation views use the same typed law and updated obligation
 evidence. Proving a law about checked definitions does not establish conformance
 of a separate native implementation.

@@ -173,7 +173,8 @@ export async function proveWithZ3(compiler,request,options={}) {
   if(result.diagnostics?.length)return {...result,solverEvidence:[]};
   const tasks=result.proofTasks??[];
   let selected={};
-  if(tasks.some(task=>task.status==='ready')) {
+  const analysis=result.analysisTasks??[];
+  if(tasks.some(task=>task.status==='ready')||analysis.some(row=>row.status==='ready')) {
     try {selected=await prover(config);}
     catch(error){selected={error:error.message,outcome:error.code==='ENOENT'?'unavailable':error.outcome??'failed'};}
   }
@@ -220,5 +221,46 @@ export async function proveWithZ3(compiler,request,options={}) {
     }
     return {...row,status:'proved',reason:found.reason+`; task ${found.taskFingerprint}`};
   });
-  return {...result,diagnostics,evidence,solverEvidence};
+  // The law-set checks the compiler left undecided (completeness, overlap,
+  // conflict, vacuity): Z3 runs each task, and the compiler confirms every
+  // model with its reference evaluator before a check is refuted.
+  let settled=evidence,found=diagnostics;
+  if(analysis.length) {
+    const answers=[],ran=new Map();
+    for(const row of analysis) {
+      if(row.status!=='ready') {
+        solverEvidence.push({owner:row.owner,declaration:row.declaration,stage:row.stage,kind:'analysis',
+          encoding:'lawspec-smtlib-v2',status:'unsupported',outcome:'unsupported',reason:row.reason,configuration:config});
+        continue;
+      }
+      for(const task of row.tasks) {
+        if(selected.error) {ran.set(task.fingerprint,{outcome:selected.outcome,error:selected.error});continue;}
+        const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
+          `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+task.script+'(check-sat)\n';
+        const run=await execute(selected.binary,selected.args,input,config,true,
+          token=>token==='sat'&&task.inputs.length?`(get-value (${task.inputs.join(' ')}))\n(exit)\n`:'(exit)\n');
+        const outcome=run.timeout?'timeout':run.error||run.exitCode!==0||!run.outcome?'failed':run.outcome;
+        const values=outcome==='sat'&&task.inputs.length?run.stdout.slice(run.stdout.indexOf('\n')+1).trim():'';
+        ran.set(task.fingerprint,{outcome,run,runFingerprint:fingerprint([task.fingerprint,selected.fingerprint,run.input])});
+        answers.push({fingerprint:task.fingerprint,outcome,values});
+      }
+    }
+    const checked=answers.length?await compiler.proofTasks({...request,analysisResults:answers}):{};
+    const rows=new Map((checked.analysisEvidence??[]).map(row=>[row.declaration+'\u0000'+row.stage,row]));
+    settled=evidence.map(row=>rows.get(row.declaration+'\u0000'+row.stage)??row);
+    found=[...diagnostics,...(checked.diagnostics??[]).filter(row=>row.code==='refuted')];
+    for(const verdict of checked.analysisChecks??[]) {
+      const done=ran.get(verdict.fingerprint)??{};
+      solverEvidence.push({owner:verdict.owner,declaration:verdict.declaration,stage:verdict.stage,kind:'analysis',
+        encoding:'lawspec-smtlib-v2',taskFingerprint:verdict.fingerprint,status:verdict.status,
+        outcome:done.outcome??'failed',reason:verdict.reason,check:verdict.check,configuration:config,
+        ...(done.run?{prover:{name:'z3',version:selected.version,binary:selected.binary,binaryFingerprint:selected.binaryFingerprint,
+          fingerprint:selected.fingerprint,arguments:selected.args},runFingerprint:done.runFingerprint,
+          elapsedMs:done.run.elapsedMs,exitCode:done.run.exitCode,stdout:done.run.stdout,stderr:done.run.stderr}:{})});
+    }
+    for(const [fingerprintOf,done] of ran)if(done.error&&!(checked.analysisChecks??[]).some(v=>v.fingerprint===fingerprintOf))
+      solverEvidence.push({kind:'analysis',taskFingerprint:fingerprintOf,encoding:'lawspec-smtlib-v2',status:'incomplete',
+        outcome:done.outcome,reason:done.error,configuration:config});
+  }
+  return {...result,diagnostics:found,evidence:settled,solverEvidence};
 }

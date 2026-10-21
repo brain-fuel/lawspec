@@ -33,6 +33,15 @@ diagnostic for each failing input. `lawspec evidence` still lists the law
 under `REFUTED`, with the input, and exits with status 1. Every other law
 keeps its own status.
 
+## Exempted checks
+
+`EXEMPTED` (`exempted`) is weaker than `ASSUMED / EXTERNAL`. A law-set check
+found a counterexample, or could not decide, and a `laws for` block excuses
+it (see [law sets](law-sets.md)). The row keeps the counterexample, the
+reason and the expiry, for example `until 1.2.0 (project is 1.1.4)`. The
+build does not fail. Once the exemption expires, the check is `REFUTED` with
+the same counterexample, and the build fails.
+
 ## Harness statuses
 
 A law's [harness](harness.md) decides how its tests run, never what the law
@@ -190,6 +199,7 @@ Each obligation has a stage:
 | `binding` | A native type binding | runtime-checked |
 | `codec`, `generator`, `native-function` | A codec hook, generator factory or bound native function | assumed |
 | `handler` | A built-in ability's production handler: the runtime's default, or one bound in `lawspec.json` | default-handler, or assumed when bound |
+| `completeness`, `overlap`, `conflict`, `vacuity` | A function's laws, checked together (see [law sets](law-sets.md)) | exhaustively checked, proved, refuted, exempted, planned or incomplete |
 
 ## Where the tests ran
 

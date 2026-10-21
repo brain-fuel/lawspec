@@ -432,6 +432,7 @@ export type DischargeStatus =
     'runtime-checked' |
     'default-handler' |
     'assumed' |
+    'exempted' |
     'refuted';
 
 export interface ObligationEvidence {
@@ -441,6 +442,7 @@ export interface ObligationEvidence {
   status: DischargeStatus;
   reason: string;
   claim: Expr | null;
+  exemption?: Exemption;
   environment?: string;
   environmentRun?: AttestedRun;
   against?: AttestedDependency[];
@@ -534,7 +536,61 @@ export interface CheckRequest {
   cacheDirectory?: string;
   attestation?: unknown;
   proofCounterexamples?: ProofCounterexample[];
+  analysisResults?: AnalysisResult[];
+  projectVersion?: string;
+  now?: string;
 }
+
+export interface Exemption {
+  reason: string;
+  until: string | null;
+  expired: boolean;
+  law: string | null;
+}
+
+export interface AnalysisResult {
+  fingerprint: string;
+  outcome: string;
+  values: string;
+}
+
+export type AnalysisStage = 'completeness' | 'overlap' | 'conflict' | 'vacuity';
+
+export type AnalysisTaskRow =
+    {
+      owner: string;
+      declaration: string;
+      stage: AnalysisStage;
+      status: 'ready';
+      tasks: AnalysisTask[];
+    } |
+    {
+      owner: string;
+      declaration: string;
+      stage: AnalysisStage;
+      status: 'unsupported';
+      reason: string;
+    };
+
+export interface AnalysisTask {
+  fingerprint: string;
+  encoding: 'lawspec-smtlib-v2';
+  script: string;
+  inputs: string[];
+}
+
+export interface AnalysisCheck {
+  owner: string;
+  declaration: string;
+  stage: AnalysisStage;
+  fingerprint: string;
+  status: AnalysisCheckStatus;
+  reason: string;
+  check: AnalysisCheckStatus;
+}
+
+export type AnalysisCheckStatus =
+    'proved' | 'refuted' | 'exempted' | 'incomplete';
 
 export interface GenerationRequest extends CheckRequest {
   target: Target;
@@ -754,6 +810,9 @@ export interface Result {
   formattedSources?: Source[];
   tests?: NativeTestEntry[];
   proofTasks?: ProofTask[];
+  analysisTasks?: AnalysisTaskRow[];
+  analysisEvidence?: ObligationEvidence[];
+  analysisChecks?: AnalysisCheck[];
   counterexampleChecks?: CounterexampleCheck[];
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;

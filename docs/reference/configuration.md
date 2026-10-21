@@ -31,6 +31,7 @@ names another file. Relative paths resolve from the file's directory.
 | --- | --- | --- | --- |
 | `version` | `2` | Yes | The canonical configuration format. Earlier versions are rejected. |
 | `languageProfile` | `1.0-rc.2` | Yes in version 2 | The explicit canonical grammar and semantics. |
+| `projectVersion` | string | No | The project's version, like `1.2.0`. An exemption written `until 1.2.0` expires at it; see [law sets](language/law-sets.md). A package uses the `version` in `lawspec-package.json` instead. |
 | `verification` | object | No | `layers` defaults to `[]`, selecting none of the optional law checks. Choices: proof, exhaustive, property, examples, runtime, model, analysis. Intrinsic definition checks and their runtime enforcement remain automatic. |
 | `sources` | array of paths | Yes | `.lawspec` files, or directories scanned recursively for them. A file may hold a unit or a [harness](language/harness.md) for one. |
 | `targets` | array of targets | Yes | The target projects. |

@@ -8,6 +8,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The laws about a function are checked together: completeness, overlap,
+  conflict and vacuity, on by default. A `laws for f are ... end laws` block
+  states claims (`complete over`, `without overlap`, `without conflict`) and
+  excuses checks with a reason (`partial`, `overlap allowed`,
+  `conflict allowed until`, `vacuity allowed for`), until a project version
+  or a UTC date-time. An excused failure is `exempted`, a new status weaker
+  than `assumed`, and keeps its counterexample; an expired exemption is
+  `refuted` and fails the build. The `exhaustive` layer decides finite
+  domains; `lawspec prove` sends the rest to Z3, and the evaluator confirms
+  every input Z3 gives. `lawspec.json` gains `projectVersion`.
 - A new evidence status, `refuted`: a law a confirmed counterexample shows
   false (the compiler's exhaustive check, or a Z3 model the reference
   evaluator confirms). The build still fails with a `refuted` diagnostic, and

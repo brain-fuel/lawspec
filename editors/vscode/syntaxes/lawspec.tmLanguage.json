@@ -61,6 +61,28 @@
       }
     },
     {
+      "match": "^[ \\t]*(laws[ \\t]+for)\\b",
+      "captures": {
+        "1": {
+          "name": "keyword.control.lawspec"
+        }
+      }
+    },
+    {
+      "match": "^[ \\t]*(complete[ \\t]+over|without[ \\t]+(?:overlap|conflict)|partial|(?:overlap|conflict)[ \\t]+allowed|vacuity[ \\t]+allowed[ \\t]+for)\\b(?:.*?\\b(until)\\b)?(?:.*?\\b(because)\\b)?",
+      "captures": {
+        "1": {
+          "name": "keyword.other.law-set.lawspec"
+        },
+        "2": {
+          "name": "keyword.other.law-set.lawspec"
+        },
+        "3": {
+          "name": "keyword.other.law-set.lawspec"
+        }
+      }
+    },
+    {
       "match": "^([ \\t]*)(id|owner)([ \\t]*)(:)(?!:)",
       "captures": {
         "2": {

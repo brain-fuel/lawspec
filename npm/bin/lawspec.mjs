@@ -866,6 +866,10 @@ async function main() {
     ...(await packageInput(config, configRoot)),
     generation: config.generation,
     machineBits: options.machineBits ?? config.machineBits ?? 64,
+    // What a law-set exemption's until is compared with: the project's
+    // version and the current UTC time.
+    ...(typeof config.projectVersion === "string" ? { projectVersion: config.projectVersion } : {}),
+    now: new Date().toISOString(),
   };
   const compiler = await createCompiler();
   if (verb === "prove") {
@@ -877,13 +881,13 @@ async function main() {
         .filter(([name]) => options[name] !== undefined).map(([name,key]) => [key,Number(options[name])])),
     }));
     output(options.json ? result : result.solverEvidence.length
-      ? result.solverEvidence.map(row => `${row.declaration}: ${row.status} (${row.outcome}). ${row.reason}`).join("\n")
+      ? result.solverEvidence.map(row => `${row.declaration}${row.kind === "analysis" ? ` ${row.stage}` : ""}: ${row.status} (${row.outcome}). ${row.reason}`).join("\n")
       : (input.verification?.layers.includes("proof")
         ? "No source law obligations are available. No solver was invoked."
         : "No proof layer selected. Intrinsic definition checks passed; no solver was invoked."));
     // A refuted law is a definite failure; anything else not proved is incomplete.
     if (result.solverEvidence.some(row => row.status === "refuted")) process.exitCode = 1;
-    else if (result.solverEvidence.some(row => row.status !== "proved")) process.exitCode = 2;
+    else if (result.solverEvidence.some(row => !["proved", "exempted"].includes(row.status))) process.exitCode = 2;
     return;
   }
   // Each obligation reports how it is discharged, strongest first.
@@ -895,6 +899,8 @@ async function main() {
     ["runtime-checked", "RUNTIME CHECKED"],
     ["default-handler", "DEFAULT HANDLER"],
     ["assumed", "ASSUMED / EXTERNAL"],
+    // A law-set check a laws-for block excuses, with its reason and expiry.
+    ["exempted", "EXEMPTED"],
     // A law a confirmed counterexample shows false; the build fails.
     ["refuted", "REFUTED"],
     // The harness plane: a law it marks as known to fail, a law whose last
@@ -910,9 +916,9 @@ async function main() {
   const evidenceSummary = (evidence) => {
     if (!evidence.length) return "";
     const count = (status) => evidence.filter((item) => item.status === status).length;
-    // Refuted and the harness statuses (after assumed) are counted only when
+    // Exempted, refuted and the harness statuses (after assumed) are counted only when
     // some obligation has them.
-    const harnessFrom = statuses.findIndex(([status]) => status === "refuted");
+    const harnessFrom = statuses.findIndex(([status]) => status === "exempted");
     const shown = statuses.filter(([status], i) => i < harnessFrom || count(status));
     return ` Evidence: ${shown.map(([status, label]) => `${count(status)} ${label.toLowerCase()}`).join(", ")}.`;
   };

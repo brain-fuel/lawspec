@@ -17,7 +17,11 @@ export interface SolverEvidence {
   machineBits: 32 | 64;
   programFingerprint: string;
   taskFingerprint?: string;
-  status: 'proved' | 'refuted' | 'incomplete' | 'unsupported';
+  status: 'proved' | 'refuted' | 'exempted' | 'incomplete' | 'unsupported';
+  /** Set for a law-set check: its stage and the row's overall status. */
+  kind?: 'analysis';
+  stage?: 'completeness' | 'overlap' | 'conflict' | 'vacuity';
+  check?: 'proved' | 'refuted' | 'exempted' | 'incomplete';
   outcome: 'unsat' | 'sat' | 'unknown' | 'timeout' | 'resource-limit' | 'out-of-memory' | 'unavailable' | 'failed' | 'unsupported';
   reason: string;
   model?: string;

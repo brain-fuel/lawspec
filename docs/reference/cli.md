@@ -146,7 +146,8 @@ The compiler checks the law at those values with its reference evaluator. The
 law is `refuted` only when the evaluator confirms it. Values the evaluator
 does not confirm are reported as a `proof-translation` diagnostic. Unknown,
 timeout, resource-limit, unavailable and unsupported outcomes do not establish
-a law. `--json` includes task identities,
+a law. `prove` also runs the [law-set checks](language/law-sets.md) the
+compiler could not decide, with the same confirmation. `--json` includes task identities,
 solver evidence and raw output. Other verification layers and intrinsic
 contracts retain their own guarantees.
 
@@ -154,7 +155,7 @@ contracts retain their own guarantees.
 
 Lists every obligation with its stage, identity, claim and reason, grouped by
 status. Completed evidence, `PLANNED`, `NOT VERIFIED`, `INCOMPLETE`,
-`UNSUPPORTED` and `ASSUMED / EXTERNAL` retain their distinct meanings, alongside
+`UNSUPPORTED`, `ASSUMED / EXTERNAL` and `EXEMPTED` retain their distinct meanings, alongside
 the harness plane's `KNOWN FAILING`, `FLAKY` and `SKIPPED`. A `HARNESS` section
 follows: for each
 law with a [harness](language/harness.md), how it is tested (strategies,
@@ -417,4 +418,5 @@ Exports the bundled examples. Needs no configuration and no target tools.
 target that is not ready, or `generate --check` finds changes. `evidence`
 still lists a refuted law under `REFUTED` before it exits with status `1`. `prove` uses status `1` when a
 law is refuted, and status `2` when a selected task remains incomplete or
-unsupported.
+unsupported. An `exempted` law-set check does not change the status until its
+exemption expires.

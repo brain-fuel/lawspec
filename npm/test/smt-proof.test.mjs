@@ -114,7 +114,11 @@ function next (state of type State) (action of type Action) -> State is
     when Cancel then ${mutant?'Cancelled':'if state = Shipped then Shipped else Cancelled end if'}
   end case
 end function
-`+law('for all (state :: State) (action :: Action) => state = Shipped implies next state action = Shipped end for all');
+`+law('for all (state :: State) (action :: Action) => state = Shipped implies next state action = Shipped end for all')+`
+laws for next are
+  partial because "only shipped orders are checked here"
+end laws
+`;
   const proved=await proveWithZ3(compiler,request(orders(false)),{binary:z3});
   assert.equal(proved.solverEvidence[0].encoding,'lawspec-smtlib-v2');
   assert.equal(proved.solverEvidence[0].status,'proved');
@@ -122,6 +126,24 @@ end function
   const proof=refuted.solverEvidence[0];
   assert.equal(proof.status,'refuted');
   assert.deepEqual(proof.counterexample.inputs,[{name:'state',value:'Shipped'},{name:'action',value:'Cancel'}]);
+});
+
+test('law sets: Z3 settles completeness, overlap and conflict, and the evaluator confirms every input',requiresZ3,async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const content=await readFile(new URL('../../test/fixtures/law-sets.lawspec',import.meta.url),'utf8');
+  const result=await proveWithZ3(compiler,{schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['proof']},
+    sources:[{path:'portfolio.lawspec',content}]},{binary:z3});
+  const row=(name,stage)=>result.evidence.find(r=>r.declaration==='portfolio.refunds::'+name&&r.stage===stage);
+  for(const stage of ['completeness','overlap','conflict','vacuity'])assert.equal(row('decide',stage).status,'proved');
+  assert.equal(row('settle','conflict').status,'refuted');
+  assert.match(row('settle','conflict').reason,/amount = 0, captured = 0; Z3 found it and the evaluator confirms it/);
+  assert.ok(result.diagnostics.some(d=>d.code==='refuted'));
+  assert.equal(row('settle','overlap').status,'exempted');
+  assert.equal(row('quote','completeness').status,'proved');
+  assert.equal(row('triage','completeness').status,'exempted');
+  assert.match(row('triage','completeness').reason,/not covered: amount = 5001/);
+  assert.equal(row('triage','completeness').exemption.reason,'amounts above 5000 go to manual review');
+  assert.ok(result.solverEvidence.some(e=>e.kind==='analysis'&&e.stage==='conflict'&&e.status==='refuted'&&e.outcome==='sat'));
 });
 
 test('satisfiable Z3 tasks whose values cannot be confirmed stay incomplete',requiresZ3,async()=>{
@@ -240,6 +262,22 @@ test('prove CLI reports selected, unselected, unavailable and mandatory-error ou
     assert.equal(evidence.status,1,evidence.stdout+evidence.stderr);
     assert.match(evidence.stdout,/REFUTED \(1\)/);
     assert.match(evidence.stdout,/is false for n = 10/);
+    await save(`type State is one of | Pending | Shipped | Cancelled end type
+function next (state :: State) -> State is if state = Pending then Shipped else state end if end function
+law "|pending orders ship| is definition: for all (state :: State) => state = Pending implies next state = Shipped end for all end definition end law
+laws for next are
+  partial until 1.2.0 because "cancelled orders come later"
+end laws
+`,['exhaustive']);
+    await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,projectVersion:'1.1.4',verification:{layers:['exhaustive']}}));
+    const exempted=spawnSync(process.execPath,[cli,'evidence'],{cwd:directory,encoding:'utf8'});
+    assert.equal(exempted.status,0,exempted.stdout+exempted.stderr);
+    assert.match(exempted.stdout,/EXEMPTED \(1\)/);
+    assert.match(exempted.stdout,/until 1\.2\.0 \(project is 1\.1\.4\)/);
+    await writeFile(path.join(directory,'lawspec.json'),JSON.stringify({...config,projectVersion:'1.2.0',verification:{layers:['exhaustive']}}));
+    const expired=spawnSync(process.execPath,[cli,'evidence'],{cwd:directory,encoding:'utf8'});
+    assert.equal(expired.status,1,expired.stdout+expired.stderr);
+    assert.match(expired.stdout,/REFUTED \(1\)/);
     await save(square,[]);
     const unselected=run();assert.equal(unselected.status,0,unselected.stdout+unselected.stderr);
     assert.deepEqual(JSON.parse(unselected.stdout).solverEvidence,[]);

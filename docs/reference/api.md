@@ -127,6 +127,20 @@ for each, with a reason and the inputs it read. The compiler re-derives the
 query and re-checks the values itself. Mandatory definition validation runs before either result;
 an empty layer selection returns no tasks.
 
+The same response has `analysisTasks`: one entry per [law-set check](language/law-sets.md)
+the compiler left undecided, with `owner`, `declaration` and `stage`. A `ready`
+entry has `tasks`, each with a `fingerprint`, `encoding`, `script` and the
+`inputs` to ask Z3 for. An `unsupported` entry has a `reason`. To settle them,
+send the same request with `analysisResults`: each entry gives a task's
+`fingerprint`, Z3's `outcome` and, for `sat`, its `get-value` answer as
+`values`. The compiler confirms every input with the reference evaluator. The
+response's `analysisEvidence` holds the settled rows, and `analysisChecks`
+says `proved`, `refuted`, `exempted` or `incomplete` for each task.
+
+Two request fields decide whether a law-set exemption has expired:
+`projectVersion` (or `package.version`) and `now`, a UTC date-time. Neither
+changes the compiled result or its cache key.
+
 Prepared tasks are separate from completed proof evidence. Preparation uses a
 separate cache namespace and does not run the existing optional law prover.
 Other selected verification layers retain their own evidence states.
