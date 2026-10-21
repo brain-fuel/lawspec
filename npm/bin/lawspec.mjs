@@ -72,6 +72,13 @@ function testCommand(target, root) {
     command = `npm exec -- tsc -p tsconfig.json && node --test ${shellQuote("dist/" + testDir)}/*.test.js`;
   return `(cd ${shellQuote(root)} && ${command})`;
 }
+// A refuted law fails the command, but evidence still lists it: the
+// diagnostics then only say which laws are refuted.
+function refutedOnly(result) {
+  return result.diagnostics?.length && result.diagnostics.every((d) => d.code === "refuted") && result.evidence
+    ? { ...result, refuted: result.diagnostics, diagnostics: [] } : result;
+}
+
 function diagnostics(result) {
   if (result.diagnostics?.length)
     throw Object.assign(
@@ -888,6 +895,8 @@ async function main() {
     ["runtime-checked", "RUNTIME CHECKED"],
     ["default-handler", "DEFAULT HANDLER"],
     ["assumed", "ASSUMED / EXTERNAL"],
+    // A law a confirmed counterexample shows false; the build fails.
+    ["refuted", "REFUTED"],
     // The harness plane: a law it marks as known to fail, a law whose last
     // run was flaky, and a law whose tests it skips.
     ["known-failing", "KNOWN FAILING"],
@@ -901,9 +910,9 @@ async function main() {
   const evidenceSummary = (evidence) => {
     if (!evidence.length) return "";
     const count = (status) => evidence.filter((item) => item.status === status).length;
-    // The harness statuses (after assumed) are counted only when a harness
-    // gives some.
-    const harnessFrom = statuses.findIndex(([status]) => status === "known-failing");
+    // Refuted and the harness statuses (after assumed) are counted only when
+    // some obligation has them.
+    const harnessFrom = statuses.findIndex(([status]) => status === "refuted");
     const shown = statuses.filter(([status], i) => i < harnessFrom || count(status));
     return ` Evidence: ${shown.map(([status, label]) => `${count(status)} ${label.toLowerCase()}`).join(", ")}.`;
   };
@@ -934,8 +943,9 @@ async function main() {
     const named = await readAttestation(config);
     const { runs, attestations, outcomes } = await lastRuns();
     const recorded = named && typeof named.run?.id === "string" ? outcomes.get(named.run.id) : undefined;
-    const result = diagnostics(await compiler.check({ ...input,
-      ...(named ? { attestation: named, ...(recorded ? { attestedOutcomes: recorded } : {}) } : {}) }));
+    const result = diagnostics(refutedOnly(await compiler.check({ ...input,
+      ...(named ? { attestation: named, ...(recorded ? { attestedOutcomes: recorded } : {}) } : {}) })));
+    if (result.refuted) process.exitCode = 1;
     let evidence = attachNativeEvidence(result.evidence,await readNativeObservations({compiler,input,selected,roots,
       configRoot,build:await buildDigest(),evidence:result.evidence,attestation:named}));
     const environments = named ? [result.attestation] : [];

@@ -701,3 +701,12 @@ DEC-smt-datatypes:
   opened: 0.26.0
   decided: 0.26.0
   refs: [smt-lib, why3, spark-ug, z3]
+
+DEC-refuted-status:
+  status: decided
+  question: |
+    How is a law reported when a confirmed counterexample shows it false?
+  answer: |
+    As refuted, a status of its own (owner decision after gate 5 increment 5). A refuted law has no supporting evidence: the compiler's exhaustive check found an input where it is false or undefined, or Z3 gave values the reference evaluator confirmed (DEC-validated-counterexamples). The build fails as before: the compiler keeps the law's row with status refuted and adds one refuted diagnostic per failing input, so check, generate and test stop, while lawspec evidence lists the law under REFUTED and exits with status 1; lawspec prove exits with status 1 and sets the row from a confirmed Z3 model. Every other law keeps its status, and a solver receipt keeps its meaning: proved still means unsat under the recorded binding, and a refutation trusts only the evaluator. The API schema stays 5, because refuted is one more value of the documented status vocabulary and no existing value changed meaning; consumers that list statuses (the CLI, the generated TypeScript types and the docs) know it. This amends DEC-evidence-statuses, which reported a false law only as a diagnostic.
+  opened: 0.26.0
+  decided: 0.26.0

@@ -212,7 +212,7 @@ export async function proveWithZ3(compiler,request,options={}) {
     if(row.stage!=='law'||!found)return row;
     if(found.status!=='proved') {
       if(['proved','exhaustively-checked','known-failing','skipped','flaky'].includes(row.status))return row;
-      return {...row,status:found.status==='unsupported'?'unsupported':'incomplete',reason:found.reason};
+      return {...row,status:found.status==='unsupported'?'unsupported':found.status==='refuted'?'refuted':'incomplete',reason:found.reason};
     }
     if(row.status==='known-failing') {
       diagnostics.push({code:'harness',message:`Z3 proved ${row.declaration}; its harness cannot mark it known failing`,at:found.at});

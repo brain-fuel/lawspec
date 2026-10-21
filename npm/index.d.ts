@@ -431,7 +431,8 @@ export type DischargeStatus =
     'measured' |
     'runtime-checked' |
     'default-handler' |
-    'assumed';
+    'assumed' |
+    'refuted';
 
 export interface ObligationEvidence {
   owner: string;

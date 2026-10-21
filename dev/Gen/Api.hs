@@ -206,7 +206,7 @@ declarations = joinWith (softbreak <> softbreak)
       ("names?", "NativeNameBinding[]"),
       ("handlers?", "NativeHandlerBinding[]"), ("failures?", "NativeFailureMapping[]"), ("network?", "NativeNetworkBinding"),
       ("erlangIncludes?", "NativeErlangInclude[]")])
-  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed"])
+  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "refuted"])
   , interface "ObligationEvidence"
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
        [("claim", union [text "Expr", text "null"])] ++

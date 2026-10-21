@@ -13,7 +13,7 @@
 --   assumed               native adapters, bindings and generators on trust
 {-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 module LawSpec.Discharge
-  ( dischargeEvidence, dischargeEvidenceWith, bindingEvidence, defaultHandlerEvidence, lawClaim, callees, showValue
+  ( dischargeEvidence, dischargeEvidenceWith, dischargeReporting, refutations, bindingEvidence, defaultHandlerEvidence, lawClaim, callees, showValue
   ) where
 
 import Control.Monad (forM)
@@ -44,9 +44,27 @@ import LawSpec.Testing (PlannedProperty(..), lawPlanner, finiteValuesWithRegistr
 -- | Laws first, then contracts, constructions and adapters. A law over checked
 -- definitions whose finite domain contains a counterexample is refuted here.
 dischargeEvidence :: Program -> Either [Diagnostic] [Obligation]
-dischargeEvidence = dischargeSelected Nothing
+dischargeEvidence program = dischargeSelected Nothing program >>= failRefuted program
 dischargeEvidenceWith :: V.Verification -> Program -> Either [Diagnostic] [Obligation]
-dischargeEvidenceWith config = dischargeSelected (Just config)
+dischargeEvidenceWith config program = dischargeSelected (Just config) program >>= failRefuted program
+
+-- | Evidence with refuted laws kept as rows, for reports that show them
+-- beside the rest; refutations gives the diagnostics that fail the build.
+dischargeReporting :: Maybe V.Verification -> Program -> Either [Diagnostic] [Obligation]
+dischargeReporting = dischargeSelected
+
+-- | A refuted law fails the build: one refuted diagnostic per failing input,
+-- at the law.
+refutations :: Program -> [Obligation] -> [Diagnostic]
+refutations program evidence =
+  [ Diagnostic "refuted" line (lookup (obligationDeclaration item) locations)
+  | item <- evidence, obligationStatus item == Refuted, line <- lines (obligationReason item) ]
+  where locations = [(propertyId p, propertyLocation p) | u <- programUnits program, p <- unitProperties u]
+
+failRefuted :: Program -> [Obligation] -> Either [Diagnostic] [Obligation]
+failRefuted program evidence = case refutations program evidence of
+  [] -> Right evidence
+  ds -> Left ds
 dischargeSelected :: Maybe V.Verification -> Program -> Either [Diagnostic] [Obligation]
 dischargeSelected selection program = do
   hooked <- prepareHookedDefinitions program
@@ -135,8 +153,12 @@ dischargeSelected selection program = do
                 pure (refute (hasLogicalQuantifier (propertyBody original)) registry bits (invokeWith states) (plannedProperty planned) values)) tuples
               let failures = concat [ds | Left ds <- results]
                   incomplete = [d | d <- failures, code d == "witness-search-incomplete"]
-                  errors = [d | d <- failures, code d /= "witness-search-incomplete"]
+                  refuted = [d | d <- failures, code d == "refuted"]
+                  errors = [d | d <- failures, code d `notElem` ["witness-search-incomplete", "refuted"]]
               if not (null errors) then Left errors
+              -- A counterexample the compiler evaluated refutes the law:
+              -- its row says so, and the build fails (refutations).
+              else if not (null refuted) then pure (obligation Refuted (intercalate "\n" (map message refuted)))
               else if not (null incomplete) then pure (obligation Incomplete (message (head incomplete)))
               else static ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
                 "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively" ++ scopedDomains)

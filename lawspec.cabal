@@ -988,6 +988,7 @@ test-suite lawspec-test
       RecordIdentitySpec
       RecordNormalizeSpec
       RefinementProofSpec
+      RefutedStatusSpec
       ScenarioSpec
       SchedulerSpec
       SearchSpec

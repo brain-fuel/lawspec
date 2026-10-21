@@ -413,7 +413,8 @@ Exports the bundled examples. Needs no configuration and no target tools.
 
 ## Exit status
 
-`0` on success. `1` when a command fails, `doctor` finds a target that is not
-ready, or `generate --check` finds changes. `prove` uses status `1` when a
+`0` on success. `1` when a command fails, a law is refuted, `doctor` finds a
+target that is not ready, or `generate --check` finds changes. `evidence`
+still lists a refuted law under `REFUTED` before it exits with status `1`. `prove` uses status `1` when a
 law is refuted, and status `2` when a selected task remains incomplete or
 unsupported.

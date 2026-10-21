@@ -99,7 +99,7 @@ test('a false law is refuted only at values the reference evaluator confirms',re
     assert.match(proof.counterexample.inputs[0].value,/^-?[0-9]+$/);
     assert.match(proof.counterexample.runFingerprint,/^[0-9a-f]{64}$/);
     assert.match(proof.reason,/reference evaluator confirms/);
-    assert.ok(result.evidence.filter(row=>row.stage==='law').every(row=>row.status!=='proved'));
+    assert.deepEqual(result.evidence.filter(row=>row.stage==='law').map(row=>row.status),['refuted']);
   }
 });
 
@@ -235,6 +235,11 @@ test('prove CLI reports selected, unselected, unavailable and mandatory-error ou
     const candidate=run();assert.equal(candidate.status,1,candidate.stdout+candidate.stderr);
     assert.equal(JSON.parse(candidate.stdout).solverEvidence[0].status,'refuted');
     assert.equal(JSON.parse(candidate.stdout).solverEvidence[0].modelValidated,true);
+    await save(law('for all (n :: Int8 where n >= 0 and n <= 20) => n < 10 end for all'),['exhaustive']);
+    const evidence=spawnSync(process.execPath,[cli,'evidence'],{cwd:directory,encoding:'utf8'});
+    assert.equal(evidence.status,1,evidence.stdout+evidence.stderr);
+    assert.match(evidence.stdout,/REFUTED \(1\)/);
+    assert.match(evidence.stdout,/is false for n = 10/);
     await save(square,[]);
     const unselected=run();assert.equal(unselected.status,0,unselected.stdout+unselected.stderr);
     assert.deepEqual(JSON.parse(unselected.stdout).solverEvidence,[]);

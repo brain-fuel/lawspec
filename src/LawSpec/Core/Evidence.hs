@@ -24,8 +24,11 @@ import qualified LawSpec.Core.Program as P
 -- its harness skips, or marks as known to fail, is still an obligation; flaky
 -- is a run's outcome (a test that failed, then passed on a retry), which
 -- lawspec evidence reads from the last run.
+-- Refuted is no evidence for a law: a confirmed counterexample shows it
+-- false (the compiler's exhaustive check, or a Z3 model the reference
+-- evaluator confirms), and the build fails.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
-  | KnownFailing | Flaky | Skipped | Planned | NotVerified | Incomplete | Unsupported
+  | Refuted | KnownFailing | Flaky | Skipped | Planned | NotVerified | Incomplete | Unsupported
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- | Every status, in order of strength, for reports that list them all.
@@ -43,6 +46,7 @@ statusName Measured = "measured"
 statusName RuntimeChecked = "runtime-checked"
 statusName DefaultHandler = "default-handler"
 statusName Assumed = "assumed"
+statusName Refuted = "refuted"
 statusName KnownFailing = "known-failing"
 statusName Flaky = "flaky"
 statusName Skipped = "skipped"

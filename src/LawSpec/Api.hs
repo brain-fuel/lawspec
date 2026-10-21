@@ -23,7 +23,7 @@ import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
-import LawSpec.Discharge (dischargeEvidence, dischargeEvidenceWith, bindingEvidence, defaultHandlerEvidence, showValue)
+import LawSpec.Discharge (dischargeReporting, refutations, bindingEvidence, defaultHandlerEvidence, showValue)
 import qualified LawSpec.Core.Counterexample as Counterexample
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
 import Data.Foldable (toList)
@@ -66,7 +66,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                             [] -> item{obligationStatus=Planned,obligationReason="an SMT proof task is requested; no solver execution has completed"}
                       | otherwise = item
          obligations = map pending evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-         result files = (if matchWarningsRequested then withMatchWarnings syntax else id) $
+         -- A refuted law keeps its row and fails the request.
+         result files = withRefutations (refutations core obligations) $ (if matchWarningsRequested then withMatchWarnings syntax else id) $
            withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
           "expand" -> result []
@@ -124,6 +125,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     matchWarningsRequested = case decode bytes of
       Just (Object o) -> KM.lookup "warnMatches" o==Just (Bool True)
       _ -> False
+    withRefutations [] value = value
+    withRefutations ds (Object value) = Object (KM.insert "diagnostics" (toJSON ds) value)
+    withRefutations _ value = value
     withPackages project described (Object value) =
       Object (foldr (\(k, v) -> KM.insert k v) value (packagesView project described))
     withPackages _ _ value = value
@@ -262,7 +266,7 @@ stagesWithInput canonical capture project packages sources bits settings native 
       Left ds -> Left (failure (versionedDiagnostics described ds))
       Right core -> case resolveNativeRequest core native of
         Left message -> Left (failure [Diagnostic "native-binding" message Nothing])
-        Right bindings -> case maybe dischargeEvidence dischargeEvidenceWith verification core of
+        Right bindings -> case dischargeReporting verification core of
           Left ds -> Left (failure ds)
           Right evidence -> Right ((us, es, core, bindings, evidence, described, maybe planTesting planTestingWith verification core),syntax)
 

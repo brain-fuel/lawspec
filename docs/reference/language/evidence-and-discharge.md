@@ -18,6 +18,23 @@ strongest to weakest:
 | `DEFAULT HANDLER` | `default-handler` | The default handlers of built-in abilities (see [built-in abilities](builtins.md)) | Reviewed runtime code, its ability's laws property-tested, cryptography checked against NIST vectors |
 | `ASSUMED / EXTERNAL` | `assumed` | Adapters, native functions, custom generators and codec hooks | Taken on trust |
 
+## Refuted laws
+
+`REFUTED` (`refuted`) is not evidence for a law. It says a confirmed
+counterexample shows the law false:
+
+- the compiler's exhaustive check found an input where the law is false or
+  undefined; or
+- Z3 gave values that the reference evaluator confirmed (see
+  [proof with Z3](../../explanation/smt-proof.md)).
+
+The build fails: `check`, `generate` and `test` stop with a `refuted`
+diagnostic for each failing input. `lawspec evidence` still lists the law
+under `REFUTED`, with the input, and exits with status 1. Every other law
+keeps its own status.
+
+## Harness statuses
+
 A law's [harness](harness.md) decides how its tests run, never what the law
 claims, so three more statuses come from the harness plane. The law stays an
 obligation under each:

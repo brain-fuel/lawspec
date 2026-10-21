@@ -8,6 +8,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A new evidence status, `refuted`: a law a confirmed counterexample shows
+  false (the compiler's exhaustive check, or a Z3 model the reference
+  evaluator confirms). The build still fails with a `refuted` diagnostic, and
+  `lawspec evidence` lists the law under `REFUTED` and exits with status 1.
 - Z3 proof tasks cover data (`lawspec-smtlib-v2`): enums, records,
   alternatives, structural records, `Maybe`, `List` and `Either` become SMT
   datatypes whose field refinements are part of their well-formedness. The
