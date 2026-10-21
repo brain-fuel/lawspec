@@ -463,9 +463,9 @@ recordSpec = describe "indexed source records" $ do
   it "admits explicit branch evidence for record construction and rejects the unguarded mutation" $ do
     let prefix=tree "m" False
         header="function checkedPair (pair of type record{left of type Tree n right of type Tree k}) -> Maybe (Tree 1) is "
-        construction="Just (Branch record{left = pair.left, right = pair.right})"
+        construction="Present (Branch record{left = pair.left, right = pair.right})"
         -- Restrict both sizes to zero so the result's explicit index also holds.
-        guarded=prefix++header++"if nOfTree pair.left = 0 and nOfTree pair.right = 0 then "++construction++" else Nothing end if end function"
+        guarded=prefix++header++"if nOfTree pair.left = 0 and nOfTree pair.right = 0 then "++construction++" else Absent end if end function"
         unguarded=prefix++header++construction++" end function"
     compileRecords 64 guarded `shouldSatisfy` either (const False) (const True)
     compileRecords 64 unguarded `shouldSatisfy` either (const True) (const False)

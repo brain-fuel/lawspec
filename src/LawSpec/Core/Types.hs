@@ -62,7 +62,7 @@ builtinDataDeclarations = [list, optional, eitherType]
     list = declaration "List" ["a"]
       [("Nil", []), ("Cons", [("head", a "List"), ("tail", Constructor "List" [TypeArgument (a "List")])])]
     optional = declaration "Maybe" ["a"]
-      [("Nothing", []), ("Just", [("value", a "Maybe")])]
+      [("Absent", []), ("Present", [("value", a "Maybe")])]
     eitherType = declaration "Either" ["a", "b"]
       [("Left", [("value", a "Either")]), ("Right", [("value", b "Either")])]
 

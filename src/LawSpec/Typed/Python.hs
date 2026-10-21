@@ -520,8 +520,8 @@ construct :: Env -> Type -> Id -> [D.Doc] -> M D.Doc
 construct env ty tag values = case (idText tag, values) of
   ("List::Nil", []) -> pure (D.text "None")
   ("List::Cons", [h, t]) -> pure (D.text "lsf_cons(" <> h <> D.text ", " <> t <> D.text ")")
-  ("Maybe::Nothing", []) -> pure (D.text "()")
-  ("Maybe::Just", [x]) -> pure (D.text "(" <> x <> D.text ",)")
+  ("Maybe::Absent", []) -> pure (D.text "()")
+  ("Maybe::Present", [x]) -> pure (D.text "(" <> x <> D.text ",)")
   ("Either::Left", [x]) -> pure (D.text "(0, " <> x <> D.text ")")
   ("Either::Right", [x]) -> pure (D.text "(1, " <> x <> D.text ")")
   (_, [items]) | Just ("KeyVal", [k, _]) <- collectionArguments ty ->
@@ -596,7 +596,7 @@ matchStatements env selfCall scope target value cases = do
         no <- orUnreachable noTag noAccess
         pure (prelude ++ [block ("if " ++ condition) yes, block "else" no])
   case ty of
-    Constructor "Maybe" _ -> two subject "Maybe::Just" [subject ++ "[0]"] "Maybe::Nothing" []
+    Constructor "Maybe" _ -> two subject "Maybe::Present" [subject ++ "[0]"] "Maybe::Absent" []
     Constructor "Either" _ -> two (subject ++ "[0]") "Either::Right" [subject ++ "[1]"] "Either::Left" [subject ++ "[1]"]
     Constructor "List" _ -> two (subject ++ " is None") "List::Nil" [] "List::Cons" [subject ++ "[0]", subject ++ "[1]"]
     _ | Just (kind, _) <- collectionArguments ty, [c] <- cases ->
@@ -769,7 +769,7 @@ toValue env ty = case ty of
     pure [D.text (if null f then "return lsf_items(x)" else "return lsf_to_list(x, " ++ f ++ ")")]
   Constructor "Maybe" [TypeArgument a] -> do
     f <- converter "to" a
-    pure [D.text ("return ls.DataValue('Maybe::Just', (" ++ applyTo f "x[0]" ++ ",)) if x else ls.DataValue('Maybe::Nothing', ())")]
+    pure [D.text ("return ls.DataValue('Maybe::Present', (" ++ applyTo f "x[0]" ++ ",)) if x else ls.DataValue('Maybe::Absent', ())")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- converter "to" a
     fr <- converter "to" b
@@ -808,7 +808,7 @@ fromValue env ty = case ty of
     pure [D.text (if null f then "return lsf_list_of(v)" else "return lsf_from_list(v, " ++ f ++ ")")]
   Constructor "Maybe" [TypeArgument a] -> do
     f <- converter "from" a
-    pure [D.text ("return (" ++ applyTo f "v.fields[0]" ++ ",) if v.tag == 'Maybe::Just' else ()")]
+    pure [D.text ("return (" ++ applyTo f "v.fields[0]" ++ ",) if v.tag == 'Maybe::Present' else ()")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- converter "from" a
     fr <- converter "from" b
@@ -868,7 +868,7 @@ toNative env ty = case ty of
     pure [D.text (if null f then "return lsf_items(x)" else "return lsf_to_list(x, " ++ f ++ ")")]
   Constructor "Maybe" [TypeArgument a] -> do
     f <- nativeConverter "tonative" a
-    pure [D.text ("return _schema.Just(" ++ applyTo f "x[0]" ++ ") if x else _schema.Nothing()")]
+    pure [D.text ("return _schema.Present(" ++ applyTo f "x[0]" ++ ") if x else _schema.Absent()")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- nativeConverter "tonative" a
     fr <- nativeConverter "tonative" b
@@ -903,7 +903,7 @@ fromNative env ty = case ty of
     pure [D.text (if null f then "return lsf_list_of(n)" else "return lsf_from_list(n, " ++ f ++ ")")]
   Constructor "Maybe" [TypeArgument a] -> do
     f <- nativeConverter "fromnative" a
-    pure [D.text ("return (" ++ applyTo f "n.value" ++ ",) if isinstance(n, _schema.Just) else ()")]
+    pure [D.text ("return (" ++ applyTo f "n.value" ++ ",) if isinstance(n, _schema.Present) else ()")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- nativeConverter "fromnative" a
     fr <- nativeConverter "fromnative" b

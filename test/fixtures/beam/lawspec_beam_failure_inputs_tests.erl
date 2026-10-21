@@ -62,7 +62,7 @@ wire(Directory) ->
         <<"(data Pair (ctor \"example.Pair::Pair\" (int Integer _ _) (text))) (ref Pair)">>,
         <<"(bytes)">>, <<"(maybe (bool))">>, <<"(either (unit) (text))">>],
     Values = [-(1 bsl 120), [-128, 0, 127], {ls_data, <<"example.Pair::Pair">>, [1 bsl 100, <<"hello ", 16#03bb/utf8, 0>>]},
-        <<0, 128, 255>>, {ls_data, <<"Maybe::Just">>, [true]}, {ls_data, <<"Either::Left">>, [ls_unit]}],
+        <<0, 128, 255>>, {ls_data, <<"Maybe::Present">>, [true]}, {ls_data, <<"Either::Left">>, [ls_unit]}],
     ok = lawspec_beam_search:remember(Law, Ds, Values),
     ok = lawspec_beam_search:replay(Law, Ds, fun(Actual) -> ?assertEqual(Values, Actual), true end),
     ?assertEqual([], files(Directory)).

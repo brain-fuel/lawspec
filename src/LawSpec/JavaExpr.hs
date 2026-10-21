@@ -207,7 +207,7 @@ renderExpressionWithContext declarations bits reference typeKey local external =
           Constructor name _ -> do
             (helper,tags) <- case name of
               "List" -> pure ("matchList",["List::Nil","List::Cons"])
-              "Maybe" -> pure ("matchMaybe",["Maybe::Nothing","Maybe::Just"])
+              "Maybe" -> pure ("matchMaybe",["Maybe::Absent","Maybe::Present"])
               "Either" -> pure ("matchEither",["Either::Left","Either::Right"])
               _ -> Left "unsupported Java match"
             cases <- mapM (branch branches) tags

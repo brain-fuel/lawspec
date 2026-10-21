@@ -13,12 +13,12 @@ law "|private product| is
 end law
 law "|nested codec arguments| is
   definition : for all (x :: Parcel (Maybe (Parcel Int8))) => copyNested x = x end for all end definition
-  example "|present| : x = Parcel record{ item = (Just (Parcel record{ item = 42}))} expect copyNested x = Parcel record{ item = (Just (Parcel record{ item = 42}))} end example
+  example "|present| : x = Parcel record{ item = (Present (Parcel record{ item = 42}))} expect copyNested x = Parcel record{ item = (Present (Parcel record{ item = 42}))} end example
 end law
 law "|flattened recursive representation| is
   definition : for all (x :: Chain Text) => copyChain x = x end for all end definition
-  example "|no tail| : x = More record{ item = "λ" , tail = Nothing} expect copyChain x = More record{ item = "λ" , tail = Nothing} end example
-  example "|explicit stop| : x = More record{ item = "λ" , tail = (Just Stop)} expect copyChain x = More record{ item = "λ" , tail = (Just Stop)} end example
+  example "|no tail| : x = More record{ item = "λ" , tail = Absent} expect copyChain x = More record{ item = "λ" , tail = Absent} end example
+  example "|explicit stop| : x = More record{ item = "λ" , tail = (Present Stop)} expect copyChain x = More record{ item = "λ" , tail = (Present Stop)} end example
 end law
 law "|codec output retains contracts| is
   definition : for all (x :: Positive) => copyPositive x = x end for all end definition

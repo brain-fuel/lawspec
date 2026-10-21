@@ -22,7 +22,7 @@ basic_recordings_stay_compatible_test() ->
     end, [{42, <<"Integer">>}, {true, <<"Bool">>}, {false, <<"Bool">>},
         {ls_unit, <<"Unit">>}, {<<"雪\"\\\n"/utf8>>, <<"Text">>},
         {[1, -2], <<"List Integer">>},
-        {{ls_data, <<"Maybe::Just">>, [<<"post">>]}, <<"Maybe Text">>},
+        {{ls_data, <<"Maybe::Present">>, [<<"post">>]}, <<"Maybe Text">>},
         {{ls_data, <<"Either::Left">>, [ls_unit]}, <<"Either (Unit) (Text)">>}]).
 
 raw_sequences_and_characters_test() ->

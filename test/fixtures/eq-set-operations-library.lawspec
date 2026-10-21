@@ -20,16 +20,16 @@ end function
 
 function collectionHead (xs :: List a) -> Maybe a is
   first matching case of xs :
-  when Nil then Nothing
-  when Cons h t then Just h
+  when Nil then Absent
+  when Cons h t then Present h
   end case
 end function
 
 function collectionLast (xs :: List a) -> Maybe a is
   first matching case of xs :
-  when Nil then Nothing
+  when Nil then Absent
   when Cons h t then first matching case of t :
-    when Nil then Just h
+    when Nil then Present h
     when Cons second rest then collectionLast t
     end case
   end case

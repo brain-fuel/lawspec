@@ -191,7 +191,7 @@ renderExpressionWithContext declarations width schema ref key local external = r
                 D.text ("if len(" ++ fieldsName ++ ") == 0 ") <> D.block 8 (D.text "return " <> nilBody)] ++
                bindings ++ [D.text "return " <> consBody])))
           Constructor name _ | name `elem` ["Maybe","Either"] -> do
-            let (helper,tags) = if name == "Maybe" then ("lsMatchMaybe",["Maybe::Nothing","Maybe::Just"])
+            let (helper,tags) = if name == "Maybe" then ("lsMatchMaybe",["Maybe::Absent","Maybe::Present"])
                   else ("lsMatchEither",["Either::Left","Either::Right"])
             arms <- mapM (\tag -> lookupBranch branches tag >>= closure) tags
             pure (call helper (value:arms))

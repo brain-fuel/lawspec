@@ -673,8 +673,8 @@ construct env ty tag values _ = do
   case (idText tag, values) of
     ("List::Nil", []) -> pure (D.text ("(*lsfList" ++ witness ++ ")(nil)"))
     ("List::Cons", [h, t]) -> pure (D.text ("lsfCons" ++ witness ++ "(") <> h <> D.text ", " <> t <> D.text ")")
-    ("Maybe::Nothing", []) -> pure (D.text ("lsfNothing" ++ witness ++ "()"))
-    ("Maybe::Just", [x]) -> pure (D.text ("lsfJust" ++ witness ++ "(") <> x <> D.text ")")
+    ("Maybe::Absent", []) -> pure (D.text ("lsfAbsent" ++ witness ++ "()"))
+    ("Maybe::Present", [x]) -> pure (D.text ("lsfPresent" ++ witness ++ "(") <> x <> D.text ")")
     ("Either::Left", [x]) -> pure (D.text ("lsfLeft" ++ witness ++ "(") <> x <> D.text ")")
     ("Either::Right", [x]) -> pure (D.text ("lsfRight" ++ witness ++ "(") <> x <> D.text ")")
     (_, [items]) | Just ("KeyVal", [k, _]) <- collectionArguments ty -> do
@@ -753,7 +753,7 @@ matchStatements env selfCall scope target value cases = do
         no <- maybe (pure [D.text "panic(\"unreachable branch reached\")"]) (\c -> arm c noAccess) (headMaybe (caseOf noTag))
         pure (prelude ++ [D.text ("if " ++ condition ++ " ") <> block yes <> D.text " else " <> block no])
   case ty of
-    Constructor "Maybe" _ -> two "Maybe::Just" "Maybe::Nothing" (subject ++ ".ok") [subject ++ ".v"] []
+    Constructor "Maybe" _ -> two "Maybe::Present" "Maybe::Absent" (subject ++ ".ok") [subject ++ ".v"] []
     Constructor "Either" _ -> two "Either::Left" "Either::Right" ("!" ++ subject ++ ".right") [subject ++ ".l"] [subject ++ ".r"]
     Constructor "List" _ -> two "List::Nil" "List::Cons" (subject ++ " == nil") [] [subject ++ ".head", subject ++ ".tail"]
     _ | Just (kind, args) <- collectionArguments ty, [c] <- cases -> do
@@ -941,8 +941,8 @@ toValue env key ty = case ty of
          , D.text ("return LawSpecValue{" ++ goQuote key ++ ", items}") ]
   Constructor "Maybe" [TypeArgument a] -> do
     to <- helper "to" a
-    pure [ D.text ("if x.ok { return lsfDataValue(" ++ goQuote key ++ ", \"Maybe::Just\", " ++ to ++ "(x.v)) }")
-         , D.text ("return lsfDataValue(" ++ goQuote key ++ ", \"Maybe::Nothing\")") ]
+    pure [ D.text ("if x.ok { return lsfDataValue(" ++ goQuote key ++ ", \"Maybe::Present\", " ++ to ++ "(x.v)) }")
+         , D.text ("return lsfDataValue(" ++ goQuote key ++ ", \"Maybe::Absent\")") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     tl <- helper "to" a
     tr <- helper "to" b
@@ -1012,8 +1012,8 @@ fromValue env ty = case ty of
     from <- helper "from" a
     at <- lift' (goType env a)
     pure [ D.text "tag, fields := lsfData(v)"
-         , D.text ("if tag == \"Maybe::Just\" { return lsfJust[" ++ at ++ "](" ++ from ++ "(fields[0])) }")
-         , D.text ("return lsfNothing[" ++ at ++ "]()") ]
+         , D.text ("if tag == \"Maybe::Present\" { return lsfPresent[" ++ at ++ "](" ++ from ++ "(fields[0])) }")
+         , D.text ("return lsfAbsent[" ++ at ++ "]()") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- helper "from" a
     fr <- helper "from" b
@@ -1101,7 +1101,7 @@ toNative env ty = case ty of
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "tonative" a
     na <- lift' (GoData.goDataType (envDeclarations env) a)
-    pure [ D.text ("if x.ok { return LawSpecJust[" ++ na ++ "](" ++ c ++ "(x.v)) }"), D.text ("return LawSpecNothing[" ++ na ++ "]()") ]
+    pure [ D.text ("if x.ok { return LawSpecPresent[" ++ na ++ "](" ++ c ++ "(x.v)) }"), D.text ("return LawSpecAbsent[" ++ na ++ "]()") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "tonative" a
     cr <- helper "tonative" b
@@ -1161,7 +1161,7 @@ fromNative env ty = case ty of
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "fromnative" a
     at <- lift' (goType env a)
-    pure [ D.text ("if v, ok := n.Value(); ok { return lsfJust[" ++ at ++ "](" ++ c ++ "(v)) }"), D.text ("return lsfNothing[" ++ at ++ "]()") ]
+    pure [ D.text ("if v, ok := n.Value(); ok { return lsfPresent[" ++ at ++ "](" ++ c ++ "(v)) }"), D.text ("return lsfAbsent[" ++ at ++ "]()") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "fromnative" a
     cr <- helper "fromnative" b

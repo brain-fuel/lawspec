@@ -405,7 +405,7 @@ class PrologRuntime(unittest.TestCase):
                       ls.Presence('Nullable', True, ls.Presence('Optional', True, 7))]:
             self.assertEqual(self.call('identity', value, nullable), value)
         maybe = schema.Named('Maybe', (schema.Named('Null'),))
-        for value in [schema.Nothing(), schema.Just(ls.NULL)]:
+        for value in [schema.Absent(), schema.Present(ls.NULL)]:
             result = self.call('identity', value, maybe)
             self.assertTrue(SCHEMA.equal(maybe, SCHEMA.from_native(maybe, result),
                                          SCHEMA.from_native(maybe, value)))

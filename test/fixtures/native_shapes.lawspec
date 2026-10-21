@@ -24,8 +24,8 @@ end law
 law "|inline recursive chain| is
   definition : for all (x :: Chain Int8) => copyChain x = x end for all end definition
   example "|nested| :
-    x = More record{ value = 7 , tail = (Just (More record{ value = -128 , tail = Nothing}))}
-    expect copyChain x = More record{ value = 7 , tail = (Just (More record{ value = -128 , tail = Nothing}))}
+    x = More record{ value = 7 , tail = (Present (More record{ value = -128 , tail = Absent}))}
+    expect copyChain x = More record{ value = 7 , tail = (Present (More record{ value = -128 , tail = Absent}))}
   end example
 end law
 law "|recursion through a list| is
@@ -37,8 +37,8 @@ law "|recursion through a list| is
 end law
 law "|nested instantiations| is
   definition : for all (x :: Box (Maybe (Box Int8))) => copyNested x = x end for all end definition
-  example "|present| : x = Box record{ item = (Just (Box record{ item = 42}))} expect copyNested x = Box record{ item = (Just (Box record{ item = 42}))} end example
-  example "|absent| : x = Box record{ item = Nothing} expect copyNested x = Box record{ item = Nothing} end example
+  example "|present| : x = Box record{ item = (Present (Box record{ item = 42}))} expect copyNested x = Box record{ item = (Present (Box record{ item = 42}))} end example
+  example "|absent| : x = Box record{ item = Absent} expect copyNested x = Box record{ item = Absent} end example
 end law
 law "|empty record| is
   definition : for all (x :: Stamp) => copyStamp x = x end for all end definition

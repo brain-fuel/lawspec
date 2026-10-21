@@ -93,8 +93,8 @@ filesystem_uses_bytes_and_does_not_follow_removed_symlinks_test() ->
         ?assertEqual(ls_unit, call(Files, <<"removePath">>, [Directory])),
         ?assertEqual(true, call(Files, <<"pathExists">>, [Outside])),
         ?assertEqual(ls_unit, call(Files, <<"removePath">>, [Directory])),
-        ?assertEqual({ls_data, <<"Maybe::Nothing">>, []}, call(Files, <<"readBytes">>, [Path])),
-        ?assertEqual({ls_data, <<"Maybe::Nothing">>, []}, call(Files, <<"readBytes">>, [<<0>>])),
+        ?assertEqual({ls_data, <<"Maybe::Absent">>, []}, call(Files, <<"readBytes">>, [Path])),
+        ?assertEqual({ls_data, <<"Maybe::Absent">>, []}, call(Files, <<"readBytes">>, [<<0>>])),
         ?assertEqual(false, call(Files, <<"pathExists">>, [<<0>>]))
     after
         call(Files, <<"removePath">>, [Directory]),
@@ -130,7 +130,7 @@ environment_snapshot_restores_changes_without_interpreting_names_test() ->
         ?assertEqual(<<"before">>, field(call(Env, <<"environmentVariable">>, [list_to_binary(Name)]))),
         ?assertEqual(false, os:getenv(Added)),
         lists:foreach(fun(Invalid) ->
-            ?assertEqual({ls_data, <<"Maybe::Nothing">>, []}, call(Env, <<"environmentVariable">>, [Invalid]))
+            ?assertEqual({ls_data, <<"Maybe::Absent">>, []}, call(Env, <<"environmentVariable">>, [Invalid]))
         end, [<<>>, <<"a=b">>, <<"a", 0>>]),
         ?assertError({lawspec, invalid_environment_snapshot}, call(Env, <<"restoreEnvironment">>, [<<"{\"\":\"bad\"}">>])),
         ?assertError({lawspec, invalid_environment_snapshot}, call(Env, <<"restoreEnvironment">>, [<<"[]">>])),

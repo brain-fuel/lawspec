@@ -63,11 +63,11 @@ store = unlines
   , "   operation create t is ~logs := prelude.put t [] logs; unitValue end operation"
   , "   operation append t v is"
   , "    first matching case of prelude.lookup t logs :"
-  , "    when Nothing then raise Missing"
-  , "    when Just l then ~logs := prelude.put t (Cons v l) logs; prelude.Int64 (prelude.length l)"
+  , "    when Absent then raise Missing"
+  , "    when Present l then ~logs := prelude.put t (Cons v l) logs; prelude.Int64 (prelude.length l)"
   , "    end case"
   , "  end operation"
-  , "   operation size t is first matching case of prelude.lookup t logs : when Nothing then Nothing when Just l then Just (prelude.Int64 (prelude.length l)) end case end operation"
+  , "   operation size t is first matching case of prelude.lookup t logs : when Absent then Absent when Present l then Present (prelude.Int64 (prelude.length l)) end case end operation"
   , "end handler"
   , "\nend unit" ]
 
@@ -101,8 +101,8 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
   describe "literals" $
     it "gives a literal branch the type of the other branches" $
       evaluated
-        [ "function first (g :: Maybe Int64) -> Int64 is let from = (first matching case of g : when Nothing then 0 when Just x then x end case) in from end let  end function"
-        , "law \"|zero| is definition : first Nothing = 0 end definition end law" ]
+        [ "function first (g :: Maybe Int64) -> Int64 is let from = (first matching case of g : when Absent then 0 when Present x then x end case) in from end let  end function"
+        , "law \"|zero| is definition : first Absent = 0 end definition end law" ]
         `shouldSatisfy` isRight
   describe "handlers" $ do
     it "lets an operation fail and a clause raise" $
@@ -119,11 +119,11 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         , "\nend unit" ])
         `shouldSatisfy` isLeft
     it "runs a handler of several abilities for each, once" $ do
-      let Right compiled = program (extendUnit store $ "law \"|sizes count| is definition : for all (t :: Text) (v :: Int32) => (create t; append t v; size t) = Just 1 end for all end definition end law\n")
+      let Right compiled = program (extendUnit store $ "law \"|sizes count| is definition : for all (t :: Text) (v :: Int32) => (create t; append t v; size t) = Present 1 end for all end definition end law\n")
       names compiled `shouldSatisfy` elem "\"|sizes count| [memory]"
       handlersOf "\"|sizes count| [memory]" compiled `shouldSatisfy` maybe False (\hs -> length (filter ("memory" `isInfixOf`) hs) == 2)
     it "gives a law that runs a native made with a resource that resource" $ do
-      let Right compiled = program (extendUnit store $ "law \"|sizes count| is definition : for all (t :: Text) => (create t; size t) = Just 0 end for all end definition end law\n")
+      let Right compiled = program (extendUnit store $ "law \"|sizes count| is definition : for all (t :: Text) => (create t; size t) = Present 0 end for all end definition end law\n")
           resources = [length (C.propertyResources p) | u <- C.programUnits compiled, p <- C.unitProperties u, "[native" `isInfixOf` C.propertyName p]
       resources `shouldSatisfy` (\rs -> not (null rs) && all (== 1) rs)
     it "runs every law of a set's abilities under the whole set" $ do
@@ -132,7 +132,7 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
             , "  write :: Text -> Int32 -> Bool"
             , "laws"
             , "  law \"|a write is read| is"
-            , "    definition : for all (t :: Text) (v :: Int32) => (create t; write t v; size t) = Just 1 end for all end definition"
+            , "    definition : for all (t :: Text) (v :: Int32) => (create t; write t v; size t) = Present 1 end for all end definition"
             , "  end law"
             , "\nend laws"
             , "end ability"
@@ -182,7 +182,7 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
     it "joins, slices, indexes and encodes" $
       evaluated
         [ "law \"|sequences| is definition :"
-        , "  \"a\" ++ \"b\" = \"ab\" and prelude.slice 1 3 \"kafka\" = \"af\" and prelude.at 1 [10, 20] = Just 20"
+        , "  \"a\" ++ \"b\" = \"ab\" and prelude.slice 1 3 \"kafka\" = \"af\" and prelude.at 1 [10, 20] = Present 20"
         , "    and prelude.range 0 3 = [0, 1, 2] and prelude.utf8 \"é\" = prelude.bytesOf [195, 169]"
         , "    and prelude.textOf 42 = \"42\" and prelude.join \", \" [\"a\", \"b\"] = \"a, b\""
         , "end definition end law" ]
@@ -195,7 +195,7 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         [ "function next (e :: Int16) -> Int16 is prelude.wrapping (e + 1) end function\n"
         , "function up (l :: UInt8) -> UInt8 is prelude.saturating (l + 10) end function\n"
         , "function sum (a :: Int32) (b :: Int32) -> Maybe Int32 is prelude.bounded (a + b) end function\n"
-        , "law \"|bounded| is definition : next 32767 = -32768 and up 250 = 255 and sum 2147483647 1 = Nothing and sum 1 2 = Just 3 end definition end law" ]
+        , "law \"|bounded| is definition : next 32767 = -32768 and up 250 = 255 and sum 2147483647 1 = Absent and sum 1 2 = Present 3 end definition end law" ]
         `shouldSatisfy` isRight
   describe "totality" $ do
     it "accepts recursion that counts an integer down or up to a bound" $
@@ -281,7 +281,7 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         [ "unit gaps.pet"
          ++ "\n", ""
         , "type Pet is a record{  id :: Maybe Int64 name :: (v :: Text where v matches regex \"[a-z]+\")} end type\n"
-        , "function withId (body :: Pet) (key :: Int64) -> Pet is body with id = Just key end function\n"
+        , "function withId (body :: Pet) (key :: Int64) -> Pet is body with id = Present key end function\n"
         , "\nend unit" ])
         `shouldSatisfy` isRight
     it "takes a failing row from a signature that never raises (24)" $

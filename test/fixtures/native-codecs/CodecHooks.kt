@@ -3,8 +3,8 @@ package domain
 import lawspec.data.Parcel
 import lawspec.data.Chain
 import lawspec.data.Positive
-import lawspec.runtime.LawSpecRuntime.Just
-import lawspec.runtime.LawSpecRuntime.Nothing
+import lawspec.runtime.LawSpecRuntime.Present
+import lawspec.runtime.LawSpecRuntime.Absent
 import lawspec.runtime.LawSpecRuntime.Maybe
 
 object CodecHooks {
@@ -20,17 +20,17 @@ object CodecHooks {
         while (current is Chain.More<A>) {
             items.add(convert(current.item))
             val tail = current.tail
-            if (tail is Nothing<Chain<A>>) return CodecDomain.FlatChain(items, false)
-            current = (tail as Just<Chain<A>>).value()
+            if (tail is Absent<Chain<A>>) return CodecDomain.FlatChain(items, false)
+            current = (tail as Present<Chain<A>>).value()
         }
         return CodecDomain.FlatChain(items, true)
     }
 
     fun <A, B> from_chain(value: CodecDomain.FlatChain<B>, convert: (B) -> A): Chain<A> {
-        var tail: Maybe<Chain<A>> = if (value.ended()) Just(Chain.Stop()) else Nothing()
-        for (item in value.items().asReversed()) tail = Just(Chain.More(convert(item), tail))
-        require(tail !is Nothing<Chain<A>>) { "empty chain without Stop has no logical value" }
-        return (tail as Just<Chain<A>>).value()
+        var tail: Maybe<Chain<A>> = if (value.ended()) Present(Chain.Stop()) else Absent()
+        for (item in value.items().asReversed()) tail = Present(Chain.More(convert(item), tail))
+        require(tail !is Absent<Chain<A>>) { "empty chain without Stop has no logical value" }
+        return (tail as Present<Chain<A>>).value()
     }
 
     fun to_positive(value: Positive): CodecDomain.Positive =

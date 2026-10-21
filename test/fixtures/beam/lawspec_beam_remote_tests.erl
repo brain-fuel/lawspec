@@ -91,7 +91,7 @@ native_data_and_unit_use_canonical_logical_values_test_() -> {timeout, 60, fun()
         Table = #{<<"read">> => #{arguments => [Text, <<"(unit)">>], result => Text,
             invoke => fun([P, ls_unit]) -> P end}},
         Address = lawspec_beam_remote:serve(B, <<"data">>, <<"eval">>, Table),
-        Parcel = {ls_data, <<"Parcel">>, [42, {ls_data, <<"Maybe::Just">>, [<<"sent">>]}]},
+        Parcel = {ls_data, <<"Parcel">>, [42, {ls_data, <<"Maybe::Present">>, [<<"sent">>]}]},
         ?assertEqual(Parcel, lawspec_beam_remote:call(proxy(A, Address, <<"eval">>, Table), <<"read">>, [Parcel, ls_unit]))
     end) end}.
 

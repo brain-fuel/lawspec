@@ -11,16 +11,16 @@ export function to_chain<A, B>(value: data.Chain<A>, convert: (a: A) => B): doma
   const items: B[] = [];
   while (value instanceof data.ChainMore) {
     items.push(convert(value.item));
-    if (value.tail instanceof data.Nothing) return new domain.FlatChain(items, false);
+    if (value.tail instanceof data.Absent) return new domain.FlatChain(items, false);
     value = value.tail.value;
   }
   return new domain.FlatChain(items, true);
 }
 export function from_chain<A, B>(value: domain.FlatChain<B>, convert: (b: B) => A): data.Chain<A> {
   const [items, ended] = value.unpack();
-  let tail: data.Maybe<data.Chain<A>> = ended ? new data.Just(new data.ChainStop<A>()) : new data.Nothing();
-  for (const item of items.reverse()) tail = new data.Just(new data.ChainMore(convert(item), tail));
-  if (tail instanceof data.Nothing) throw new Error('empty chain without Stop has no logical value');
+  let tail: data.Maybe<data.Chain<A>> = ended ? new data.Present(new data.ChainStop<A>()) : new data.Absent();
+  for (const item of items.reverse()) tail = new data.Present(new data.ChainMore(convert(item), tail));
+  if (tail instanceof data.Absent) throw new Error('empty chain without Stop has no logical value');
   return tail.value;
 }
 export function to_positive(value: data.Positive): domain.Positive {

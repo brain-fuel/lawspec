@@ -116,8 +116,8 @@ emitBindings minify plan testing files = do
               -- A method's null is Nothing; anything else is Just.
               else case maybeElement of
                 Just element -> D.text "val found: Any? = " <> application <> D.hardline <>
-                  D.text "val result: " <> nativeResultType <> D.text " = if (found == null) LawSpecRuntime.Nothing() else " <>
-                    D.text "LawSpecRuntime.Just(found as " <> element <> D.text ")" <> D.hardline <> returned
+                  D.text "val result: " <> nativeResultType <> D.text " = if (found == null) LawSpecRuntime.Absent() else " <>
+                    D.text "LawSpecRuntime.Present(found as " <> element <> D.text ")" <> D.hardline <> returned
                 Nothing -> D.text "val result = " <> application <> D.text " as " <> nativeResultType <> D.hardline <> returned
         -- An async adapter's bridge suspends on its native call; a constructor completes at once.
         pure (D.text (if C.declarationAsync d then "suspend fun " else "fun ") <> E.call (C.declarationName d)

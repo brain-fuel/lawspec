@@ -66,14 +66,14 @@ is value end function
 
 function wrapnonzero (value :: Int8 where value != 0)
   -> Maybe (result :: Int8 where result != 0)
-is Just value end function
+is Present value end function
 
 function unwrapnonzero (value :: Maybe (element :: Int8 where element != 0))
   -> Rational
 is
   first matching case of value :
-  when Nothing then 0
-  when Just element then selectnonzero (Left element)
+  when Absent then 0
+  when Present element then selectnonzero (Left element)
   end case
 end function
 

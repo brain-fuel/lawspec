@@ -564,8 +564,8 @@ construct :: Env -> Type -> Id -> [D.Doc] -> M D.Doc
 construct env ty tag values = case (idText tag, values) of
   ("List::Nil", []) -> pure (D.text "LSF.Nil")
   ("List::Cons", [h, t]) -> pure (D.text "(LSF.cons " <> paren h <> D.text " " <> paren t <> D.text ")")
-  ("Maybe::Nothing", []) -> pure (D.text "LSF.None")
-  ("Maybe::Just", [x]) -> pure (D.text "(LSF.Some " <> paren x <> D.text ")")
+  ("Maybe::Absent", []) -> pure (D.text "LSF.None")
+  ("Maybe::Present", [x]) -> pure (D.text "(LSF.Some " <> paren x <> D.text ")")
   ("Either::Left", [x]) -> pure (D.text "(LSF.L " <> paren x <> D.text ")")
   ("Either::Right", [x]) -> pure (D.text "(LSF.R " <> paren x <> D.text ")")
   (_, [items]) | Just ("KeyVal", _) <- collectionArguments ty -> do
@@ -629,8 +629,8 @@ matchStatements env scope value cases = do
     _ -> cexpr env scope value
   arms <- case ty of
     Constructor n _ | n `elem` ["Maybe", "Either", "List"] -> forM cases $ \c -> alternative c (\names -> case (idText (caseConstructor c), names) of
-      ("Maybe::Nothing", _) -> "LSF.None"
-      ("Maybe::Just", [x]) -> "LSF.Some " ++ x
+      ("Maybe::Absent", _) -> "LSF.None"
+      ("Maybe::Present", [x]) -> "LSF.Some " ++ x
       ("Either::Left", [x]) -> "LSF.L " ++ x
       ("Either::Right", [x]) -> "LSF.R " ++ x
       ("List::Nil", _) -> "LSF.Nil"
@@ -698,7 +698,7 @@ toValue env ty = case ty of
   Constructor "List" [TypeArgument a] -> (\f -> D.text ("SList (P.map " ++ f ++ " (LSF.items x))")) <$> helper "to" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "to" a
-    pure (D.text ("case x of { LSF.None -> SData \"Maybe::Nothing\" []; LSF.Some v -> SData \"Maybe::Just\" [" ++ f ++ " v] }"))
+    pure (D.text ("case x of { LSF.None -> SData \"Maybe::Absent\" []; LSF.Some v -> SData \"Maybe::Present\" [" ++ f ++ " v] }"))
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- helper "to" a
     fr <- helper "to" b
@@ -730,7 +730,7 @@ fromValue env ty = case ty of
   Constructor "List" [TypeArgument a] -> (\f -> D.text ("LSF.listOf (P.map " ++ f ++ " (LSF.scalarItems v))")) <$> helper "from" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "from" a
-    pure (D.text ("case LSF.scalarData v of { (\"Maybe::Just\", [x]) -> LSF.Some (" ++ f ++ " x); _ -> LSF.None }"))
+    pure (D.text ("case LSF.scalarData v of { (\"Maybe::Present\", [x]) -> LSF.Some (" ++ f ++ " x); _ -> LSF.None }"))
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- helper "from" a
     fr <- helper "from" b

@@ -68,8 +68,8 @@ generatorDocBounded boundsOf bits budget className structural reference key = ge
     baseGenerator _ ty | structural ty = call "lawspec.testing.LawSpecDataStrategies.sizedGenerator"
       [text "_schema",reference ty,number bits,number budget,text (className ++ "::_lawspecScalarGenerator")]
     baseGenerator depth ty@(C.Constructor "Maybe" [C.TypeArgument inner]) = call "Generator.anyOf"
-      [call "Generator.constant" [runtime "construct" [quoted (key ty),quoted "Maybe::Nothing",E.array []]],
-       sumGen depth ty "Maybe::Just" inner]
+      [call "Generator.constant" [runtime "construct" [quoted (key ty),quoted "Maybe::Absent",E.array []]],
+       sumGen depth ty "Maybe::Present" inner]
     baseGenerator depth ty@(C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) = call "Generator.anyOf"
       [sumGen depth ty "Either::Left" a,sumGen depth ty "Either::Right" b]
     baseGenerator depth ty@(C.Constructor _ [C.TypeArgument inner]) =

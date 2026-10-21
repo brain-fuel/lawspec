@@ -188,7 +188,7 @@ test_payloadPredicatesTraverseRecursiveParametersScoped = describe "recursive pa
         ty = app "Either" [inner,int]
         r = right (makeRegistry [])
         some n = PresenceValue inner (Just
-          (DataValue (app "Maybe" [int]) (Id "Maybe::Just") [integer n]))
+          (DataValue (app "Maybe" [int]) (Id "Maybe::Present") [integer n]))
         check p = checkPayloads (validateValue r 64) r ty
           [\value -> checkPayloads (validateValue r 64) r inner
             [\m -> checkPayloads (validateValue r 64) r (app "Maybe" [int]) [positive] m] value,
@@ -206,13 +206,13 @@ test_payloadPredicatesTraverseRecursiveParametersScoped = describe "recursive pa
         optional = app "Optional" [app "Maybe" [int]]
         wrap value = DataValue ty (Id "Wrapped::Wrap") [value]
         some n = wrap (PresenceValue optional (Just
-          (DataValue (app "Maybe" [int]) (Id "Maybe::Just") [integer n])))
+          (DataValue (app "Maybe" [int]) (Id "Maybe::Present") [integer n])))
         check = checkPayloads (validateValue r 64) r ty [positive]
     check (some 1) `shouldBe` Right True
     check (some 0) `shouldBe` Right False
     check (wrap (PresenceValue optional Nothing)) `shouldBe` Right True
     check (wrap (PresenceValue optional (Just
-      (DataValue (app "Maybe" [int]) (Id "Maybe::Nothing") [])))) `shouldBe` Right True
+      (DataValue (app "Maybe" [int]) (Id "Maybe::Absent") [])))) `shouldBe` Right True
   it "does not evaluate phantom predicates or unselected alternatives" $ do
     let phantom = structure "Phantom" ["a"] [variant "Phantom" "Tag" []]
         r = right (makeRegistry [phantom])

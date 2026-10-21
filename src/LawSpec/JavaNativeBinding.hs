@@ -92,8 +92,8 @@ emitBindings minify plan testing files = do
               | Just element <- maybeElement =
                   D.text "java.lang.Object found = " <> application <> D.text ";" <> D.hardline <>
                   nativeResultType <> D.text " result = found == null" <> D.nest 4 (D.hardline <>
-                    D.text "? new lawspec.runtime.LawSpecRuntime.Nothing<>()" <> D.hardline <>
-                    D.text ": new lawspec.runtime.LawSpecRuntime.Just<>((" <> element <> D.text ") found);") <> D.hardline <> returned
+                    D.text "? new lawspec.runtime.LawSpecRuntime.Absent<>()" <> D.hardline <>
+                    D.text ": new lawspec.runtime.LawSpecRuntime.Present<>((" <> element <> D.text ") found);") <> D.hardline <> returned
               | otherwise = nativeResultType <> D.text " result = (" <> nativeResultType <> D.text ") " <> application <> D.text ";" <> D.hardline <> returned
         -- An async bridge converts the native task's result once it completes.
         -- A constructor is called at once, and its bridge returns a completed task.
@@ -104,9 +104,9 @@ emitBindings minify plan testing files = do
             converted' found
               | unit = D.text "lawspec.runtime.LawSpecRuntime.absent(\"Unit\")"
               | Just element <- maybeElement = D.text "(" <> found <> D.text " == null" <> D.nest 4 (D.hardline <>
-                  D.text "? " <> method canonicalResult "decode" [method nativeResult "encode" [D.text "new lawspec.runtime.LawSpecRuntime.Nothing<>()"]] <> D.hardline <>
+                  D.text "? " <> method canonicalResult "decode" [method nativeResult "encode" [D.text "new lawspec.runtime.LawSpecRuntime.Absent<>()"]] <> D.hardline <>
                   D.text ": " <> method canonicalResult "decode" [method nativeResult "encode"
-                    [D.text "new lawspec.runtime.LawSpecRuntime.Just<>((" <> element <> D.text ") " <> found <> D.text ")"]] <> D.text ")")
+                    [D.text "new lawspec.runtime.LawSpecRuntime.Present<>((" <> element <> D.text ") " <> found <> D.text ")"]] <> D.text ")")
               | static = method canonicalResult "decode" [method nativeResult "encode" [found]]
               | otherwise = method canonicalResult "decode" [method nativeResult "encode" [D.text "(" <> nativeResultType <> D.text ") " <> found]]
             asyncBody = case ref of

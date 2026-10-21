@@ -598,8 +598,8 @@ construct :: Env -> Type -> Id -> [D.Doc] -> [Expr] -> R D.Doc
 construct env ty tag values args = case (idText tag, values) of
   ("List::Nil", []) -> pure (D.text "ls::fast::List::nil()")
   ("List::Cons", [h, t]) -> pure (D.text "ls::fast::List::cons" <> D.delimitTrailing 4 "(" ")" [h, t])
-  ("Maybe::Nothing", []) -> pure (D.text "None")
-  ("Maybe::Just", [x]) -> pure (D.text "Some" <> paren x)
+  ("Maybe::Absent", []) -> pure (D.text "None")
+  ("Maybe::Present", [x]) -> pure (D.text "Some" <> paren x)
   ("Either::Left", [x]) -> pure (D.text "ls::Either::Left" <> paren x)
   ("Either::Right", [x]) -> pure (D.text "ls::Either::Right" <> paren x)
   (_, [items]) | Just ("KeyVal", _) <- collectionArguments ty -> do
@@ -678,7 +678,7 @@ match env selfCall scope value cases _ = do
         names <- bindNames c
         (fields, b) <- bound c names
         pure $ case (idText (caseConstructor c), fields) of
-          ("Maybe::Nothing", _) -> D.text "None => " <> b
+          ("Maybe::Absent", _) -> D.text "None => " <> b
           (_, [f]) -> D.text ("Some(" ++ f ++ ") => ") <> b
           _ -> D.text "_ => unreachable!(),"
       pure (matchOn ("&" ++ subject) arms)

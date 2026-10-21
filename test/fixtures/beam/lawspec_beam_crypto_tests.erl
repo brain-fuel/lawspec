@@ -82,8 +82,8 @@ logical_abilities_keep_the_same_data_contract_test() ->
     Key = invoke(Aead, <<"aeadKey">>, []),
     ?assertMatch({ls_data, <<"lawspec.crypto::type::AeadKey::AeadKey">>, [<<_:32/binary>>]}, Key),
     Sealed = invoke(Aead, <<"seal">>, [Key, <<"message">>, <<"associated">>]),
-    ?assertEqual({ls_data, <<"Maybe::Just">>, [<<"message">>]}, invoke(Aead, <<"unseal">>, [Key, Sealed, <<"associated">>])),
-    ?assertEqual({ls_data, <<"Maybe::Nothing">>, []}, invoke(Aead, <<"unseal">>, [Key, Sealed, <<"changed">>])).
+    ?assertEqual({ls_data, <<"Maybe::Present">>, [<<"message">>]}, invoke(Aead, <<"unseal">>, [Key, Sealed, <<"associated">>])),
+    ?assertEqual({ls_data, <<"Maybe::Absent">>, []}, invoke(Aead, <<"unseal">>, [Key, Sealed, <<"changed">>])).
 
 invoke(Handler, Operation, Args) -> lawspec_beam_effects:invoke(Handler, #{}, Operation, Args).
 

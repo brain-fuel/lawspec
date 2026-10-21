@@ -61,7 +61,7 @@ nativeType bits names parameters ty = case ty of
     ts <- mapM argument args
     case (n,ts) of
       ("List",[t]) -> pure (array [t])
-      ("Maybe",[t]) -> pure (union [atom "nothing",tuple [atom "just",t]])
+      ("Maybe",[t]) -> pure (union [atom "absent",tuple [atom "present",t]])
       ("Either",[a,b]) -> pure (union [tuple [atom "left",a],tuple [atom "right",b]])
       ("Nullable",[t]) -> pure (union [atom "null",tuple [atom "non_null",t]])
       ("Optional",[t]) -> pure (union [atom "none",tuple [atom "some",t]])

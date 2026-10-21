@@ -57,7 +57,7 @@ emitMailboxes layout bits datas units
             , member "The next message, waiting for one; fails once closed and empty." ("member _.Receive() : " ++ native ++ " = " ++ codec ++ ".ToNative (mailbox.Receive())")
             , member "The next message within timeout, if one comes." ("member _.ReceiveWithin(timeout: TimeSpan) : " ++ native ++ " option =") <> D.nest 4 (D.hardline <>
                 D.text "match mailbox.ReceiveWithin(System.Numerics.BigInteger(timeout.Ticks / 10L)) with" <> D.hardline <>
-                D.text ("| Value.Data(\"Maybe::Just\", [ value ]) -> Some(" ++ codec ++ ".ToNative value)") <> D.hardline <>
+                D.text ("| Value.Data(\"Maybe::Present\", [ value ]) -> Some(" ++ codec ++ ".ToNative value)") <> D.hardline <>
                 D.text "| _ -> None")
             , member "The next message within timeout; fails when none comes." ("member this.Receive(timeout: TimeSpan) : " ++ native ++ " =") <> D.nest 4 (D.hardline <>
                 D.text "match this.ReceiveWithin timeout with" <> D.hardline <>

@@ -489,8 +489,8 @@ construct env ty tag values = do
   case (idText tag, values) of
     ("List::Nil", []) -> pure (D.text (typeText ++ "()"))
     ("List::Cons", [h, t]) -> pure (paren t <> D.text ".prepending(" <> h <> D.text ")")
-    ("Maybe::Nothing", []) -> pure (D.text ("(nil as " ++ typeText ++ ")"))
-    ("Maybe::Just", [x]) -> pure (D.text ("(" ++ typeText ++ ".some(") <> x <> D.text "))")
+    ("Maybe::Absent", []) -> pure (D.text ("(nil as " ++ typeText ++ ")"))
+    ("Maybe::Present", [x]) -> pure (D.text ("(" ++ typeText ++ ".some(") <> x <> D.text "))")
     ("Either::Left", [x]) -> pure (D.text (typeText ++ ".left(") <> x <> D.text ")")
     ("Either::Right", [x]) -> pure (D.text (typeText ++ ".right(") <> x <> D.text ")")
     (_, [items]) | Just ("KeyVal", _) <- collectionArguments ty ->
@@ -585,8 +585,8 @@ matchStatements env scope resultType sink value cases = do
         bs <- binders c
         let names = map snd bs
             pattern' = case (idText (caseConstructor c), names) of
-              ("Maybe::Nothing", _) -> ".none"
-              ("Maybe::Just", [x]) -> ".some(" ++ letPattern [x] ++ x ++ ")"
+              ("Maybe::Absent", _) -> ".none"
+              ("Maybe::Present", [x]) -> ".some(" ++ letPattern [x] ++ x ++ ")"
               ("Either::Left", [x]) -> ".left(" ++ letPattern [x] ++ x ++ ")"
               ("Either::Right", [x]) -> ".right(" ++ letPattern [x] ++ x ++ ")"
               _ -> "_"

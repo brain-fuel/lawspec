@@ -470,7 +470,7 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
           "LawSpec generates the workflow; this law checks every target runs it as specified" [] [] start [] emptyLawMetadata
       isLeft m = Apply (Var "prelude.isLeft") m
       isRight m = Apply (Var "prelude.isRight") m
-      errorOf m = matchEither m "e" (\e -> ConstructLit "Maybe::Just" [e]) (const (ConstructLit "Maybe::Nothing" []))
+      errorOf m = matchEither m "e" (\e -> ConstructLit "Maybe::Present" [e]) (const (ConstructLit "Maybe::Absent" []))
       composition = lawFor "composes its stages" (name ++ " is the composition of its stages")
         (Equal (call name x) body)
       -- The composition up to and including a stage, as an Either.

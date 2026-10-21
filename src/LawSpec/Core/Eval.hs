@@ -197,8 +197,8 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
     let clamp n = fromIntegral (max 0 (min (fromIntegral count) n))
     Right (clamp i, max (clamp i) (clamp j))
   maybeValue element value = case value of
-    Just v -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Just") [v]
-    Nothing -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Nothing") []
+    Just v -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Present") [v]
+    Nothing -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Absent") []
   context origin result = case result of
     Left msg | "quantifier-search-incomplete:" `isPrefixOf` msg -> Left msg
     Left msg -> Left (show origin ++ ": " ++ msg)

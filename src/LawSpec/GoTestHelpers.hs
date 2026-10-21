@@ -56,8 +56,8 @@ generatorDocBounded boundsOf bits budget structural reference = gen
       (call "rapid.SliceOfN" [gen inner,value "0",value "64"]) "[]LawSpecValue"
       (call "lsList" [key ty,value "value"])
     gen ty@(Constructor "Maybe" [TypeArgument inner]) = call "rapid.OneOf"
-      [call "rapid.Just" [call "lsConstruct" [key ty,quoted "Maybe::Nothing",E.array []]],
-       sumGen ty "Maybe::Just" inner]
+      [call "rapid.Just" [call "lsConstruct" [key ty,quoted "Maybe::Absent",E.array []]],
+       sumGen ty "Maybe::Present" inner]
     gen ty@(Constructor "Either" [TypeArgument a,TypeArgument b]) = call "rapid.OneOf"
       [sumGen ty "Either::Left" a,sumGen ty "Either::Right" b]
     gen ty@(Constructor _ [TypeArgument inner]) = custom

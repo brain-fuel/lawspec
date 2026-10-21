@@ -56,8 +56,8 @@ generatorDocWithin py bits structural reference within = generate
       | otherwise = text (show value ++ suffix)
     generate ty | structural ty = call "_lawspec_data_generator" [reference ty]
     generate (Applied "Maybe" inner) =
-      let absent = call "ls.construct" [quote ("Maybe::Nothing" :: String),array []]
-          present = call "ls.construct" [quote ("Maybe::Just" :: String),array [text "value"]]
+      let absent = call "ls.construct" [quote ("Maybe::Absent" :: String),array []]
+          present = call "ls.construct" [quote ("Maybe::Present" :: String),array [text "value"]]
       in call (if py then "st.one_of" else "fc.oneof")
         [call (if py then "st.just" else "fc.constant") [absent],mapped (generate inner) "value" present]
     generate (C.Constructor "Either" [C.TypeArgument left,C.TypeArgument right]) =
