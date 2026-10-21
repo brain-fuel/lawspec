@@ -4,17 +4,21 @@ import gleam/list
 import lawspec/data
 import lawspec/workflow
 
-@external(erlang, "beam_policy_probe", "monotonic_millis")
-fn monotonic_millis() -> Int
+@external(erlang, "beam_policy_probe", "since")
+fn since() -> Int
 
-// A fast order first loads the workflow's modules, so loading code is not
-// timed with the checks.
+@external(erlang, "beam_policy_probe", "overlapped")
+fn overlapped(since: Int) -> Bool
+
+// Whether two of order -1's slow checks that started during this call
+// overlapped in time. Run one after the other they cannot overlap, however
+// loaded the machine is. A fast order first loads the workflow's modules.
 pub fn approved_quickly(n: Int) -> Bool {
   use _ <- workflow.with_real(0)
   let _ = definitions.approve(data.Order(0))
-  let started = monotonic_millis()
+  let started = since()
   let _ = definitions.approve(data.Order(n))
-  monotonic_millis() - started < 550
+  n != -1 || overlapped(started)
 }
 pub fn approval_errors(n: Int) -> List(String) {
   use _ <- workflow.with_real(0)

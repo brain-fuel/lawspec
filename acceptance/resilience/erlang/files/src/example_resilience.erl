@@ -24,9 +24,9 @@ quote_timed_out(N) -> lawspec_beam_workflow:with_real(0, fun(_) ->
     example_limits_definitions:quoted({ticket, N}) =:= {left, quoted_error_quoted_timed_out}
 end).
 quote_hedged(N) -> beam_policy_probe:with_quotes(fun() ->
-    Runtime = lawspec_beam_workflow:current(#{}), Start = erlang:monotonic_time(millisecond),
+    Runtime = lawspec_beam_workflow:current(#{}),
     Result = example_limits_definitions:hedged({ticket, N}),
-    Quick = erlang:monotonic_time(millisecond) - Start < 400,
     Hedged = lists:any(fun({Kind, _, _, _}) -> Kind =:= <<"hedge">> end, lawspec_beam_workflow:trace(Runtime)),
-    Result =:= {right, {ticket, N}} andalso Quick andalso (N =/= -2 orelse Hedged)
+    Result =:= {right, {ticket, N}} andalso
+        (N =/= -2 orelse (Hedged andalso beam_policy_probe:stalled_quote_cancelled()))
 end).

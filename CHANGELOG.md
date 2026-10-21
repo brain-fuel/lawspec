@@ -35,6 +35,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- BEAM workflow acceptance checks observe overlapping checks within their own
+  runtime instead of a host-speed deadline. Sequential and unrelated-runtime
+  mutants must fail the concurrency law. Erlang's hedge check observes the
+  winning attempt and cancellation of its stalled predecessor, with an explicit
+  missing-hedge control.
 - Cached `lawspec evidence` keeps explicit running or wired environment
   attestations planned. Passing native tests no longer relabel an unfinished
   environment as executed wiring. Completed documents retain their outcomes;

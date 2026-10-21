@@ -1,0 +1,19 @@
+expect: EquationFailed
+expect: an all group's checks run at the same time
+@@ src/example/approvals.gleam
+<<<<<<<
+import example/workflows/definitions
+=======
+import example/workflows/definitions
+import example/workflows as checks
+>>>>>>>
+@@ src/example/approvals.gleam
+<<<<<<<
+  let _ = definitions.approve(data.Order(n))
+  n != -1 || overlapped(started)
+=======
+  let _ = workflow.with_real(0, fn(_) { definitions.approve(data.Order(n)) })
+  let _ = checks.check_stock(data.Order(n))
+  let _ = checks.check_credit(data.Order(n))
+  n != -1 || overlapped(started)
+>>>>>>>

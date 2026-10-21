@@ -10,7 +10,7 @@ fetch_quote({ticket, N} = Ticket) ->
     case N of -1 -> timer:sleep(600); _ -> ok end,
     {right, Ticket}.
 hedge_quote({ticket, N} = Ticket) ->
-    case N =:= -2 andalso beam_policy_probe:quote_count() rem 2 =:= 1 of
-        true -> timer:sleep(600); false -> ok
+    case N =:= -2 andalso beam_policy_probe:first_quote() of
+        true -> beam_policy_probe:stall_quote(); false -> ok
     end,
     {right, Ticket}.

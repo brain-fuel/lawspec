@@ -230,8 +230,8 @@ law "|a slow quote times out| is
   end example
 end law
 
--- Quotes a ticket under a runtime with the real clock: whether it succeeded
--- quickly (within 400ms), for ticket -2 through a hedged attempt.
+-- Quotes a ticket under a runtime with the real clock: whether it succeeded,
+-- for ticket -2 through a hedge that overtakes the stalled first attempt.
 async quoteHedged :: Int64 -> Bool
 
 law "|a stalled quote is hedged| is

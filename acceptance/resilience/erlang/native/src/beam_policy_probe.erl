@@ -2,7 +2,7 @@
 %% ref:DEC-acceptance-with-mutants
 -module(beam_policy_probe).
 -export([exponential/3, linear/3, fibonacci/2, split_mix/2, full_jitter/2, waits/2,
-    monotonic_millis/0, sleep_millis/1, with_quotes/1, quote_count/0, current/0]).
+    monotonic_millis/0, sleep_millis/1, with_quotes/1, first_quote/0, current/0, stall_quote/0, stalled_quote_cancelled/0]).
 exponential(Base, Factor, Attempt) -> lawspec_beam_policy:retry_delay({exponential, Base, Factor, none}, Attempt).
 linear(Base, Step, Attempt) -> lawspec_beam_policy:retry_delay({linear, Base, Step}, Attempt).
 fibonacci(Base, Attempt) -> lawspec_beam_policy:retry_delay({fibonacci, Base}, Attempt).
@@ -22,15 +22,39 @@ waits(Attempts, Accepts) ->
     end).
 monotonic_millis() -> erlang:monotonic_time(millisecond).
 sleep_millis(Millis) -> timer:sleep(Millis), nil.
+%% A call-local barrier observes the hedge and cancellation, rather than a
+%% host-speed deadline. This follows beam_async_probe's blocked-step control
+%% and lawspec_beam_attempts' scoped cancellation contract.
 with_quotes(Body) ->
-    lawspec_beam_workflow:with_runtime(#{clock => real, quotes => atomics:new(1, [])}, fun(_) -> Body() end).
-current() -> lawspec_beam_workflow:current(#{}).
-quote_count() ->
+    Probe = ets:new(quote_probe, [public, set]),
+    try lawspec_beam_workflow:with_runtime(
+        #{clock => real, quote_probe => Probe},
+        fun(_) -> Body() end)
+    after ets:delete(Probe) end.
+
+quote_options() ->
     #{state := State} = current(),
-    Options = lawspec_beam_workflow_state:call(State, options),
-    %% Only the explicit real-clock hedge probe stalls an attempt. Ordinary
-    %% generated laws run under a fresh virtual runtime without this counter.
-    case maps:find(quotes, Options) of
-        {ok, Count} -> atomics:add_get(Count, 1, 1);
-        error -> 0
+    lawspec_beam_workflow_state:call(State, options).
+
+stall_quote() ->
+    %% This is a deadlock guard, not a performance assertion. A working hedge
+    %% returns its second result and joins cancellation before this can finish.
+    receive release_stalled_quote -> error(stalled_quote_was_released)
+    after 10000 -> error(stalled_quote_was_not_hedged) end.
+
+stalled_quote_cancelled() ->
+    #{quote_probe := Probe} = quote_options(),
+    case ets:lookup(Probe, stalled) of
+        [{stalled, Pid}] -> not is_process_alive(Pid);
+        [] -> false
+    end.
+current() -> lawspec_beam_workflow:current(#{}).
+first_quote() ->
+    %% ETS insert_new/2 atomically chooses and records the first worker, even
+    %% if it is cancelled before entering stall_quote/0. See the Erlang ETS
+    %% atomicity contract: https://www.erlang.org/doc/apps/stdlib/ets.html#insert_new/2
+    %% Ordinary generated laws use a virtual runtime without this probe.
+    case maps:find(quote_probe, quote_options()) of
+        {ok, Probe} -> ets:insert_new(Probe, {stalled, self()});
+        error -> false
     end.

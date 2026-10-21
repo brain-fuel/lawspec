@@ -1,0 +1,11 @@
+expect: equation_failed
+expect: an all group's checks run at the same time
+@@ lib/example_approvals.ex
+<<<<<<<
+      Definitions.approve(%Data.Order{number: n})
+      n != -1 or Example.Workflows.overlapped?(started)
+=======
+      Example.Workflows.check_stock(%Data.Order{number: n})
+      Example.Workflows.check_credit(%Data.Order{number: n})
+      n != -1 or Example.Workflows.overlapped?(started)
+>>>>>>>

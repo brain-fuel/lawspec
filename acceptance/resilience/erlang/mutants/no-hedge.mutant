@@ -1,0 +1,8 @@
+expect: stalled_quote_was_not_hedged
+expect: a stalled quote is hedged
+@@ src/example_resilience.erl
+<<<<<<<
+    Result = example_limits_definitions:hedged({ticket, N}),
+=======
+    Result = example_limits:hedge_quote({ticket, N}),
+>>>>>>>

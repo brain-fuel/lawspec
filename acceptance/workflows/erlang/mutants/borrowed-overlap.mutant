@@ -1,0 +1,12 @@
+expect: equation_failed
+expect: an all group's checks run at the same time
+@@ src/example_approvals.erl
+<<<<<<<
+    example_workflows_definitions:approve({order, N}),
+    N =/= -1 orelse example_workflows:overlapped(Since)
+=======
+    lawspec_beam_workflow:with_real(0, fun(_) -> example_workflows_definitions:approve({order, N}) end),
+    example_workflows:check_stock({order, N}),
+    example_workflows:check_credit({order, N}),
+    N =/= -1 orelse example_workflows:overlapped(Since)
+>>>>>>>

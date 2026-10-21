@@ -1,8 +1,10 @@
 // ref:DEC-acceptance-with-mutants
 import lawspec/data
 
-@external(erlang, "beam_policy_probe", "sleep_millis")
-fn pause(milliseconds: Int) -> Nil
+// Order -1's slow checks record when they ran, so approved_quickly can tell
+// whether they ran at the same time.
+@external(erlang, "beam_policy_probe", "slow")
+fn slow(milliseconds: Int) -> Nil
 
 pub fn audit(_account: data.Account) -> Bool { True }
 pub fn waitlist(error: data.SignupError) -> Result(data.Account, data.SignupError) {
@@ -24,10 +26,10 @@ pub fn open_account(signup: data.Signup) -> Result(data.Account, data.SignupErro
   }
 }
 pub fn check_stock(order: data.Order) -> Result(data.Order, String) {
-  case order.number { -1 -> pause(400) _ -> Nil }
+  case order.number { -1 -> slow(400) _ -> Nil }
   case order.number < 0 { True -> Error("no stock") False -> Ok(order) }
 }
 pub fn check_credit(order: data.Order) -> Result(data.Order, String) {
-  case order.number { -1 -> pause(250) _ -> Nil }
+  case order.number { -1 -> slow(250) _ -> Nil }
   case order.number < 0 { True -> Error("no credit") False -> Ok(order) }
 }
