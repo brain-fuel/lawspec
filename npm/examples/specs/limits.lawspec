@@ -33,7 +33,7 @@ workflow quoted :: Ticket -> Either _ Ticket is
     timeout 200ms
 end workflow
 
--- An asynchronous step with a hedge: ticket -2's first quote stalls (600ms),
+-- An asynchronous step with a hedge: ticket -2's first quote stalls,
 -- so a second starts after 50ms and answers first.
 async hedgeQuote :: Ticket -> Either Text Ticket
 

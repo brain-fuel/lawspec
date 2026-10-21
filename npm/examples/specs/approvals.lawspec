@@ -4,9 +4,9 @@ unit example.approvals
 -- own unit, so the adapters can call the workflow on every target (a Haskell
 -- workflow imports its steps' module).
 
--- Approves order n under the real clock: whether it took less than 550ms,
--- which the slow order does only when its checks run at the same time (the
--- longer one, not the two together).
+-- Approves order n under the real clock: whether the slow order's two checks
+-- overlapped in time, which they do only when they run at the same time. Run
+-- one after the other they cannot overlap, however loaded the machine is.
 async approvedQuickly :: Int64 -> Bool
 
 law "|an all group's checks run at the same time| is
