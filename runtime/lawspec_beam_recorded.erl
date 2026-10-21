@@ -35,8 +35,8 @@ render({ls_symbol, Identity, Description}, {<<"Symbol">>, []}, _, Ids) ->
     {["symbol(", integer_to_binary(Number), ", ", quote(Description), ")"], Next};
 render(V, {T, []}, _, Ids) -> {scalar(V, T), Ids}.
 
-fields({ls_data, <<"Maybe::Nothing">>, []}, {<<"Maybe">>, [_]}, _) -> [];
-fields({ls_data, <<"Maybe::Just">>, [_]}, {<<"Maybe">>, [T]}, _) -> [T];
+fields({ls_data, <<"Maybe::Absent">>, []}, {<<"Maybe">>, [_]}, _) -> [];
+fields({ls_data, <<"Maybe::Present">>, [_]}, {<<"Maybe">>, [T]}, _) -> [T];
 fields({ls_data, <<"Either::Left">>, [_]}, {<<"Either">>, [A, _]}, _) -> [A];
 fields({ls_data, <<"Either::Right">>, [_]}, {<<"Either">>, [_, B]}, _) -> [B];
 fields(V, T, S) -> lawspec_beam_schema:field_types(V, T, S).

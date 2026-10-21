@@ -106,11 +106,11 @@ object LawSpecScalaCodecs:
     val inner = schema.maybe(element, bits, symbols)
     codec[Option[T]](schema, inner.`type`(), bits, symbols,
       {
-        case Some(value) => inner.encode(Runtime.Just[T](value))
-        case None => inner.encode(Runtime.Nothing[T]())
+        case Some(value) => inner.encode(Runtime.Present[T](value))
+        case None => inner.encode(Runtime.Absent[T]())
       },
       value => inner.decode(value) match
-        case just: Runtime.Just[T] @unchecked => Some(just.value())
+        case just: Runtime.Present[T] @unchecked => Some(just.value())
         case _ => None)
 
   def either[L, R](

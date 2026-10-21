@@ -176,14 +176,14 @@ maybeCodecWith :: Maybe LS.SymbolContext -> S.Schema -> Int
 maybeCodecWith scope schema bits element = codecWith scope schema bits
   (S.Named "Maybe" [reference element]) fromValue toValue
   where
-    fromValue (LS.SData "Maybe::Nothing" []) = Right Nothing
-    fromValue (LS.SData "Maybe::Just" [value]) =
-      Just <$> context "Maybe::Just.value" (decode element value)
+    fromValue (LS.SData "Maybe::Absent" []) = Right Nothing
+    fromValue (LS.SData "Maybe::Present" [value]) =
+      Just <$> context "Maybe::Present.value" (decode element value)
     fromValue _ = Left "invalid checked Maybe"
-    toValue Nothing = Right (LS.SData "Maybe::Nothing" [])
+    toValue Nothing = Right (LS.SData "Maybe::Absent" [])
     toValue (Just value) = do
-      field <- context "Maybe::Just.value" (encode element value)
-      pure (LS.SData "Maybe::Just" [field])
+      field <- context "Maybe::Present.value" (encode element value)
+      pure (LS.SData "Maybe::Present" [field])
 
 eitherCodec :: S.Schema -> Int -> Codec a -> Codec b -> Codec (Either a b)
 eitherCodec = eitherCodecWith Nothing

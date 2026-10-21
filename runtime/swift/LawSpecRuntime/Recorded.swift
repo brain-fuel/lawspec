@@ -98,7 +98,7 @@ public enum Recorded {
         case (_, .data(let tag, let fields)):
             var types = [TypeRef]()
             switch (t, tag) {
-            case (_, "Maybe::Nothing"): types = []
+            case (_, "Maybe::Absent"): types = []
             case (.named("Maybe", let a), _) where a.count == 1: types = [a[0]]
             case (.named("Either", let a), "Either::Left") where a.count == 2: types = [a[0]]
             case (.named("Either", let a), "Either::Right") where a.count == 2: types = [a[1]]

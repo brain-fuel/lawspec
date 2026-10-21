@@ -386,8 +386,8 @@ validateChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits val
             (validateChecked scope schema element bits child))
           [0 :: Int ..] values
       (Named "Maybe" [element], _) -> dataValue
-        [Constructor "Maybe::Nothing" [],
-         Constructor "Maybe::Just" [Field "value" element]]
+        [Constructor "Maybe::Absent" [],
+         Constructor "Maybe::Present" [Field "value" element]]
       (Named "Either" [left, right], _) -> dataValue
         [Constructor "Either::Left" [Field "value" left],
          Constructor "Either::Right" [Field "value" right]]
@@ -497,9 +497,9 @@ allPayloadsWith scope schema@(Schema definitions _ _ _ _ _) typeRef bits value
           maybe (Right True)
             (context (name ++ ".value") . walk (firstArgument arguments)) payload
       (_, LS.SHandle _ _) -> Right True
-      ("Maybe", LS.SData "Maybe::Nothing" []) -> Right True
-      ("Maybe", LS.SData "Maybe::Just" [child]) ->
-        context "Maybe::Just.value" (walk (firstArgument arguments) child)
+      ("Maybe", LS.SData "Maybe::Absent" []) -> Right True
+      ("Maybe", LS.SData "Maybe::Present" [child]) ->
+        context "Maybe::Present.value" (walk (firstArgument arguments) child)
       ("Either", LS.SData tag [child]) ->
         let index = if tag == "Either::Left" then 0 else 1
         in context (tag ++ ".value") (walk (arguments !! index) child)

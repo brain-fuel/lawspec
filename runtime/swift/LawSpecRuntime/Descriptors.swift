@@ -202,9 +202,9 @@ public enum Descriptors {
             return (.list(items), s)
         case ("maybe", 1):
             let (choice, s1) = Random.below(4, state)
-            if choice.isZero { return (.data("Maybe::Nothing", []), s1) }
+            if choice.isZero { return (.data("Maybe::Absent", []), s1) }
             let (v, s2) = try generate(args[0], table, s1, size)
-            return (.data("Maybe::Just", [v]), s2)
+            return (.data("Maybe::Present", [v]), s2)
         case ("either", 2):
             let (choice, s1) = Random.below(2, state)
             let (tag, inner) = choice.isZero ? ("Either::Left", args[0]) : ("Either::Right", args[1])
@@ -242,7 +242,7 @@ public enum Descriptors {
         case ("text", 0): return .text("")
         case ("unit", 0): return .unit
         case ("list", 1): return .list([])
-        case ("maybe", 1): return .data("Maybe::Nothing", [])
+        case ("maybe", 1): return .data("Maybe::Absent", [])
         case ("either", 2): return .data("Either::Left", [try minimal(args[0], table)])
         case ("data", _) where args.count >= 1:
             guard let first = baseConstructors(Array(args.dropFirst())).first, let (head, parts) = shape(first), head == "ctor",
@@ -317,9 +317,9 @@ public enum Descriptors {
             return try shrinkSequence(Scalar.codePoints(s)).map { .text(try Scalar.textOfPoints($0)) }
         case ("list", 1, .list(let items)):
             return shrinkSequence(items).map { .list($0) } + (try replaceShrinks(items) { try shrink(args[0], $0, table) }).map { .list($0) }
-        case ("maybe", 1, .data("Maybe::Just", let fields)) where fields.count == 1:
-            return [.data("Maybe::Nothing", [])] + (try shrink(args[0], fields[0], table)).map { .data("Maybe::Just", [$0]) }
-        case ("maybe", 1, .data("Maybe::Nothing", _)):
+        case ("maybe", 1, .data("Maybe::Present", let fields)) where fields.count == 1:
+            return [.data("Maybe::Absent", [])] + (try shrink(args[0], fields[0], table)).map { .data("Maybe::Present", [$0]) }
+        case ("maybe", 1, .data("Maybe::Absent", _)):
             return []
         case ("either", 2, .data(let tag, let fields)) where fields.count == 1:
             let inner = tag == "Either::Left" ? args[0] : args[1]
@@ -420,8 +420,8 @@ public enum Descriptors {
         case ("list", 1, .list(let items)):
             out += try varint(BigInt(items.count))
             for v in items { try put(args[0], v, table, &out) }
-        case ("maybe", 1, .data("Maybe::Nothing", let f)) where f.isEmpty: out.append(0)
-        case ("maybe", 1, .data("Maybe::Just", let f)) where f.count == 1:
+        case ("maybe", 1, .data("Maybe::Absent", let f)) where f.isEmpty: out.append(0)
+        case ("maybe", 1, .data("Maybe::Present", let f)) where f.count == 1:
             out.append(1)
             try put(args[0], f[0], table, &out)
         case ("either", 2, .data("Either::Left", let f)) where f.count == 1:
@@ -483,9 +483,9 @@ public enum Descriptors {
             return (.list(items), position)
         case ("maybe", 1):
             try require(i < bytes.count && bytes[i] < 2, "InvalidWireValue")
-            if bytes[i] == 0 { return (.data("Maybe::Nothing", []), i + 1) }
+            if bytes[i] == 0 { return (.data("Maybe::Absent", []), i + 1) }
             let (v, next) = try get(args[0], bytes, i + 1, table)
-            return (.data("Maybe::Just", [v]), next)
+            return (.data("Maybe::Present", [v]), next)
         case ("either", 2):
             try require(i < bytes.count && bytes[i] < 2, "InvalidWireValue")
             let (tag, inner) = bytes[i] == 0 ? ("Either::Left", args[0]) : ("Either::Right", args[1])

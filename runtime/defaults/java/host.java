@@ -10,9 +10,9 @@ public final class Host {
     @Override
     public lawspec.runtime.LawSpecRuntime.Maybe<byte[]> readBytes(java.lang.String value0) {
       try {
-        return new lawspec.runtime.LawSpecRuntime.Just<>(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0)));
+        return new lawspec.runtime.LawSpecRuntime.Present<>(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0)));
       } catch (java.io.IOException | RuntimeException failed) {
-        return new lawspec.runtime.LawSpecRuntime.Nothing<>();
+        return new lawspec.runtime.LawSpecRuntime.Absent<>();
       }
     }
 
@@ -80,7 +80,7 @@ public final class Host {
     @Override
     public lawspec.runtime.LawSpecRuntime.Maybe<java.lang.String> environmentVariable(java.lang.String value0) {
       java.lang.String value = validName(value0) ? java.lang.System.getenv(value0) : null;
-      return value == null ? new lawspec.runtime.LawSpecRuntime.Nothing<>() : new lawspec.runtime.LawSpecRuntime.Just<>(value);
+      return value == null ? new lawspec.runtime.LawSpecRuntime.Absent<>() : new lawspec.runtime.LawSpecRuntime.Present<>(value);
     }
 
     @Override

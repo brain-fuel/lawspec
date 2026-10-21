@@ -122,7 +122,7 @@ export function strategy(
         value.present
     ) {
       children = [[type.args[0], value.value]];
-    } else if (type.name === 'Maybe' && value.tag === 'Maybe::Just') {
+    } else if (type.name === 'Maybe' && value.tag === 'Maybe::Present') {
       children = [[type.args[0], value.fields[0]]];
     } else if (type.name === 'Either') {
       children = [
@@ -304,7 +304,7 @@ export function strategy(
       const maybe = type.name === 'Maybe';
       const absent = fc.constant(
           maybe
-            ? new ls.DataValue('Maybe::Nothing', [])
+            ? new ls.DataValue('Maybe::Absent', [])
             : new ls.Presence(type.name, false),
       );
       result = inhabited(type.args[0], available - 1)
@@ -313,7 +313,7 @@ export function strategy(
             absent,
             build(type.args[0], available - 1).map((value) =>
                 maybe
-                  ? new ls.DataValue('Maybe::Just', [value])
+                  ? new ls.DataValue('Maybe::Present', [value])
                   : new ls.Presence(type.name, true, value),
             ),
           )

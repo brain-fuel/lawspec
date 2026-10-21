@@ -102,8 +102,8 @@ public enum Search {
             return result.map { .int($0) }
         case ("list", .list(let items)) where parts.count == 2:
             return try fieldMoves(items.map { _ in parts[1] }, items, table).map { .list($0) }
-        case ("maybe", .data("Maybe::Just", let f)) where parts.count == 2 && f.count == 1:
-            return try moves(parts[1], f[0], table).map { .data("Maybe::Just", [$0]) }
+        case ("maybe", .data("Maybe::Present", let f)) where parts.count == 2 && f.count == 1:
+            return try moves(parts[1], f[0], table).map { .data("Maybe::Present", [$0]) }
         case ("either", .data(let tag, let f)) where parts.count == 3 && f.count == 1:
             return try moves(tag == "Either::Left" ? parts[1] : parts[2], f[0], table).map { .data(tag, [$0]) }
         case ("data", .data(let tag, let values)) where parts.count >= 2:

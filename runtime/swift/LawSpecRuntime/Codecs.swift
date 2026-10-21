@@ -142,13 +142,13 @@ public enum Codecs {
     public static func maybe<T>(_ item: Codec<T>) -> Codec<T?> {
         Codec<T?>(toNative: { v in
             switch v {
-            case .data("Maybe::Nothing", _): return nil
-            case .data("Maybe::Just", let f) where f.count == 1: return try item.toNative(f[0])
+            case .data("Maybe::Absent", _): return nil
+            case .data("Maybe::Present", let f) where f.count == 1: return try item.toNative(f[0])
             default: throw wrong("Maybe", v)
             }
         }, fromNative: { native in
-            guard let x = native else { return .data("Maybe::Nothing", []) }
-            return .data("Maybe::Just", [try item.fromNative(x)])
+            guard let x = native else { return .data("Maybe::Absent", []) }
+            return .data("Maybe::Present", [try item.fromNative(x)])
         })
     }
 

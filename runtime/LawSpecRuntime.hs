@@ -306,8 +306,8 @@ sliceItems xs i j =
   in take (fromIntegral (end - start)) (drop (fromIntegral start) xs)
 
 maybeItem :: Maybe Scalar -> Scalar
-maybeItem (Just v) = SData "Maybe::Just" [v]
-maybeItem Nothing = SData "Maybe::Nothing" []
+maybeItem (Just v) = SData "Maybe::Present" [v]
+maybeItem Nothing = SData "Maybe::Absent" []
 
 textScalar :: String -> Scalar
 textScalar = SSequence "Text" . map ord
@@ -321,9 +321,9 @@ construct :: String -> [Scalar] -> Scalar
 construct "List::Nil" [] = SList []
 construct "List::Cons" [headValue, SList tailValues] =
   SList (headValue : tailValues)
-construct "Maybe::Nothing" [] = SData "Maybe::Nothing" []
+construct "Maybe::Absent" [] = SData "Maybe::Absent" []
 construct tag [value]
-  | tag `elem` ["Maybe::Just", "Either::Left", "Either::Right"] =
+  | tag `elem` ["Maybe::Present", "Either::Left", "Either::Right"] =
       SData tag [value]
 construct tag _ = error ("invalid constructor or arity: " ++ tag)
 
@@ -350,9 +350,9 @@ mapSumFields :: (String -> Scalar -> Scalar) -> String -> Scalar -> Scalar
 mapSumFields field t value = forceScalar result `seq` result
   where
     result | Just inner <- stripPrefix "Maybe " t = case value of
-             SData "Maybe::Nothing" [] -> value
-             SData "Maybe::Just" [payload] ->
-               SData "Maybe::Just" [field inner payload]
+             SData "Maybe::Absent" [] -> value
+             SData "Maybe::Present" [payload] ->
+               SData "Maybe::Present" [field inner payload]
              _ -> error "invalid Maybe constructor or arity"
            | otherwise = let (left,right) = eitherArguments t in case value of
              SData "Either::Left" [payload] ->
@@ -529,8 +529,8 @@ compareValues a b = case (a, b) of
   (SList xs, SList ys) -> items xs ys
   (SData s xs, SData t ys)
     | s == t -> items xs ys
-    | s == "Maybe::Nothing" && t == "Maybe::Just" -> Right LT
-    | s == "Maybe::Just" && t == "Maybe::Nothing" -> Right GT
+    | s == "Maybe::Absent" && t == "Maybe::Present" -> Right LT
+    | s == "Maybe::Present" && t == "Maybe::Absent" -> Right GT
     | otherwise -> Right (compare s t)
   _ | isExact (scalarName a) && isExact (scalarName b) -> compare <$> exactRatio a <*> exactRatio b
   _ -> Left "values have no portable order"
@@ -710,15 +710,15 @@ instance Native a => Native [a] where
     Nothing -> error "List required"
 instance Native a => Native (Maybe a) where
   toNative t s bits = case (stripPrefix "Maybe " t, validate t s bits) of
-    (Just _, SData "Maybe::Nothing" []) -> Nothing
-    (Just inner, SData "Maybe::Just" [value]) ->
+    (Just _, SData "Maybe::Absent" []) -> Nothing
+    (Just inner, SData "Maybe::Present" [value]) ->
       Just (toNative inner value bits)
     _ -> error "Maybe required"
   fromNative t value bits = case stripPrefix "Maybe " t of
     Just inner -> let result = case value of
-                       Nothing -> SData "Maybe::Nothing" []
+                       Nothing -> SData "Maybe::Absent" []
                        Just payload ->
-                         SData "Maybe::Just" [fromNative inner payload bits]
+                         SData "Maybe::Present" [fromNative inner payload bits]
                   in forceScalar result `seq` result
     Nothing -> error "Maybe required"
 instance (Native a, Native b) => Native (Either a b) where
@@ -2018,8 +2018,8 @@ generateValue table d0 size = case descriptorKind d of
     SList <$> replicateM (fromInteger n) (generateValue table (arg 1) size)
   "maybe" -> do
     r <- drawBelow 4
-    if r == 0 then pure (SData "Maybe::Nothing" [])
-      else (\v -> SData "Maybe::Just" [v]) <$> generateValue table (arg 1) size
+    if r == 0 then pure (SData "Maybe::Absent" [])
+      else (\v -> SData "Maybe::Present" [v]) <$> generateValue table (arg 1) size
   "either" -> do
     r <- drawBelow 2
     if r == 0 then (\v -> SData "Either::Left" [v]) <$> generateValue table (arg 1) size
@@ -2041,7 +2041,7 @@ minimalValue table d0 = case descriptorKind d of
   "text" -> SSequence "Text" []
   "unit" -> SAbsent "Unit"
   "list" -> SList []
-  "maybe" -> SData "Maybe::Nothing" []
+  "maybe" -> SData "Maybe::Absent" []
   "either" -> SData "Either::Left" [minimalValue table (arg 1)]
   _ -> case baseConstructors d of
     ctor : _ -> let (tag, fields) = constructorParts ctor in SData tag (map (minimalValue table) fields)
@@ -2070,8 +2070,8 @@ shrinkValue table d0 v = uniqueRendered $ case (descriptorKind d, v) of
     map SList (halfAndRemovals xs)
       ++ concat [[SList (take i xs ++ [c] ++ drop (i + 1) xs) | c <- shrinkValue table (arg 1) x]
                 | (i, x) <- zip [0 ..] xs]
-  ("maybe", SData "Maybe::Just" [x]) ->
-    SData "Maybe::Nothing" [] : [SData "Maybe::Just" [c] | c <- shrinkValue table (arg 1) x]
+  ("maybe", SData "Maybe::Present" [x]) ->
+    SData "Maybe::Absent" [] : [SData "Maybe::Present" [c] | c <- shrinkValue table (arg 1) x]
   ("either", SData tag [x]) ->
     [SData tag [c] | c <- shrinkValue table (arg (if tag == "Either::Left" then 1 else 2)) x]
   ("data", SData tag fields) ->
@@ -4538,8 +4538,8 @@ wirePut table d0 v = case (descriptorKind d, v) of
   (kind, SSequence _ cps) | kind `elem` ["text", "end"] -> Right (putBytes (utf8Of cps))
   ("unit", _) -> Right mempty
   ("list", SList xs) -> (putVarint (toInteger (length xs)) <>) . mconcat <$> mapM (wirePut table (arg 1)) xs
-  ("maybe", SData "Maybe::Nothing" []) -> Right (BB.word8 0)
-  ("maybe", SData "Maybe::Just" [x]) -> (BB.word8 1 <>) <$> wirePut table (arg 1) x
+  ("maybe", SData "Maybe::Absent" []) -> Right (BB.word8 0)
+  ("maybe", SData "Maybe::Present" [x]) -> (BB.word8 1 <>) <$> wirePut table (arg 1) x
   ("either", SData "Either::Left" [x]) -> (BB.word8 0 <>) <$> wirePut table (arg 1) x
   ("either", SData "Either::Right" [x]) -> (BB.word8 1 <>) <$> wirePut table (arg 2) x
   ("data", SData tag fields) ->
@@ -4576,8 +4576,8 @@ wireGet table d0 buf pos = case descriptorKind d of
           items (k - 1 :: Integer) p' (x : acc)
     items n pos' []
   "maybe" -> case byteAt pos of
-    Just 0 -> Right (SData "Maybe::Nothing" [], pos + 1)
-    Just 1 -> (\(x, p) -> (SData "Maybe::Just" [x], p)) <$> wireGet table (arg 1) buf (pos + 1)
+    Just 0 -> Right (SData "Maybe::Absent" [], pos + 1)
+    Just 1 -> (\(x, p) -> (SData "Maybe::Present" [x], p)) <$> wireGet table (arg 1) buf (pos + 1)
     _ -> Left "not a Maybe"
   "either" -> case byteAt pos of
     Just 0 -> (\(x, p) -> (SData "Either::Left" [x], p)) <$> wireGet table (arg 1) buf (pos + 1)

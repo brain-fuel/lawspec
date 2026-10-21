@@ -10,11 +10,11 @@ codecs() -> #{
     <<"Unit">> => #{encode => fun(ls_unit, []) -> nil end,
         decode => fun(nil, []) -> ls_unit; (_, _) -> fail(unit) end},
     <<"Maybe">> => #{encode => fun
-        ({ls_data, <<"Maybe::Nothing">>, []}, [_]) -> none;
-        ({ls_data, <<"Maybe::Just">>, [V]}, [F]) -> {some, F(V)} end,
+        ({ls_data, <<"Maybe::Absent">>, []}, [_]) -> none;
+        ({ls_data, <<"Maybe::Present">>, [V]}, [F]) -> {some, F(V)} end,
         decode => fun
-            (none, [_]) -> {ls_data, <<"Maybe::Nothing">>, []};
-            ({some, V}, [F]) -> {ls_data, <<"Maybe::Just">>, [F(V)]};
+            (none, [_]) -> {ls_data, <<"Maybe::Absent">>, []};
+            ({some, V}, [F]) -> {ls_data, <<"Maybe::Present">>, [F(V)]};
             (_, _) -> fail('maybe') end},
     <<"Either">> => #{encode => fun
         ({ls_data, <<"Either::Left">>, [V]}, [F, _]) -> {error, F(V)};

@@ -175,6 +175,6 @@ export class AeadHandler implements abilities.Aead {
   }
   unseal(value0: @@AeadKey@@, value1: @@Sealed@@, value2: Uint8Array): data.Maybe<Uint8Array> {
     const opened = aes256GcmDecrypt(value0.value, value1.value.subarray(0, 12), value1.value.subarray(12), value2);
-    return opened === undefined ? new data.Nothing() : new data.Just(opened);
+    return opened === undefined ? new data.Absent() : new data.Present(opened);
   }
 }
