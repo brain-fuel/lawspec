@@ -25,7 +25,9 @@ patch (0.x.y). This page records what has shipped and what comes next. ref:DEC-r
 | 0.22 | Erlang, Elixir and Gleam targets, with native tests and OTP processes | — |
 | 0.23 | F# and C# targets; typed native code; records, sequences and handlers of several abilities; where tests ran; parallel CI | A typed fast path for Erlang, Elixir and Gleam |
 | 0.24 | Scala, Groovy, Clojure and Swift targets; typed native code on Erlang, Elixir and Gleam | Groovy and Clojure reuse the Java model rather than generating their own; Swift's post-quantum crypto and secure network need macOS 26 (CryptoKit); on the BEAM, a definition or handler without native forms stays dynamic, and a large handler state peaks at several times its live heap |
-| 0.25 | Canonical authoring, records, quantifiers, mappings, optional law layers and compiler-backed authoring tools | Readability exercise deferred; complete named endings follow in 0.26 |
+| 0.25 | Canonical authoring, records, quantifiers, mappings, optional law layers and compiler-backed authoring tools | Readability exercise deferred |
+| 0.26 | Explicit named endings for every block and grammar profile `1.0-rc.2`; pre-1.0 migration support removed | Readability and final compatibility sign-off remain open |
+| 0.27 | Completed CALM execution evidence, Prolog and HCL, YAML, ANTLR and Make artifact targets | Folio, the remaining demonstration and verification commitments, and human/external 1.0 gates remain open |
 
 0.16 in detail:
 
@@ -150,8 +152,6 @@ and OTP supervisors.
 The [changelog](../../CHANGELOG.md) records patch releases and the complete
 changes for each milestone.
 
-## Planned
-
 ### 0.26: explicit endings for every block
 
 Every keyword-delimited block has a named closer, including units, ability laws
@@ -164,7 +164,12 @@ Pre-1.0 migration support is removed. Until the API is stable, active sources
 and consumers are updated directly. See the [syntax](../reference/language/syntax.md)
 and the [approved contract](../../LAWSPEC-PRE-1.0-REVIEW.md).
 
-### Following milestone: Prolog, configuration and documents
+### 0.27: execution evidence, Prolog and configuration
+
+Completed Ironframe runs link LawSpec law evidence to architecture, topology,
+application and dependency identities, distinguishing real providers from
+fixtures. Startup wiring stays planned until execution completes. The same
+application laws run against real, twin and mixed Kafka/HTTP bindings.
 
 HCL and YAML now emit configuration artifacts from checked Core, with
 explicit supported fragments and incomplete-input reporting. ANTLR emits
@@ -174,9 +179,16 @@ ordered check, generation and test pipelines. Their
 from execution evidence.
 
 Prolog now has public generation, Janus bindings and PLUnit execution over the
-checked Python target; its full shared native acceptance matrix remains open.
-Folio remains to emit documentation pages. Completing those targets and the remaining acceptance
-work will make every language canon reads a target. C and C++ remain optional.
+checked Python target, with the shared native acceptance matrix checked in
+both machine profiles. Artifact generation remains distinct from law execution.
+
+## Planned
+
+### Following milestone: Folio
+
+Folio remains to emit documentation pages. Completing that target will make
+every required language canon reads a target. The remaining demonstration and
+verification commitments stay in the approved pre-1.0 contract. C and C++ remain optional.
 
 ### Later: C and C++
 
