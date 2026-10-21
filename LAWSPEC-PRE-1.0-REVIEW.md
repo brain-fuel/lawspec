@@ -593,6 +593,47 @@ and a green final combined run over the corrected source remain required. The
 native matrix result does not close Folio, LawTwin's per-target conformance,
 the retained demonstrations, human readability/adoption gates or 1.0 sign-off.
 
+### SDK harness and real Make execution checkpoint — 20 October 2026
+
+The original full SDK run completes with 364 tests: 356 pass, three fail and
+five require separate Rust, Clojure or Haskell acceptance environments. Its
+failure record remains intact. The arity assertion now checks Prolog's exported
+13-argument predicate and its actual clause, representing twelve inputs and
+one result. The runtime-placement inventory now names `lawspec_prolog.pl`.
+Both complete algebra and scalar groups pass all nine tests with no skips.
+The examples test's JSON output exceeded its capture buffer; the harness now
+allows a bounded 16 MiB. All complete-corpus exports, independent expected-file
+comparisons, adapter-preservation, edited-test protection and path checks remain
+required. Their full replay is still pending. The corrections are published at
+`0d18261e`; generated consumers and artifact integrity checks pass. Compiler,
+runtime, public SDK/CLI implementation and parity inputs remain unchanged.
+
+A generated Makefile also runs against a freshly installed rebuilt npm archive
+and a configuration containing both Prolog and Make targets. Parallel Make
+orders the real CLI's `check`, `generate` and `test` commands. Native payments
+execution runs all three authored laws and passes 45 cases with no skips; the
+Make artifact contributes no native test result. An incorrect native fee fails
+the actual assertion with expected value 0.3 and actual value 0.4, propagating
+failure through Make. An out-of-range UInt8 definition stops at `check`, before
+generation or native execution. Restoring both sources passes all 45 cases
+again. The installed build manifest matches the rebuilt public package.
+
+Canon's own repository check and both target-inventory properties pass. Every
+listed target has a grammar, profile, dialect and sample, and every grammar
+directory belongs to a listed target. Its current inventory matches the public
+18 program and four artifact targets exactly as a set, without duplicates.
+Folio remains planned. The existing human-review exemptions remain in force;
+human 1.0 sign-off remains open.
+
+Updated full native/WASM parity has completed the 32-bit readable generation
+phase across all 22 targets. Its other three generation profiles and final
+package checks remain running. The original CI still retains its two repaired
+model-selection failures and the SDK failure above. Complete updated parity and
+a green corrected 157-step combined CI run remain required before the main
+merge and Canon inventory push. Detailed evidence is under
+`.artifacts/integration-1/target-sdk-*`, `target-make-real-cli-*`,
+`target-canon-own-*` and `target-full-parity-scope.json`.
+
 ## Approved 0.26.0 contract — 19 October 2026
 
 Implementation and technical acceptance are complete on `2444621f`, as recorded
