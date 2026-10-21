@@ -254,6 +254,42 @@ This establishes the merged execution-evidence path against Ironframe's
 current example and existing provider/fixture images. It is not the complete
 release matrix, independent provider fidelity, human review or 1.0 signoff.
 
+### Haskell/WASM CALM reacceptance — 21 October 2026
+
+Ironframe `f4d88c3` reaccepts the Haskell/WASM port at `b178230`, using the
+merged LawSpec compiler and fresh LawTwin `8c592d7` fixtures. All 46 recorded
+Ironframe core source/artifact fingerprints remain unchanged. The same two
+application laws produce four native instances per environment, all executed
+and property tested against twin, real and mixed bindings. Each completed law-run
+attestation reaches LawSpec with the matching run, provider kind and fixture
+history digest. Managed processes, a freshly built managed image and an
+externally run application exercise the intended shared Kafka dependency.
+
+Kafka/HTTP faults, recovery, resets and deterministic replay pass; an audit
+against an emptied log produces a completed failed-run attestation. CALM CLI
+1.65.0 validates and renders the architecture. Exported diagrams, settings and
+infrastructure pass correspondence checks and missing-edge/key/module negative
+controls. The exported staging root initializes and validates without cloud
+deployment. All four cloud modules pass 14 mocked provider tests. The port's
+2,231 native examples, 1,417 Node tests, configuration-service container test,
+packaged CLI smoke checks, generated-source and artifact-integrity checks pass.
+Both opt-in container suites execute separately and remove their containers.
+
+The strict completed-versus-planned checks found a CLI defect: without an
+explicit completed file, the cached startup attestation was relabelled as
+executed wiring. LawSpec `03218926` preserves that snapshot's `plannedAgainst`
+fields and planned dependency counts. It retains historical receipt semantics
+when no execution state was recorded. To consume Ironframe's final state,
+provide its completed file to `lawspec evidence --attestation`; a child's
+passing native tests do not complete the enclosing environment run.
+
+The local integration acceptance is complete. Its reviewable logs, exports,
+attestations, package equivalence and execution audit are retained under
+`.artifacts/ironframe-port-20261021/`; Ironframe's CALM demonstration guide
+records reproduction instructions. Independent provider conformance remains
+LawTwin's separate obligation. This does not close the remaining release,
+Cassandra, target, demonstration, human or external 1.0 gates.
+
 ### Public Prolog integration — 20 October 2026
 
 Prolog is now registered in the public compiler, SDK, scaffold, doctor and test
