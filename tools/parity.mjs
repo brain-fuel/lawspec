@@ -25,6 +25,8 @@ const fixtures=[...(await Promise.all(paths.map(name=>readFile(name,'utf8')))),i
 const compiler=await createCompiler(),counts={responses:0,accepted:0,rejected:0,generationAccepted:0,generationRejected:0};
 const artifactContent=await readFile(path.join(root,'test/fixtures/artifact-configuration.lawspec'),'utf8');
 const artifactProbes=[
+  ['antlr4','generic input identities',await readFile(path.join(root,'test/fixtures/artifact-antlr-inputs.lawspec'),'utf8'),false],
+  ['antlr4','closed indexed input',await readFile(path.join(root,'test/fixtures/artifact-antlr-indexed-input.lawspec'),'utf8'),true],
   ['hcl','unbounded integer','unit exact\nvalue :: Unit -> Integer\nend unit',true],
   ['hcl','normalization','unit exact\nfunction value (u :: Unit) -> Text is "e\u0301" end function\nend unit',true],
   ['hcl','unassigned normalization data','unit exact\nfunction value (u :: Unit) -> Text is "\u{1fae9}" end function\nend unit',true],

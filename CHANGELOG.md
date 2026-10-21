@@ -33,6 +33,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- ANTLR includes concrete declaration inputs and exports typed EOF parser
+  entries with exact schema references. Overlapping generic representations
+  retain their expected type; closed indexed inputs remain explicitly unsupported.
 - Prolog application and generator modules retain qualified predicate names
   without conflicting imports into the global `user` module.
 - Prolog retains the host harness's seeded ordering, parallel execution and

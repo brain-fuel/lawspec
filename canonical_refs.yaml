@@ -134,6 +134,10 @@ REQ-artifact-targets:
   kind: requirement
   title: HCL and YAML configuration, ANTLR data syntax and Make pipelines preserve checked definitions and distinguish artifacts from executed law evidence
   locator: docs/reference/artifact-targets.md
+json-schema-structuring:
+  kind: article
+  title: JSON Schema subschema references and reusable definitions
+  locator: https://json-schema.org/understanding-json-schema/structuring
 json-schema-2020-12-validation:
   kind: article
   title: JSON Schema 2020-12 validation vocabulary

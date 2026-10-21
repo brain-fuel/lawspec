@@ -131,7 +131,8 @@ This target generates configuration; it does not deploy resources.
 ## ANTLR
 
 `LawSpecData.g4` is a combined ANTLR 4 grammar with a `document` entry rule
-that requires EOF. Integers, booleans and quoted JSON-style text are leaves;
+that requires EOF. Roots include monomorphic named types and concrete types
+from both arguments and results of declarations. Integers, booleans and quoted JSON-style text are leaves;
 lists use brackets and commas. A data constructor is its qualified identity,
 followed by parenthesized comma-separated fields in declaration order:
 
@@ -140,6 +141,14 @@ configuration::type::Settings::Settings(8080,true,["localhost"])
 ```
 
 Rules are named by the type keys recorded in `lawspec-artifacts.json`.
+Its `entryPoints` map pairs each root's type key with an EOF-consuming parser
+`rule` and a `schema` reference into `data.schema.json`. Select this entry point
+for the expected concrete contract type, decode its parse tree, and validate
+using that reference with the shared `$defs` available. This preserves the
+expected generic instance when constructor syntax and record shapes overlap:
+`Box UInt8` rejects a decoded payload of 256 while `Box UInt16` accepts it.
+The general `document` rule accepts the union of roots.
+
 `data.schema.json` describes decoded values using the configuration mapping
 above. The grammar checks syntax; numeric ranges and constructor predicates
 must be validated after decoding. The manifest explicitly records this
@@ -147,6 +156,9 @@ semantic validation requirement. No decoder or proof checker is claimed.
 
 ANTLR's existing [parser-rule and lexer infrastructure](https://github.com/antlr/antlr4/blob/master/doc/parser-rules.md)
 generates the parser. The emitted grammar contains no host-language actions.
+Typed schema selection uses standard [JSON Schema subschema references](https://json-schema.org/understanding-json-schema/structuring).
+Closed indexed types remain explicitly unsupported, including those used only
+in input positions.
 
 ## Make
 

@@ -349,11 +349,12 @@ grammarArtifacts plan = do
   registry <- makeRegistry (planDataDeclarations plan)
   let roots = nub ([C.Constructor (C.idText (C.dataId d)) [] | d <- planDataDeclarations plan,
         null (C.dataParameters d), C.dataStructural d == Nothing] ++
-        [result | u <- plannedUnits plan, d <- C.unitDeclarations (plannedUnit u),
-          let (_,result) = C.functionType (C.declarationType d), concrete result])
+        [ty | u <- plannedUnits plan, d <- C.unitDeclarations (plannedUnit u),
+          let (arguments,result) = C.functionType (C.declarationType d),
+          ty <- arguments ++ [result], concrete ty])
       concrete (C.TypeVariable _) = False
       concrete (C.Arrow _ _) = False
-      concrete (C.Constructor _ args) = all (\a -> case a of C.TypeArgument t -> concrete t; _ -> False) args
+      concrete (C.Constructor _ args) = all (\a -> case a of C.TypeArgument t -> concrete t; C.IndexArgument (C.Natural _) -> True; _ -> False) args
       collect seen t | t `elem` seen = pure []
       collect seen _ | length seen > 128 = Left "ANTLR type expansion exceeds 128 levels"
       collect seen t = do
@@ -372,6 +373,7 @@ grammarArtifacts plan = do
   definitions <- M.toList . M.fromList . concat <$> mapM (schemas []) roots
   let grammar = unlines (["// Generated data syntax; semantic constraints require validation after decoding.",
         "grammar LawSpecData;", "document : (" ++ intercalate " | " (map typeKey roots) ++ ") EOF ;"] ++
+        ["document_" ++ typeKey ty ++ " : " ++ typeKey ty ++ " EOF ;" | ty <- roots] ++
         [name ++ " : " ++ body ++ " ;" | (name,body) <- rules] ++
         ["INTEGER : '-'? ('0' | [1-9] [0-9]*) ;",
          "TEXT : '\"' (ESC | ~[\"\\\\\\u0000-\\u001F])* '\"' ;",
@@ -383,6 +385,8 @@ grammarArtifacts plan = do
     file "lawspec-artifacts.json" (json (object ["target" .= ("antlr4" :: String),
       "kind" .= ("syntax" :: String), "lawsExecuted" .= False,
       "semanticValidation" .= ("required-after-decoding" :: String),
+      "entryPoints" .= dict [(typeKey ty, object ["rule" .= ("document_" ++ typeKey ty),
+        "schema" .= ("#/$defs/" ++ typeKey ty)]) | ty <- roots],
       "types" .= dict [(typeKey ty,String (T.pack (show ty))) | ty <- roots]]) ++ "\n")]
 
 grammarRule :: TypeRegistry -> C.Type -> Either String (String,[C.Type])

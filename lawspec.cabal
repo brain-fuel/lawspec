@@ -311,6 +311,8 @@ extra-source-files:
     examples/rc1/nesting/uur.lawspec
     examples/rc1/nesting/uuu.lawspec
     test/fixtures/blake3-256.json
+    test/fixtures/artifact-antlr-indexed-input.lawspec
+    test/fixtures/artifact-antlr-inputs.lawspec
     test/fixtures/artifact-configuration.lawspec
     test/fixtures/canonical-bounded-generators.lawspec
     test/fixtures/canonical-branch-admission.lawspec

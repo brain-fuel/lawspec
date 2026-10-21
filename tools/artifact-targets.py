@@ -30,13 +30,18 @@ def run(args, directory, *, ok=True, env=None):
     return result
 
 
-def generate(core, directory, target, source=SOURCE):
+def compile_artifact(core, target, source):
     request = dict(schemaVersion=5, languageProfile='1.0-rc.2',
                    verification=dict(layers=[]), method='planGeneration',
                    sources=[dict(path='configuration.lawspec', content=source)], target=target)
     result = subprocess.run([core], input=json.dumps(request) + '\n', text=True,
                             capture_output=True, check=True)
     response = json.loads(result.stdout)
+    return response
+
+
+def generate(core, directory, target, source=SOURCE):
+    response = compile_artifact(core, target, source)
     assert not response['diagnostics'], response['diagnostics']
     assert not response.get('tests'), 'artifacts must not claim native law tests'
     directory.mkdir()
@@ -185,8 +190,7 @@ def check_sum(core, directory):
     assert list(validator.iter_errors(config)), 'absent and present constructors collapsed'
 
 
-def check_antlr(core, directory):
-    generate(core, directory, 'antlr4')
+def antlr_parser(directory):
     jar = Path(os.environ['ANTLR_JAR']).resolve()
     run(['java', '-jar', str(jar), 'LawSpecData.g4'], directory)
     canon_parse(directory, 'antlr4', 'grammarSpec', 'LawSpecData.g4')
@@ -202,12 +206,19 @@ public class Check {
       }
     };
     lexer.addErrorListener(errors); parser.addErrorListener(errors);
-    parser.document();
+    if (args.length > 1) parser.getClass().getMethod(args[1]).invoke(parser);
+    else parser.document();
   }
 }
 ''')
     run(['javac', '-cp', str(jar)] + [p.name for p in directory.glob('*.java')], directory)
     args = ['java', '-cp', os.pathsep.join(['.', str(jar)]), 'Check']
+    return args
+
+
+def check_antlr(core, directory):
+    generate(core, directory, 'antlr4')
+    args = antlr_parser(directory)
     tag = 'configuration::type::Settings::Settings'
     run(args + [f'{tag}(8080,true,["localhost"])'], directory)
     run(args + [f'{tag}(70000,true,[])'], directory)
@@ -217,6 +228,50 @@ public class Check {
     for wrong in (f'{tag}(8080,true)', f'{tag}(8080,true,["unterminated])',
                   f'{tag}(8080,true,[]) trailing', f'{tag}(8080,"true",[])'):
         run(args + [wrong], directory, ok=False)
+
+
+def check_antlr_inputs(core, directory):
+    fixtures = Path(__file__).resolve().parents[1] / 'test/fixtures'
+    generate(core, directory, 'antlr4', (fixtures / 'artifact-antlr-inputs.lawspec').read_text())
+    args = antlr_parser(directory)
+    manifest = json.loads((directory / 'lawspec-artifacts.json').read_text())
+    schema = json.loads((directory / 'data.schema.json').read_text())
+    jsonschema.Draft202012Validator.check_schema(schema)
+    assert manifest['entryPoints'].keys() == manifest['types'].keys()
+    assert manifest['lawsExecuted'] is False
+
+    def entry(scalar):
+        matches = [key for key, ty in manifest['types'].items()
+                   if ty.startswith('Constructor "inputOnly::type::Box"')
+                   and f'Constructor "{scalar}"' in ty]
+        assert len(matches) == 1, (scalar, matches)
+        key = matches[0]
+        result = manifest['entryPoints'][key]
+        assert result['schema'] == '#/$defs/' + key
+        return result
+
+    tag = 'inputOnly::type::Box::Box'
+    small, wide = entry('UInt8'), entry('UInt16')
+    for selected in [small, wide]:
+        run(args + [f'{tag}(7)', selected['rule']], directory)
+        run(args + [f'{tag}(256)', selected['rule']], directory)
+        run(args + [f'{tag}(7) trailing', selected['rule']], directory, ok=False)
+        run(args + [f'{tag}("bad")', selected['rule']], directory, ok=False)
+    small_schema = jsonschema.Draft202012Validator({**schema, '$ref': small['schema']})
+    wide_schema = jsonschema.Draft202012Validator({**schema, '$ref': wide['schema']})
+    small_schema.validate(dict(payload=7))
+    wide_schema.validate(dict(payload=256))
+    assert list(small_schema.iter_errors(dict(payload=256))), 'wider generic instance weakened the expected UInt8 input'
+    union = jsonschema.Draft202012Validator(schema)
+    union.validate(dict(payload=256))
+    run(args + [f'[{tag}(true),{tag}(false)]'], directory)
+    union.validate([dict(payload=True), dict(payload=False)])
+    run(args + [f'[{tag}(7)]'], directory, ok=False)
+
+    rejected = compile_artifact(core, 'antlr4', (fixtures / 'artifact-antlr-indexed-input.lawspec').read_text())
+    assert any(diagnostic['code'] == 'target-unsupported' and 'indexed' in diagnostic['message']
+               for diagnostic in rejected['diagnostics']), rejected
+    assert not rejected.get('files'), 'unsupported indexed input produced partial grammar artifacts'
 
 
 def check_make(core, directory):
@@ -266,7 +321,8 @@ def main():
             print('HCL: validation, literal values and rejection controls passed', flush=True)
         if 'antlr4' in selected:
             check_antlr(core, root / 'antlr4')
-            print('ANTLR: grammar compilation, parser execution and rejection controls passed', flush=True)
+            check_antlr_inputs(core, root / 'antlr4-inputs')
+            print('ANTLR: grammar compilation, typed input/schema selection, indexed rejection and parser controls passed', flush=True)
         if 'make' in selected:
             check_make(core, root / 'make')
             print('Make: ordered execution and failure propagation passed', flush=True)

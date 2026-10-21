@@ -57,6 +57,42 @@ test('missing values remain explicit and do not emit a complete YAML document', 
   assert.match(manifest.types[manifest.typeVariables[0].schema],/types::type::Settings/u);
 });
 
+test('ANTLR exposes concrete input identities, EOF entries and exact schemas across profiles and layouts', async () => {
+  const source = await readFile(new URL('../../test/fixtures/artifact-antlr-inputs.lawspec',import.meta.url),'utf8');
+  for(const machineBits of [32,64])for(const minify of [false,true]) {
+    const result = await compiler.planGeneration({...request('antlr4',source),machineBits,minify});
+    assert.deepEqual(result.diagnostics,[]);
+    assert.deepEqual(result.tests,[]);
+    const grammar = result.files.find(file=>file.path==='LawSpecData.g4').content;
+    const schema = JSON.parse(result.files.find(file=>file.path==='data.schema.json').content);
+    const manifest = JSON.parse(result.files.find(file=>file.path==='lawspec-artifacts.json').content);
+    assert.equal(manifest.lawsExecuted,false);
+    assert.match(grammar,/inputOnly::type::Box::Box/u);
+    assert.deepEqual(Object.keys(manifest.entryPoints).sort(),Object.keys(manifest.types).sort());
+    for(const [scalar,maximum]of [['UInt8',255],['UInt16',65535]]) {
+      const keys=Object.entries(manifest.types).filter(([,ty])=>
+        ty.startsWith('Constructor "inputOnly::type::Box"')&&ty.includes(`Constructor "${scalar}"`));
+      assert.equal(keys.length,1,scalar);
+      const key=keys[0][0],entry=manifest.entryPoints[key];
+      assert.equal(entry.schema,`#/$defs/${key}`);
+      assert.ok(grammar.includes(`${entry.rule} : ${key} EOF ;`));
+      const payload=schema.$defs[key].properties.payload.$ref;
+      assert.equal(schema.$defs[payload.slice('#/$defs/'.length)].maximum,maximum);
+    }
+    assert.ok(Object.values(manifest.types).some(ty=>ty.startsWith('Constructor "List"')&&ty.includes('Bool')));
+  }
+});
+
+test('ANTLR rejects closed indexed inputs instead of omitting them', async () => {
+  const source = await readFile(new URL('../../test/fixtures/artifact-antlr-indexed-input.lawspec',import.meta.url),'utf8');
+  for(const machineBits of [32,64])for(const minify of [false,true]) {
+    assert.deepEqual((await compiler.check({...request('antlr4',source),machineBits})).diagnostics,[]);
+    const result=await compiler.planGeneration({...request('antlr4',source),machineBits,minify});
+    assert.ok(result.diagnostics.some(item=>item.code==='target-unsupported'&&/indexed/u.test(item.message)));
+    assert.deepEqual(result.files??[],[]);
+  }
+});
+
 test('configuration serialization preserves UTF-8 and astral code points', async () => {
   const value = '日本語 é 😀';
   const source = `unit text\nfunction value (u :: Unit) -> Text is "${value}" end function\nend unit`;

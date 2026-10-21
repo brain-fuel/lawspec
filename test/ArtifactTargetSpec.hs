@@ -4,10 +4,12 @@
 module ArtifactTargetSpec (test_artifactTargets) where
 
 import Data.Aeson (Value(..), decode)
+import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy.Char8 as B
 import Data.Either (isLeft)
 import Data.List (isInfixOf)
+import qualified Data.Text as T
 import Test.Hspec
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.Core as C
@@ -65,6 +67,35 @@ test_artifactTargets = describe "artifact targets" $ do
     Right files -> do
       contents "Makefile" files `shouldSatisfy` isInfixOf "generate: check"
       contents "Makefile" files `shouldSatisfy` isInfixOf "test: generate"
+  it "exports concrete ANTLR input types with matching typed entry points and schemas" $ do
+    input <- readFile "test/fixtures/artifact-antlr-inputs.lawspec"
+    case emit "antlr4" input of
+      Left message -> expectationFailure message
+      Right files -> do
+        let grammar = contents "LawSpecData.g4" files
+        grammar `shouldSatisfy` isInfixOf "inputOnly::type::Box::Box"
+        case (decode (B.pack (contents "lawspec-artifacts.json" files)),
+              decode (B.pack (contents "data.schema.json" files))) of
+          (Just (Object manifest), Just (Object schema)) ->
+            case (KM.lookup "types" manifest, KM.lookup "entryPoints" manifest, KM.lookup "$defs" schema) of
+              (Just (Object types), Just (Object points), Just (Object definitions)) -> do
+                KM.keys points `shouldMatchList` KM.keys types
+                mapM_ (\name -> show types `shouldSatisfy` isInfixOf name) ["UInt8", "UInt16", "List"]
+                mapM_ (\(key, point) -> case point of
+                  Object fields -> case (KM.lookup "rule" fields, KM.lookup "schema" fields) of
+                    (Just (String rule), Just (String reference)) -> do
+                      grammar `shouldSatisfy` isInfixOf (T.unpack rule ++ " : " ++ K.toString key ++ " EOF ;")
+                      reference `shouldBe` "#/$defs/" <> K.toText key
+                      KM.member key definitions `shouldBe` True
+                    _ -> expectationFailure "typed ANTLR entry lacks its rule or schema reference"
+                  _ -> expectationFailure "typed ANTLR entry is not an object") (KM.toList points)
+              _ -> expectationFailure "ANTLR type, entry or definition metadata is missing"
+          _ -> expectationFailure "ANTLR metadata is not JSON objects"
+  it "reports closed indexed ANTLR input types as unsupported" $ do
+    input <- readFile "test/fixtures/artifact-antlr-indexed-input.lawspec"
+    case emit "antlr4" input of
+      Left message -> message `shouldSatisfy` isInfixOf "ANTLR indexed/opaque data syntax is unsupported"
+      Right _ -> expectationFailure "an indexed input was omitted instead of diagnosed"
   it "keeps incomplete configuration distinct from a checked document" $
     case emit "yaml" "unit incomplete\nsetting :: Unit -> UInt16\nend unit" of
       Left message -> expectationFailure message

@@ -1,0 +1,7 @@
+unit indexedInput
+type Vec (n :: Whole) (a :: Type) is one of
+  | VNil where n = 0
+  | VCons of type record{head :: a tail :: Vec m a} where n = m + 1
+end type
+consume :: Vec 0 UInt8 -> Bool
+end unit

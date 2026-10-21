@@ -547,6 +547,25 @@ of the incorrect reference transition, stale-result handling, all evidence
 views and empty selections. The original failure logs remain recorded. The
 ongoing CI run and a final cached run over the corrected source remain required.
 
+### ANTLR signature inputs and concrete entry points — 20 October 2026
+
+Public generation omitted concrete generic types used only in argument
+positions. ANTLR roots now include concrete inputs and results. Each root also
+exports an EOF-consuming parser entry and its exact companion-schema reference
+in `entryPoints`. This keeps the expected Core type explicit when generic
+instances share constructor spelling and record shape. Closed natural indices
+are recognized as closed, so indexed inputs receive the existing unsupported
+diagnostic rather than disappearing from the grammar.
+
+The correction follows ANTLR's generated start-rule methods and JSON Schema's
+standard subschema references. Isolated native-emitter checks pass real generated
+Java parser calls, selected-schema validation and Canon parsing, including
+overlapping UInt8/UInt16 domains, trailing-input rejection and unsupported
+indexed inputs. It adds no decoder, obligation generator, solver or proof
+checker. Compiler/SDK regressions, independent validators and parity probes
+cover the public integration. Rebuilt public artifacts and complete final-source
+acceptance remain required before merge.
+
 ## Approved 0.26.0 contract — 19 October 2026
 
 Implementation and technical acceptance are complete on `2444621f`, as recorded
