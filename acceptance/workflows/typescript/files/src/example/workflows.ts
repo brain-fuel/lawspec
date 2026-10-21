@@ -28,10 +28,12 @@ export function openAccount(value0: data.Signup): data.Either<data.SignupError, 
 // Each check records when it fails, so approvalErrors can tell completion
 // order from declaration order.
 export const finished: string[] = [];
+// Order -1's slow checks record when they ran, so approvedQuickly can tell whether they ran at the same time. The list is never cleared, so tests running at once cannot erase each other's records.
+export const spans: [number, number][] = [];
 const pause = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export async function checkStock(value0: data.Order): Promise<data.Either<string, data.Order>> {
-  if (value0.number === -1n) await pause(400);
+  if (value0.number === -1n) { const start = performance.now(); await pause(400); spans.push([start, performance.now()]); }
   if (value0.number < 0n) {
     finished.push('no stock');
     return new data.Left('no stock');
@@ -40,7 +42,7 @@ export async function checkStock(value0: data.Order): Promise<data.Either<string
 }
 
 export async function checkCredit(value0: data.Order): Promise<data.Either<string, data.Order>> {
-  if (value0.number === -1n) await pause(250);
+  if (value0.number === -1n) { const start = performance.now(); await pause(250); spans.push([start, performance.now()]); }
   if (value0.number < 0n) {
     finished.push('no credit');
     return new data.Left('no credit');

@@ -157,7 +157,19 @@ public final class LawSpecHarness {
 
   private static final Map<String, Stats> CASES = new LinkedHashMap<>();
 
-  private static synchronized Stats stats(String law) { return CASES.computeIfAbsent(law, k -> new Stats()); }
+  // A law's statistics belong to the run that observes them: a law's boundary,
+  // property and search tests may run at once, and one must never reset or
+  // count into another's. Each run's test thread knows its run.
+  private static final ThreadLocal<String> RUN = new ThreadLocal<>();
+
+  private static String key(String law) {
+    var run = RUN.get();
+    return run == null ? law : runKey(law, run);
+  }
+
+  private static String runKey(String law, String name) { return law + "\u0000" + name; }
+
+  private static synchronized Stats stats(String law) { return CASES.computeIfAbsent(key(law), k -> new Stats()); }
 
   public static synchronized void observe(String law, String[] coverLabels, boolean[] covers,
       String[] classLabels, boolean[] classes, Value[] labels) {
@@ -176,7 +188,7 @@ public final class LawSpecHarness {
   }
 
   private static synchronized Map<String, Object> adequacy(String law, int[] percents, String[] labels) {
-    var s = CASES.remove(law);
+    var s = CASES.remove(key(law));
     if (s == null) s = new Stats();
     var results = new ArrayList<Object>();
     var lines = new ArrayList<String>();
@@ -204,7 +216,11 @@ public final class LawSpecHarness {
     if (timeout <= 0) { test.run(); return; }
     var executor = Executors.newSingleThreadExecutor(r -> { var t = new Thread(r); t.setDaemon(true); return t; });
     try {
-      var future = executor.submit(() -> { try { test.run(); } catch (Throwable t) { throw new ExecutionException(t); } return null; });
+      var run = RUN.get();
+      var future = executor.submit(() -> {
+        RUN.set(run);
+        try { test.run(); } catch (Throwable t) { throw new ExecutionException(t); } return null;
+      });
       future.get(timeout, TimeUnit.MILLISECONDS);
     } catch (TimeoutException e) {
       throw new HarnessError(law + " took longer than its timeout of " + timeout + " ms");
@@ -219,6 +235,14 @@ public final class LawSpecHarness {
   /** Run one generated test of a law under its harness settings. */
   public static void run(String law, String name, long timeout, int repeat, int retries,
       int[] percents, String[] labels, boolean observed, Body test) throws Throwable {
+    var outer = RUN.get();
+    RUN.set(name);
+    try { runSettled(law, name, timeout, repeat, retries, percents, labels, observed, test); }
+    finally { if (outer == null) RUN.remove(); else RUN.set(outer); }
+  }
+
+  private static void runSettled(String law, String name, long timeout, int repeat, int retries,
+      int[] percents, String[] labels, boolean observed, Body test) throws Throwable {
     int attempts = 0;
     boolean flaky = false;
     Map<String, Object> report = null;
@@ -226,7 +250,7 @@ public final class LawSpecHarness {
       attempts++;
       try {
         for (int i = 0; i < repeat; i++) {
-          synchronized (LawSpecHarness.class) { CASES.remove(law); }
+          synchronized (LawSpecHarness.class) { CASES.remove(runKey(law, name)); }
           once(test, timeout, law);
           report = observed ? adequacy(law, percents, labels) : null;
           if (report != null) {

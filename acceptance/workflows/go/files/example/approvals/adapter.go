@@ -7,13 +7,15 @@ import (
 	"example.com/lawspec-example/example/workflows"
 )
 
-// ApprovedQuickly approves an order: whether it took less than 550ms.
+// ApprovedQuickly approves an order: whether two of order -1's slow checks
+// that started during this call overlapped in time. Run one after the other
+// they cannot overlap, however loaded the machine is.
 func ApprovedQuickly(value0 int64) LawSpecTask[bool] {
 	return LawSpecGo(func() bool {
 		runtime := workflows.NewLawSpecWorkflowRuntime(nil, 0)
 		started := time.Now()
 		workflows.LawSpecDefinitions.Approve(runtime.Context(nil), workflows.Order{Number: value0})
-		return time.Since(started) < 550*time.Millisecond
+		return value0 != -1 || workflows.Overlapped(started)
 	})
 }
 

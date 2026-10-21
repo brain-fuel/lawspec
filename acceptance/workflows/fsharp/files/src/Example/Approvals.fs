@@ -8,12 +8,14 @@ open LawSpec
 open LawSpec.Data
 open LawSpec.Runtime
 
-// Approves an order: whether it took less than 550ms.
+// Approves an order: whether two of order -1's slow checks that started
+// during this call overlapped in time. Run one after the other they cannot
+// overlap, however loaded the machine is.
 let approvedQuickly (number: int64) : Task<bool> =
     task {
-        let started = Stopwatch.StartNew()
+        let started = Stopwatch.GetTimestamp()
         Workflow.withReal 0I (fun _ -> LawSpec.Definitions.ExampleWorkflows.approve { Number = number }) |> ignore
-        return started.ElapsedMilliseconds < 550L
+        return number <> -1L || Example.Workflows.overlapped started
     }
 
 // Approves an order: the messages of its failures, as reported.

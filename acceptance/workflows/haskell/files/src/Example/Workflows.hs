@@ -1,9 +1,11 @@
 -- User-owned LawSpec adapter.
-module Example.Workflows (audit, waitlist, checkName, checkAge, openAccount, checkStock, checkCredit, finished) where
+module Example.Workflows (audit, waitlist, checkName, checkAge, openAccount, checkStock, checkCredit, finished, spans) where
 
 import Control.Concurrent (threadDelay)
 import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import System.IO.Unsafe (unsafePerformIO)
+import Data.Word (Word64)
+import GHC.Clock (getMonotonicTimeNSec)
 import qualified Data.Text as T
 import qualified LawSpecData as Data
 
@@ -35,9 +37,21 @@ openAccount (Data.Signup name age)
 finished :: IORef [T.Text]
 finished = unsafePerformIO (newIORef [])
 
+-- Order -1's slow checks record when they ran, so approvedQuickly can tell whether they ran at the same time.
+-- The list is never cleared, so tests running at once cannot erase each other's records.
+{-# NOINLINE spans #-}
+spans :: IORef [(Word64, Word64)]
+spans = unsafePerformIO (newIORef [])
+
 check :: Int -> T.Text -> Data.Order -> IO (Either T.Text Data.Order)
 check micros problem order@(Data.Order number) = do
-  if number == -1 then threadDelay micros else pure ()
+  if number == -1
+    then do
+      start <- getMonotonicTimeNSec
+      threadDelay micros
+      end <- getMonotonicTimeNSec
+      atomicModifyIORef' spans (\known -> ((start, end) : known, ()))
+    else pure ()
   if number >= 0
     then pure (Right order)
     else do

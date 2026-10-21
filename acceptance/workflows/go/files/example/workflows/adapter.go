@@ -56,11 +56,47 @@ func finish(message string) {
 	finished = append(finished, message)
 }
 
+// Order -1's slow checks record when they ran, so approvedQuickly can tell whether they ran at the same time.
+// The list is never cleared, so tests running at once cannot erase each other's records.
+var (
+	spansLock sync.Mutex
+	spans     [][2]time.Time
+)
+
+func span(start time.Time) {
+	spansLock.Lock()
+	defer spansLock.Unlock()
+	spans = append(spans, [2]time.Time{start, time.Now()})
+}
+
+// Overlapped reports whether two slow checks that started at or after since
+// overlapped in time.
+func Overlapped(since time.Time) bool {
+	spansLock.Lock()
+	defer spansLock.Unlock()
+	ran := [][2]time.Time{}
+	for _, s := range spans {
+		if !s[0].Before(since) {
+			ran = append(ran, s)
+		}
+	}
+	for i := range ran {
+		for j := i + 1; j < len(ran); j++ {
+			if ran[i][0].Before(ran[j][1]) && ran[j][0].Before(ran[i][1]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // CheckStock takes 400ms for order -1; a negative order has no stock.
 func CheckStock(value0 Order) LawSpecTask[LawSpecEither[string, Order]] {
 	return LawSpecGo(func() LawSpecEither[string, Order] {
 		if value0.Number == -1 {
+			start := time.Now()
 			time.Sleep(400 * time.Millisecond)
+			span(start)
 		}
 		if value0.Number < 0 {
 			finish("no stock")
@@ -74,7 +110,9 @@ func CheckStock(value0 Order) LawSpecTask[LawSpecEither[string, Order]] {
 func CheckCredit(value0 Order) LawSpecTask[LawSpecEither[string, Order]] {
 	return LawSpecGo(func() LawSpecEither[string, Order] {
 		if value0.Number == -1 {
+			start := time.Now()
 			time.Sleep(250 * time.Millisecond)
+			span(start)
 		}
 		if value0.Number < 0 {
 			finish("no credit")

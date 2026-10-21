@@ -102,9 +102,9 @@ emitTests Config{..} unit laws = do
       let h = C.propertyHarness (original e)
           label = owner e ++ "::" ++ name e
           pairs xs = text "[]lsHarnessPair{" <> D.joinWith (text ", ") [text "{" <> quoted l <> text ", " <> truth (expr w) <> text "}" | (l, w) <- xs] <> text "}"
-      in [call "lsHarnessObserve" [quoted label, pairs [(l, w) | C.Cover _ l w <- C.harnessCover h], pairs [(l, c) | (c, l) <- C.harnessClassify h],
+      in [call "lsHarnessObserve" [text "t", quoted label, pairs [(l, w) | C.Cover _ l w <- C.harnessCover h], pairs [(l, c) | (c, l) <- C.harnessClassify h],
             text "[]LawSpecValue{" <> D.joinWith (text ", ") (map expr (C.harnessLabels h)) <> text "}"] | observed h] ++
-         [call "lsHarnessTarget" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
+         [call "lsHarnessTarget" [text "t", expr score, quoted label] | Just score <- [C.harnessTarget h]]
     -- The tests a law's harness wraps, skips or expects to fail.
     harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
       (Just reason, _) -> [goTest (fn ++ "_Skipped") (call "lsHarnessSkip" [text "t", quoted label, quoted reason])]

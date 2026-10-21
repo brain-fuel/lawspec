@@ -64,9 +64,14 @@ impl std::future::Future for Sleep {
 // order from declaration order.
 pub static FINISHED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
+// Order -1's slow checks record when they ran, so approvedQuickly can tell whether they ran at the same time. The list is never cleared, so tests running at once cannot erase each other's records.
+pub static SPANS: std::sync::Mutex<Vec<(std::time::Instant, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
+
 async fn check(value0: crate::lawspec_data::Order, milliseconds: u64, problem: &str) -> ls::Either<String, crate::lawspec_data::Order> {
     if value0.number == -1 {
-        Sleep { until: std::time::Instant::now() + std::time::Duration::from_millis(milliseconds), started: false }.await;
+        let start = std::time::Instant::now();
+        Sleep { until: start + std::time::Duration::from_millis(milliseconds), started: false }.await;
+        SPANS.lock().unwrap().push((start, std::time::Instant::now()));
     }
     if value0.number >= 0 {
         return ls::Either::Right(value0);

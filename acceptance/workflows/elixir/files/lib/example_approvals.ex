@@ -7,9 +7,12 @@ defmodule Example.Approvals do
   def approved_quickly(n) do
     Workflow.with_real(fn _ ->
       Definitions.approve(%Data.Order{number: 0})
-      started = System.monotonic_time(:millisecond)
+      # Whether two of order -1's slow checks that started during this call
+      # overlapped in time. Run one after the other they cannot overlap,
+      # however loaded the machine is.
+      started = Example.Workflows.since()
       Definitions.approve(%Data.Order{number: n})
-      System.monotonic_time(:millisecond) - started < 550
+      n != -1 or Example.Workflows.overlapped?(started)
     end)
   end
   def approval_errors(n) do

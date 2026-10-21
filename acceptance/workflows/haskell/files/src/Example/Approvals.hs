@@ -10,7 +10,9 @@ import qualified LawSpecData as Data
 import qualified LawSpecWorkflows.Example.Workflows as Workflows
 import qualified Example.Workflows as Checks
 
--- | Approves an order: whether it took less than 550ms.
+-- | Approves an order: whether two of order -1's slow checks that started
+-- during this call overlapped in time. Run one after the other they cannot
+-- overlap, however loaded the machine is.
 approvedQuickly :: I.Int64 -> IO Bool
 approvedQuickly number = do
   runtime <- LS.newWorkflowRuntime LS.realClock 0
@@ -19,8 +21,10 @@ approvedQuickly number = do
   approved <- pure $! case Workflows.approve symbols (Data.Order number) of
     Right (Right _) -> True
     _ -> False
-  ended <- approved `seq` getMonotonicTimeNSec
-  pure (ended - started < 550000000)
+  known <- approved `seq` readIORef Checks.spans
+  let ran = [entry | entry@(start, _) <- known, start >= started]
+      overlapping = or [a < d && c < b | (i, (a, b)) <- zip [0 :: Int ..] ran, (c, d) <- drop (i + 1) ran]
+  pure (number /= -1 || overlapping)
 
 -- | Approves an order: the messages of its failures, as reported.
 approvalErrors :: I.Int64 -> IO [T.Text]

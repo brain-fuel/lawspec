@@ -9,6 +9,7 @@
 import json
 import os
 import random
+import contextvars
 import threading
 import time
 import warnings
@@ -84,8 +85,19 @@ def target(score, law):
     hypothesis.target(float(score), label=law)
 
 
+# A law's statistics belong to the run that observes them: a law's boundary,
+# property and search tests may run at once, and one must never reset or
+# count into another's.
+_run = contextvars.ContextVar("lawspec_harness_run", default=None)
+
+
+def _key(law):
+    run = _run.get()
+    return (law, run) if run is not None else law
+
+
 def observe(law, covers=(), classes=(), labels=()):
-    stats = _cases.setdefault(law, {"cases": 0, "cover": {}, "classes": {}, "labels": {}})
+    stats = _cases.setdefault(_key(law), {"cases": 0, "cover": {}, "classes": {}, "labels": {}})
     stats["cases"] += 1
     for label, holds in covers:
         stats["cover"][label] = stats["cover"].get(label, 0) + (1 if holds else 0)
@@ -98,7 +110,7 @@ def observe(law, covers=(), classes=(), labels=()):
 
 
 def _adequacy(law, covers):
-    stats = _cases.pop(law, {"cases": 0, "cover": {}, "classes": {}, "labels": {}})
+    stats = _cases.pop(_key(law), {"cases": 0, "cover": {}, "classes": {}, "labels": {}})
     cases = stats["cases"]
     results = []
     for percent, label in covers:
@@ -131,7 +143,8 @@ def _with_timeout(test, milliseconds, law):
             test()
         except BaseException as error:  # noqa: BLE001 - reported below
             outcome["error"] = error
-    worker = threading.Thread(target=run, daemon=True)
+    context = contextvars.copy_context()
+    worker = threading.Thread(target=lambda: context.run(run), daemon=True)
     worker.start()
     worker.join(milliseconds / 1000)
     if worker.is_alive():
@@ -142,13 +155,21 @@ def _with_timeout(test, milliseconds, law):
 
 def run(law, name, test, timeout=None, repeat=1, retries=0, covers=(), observed=False):
     """Run one generated test of a law under its harness settings."""
+    token = _run.set(name)
+    try:
+        _run_settled(law, name, test, timeout, repeat, retries, covers, observed)
+    finally:
+        _run.reset(token)
+
+
+def _run_settled(law, name, test, timeout, repeat, retries, covers, observed):
     attempts = 0
     flaky = False
     while True:
         attempts += 1
         try:
             for _ in range(repeat):
-                _cases.pop(law, None)
+                _cases.pop(_key(law), None)
                 _with_timeout(test, timeout, law)
                 report = _adequacy(law, covers) if observed else None
                 if report is not None:

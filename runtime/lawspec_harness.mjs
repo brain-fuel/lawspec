@@ -8,6 +8,7 @@
 // directory, to one JSON file per test there, which lawspec test reads.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 export class HarnessError extends Error {}
 
@@ -37,10 +38,15 @@ const show = (value) => {
 // Adequacy: what the generated cases covered.
 const cases = new Map();
 const best = new Map();
+// A law's statistics belong to the run that observes them: a law's boundary,
+// property and search tests may run at once, and one must never reset or
+// count into another's.
+const runs = new AsyncLocalStorage();
+const key = (law) => { const run = runs.getStore(); return run === undefined ? law : `${law}\u0000${run}`; };
 
 export function observe(law, { covers = [], classes = [], labels = [] } = {}) {
-  const stats = cases.get(law) ?? { cases: 0, cover: {}, classes: {}, labels: {} };
-  cases.set(law, stats);
+  const stats = cases.get(key(law)) ?? { cases: 0, cover: {}, classes: {}, labels: {} };
+  cases.set(key(law), stats);
   stats.cases += 1;
   for (const [label, holds] of covers) stats.cover[label] = (stats.cover[label] ?? 0) + (holds ? 1 : 0);
   for (const [label, holds] of classes) if (holds) stats.classes[label] = (stats.classes[label] ?? 0) + 1;
@@ -51,20 +57,20 @@ export function observe(law, { covers = [], classes = [], labels = [] } = {}) {
 // reported with the law's statistics.
 export function target(score, law) {
   const value = Number(score);
-  if (!best.has(law) || value > best.get(law)) best.set(law, value);
+  if (!best.has(key(law)) || value > best.get(key(law))) best.set(key(law), value);
 }
 
 function adequacy(law, covers) {
-  const stats = cases.get(law) ?? { cases: 0, cover: {}, classes: {}, labels: {} };
-  cases.delete(law);
+  const stats = cases.get(key(law)) ?? { cases: 0, cover: {}, classes: {}, labels: {} };
+  cases.delete(key(law));
   const n = stats.cases;
   const results = covers.map(([percent, label]) => {
     const observed = n ? Math.round(10000 * (stats.cover[label] ?? 0) / n) / 100 : 0;
     return { label, required: percent, observed, met: n > 0 && observed >= percent };
   });
   const report = { law, cases: n, cover: results, classes: stats.classes, labels: stats.labels,
-    ...(best.has(law) ? { best: best.get(law) } : {}) };
-  best.delete(law);
+    ...(best.has(key(law)) ? { best: best.get(key(law)) } : {}) };
+  best.delete(key(law));
   const lines = [`${law}: ${n} generated case(s)`];
   for (const r of results) lines.push(`  cover ${r.required}% "${r.label}": ${r.observed}%${r.met ? '' : ' (not met)'}`);
   for (const [label, count] of Object.entries(stats.classes)) lines.push(`  ${label}: ${(100 * count / (n || 1)).toFixed(1)}%`);
@@ -85,7 +91,11 @@ async function withTimeout(test, milliseconds, law) {
 }
 
 // Run one generated test of a law under its harness settings.
-export async function run(law, name, test, { timeout, repeat = 1, retries = 0, covers = [], observed = false } = {}) {
+export async function run(law, name, test, options = {}) {
+  return runs.run(name, () => runSettled(law, name, test, options));
+}
+
+async function runSettled(law, name, test, { timeout, repeat = 1, retries = 0, covers = [], observed = false } = {}) {
   let attempts = 0;
   let flaky = false;
   let report = null;
@@ -93,7 +103,7 @@ export async function run(law, name, test, { timeout, repeat = 1, retries = 0, c
     attempts += 1;
     try {
       for (let i = 0; i < repeat; i++) {
-        cases.delete(law);
+        cases.delete(key(law));
         await withTimeout(test, timeout, law);
         report = observed ? adequacy(law, covers) : null;
         const unmet = report ? report.cover.filter((r) => !r.met) : [];

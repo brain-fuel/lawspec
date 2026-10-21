@@ -37,6 +37,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Go harness statistics belong to each test run, so a law's boundary tests no
+  longer reset its property test's counts while they run in parallel. Python,
+  JavaScript, Rust, Haskell and Java (with Kotlin, Scala, Groovy and Clojure)
+  keep statistics per run too.
+- The workflows example's `|an all group's checks run at the same time|` law
+  checks that the two slow checks overlapped in time, on every target,
+  instead of timing the call against 550 ms, which failed on a loaded machine.
 - A stand-in's history digest, and other observations of a run, no longer
   make attested results stale; results are keyed by wiring only.
 - An environment attestation stored inside the project is no longer a
