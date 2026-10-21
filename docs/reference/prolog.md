@@ -13,7 +13,7 @@ implemented; the full shared native acceptance matrix remains open.
 
 ## Setup and commands
 
-Use SWI-Prolog 10 or newer, Python 3.13 or newer and `janus-swi` 1.5.3.
+Use SWI-Prolog 10.x, Python 3.13 or newer and `janus-swi` 1.5.3.
 Start the runner with the selected Python interpreter: a separately installed
 SWI executable can embed a different Python. The scaffold declares the Janus
 runtime dependency and the pytest and Hypothesis test dependencies.
