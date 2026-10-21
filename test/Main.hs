@@ -92,6 +92,7 @@ import qualified MatcherAdmissionSpec
 import qualified OperationResultSpec
 import qualified SmtFrozenSpec
 import qualified CounterexampleSpec
+import qualified SmtDataSpec
 import qualified SchedulerSpec
 import LawSpec.Compile
 import LawSpec.Model
@@ -174,6 +175,7 @@ main = hspec $ do
   OperationResultSpec.test_operationResultsAreCheckedWhereTheyAreUsed
   SmtFrozenSpec.test_smtV1IsFrozen
   CounterexampleSpec.test_counterexamplesAreConfirmedByTheEvaluator
+  SmtDataSpec.test_smtDataTasks
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers

@@ -1,12 +1,14 @@
 -- | Typed SMT-LIB tasks, with no solver or host IO in the compiler. The host
 -- executes these tasks using an established prover. ref:DEC-typed-core-boundary
 module LawSpec.Core.Smt (ProofTask(..), Encoding(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
-  , counterexampleFingerprint, outerQuantifiers) where
+  , counterexampleFingerprint, outerQuantifiers, Catalog, catalog, instantiate) where
 
-import Control.Monad (unless, when, foldM, forM)
+import Control.Monad (unless, when, foldM, forM, forM_)
 import Control.Monad.State.Strict
 import Data.Aeson (ToJSON(..), object, (.=))
 import qualified Data.Map.Strict as M
+import Data.Graph (SCC(..), stronglyConnComp, flattenSCCs)
+import Data.List (intercalate)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString as B
@@ -15,6 +17,7 @@ import qualified Data.Binary as Binary
 import LawSpec.Common (Diagnostic, InputDomain(..), Location, Quantification(..))
 import LawSpec.Core
 import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.Types (builtinDataDeclarations)
 import LawSpec.CorePersist ()
 import LawSpec.Digest (digest, digestHex, digestString)
 import LawSpec.Scalar (Scalar(..), isInteger, integerBounds)
@@ -112,27 +115,33 @@ counterexampleQuery program law = do
       constant (scope, rows) (index, q) = do
         let binder = quantifiedBinder q
             name = "lawspec_input_" ++ show (index :: Int)
-        s <- lift (quantifierSort (binderType binder))
+        s <- quantifierSortOf program (binderType binder)
         let local = M.insert (binderId binder) (Term s name "true") scope
         base <- lift (domain bits (binderType binder) name)
         restricted <- restrictions program [] local (quantifiedPredicates q)
         pure (local, rows ++ [(name, q, s, both [base, positive restricted])])
-  ((rows, result), _) <- runStateT (do
+  ((rows, result, prelude), _) <- runStateT (do
       (scope, rows) <- foldM constant (M.empty, []) (zip [0 ..] outer)
       result <- proposition program [] scope rest
-      pure (rows, result)) (Work 0 0 SmtLibV2)
-  let script = "; " ++ encodingName SmtLibV2 ++ "; counterexample: the law's outer inputs as constants\n" ++
+      prelude <- datatypePreamble program
+      pure (rows, result, prelude)) (Work 0 0 SmtLibV2 [] (catalog program))
+  let script = "; " ++ encodingName SmtLibV2 ++ "; counterexample: the law's outer inputs as constants\n" ++ prelude ++
         concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (name, _, s, _) <- rows] ++
         concat ["(assert " ++ condition ++ ")\n" | (_, _, _, condition) <- rows] ++
         "(assert " ++ no (positive result) ++ ")\n"
   unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
   pure (CounterexampleQuery [(name, q) | (name, q, _, _) <- rows] script)
 
-data Sort = BooleanSort | IntegerSort | RealSort | UnitSort deriving (Eq,Show)
+-- | A data type is its own SMT sort (lawspec-smtlib-v2): a closed instance,
+-- such as Maybe Int32, declared with its constructors and selectors.
+data Sort = BooleanSort | IntegerSort | RealSort | UnitSort | DataSort Type deriving (Eq,Show)
 data Term = Term { termSort :: Sort, value :: String, defined :: String }
 data Certificate = Certificate { positive :: String, negative :: String }
 -- The encoding a task needs so far: the newest any feature it uses requires.
-data Work = Work { nextName :: Int, visited :: Int, required :: Encoding }
+-- The data types it declares, in the order first used, and the program's
+-- data declarations by name.
+data Work = Work { nextName :: Int, visited :: Int, required :: Encoding
+                 , datatypes :: [Type], known :: Catalog }
 
 -- | A feature of a later encoding. v1 calls this nowhere, which is what keeps
 -- every v1 task as it was.
@@ -173,9 +182,199 @@ sort (Constructor "Unit" []) = Right UnitSort
 sort (Constructor "Rational" []) = Right RealSort
 sort (Constructor name []) | isInteger name = Right IntegerSort
 sort ty = Left ("unsupported SMT carrier: " ++ show ty)
+-- | Every data declaration the program can use, by type name.
+type Catalog = M.Map String DataDeclaration
+
+catalog :: Program -> Catalog
+catalog program = M.fromList [(idText (dataId d), d) | d <- builtinDataDeclarations ++ programDataDeclarations program]
+
+-- | A carrier's sort; a data type must be one the encoding can declare.
+sortIn :: Catalog -> Type -> Either String Sort
+sortIn types ty = case sort ty of
+  Right s -> Right s
+  Left reason -> case ty of
+    Constructor name _ | M.member name types -> do
+      admissible types [] ty
+      unless (all (inhabited types) (reachable types ty))
+        (Left ("unsupported SMT data type " ++ name ++ ": it, or a type it holds, has no finite value, and an SMT datatype must have one"))
+      pure (DataSort ty)
+    _ -> Left reason
+
+-- | The data types a data type holds, itself included.
+reachable :: Catalog -> Type -> [Type]
+reachable types root = go [] [root]
+  where
+    go seen [] = reverse seen
+    go seen (t : rest)
+      | t `elem` seen = go seen rest
+      | otherwise = go (t : seen) (rest ++ [f | f <- fieldTypes types t, Left _ <- [sort f]])
+
+-- | Whether a data type has a finite value: some constructor whose fields
+-- all have one. LawSpec admits empty types; SMT datatypes cannot be empty.
+inhabited :: Catalog -> Type -> Bool
+inhabited types root = root `elem` grow []
+  where
+    candidates = reachable types root
+    grow known = case [t | t <- candidates, t `notElem` known, any (all (has known) . fieldsOf t) (constructorsOf t)] of
+      [] -> known
+      new -> grow (known ++ new)
+    has known f = either (const (f `elem` known)) (const True) (sort f)
+    constructorsOf t = either (const []) (dataConstructors . fst) (declarationOf types t)
+    fieldsOf t c = [instantiate (either (const []) snd (declarationOf types t)) (binderType f) | f <- constructorFields c]
+
+-- | A declarable data type: a closed instance of a declaration that is not a
+-- handle or an indexed family, has no existential or equation constructors,
+-- and whose fields are declarable too. A Rational field is refused, since SMT
+-- Real would admit irrational values inside a quantified datum.
+admissible :: Catalog -> [Type] -> Type -> Either String ()
+admissible types seen ty
+  | ty `elem` seen = Right ()
+  | Constructor name arguments <- ty, Just declaration <- M.lookup name types = do
+      let refused why = Left ("unsupported SMT data type " ++ name ++ ": " ++ why)
+      when (dataHandle declaration) (refused "a handle has no constructors to reason about")
+      when (dataIndex declaration /= Nothing) (refused "indexed families are not encoded yet")
+      concrete <- forM arguments $ \argument -> case argument of
+        TypeArgument t -> Right t
+        _ -> refused "index arguments are not encoded yet"
+      unless (length concrete == length (dataParameters declaration)) (refused "wrong number of type arguments")
+      when (any (\c -> c == '|' || c == '\\') (typeSymbol ty)) (refused "its name cannot be an SMT symbol")
+      forM_ (dataConstructors declaration) $ \c -> do
+        unless (null (constructorExistentials c) && null (constructorEquations c))
+          (refused "constructors with existential or refined type parameters are not encoded yet")
+        forM_ (constructorFields c) $ \field -> do
+          let fieldType = instantiate (zip (dataParameters declaration) concrete) (binderType field)
+          case sort fieldType of
+            Right RealSort -> refused "a Rational field would admit irrational SMT values"
+            Right _ -> Right ()
+            Left _ -> admissible types (ty : seen) fieldType
+  | otherwise = Left ("unsupported SMT carrier: " ++ show ty)
+
+-- | A declaration's field type at an instance's type arguments.
+instantiate :: [(Id, Type)] -> Type -> Type
+instantiate table ty = case ty of
+  TypeVariable v -> maybe ty id (lookup v table)
+  Constructor name arguments -> Constructor name
+    [case a of TypeArgument t -> TypeArgument (instantiate table t); other -> other | a <- arguments]
+  Arrow a b -> Arrow (instantiate table a) (instantiate table b)
+
+-- Symbols are quoted, so a type, constructor or selector keeps its LawSpec
+-- name: Maybe<Int32>, Maybe<Int32>#Just and Maybe<Int32>#Just#0.
+typeSymbol :: Type -> String
+typeSymbol (Constructor name []) = name
+typeSymbol (Constructor name arguments) = name ++ "<" ++ intercalate "," [typeSymbol t | TypeArgument t <- arguments] ++ ">"
+typeSymbol other = show other
+
+constructorSymbol :: Type -> DataConstructor -> String
+constructorSymbol ty c = "|" ++ typeSymbol ty ++ "#" ++ constructorName c ++ "|"
+
+selectorSymbol :: Type -> DataConstructor -> Int -> String
+selectorSymbol ty c i = "|" ++ typeSymbol ty ++ "#" ++ constructorName c ++ "#" ++ show i ++ "|"
+
+wellFormedSymbol :: Type -> String
+wellFormedSymbol ty = "|wf#" ++ typeSymbol ty ++ "|"
+
+tester :: Type -> DataConstructor -> String -> String
+tester ty c x = app (app "_" ["is", constructorSymbol ty c]) [x]
+
+-- | The declaration and table of an admitted instance.
+declarationOf :: Catalog -> Type -> Either String (DataDeclaration, [(Id, Type)])
+declarationOf types ty = case ty of
+  Constructor name arguments | Just declaration <- M.lookup name types ->
+    Right (declaration, zip (dataParameters declaration) [t | TypeArgument t <- arguments])
+  _ -> Left ("unsupported SMT data type: " ++ show ty)
+
+constructorOf :: Catalog -> Type -> Id -> Either String DataConstructor
+constructorOf types ty tag = do
+  (declaration, _) <- declarationOf types ty
+  case [c | c <- dataConstructors declaration, constructorId c == tag] of
+    c : _ -> Right c
+    [] -> Left ("unknown SMT constructor " ++ idText tag)
+
+fieldTypes :: Catalog -> Type -> [Type]
+fieldTypes types ty = case declarationOf types ty of
+  Right (declaration, table) -> [instantiate table (binderType f) | c <- dataConstructors declaration, f <- constructorFields c]
+  Left _ -> []
+
+-- | A carrier's sort, declaring a data type (and the data types of its
+-- fields) the first time one is used. A data type makes the task v2.
+sortOf :: Program -> Type -> Encode Sort
+sortOf program ty = do
+  types <- gets known
+  s <- lift (sortIn types ty)
+  case s of
+    DataSort _ -> do
+      requires SmtLibV2
+      declared <- gets datatypes
+      unless (ty `elem` declared) $ do
+        modify (\w -> w{datatypes = datatypes w ++ [ty]})
+        forM_ (fieldTypes types ty) $ \fieldType -> case sort fieldType of
+          Right _ -> pure ()
+          Left _ -> () <$ sortOf program fieldType
+    _ -> pure ()
+  pure s
+
+quantifierSortOf :: Program -> Type -> Encode Sort
+quantifierSortOf program ty = do
+  s <- sortOf program ty
+  unless (s /= RealSort) (lift (Left "SMT Real quantification is not exact Rational quantification"))
+  pure s
+
+-- | The declarations of the data types a task used, and their
+-- well-formedness: each field in its type's range, nested data well formed,
+-- and each constructor's field refinements. Recursive types (List) define it
+-- with define-funs-rec, which is sound because a datum is finite.
+datatypePreamble :: Program -> Encode String
+datatypePreamble program = do
+  initial <- gets datatypes
+  if null initial then pure "" else do
+    bodies <- wellFormed []
+    final <- gets datatypes
+    types <- gets known
+    let bits = programMachineBits program
+        constructors ty = either (const []) (dataConstructors . fst) (declarationOf types ty)
+        table ty = either (const []) snd (declarationOf types ty)
+        field ty c i f = "(" ++ selectorSymbol ty c i ++ " " ++
+          either (const "Bool") sortText (sortIn types (instantiate (table ty) (binderType f))) ++ ")"
+        constructor ty c = "(" ++ unwords (constructorSymbol ty c : [field ty c i f | (i, f) <- zip [0 ..] (constructorFields c)]) ++ ")"
+        declare = "(declare-datatypes (" ++ unwords ["(" ++ sortText (DataSort t) ++ " 0)" | t <- final] ++ ") (" ++
+          unwords ["(" ++ unwords (map (constructor t) (constructors t)) ++ ")" | t <- final] ++ "))\n"
+        graph = [(t, typeSymbol t, [typeSymbol f | f <- fieldTypes types t, f `elem` final]) | t <- final]
+        components = stronglyConnComp graph
+        recursive = not (null [() | CyclicSCC _ <- components])
+        signature t = "(" ++ wellFormedSymbol t ++ " ((x " ++ sortText (DataSort t) ++ ")) Bool)"
+        body t = maybe "true" id (lookup t bodies)
+        definitions
+          | recursive = "(define-funs-rec (" ++ unwords (map signature final) ++ ") (" ++ unwords (map body final) ++ "))\n"
+          | otherwise = concat ["(define-fun " ++ wellFormedSymbol t ++ " ((x " ++ sortText (DataSort t) ++ ")) Bool " ++ body t ++ ")\n"
+                              | t <- flattenSCCs components]
+    _ <- pure bits
+    pure (declare ++ definitions)
+  where
+    wellFormed done = do
+      pending <- gets (filter (`notElem` map fst done) . datatypes)
+      if null pending then pure done else do
+        new <- forM pending (\ty -> (,) ty <$> wellFormedBody program ty)
+        wellFormed (done ++ new)
+
+wellFormedBody :: Program -> Type -> Encode String
+wellFormedBody program ty = do
+  types <- gets known
+  (declaration, table) <- lift (declarationOf types ty)
+  conditions <- forM (dataConstructors declaration) $ \c -> do
+    fields <- forM (zip [0 ..] (constructorFields c)) $ \(i, f) -> do
+      let fieldType = instantiate table (binderType f)
+          selected = app (selectorSymbol ty c i) ["x"]
+      s <- sortOf program fieldType
+      range <- lift (domain (programMachineBits program) fieldType selected)
+      pure ((binderId f, Term s selected "true"), range)
+    invariant <- restrictions program [] (M.fromList (map fst fields)) (constructorPredicates c)
+    pure (app "=>" [tester ty c "x", both (map snd fields ++ [positive invariant])])
+  pure (both conditions)
+
 sortText :: Sort -> String
 sortText BooleanSort = "Bool"
 sortText UnitSort = "Bool"
+sortText (DataSort ty) = "|" ++ typeSymbol ty ++ "|"
 sortText IntegerSort = "Int"
 sortText RealSort = "Real"
 
@@ -191,8 +390,11 @@ quantifierSort ty = do
 
 domain :: Int -> Type -> String -> Either String String
 domain bits ty x = do
-  s <- sort ty
+  s <- case (sort ty, ty) of
+    (Left _, Constructor _ _) -> Right (DataSort ty)
+    (result, _) -> result
   pure $ case (s,ty) of
+    (DataSort _,_) -> app (wellFormedSymbol ty) [x]
     (UnitSort,_) -> app "=" [x,"false"]
     (IntegerSort,Constructor name []) -> case integerBounds bits name of
       Just (lo,hi) -> both [app "<=" [integer lo,x],app "<=" [x,integer hi]]
@@ -206,10 +408,13 @@ query program law = do
     (Left "SMT law tasks require the canonical universal input-domain policy")
   unless (null (propertyResources law)) (Left "SMT translation does not execute resources")
   unless (null (propertyHandlers law)) (Left "SMT translation does not execute ability handlers")
-  (certificate, work) <- runStateT (proposition program [] M.empty
-    (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))) (Work 0 0 SmtLibV1)
+  ((certificate, prelude), work) <- runStateT (do
+      certificate <- proposition program [] M.empty
+        (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))
+      prelude <- datatypePreamble program
+      pure (certificate, prelude)) (Work 0 0 SmtLibV1 [] (catalog program))
   let script = "; " ++ encodingName (required work) ++ "; negate a positive certificate, including definedness\n" ++
-        "(assert " ++ no (positive certificate) ++ ")\n"
+        prelude ++ "(assert " ++ no (positive certificate) ++ ")\n"
   unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
   pure (required work, script)
 
@@ -247,7 +452,7 @@ proposition program active scope claim = do
       pure (Certificate (negative result) (positive result))
     Quantified kind q body -> do
       let binder=quantifiedBinder q
-      s <- lift (quantifierSort (binderType binder))
+      s <- quantifierSortOf program (binderType binder)
       name <- fresh
       let local=M.insert (binderId binder) (Term s name "true") scope
       base <- lift (domain (programMachineBits program) (binderType binder) name)
@@ -264,14 +469,61 @@ proposition program active scope claim = do
 expression :: Program -> [Id] -> Scope -> Expr -> Encode Term
 expression program active scope source = do
   tick
-  expected <- lift (sort (expressionType source))
-  term <- node
+  expected <- sortOf program (expressionType source)
+  types <- gets known
+  term <- node expected types
   unless (termSort term == expected) (lift (Left "SMT expression carrier mismatch"))
   valid <- lift (domain (programMachineBits program) (expressionType source) (value term))
   pure term{defined=both [defined term,valid]}
   where
     recurse=expression program active scope
-    node=case expressionNode source of
+    node expected types=case expressionNode source of
+      -- Data (lawspec-smtlib-v2). A construction is defined when its fields
+      -- are and the datum is well formed: its field refinements hold.
+      Construct tag fields -> do
+        let ty = expressionType source
+        c <- lift (constructorOf types ty tag)
+        terms <- mapM recurse fields
+        let built = if null terms then constructorSymbol ty c else app (constructorSymbol ty c) (map value terms)
+        pure (Term expected built (both (map defined terms ++ [app (wellFormedSymbol ty) [built]])))
+      -- A match selects the case whose constructor built the value; its
+      -- binders are that constructor's selectors, so no field is read from
+      -- another constructor.
+      Match scrutinee cases -> do
+        subject <- recurse scrutinee
+        let ty = expressionType scrutinee
+        name <- fresh
+        branches <- forM cases $ \matched -> do
+          c <- lift (constructorOf types ty (caseConstructor matched))
+          bound <- forM (zip [0 ..] (caseBinders matched)) $ \(i, binder) -> do
+            s <- sortOf program (binderType binder)
+            pure (binderId binder, Term s (app (selectorSymbol ty c i) [name]) "true")
+          body <- expression program active (M.union (M.fromList bound) scope) (caseBody matched)
+          pure (tester ty c name, body)
+        case reverse branches of
+          [] -> lift (Left "SMT match has no cases")
+          (_, final) : _ -> do
+            let bind x = app "let" ["((" ++ name ++ " " ++ value subject ++ "))", x]
+                chosen = foldr (\(test, body) rest -> choose test (value body) rest) (value final) (init branches)
+                guarded = foldr (\(test, body) rest -> choose test (defined body) rest) "false" branches
+            pure (Term expected (bind chosen) (both [defined subject, bind guarded]))
+      -- b.f reads a field of the constructor that built b, and only that one:
+      -- a read from another constructor is undefined, never Z3's arbitrary
+      -- selector value.
+      Project tag index argument -> do
+        subject <- recurse argument
+        let ty = expressionType argument
+        c <- lift (constructorOf types ty tag)
+        pure (Term expected (app (selectorSymbol ty c index) [value subject])
+          (both [defined subject, tester ty c (value subject)]))
+      Update tag index argument replacement -> do
+        subject <- recurse argument
+        new <- recurse replacement
+        let ty = expressionType argument
+        c <- lift (constructorOf types ty tag)
+        let built = app (constructorSymbol ty c)
+              [if k == index then value new else app (selectorSymbol ty c k) [value subject] | k <- [0 .. length (constructorFields c) - 1]]
+        pure (Term expected built (both [defined subject, tester ty c (value subject), defined new, app (wellFormedSymbol ty) [built]]))
       Constant scalar -> case scalar of
         SBool x -> pure (Term BooleanSort (if x then "true" else "false") "true")
         SInteger _ n -> pure (Term IntegerSort (integer n) "true")
@@ -306,7 +558,7 @@ expression program active scope source = do
         lift (binary op a b)
       Convert _ target argument -> do
         term <- recurse argument
-        s <- lift (sort target)
+        s <- sortOf program target
         case (termSort term,s) of
           (a,b) | a==b -> pure term
           (IntegerSort,RealSort) -> pure term{termSort=s,value=app "to_real" [value term]}
@@ -315,8 +567,10 @@ expression program active scope source = do
           _ -> lift (Left "unsupported SMT conversion")
       ExternalCall name arguments -> call program active scope name arguments
       Helper Unreachable [] -> do
-        s <- lift (sort (expressionType source))
-        pure (Term s (case s of BooleanSort -> "false"; UnitSort -> "false"; _ -> "0") "false")
+        s <- sortOf program (expressionType source)
+        case s of
+          DataSort _ -> lift (Left "unsupported SMT expression; no uninterpreted replacement was introduced")
+          _ -> pure (Term s (case s of BooleanSort -> "false"; UnitSort -> "false"; _ -> "0") "false")
       Helper Checked [argument] -> do
         term <- recurse argument
         pure (Term BooleanSort "true" (defined term))

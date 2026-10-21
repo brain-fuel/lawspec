@@ -27,7 +27,9 @@ import LawSpec.Core.Quantification (lowerFiniteProposition)
 import LawSpec.Core.QuantifierDomain (finiteQuantifierTerms)
 import LawSpec.Testing (finiteValuesWithRegistry)
 import LawSpec.Core.Eval (evaluateValue, evaluateValueProposition, validateValueWithContracts)
-import LawSpec.Core.Smt (CounterexampleQuery(..), ProofTask(..), outerQuantifiers)
+import LawSpec.Core.Smt (CounterexampleQuery(..), ProofTask(..), Catalog, catalog, instantiate, outerQuantifiers)
+import Control.Monad (unless, zipWithM)
+import qualified Data.Map.Strict as M
 import LawSpec.Core.Types (TypeRegistry, makeRegistry)
 import LawSpec.Core.Value (Value(..))
 import LawSpec.Scalar (Scalar(..), isInteger)
@@ -53,8 +55,9 @@ validateCounterexample program task answer = case taskCounterexample task of
       registry <- makeRegistry (programDataDeclarations program)
       hooked <- either (Left . concatMap show) Right (prepareHookedDefinitions program)
       named <- readValues answer
+      let types = catalog program
       values <- mapM (\(name, q) -> maybe (Left ("Z3 gave no value for " ++ binderName (quantifiedBinder q)))
-        (valueOf registry (binderType (quantifiedBinder q))) (lookup name named)) (counterexampleInputs query)
+        (valueOf types (binderType (quantifiedBinder q))) (lookup name named)) (counterexampleInputs query)
       let inputs = zip (map snd (counterexampleInputs query)) values
           invoke = hooked (\_ _ -> Nothing)
           bits = programMachineBits program
@@ -98,9 +101,23 @@ validateCounterexample program task answer = case taskCounterexample task of
           Left message -> Left (CheckIncomplete ("a refinement could not be evaluated: " ++ message))) (quantifiedPredicates q)
         if and holds then Right env' else outside "the law's domain"
 
--- | A value of a quantified carrier, from Z3's term.
-valueOf :: TypeRegistry -> Type -> SExpression -> Either String Value
-valueOf _ ty term = case (ty, term) of
+-- | A value of a quantified carrier, from Z3's term. A datum is its
+-- constructor's quoted symbol (Type#Constructor) applied to its fields.
+valueOf :: Catalog -> Type -> SExpression -> Either String Value
+valueOf types ty term = case (ty, term) of
+  (Constructor name arguments, _) | Just declaration <- M.lookup name types -> do
+    let (symbol, fields) = case term of
+          List (Atom s : xs) -> (s, xs)
+          Atom s -> (s, [])
+          _ -> ("", [])
+        tag = reverse (takeWhile (/= '#') (reverse (filter (/= '|') symbol)))
+        table = zip (dataParameters declaration) [t | TypeArgument t <- arguments]
+    c <- case [c | c <- dataConstructors declaration, constructorName c == tag] of
+      c : _ -> Right c
+      [] -> Left ("Z3's value " ++ render term ++ " is not a constructor of " ++ name)
+    unless (length fields == length (constructorFields c)) (Left ("Z3's value " ++ render term ++ " has the wrong number of fields"))
+    values <- zipWithM (\f t -> valueOf types (instantiate table (binderType f)) t) (constructorFields c) fields
+    pure (DataValue ty (constructorId c) values)
   (Constructor "Bool" [], Atom "true") -> Right (ScalarValue (SBool True))
   (Constructor "Bool" [], Atom "false") -> Right (ScalarValue (SBool False))
   (Constructor "Unit" [], _) -> Right (ScalarValue (SAbsent "Unit"))
@@ -129,6 +146,7 @@ readValues answer = case parse (tokens answer) of
 tokens :: String -> [String]
 tokens text = case dropWhile isSpace text of
   [] -> []
+  '|' : rest -> let (symbol, more) = break (== '|') rest in ('|' : symbol ++ "|") : tokens (drop 1 more)
   '(' : rest -> "(" : tokens rest
   ')' : rest -> ")" : tokens rest
   rest -> let (atom, more) = break (\c -> isSpace c || c == '(' || c == ')') rest in atom : tokens more

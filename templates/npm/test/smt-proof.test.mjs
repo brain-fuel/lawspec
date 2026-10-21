@@ -102,6 +102,27 @@ test('a false law is refuted only at values the reference evaluator confirms',re
   }
 });
 
+test('v2 data tasks prove record laws and refute a mutant with a confirmed datum',requiresZ3,async()=>{
+  const orders=mutant=>`type State is one of | Pending | Shipped | Cancelled end type
+
+type Action is one of | Ship | Cancel end type
+
+function next (state of type State) (action of type Action) -> State is
+  first matching case of action:
+    when Ship then if state = Pending then Shipped else state end if
+    when Cancel then ${mutant?'Cancelled':'if state = Shipped then Shipped else Cancelled end if'}
+  end case
+end function
+`+law('for all (state :: State) (action :: Action) => state = Shipped implies next state action = Shipped end for all');
+  const proved=await proveWithZ3(compiler,request(orders(false)),{binary:z3});
+  assert.equal(proved.solverEvidence[0].encoding,'lawspec-smtlib-v2');
+  assert.equal(proved.solverEvidence[0].status,'proved');
+  const refuted=await proveWithZ3(compiler,request(orders(true)),{binary:z3});
+  const proof=refuted.solverEvidence[0];
+  assert.equal(proof.status,'refuted');
+  assert.deepEqual(proof.counterexample.inputs,[{name:'state',value:'Shipped'},{name:'action',value:'Cancel'}]);
+});
+
 test('satisfiable Z3 tasks whose values cannot be confirmed stay incomplete',requiresZ3,async()=>{
   for(const body of [
     law('there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists'),

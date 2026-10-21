@@ -691,3 +691,13 @@ DEC-validated-counterexamples:
   opened: 0.26.0
   decided: 0.26.0
   refs: [why3, spark-ug, z3]
+
+DEC-smt-datatypes:
+  status: decided
+  question: |
+    How do Z3 tasks reason about LawSpec data (enums, records, alternatives, Maybe, List) without changing v1 tasks or trusting Z3's total selectors?
+  answer: |
+    Data is a lawspec-smtlib-v2 feature (gate 5 increment 5). Each closed instance a task uses, such as Maybe<Int32>, becomes an SMT-LIB datatype declared with declare-datatypes; its constructors, selectors and testers are quoted symbols that keep LawSpec names (Type#Constructor, Type#Constructor#i). A datum's well-formedness predicate (wf#Type) says each integer field is in its type's range, each nested datum is well formed and each field refinement holds; it is a define-fun, or define-funs-rec when a type is recursive, which is sound because a datum is finite and the predicate recurses structurally. Quantifiers range over well-formed data, construction is defined only when the result is well formed, a match binds a case's fields only under its constructor's tester, and a projection is defined only on the constructor that has the field, so Z3's unspecified selector values on the wrong constructor never decide a law. Equality is SMT structural equality, which is LawSpec's for every admitted type. Refused, as unsupported: handles, indexed families, existential or equation constructors, Rational fields (SMT Real would admit irrational values) and types with no finite value (LawSpec admits empty types; an SMT datatype must be inhabited). Counterexamples over data are read back from Z3's constructor terms and confirmed by the reference evaluator (DEC-validated-counterexamples). The precedent is the SMT-LIB datatypes theory as Why3 uses it for algebraic types, with SPARK's discipline of checking a field's presence against its discriminant instead of trusting the prover's total selectors. Trust boundary: the translation and Z3's datatype theory (decidable for these fragments). List laws that need recursion (length, membership) wait for the recursion encoding of increment 7.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [smt-lib, why3, spark-ug, z3]

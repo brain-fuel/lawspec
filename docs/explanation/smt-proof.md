@@ -88,9 +88,30 @@ constants and rational-valued computations are supported; Rational quantificatio
 is unsupported. SMT Reals include irrational witnesses, so substituting them for
 Rational existential domains would change the proposition.
 
-IEEE arithmetic, Decimal carriers, structural and nominal data quantifiers,
-recursion requiring induction, effects, resources and native implementations
-remain unsupported in this encoding. Other existing verification layers keep
+IEEE arithmetic, Decimal carriers, recursion requiring induction, effects,
+resources and native implementations remain unsupported.
+
+### Data
+
+Tasks over data are `lawspec-smtlib-v2`. Enums, records, alternatives,
+structural records, `Maybe`, `List` and `Either` become SMT datatypes, one for
+each instance used, such as `Maybe<Int32>`. Constructors, selectors and
+testers keep their LawSpec names, as quoted symbols like
+`|Maybe<Int32>#Just|`.
+
+- A datum must be well formed: each integer field in its type's range, each
+  nested datum well formed, and each field refinement true. Quantifiers range
+  over well-formed data only, and building a datum that breaks a refinement is
+  undefined.
+- A match reads a field only under the tester of the constructor that has it.
+  A field read from another constructor is undefined, never Z3's arbitrary
+  value.
+- Equality on data is structural, as LawSpec's is.
+- `List` laws that need recursion, such as length or membership, stay
+  unsupported until recursive definitions are encoded.
+- Handles, indexed families, constructors with existential or refined type
+  parameters, `Rational` fields and types with no finite value are refused.
+  An SMT datatype must have a value, and LawSpec allows empty types. Other existing verification layers keep
 their own capabilities. Unsupported translation never substitutes an
 uninterpreted implementation or changes a law's domain.
 

@@ -8,6 +8,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Z3 proof tasks cover data (`lawspec-smtlib-v2`): enums, records,
+  alternatives, structural records, `Maybe`, `List` and `Either` become SMT
+  datatypes whose field refinements are part of their well-formedness. The
+  refund policy and order lifecycle laws in `examples/rc1` are proved, and a
+  counterexample over data is read back and confirmed by the evaluator.
 - `lawspec prove` validates counterexamples. When Z3 finds a law's negation
   satisfiable, it gives values for the law's outer inputs, and the compiler
   re-checks the law at them with its reference evaluator. A confirmed law is

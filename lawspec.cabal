@@ -993,6 +993,7 @@ test-suite lawspec-test
       SearchSpec
       SelectionAdmissionSpec
       SessionsPythonSpec
+      SmtDataSpec
       SmtFrozenSpec
       SmtSpec
       SourceDataSpec
