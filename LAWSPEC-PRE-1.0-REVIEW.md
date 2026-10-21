@@ -283,6 +283,15 @@ when no execution state was recorded. To consume Ironframe's final state,
 provide its completed file to `lawspec evidence --attestation`; a child's
 passing native tests do not complete the enclosing environment run.
 
+The final full LawSpec SDK regression on `9ce9d0cf` passes: 361 tests passed,
+zero failures or cancellations, and five existing native opt-in cases skipped.
+The complete bundled-example export exercises all 18 target inventories,
+repeat export, adapter preservation, edited-output refusal and path controls.
+Ironframe `df6417c` also checks exact architecture/decorator/topology digests;
+its strengthened three-environment chain passes. The installed packed CLI's
+matched staging topology, diagram and unedited infrastructure root initialize
+and validate with the declared repository modules.
+
 The local integration acceptance is complete. Its reviewable logs, exports,
 attestations, package equivalence and execution audit are retained under
 `.artifacts/ironframe-port-20261021/`; Ironframe's CALM demonstration guide
