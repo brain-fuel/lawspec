@@ -544,6 +544,27 @@ export interface CheckRequest {
   analysisResults?: AnalysisResult[];
   projectVersion?: string;
   now?: string;
+  modelResults?: ModelResult[];
+}
+
+export interface ModelResult {
+  fingerprint: string;
+  outcome: string;
+  values: string;
+  invariant: string;
+}
+
+export interface ModelTaskRow {
+  owner: string;
+  declaration: string;
+  tasks: ModelTask[];
+}
+
+export interface ModelTask {
+  fingerprint: string;
+  kind: string;
+  script: string;
+  inputs: string[];
 }
 
 export interface Exemption {
@@ -855,6 +876,8 @@ export interface Result {
   analysisTasks?: AnalysisTaskRow[];
   analysisEvidence?: ObligationEvidence[];
   analysisChecks?: AnalysisCheck[];
+  modelTasks?: ModelTaskRow[];
+  modelEvidence?: ObligationEvidence[];
   counterexampleChecks?: CounterexampleCheck[];
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;

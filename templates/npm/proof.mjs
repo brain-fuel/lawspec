@@ -246,7 +246,8 @@ export async function proveWithZ3(compiler,request,options={}) {
   const tasks=result.proofTasks??[];
   let selected={};
   const analysis=result.analysisTasks??[];
-  if(tasks.some(task=>task.status==='ready')||analysis.some(row=>row.status==='ready')) {
+  const modelTasks=result.modelTasks??[];
+  if(tasks.some(task=>task.status==='ready')||analysis.some(row=>row.status==='ready')||modelTasks.some(law=>law.tasks.length)) {
     try {selected=await prover(config);}
     catch(error){selected={error:error.message,outcome:error.code==='ENOENT'?'unavailable':error.outcome??'failed'};}
   }
@@ -371,6 +372,43 @@ export async function proveWithZ3(compiler,request,options={}) {
       solverEvidence.push({kind:'analysis',owner:done.row.owner,declaration:done.row.declaration,stage:done.row.stage,
         taskFingerprint:fingerprintOf,encoding:'lawspec-smtlib-v2',status:'incomplete',
         outcome:done.outcome,reason:done.error,configuration:config});
+  }
+  // Model laws the compiler's own search left open: induction, Spacer (its
+  // invariant goes back to the compiler, which asks for plain re-checks),
+  // and a bounded run search the compiler replays. Rounds repeat while the
+  // compiler asks for new tasks.
+  if(modelTasks.length&&!selected.error) {
+    const answered=new Map(),modelAnswers=[],modelRows=new Map();
+    let pending=modelTasks;
+    for(let round=0;round<4;round++) {
+      let fresh=0;
+      for(const law of pending) for(const task of law.tasks) {
+        if(answered.has(task.fingerprint))continue;
+        fresh++;
+        const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
+          `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+task.script+'(check-sat)\n';
+        const run=await execute(selected.binary,selected.args,input,config,true,token=>token!=='sat'?'(exit)\n':
+          task.kind==='spacer'?'(get-model)\n(exit)\n':task.inputs.length?`(get-value (${task.inputs.join(' ')}))\n(exit)\n`:'(exit)\n');
+        const outcome=run.timeout?'timeout':run.error||run.exitCode!==0||!run.outcome?'failed':run.outcome;
+        const body=outcome==='sat'?run.stdout.slice(run.stdout.indexOf('\n')+1):'';
+        let invariant='';
+        if(task.kind==='spacer'&&outcome==='sat') {
+          const at=body.indexOf('(define-fun Inv ');
+          if(at>=0) {let depth=0;for(let i=at;i<body.length;i++){if(body[i]==='(')depth++;if(body[i]===')'){depth--;if(depth===0){invariant=body.slice(at,i+1);break;}}}}
+        }
+        const answer={fingerprint:task.fingerprint,outcome,values:task.kind==='spacer'?'':body.trim(),invariant};
+        answered.set(task.fingerprint,answer);modelAnswers.push(answer);
+        solverEvidence.push({kind:'model',owner:law.owner,declaration:law.declaration,task:task.kind,taskFingerprint:task.fingerprint,
+          encoding:'lawspec-smtlib-v2',status:outcome==='unsat'?'proved':'incomplete',outcome,reason:task.kind+': '+outcome,
+          runFingerprint:fingerprint([task.fingerprint,selected.fingerprint,run.input]),elapsedMs:run.elapsedMs,configuration:config});
+      }
+      if(!fresh)break;
+      const checked=await compiler.proofTasks({...request,modelResults:modelAnswers});
+      for(const row of checked.modelEvidence??[])modelRows.set(row.declaration,row);
+      for(const d of checked.diagnostics??[])if(d.code==='refuted'&&!found.some(e=>e.message===d.message))found=[...found,d];
+      pending=checked.modelTasks??[];
+    }
+    settled=settled.map(row=>row.stage==='law'&&modelRows.has(row.declaration)?{...row,...modelRows.get(row.declaration)}:row);
   }
   return {...result,diagnostics:found,evidence:settled,solverEvidence};
 }

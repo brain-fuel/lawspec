@@ -356,6 +356,8 @@ extra-source-files:
     test/fixtures/eq-set-operations.lawspec
     test/fixtures/law-sets.lawspec
     test/fixtures/list_contracts.lawspec
+    test/fixtures/model-counters.lawspec
+    test/fixtures/model-deadlines.lawspec
     test/fixtures/native_empty_domains.lawspec
     test/fixtures/native_shapes.lawspec
     test/fixtures/numeric-proofs.lawspec
@@ -709,6 +711,7 @@ library
       LawSpec.Memo
       LawSpec.Model
       LawSpec.ModelLaws
+      LawSpec.ModelProof
       LawSpec.ModelTests
       LawSpec.NativeBinding
       LawSpec.NativeModelChecks

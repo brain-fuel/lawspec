@@ -8,6 +8,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Model laws with deadlines (`whenever P, Q within 24h`) in whole
+  microsecond ticks, through the model's `wait` command when it has one; a
+  missed deadline is refuted with the run and the time waited. For models
+  the explicit search cannot finish, `lawspec prove` proves an invariant by
+  induction, or by an invariant Z3's Spacer proposes and plain queries
+  re-check, and refutes one with a bounded run the evaluator replays.
 - Laws about a model's runs: `property` declares a claim in plain words
   (`always`, `eventually`, `whenever P, Q`, `never P before Q`, `until`),
   and `law n in model m [assuming [strong] fairness for c] is definition:

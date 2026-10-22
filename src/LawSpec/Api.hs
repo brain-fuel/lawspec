@@ -18,7 +18,7 @@ import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTest
 import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core.Smt as Smt
 import qualified LawSpec.Core as C
-import LawSpec.Core.Evidence (Obligation(..), Status(..))
+import LawSpec.Core.Evidence (Obligation(..), Status(..), statusName)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.Targets (artifactTargets)
 import LawSpec.NativeRequest
@@ -28,7 +28,8 @@ import LawSpec.Discharge (dischargeReporting, refutations, bindingEvidence, defa
 import qualified LawSpec.Core.Counterexample as Counterexample
 import qualified LawSpec.Core.LawAnalysis as Analysis
 import LawSpec.ProofSettings (proofSettings)
-import LawSpec.ModelLaws (modelLawEvidence)
+import LawSpec.ModelLaws (modelLawEvidence, ModelRun(..))
+import qualified LawSpec.ModelProof as ModelProof
 import LawSpec.LawClaims (elaborateClaims, Expiry(..), analysisEvidence, analysisTaskViews, settleAnalysis)
 import qualified LawSpec.Core.LawTasks as Tasks
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
@@ -81,8 +82,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
           "proofTasks" | Just selection <- verification ->
             if V.selected selection V.Proof
               then either failure (\tasks -> case result [] of
-                Object response -> withAnalysisTasks us core analysisRows
-                  (Object (withCounterexampleChecks core tasks (KM.insert "proofTasks" (toJSON tasks) response)))
+                Object response -> withModelTasks us core evidence modelAnswers (withAnalysisTasks us core analysisRows
+                  (Object (withCounterexampleChecks core tasks (KM.insert "proofTasks" (toJSON tasks) response))))
                 response -> response) (proofSettings us >>= \settings -> Smt.proofTasksWith settings core)
               else case result [] of
                 Object response -> Object (KM.insert "proofTasks" (toJSON ([] :: [Smt.ProofTask])) response)
@@ -135,6 +136,13 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       Counterexample.ModelNotConfirmed inputs why -> ["reason" .= why, "inputs" .= shown inputs]
       Counterexample.CheckIncomplete why -> ["reason" .= why]
     shown inputs = [object ["name" .= C.binderName (C.quantifiedBinder q), "value" .= showValue v] | (q, v) <- inputs]
+    -- The host's answers to model tasks, by fingerprint.
+    modelAnswers = case decode bytes of
+      Just (Object o) | Just (Array given) <- KM.lookup "modelResults" o ->
+        [ (T.unpack fp, ModelProof.Answer (T.unpack outcome) (text "values" a) (text "invariant" a))
+        | Object a <- toList given, Just (String fp) <- [KM.lookup "fingerprint" a], Just (String outcome) <- [KM.lookup "outcome" a] ]
+      _ -> []
+      where text k a = case KM.lookup k a of Just (String v) -> T.unpack v; _ -> ""
     matchWarningsRequested = case decode bytes of
       Just (Object o) -> KM.lookup "warnMatches" o==Just (Bool True)
       _ -> False
@@ -305,6 +313,26 @@ withBenchmarks entries (Object o) = Object (KM.insert "benchmarks" (toJSON (map 
     entry e = object [ "unit" .= benchmarkUnit e, "benchmark" .= benchmarkName e, "file" .= benchmarkFile e, "name" .= benchmarkTest e ]
 withBenchmarks _ value = value
 
+-- | Z3 tasks for model laws the explicit search left open (induction,
+-- Spacer and its re-checks, a bounded run), and, given the host's answers
+-- (modelResults), their settled evidence (modelEvidence).
+withModelTasks :: [Unit] -> C.Program -> [Obligation] -> [(String, ModelProof.Answer)] -> Value -> Value
+withModelTasks us core evidence answers (Object response) =
+  let open = [obligationDeclaration o | o <- evidence, obligationStage o == "law", obligationStatus o `elem` [Incomplete, Unsupported]]
+      tasks = ModelProof.modelTasks us core open answers
+      settled = if null answers then [] else ModelProof.settleModel us core tasks answers
+      rows = [ object [ "owner" .= C.idText (runUnit run), "declaration" .= C.idText (runLaw run), "stage" .= ("law" :: String)
+                      , "status" .= statusName (runStatus run), "reason" .= runReason run, "claim" .= Null ] | run <- settled ]
+      refuted = [ Diagnostic "refuted" (C.idText (runLaw run) ++ ": " ++ runReason run) Nothing | run <- settled, runStatus run == Refuted ]
+      existing = case KM.lookup "diagnostics" response of Just (Array ds) -> toList ds; _ -> []
+      view (owner, law, ts) = object
+        [ "owner" .= C.idText owner, "declaration" .= C.idText law
+        , "tasks" .= [ object [ "fingerprint" .= ModelProof.taskFingerprint t, "kind" .= ModelProof.taskKind t
+                              , "script" .= ModelProof.taskScript t, "inputs" .= ModelProof.taskInputs t ] | t <- ts ] ]
+  in Object (KM.insert "modelTasks" (toJSON (map view tasks)) $ KM.insert "modelEvidence" (toJSON rows) $
+       (if null refuted then id else KM.insert "diagnostics" (toJSON (existing ++ map toJSON refuted))) response)
+withModelTasks _ _ _ _ value = value
+
 failure :: [Diagnostic] -> Value
 failure ds = object ["schemaVersion" .= (5 :: Int), "diagnostics" .= ds]
 
@@ -343,7 +371,7 @@ stagesWithInput canonical capture project packages sources bits settings native 
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"])))
   _ -> BC.unpack bytes
 
 -- | Two entries: each holds a whole compiled program and its plan.

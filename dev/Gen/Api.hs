@@ -239,7 +239,11 @@ declarations = joinWith (softbreak <> softbreak)
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
        ("attestation?", text "unknown"),
        ("proofCounterexamples?", text "ProofCounterexample[]"),
-       ("analysisResults?", text "AnalysisResult[]"), ("projectVersion?", text "string"), ("now?", text "string")]
+       ("analysisResults?", text "AnalysisResult[]"), ("projectVersion?", text "string"), ("now?", text "string"),
+       ("modelResults?", text "ModelResult[]")]
+  , interface "ModelResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string"), ("invariant", "string")])
+  , interface "ModelTaskRow" (fields [("owner", "string"), ("declaration", "string"), ("tasks", "ModelTask[]")])
+  , interface "ModelTask" (fields [("fingerprint", "string"), ("kind", "string"), ("script", "string"), ("inputs", "string[]")])
   , interface "Exemption"
       (fields [("reason", "string"), ("until", "string | null"), ("expired", "boolean"), ("law", "string | null")])
   , interface "AnalysisResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string")])
@@ -327,7 +331,8 @@ declarations = joinWith (softbreak <> softbreak)
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "MatchWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
        [("proofTasks?",text "ProofTask[]"),
         ("analysisTasks?", text "AnalysisTaskRow[]"), ("analysisEvidence?", text "ObligationEvidence[]"),
-        ("analysisChecks?", text "AnalysisCheck[]"),
+        ("analysisChecks?", text "AnalysisCheck[]"), ("modelTasks?", text "ModelTaskRow[]"),
+        ("modelEvidence?", text "ObligationEvidence[]"),
         ("counterexampleChecks?",text "CounterexampleCheck[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])

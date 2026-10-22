@@ -61,6 +61,20 @@ export interface AnalysisSolverEvidence extends SolverRun {
   modelValidated?: undefined;
   counterexample?: undefined;
 }
-export type SolverEvidence = LawSolverEvidence | AnalysisSolverEvidence;
+/** A model law's task: induction, Spacer, an invariant re-check or the
+    bounded run search; the law's own row says what they settled. */
+export interface ModelSolverEvidence extends SolverRun {
+  kind: 'model';
+  owner: string;
+  declaration: string;
+  task: string;
+  taskFingerprint: string;
+  encoding: 'lawspec-smtlib-v2';
+  status: 'proved' | 'incomplete';
+  model?: undefined;
+  modelValidated?: undefined;
+  counterexample?: undefined;
+}
+export type SolverEvidence = LawSolverEvidence | AnalysisSolverEvidence | ModelSolverEvidence;
 export function proofTaskFingerprint(task: {encoding:string;programFingerprint:string;machineBits:number;owner:string;declaration:string;script:string}):string;
 export function proveWithZ3(compiler:Compiler,request:CheckRequest,options?:Z3Options):Promise<Result & {solverEvidence:SolverEvidence[]}>;

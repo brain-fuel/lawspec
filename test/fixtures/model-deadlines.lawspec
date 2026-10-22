@@ -1,0 +1,45 @@
+unit portfolio.deadlines
+
+type Stage is one of
+  | Received
+  | Authorized
+  | Captured
+end type
+
+type Order is a record{ id :: Int32 } end type
+
+newOrder :: Unit -> Order
+authorize :: Order -> Unit
+capture :: Order -> Unit
+wait :: Order -> Unit
+
+function toAuthorized (s :: Stage) -> Stage is Authorized end function
+function toCaptured (s :: Stage) -> Stage is Captured end function
+function stay (s :: Stage) -> Stage is s end function
+function isReceived (s :: Stage) -> Bool is s = Received end function
+function isAuthorized (s :: Stage) -> Bool is s = Authorized end function
+function isCaptured (s :: Stage) -> Bool is s = Captured end function
+-- Time passes, except while an authorization waits for its capture.
+function mayWait (s :: Stage) -> Bool is s != Authorized end function
+
+model urgent :: shared Order by Stage is
+  start newOrder ~ Received
+  authorize ~ toAuthorized when isReceived
+  capture ~ toCaptured when isAuthorized
+  wait ~ stay when mayWait
+end model
+
+model lax :: shared Order by Stage is
+  start newOrder ~ Received
+  authorize ~ toAuthorized when isReceived
+  capture ~ toCaptured when isAuthorized
+end model
+
+law "|captured in a day| in model urgent is
+  definition: every run holds whenever isAuthorized, isCaptured within 24h end definition
+end law
+
+law "|captured in a day, without a clock rule| in model lax is
+  definition: every run holds whenever isAuthorized, isCaptured within 24h end definition
+end law
+end unit

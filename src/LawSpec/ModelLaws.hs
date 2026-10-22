@@ -5,7 +5,7 @@
 -- explicit-state checker (LawSpec.Core.ModelCheck) explores every reachable
 -- state, so a result is the model's, never a native implementation's.
 -- ref:DEC-model-checking
-module LawSpec.ModelLaws (modelLawEvidence, ModelRun(..), formulaOf) where
+module LawSpec.ModelLaws (modelLawEvidence, ModelRun(..), formulaOf, expandFormula, predicateOf, systemOf) where
 
 import Control.Monad (forM, unless, when)
 import Data.List (intercalate)
@@ -26,7 +26,7 @@ data ModelRun = ModelRun { runUnit :: C.Id, runLaw :: C.Id, runStatus :: Status,
 -- | The product states the search explores at most, and the argument tuples
 -- one command may take.
 stateLimit, argumentLimit :: Int
-stateLimit = 100000
+stateLimit = 20000
 argumentLimit = 4096
 
 -- | Every model law's evidence, or a diagnostic for one that names no model,
@@ -47,15 +47,29 @@ modelLawEvidence ran units program = fmap concat $ forM units $ \u -> do
     let commands = [c | c <- machineCommands machine, not (commandRestart c)]
     forM_' (S.modelLawFairness law) $ \(_, c) ->
       unless (c `elem` map commandName commands) (problem ("assuming fairness for " ++ c ++ ": the model has no command " ++ c))
-    formula <- either problem Right (formulaOf properties (S.unitName u) program (S.modelLawFormula law))
+    expanded <- either problem Right (expandFormula properties (S.modelLawFormula law))
+    let atom = predicateOf (S.unitName u) program
+    -- A deadline (whenever P, Q within d, or Q within d) is a safety claim
+    -- about time; anything else is LTL.
+    claim <- either problem Right $ case expanded of
+      S.TemporalWhenever p (S.TemporalWithin q d) -> (\p' q' -> Right (Just p', q', d)) <$> predicateFormula atom p <*> predicateFormula atom q
+      S.TemporalWithin q d -> (\q' -> Right (Nothing, q', d)) <$> predicateFormula atom q
+      _ -> Left <$> toFormula atom expanded
+    when (either (const False) (const True) claim && not (S.modelLawEvery law))
+      (problem "a deadline holds of every run (every run holds ... within ...)")
     if not ran then pure (obligation NotVerified "no law verification layers selected") else do
       let fairness = [if strong then Strong c else Weak c | (strong, c) <- S.modelLawFairness law]
+          hasWait = "wait" `elem` map commandName commands
           checked = do
             system <- systemOf program machine
-            -- Every run holds P: no fair run holds not P. Some run holds P:
-            -- a fair run holds P.
-            outcome <- search stateLimit system fairness (if S.modelLawEvery law then negation formula else formula)
-            pure outcome
+            case claim of
+              -- Every run holds P: no fair run holds not P. Some run holds P:
+              -- a fair run holds P.
+              Left formula -> search stateLimit system fairness (if S.modelLawEvery law then negation formula else formula)
+              Right (trigger, response, d) -> do
+                let tick = gcd d hour
+                timed <- either Left Right (Right (deadlineSystem system trigger response d tick hasWait))
+                search stateLimit timed fairness (FUntil FTrue (FAtom lateAtom))
           assumed = if null fairness then "" else " under " ++ intercalate " and " [if strong then "strong fairness for " ++ c else "fairness for " ++ c | (strong, c) <- S.modelLawFairness law]
       pure $ case checked of
         Left why -> obligation Unsupported why
@@ -63,46 +77,59 @@ modelLawEvidence ran units program = fmap concat $ forM units $ \u -> do
         Right (NoRun n)
           | S.modelLawEvery law -> obligation Proved ("every run holds it" ++ assumed ++ ": all " ++ show n ++ " states explored")
           | otherwise -> obligation Refuted ("no run holds it" ++ assumed ++ ": all " ++ show n ++ " states explored")
+        Right (Lasso prefix _) | Right (_, _, d) <- claim ->
+          obligation Refuted ("a run misses the " ++ duration d ++ " deadline" ++ assumed ++ ": " ++
+            intercalate ", " (mergeWaits (filter (/= "stays") prefix)))
         Right (Lasso prefix cycle')
           | S.modelLawEvery law -> obligation Refuted ("a run breaks it" ++ assumed ++ ": " ++ trace prefix cycle')
           | otherwise -> obligation Proved ("a run holds it" ++ assumed ++ ": " ++ trace prefix cycle')
   where
+    hour = 3600000000
+    -- A state formula of predicates: whenever P, Q within d needs P and Q
+    -- about one state.
+    -- Its atoms resolved to the predicates' identities.
+    predicateFormula atom f = case f of
+      S.TemporalAtom name range -> (\resolved -> S.TemporalAtom resolved range) <$> atom name
+      S.TemporalNot a -> S.TemporalNot <$> predicateFormula atom a
+      S.TemporalAnd a b -> S.TemporalAnd <$> predicateFormula atom a <*> predicateFormula atom b
+      S.TemporalOr a b -> S.TemporalOr <$> predicateFormula atom a <*> predicateFormula atom b
+      S.TemporalImplies a b -> S.TemporalImplies <$> predicateFormula atom a <*> predicateFormula atom b
+      _ -> Left "a deadline relates two conditions on one state: whenever P, Q within d"
     forM_' xs f = mapM_ f xs
     -- place, pay, (capture, refund): the steps, then the steps repeated.
     -- A run that ends stays in its last state.
-    trace prefix cycle'
+    trace prefix' cycle'
       | not (null cycle') && all (== "stays") cycle' =
           intercalate ", " (reverse (dropWhile (== "stays") (reverse prefix)) ++ ["then stays"])
-      | otherwise = intercalate ", " (prefix ++ ["(" ++ intercalate ", " cycle' ++ ")" | not (null cycle')])
+      | otherwise = intercalate ", " (prefix ++ ["(" ++ intercalate ", " (mergeWaits cycle') ++ ")" | not (null cycle')])
+      where prefix = mergeWaits prefix'
 
 -- | The property as LTL in negation normal form: its words expanded, each
 -- atom a Bool function of the model state.
 formulaOf :: [S.TemporalProperty] -> String -> C.Program -> S.RunFormula -> Either String Formula
-formulaOf properties unit program = go (10 :: Int) M.empty
+formulaOf properties unit program f = expandFormula properties f >>= toFormula (predicateOf unit program)
+
+-- | The formula with every property reference replaced by its body, and
+-- every parameter by its argument: only atoms (predicate names) remain.
+expandFormula :: [S.TemporalProperty] -> S.RunFormula -> Either String S.RunFormula
+expandFormula properties = go (10 :: Int) M.empty
   where
     go depth bound f = case f of
       S.TemporalAtom name _ -> case M.lookup name bound of
         Just argument -> go depth M.empty argument
         Nothing -> case [p | p <- properties, S.temporalSignature p == [Left name]] of
           p : _ -> expand depth p []
-          [] -> atom name
-      S.TemporalNot a -> negation <$> go depth bound a
-      S.TemporalAnd a b -> FAnd <$> go depth bound a <*> go depth bound b
-      S.TemporalOr a b -> FOr <$> go depth bound a <*> go depth bound b
-      S.TemporalImplies a b -> FOr <$> (negation <$> go depth bound a) <*> go depth bound b
-      S.TemporalAlways a -> FRelease FFalse <$> go depth bound a
-      S.TemporalEventually a -> FUntil FTrue <$> go depth bound a
-      S.TemporalUntil a b -> FUntil <$> go depth bound a <*> go depth bound b
-      S.TemporalWhenever p q -> do
-        p' <- go depth bound p
-        q' <- go depth bound q
-        pure (FRelease FFalse (FOr (negation p') q'))
-      -- never P before Q: not P, weakly until Q.
-      S.TemporalNeverBefore p q -> do
-        p' <- go depth bound p
-        q' <- go depth bound q
-        pure (FRelease q' (FOr (negation p') q'))
-      S.TemporalWithin _ _ -> Left "a deadline (within) needs a model with time; see time in models"
+          [] -> Right f
+      S.TemporalNot a -> S.TemporalNot <$> go depth bound a
+      S.TemporalAnd a b -> S.TemporalAnd <$> go depth bound a <*> go depth bound b
+      S.TemporalOr a b -> S.TemporalOr <$> go depth bound a <*> go depth bound b
+      S.TemporalImplies a b -> S.TemporalImplies <$> go depth bound a <*> go depth bound b
+      S.TemporalAlways a -> S.TemporalAlways <$> go depth bound a
+      S.TemporalEventually a -> S.TemporalEventually <$> go depth bound a
+      S.TemporalUntil a b -> S.TemporalUntil <$> go depth bound a <*> go depth bound b
+      S.TemporalWhenever a b -> S.TemporalWhenever <$> go depth bound a <*> go depth bound b
+      S.TemporalNeverBefore a b -> S.TemporalNeverBefore <$> go depth bound a <*> go depth bound b
+      S.TemporalWithin a d -> (\a' -> S.TemporalWithin a' d) <$> go depth bound a
       S.TemporalReference items range -> case [ (p, arguments) | p <- properties, Just arguments <- [match range (S.temporalSignature p) items] ] of
         (p, arguments) : _ -> expand depth p [(name, close bound argument) | (name, argument) <- arguments]
         [] -> Left ("no property reads " ++ unwords (map shown items))
@@ -133,11 +160,34 @@ formulaOf properties unit program = go (10 :: Int) M.empty
       _ -> Nothing
     shown (Left w) = w
     shown (Right _) = "(...)"
-    atom name = case [ d | cu <- C.programUnits program, C.idText (C.unitId cu) == unit, d <- C.unitDefinitions cu
-                         , C.declarationName (C.definitionDeclaration d) == name ] of
-      d : _ | length (C.definitionArguments d) == 1 -> Right (FAtom (C.idText (C.declarationId (C.definitionDeclaration d))))
-            | otherwise -> Left (name ++ " must be a predicate of the model state alone")
-      [] -> Left ("no property or predicate " ++ name ++ " of the model state")
+
+-- | An expanded formula as LTL, each atom resolved to a predicate.
+toFormula :: (String -> Either String String) -> S.RunFormula -> Either String Formula
+toFormula atom = go
+  where
+    go f = case f of
+      S.TemporalAtom name _ -> FAtom <$> atom name
+      S.TemporalNot a -> negation <$> go a
+      S.TemporalAnd a b -> FAnd <$> go a <*> go b
+      S.TemporalOr a b -> FOr <$> go a <*> go b
+      S.TemporalImplies a b -> FOr <$> (negation <$> go a) <*> go b
+      S.TemporalAlways a -> FRelease FFalse <$> go a
+      S.TemporalEventually a -> FUntil FTrue <$> go a
+      S.TemporalUntil a b -> FUntil <$> go a <*> go b
+      S.TemporalWhenever p q -> (\p' q' -> FRelease FFalse (FOr (negation p') q')) <$> go p <*> go q
+      -- never P before Q: not P, weakly until Q.
+      S.TemporalNeverBefore p q -> (\p' q' -> FRelease q' (FOr (negation p') q')) <$> go p <*> go q
+      S.TemporalWithin _ _ -> Left "a deadline (within) is checked only as whenever P, Q within d, or Q within d"
+      S.TemporalReference _ _ -> Left "a property reference was not expanded"
+
+-- | A predicate of the model state: a checked definition of the unit taking
+-- the state alone.
+predicateOf :: String -> C.Program -> String -> Either String String
+predicateOf unit program name = case [ d | cu <- C.programUnits program, C.idText (C.unitId cu) == unit, d <- C.unitDefinitions cu
+                                     , C.declarationName (C.definitionDeclaration d) == name ] of
+  d : _ | length (C.definitionArguments d) == 1 -> Right (C.idText (C.declarationId (C.definitionDeclaration d)))
+        | otherwise -> Left (name ++ " must be a predicate of the model state alone")
+  [] -> Left ("no property or predicate " ++ name ++ " of the model state")
 
 -- | The model's reference as a transition system: a state is a model value
 -- and the typestate indices; a step is a command with arguments, allowed by
@@ -190,3 +240,79 @@ systemOf program machine = do
         v <- call d [state]
         pure (v == ScalarValue (SBool True))
   pure (System starts steps holds (\(v, is) -> show (A.canonical v) ++ show is))
+
+-- | The predicate a deadline's search looks for: a deadline passed.
+lateAtom :: String
+lateAtom = "late"
+
+-- | The model with time: each step either is a command, which takes no
+-- time, or waits one tick (the model's own wait command, when it has one,
+-- or a wait in every state otherwise). A timer runs from the first state
+-- where the trigger holds (or the start, for Q within d) until one where
+-- the response holds; once it passes d, the run is late. Time is whole
+-- microseconds, and a deadline is met at exactly d.
+deadlineSystem :: System (Value, [Integer]) -> Maybe S.RunFormula -> S.RunFormula -> Integer -> Integer -> Bool
+  -> System ((Value, [Integer]), Maybe Integer, Bool)
+deadlineSystem base trigger response d tick hasWait = System starts steps holds key
+  where
+    truth f s = case f of
+      S.TemporalAtom name _ -> systemHolds base name s
+      S.TemporalNot a -> not <$> truth a s
+      S.TemporalAnd a b -> (&&) <$> truth a s <*> truth b s
+      S.TemporalOr a b -> (||) <$> truth a s <*> truth b s
+      S.TemporalImplies a b -> (\x y -> not x || y) <$> truth a s <*> truth b s
+      _ -> Left "a deadline relates conditions on one state"
+    starts = [ (s, start s, False) | s <- systemInitial base ]
+    start s = case (trigger, truth response s) of
+      (Nothing, Right False) -> Just 0
+      (Just p, Right False) | Right True <- truth p s -> Just 0
+      _ -> Nothing
+    -- After a step into s, with the timer as it was.
+    settle s timer = case truth response s of
+      Right True -> Right Nothing
+      Right False -> case (timer, trigger) of
+        (Nothing, Just p) -> (\fired -> if fired then Just 0 else Nothing) <$> truth p s
+        _ -> Right timer
+      Left why -> Left why
+    steps (_, _, True) = Right []
+    steps (s, timer, False) = do
+      moves <- systemSteps base s
+      commands <- mapM (\(c, shown, s') ->
+        if hasWait && c == "wait" then pure (passing s' timer) else do
+          timer' <- settle s' timer
+          pure (c, shown, (s', timer', False))) moves
+      let implicit = [passing s timer | not hasWait]
+      pure (commands ++ implicit)
+    passing s timer = case timer of
+      Just t | t + tick > d -> ("wait", "wait " ++ duration tick, (s, Just (t + tick), True))
+      Just t -> ("wait", "wait " ++ duration tick, (s, Just (t + tick), False))
+      Nothing -> ("wait", "wait " ++ duration tick, (s, Nothing, False))
+    holds name (s, _, late)
+      | name == lateAtom = Right late
+      | otherwise = systemHolds base name s
+    key (s, timer, late) = systemKey base s ++ "|" ++ show timer ++ show late
+
+-- | Whole microseconds in the largest unit that divides them.
+duration :: Integer -> String
+duration us = case [ (us `div` size, unit) | (size, unit) <- units, us `mod` size == 0 ] of
+  (n, unit) : _ -> show n ++ unit
+  [] -> show us ++ "us"
+  where units = [(3600000000, "h"), (60000000, "min"), (1000000, "s"), (1000, "ms"), (1, "us")]
+
+-- | Consecutive waits as one: wait 1h, wait 1h becomes wait 2h.
+mergeWaits :: [String] -> [String]
+mergeWaits steps = go steps
+  where
+    go xs = case xs of
+      w : rest | Just a <- waited w ->
+        let (more, after) = span (maybe False (const True) . waited) rest
+            total = a + sum [b | Just b <- map waited more]
+        in ("wait " ++ duration total) : go after
+      x : rest -> x : go rest
+      [] -> []
+    waited w = case words w of
+      ["wait", amount] -> parseDuration amount
+      _ -> Nothing
+    parseDuration text = let (digits, unit) = span (`elem` ("0123456789" :: String)) text
+                         in if null digits then Nothing else (* read digits) <$> lookup unit
+                              [("h", 3600000000), ("min", 60000000), ("s", 1000000), ("ms", 1000), ("us", 1)]

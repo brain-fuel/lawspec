@@ -3,8 +3,13 @@
 -- (LawSpec.Core.ModelCheck), with weak and strong fairness.
 module ModelCheckSpec (test_modelChecking) where
 
+import Control.Monad (foldM)
 import Data.Aeson (Value(..), object, (.=), decode, encode)
+import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as K
+import System.Directory (findExecutable)
+import System.Environment (lookupEnv)
+import System.Process (readProcessWithExitCode)
 import Data.Foldable (toList)
 import Data.List (isInfixOf, isSuffixOf)
 import qualified Data.Text as T
@@ -55,6 +60,63 @@ toggle law = unlines
   , law
   , "end unit" ]
 
+solver :: (FilePath -> IO ()) -> IO ()
+solver action = do
+  explicit <- lookupEnv "LAWSPEC_Z3"
+  installed <- maybe (findExecutable "z3") (pure . Just) explicit
+  maybe (pendingWith "install Z3 or set LAWSPEC_Z3 for solver integration checks") action installed
+
+-- | What lawspec prove does for model laws: run each model task with Z3
+-- (Spacer's answer gives its invariant, a bounded search its values), send
+-- the answers back, and repeat while the compiler asks for more.
+settled :: FilePath -> String -> IO [(String, String, String)]
+settled z3 source = go (0 :: Int) [] []
+  where
+    request answers = encode (object
+      [ "schemaVersion" .= (5 :: Int), "languageProfile" .= ("1.0-rc.2" :: String), "method" .= ("proofTasks" :: String)
+      , "verification" .= object ["layers" .= ["proof" :: String, "exhaustive"]]
+      , "sources" .= [object ["path" .= ("model.lawspec" :: String), "content" .= source]]
+      , "modelResults" .= [object ["fingerprint" .= f, "outcome" .= o, "values" .= v, "invariant" .= i] | (f, o, v, i) <- answers] ])
+    field :: Key.Key -> Value -> Maybe Value
+    field k (Object o) = K.lookup k o
+    field _ _ = Nothing
+    text k v = case field k v of Just (String t) -> T.unpack t; _ -> ""
+    go round answers rows = do
+      Just response <- pure (decode (API.dispatch (request answers)) :: Maybe Value)
+      let found = [ (text "declaration" e, text "status" e, text "reason" e) | Just (Array es) <- [field "modelEvidence" response], e <- toList es ]
+          tasks = [ t | Just (Array ls) <- [field "modelTasks" response], l <- toList ls, Just (Array ts) <- [field "tasks" l], t <- toList ts
+                  , text "fingerprint" t `notElem` [f | (f, _, _, _) <- answers] ]
+      if null tasks || round > 3 then pure (if null found then rows else found) else do
+        new <- foldM (\acc t -> do
+          let script = text "script" t ++ "(check-sat)\n"
+              names = [T.unpack n | Just (Array ns) <- [field "inputs" t], String n <- toList ns]
+          (_, out, _) <- readProcessWithExitCode z3 ["-in", "-smt2", "-t:20000"] script
+          let outcome = takeWhile (/= '\n') out
+          (values, invariant) <- if outcome /= "sat" then pure ("", "") else
+            if text "kind" t == "spacer" then do
+              (_, model, _) <- readProcessWithExitCode z3 ["-in", "-smt2", "-t:20000"] (script ++ "(get-model)\n")
+              pure ("", definition (drop 1 (dropWhile (/= '\n') model)))
+            else if null names then pure ("", "") else do
+              (_, model, _) <- readProcessWithExitCode z3 ["-in", "-smt2", "-t:20000"] (script ++ "(get-value (" ++ unwords names ++ "))\n")
+              pure (drop 1 (dropWhile (/= '\n') model), "")
+          pure (acc ++ [(text "fingerprint" t, outcome, values, invariant)])) [] tasks
+        go (round + 1) (answers ++ new) (if null found then rows else found)
+    -- The define-fun of Inv in Spacer's model.
+    definition model = case breakOn "(define-fun Inv " model of
+      Just rest -> balanced 0 rest ""
+      Nothing -> ""
+    balanced :: Int -> String -> String -> String
+    balanced d text acc = case text of
+      '(' : more -> balanced (d + 1) more ('(' : acc)
+      ')' : more | d == 1 -> reverse (')' : acc)
+                 | otherwise -> balanced (d - 1) more (')' : acc)
+      c : more -> balanced d more (c : acc)
+      [] -> reverse acc
+    breakOn needle haystack = case haystack of
+      _ | take (length needle) haystack == needle -> Just haystack
+      _ : more -> breakOn needle more
+      [] -> Nothing
+
 test_modelChecking :: Spec
 test_modelChecking = describe "model checking" $ do
   describe "portfolio 13.7, the order workflow" $ do
@@ -79,6 +141,22 @@ test_modelChecking = describe "model checking" $ do
     fmap fst (row "it ends" (check (toggle (law "")))) `shouldBe` Just "refuted"
     fmap fst (row "it ends" (check (toggle (law " assuming fairness for go")))) `shouldBe` Just "refuted"
     row "it ends" (check (toggle (law " assuming strong fairness for go"))) `shouldBe` Just ("proved", "every run holds it under strong fairness for go: all 3 states explored")
+  describe "deadlines, in whole-microsecond ticks" $ do
+    response <- runIO (check <$> readFile "test/fixtures/model-deadlines.lawspec")
+    it "proves a deadline the model's wait rule keeps" $
+      row "captured in a day" response `shouldBe` Just ("proved", "every run holds it: all 3 states explored")
+    it "refutes a deadline time can pass, with the run and the time it took" $
+      row "captured in a day, without a clock rule" response `shouldBe` Just ("refuted", "a run misses the 24h deadline: authorize, wait 25h")
+  describe "unbounded models, with Z3" $ do
+    it "leaves an unbounded model's search incomplete" $ do
+      response <- check <$> readFile "test/fixtures/model-counters.lawspec"
+      row "counts never go negative" response `shouldSatisfy` maybe False (\(s, why) -> s == "incomplete" && "no counterexample in the first 20000 states" `isInfixOf` why)
+    it "proves an invariant by induction, refutes a mutant with a replayed run, and proves a non-inductive invariant through Spacer" $ solver $ \z3 -> do
+      rows <- settled z3 =<< readFile "test/fixtures/model-counters.lawspec"
+      let of_ law = [(s, why) | (d, s, why) <- rows, ("::law::\"|" ++ law ++ "|") `isSuffixOf` d]
+      of_ "counts never go negative" `shouldSatisfy` any (\(s, why) -> s == "proved" && "by induction" `isInfixOf` why)
+      of_ "a loose count never goes negative" `shouldBe` [("refuted", "a run breaks it: slip; Z3 found it and the evaluator replays it")]
+      of_ "the first never goes negative" `shouldSatisfy` any (\(s, why) -> s == "proved" && "Spacer proposed and plain queries re-checked" `isInfixOf` why)
   it "refutes a some-run law no run holds, after exploring every state" $
     row "it never ends" (check (toggle "law \"|it never ends| in model box is\n  definition: some run holds always (isOne and not isOne) end definition\nend law\n"))
       `shouldBe` Just ("refuted", "no run holds it: all 3 states explored")

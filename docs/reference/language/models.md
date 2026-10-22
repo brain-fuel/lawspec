@@ -158,11 +158,37 @@ their finite types. The law is `proved` when no run breaks it (or a run holds
 it), and the reason says how many states were explored. It is `refuted` with
 the run that breaks it, written as its commands, with the steps that repeat in
 parentheses: `validate, decline, (decline)`. A model with more states than the
-search explores is `incomplete`: "no counterexample in the first 100000
+search explores is `incomplete`: "no counterexample in the first 20000
 states". The check runs when the `proof`, `exhaustive` or `model` layer is
 selected.
 
-## What LawSpec checks
+### Deadlines
+
+`whenever P, Q within d` says that after a state where `P` holds, `Q` holds
+within `d`; `Q within d` counts from the start. Time is whole microseconds,
+as for `Duration`, and passes in ticks: the tick is the greatest common
+divisor of `d` and one hour (an hour for `within 24h`, 30 minutes for
+`within 90min`). Commands
+take no time. If the model has a command named `wait`, time passes only
+through it, one tick at a time, so its precondition says when time may pass.
+Otherwise time may pass in every state. A deadline met at exactly `d` is met.
+A run that misses it is shown with the time it waited: `authorize, wait 25h`.
+
+### Unbounded models
+
+A model whose states cannot all be explored leaves a law incomplete. For a
+law of the form `every run holds always P`, `lawspec prove` then asks Z3:
+
+- **By induction.** `P` holds of every first state, and every command keeps
+  it. Each is its own task. When all hold, the law is proved.
+- **By an invariant.** When `P` alone is not kept, Z3's Spacer may propose a
+  stronger condition. LawSpec never trusts it as given: plain queries check
+  that it holds at the start, that every command keeps it, and that it implies
+  `P`. Only then is the law proved, and the reason shows the invariant.
+- **By a bounded run search.** Z3 looks for a run of up to 8 steps that breaks
+  `P`. The reference evaluator replays it, step by step, before the law is
+  refuted with that run.
+
 
 **In sequence.**
 - LawSpec generates runs of up to 20 commands by simulating the model, so

@@ -3,6 +3,7 @@
 module LawSpec.Core.Smt (ProofTask(..), Encoding(..), Recursion(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
   , alternativeFingerprint, recursionView, defaultFuel, proofTasksWith, LawProof(..), Unfolding(..), Induction(..)
   , defaultLawProof, InductionPlan(..), InductionCase(..), caseFingerprint, regexTerm, textLiteral
+  , ModelShape(..), hornQuery, invariantQueries
   , counterexampleFingerprint, outerQuantifiers, Catalog, catalog, instantiate, Ground(..), groundQuery) where
 
 import Control.Monad (unless, when, foldM, forM, forM_)
@@ -1458,3 +1459,114 @@ decimalUnit = "1000000000000000000.0"
 isFloat :: Sort -> Bool
 isFloat (FloatSort _ _) = True
 isFloat _ = False
+
+-- | A model for an invariant search: its state, its start (arguments and
+-- the first state), each command's step (arguments, precondition over the
+-- state, next state), and the claim over the state, all as Core over the
+-- state binder and the arguments.
+data ModelShape = ModelShape
+  { shapeState :: Binder, shapeStart :: ([Binder], Expr)
+  , shapeSteps :: [(String, [Binder], Maybe Expr, Expr)], shapeClaim :: Expr }
+
+-- | Spacer's query (SMT-LIB HORN, lawspec-smtlib-v2): an invariant Inv of
+-- the state that holds of every first state, is kept by every step, and
+-- implies the claim. Spacer only proposes Inv; it is trusted only after
+-- invariantQueries re-check it with plain queries. ref:DEC-model-induction
+hornQuery :: Program -> ModelShape -> Either String String
+hornQuery program shape = do
+  let bits = programMachineBits program
+  ((rules, sortName, prelude), _) <- runStateT (do
+      stateSort <- quantifierSortOf program (binderType (shapeState shape))
+      (invSorts, inv) <- invariantShape program (binderType (shapeState shape)) stateSort
+      let variables binders = forM (zip [0 :: Int ..] binders) $ \(i, b) -> do
+            s' <- quantifierSortOf program (binderType b)
+            let n = "lawspec_horn_" ++ show i
+            range <- lift (domain bits (binderType b) n)
+            pure (b, n, s', range)
+          quantify vars body
+            | null vars = body
+            | otherwise = "(forall (" ++ unwords ["(" ++ n ++ " " ++ sortText s' ++ ")" | (_, n, s', _) <- vars] ++ ") " ++ body ++ ")"
+          scopeOf vars = M.fromList [(binderId b, Term s' n "true") | (b, n, s', _) <- vars]
+      -- The first states.
+      startVars <- variables (fst (shapeStart shape))
+      first <- expression program [] (scopeOf startVars) (snd (shapeStart shape))
+      let startRule = quantify startVars (app "=>" [both ([r | (_, _, _, r) <- startVars] ++ [defined first]), inv (value first)])
+      -- Each step keeps Inv.
+      stepRules <- forM (shapeSteps shape) $ \(_, arguments, guard', next) -> do
+        vars <- variables (shapeState shape : arguments)
+        let scope = scopeOf vars
+            stateName = case vars of (_, n, _, _) : _ -> n; [] -> "lawspec_horn_0"
+        allowed <- traverse (expression program [] scope) guard'
+        after <- expression program [] scope next
+        pure (quantify vars (app "=>" [both ([r | (_, _, _, r) <- vars] ++ [inv stateName] ++
+          maybe [] (\g -> [defined g, value g]) allowed ++ [defined after]), inv (value after)]))
+      -- Inv implies the claim.
+      claimVars <- variables [shapeState shape]
+      claim <- expression program [] (scopeOf claimVars) (shapeClaim shape)
+      let claimRule = quantify claimVars (app "=>" [both ([r | (_, _, _, r) <- claimVars] ++ [inv "lawspec_horn_0", no (both [defined claim, value claim])]), "false"])
+      prelude <- datatypePreamble program
+      functions <- gets recursiveText
+      pure (startRule : stepRules ++ [claimRule], unwords invSorts, prelude ++ snd functions))
+    ((start SmtLibV2 program DefineFunRec){bounded = False, ranges = False})
+  pure ("; " ++ encodingName SmtLibV2 ++ "; an invariant of the model (Spacer)\n(set-logic HORN)\n" ++ prelude ++
+    "(declare-fun Inv (" ++ sortName ++ ") Bool)\n" ++ concat ["(assert " ++ r ++ ")\n" | r <- rules])
+
+-- | Plain queries that check an invariant: it holds of every first state,
+-- every step keeps it, and it implies the claim. Each is unsat when that
+-- holds. invariant is a define-fun of Inv over the state's sort.
+invariantQueries :: Program -> ModelShape -> String -> Either String [(String, String)]
+invariantQueries program shape invariant = do
+  let bits = programMachineBits program
+      query purpose binders assertion = do
+        ((rows, certificate, prelude), _) <- runStateT (do
+            rows <- forM (zip [0 :: Int ..] binders) $ \(i, b) -> do
+              s' <- quantifierSortOf program (binderType b)
+              let n = "lawspec_input_" ++ show i
+              range <- lift (domain bits (binderType b) n)
+              pure (b, n, s', range)
+            let scope = M.fromList [(binderId b, Term s' n "true") | (b, n, s', _) <- rows]
+            certificate <- assertion scope [n | (_, n, _, _) <- rows]
+            prelude <- datatypePreamble program
+            functions <- gets recursiveText
+            pure (rows, certificate, fst functions ++ prelude ++ snd functions))
+          ((start SmtLibV2 program DefineFunRec){bounded = False, ranges = False})
+        pure (purpose, "; " ++ encodingName SmtLibV2 ++ "; check the invariant: " ++ purpose ++ "\n" ++ prelude ++ invariant ++ "\n" ++
+          concat ["(declare-const " ++ n ++ " " ++ sortText s' ++ ")\n" | (_, n, s', _) <- rows] ++
+          concat ["(assert " ++ r ++ ")\n" | (_, _, _, r) <- rows] ++ "(assert " ++ certificate ++ ")\n")
+  let inv' x = do
+        stateSort <- quantifierSortOf program (binderType (shapeState shape))
+        (_, inv) <- invariantShape program (binderType (shapeState shape)) stateSort
+        pure (inv x)
+  initial <- query "it holds at the start" (fst (shapeStart shape)) $ \scope _ -> do
+    first <- expression program [] scope (snd (shapeStart shape))
+    i <- inv' (value first)
+    pure (both [defined first, no i])
+  kept <- forM (shapeSteps shape) $ \(command, arguments, guard', next) ->
+    query (command ++ " keeps it") (shapeState shape : arguments) $ \scope names -> do
+      allowed <- traverse (expression program [] scope) guard'
+      after <- expression program [] scope next
+      before <- inv' (head names)
+      i <- inv' (value after)
+      pure (both ([before] ++ maybe [] (\g -> [defined g, value g]) allowed ++ [defined after, no i]))
+  implied <- query "it implies the claim" [shapeState shape] $ \scope names -> do
+    claim <- expression program [] scope (shapeClaim shape)
+    i <- inv' (head names)
+    pure (both [i, no (both [defined claim, value claim])])
+  pure (initial : kept ++ [implied])
+
+-- | What Inv takes: a record state's fields, which Spacer reasons about far
+-- better than a datatype (its invariants are over integers), or the state
+-- itself; and how to apply Inv to a state term.
+invariantShape :: Program -> Type -> Sort -> Encode ([String], String -> String)
+invariantShape program ty stateSort = do
+  types <- gets known
+  case (stateSort, declarationOf types ty) of
+    (DataSort _, Right (declaration, table)) | [c] <- dataConstructors declaration -> do
+      fieldSorts <- forM (constructorFields c) $ \f -> sortOf program (instantiate table (binderType f))
+      if any isData fieldSorts then plain else
+        pure (map sortText fieldSorts, \x -> app "Inv" [app (selectorSymbol ty c i) [x] | i <- [0 .. length fieldSorts - 1]])
+    _ -> plain
+  where
+    plain = pure ([sortText stateSort], \x -> app "Inv" [x])
+    isData (DataSort _) = True
+    isData _ = False

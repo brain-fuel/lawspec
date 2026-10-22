@@ -273,6 +273,21 @@ test('numbers: exact rational witnesses, and IEEE floats refuted by a float the 
   assert.equal(nan.solverEvidence[0].status,'proved');
 });
 
+test('unbounded models: induction, a re-checked Spacer invariant, and a replayed bounded run',requiresZ3,async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const content=await readFile(new URL('../../test/fixtures/model-counters.lawspec',import.meta.url),'utf8');
+  const result=await proveWithZ3(compiler,{schemaVersion:5,languageProfile:'1.0-rc.2',verification:{layers:['proof','exhaustive']},
+    sources:[{path:'counters.lawspec',content}]},{binary:z3,timeoutMs:20000});
+  const row=name=>result.evidence.find(r=>r.stage==='law'&&r.declaration==='portfolio.counters::law::"|'+name+'|');
+  assert.equal(row('counts never go negative').status,'proved');
+  assert.match(row('counts never go negative').reason,/by induction/);
+  assert.equal(row('a loose count never goes negative').status,'refuted');
+  assert.match(row('a loose count never goes negative').reason,/a run breaks it: slip/);
+  assert.equal(row('the first never goes negative').status,'proved');
+  assert.match(row('the first never goes negative').reason,/Spacer proposed and plain queries re-checked/);
+  assert.ok(result.solverEvidence.some(e=>e.kind==='model'&&e.task==='spacer'));
+});
+
 test('satisfiable Z3 tasks whose values cannot be confirmed stay incomplete',requiresZ3,async()=>{
   for(const body of [
     law('there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists'),
@@ -461,7 +476,7 @@ for(const item of result.solverEvidence) {
     console.log(stage,status,item.check);
     // @ts-expect-error a law-set task has no law location
     console.log(item.at);
-  } else {
+  } else if(item.kind===undefined) {
     const at=item.at;const bits:32|64=item.machineBits;
     // @ts-expect-error a law's task is never exempted
     const exempted:typeof item.status='exempted';
