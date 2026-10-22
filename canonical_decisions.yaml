@@ -824,7 +824,7 @@ DEC-gate-5-receipt:
   question: |
     What does gate 5 deliver, and what does it leave explicit?
   answer: |
-    The gate 5 receipt in LAWSPEC-PRE-1.0-REVIEW.md (Gate 5 proof work, 22 October 2026) records the supported fragments, their trust boundaries, the retained portfolio items 13.1, 13.3 to 13.8 and 14.10 with their fixtures and tests, the limits kept explicit, and the two syntax points awaiting the owner. Mandatory admission stays Fourier-Motzkin only; v1 receipts are frozen; new work is lawspec-smtlib-v2; there is no kernel-checked tier (owner decision 4).
+    The gate 5 receipt in LAWSPEC-PRE-1.0-REVIEW.md (Gate 5 proof work, 22 October 2026) records the supported fragments, their trust boundaries, the retained portfolio items 13.1, 13.3 to 13.8 and 14.10 with their fixtures and tests, the limits kept explicit, and the two syntax points the owner confirmed as built: history laws say the complete history holds P or the history so far holds P, and a model's clock is its wait command, with ticks of the greatest common divisor of the deadline and one hour. Mandatory admission stays Fourier-Motzkin only; v1 receipts are frozen; new work is lawspec-smtlib-v2; there is no kernel-checked tier (owner decision 4).
   opened: 0.26.0
   decided: 0.26.0
   refs: [why3, spark-ug, z3]

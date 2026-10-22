@@ -129,18 +129,24 @@ not given to Z3. Functional induction per definition branch is not generated.
 Text operations that expose a code point are unsupported. A data type with a
 float field is refused. Deadlines are checked as `whenever P, Q within d` and
 `Q within d`. The explicit search stops at 20000 states, and the bounded run
-search at 8 steps. Two syntax points await the owner: how a history law states
-completeness (provisionally `the complete history holds` and `the history so
-far holds`) and how a model declares its clock (provisionally the model's
-`wait` command). The decisions are `DEC-validated-counterexamples`,
+search at 8 steps. The owner confirmed the two syntax points as built: a
+history law states completeness with `the complete history holds` or `the
+history so far holds`, and a model's clock is its `wait` command, with time
+passing in ticks of the greatest common divisor of the deadline and one hour.
+The decisions are `DEC-validated-counterexamples`,
 `DEC-smt-datatypes`, `DEC-refuted-status`, `DEC-law-set-analysis`,
 `DEC-smt-recursive-definitions`, `DEC-smt-induction`, `DEC-smt-text`,
 `DEC-smt-numbers`, `DEC-model-checking`, `DEC-model-induction`,
 `DEC-history-checking` and `DEC-gate-5-receipt`.
 
 **Acceptance.** Each increment passed its focused compiler, npm, WASM,
-documentation, generation and Canon checks. The final cached full CI is
-recorded below when it completes.
+documentation, generation and Canon checks. The cached full CI on `7b2fd6b7`
+ran 2,738 steps (none cached, since the compiler changed): 2,735 passed and
+three Scala acceptance steps (`asyncbindings`, `minor-stateful-initializers`
+and its 32-bit compact variant) failed on stale Bloop build state in their
+working directories (`FileAlreadyExistsException`). With those directories
+cleared, the three suites pass when rerun on their own. The record update
+that follows changes only this document and the decision ledger.
 
 ### Working-tree alignment increment — 20 October 2026
 
