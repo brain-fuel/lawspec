@@ -83,8 +83,9 @@ Precedents: [CALM decorators](https://calm.finos.org/core-concepts/decorators/),
 ### Gate 5 proof work — 22 October 2026
 
 The proof work for Gate 5 (row 5 above) is integrated from `gate5-proofs`
-through `7b2fd6b7` in fourteen increments for 0.28.0, following the owner
-decisions recorded with the proposal. This integration does not sign off
+through `7b2fd6b7` in fourteen increments for 0.28.0, with documentation
+closeout `9260ac5f`, following the owner decisions recorded with the proposal.
+This integration does not sign off
 Gate 5 or the remaining implementation and human acceptance gates. Mandatory definition admission stays independent of optional law verification:
 Fourier–Motzkin stays its only engine, it never calls Z3, and it works in WASM
 and without Z3. Optional law verification stays a separate selection. Every
@@ -130,19 +131,28 @@ not given to Z3. Functional induction per definition branch is not generated.
 Text operations that expose a code point are unsupported. A data type with a
 float field is refused. Deadlines are checked as `whenever P, Q within d` and
 `Q within d`. The explicit search stops at 20000 states, and the bounded run
-search at 8 steps. The owner confirmed both syntax choices: history laws say `the complete
-history holds` or `the history so far holds`; model time advances only through
-an explicit `wait` command, in automatic ticks. A deadline without that
-command is unsupported. The decisions are `DEC-validated-counterexamples`,
+search at 8 steps. The owner confirmed both syntax choices: history laws say
+`the complete history holds` or `the history so far holds`; model time
+advances only through an explicit `wait` command, in automatic ticks of the
+greatest common divisor of the deadline and one hour. A deadline without
+that command is unsupported. The decisions are `DEC-validated-counterexamples`,
 `DEC-smt-datatypes`, `DEC-refuted-status`, `DEC-law-set-analysis`,
 `DEC-smt-recursive-definitions`, `DEC-smt-induction`, `DEC-smt-text`,
 `DEC-smt-numbers`, `DEC-model-checking`, `DEC-model-induction`,
 `DEC-history-checking` and `DEC-gate-5-receipt`.
 
 **Acceptance.** Each increment passed its focused compiler, npm, WASM,
-documentation, generation and Canon checks. The merged candidate has a
-separate content-addressed full CI checkpoint; its receipt records the
-candidate identity, raw results and any focused recovery. Integration review
+documentation, generation and Canon checks. The source-branch full CI on
+`7b2fd6b7` ran 2,738 steps without cache reuse: 2,735 passed and three Scala
+acceptance steps (`asyncbindings`, `minor-stateful-initializers` and its
+32-bit compact variant) failed on stale Bloop build state in their working
+directories (`FileAlreadyExistsException`). With those directories cleared,
+the three suites passed in focused reruns. The source closeout changes only
+this document and the decision ledger.
+
+The merged candidate `d94c9622` has a separate content-addressed full CI
+checkpoint in progress; its receipt records the candidate identity and raw
+results. Integration review
 also adds regressions for missing induction obligations, bounded reachability
 and open-history deadlines; main's runtime-correlated BEAM overlap controls
 and stalled-hedge controls are retained.

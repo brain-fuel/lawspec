@@ -84,8 +84,8 @@ release commit. Steps run in parallel, half the processors at a time; pass
 them one at a time, for example to time a single step on an idle machine.
 
 Every CI step must pass: compiler and npm tests, native/WASM parity, the
-package smoke test, the editor grammar, and every acceptance suite for all
-17 targets in both machine profiles. Logs are in `.artifacts/ci/`.
+package smoke test, the editor grammar, artifact validators, and program-target
+acceptance suites in both machine profiles. Logs are in `.artifacts/ci/`.
 
 `release-check` then requires a clean `main`, matching versions and generated
 files, no existing tag for the prepared version, and no published npm version
