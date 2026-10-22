@@ -74,4 +74,25 @@ laws for triage are
   partial because "amounts above 5000 go to manual review"
 end laws
 
+
+type Rarity is one of
+  | Rare
+  | Common
+end type
+
+-- A suspected overlap the analysis cannot resolve: whether both laws ever
+-- apply is a question about cubes Z3 does not settle.
+function rarity (x :: Whole) (y :: Whole) (z :: Whole) -> Rarity is Common end function
+
+law "|cubes that add up are rare| is
+  definition: for all (x :: Whole) (y :: Whole) (z :: Whole) => x > 0 and y > 0 and x * x * x + y * y * y = z * z * z implies rarity x y z = Rare end for all end definition
+end law
+
+law "|large cubes are common| is
+  definition: for all (x :: Whole) (y :: Whole) (z :: Whole) => x > 0 and y > 0 and z > 100 implies rarity x y z = Common end for all end definition
+end law
+
+laws for rarity are
+  partial because "small and zero inputs are not classified here"
+end laws
 end unit

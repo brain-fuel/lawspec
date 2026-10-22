@@ -134,7 +134,11 @@ settle program claims results =
         let env = [(identity, v) | ((_, identity), v) <- zip (taskBinders task) values]
             split k = splitAt (length (clauseInputs k)) env
         confirm c task env split values
-      other -> ("incomplete", "Z3 answered " ++ other)
+      other -> ("incomplete", case taskPurpose task of
+        Overlapping _ _ -> "a suspected overlap Z3 cannot resolve (" ++ other ++ ")"
+        Conflicting _ _ -> "a suspected conflict Z3 cannot resolve (" ++ other ++ ")"
+        Uncovered -> "Z3 cannot decide whether an input is uncovered (" ++ other ++ ")"
+        Witness _ -> "Z3 cannot decide whether the assumptions can hold (" ++ other ++ ")")
     confirm c task env split values = case taskPurpose task of
       Uncovered -> do
         let f = taskFunction task

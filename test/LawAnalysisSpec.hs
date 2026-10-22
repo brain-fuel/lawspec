@@ -155,25 +155,30 @@ test_lawSetsAreCheckedTogether = describe "law sets" $ do
       status (row "completeness" (check ["now" .= ("2026-03-01T00:00:00.000Z" :: String)] source)) `shouldBe` Just "refuted"
   describe "portfolio 13.6 with Z3" $ do
     let portfolio = readFile "test/fixtures/law-sets.lawspec"
-    it "proves compatible requirements, with a witness for each law's assumptions" $ solver $ \z3 -> do
-      (_, rows) <- proved Nothing z3 =<< portfolio
-      [fmap fst (of_ "decide" c rows) | c <- ["completeness", "overlap", "conflict", "vacuity"]] `shouldBe` replicate 4 (Just "proved")
-      of_ "decide" "vacuity" rows `shouldSatisfy` maybe False (isInfixOf "confirmed by the evaluator" . snd)
-    it "refutes a contradiction with both laws and the input the evaluator confirms" $ solver $ \z3 -> do
-      (settled, rows) <- proved Nothing z3 =<< portfolio
-      of_ "settle" "conflict" rows `shouldSatisfy` maybe False (\(s, why) -> s == "refuted"
-        && "|refunds within the capture are approved| requires Approved" `isInfixOf` why
-        && "|nothing captured means no refund| requires Rejected" `isInfixOf` why
-        && "amount = 0, captured = 0" `isInfixOf` why && "the evaluator confirms it" `isInfixOf` why)
-      diagnostics (Just settled) `shouldSatisfy` any ((== "refuted") . fst)
-      fmap fst (of_ "settle" "overlap" rows) `shouldBe` Just "exempted"
-    it "proves a partial law complete in its scope" $ solver $ \z3 -> do
-      (_, rows) <- proved Nothing z3 =<< portfolio
-      fmap fst (of_ "quote" "completeness" rows) `shouldBe` Just "proved"
-    it "reports an uncovered input under an exemption" $ solver $ \z3 -> do
-      (_, rows) <- proved Nothing z3 =<< portfolio
-      of_ "triage" "completeness" rows `shouldSatisfy` maybe False (\(s, why) -> s == "exempted"
-        && "not covered: amount = 5001" `isInfixOf` why && "manual review" `isInfixOf` why)
+    -- Z3 runs the portfolio once; each check reads its rows.
+    describe "the rows" $ beforeAll (do
+        explicit <- lookupEnv "LAWSPEC_Z3"
+        installed <- maybe (findExecutable "z3") (pure . Just) explicit
+        traverse (\z3 -> proved Nothing z3 =<< portfolio) installed) $ do
+      let withRows check result = maybe (pendingWith "install Z3 or set LAWSPEC_Z3 for solver integration checks") check result
+      it "proves compatible requirements, with a witness for each law's assumptions" $ withRows $ \(_, rows) -> do
+        [fmap fst (of_ "decide" c rows) | c <- ["completeness", "overlap", "conflict", "vacuity"]] `shouldBe` replicate 4 (Just "proved")
+        of_ "decide" "vacuity" rows `shouldSatisfy` maybe False (isInfixOf "confirmed by the evaluator" . snd)
+      it "refutes a contradiction with both laws and the input the evaluator confirms" $ withRows $ \(settled, rows) -> do
+        of_ "settle" "conflict" rows `shouldSatisfy` maybe False (\(s, why) -> s == "refuted"
+          && "|refunds within the capture are approved| requires Approved" `isInfixOf` why
+          && "|nothing captured means no refund| requires Rejected" `isInfixOf` why
+          && "amount = 0, captured = 0" `isInfixOf` why && "the evaluator confirms it" `isInfixOf` why)
+        diagnostics (Just settled) `shouldSatisfy` any ((== "refuted") . fst)
+        fmap fst (of_ "settle" "overlap" rows) `shouldBe` Just "exempted"
+      it "proves a partial law complete in its scope" $ withRows $ \(_, rows) ->
+        fmap fst (of_ "quote" "completeness" rows) `shouldBe` Just "proved"
+      it "reports an uncovered input under an exemption" $ withRows $ \(_, rows) ->
+        of_ "triage" "completeness" rows `shouldSatisfy` maybe False (\(s, why) -> s == "exempted"
+          && "not covered: amount = 5001" `isInfixOf` why && "manual review" `isInfixOf` why)
+      it "reports a suspected overlap Z3 cannot resolve as incomplete" $ withRows $ \(_, rows) -> do
+        of_ "rarity" "overlap" rows `shouldSatisfy` maybe False (\(s, why) -> s == "incomplete" && "a suspected overlap Z3 cannot resolve" `isInfixOf` why)
+        of_ "rarity" "conflict" rows `shouldSatisfy` maybe False (\(s, why) -> s == "incomplete" && "a suspected conflict Z3 cannot resolve" `isInfixOf` why)
     it "keeps an unresolved check incomplete" $ do
       (_, rows) <- proved (Just "unknown") "z3" =<< portfolio
       fmap fst (of_ "decide" "overlap" rows) `shouldBe` Just "incomplete"

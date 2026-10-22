@@ -46,7 +46,7 @@ execution, and identifies real-provider versus fixture results.
 | 2 | CALM identity resolution and compatible real/twin bindings; Kafka/HTTP demonstrations with unchanged application laws; diagrams, infrastructure, external application deployment and optional managed applications; completed-run attestations consumed by LawSpec; refuse unresolved or incompatible bindings. | Open. |
 | 3 | Measure existing fixtures, a Cassandra prototype and real Cassandra before setting budgets. Separate downloads, readiness, reset, memory and full-stack costs. Prefer one fixture container with logical replicas, tunable consistency, replication faults and lightweight transactions; verify distributed cases against a real cluster. A single-node fallback requires measured justification and explicit reduced coverage. | Open; no numerical budget selected. |
 | 4 | LawTwin core per program target with shared black-box conformance. Finish LawSpec Prolog, HCL, YAML, ANTLR, Make and Folio targets. C/C++ remain optional for 1.0. | Open. |
-| 5 | Extend integrated Z3 numeric/data reasoning, recursive proofs, validated counterexamples, conflict/completeness and advanced temporal verification. Study primary SPARK/Why3, Lean 4, Idris 2 and Rocq sources first; record supported fragments and trust boundaries. Complete the retained demonstration portfolio below. | Open; existing scoped solver receipts retain their meaning. |
+| 5 | Extend integrated Z3 numeric/data reasoning, recursive proofs, validated counterexamples, conflict/completeness and advanced temporal verification. Study primary SPARK/Why3, Lean 4, Idris 2 and Rocq sources first; record supported fragments and trust boundaries. Complete the retained demonstration portfolio below. | Implemented on the `gate5-proofs` branch (receipt below); awaiting merge and owner sign-off. Existing scoped solver receipts retain their meaning. |
 | 6 | Architecture cleanup; API, grammar and configuration compatibility contracts; documentation and canonical review through Rice's Tax; full release and cross-project acceptance; human and external sign-off. | Open. |
 
 LawTwin's 1.0 dependency families are **Kafka, HTTP/OpenAPI and Cassandra**.
@@ -79,6 +79,68 @@ Precedents: [CALM decorators](https://calm.finos.org/core-concepts/decorators/),
 [CALM tooling](https://calm.finos.org/working-with-calm/cli/),
 [Cassandra architecture](https://cassandra.apache.org/doc/latest/cassandra/architecture/dynamo.html),
 [Cassandra guarantees](https://cassandra.apache.org/doc/latest/cassandra/architecture/guarantees.html).
+
+### Gate 5 proof work — 22 October 2026
+
+Gate 5 (row 5 above) is implemented on the `gate5-proofs` branch in fourteen
+increments, following the owner decisions recorded with the proposal. It has
+not been merged or signed off. Mandatory definition admission is unchanged:
+Fourier–Motzkin stays its only engine, it never calls Z3, and it works in WASM
+and without Z3. Optional law verification stays a separate selection. Every
+`lawspec-smtlib-v1` task keeps its script and fingerprint byte for byte (a
+frozen-corpus test guards it); everything new is `lawspec-smtlib-v2`. There is
+no kernel-checked proof tier: `proved` by Z3 trusts the typed translation and
+the solver, and every receipt says so.
+
+**Supported fragments and trust boundaries.**
+
+| Fragment | How it is decided | Trusted |
+| --- | --- | --- |
+| Integers, Booleans, exact arithmetic, non-recursive calls | Z3 (v1, frozen) | Translation and Z3 |
+| Enums, records, alternatives, `Maybe`, `List`, `Either` | SMT datatypes with well-formedness; wrong-constructor reads are undefined | Translation and Z3 |
+| Recursive definitions | Unfolding step by step (guarded axioms with fuel, as Why3 and Dafny), then solver recursion (`define-fun-rec`); harness may choose | Translation, Z3, and admission's facts that a definition is defined and in its result type on its domain |
+| Induction | Structural or integer countdown on a named input (Why3's `induction_ty_lex`/`induction_int_lex`), lemmas cited with `using`, one task per case | Translation, Z3, schema generator |
+| Text and regexes | SMT strings of Unicode scalar values; matchers; regexes mapped and differentially tested against `LawSpec.Regex`; anything above U+2FFFF is unsupported | Translation and Z3's string theory |
+| `Rational`, `Decimal`, IEEE floats | Rational as integer over positive integer; Decimal exact (universal over Reals, witnesses multiples of 10^-18); Float32/Float64 as SMT FloatingPoint with IEEE equality | Translation and Z3 |
+| Counterexamples | `get-value`, then the reference evaluator re-checks; an unconfirmed model is never a refutation | Reference evaluator |
+| Law sets | Completeness, overlap, conflict, vacuity on by default; exhaustive for finite domains, Z3 otherwise; `laws for` claims and dated exemptions | Evaluator for refutations; translation and Z3 for proofs |
+| Model laws | In-house explicit-state LTL with weak and strong fairness (GPVW tableau, Tarjan, Lichtenstein–Pnueli), shared by native and WASM; deadlines in microsecond ticks | Evaluator, tableau and search |
+| Unbounded models | Z3 induction; Spacer proposes invariants that plain queries re-check; bounded runs replayed by the evaluator | Translation and Z3; Spacer is trusted for nothing |
+| Histories | Complete histories proved or refuted; open histories three-valued (LTL3) with `pending` | Evaluator and automata |
+
+New evidence statuses, `refuted`, `exempted` and `pending`, add values without
+changing any existing one; the API schema stays 5.
+
+**Portfolio.**
+
+| Item | Demonstration | Where |
+| --- | --- | --- |
+| 13.1 Chapter 6 reference models | Five unbounded laws proved: labels add no instruction, instruction counts add across joined programs (induction), fitting labels keep the program in ROM (induction generalized over the counter), `bits` gives as many digits as asked (integer induction), every word has 16 digits (solver recursion). The 17-language implementations belong to the implementation gates. | `test/fixtures/chapter6-proofs.lawspec`, `SmtTextSpec` |
+| 13.3 Codec | Direct round trip and the applied left-inverse law, both proved; a text tag round trip proved | `test/fixtures/codec-proofs.lawspec` |
+| 13.4 Existence | Solver-established nonexistence kept apart from failing to find a candidate; complete finite refutation reported `refuted`; bounded search reported incomplete | `SmtSpec`, `CounterexampleSpec`, RC1 witness search |
+| 13.5 Revocation and histories | Complete snapshot proved; open history `pending` (holds so far, or not yet); deadline refuted as soon as observed time passes it; invariant, bounded history and unbounded future kept apart | `test/fixtures/history-revocation.lawspec`, `ModelCheckSpec` |
+| 13.6 Policy conflicts | Compatible requirements proved with witnesses; contradiction refuted at amount = 0, captured = 0 naming both laws; suspected overlap Z3 cannot resolve reported incomplete; partial law proved in scope; uncovered input exempted without refuting the law | `test/fixtures/law-sets.lawspec`, `LawAnalysisSpec` |
+| 13.7 Order workflow | Invariants and orderings proved over all reachable states; an invalid-transition mutant refuted with its run; liveness proved under weak fairness and refuted without it; deadlines proved under a clock rule and refuted with `authorize, wait 25h`; model results separate from native conformance | `test/fixtures/order-workflow.lawspec`, `test/fixtures/model-deadlines.lawspec`, `ModelCheckSpec` |
+| 13.8 Advanced type regressions | Matcher facts and refined operation results in admission (Gaps A and B); checked recursion proved by unfolding and induction | Increments 1, 2, 7 and 8 |
+| 14.10 Validated counterexamples in views | Every refutation shows the inputs the evaluator confirmed | Evidence reasons, `lawspec evidence` |
+
+**Limits kept explicit.** Native implementations, effects and resources are
+not given to Z3. Functional induction per definition branch is not generated.
+Text operations that expose a code point are unsupported. A data type with a
+float field is refused. Deadlines are checked as `whenever P, Q within d` and
+`Q within d`. The explicit search stops at 20000 states, and the bounded run
+search at 8 steps. Two syntax points await the owner: how a history law states
+completeness (provisionally `the complete history holds` and `the history so
+far holds`) and how a model declares its clock (provisionally the model's
+`wait` command). The decisions are `DEC-validated-counterexamples`,
+`DEC-smt-datatypes`, `DEC-refuted-status`, `DEC-law-set-analysis`,
+`DEC-smt-recursive-definitions`, `DEC-smt-induction`, `DEC-smt-text`,
+`DEC-smt-numbers`, `DEC-model-checking`, `DEC-model-induction`,
+`DEC-history-checking` and `DEC-gate-5-receipt`.
+
+**Acceptance.** Each increment passed its focused compiler, npm, WASM,
+documentation, generation and Canon checks. The final cached full CI is
+recorded below when it completes.
 
 ### Working-tree alignment increment — 20 October 2026
 
