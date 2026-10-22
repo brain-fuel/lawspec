@@ -92,13 +92,32 @@ of a separate native implementation.
 The first encoding supports Boolean and integer quantifiers, machine-width and
 unsigned bounds, exact arithmetic, conditionals, strict lets, short-circuit
 logic, exact conversions, and nonrecursive calls to pure checked definitions.
-It retains call preconditions and deferred runtime result checks. Rational
-constants and rational-valued computations are supported; Rational quantification
-is unsupported. SMT Reals include irrational witnesses, so substituting them for
-Rational existential domains would change the proposition.
+It retains call preconditions and deferred runtime result checks.
 
-IEEE arithmetic, Decimal carriers, effects, resources and native
-implementations remain unsupported. Recursive definitions are unfolded (see
+Effects, resources and native implementations remain unsupported.
+
+### Numbers
+
+Tasks that quantify `Rational` or `Decimal` inputs, or use `Decimal` or
+IEEE floats at all, are `lawspec-smtlib-v2`.
+
+- A `Rational` input is an integer over a positive integer. SMT Reals include
+  irrational numbers, so a Real witness could change the proposition; this
+  one cannot. `there exists (x :: Rational) such that 3 * x = 1` is proved,
+  and `x * x = 2` is not.
+- A `Decimal` is exact, as a Real. A law for all decimals is proved for all
+  Reals, which include them. A witness is a multiple of 10^-18, so it is a
+  decimal. A `Rational` becomes a `Decimal` only when its denominator divides a
+  power of ten; that conversion is unsupported.
+- `Float32` and `Float64` are SMT-LIB's IEEE binary32 and binary64, rounding
+  to nearest, ties to even, as LawSpec's arithmetic does. Equality is IEEE's:
+  NaN is not itself, and the two zeros are equal. `prelude.isNaN`,
+  `isInfinite`, `isFinite` and `isNegativeZero` map to Z3's tests. Data with
+  a float field is refused, because SMT equality on data is structural.
+
+Z3's values are read back exactly: a rational or decimal, or a float's bits,
+for the evaluator to check. A law true for real numbers but not for floats,
+such as `x + 1.0 > x`, is refuted with a float the evaluator confirms. Recursive definitions are unfolded (see
 below); laws that need induction stay incomplete.
 
 ### Data

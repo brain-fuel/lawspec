@@ -750,3 +750,13 @@ DEC-smt-text:
   opened: 0.26.0
   decided: 0.26.0
   refs: [z3, smt-lib]
+
+DEC-smt-numbers:
+  status: decided
+  question: |
+    How do Z3 tasks quantify Rational and Decimal inputs and reason about IEEE floats without changing a law's meaning?
+  answer: |
+    Owner decision 1 (everything in 1.0; gate 5 increment 13). A Rational input is quantified as an integer over a positive integer, in both polarities and in assumed laws, so no witness is irrational (proposal 2.1; a Real quantifier could choose a square root of two). A Decimal is an exact Real: a universal over all Reals is sound because they include every decimal, a witness (an existential, or a counterexample query's input) is an integer times 10^-18 and so is a decimal, and a law proved for all Reals is assumed for all Reals, matching how it was proved. Rational to Decimal conversion is unsupported. Float32 and Float64 are SMT-LIB FloatingPoint (8 24) and (11 53) with RNE, as LawSpec computes; equality and comparisons are IEEE's (fp.eq, so NaN differs from itself and the zeros are equal), and the classification helpers map to fp.isNaN, fp.isInfinite and the zero and sign tests. A data type holding a float is refused, since SMT equality on data is structural and LawSpec's is not. All are lawspec-smtlib-v2; v1 tasks are unchanged. Z3's values are read back exactly (rationals, terminating decimals, and float bits from fp literals or specials) and confirmed by the evaluator. Precedent: SPARK's floating-point translation through Why3 to SMT FloatingPoint, and Why3's exact real arithmetic. Trust boundary: the translation and Z3's arithmetic and floating-point theories.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, spark-ug, z3, ieee-754]

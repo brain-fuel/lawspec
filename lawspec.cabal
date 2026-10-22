@@ -345,6 +345,7 @@ extra-source-files:
     test/fixtures/list_contracts.lawspec
     test/fixtures/native_empty_domains.lawspec
     test/fixtures/native_shapes.lawspec
+    test/fixtures/numeric-proofs.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
@@ -1004,6 +1005,7 @@ test-suite lawspec-test
       SessionsPythonSpec
       SmtDataSpec
       SmtFrozenSpec
+      SmtNumericSpec
       SmtRecursionSpec
       SmtSpec
       SmtTextSpec

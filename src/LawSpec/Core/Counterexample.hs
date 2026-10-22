@@ -19,7 +19,8 @@ module LawSpec.Core.Counterexample
   ) where
 
 import Data.Char (isDigit, isHexDigit, isSpace)
-import Numeric (readHex)
+import Numeric (readHex, showHex)
+import Data.Ratio (numerator, denominator)
 import Data.List (isPrefixOf)
 import LawSpec.Core
 import LawSpec.Common (Generation(..), Quantification(..))
@@ -122,11 +123,60 @@ valueOf types ty term = case (ty, term) of
   (Constructor "Bool" [], Atom "true") -> Right (ScalarValue (SBool True))
   (Constructor "Bool" [], Atom "false") -> Right (ScalarValue (SBool False))
   (Constructor "Unit" [], _) -> Right (ScalarValue (SAbsent "Unit"))
+  (Constructor "Rational" [], _) | Just r <- realTerm term -> Right (ScalarValue (SRational (numerator r) (denominator r)))
+  (Constructor "Decimal" [], _) | Just r <- realTerm term, Just (c, e) <- decimalOf r -> Right (ScalarValue (SDecimal c e))
+  (Constructor "Rational" [], _) -> Left ("Z3's value " ++ render term ++ " is not a rational number")
+  (Constructor "Decimal" [], _) -> Left ("Z3's value " ++ render term ++ " is not a decimal")
+  (Constructor t [], _) | t `elem` ["Float32", "Float64"], Just bits <- floatBits t term -> Right (ScalarValue (SFloat t bits))
   (Constructor "Text" [], Atom ('"' : quoted)) | not (null quoted), last quoted == '"', Just units <- stringUnits (init quoted) ->
     Right (ScalarValue (SSequence "Text" units))
   (Constructor name [], _) | isInteger name, Just n <- integerTerm term -> Right (ScalarValue (SInteger name n))
   _ -> Left ("Z3's value " ++ render term ++ " cannot be read back as " ++ show ty)
   where
+    -- A Real as Z3 prints it: 2.5, (- 2.0), (/ 1.0 3.0); never root-obj.
+    realTerm t = case t of
+      Atom text | (whole, rest) <- span isDigit text, not (null whole) -> case rest of
+        "" -> Just (fromInteger (read whole))
+        '.' : fraction | all isDigit fraction -> Just (fromInteger (read (whole ++ fraction)) / 10 ^ length fraction)
+        _ -> Nothing
+      List [Atom "-", inner] -> negate <$> realTerm inner
+      List [Atom "/", n, d] -> do
+        a <- realTerm n
+        b <- realTerm d
+        if b == 0 then Nothing else Just (a / b)
+      List [Atom "to_real", inner] -> realTerm inner
+      _ -> Nothing
+    decimalOf :: Rational -> Maybe (Integer, Integer)
+    decimalOf r = case [k | k <- [0 .. 64], denominator (r * 10 ^ k) == 1] of
+      k : _ -> Just (numerator (r * 10 ^ k), negate k)
+      [] -> Nothing
+    -- (fp #b0 #b01111111 #b000...), or (_ +zero 8 24), (_ NaN 11 53), ...
+    floatBits t value = do
+      let (e, m) = if t == "Float32" then (8, 24) else (11, 53 :: Int)
+          width = 1 + e + m - 1
+          hex bitsText = let n = foldl (\acc c -> acc * 2 + (if c == '1' then 1 else 0)) (0 :: Integer) bitsText
+                             h = showHex n ""
+                         in replicate (width `div` 4 - length h) '0' ++ h
+          ones k = replicate k '1'
+          zeros k = replicate k '0'
+      case value of
+        List [Atom "fp", Atom sign', Atom exponent'', Atom mantissa']
+          | Just sign <- bitsOf sign', Just exponent' <- bitsOf exponent'', Just mantissa <- bitsOf mantissa'
+          , length sign == 1 && length exponent' == e && length mantissa == m - 1 -> Just (hex (sign ++ exponent' ++ mantissa))
+        List [Atom "_", Atom special, Atom _, Atom _] -> case special of
+          "+zero" -> Just (hex ("0" ++ zeros e ++ zeros (m - 1)))
+          "-zero" -> Just (hex ("1" ++ zeros e ++ zeros (m - 1)))
+          "+oo" -> Just (hex ("0" ++ ones e ++ zeros (m - 1)))
+          "-oo" -> Just (hex ("1" ++ ones e ++ zeros (m - 1)))
+          "NaN" -> Just (hex ("0" ++ ones e ++ "1" ++ zeros (m - 2)))
+          _ -> Nothing
+        _ -> Nothing
+    -- A bit-vector literal, #b0101 or #x5.
+    bitsOf text = case text of
+      '#' : 'b' : digits | all (`elem` ("01" :: String)) digits -> Just digits
+      '#' : 'x' : digits | all isHexDigit digits -> Just (concatMap nibble digits)
+      _ -> Nothing
+    nibble c = let n = fst (head (readHex [c])) :: Int in [if (n `div` k) `mod` 2 == 1 then '1' else '0' | k <- [8, 4, 2, 1]]
     integerTerm (Atom digits) | not (null digits), all isDigit digits = Just (read digits)
     integerTerm (List [Atom "-", inner]) = negate <$> integerTerm inner
     integerTerm _ = Nothing

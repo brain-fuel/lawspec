@@ -8,6 +8,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `lawspec prove` quantifies `Rational` inputs exactly (never an irrational
+  witness), handles `Decimal`, and reasons about `Float32` and `Float64` with
+  IEEE equality: NaN differs from itself and the zeros are equal. A law true
+  for reals but not floats is refuted with a float the evaluator confirms.
 - `lawspec prove` reasons about `Text`: joining, length, slices, decimal
   text, ordering, `starts with`, `ends with`, `contains` and
   `matches regex`. A task with a character or regex range above U+2FFFF,

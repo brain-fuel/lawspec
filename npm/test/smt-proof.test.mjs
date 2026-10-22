@@ -265,6 +265,15 @@ test('text laws: proved over strings, and refuted with a text the evaluator conf
   assert.match(high.solverEvidence[0].reason,/above U\+2FFFF/);
 });
 
+test('numbers: exact rational witnesses, and IEEE floats refuted by a float the evaluator confirms',requiresZ3,async()=>{
+  const third=await proveWithZ3(compiler,request(law('there exists (x :: Rational) such that 3 * x = 1 end exists')),{binary:z3});
+  assert.equal(third.solverEvidence[0].status,'proved');
+  const grows=await proveWithZ3(compiler,request(law('for all (x :: Float64 where prelude.isFinite x) => x + 1.0 > x end for all')),{binary:z3});
+  assert.equal(grows.solverEvidence[0].status,'refuted');
+  const nan=await proveWithZ3(compiler,request(law('for all (x :: Float64) => prelude.isNaN x implies x != x end for all')),{binary:z3});
+  assert.equal(nan.solverEvidence[0].status,'proved');
+});
+
 test('satisfiable Z3 tasks whose values cannot be confirmed stay incomplete',requiresZ3,async()=>{
   for(const body of [
     law('there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists'),
@@ -300,12 +309,17 @@ test('a broken counterexample translation gives model-not-confirmed, never refut
 });
 
 test('unsupported translations and unavailable Z3 remain explicit without substituting another theory',async()=>{
+  const native=await proveWithZ3(compiler,request('external :: Integer -> Integer\n'+law('for all (n :: Integer) => external n = external n end for all')),{binary:'/missing/z3'});
+  assert.deepEqual(native.diagnostics,[]);
+  assert.equal(native.solverEvidence[0].status,'unsupported');
+  assert.match(native.solverEvidence[0].reason,/native implementations stay unsupported/);
+  // Rational and IEEE laws have tasks; without Z3 they stay incomplete.
   const rational=await proveWithZ3(compiler,request(law('there exists (n :: Rational) such that n * n = 2 end exists')),{binary:'/missing/z3'});
-  assert.deepEqual(rational.diagnostics,[]);
-  assert.equal(rational.solverEvidence[0].status,'unsupported');
-  assert.match(rational.solverEvidence[0].reason,/Rational quantification/);
+  assert.equal(rational.solverEvidence[0].status,'incomplete');
+  assert.equal(rational.solverEvidence[0].outcome,'unavailable');
   const ieee=await compiler.proofTasks(request(law('for all (n :: Float64) => n = n end for all')));
-  assert.equal(ieee.proofTasks[0].status,'unsupported');
+  assert.equal(ieee.proofTasks[0].status,'ready');
+  assert.equal(ieee.proofTasks[0].encoding,'lawspec-smtlib-v2');
   const unavailable=await proveWithZ3(compiler,request(square),{binary:'/missing/z3'});
   assert.equal(unavailable.solverEvidence[0].outcome,'unavailable');
   assert.equal(unavailable.solverEvidence[0].status,'incomplete');

@@ -1,0 +1,42 @@
+unit portfolio.numbers
+
+law "|a third exists| is
+  definition: there exists (x :: Rational) such that 3 * x = 1 end exists end definition
+end law
+
+law "|no rational squares to two| is
+  definition: there exists (x :: Rational) such that x * x = 2 end exists end definition
+end law
+
+law "|rationals have a midpoint| is
+  definition: for all (a :: Rational) (b :: Rational) => a < b implies a < (a + b) / 2 end for all end definition
+end law
+
+law "|decimals add exactly| is
+  definition: for all (a :: Decimal) (b :: Decimal) => a + b - b = a end for all end definition
+end law
+
+law "|a decimal tenth exists| is
+  definition: there exists (x :: Decimal) such that x * 10 = 1 end exists end definition
+end law
+
+law "|NaN is not itself| is
+  definition: for all (x :: Float64) => prelude.isNaN x implies x != x end for all end definition
+end law
+
+law "|the zeros are equal| is
+  definition: (0.0 :: Float64) = -(0.0 :: Float64) and prelude.isNegativeZero (-(0.0 :: Float64)) end definition
+end law
+
+law "|adding one grows a float| is
+  definition: for all (x :: Float64 where prelude.isFinite x) => x + 1.0 > x end for all end definition
+end law
+
+law "|the zeros differ in sign only| is
+  definition: for all (x :: Float32 where prelude.isNegativeZero x) => x = (0.0 :: Float32) end for all end definition
+end law
+
+law "|negation flips the sign| is
+  definition: for all (x :: Float32 where prelude.isFinite x) => -(-x) = x end for all end definition
+end law
+end unit

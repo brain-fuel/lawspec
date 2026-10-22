@@ -274,7 +274,14 @@ counterexampleQuery program law = do
         let local = M.insert (binderId binder) (Term s name "true") scope
         base <- lift (domain bits (binderType binder) name)
         restricted <- restrictions program [] local (quantifiedPredicates q)
-        pure (local, rows ++ [(name, q, s, both [base, positive restricted])])
+        -- A Rational or Decimal value is built exactly, so Z3's value is one.
+        let (extra, exactBase) = case exactKind (binderType binder) of
+              Just ExactRational -> ([(name ++ "_n", "Int"), (name ++ "_d", "Int")],
+                both [app ">" [name ++ "_d", "0"], app "=" [name, app "/" [app "to_real" [name ++ "_n"], app "to_real" [name ++ "_d"]]]])
+              Just ExactDecimal -> ([(name ++ "_n", "Int")], app "=" [name, app "/" [app "to_real" [name ++ "_n"], decimalUnit]])
+              Nothing -> ([], "true")
+        modify (\w -> w{extraConstants = extraConstants w ++ extra})
+        pure (local, rows ++ [(name, q, s, both [base, exactBase, positive restricted])])
   ((rows, result, prelude), _) <- runStateT (do
       (scope, rows) <- foldM constant (M.empty, []) (zip [0 ..] outer)
       result <- proposition program [] scope rest
@@ -282,7 +289,9 @@ counterexampleQuery program law = do
       functions <- gets recursiveText
       -- Z3 unfolds recursive definitions itself here, and searches for a
       -- model freely; the evaluator checks whatever it gives.
-      pure (rows, result, fst functions ++ prelude ++ snd functions)) ((start SmtLibV2 program DefineFunRec){bounded = False, ranges = False})
+      extra <- gets extraConstants
+      pure (rows, result, fst functions ++ prelude ++ snd functions ++
+        concat ["(declare-const " ++ n ++ " " ++ t ++ ")\n" | (n, t) <- extra])) ((start SmtLibV2 program DefineFunRec){bounded = False, ranges = False})
   let script = "; " ++ encodingName SmtLibV2 ++ "; counterexample: the law's outer inputs as constants\n" ++ prelude ++
         concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (name, _, s, _) <- rows] ++
         concat ["(assert " ++ condition ++ ")\n" | (_, _, _, condition) <- rows] ++
@@ -292,7 +301,7 @@ counterexampleQuery program law = do
 
 -- | A data type is its own SMT sort (lawspec-smtlib-v2): a closed instance,
 -- such as Maybe Int32, declared with its constructors and selectors.
-data Sort = BooleanSort | IntegerSort | RealSort | UnitSort | StringSort | DataSort Type deriving (Eq,Show)
+data Sort = BooleanSort | IntegerSort | RealSort | UnitSort | StringSort | FloatSort Int Int | DataSort Type deriving (Eq,Show)
 data Term = Term { termSort :: Sort, value :: String, defined :: String }
 data Certificate = Certificate { positive :: String, negative :: String }
 -- The encoding a task needs so far: the newest any feature it uses requires.
@@ -318,10 +327,12 @@ data Work = Work { nextName :: Int, visited :: Int, required :: Encoding
                  , patterned :: Bool, triggers :: [String], bound :: [String]
                  -- A recursive call's value with its lets, and the same call
                  -- written out, for triggers.
-                 , unshared :: M.Map String String }
+                 , unshared :: M.Map String String
+                 -- The integer constants that build exact inputs.
+                 , extraConstants :: [(String, String)] }
 
 start :: Encoding -> Program -> Recursion -> Work
-start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty
+start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty []
 
 -- | With recursive definitions, the solver options that keep unfolding
 -- bounded (as Dafny sets them: no model-based quantifier instantiation, so
@@ -385,6 +396,11 @@ sort :: Type -> Either String Sort
 sort (Constructor "Bool" []) = Right BooleanSort
 sort (Constructor "Unit" []) = Right UnitSort
 sort (Constructor "Rational" []) = Right RealSort
+-- Decimal is exact (lawspec-smtlib-v2): a Real, quantified exactly.
+sort (Constructor "Decimal" []) = Right RealSort
+-- IEEE binary32 and binary64 (lawspec-smtlib-v2), SMT-LIB FloatingPoint.
+sort (Constructor "Float32" []) = Right (FloatSort 8 24)
+sort (Constructor "Float64" []) = Right (FloatSort 11 53)
 sort (Constructor name []) | isInteger name = Right IntegerSort
 -- Text (lawspec-smtlib-v2): Unicode scalar values, as an SMT string. Z3
 -- models code points up to U+2FFFF only, so a task that could tell a
@@ -404,6 +420,9 @@ sortIn types ty = case sort ty of
   Left reason -> case ty of
     Constructor name _ | M.member name types -> do
       admissible types [] ty
+      -- SMT equality on a datatype is structural, and an IEEE field's is not.
+      when (any (\t -> t `elem` [Constructor "Float32" [], Constructor "Float64" []]) (concatMap (fieldTypes types) (reachable types ty)))
+        (Left ("unsupported SMT data type " ++ name ++ ": it holds an IEEE float, whose equality is not structural"))
       unless (all (inhabited types) (reachable types ty))
         (Left ("unsupported SMT data type " ++ name ++ ": it, or a type it holds, has no finite value, and an SMT datatype must have one"))
       pure (DataSort ty)
@@ -510,7 +529,7 @@ sortOf :: Program -> Type -> Encode Sort
 sortOf program ty = do
   types <- gets known
   s <- lift (sortIn types ty)
-  when (s == StringSort) (requires SmtLibV2)
+  when (s == StringSort || ty == Constructor "Decimal" [] || isFloat s) (requires SmtLibV2)
   case s of
     DataSort _ -> do
       requires SmtLibV2
@@ -526,7 +545,10 @@ sortOf program ty = do
 quantifierSortOf :: Program -> Type -> Encode Sort
 quantifierSortOf program ty = do
   s <- sortOf program ty
-  unless (s /= RealSort) (lift (Left "SMT Real quantification is not exact Rational quantification"))
+  -- Rational and Decimal inputs are quantified exactly (exactInput), never
+  -- as SMT Reals, whose witnesses may be irrational.
+  when (s == RealSort) (requires SmtLibV2)
+  when (s == RealSort && exactKind ty == Nothing) (lift (Left "SMT Real quantification is not exact Rational quantification"))
   pure s
 
 -- | The declarations of the data types a task used, and their
@@ -588,6 +610,7 @@ sortText (DataSort ty) = "|" ++ typeSymbol ty ++ "|"
 sortText IntegerSort = "Int"
 sortText RealSort = "Real"
 sortText StringSort = "String"
+sortText (FloatSort e m) = "(_ FloatingPoint " ++ show e ++ " " ++ show m ++ ")"
 
 -- Rational-valued computations stay rational, since their leaves are integers
 -- or rational constants and their operations are rational-closed. Quantifying
@@ -672,6 +695,36 @@ proposition program active scope claim = do
     Negation body -> do
       result <- proposition program active scope body
       pure (Certificate (negative result) (positive result))
+    Quantified kind q body | Just exact <- exactKind (binderType (quantifiedBinder q)) -> do
+      requires SmtLibV2
+      name <- fresh
+      let binder = quantifiedBinder q
+          numerator' = name ++ "_n"
+          denominator' = name ++ "_d"
+          ratio = app "/" [app "to_real" [numerator'], app "to_real" [denominator']]
+          decimal = app "/" [app "to_real" [numerator'], decimalUnit]
+          -- (variables, their condition, the input's value)
+          (universal, existential) = case exact of
+            ExactRational -> let v = ([(numerator', "Int"), (denominator', "Int")], app ">" [denominator', "0"], ratio) in (v, v)
+            -- Every Decimal is a Real, so a universal over the Reals is
+            -- sound; a witness is a multiple of 10^-18, so it is a Decimal.
+            ExactDecimal -> (([(name, "Real")], "true", name), ([(numerator', "Int")], "true", decimal))
+          encodeAt (_, _, term) = do
+            let local = M.insert (binderId binder) (Term RealSort term "true") scope
+            restricted <- restrictions program active local (quantifiedPredicates q)
+            result <- proposition program active local body
+            pure (restricted, result)
+          quantify keyword (variables, condition, _) formula =
+            "(" ++ keyword ++ " (" ++ unwords ["(" ++ v ++ " " ++ t ++ ")" | (v, t) <- variables] ++ ") " ++ formula ++ ")"
+      (rAll, resAll) <- encodeAt universal
+      (rSome, resSome) <- if exact == ExactRational then pure (rAll, resAll) else encodeAt existential
+      let (_, allCondition, _) = universal
+          (_, someCondition, _) = existential
+          allOf certificate = quantify "forall" universal (eitherOf [no allCondition, negative rAll, both [positive rAll, certificate]])
+          someOf certificate = quantify "exists" existential (both [someCondition, positive rSome, certificate])
+      pure $ case kind of
+        ForEvery -> Certificate (allOf (positive resAll)) (someOf (negative resSome))
+        ForSome -> Certificate (someOf (positive resSome)) (allOf (negative resAll))
     Quantified kind q body -> do
       let binder=quantifiedBinder q
       s <- quantifierSortOf program (binderType binder)
@@ -765,6 +818,13 @@ expression program active scope source = do
         SBool x -> pure (Term BooleanSort (if x then "true" else "false") "true")
         SInteger _ n -> pure (Term IntegerSort (integer n) "true")
         SRational n d -> pure (Term RealSort (app "/" [app "to_real" [integer n],app "to_real" [integer d]]) "true")
+        SDecimal c e -> do
+          requires SmtLibV2
+          pure (Term RealSort (if e >= 0 then app "to_real" [integer (c * 10 ^ e)]
+            else app "/" [app "to_real" [integer c], app "to_real" [integer (10 ^ negate e)]]) "true")
+        SFloat t bits | Right (FloatSort e m) <- sort (Constructor t []) -> do
+          requires SmtLibV2
+          pure (Term (FloatSort e m) ("((_ to_fp " ++ show e ++ " " ++ show m ++ ") #x" ++ bits ++ ")") "true")
         SAbsent "Unit" -> pure (Term UnitSort "false" "true")
         SSequence "Text" units -> do
           requires SmtLibV2
@@ -792,7 +852,7 @@ expression program active scope source = do
         pure (Term BooleanSort result (both [defined a,valid]))
       Unary op argument -> do
         term <- recurse argument
-        pure term{value=app (case op of Not -> "not"; Negate -> "-") [value term]}
+        pure term{value=app (case op of Not -> "not"; Negate | isFloat (termSort term) -> "fp.neg"; Negate -> "-") [value term]}
       Binary op _ left right -> do
         a <- recurse left
         b <- recurse right
@@ -800,8 +860,11 @@ expression program active scope source = do
       Convert _ target argument -> do
         term <- recurse argument
         s <- sortOf program target
+        when (target == Constructor "Decimal" [] && expressionType argument == Constructor "Rational" [])
+          (lift (Left "unsupported SMT conversion: a Rational is a Decimal only when its denominator divides a power of ten"))
         case (termSort term,s) of
           (a,b) | a==b -> pure term
+          (FloatSort _ _, FloatSort e m) -> pure term{termSort=s,value="((_ to_fp " ++ show e ++ " " ++ show m ++ ") RNE " ++ value term ++ ")"}
           (IntegerSort,RealSort) -> pure term{termSort=s,value=app "to_real" [value term]}
           (RealSort,IntegerSort) -> pure term{termSort=s,value=app "to_int" [value term],
             defined=both [defined term,app "is_int" [value term]]}
@@ -817,6 +880,17 @@ expression program active scope source = do
         pure (Term BooleanSort "true" (defined term))
       -- Text (lawspec-smtlib-v2): Z3's string theory, with LawSpec's
       -- meanings (LawSpec.Core.Semantics.helperValue).
+      -- IEEE classification.
+      Helper builtin [argument] | builtin `elem` [IsNaN, IsInfinite, IsFinite, IsNegativeZero] -> do
+        term <- recurse argument
+        unless (isFloat (termSort term)) (lift (Left "unsupported SMT expression: classification of a non-float"))
+        let x = value term
+            test = case builtin of
+              IsNaN -> app "fp.isNaN" [x]
+              IsInfinite -> app "fp.isInfinite" [x]
+              IsFinite -> both [no (app "fp.isNaN" [x]), no (app "fp.isInfinite" [x])]
+              _ -> both [app "fp.isZero" [x], app "fp.isNegative" [x]]
+        pure (Term BooleanSort test (defined term))
       Helper builtin arguments | Just _ <- lookup builtin textHelpers -> do
         terms <- mapM recurse arguments
         let ok = both (map defined terms)
@@ -887,6 +961,26 @@ nodeName node = case node of
   _ -> "expression"
 
 binary :: BinaryOp -> Term -> Term -> Either String Term
+binary op a b
+  | isFloat (termSort a) && termSort a == termSort b = do
+      let both' name = Term (termSort a) (app name ["RNE", value a, value b]) total
+          test name = Term BooleanSort (app name [value a, value b]) total
+          total = both [defined a, defined b]
+      case op of
+        Add -> pure (both' "fp.add")
+        Subtract -> pure (both' "fp.sub")
+        Multiply -> pure (both' "fp.mul")
+        Divide -> pure (both' "fp.div")
+        Less -> pure (test "fp.lt")
+        LessEqual -> pure (test "fp.leq")
+        Greater -> pure (test "fp.gt")
+        GreaterEqual -> pure (test "fp.geq")
+        -- LawSpec's float equality is IEEE's: NaN is not itself, and the
+        -- two zeros are equal.
+        Equal -> pure (test "fp.eq")
+        NotEqual -> pure (Term BooleanSort (no (app "fp.eq" [value a, value b])) total)
+        _ -> Left "unsupported SMT float operation"
+  | isFloat (termSort a) || isFloat (termSort b) = Left "unsupported SMT float operation: mixed operands"
 binary op a b = do
   let numeric term=termSort term `elem` [IntegerSort,RealSort]
       real term | termSort term==IntegerSort = app "to_real" [value term]
@@ -1206,10 +1300,20 @@ closure program scope quantifiers body = do
     s <- quantifierSortOf program (binderType binder)
     name <- fresh
     pure (q, binder, s, name)
-  let local = foldl (\m (_, b, s, n) -> M.insert (binderId b) (Term s n "true") m) scope rows
+  -- An assumed law over Rational inputs holds for exactly the rationals.
+  let valueOf' (b, n) = case exactKind (binderType b) of
+        Just ExactRational -> app "/" [app "to_real" [n ++ "_n"], app "to_real" [n ++ "_d"]]
+        _ -> n
+      variables = concat [ case exactKind (binderType b) of
+                             Just ExactRational -> [(n ++ "_n", "Int"), (n ++ "_d", "Int")]
+                             _ -> [(n, sortText s)]
+                         | (_, b, s, n) <- rows ]
+      local = foldl (\m (_, b, s, n) -> M.insert (binderId b) (Term s (valueOf' (b, n)) "true") m) scope rows
   modify (\w -> w{bound = [n | (_, _, _, n) <- rows] ++ bound w})
   guards <- forM rows $ \(q, b, _, n) -> do
-    base <- lift (domain (programMachineBits program) (binderType b) n)
+    base <- case exactKind (binderType b) of
+      Just ExactRational -> pure (app ">" [n ++ "_d", "0"])
+      _ -> lift (domain (programMachineBits program) (binderType b) n)
     restricted <- restrictions program [] local (quantifiedPredicates q)
     pure (base, restricted)
   result <- proposition program [] local body
@@ -1246,7 +1350,7 @@ closure program scope quantifiers body = do
       formula = foldr (\(base, restricted) inner -> eitherOf [no base, negative restricted, both [positive restricted, inner]])
         (positive result) guards
   pure $ if null rows then positive result
-    else "(forall (" ++ unwords ["(" ++ n ++ " " ++ sortText s ++ ")" | (_, _, s, n) <- rows] ++ ") " ++
+    else "(forall (" ++ unwords ["(" ++ n ++ " " ++ t ++ ")" | (n, t) <- variables] ++ ") " ++
          (if null patterns then formula else "(! " ++ formula ++ patterns ++ ")") ++ ")"
 
 -- | The Text operations a task can use, by the builtin that names them.
@@ -1336,3 +1440,21 @@ listHelper program builtin ty terms ok = do
         isNil "x" ++ " y (" ++ constructorSymbol ty cons ++ " " ++ headOf "x" ++ " (" ++ name "append" ++ " " ++ tailOf "x" ++ " y)))))\n")
       pure (Term s (app (name "append") [value xs, value ys]) ok)
     _ -> lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " over a list); no uninterpreted replacement was introduced"))
+
+-- | Rational and Decimal inputs are quantified exactly: a rational as an
+-- integer over a positive integer, so a witness is never irrational; a
+-- decimal, universally, as any Real (a superset, so a proof covers every
+-- decimal), and as a witness, as an integer times 10^-18.
+data Exact = ExactRational | ExactDecimal deriving (Eq, Show)
+
+exactKind :: Type -> Maybe Exact
+exactKind (Constructor "Rational" []) = Just ExactRational
+exactKind (Constructor "Decimal" []) = Just ExactDecimal
+exactKind _ = Nothing
+
+decimalUnit :: String
+decimalUnit = "1000000000000000000.0"
+
+isFloat :: Sort -> Bool
+isFloat (FloatSort _ _) = True
+isFloat _ = False
