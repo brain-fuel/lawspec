@@ -17,6 +17,7 @@ import LawSpec.Model
 import LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), sourceSyntax)
 import LawSpec.Blocks
 import LawSpec.SourceOrigins
+import qualified LawSpec.SourceTokens as Tokens
 import LawSpec.Indexed
 import LawSpec.PreludeNames (preludeValueName)
 import LawSpec.DomainModel
@@ -35,7 +36,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
 import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace, isDigit)
-import Data.List (uncons, intercalate, isInfixOf, nub)
+import Data.List (uncons, intercalate, isInfixOf, nub, mapAccumL)
+import Data.Maybe (listToMaybe)
 import Text.Megaparsec hiding (SourcePos, parse, runParserT, lookAhead)
 import qualified Text.Megaparsec as MP
 import Text.Megaparsec.Char
@@ -66,6 +68,207 @@ runParserWithCoordinates coordinates parser name text = MP.runParserT
 
 runParserAt :: [SourceOriginMap] -> P a -> Source -> Reader (M.Map String Header) (Either (ParseErrorBundle String BlockError) a)
 runParserAt origins parser source = runParserWithCoordinates (Just (sourceCoordinatesFor origins source)) parser (path source) (content source)
+
+-- Recovery runs only after the authoritative parse fails. Its temporary terms
+-- are diagnostic scaffolding: even a successful recovery pass returns the
+-- original failure, never an AST for elaboration or formatting. Megaparsec's
+-- delayed errors survive until its final Left; StateT rolls back failed frames.
+-- ref:megaparsec-error-recovery
+runDiagnosticParser :: [SourceOriginMap] -> Source -> M.Map String Header -> P a
+  -> ParseContext -> Either [Diagnostic] (a,ParseContext)
+runDiagnosticParser origins source environment parser initial =
+  case run environment of
+    Right value -> Right value
+    Left original ->
+      let first = errorOffset (NE.head (bundleErrors original))
+          firstLocation = originalLocation coordinates first
+          -- A damaged inner block can make an already-open outer block appear
+          -- unclosed at EOF. Keep independent later failures, not that cascade.
+          cascade err = case (err,firstLocation) of
+            (FancyError _ problems,Just location) -> or
+              [ (line opened,column opened) <= (line location,column location) |
+                ErrorCustom (BlockError "block-unclosed" _ _ (Just opener)) <- S.toList problems,
+                let opened = spanStart opener ]
+            _ -> False
+          additional = case run (M.insert "diagnostics:recover" AliasHeader environment) of
+            Left recovered -> filter (\err -> errorOffset err >= first && not (cascade err))
+              (NE.toList (bundleErrors recovered))
+            Right _ -> []
+          errors = M.elems (M.fromListWith (\_ old -> old)
+            [(errorOffset err,err) | err <- NE.toList (bundleErrors original) ++ additional])
+          render positions err =
+            let (_,next) = reachOffset (errorOffset err) positions
+            in (next,parseDiagnosticUsing coordinates origins source
+              original{bundleErrors=err NE.:| [],bundlePosState=next})
+      in Left (snd (mapAccumL render (bundlePosState original) errors))
+  where
+    run env = runReader (MP.runParserT (runStateT parser initial) (path source) (content source)) env
+    coordinates = maybe (sourceCoordinatesFor origins source) id (sourceCoordinates initial)
+
+-- Repeated grammar entries report independent failures without guessing new
+-- syntax. Successful input uses the ordinary parser.
+collectParsed :: [Either [Diagnostic] a] -> Either [Diagnostic] [a]
+collectParsed results = case concat [errors | Left errors <- results] of
+  [] -> Right [value | Right value <- results]
+  errors -> Left errors
+
+recovering :: a -> P a -> P a
+recovering placeholder parser = do
+  enabled <- asks (M.member "diagnostics:recover")
+  if not enabled then parser else do
+    saved <- getParserState
+    let start = stateOffset saved
+        original = stateInput saved
+    closing <- optional (try (lookAhead hardTermBoundary))
+    withRecovery (\err -> do
+      -- Identifiers may consume a reserved closing word before rejecting it.
+      -- Leave that delimiter for the enclosing parser; otherwise one missing
+      -- term creates a spurious mismatched closer farther along the line.
+      when (closing /= Nothing) $ do
+        failed <- getParserState
+        setParserState saved{stateParseErrors=stateParseErrors failed}
+        parseError err
+      here <- getOffset
+      -- An empty failure at a delimiter still means the surrounding optional
+      -- parser has ended. Returning an empty term there would loop in many.
+      when (here == start && errorOffset err == start) $ do
+        boundary <- optional (lookAhead termBoundary)
+        when (boundary /= Nothing) (parseError err)
+        skipRecoveryToken
+      here' <- getOffset
+      boundary <- optional (try (lookAhead termBoundary))
+      when (here' < errorOffset err && boundary == Nothing)
+        (void (takeP Nothing (errorOffset err-here')))
+      advanced <- getOffset
+      let relative = advanced-start
+          containing = [Tokens.tokenOffset token + length (Tokens.tokenText token) |
+            token <- takeWhile ((<relative) . Tokens.tokenOffset) (Tokens.sourceTokens original),
+            Tokens.tokenKind token `notElem` [Tokens.TriviaToken,Tokens.CommentToken],
+            relative < Tokens.tokenOffset token + length (Tokens.tokenText token)]
+      -- A lexer error can leave us inside a quoted token. Resume after that
+      -- token rather than treating its contents as grammar boundaries.
+      forM_ containing (\finish -> void (takeP Nothing (finish-relative)))
+      skipDetachedCloser err
+      synchronize termBoundary
+      registerParseError err
+      pure placeholder) parser
+
+termBoundary :: P ()
+termBoundary = hardTermBoundary
+  <|> memberStart
+  <|> try (void (ident *> annotationP))
+
+hardTermBoundary :: P ()
+hardTermBoundary = void (oneOf (",)]}" :: String)) <|> eof <|>
+  choice [keyword word | word <- ["end","row","expect","then","else","when","otherwise","in","with"]]
+
+-- These are resumption points, not an alternative declaration grammar.
+-- Every resumed declaration is parsed again by the real member parser.
+memberStart :: P ()
+memberStart = choice [keyword word | word <-
+  ["type","wrapper","workflow","protocol","scenario","handle","model","actor",
+   "supervisor","mailbox","refinement","ability","handler","resource","handlers",
+   "laws","property","law","harness","mapping","function","procedure","async"]]
+  <|> try (void (ident *> annotationP))
+
+recoverMany :: P () -> P () -> P a -> P [a]
+recoverMany end resume parser = do
+  enabled <- asks (M.member "diagnostics:recover")
+  if not enabled then many parser else loop
+  where
+    loop = do
+      done <- optional (try (lookAhead (end <|> eof)))
+      case done of
+        Just _ -> pure []
+        Nothing -> do
+          start <- getOffset
+          reported <- (fmap errorOffset . listToMaybe . stateParseErrors) <$> getParserState
+          item <- withRecovery (\err -> do
+            here <- getOffset
+            when (here == start) skipRecoveryToken
+            skipDetachedCloser err
+            synchronize (end <|> resume)
+            now <- (fmap errorOffset . listToMaybe . stateParseErrors) <$> getParserState
+            when (now == reported) (registerParseError err)
+            pure Nothing) (Just <$> parser)
+          rest <- loop
+          pure (maybe rest (:rest) item)
+
+recoverSome :: P () -> P () -> P a -> P [a]
+recoverSome end resume parser = do
+  enabled <- asks (M.member "diagnostics:recover")
+  if enabled then recoverMany end resume parser else some parser
+
+recordFieldStart :: P ()
+recordFieldStart = try (void (ident *> annotationP))
+
+-- A label stranded on the next line after bare 'end' is part of that same
+-- malformed closer. Do not diagnose it again as a declaration with no name.
+-- A genuine following declaration has more tokens on its header and resumes
+-- normally. The authoritative parse still rejects the detached label.
+skipDetachedCloser :: ParseError String BlockError -> P ()
+skipDetachedCloser err = case err of
+  FancyError _ problems | any required (S.toList problems) -> do
+    input <- getInput
+    let tokens = [t | t <- Tokens.sourceTokens input,
+          Tokens.tokenKind t `notElem` [Tokens.TriviaToken,Tokens.CommentToken]]
+        widths = [finish | kind <- blockKinds, let label = words (blockLabel kind),
+          take (length label) (map Tokens.tokenText tokens) == label,
+          first <- take 1 tokens, '\n' `elem` take (Tokens.tokenOffset first) input,
+          lastToken <- take 1 (drop (length label-1) tokens),
+          let finish = Tokens.tokenOffset lastToken + length (Tokens.tokenText lastToken),
+          case drop (length label) tokens of
+            [] -> True
+            next:_ -> Tokens.tokenText next == "end" ||
+              '\n' `elem` take (Tokens.tokenOffset next-finish) (drop finish input)]
+    when (not (null widths)) (void (takeP Nothing (maximum widths)))
+  _ -> pure ()
+  where required (ErrorCustom (BlockError "block-close-label-required" _ _ _)) = True
+        required _ = False
+
+-- Lossless tokens keep comments and quoted text opaque during panic recovery.
+-- Delimiters are balanced so an inner comma is never mistaken for a sibling.
+-- Named closers are skipped atomically; 'end function' cannot resume as a new
+-- function declaration. An unmatched closer still reaches its enclosing parser.
+synchronize :: P () -> P ()
+synchronize boundary = go []
+  where
+    go nesting = do
+      done <- optional (lookAhead eof)
+      case done of
+        Just _ -> pure ()
+        Nothing -> do
+          stop <- if null nesting then optional (try (lookAhead boundary)) else
+            optional (lookAhead (keyword "end"))
+          case stop of
+            Just _ -> pure ()
+            Nothing -> do
+              input <- getInput
+              let token = case Tokens.sourceTokens input of t:_ -> Tokens.tokenText t; [] -> ""
+                  next = case token of
+                    "(" -> ")":nesting
+                    "[" -> "]":nesting
+                    "{" -> "}":nesting
+                    _ | take 1 nesting == [token] -> drop 1 nesting
+                      | otherwise -> nesting
+              skipRecoveryToken
+              go next
+
+skipRecoveryToken :: P ()
+skipRecoveryToken = do
+  input <- getInput
+  case Tokens.sourceTokens input of
+    [] -> empty
+    token:rest -> do
+      let codeTokens = [t | t <- token:rest, Tokens.tokenKind t `notElem` [Tokens.TriviaToken,Tokens.CommentToken]]
+          closers = [Tokens.tokenOffset lastToken + length (Tokens.tokenText lastToken) |
+            Tokens.tokenText token == "end", kind <- blockKinds,
+            let phrase = "end":words (blockLabel kind),
+            take (length phrase) (map Tokens.tokenText codeTokens) == phrase,
+            lastToken <- take 1 (drop (length phrase-1) codeTokens),
+            let width = Tokens.tokenOffset lastToken + length (Tokens.tokenText lastToken),
+            '\n' `notElem` take width input, '\r' `notElem` take width input]
+      void (takeP Nothing (maximum (length (Tokens.tokenText token):closers)))
 
 sourceLocation :: P Location
 sourceLocation = do
@@ -261,7 +464,7 @@ str = sourceNode "text" (const Nothing) $ lexeme $ do
 parens :: P a -> P a
 parens = between (symbol "(") (symbol ")")
 typeP :: P Type
-typeP = sourceNode "type-expression" (Just . prettyType) $ do
+typeP = recovering (Named "Unit") $ sourceNode "type-expression" (Just . prettyType) $ do
   a <- typeAtom
   -- A / A' is a flow parameter: the call takes the state at A to A'.
   a' <- option a (do void (symbol "/"); b <- typeAtom; pure (Application flowTypeName [a, b]))
@@ -316,7 +519,7 @@ anonymousRecordTypeP :: P Type
 anonymousRecordTypeP = do
 
   try (keyword "record" <* lookAhead (symbol "{"))
-  fields <- recordTypeBody (many field)
+  fields <- recordTypeBody (recoverMany (void (symbol "}")) recordFieldStart field)
   unless (length fields == length (nub (map recordFieldLabel fields))) (fail "duplicate record field")
   pure (Record fields)
   where
@@ -733,7 +936,7 @@ canonicalRecordP = sourceNode "record-declaration" (const Nothing) $ do
     name <- ident
     parameters <- many typeParameter
     keyword "is"; keyword "a"; keyword "record"
-    fields <- recordTypeBody (many field)
+    fields <- recordTypeBody (recoverMany (void (symbol "}")) recordFieldStart field)
     unless (length (map fst fields) == length (nub (map fst fields))) (fail "duplicate record field")
     closeP "type"
     pure (name, parameters, fields)
@@ -1039,7 +1242,7 @@ indexExpr = located $ makeExprParser indexAtom
 -- | `e1; e2` sequences at the lowest precedence, and `~s := e` updates a
 -- definition's flow parameter just above it.
 expr :: P Expr
-expr = do
+expr = recovering (BoolLit False) $ do
 
   first <- statement
   option first (located (sequenced first <$> (symbol ";" *> expr)))
@@ -1624,7 +1827,7 @@ constructorLiteral = do
   ConstructorLiteral name <$> count arity literalP
 
 literalP :: P Literal
-literalP = sourceNode "literal" literalName $ setLiteral <|> namedRecordLiteral <|> recordLiteral <|> (ScalarLiteral (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> constructorLiteral
+literalP = recovering (ScalarLiteral (SAbsent "Unit")) $ sourceNode "literal" literalName $ setLiteral <|> namedRecordLiteral <|> recordLiteral <|> (ScalarLiteral (SAbsent "Unit") <$ try (symbol "(" *> symbol ")")) <|> constructorLiteral
   <|> (ListLiteral <$> between (symbol "[") (symbol "]") (literalP `sepBy` symbol ","))
   <|> try (do e <- scalarP; case e of ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
   <|> try (parens (do
@@ -1723,7 +1926,9 @@ canonicalLawBodyP = do
   scalars <- many scalarMetadataP
   unless (length (map fst scalars) == length (nub (map fst scalars)))
     (fail "law scalar metadata entries are singletons")
-  sections <- many (DefinitionSection <$> block "definition" defP
+  sections <- recoverMany (keyword "end" *> keyword "law")
+    (choice [keyword word | word <- ["definition","description","rationale","example","expect","references"]])
+    (DefinitionSection <$> block "definition" defP
     <|> DescriptionSection <$> block "description" str
     <|> RationaleSection <$> block "rationale" str
     <|> ExamplesSection . pure <$> exampleP
@@ -1849,7 +2054,8 @@ tableP = sourceNode "table" (const Nothing) $ blockP "table" $ do
   keyword "table"
   columns <- parens (sourceNode "table-column" Just ident `sepBy1` symbol ",")
   sectionStartP
-  rows <- some $ withSpan $ sourceNode "table-row" (const Nothing) $ do
+  rows <- recoverSome (keyword "end" *> keyword "table") (keyword "row") $
+    withSpan $ sourceNode "table-row" (const Nothing) $ do
     keyword "row"
     literalP `sepBy1` symbol ","
   let checks = leading
@@ -2425,7 +2631,7 @@ sourcePackageTargets _ source = either (Left . pure . parseDiagnostic [] source)
 unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow], [ModelDeclaration], ([Protocol], [Scenario]))
 unitP = blockP "unit" $ do
   (n, imports) <- preambleP
-  members' <- many (sourceNodeBy memberSyntax $ (either FamilyMember DataMember <$> declarationP)
+  members' <- recoverMany (keyword "end" *> keyword "unit") memberStart (sourceNodeBy memberSyntax $ (either FamilyMember DataMember <$> declarationP)
     <|> (WrapperMember <$> wrapperP)
     <|> (WorkflowMember <$> workflowP)
     <|> (ProtocolMember <$> (try (lookAhead (keyword "protocol" *> ident >>= upper)) *> protocolP))
@@ -2530,13 +2736,19 @@ parseSourcesSyntaxWithBuiltins :: [SourceOriginMap] -> [String] -> [(String,Stri
 parseSourcesSyntaxWithBuiltins origins collections builtins versioned sources =
   snd <$> parseSourcesWithInventoryMode True origins True True collections builtins versioned sources
 
-parseSourcesWithInventory = parseSourcesWithInventoryMode False
+parseSourcesWithInventory origins capture canonical collections builtins versioned sources =
+  case parseSourcesWithInventoryMode False origins capture canonical collections builtins versioned sources of
+    Left errors | any (\d -> code d == "parse" || take 6 (code d) == "block-") errors ->
+      case parseSourcesWithInventoryMode True origins False canonical collections builtins versioned sources of
+        Left syntaxErrors -> Left syntaxErrors
+        Right _ -> Left errors
+    result -> result
 
 parseSourcesWithInventoryMode :: Bool -> [SourceOriginMap] -> Bool -> Bool -> [String]
   -> [(String,String,[String],String -> Bool)] -> [Source] -> [Source]
   -> Either [Diagnostic] ([(Unit,[Import])],[SourceSyntax])
 parseSourcesWithInventoryMode syntaxOnly origins capture canonical collections builtins versioned userSources
- | syntaxOnly = (,) [] <$> mapM rawSyntax userSources
+ | syntaxOnly = (,) [] <$> collectParsed (map rawSyntax userSources)
  | otherwise = do
   forM_ harnessSources $ \(Source path _, header) -> case header of
     Left message -> Left [Diagnostic "parse" message Nothing]
@@ -2598,8 +2810,7 @@ parseSourcesWithInventoryMode syntaxOnly origins capture canonical collections b
           environment = profile source (literalHeaders (Just (sourceCoordinatesFor origins source)) text
             (M.union (headers text) context))
           initial = ParseContext (Just []) (Just (sourceCoordinatesFor origins source)) False []
-          run parser = either (\e -> Left [parseDiagnostic origins source e]) Right
-            (runReader (MP.runParserT (runStateT parser initial) p text) environment)
+          run parser = runDiagnosticParser origins source environment parser initial
       in case partitionHarnessSources [source] of
         ([],_) -> do
           ((unit,_,_,_,_,_,_),nodes) <- run unitP
@@ -2685,14 +2896,14 @@ parseWithProfiles profile extra importedFamilies harnessFiles source =
 
 parseWithProfilesInventory :: [SourceOriginMap] -> Bool -> (Source -> M.Map String Header -> M.Map String Header) -> M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] (((Unit, [Import]), [IndexedFamily]),[SourceSyntax])
 parseWithProfilesInventory origins capture profile extra importedFamilies harnessFiles source@(Source p s) =
- case runReader (MP.runParserT (runStateT unitP (initialContext source)) p s) environment of
-  Left e -> Left [parseDiagnostic origins source e]
+ case runDiagnosticParser origins source environment unitP (initialContext source) of
+  Left errors -> Left errors
   Right ((parsed, imports, families, wrappers, workflows, models, (protocols, scenarios)),recorded) -> do
     let u0 = parsed { functionDefinitions =
           [d { functionSource = Just (unitName parsed,functionName d) } | d <- functionDefinitions parsed] }
     -- A harness file is read with the names of the unit it serves.
-    separate <- mapM (\harness@(Source hp hs) -> either (\e -> Left [parseDiagnostic origins harness e]) Right
-      (runReader (MP.runParserT (runStateT harnessFileP (initialContext harness)) hp hs) (profile harness environment))) harnessFiles
+    separate <- collectParsed [runDiagnosticParser origins harness (profile harness environment)
+      harnessFileP (initialContext harness) | harness <- harnessFiles]
     u <- case (unitHarness u0, map fst separate) of
       (_, []) -> pure u0
       (Nothing, [h]) -> pure u0 { unitHarness = Just h }
@@ -2724,7 +2935,11 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
     environment = literalHeaders (Just (sourceCoordinatesFor origins source)) s (M.union (headersWithProfile True s) extra)
 
 parseDiagnostic :: [SourceOriginMap] -> Source -> ParseErrorBundle String BlockError -> Diagnostic
-parseDiagnostic origins source bundle =
+parseDiagnostic origins source = parseDiagnosticUsing (sourceCoordinatesFor origins source) origins source
+
+parseDiagnosticUsing :: SourceOriginMap -> [SourceOriginMap] -> Source
+  -> ParseErrorBundle String BlockError -> Diagnostic
+parseDiagnosticUsing coordinates origins source bundle =
   let err=NE.head (bundleErrors bundle)
       offset=errorOffset err
       (_,state)=reachOffset offset (bundlePosState bundle)
@@ -2735,7 +2950,7 @@ parseDiagnostic origins source bundle =
         _ -> []
   in case blockError of
     BlockError code message range opener:_ -> BlockDiagnostic code message (Just (spanStart range)) range opener
-    [] -> case originalLocation (sourceCoordinatesFor origins source) offset of
+    [] -> case originalLocation coordinates offset of
      Just location -> Diagnostic "parse"
       (case sourceOriginFor origins source of
         Nothing | location==raw -> errorBundlePretty bundle
@@ -2847,7 +3062,7 @@ harnessP = sourceNode "harness" (Just . harnessName) $ blockP "harness" $ do
     keyword "for"
     served <- unitNameP
     keyword "is"
-    items <- many harnessItemP
+    items <- recoverMany (keyword "end" *> keyword "harness") harnessItemStart harnessItemP
     closeP "harness"
     pure (name, served, items)
   pure (HarnessDeclaration name served items range)
@@ -2915,6 +3130,11 @@ harnessItemP = forbidden *> choice
 
 harnessSettingSpanP :: P (HarnessSetting, Span)
 harnessSettingSpanP = withSpan harnessSettingP
+
+harnessItemStart :: P ()
+harnessItemStart = choice [keyword word | word <-
+  ["strategy","for","share","benchmark","order","parallel","witness","use","test",
+   "cover","classify","label","target","tags","skip","known","timeout","repeat","retry","prove"]]
 
 harnessSettingP :: P HarnessSetting
 harnessSettingP = choice
@@ -3051,10 +3271,11 @@ regionExpr stops = sourceNode "line-expression" (const Nothing) $ do
       region = cut 0 input
   when (all (`elem` (" \t\r" :: String)) region) (fail "expected an expression")
   inventory <- get
-  (after, result) <- lift (lift (runParserT' (runStateT (expr <* eof) inventory) st { stateInput = region }))
+  (after, result) <- lift (lift (runParserT' (runStateT (expr <* eof) inventory)
+    st { stateInput = region, stateParseErrors = [] }))
   case result of
     Left bundle -> case bundleErrors bundle of
-      e NE.:| _ -> parseError e
+      e NE.:| rest -> mapM_ registerParseError (e:rest) *> parseError e
     Right (e,recorded) -> do
       put recorded
       setParserState st { stateInput = drop (length region) input, stateOffset = stateOffset after }

@@ -8,6 +8,7 @@ import qualified WitnessSpec
 import qualified QuantifierDomainSpec
 import qualified SearchSpec
 import qualified NamedBlocksSpec
+import qualified ParserDiagnosticsSpec
 import qualified CanonicalSpec
 import qualified CaseFoldSpec
 import qualified ExactWideningSpec
@@ -122,6 +123,7 @@ main = hspec $ do
   ArtifactTargetSpec.test_artifactTargets
   PrologTargetSpec.test_prologEmitter
   NamedBlocksSpec.test_namedBlocks
+  ParserDiagnosticsSpec.test_parserDiagnostics
   MappingSpec.test_typedMappings
   MatchWarningSpec.test_matchWarnings
   CanonicalPredicateFactsSpec.test_canonicalPredicateFacts

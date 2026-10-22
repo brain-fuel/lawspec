@@ -15,7 +15,10 @@ canonical validation by default. Set `compile: false` on a formatting request
 for parser-only formatting; this returns `formattedSources` and diagnostics,
 without typed declarations or verification evidence. The CLI uses this mode
 for `fmt` and selects checked formatting with `fmt --compile`. Existing SDK
-format callers retain checked formatting. Every typed view and editor service
+format callers retain checked formatting. Parse failures return independent
+recoverable errors together in `diagnostics`, across all supplied sources, and
+omit `formattedSources` and typed/evidence fields. Error recovery never admits a
+partial program. Every typed view and editor service
 uses the same typed Core.
 Typed laws expose `inputDomain: "universal"` for obligations. Complete verification of an empty universal
 domain explicitly reports zero evaluated cases and no produced witnesses.

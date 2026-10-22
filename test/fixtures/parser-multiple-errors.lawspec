@@ -1,0 +1,13 @@
+unit chronology
+-- Nothing, MadeUp, row and end unit in comments are not errors.
+type TimePoint is a record{year :: Int32 month :: Maybe Int32 day :: Maybe Int32} end type
+law samples is
+ definition: true end definition
+ expect true = expected in table (from,expected):
+ row TimePoint record{year = -2,month = Nothing,day = Nothing},true
+ row TimePoint record{year = -2,month = MadeUp,day = Nothing},true
+ end table
+end law
+function bad (x :: Bool) -> Bool is ? end function
+function another (x :: Bool) -> Bool is @ end function
+end unit

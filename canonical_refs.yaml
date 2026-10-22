@@ -1,3 +1,7 @@
+megaparsec-error-recovery:
+  kind: article
+  title: "Megaparsec: withRecovery, registerParseError and StateT rollback"
+  locator: https://hackage-content-origin.haskell.org/package/megaparsec-9.7.1/docs/Text-Megaparsec.html
 python-asyncio-to-thread:
   kind: article
   title: "Python 3.13: Running blocking work in threads"

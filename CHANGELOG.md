@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-10-22
+
+### Fixed
+
+- Parsing now reports independent errors together across fields, collection
+  items, table rows, law sections, declarations, harness settings and files.
+  This includes repeated bad constructors and general syntax errors. Recovery
+  preserves source locations and block opener links, keeps quoted tokens
+  opaque, and never admits a partial program or writes a formatting result.
+
 ## [0.29.0] - 2026-10-22
 
 ### Changed
@@ -1926,7 +1936,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.29.1...HEAD
+[0.29.1]: https://github.com/brain-fuel/lawspec/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/brain-fuel/lawspec/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/brain-fuel/lawspec/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/brain-fuel/lawspec/compare/v0.26.0...v0.27.0

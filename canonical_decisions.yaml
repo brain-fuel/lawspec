@@ -839,3 +839,14 @@ DEC-source-format-modes-and-layout:
     Use Haskell-like two-space block and continuation indentation, with an 80-column target. Record types have separate opening and closing brace lines and one field per line, two spaces inside each pair of braces, including short and nested records. Existing supported annotation wording and literal/comment contents are preserved; optional record-type commas are removed. Record values, patterns and tuples retain their separators. This records the owner's 2026-10-22 direction; three-space alignment may be used when required by an existing syntactic construct, rather than imposing a uniform three-space block indent.
   opened: 0.29.0
   decided: 0.29.0
+
+DEC-parser-error-recovery:
+  status: decided
+  question: How should parsing report independent failures without accepting a partial specification?
+  answer: |
+    Use Megaparsec withRecovery and registerParseError, following its documented delayed-error and StateT rollback semantics. Run the original authoritative grammar first. Only after failure, rerun that grammar with recovery at values, types, fields, rows, law sections, declarations and harness items. Temporary scalar/type/expression terms exist only in that diagnostic pass. Its result can never reach elaboration, source formatting or evidence, even if a recovery pass succeeds. The original failure is always retained. Valid-source parsing and mandatory definition validation retain their admission rules independently of optional law verification.
+
+    Collect independent parse failures across supplied sources for fmt and checked compiler requests. Preserve original coordinates, including package namespace insertions; keep opener links for block errors. Use the existing lossless lexer and block catalogue to synchronize without treating comments, quoted text, inner commas or named closers as sibling declarations. Suppress induced unclosed outer blocks rather than presenting them as new independent failures. Corrupt quotation or block structure can make later syntax unrecoverable; this is diagnostic recovery, not an exhaustive analysis or a migration tool. No source is written if parsing fails anywhere in a formatting request.
+  opened: 0.29.1
+  decided: 0.29.1
+  refs: [megaparsec-error-recovery]

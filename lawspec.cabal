@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.29.0
+version:        0.29.1
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -363,6 +363,7 @@ extra-source-files:
     test/fixtures/native_shapes.lawspec
     test/fixtures/numeric-proofs.lawspec
     test/fixtures/order-workflow.lawspec
+    test/fixtures/parser-multiple-errors.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
@@ -1013,6 +1014,7 @@ test-suite lawspec-test
       NativeBindingSpec
       NativeRequestSpec
       OperationResultSpec
+      ParserDiagnosticsSpec
       PayloadProofSpec
       PayloadSpec
       PreludeResolutionSpec

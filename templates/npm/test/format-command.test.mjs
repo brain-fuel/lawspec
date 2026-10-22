@@ -136,3 +136,59 @@ test('SDK formatting retains its checked default and parsing alone emits no veri
   const malformed = await compiler.format({...input(sources),compile:'false'});
   assert.ok(malformed.diagnostics.some(d => d.code === 'request'));
 });
+
+
+test('fmt reports independent parse errors together across fields, rows, declarations and files without writing', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-fmt-errors-'));
+  try {
+    const content = await readFile(new URL('../../test/fixtures/parser-multiple-errors.lawspec',import.meta.url),'utf8');
+    const second = 'unit second\nfunction bad (x :: Bool) -> Bool is ? end function\nend unit\n';
+    await writeFile(path.join(root,'first.lawspec'),content);
+    await writeFile(path.join(root,'second.lawspec'),second);
+    await writeFile(path.join(root,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',
+      sources:['first.lawspec','second.lawspec']}));
+    for(const flags of [[],['--check'],['--compile'],['--compile','--check']]){
+      const result = run(root,['fmt',...flags,'--json']);
+      assert.equal(result.status,1,text(result));
+      const errors = JSON.parse(result.stdout).diagnostics;
+      assert.equal(errors.length,7,JSON.stringify(errors));
+      assert.deepEqual(errors.map(d=>[d.at.file,d.at.line]),[
+        ['first.lawspec',7],['first.lawspec',7],['first.lawspec',8],['first.lawspec',8],
+        ['first.lawspec',11],['first.lawspec',12],['second.lawspec',2]]);
+      assert.equal(errors.filter(d=>/unknown literal constructor/.test(d.message)).length,4);
+      assert.equal(await readFile(path.join(root,'first.lawspec'),'utf8'),content);
+      assert.equal(await readFile(path.join(root,'second.lawspec'),'utf8'),second);
+    }
+    const human = run(root,['fmt']);
+    assert.equal(human.status,1);
+    assert.match(text(human),/MadeUp/);
+    assert.match(text(human),/second.lawspec:2:/);
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test('parsing reports hundreds of independent errors without a first-error limit', async () => {
+  const compiler = await createCompiler();
+  const count = 400;
+  const content = 'unit many\nlaw samples is definition: true end definition\n'
+    + 'expect true = expected in table (value,expected):\n'
+    + Array.from({length:count},()=> 'row MadeUp,true\n').join('')
+    + 'end table end law end unit\n';
+  const result = await compiler.format({...input([{path:'many.lawspec',content}]),compile:false});
+  assert.equal(result.diagnostics.length,count);
+  assert.equal(result.diagnostics[0].at.line,4);
+  assert.equal(result.diagnostics.at(-1).at.line,count+3);
+  assert.equal(result.formattedSources,undefined);
+});
+
+test('a missing branch after Unicode text does not consume its valid closer or create a false second error', async () => {
+  const compiler = await createCompiler();
+  const prefix = 'unit wide function broken (flag :: Bool) -> Text is if flag then "😀Ａé" else ';
+  const sources = [{path:'wide-error.lawspec',content:prefix+'end if end function'}];
+  for(const [method,compile] of [['format',false],['format',true],['check',true]]){
+    const result = await compiler[method]({...input(sources),compile});
+    assert.equal(result.diagnostics.length,1,JSON.stringify(result.diagnostics));
+    assert.equal(result.diagnostics[0].code,'parse');
+    assert.deepEqual(result.diagnostics[0].at,{file:'wide-error.lawspec',line:1,column:[...prefix].length+4});
+    assert.equal(result.formattedSources,undefined);
+  }
+});

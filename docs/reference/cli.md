@@ -62,7 +62,8 @@ Warnings use severity 2 and UTF-16 source ranges; compiler errors use severity 1
 `fmt` formats the supplied paths, or the configured project sources when paths
 are omitted. By default it parses canonical syntax without compiling or
 validating definitions and does not require package resolution, so work in
-progress can be formatted. Syntax errors prevent all writes. Add `--compile` to compile before
+progress can be formatted. Independent syntax errors are reported together
+across files; syntax errors prevent all writes. Add `--compile` to compile before
 and after formatting, including mandatory definition validation; a compile
 error also prevents all writes. No optional law checks are selected.
 

@@ -17,9 +17,13 @@ continuation indentation and an 80-column target. It accepts unfinished typing
 and imports. `--compile` additionally checks definitions before and after
 formatting; mandatory definition validation remains part of that compiler check.
 `--check` reports files that need formatting in either mode without writing.
-Syntax errors prevent every write. Parsing alone produces no verification evidence.
-The CLI and
-editor share the compiler's parsed block and expression inventory, including
+Independent syntax errors are reported together across the input files, with
+locations for each occurrence. Recovery resumes at grammar boundaries such as
+fields, collection items, table rows, law sections and declarations. Damaged
+quoting or missing delimiters can limit how much of the remaining input can be
+parsed reliably. Syntax errors prevent every write. Recovery never supplies an
+accepted program or verification evidence.
+The CLI and editor share the compiler's parsed block and expression inventory, including
 continuation indentation for nested applications and expectations.
 
 Formatting preserves comments, literal values, phrase spelling, section order

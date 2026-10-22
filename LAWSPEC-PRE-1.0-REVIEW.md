@@ -5425,7 +5425,12 @@ SDK and editor formatting retain their checked default for compatibility.
 The owner's 2026-10-22 layout direction uses Haskell-like two-space indentation,
 an 80-column target, and separate brace lines for record types, including short
 records. Fields occupy separate lines two spaces inside their braces; nested
-records add two spaces per level. The formatter preserves literal contents,
+records add two spaces per level. Independent recoverable parse failures are
+reported together across source files, without admitting recovered terms or
+writing any file. This applies generally to grammar failures, including repeated
+bad constructors, malformed types, expressions, sections and block closers.
+Quoted tokens remain opaque while finding resumption points; severe structural
+damage can limit recovery. The formatter preserves literal contents,
 comments and supported annotation wording. Parser-owned record-type separators
 may be omitted; record-value, tuple and pattern separators retain their roles.
 

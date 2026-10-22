@@ -69,7 +69,11 @@ A closer names its construct, independently of its declared name. Its complete
 phrase must occupy one physical line, with spaces or tabs between words. A
 trailing comment is allowed. Bare `end`, missing labels, unknown labels,
 mismatched labels and closers without an opener are errors. Diagnostics identify
-the offending location and, where available, the opener.
+the offending location and, where available, the opener. The parser collects
+independent errors at recoverable boundaries instead of stopping at the first
+one. Each diagnostic retains its source location; malformed quotation or block
+structure can prevent reliable recovery of later syntax. Recovery is for
+reporting only and never admits a partial specification.
 
 Parentheses, record braces, list brackets and set braces remain explicit
 punctuation delimiters. Case arms, conditional arms and parallel branches are

@@ -452,6 +452,30 @@ test('LSP follows documentary links to original source with UTF-16 ranges and no
   assert.equal(responses.find(r => r.id === 4).result.length, 2);
 });
 
+test('WASM-backed LSP publishes all independent parse errors and offers no edits for invalid source', async () => {
+  const {readFile}=await import('node:fs/promises');
+  const {createCompiler}=await import('../api.mjs');
+  const compiler=await createCompiler();
+  const content=await readFile(new URL('../../test/fixtures/parser-multiple-errors.lawspec',import.meta.url),'utf8');
+  const input=new PassThrough(), output=new PassThrough(), chunks=[];
+  output.on('data',data=>chunks.push(data));
+  const running=serveLanguage(input,output,compiler);
+  const uri='file:///unlikely-lawspec-recovery-project/chronology.lawspec';
+  input.end(Buffer.concat([
+    frame({id:1,method:'initialize',params:{rootUri:'file:///unlikely-lawspec-recovery-project'}}),
+    frame({method:'textDocument/didOpen',params:{textDocument:{uri,version:1,text:content}}}),
+    frame({id:2,method:'textDocument/formatting',params:{textDocument:{uri}}}),
+    frame({id:3,method:'shutdown'}),
+  ]));
+  await running;
+  const responses=messages(Buffer.concat(chunks));
+  const errors=responses.find(r=>r.method==='textDocument/publishDiagnostics').params.diagnostics;
+  assert.equal(errors.length,6);
+  assert.deepEqual(errors.map(d=>d.range.start.line),[6,6,7,7,10,11]);
+  assert.ok(errors.every(d=>d.severity===1));
+  assert.deepEqual(responses.find(r=>r.id===2).result,[]);
+});
+
 test('WASM-backed LSP follows unsaved documentary function and law links', async () => {
   const uri = 'file:///unlikely-lawspec-test-project/actual-references.lawspec';
   const text = `unit actual.references
