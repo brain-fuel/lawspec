@@ -55,7 +55,7 @@ export function put(value0: unknown, value1: number, value2: number): void {
 export function get(value0: unknown, value1: number): data.Maybe<number> {
   const store = value0 as Store;
   if (!store.open) throw new Error('the store is closed');
-  return store.items.has(value1) ? new data.Just(store.items.get(value1)!) : new data.Nothing<number>();
+  return store.items.has(value1) ? new data.Present(store.items.get(value1)!) : new data.Absent<number>();
 }
 
 // LawSpec argument 0: example.resources::type::Store
@@ -81,7 +81,7 @@ export function writeNote(value0: string, value1: number): void {
 // LawSpec result: Maybe (Int32)
 export function readNote(value0: string): data.Maybe<number> {
   const file = path.join(value0, 'note.txt');
-  return fs.existsSync(file) ? new data.Just(Number(fs.readFileSync(file, 'utf8'))) : new data.Nothing<number>();
+  return fs.existsSync(file) ? new data.Present(Number(fs.readFileSync(file, 'utf8'))) : new data.Absent<number>();
 }
 
 // LawSpec argument 0: Int32
@@ -106,7 +106,7 @@ export function setGreeting(value0: number): void {
 // LawSpec result: Maybe (Int32)
 export function greeting(value0: unknown): data.Maybe<number> {
   const value = process.env.LAWSPEC_EXAMPLE_GREETING;
-  return value === undefined ? new data.Nothing<number>() : new data.Just(Number(value));
+  return value === undefined ? new data.Absent<number>() : new data.Present(Number(value));
 }
 
 // A pool that is costly to open: this process may open only one, so the

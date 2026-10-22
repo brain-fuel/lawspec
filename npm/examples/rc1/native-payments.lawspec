@@ -94,14 +94,14 @@ law "|archives preserve order duplicates and absence| is
 
   example "|missing is different from a declined payment|:
     payments = [
-    Nothing, Just (Declined ""),
-    Just (Paid (Money record{amount = 0.1, currency = USD})),
-    Just (Paid (Money record{amount = 0.1, currency = USD}))
+    Absent, Present (Declined ""),
+    Present (Paid (Money record{amount = 0.1, currency = USD})),
+    Present (Paid (Money record{amount = 0.1, currency = USD}))
     ]
     expect archive payments = [
-    Nothing, Just (Declined ""),
-    Just (Paid (Money record{amount = 0.1, currency = USD})),
-    Just (Paid (Money record{amount = 0.1, currency = USD}))
+    Absent, Present (Declined ""),
+    Present (Paid (Money record{amount = 0.1, currency = USD})),
+    Present (Paid (Money record{amount = 0.1, currency = USD}))
     ]
   end example
 end law

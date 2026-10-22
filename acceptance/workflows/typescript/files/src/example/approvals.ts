@@ -6,9 +6,11 @@ import * as checks from './workflows.js';
 
 export async function approvedQuickly(value0: bigint): Promise<boolean> {
   const runtime = new ls.WorkflowRuntime(new ls.RealClock());
+  // Approves order value0: whether two of order -1's slow checks that started during this call overlapped in time. Run one after the other they cannot overlap, however loaded the machine is; checks other tests run at the same time never hide this call's own overlap.
   const started = performance.now();
   await workflows.approve(runtime.context(), new data.Order(value0));
-  return performance.now() - started < 550;
+  const ran = checks.spans.filter(([start]) => start >= started);
+  return value0 !== -1n || ran.some(([a, b], i) => ran.slice(i + 1).some(([c, d]) => a < d && c < b));
 }
 
 export async function approvalErrors(value0: bigint): Promise<string[]> {

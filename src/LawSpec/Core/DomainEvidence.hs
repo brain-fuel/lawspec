@@ -196,12 +196,12 @@ inputDomainEvidence registry bits invoke definitions property
     evaluateCandidate prefix q candidate = do
       let ty=binderType (quantifiedBinder q)
           optional=Constructor "Maybe" [TypeArgument ty]
-          accepted value=Expr optional (Construct (Id "Maybe::Just") [value]) origin
-          rejected=Expr optional (Construct (Id "Maybe::Nothing") []) origin
+          accepted value=Expr optional (Construct (Id "Maybe::Present") [value]) origin
+          rejected=Expr optional (Construct (Id "Maybe::Absent") []) origin
       value <- evaluateValue registry bits invoke prefix (applyCandidate candidate accepted rejected)
       case value of
-        DataValue _ (Id "Maybe::Just") [witness] -> pure (Just witness)
-        DataValue _ (Id "Maybe::Nothing") [] -> pure Nothing
+        DataValue _ (Id "Maybe::Present") [witness] -> pure (Just witness)
+        DataValue _ (Id "Maybe::Absent") [] -> pure Nothing
         _ -> Left "malformed input-domain candidate result"
     valueTerm value = case value of
       ScalarValue scalar -> pure (Expr (valueType value) (Constant scalar) origin)

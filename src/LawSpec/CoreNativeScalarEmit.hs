@@ -1055,7 +1055,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         "return " ++ render (C.caseBody branch) ++ "; " | branch <- branches] ++
       "default: panic(\"invalid checked match constructor\") } }()"
     goMatch scrutinee branches | Applied "Maybe" _ <- expressionType scrutinee =
-      goSumMatch "matchMaybe" ["Maybe::Nothing","Maybe::Just"] scrutinee branches
+      goSumMatch "matchMaybe" ["Maybe::Absent","Maybe::Present"] scrutinee branches
     goMatch scrutinee branches | C.Constructor "Either" _ <- expressionType scrutinee =
       goSumMatch "matchEither" ["Either::Left","Either::Right"] scrutinee branches
     goMatch scrutinee branches = case (find ((== C.Id "List::Nil") . C.caseConstructor) branches,
@@ -1086,7 +1086,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     jvmMatch scrutinee branches =
       let (helperName,tags) = case expressionType scrutinee of
             Applied "List" _ -> ("matchList", ["List::Nil","List::Cons"])
-            Applied "Maybe" _ -> ("matchMaybe", ["Maybe::Nothing","Maybe::Just"])
+            Applied "Maybe" _ -> ("matchMaybe", ["Maybe::Absent","Maybe::Present"])
             C.Constructor "Either" _ -> ("matchEither", ["Either::Left","Either::Right"])
             _ -> error "unsupported JVM match"
           branch tag = case find ((== C.Id tag) . C.caseConstructor) branches of
@@ -1106,8 +1106,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       ("List::Cons",[headBinder,tailBinder]) ->
         "SList (" ++ localName (C.binderId headBinder) ++ ":_lawspecTail) -> let " ++
         localName (C.binderId tailBinder) ++ " = SList _lawspecTail in " ++ render (C.caseBody branch)
-      ("Maybe::Nothing",[]) -> "SData \"Maybe::Nothing\" [] -> " ++ render (C.caseBody branch)
-      (tag,[binder]) | tag `elem` ["Maybe::Just","Either::Left","Either::Right"] ->
+      ("Maybe::Absent",[]) -> "SData \"Maybe::Absent\" [] -> " ++ render (C.caseBody branch)
+      (tag,[binder]) | tag `elem` ["Maybe::Present","Either::Left","Either::Right"] ->
         "SData " ++ q tag ++ " [" ++ localName (C.binderId binder) ++ "] -> " ++ render (C.caseBody branch)
       (tag,binders) -> "SData " ++ q tag ++ " [" ++ intercalate ", " (map (localName . C.binderId) binders) ++
         "] -> " ++ render (C.caseBody branch)

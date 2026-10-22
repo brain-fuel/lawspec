@@ -430,13 +430,16 @@ export type DischargeStatus =
     'known-failing' |
     'flaky' |
     'skipped' |
+    'pending' |
     'proved' |
     'exhaustively-checked' |
     'property-tested' |
     'measured' |
     'runtime-checked' |
     'default-handler' |
-    'assumed';
+    'assumed' |
+    'exempted' |
+    'refuted';
 
 export interface ObligationEvidence {
   owner: string;
@@ -445,6 +448,7 @@ export interface ObligationEvidence {
   status: DischargeStatus;
   reason: string;
   claim: Expr | null;
+  exemption?: Exemption;
   environment?: string;
   environmentRun?: AttestedRun;
   against?: AttestedDependency[];
@@ -537,7 +541,83 @@ export interface CheckRequest {
   packages?: Package[];
   cacheDirectory?: string;
   attestation?: unknown;
+  proofCounterexamples?: ProofCounterexample[];
+  analysisResults?: AnalysisResult[];
+  projectVersion?: string;
+  now?: string;
+  modelResults?: ModelResult[];
 }
+
+export interface ModelResult {
+  fingerprint: string;
+  outcome: string;
+  values: string;
+  invariant: string;
+}
+
+export interface ModelTaskRow {
+  owner: string;
+  declaration: string;
+  tasks: ModelTask[];
+}
+
+export interface ModelTask {
+  fingerprint: string;
+  kind: string;
+  script: string;
+  inputs: string[];
+}
+
+export interface Exemption {
+  reason: string;
+  until: string | null;
+  expired: boolean;
+  law: string | null;
+}
+
+export interface AnalysisResult {
+  fingerprint: string;
+  outcome: string;
+  values: string;
+}
+
+export type AnalysisStage = 'completeness' | 'overlap' | 'conflict' | 'vacuity';
+
+export type AnalysisTaskRow =
+    {
+      owner: string;
+      declaration: string;
+      stage: AnalysisStage;
+      status: 'ready';
+      tasks: AnalysisTask[];
+    } |
+    {
+      owner: string;
+      declaration: string;
+      stage: AnalysisStage;
+      status: 'unsupported';
+      reason: string;
+    };
+
+export interface AnalysisTask {
+  fingerprint: string;
+  encoding: 'lawspec-smtlib-v2';
+  script: string;
+  inputs: string[];
+}
+
+export interface AnalysisCheck {
+  owner: string;
+  declaration: string;
+  stage: AnalysisStage;
+  fingerprint: string;
+  status: AnalysisCheckStatus;
+  reason: string;
+  check: AnalysisCheckStatus;
+}
+
+export type AnalysisCheckStatus =
+    'proved' | 'refuted' | 'exempted' | 'incomplete';
 
 export interface GenerationRequest extends CheckRequest {
   target: Target;
@@ -548,7 +628,7 @@ export interface GenerationRequest extends CheckRequest {
 
 export type ProofTask =
     {
-      encoding: 'lawspec-smtlib-v1';
+      encoding: 'lawspec-smtlib-v1' | 'lawspec-smtlib-v2';
       owner: string;
       declaration: string;
       at: Location;
@@ -558,9 +638,14 @@ export type ProofTask =
       script: string;
       taskFingerprint: string;
       trust: string;
+      counterexample?: CounterexampleQuery;
+      counterexampleUnsupported?: string;
+      recursion?: Recursion;
+      alternative?: AlternativeTask;
+      induction?: InductionPlan;
     } |
     {
-      encoding: 'lawspec-smtlib-v1';
+      encoding: 'lawspec-smtlib-v1' | 'lawspec-smtlib-v2';
       owner: string;
       declaration: string;
       at: Location;
@@ -568,6 +653,66 @@ export type ProofTask =
       machineBits: 32 | 64;
       status: 'unsupported';
       reason: string;
+    };
+
+export interface AlternativeTask {
+  recursion: Recursion;
+  script: string;
+  taskFingerprint: string;
+}
+
+export type InductionPlan =
+    {
+      on: string;
+      asked: boolean;
+      using: string[];
+      status: 'ready';
+      cases: InductionCase[];
+    } |
+    {
+      on: string;
+      asked: boolean;
+      using: string[];
+      status: 'unsupported';
+      reason: string;
+    };
+
+export interface InductionCase {
+  case: string;
+  script: string;
+  recursion: Recursion;
+  taskFingerprint: string;
+  inputs: string[];
+  alternative?: AlternativeTask;
+}
+
+export type Recursion =
+    {encoding: 'guarded-axioms'; fuel: number;} | {encoding: 'define-fun-rec';};
+
+export type ProofCounterexample =
+    {
+      owner: string;
+      declaration: string;
+      taskFingerprint: string;
+      values: string;
+    };
+
+export type CounterexampleQuery =
+    {
+      encoding: 'lawspec-smtlib-v2';
+      script: string;
+      fingerprint: string;
+      inputs: {name: string; binder: string}[];
+    };
+
+export type CounterexampleCheck =
+    {
+      owner?: string;
+      declaration?: string;
+      taskFingerprint?: string;
+      status: 'refuted' | 'model-not-confirmed' | 'incomplete';
+      reason: string;
+      inputs?: {name: string; value: string}[];
     };
 
 export type NativeSeed = number | string;
@@ -729,6 +874,12 @@ export interface Result {
   formattedSources?: Source[];
   tests?: NativeTestEntry[];
   proofTasks?: ProofTask[];
+  analysisTasks?: AnalysisTaskRow[];
+  analysisEvidence?: ObligationEvidence[];
+  analysisChecks?: AnalysisCheck[];
+  modelTasks?: ModelTaskRow[];
+  modelEvidence?: ObligationEvidence[];
+  counterexampleChecks?: CounterexampleCheck[];
   evidence?: ObligationEvidence[];
   attestation?: AttestationView;
   packages?: PackageView[];

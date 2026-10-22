@@ -112,8 +112,8 @@ unify({Name, Ps}, {Name, As}, Known) when length(Ps) =:= length(As) ->
 unify(_, _, _) -> mismatch.
 
 builtin_constructors(<<"Maybe">>, [T]) ->
-    [#{tag => <<"Maybe::Nothing">>, fields => [], native_tag => nothing},
-     #{tag => <<"Maybe::Just">>, fields => [{<<"value">>, T}], native_tag => just}];
+    [#{tag => <<"Maybe::Absent">>, fields => [], native_tag => absent},
+     #{tag => <<"Maybe::Present">>, fields => [{<<"value">>, T}], native_tag => present}];
 builtin_constructors(<<"Either">>, [A, B]) ->
     [#{tag => <<"Either::Left">>, fields => [{<<"value">>, A}], native_tag => left},
      #{tag => <<"Either::Right">>, fields => [{<<"value">>, B}], native_tag => right}];
@@ -566,8 +566,8 @@ payload({predicate, P}, Value, _) ->
 payload({<<"List">>, [T]}, Values, S) -> lists:all(fun(V) -> payload(T, V, S) end, Values);
 payload({Name, [_]}, {ls_presence, Name, none}, _) -> true;
 payload({Name, [T]}, {ls_presence, Name, {some, V}}, S) -> payload(T, V, S);
-payload({<<"Maybe">>, [_]}, {ls_data, <<"Maybe::Nothing">>, []}, _) -> true;
-payload({<<"Maybe">>, [T]}, {ls_data, <<"Maybe::Just">>, [V]}, S) -> payload(T, V, S);
+payload({<<"Maybe">>, [_]}, {ls_data, <<"Maybe::Absent">>, []}, _) -> true;
+payload({<<"Maybe">>, [T]}, {ls_data, <<"Maybe::Present">>, [V]}, S) -> payload(T, V, S);
 payload({<<"Either">>, [T, _]}, {ls_data, <<"Either::Left">>, [V]}, S) -> payload(T, V, S);
 payload({<<"Either">>, [_, T]}, {ls_data, <<"Either::Right">>, [V]}, S) -> payload(T, V, S);
 payload({Name, Args}, {ls_data, Tag, Values}, #{definitions := Ds} = S) ->

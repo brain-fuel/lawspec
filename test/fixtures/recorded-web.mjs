@@ -34,7 +34,7 @@ try {
     new Definition('Pair', 2, [new Constructor('Pair::Pair', [new Field('a', new Parameter(0)), new Field('b', new Parameter(1))], class Pair {}, [forbidden])]),
     new Definition('Box', 0, [new Constructor('Box::Box', [new Field('value', new Parameter(0)), new Field('witness', new Named('Text'))], class Box {}, [forbidden], null, [], [], 1, [0])]),
     new Definition('Fixed', 1, [new Constructor('Fixed::Bytes', [new Field('value', new Parameter(0))], class Fixed {}, [forbidden], null, [], [[0, new Named('Bytes')]])]),
-  ], ['Bytes', 'Char', 'Text', 'Symbol'], Object.fromEntries(['nothing', 'just', 'left', 'right', 'presence'].map(name => [name, class {}])));
+  ], ['Bytes', 'Char', 'Text', 'Symbol'], Object.fromEntries(['absent', 'present', 'left', 'right', 'presence'].map(name => [name, class {}])));
   const examples = [
     ['pair', new Named('Pair', [new Named('Bytes'), new Named('Char')]), new ls.DataValue('Pair::Pair', [new Uint8Array([0, 255]), '雪']), 'Pair(bytes([0, 255]), "雪")'],
     ['witness', new Named('Box'), new ls.DataValue('Box::Box', [new Uint8Array([255]), 'Bytes']), 'Box(bytes([255]), "Bytes")'],

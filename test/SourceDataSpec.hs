@@ -41,14 +41,14 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
     forM_ [("Box Positive","Box 1","Box 0"),
            ("Pair Positive Int8","Pair 1 -128","Pair 0 -128"),
            ("Choice Positive Bool","First 1","First 0"),
-           ("Nest Positive","Nest (Box (Just [1, 2]))","Nest (Box (Just [1, 0]))")] $
+           ("Nest Positive","Nest (Box (Present [1, 2]))","Nest (Box (Present [1, 0]))")] $
       \(ty,valid,invalid) -> do
         case check (source ty valid) >>= planTesting of
           Left diagnostics -> expectationFailure (show diagnostics)
           Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
         check (source ty invalid) `shouldSatisfy` isLeft
     check (source "Choice Positive Bool" "Second false") `shouldSatisfy` isRight
-    check (source "Nest Positive" "Nest (Box Nothing)") `shouldSatisfy` isRight
+    check (source "Nest Positive" "Nest (Box Absent)") `shouldSatisfy` isRight
   it "enumerates named refined payloads and preserves outer dependencies" $ do
     let declarations = "type Pair (a :: Type) (b :: Type) is a record{  first :: a second :: b} end type\n"
         finite = declarations ++ law "Pair (flag :: Bool where flag) Bool" "x = x"
@@ -161,8 +161,8 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
           "example \"|value| : x = " ++ input ++ " expect x = " ++ input ++ " end example end law"
     forM_ [("List (value :: Int8 where value > 0)","[1, 127]","[1, 0]"),
            ("List (List (value :: Int8 where value > 0))","[[], [1]]","[[0]]"),
-           ("List (Maybe (value :: Int8 where value > 0))","[Nothing, Just 1]","[Just 0]"),
-           ("Maybe (List (value :: Int8 where value > 0))","Just [1]","Just [0]")] $ \(ty,valid,invalid) -> do
+           ("List (Maybe (value :: Int8 where value > 0))","[Absent, Present 1]","[Present 0]"),
+           ("Maybe (List (value :: Int8 where value > 0))","Present [1]","Present [0]")] $ \(ty,valid,invalid) -> do
       case check (source ty valid) >>= planTesting of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
@@ -185,18 +185,18 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
   it "checks Maybe and Either payload refinements and emits all targets" $ do
     let source ty input = "law \"|payload| is definition: for all (x :: " ++ ty ++ ") => x = x end for all end definition " ++
           "example \"|value| : x = " ++ input ++ " expect x = " ++ input ++ " end example end law"
-    forM_ [("Maybe (value :: Int8 where value > 0)","Just 1","Just 0"),
+    forM_ [("Maybe (value :: Int8 where value > 0)","Present 1","Present 0"),
            ("Either (value :: Int8 where value > 0) Bool","Left 1","Left 0"),
            ("Either Bool (value :: Int8 where value > 0)","Right 1","Right 0"),
-           ("Maybe (Maybe (value :: Int8 where value > 0))","Just (Just 1)","Just (Just 0)")] $ \(ty,valid,invalid) -> do
+           ("Maybe (Maybe (value :: Int8 where value > 0))","Present (Present 1)","Present (Present 0)")] $ \(ty,valid,invalid) -> do
       case check (source ty valid) >>= planTesting of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right plan -> forM_ targets $ \target -> emitPlan target plan `shouldSatisfy` isRight
       check (source ty invalid) `shouldSatisfy` isLeft
-    check (source "Maybe (value :: Int8 where value > 0)" "Nothing") `shouldSatisfy` isRight
+    check (source "Maybe (value :: Int8 where value > 0)" "Absent") `shouldSatisfy` isRight
     check (source "Either (value :: Int8 where value > 0) Bool" "Right true") `shouldSatisfy` isRight
   it "keeps synthesized sum tags distinct from user constructors with the same spelling" $ do
-    let declaration = "type Names is one of Nothing | Just  of type Int8 | Left  of type Bool | Right end type\n"
+    let declaration = "type Names is one of Absent | Present  of type Int8 | Left  of type Bool | Right end type\n"
         signatures = "maybeEcho :: Maybe (value :: Int8 where value > 0) -> Maybe Int8\n" ++
           "eitherEcho :: Either (value :: Int8 where value > 0) Bool -> Either Int8 Bool\n"
     case check (declaration ++ signatures) >>= planTesting of
@@ -292,7 +292,7 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
   it "does not capture outer dependencies when lowering sum payload refinements" $ do
     let source value = "law \"|dependent| is definition: for all (lawspecElement :: Int8) " ++
           "(x :: Maybe (value :: Int8 where value > lawspecElement)) => x = x end for all end definition " ++
-          "example \"|value| : lawspecElement = 0 x = Just " ++ value ++ " expect x = Just " ++ value ++ " end example end law"
+          "example \"|value| : lawspecElement = 0 x = Present " ++ value ++ " expect x = Present " ++ value ++ " end example end law"
     check (source "1") `shouldSatisfy` isRight
     check (source "0") `shouldSatisfy` isLeft
   forM_ [
@@ -301,12 +301,12 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
       ("two type arguments", law "Either (List Int8) (Maybe Bool)" "x = x"),
       ("nested list contexts", law "List (List Int8)" "x = [[], [127]]"),
       ("literal equality from the left", law "List Int8" "[127, -128] = x"),
-      ("algebraic nested absence", law "Maybe (Maybe Bool)" "x = Just Nothing"),
+      ("algebraic nested absence", law "Maybe (Maybe Bool)" "x = Present Absent"),
       ("Either contextual payload", law "Either Int8 Bool" "x = Left 127"),
       ("complementary constructor contexts", law "Bool" "(Left (127 :: Int8)) = (Right true)"),
       ("list length", law "List Int8" "prelude.length x >= 0"),
-      ("exhaustive matching", law "Maybe Bool" "(first matching case of x: when Nothing then false when Just payload then payload end case) = true"),
-      ("nested local matching", law "Maybe (Maybe Bool)" "(first matching case of x: when Nothing then false when Just x then first matching case of x: when Nothing then false when Just x then x end case end case) = true"),
+      ("exhaustive matching", law "Maybe Bool" "(first matching case of x: when Absent then false when Present payload then payload end case) = true"),
+      ("nested local matching", law "Maybe (Maybe Bool)" "(first matching case of x: when Absent then false when Present x then first matching case of x: when Absent then false when Present x then x end case end case) = true"),
       ("product matching", "type Pair (a :: Type) is a record{  first :: a second :: Bool} end type\n" ++ law "Pair Int8" "(first matching case of x: when Pair first second then Pair first second end case) = x"),
       -- An undeclared field type variable is a field-only existential.
       ("field-only existentials", "type Box is a record{  value :: a} end type\n")
@@ -322,23 +322,31 @@ test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic d
       ("negative recursion", "type Bad is a record{  value :: (Bad -> Bool)} end type\n"),
       ("range-invalid list elements", law "List Int8" "x = [128]"),
       ("heterogeneous list elements", law "List Int8" "x = [1, true]"),
-      ("constructor payload mismatch", law "Maybe Bool" "x = Just 127"),
-      ("missing constructor argument", law "Maybe Bool" "x = Just"),
-      ("extra constructor argument", law "Maybe Bool" "x = Nothing true"),
+      ("constructor payload mismatch", law "Maybe Bool" "x = Present 127"),
+      ("missing constructor argument", law "Maybe Bool" "x = Present"),
+      ("extra constructor argument", law "Maybe Bool" "x = Absent true"),
       ("foreign constructors", law "Maybe Bool" "x = Left true"),
-      ("incomplete match", law "Maybe Bool" "(first matching case of x: when Nothing then false end case) = true"),
-      ("escaping branch binder", law "Maybe Bool" "(first matching case of x: when Nothing then p when Just p then p end case) = true"),
-      ("inconsistent branch results", law "Maybe Bool" "(first matching case of x: when Nothing then 1 when Just p then p end case) = true"),
+      ("incomplete match", law "Maybe Bool" "(first matching case of x: when Absent then false end case) = true"),
+      ("escaping branch binder", law "Maybe Bool" "(first matching case of x: when Absent then p when Present p then p end case) = true"),
+      ("inconsistent branch results", law "Maybe Bool" "(first matching case of x: when Absent then 1 when Present p then p end case) = true"),
       ("collection arithmetic", law "List Int8" "x + x = x"),
       ("collection presence operations", law "List Bool" "prelude.isPresent x"),
       ("missing generic Eq evidence", "law \"|generic| (f :: List a -> List a) is definition : for all (x :: List a) => f x = x end for all end definition end law\n")
     ] $ \(label,source) -> it ("rejects " ++ label) $ check source `shouldSatisfy` isLeft
+  it "refuses Maybe's old constructor names and names the new ones" $
+    forM_ [ (law "Maybe Bool" "x = Just true", "Maybe's Just is now Present")
+          , (law "Maybe Bool" "x = Nothing", "Maybe's Nothing is now Absent")
+          , (law "Maybe Bool" "(first matching case of x: when Nothing then false when Just p then p end case) = true", "is now")
+          , ("law \"|old| is definition: for all (x :: Maybe Bool) => x = x end for all end definition example \"|fixture| : x = Nothing expect x = x end example end law\n", "Maybe's Nothing is now Absent") ]
+      $ \(source, hint) -> case check source of
+          Left diagnostics -> show diagnostics `shouldSatisfy` isInfixOf hint
+          Right _ -> expectationFailure ("accepted an old Maybe constructor: " ++ source)
   it "takes the first of repeated constructor cases" $ do
-    let body = "function choose (x :: Maybe Bool) -> Bool is first matching case of x: when Nothing then false when Nothing then true when Just p then p end case end function"
+    let body = "function choose (x :: Maybe Bool) -> Bool is first matching case of x: when Absent then false when Absent then true when Present p then p end case end function"
     case check body >>= prepareDefinitions of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right invoke -> invoke (Id "data_test::choose")
-        [DataValue (Constructor "Maybe" [TypeArgument (scalarType "Bool")]) (Id "Maybe::Nothing") []]
+        [DataValue (Constructor "Maybe" [TypeArgument (scalarType "Bool")]) (Id "Maybe::Absent") []]
         `shouldBe` Right (ScalarValue (SBool False))
   it "checks example refinements against concrete lists" $ do
     let source xs = "law \"|nonempty| is definition: for all (x :: List Int8 where prelude.length x > 0) => x = x end for all end definition example \"|fixture| : x = " ++ xs ++ " expect x = " ++ xs ++ " end example end law"

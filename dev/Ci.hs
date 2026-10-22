@@ -363,7 +363,7 @@ data Inputs = Inputs [FilePath] [FilePath] [[String]]
 stepInputs :: String -> Maybe Inputs
 stepInputs name = case name of
   -- Hspec reads acceptance specs, bindings and fixtures, so they key it too.
-  "compiler-tests" -> Just (Inputs [] ["npm/", "tools/", "docs/", "editors/"] [["stack", "--version"]])
+  "compiler-tests" -> Just (Inputs [] (["npm/", "tools/", "docs/", "editors/"] ++ ledgers) [["stack", "--version"]])
   "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/", "templates/site/", "templates/editors/vscode/syntaxes/",
     "editors/vscode/syntaxes/", "editors/vscode/package-lock.json", "docs/vendor.lock.json"] [] [["node", "--version"]])
   "parity" -> Just (Inputs [] unread [["node", "--version"]])
@@ -397,7 +397,9 @@ stepInputs name = case name of
     [["gleam", "--version"], ["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."]])
   _ -> Nothing
   where
-    unread = ["docs/", "acceptance/", "editors/"]
+    unread = ["docs/", "acceptance/", "editors/"] ++ ledgers
+    -- canon's ledgers and profile: only canon, docs and generate read them.
+    ledgers = ["canon.yaml", "canonical_"]
     rustRuntime = Inputs ["runtime/rust/", "runtime/lawspec_runtime.rs"] [] [["rustc", "-Vv"], ["cargo", "-V"]]
 
 -- | Every file git would commit: tracked or untracked, and not ignored.

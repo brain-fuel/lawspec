@@ -28,11 +28,11 @@ func Take(value0 any) LawSpecMaybe[int32] {
 	queue.lock.Lock()
 	defer queue.lock.Unlock()
 	if len(queue.items) == 0 {
-		return LawSpecNothing[int32]()
+		return LawSpecAbsent[int32]()
 	}
 	front := queue.items[0]
 	queue.items = queue.items[1:]
-	return LawSpecJust(front)
+	return LawSpecPresent(front)
 }
 
 // Pending implements pending :: (example.handles::type::Jobs -> Int32).

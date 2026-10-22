@@ -9,10 +9,10 @@ module LawSpecHarness
   ( HarnessError(..), checkDrawn, observe, target, run, knownFailing, benchmark, record, shuffled, parallelism
   ) where
 
-import Control.Exception (Exception, SomeException, evaluate, fromException, throwIO, try)
+import Control.Exception (Exception, SomeException, evaluate, finally, fromException, throwIO, try)
 import Control.Monad (forM, unless, when)
 import Data.Char (isAlphaNum)
-import Data.IORef (IORef, atomicModifyIORef', newIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (intercalate, sortOn)
 import qualified Data.Map.Strict as M
 import GHC.Clock (getMonotonicTimeNSec)
@@ -24,7 +24,7 @@ import LawSpecRuntime (Scalar(..))
 import qualified LawSpecRuntime as LS
 import Data.Word (Word64)
 import Test.Hspec (SpecWith, runIO)
-import Control.Concurrent (getNumCapabilities)
+import Control.Concurrent (getNumCapabilities, ThreadId, myThreadId)
 
 -- A harness requirement failed: a strategy or an adequacy check.
 newtype HarnessError = HarnessError String
@@ -70,14 +70,31 @@ statistics :: IORef (M.Map String Stats)
 statistics = unsafePerformIO (newIORef M.empty)
 {-# NOINLINE statistics #-}
 
+-- A law's statistics belong to the run that observes them: a law's
+-- boundary, property and search tests may run at once, and one must never
+-- reset or count into another's. Each run registers the thread its test
+-- runs on.
+runs :: IORef (M.Map ThreadId String)
+runs = unsafePerformIO (newIORef M.empty)
+{-# NOINLINE runs #-}
+
+statisticsKey :: String -> IO String
+statisticsKey law = do
+  thread <- myThreadId
+  current <- readIORef runs
+  pure (maybe law (runKey law) (M.lookup thread current))
+
+runKey :: String -> String -> String
+runKey law name = law ++ "\0" ++ name
+
 -- What one generated case covers, classifies and labels.
 observe :: String -> [(String, Bool)] -> [(String, Bool)] -> [Scalar] -> IO ()
-observe law covers classified labelled = atomicModifyIORef' statistics $ \table ->
-  let s = M.findWithDefault emptyStats law table
+observe law covers classified labelled = statisticsKey law >>= \key -> atomicModifyIORef' statistics $ \table ->
+  let s = M.findWithDefault emptyStats key table
       count xs m = foldr (\(l, holds) acc -> if holds then M.insertWith (+) l 1 acc else acc) m xs
       s' = s { cases = cases s + 1, covered = count covers (covered s), classes = count classified (classes s)
              , labels = foldr (\v acc -> M.insertWith (+) (text v) 1 acc) (labels s) labelled }
-  in (M.insert law s' table, ())
+  in (M.insert key s' table, ())
   where
     text v = case v of
       SSequence _ units -> map toEnum units
@@ -87,10 +104,10 @@ observe law covers classified labelled = atomicModifyIORef' statistics $ \table 
 -- draws is reported with the law's statistics, and LawSpec's own search
 -- (LS.searchClimb) climbs after the property.
 target :: Scalar -> String -> IO ()
-target score law = atomicModifyIORef' statistics $ \table ->
-  let s = M.findWithDefault emptyStats law table
+target score law = statisticsKey law >>= \key -> atomicModifyIORef' statistics $ \table ->
+  let s = M.findWithDefault emptyStats key table
       value = number score
-  in (M.insert law s { best = Just (maybe value (max value) (best s)) } table, ())
+  in (M.insert key s { best = Just (maybe value (max value) (best s)) } table, ())
   where
     number v = case v of
       SInteger _ n -> fromIntegral n
@@ -100,7 +117,8 @@ target score law = atomicModifyIORef' statistics $ \table ->
 
 adequacy :: String -> [(Int, String)] -> IO [(String, Json)]
 adequacy law covers = do
-  s <- atomicModifyIORef' statistics (\table -> (M.delete law table, M.findWithDefault emptyStats law table))
+  key <- statisticsKey law
+  s <- atomicModifyIORef' statistics (\table -> (M.delete key table, M.findWithDefault emptyStats key table))
   let n = cases s
       percent k = if n == 0 then 0 else fromIntegral (round (10000 * fromIntegral k / fromIntegral n :: Double)) / 100 :: Double
       results = [(p, l, percent (M.findWithDefault 0 l (covered s))) | (p, l) <- covers]
@@ -130,10 +148,13 @@ once law milliseconds test
 
 -- Run one generated test of a law under its harness settings.
 run :: String -> String -> Int -> Int -> Int -> [(Int, String)] -> Bool -> IO () -> IO ()
-run law name milliseconds repeats retries covers observed test = go 1 False
+run law name milliseconds repeats retries covers observed test = do
+  thread <- myThreadId
+  atomicModifyIORef' runs (\table -> (M.insert thread name table, ()))
+  go 1 False `finally` atomicModifyIORef' runs (\table -> (M.delete thread table, ()))
   where
     attempt = fmap concat $ forM [1 .. repeats] $ \_ -> do
-      atomicModifyIORef' statistics (\table -> (M.delete law table, ()))
+      atomicModifyIORef' statistics (\table -> (M.delete (runKey law name) table, ()))
       once law milliseconds test
       if observed then adequacy law covers else pure []
     go attempts flaky = do

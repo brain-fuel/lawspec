@@ -123,6 +123,10 @@ type lsHarnessCover struct {
 	label   string
 }
 
+// A law's statistics belong to one test run: its boundary, property and
+// search tests run in parallel, and one must never reset another's counts.
+func lsHarnessKey(law, test string) string { return law + "\x00" + test }
+
 func lsHarnessStatsOf(law string) *lsHarnessStats {
 	stats, ok := lsHarnessCases.laws[law]
 	if !ok {
@@ -132,10 +136,10 @@ func lsHarnessStatsOf(law string) *lsHarnessStats {
 	return stats
 }
 
-func lsHarnessObserve(law string, covers, classes []lsHarnessPair, labels []LawSpecValue) {
+func lsHarnessObserve(t interface{ Name() string }, law string, covers, classes []lsHarnessPair, labels []LawSpecValue) {
 	lsHarnessCases.Lock()
 	defer lsHarnessCases.Unlock()
-	stats := lsHarnessStatsOf(law)
+	stats := lsHarnessStatsOf(lsHarnessKey(law, t.Name()))
 	stats.cases++
 	for _, c := range covers {
 		if c.holds {
@@ -154,11 +158,11 @@ func lsHarnessObserve(law string, covers, classes []lsHarnessPair, labels []LawS
 
 // target maximize: rapid has no targeted search, so the best score is
 // reported with the law's statistics.
-func lsHarnessTarget(score LawSpecValue, law string) {
+func lsHarnessTarget(t interface{ Name() string }, score LawSpecValue, law string) {
 	value := lsHarnessNumber(score)
 	lsHarnessCases.Lock()
 	defer lsHarnessCases.Unlock()
-	stats := lsHarnessStatsOf(law)
+	stats := lsHarnessStatsOf(lsHarnessKey(law, t.Name()))
 	if stats.best == nil || value > *stats.best {
 		stats.best = &value
 	}
@@ -180,9 +184,10 @@ func lsHarnessNumber(v LawSpecValue) float64 {
 }
 
 func lsHarnessAdequacy(t testing.TB, law string, covers []lsHarnessCover) map[string]any {
+	key := lsHarnessKey(law, t.Name())
 	lsHarnessCases.Lock()
-	stats := lsHarnessStatsOf(law)
-	delete(lsHarnessCases.laws, law)
+	stats := lsHarnessStatsOf(key)
+	delete(lsHarnessCases.laws, key)
 	lsHarnessCases.Unlock()
 	results := []map[string]any{}
 	lines := []string{fmt.Sprintf("%s: %d generated case(s)", law, stats.cases)}
@@ -314,7 +319,7 @@ func lsHarnessRun(t *testing.T, law, name string, timeout, repeat, retries int, 
 		failure, harness := "", false
 		for i := 0; i < repeat && failure == ""; i++ {
 			lsHarnessCases.Lock()
-			delete(lsHarnessCases.laws, law)
+			delete(lsHarnessCases.laws, lsHarnessKey(law, t.Name()))
 			lsHarnessCases.Unlock()
 			failure, harness = lsHarnessOnce(t.Name(), timeout, test)
 			if failure == "" && observed {

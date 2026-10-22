@@ -399,8 +399,8 @@ let handler (key: string) : Effects.Handler =
                   match args with
                   | [ key; sealedValue; associated ] ->
                       match unseal (unwrap "AeadKey" key) (unwrap "Sealed" sealedValue) (bytes associated) with
-                      | Some message -> Data("Maybe::Just", [ Bytes message ])
-                      | None -> Data("Maybe::Nothing", [])
+                      | Some message -> Data("Maybe::Present", [ Bytes message ])
+                      | None -> Data("Maybe::Absent", [])
                   | _ -> fail "InvalidArguments" "unseal") ]
     | _ -> fail "UnknownDefaultHandler" key
 

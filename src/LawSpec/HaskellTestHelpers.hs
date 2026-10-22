@@ -64,7 +64,7 @@ generatorDocBounded boundsOf bits budget structural reference key = gen
     gen (C.Constructor "List" [C.TypeArgument inner]) =
       infixDoc (text "SList") "<$>" (apply "Gen.list" [text "Range.linear 0 64",gen inner])
     gen (C.Constructor "Maybe" [C.TypeArgument inner]) =
-      infixDoc (parens (text "maybe (SData \"Maybe::Nothing\" []) (\\value -> SData \"Maybe::Just\" [value])"))
+      infixDoc (parens (text "maybe (SData \"Maybe::Absent\" []) (\\value -> SData \"Maybe::Present\" [value])"))
         "<$>" (apply "Gen.maybe" [gen inner])
     gen (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) = apply "Gen.choice"
       [E.array [sumGen "Either::Left" a,sumGen "Either::Right" b]]

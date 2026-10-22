@@ -1,0 +1,38 @@
+unit portfolio.codec
+
+type Light is one of
+  | Red
+  | Amber
+  | Green
+end type
+
+mapping encode of type Light -> Text is
+  row Red, "red"
+  row Amber, "amber"
+  row Green, "green"
+end mapping
+
+function decode (text :: Text) -> Light is
+  if text = "red" then Red else (if text = "amber" then Amber else Green end if) end if
+end function
+
+function tag (code :: Text) -> Text is "#" ++ code end function
+
+function untag (text :: Text) -> Text is prelude.slice 1 (prelude.length text) text end function
+
+law "|lights round trip| is
+  definition: for all (light :: Light) => decode (encode light) = light end for all end definition
+end law
+
+law "|decoding inverts encoding| is
+  definition: apply law "|left inverse| decode encode end definition
+end law
+
+law "|tags round trip| is
+  definition: for all (code :: Text) => untag (tag code) = code end for all end definition
+end law
+
+law "|tags start with a hash| is
+  definition: for all (code :: Text where code matches regex "[a-z]{1,8}") => (tag code) starts with "#" and prelude.length (tag code) <= 9 end for all end definition
+end law
+end unit

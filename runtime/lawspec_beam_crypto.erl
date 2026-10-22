@@ -39,8 +39,8 @@ handler(<<"lawspec.crypto::ability::Aead">>) ->
         end,
         <<"unseal">> => fun(_, [Key, Sealed, Associated]) ->
             case unseal(unwrap(<<"AeadKey">>, Key), unwrap(<<"Sealed">>, Sealed), Associated) of
-                {ok, Message} -> {ls_data, <<"Maybe::Just">>, [Message]};
-                error -> {ls_data, <<"Maybe::Nothing">>, []}
+                {ok, Message} -> {ls_data, <<"Maybe::Present">>, [Message]};
+                error -> {ls_data, <<"Maybe::Absent">>, []}
             end
         end}).
 

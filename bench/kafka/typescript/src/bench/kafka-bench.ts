@@ -14,7 +14,7 @@ const payload = new Uint8Array(64).fill(120);
 function record(i: number) {
   const key = new Uint8Array(8);
   new DataView(key.buffer).setBigUint64(0, BigInt(i));
-  return new data.Record(new data.Just<Uint8Array>(key), new data.Just<Uint8Array>(payload.slice()), []);
+  return new data.Record(new data.Present<Uint8Array>(key), new data.Present<Uint8Array>(payload.slice()), []);
 }
 const now = () => Number(process.hrtime.bigint()) / 1e9;
 const phase = (name: string, ops: number, start: number) => console.log(`phase ${name} ${ops} ${(now() - start).toFixed(6)}`);
@@ -32,7 +32,7 @@ let total = 0;
 broker.createTopicsRequest('bench', PARTITIONS);
 
 let start = now();
-const nothing = new data.Nothing<data.ProducerTag>();
+const nothing = new data.Absent<data.ProducerTag>();
 for (let i = 0; i < scale; i++) broker.produceRequest(tp(i % PARTITIONS), nothing, [record(i)]);
 phase('produce', scale, start);
 total += scale;
@@ -60,7 +60,7 @@ for (let round = 0; round < 2; round++) {
     ops += 2;
     for (const p of assigned) {
       const fetched = broker.offsetFetchRequest('g', p);
-      let position: bigint = fetched instanceof data.Just ? fetched.value : 0n;
+      let position: bigint = fetched instanceof data.Present ? fetched.value : 0n;
       ops++;
       for (;;) {
         const r = broker.fetchRequest(p, position, FETCH_MAX, uncommitted);
@@ -82,7 +82,7 @@ console.log(`check records-read ${read}`);
 start = now();
 ops = 0;
 const txns = Math.max(1, Math.floor(scale / 100));
-const id = broker.initProducerIdRequest(new data.Just('tx'));
+const id = broker.initProducerIdRequest(new data.Present('tx'));
 ops++;
 const sequences = new Array(PARTITIONS).fill(0);
 for (let t = 0; t < txns; t++) {
@@ -90,7 +90,7 @@ for (let t = 0; t < txns; t++) {
   broker.addPartitionsToTxnRequest('tx', id.producerId, id.producerEpoch, [tp(parts[0]), tp(parts[1])]);
   for (const p of parts) {
     const tag = new data.ProducerTag(id.producerId, id.producerEpoch, sequences[p]++);
-    broker.produceRequest(tp(p), new data.Just(tag), [record(t)]);
+    broker.produceRequest(tp(p), new data.Present(tag), [record(t)]);
   }
   broker.txnOffsetCommitRequest('tx', id.producerId, id.producerEpoch, 'g', [new data.OffsetEntry(tp(parts[0]), BigInt(t))]);
   broker.endTxnRequest('tx', id.producerId, id.producerEpoch, true);

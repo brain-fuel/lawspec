@@ -11,7 +11,7 @@ public sealed class Jobs
 
     public void Submit(int job) => queue.Enqueue(job);
 
-    public FSharpOption<int> Take() => queue.TryDequeue(out var job) ? Maybe.Of(job) : Maybe.Nothing<int>();
+    public FSharpOption<int> Take() => queue.TryDequeue(out var job) ? Maybe.Of(job) : Maybe.Absent<int>();
 
     public int Pending() => queue.Count;
 }

@@ -17,7 +17,7 @@ function schema(path = 'p0/0/0.0') {
     d(inner, [c('Inner', [f('rest', chain)])]),
     d(outer, [c('Outer', [f('child', inner),f('sibling', chain)], ['== p0/0.0 f1'])]),
     d(wrapper, [c('Wrap', [f('payload', outer)], [path, 'p0/0/0.1', '== p0/0/0.1 + p0/1.0 c10', `== ${path} p0/1.0`, `>= ${path} c1`])]),
-  ], [], Object.fromEntries(['nothing','just','left','right','presence'].map(name => [name, class {}])));
+  ], [], Object.fromEntries(['absent', 'present','left','right','presence'].map(name => [name, class {}])));
 }
 const stop = construct('Stop', []);
 const next = (value) => construct('Next', [value]);

@@ -355,8 +355,8 @@ function variableNames (program :: List Line) (labels :: KeyVal Text Whole)
       first matching case of line:
         when Symbolic name then
           first matching case of prelude.lookup name labels:
-            when Just address then variableNames rest labels seen
-            when Nothing then variableNames rest labels (prelude.sortedSetInsert
+            when Present address then variableNames rest labels seen
+            when Absent then variableNames rest labels (prelude.sortedSetInsert
                 name seen)
           end case
         when Label name then variableNames rest labels seen
@@ -393,13 +393,13 @@ function resolve (program :: List Line) (labels :: KeyVal Text Whole)
             (resolve rest labels variables next)
         when Symbolic name then
           first matching case of prelude.lookup name labels:
-            when Just address then Cons (binary16 address) (resolve rest labels
+            when Present address then Cons (binary16 address) (resolve rest labels
                 variables next)
-            when Nothing then
+            when Absent then
               first matching case of prelude.lookup name variables:
-                when Just address then Cons (binary16 address) (resolve rest
+                when Present address then Cons (binary16 address) (resolve rest
                     labels variables next)
-                when Nothing then Cons (binary16 next)
+                when Absent then Cons (binary16 next)
                     (resolve rest labels (prelude.put name next variables)
                       (prelude.BigUInt (next + 1)))
               end case

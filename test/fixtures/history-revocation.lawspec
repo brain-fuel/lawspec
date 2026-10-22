@@ -1,0 +1,74 @@
+unit portfolio.revocation
+
+-- Portfolio 13.5: credentials, sessions and revocation, over observed
+-- histories.
+type Event is one of
+  | SignIn
+  | Use
+  | Revoke
+  | SignOut
+end type
+
+type Entry is a record{ at :: Duration event :: Event session :: Int32 }
+end type
+
+function isSignIn (e :: Entry) -> Bool is e.event = SignIn end function
+function isUse (e :: Entry) -> Bool is e.event = Use end function
+function isRevoked (e :: Entry) -> Bool is e.event = Revoke end function
+function isSignedOut (e :: Entry) -> Bool is e.event = SignOut end function
+
+-- A complete snapshot: a day's sessions, closed.
+function yesterday (u :: Unit) -> List Entry is
+  [ Entry record{ at = 0s, event = SignIn, session = 1 }
+    , Entry record{ at = 10s, event = Use, session = 1 }
+    , Entry record{ at = 20s, event = Revoke, session = 1 }
+    , Entry record{ at = 30s, event = SignOut, session = 1 } ]
+end function
+
+-- Today's sessions so far: still open.
+function today (u :: Unit) -> List Entry is
+  [ Entry record{ at = 0s, event = SignIn, session = 2 }
+    , Entry record{ at = 5s, event = Revoke, session = 2 } ]
+end function
+
+-- A history where a revoked session was used, and stayed signed in too long.
+function incident (u :: Unit) -> List Entry is
+  [ Entry record{ at = 0s, event = SignIn, session = 3 }
+    , Entry record{ at = 5s, event = Revoke, session = 3 }
+    , Entry record{ at = 2h, event = Use, session = 3 } ]
+end function
+
+property "|nothing is used after revocation| is
+  whenever isRevoked, always not isUse
+end property
+
+-- An invariant of the complete snapshot: proved over every entry.
+law "|no use after revocation, yesterday| in history yesterday is
+  definition: the complete history holds "|nothing is used after revocation|
+  end definition
+end law
+
+-- A bounded history property, still open: holds so far, but what comes next
+-- could break it.
+law "|no use after revocation, today| in history today is
+  definition: the history so far holds "|nothing is used after revocation|
+  end definition
+end law
+
+-- An unbounded future requirement: pending while the history is open.
+law "|revoked sessions sign out, today| in history today is
+  definition: the history so far holds whenever isRevoked, eventually
+    isSignedOut end definition
+end law
+
+-- A deadline, broken as soon as observed time passes it.
+law "|revoked sessions sign out within an hour| in history incident is
+  definition: the history so far holds whenever isRevoked, isSignedOut within 1h
+  end definition
+end law
+
+law "|no use after revocation, incident| in history incident is
+  definition: the history so far holds "|nothing is used after revocation|
+  end definition
+end law
+end unit

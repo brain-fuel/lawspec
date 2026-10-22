@@ -12,7 +12,7 @@ defmodule Example.CryptoContext do
     message = <<0, 255, 128>>
     context = "native"
     good = Enum.all?([signature, slh], fn handler ->
-      Example.CryptoContext.Definitions.handshake(exchange, handler, aead, message, context) == {:just, message}
+      Example.CryptoContext.Definitions.handshake(exchange, handler, aead, message, context) == {:present, message}
     end)
     byte_size(digest.value) == 32 and byte_size(hash.shake.(message, 13)) == 13 and
       byte_size(keys.public_key.value) == 1184 and byte_size(keys.secret_key.value) == 64 and

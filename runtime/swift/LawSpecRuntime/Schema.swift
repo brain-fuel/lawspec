@@ -148,7 +148,7 @@ public struct Schema: Sendable {
 
     private static func builtinConstructors(_ name: String, _ args: [TypeRef]) -> [Constructor]? {
         switch (name, args.count) {
-        case ("Maybe", 1): return [constructor("Maybe::Nothing", []), constructor("Maybe::Just", [("value", args[0])])]
+        case ("Maybe", 1): return [constructor("Maybe::Absent", []), constructor("Maybe::Present", [("value", args[0])])]
         case ("Either", 2): return [constructor("Either::Left", [("value", args[0])]), constructor("Either::Right", [("value", args[1])])]
         default: return nil
         }
@@ -394,8 +394,8 @@ public struct Schema: Sendable {
             return try items.allSatisfy { try payload(inner[0], $0, schema) }
         case (.container(_, let inner), .presence(_, nil)) where inner.count == 1: return true
         case (.container(_, let inner), .presence(_, let v?)) where inner.count == 1: return try payload(inner[0], v, schema)
-        case (.container("Maybe", _), .data("Maybe::Nothing", _)): return true
-        case (.container("Maybe", let inner), .data("Maybe::Just", let f)) where inner.count == 1 && f.count == 1:
+        case (.container("Maybe", _), .data("Maybe::Absent", _)): return true
+        case (.container("Maybe", let inner), .data("Maybe::Present", let f)) where inner.count == 1 && f.count == 1:
             return try payload(inner[0], f[0], schema)
         case (.container("Either", let inner), .data("Either::Left", let f)) where inner.count == 2 && f.count == 1:
             return try payload(inner[0], f[0], schema)

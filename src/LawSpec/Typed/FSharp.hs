@@ -469,8 +469,8 @@ construct :: Env -> Type -> Id -> [D.Doc] -> M D.Doc
 construct env ty tag values = case (idText tag, values) of
   ("List::Nil", []) -> pure (D.text "[]")
   ("List::Cons", [h, t]) -> pure (paren (h <> D.text " :: " <> t))
-  ("Maybe::Nothing", []) -> pure (D.text "None")
-  ("Maybe::Just", [x]) -> pure (D.text "(Some " <> x <> D.text ")")
+  ("Maybe::Absent", []) -> pure (D.text "None")
+  ("Maybe::Present", [x]) -> pure (D.text "(Some " <> x <> D.text ")")
   ("Either::Left", [x]) -> pure (D.text "(LawSpec.Either.Left " <> x <> D.text ")")
   ("Either::Right", [x]) -> pure (D.text "(LawSpec.Either.Right " <> x <> D.text ")")
   (_, [items]) | Just ("KeyVal", _) <- collectionArguments ty -> do
@@ -569,8 +569,8 @@ matchStatements env scope value cases = do
   arms <- case ty of
     Constructor n _ | n `elem` ["Maybe", "Either", "List"] -> do
       arms <- forM cases $ \c -> alternative c (\names -> case (idText (caseConstructor c), names) of
-        ("Maybe::Nothing", _) -> "None"
-        ("Maybe::Just", [x]) -> "Some " ++ x
+        ("Maybe::Absent", _) -> "None"
+        ("Maybe::Present", [x]) -> "Some " ++ x
         ("Either::Left", [x]) -> "LawSpec.Either.Left " ++ x
         ("Either::Right", [x]) -> "LawSpec.Either.Right " ++ x
         ("List::Nil", _) -> "[]"

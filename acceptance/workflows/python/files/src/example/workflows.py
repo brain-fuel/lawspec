@@ -35,12 +35,18 @@ def openAccount(value0):
 # order from declaration order.
 _finished = []
 
+# Order -1's slow checks record when they ran, so approvedQuickly can tell whether they ran at the same time. The list is never cleared, so tests running at once cannot erase each other's records.
+_spans = []
+
 
 async def checkStock(value0):
     """Order -1's stock check takes 400ms; a negative order has no stock."""
     import asyncio
     if value0.number == -1:
+        import time
+        start = time.monotonic()
         await asyncio.sleep(0.4)
+        _spans.append((start, time.monotonic()))
     if value0.number < 0:
         _finished.append("no stock")
         return _schema.Left("no stock")
@@ -51,7 +57,10 @@ async def checkCredit(value0):
     """Order -1's credit check takes 250ms; a negative order has no credit."""
     import asyncio
     if value0.number == -1:
+        import time
+        start = time.monotonic()
         await asyncio.sleep(0.25)
+        _spans.append((start, time.monotonic()))
     if value0.number < 0:
         _finished.append("no credit")
         return _schema.Left("no credit")

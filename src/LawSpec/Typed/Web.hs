@@ -205,7 +205,7 @@ tsType env = go []
       Constructor "Text" [] -> pure "string"
       Constructor "Bytes" [] -> pure "Uint8Array"
       Constructor "List" _ -> pure "lsf.Cons | null"
-      Constructor "Maybe" _ -> pure "lsf.Just | null"
+      Constructor "Maybe" _ -> pure "lsf.Present | null"
       Constructor "Either" _ -> pure "lsf.Side"
       _ | isJust (collectionArguments ty) -> pure "lsf.Node | null"
       Constructor n args | Just d <- M.lookup n (envData env) ->
@@ -582,8 +582,8 @@ construct :: Env -> Type -> Id -> [D.Doc] -> M D.Doc
 construct env ty tag values = case (idText tag, values) of
   ("List::Nil", []) -> pure (D.text "null")
   ("List::Cons", [h, t]) -> pure (D.text "new lsf.Cons(" <> h <> D.text ", " <> t <> D.text ")")
-  ("Maybe::Nothing", []) -> pure (D.text "null")
-  ("Maybe::Just", [x]) -> pure (D.text "new lsf.Just(" <> x <> D.text ")")
+  ("Maybe::Absent", []) -> pure (D.text "null")
+  ("Maybe::Present", [x]) -> pure (D.text "new lsf.Present(" <> x <> D.text ")")
   ("Either::Left", [x]) -> pure (D.text "lsf.left(" <> x <> D.text ")")
   ("Either::Right", [x]) -> pure (D.text "lsf.right(" <> x <> D.text ")")
   (_, [items]) | Just ("KeyVal", [k, _]) <- collectionArguments ty -> do
@@ -671,7 +671,7 @@ matchStatements env selfCall scope target value cases = do
         pure (prelude ++ [stmtBlock (D.text ("if (" ++ condition ++ ")")) yes <> D.text " else " <> braces no])
       anyCast x = if envTs env then "(" ++ x ++ " as any)" else x
   case ty of
-    Constructor "Maybe" _ -> two (subject ++ " !== null") "Maybe::Just" [anyCast subject ++ ".v"] "Maybe::Nothing" []
+    Constructor "Maybe" _ -> two (subject ++ " !== null") "Maybe::Present" [anyCast subject ++ ".v"] "Maybe::Absent" []
     Constructor "Either" _ -> two (subject ++ ".r") "Either::Right" [subject ++ ".v"] "Either::Left" [subject ++ ".v"]
     Constructor "List" _ -> two (subject ++ " === null") "List::Nil" [] "List::Cons" [anyCast subject ++ ".h", anyCast subject ++ ".t"]
     _ | Just (kind, _) <- collectionArguments ty, [c] <- cases -> do
@@ -817,7 +817,7 @@ toValue env ty = case ty of
   Constructor "List" [TypeArgument a] -> (\f -> [D.text ("return lsf.toListValue(x, " ++ f ++ ");")]) <$> helper "to" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "to" a
-    pure [D.text ("return x === null ? new ls.DataValue('Maybe::Nothing', []) : new ls.DataValue('Maybe::Just', [" ++ f ++ "(x.v)]);")]
+    pure [D.text ("return x === null ? new ls.DataValue('Maybe::Absent', []) : new ls.DataValue('Maybe::Present', [" ++ f ++ "(x.v)]);")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- helper "to" a
     fr <- helper "to" b
@@ -858,7 +858,7 @@ fromValue env ty = case ty of
   Constructor "List" [TypeArgument a] -> (\f -> [D.text ("return lsf.fromListValue(v, " ++ f ++ ");")]) <$> helper "from" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "from" a
-    pure [D.text ("return v.tag === 'Maybe::Just' ? new lsf.Just(" ++ f ++ "(v.fields[0])) : null;")]
+    pure [D.text ("return v.tag === 'Maybe::Present' ? new lsf.Present(" ++ f ++ "(v.fields[0])) : null;")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- helper "from" a
     fr <- helper "from" b
@@ -908,7 +908,7 @@ toNative env ty = case ty of
   Constructor "List" [TypeArgument a] -> (\f -> [D.text ("return Object.freeze(lsf.toListValue(x, " ++ f ++ "));")]) <$> helper "tonative" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "tonative" a
-    pure [D.text ("return x === null ? new data.Nothing() : new data.Just(" ++ f ++ "(x.v));")]
+    pure [D.text ("return x === null ? new data.Absent() : new data.Present(" ++ f ++ "(x.v));")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- helper "tonative" a
     fr <- helper "tonative" b
@@ -944,7 +944,7 @@ fromNative env ty = case ty of
   Constructor "List" [TypeArgument a] -> (\f -> [D.text ("return lsf.fromListValue(n, " ++ f ++ ");")]) <$> helper "fromnative" a
   Constructor "Maybe" [TypeArgument a] -> do
     f <- helper "fromnative" a
-    pure [D.text ("return n instanceof data.Just ? new lsf.Just(" ++ f ++ "(n.value)) : null;")]
+    pure [D.text ("return n instanceof data.Present ? new lsf.Present(" ++ f ++ "(n.value)) : null;")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     fl <- helper "fromnative" a
     fr <- helper "fromnative" b

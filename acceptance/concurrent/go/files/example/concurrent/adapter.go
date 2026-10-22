@@ -80,11 +80,11 @@ func Poll(value0 WorkQueue) LawSpecTask[LawSpecMaybe[int32]] {
 		q.lock.Lock()
 		defer q.lock.Unlock()
 		if len(q.items) == 0 {
-			return LawSpecNothing[int32]()
+			return LawSpecAbsent[int32]()
 		}
 		front := q.items[0]
 		q.items = q.items[1:]
-		return LawSpecJust(front)
+		return LawSpecPresent(front)
 	})
 }
 
@@ -144,9 +144,9 @@ func NewCache(value0 LawSpecValue) Cache {
 
 func optional(value int64, present bool) LawSpecMaybe[int64] {
 	if !present {
-		return LawSpecNothing[int64]()
+		return LawSpecAbsent[int64]()
 	}
-	return LawSpecJust(value)
+	return LawSpecPresent(value)
 }
 
 // Store sets a key's value and returns the previous one, if any.

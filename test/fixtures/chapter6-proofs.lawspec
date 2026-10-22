@@ -1,0 +1,35 @@
+unit nand2tetris.proofs
+import nand2tetris.chap06 as chap06 (Line, UserSymbol, instructionCount, labelsFit, bits, binary16)
+
+law "|a label adds no instruction| is
+  definition: for all (program :: List Line) (name :: UserSymbol) => instructionCount (Cons (Label name) program) = instructionCount program end for all end definition
+end law
+
+law "|instructions add up across joined programs| is
+  definition: for all (first :: List Line) (rest :: List Line) => instructionCount (first ++ rest) = instructionCount first + instructionCount rest end for all end definition
+end law
+
+law "|fitting labels keep the program in ROM| is
+  definition: for all (program :: List Line) (pc :: Whole) => labelsFit program pc implies pc + instructionCount program <= 32768 end for all end definition
+end law
+
+law "|bits gives as many digits as asked| is
+  definition: for all (width :: UInt8) (value :: Whole) => prelude.length (bits width value) = width end for all end definition
+end law
+
+law "|every word has sixteen digits| is
+  definition: for all (value :: Whole) => prelude.length (binary16 value) = 16 end for all end definition
+end law
+
+harness nand2tetris.proofs.harness for nand2tetris.proofs is
+  for law "|instructions add up across joined programs|
+    prove by induction on first
+  end for law
+  for law "|fitting labels keep the program in ROM|
+    prove by induction on program
+  end for law
+  for law "|bits gives as many digits as asked|
+    prove by induction on width
+  end for law
+end harness
+end unit

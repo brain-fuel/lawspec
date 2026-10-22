@@ -9,11 +9,11 @@ object Host {
     class FileSystemHandler : lawspec.abilities.lawspec.Host.FileSystem {
         override fun readBytes(value0: kotlin.String): LawSpecRuntime.Maybe<kotlin.ByteArray> =
             try {
-                LawSpecRuntime.Just(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0)))
+                LawSpecRuntime.Present(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0)))
             } catch (failed: java.io.IOException) {
-                LawSpecRuntime.Nothing()
+                LawSpecRuntime.Absent()
             } catch (failed: RuntimeException) {
-                LawSpecRuntime.Nothing()
+                LawSpecRuntime.Absent()
             }
 
         override fun writeBytes(value0: kotlin.String, value1: kotlin.ByteArray) {
@@ -49,7 +49,7 @@ object Host {
     class EnvironmentHandler : lawspec.abilities.lawspec.Host.Environment {
         override fun environmentVariable(value0: kotlin.String): LawSpecRuntime.Maybe<kotlin.String> {
             val value = if (validName(value0)) java.lang.System.getenv(value0) else null
-            return if (value == null) LawSpecRuntime.Nothing() else LawSpecRuntime.Just(value)
+            return if (value == null) LawSpecRuntime.Absent() else LawSpecRuntime.Present(value)
         }
 
         override fun environmentSnapshot(): kotlin.String = LawSpecRuntime.acquireResource("environment")

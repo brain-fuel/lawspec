@@ -607,13 +607,13 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
   it "does not treat fields of rebuilt or returned records as descending arguments" $ do
     let declaration = "type Chain is a record{next :: Maybe Chain} end type\n"
-        grow = "function grow (chain :: Chain) -> Chain is Chain record{next = Just chain} end function\n"
+        grow = "function grow (chain :: Chain) -> Chain is Chain record{next = Present chain} end function\n"
         repeats selected = "function repeats (chain :: Chain) -> Whole is first matching case of " ++ selected ++
-          ": when record{next = Just rest} then repeats rest otherwise 0 end case end function"
+          ": when record{next = Present rest} then repeats rest otherwise 0 end case end function"
     mapM_ (\body -> case core body of
       Left diagnostics -> map LawSpec.Model.code diagnostics `shouldContain` ["total"]
       Right _ -> expectationFailure "a rebuilt or returned record acquired structural provenance")
-      [declaration ++ repeats "Chain record{next = Just chain}",declaration ++ grow ++ repeats "grow chain"]
+      [declaration ++ repeats "Chain record{next = Present chain}",declaration ++ grow ++ repeats "grow chain"]
   it "expands composed reusable requirements across nominal imports on every target" $ do
     let paths = ["examples/rc1/authorization-snapshots.lawspec", "examples/rc1/requirement-composition.lawspec"]
     sources <- mapM (\path -> Source path <$> readFile path) paths
@@ -933,8 +933,8 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     mapM_ (\combination -> do
       let path = "examples/rc1/nesting/" ++ combination ++ ".lawspec"
       body <- readFile path
-      let (prefix,suffix) = breakOn "then Just name" body
-          mutant = prefix ++ "then Nothing" ++ drop (length ("then Just name" :: String)) suffix
+      let (prefix,suffix) = breakOn "then Present name" body
+          mutant = prefix ++ "then Absent" ++ drop (length ("then Present name" :: String)) suffix
       suffix `shouldSatisfy` (not . null)
       case compileCoreCanonical 64 defaultGeneration [Source path mutant] of
         Left ds -> expectationFailure (combination ++ ": intrinsic checks rejected a well-typed mutant: " ++ show ds)

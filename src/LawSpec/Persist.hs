@@ -35,6 +35,10 @@ instance Binary S.Type
 instance Binary S.TypedCase
 instance Binary S.TypedExpr
 instance Binary S.HandlerSet
+instance Binary S.LawClaims
+instance Binary S.ClaimItem
+instance Binary S.Exemption
+instance Binary S.Until
 instance Binary S.Unit
 instance Binary S.Protocol
 instance Binary S.Step
@@ -50,5 +54,10 @@ instance Binary S.ShareScope
 instance Binary S.StrategyDeclaration
 instance Binary S.Gen
 instance Binary S.HarnessSetting
+instance Binary S.Proving
+instance Binary S.RunFormula
+instance Binary S.TemporalProperty
+instance Binary S.ModelLaw
+instance Binary S.HistoryLaw
 instance Binary S.HarnessPlan
 instance Binary S.HarnessWitness

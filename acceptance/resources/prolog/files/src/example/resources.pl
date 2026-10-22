@@ -32,8 +32,8 @@ ls_put(Handle, Key, Value, absence('Unit')) :-
 ls_get(Handle, Key, R) :-
     state(Handle, State), ensure_open(State), items(State, Items),
     py_call(Items:'__contains__'(Key), Present),
-    ( Present == @(true) -> py_call(Items:get(Key), Value), R = value('Maybe::Just', [Value])
-    ; R = value('Maybe::Nothing', [])
+    ( Present == @(true) -> py_call(Items:get(Key), Value), R = value('Maybe::Present', [Value])
+    ; R = value('Maybe::Absent', [])
     ).
 ls_isOpen(Handle, R) :-
     state(Handle, State), py_call(State:get(open), Open),
@@ -49,8 +49,8 @@ ls_readNote(Directory, R) :-
     ( exists_file(File) ->
         setup_call_cleanup(open(File, read, Stream, [encoding(utf8)]),
                            read_string(Stream, _, Text), close(Stream)),
-        number_string(Number, Text), R = value('Maybe::Just', [Number])
-    ; R = value('Maybe::Nothing', [])
+        number_string(Number, Text), R = value('Maybe::Present', [Number])
+    ; R = value('Maybe::Absent', [])
     ).
 ls_canListen(Port, true) :-
     setup_call_cleanup(tcp_socket(Socket),
@@ -59,8 +59,8 @@ ls_setGreeting(Number, absence('Unit')) :-
     number_string(Number, Text), py_call(os:environ:'__setitem__'('LAWSPEC_EXAMPLE_GREETING', Text)).
 ls_greeting(_, R) :-
     py_call(os:environ:get('LAWSPEC_EXAMPLE_GREETING'), Text, [py_string_as(string)]),
-    ( Text == @(none) -> R = value('Maybe::Nothing', [])
-    ; number_string(Number, Text), R = value('Maybe::Just', [Number])
+    ( Text == @(none) -> R = value('Maybe::Absent', [])
+    ; number_string(Number, Text), R = value('Maybe::Present', [Number])
     ).
 
 ls_openPool(_, opaque(State)) :-

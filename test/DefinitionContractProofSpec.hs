@@ -442,8 +442,8 @@ test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined de
       let source = Source "generic-match.lawspec" $ unlines
             [ "unit generic.match"
              ++ "\n", ""
-            , "type Present (a :: Type) is a record{  item :: (m :: Maybe a where"
-            , "  first matching case of m : when Nothing then false when Just value then true end case)} end type"
+            , "type Holder (a :: Type) is a record{  item :: (m :: Maybe a where"
+            , "  first matching case of m : when Absent then false when Present value then true end case)} end type"
             , "\nend unit" ]
       mapM_ (\bits -> compileCore bits defaultGeneration [source] `shouldSatisfy` isRight) [32,64]
     it "enables audited constructor contracts on all eight backends" $ do

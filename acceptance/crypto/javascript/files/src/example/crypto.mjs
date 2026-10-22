@@ -12,5 +12,5 @@ const label = new TextEncoder().encode('round trip');
 export function roundTrip(aead, value0) {
     const key = aead.aeadKey();
     const opened = aead.unseal(key, aead.seal(key, value0, label), label);
-    return opened instanceof data.Just && Buffer.from(opened.value).equals(Buffer.from(value0));
+    return opened instanceof data.Present && Buffer.from(opened.value).equals(Buffer.from(value0));
 }

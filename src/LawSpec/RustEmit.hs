@@ -189,7 +189,7 @@ emitRustSchema bits layout declarations = do
 
 builtinConstructor :: Id -> Bool
 builtinConstructor tag = idText tag `elem`
-  ["List::Nil", "List::Cons", "Maybe::Nothing", "Maybe::Just", "Either::Left", "Either::Right"]
+  ["List::Nil", "List::Cons", "Maybe::Absent", "Maybe::Present", "Either::Left", "Either::Right"]
 
 -- | Readable output unless asked otherwise. ref:DEC-readable-output-default
 emitRust :: Plan -> Either [Diagnostic] [Artifact]

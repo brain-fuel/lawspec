@@ -113,8 +113,8 @@ emitBindings ts minify bindings plan files = do
             elementRef <- Data.webTypeReferenceDoc element
             pure (D.text "const result = " <> application' <> D.text ";" <> D.hardline <>
               D.text "return result === null || result === undefined" <>
-              D.nest 4 (D.softline <> D.text "? new data.Nothing()" <> D.softline <> D.text ": " <>
-                E.call "new data.Just" [resultOf elementRef (D.text "result")]) <> D.text ";")
+              D.nest 4 (D.softline <> D.text "? new data.Absent()" <> D.softline <> D.text ": " <>
+                E.call "new data.Present" [resultOf elementRef (D.text "result")]) <> D.text ";")
           _ -> pure (D.text "const result = " <> application' <> D.text ";" <> D.hardline <> returned)
         let async = C.declarationAsync decl
             returnType = if result == C.scalarType "Unit" then D.text "void" else resultType

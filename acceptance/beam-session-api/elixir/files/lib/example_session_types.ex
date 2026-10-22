@@ -5,11 +5,11 @@ defmodule Example.SessionTypes do
   def native_probe(:ok) do
     Exchange.with_pair(fn first, second ->
       task = Exchange.spawn_second(second, fn channel_end ->
-        {{:just, [1, 2, 3]}, next} = Exchange.second_receive_0(channel_end)
+        {{:present, [1, 2, 3]}, next} = Exchange.second_receive_0(channel_end)
         Exchange.second_send_1(next, :ok)
         :ok
       end)
-      next = Exchange.first_send_0(first, {:just, [1, 2, 3]})
+      next = Exchange.first_send_0(first, {:present, [1, 2, 3]})
       {:ok, _} = Exchange.first_receive_1(next)
       :ok = LawSpec.Sessions.join(task)
     end)
@@ -35,8 +35,8 @@ defmodule Example.SessionTypes do
       {46, _} = Answer.second_receive_1(client_next)
       exchange = Exchange.listen(c, "data")
       receiving = Exchange.dial(d, Exchange.address(exchange))
-      e1 = Exchange.first_send_0(exchange, {:just, [0, -7, 2_147_483_647]})
-      {{:just, [0, -7, 2_147_483_647]}, e2} = Exchange.second_receive_0(receiving)
+      e1 = Exchange.first_send_0(exchange, {:present, [0, -7, 2_147_483_647]})
+      {{:present, [0, -7, 2_147_483_647]}, e2} = Exchange.second_receive_0(receiving)
       Exchange.second_send_1(e2, :ok)
       {:ok, _} = Exchange.first_receive_1(e1)
       Answer.with_pair(fn local, peer ->

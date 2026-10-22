@@ -139,6 +139,7 @@ blockContexts =
   , ("workflow","workflow flow :: Bool -> Bool is step :: Bool -> Bool\n","")
   , ("all","combineFlags :: Bool -> Bool -> Bool\nworkflow flow :: Bool -> Bool is all first :: Bool -> Bool second :: Bool -> Bool\n","\ncombine combineFlags end workflow")
   , ("protocol","protocol Receipt is send Bool\n","")
+  , ("property","function ready (b :: Bool) -> Bool is b end function\nproperty \"|always ready| is always ready\n","")
   , ("scenario",modelPrefix ++ "scenario `a process` in state is\n","")
   , ("par",modelPrefix ++ "scenario `two processes` in state is par\n","\nend scenario")
   , ("or else",modelPrefix ++ "protocol Receipt is send Bool end protocol\nscenario `recover` in state is channel receipt :: Receipt par send receipt true with receive receipt result or else\n","\nend par end scenario")

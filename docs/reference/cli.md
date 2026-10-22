@@ -140,9 +140,14 @@ executable, or `z3` on `PATH`. With no proof layer selected, no solver is invoke
 See [proof with Z3](../explanation/smt-proof.md) for supported theories, resource
 limits, model-validation limits and the recorded trust boundary.
 
-A successful solver proof updates the matching law's evidence. A satisfying
-model remains unvalidated; unknown, timeout, resource-limit, unavailable and
-unsupported outcomes do not establish a law. `--json` includes task identities,
+A successful solver proof updates the matching law's evidence. When Z3 finds
+the law's negation satisfiable, it gives values for the law's outer inputs.
+The compiler checks the law at those values with its reference evaluator. The
+law is `refuted` only when the evaluator confirms it. Values the evaluator
+does not confirm are reported as a `proof-translation` diagnostic. Unknown,
+timeout, resource-limit, unavailable and unsupported outcomes do not establish
+a law. `prove` also runs the [law-set checks](language/law-sets.md) the
+compiler could not decide, with the same confirmation. `--json` includes task identities,
 solver evidence and raw output. Other verification layers and intrinsic
 contracts retain their own guarantees.
 
@@ -150,7 +155,7 @@ contracts retain their own guarantees.
 
 Lists every obligation with its stage, identity, claim and reason, grouped by
 status. Completed evidence, `PLANNED`, `NOT VERIFIED`, `INCOMPLETE`,
-`UNSUPPORTED` and `ASSUMED / EXTERNAL` retain their distinct meanings, alongside
+`UNSUPPORTED`, `ASSUMED / EXTERNAL`, `EXEMPTED` and `PENDING` retain their distinct meanings, alongside
 the harness plane's `KNOWN FAILING`, `FLAKY` and `SKIPPED`. A `HARNESS` section
 follows: for each
 law with a [harness](language/harness.md), how it is tested (strategies,
@@ -418,6 +423,9 @@ This command exports program targets; artifact projects use `init` and `generate
 
 ## Exit status
 
-`0` on success. `1` when a command fails, `doctor` finds a target that is not
-ready, or `generate --check` finds changes. `prove` uses status `2` when a
-selected task remains incomplete or unsupported.
+`0` on success. `1` when a command fails, a law is refuted, `doctor` finds a
+target that is not ready, or `generate --check` finds changes. `evidence`
+still lists a refuted law under `REFUTED` before it exits with status `1`. `prove` uses status `1` when a
+law is refuted, and status `2` when a selected task remains incomplete or
+unsupported. An `exempted` law-set check does not change the status until its
+exemption expires.

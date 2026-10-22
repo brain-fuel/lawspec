@@ -17,5 +17,5 @@ apply_fee(#price{major = Amount} = Price) ->
 -spec restore(payment_status()) -> payment_status().
 restore(Payment) -> Payment.
 
--spec store([nothing | {just, payment_status()}]) -> [nothing | {just, payment_status()}].
+-spec store([absent | {present, payment_status()}]) -> [absent | {present, payment_status()}].
 store(Payments) -> Payments.

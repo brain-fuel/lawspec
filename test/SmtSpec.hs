@@ -85,12 +85,16 @@ test_smtTasks=describe "typed SMT obligations" $ do
   it "never quantifies Rational as Real and thereby invents an irrational witness" $
     case tasks 64 (law "there exists (n :: Rational) such that n * n = 2 end exists") of
       Left ds->expectationFailure (show ds)
-      Right [task]->SMT.taskQuery task `shouldSatisfy` either (isInfixOf "Rational quantification") (const False)
+      -- An integer over a positive integer (lawspec-smtlib-v2).
+      Right [task]->do
+        SMT.taskEncoding task `shouldBe` SMT.SmtLibV2
+        SMT.taskQuery task `shouldSatisfy` either (const False) (\script -> all (`isInfixOf` script) ["_n Int", "_d Int", "(/ (to_real"])
       Right _->expectationFailure "missing Rational task"
   it "does not reinterpret IEEE values as exact arithmetic" $
     case tasks 64 (law "for all (n :: Float64) => n = n end for all") of
       Left ds->expectationFailure (show ds)
-      Right [task]->SMT.taskQuery task `shouldSatisfy` isLeft
+      -- IEEE equality, under which NaN is not itself.
+      Right [task]->SMT.taskQuery task `shouldSatisfy` either (const False) (\script -> "fp.eq" `isInfixOf` script && "(_ FloatingPoint 11 53)" `isInfixOf` script)
       Right _->expectationFailure "missing IEEE task"
   it "does not invent implementations for native declarations" $
     case tasks 64 ("external :: Integer -> Integer\n"++law "for all (n :: Integer) => external n = external n end for all") of

@@ -25,16 +25,30 @@
 ;; order from declaration order.
 (def finished (atom []))
 
+;; Order -1's slow checks record when they ran, from the call to the result,
+;; so approved-quickly can tell whether they ran at the same time. The record
+;; is never cleared, so tests running at once cannot erase each other's.
+(def spans (atom []))
+
+(defn overlapped?
+  "Whether two slow checks that started at or after since overlapped in time."
+  [since]
+  (let [ran (vec (filter (fn [[start]] (>= start since)) @spans))]
+    (boolean (some (fn [[i [a b]]] (some (fn [[c d]] (and (< a d) (< c b))) (subvec ran (inc i))))
+                   (map-indexed vector ran)))))
+
 (defn- check [{:keys [number] :as order} millis problem]
+  (let [start (System/nanoTime)]
   (CompletableFuture/supplyAsync
     (reify java.util.function.Supplier
       (get [_]
+        (when (= number -1) (swap! spans conj [start (System/nanoTime)]))
         (if (>= number 0)
           [:right order]
           (do (swap! finished conj problem) [:left problem]))))
     (if (= number -1)
       (CompletableFuture/delayedExecutor millis TimeUnit/MILLISECONDS)
-      (ForkJoinPool/commonPool))))
+      (ForkJoinPool/commonPool)))))
 
 ;; Order -1's stock check takes 400ms; a negative order has no stock.
 (defn check-stock [order] (check order 400 "no stock"))

@@ -21,7 +21,7 @@ public static class Concurrent
     private static ConcurrentDictionary<int, bool> Set(Tags handle) => sets.GetOrAdd(handle.Id, _ => new());
     private static ConcurrentDictionary<sbyte, long> Map(Cache handle) => maps.GetOrAdd(handle.Id, _ => new());
 
-    private static FSharpOption<T> Found<T>(bool found, T value) => found ? Maybe.Of(value) : Maybe.Nothing<T>();
+    private static FSharpOption<T> Found<T>(bool found, T value) => found ? Maybe.Of(value) : Maybe.Absent<T>();
 
     public static WorkQueue NewQueue()
     {
@@ -64,8 +64,8 @@ public static class Concurrent
     public static Task<FSharpOption<long>> Store(Cache cache, sbyte key, long value) =>
         Task.Run(() =>
         {
-            FSharpOption<long> old = Maybe.Nothing<long>();
-            Map(cache).AddOrUpdate(key, _ => { old = Maybe.Nothing<long>(); return value; }, (_, previous) => { old = Maybe.Of(previous); return value; });
+            FSharpOption<long> old = Maybe.Absent<long>();
+            Map(cache).AddOrUpdate(key, _ => { old = Maybe.Absent<long>(); return value; }, (_, previous) => { old = Maybe.Of(previous); return value; });
             return old;
         });
 

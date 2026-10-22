@@ -95,7 +95,7 @@ relay_takes_a_network_end_back_to_the_local_queue_test_() ->
 canonical_optional_collection_and_unit_payloads_test() ->
     with_nodes(#{record => true}, fun(Net, [A, B | _]) ->
         {First, Second} = pair(data, A, B, <<"data">>),
-        Value = {ls_data, <<"Maybe::Just">>, [[0, -7, 2147483647]]},
+        Value = {ls_data, <<"Maybe::Present">>, [[0, -7, 2147483647]]},
         F1 = lawspec_beam_session:send(First, Value),
         {Value, S1} = lawspec_beam_session:receive_value(Second),
         _ = lawspec_beam_session:send(S1, ls_unit),

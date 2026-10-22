@@ -1,11 +1,17 @@
 -- | Typed SMT-LIB tasks, with no solver or host IO in the compiler. The host
 -- executes these tasks using an established prover. ref:DEC-typed-core-boundary
-module LawSpec.Core.Smt (ProofTask(..), proofTasks, taskFingerprint) where
+module LawSpec.Core.Smt (ProofTask(..), Encoding(..), Recursion(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
+  , alternativeFingerprint, recursionView, defaultFuel, proofTasksWith, LawProof(..), Unfolding(..), Induction(..)
+  , defaultLawProof, InductionPlan(..), InductionCase(..), caseFingerprint, regexTerm, textLiteral
+  , ModelShape(..), hornQuery, invariantQueries
+  , counterexampleFingerprint, outerQuantifiers, Catalog, catalog, instantiate, Ground(..), groundQuery) where
 
-import Control.Monad (unless, when, foldM, forM)
+import Control.Monad (unless, when, foldM, forM, forM_)
 import Control.Monad.State.Strict
-import Data.Aeson (ToJSON(..), object, (.=))
+import Data.Aeson (ToJSON(..), Value, object, (.=))
 import qualified Data.Map.Strict as M
+import Data.Graph (SCC(..), stronglyConnComp, flattenSCCs)
+import Data.List (intercalate, isInfixOf, isPrefixOf)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString as B
@@ -14,9 +20,12 @@ import qualified Data.Binary as Binary
 import LawSpec.Common (Diagnostic, InputDomain(..), Location, Quantification(..))
 import LawSpec.Core
 import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.Types (builtinDataDeclarations)
 import LawSpec.CorePersist ()
 import LawSpec.Digest (digest, digestHex, digestString)
 import LawSpec.Scalar (Scalar(..), isInteger, integerBounds)
+import LawSpec.Regex (Regex(..), parseRegex)
+import Numeric (showHex)
 
 -- This is a task, never completed evidence. Hashes bind source identity, the
 -- checked program, machine profile and exact query; execution adds its own
@@ -25,40 +34,336 @@ import LawSpec.Scalar (Scalar(..), isInteger, integerBounds)
 data ProofTask = ProofTask
   { taskOwner :: Id, taskLaw :: Id, taskLocation :: Location
   , taskProgram :: String, taskBits :: Int, taskQuery :: Either String String
+  , taskEncoding :: Encoding
+  -- Asked of a ready task only after Z3 finds its negation satisfiable.
+  , taskCounterexample :: Either String CounterexampleQuery
+  -- How the task gives Z3 the recursive definitions it calls, if any; and
+  -- the same law with the other encoding, tried when this one does not
+  -- prove it. ref:DEC-smt-recursive-definitions
+  , taskRecursion :: Maybe Recursion
+  , taskAlternative :: Maybe (Recursion, String)
+  -- Induction on one input: a task per case, each with its own receipt.
+  -- ref:DEC-smt-induction
+  , taskInduction :: Maybe InductionPlan
   } deriving (Eq, Show)
 
-encoding :: String
-encoding = "lawspec-smtlib-v1"
+-- | How lawspec prove proves a law, from its harness (LawSpec.ProofSettings):
+-- the encoding of recursive definitions, and induction.
+data LawProof = LawProof { proofUnfolding :: Unfolding, proofInduction :: Induction } deriving (Eq, Show)
+
+-- | prove by unfolding step by step [up to n times] (GuardedAxioms n),
+-- prove by solver recursion (DefineFunRec), or both in turn: the default.
+data Unfolding = Unfold Int | SolverRecursion | UnfoldThenSolver Int deriving (Eq, Show)
+
+-- | When nothing is said, one try on the law's single structural input;
+-- or none; or on a named input, citing proved laws as lemmas.
+data Induction = DefaultInduction | NoInduction | InductionOn String [Id] deriving (Eq, Show)
+
+defaultLawProof :: LawProof
+defaultLawProof = LawProof (UnfoldThenSolver defaultFuel) DefaultInduction
+
+-- | Induction on one of the law's inputs: whether the harness asked for it
+-- (else it is the default try), the cited laws, and the cases, each a
+-- task whose inputs are the law's, so a model is checked as the law's
+-- counterexample.
+data InductionPlan = InductionPlan
+  { inductionOn :: String, inductionAsked :: Bool, inductionLemmas :: [Id]
+  , inductionCases :: Either String [InductionCase] } deriving (Eq, Show)
+
+-- | A case, in the law's first encoding, and in the other one when the law
+-- tries both (as for the law itself).
+data InductionCase = InductionCase
+  { caseName :: String, caseScript :: String, caseInputs :: [String]
+  , caseRecursion :: Recursion, caseAlternative :: Maybe (Recursion, String) }
+  deriving (Eq, Show)
+
+-- | How recursive definitions reach Z3 (lawspec-smtlib-v2):
+--
+-- * GuardedAxioms fuel: as Why3's eliminate_recursion, each definition is a
+--   declared function with a defining axiom, guarded by its argument
+--   domains and preconditions, so it says nothing where termination was not
+--   proved. As in Dafny, the functions take a fuel argument: the axiom
+--   unfolds f at fuel n+1 into its body at fuel n, a call in the law starts
+--   at the given fuel, and fuel 0 is left uninterpreted. Unfolding is
+--   bounded and reproducible.
+-- * DefineFunRec: SMT-LIB define-funs-rec, the same guarded body, unfolded
+--   by Z3 itself. It is sound because admission proved that each definition
+--   terminates on its domain; outside the guard the function is an
+--   unconstrained declared one.
+data Recursion = GuardedAxioms Int | DefineFunRec deriving (Eq, Show)
+
+-- | Dafny's default: a call in the law unfolds twice.
+defaultFuel :: Int
+defaultFuel = 2
+
+recursionView :: Recursion -> Value
+recursionView (GuardedAxioms fuel) = object ["encoding" .= ("guarded-axioms" :: String), "fuel" .= fuel]
+recursionView DefineFunRec = object ["encoding" .= ("define-fun-rec" :: String)]
+
+-- | A satisfiable task's model is not a counterexample. The counterexample
+-- query declares the law's outer universal inputs as constants and asserts
+-- that the rest of the law is not established for them, so the host can ask
+-- Z3 for exactly their values with get-value. The compiler then re-checks
+-- those values with the reference evaluator (LawSpec.Core.Counterexample).
+-- It is always lawspec-smtlib-v2; the v1 task beside it is unchanged.
+-- ref:DEC-validated-counterexamples
+data CounterexampleQuery = CounterexampleQuery
+  { counterexampleInputs :: [(String, Quantifier)], counterexampleScript :: String
+  } deriving (Eq, Show)
+
+-- | Each encoding is frozen once released. A task that lawspec-smtlib-v1
+-- supports keeps its script and fingerprint byte for byte, so an existing
+-- receipt stays current with no re-run; test/fixtures/smt-v1 holds the
+-- frozen corpus that checks it. A task needing anything v1 lacks is
+-- lawspec-smtlib-v2: the encoder calls `requires SmtLibV2` where it uses a
+-- new feature. ref:DEC-smtlib-encoding-versions
+data Encoding = SmtLibV1 | SmtLibV2 deriving (Eq, Ord, Show, Enum, Bounded)
+
+encodingName :: Encoding -> String
+encodingName SmtLibV1 = "lawspec-smtlib-v1"
+encodingName SmtLibV2 = "lawspec-smtlib-v2"
 
 instance ToJSON ProofTask where
   toJSON task = object $
-    ["encoding" .= encoding, "owner" .= idText (taskOwner task),
+    ["encoding" .= encodingName (taskEncoding task), "owner" .= idText (taskOwner task),
      "declaration" .= idText (taskLaw task), "at" .= taskLocation task,
      "programFingerprint" .= taskProgram task, "machineBits" .= taskBits task] ++
     case taskQuery task of
       Left reason -> ["status" .= ("unsupported"::String), "reason" .= reason]
       Right script -> ["status" .= ("ready"::String), "script" .= script,
         "taskFingerprint" .= taskFingerprint task,
-        "trust" .= ("typed LawSpec translation and the selected SMT solver; no kernel-checked proof certificate"::String)]
+        "trust" .= ("typed LawSpec translation and the selected SMT solver; no kernel-checked proof certificate"::String)] ++
+        [ "counterexample" .= object
+            [ "encoding" .= encodingName SmtLibV2, "script" .= counterexampleScript query
+            , "fingerprint" .= counterexampleFingerprint task query
+            , "inputs" .= [object ["name" .= name, "binder" .= binderName (quantifiedBinder q)]
+                          | (name, q) <- counterexampleInputs query] ]
+        | Right query <- [taskCounterexample task] ] ++
+        [ "counterexampleUnsupported" .= reason | Left reason <- [taskCounterexample task] ] ++
+        [ "recursion" .= recursionView recursion | Just recursion <- [taskRecursion task] ] ++
+        [ "alternative" .= object [ "recursion" .= recursionView recursion, "script" .= script
+                                  , "taskFingerprint" .= alternativeFingerprint task script ]
+        | Just (recursion, script) <- [taskAlternative task] ] ++
+        [ "induction" .= object ([ "on" .= inductionOn plan, "asked" .= inductionAsked plan
+                                 , "using" .= map idText (inductionLemmas plan) ] ++
+            case inductionCases plan of
+              Left reason -> ["status" .= ("unsupported" :: String), "reason" .= reason]
+              Right cases -> ["status" .= ("ready" :: String), "cases" .=
+                [ object ([ "case" .= caseName c, "script" .= caseScript c, "recursion" .= recursionView (caseRecursion c)
+                          , "taskFingerprint" .= caseFingerprint task c, "inputs" .= caseInputs c ] ++
+                          [ "alternative" .= object [ "recursion" .= recursionView mode, "script" .= script
+                                                    , "taskFingerprint" .= alternativeFingerprint task script ]
+                          | Just (mode, script) <- [caseAlternative c] ]) | c <- cases ]])
+        | Just plan <- [taskInduction task] ]
 
 taskFingerprint :: ProofTask -> String
 taskFingerprint task = digestHex (digestString (concatMap frame
-  [encoding,taskProgram task,show (taskBits task),idText (taskOwner task),
+  [encodingName (taskEncoding task),taskProgram task,show (taskBits task),idText (taskOwner task),
    idText (taskLaw task),either id id (taskQuery task)]))
   where frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
 
+-- | The alternative encoding's binding: the task's, with its script.
+alternativeFingerprint :: ProofTask -> String -> String
+alternativeFingerprint task script = taskFingerprint task{taskQuery = Right script}
+
+-- | An induction case's binding: the task's, with the case's script.
+caseFingerprint :: ProofTask -> InductionCase -> String
+caseFingerprint task c = taskFingerprint task{taskQuery = Right (caseScript c)}
+
+-- | The counterexample query's own binding, framed as a task's is.
+counterexampleFingerprint :: ProofTask -> CounterexampleQuery -> String
+counterexampleFingerprint task query = digestHex (digestString (concatMap frame
+  [encodingName SmtLibV2,taskProgram task,show (taskBits task),idText (taskOwner task),
+   idText (taskLaw task),counterexampleScript query]))
+  where frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
+
 proofTasks :: Program -> Either [Diagnostic] [ProofTask]
-proofTasks program = do
+proofTasks = proofTasksWith M.empty
+
+-- | Each law's tasks, proved as its harness says (defaultLawProof when it
+-- says nothing).
+proofTasksWith :: M.Map Id LawProof -> Program -> Either [Diagnostic] [ProofTask]
+proofTasksWith settings program = do
   validateProgram program
   let fingerprint = digestHex (digest (BL.toStrict (Binary.encode program)))
+      lawsById = M.fromList [(propertyId l, l) | u <- programUnits program, l <- unitProperties u]
   pure [ProofTask (unitId owner) (propertyId law) (propertyLocation law)
-          fingerprint (programMachineBits program) (query program law)
-       | owner <- programUnits program, law <- unitProperties owner]
+          fingerprint (programMachineBits program) (scriptOf <$> task)
+          -- A refused task names v1, the encoding that refused it.
+          (either (const SmtLibV1) encodingOf task)
+          (either Left (const (counterexampleQuery program law)) task)
+          (either (const Nothing) recursionOf task)
+          (either (const Nothing) alternativeOf task)
+          (either (const Nothing) (induction lawsById proof law . recursionOf) task)
+       | owner <- programUnits program, law <- unitProperties owner
+       , let proof = M.findWithDefault defaultLawProof (propertyId law) settings
+             task = query program (proofUnfolding proof) law]
+  where
+    induction lawsById proof law recursion = case proofInduction proof of
+      NoInduction -> Nothing
+      InductionOn input lemmas -> Just (InductionPlan input True lemmas
+        (both (proofUnfolding proof) law input [l | i <- lemmas, Just l <- [M.lookup i lawsById]]))
+      -- One try, when the law calls a recursive definition and has a single
+      -- input of a recursive data type.
+      DefaultInduction -> case (recursion, structuralInputs program law) of
+        (Just _, [input]) -> Just (InductionPlan input False [] (both (proofUnfolding proof) law input []))
+        _ -> Nothing
+    -- Each case in the law's encodings, in order.
+    both unfolding law input lemmas = do
+      let (first, second) = case unfolding of
+            Unfold n -> (GuardedAxioms n, Nothing)
+            SolverRecursion -> (DefineFunRec, Nothing)
+            UnfoldThenSolver n -> (GuardedAxioms n, Just DefineFunRec)
+      cases <- inductionTasks program first law input lemmas
+      others <- traverse (\mode -> inductionTasks program mode law input lemmas) second
+      pure [ c { caseRecursion = first, caseAlternative = (\(mode, os) -> (mode, caseScript (os !! i))) <$> ((,) <$> second <*> others) }
+           | (i, c) <- zip [0 ..] cases ]
+    encodingOf (e, _, _, _) = e
+    scriptOf (_, script, _, _) = script
+    recursionOf (_, _, r, _) = r
+    alternativeOf (_, _, _, a) = a
 
-data Sort = BooleanSort | IntegerSort | RealSort | UnitSort deriving (Eq,Show)
+-- | One assertion of a ground query: a proposition the query requires to be
+-- established (true and defined), or not established.
+data Ground = Established Proposition | NotEstablished Proposition
+
+-- | A ground lawspec-smtlib-v2 query over named constants, for the law-set
+-- analysis (Core.LawAnalysis): each constant is declared and kept in its
+-- type's domain, and each assertion is encoded as a law's propositions are.
+-- A model gives the constants' values, which the compiler then confirms
+-- with the reference evaluator. It returns the script and the constants'
+-- names, in order.
+groundQuery :: Program -> String -> [Binder] -> [Ground] -> Either String (String, [String])
+groundQuery program purpose binders assertions = do
+  let bits = programMachineBits program
+  ((rows, certificates, prelude), _) <- runStateT (do
+      rows <- forM (zip [0 :: Int ..] binders) $ \(index, binder) -> do
+        s <- quantifierSortOf program (binderType binder)
+        let name = "lawspec_input_" ++ show index
+        base <- lift (domain bits (binderType binder) name)
+        pure (binder, name, s, base)
+      let scope = M.fromList [(binderId binder, Term s name "true") | (binder, name, s, _) <- rows]
+      certificates <- forM assertions $ \assertion -> case assertion of
+        Established claim -> positive <$> proposition program [] scope claim
+        NotEstablished claim -> no . positive <$> proposition program [] scope claim
+      prelude <- datatypePreamble program
+      functions <- gets recursiveText
+      pure (rows, certificates, fst functions ++ prelude ++ snd functions)) (start SmtLibV2 program (GuardedAxioms defaultFuel))
+  let script = "; " ++ encodingName SmtLibV2 ++ "; " ++ purpose ++ "\n" ++ prelude ++
+        concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (_, name, s, _) <- rows] ++
+        concat ["(assert " ++ base ++ ")\n" | (_, _, _, base) <- rows] ++
+        concat ["(assert " ++ certificate ++ ")\n" | certificate <- certificates]
+  unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
+  pure (script, [name | (_, name, _, _) <- rows])
+
+-- | A law's outer universal inputs, in order: its parameters, its inputs and
+-- the universal quantifiers that open its body; and the rest of the body.
+outerQuantifiers :: Property -> ([Quantifier], Proposition)
+outerQuantifiers law = peel (propertyParameters law ++ propertyInputs law) (propertyBody law)
+  where
+    peel found (Quantified ForEvery q body) = peel (found ++ [q]) body
+    peel found body = (found, body)
+
+counterexampleQuery :: Program -> Property -> Either String CounterexampleQuery
+counterexampleQuery program law = do
+  let (outer, rest) = outerQuantifiers law
+      bits = programMachineBits program
+      constant (scope, rows) (index, q) = do
+        let binder = quantifiedBinder q
+            name = "lawspec_input_" ++ show (index :: Int)
+        s <- quantifierSortOf program (binderType binder)
+        let local = M.insert (binderId binder) (Term s name "true") scope
+        base <- lift (domain bits (binderType binder) name)
+        restricted <- restrictions program [] local (quantifiedPredicates q)
+        -- A Rational or Decimal value is built exactly, so Z3's value is one.
+        let (extra, exactBase) = case exactKind (binderType binder) of
+              Just ExactRational -> ([(name ++ "_n", "Int"), (name ++ "_d", "Int")],
+                both [app ">" [name ++ "_d", "0"], app "=" [name, app "/" [app "to_real" [name ++ "_n"], app "to_real" [name ++ "_d"]]]])
+              Just ExactDecimal -> ([(name ++ "_n", "Int")], app "=" [name, app "/" [app "to_real" [name ++ "_n"], decimalUnit]])
+              Nothing -> ([], "true")
+        modify (\w -> w{extraConstants = extraConstants w ++ extra})
+        pure (local, rows ++ [(name, q, s, both [base, exactBase, positive restricted])])
+  ((rows, result, prelude), _) <- runStateT (do
+      (scope, rows) <- foldM constant (M.empty, []) (zip [0 ..] outer)
+      result <- proposition program [] scope rest
+      prelude <- datatypePreamble program
+      functions <- gets recursiveText
+      -- Z3 unfolds recursive definitions itself here, and searches for a
+      -- model freely; the evaluator checks whatever it gives.
+      extra <- gets extraConstants
+      pure (rows, result, fst functions ++ prelude ++ snd functions ++
+        concat ["(declare-const " ++ n ++ " " ++ t ++ ")\n" | (n, t) <- extra])) ((start SmtLibV2 program DefineFunRec){bounded = False, ranges = False})
+  let script = "; " ++ encodingName SmtLibV2 ++ "; counterexample: the law's outer inputs as constants\n" ++ prelude ++
+        concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (name, _, s, _) <- rows] ++
+        concat ["(assert " ++ condition ++ ")\n" | (_, _, _, condition) <- rows] ++
+        "(assert " ++ no (positive result) ++ ")\n"
+  unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
+  pure (CounterexampleQuery [(name, q) | (name, q, _, _) <- rows] script)
+
+-- | A data type is its own SMT sort (lawspec-smtlib-v2): a closed instance,
+-- such as Maybe Int32, declared with its constructors and selectors.
+data Sort = BooleanSort | IntegerSort | RealSort | UnitSort | StringSort | FloatSort Int Int | DataSort Type deriving (Eq,Show)
 data Term = Term { termSort :: Sort, value :: String, defined :: String }
 data Certificate = Certificate { positive :: String, negative :: String }
-data Work = Work { nextName :: Int, visited :: Int }
+-- The encoding a task needs so far: the newest any feature it uses requires.
+-- The data types it declares, in the order first used, and the program's
+-- data declarations by name.
+data Work = Work { nextName :: Int, visited :: Int, required :: Encoding
+                 , datatypes :: [Type], known :: Catalog
+                 -- Recursive definitions: each one's group (its strongly
+                 -- connected component of calls), the encoding, the groups
+                 -- declared so far and their text, and the fuel a call
+                 -- passes where it is encoded.
+                 , groups :: M.Map Id [Definition], recursion :: Recursion
+                 , declared :: [Id], functionText :: [String], fuel :: String
+                 -- Whether the solver options keep unfolding bounded, and
+                 -- whether each result is stated to lie in its type: both,
+                 -- except in a counterexample query, which searches for a
+                 -- model and states nothing it does not need.
+                 , bounded :: Bool, ranges :: Bool
+                 -- Assumed quantified laws (induction hypotheses, cited
+                 -- laws) name their triggers: the calls to recursive
+                 -- definitions made in them, so Z3 never picks a
+                 -- well-formedness test, which every datum matches.
+                 , patterned :: Bool, triggers :: [String], bound :: [String]
+                 -- A recursive call's value with its lets, and the same call
+                 -- written out, for triggers.
+                 , unshared :: M.Map String String
+                 -- The integer constants that build exact inputs.
+                 , extraConstants :: [(String, String)] }
+
+start :: Encoding -> Program -> Recursion -> Work
+start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty []
+
+-- | With recursive definitions, the solver options that keep unfolding
+-- bounded (as Dafny sets them: no model-based quantifier instantiation, so
+-- the axioms unfold only through their patterns), and the definitions.
+recursiveText :: Work -> (String, String)
+recursiveText work
+  | null (declared work) = ("", concat (functionText work))
+  | not (bounded work) = ("", concat (functionText work))
+  | otherwise = ("(set-option :smt.mbqi false)\n(set-option :auto_config false)\n", concat (functionText work))
+
+fuelLiteral :: Recursion -> String
+fuelLiteral (GuardedAxioms n) = iterate (\x -> app "lawspec_fuel_next" [x]) "lawspec_fuel_zero" !! n
+fuelLiteral DefineFunRec = ""
+
+-- | The pure checked definitions that call themselves, directly or through
+-- others, each with its group.
+recursiveGroups :: Program -> M.Map Id [Definition]
+recursiveGroups program = M.fromList [ (identity d, group) | CyclicSCC group <- stronglyConnComp graph, d <- group ]
+  where
+    definitions = [d | u <- programUnits program, d <- unitDefinitions u]
+    identity = declarationId . definitionDeclaration
+    graph = [(d, identity d, callees (definitionBody d)) | d <- definitions]
+    callees e = case expressionNode e of
+      ExternalCall g arguments -> g : concatMap callees arguments
+      _ -> concatMap callees (children e)
+
+-- | A feature of a later encoding. v1 calls this nowhere, which is what keeps
+-- every v1 task as it was.
+requires :: Encoding -> Encode ()
+requires needed = modify (\s -> s{required=max needed (required s)})
 type Encode = StateT Work (Either String)
 type Scope = M.Map Id Term
 
@@ -92,13 +397,220 @@ sort :: Type -> Either String Sort
 sort (Constructor "Bool" []) = Right BooleanSort
 sort (Constructor "Unit" []) = Right UnitSort
 sort (Constructor "Rational" []) = Right RealSort
+-- Decimal is exact (lawspec-smtlib-v2): a Real, quantified exactly.
+sort (Constructor "Decimal" []) = Right RealSort
+-- IEEE binary32 and binary64 (lawspec-smtlib-v2), SMT-LIB FloatingPoint.
+sort (Constructor "Float32" []) = Right (FloatSort 8 24)
+sort (Constructor "Float64" []) = Right (FloatSort 11 53)
 sort (Constructor name []) | isInteger name = Right IntegerSort
+-- Text uses UTF-32BE bytes in SMT strings, preserving the full Unicode
+-- scalar domain despite Z3's smaller native character alphabet.
+sort (Constructor "Text" []) = Right StringSort
 sort ty = Left ("unsupported SMT carrier: " ++ show ty)
+-- | Every data declaration the program can use, by type name.
+type Catalog = M.Map String DataDeclaration
+
+catalog :: Program -> Catalog
+catalog program = M.fromList [(idText (dataId d), d) | d <- builtinDataDeclarations ++ programDataDeclarations program]
+
+-- | A carrier's sort; a data type must be one the encoding can declare.
+sortIn :: Catalog -> Type -> Either String Sort
+sortIn types ty = case sort ty of
+  Right s -> Right s
+  Left reason -> case ty of
+    Constructor name _ | M.member name types -> do
+      admissible types [] ty
+      -- SMT equality on a datatype is structural, and an IEEE field's is not.
+      when (any (\t -> t `elem` [Constructor "Float32" [], Constructor "Float64" []]) (concatMap (fieldTypes types) (reachable types ty)))
+        (Left ("unsupported SMT data type " ++ name ++ ": it holds an IEEE float, whose equality is not structural"))
+      unless (all (inhabited types) (reachable types ty))
+        (Left ("unsupported SMT data type " ++ name ++ ": it, or a type it holds, has no finite value, and an SMT datatype must have one"))
+      pure (DataSort ty)
+    _ -> Left reason
+
+-- | The data types a data type holds, itself included.
+reachable :: Catalog -> Type -> [Type]
+reachable types root = go [] [root]
+  where
+    go seen [] = reverse seen
+    go seen (t : rest)
+      | t `elem` seen = go seen rest
+      | otherwise = go (t : seen) (rest ++ [f | f <- fieldTypes types t, Left _ <- [sort f]])
+
+-- | Whether a data type has a finite value: some constructor whose fields
+-- all have one. LawSpec admits empty types; SMT datatypes cannot be empty.
+inhabited :: Catalog -> Type -> Bool
+inhabited types root = root `elem` grow []
+  where
+    candidates = reachable types root
+    grow known = case [t | t <- candidates, t `notElem` known, any (all (has known) . fieldsOf t) (constructorsOf t)] of
+      [] -> known
+      new -> grow (known ++ new)
+    has known f = either (const (f `elem` known)) (const True) (sort f)
+    constructorsOf t = either (const []) (dataConstructors . fst) (declarationOf types t)
+    fieldsOf t c = [instantiate (either (const []) snd (declarationOf types t)) (binderType f) | f <- constructorFields c]
+
+-- | A declarable data type: a closed instance of a declaration that is not a
+-- handle or an indexed family, has no existential or equation constructors,
+-- and whose fields are declarable too. A Rational field is refused, since SMT
+-- Real would admit irrational values inside a quantified datum.
+admissible :: Catalog -> [Type] -> Type -> Either String ()
+admissible types seen ty
+  | ty `elem` seen = Right ()
+  | Constructor name arguments <- ty, Just declaration <- M.lookup name types = do
+      let refused why = Left ("unsupported SMT data type " ++ name ++ ": " ++ why)
+      when (dataHandle declaration) (refused "a handle has no constructors to reason about")
+      when (dataIndex declaration /= Nothing) (refused "indexed families are not encoded yet")
+      concrete <- forM arguments $ \argument -> case argument of
+        TypeArgument t -> Right t
+        _ -> refused "index arguments are not encoded yet"
+      unless (length concrete == length (dataParameters declaration)) (refused "wrong number of type arguments")
+      when (any (\c -> c == '|' || c == '\\') (typeSymbol ty)) (refused "its name cannot be an SMT symbol")
+      forM_ (dataConstructors declaration) $ \c -> do
+        unless (null (constructorExistentials c) && null (constructorEquations c))
+          (refused "constructors with existential or refined type parameters are not encoded yet")
+        forM_ (constructorFields c) $ \field -> do
+          let fieldType = instantiate (zip (dataParameters declaration) concrete) (binderType field)
+          case sort fieldType of
+            Right RealSort -> refused "a Rational field would admit irrational SMT values"
+            Right _ -> Right ()
+            Left _ -> admissible types (ty : seen) fieldType
+  | otherwise = Left ("unsupported SMT carrier: " ++ show ty)
+
+-- | A declaration's field type at an instance's type arguments.
+instantiate :: [(Id, Type)] -> Type -> Type
+instantiate table ty = case ty of
+  TypeVariable v -> maybe ty id (lookup v table)
+  Constructor name arguments -> Constructor name
+    [case a of TypeArgument t -> TypeArgument (instantiate table t); other -> other | a <- arguments]
+  Arrow a b -> Arrow (instantiate table a) (instantiate table b)
+
+-- Symbols are quoted, so a type, constructor or selector keeps its LawSpec
+-- name: Maybe<Int32>, Maybe<Int32>#Just and Maybe<Int32>#Just#0.
+typeSymbol :: Type -> String
+typeSymbol (Constructor name []) = name
+typeSymbol (Constructor name arguments) = name ++ "<" ++ intercalate "," [typeSymbol t | TypeArgument t <- arguments] ++ ">"
+typeSymbol other = show other
+
+constructorSymbol :: Type -> DataConstructor -> String
+constructorSymbol ty c = "|" ++ typeSymbol ty ++ "#" ++ constructorName c ++ "|"
+
+selectorSymbol :: Type -> DataConstructor -> Int -> String
+selectorSymbol ty c i = "|" ++ typeSymbol ty ++ "#" ++ constructorName c ++ "#" ++ show i ++ "|"
+
+wellFormedSymbol :: Type -> String
+wellFormedSymbol ty = "|wf#" ++ typeSymbol ty ++ "|"
+
+tester :: Type -> DataConstructor -> String -> String
+tester ty c x = app (app "_" ["is", constructorSymbol ty c]) [x]
+
+-- | The declaration and table of an admitted instance.
+declarationOf :: Catalog -> Type -> Either String (DataDeclaration, [(Id, Type)])
+declarationOf types ty = case ty of
+  Constructor name arguments | Just declaration <- M.lookup name types ->
+    Right (declaration, zip (dataParameters declaration) [t | TypeArgument t <- arguments])
+  _ -> Left ("unsupported SMT data type: " ++ show ty)
+
+constructorOf :: Catalog -> Type -> Id -> Either String DataConstructor
+constructorOf types ty tag = do
+  (declaration, _) <- declarationOf types ty
+  case [c | c <- dataConstructors declaration, constructorId c == tag] of
+    c : _ -> Right c
+    [] -> Left ("unknown SMT constructor " ++ idText tag)
+
+fieldTypes :: Catalog -> Type -> [Type]
+fieldTypes types ty = case declarationOf types ty of
+  Right (declaration, table) -> [instantiate table (binderType f) | c <- dataConstructors declaration, f <- constructorFields c]
+  Left _ -> []
+
+-- | A carrier's sort, declaring a data type (and the data types of its
+-- fields) the first time one is used. A data type makes the task v2.
+sortOf :: Program -> Type -> Encode Sort
+sortOf program ty = do
+  types <- gets known
+  s <- lift (sortIn types ty)
+  when (s == StringSort || ty == Constructor "Decimal" [] || isFloat s) (requires SmtLibV2)
+  case s of
+    DataSort _ -> do
+      requires SmtLibV2
+      declared <- gets datatypes
+      unless (ty `elem` declared) $ do
+        modify (\w -> w{datatypes = datatypes w ++ [ty]})
+        forM_ (fieldTypes types ty) $ \fieldType -> case sort fieldType of
+          Right _ -> pure ()
+          Left _ -> () <$ sortOf program fieldType
+    _ -> pure ()
+  pure s
+
+quantifierSortOf :: Program -> Type -> Encode Sort
+quantifierSortOf program ty = do
+  s <- sortOf program ty
+  -- Rational and Decimal inputs are quantified exactly (exactInput), never
+  -- as SMT Reals, whose witnesses may be irrational.
+  when (s == RealSort) (requires SmtLibV2)
+  when (s == RealSort && exactKind ty == Nothing) (lift (Left "SMT Real quantification is not exact Rational quantification"))
+  pure s
+
+-- | The declarations of the data types a task used, and their
+-- well-formedness: each field in its type's range, nested data well formed,
+-- and each constructor's field refinements. Recursive types (List) define it
+-- with define-funs-rec, which is sound because a datum is finite.
+datatypePreamble :: Program -> Encode String
+datatypePreamble program = do
+  initial <- gets datatypes
+  if null initial then pure "" else do
+    bodies <- wellFormed []
+    final <- gets datatypes
+    types <- gets known
+    let bits = programMachineBits program
+        constructors ty = either (const []) (dataConstructors . fst) (declarationOf types ty)
+        table ty = either (const []) snd (declarationOf types ty)
+        field ty c i f = "(" ++ selectorSymbol ty c i ++ " " ++
+          either (const "Bool") sortText (sortIn types (instantiate (table ty) (binderType f))) ++ ")"
+        constructor ty c = "(" ++ unwords (constructorSymbol ty c : [field ty c i f | (i, f) <- zip [0 ..] (constructorFields c)]) ++ ")"
+        declare = "(declare-datatypes (" ++ unwords ["(" ++ sortText (DataSort t) ++ " 0)" | t <- final] ++ ") (" ++
+          unwords ["(" ++ unwords (map (constructor t) (constructors t)) ++ ")" | t <- final] ++ "))\n"
+        graph = [(t, typeSymbol t, [typeSymbol f | f <- fieldTypes types t, f `elem` final]) | t <- final]
+        components = stronglyConnComp graph
+        recursive = not (null [() | CyclicSCC _ <- components])
+        signature t = "(" ++ wellFormedSymbol t ++ " ((x " ++ sortText (DataSort t) ++ ")) Bool)"
+        body t = maybe "true" id (lookup t bodies)
+        definitions
+          | recursive = "(define-funs-rec (" ++ unwords (map signature final) ++ ") (" ++ unwords (map body final) ++ "))\n"
+          | otherwise = concat ["(define-fun " ++ wellFormedSymbol t ++ " ((x " ++ sortText (DataSort t) ++ ")) Bool " ++ body t ++ ")\n"
+                              | t <- flattenSCCs components]
+    _ <- pure bits
+    pure (declare ++ definitions)
+  where
+    wellFormed done = do
+      pending <- gets (filter (`notElem` map fst done) . datatypes)
+      if null pending then pure done else do
+        new <- forM pending (\ty -> (,) ty <$> wellFormedBody program ty)
+        wellFormed (done ++ new)
+
+wellFormedBody :: Program -> Type -> Encode String
+wellFormedBody program ty = do
+  types <- gets known
+  (declaration, table) <- lift (declarationOf types ty)
+  conditions <- forM (dataConstructors declaration) $ \c -> do
+    fields <- forM (zip [0 ..] (constructorFields c)) $ \(i, f) -> do
+      let fieldType = instantiate table (binderType f)
+          selected = app (selectorSymbol ty c i) ["x"]
+      s <- sortOf program fieldType
+      range <- lift (domain (programMachineBits program) fieldType selected)
+      pure ((binderId f, Term s selected "true"), range)
+    invariant <- restrictions program [] (M.fromList (map fst fields)) (constructorPredicates c)
+    pure (app "=>" [tester ty c "x", both (map snd fields ++ [positive invariant])])
+  pure (both conditions)
+
 sortText :: Sort -> String
 sortText BooleanSort = "Bool"
 sortText UnitSort = "Bool"
+sortText (DataSort ty) = "|" ++ typeSymbol ty ++ "|"
 sortText IntegerSort = "Int"
 sortText RealSort = "Real"
+sortText StringSort = "String"
+sortText (FloatSort e m) = "(_ FloatingPoint " ++ show e ++ " " ++ show m ++ ")"
 
 -- Rational-valued computations stay rational, since their leaves are integers
 -- or rational constants and their operations are rational-closed. Quantifying
@@ -112,27 +624,44 @@ quantifierSort ty = do
 
 domain :: Int -> Type -> String -> Either String String
 domain bits ty x = do
-  s <- sort ty
+  s <- case (sort ty, ty) of
+    (Left _, Constructor _ _) -> Right (DataSort ty)
+    (result, _) -> result
   pure $ case (s,ty) of
+    (DataSort _,_) -> app (wellFormedSymbol ty) [x]
     (UnitSort,_) -> app "=" [x,"false"]
+    -- A Text holds Unicode scalar values: no surrogate code points.
+    (StringSort,_) -> both [app "str.in_re" [x, scalars], app "=" [app "mod" [app "str.len" [x], "4"], "0"]]
     (IntegerSort,Constructor name []) -> case integerBounds bits name of
       Just (lo,hi) -> both [app "<=" [integer lo,x],app "<=" [x,integer hi]]
       Nothing | name == "BigUInt" -> app "<=" ["0",x]
       _ -> "true"
     _ -> "true"
 
-query :: Program -> Property -> Either String String
-query program law = do
+query :: Program -> Unfolding -> Property -> Either String (Encoding, String, Maybe Recursion, Maybe (Recursion, String))
+query program unfolding law = do
   unless (propertyInputDomain law == UniversalDomain)
     (Left "SMT law tasks require the canonical universal input-domain policy")
   unless (null (propertyResources law)) (Left "SMT translation does not execute resources")
   unless (null (propertyHandlers law)) (Left "SMT translation does not execute ability handlers")
-  certificate <- evalStateT (proposition program [] M.empty
-    (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))) (Work 0 0)
-  let script = "; " ++ encoding ++ "; negate a positive certificate, including definedness\n" ++
-        "(assert " ++ no (positive certificate) ++ ")\n"
-  unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
-  pure script
+  let encode mode = do
+        ((certificate, prelude), work) <- runStateT (do
+            certificate <- proposition program [] M.empty
+              (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))
+            prelude <- datatypePreamble program
+            pure (certificate, prelude)) (start SmtLibV1 program mode)
+        let script = "; " ++ encodingName (required work) ++ "; negate a positive certificate, including definedness\n" ++
+              fst (recursiveText work) ++ prelude ++ snd (recursiveText work) ++ "(assert " ++ no (positive certificate) ++ ")\n"
+        unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
+        pure (required work, script, not (null (declared work)))
+  let (first, second) = case unfolding of
+        Unfold n -> (GuardedAxioms n, Nothing)
+        SolverRecursion -> (DefineFunRec, Nothing)
+        UnfoldThenSolver n -> (GuardedAxioms n, Just DefineFunRec)
+  (encoding, script, recursive) <- encode first
+  if not recursive then pure (encoding, script, Nothing, Nothing) else do
+    alternative <- traverse (\mode -> (\(_, text, _) -> (mode, text)) <$> encode mode) second
+    pure (encoding, script, Just first, alternative)
 
 truth :: Term -> Certificate
 truth term = Certificate (both [defined term,value term]) (both [defined term,no (value term)])
@@ -166,15 +695,60 @@ proposition program active scope claim = do
     Negation body -> do
       result <- proposition program active scope body
       pure (Certificate (negative result) (positive result))
+    Quantified kind q body | Just exact <- exactKind (binderType (quantifiedBinder q)) -> do
+      requires SmtLibV2
+      name <- fresh
+      let binder = quantifiedBinder q
+          numerator' = name ++ "_n"
+          denominator' = name ++ "_d"
+          ratio = app "/" [app "to_real" [numerator'], app "to_real" [denominator']]
+          decimal = app "/" [app "to_real" [numerator'], decimalUnit]
+          -- (variables, their condition, the input's value)
+          (universal, existential) = case exact of
+            ExactRational -> let v = ([(numerator', "Int"), (denominator', "Int")], app ">" [denominator', "0"], ratio) in (v, v)
+            -- Every Decimal is a Real, so a universal over the Reals is
+            -- sound; a witness is a multiple of 10^-18, so it is a Decimal.
+            ExactDecimal -> (([(name, "Real")], "true", name), ([(numerator', "Int")], "true", decimal))
+          encodeAt (_, _, term) = do
+            let local = M.insert (binderId binder) (Term RealSort term "true") scope
+            restricted <- restrictions program active local (quantifiedPredicates q)
+            result <- proposition program active local body
+            pure (restricted, result)
+          quantify keyword (variables, condition, _) formula =
+            "(" ++ keyword ++ " (" ++ unwords ["(" ++ v ++ " " ++ t ++ ")" | (v, t) <- variables] ++ ") " ++ formula ++ ")"
+      (rAll, resAll) <- encodeAt universal
+      (rSome, resSome) <- if exact == ExactRational then pure (rAll, resAll) else encodeAt existential
+      let (_, allCondition, _) = universal
+          (_, someCondition, _) = existential
+          allOf certificate = quantify "forall" universal (eitherOf [no allCondition, negative rAll, both [positive rAll, certificate]])
+          someOf certificate = quantify "exists" existential (both [someCondition, positive rSome, certificate])
+      pure $ case kind of
+        ForEvery -> Certificate (allOf (positive resAll)) (someOf (negative resSome))
+        ForSome -> Certificate (someOf (positive resSome)) (allOf (negative resAll))
     Quantified kind q body -> do
       let binder=quantifiedBinder q
-      s <- lift (quantifierSort (binderType binder))
+      s <- quantifierSortOf program (binderType binder)
       name <- fresh
+      before <- gets (length . triggers)
+      modify (\w -> w{bound = name : bound w})
       let local=M.insert (binderId binder) (Term s name "true") scope
       base <- lift (domain (programMachineBits program) (binderType binder) name)
       restricted <- restrictions program active local (quantifiedPredicates q)
       result <- proposition program active local body
-      let quantify keyword formula = "(" ++ keyword ++ " ((" ++ name ++ " " ++ sortText s ++ ")) " ++ formula ++ ")"
+      made <- gets (drop before . triggers)
+      inScope <- gets bound
+      modify (\w -> w{bound = drop 1 (bound w)})
+      let spaced c = if c `elem` ("()" :: String) then ' ' else c
+          -- A trigger may name only quantified variables, never a let's.
+          local token = case token of
+            'v' : digits -> not (null digits) && all (`elem` ("0123456789" :: String)) digits
+            _ -> False
+          closed t = all (`elem` inScope) (filter local (words (map spaced t)))
+          chosen = take 3 [t | (i, t) <- zip [0 :: Int ..] made, t `notElem` take i made, name `elem` words (map spaced t), closed t]
+          patterns = concat [" :pattern (" ++ t ++ ")" | t <- chosen]
+          quantify keyword formula
+            | null chosen = "(" ++ keyword ++ " ((" ++ name ++ " " ++ sortText s ++ ")) " ++ formula ++ ")"
+            | otherwise = "(" ++ keyword ++ " ((" ++ name ++ " " ++ sortText s ++ ")) (! " ++ formula ++ patterns ++ "))"
           allOf bodyCertificate = quantify "forall" (eitherOf [no base,negative restricted,
             both [positive restricted,bodyCertificate]])
           someOf bodyCertificate = quantify "exists" (both [base,positive restricted,bodyCertificate])
@@ -185,19 +759,77 @@ proposition program active scope claim = do
 expression :: Program -> [Id] -> Scope -> Expr -> Encode Term
 expression program active scope source = do
   tick
-  expected <- lift (sort (expressionType source))
-  term <- node
+  expected <- sortOf program (expressionType source)
+  types <- gets known
+  term <- node expected types
   unless (termSort term == expected) (lift (Left "SMT expression carrier mismatch"))
   valid <- lift (domain (programMachineBits program) (expressionType source) (value term))
   pure term{defined=both [defined term,valid]}
   where
     recurse=expression program active scope
-    node=case expressionNode source of
+    node expected types=case expressionNode source of
+      -- Data (lawspec-smtlib-v2). A construction is defined when its fields
+      -- are and the datum is well formed: its field refinements hold.
+      Construct tag fields -> do
+        let ty = expressionType source
+        c <- lift (constructorOf types ty tag)
+        terms <- mapM recurse fields
+        let built = if null terms then constructorSymbol ty c else app (constructorSymbol ty c) (map value terms)
+        pure (Term expected built (both (map defined terms ++ [app (wellFormedSymbol ty) [built]])))
+      -- A match selects the case whose constructor built the value; its
+      -- binders are that constructor's selectors, so no field is read from
+      -- another constructor.
+      Match scrutinee cases -> do
+        subject <- recurse scrutinee
+        let ty = expressionType scrutinee
+        name <- fresh
+        branches <- forM cases $ \matched -> do
+          c <- lift (constructorOf types ty (caseConstructor matched))
+          bound <- forM (zip [0 ..] (caseBinders matched)) $ \(i, binder) -> do
+            s <- sortOf program (binderType binder)
+            pure (binderId binder, Term s (app (selectorSymbol ty c i) [name]) "true")
+          body <- expression program active (M.union (M.fromList bound) scope) (caseBody matched)
+          pure (tester ty c name, body)
+        case reverse branches of
+          [] -> lift (Left "SMT match has no cases")
+          (_, final) : _ -> do
+            let bind x = app "let" ["((" ++ name ++ " " ++ value subject ++ "))", x]
+                chosen = foldr (\(test, body) rest -> choose test (value body) rest) (value final) (init branches)
+                guarded = foldr (\(test, body) rest -> choose test (defined body) rest) "false" branches
+            pure (Term expected (bind chosen) (both [defined subject, bind guarded]))
+      -- b.f reads a field of the constructor that built b, and only that one:
+      -- a read from another constructor is undefined, never Z3's arbitrary
+      -- selector value.
+      Project tag index argument -> do
+        subject <- recurse argument
+        let ty = expressionType argument
+        c <- lift (constructorOf types ty tag)
+        pure (Term expected (app (selectorSymbol ty c index) [value subject])
+          (both [defined subject, tester ty c (value subject)]))
+      Update tag index argument replacement -> do
+        subject <- recurse argument
+        new <- recurse replacement
+        let ty = expressionType argument
+        c <- lift (constructorOf types ty tag)
+        let built = app (constructorSymbol ty c)
+              [if k == index then value new else app (selectorSymbol ty c k) [value subject] | k <- [0 .. length (constructorFields c) - 1]]
+        pure (Term expected built (both [defined subject, tester ty c (value subject), defined new, app (wellFormedSymbol ty) [built]]))
       Constant scalar -> case scalar of
         SBool x -> pure (Term BooleanSort (if x then "true" else "false") "true")
         SInteger _ n -> pure (Term IntegerSort (integer n) "true")
         SRational n d -> pure (Term RealSort (app "/" [app "to_real" [integer n],app "to_real" [integer d]]) "true")
+        SDecimal c e -> do
+          requires SmtLibV2
+          pure (Term RealSort (if e >= 0 then app "to_real" [integer (c * 10 ^ e)]
+            else app "/" [app "to_real" [integer c], app "to_real" [integer (10 ^ negate e)]]) "true")
+        SFloat t bits | Right (FloatSort e m) <- sort (Constructor t []) -> do
+          requires SmtLibV2
+          pure (Term (FloatSort e m) ("((_ to_fp " ++ show e ++ " " ++ show m ++ ") #x" ++ bits ++ ")") "true")
         SAbsent "Unit" -> pure (Term UnitSort "false" "true")
+        SSequence "Text" units -> do
+          requires SmtLibV2
+          literal <- lift (textLiteral units)
+          pure (Term StringSort literal "true")
         _ -> lift (Left "unsupported SMT scalar constant")
       Local name -> maybe (lift (Left "unbound SMT local")) pure (M.lookup name scope)
       Let binder argument body -> do
@@ -220,30 +852,148 @@ expression program active scope source = do
         pure (Term BooleanSort result (both [defined a,valid]))
       Unary op argument -> do
         term <- recurse argument
-        pure term{value=app (case op of Not -> "not"; Negate -> "-") [value term]}
+        pure term{value=app (case op of Not -> "not"; Negate | isFloat (termSort term) -> "fp.neg"; Negate -> "-") [value term]}
       Binary op _ left right -> do
         a <- recurse left
         b <- recurse right
         lift (binary op a b)
       Convert _ target argument -> do
         term <- recurse argument
-        s <- lift (sort target)
+        s <- sortOf program target
+        when (target == Constructor "Decimal" [] && expressionType argument == Constructor "Rational" [])
+          (lift (Left "unsupported SMT conversion: a Rational is a Decimal only when its denominator divides a power of ten"))
         case (termSort term,s) of
           (a,b) | a==b -> pure term
+          (FloatSort _ _, FloatSort e m) -> pure term{termSort=s,value="((_ to_fp " ++ show e ++ " " ++ show m ++ ") RNE " ++ value term ++ ")"}
           (IntegerSort,RealSort) -> pure term{termSort=s,value=app "to_real" [value term]}
           (RealSort,IntegerSort) -> pure term{termSort=s,value=app "to_int" [value term],
             defined=both [defined term,app "is_int" [value term]]}
           _ -> lift (Left "unsupported SMT conversion")
       ExternalCall name arguments -> call program active scope name arguments
       Helper Unreachable [] -> do
-        s <- lift (sort (expressionType source))
-        pure (Term s (case s of BooleanSort -> "false"; UnitSort -> "false"; _ -> "0") "false")
+        s <- sortOf program (expressionType source)
+        case s of
+          DataSort _ -> lift (Left "unsupported SMT expression (an unreachable data value); no uninterpreted replacement was introduced")
+          _ -> pure (Term s (case s of BooleanSort -> "false"; UnitSort -> "false"; _ -> "0") "false")
       Helper Checked [argument] -> do
         term <- recurse argument
         pure (Term BooleanSort "true" (defined term))
-      _ -> lift (Left "unsupported SMT expression; no uninterpreted replacement was introduced")
+      -- Text (lawspec-smtlib-v2): Z3's string theory, with LawSpec's
+      -- meanings (LawSpec.Core.Semantics.helperValue).
+      -- IEEE classification.
+      Helper builtin [argument] | builtin `elem` [IsNaN, IsInfinite, IsFinite, IsNegativeZero] -> do
+        term <- recurse argument
+        unless (isFloat (termSort term)) (lift (Left "unsupported SMT expression: classification of a non-float"))
+        let x = value term
+            test = case builtin of
+              IsNaN -> app "fp.isNaN" [x]
+              IsInfinite -> app "fp.isInfinite" [x]
+              IsFinite -> both [no (app "fp.isNaN" [x]), no (app "fp.isInfinite" [x])]
+              _ -> both [app "fp.isZero" [x], app "fp.isNegative" [x]]
+        pure (Term BooleanSort test (defined term))
+      Helper builtin arguments | Just _ <- lookup builtin textHelpers -> do
+        terms <- mapM recurse arguments
+        let ok = both (map defined terms)
+            textual = [t | t <- terms, termSort t == StringSort]
+        let lists = [ty | a <- arguments, let ty = expressionType a, isList ty]
+            isList ty = case ty of Constructor "List" [_] -> True; _ -> False
+        if null textual && not (null lists) then listHelper program builtin (head lists) terms ok else do
+         when (null textual) (lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " with these arguments); no uninterpreted replacement was introduced")))
+         case (builtin, terms) of
+           (Length, [t]) -> pure (Term IntegerSort (app "div" [app "str.len" [value t], "4"]) ok)
+           (Append, [a, b]) -> pure (Term StringSort (app "str.++" [value a, value b]) ok)
+           (StartsWith, [t, p]) -> pure (Term BooleanSort (app "str.prefixof" [value p, value t]) ok)
+           (EndsWith, [t, p]) -> pure (Term BooleanSort (app "str.suffixof" [value p, value t]) ok)
+           (TextContains, [t, p]) -> do
+             index <- fresh
+             let end = app "+" [index, app "str.len" [value p]]
+                 found = both [app "<=" ["0", index], app "<=" [end, app "str.len" [value t]],
+                   app "=" [app "mod" [index, "4"], "0"],
+                   app "=" [app "str.substr" [value t, index, app "str.len" [value p]], value p]]
+             pure (Term BooleanSort ("(exists ((" ++ index ++ " Int)) " ++ found ++ ")") ok)
+           (Slice, [x, from, to]) | termSort from == IntegerSort && termSort to == IntegerSort -> do
+             let n = app "div" [app "str.len" [value x], "4"]
+                 clamp v = choose (app "<" [v, "0"]) "0" (choose (app ">" [v, n]) n v)
+                 start = clamp (value from)
+                 stop = choose (app "<" [clamp (value to), start]) start (clamp (value to))
+             pure (Term StringSort (app "str.substr" [value x, app "*" ["4", start], app "*" ["4", app "-" [stop, start]]]) ok)
+           (RegexMatches, [_, t]) -> case arguments of
+             Expr _ (Constant (SSequence "Text" units)) _ : _ -> do
+               pattern <- lift (either (\why -> Left ("unsupported SMT regex: " ++ why)) Right (parseRegex (map toEnum units)))
+               regex <- lift (regexTerm pattern)
+               pure (Term BooleanSort (app "str.in_re" [value t, regex]) ok)
+             _ -> lift (Left "unsupported SMT regex: the pattern must be a literal")
+           _ -> lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " with these arguments); no uninterpreted replacement was introduced"))
+      -- prelude.compare: Less, Equal or Greater, as compareValues orders
+      -- numbers, Booleans (false first) and Text (code point by code point).
+      Helper Compare [left, right] -> do
+        a <- recurse left
+        b <- recurse right
+        let ty = expressionType source
+            named tag = case ty of
+              Constructor name _ -> lift (constructorOf types ty (Id (name ++ "::" ++ tag)))
+              _ -> lift (Left "unsupported SMT expression (compare)")
+        less <- named "Less"
+        equal <- named "Equal"
+        greater <- named "Greater"
+        before <- case (termSort a, termSort b) of
+          (x, y) | x == y && x `elem` [IntegerSort, RealSort] -> pure (app "<" [value a, value b])
+          (IntegerSort, RealSort) -> pure (app "<" [app "to_real" [value a], value b])
+          (RealSort, IntegerSort) -> pure (app "<" [value a, app "to_real" [value b]])
+          (StringSort, StringSort) -> pure (app "str.<" [value a, value b])
+          (BooleanSort, BooleanSort) -> pure (both [no (value a), value b])
+          _ -> lift (Left "unsupported SMT expression (compare); only numbers, Booleans and Text are ordered here")
+        let same = app "=" [value a, value b]
+            sym c = constructorSymbol ty c
+        pure (Term expected (choose before (sym less) (choose same (sym equal) (sym greater))) (both [defined a, defined b]))
+      Helper TextOf [argument] -> do
+        term <- recurse argument
+        unless (termSort term == IntegerSort) (lift (Left "unsupported SMT expression: text of a non-integer"))
+        requires SmtLibV2
+        let n = value term
+            helper = "|lawspec_utf32_ascii|"
+            prefix = byteLiteral [0, 0, 0]
+        done <- gets (any (helper `isInfixOf`) . functionText)
+        unless done $ modify (\w -> w{functionText = functionText w ++
+          ["(define-fun-rec " ++ helper ++ " ((s String)) String (ite (= (str.len s) 0) \"\" " ++
+           "(str.++ " ++ prefix ++ " (str.at s 0) (" ++ helper ++ " (str.substr s 1 (- (str.len s) 1))))))\n"]})
+        let ascii = choose (app "<" [n, "0"]) (app "str.++" ["\"-\"", app "str.from_int" [app "-" [n]]]) (app "str.from_int" [n])
+        pure (Term StringSort (app helper [ascii]) (defined term))
+      other -> lift (Left ("unsupported SMT expression (" ++ nodeName other ++ "); no uninterpreted replacement was introduced"))
+
+-- | What an unsupported node is, for the task's reason.
+nodeName :: Node -> String
+nodeName node = case node of
+  Helper builtin _ -> builtinName builtin
+  AllElements {} -> "every element"
+  AllPayloads {} -> "every payload"
+  Perform operation _ -> "operation " ++ operationName operation
+  Handle {} -> "handled ability"
+  Calls {} -> "recorded calls"
+  Constant scalar -> "constant " ++ takeWhile (/= ' ') (show scalar)
+  _ -> "expression"
 
 binary :: BinaryOp -> Term -> Term -> Either String Term
+binary op a b
+  | isFloat (termSort a) && termSort a == termSort b = do
+      let both' name = Term (termSort a) (app name ["RNE", value a, value b]) total
+          test name = Term BooleanSort (app name [value a, value b]) total
+          total = both [defined a, defined b]
+      case op of
+        Add -> pure (both' "fp.add")
+        Subtract -> pure (both' "fp.sub")
+        Multiply -> pure (both' "fp.mul")
+        Divide -> pure (both' "fp.div")
+        Less -> pure (test "fp.lt")
+        LessEqual -> pure (test "fp.leq")
+        Greater -> pure (test "fp.gt")
+        GreaterEqual -> pure (test "fp.geq")
+        -- LawSpec's float equality is IEEE's: NaN is not itself, and the
+        -- two zeros are equal.
+        Equal -> pure (test "fp.eq")
+        NotEqual -> pure (Term BooleanSort (no (app "fp.eq" [value a, value b])) total)
+        _ -> Left "unsupported SMT float operation"
+  | isFloat (termSort a) || isFloat (termSort b) = Left "unsupported SMT float operation: mixed operands"
 binary op a b = do
   let numeric term=termSort term `elem` [IntegerSort,RealSort]
       real term | termSort term==IntegerSort = app "to_real" [value term]
@@ -286,6 +1036,139 @@ binary op a b = do
 
 call :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
 call program active scope name arguments = do
+  recursive <- gets (M.member name . groups)
+  if recursive then recursiveCall program active scope name arguments else inlineCall program active scope name arguments
+
+-- | A call to a recursive definition: its declared function, at the
+-- current fuel. Mandatory admission proved that the body is total on the
+-- definition's domain (argument types and preconditions), and that its
+-- result lies in the result type, by induction over the calls it proved
+-- terminate. So the call is defined exactly when its arguments are defined
+-- and in that domain, and the callee's runtime postconditions hold; Z3 does
+-- not re-derive definedness by unfolding. ref:DEC-smt-recursive-definitions
+recursiveCall :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
+recursiveCall program active scope name arguments = do
+  requires SmtLibV2
+  group <- gets (M.findWithDefault [] name . groups)
+  definition <- lift $ case [d | d <- group, declarationId (definitionDeclaration d) == name] of
+    [d] | not (definitionOrchestrates d), null (declarationUses (definitionDeclaration d)) -> Right d
+    _ -> Left "SMT calls require a pure checked definition; native implementations stay unsupported"
+  declareGroup program group
+  values <- mapM (expression program active scope) arguments
+  unless (length values==length (definitionArguments definition)) (lift (Left "SMT call arity mismatch"))
+  s <- sortOf program (snd (functionType (declarationType (definitionDeclaration definition))))
+  names <- mapM (const fresh) values
+  current <- gets fuel
+  ranges <- lift (mapM (\(n, b) -> domain (programMachineBits program) (binderType b) n) (zip names (definitionArguments definition)))
+  let stored=zipWith (\n term -> term{value=n,defined="true"}) names values
+      bind text | null values = text
+                | otherwise = app "let" ["(" ++ unwords ["(" ++ n ++ " " ++ value term ++ ")" | (n,term)<-zip names values] ++ ")",text]
+      called | null current = app (functionSymbol name) names
+             | otherwise = app (fuelSymbol name) (current : names)
+      result = Term s called "true"
+  valid <- contractChecks program active name stored result
+  wanted <- gets patterned
+  written <- gets unshared
+  let plainArguments = [M.findWithDefault (value v) (value v) written | v <- values]
+      outright | null current = app (functionSymbol name) plainArguments
+               | otherwise = app (fuelSymbol name) (current : plainArguments)
+  when (wanted && not (any (`elem` words (map spaced outright)) ["let", "ite", "forall", "exists"])) $
+    modify (\w -> w{triggers = triggers w ++ [outright], unshared = M.insert (bind (value result)) outright (unshared w)})
+  pure result{value=bind (value result),defined=both (map defined values ++ [bind (both (ranges ++ valid))])}
+  where spaced c = if c `elem` ("()" :: String) then ' ' else c
+
+-- | A recursive definition's function, the same at every fuel; and, with
+-- guarded axioms, the function at a given fuel, linked to it by an axiom.
+-- Hypotheses and cited laws use the first, so they match whatever fuel a
+-- term was unfolded at.
+functionSymbol, fuelSymbol :: Id -> String
+functionSymbol name = "|lawspec_function " ++ idText name ++ "|"
+fuelSymbol name = "|lawspec_function_fuel " ++ idText name ++ "|"
+
+-- | A group's functions, declared and defined once per task, after the
+-- groups their bodies call. Each definition holds where admission proved
+-- the body total: on its argument domains and preconditions (the guard).
+-- There its result also lies in its result type.
+declareGroup :: Program -> [Definition] -> Encode ()
+declareGroup program group = do
+  let ids = map (declarationId . definitionDeclaration) group
+  done <- gets declared
+  unless (any (`elem` done) ids) $ do
+    modify (\w -> w{declared = declared w ++ ids})
+    mode <- gets recursion
+    outer <- gets fuel
+    let bits = programMachineBits program
+        fuelSort = "LawspecFuel"
+        fuelVariable = "lawspec_fuel"
+    modify (\w -> w{fuel = case mode of GuardedAxioms _ -> fuelVariable; DefineFunRec -> ""})
+    members <- forM group $ \d -> do
+      let name = declarationId (definitionDeclaration d)
+          resultType = snd (functionType (declarationType (definitionDeclaration d)))
+          parameters = [("lawspec_argument_" ++ show i, b) | (i, b) <- zip [0 :: Int ..] (definitionArguments d)]
+      sorts <- mapM (sortOf program . binderType . snd) parameters
+      resultSort <- sortOf program resultType
+      let terms = [Term s n "true" | ((n, _), s) <- zip parameters sorts]
+          scope = M.fromList (zip (map (binderId . snd) parameters) terms)
+      ranges <- lift (mapM (\(n, b) -> domain bits (binderType b) n) parameters)
+      preconditions <- forM [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c == name] $ \c ->
+        positive <$> restrictions program [] (M.fromList (zip (map binderId (contractArguments c)) terms)) (contractPreconditions c)
+      body <- expression program [] scope (definitionBody d)
+      pure (name, parameters, sorts, resultSort, resultType, both (ranges ++ preconditions), value body)
+    modify (\w -> w{fuel = outer})
+    let typed ps ss = [(n, sortText so) | ((n, _), so) <- zip ps ss]
+        binders ps ss = unwords ["(" ++ n ++ " " ++ t ++ ")" | (n, t) <- typed ps ss]
+        outside n = "|lawspec_outside " ++ idText n ++ "|"
+        fuelDeclaration = case mode of
+          GuardedAxioms _ ->
+            "(declare-datatypes ((" ++ fuelSort ++ " 0)) (((lawspec_fuel_zero) (lawspec_fuel_next (lawspec_fuel_previous " ++ fuelSort ++ ")))))\n"
+          DefineFunRec -> ""
+    keepRanges <- gets ranges
+    inRange <- if not keepRanges then pure [] else forM members $ \(n, ps, ss, _, resultType, guard, _) -> do
+      let call = app (functionSymbol n) (map fst ps)
+      range <- lift (domain bits resultType call)
+      pure ("(assert (forall (" ++ binders ps ss ++ ") (! " ++ app "=>" [guard, range] ++ " :pattern (" ++ call ++ "))))\n")
+    let declarations = concat
+          [ case mode of
+              GuardedAxioms _ -> "(declare-fun " ++ fuelSymbol n ++ " (" ++ unwords (fuelSort : map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n" ++
+                "(declare-fun " ++ functionSymbol n ++ " (" ++ unwords (map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n"
+              DefineFunRec -> "(declare-fun " ++ outside n ++ " (" ++ unwords (map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n"
+          | (n, ps, ss, r, _, _, _) <- members ]
+        definitions = case mode of
+          GuardedAxioms _ -> concat
+            [ "(assert (forall ((" ++ fuelVariable ++ " " ++ fuelSort ++ ") " ++ binders ps ss ++ ") (! " ++
+                app "=>" [guard, app "=" [app f next, body]] ++ " :pattern (" ++ app f next ++ "))))\n" ++
+              -- A call with fuel left is the function; the function, where
+              -- a hypothesis or a cited law names it, unfolds once. A call
+              -- with no fuel left links to nothing, so no unfolding makes
+              -- new calls without end.
+              "(assert (forall ((" ++ fuelVariable ++ " " ++ fuelSort ++ ") " ++ binders ps ss ++ ") (! " ++
+                app "=" [app f next, app (functionSymbol n) (map fst ps)] ++ " :pattern (" ++ app f next ++ "))))\n" ++
+              "(assert (forall (" ++ binders ps ss ++ ") (! " ++
+                app "=" [app (functionSymbol n) (map fst ps), app f (app "lawspec_fuel_next" ["lawspec_fuel_zero"] : map fst ps)] ++
+                " :pattern (" ++ app (functionSymbol n) (map fst ps) ++ "))))\n"
+            | (n, ps, ss, _, _, guard, body) <- members, let f = fuelSymbol n
+            , let next = app "lawspec_fuel_next" [fuelVariable] : map fst ps ]
+          DefineFunRec ->
+            "(define-funs-rec (" ++ unwords
+              [ "(" ++ functionSymbol n ++ " (" ++ binders ps ss ++ ") " ++ sortText r ++ ")" | (n, ps, ss, r, _, _, _) <- members ] ++ ") (" ++
+            unwords [ choose guard body (app (outside n) (map fst ps)) | (n, ps, _, _, _, guard, body) <- members ] ++ "))\n"
+    fuelDeclared <- gets (any ("(declare-datatypes ((LawspecFuel" `isPrefixOf`) . functionText)
+    modify (\w -> w{functionText = functionText w ++ [if fuelDeclared then "" else fuelDeclaration] ++ [declarations ++ definitions ++ concat inRange]})
+
+-- | The callee's preconditions and runtime postconditions, at a call.
+contractChecks :: Program -> [Id] -> Id -> [Term] -> Term -> Encode [String]
+contractChecks program active name stored result = do
+  let contracts=[c | u<-programUnits program,c<-unitContracts u,contractDeclaration c==name]
+      nested=name:active
+  forM contracts $ \contract -> do
+    let before=M.fromList (zip (map binderId (contractArguments contract)) stored)
+        after=M.insert (binderId (contractResult contract)) result{defined="true"} before
+    pre <- restrictions program nested before (contractPreconditions contract)
+    post <- restrictions program nested after (contractRuntimePostconditions contract)
+    pure (both [positive pre,positive post])
+
+inlineCall :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
+inlineCall program active scope name arguments = do
   when (name `elem` active) (lift (Left "recursive checked definitions require an SMT induction encoding"))
   definition <- lift $ case [d | u <- programUnits program,d <- unitDefinitions u,
       declarationId (definitionDeclaration d)==name,not (definitionOrchestrates d),
@@ -309,3 +1192,424 @@ call program active scope name arguments = do
     post <- restrictions program nested after (contractRuntimePostconditions contract)
     pure (both [positive pre,positive post])
   pure result{value=bind (value result),defined=both (map defined values ++ [bind (both (defined result:valid))])}
+
+-- | The law's inputs whose type is a recursive data type (List, a tree):
+-- the candidates for the default induction try.
+structuralInputs :: Program -> Property -> [String]
+structuralInputs program law =
+  [ binderName (quantifiedBinder q) | q <- fst (outerQuantifiers law), recursiveType (binderType (quantifiedBinder q)) ]
+  where
+    types = catalog program
+    recursiveType ty = case declarationOf types ty of
+      Right (declaration, table) -> or [instantiate table (binderType f) == ty | c <- dataConstructors declaration, f <- constructorFields c]
+      Left _ -> False
+
+-- | One case of induction on an input x.
+data Shape = DataCase DataConstructor [Type] | IntegerBase Integer | IntegerStep Integer
+
+-- | Induction on input x of law P, as Why3's induction_ty_lex and
+-- induction_int_lex do: structural for a data type (one case per
+-- constructor, a hypothesis for each field of x's own type), or from an
+-- integer type's lower bound (the bound, then n from n - 1). In each case
+-- the law's inputs are constants named as in its counterexample query, so a
+-- model of a case is checked as the law's counterexample; the goal is P
+-- there, the hypotheses are P at each smaller value (for those same other
+-- inputs, and for all of them), and each cited law is assumed.
+-- ref:DEC-smt-induction
+inductionTasks :: Program -> Recursion -> Property -> String -> [Property] -> Either String [InductionCase]
+inductionTasks program mode law input lemmas = do
+  let (outer, rest) = outerQuantifiers law
+      bits = programMachineBits program
+      types = catalog program
+  (index, q) <- case [(i, o) | (i, o) <- zip [0 :: Int ..] outer, binderName (quantifiedBinder o) == input] of
+    [found] -> Right found
+    _ -> Left ("induction on " ++ input ++ ": the law has no input " ++ input)
+  let x = quantifiedBinder q
+      ty = binderType x
+      others = [o | (i, o) <- zip [0 ..] outer, i /= index]
+      otherIds = map (binderId . quantifiedBinder) others
+      xName = "lawspec_input_" ++ show index
+  when (any (any (`elem` otherIds) . locals) (quantifiedPredicates q))
+    (Left ("induction on " ++ input ++ ": its refinement uses another input"))
+  shapes <- case (sort ty, ty) of
+    (Right IntegerSort, Constructor name []) -> case integerBounds bits name of
+      Just (lo, _) -> Right [IntegerBase lo, IntegerStep lo]
+      Nothing | name == "BigUInt" -> Right [IntegerBase 0, IntegerStep 0]
+      _ -> Left ("induction on " ++ input ++ ": an integer needs a lower bound to count down to")
+    _ -> case declarationOf types ty of
+      Right (declaration, table) -> Right [DataCase c [instantiate table (binderType f) | f <- constructorFields c] | c <- dataConstructors declaration]
+      Left _ -> Left ("induction on " ++ input ++ ": its type is neither a data type nor a bounded integer")
+  forM shapes $ \shape -> do
+    ((name, body), _) <- runStateT (do
+        rows <- forM (zip [0 :: Int ..] outer) $ \(j, o) -> do
+          s <- quantifierSortOf program (binderType (quantifiedBinder o))
+          pure ("lawspec_input_" ++ show j, o, s)
+        let scope = M.fromList [(binderId (quantifiedBinder o), Term s n "true") | (n, o, s) <- rows]
+        xSort <- sortOf program ty
+        (label, fields, equation, smaller) <- case shape of
+          DataCase c fieldTypes -> do
+            fs <- forM (zip [0 :: Int ..] fieldTypes) $ \(k, ft) -> do
+              s <- sortOf program ft
+              let n = "lawspec_field_" ++ show k
+              base <- lift (domain bits ft n)
+              pure (n, s, base, ft)
+            let built = if null fs then constructorSymbol ty c else app (constructorSymbol ty c) [n | (n, _, _, _) <- fs]
+            pure ( input ++ " = " ++ shortName (constructorId c), fs, [app "=" [xName, built]]
+                 , [Term xSort n "true" | (n, _, _, ft) <- fs, ft == ty] )
+          IntegerBase lo -> pure (input ++ " = " ++ show lo, [], [app "=" [xName, integer lo]], [])
+          IntegerStep lo -> pure (input ++ " > " ++ show lo, [], [app ">" [xName, integer lo]], [Term IntegerSort (app "-" [xName, "1"]) "true"])
+        ranges <- lift (mapM (\(n, o, _) -> domain bits (binderType (quantifiedBinder o)) n) rows)
+        restricted <- forM rows $ \(_, o, _) -> positive <$> restrictions program [] scope (quantifiedPredicates o)
+        goal <- proposition program [] scope rest
+        hypotheses <- plain $ fmap concat $ forM smaller $ \p -> do
+          range <- lift (domain bits ty (value p))
+          -- For every other input,
+          let alone = M.singleton (binderId x) p
+          guardAlone <- restrictions program [] alone (quantifiedPredicates q)
+          general <- closure program alone others rest
+          -- and for these other inputs.
+          let here = M.insert (binderId x) p scope
+          guardHere <- forM outer $ \o -> positive <$> restrictions program [] here (quantifiedPredicates o)
+          specific <- proposition program [] here rest
+          pure [ app "=>" [both [range, positive guardAlone], general]
+               , app "=>" [both (range : guardHere), positive specific] ]
+        cited <- plain $ forM lemmas $ \l -> closure program M.empty (propertyParameters l ++ propertyInputs l) (propertyBody l)
+        prelude <- datatypePreamble program
+        (options, functions) <- gets recursiveText
+        let text = "; " ++ encodingName SmtLibV2 ++ "; induction on " ++ input ++ ": case " ++ label ++ "\n" ++
+              options ++ prelude ++ functions ++
+              concat ["(declare-const " ++ n ++ " " ++ sortText s ++ ")\n" | (n, _, s) <- rows] ++
+              concat ["(declare-const " ++ n ++ " " ++ sortText s ++ ")\n" | (n, s, _, _) <- fields] ++
+              concat ["(assert " ++ a ++ ")\n" | a <- [base | (_, _, base, _) <- fields] ++ equation ++ ranges ++ restricted ++ hypotheses ++ cited] ++
+              "(assert " ++ no (positive goal) ++ ")\n"
+        pure (label, text)) (start SmtLibV2 program mode)
+    unless (length (take 1048577 body) <= 1048576) (Left "SMT query exceeds its output budget")
+    pure (InductionCase name body ["lawspec_input_" ++ show j | j <- [0 .. length outer - 1]] mode Nothing)
+  where
+    -- Calls with no fuel: the function the same at every fuel.
+    plain :: Encode a -> Encode a
+    plain action = do
+      outer <- gets fuel
+      modify (\w -> w{fuel = "", patterned = True})
+      result <- action
+      modify (\w -> w{fuel = outer, patterned = False})
+      pure result
+    locals e = case expressionNode e of
+      Local i -> [i]
+      _ -> concatMap locals (children e)
+    shortName (Id text) = reverse (takeWhile (/= ':') (reverse text))
+
+-- | The universal closure of a law over some of its inputs, assumed as one
+-- quantifier over all of them, as a positive certificate: for each input in
+-- its type and refinement, the law holds. Prenex form is equivalent, since
+-- each input's type and refinement use only the inputs before it and every
+-- SMT sort has a value. Its triggers are the calls to recursive definitions
+-- made in it that name every input (or a set of them that does together).
+closure :: Program -> Scope -> [Quantifier] -> Proposition -> Encode String
+closure program scope quantifiers body = do
+  before <- gets (length . triggers)
+  rows <- forM quantifiers $ \q -> do
+    let binder = quantifiedBinder q
+    s <- quantifierSortOf program (binderType binder)
+    name <- fresh
+    pure (q, binder, s, name)
+  -- An assumed law over Rational inputs holds for exactly the rationals.
+  let valueOf' (b, n) = case exactKind (binderType b) of
+        Just ExactRational -> app "/" [app "to_real" [n ++ "_n"], app "to_real" [n ++ "_d"]]
+        _ -> n
+      variables = concat [ case exactKind (binderType b) of
+                             Just ExactRational -> [(n ++ "_n", "Int"), (n ++ "_d", "Int")]
+                             _ -> [(n, sortText s)]
+                         | (_, b, s, n) <- rows ]
+      local = foldl (\m (_, b, s, n) -> M.insert (binderId b) (Term s (valueOf' (b, n)) "true") m) scope rows
+  modify (\w -> w{bound = [n | (_, _, _, n) <- rows] ++ bound w})
+  guards <- forM rows $ \(q, b, _, n) -> do
+    base <- case exactKind (binderType b) of
+      Just ExactRational -> pure (app ">" [n ++ "_d", "0"])
+      _ -> lift (domain (programMachineBits program) (binderType b) n)
+    restricted <- restrictions program [] local (quantifiedPredicates q)
+    pure (base, restricted)
+  result <- proposition program [] local body
+  made <- gets (drop before . triggers)
+  inScope <- gets bound
+  modify (\w -> w{bound = drop (length rows) (bound w)})
+  let names = [n | (_, _, _, n) <- rows]
+      spaced c = if c `elem` ("()" :: String) then ' ' else c
+      tokens t = words (map spaced t)
+      local' token = case token of
+        'v' : digits -> not (null digits) && all (`elem` ("0123456789" :: String)) digits
+        _ -> False
+      closed t = all (`elem` inScope) (filter local' (tokens t))
+      usable = [t | (i, t) <- zip [0 :: Int ..] made, t `notElem` take i made, closed t, any (`elem` tokens t) names]
+      -- The largest calls: a call inside another would match too often,
+      -- and each match would make new calls to match (a matching loop).
+      whole = [t | t <- covering, not (any (\u -> u /= t && t `isInfixOf` u) covering)
+                 , not (any nested covering) || nested t]
+      nested t = length (filter ("|lawspec_function" `isPrefixOf`) (tokens t)) >= 2
+      covering = [t | t <- usable, all (`elem` tokens t) names]
+      -- Otherwise a multi-pattern: triggers that together name every input.
+      cover chosen pending = case pending of
+        [] -> Just (reverse chosen)
+        n : _ -> case [t | t <- usable, n `elem` tokens t] of
+          t : _ -> cover (t : chosen) [m | m <- pending, m `notElem` tokens t]
+          [] -> Nothing
+      patterns = case (whole, cover [] names) of
+        -- The first, as written: an equation's left side. A trigger on
+        -- each side of an equation such as associativity rewrites back and
+        -- forth without end.
+        (t : _, _) -> " :pattern (" ++ t ++ ")"
+        ([], Just ts) -> " :pattern (" ++ unwords ts ++ ")"
+        _ -> ""
+      formula = foldr (\(base, restricted) inner -> eitherOf [no base, negative restricted, both [positive restricted, inner]])
+        (positive result) guards
+  pure $ if null rows then positive result
+    else "(forall (" ++ unwords ["(" ++ n ++ " " ++ t ++ ")" | (n, t) <- variables] ++ ") " ++
+         (if null patterns then formula else "(! " ++ formula ++ patterns ++ ")") ++ ")"
+
+-- | The Text operations a task can use, by the builtin that names them.
+textHelpers :: [(Builtin, ())]
+textHelpers = [(b, ()) | b <- [Length, Append, StartsWith, EndsWith, TextContains, Slice, RegexMatches]]
+
+-- | Text is serialized as UTF-32BE bytes (Unicode 17, D99). Z3's own
+-- alphabet stops at U+2FFFF; restricting a Text quantifier to that alphabet
+-- can prove false laws. Four byte characters represent every LawSpec scalar
+-- exactly, preserve order, and keep lengths and slices in scalar units.
+-- This is a representation change, not a restriction of the law's domain.
+byteLiteral :: [Int] -> String
+byteLiteral units = "\"" ++ concatMap char units ++ "\""
+  where
+    char c | c == 34 = "\"\""
+           | c >= 32 && c <= 126 && c /= 92 = [toEnum c]
+           | otherwise = "\\u{" ++ showHex c "" ++ "}"
+
+textLiteral :: [Int] -> Either String String
+textLiteral units
+  | any (\c -> c < 0 || c > 0x10FFFF || c >= 0xD800 && c <= 0xDFFF) units =
+      Left "unsupported SMT text: a value is not a Unicode scalar"
+  | otherwise = Right (byteLiteral (concatMap bytes units))
+  where bytes c = [c `div` 16777216, c `div` 65536 `mod` 256, c `div` 256 `mod` 256, c `mod` 256]
+
+-- | A lexicographic interval of fixed-width byte words, using only Z3's
+-- established regular-expression operations. Prefixes with equal bytes
+-- stay fixed; differing ends split into a lower edge, middle and upper edge.
+byteInterval :: [Int] -> [Int] -> String
+byteInterval [] [] = app "str.to_re" ["\"\""]
+byteInterval (lo : lows) (hi : highs)
+  | lo > hi = "re.none"
+  | lo == hi = app "re.++" [one lo, byteInterval lows highs]
+  | otherwise = app "re.union" (
+      [app "re.++" [one lo, byteInterval lows (replicate width 255)]] ++
+      [app "re.++" [app "re.range" [byteLiteral [lo + 1], byteLiteral [hi - 1]],
+                      suffix] | lo + 1 < hi] ++
+      [app "re.++" [one hi, byteInterval (replicate width 0) highs]])
+  where
+    one c = app "str.to_re" [byteLiteral [c]]
+    width = length lows
+    suffix = case width of
+      0 -> app "str.to_re" ["\"\""]
+      1 -> app "re.range" [byteLiteral [0], byteLiteral [255]]
+      _ -> app "re.++" (replicate width (app "re.range" [byteLiteral [0], byteLiteral [255]]))
+byteInterval _ _ = "re.none"
+
+scalarRange :: Int -> Int -> String
+scalarRange lo hi
+  | lo > hi = "re.none"
+  | otherwise = byteInterval (bytes lo) (bytes hi)
+  where bytes c = [c `div` 16777216, c `div` 65536 `mod` 256, c `div` 256 `mod` 256, c `mod` 256]
+
+-- | One valid Unicode scalar, and any string of them. Surrogates and
+-- malformed byte words are absent from quantified Text values.
+scalarCharacter, scalars :: String
+scalarCharacter = app "re.union" [scalarRange 0 0xD7FF, scalarRange 0xE000 0x10FFFF]
+scalars = app "re.*" [scalarCharacter]
+
+-- | Portable regexes over UTF-32BE. Every character class consumes four
+-- bytes; complements are relative to the complete Unicode scalar domain.
+regexTerm :: Regex -> Either String String
+regexTerm regex = case regex of
+  Characters negated items -> do
+    parts <- mapM item items
+    let union = case parts of
+          [] -> "re.none"
+          [one] -> one
+          many -> app "re.union" many
+    pure (if negated then app "re.diff" [scalarCharacter, union] else union)
+  Sequence [] -> Right "(str.to_re \"\")"
+  Sequence [one] -> regexTerm one
+  Sequence rs -> app "re.++" <$> mapM regexTerm rs
+  Alternatives [] -> Right "re.none"
+  Alternatives [one] -> regexTerm one
+  Alternatives rs -> app "re.union" <$> mapM regexTerm rs
+  Repeat body low high -> do
+    inner <- regexTerm body
+    pure $ case high of
+      Just h -> "((_ re.loop " ++ show low ++ " " ++ show h ++ ") " ++ inner ++ ")"
+      Nothing | low == 0 -> app "re.*" [inner]
+              | otherwise -> app "re.++" ["((_ re.loop " ++ show low ++ " " ++ show low ++ ") " ++ inner ++ ")", app "re.*" [inner]]
+  where
+    item (itemNegated, ranges) = do
+      when (any (\(lo, hi) -> lo < 0 || hi > 0x10FFFF) ranges)
+        (Left "unsupported SMT regex: a range is outside Unicode")
+      let union = case map (uncurry scalarRange) ranges of
+            [] -> "re.none"
+            [x] -> x
+            xs -> app "re.union" xs
+      pure (if itemNegated then app "re.diff" [scalarCharacter, union] else union)
+
+-- | prelude.length and ++ over a List: functions defined by structural
+-- recursion over the list datatype, once per element type, with
+-- define-funs-rec (each terminates, as every SMT datum is finite).
+listHelper :: Program -> Builtin -> Type -> [Term] -> String -> Encode Term
+listHelper program builtin ty terms ok = do
+  types <- gets known
+  s <- sortOf program ty
+  nil <- lift (constructorOf types ty (Id "List::Nil"))
+  cons <- lift (constructorOf types ty (Id "List::Cons"))
+  let name kind = "|lawspec_list_" ++ kind ++ " " ++ typeSymbol ty ++ "|"
+      isNil x = tester ty nil x
+      headOf x = app (selectorSymbol ty cons 0) [x]
+      tailOf x = app (selectorSymbol ty cons 1) [x]
+      listSort = sortText s
+      define :: String -> String -> Encode ()
+      define kind text = do
+        done <- gets (any (name kind `isInfixOf`) . functionText)
+        unless done (modify (\w -> w{functionText = functionText w ++ [text]}))
+  case (builtin, terms) of
+    (Length, [xs]) -> do
+      define "length" ("(define-funs-rec ((" ++ name "length" ++ " ((x " ++ listSort ++ ")) Int)) ((ite " ++ isNil "x" ++
+        " 0 (+ 1 (" ++ name "length" ++ " " ++ tailOf "x" ++ ")))))\n")
+      pure (Term IntegerSort (app (name "length") [value xs]) ok)
+    (Append, [xs, ys]) -> do
+      define "append" ("(define-funs-rec ((" ++ name "append" ++ " ((x " ++ listSort ++ ") (y " ++ listSort ++ ")) " ++ listSort ++ ")) ((ite " ++
+        isNil "x" ++ " y (" ++ constructorSymbol ty cons ++ " " ++ headOf "x" ++ " (" ++ name "append" ++ " " ++ tailOf "x" ++ " y)))))\n")
+      pure (Term s (app (name "append") [value xs, value ys]) ok)
+    _ -> lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " over a list); no uninterpreted replacement was introduced"))
+
+-- | Rational and Decimal inputs are quantified exactly: a rational as an
+-- integer over a positive integer, so a witness is never irrational; a
+-- decimal, universally, as any Real (a superset, so a proof covers every
+-- decimal), and as a witness, as an integer times 10^-18.
+data Exact = ExactRational | ExactDecimal deriving (Eq, Show)
+
+exactKind :: Type -> Maybe Exact
+exactKind (Constructor "Rational" []) = Just ExactRational
+exactKind (Constructor "Decimal" []) = Just ExactDecimal
+exactKind _ = Nothing
+
+decimalUnit :: String
+decimalUnit = "1000000000000000000.0"
+
+isFloat :: Sort -> Bool
+isFloat (FloatSort _ _) = True
+isFloat _ = False
+
+-- | A model for an invariant search: its state, its start (arguments and
+-- the first state), each command's step (arguments, precondition over the
+-- state, next state), and the claim over the state, all as Core over the
+-- state binder and the arguments.
+data ModelShape = ModelShape
+  { shapeState :: Binder, shapeStart :: ([Binder], Expr)
+  , shapeSteps :: [(String, [Binder], Maybe Expr, Expr)], shapeClaim :: Expr }
+
+-- | Spacer's query (SMT-LIB HORN, lawspec-smtlib-v2): an invariant Inv of
+-- the state that holds of every first state, is kept by every step, and
+-- implies the claim. Spacer only proposes Inv; it is trusted only after
+-- invariantQueries re-check it with plain queries. ref:DEC-model-induction
+hornQuery :: Program -> ModelShape -> Either String String
+hornQuery program shape = do
+  let bits = programMachineBits program
+  ((rules, sortName, prelude), _) <- runStateT (do
+      stateSort <- quantifierSortOf program (binderType (shapeState shape))
+      (invSorts, inv) <- invariantShape program (binderType (shapeState shape)) stateSort
+      let variables binders = forM (zip [0 :: Int ..] binders) $ \(i, b) -> do
+            s' <- quantifierSortOf program (binderType b)
+            let n = "lawspec_horn_" ++ show i
+            range <- lift (domain bits (binderType b) n)
+            pure (b, n, s', range)
+          quantify vars body
+            | null vars = body
+            | otherwise = "(forall (" ++ unwords ["(" ++ n ++ " " ++ sortText s' ++ ")" | (_, n, s', _) <- vars] ++ ") " ++ body ++ ")"
+          scopeOf vars = M.fromList [(binderId b, Term s' n "true") | (b, n, s', _) <- vars]
+      -- The first states.
+      startVars <- variables (fst (shapeStart shape))
+      first <- expression program [] (scopeOf startVars) (snd (shapeStart shape))
+      let startRule = quantify startVars (app "=>" [both ([r | (_, _, _, r) <- startVars] ++ [defined first]), inv (value first)])
+      -- Each step keeps Inv.
+      stepRules <- forM (shapeSteps shape) $ \(_, arguments, guard', next) -> do
+        vars <- variables (shapeState shape : arguments)
+        let scope = scopeOf vars
+            stateName = case vars of (_, n, _, _) : _ -> n; [] -> "lawspec_horn_0"
+        allowed <- traverse (expression program [] scope) guard'
+        after <- expression program [] scope next
+        pure (quantify vars (app "=>" [both ([r | (_, _, _, r) <- vars] ++ [inv stateName] ++
+          maybe [] (\g -> [defined g, value g]) allowed ++ [defined after]), inv (value after)]))
+      -- Inv implies the claim.
+      claimVars <- variables [shapeState shape]
+      claim <- expression program [] (scopeOf claimVars) (shapeClaim shape)
+      let claimRule = quantify claimVars (app "=>" [both ([r | (_, _, _, r) <- claimVars] ++ [inv "lawspec_horn_0", no (both [defined claim, value claim])]), "false"])
+      prelude <- datatypePreamble program
+      functions <- gets recursiveText
+      pure (startRule : stepRules ++ [claimRule], unwords invSorts, prelude ++ snd functions))
+    ((start SmtLibV2 program DefineFunRec){bounded = False, ranges = False})
+  pure ("; " ++ encodingName SmtLibV2 ++ "; an invariant of the model (Spacer)\n(set-logic HORN)\n" ++ prelude ++
+    "(declare-fun Inv (" ++ sortName ++ ") Bool)\n" ++ concat ["(assert " ++ r ++ ")\n" | r <- rules])
+
+-- | Plain queries that check an invariant: it holds of every first state,
+-- every step keeps it, and it implies the claim. Each is unsat when that
+-- holds. invariant is a define-fun of Inv over the state's sort.
+invariantQueries :: Program -> ModelShape -> String -> Either String [(String, String)]
+invariantQueries program shape invariant = do
+  let bits = programMachineBits program
+      query purpose binders assertion = do
+        ((rows, certificate, prelude), _) <- runStateT (do
+            rows <- forM (zip [0 :: Int ..] binders) $ \(i, b) -> do
+              s' <- quantifierSortOf program (binderType b)
+              let n = "lawspec_input_" ++ show i
+              range <- lift (domain bits (binderType b) n)
+              pure (b, n, s', range)
+            let scope = M.fromList [(binderId b, Term s' n "true") | (b, n, s', _) <- rows]
+            certificate <- assertion scope [n | (_, n, _, _) <- rows]
+            prelude <- datatypePreamble program
+            functions <- gets recursiveText
+            pure (rows, certificate, fst functions ++ prelude ++ snd functions))
+          ((start SmtLibV2 program DefineFunRec){bounded = False, ranges = False})
+        pure (purpose, "; " ++ encodingName SmtLibV2 ++ "; check the invariant: " ++ purpose ++ "\n" ++ prelude ++ invariant ++ "\n" ++
+          concat ["(declare-const " ++ n ++ " " ++ sortText s' ++ ")\n" | (_, n, s', _) <- rows] ++
+          concat ["(assert " ++ r ++ ")\n" | (_, _, _, r) <- rows] ++ "(assert " ++ certificate ++ ")\n")
+  let inv' x = do
+        stateSort <- quantifierSortOf program (binderType (shapeState shape))
+        (_, inv) <- invariantShape program (binderType (shapeState shape)) stateSort
+        pure (inv x)
+  initial <- query "it holds at the start" (fst (shapeStart shape)) $ \scope _ -> do
+    first <- expression program [] scope (snd (shapeStart shape))
+    i <- inv' (value first)
+    pure (both [defined first, no i])
+  kept <- forM (shapeSteps shape) $ \(command, arguments, guard', next) ->
+    query (command ++ " keeps it") (shapeState shape : arguments) $ \scope names -> do
+      allowed <- traverse (expression program [] scope) guard'
+      after <- expression program [] scope next
+      before <- inv' (head names)
+      i <- inv' (value after)
+      pure (both ([before] ++ maybe [] (\g -> [defined g, value g]) allowed ++ [defined after, no i]))
+  implied <- query "it implies the claim" [shapeState shape] $ \scope names -> do
+    claim <- expression program [] scope (shapeClaim shape)
+    i <- inv' (head names)
+    pure (both [i, no (both [defined claim, value claim])])
+  pure (initial : kept ++ [implied])
+
+-- | What Inv takes: a record state's fields, which Spacer reasons about far
+-- better than a datatype (its invariants are over integers), or the state
+-- itself; and how to apply Inv to a state term.
+invariantShape :: Program -> Type -> Sort -> Encode ([String], String -> String)
+invariantShape program ty stateSort = do
+  types <- gets known
+  case (stateSort, declarationOf types ty) of
+    (DataSort _, Right (declaration, table)) | [c] <- dataConstructors declaration -> do
+      fieldSorts <- forM (constructorFields c) $ \f -> sortOf program (instantiate table (binderType f))
+      if any isData fieldSorts then plain else
+        pure (map sortText fieldSorts, \x -> app "Inv" [app (selectorSymbol ty c i) [x] | i <- [0 .. length fieldSorts - 1]])
+    _ -> plain
+  where
+    plain = pure ([sortText stateSort], \x -> app "Inv" [x])
+    isData (DataSort _) = True
+    isData _ = False

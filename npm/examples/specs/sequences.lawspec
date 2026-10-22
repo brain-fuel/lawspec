@@ -73,7 +73,7 @@ end law
 
 law "|at reads the item an index names| is
   definition :
-    for all (x :: Int32) (xs :: List Int32) => prelude.at 0 (Cons x xs) = Just x and prelude.at (prelude.length xs + 1) (Cons x xs) = Nothing end for all
+    for all (x :: Int32) (xs :: List Int32) => prelude.at 0 (Cons x xs) = Present x and prelude.at (prelude.length xs + 1) (Cons x xs) = Absent end for all
   end definition
 end law
 

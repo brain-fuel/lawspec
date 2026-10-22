@@ -31,13 +31,13 @@ export const builtinDataNames =
     "name": "Maybe",
     "constructors": [
       {
-        "id": "Maybe::Nothing",
-        "name": "Nothing",
+        "id": "Maybe::Absent",
+        "name": "Absent",
         "fields": []
       },
       {
-        "id": "Maybe::Just",
-        "name": "Just",
+        "id": "Maybe::Present",
+        "name": "Present",
         "fields": [
           {
             "name": "value"

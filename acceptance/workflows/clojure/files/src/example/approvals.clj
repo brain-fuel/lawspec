@@ -11,12 +11,14 @@
 (defn- approve [number]
   (Workflows/approve (.context (LawSpecRuntime$WorkflowRuntime. nil 0) (HashMap.)) (Order. (long number))))
 
-;; Approves an order: whether it took less than 550ms.
+;; Approves an order: whether two of order -1's slow checks that started
+;; during this call overlapped in time. Run one after the other they cannot
+;; overlap, however loaded the machine is.
 (defn approved-quickly [number]
   (future
     (let [started (System/nanoTime)]
       (approve number)
-      (< (- (System/nanoTime) started) 550000000))))
+      (or (not= number -1) (workflows/overlapped? started)))))
 
 ;; Approves an order: the messages of its failures, as reported.
 (defn approval-errors [number]

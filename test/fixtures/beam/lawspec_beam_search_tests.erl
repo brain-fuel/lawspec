@@ -14,8 +14,8 @@ integer_moves_test() ->
 nested_moves_keep_shapes_test() ->
     D = [<<"int">>, <<"Integer">>, 0, 10],
     Box = [<<"data">>, <<"Box">>, [<<"ctor">>, <<"Box::Box">>, [<<"list">>, [<<"maybe">>, D]]]],
-    V = {ls_data, <<"Box::Box">>, [[{ls_data, <<"Maybe::Nothing">>, []}, {ls_data, <<"Maybe::Just">>, [3]}]]},
-    Expected = [{ls_data, <<"Box::Box">>, [[{ls_data, <<"Maybe::Nothing">>, []}, {ls_data, <<"Maybe::Just">>, [N]}]]}
+    V = {ls_data, <<"Box::Box">>, [[{ls_data, <<"Maybe::Absent">>, []}, {ls_data, <<"Maybe::Present">>, [3]}]]},
+    Expected = [{ls_data, <<"Box::Box">>, [[{ls_data, <<"Maybe::Absent">>, []}, {ls_data, <<"Maybe::Present">>, [N]}]]}
         || N <- lawspec_beam_search:moves(D, 3, #{})],
     ?assertEqual(Expected, lawspec_beam_search:moves([<<"ref">>, <<"Box">>], V, #{<<"Box">> => Box})).
 

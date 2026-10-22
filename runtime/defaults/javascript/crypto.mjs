@@ -158,6 +158,6 @@ export class AeadHandler {
     }
     unseal(value0, value1, value2) {
         const opened = aes256GcmDecrypt(value0.value, value1.value.subarray(0, 12), value1.value.subarray(12), value2);
-        return opened === undefined ? new data.Nothing() : new data.Just(opened);
+        return opened === undefined ? new data.Absent() : new data.Present(opened);
     }
 }

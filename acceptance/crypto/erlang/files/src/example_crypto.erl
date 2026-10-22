@@ -8,4 +8,4 @@ fingerprint(#{sha3 := Sha3}, Bytes) ->
 round_trip(#{aead_key := Make, seal := Seal, unseal := Unseal}, Message) ->
     Key = Make(),
     Associated = <<"round trip">>,
-    Unseal(Key, Seal(Key, Message, Associated), Associated) =:= {just, Message}.
+    Unseal(Key, Seal(Key, Message, Associated), Associated) =:= {present, Message}.

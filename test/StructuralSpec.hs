@@ -52,7 +52,7 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
       r <- registry []
       let ty = app "Either" [scalarType "Bool",app "List" [scalarType "Int8"]]
       fmap (map binderType) (constructorFieldsFor r ty (Id "Either::Right")) `shouldBe` Right [app "List" [scalarType "Int8"]]
-      constructorFieldsFor r ty (Id "Maybe::Just") `shouldSatisfy` isLeft
+      constructorFieldsFor r ty (Id "Maybe::Present") `shouldSatisfy` isLeft
       let list = app "List" [scalarType "Text"]
       fmap (map binderType) (constructorFieldsFor r list (Id "List::Cons")) `shouldBe` Right [scalarType "Text",list]
     it "registers mutual recursion before resolving fields" $
@@ -173,7 +173,7 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
       Go.emitGoData (Doc.PrettyTabs 100) "fixture" [bad] `shouldSatisfy` isLeft
       Go.emitGoSchema (Doc.PrettyTabs 100) "type" [] `shouldSatisfy` isLeft
       Go.validateGoBindings [decl "Pair" [] []] ["Pair"] `shouldSatisfy` isLeft
-      Go.validateGoBindings [] ["LawSpecJust"] `shouldSatisfy` isLeft
+      Go.validateGoBindings [] ["LawSpecPresent"] `shouldSatisfy` isLeft
       Go.validateGoBindings [decl "Pair" [] []] ["EchoPair"] `shouldBe` Right ()
   describe "native Kotlin declarations" $ do
     it "keeps recursive payloads and presence type arguments native" $ do
@@ -243,14 +243,14 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
     it "rejects wrong tags, arity, ranges and primitive types" $ do
       r <- registry []
       let ty = app "Maybe" [scalarType "Int8"]
-      forM_ [DataValue ty (Id "Either::Left") [],DataValue ty (Id "Maybe::Just") [],DataValue ty (Id "Maybe::Nothing") [ScalarValue (SInteger "Int8" 0)],DataValue ty (Id "Maybe::Just") [ScalarValue (SInteger "Int8" 128)],DataValue ty (Id "Maybe::Just") [ScalarValue (SBool True)]] $ \v -> validateValue r 64 ty v `shouldSatisfy` isLeft
+      forM_ [DataValue ty (Id "Either::Left") [],DataValue ty (Id "Maybe::Present") [],DataValue ty (Id "Maybe::Absent") [ScalarValue (SInteger "Int8" 0)],DataValue ty (Id "Maybe::Present") [ScalarValue (SInteger "Int8" 128)],DataValue ty (Id "Maybe::Present") [ScalarValue (SBool True)]] $ \v -> validateValue r 64 ty v `shouldSatisfy` isLeft
     it "compares every field and constructor identity" $ do
       let ty = scalarType "Pair"
           value a b = DataValue ty (Id "Pair::P") (map (ScalarValue . SBool) [a,b])
       equalValues 64 (value True False) (value True True) `shouldBe` Right False
       equalValues 64 (value True False) (DataValue ty (Id "Other") [ScalarValue (SBool True),ScalarValue (SBool False)]) `shouldBe` Right False
     it "retains IEEE equality and symbol identity under constructors" $ do
-      let boxed scalar = DataValue (app "Maybe" [scalarType (scalarName scalar)]) (Id "Maybe::Just") [ScalarValue scalar]
+      let boxed scalar = DataValue (app "Maybe" [scalarType (scalarName scalar)]) (Id "Maybe::Present") [ScalarValue scalar]
           nan = boxed (SFloat "Float64" "7ff8000000000000")
       equalValues 64 nan nan `shouldBe` Right False
       equalValues 64 (boxed (SFloat "Float64" "0000000000000000")) (boxed (SFloat "Float64" "8000000000000000")) `shouldBe` Right True
@@ -258,8 +258,8 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
     it "preserves nested algebraic and interoperability absence" $ do
       r <- registry []
       let inner = app "Maybe" [scalarType "Bool"]; outer = app "Maybe" [inner]
-          nothing = DataValue outer (Id "Maybe::Nothing") []
-          justNothing = DataValue outer (Id "Maybe::Just") [DataValue inner (Id "Maybe::Nothing") []]
+          nothing = DataValue outer (Id "Maybe::Absent") []
+          justNothing = DataValue outer (Id "Maybe::Present") [DataValue inner (Id "Maybe::Absent") []]
       validateValue r 64 outer justNothing `shouldBe` Right justNothing
       equalValues 64 nothing justNothing `shouldBe` Right False
       let presence = app "Nullable" [app "Optional" [scalarType "Bool"]]
@@ -269,16 +269,16 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
     it "evaluates only the selected match branch" $ do
       r <- registry []
       let ty = app "Maybe" [scalarType "Bool"]
-          value = Expr ty (Construct (Id "Maybe::Nothing") []) origin
+          value = Expr ty (Construct (Id "Maybe::Absent") []) origin
           binder = Binder (Id "payload") "payload" (scalarType "Bool")
           result = Expr (scalarType "Bool") (Match value
-            [MatchCase (Id "Maybe::Nothing") [] (Expr (scalarType "Bool") (Constant (SBool True)) origin),
-             MatchCase (Id "Maybe::Just") [binder] (Expr (scalarType "Bool") (ExternalCall (Id "forbidden") []) origin)]) origin
+            [MatchCase (Id "Maybe::Absent") [] (Expr (scalarType "Bool") (Constant (SBool True)) origin),
+             MatchCase (Id "Maybe::Present") [binder] (Expr (scalarType "Bool") (ExternalCall (Id "forbidden") []) origin)]) origin
       evaluateValue r 64 (\_ _ -> Left "unselected effect ran") [] result `shouldBe` Right (ScalarValue (SBool True))
     it "rejects incomplete match coverage before execution" $ do
       r <- registry []
       let ty = app "Maybe" [scalarType "Bool"]
-          value = Expr ty (Construct (Id "Maybe::Nothing") []) origin
+          value = Expr ty (Construct (Id "Maybe::Absent") []) origin
           result = Expr (scalarType "Bool") (Match value []) origin
       validateExpressionWithRegistry r 64 M.empty M.empty result `shouldSatisfy` isLeft
   describe "scoped List element predicates" $ do
@@ -365,7 +365,7 @@ test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
       T.finiteValuesWithRegistry r 64 10 optional `shouldBe`
         Right (Just [PresenceValue optional Nothing])
       T.finiteValuesWithRegistry r 64 10 maybe `shouldBe`
-        Right (Just [DataValue maybe (Id "Maybe::Nothing") []])
+        Right (Just [DataValue maybe (Id "Maybe::Absent") []])
       T.boundariesWithRegistry r 64 empty `shouldBe` Right []
       T.boundariesWithRegistry r 64 list `shouldBe` Right [listValue empty []]
     it "checks dependent finite fields without discarding sum alternatives" $ do

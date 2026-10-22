@@ -90,6 +90,17 @@ import qualified UnificationSpec
 import qualified BeamSpec
 import qualified DotNetSpec
 import qualified LanguageGapsSpec
+import qualified MatcherAdmissionSpec
+import qualified OperationResultSpec
+import qualified SmtFrozenSpec
+import qualified CounterexampleSpec
+import qualified SmtDataSpec
+import qualified SmtRecursionSpec
+import qualified SmtTextSpec
+import qualified SmtNumericSpec
+import qualified ModelCheckSpec
+import qualified RefutedStatusSpec
+import qualified LawAnalysisSpec
 import qualified SchedulerSpec
 import LawSpec.Compile
 import LawSpec.Model
@@ -171,6 +182,18 @@ main = hspec $ do
   AsyncSpec.test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask
   AbilitiesSpec.test_abilityLawsHoldForEveryLawfulHandler
   LanguageGapsSpec.test_languageGapsClose
+  MatcherAdmissionSpec.test_matcherFactsAreKeptInAdmission
+  OperationResultSpec.test_operationResultsAreCheckedWhereTheyAreUsed
+  SmtFrozenSpec.test_smtV1IsFrozen
+  CounterexampleSpec.test_counterexamplesAreConfirmedByTheEvaluator
+  SmtDataSpec.test_smtDataTasks
+  SmtRecursionSpec.test_smtRecursion
+  SmtRecursionSpec.test_smtInduction
+  SmtTextSpec.test_smtText
+  SmtNumericSpec.test_smtNumbers
+  ModelCheckSpec.test_modelChecking
+  RefutedStatusSpec.test_refutedLawsAreReportedAndFail
+  LawAnalysisSpec.test_lawSetsAreCheckedTogether
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers

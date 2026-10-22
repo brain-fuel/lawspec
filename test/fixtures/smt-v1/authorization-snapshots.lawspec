@@ -1,0 +1,113 @@
+unit example.rc1.authorizationSnapshots
+
+type Payment is one of
+  | FirstPayment
+  | SecondPayment
+end type
+
+type Authorization is one of
+  | FirstApproval
+  | SecondApproval
+end type
+
+type AuthorizationState is one of
+  | Ready
+  | FirstRevoked
+  | AllRevoked
+end type
+
+function active (state of type AuthorizationState)
+  (authorization of type Authorization) -> Bool is
+  first matching case of state:
+    when Ready then true
+    when FirstRevoked then authorization = SecondApproval
+    when AllRevoked then false
+  end case
+end function
+
+function authorizes (authorization of type Authorization)
+  (payment of type Payment) -> Bool is
+  first matching case of authorization:
+    when FirstApproval then payment = FirstPayment
+    when SecondApproval then payment = SecondPayment
+  end case
+end function
+
+law "|ready payments have authorization| is
+  definition:
+    for all (payment of type Payment) =>
+      there must exist an (authorization of type Authorization
+        where active Ready the authorization) such that
+        authorization `authorizes payment
+      end exists
+    end for all
+  end definition
+
+  description:
+    "The Ready snapshot contains an active approval for each payment."
+  end description
+end law
+
+law "|the revoked first approval is absent| is
+  definition:
+    there does not exist (authorization of type Authorization
+      where active FirstRevoked the authorization) such that
+      authorization `authorizes FirstPayment
+    end exists
+  end definition
+
+  description:
+    "The FirstRevoked snapshot has no active approval for the first payment."
+  end description
+end law
+
+law "|all revoked approvals are absent| is
+  definition:
+    for all (payment of type Payment) =>
+      there must not exist (authorization of type Authorization
+        where active AllRevoked the authorization) such that
+        authorization `authorizes payment
+      end exists
+    end for all
+  end definition
+end law
+
+law "|one approval cannot cover every payment| is
+  definition:
+    must not there exists (authorization of type Authorization) such that
+      for all (payment of type Payment) =>
+        authorization `authorizes payment
+      end for all
+    end exists
+  end definition
+
+  rationale:
+    "Each approval belongs to one payment. Quantifier order changes the claim."
+  end rationale
+end law
+
+law "|activation matches the complete snapshot| is
+  definition:
+    for all (state of type AuthorizationState)
+      (authorization of type Authorization) =>
+      active state authorization must be
+        (state = Ready or
+          (state = FirstRevoked and authorization = SecondApproval))
+    end for all
+  end definition
+
+  expect active state authorization = expected
+  in table (state, authorization, expected):
+    row Ready, FirstApproval, true
+    row Ready, SecondApproval, true
+    row FirstRevoked, FirstApproval, false
+    row FirstRevoked, SecondApproval, true
+    row AllRevoked, FirstApproval, false
+    row AllRevoked, SecondApproval, false
+  end table
+
+  description:
+    "The search domain is exactly two approval identities in one snapshot."
+  end description
+end law
+end unit

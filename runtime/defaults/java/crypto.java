@@ -324,7 +324,7 @@ public final class Crypto {
       byte[] sealed = value1.value();
       byte[] opened = sealed.length < 12 ? null
           : aes256GcmDecrypt(value0.value(), java.util.Arrays.copyOf(sealed, 12), java.util.Arrays.copyOfRange(sealed, 12, sealed.length), value2);
-      return opened == null ? new lawspec.runtime.LawSpecRuntime.Nothing<>() : new lawspec.runtime.LawSpecRuntime.Just<>(opened);
+      return opened == null ? new lawspec.runtime.LawSpecRuntime.Absent<>() : new lawspec.runtime.LawSpecRuntime.Present<>(opened);
     }
   }
 }

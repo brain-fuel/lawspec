@@ -1,7 +1,7 @@
 expect-any: sizes count records| [store] | Writer: a write to a new log is read back| [reference]
 @@ examples/specs/composition.lawspec
 <<<<<<<
-    when Just log then Just log.appends
+    when Present log then Present log.appends
 =======
-    when Just log then Just (prelude.saturating (prelude.length log.records - 1))
+    when Present log then Present (prelude.saturating (prelude.length log.records - 1))
 >>>>>>>

@@ -1,0 +1,906 @@
+unit nand2tetris.chap06
+assemble :: Text -> List Text
+
+refinement Address is (value :: UInt16 where value <= 32767)
+end refinement
+
+type Comp is one of
+  | CZero
+  | COne
+  | CMinusOne
+  | CD
+  | CA
+  | CM
+  | CNotD
+  | CNotA
+  | CNotM
+  | CNegD
+  | CNegA
+  | CNegM
+  | CIncD
+  | CIncA
+  | CIncM
+  | CDecD
+  | CDecA
+  | CDecM
+  | CAddA
+  | CAddM
+  | CSubA
+  | CSubM
+  | CFromA
+  | CFromM
+  | CAndA
+  | CAndM
+  | COrA
+  | COrM
+end type
+mapping compText of type Comp -> Text is
+  row CZero, "0"
+  row COne, "1"
+  row CMinusOne, "-1"
+  row CD, "D"
+  row CA, "A"
+  row CM, "M"
+  row CNotD, "!D"
+  row CNotA, "!A"
+  row CNotM, "!M"
+  row CNegD, "-D"
+  row CNegA, "-A"
+  row CNegM, "-M"
+  row CIncD, "D+1"
+  row CIncA, "A+1"
+  row CIncM, "M+1"
+  row CDecD, "D-1"
+  row CDecA, "A-1"
+  row CDecM, "M-1"
+  row CAddA, "D+A"
+  row CAddM, "D+M"
+  row CSubA, "D-A"
+  row CSubM, "D-M"
+  row CFromA, "A-D"
+  row CFromM, "M-D"
+  row CAndA, "D&A"
+  row CAndM, "D&M"
+  row COrA, "D|A"
+  row COrM, "D|M"
+end mapping
+mapping compBits of type Comp -> UInt8 is
+  row CZero, 42
+  row COne, 63
+  row CMinusOne, 58
+  row CD, 12
+  row CA, 48
+  row CM, 112
+  row CNotD, 13
+  row CNotA, 49
+  row CNotM, 113
+  row CNegD, 15
+  row CNegA, 51
+  row CNegM, 115
+  row CIncD, 31
+  row CIncA, 55
+  row CIncM, 119
+  row CDecD, 14
+  row CDecA, 50
+  row CDecM, 114
+  row CAddA, 2
+  row CAddM, 66
+  row CSubA, 19
+  row CSubM, 83
+  row CFromA, 7
+  row CFromM, 71
+  row CAndA, 0
+  row CAndM, 64
+  row COrA, 21
+  row COrM, 85
+end mapping
+
+type Dest is one of
+  | NoDest
+  | ToM
+  | ToD
+  | ToMD
+  | ToA
+  | ToAM
+  | ToAD
+  | ToAMD
+end type
+mapping destText of type Dest -> Text is
+  row NoDest, ""
+  row ToM, "M"
+  row ToD, "D"
+  row ToMD, "MD"
+  row ToA, "A"
+  row ToAM, "AM"
+  row ToAD, "AD"
+  row ToAMD, "AMD"
+end mapping
+mapping destBits of type Dest -> UInt8 is
+  row NoDest, 0
+  row ToM, 1
+  row ToD, 2
+  row ToMD, 3
+  row ToA, 4
+  row ToAM, 5
+  row ToAD, 6
+  row ToAMD, 7
+end mapping
+
+type Jump is one of
+  | NoJump
+  | JGt
+  | JEq
+  | JGe
+  | JLt
+  | JNe
+  | JLe
+  | JAlways
+end type
+mapping jumpText of type Jump -> Text is
+  row NoJump, ""
+  row JGt, "JGT"
+  row JEq, "JEQ"
+  row JGe, "JGE"
+  row JLt, "JLT"
+  row JNe, "JNE"
+  row JLe, "JLE"
+  row JAlways, "JMP"
+end mapping
+mapping jumpBits of type Jump -> UInt8 is
+  row NoJump, 0
+  row JGt, 1
+  row JEq, 2
+  row JGe, 3
+  row JLt, 4
+  row JNe, 5
+  row JLe, 6
+  row JAlways, 7
+end mapping
+
+type Predefined is one of
+  | Register of type (n :: UInt8 where n <= 15)
+  | StackPointer
+  | LocalBase
+  | ArgumentBase
+  | ThisBase
+  | ThatBase
+  | ScreenBase
+  | KeyboardBase
+end type
+
+function predefinedText (symbol :: Predefined) -> Text is
+  first matching case of symbol:
+    when Register n then "R" ++ prelude.textOf n
+    when StackPointer then "SP"
+    when LocalBase then "LCL"
+    when ArgumentBase then "ARG"
+    when ThisBase then "THIS"
+    when ThatBase then "THAT"
+    when ScreenBase then "SCREEN"
+    when KeyboardBase then "KBD"
+  end case
+end function
+
+function predefinedAddress (symbol :: Predefined) -> Whole is
+  first matching case of symbol:
+    when Register n then prelude.BigUInt (n)
+    when StackPointer then 0
+    when LocalBase then 1
+    when ArgumentBase then 2
+    when ThisBase then 3
+    when ThatBase then 4
+    when ScreenBase then 16384
+    when KeyboardBase then 24576
+  end case
+end function
+
+refinement UserSymbol is (name :: Text where
+  (name matches regex "[A-Za-z_.$:][A-Za-z0-9_.$:]*") &&
+    name != "SP" &&
+    name != "LCL" &&
+    name != "ARG" &&
+    name != "THIS" &&
+    name != "THAT" &&
+    name != "SCREEN" &&
+    name != "KBD" &&
+    name != "R0" &&
+    name != "R1" &&
+    name != "R2" &&
+    name != "R3" &&
+    name != "R4" &&
+    name != "R5" &&
+    name != "R6" &&
+    name != "R7" &&
+    name != "R8" &&
+    name != "R9" &&
+    name != "R10" &&
+    name != "R11" &&
+    name != "R12" &&
+    name != "R13" &&
+    name != "R14" &&
+    name != "R15")
+end refinement
+
+type Line is one of
+  | Literal of type Address
+  | Compute of type record{
+    comp :: Comp
+    dest :: Dest
+    jump :: Jump
+  }
+  | Builtin of type Predefined
+  | Symbolic of type UserSymbol
+  | Label of type UserSymbol
+end type
+
+function bits (width :: UInt8) (value :: Whole) -> Text is
+  if width = 0 then
+    ""
+  else
+    bits (prelude.UInt8 (width - 1)) (prelude.BigUInt (prelude.quot value 2)) ++
+    (if prelude.rem value 2 = 0 then
+      "0"
+    else
+      "1"
+    end if)
+  end if
+end function
+
+function binary16 (value :: Whole) -> Text is
+  bits 16 value
+end function
+
+function computeWord (comp :: Comp) (dest :: Dest) (jump :: Jump) -> Text is
+  binary16
+    (prelude.BigUInt
+      (57344 + compBits comp * 64 + destBits dest * 8 + jumpBits jump))
+end function
+
+function renderLine (line :: Line) -> Text is
+  first matching case of line:
+    when Literal n then "@" ++ prelude.textOf n
+    when Compute record{comp = comp, dest = dest, jump = jump} then
+      (if dest = NoDest then
+        ""
+      else
+        destText dest ++ "="
+      end if) ++ compText comp ++
+      (if jump = NoJump then
+        ""
+      else
+        ";" ++ jumpText jump
+      end if)
+    when Builtin symbol then "@" ++ predefinedText symbol
+    when Symbolic name then "@" ++ name
+    when Label name then "(" ++ name ++ ")"
+  end case
+end function
+
+function "|assembly source| (program :: List Line) -> Text is
+  first matching case of program:
+    when Nil then ""
+    when Cons line rest then renderLine line ++ "\n" ++ "|assembly source| rest
+  end case
+end function
+
+function instructionCount (program :: List Line) -> Whole is
+  first matching case of program:
+    when Nil then 0
+    when Cons line rest then
+      first matching case of line:
+        when Label name then instructionCount rest
+        when Literal n then prelude.BigUInt (1 + instructionCount rest)
+        when Compute record{comp = comp, dest = dest, jump = jump} then
+          prelude.BigUInt (1 + instructionCount rest)
+        when Builtin symbol then prelude.BigUInt (1 + instructionCount rest)
+        when Symbolic name then prelude.BigUInt (1 + instructionCount rest)
+      end case
+  end case
+end function
+
+function uniqueLabels (program :: List Line) (seen :: SortedSet Text) -> Bool is
+  first matching case of program:
+    when Nil then true
+    when Cons line rest then
+      first matching case of line:
+        when Label name then !(prelude.sortedSetMember name seen) &&
+            uniqueLabels rest (prelude.sortedSetInsert name seen)
+        when Literal n then uniqueLabels rest seen
+        when Compute record{comp = comp, dest = dest, jump = jump} then
+          uniqueLabels rest seen
+        when Builtin symbol then uniqueLabels rest seen
+        when Symbolic name then uniqueLabels rest seen
+      end case
+  end case
+end function
+
+function labelsFit (program :: List Line) (pc :: Whole) -> Bool is
+  first matching case of program:
+    when Nil then pc <= 32768
+    when Cons line rest then
+      first matching case of line:
+        when Label name then pc < 32768 && labelsFit rest pc
+        when Literal n then labelsFit rest (prelude.BigUInt (pc + 1))
+        when Compute record{comp = comp, dest = dest, jump = jump} then
+          labelsFit rest (prelude.BigUInt (pc + 1))
+        when Builtin symbol then labelsFit rest (prelude.BigUInt (pc + 1))
+        when Symbolic name then labelsFit rest (prelude.BigUInt (pc + 1))
+      end case
+  end case
+end function
+
+function scanLabels (program :: List Line) (pc :: Whole)
+  (labels :: KeyVal Text Whole) -> KeyVal Text Whole is
+  first matching case of program:
+    when Nil then labels
+    when Cons line rest then
+      first matching case of line:
+        when Label name then scanLabels rest pc (prelude.put name pc labels)
+        when Literal n then scanLabels rest (prelude.BigUInt (pc + 1)) labels
+        when Compute record{comp = comp, dest = dest, jump = jump} then
+          scanLabels rest (prelude.BigUInt (pc + 1)) labels
+        when Builtin symbol then scanLabels rest (prelude.BigUInt (pc + 1))
+            labels
+        when Symbolic name then scanLabels rest (prelude.BigUInt (pc + 1))
+            labels
+      end case
+  end case
+end function
+
+function variableNames (program :: List Line) (labels :: KeyVal Text Whole)
+  (seen :: SortedSet Text) -> SortedSet Text is
+  first matching case of program:
+    when Nil then seen
+    when Cons line rest then
+      first matching case of line:
+        when Symbolic name then
+          first matching case of prelude.lookup name labels:
+            when Present address then variableNames rest labels seen
+            when Absent then variableNames rest labels (prelude.sortedSetInsert
+                name seen)
+          end case
+        when Label name then variableNames rest labels seen
+        when Literal n then variableNames rest labels seen
+        when Compute record{comp = comp, dest = dest, jump = jump} then
+          variableNames rest labels seen
+        when Builtin symbol then variableNames rest labels seen
+      end case
+  end case
+end function
+
+function validProgram (program :: List Line) -> Bool is
+  instructionCount program <= 32768 &&
+    uniqueLabels program (prelude.sortedSetOf []) &&
+    labelsFit program 0 &&
+    prelude.size
+      (variableNames program
+        (scanLabels program 0 (prelude.keyValOf []))
+        (prelude.sortedSetOf [])) <= 32752
+end function
+
+function resolve (program :: List Line) (labels :: KeyVal Text Whole)
+  (variables :: KeyVal Text Whole) (next :: Whole) -> List Text is
+  first matching case of program:
+    when Nil then []
+    when Cons line rest then
+      first matching case of line:
+        when Label name then resolve rest labels variables next
+        when Literal n then Cons (binary16 (prelude.BigUInt (n))) (resolve rest
+            labels variables next)
+        when Compute record{comp = comp, dest = dest, jump = jump} then Cons
+            (computeWord comp dest jump) (resolve rest labels variables next)
+        when Builtin symbol then Cons (binary16 (predefinedAddress symbol))
+            (resolve rest labels variables next)
+        when Symbolic name then
+          first matching case of prelude.lookup name labels:
+            when Present address then Cons (binary16 address) (resolve rest labels
+                variables next)
+            when Absent then
+              first matching case of prelude.lookup name variables:
+                when Present address then Cons (binary16 address) (resolve rest
+                    labels variables next)
+                when Absent then Cons (binary16 next)
+                    (resolve rest labels (prelude.put name next variables)
+                      (prelude.BigUInt (next + 1)))
+              end case
+          end case
+      end case
+  end case
+end function
+
+function "|reference assembly| (program :: List Line) -> List Text is
+  resolve program
+    (scanLabels program 0 (prelude.keyValOf []))
+    (prelude.keyValOf []) 16
+end function
+
+type Layout is one of
+  | Plain
+  | Spaced
+  | Tabbed
+  | Windows
+  | Commented
+end type
+
+function layoutLine (line :: Line) (layout :: Layout) -> Text is
+  first matching case of layout:
+    when Plain then renderLine line ++ "\n"
+    when Spaced then "  " ++ renderLine line ++ "  \n\n"
+    when Tabbed then "\t" ++ renderLine line ++ "\t\n\t\n"
+    when Windows then renderLine line ++ "\r\n\r\n"
+    when Commented then "// ignored @ghost (DECOY) D=M\n" ++ renderLine line ++
+        " // ignored @phantom (FAKE) 0;JMP\n\n"
+  end case
+end function
+
+function layoutSource (program :: List Line) (layout :: Layout) -> Text is
+  first matching case of program:
+    when Nil then ""
+    when Cons line rest then layoutLine line layout ++ layoutSource rest layout
+  end case
+end function
+
+function binaryLines (lines :: List Text) -> Bool is
+  first matching case of lines:
+    when Nil then true
+    when Cons line rest then (line matches regex "[01]{16}") && binaryLines rest
+  end case
+end function
+
+law "|A instructions encode every fifteen bit address| is
+  description:
+    "Every address from zero through 32767 produces its exact sixteen-bit A word."
+  end description
+
+  definition:
+    for all (address :: Address) =>
+      assemble ("@" ++ prelude.textOf address) =
+        [binary16 (prelude.BigUInt (address))]
+    end for all
+  end definition
+  expect assemble ("@" ++ prelude.textOf address) = expected
+  in table (address, expected):
+    row 0, ["0000000000000000"]
+    row 1, ["0000000000000001"]
+    row 32767, ["0111111111111111"]
+  end table
+end law
+
+law "|numeric A operands are decimal even with leading zeroes| is
+  description:
+    "Leading zeroes do not change a numeric address or select octal notation."
+  end description
+
+  definition:
+    for all (address :: Address) =>
+      assemble ("@000" ++ prelude.textOf address ++ "\n") =
+        [binary16 (prelude.BigUInt (address))]
+    end for all
+  end definition
+
+  example "|eight is not octal|:
+    address = 8
+    expect assemble ("@000" ++ prelude.textOf address ++ "\n") =
+      ["0000000000001000"]
+  end example
+end law
+
+law "|all C instruction fields occupy exactly their specified bits| is
+  description:
+    "Computation, destination and jump fields determine the complete C word."
+  end description
+
+  definition:
+    for all
+      (comp :: Comp)
+      (dest :: Dest)
+      (jump :: Jump) =>
+      assemble (renderLine (Compute record{
+        comp = comp,
+        dest = dest,
+        jump = jump
+      })) = [computeWord comp dest jump]
+    end for all
+  end definition
+end law
+
+law "|computation table matches the published machine language| is
+  description:
+    "Every computation mnemonic uses the bit pattern specified by the course."
+  end description
+
+  definition:
+    for all (comp :: Comp) =>
+      assemble ("D=" ++ compText comp) = [computeWord comp ToD NoJump]
+    end for all
+  end definition
+  expect assemble ("D=" ++ compText comp) = expected
+  in table (comp, expected):
+    row CZero, ["1110101010010000"]
+    row COne, ["1110111111010000"]
+    row CMinusOne, ["1110111010010000"]
+    row CD, ["1110001100010000"]
+    row CA, ["1110110000010000"]
+    row CM, ["1111110000010000"]
+    row CNotD, ["1110001101010000"]
+    row CNotA, ["1110110001010000"]
+    row CNotM, ["1111110001010000"]
+    row CNegD, ["1110001111010000"]
+    row CNegA, ["1110110011010000"]
+    row CNegM, ["1111110011010000"]
+    row CIncD, ["1110011111010000"]
+    row CIncA, ["1110110111010000"]
+    row CIncM, ["1111110111010000"]
+    row CDecD, ["1110001110010000"]
+    row CDecA, ["1110110010010000"]
+    row CDecM, ["1111110010010000"]
+    row CAddA, ["1110000010010000"]
+    row CAddM, ["1111000010010000"]
+    row CSubA, ["1110010011010000"]
+    row CSubM, ["1111010011010000"]
+    row CFromA, ["1110000111010000"]
+    row CFromM, ["1111000111010000"]
+    row CAndA, ["1110000000010000"]
+    row CAndM, ["1111000000010000"]
+    row COrA, ["1110010101010000"]
+    row COrM, ["1111010101010000"]
+  end table
+end law
+
+law "|destination table matches the published machine language| is
+  description:
+    "Each destination selects exactly the registers that receive the result."
+  end description
+
+  definition:
+    for all (dest :: Dest) =>
+      assemble (renderLine (Compute record{
+        comp = CD,
+        dest = dest,
+        jump = NoJump
+      })) = [computeWord CD dest NoJump]
+    end for all
+  end definition
+  expect assemble (renderLine (Compute record{
+    comp = CD,
+    dest = dest,
+    jump = NoJump
+  })) = expected
+  in table (dest, expected):
+    row NoDest, ["1110001100000000"]
+    row ToM, ["1110001100001000"]
+    row ToD, ["1110001100010000"]
+    row ToMD, ["1110001100011000"]
+    row ToA, ["1110001100100000"]
+    row ToAM, ["1110001100101000"]
+    row ToAD, ["1110001100110000"]
+    row ToAMD, ["1110001100111000"]
+  end table
+end law
+
+law "|jump table matches the published machine language| is
+  description:
+    "Each jump mnemonic selects its specified branch condition."
+  end description
+
+  definition:
+    for all (jump :: Jump) =>
+      assemble (renderLine (Compute record{
+        comp = CZero,
+        dest = NoDest,
+        jump = jump
+      })) = [computeWord CZero NoDest jump]
+    end for all
+  end definition
+  expect assemble (renderLine (Compute record{
+    comp = CZero,
+    dest = NoDest,
+    jump = jump
+  })) = expected
+  in table (jump, expected):
+    row NoJump, ["1110101010000000"]
+    row JGt, ["1110101010000001"]
+    row JEq, ["1110101010000010"]
+    row JGe, ["1110101010000011"]
+    row JLt, ["1110101010000100"]
+    row JNe, ["1110101010000101"]
+    row JLe, ["1110101010000110"]
+    row JAlways, ["1110101010000111"]
+  end table
+end law
+
+law "|predefined symbols keep their specified addresses| is
+  description:
+    "Registers and the predefined memory names keep their fixed addresses."
+  end description
+
+  definition:
+    for all (symbol :: Predefined) =>
+      assemble ("@" ++ predefinedText symbol) =
+        [binary16 (predefinedAddress symbol)]
+    end for all
+  end definition
+  expect assemble ("@" ++ predefinedText symbol) = expected
+  in table (symbol, expected):
+    row StackPointer, ["0000000000000000"]
+    row LocalBase, ["0000000000000001"]
+    row ArgumentBase, ["0000000000000010"]
+    row ThisBase, ["0000000000000011"]
+    row ThatBase, ["0000000000000100"]
+    row ScreenBase, ["0100000000000000"]
+    row KeyboardBase, ["0110000000000000"]
+    row Register 0, ["0000000000000000"]
+    row Register 15, ["0000000000001111"]
+  end table
+end law
+
+law "|a fresh symbol receives RAM sixteen and repeated uses retain it| is
+  description:
+    "A new variable starts at RAM address sixteen and keeps that address."
+  end description
+
+  definition:
+    for all (name :: UserSymbol) =>
+      assemble ("@" ++ name ++ "\n@" ++ name ++ "\n") =
+        ["0000000000010000", "0000000000010000"]
+    end for all
+  end definition
+  expect assemble ("@" ++ name ++ "\n@" ++ name ++ "\n") =
+      ["0000000000010000", "0000000000010000"]
+  in table (name):
+    row "_"
+    row "."
+    row "$"
+    row ":"
+    row "foo.bar$9:tmp"
+    row "R16"
+    row "R00"
+    row "r0"
+    row "screen"
+  end table
+end law
+
+law "|distinct variables are allocated in first use order| is
+  description:
+    "Variable allocation follows first occurrence rather than alphabetical order."
+  end description
+
+  definition:
+    for all
+      (first :: UserSymbol)
+      (second :: UserSymbol where second != first) =>
+      assemble ("@" ++ second ++ "\n@" ++ first ++ "\n@" ++ second ++ "\n@" ++
+        first) =
+        ["0000000000010000", "0000000000010001", "0000000000010000",
+          "0000000000010001"]
+    end for all
+  end definition
+end law
+
+law "|every valid generated program agrees with two pass resolution| is
+  description:
+    "Valid structured programs agree with label discovery followed by resolution."
+  end description
+
+  definition:
+    for all (program :: List Line where validProgram program) =>
+      assemble ("|assembly source| program) = "|reference assembly| program
+    end for all
+  end definition
+end law
+
+law "|comments blank lines and supported line endings preserve the program| is
+  description:
+    "Comments, blank lines, spacing and supported line endings preserve output."
+  end description
+
+  definition:
+    for all
+      (program :: List Line where validProgram program)
+      (layout :: Layout) =>
+      assemble (layoutSource program layout) = "|reference assembly| program
+    end for all
+  end definition
+end law
+
+law "|output contains exactly sixteen binary digits per instruction| is
+  description:
+    "Each emitted instruction is one physical line of sixteen binary digits."
+  end description
+
+  definition:
+    for all (program :: List Line where validProgram program) =>
+      binaryLines (assemble ("|assembly source| program)) = true
+    end for all
+  end definition
+end law
+
+law "|labels never emit instructions| is
+  description:
+    "Labels identify instruction positions and contribute no output words."
+  end description
+
+  definition:
+    for all (program :: List Line where validProgram program) =>
+      prelude.length (assemble ("|assembly source| program)) =
+        instructionCount program
+    end for all
+  end definition
+end law
+
+type AssemblyRuns is a record{
+  firstOutput :: List Text
+  secondOutput :: List Text
+  repeatedFirstOutput :: List Text
+}
+end type
+
+law "|assemblies have independent symbol tables and allocation counters| is
+  description:
+    "Each assembly call starts afresh, including a repeated call of the first input."
+  end description
+
+  definition:
+    for all
+      (first :: List Line where validProgram first)
+      (second :: List Line where validProgram second) =>
+      AssemblyRuns record{
+        firstOutput = (assemble ("|assembly source| first)),
+        secondOutput = (assemble ("|assembly source| second)),
+        repeatedFirstOutput = (assemble ("|assembly source| first))
+      } =
+        AssemblyRuns record{
+          firstOutput = ("|reference assembly| first),
+          secondOutput = ("|reference assembly| second),
+          repeatedFirstOutput = ("|reference assembly| first)
+        }
+    end for all
+  end definition
+end law
+
+law "|allocation restarts even when symbols recur across inputs| is
+  description:
+    "Reusing symbol spellings across inputs does not carry allocation state across calls."
+  end description
+
+  definition:
+    for all
+      (first :: UserSymbol)
+      (second :: UserSymbol where second != first) =>
+      let forward = "@" ++ first ++ "\n@" ++ second ++ "\n" in
+        let backward = "@" ++ second ++ "\n@" ++ first ++ "\n" in
+          AssemblyRuns record{
+            firstOutput = (assemble forward),
+            secondOutput = (assemble backward),
+            repeatedFirstOutput = (assemble forward)
+          } =
+            AssemblyRuns record{
+              firstOutput = ["0000000000010000", "0000000000010001"],
+              secondOutput = ["0000000000010000", "0000000000010001"],
+              repeatedFirstOutput = ["0000000000010000", "0000000000010001"]
+            }
+        end let
+      end let
+    end for all
+  end definition
+end law
+
+law "|empty comments and label only sources emit no words| is
+  description:
+    "Empty input, comments and label-only input all produce an empty output file."
+  end description
+
+  definition:
+    assemble "" = [] and assemble " \t\r\n// @ghost (FAKE) D=M\r\n\n" = [] and
+    assemble "(EMPTY)\n// no instructions\n" = []
+  end definition
+end law
+
+law "|symbols are case sensitive| is
+  description:
+    "Different letter case denotes different symbols."
+  end description
+
+  definition:
+    assemble "@foo\n@Foo\n@foo\n@Foo\n" =
+      ["0000000000010000", "0000000000010001", "0000000000010000",
+        "0000000000010001"]
+  end definition
+end law
+
+law "|forward and backward labels take ROM addresses and do not consume variables| is
+  description:
+    "Labels use instruction addresses and never occupy variable slots."
+  end description
+
+  definition:
+    assemble "@END\n@x\n(START)\n@START\n@x\n(END)\n@END\n@next\n" =
+      ["0000000000000100", "0000000000010000", "0000000000000010",
+        "0000000000010000", "0000000000000100", "0000000000010001"]
+  end definition
+end law
+
+law "|adjacent labels share the next instruction address| is
+  description:
+    "Adjacent labels denote the same next instruction."
+  end description
+
+  definition:
+    assemble "@FIRST\n(FIRST)\n(SECOND)\n@SECOND\n@FIRST\n" =
+      ["0000000000000001", "0000000000000001", "0000000000000001"]
+  end definition
+end law
+
+function computationLines (computations :: List Comp) -> List Line is
+  first matching case of computations:
+    when Nil then []
+    when Cons comp rest then
+      Cons (Compute record{
+        comp = comp,
+        dest = NoDest,
+        jump = NoJump
+      }) (computationLines rest)
+  end case
+end function
+
+law "|label addresses count A and C instructions equally| is
+  description:
+    "Both A words and C words advance the label instruction address by one."
+  end description
+
+  definition:
+    for all
+      (computations :: List Comp where prelude.length computations <= 32766)
+      (name :: UserSymbol) =>
+      let middle = computationLines computations in
+        let program = [Symbolic name] ++ middle ++
+            [Label name, Symbolic name] in
+          let address = binary16
+              (prelude.BigUInt (1 + prelude.length computations)) in
+            assemble ("|assembly source| program) = [address] ++
+              "|reference assembly| middle ++
+              [address]
+          end let
+        end let
+      end let
+    end for all
+  end definition
+end law
+
+law "|predefined addresses do not advance the variable allocator| is
+  description:
+    "Predefined memory names never consume a new variable address."
+  end description
+
+  definition:
+    assemble "@R0\n@SP\n@SCREEN\n@KBD\n@z\n@a\n@z\n" =
+      ["0000000000000000", "0000000000000000", "0100000000000000",
+        "0110000000000000",
+        "0000000000010000", "0000000000010001", "0000000000010000"]
+  end definition
+end law
+
+law "|whitespace around instruction fields is ignored| is
+  description:
+    "Whitespace around destination, computation and jump fields is insignificant."
+  end description
+
+  definition:
+    assemble " \tD = M ; JGT // comment\r\n @ 21 \r\n ( LOOP ) \r\n @ LOOP \r\n"
+      =
+      ["1111110000010001", "0000000000010101", "0000000000000010"]
+  end definition
+end law
+
+law "|Add assembles to the published six word program| is
+  description:
+    "The complete Add example produces the six words published by the course."
+  end description
+
+  definition:
+    assemble "@2\nD=A\n@3\nD=D+A\n@0\nM=D\n" =
+      ["0000000000000010", "1110110000010000", "0000000000000011",
+        "1110000010010000", "0000000000000000", "1110001100001000"]
+  end definition
+end law
+end unit

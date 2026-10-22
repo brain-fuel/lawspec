@@ -43,13 +43,32 @@ final class Workflows {
   // Each check records when it fails, so approvalErrors can tell completion
   // order from declaration order.
   static final List<String> finished = java.util.Collections.synchronizedList(new ArrayList<>())
+  // Order -1's slow checks record when they ran, from the call to the result,
+  // so approvedQuickly can tell whether they ran at the same time. The list
+  // is never cleared, so tests running at once cannot erase each other's.
+  static final List<long[]> spans = java.util.Collections.synchronizedList(new ArrayList<long[]>())
+
+  /** Whether two slow checks that started at or after since overlapped in time. */
+  static boolean overlapped(long since) {
+    synchronized (spans) {
+      List<long[]> ran = spans.findAll { long[] span -> span[0] >= since }
+      for (int i = 0; i < ran.size(); i++) {
+        for (int j = i + 1; j < ran.size(); j++) {
+          if (ran[i][0] < ran[j][1] && ran[j][0] < ran[i][1]) return true
+        }
+      }
+      return false
+    }
+  }
 
   private static CompletableFuture<lawspec.runtime.LawSpecRuntime.Either<String, Order>> check(
       Order value0, long milliseconds, String problem) {
+    long start = System.nanoTime()
     var executor = value0.number() == -1
         ? CompletableFuture.delayedExecutor(milliseconds, TimeUnit.MILLISECONDS)
         : java.util.concurrent.ForkJoinPool.commonPool()
     return CompletableFuture.<lawspec.runtime.LawSpecRuntime.Either<String, Order>>supplyAsync(() -> {
+      if (value0.number() == -1) spans.add([start, System.nanoTime()] as long[])
       if (value0.number() >= 0) return new LawSpecRuntime.Right<>(value0)
       finished.add(problem)
       return new LawSpecRuntime.Left<>(problem)

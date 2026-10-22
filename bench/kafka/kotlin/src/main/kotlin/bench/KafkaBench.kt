@@ -22,7 +22,7 @@ fun tp(p: Int) = TopicPartition("bench", p)
 fun record(i: Long): Record {
     val key = java.nio.ByteBuffer.allocate(8).putLong(i).array()
     val value = ByteArray(64) { 'x'.code.toByte() }
-    return Record(LawSpecRuntime.Just(key), LawSpecRuntime.Just(value), listOf())
+    return Record(LawSpecRuntime.Present(key), LawSpecRuntime.Present(value), listOf())
 }
 
 fun phase(name: String, ops: Long, start: Long) =
@@ -49,7 +49,7 @@ fun run(scale: Long) {
 
     var start = System.nanoTime()
     for (i in 0 until scale) {
-        broker.produceRequest(tp((i % PARTITIONS).toInt()), LawSpecRuntime.Nothing(), listOf(record(i)))
+        broker.produceRequest(tp((i % PARTITIONS).toInt()), LawSpecRuntime.Absent(), listOf(record(i)))
     }
     phase("produce", scale, start)
     total += scale
@@ -76,7 +76,7 @@ fun run(scale: Long) {
             ops += 2
             for (p in assigned) {
                 val committed = broker.offsetFetchRequest("g", p)
-                var position = if (committed is LawSpecRuntime.Just<Long>) committed.value() else 0L
+                var position = if (committed is LawSpecRuntime.Present<Long>) committed.value() else 0L
                 ops++
                 while (true) {
                     val r: FetchResult = broker.fetchRequest(p, position, FETCH, IsolationLevel.ReadUncommitted)
@@ -98,7 +98,7 @@ fun run(scale: Long) {
     start = System.nanoTime()
     ops = 0
     val txns = maxOf(1L, scale / 100)
-    val id = broker.initProducerIdRequest(LawSpecRuntime.Just("tx"))
+    val id = broker.initProducerIdRequest(LawSpecRuntime.Present("tx"))
     ops++
     val sequences = IntArray(PARTITIONS)
     for (t in 0 until txns) {
@@ -106,7 +106,7 @@ fun run(scale: Long) {
         broker.addPartitionsToTxnRequest("tx", id.producerId, id.producerEpoch, parts.map { tp(it) })
         for (p in parts) {
             val tag = ProducerTag(id.producerId, id.producerEpoch, sequences[p]++)
-            broker.produceRequest(tp(p), LawSpecRuntime.Just(tag), listOf(record(t)))
+            broker.produceRequest(tp(p), LawSpecRuntime.Present(tag), listOf(record(t)))
         }
         broker.txnOffsetCommitRequest("tx", id.producerId, id.producerEpoch, "g", listOf(OffsetEntry(tp(parts[0]), t)))
         broker.endTxnRequest("tx", id.producerId, id.producerEpoch, true)
@@ -120,10 +120,10 @@ fun run(scale: Long) {
     println("check committed-hw ${r.highWatermark}")
 
     // The embedding API: a refusal as a value, and the state kept and put back.
-    val refused = broker.tryProduceRequest(TopicPartition("missing", 0), LawSpecRuntime.Nothing(), listOf(record(0)))
+    val refused = broker.tryProduceRequest(TopicPartition("missing", 0), LawSpecRuntime.Absent(), listOf(record(0)))
     println("check refused ${if (refused.failed()) refused.failure()::class.simpleName else "nothing"}")
     val snapshot = broker.typedState()
-    broker.produceRequest(tp(0), LawSpecRuntime.Nothing(), listOf(record(0)))
+    broker.produceRequest(tp(0), LawSpecRuntime.Absent(), listOf(record(0)))
     broker.setTypedState(snapshot)
     val after = broker.fetchRequest(tp(0), 0L, 10, IsolationLevel.ReadCommitted)
     println("check restored ${after.highWatermark == r.highWatermark}")

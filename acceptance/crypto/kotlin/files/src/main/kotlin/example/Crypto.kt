@@ -19,6 +19,6 @@ object Crypto {
         val key = aead.aeadKey()
         val label = "round trip".toByteArray()
         val opened = aead.unseal(key, aead.seal(key, value0, label), label)
-        return opened is LawSpecRuntime.Just<*> && (opened.value() as ByteArray).contentEquals(value0)
+        return opened is LawSpecRuntime.Present<*> && (opened.value() as ByteArray).contentEquals(value0)
     }
 }

@@ -1,0 +1,54 @@
+unit example.records
+
+function double
+  (value of type record{
+    count of type Integer
+  }) -> record{
+    count of type Integer
+  } is
+  record{count = value.count + value.count}
+end function
+
+function wrap (value of type a) -> record{wrapped of type a} is
+  record{wrapped = value}
+end function
+
+law doubles is
+  definition:
+    for all (value of type record{count of type Integer}) =>
+      (double value).count must be value.count + value.count
+    end for all
+  end definition
+
+  expect double value = expected
+  in table (value, expected):
+    row record{count = -1}, record{count = -2}
+    row record{count = 0}, record{count = 0}
+    row record{count = 1}, record{count = 2}
+  end table
+end law
+
+law wraps is
+  definition:
+    (wrap true).wrapped must be true
+  end definition
+end law
+
+law ordered is
+  definition:
+    record{a = 1, b = true} must be record{b = true, a = 1}
+  end definition
+end law
+
+law nested is
+  definition:
+    record{inner = record{count = 4}}.inner.count must be 4
+  end definition
+end law
+
+law empty is
+  definition:
+    record{} must be record{}
+  end definition
+end law
+end unit

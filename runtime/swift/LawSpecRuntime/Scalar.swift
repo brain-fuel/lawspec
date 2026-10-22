@@ -479,10 +479,10 @@ public enum Scalar {
             return try checkBounds(n, name, bits)
         case ("List", 1, .list(let items)):
             return .list(try items.map { try validate($0, args[0], bits) })
-        case ("Maybe", 1, .data("Maybe::Nothing", let fields)) where fields.isEmpty:
+        case ("Maybe", 1, .data("Maybe::Absent", let fields)) where fields.isEmpty:
             return value
-        case ("Maybe", 1, .data("Maybe::Just", let fields)) where fields.count == 1:
-            return .data("Maybe::Just", [try validate(fields[0], args[0], bits)])
+        case ("Maybe", 1, .data("Maybe::Present", let fields)) where fields.count == 1:
+            return .data("Maybe::Present", [try validate(fields[0], args[0], bits)])
         case ("Either", 2, .data("Either::Left", let fields)) where fields.count == 1:
             return .data("Either::Left", [try validate(fields[0], args[0], bits)])
         case ("Either", 2, .data("Either::Right", let fields)) where fields.count == 1:
@@ -582,8 +582,8 @@ public enum Scalar {
         case let (.presence(k1, nil), .presence(k2, _?)) where k1 == k2: return -1
         case let (.presence(k1, _?), .presence(k2, nil)) where k1 == k2: return 1
         case let (.presence(k1, x?), .presence(k2, y?)) where k1 == k2: return try compareValues(x, y)
-        case (.data("Maybe::Nothing", let f), .data("Maybe::Just", _)) where f.isEmpty: return -1
-        case (.data("Maybe::Just", _), .data("Maybe::Nothing", let f)) where f.isEmpty: return 1
+        case (.data("Maybe::Absent", let f), .data("Maybe::Present", _)) where f.isEmpty: return -1
+        case (.data("Maybe::Present", _), .data("Maybe::Absent", let f)) where f.isEmpty: return 1
         case let (.data(t1, f1), .data(t2, f2)) where t1 == t2: return try compareLists(f1, f2)
         case let (.data(t1, _), .data(t2, _)): return compareText(t1, t2)
         case let (.list(x), .list(y)): return try compareLists(x, y)
@@ -819,8 +819,8 @@ public enum Scalar {
         case ("at", 2):
             if case .int(let i) = values[1] {
                 let items = try sequenceItems(values[0], types.first ?? "")
-                if !i.isNegative, let k = i.exactly(Int.self), k < items.count { return .data("Maybe::Just", [items[k]]) }
-                return .data("Maybe::Nothing", [])
+                if !i.isNegative, let k = i.exactly(Int.self), k < items.count { return .data("Maybe::Present", [items[k]]) }
+                return .data("Maybe::Absent", [])
             }
         case ("range", 2):
             if case .int(let lo) = values[0], case .int(let hi) = values[1] {

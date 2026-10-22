@@ -18,8 +18,8 @@ function "|email invoice PDF file name|
   (delivery of type Delivery) -> Maybe Text is
   first matching case of delivery:
     when Email record{document = record{file = Pdf record{fileName = name}}}
-      then Just name
-    otherwise Nothing
+      then Present name
+    otherwise Absent
   end case
 end function
 
@@ -34,7 +34,7 @@ law "|emailPdfInvoice result| is
     "PDF invoices sent by email retain their file names."
   end description
   definition:
-    "|email invoice PDF file name| (emailPdfInvoice "invoice.pdf") must be Just
+    "|email invoice PDF file name| (emailPdfInvoice "invoice.pdf") must be Present
     "invoice.pdf"
   end definition
 end law
@@ -51,7 +51,7 @@ law "|emailPlainTextInvoice result| is
   end description
   definition:
     "|email invoice PDF file name| (emailPlainTextInvoice "invoice.pdf") must be
-    Nothing
+    Absent
   end definition
 end law
 
@@ -67,7 +67,7 @@ law "|downloadPdfInvoice result| is
   end description
   definition:
     "|email invoice PDF file name| (downloadPdfInvoice "invoice.pdf") must be
-    Nothing
+    Absent
   end definition
 end law
 end unit

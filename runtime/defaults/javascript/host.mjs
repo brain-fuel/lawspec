@@ -11,10 +11,10 @@ import * as path from 'node:path';
 export class FileSystemHandler {
     readBytes(value0) {
         try {
-            return new data.Just(new Uint8Array(fs.readFileSync(value0)));
+            return new data.Present(new Uint8Array(fs.readFileSync(value0)));
         }
         catch {
-            return new data.Nothing();
+            return new data.Absent();
         }
     }
     writeBytes(value0, value1) {
@@ -48,7 +48,7 @@ export function validName(name) {
 export class EnvironmentHandler {
     environmentVariable(value0) {
         const value = validName(value0) ? process.env[value0] : undefined;
-        return value === undefined ? new data.Nothing() : new data.Just(value);
+        return value === undefined ? new data.Absent() : new data.Present(value);
     }
     environmentSnapshot() {
         return ls.acquireResource('environment');

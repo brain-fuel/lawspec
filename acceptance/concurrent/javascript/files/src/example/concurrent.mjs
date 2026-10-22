@@ -21,7 +21,7 @@ function get(registry, id, empty) {
 }
 
 function maybe(value) {
-  return value === undefined ? new data.Nothing() : new data.Just(value);
+  return value === undefined ? new data.Absent() : new data.Present(value);
 }
 
 export function newQueue(value0) {
@@ -35,7 +35,7 @@ export async function offer(value0, value1) {
 
 export async function poll(value0) {
   const items = get(queues, value0.id, () => []);
-  return items.length > 0 ? new data.Just(items.shift()) : new data.Nothing();
+  return items.length > 0 ? new data.Present(items.shift()) : new data.Absent();
 }
 
 export async function queueSize(value0) {

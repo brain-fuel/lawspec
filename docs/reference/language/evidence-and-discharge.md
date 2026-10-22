@@ -18,6 +18,39 @@ strongest to weakest:
 | `DEFAULT HANDLER` | `default-handler` | The default handlers of built-in abilities (see [built-in abilities](builtins.md)) | Reviewed runtime code, its ability's laws property-tested, cryptography checked against NIST vectors |
 | `ASSUMED / EXTERNAL` | `assumed` | Adapters, native functions, custom generators and codec hooks | Taken on trust |
 
+## Refuted laws
+
+`REFUTED` (`refuted`) is not evidence for a law. It says a confirmed
+counterexample shows the law false:
+
+- the compiler's exhaustive check found an input where the law is false or
+  undefined; or
+- Z3 gave values that the reference evaluator confirmed (see
+  [proof with Z3](../../explanation/smt-proof.md)).
+
+The build fails: `check`, `generate` and `test` stop with a `refuted`
+diagnostic for each failing input. `lawspec evidence` still lists the law
+under `REFUTED`, with the input, and exits with status 1. Every other law
+keeps its own status.
+
+## Exempted checks
+
+`EXEMPTED` (`exempted`) is weaker than `ASSUMED / EXTERNAL`. A law-set check
+found a counterexample, or could not decide, and a `laws for` block excuses
+it (see [law sets](law-sets.md)). The row keeps the counterexample, the
+reason and the expiry, for example `until 1.2.0 (project is 1.1.4)`. The
+build does not fail. Once the exemption expires, the check is `REFUTED` with
+the same counterexample, and the build fails.
+
+## Pending laws
+
+`PENDING` (`pending`) is a law about an open history (see
+[laws about histories](models.md#laws-about-histories)) that the entries so
+far do not decide: some continuations keep it and some break it. It is not
+evidence, and not a failure; the reason says whether it holds so far.
+
+## Harness statuses
+
 A law's [harness](harness.md) decides how its tests run, never what the law
 claims, so three more statuses come from the harness plane. The law stays an
 obligation under each:
@@ -173,6 +206,7 @@ Each obligation has a stage:
 | `binding` | A native type binding | runtime-checked |
 | `codec`, `generator`, `native-function` | A codec hook, generator factory or bound native function | assumed |
 | `handler` | A built-in ability's production handler: the runtime's default, or one bound in `lawspec.json` | default-handler, or assumed when bound |
+| `completeness`, `overlap`, `conflict`, `vacuity` | A function's laws, checked together (see [law sets](law-sets.md)) | exhaustively checked, proved, refuted, exempted, planned or incomplete |
 
 ## Where the tests ran
 

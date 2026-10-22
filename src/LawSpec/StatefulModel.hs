@@ -453,7 +453,7 @@ operation kind elements op = case (if kind=="SortedSet" then "Set" else kind, el
     maybeOf t = Applied "Maybe" t
     -- The first value when the key is absent, the second when present.
     absent none some = MatchExpr (call "lookup" [a 0, s])
-      [MatchBranch "Nothing" [] none, MatchBranch "Just" ["present"] some]
+      [MatchBranch "Absent" [] none, MatchBranch "Present" ["present"] some]
 
 -- | A unit's supervisors: each child is an actor that starts without
 -- arguments, or another supervisor; each has one supervisor, and none

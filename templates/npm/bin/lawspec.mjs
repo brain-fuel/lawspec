@@ -74,6 +74,13 @@ function testCommand(target, root) {
     command = `npm exec -- tsc -p tsconfig.json && node --test ${shellQuote("dist/" + testDir)}/*.test.js`;
   return `(cd ${shellQuote(root)} && ${command})`;
 }
+// A refuted law fails the command, but evidence still lists it: the
+// diagnostics then only say which laws are refuted.
+function refutedOnly(result) {
+  return result.diagnostics?.length && result.diagnostics.every((d) => d.code === "refuted") && result.evidence
+    ? { ...result, refuted: result.diagnostics, diagnostics: [] } : result;
+}
+
 function diagnostics(result) {
   if (result.diagnostics?.length)
     throw Object.assign(
@@ -863,6 +870,10 @@ async function main() {
     ...(await packageInput(config, configRoot)),
     generation: config.generation,
     machineBits: options.machineBits ?? config.machineBits ?? 64,
+    // What a law-set exemption's until is compared with: the project's
+    // version and the current UTC time.
+    ...(typeof config.projectVersion === "string" ? { projectVersion: config.projectVersion } : {}),
+    now: new Date().toISOString(),
   };
   const compiler = await createCompiler();
   if (verb === "prove") {
@@ -874,11 +885,13 @@ async function main() {
         .filter(([name]) => options[name] !== undefined).map(([name,key]) => [key,Number(options[name])])),
     }));
     output(options.json ? result : result.solverEvidence.length
-      ? result.solverEvidence.map(row => `${row.declaration}: ${row.status} (${row.outcome}). ${row.reason}`).join("\n")
+      ? result.solverEvidence.map(row => `${row.declaration}${row.kind === "analysis" ? ` ${row.stage}` : ""}: ${row.status} (${row.outcome}). ${row.reason}`).join("\n")
       : (input.verification?.layers.includes("proof")
         ? "No source law obligations are available. No solver was invoked."
         : "No proof layer selected. Intrinsic definition checks passed; no solver was invoked."));
-    if (result.solverEvidence.some(row => row.status !== "proved")) process.exitCode = 2;
+    // A refuted law is a definite failure; anything else not proved is incomplete.
+    if (result.solverEvidence.some(row => row.status === "refuted")) process.exitCode = 1;
+    else if (result.solverEvidence.some(row => !["proved", "exempted"].includes(row.status))) process.exitCode = 2;
     return;
   }
   // Each obligation reports how it is discharged, strongest first.
@@ -890,11 +903,17 @@ async function main() {
     ["runtime-checked", "RUNTIME CHECKED"],
     ["default-handler", "DEFAULT HANDLER"],
     ["assumed", "ASSUMED / EXTERNAL"],
+    // A law-set check a laws-for block excuses, with its reason and expiry.
+    ["exempted", "EXEMPTED"],
+    // A law a confirmed counterexample shows false; the build fails.
+    ["refuted", "REFUTED"],
     // The harness plane: a law it marks as known to fail, a law whose last
     // run was flaky, and a law whose tests it skips.
     ["known-failing", "KNOWN FAILING"],
     ["flaky", "FLAKY"],
     ["skipped", "SKIPPED"],
+    // A law about an open history that the entries so far do not decide.
+    ["pending", "PENDING"],
     ["planned", "PLANNED"],
     ["not-verified", "NOT VERIFIED"],
     ["incomplete", "INCOMPLETE"],
@@ -903,9 +922,9 @@ async function main() {
   const evidenceSummary = (evidence) => {
     if (!evidence.length) return "";
     const count = (status) => evidence.filter((item) => item.status === status).length;
-    // The harness statuses (after assumed) are counted only when a harness
-    // gives some.
-    const harnessFrom = statuses.findIndex(([status]) => status === "known-failing");
+    // Exempted, refuted and the harness statuses (after assumed) are counted only when
+    // some obligation has them.
+    const harnessFrom = statuses.findIndex(([status]) => status === "exempted");
     const shown = statuses.filter(([status], i) => i < harnessFrom || count(status));
     return ` Evidence: ${shown.map(([status, label]) => `${count(status)} ${label.toLowerCase()}`).join(", ")}.`;
   };
@@ -936,8 +955,9 @@ async function main() {
     const named = await readAttestation(config);
     const { runs, attestations, outcomes } = await lastRuns();
     const recorded = named && typeof named.run?.id === "string" ? outcomes.get(named.run.id) : undefined;
-    const result = diagnostics(await compiler.check({ ...input,
-      ...(named ? { attestation: named, ...(recorded ? { attestedOutcomes: recorded } : {}) } : {}) }));
+    const result = diagnostics(refutedOnly(await compiler.check({ ...input,
+      ...(named ? { attestation: named, ...(recorded ? { attestedOutcomes: recorded } : {}) } : {}) })));
+    if (result.refuted) process.exitCode = 1;
     let evidence = attachNativeEvidence(result.evidence,await readNativeObservations({compiler,input,selected,roots,
       configRoot,build:await buildDigest(),evidence:result.evidence,attestation:named}));
     const environments = named ? [result.attestation] : [];

@@ -371,16 +371,14 @@ test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
       operations `shouldBe` [C.Arrow (C.scalarType "Text") (C.scalarType "Int64")]
       [C.propertyName p | u <- C.programUnits compiled, p <- C.unitProperties u, "Pets: register gives what its type says" `isInfixOf` C.propertyName p]
         `shouldBe` ["Pets: register gives what its type says [native]", "Pets: register gives what its type says [fakePets]"]
-    it "places a type that cannot reach Core at the declaration that uses it" $ do
+    it "elaborates an ability at a refinement through the refinement" $ do
       let source = unlines
             [ "unit example.store\n"
             , "refinement Count is (n :: Int64 where n >= 0) end refinement\n"
             , "ability Store (t :: Type) is save :: t -> Unit end ability\n"
             , "procedure keep (n :: Count) -> Unit uses Store Count is save n end procedure\n"
             , "end unit" ]
-      case program source of
-        Left (d : _) -> (code d, fmap line (at d)) `shouldBe` ("definition", Just 7)
-        other -> expectationFailure (show (fmap (const ()) other))
+      program source `shouldSatisfy` isRight
   describe "spec handlers with state" $ do
     let counter law = unlines
           [ "unit example.counter\n"

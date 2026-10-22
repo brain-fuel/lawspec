@@ -214,8 +214,8 @@ export function validate(x, t, bits = 64) {
   }
   if (t.startsWith('Maybe ')) {
     if (!(x instanceof DataValue)) throw new TypeError('expected Maybe');
-    if (x.tag === 'Maybe::Nothing' && x.fields.length === 0) return x;
-    if (x.tag === 'Maybe::Just' && x.fields.length === 1) {
+    if (x.tag === 'Maybe::Absent' && x.fields.length === 0) return x;
+    if (x.tag === 'Maybe::Present' && x.fields.length === 1) {
       return new DataValue(x.tag, [
         validate(x.fields[0], t.slice(6), bits),
       ]);
@@ -503,7 +503,7 @@ export function equal(a, b, ta, tb) {
   if (ta.startsWith('Maybe ') && tb.startsWith('Maybe ')) {
     return (
       a.tag === b.tag &&
-        (a.tag === 'Maybe::Nothing' ||
+        (a.tag === 'Maybe::Absent' ||
           equal(a.fields[0], b.fields[0], ta.slice(6), tb.slice(6)))
     );
   }
@@ -554,7 +554,7 @@ const sign = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
 
 // The portable total order: -1, 0 or 1. Exact numbers by value, text by code
 // point, raw sequences by unit, false before true, absence before presence,
-// lists element by element, Nothing before Just, and other data by
+// lists element by element, Absent before Present, and other data by
 // constructor identity, then fields left to right.
 export function compareValues(a, b) {
   // Handles have no order: one equals only itself.
@@ -586,8 +586,8 @@ export function compareValues(a, b) {
   }
   if (a instanceof DataValue && b instanceof DataValue) {
     if (a.tag !== b.tag) {
-      if (a.tag === 'Maybe::Nothing' && b.tag === 'Maybe::Just') return -1;
-      if (a.tag === 'Maybe::Just' && b.tag === 'Maybe::Nothing') return 1;
+      if (a.tag === 'Maybe::Absent' && b.tag === 'Maybe::Present') return -1;
+      if (a.tag === 'Maybe::Present' && b.tag === 'Maybe::Absent') return 1;
       return a.tag < b.tag ? -1 : 1;
     }
     return compareValues([...a.fields], [...b.fields]);
@@ -681,8 +681,8 @@ const sequenceHelpers = {
   },
   at: ([x, i]) => {
     const index = BigInt(i);
-    if (index < 0n || index >= BigInt(x.length)) return construct('Maybe::Nothing', []);
-    return construct('Maybe::Just', [x[Number(index)]]);
+    if (index < 0n || index >= BigInt(x.length)) return construct('Maybe::Absent', []);
+    return construct('Maybe::Present', [x[Number(index)]]);
   },
   range: ([lo, hi], types) => {
     const out = [];
@@ -1210,8 +1210,8 @@ function complexity(value) {
 
 export function construct(tag, fields) {
   if (
-      (tag === 'Maybe::Nothing' && fields.length === 0) ||
-      (['Maybe::Just', 'Either::Left', 'Either::Right'].includes(tag) &&
+      (tag === 'Maybe::Absent' && fields.length === 0) ||
+      (['Maybe::Present', 'Either::Left', 'Either::Right'].includes(tag) &&
         fields.length === 1)
   ) {
     return new DataValue(tag, fields);
@@ -1266,9 +1266,9 @@ export function matchValue(value, branches) {
   if (!(value instanceof DataValue))
     throw new TypeError('expected data in match');
   const arity =
-      value.tag === 'Maybe::Nothing'
+      value.tag === 'Maybe::Absent'
         ? 0
-        : ['Maybe::Just', 'Either::Left', 'Either::Right'].includes(value.tag)
+        : ['Maybe::Present', 'Either::Left', 'Either::Right'].includes(value.tag)
           ? 1
           : -1;
   if (value.fields.length !== arity) {
@@ -2030,8 +2030,8 @@ export class Values {
         return out;
       }
       case 'maybe':
-        if (random.below(4n) === 0n) return new DataValue('Maybe::Nothing', []);
-        return new DataValue('Maybe::Just', [this.generate(d[1], random, n)]);
+        if (random.below(4n) === 0n) return new DataValue('Maybe::Absent', []);
+        return new DataValue('Maybe::Present', [this.generate(d[1], random, n)]);
       case 'either':
         if (random.below(2n) === 0n) return new DataValue('Either::Left', [this.generate(d[1], random, n)]);
         return new DataValue('Either::Right', [this.generate(d[2], random, n)]);
@@ -2055,7 +2055,7 @@ export class Values {
       case 'text': return '';
       case 'unit': return UNIT;
       case 'list': return [];
-      case 'maybe': return new DataValue('Maybe::Nothing', []);
+      case 'maybe': return new DataValue('Maybe::Absent', []);
       case 'either': return new DataValue('Either::Left', [this.minimal(d[1])]);
     }
     const ctor = this.base(d)[0];
@@ -2092,9 +2092,9 @@ export class Values {
         }
         break;
       case 'maybe':
-        if (v.tag === 'Maybe::Just')
-          out = [new DataValue('Maybe::Nothing', []),
-            ...this.shrink(d[1], v.fields[0]).map((c) => new DataValue('Maybe::Just', [c]))];
+        if (v.tag === 'Maybe::Present')
+          out = [new DataValue('Maybe::Absent', []),
+            ...this.shrink(d[1], v.fields[0]).map((c) => new DataValue('Maybe::Present', [c]))];
         break;
       case 'either': {
         const inner = v.tag === 'Either::Left' ? d[1] : d[2];
@@ -4691,7 +4691,7 @@ function wirePut(values, d, v, out) {
       for (const item of v) wirePut(values, d[1], item, out);
       return;
     case 'maybe':
-      if (v.tag.endsWith('Nothing')) out.push(0);
+      if (v.tag.endsWith('Absent')) out.push(0);
       else {
         out.push(1);
         wirePut(values, d[1], v.fields[0], out);
@@ -4763,9 +4763,9 @@ function wireGet(values, d, buf, pos) {
       if (pos >= buf.length || buf[pos] > 1) throw new WireError(`not a ${d[0] === 'maybe' ? 'Maybe' : 'Either'}`);
       const which = buf[pos++];
       if (d[0] === 'maybe') {
-        if (which === 0) return [new DataValue('Maybe::Nothing', []), pos];
+        if (which === 0) return [new DataValue('Maybe::Absent', []), pos];
         const [v, next] = wireGet(values, d[1], buf, pos);
-        return [new DataValue('Maybe::Just', [v]), next];
+        return [new DataValue('Maybe::Present', [v]), next];
       }
       const [v, next] = wireGet(values, which === 0 ? d[1] : d[2], buf, pos);
       return [new DataValue(which === 0 ? 'Either::Left' : 'Either::Right', [v]), next];
@@ -4875,7 +4875,7 @@ function searchMoves(table, d, v) {
     case 'list':
       return v.flatMap((item, i) => searchMoves(table, d[1], item).map((m) => v.map((old, j) => (j === i ? m : old))));
     case 'maybe':
-      return v.tag === 'Maybe::Just' ? searchMoves(table, d[1], v.fields[0]).map((m) => new DataValue(v.tag, [m])) : [];
+      return v.tag === 'Maybe::Present' ? searchMoves(table, d[1], v.fields[0]).map((m) => new DataValue(v.tag, [m])) : [];
     case 'either':
       return searchMoves(table, v.tag === 'Either::Left' ? d[1] : d[2], v.fields[0]).map((m) => new DataValue(v.tag, [m]));
     case 'data': {

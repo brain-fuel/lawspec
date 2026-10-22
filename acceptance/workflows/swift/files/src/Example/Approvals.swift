@@ -4,11 +4,13 @@ import Foundation
 import LawSpecRuntime
 
 extension Example.Approvals {
-    /// Approves an order: whether it took less than 550ms.
+    /// Approves an order: whether two of order -1's slow checks that started
+    /// during this call overlapped in time. Run one after the other they
+    /// cannot overlap, however loaded the machine is.
     static func approvedQuickly(_ number: Int64) async -> Bool {
         let started = ContinuousClock.now
         _ = Workflow.withReal(0) { _ in LawSpec.Definitions.ExampleWorkflows.approve(Order(number: number)) }
-        return ContinuousClock.now - started < .milliseconds(550)
+        return number != -1 || Spans.shared.overlapped(since: started)
     }
 
     /// Approves an order: the messages of its failures, as reported.

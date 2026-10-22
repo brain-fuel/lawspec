@@ -280,9 +280,17 @@ DEC-algebraic-maybe-either:
   status: decided
   question: How do Maybe and Either relate to the interoperability states Nullable and Optional?
   answer: |
-    Maybe (Nothing/Just) and Either (Left/Right) are algebraic data, distinct from Nullable and Optional, which model native absence and keep nested absence states apart. Recorded in to_be_removed/PLAN-0.9.md.
+    Maybe (Absent/Present) and Either (Left/Right) are algebraic data, distinct from Nullable and Optional, which model native absence and keep nested absence states apart. Recorded in to_be_removed/PLAN-0.9.md.
   opened: 0.9.0
   decided: 0.9.0
+
+DEC-maybe-present-absent:
+  status: decided
+  question: What are Maybe's constructors called?
+  answer: |
+    Present x and Absent; the type stays Maybe a. The owner decided this on 2026-10-21 because the words read clearly to non-mathematicians. It is a hard rename: Just and Nothing are not aliases, and a source that uses them is refused with an error naming the new constructor. The pre-1.0 contract gives no migration support, and no formatter rewrite exists, since the formatter needs a checked source. Generated code uses the new names wherever LawSpec's constructor names appear (data tags, runtime classes and helpers, typed native names, BEAM atoms, rendered values, editor grammars, npm names). Native mappings stay as they were: Rust, Swift, Scala, F# and Gleam options, and Haskell's Maybe. The owner accepts frozen SMT v1 fingerprint changes from this rename, and merges resolve in favour of these names. No frozen v1 receipt goes stale: a program fingerprint hashes the program's Core, which names Maybe's constructors only where the program uses them, and every v1 task in the corpus programs that use Maybe (bit-codec, chapter-06, native-payments, recursive-records) is unsupported, so it binds no fingerprint or script. Those four corpus sources must still be renamed. Recorded in CHANGELOG [Unreleased].
+  opened: 0.26.0
+  decided: 0.26.0
 
 DEC-readable-output-default:
   status: decided
@@ -673,3 +681,151 @@ DEC-scala-property-library:
   opened: 0.24.0
   decided: 0.24.0
   refs: [scalacheck, scala-hedgehog, zio-test, scalatest]
+
+DEC-matcher-facts-in-admission:
+  status: decided
+  question: Mandatory definition checking lowered every matcher to an opaque sequence, so a refinement such as `v matches regex "[a-z]+"` was never a fact. A value of that refined type, a guard that tested it, or literal text could not fill a field with the same refinement. How does admission keep a matcher's meaning without a solver?
+  answer: |
+    Source lowering gives each text matcher (starts with, ends with, Text contains, matches regex) the same atom the Core lowering already gives it, named by its built-in and holding its values. The internal checker reads that atom as a propositional variable, never as a number, so a refinement or guard is a fact about the identical test, alone or joined by and, or and not. With literal values the test is decided by the reference semantics every runtime matches (Core.Semantics.helperValue). Membership in a list written out in full is read item by item as equalities, equality with literal text is an atom, a typed scope is an implication from its domain facts, and is within over exact numbers is lowered to the Core elaboration's arithmetic. The precedent is the uninterpreted predicate of first-order logic, as Why3 and SPARK give a pure function or predicate they do not unfold: equal terms give equal truth, nothing more. The checker does not reason about regex languages or text algebra, so `[a-z]+` does not prove `[a-z]*`. Trust boundary: the in-house Fourier-Motzkin checker and propositional reasoning, plus the reference semantics for literal tests; Z3 takes no part in admission (gate 5 decision 3), and admission runs the same in WASM. messageContains is not lowered, because a failure is matched only in laws, never inside a definition. Generated code is unchanged.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, spark-ug]
+
+DEC-operation-result-checks:
+  status: decided
+  question: |
+    An ability operation may declare a refined result, such as `reading :: (r :: Int32 where r >= 0)` or `load` at `Store Count`. Handlers owe that refinement only as a tested law, and native handlers are code LawSpec cannot inspect. May a definition that performs the operation rely on the refined result, and on what evidence?
+  answer: |
+    Yes, after a runtime check at the operation boundary (gate 5 decision 5). After refinement aliases are expanded, each call of an operation with a refined, non-dependent result in a checked definition becomes `let r = op ... in if p r then r else prelude.unreachable m end if` (LawSpec.OperationChecks), where m is Core.operationResultCheck. Every target already runs that conditional and halts on unreachable, so no emitter changes. Mandatory admission reads the checked branch as a typed scope assuming p r, in both the source lowering and the Core lowering, and a let that binds the result keeps the fact for its body. An operation's result is a value of its own: a let names it instead of standing for the opaque call. Evidence lists one runtime-checked obligation per checked operation and definition, with the claim. Ability type arguments are expanded through refinement aliases, so `Store Count` is `Store` at Int32 with the native interface StoreInt32. The precedent is Ada's subtype predicate checks at run time and SPARK's treatment of code outside its proof: a property that is not proved is checked where control returns, and only then assumed. Trust boundary: the generated check and the target's halting on unreachable; the handler's `gives what its type says` law stays a tested law, never an assumption. A dependent result that names an operation argument is not checked yet, so a definition cannot rely on it. The runtime message is the target's generic unreachable message; naming the operation would need each target's emitter.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [ada-2022-predicates, spark-ug]
+
+DEC-smtlib-encoding-versions:
+  status: decided
+  question: The Z3 translation will grow (data types, text, recursion, counterexamples). How do existing solver receipts keep their meaning as it grows?
+  answer: |
+    lawspec-smtlib-v1 is frozen byte for byte (gate 5 decision 2). A task v1 supports keeps its script, task fingerprint and program fingerprint, so its receipt stays current with no re-run. Any task that needs a new feature is lawspec-smtlib-v2. The compiler tracks the encoding a task needs (Core.Smt `requires`, the newest encoding any feature it uses requires); v1 features never call it, and the task, its script header and its fingerprint name the encoding. A refused task names v1, the encoding that refused it. test/SmtFrozenSpec.hs checks a frozen corpus (test/fixtures/smt-v1: copies of the rc1 examples, Chapter 6, the arithmetic demonstration and the SmtSpec laws, at 32 and 64 bits, through the API's proofTasks method as lawspec prove gets them): every frozen ready task is unchanged, a frozen refused task becomes ready only as v2, and no new v1 task appears. Because the program fingerprint binds the whole checked program, a compiler change that alters a corpus program's Core also fails the test; that is a receipt change and needs its own decision. The precedent is Why3's versioned drivers and session files, which record the prover and transformation a proof used so a replay can tell a changed goal from an unchanged one, and SMT-LIB's own versioned standard. The Node host accepts only v1 until v2 has features and a protocol; increment 4 adds both.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, smt-lib, z3]
+
+DEC-validated-counterexamples:
+  status: decided
+  question: |
+    A satisfiable SMT task gives a model of its negation. When may LawSpec report that model as a counterexample of the law, and who checks it?
+  answer: |
+    Only after the compiler's reference evaluator confirms it (gate 5 increment 4). Each ready task carries a counterexample query, always lawspec-smtlib-v2, next to its unchanged v1 script: it declares the law's outer universal inputs (parameters, inputs and the universal quantifiers that open its body) as constants, asserts their domains and refinements, and asserts that the rest of the law is not established. After a sat answer the Node host runs it and asks get-value for exactly those constants. The host does not parse the values: it sends Z3's answer back through proofTasks (proofCounterexamples), and the compiler re-derives the query from the program, reads the values (LawSpec.Core.Counterexample), checks each against its type and refinements, and evaluates the rest of the law. Inner quantifiers over finite domains within exhaustiveLimit are searched completely, as exhaustively-checked laws are; others leave the result incomplete. The outcomes are refuted (false or undefined at the values), model-not-confirmed (true there, or outside the domain, which is a translation or solver error and is reported as a proof-translation diagnostic) and incomplete. The precedent is Why3's --check-ce and SPARK's counterexample checking, which run the prover's model through runtime assertion checking and show only confirmed ones. Trust boundary: a refutation trusts the reference evaluator, the same as exhaustively-checked, and not Z3; proved still trusts the translation and Z3. A mixed for all/exists law whose inner domain is infinite is not confirmed; a second Z3 query proving no witness exists is later work.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, spark-ug, z3]
+
+DEC-smt-datatypes:
+  status: decided
+  question: |
+    How do Z3 tasks reason about LawSpec data (enums, records, alternatives, Maybe, List) without changing v1 tasks or trusting Z3's total selectors?
+  answer: |
+    Data is a lawspec-smtlib-v2 feature (gate 5 increment 5). Each closed instance a task uses, such as Maybe<Int32>, becomes an SMT-LIB datatype declared with declare-datatypes; its constructors, selectors and testers are quoted symbols that keep LawSpec names (Type#Constructor, Type#Constructor#i). A datum's well-formedness predicate (wf#Type) says each integer field is in its type's range, each nested datum is well formed and each field refinement holds; it is a define-fun, or define-funs-rec when a type is recursive, which is sound because a datum is finite and the predicate recurses structurally. Quantifiers range over well-formed data, construction is defined only when the result is well formed, a match binds a case's fields only under its constructor's tester, and a projection is defined only on the constructor that has the field, so Z3's unspecified selector values on the wrong constructor never decide a law. Equality is SMT structural equality, which is LawSpec's for every admitted type. Refused, as unsupported: handles, indexed families, existential or equation constructors, Rational fields (SMT Real would admit irrational values) and types with no finite value (LawSpec admits empty types; an SMT datatype must be inhabited). Counterexamples over data are read back from Z3's constructor terms and confirmed by the reference evaluator (DEC-validated-counterexamples). The precedent is the SMT-LIB datatypes theory as Why3 uses it for algebraic types, with SPARK's discipline of checking a field's presence against its discriminant instead of trusting the prover's total selectors. Trust boundary: the translation and Z3's datatype theory (decidable for these fragments). List laws that need recursion (length, membership) wait for the recursion encoding of increment 7.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [smt-lib, why3, spark-ug, z3]
+
+DEC-refuted-status:
+  status: decided
+  question: |
+    How is a law reported when a confirmed counterexample shows it false?
+  answer: |
+    As refuted, a status of its own (owner decision after gate 5 increment 5). A refuted law has no supporting evidence: the compiler's exhaustive check found an input where it is false or undefined, or Z3 gave values the reference evaluator confirmed (DEC-validated-counterexamples). The build fails as before: the compiler keeps the law's row with status refuted and adds one refuted diagnostic per failing input, so check, generate and test stop, while lawspec evidence lists the law under REFUTED and exits with status 1; lawspec prove exits with status 1 and sets the row from a confirmed Z3 model. Every other law keeps its status, and a solver receipt keeps its meaning: proved still means unsat under the recorded binding, and a refutation trusts only the evaluator. The API schema stays 5, because refuted is one more value of the documented status vocabulary and no existing value changed meaning; consumers that list statuses (the CLI, the generated TypeScript types and the docs) know it. This amends DEC-evidence-statuses, which reported a false law only as a diagnostic.
+  opened: 0.26.0
+  decided: 0.26.0
+
+DEC-law-set-analysis:
+  status: decided
+  question: |
+    How are the laws about one function checked together for completeness, overlap, conflict and vacuity, how are checks excused, and what is trusted?
+  answer: |
+    Owner decision for gate 5 increment 6. Every function with laws has four checks, on by default: completeness (some input satisfies no law's assumptions), overlap (two laws apply to one input), conflict (two applying laws require different results) and vacuity (no input satisfies a law's assumptions). A law joins the set of f when it reads for all ... => [assumptions implies] f arguments = result, with call-free arguments and result; other laws keep only their own evidence. The precedent is SPARK's Contract_Cases (completeness is "at least one case holds", disjointness "at most one holds") and the SPARK/Why3 smoke detector for vacuity. A top-level laws for f are ... end laws block states claims (complete over a condition on f's parameters, without overlap, without conflict) and exemptions (partial, overlap allowed, conflict allowed until V, vacuity allowed for a law), each with because "reason" and an optional until a version or a UTC date-time; conflict needs until. An excused failure is exempted, weaker than assumed, and keeps its counterexample, reason and expiry; past the expiry (compared with package.version or projectVersion, and the request's now) it is refuted with the counterexample and the build fails. Trust boundary: with the exhaustive layer the compiler decides finite domains within exhaustiveLimit with its reference evaluator (exhaustively-checked, or refuted with a confirmed input). Other checks become ground Z3 tasks (lawspec-smtlib-v2) run by the Node host in lawspec prove; every sat model is read back and confirmed by the evaluator before it is reported (an unconfirmed model leaves the check incomplete), and an unsat answer is proved, trusting the translation and Z3 as for laws. Unknown, timeouts and unencodable checks stay incomplete or unsupported. The API schema stays 5: exempted is one more status value and the analysis fields are optional. The exemption's expiry is resolved after the memoised compile, so projectVersion and now do not change the cache key.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [spark-ug, why3, z3]
+
+DEC-smt-recursive-definitions:
+  status: decided
+  question: |
+    How do Z3 tasks use recursive checked definitions, and which encoding proves a law when the law says nothing?
+  answer: |
+    Owner decision 6 for gate 5 (increment 7), with the increments 7-8 syntax: source, CLI and evidence text say prove by unfolding step by step [up to n times], prove by solver recursion, and prove by unfolding step by step, then solver recursion (the default), while the IR and task JSON keep the SMT names guarded-axioms and define-fun-rec. A law that calls a recursive checked definition gets a lawspec-smtlib-v2 task; v1 tasks are unchanged. Only definitions that pass mandatory totality reach Z3, so a non-terminating definition is refused before any task. Two encodings are generated. Guarded axioms with fuel: as Why3's eliminate_recursion, each definition is a declared function with a defining axiom guarded by its argument domains and preconditions, and as in Dafny each call carries fuel (a call in the law starts at 2, the axiom unfolds fuel n+1 into the body at n, fuel 0 is uninterpreted; a call with fuel left equals the fuel-free function, which unfolds once where a hypothesis or cited law names it); patterns trigger both axioms, and the task sets smt.mbqi and auto_config to false as Dafny does, so unfolding is bounded and reproducible. define-fun-rec: SMT-LIB define-funs-rec over the same guarded body, with an unconstrained declared function outside the guard. When nothing is said the host tries both, axioms first; the evidence records the encoding that proved the law and every attempt. Trust boundary: the translation, Z3, and two facts taken from mandatory admission rather than re-derived: on its domain a recursive definition is defined, and its result lies in its result type (admission proved both by induction over calls it proved terminate). A call is defined when its arguments are in the domain and the callee's runtime postconditions hold. A model from a recursive task may rest on unfolding that stopped at its fuel; the evaluator checks it, and an unconfirmed one leaves the law incomplete rather than reporting a translation error. A law's harness may choose one encoding or the fuel (LawSpec.ProofSettings).
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, z3, spark-ug]
+
+DEC-smt-induction:
+  status: decided
+  question: |
+    How does lawspec prove prove a law by induction, how are lemmas cited, and how are induction failures reported?
+  answer: |
+    Owner decisions 7 and the increments 7-8 syntax (gate 5 increment 8). A law's harness says prove by induction on x [using "|a|, "|b|], or prove without induction; when nothing is said, a law over recursive definitions with exactly one input of a recursive data type gets one induction try on it. The schema follows Why3's induction_ty_lex and induction_int_lex on the named input: one case per constructor of x's data type, with the law assumed for each field of x's type, or, for an integer type with a lower bound, the bound and then n from n - 1. (The termination checker's structural and countdown descent are exactly these schemas for the definitions it admits; a per-branch functional induction schema in the style of Lean's f.induct is not generated.) In each case the law's inputs are constants named as in its counterexample query, the hypothesis is the law at the smaller value both at the case's other inputs and for all of them, and each cited law is assumed; each case is its own lawspec-smtlib-v2 task with its own fingerprint and receipt, tried in the law's encodings in turn. The law is proved only when every case is unsat; any other case outcome leaves it incomplete, naming the case. A satisfiable case's model is checked by the reference evaluator as the law's counterexample: refuted if the law fails there, otherwise the induction hypothesis is too weak (Why3's SW) and the law stays incomplete. Cited laws must be laws of the same unit (the harness's scope), not the law itself, and citations may not form a cycle; a citing law's proof rests on each cited law's current evidence, so while a cited law is not proved or exhaustively checked the citing law is incomplete. Assumed quantified laws are one prenex quantifier over all their inputs with explicit triggers: the outermost call to a recursive definition naming every input, so they rewrite left to right without matching loops. Trust boundary: the translation and Z3, as for other proofs, plus the schema generator in LawSpec.Core.Smt.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, z3]
+
+DEC-smt-text:
+  status: decided
+  question: |
+    How do Z3 tasks reason about Text, the matchers and regexes, given that Z3 models code points only up to U+2FFFF?
+  answer: |
+    Owner decision 11 (gate 5 increment 9), corrected during integration without restricting LawSpec's Text domain. Z3's U+2FFFF native alphabet cannot represent all Unicode scalars: a negated class covering that alphabet supplies a concrete false-proof control. Text is therefore serialized as standard UTF-32BE bytes in SMT strings (Unicode 17, D99). Its domain is the regular language of valid scalar words, excluding surrogates; every scalar through U+10FFFF is preserved. Length and slice use four-byte scalar boundaries; concat and ordering preserve the representation; contains quantifies a matching slice at a byte offset divisible by four. Integer rendering is encoded after decimal conversion. Regex classes are lexicographic intervals of four-byte words using Z3's existing regex operators; complements use all valid scalar words. Counterexamples decode and validate UTF-32BE before evaluator replay. Differential tests cover scalar/byte boundaries and supplementary planes. The compiler generates obligations; the Node host executes Z3; no kernel-checked certificate is claimed. The translation, UTF-32BE conversion and Z3 remain trusted; unknown remains incomplete. List length and append keep their existing recursive datatype encoding.
+
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [z3, smt-lib, unicode-utf32]
+
+DEC-smt-numbers:
+  status: decided
+  question: |
+    How do Z3 tasks quantify Rational and Decimal inputs and reason about IEEE floats without changing a law's meaning?
+  answer: |
+    Owner decision 1 (everything in 1.0; gate 5 increment 13). A Rational input is quantified as an integer over a positive integer, in both polarities and in assumed laws, so no witness is irrational (proposal 2.1; a Real quantifier could choose a square root of two). A Decimal is an exact Real: a universal over all Reals is sound because they include every decimal, a witness (an existential, or a counterexample query's input) is an integer times 10^-18 and so is a decimal, and a law proved for all Reals is assumed for all Reals, matching how it was proved. Rational to Decimal conversion is unsupported. Float32 and Float64 are SMT-LIB FloatingPoint (8 24) and (11 53) with RNE, as LawSpec computes; equality and comparisons are IEEE's (fp.eq, so NaN differs from itself and the zeros are equal), and the classification helpers map to fp.isNaN, fp.isInfinite and the zero and sign tests. A data type holding a float is refused, since SMT equality on data is structural and LawSpec's is not. All are lawspec-smtlib-v2; v1 tasks are unchanged. Z3's values are read back exactly (rationals, terminating decimals, and float bits from fp literals or specials) and confirmed by the evaluator. Precedent: SPARK's floating-point translation through Why3 to SMT FloatingPoint, and Why3's exact real arithmetic. Trust boundary: the translation and Z3's arithmetic and floating-point theories.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, spark-ug, z3, ieee-754]
+
+DEC-model-checking:
+  status: decided
+  question: |
+    How are claims about a stateful model's runs checked, with fairness, and how are they kept apart from native conformance?
+  answer: |
+    Owner decision 12 and the temporal syntax (gate 5 increment 10). A property is written in plain words (always, eventually, whenever P, Q, never P before Q, until, implies, and, or, not; parameters between its words), and a law says law n in model m [assuming [strong] fairness for c, ...] is definition: every run holds P | some run holds P. Atoms are Bool functions of the model state. The law is checked over the model's reference only: its start definition, each command's reference definition and precondition, and its typestate indices, computed by the reference evaluator with each command's arguments drawn from their finite types; it never runs the native implementation, whose model conformance keeps its own rows. The in-house checker (LawSpec.Core.ModelCheck), shared by the native and WASM compilers, translates the formula (negated for every run) to a generalized Büchi automaton by the Gerth-Peled-Vardi-Wolper tableau, explores the product breadth first, and searches its strongly connected components (Tarjan) for an accepting fair cycle; weak fairness rejects a component where a command stays enabled and is never taken, and strong fairness refines a component by removing states where an untaken command is enabled (Lichtenstein and Pnueli). A run that ends stays in its last state. Results: proved when the complete search finds no counterexample (every run) or finds a run (some run), naming how many states were explored; refuted with the run as its commands, the repeating steps in parentheses; incomplete when the search stops at its bound (20000 states), saying no counterexample was found up to there; unsupported when a step cannot be evaluated or a deadline needs time. Temporal laws live beside the Core program, so existing program fingerprints and v1 receipts are unchanged. Trust boundary: the reference evaluator, the tableau and the search.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [gpvw-ltl, lichtenstein-pnueli-fairness]
+
+DEC-model-induction:
+  status: decided
+  question: |
+    How are model laws decided when the explicit search cannot finish, and how do deadlines use time?
+  answer: |
+    Owner decisions 9, 10 and 12 (gate 5 increment 11). For a law every run holds always P over a model the explicit search leaves open (an unbounded state, or arguments without a finite domain), lawspec prove gets lawspec-smtlib-v2 tasks over the model's reference: induction (P holds of every first state, and each command keeps it under its precondition), each its own task; Spacer (SMT-LIB HORN, an invariant Inv over the state, or over a record state's fields, which Spacer handles far better than a datatype), used only as an untrusted generator, whose proposed Inv the compiler validates as one define-fun and re-checks with plain queries (Inv holds at the start, every command keeps it, Inv implies P); and a bounded run search of up to 8 steps for a state where P fails, whose run the reference evaluator replays before the law is refuted. The host repeats rounds while the compiler asks for new tasks (Spacer's re-checks). Deadlines (whenever P, Q within d, and Q within d) use discrete time in whole microseconds: commands take no time, and time passes in ticks of the greatest common divisor of d and one hour, only through the model's explicit wait command (its precondition is the clock model); a model without wait cannot check a deadline; a deadline met at exactly d is met, and a run that misses it is refuted and shown with the time waited. The explicit search's bound is 20000 states. Trust boundary: induction and invariant proofs trust the typed translation and Z3; Spacer is trusted for nothing; refutations trust the reference evaluator's replay.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [z3, gpvw-ltl]
+
+DEC-history-checking:
+  status: decided
+  question: |
+    How are laws about an observed history checked, keeping an invariant, a bounded history property and an unbounded future requirement apart?
+  answer: |
+    Gate 5 increment 12 (portfolio 13.5). A law in history h judges the entries a checked definition taking Unit gives, in order, with atoms that are predicates of one entry. The complete history holds P treats the history as closed (the run stays at its last entry), so the law is proved or refuted. The history so far holds P is three-valued, as LTL3 is (Bauer, Leucker and Schallhart): the compiler reads the prefix through the generalized Büchi automata of P and of not P (the increment 10 tableau) and asks whether any continuation can still satisfy each; proved when no continuation breaks P, refuted at the first entry after which none keeps it, and pending otherwise, with a new evidence status, pending, that is neither evidence nor failure (its reason says whether P holds so far). A deadline (whenever P, Q within d) reads each entry's time from its field at and is refuted as soon as an entry is observed past the deadline with no Q before it. An invariant is a model law (every run), a bounded history property is judged over a complete history, and an unbounded future requirement stays pending while the history is open. The API schema stays 5: pending is one more status value. Trust boundary: the reference evaluator and the automata.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [gpvw-ltl, bauer-leucker-schallhart-ltl3]
+
+DEC-gate-5-receipt:
+  status: decided
+  question: |
+    What does gate 5 deliver, and what does it leave explicit?
+  answer: |
+    The gate 5 receipt in LAWSPEC-PRE-1.0-REVIEW.md (Gate 5 proof work, 22 October 2026) records the supported fragments, their trust boundaries, the retained portfolio items 13.1, 13.3 to 13.8 and 14.10 with their fixtures and tests, the limits kept explicit, and the owner-confirmed history syntax and explicit wait clock. Mandatory admission stays Fourier-Motzkin only; v1 receipts are frozen; new work is lawspec-smtlib-v2; there is no kernel-checked tier (owner decision 4).
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, spark-ug, z3]

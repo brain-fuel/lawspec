@@ -13,6 +13,6 @@ public final class Crypto {
     var key = aead.aeadKey();
     byte[] label = "round trip".getBytes(java.nio.charset.StandardCharsets.UTF_8);
     var opened = aead.unseal(key, aead.seal(key, value0, label), label);
-    return opened instanceof lawspec.runtime.LawSpecRuntime.Just<byte[]> just && java.util.Arrays.equals(just.value(), value0);
+    return opened instanceof lawspec.runtime.LawSpecRuntime.Present<byte[]> just && java.util.Arrays.equals(just.value(), value0);
   }
 }

@@ -1,0 +1,50 @@
+unit portfolio.counters
+
+type Box is a record{ id :: Int32 } end type
+type Pairing is a record{ a :: Integer b :: Integer } end type
+
+newBox :: Unit -> Box
+up :: Box -> Unit
+down :: Box -> Unit
+slip :: Box -> Unit
+
+function plus (n :: Integer) -> Integer is n + 1 end function
+function minus (n :: Integer) -> Integer is n - 1 end function
+function positive (n :: Integer) -> Bool is n > 0 end function
+function nonNegative (n :: Integer) -> Bool is n >= 0 end function
+
+model count :: shared Box by Integer is
+  start newBox ~ 0
+  up ~ plus
+  down ~ minus when positive
+end model
+
+model loose :: shared Box by Integer is
+  start newBox ~ 0
+  up ~ plus
+  slip ~ minus
+end model
+
+function bothUp (p :: Pairing) -> Pairing is Pairing record{ a = p.a + 1, b = p.b + 1 } end function
+function bothDown (p :: Pairing) -> Pairing is Pairing record{ a = p.a - 1, b = p.b - 1 } end function
+function bPositive (p :: Pairing) -> Bool is p.b > 0 end function
+function aNonNegative (p :: Pairing) -> Bool is p.a >= 0 end function
+
+model pair :: shared Box by Pairing is
+  start newBox ~ (Pairing record{ a = 0, b = 0 })
+  up ~ bothUp
+  down ~ bothDown when bPositive
+end model
+
+law "|counts never go negative| in model count is
+  definition: every run holds always nonNegative end definition
+end law
+
+law "|a loose count never goes negative| in model loose is
+  definition: every run holds always nonNegative end definition
+end law
+
+law "|the first never goes negative| in model pair is
+  definition: every run holds always aNonNegative end definition
+end law
+end unit

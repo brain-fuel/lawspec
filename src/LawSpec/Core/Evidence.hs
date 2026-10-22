@@ -11,6 +11,8 @@ module LawSpec.Core.Evidence
   ) where
 
 import qualified Data.Set as S
+import Data.List (nub)
+import LawSpec.Scalar (Scalar(..))
 import LawSpec.Core
 import LawSpec.Core.Machine (Machine(..), Supervisor(..), Consistency(..))
 import qualified LawSpec.Core.Program as P
@@ -22,8 +24,13 @@ import qualified LawSpec.Core.Program as P
 -- its harness skips, or marks as known to fail, is still an obligation; flaky
 -- is a run's outcome (a test that failed, then passed on a retry), which
 -- lawspec evidence reads from the last run.
+-- Refuted is no evidence for a law: a confirmed counterexample shows it
+-- false (the compiler's exhaustive check, or a Z3 model the reference
+-- evaluator confirms), and the build fails.
+-- Exempted is a law-set check a `laws for` block excuses, with a reason and
+-- maybe an expiry: weaker than assumed, it keeps its counterexample.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
-  | KnownFailing | Flaky | Skipped | Planned | NotVerified | Incomplete | Unsupported
+  | Exempted | Refuted | KnownFailing | Flaky | Skipped | Pending | Planned | NotVerified | Incomplete | Unsupported
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- | Every status, in order of strength, for reports that list them all.
@@ -41,9 +48,12 @@ statusName Measured = "measured"
 statusName RuntimeChecked = "runtime-checked"
 statusName DefaultHandler = "default-handler"
 statusName Assumed = "assumed"
+statusName Refuted = "refuted"
+statusName Exempted = "exempted"
 statusName KnownFailing = "known-failing"
 statusName Flaky = "flaky"
 statusName Skipped = "skipped"
+statusName Pending = "pending"
 statusName Planned = "planned"
 statusName NotVerified = "not-verified"
 statusName Incomplete = "incomplete"
@@ -85,6 +95,9 @@ programEvidence program =
       in concatMap (contractEvidence (unitId unit) definitions) (unitContracts unit) ++
          [ Obligation (unitId unit) (declarationId adapter) "adapter" Nothing Assumed (adapterReason unit adapter)
          | adapter <- adapterDeclarations unit ] ++
+         [ Obligation (unitId unit) (declarationId (definitionDeclaration definition)) "operation result" (Just claim) RuntimeChecked
+             ("checked on each result of " ++ operation ++ " where the definition calls it; the definition relies on it")
+         | definition <- unitDefinitions unit, (operation, claim) <- operationResultChecks (definitionBody definition) ] ++
          concatMap (machineEvidence (unitId unit)) (unitMachines unit) ++
          map (supervisorEvidence (unitId unit)) (unitSupervisors unit)
     contractEvidence owner definitions contract
@@ -106,6 +119,16 @@ programEvidence program =
       case [propertyName p | p <- unitProperties unit, calls (declarationId adapter) p] of
         [] -> "native implementation taken on trust; no law calls it"
         laws -> "native implementation taken on trust; called by " ++ show (length laws) ++ " law(s)"
+
+-- | The operation result checks in a definition body (LawSpec.OperationChecks):
+-- each checked operation, with the claim its result is checked against.
+operationResultChecks :: Expr -> [(String, Expr)]
+operationResultChecks expression = nub (local ++ concatMap operationResultChecks (children expression))
+  where
+    local = case expressionNode expression of
+      If claim _ (Expr _ (Helper Unreachable [Expr _ (Constant (SSequence _ points)) _]) _)
+        | Just operation <- operationResultChecked (map toEnum points) -> [(operation, claim)]
+      _ -> []
 
 -- | Whether a property calls the declaration, in its body, domain or examples.
 calls :: Id -> Property -> Bool

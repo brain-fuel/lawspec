@@ -598,8 +598,8 @@ cover both values without a fallback. A whole-value binding requires
 ```text
 first matching case of delivery:
   when Email record{document = Invoice record{file = Pdf record{fileName = name}}}
-    then Just name
-  otherwise Nothing
+    then Present name
+  otherwise Absent
 end case
 ```
 
@@ -622,7 +622,7 @@ ordinary typed equality; record field order and set iteration order cannot
 distinguish duplicate keys. Complete mappings derive finite preimages;
 an inverse is Maybe-valued and derived when outputs are unique and reflexive.
 A fallback does not silently acquire an incomplete finite inverse.
-A partial lookup is explicitly Maybe-valued and supplies `otherwise Nothing`;
+A partial lookup is explicitly Maybe-valued and supplies `otherwise Absent`;
 the generated function remains total. Preimages group outputs using typed Eq
 and retain matching keys in source row order, including their refinements.
 Signed zeros compare equal; NaN keys are rejected and NaN outputs cannot

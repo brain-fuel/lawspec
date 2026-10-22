@@ -1,0 +1,61 @@
+unit smt.corpus
+
+function square (n :: Integer) -> Integer is n * n end function
+
+function twice (n :: Integer) -> Integer is n + n end function
+
+function keepAny (n :: Rational) -> Bool is true end function
+
+function keepNat (n :: Nat) -> Bool is true end function
+
+function broken (n :: Integer) -> (r :: Integer where r > n * n) is 0 end function
+
+law "|squares are not negative| is definition: for all (n :: Integer) => square n >= 0 end for all end definition end law
+
+law "|a next integer exists| is definition: for all (n :: Integer) => there exists (next :: Integer where next > n) such that next = n + 1 end exists end for all end definition end law
+
+law "|no greatest integer| is definition: there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists end definition end law
+
+law "|no negative square| is definition: there does not exist (n :: Integer) such that n * n < 0 end exists end definition end law
+
+law "|an empty universal| is definition: for all (n :: Integer where false) => false end for all end definition end law
+
+law "|an empty existential| is definition: there exists (n :: Integer where false) such that true end exists end definition end law
+
+law "|whole numbers are positive| is definition: for all (n :: Whole) => n > 0 end for all end definition end law
+
+law "|bytes are bounded| is definition: for all (n :: UInt8) => n >= 0 and n <= 255 end for all end definition end law
+
+law "|sizes fit 32 bits| is definition: for all (n :: UIntSize) => n <= 4294967295 end for all end definition end law
+
+law "|division by zero is undefined| is definition: 1 / 0 = 1 / 0 end definition end law
+
+law "|short circuit| is definition: not (false and 1 / 0 = 1) end definition end law
+
+law "|conditional definedness| is definition: (if false then 1 / 0 else rational(1, 2) end if) = rational(1, 2) end definition end law
+
+law "|undefined candidates| is definition: there does not exist (n :: Integer) such that n / (n - n) = 0 end exists end definition end law
+
+law "|unused arguments| is definition: keepAny (1 / 0) must be true end definition end law
+
+law "|callee preconditions| is definition: keepNat 0 must be true end definition end law
+
+law "|deferred results| is definition: broken 0 must be 0 end definition end law
+
+law "|truncating division| is definition: prelude.quot (-7) 3 = -2 and prelude.rem (-7) 3 = -1 and prelude.quot 7 (-3) = -2 and prelude.rem 7 (-3) = 1 end definition end law
+
+law "|lossless conversions| is definition: for all (n :: Integer) => n = 256 implies prelude.UInt8 n = prelude.UInt8 n end for all end definition end law
+
+law "|exact conversion| is definition: prelude.Integer (rational(-4, 2)) = -2 end definition end law
+
+law "|shared arguments| is definition: for all (n :: Integer) => twice (twice (twice (twice n))) = n * 16 end for all end definition end law
+
+law "|a finite existential| is definition: there exists (n :: Int8 where n >= -3 and n <= 3) such that n * n = 4 end exists end definition end law
+
+law "|a dependent domain| is definition: for all (x :: Int8 where x >= -3 and x <= 3) => there exists (y :: Int8 where y >= x and y <= x + 1) such that y * y >= x * x end exists end for all end definition end law
+
+law "|a rational existential| is definition: there exists (n :: Rational) such that n * n = 2 end exists end definition end law
+
+law "|IEEE reflexivity| is definition: for all (n :: Float64) => n = n end for all end definition end law
+
+end unit

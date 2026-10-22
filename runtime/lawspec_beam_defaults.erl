@@ -93,8 +93,8 @@ handler(Ability) -> erlang:error({lawspec, {unknown_default_handler, Ability}}).
 
 stateless(Operations) -> lawspec_beam_effects:stateless(Operations).
 data(Tag, Fields) -> {ls_data, Tag, Fields}.
-just(Value) -> data(<<"Maybe::Just">>, [Value]).
-nothing() -> data(<<"Maybe::Nothing">>, []).
+just(Value) -> data(<<"Maybe::Present">>, [Value]).
+nothing() -> data(<<"Maybe::Absent">>, []).
 
 %% Freeze the VM's wall-clock offset when the module loads. Subsequent clock
 %% corrections cannot move this clock backwards. Sleep deadlines use monotonic

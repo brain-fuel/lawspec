@@ -286,11 +286,11 @@ func (handler *AeadHandler) Seal(value0 @@AeadKey@@, value1 []byte, value2 []byt
 
 func (handler *AeadHandler) Unseal(value0 @@AeadKey@@, value1 @@Sealed@@, value2 []byte) LawSpecMaybe[[]byte] {
 	if len(value1.Value) < 12 {
-		return LawSpecNothing[[]byte]()
+		return LawSpecAbsent[[]byte]()
 	}
 	plaintext, ok := lsAes256GcmDecrypt(value0.Value, value1.Value[:12], value1.Value[12:], value2)
 	if !ok {
-		return LawSpecNothing[[]byte]()
+		return LawSpecAbsent[[]byte]()
 	}
-	return LawSpecJust(plaintext)
+	return LawSpecPresent(plaintext)
 }

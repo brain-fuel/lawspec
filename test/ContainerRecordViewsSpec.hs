@@ -36,11 +36,11 @@ outcomes program=do
 
 header="type Batch (a :: Type) is one of | Batch of type List record{value :: a} end type\n"
 first=unlines ["function first (batch :: Batch a) -> Maybe a is first matching case of batch:",
-  "when Batch Nil then Nothing when Batch (Cons record{value = item} remaining) then Just item end case end function"]
+  "when Batch Nil then Absent when Batch (Cons record{value = item} remaining) then Present item end case end function"]
 
 test_containerRecordViews=describe "checked structural views through containers" $ do
   it "matches a generic nominal alternative carrying a list of records" $
-    checked (compile (header++first++"law selected is definition: first (Batch [record{value = true}]) = Just true end definition end law\n")) outcomes
+    checked (compile (header++first++"law selected is definition: first (Batch [record{value = true}]) = Present true end definition end law\n")) outcomes
   it "converts arbitrary input lists in both directions using checked functions" $
     checked (compile (header++unlines [
       "function pack (items :: List record{value :: a}) -> Batch a is Batch items end function",
@@ -67,13 +67,13 @@ test_containerRecordViews=describe "checked structural views through containers"
   it "preserves closed literal tables without making their bindings executable adapters" $
     checked (compile (header++first++unlines [
       "law selected is definition: for all (batch :: Batch Bool) => first batch = first batch end for all end definition",
-      "expect first batch = expected in table (batch, expected): row Batch [], Nothing row Batch [record{value = true}], Just true end table end law"])) outcomes
+      "expect first batch = expected in table (batch, expected): row Batch [], Absent row Batch [record{value = true}], Present true end table end law"])) outcomes
   it "reconstructs user-defined recursive containers and optional record payloads" $
     checked (compile (unlines [ "type Chain (a :: Type) is one of | Stop | Link of type record{item :: a next :: Chain a} end type\n"
                               , "type Stored (a :: Type) is a record{items :: Chain record{value :: a} optional :: Maybe record{value :: a}} end type"
                               , "function chain (stored :: Stored a) -> Chain record{value :: a} is stored.items end function"
                               , "function optional (stored :: Stored a) -> Maybe record{value :: a} is stored.optional end function"
-                              , "law selected is definition: let stored = Stored record{items = Link record{item = record{value = true}, next = Stop}, optional = Just record{value = true}} in chain stored = Link record{item = record{value = true}, next = Stop} and optional stored = Just record{value = true} end let  end definition end law" ])) outcomes
+                              , "law selected is definition: let stored = Stored record{items = Link record{item = record{value = true}, next = Stop}, optional = Present record{value = true}} in chain stored = Link record{item = record{value = true}, next = Stop} and optional stored = Present record{value = true} end let  end definition end law" ])) outcomes
   it "retains positive fields, definedness, exhaustiveness and termination without selected law checks" $ do
     forM_ [
       "type Stored is a record{items :: List record{value :: Nat}} end type\nfunction invalid (ignored :: ()) -> Stored is Stored record{items = [record{value = 0}]} end function\n",
@@ -83,14 +83,14 @@ test_containerRecordViews=describe "checked structural views through containers"
       ] $ \body -> compile body `shouldSatisfy` isLeft
   it "evaluates closed record literals with nested containers without discarding source checks" $
     checked (compile (unlines [ "type Stored (a :: Type) is a record{items :: List record{value :: a}} end type\n"
-                              , "function first (stored :: Stored a) -> Maybe a is first matching case of stored.items: when Nil then Nothing when Cons record{value = item} remaining then Just item end case end function"
+                              , "function first (stored :: Stored a) -> Maybe a is first matching case of stored.items: when Nil then Absent when Cons record{value = item} remaining then Present item end case end function"
                               , "law selected is definition: for all (stored :: Stored Bool) => first stored = first stored end for all end definition"
-                              , "expect first stored = expected in table (stored, expected): row Stored record{items = []}, Nothing row Stored record{items = [record{value = true}]}, Just true end table end law" ])) outcomes
+                              , "expect first stored = expected in table (stored, expected): row Stored record{items = []}, Absent row Stored record{items = [record{value = true}]}, Present true end table end law" ])) outcomes
   it "does not allow record labels or nominal identities to change during reconstruction" $ do
     compile (header++"function invalid (items :: List record{other :: Bool}) -> Batch Bool is Batch items end function") `shouldSatisfy` isLeft
     compile (header++"type Named is a record{value :: Bool} end type\nfunction invalid (items :: List Named) -> Batch Bool is Batch items end function") `shouldSatisfy` isLeft
   it "keeps generated recursive definitions ordinary and normalization idempotent" $
-    checked (compile (header++first++"law selected is definition: first (Batch [record{value = true}]) = Just true end definition end law\n")) $ \program -> do
+    checked (compile (header++first++"law selected is definition: first (Batch [record{value = true}]) = Present true end definition end law\n")) $ \program -> do
       outcomes program
       let helpers=[definition | owner<-C.programUnits program,C.unitId owner==Views.viewUnitId,definition<-C.unitDefinitions owner]
       helpers `shouldSatisfy` (not . null)
@@ -99,7 +99,7 @@ test_containerRecordViews=describe "checked structural views through containers"
         Views.viewSignature definition `shouldSatisfy` (/=Nothing)
       normalizeProgramRecords program `shouldBe` Right program
   it "rejects a changed helper body before erasing any representation calls" $
-    checked (compile (header++first++"law selected is definition: first (Batch [record{value = true}]) = Just true end definition end law\n")) $ \program -> do
+    checked (compile (header++first++"law selected is definition: first (Batch [record{value = true}]) = Present true end definition end law\n")) $ \program -> do
       let changed definition | Views.viewSignature definition/=Nothing = definition{C.definitionBody=
             C.Expr (C.expressionType (C.definitionBody definition)) (C.ExternalCall (C.Id "absent") []) (C.GeneratedFrom (C.Id "tampered"))}
           changed definition=definition

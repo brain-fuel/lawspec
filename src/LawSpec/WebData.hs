@@ -73,7 +73,7 @@ emitWebDataWithProfile ts bits layout declarations = do
       factory = D.text "export function makeSchema() " <> D.block 2
         (D.joinWith (D.hardline <> D.hardline) (callbacks ++ [D.text "return " <> invoke "new schema.Schema"
           [array metadata, array (map (D.text . q . primitiveName) primitives),
-           D.block 2 (D.joinWith D.hardline (map D.text ["nothing: Nothing,", "just: Just,", "left: Left,", "right: Right,", "presence: Presence,"]))] <> D.text ";"]))
+           D.block 2 (D.joinWith D.hardline (map D.text ["absent: Absent,", "present: Present,", "left: Left,", "right: Right,", "presence: Presence,"]))] <> D.text ";"]))
       source = D.joinWith (D.hardline <> D.hardline)
         (header : builtins ++ classes ++ [factory]) <> D.hardline
       typedRuntime = if ts then replace "predicates = []"
@@ -124,8 +124,8 @@ emitWebDataWithProfile ts bits layout declarations = do
             [D.text "Object.freeze(this);"])))
     key name = if name `elem` ["constructor","__proto__"] then D.text ("[" ++ q name ++ "]") else D.text name
     builtins =
-      [alias "Maybe" ["T"] [D.text "Nothing<T>", D.text "Just<T>"],
-       nativeClass "Nothing" ["T"] [], nativeClass "Just" ["T"] [("value",D.text "T")],
+      [alias "Maybe" ["T"] [D.text "Absent<T>", D.text "Present<T>"],
+       nativeClass "Absent" ["T"] [], nativeClass "Present" ["T"] [("value",D.text "T")],
        alias "Either" ["L","R"] [D.text "Left<L, R>",D.text "Right<L, R>"],
        nativeClass "Left" ["L","R"] [("value",D.text "L")],
        nativeClass "Right" ["L","R"] [("value",D.text "R")],

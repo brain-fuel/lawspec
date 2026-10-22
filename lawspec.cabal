@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.27.0
+version:        0.28.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -345,6 +345,8 @@ extra-source-files:
     test/fixtures/canonical-stateful-initializers.lawspec
     test/fixtures/canonical-typed-mappings.lawspec
     test/fixtures/canonical-unicode-casefold.lawspec
+    test/fixtures/chapter6-proofs.lawspec
+    test/fixtures/codec-proofs.lawspec
     test/fixtures/constructor_boundaries.lawspec
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec
@@ -352,12 +354,41 @@ extra-source-files:
     test/fixtures/eq-set-foundation.lawspec
     test/fixtures/eq-set-operations-library.lawspec
     test/fixtures/eq-set-operations.lawspec
+    test/fixtures/history-revocation.lawspec
+    test/fixtures/law-sets.lawspec
     test/fixtures/list_contracts.lawspec
+    test/fixtures/model-counters.lawspec
+    test/fixtures/model-deadlines.lawspec
     test/fixtures/native_empty_domains.lawspec
     test/fixtures/native_shapes.lawspec
+    test/fixtures/numeric-proofs.lawspec
+    test/fixtures/order-workflow.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/smt-v1/authorization-snapshots.lawspec
+    test/fixtures/smt-v1/banner-filenames.lawspec
+    test/fixtures/smt-v1/bit-codec.lawspec
+    test/fixtures/smt-v1/bounded-witness-search.lawspec
+    test/fixtures/smt-v1/canonical-smt-arithmetic.lawspec
+    test/fixtures/smt-v1/chapter-06.lawspec
+    test/fixtures/smt-v1/conflicting-requirements.lawspec
+    test/fixtures/smt-v1/constructive-witnesses.lawspec
+    test/fixtures/smt-v1/documentary-review.lawspec
+    test/fixtures/smt-v1/empty-domains.lawspec
+    test/fixtures/smt-v1/finite-integer-domains.lawspec
+    test/fixtures/smt-v1/law-metadata.lawspec
+    test/fixtures/smt-v1/native-payments.lawspec
+    test/fixtures/smt-v1/order-workflow.lawspec
+    test/fixtures/smt-v1/parcel-measurements.lawspec
+    test/fixtures/smt-v1/picture-records.lawspec
+    test/fixtures/smt-v1/picture-tuples.lawspec
+    test/fixtures/smt-v1/record-payloads.lawspec
+    test/fixtures/smt-v1/recursive-records.lawspec
+    test/fixtures/smt-v1/refund-policy.lawspec
+    test/fixtures/smt-v1/smt-laws.lawspec
+    test/fixtures/smt-v1/structural-records.lawspec
+    test/fixtures/smt-v1/corpus.jsonl
     test/fixtures/recorded-values.json
     test/fixtures/recorded-web.mjs
     test/fixtures/recorded_python.py
@@ -560,6 +591,7 @@ library
       LawSpec.Compile
       LawSpec.Core
       LawSpec.Core.CapabilityScope
+      LawSpec.Core.Counterexample
       LawSpec.Core.DefinitionContracts
       LawSpec.Core.Definitions
       LawSpec.Core.DomainEvidence
@@ -567,7 +599,10 @@ library
       LawSpec.Core.Eval
       LawSpec.Core.Evidence
       LawSpec.Core.Expression
+      LawSpec.Core.LawAnalysis
+      LawSpec.Core.LawTasks
       LawSpec.Core.Machine
+      LawSpec.Core.ModelCheck
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
       LawSpec.Core.Policy
@@ -669,18 +704,22 @@ library
       LawSpec.KotlinNativeBinding
       LawSpec.KotlinProperties
       LawSpec.KotlinTestHelpers
+      LawSpec.LawClaims
       LawSpec.MachineSpec
       LawSpec.Mailboxes
       LawSpec.MappingCheck
       LawSpec.Matchers
       LawSpec.Memo
       LawSpec.Model
+      LawSpec.ModelLaws
+      LawSpec.ModelProof
       LawSpec.ModelTests
       LawSpec.NativeBinding
       LawSpec.NativeModelChecks
       LawSpec.NativeRequest
       LawSpec.NativeRequestView
       LawSpec.Network
+      LawSpec.OperationChecks
       LawSpec.Packages
       LawSpec.Parser
       LawSpec.Persist
@@ -689,6 +728,7 @@ library
       LawSpec.Prelude
       LawSpec.PreludeNames
       LawSpec.Prolog.Emit
+      LawSpec.ProofSettings
       LawSpec.Public
       LawSpec.PythonData
       LawSpec.PythonDefinitions
@@ -936,6 +976,7 @@ test-suite lawspec-test
       ContainerRecordViewsSpec
       ContextualSpec
       CoreSpec
+      CounterexampleSpec
       DataShapeSpec
       DefinitionContractFixture
       DefinitionContractProofSpec
@@ -961,13 +1002,17 @@ test-suite lawspec-test
       IndexedSpec
       InferenceSchemeSpec
       LanguageGapsSpec
+      LawAnalysisSpec
       LawPrimitivesSpec
       MappingSpec
+      MatcherAdmissionSpec
       MatchWarningSpec
+      ModelCheckSpec
       ModelLayerSelectionSpec
       NamedBlocksSpec
       NativeBindingSpec
       NativeRequestSpec
+      OperationResultSpec
       PayloadProofSpec
       PayloadSpec
       PreludeResolutionSpec
@@ -979,12 +1024,18 @@ test-suite lawspec-test
       RecordIdentitySpec
       RecordNormalizeSpec
       RefinementProofSpec
+      RefutedStatusSpec
       ScenarioSpec
       SchedulerSpec
       SearchSpec
       SelectionAdmissionSpec
       SessionsPythonSpec
+      SmtDataSpec
+      SmtFrozenSpec
+      SmtNumericSpec
+      SmtRecursionSpec
       SmtSpec
+      SmtTextSpec
       SourceDataSpec
       SourceGadtIndicesSpec
       SourceGadtRefinementsSpec

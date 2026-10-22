@@ -67,6 +67,161 @@ model counter :: shared Counter by Int64 is
 end model
 ```
 
+## Laws about runs
+
+A law can claim something about every run of a model, or about some run. It
+is checked over the model itself: its start, each command's reference and
+precondition. It never runs the native implementation; that is the model's
+conformance check, with its own evidence.
+
+```lawspec
+unit guide.order_runs
+
+type Stage is one of
+  | Received
+  | Paid
+  | Shipped
+  | Cancelled
+end type
+
+type Order is a record{ id :: Int32 } end type
+
+newOrder :: Unit -> Order
+pay :: Order -> Unit
+retry :: Order -> Unit
+ship :: Order -> Unit
+cancel :: Order -> Unit
+
+function toPaid (s :: Stage) -> Stage is Paid end function
+function stay (s :: Stage) -> Stage is s end function
+function toShipped (s :: Stage) -> Stage is Shipped end function
+function toCancelled (s :: Stage) -> Stage is Cancelled end function
+function isReceived (s :: Stage) -> Bool is s = Received end function
+function isPaid (s :: Stage) -> Bool is s = Paid end function
+function isShipped (s :: Stage) -> Bool is s = Shipped end function
+function isCancelled (s :: Stage) -> Bool is s = Cancelled end function
+
+model orders :: shared Order by Stage is
+  start newOrder ~ Received
+  pay ~ toPaid when isReceived
+  retry ~ stay when isReceived
+  ship ~ toShipped when isPaid
+  cancel ~ toCancelled when isReceived
+end model
+
+property "|nothing ships unpaid| is
+  never isShipped before isPaid
+end property
+
+property responds (p) with (q) is
+  whenever p, eventually q
+end property
+
+law "|nothing ships unpaid| in model orders is
+  definition: every run holds "|nothing ships unpaid| end definition
+end law
+
+law "|paid orders ship| in model orders assuming fairness for ship is
+  definition: every run holds responds isPaid with isShipped end definition
+end law
+
+law "|an order can ship| in model orders is
+  definition: some run holds eventually isShipped end definition
+end law
+end unit
+```
+
+A `property` names a claim about runs. Its words are plain:
+
+| Form | Holds on a run when |
+| --- | --- |
+| `always P` | `P` holds at every step |
+| `eventually P` | `P` holds at some step |
+| `whenever P, Q` | at every step where `P` holds, `Q` holds from there |
+| `never P before Q` | `P` does not hold before the first step where `Q` holds |
+| `P until Q` | `Q` holds at some step, and `P` at every step before it |
+| `P implies Q`, `P and Q`, `P or Q`, `not P` | as in logic |
+
+An atom names a `Bool` function of the model state. A property may take
+parameters between its words, as `responds (p) with (q)` does, and a law
+or another property uses it with its words and arguments. A property is also
+named by its quoted name.
+
+A law in a model says `every run holds P` or `some run holds P`. A run that
+ends stays in its last state. `assuming fairness for c` (weak fairness)
+considers only runs where a command `c` that stays enabled is taken;
+`assuming strong fairness for c` considers only runs where `c`, enabled again
+and again, is taken.
+
+Every reachable state is explored, with each command's arguments drawn from
+their finite types. The law is `proved` when no run breaks it (or a run holds
+it), and the reason says how many states were explored. It is `refuted` with
+the run that breaks it, written as its commands, with the steps that repeat in
+parentheses: `validate, decline, (decline)`. A model with more states than the
+search explores is `incomplete`: "no counterexample in the first 20000
+states". The check runs when the `proof`, `exhaustive` or `model` layer is
+selected.
+
+### Deadlines
+
+`whenever P, Q within d` says that after a state where `P` holds, `Q` holds
+within `d`; `Q within d` counts from the start. Time is whole microseconds,
+as for `Duration`, and passes in ticks: the tick is the greatest common
+divisor of `d` and one hour (an hour for `within 24h`, 30 minutes for
+`within 90min`). Commands
+take no time. Time passes only through the model's explicit `wait` command,
+one tick at a time, so its precondition says when time may pass. A model
+without `wait` reports its deadline unsupported. A deadline met at exactly `d` is met.
+A run that misses it is shown with the time it waited: `authorize, wait 25h`.
+
+### Unbounded models
+
+A model whose states cannot all be explored leaves a law incomplete. For a
+law of the form `every run holds always P`, `lawspec prove` then asks Z3:
+
+- **By induction.** `P` holds of every first state, and every command keeps
+  it. Each is its own task. When all hold, the law is proved.
+- **By an invariant.** When `P` alone is not kept, Z3's Spacer may propose a
+  stronger condition. LawSpec never trusts it as given: plain queries check
+  that it holds at the start, that every command keeps it, and that it implies
+  `P`. Only then is the law proved, and the reason shows the invariant.
+- **By a bounded run search.** Z3 looks for a run of up to 8 steps that breaks
+  `P`. The reference evaluator replays it, step by step, before the law is
+  refuted with that run.
+
+
+## Laws about histories
+
+A law can also judge an observed history: entries in order, from a checked
+definition that takes `Unit`. Atoms are predicates of one entry.
+
+```lawspec fragment
+law "|nothing used after revocation| in history today is
+  definition: the history so far holds whenever isRevoked, always not isUse
+  end definition
+end law
+```
+
+`the complete history holds P` says the history is closed: nothing more
+happens, and the law is proved or refuted. `the history so far holds P` says
+more may come, so the law has three outcomes, as in LTL3 (Bauer, Leucker and
+Schallhart):
+
+| Status | When |
+| --- | --- |
+| `proved` | No continuation could break it |
+| `refuted` | No continuation could keep it; the reason names the entry where it broke |
+| `pending` | What comes next decides; the reason says whether it holds so far |
+
+A deadline, `whenever P, Q within d`, reads each entry's time from its field
+`at`, a `Duration`. It is refuted as soon as an entry is observed past the
+deadline with no `Q` before it.
+
+An invariant of a model (`every run holds always P`), a property of a bounded
+history, and a requirement on the unbounded future are different claims, and
+their evidence says which: a model law covers every run; a complete history
+covers its entries; an open history is `pending` while the future decides.
+
 ## What LawSpec checks
 
 **In sequence.**
@@ -205,7 +360,7 @@ With [native bindings](../native-bindings.md), a handle can be the target's
 own type, and commands can call its methods directly, with no adapter code.
 For example, `Jobs` can bind to `java.util.concurrent.ConcurrentLinkedQueue`
 with `submit` as its `offer` method. A Unit result discards the method's
-return value. A `Maybe` result treats the target's null value as `Nothing`.
+return value. A `Maybe` result treats the target's null value as `Absent`.
 
 ## Evidence
 

@@ -23,6 +23,15 @@ newtype RecordIndexConstraints = RecordIndexConstraints [IndexGuard] deriving (E
 instance ToJSON RecordIndexConstraints where
   toJSON (RecordIndexConstraints guards)=toJSON (map indexGuardText guards)
 
+-- | Maybe's values are Present and Absent. The old names Just and Nothing are
+-- not aliases; a source that uses them is refused with the new name.
+-- ref:DEC-maybe-present-absent
+renamedConstructorHint :: String -> String
+renamedConstructorHint name = case lookup base [("Just","Present"),("Nothing","Absent")] of
+  Just new -> ". Maybe's " ++ base ++ " is now " ++ new ++ "; write " ++ new ++ " instead"
+  Nothing -> ""
+  where base = reverse (takeWhile (/= '.') (reverse name))
+
 typeRecordFields :: Type -> Maybe [RecordField]
 typeRecordFields (Record fields)=Just fields
 typeRecordFields (IndexedRecord fields _)=Just fields
@@ -158,7 +167,74 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   , resourceDeclarations :: [ResourceDeclaration]
   -- handlers name is h1, h2 end: spec handlers that answer their abilities
   -- together, so every law that uses them also runs under all of them.
-  , handlerSets :: [HandlerSet] } deriving (Eq, Show, Generic)
+  , handlerSets :: [HandlerSet]
+  -- laws for f are ... end laws: what a function's laws claim together, and
+  -- the checks they are excused from (LawSpec.Core.LawAnalysis).
+  , lawClaims :: [LawClaims]
+  -- property name is ... end property: a claim about a model's runs; and
+  -- the laws that hold one of a model (law n in model m ... is). Checked by
+  -- LawSpec.Core.ModelCheck, apart from the unit's ordinary laws.
+  , temporalProperties :: [TemporalProperty]
+  , modelLaws :: [ModelLaw]
+  -- Laws about an observed history (law n in history h ... is): checked
+  -- with three values, since an open history may not decide yet.
+  , historyLaws :: [HistoryLaw] } deriving (Eq, Show, Generic)
+
+-- | law name in history h is definition: the complete history holds P
+--   (or: the history so far holds P) end definition end law. h is a checked
+--   definition taking Unit and giving the entries in order.
+data HistoryLaw = HistoryLaw
+  { historyLawName :: String, historySource :: String, historyComplete :: Bool
+  , historyFormula :: RunFormula, historySpan :: Span }
+  deriving (Eq, Show, Generic)
+
+-- | A claim about a model's runs, in plain words: always, eventually,
+-- whenever P, Q, never P before Q, until, implies, and, or, not, and a
+-- deadline, Q within 24h. An atom names a Bool function of the model state,
+-- or a parameter. A reference is a property, by its quoted name or by its
+-- words with arguments between them (responds isPaid with isShipped).
+data RunFormula
+  = TemporalAtom String Span
+  | TemporalNot RunFormula | TemporalAnd RunFormula RunFormula | TemporalOr RunFormula RunFormula
+  | TemporalImplies RunFormula RunFormula
+  | TemporalAlways RunFormula | TemporalEventually RunFormula | TemporalUntil RunFormula RunFormula
+  | TemporalWhenever RunFormula RunFormula | TemporalNeverBefore RunFormula RunFormula
+  | TemporalWithin RunFormula Integer        -- holds within this many microseconds
+  | TemporalReference [Either String RunFormula] Span   -- words and arguments
+  deriving (Eq, Show, Generic)
+
+-- | property name (params) words (params) is formula end property
+data TemporalProperty = TemporalProperty
+  { temporalName :: String, temporalSignature :: [Either String String]
+  , temporalBody :: RunFormula, temporalSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+-- | law name in model m [assuming [strong] fairness for c, ...] is
+--   definition: every run holds P | some run holds P end definition end law
+data ModelLaw = ModelLaw
+  { modelLawName :: String, modelLawModel :: String
+  , modelLawFairness :: [(Bool, String)]  -- strong?, command
+  , modelLawEvery :: Bool, modelLawFormula :: RunFormula, modelLawSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+-- | laws for f are ... end laws. Checks of f's laws run by default; the block
+-- states claims beyond them and excuses checks, each with a reason.
+data LawClaims = LawClaims { claimsFunction :: String, claimsItems :: [(ClaimItem, Span)], claimsSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+data ClaimItem
+  = CompleteOver Expr
+  | WithoutOverlap
+  | WithoutConflict
+  -- An exemption, until a version or a UTC date-time, because a reason.
+  | Exempt Exemption (Maybe Until) String
+  deriving (Eq, Show, Generic)
+
+data Exemption = PartialExemption | OverlapExemption | ConflictExemption | VacuityExemption String
+  deriving (Eq, Show, Generic)
+
+-- | A project or package version, or a UTC date-time (yyyy-mm-ddThh:mm[:ss]Z).
+data Until = UntilVersion String | UntilTime String deriving (Eq, Show, Generic)
 
 data HandlerSet = HandlerSet { handlerSetName :: String, handlerSetMembers :: [String], handlerSetSpan :: Span }
   deriving (Eq, Show, Generic)
@@ -216,6 +292,17 @@ data HarnessSetting
   | TimeoutSetting Integer              -- milliseconds
   | RepeatSetting Integer
   | RetryFlakySetting Integer
+  | ProveSetting Proving                -- how lawspec prove proves the law
+  deriving (Eq, Show, Generic)
+
+-- | prove by ... : how Z3 is given the recursive definitions a law calls,
+-- and whether it proves the law by induction. Plain words here; the tasks
+-- name the SMT encodings (LawSpec.Core.Smt).
+data Proving
+  = ProveByUnfolding (Maybe Integer) Bool   -- step by step [up to n times] [, then solver recursion]
+  | ProveBySolverRecursion
+  | ProveByInduction String [String]        -- on input, using cited laws
+  | ProveWithoutInduction
   deriving (Eq, Show, Generic)
 
 -- One law's harness, merged from the unit defaults and its `for` blocks:
@@ -604,7 +691,7 @@ typePredicates value (Applied "List" inner) =
   in if null predicates then [] else
     [AllElementsExpr value binder (foldr (Binary "&&") (BoolLit True) predicates)]
 typePredicates value (Applied "Maybe" inner) =
-  sumPredicates value [("Maybe::Nothing",Nothing),("Maybe::Just",Just inner)]
+  sumPredicates value [("Maybe::Absent",Nothing),("Maybe::Present",Just inner)]
 typePredicates value (Application "Either" [left,right]) =
   sumPredicates value [("Either::Left",Just left),("Either::Right",Just right)]
 typePredicates _ _ = []

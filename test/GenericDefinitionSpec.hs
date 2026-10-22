@@ -71,12 +71,12 @@ test_genericDefinitionsSpecializeWithProvedResults :: Spec
 test_genericDefinitionsSpecializeWithProvedResults = describe "generic definition specialization" $ do
   it "proves constructor-sensitive Maybe and Either result refinements" $ do
     verify (unlines
-      [ "function wrap (x :: Int8 where x > 0) -> Maybe (value :: Int8 where value > 0) is Just x end function\n"
-      , "function empty (x :: Int8) -> Maybe (value :: Int8 where false) is Nothing end function\n"
+      [ "function wrap (x :: Int8 where x > 0) -> Maybe (value :: Int8 where value > 0) is Present x end function\n"
+      , "function empty (x :: Int8) -> Maybe (value :: Int8 where false) is Absent end function\n"
       , "function left (x :: Int8 where x > 0) -> Either (value :: Int8 where value > 0) (value :: Int8 where value < 0) is Left x end function\n"
       , "function right (x :: Int8 where x < 0) -> Either (value :: Int8 where value > 0) (value :: Int8 where value < 0) is Right x end function\n"
-      , "function nested (x :: Int8 where x > 0) -> Maybe (Either (value :: Int8 where value > 0) Bool) is Just (Left x) end function\n"
-      , "function unwrap (x :: Maybe (value :: Int8 where value != 0)) -> Rational is first matching case of x : when Nothing then 0 when Just value then 1 / value end case end function\n" ]) $ \program ->
+      , "function nested (x :: Int8 where x > 0) -> Maybe (Either (value :: Int8 where value > 0) Bool) is Present (Left x) end function\n"
+      , "function unwrap (x :: Maybe (value :: Int8 where value != 0)) -> Rational is first matching case of x : when Absent then 0 when Present value then 1 / value end case end function\n" ]) $ \program ->
         forM_ targets $ \target -> (planTesting program >>= emitPlan target) `shouldSatisfy` isRight
   it "proves named product refinements with dependent fields" $ do
     let declarations = "type Range is a record{  lower :: Int8 upper :: Int8} end type\n"
@@ -89,9 +89,9 @@ test_genericDefinitionsSpecializeWithProvedResults = describe "generic definitio
     compile (declarations ++ "function bad (lo :: Int8) (hi :: Int8 where hi > lo) -> (result :: Range where first matching case of result : when Range low high then high > low end case) is Range hi lo end function\n")
       `shouldSatisfy` isLeft
   it "keeps sum payload facts within the selected constructor and value" $ do
-    forM_ [ "function bad (x :: Int8) -> Maybe (value :: Int8 where value > 0) is Just x end function\n"
+    forM_ [ "function bad (x :: Int8) -> Maybe (value :: Int8 where value > 0) is Present x end function\n"
           , "function bad (x :: Int8 where x > 0) -> Either (value :: Int8 where value > 0) (value :: Int8 where value < 0) is Right x end function\n"
-          , "function bad (x :: Maybe (value :: Int8 where value != 0)) (y :: Int8) -> Rational is first matching case of x : when Nothing then 0 when Just value then 1 / y end case end function\n"
+          , "function bad (x :: Maybe (value :: Int8 where value != 0)) (y :: Int8) -> Rational is first matching case of x : when Absent then 0 when Present value then 1 / y end case end function\n"
           , "function bad (x :: Either (value :: Int8 where value != 0) Int8) -> Rational is first matching case of x : when Left value then 1 / value when Right value then 1 / value end case end function\n" ] $ \text ->
         case compile text of
           Left diagnostics -> map code diagnostics `shouldContain` ["total"]

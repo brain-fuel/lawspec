@@ -284,6 +284,10 @@ proofExpression schema bits = proof
           _ -> []) (proof predicate))
       ExternalCall identity arguments -> T.Call identity (map proof arguments)
       ShortCircuit op left right -> T.Logical op (proof left) (proof right)
+      -- An operation's checked result (LawSpec.OperationChecks): past the
+      -- check, the result has its type's refinement.
+      If c a (Expr _ (Helper Unreachable [Expr _ (Constant (SSequence _ points)) _]) _)
+        | Just _ <- operationResultChecked (map toEnum points) -> T.TypedDomain [proof c] (proof a)
       If c a b -> T.Conditional (proof c) (proof a) (proof b)
       Unary Not value -> T.Negated (proof value)
       Binary op evidence left right | op `elem` [Divide, Quotient, Remainder] ->
@@ -306,7 +310,9 @@ proofExpression schema bits = proof
                              , Just conversion <- T.integerConversion bits destination source (proof value) -> conversion
                              | otherwise -> T.Conversion (safeConversion bits target value) (proof value)
       -- let x = e in body: e is checked, and the body knows x is e.
-      Let binder value body -> T.strictLet (binderId binder) (proof value) (proof body)
+      -- An operation's result is a value of its own, named by the binder;
+      -- past its result check the body knows what the check established.
+      Let binder value body -> T.operationLet (performs value) (binderId binder) (proof value) (proof body)
       Helper Unreachable [Expr _ (Constant (SSequence _ points)) _] -> T.Absurd (map toEnum points)
       Helper Unreachable _ -> T.Absurd "a constructor"
       Helper IncompleteSearch _ -> T.Absurd "an incomplete witness search"
@@ -321,6 +327,9 @@ proofExpression schema bits = proof
       _ -> T.Sequence (map proof (children expression))
     exact (Constructor name []) = isExact name
     exact _ = False
+    performs value = case expressionNode value of
+      Perform _ _ -> True
+      _ -> False
     mark expression value = case expressionType expression of
       Constructor name [] | isInteger name -> T.Integral value
       _ -> value

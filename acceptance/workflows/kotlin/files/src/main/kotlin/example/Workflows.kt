@@ -34,8 +34,22 @@ object Workflows {
     // order from declaration order.
     val finished = java.util.Collections.synchronizedList(mutableListOf<String>())
 
+    // Order -1's slow checks record when they ran, so approvedQuickly can tell whether they ran at the same time.
+    // The list is never cleared, so tests running at once cannot erase each other's records.
+    val spans = java.util.Collections.synchronizedList(mutableListOf<Pair<Long, Long>>())
+
+    // Whether two slow checks that started at or after since overlapped in time.
+    fun overlapped(since: Long): Boolean {
+        val ran = synchronized(spans) { spans.filter { it.first >= since } }
+        return ran.indices.any { i -> (i + 1 until ran.size).any { j -> ran[i].first < ran[j].second && ran[j].first < ran[i].second } }
+    }
+
     private suspend fun check(value0: Order, milliseconds: Long, problem: String): LawSpecRuntime.Either<String, Order> {
-        if (value0.number == -1L) kotlinx.coroutines.delay(milliseconds)
+        if (value0.number == -1L) {
+            val start = System.nanoTime()
+            kotlinx.coroutines.delay(milliseconds)
+            spans.add(Pair(start, System.nanoTime()))
+        }
         if (value0.number >= 0) return LawSpecRuntime.Right(value0)
         finished.add(problem)
         return LawSpecRuntime.Left(problem)

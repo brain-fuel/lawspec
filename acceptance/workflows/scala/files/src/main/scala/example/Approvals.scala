@@ -10,13 +10,15 @@ import scala.jdk.CollectionConverters.*
 object Approvals {
   private given ExecutionContext = ExecutionContext.global
 
-  // Approves an order: whether it took less than 550ms.
+  // Approves an order: whether two of order -1's slow checks that started
+  // during this call overlapped in time. Run one after the other they cannot
+  // overlap, however loaded the machine is.
   def approvedQuickly(value0: Long): Future[Boolean] = Future {
     blocking {
       val runtime = LawSpecRuntime.WorkflowRuntime(null, 0)
       val started = System.nanoTime()
       lawspec.definitions.example.Workflows.approve(runtime.context(java.util.HashMap()), Order(value0))
-      System.nanoTime() - started < 550000000L
+      value0 != -1L || Workflows.overlapped(started)
     }
   }
 

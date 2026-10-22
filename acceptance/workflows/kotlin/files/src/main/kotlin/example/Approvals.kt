@@ -6,12 +6,14 @@ import lawspec.data.Order
 import lawspec.runtime.LawSpecRuntime
 
 object Approvals {
-    // Approves an order: whether it took less than 550ms.
+    // Approves an order: whether two of order -1's slow checks that started
+    // during this call overlapped in time. Run one after the other they
+    // cannot overlap, however loaded the machine is.
     suspend fun approvedQuickly(value0: Long): Boolean {
         val runtime = LawSpecRuntime.WorkflowRuntime(null, 0)
         val started = System.nanoTime()
         lawspec.definitions.example.Workflows.approve(runtime.context(HashMap()), Order(value0))
-        return System.nanoTime() - started < 550_000_000L
+        return value0 != -1L || Workflows.overlapped(started)
     }
 
     // Approves an order: the messages of its failures, as reported.

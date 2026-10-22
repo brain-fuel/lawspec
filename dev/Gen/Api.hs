@@ -206,11 +206,12 @@ declarations = joinWith (softbreak <> softbreak)
       ("names?", "NativeNameBinding[]"),
       ("handlers?", "NativeHandlerBinding[]"), ("failures?", "NativeFailureMapping[]"), ("network?", "NativeNetworkBinding"),
       ("erlangIncludes?", "NativeErlangInclude[]")])
-  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed"])
+  , alias "DischargeStatus" (map quoted ["planned", "not-verified", "incomplete", "unsupported", "known-failing", "flaky", "skipped", "pending", "proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed", "exempted", "refuted"])
   , interface "ObligationEvidence"
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
        [("claim", union [text "Expr", text "null"])] ++
        -- Where its tests ran, when an environment attestation touches it.
+       fields [("exemption?", "Exemption")] ++
        fields [("environment?", "string"), ("environmentRun?", "AttestedRun"), ("against?", "AttestedDependency[]"),
                ("plannedEnvironment?", "string"), ("plannedEnvironmentRun?", "AttestedRun"), ("plannedAgainst?", "AttestedDependency[]"),
                ("nativeEvidence?","NativeConformanceEvidence"),("adequacy?","NativeAdequacy[]"),
@@ -236,15 +237,54 @@ declarations = joinWith (softbreak <> softbreak)
        ("sources", text "Source[]"), ("schemaVersion?", text "5"),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
        ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
-       ("attestation?", text "unknown")]
+       ("attestation?", text "unknown"),
+       ("proofCounterexamples?", text "ProofCounterexample[]"),
+       ("analysisResults?", text "AnalysisResult[]"), ("projectVersion?", text "string"), ("now?", text "string"),
+       ("modelResults?", text "ModelResult[]")]
+  , interface "ModelResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string"), ("invariant", "string")])
+  , interface "ModelTaskRow" (fields [("owner", "string"), ("declaration", "string"), ("tasks", "ModelTask[]")])
+  , interface "ModelTask" (fields [("fingerprint", "string"), ("kind", "string"), ("script", "string"), ("inputs", "string[]")])
+  , interface "Exemption"
+      (fields [("reason", "string"), ("until", "string | null"), ("expired", "boolean"), ("law", "string | null")])
+  , interface "AnalysisResult" (fields [("fingerprint", "string"), ("outcome", "string"), ("values", "string")])
+  , alias "AnalysisStage" (map quoted ["completeness", "overlap", "conflict", "vacuity"])
+  , alias "AnalysisTaskRow"
+      [ record (fields (analysisRow ++ [("status", "'ready'"), ("tasks", "AnalysisTask[]")]))
+      , record (fields (analysisRow ++ [("status", "'unsupported'"), ("reason", "string")])) ]
+  , interface "AnalysisTask"
+      (fields [("fingerprint", "string"), ("encoding", "'lawspec-smtlib-v2'"), ("script", "string"), ("inputs", "string[]")])
+  , interface "AnalysisCheck"
+      (fields (analysisRow ++ [("fingerprint", "string"), ("status", "AnalysisCheckStatus"), ("reason", "string"), ("check", "AnalysisCheckStatus")]))
+  , alias "AnalysisCheckStatus" (map quoted ["proved", "refuted", "exempted", "incomplete"])
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , alias "ProofTask"
-      [record (fields [("encoding","'lawspec-smtlib-v1'"),("owner","string"),("declaration","string"),
+      [record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
-        [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string")]),
-       record (fields [("encoding","'lawspec-smtlib-v1'"),("owner","string"),("declaration","string"),
+        [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string"),
+          ("counterexample?","CounterexampleQuery"),
+          ("counterexampleUnsupported?","string"), ("recursion?", "Recursion"),
+          ("alternative?", "AlternativeTask"), ("induction?", "InductionPlan")]),
+       record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "unsupported"),("reason",text "string")])]
+  , interface "AlternativeTask"
+      (fields [("recursion", "Recursion"), ("script", "string"), ("taskFingerprint", "string")])
+  , alias "InductionPlan"
+      [ record (fields (induction ++ [("status", "'ready'"), ("cases", "InductionCase[]")]))
+      , record (fields (induction ++ [("status", "'unsupported'"), ("reason", "string")])) ]
+  , interface "InductionCase"
+      (fields [ ("case", "string"), ("script", "string"), ("recursion", "Recursion")
+              , ("taskFingerprint", "string"), ("inputs", "string[]"), ("alternative?", "AlternativeTask") ])
+  , alias "Recursion"
+      [ record (fields [("encoding", "'guarded-axioms'"), ("fuel", "number")])
+      , record (fields [("encoding", "'define-fun-rec'")]) ]
+  , alias "ProofCounterexample" [record (fields [("owner","string"),("declaration","string"),
+      ("taskFingerprint","string"),("values","string")])]
+  , alias "CounterexampleQuery" [record (fields [("encoding","'lawspec-smtlib-v2'"),("script","string"),
+      ("fingerprint","string"),("inputs","{name: string; binder: string}[]")])]
+  , alias "CounterexampleCheck" [record (fields [("owner?","string"),("declaration?","string"),
+      ("taskFingerprint?","string"),("status","'refuted' | 'model-not-confirmed' | 'incomplete'"),
+      ("reason","string"),("inputs?","{name: string; value: string}[]")])]
   , alias "NativeSeed" [text "number",text "string"]
   , alias "NativeFreshness" (map quoted ["matching-inputs","stale","not-selected","unavailable","not-run"])
   , alias "NativeConformanceStatus" (map quoted ["passed","failed","partial","incomplete",
@@ -289,7 +329,11 @@ declarations = joinWith (softbreak <> softbreak)
        fields [("languageProfile?", "\"1.0-rc.2\""), ("verification?", "VerificationSelection"), ("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("warnings?", "MatchWarning[]"), ("warningAnalysis?", "MatchWarningAnalysis"), ("expansions?", "string[]"), ("files?", "Artifact[]"), ("formattedSources?", "Source[]"),("tests?","NativeTestEntry[]")] ++
-       [("proofTasks?",text "ProofTask[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
+       [("proofTasks?",text "ProofTask[]"),
+        ("analysisTasks?", text "AnalysisTaskRow[]"), ("analysisEvidence?", text "ObligationEvidence[]"),
+        ("analysisChecks?", text "AnalysisCheck[]"), ("modelTasks?", text "ModelTaskRow[]"),
+        ("modelEvidence?", text "ObligationEvidence[]"),
+        ("counterexampleChecks?",text "CounterexampleCheck[]"),("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])
   , alias "DataValue" [text "ScalarValue", variant "data" [("type", "Type"), ("constructor", "string"), ("fields", "DataValue[]")]]
@@ -313,3 +357,5 @@ declarations = joinWith (softbreak <> softbreak)
   ]
   where
     scalar names rest = record (("type", union (map quoted names)) : fields rest)
+    analysisRow = [("owner", "string"), ("declaration", "string"), ("stage", "AnalysisStage")]
+    induction = [("on", "string"), ("asked", "boolean"), ("using", "string[]")]

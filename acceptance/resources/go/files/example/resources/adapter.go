@@ -56,9 +56,9 @@ func Get(value0 any, value1 int32) LawSpecMaybe[int32] {
 		panic("the store is closed")
 	}
 	if v, ok := s.items[value1]; ok {
-		return LawSpecJust(v)
+		return LawSpecPresent(v)
 	}
-	return LawSpecNothing[int32]()
+	return LawSpecAbsent[int32]()
 }
 
 // IsOpen implements isOpen :: (example.resources::type::Store -> Bool).
@@ -82,10 +82,10 @@ func WriteNote(value0 string, value1 int32) {
 func ReadNote(value0 string) LawSpecMaybe[int32] {
 	text, err := os.ReadFile(filepath.Join(value0, "note.txt"))
 	if err != nil {
-		return LawSpecNothing[int32]()
+		return LawSpecAbsent[int32]()
 	}
 	n, _ := strconv.Atoi(string(text))
-	return LawSpecJust(int32(n))
+	return LawSpecPresent(int32(n))
 }
 
 // CanListen implements canListen :: (Int32 -> Bool).
@@ -107,10 +107,10 @@ func SetGreeting(value0 int32) {
 func Greeting(value0 LawSpecValue) LawSpecMaybe[int32] {
 	text, ok := os.LookupEnv("LAWSPEC_EXAMPLE_GREETING")
 	if !ok {
-		return LawSpecNothing[int32]()
+		return LawSpecAbsent[int32]()
 	}
 	n, _ := strconv.Atoi(text)
-	return LawSpecJust(int32(n))
+	return LawSpecPresent(int32(n))
 }
 
 // pool is costly to open: this test binary may open only one, so the suite

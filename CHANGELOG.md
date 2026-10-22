@@ -6,6 +6,116 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-22
+
+### Added
+
+- Laws about observed histories: `law n in history h is definition: the
+  complete history holds P` (closed: proved or refuted) or `the history so far
+  holds P` (open: proved, refuted, or the new status `pending` while what
+  comes next decides). A deadline is refuted as soon as an entry is observed
+  past it.
+- Model laws with deadlines (`whenever P, Q within 24h`) in whole
+  microsecond ticks, only through the model's `wait` command; a
+  missed deadline is refuted with the run and the time waited. For models
+  the explicit search cannot finish, `lawspec prove` proves an invariant by
+  induction, or by an invariant Z3's Spacer proposes and plain queries
+  re-check, and refutes one with a bounded run the evaluator replays.
+- Laws about a model's runs: `property` declares a claim in plain words
+  (`always`, `eventually`, `whenever P, Q`, `never P before Q`, `until`),
+  and `law n in model m [assuming [strong] fairness for c] is definition:
+  every run holds P end definition end law` (or `some run holds P`) checks it
+  over the model's reference by an in-house explicit-state search, shared by
+  the native and WASM compilers. A law is proved with the number of states
+  explored, refuted with the run that breaks it, or incomplete past the
+  search's bound; native conformance keeps its own evidence.
+- `lawspec prove` quantifies `Rational` inputs exactly (never an irrational
+  witness), handles `Decimal`, and reasons about `Float32` and `Float64` with
+  IEEE equality: NaN differs from itself and the zeros are equal. A law true
+  for reals but not floats is refuted with a float the evaluator confirms.
+- `lawspec prove` reasons about `Text`: joining, length, slices, decimal
+  text, ordering, `starts with`, `ends with`, `contains` and
+  `matches regex`, using UTF-32BE to preserve the complete Unicode scalar
+  domain through U+10FFFF despite Z3's smaller alphabet. List length and joining are
+  supported too, and the codec portfolio and unbounded laws of the
+  Chapter 6 reference models are proved.
+- `lawspec prove` proves laws by induction. A law's harness says
+  `prove by induction on xs`, citing other laws with `using "|a|`; with no
+  setting, a law with one list-like input gets one try. Each case is its own
+  task with its own receipt, a law rests on the laws it cites, and a case
+  whose model the law survives reports that the induction hypothesis is too
+  weak. The harness can also choose how recursion is unfolded:
+  `prove by unfolding step by step [up to n times]`,
+  `prove by solver recursion`, or both in turn (the default). Unproved laws
+  over recursive definitions get a counterexample search, so obviously false
+  ones are refuted.
+- `lawspec prove` handles laws over recursive definitions. Each task gives Z3
+  the definitions unfolded step by step (guarded axioms with fuel, as Why3
+  and Dafny do) and by solver recursion (`define-fun-rec`); the host tries
+  them in turn, and the evidence records which one proved the law and every
+  attempt.
+- The laws about a function are checked together: completeness, overlap,
+  conflict and vacuity, on by default. A `laws for f are ... end laws` block
+  states claims (`complete over`, `without overlap`, `without conflict`) and
+  excuses checks with a reason (`partial`, `overlap allowed`,
+  `conflict allowed until`, `vacuity allowed for`), until a project version
+  or a UTC date-time. An excused failure is `exempted`, a new status weaker
+  than `assumed`, and keeps its counterexample; an expired exemption is
+  `refuted` and fails the build. The `exhaustive` layer decides finite
+  domains; `lawspec prove` sends the rest to Z3, and the evaluator confirms
+  every input Z3 gives. `lawspec.json` gains `projectVersion`.
+- A new evidence status, `refuted`: a law a confirmed counterexample shows
+  false (the compiler's exhaustive check, or a Z3 model the reference
+  evaluator confirms). The build still fails with a `refuted` diagnostic, and
+  `lawspec evidence` lists the law under `REFUTED` and exits with status 1.
+- Z3 proof tasks cover data (`lawspec-smtlib-v2`): enums, records,
+  alternatives, structural records, `Maybe`, `List` and `Either` become SMT
+  datatypes whose field refinements are part of their well-formedness. The
+  refund policy and order lifecycle laws in `examples/rc1` are proved, and a
+  counterexample over data is read back and confirmed by the evaluator.
+- `lawspec prove` validates counterexamples. When Z3 finds a law's negation
+  satisfiable, it gives values for the law's outer inputs, and the compiler
+  re-checks the law at them with its reference evaluator. A confirmed law is
+  `refuted` with its inputs, and `prove` exits with status 1. Unconfirmed
+  values are a `proof-translation` diagnostic, never a refutation.
+- `lawspec-smtlib-v1` proof tasks are frozen byte for byte, checked against
+  a corpus of every current task. The compiler can name a later encoding,
+  `lawspec-smtlib-v2`, for tasks that need new features.
+- A definition may rely on an ability operation's refined result. The
+  generated code checks each such result where the definition performs the
+  operation, and stops the definition if a handler broke the type.
+  `lawspec evidence` reports each check as `runtime-checked`.
+### Changed
+
+- **Breaking:** `Maybe`'s values are now `Present x` and `Absent`. They were
+  `Just x` and `Nothing`. The type is still `Maybe a`. The old names are not
+  aliases: a source that uses them is refused, and the error names the new
+  constructor. Generated code follows the new names wherever LawSpec's
+  constructors appear: data tags (`Maybe::Present`, `Maybe::Absent`), the
+  Python, JavaScript, TypeScript and JVM `Present` and `Absent` classes, the
+  Go `LawSpecPresent` and `LawSpecAbsent` helpers, the C# `Maybe.Absent`
+  helper, the typed Java `Maybe.present`, `absent` and `isPresent`, the
+  Erlang and Elixir `present` and `absent` atoms, rendered values, the
+  editor grammar and the npm names. Native mappings are unchanged: Rust,
+  Swift, Scala, F# and Gleam keep their options, and Haskell keeps `Maybe`.
+
+### Fixed
+
+- Proof execution discards imported settlement answers, checks the complete
+  solver protocol for law-set and model tasks, and records model solver
+  identities and raw output. An unavailable model solver stays explicit.
+- Model induction keeps an unencodable command obligation incomplete rather
+  than proving only the remaining steps. Reachability counts obey the search
+  bound, and unfinished history searches cannot refute a law. Open history
+  deadlines stay pending, late responses fail, and backwards times are refused.
+- Go harness statistics belong to each test run, so a law's boundary tests no
+  longer reset its property test's counts while they run in parallel. Python,
+  JavaScript, Rust, Haskell and Java (with Kotlin, Scala, Groovy and Clojure)
+  keep statistics per run too.
+- The workflows example's `|an all group's checks run at the same time|` law
+  checks that the two slow checks overlapped in time, on every target,
+  instead of timing the call against 550 ms, which failed on a loaded machine.
+
 ## [0.27.0] - 2026-10-21
 
 ### Added
@@ -1805,7 +1915,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/brain-fuel/lawspec/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/brain-fuel/lawspec/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/brain-fuel/lawspec/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/brain-fuel/lawspec/compare/v0.24.0...v0.25.0

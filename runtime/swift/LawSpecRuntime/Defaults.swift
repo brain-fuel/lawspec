@@ -9,8 +9,8 @@ import Foundation
 public enum Defaults {
     private static func fail(_ code: String, _ detail: String = "") -> LawSpecError { Fail.with(code, detail) }
 
-    private static func just(_ v: Value) -> Value { .data("Maybe::Just", [v]) }
-    private static let nothing = Value.data("Maybe::Nothing", [])
+    private static func just(_ v: Value) -> Value { .data("Maybe::Present", [v]) }
+    private static let nothing = Value.data("Maybe::Absent", [])
 
     // The wall clock at start, then the monotonic clock: a later clock
     // correction never moves time backwards.

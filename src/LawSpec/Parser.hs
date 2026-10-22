@@ -34,7 +34,7 @@ import Control.Monad.State.Strict (StateT(..), evalStateT, runStateT, get, put, 
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
-import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace)
+import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum, isSpace, isDigit)
 import Data.List (uncons, intercalate, isInfixOf, nub)
 import Text.Megaparsec hiding (SourcePos, parse, runParserT, lookAhead)
 import qualified Text.Megaparsec as MP
@@ -957,8 +957,8 @@ selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> lit
           declared <- asks (M.lookup ("constructor:" ++ tag))
           count <- case declared of
             Just (DataHeader fields) -> pure (length fields)
-            _ -> maybe (fail ("unknown constructor in pattern: " ++ tag)) pure
-              (lookup tag [("Nothing",0),("Just",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
+            _ -> maybe (fail ("unknown constructor in pattern: " ++ tag ++ renamedConstructorHint tag)) pure
+              (lookup tag [("Absent",0),("Present",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
           SelectionConstructor tag <$> sequence (replicate count (selectionPatternP True))
     record = do
       try (keyword "record" <* lookAhead (symbol "{"))
@@ -1612,8 +1612,8 @@ constructorLiteral = do
   declared <- asks (M.lookup ("constructor:" ++ name))
   arity <- case declared of
     Just (DataHeader fields) -> pure (length fields)
-    _ -> maybe (fail ("unknown literal constructor: " ++ name)) pure
-      (lookup name [("Nothing",0),("Just",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
+    _ -> maybe (fail ("unknown literal constructor: " ++ name ++ renamedConstructorHint name)) pure
+      (lookup name [("Absent",0),("Present",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
   ConstructorLiteral name <$> count arity literalP
 
 literalP :: P Literal
@@ -2224,7 +2224,7 @@ mappingP owner = blockP "mapping" $ do
         (ListLit (map key group)) rest) (ListLit []) groups
       -- Use the builtin identities, independently of local Just/Nothing names.
       inverse = foldr (\row rest -> select (Binary "==" (Var input) (output row))
-        (ConstructLit "Maybe::Just" [key row]) rest) (ConstructLit "Maybe::Nothing" []) rows
+        (ConstructLit "Maybe::Present" [key row]) rest) (ConstructLit "Maybe::Absent" []) rows
   pure ([make MappingForward name keyType resultType body] ++
     [make MappingPreimages (derived name "preimages") resultType (Applied "List" keyType) preimage | fallback == Nothing] ++
     [make MappingInverse (derived name "inverse") resultType (Applied "Maybe" keyType) inverse | fallback == Nothing])
@@ -2248,6 +2248,8 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | DefinitionMember (FunctionDefinition, Maybe [Type]) | MappingMember [FunctionDefinition]
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
   | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration | HandlerSetMember HandlerSet
+  | ClaimsMember LawClaims
+  | TemporalPropertyMember TemporalProperty | ModelLawMember ModelLaw | HistoryLawMember HistoryLaw
 
 memberSyntax :: UnitMember -> (String,Maybe String)
 memberSyntax member = ("declaration." ++ kind,name)
@@ -2274,6 +2276,59 @@ memberSyntax member = ("declaration." ++ kind,name)
       ResourceMember r -> ("resource",Just (prettyType (resourceType r)))
       HarnessMember h -> ("harness",Just (harnessName h))
       HandlerSetMember h -> ("handlers",Just (handlerSetName h))
+      ClaimsMember c -> ("laws-for",Just (claimsFunction c))
+      TemporalPropertyMember t -> ("property",Just (temporalName t))
+      ModelLawMember l -> ("law",Just (modelLawName l))
+      HistoryLawMember l -> ("law",Just (historyLawName l))
+
+-- | laws for f are ... end laws. Each line is a claim (complete over c,
+-- without overlap, without conflict) or an exemption with its reason:
+-- partial, overlap allowed, conflict allowed (until required) and vacuity
+-- allowed for a law, each optionally until a version or a UTC date-time.
+lawClaimsP :: P LawClaims
+lawClaimsP = blockP "laws" $ do
+  begin <- sourceLocation
+  keyword "laws"
+  keyword "for"
+  function <- ident
+  keyword "are"
+  items <- many (withSpan claimItemP)
+  closeP "laws"
+  finish <- sourceLocation
+  pure (LawClaims function items (Span begin finish))
+  where
+    claimItemP = choice
+      [ try (keyword "complete" *> keyword "over") *> (CompleteOver <$> regionExpr [])
+      , try (keyword "without" *> keyword "overlap") $> WithoutOverlap
+      , try (keyword "without" *> keyword "conflict") $> WithoutConflict
+      , exemption (keyword "partial" $> PartialExemption) False
+      , exemption (try (keyword "overlap" *> keyword "allowed") $> OverlapExemption) False
+      , exemption (try (keyword "conflict" *> keyword "allowed") $> ConflictExemption) True
+      , exemption (try (keyword "vacuity" *> keyword "allowed" *> keyword "for") *> (VacuityExemption <$> lawNameP)) False ]
+    exemption kind required = do
+      excused <- kind
+      expiry <- optional (keyword "until" *> untilP)
+      when (required && expiry == Nothing) (fail "conflict allowed needs until: a conflict is excused only for a while")
+      keyword "because"
+      Exempt excused expiry <$> str
+    -- A version (1.2.0) or a UTC date-time (2027-03-01T00:00Z).
+    untilP = lexeme $ do
+      text <- some (satisfy (\c -> isAlphaNum c || c `elem` (".-:+" :: String)))
+      if 'T' `elem` text && length text >= 10 && take 1 (drop 4 text) == "-"
+        then if utc text then pure (UntilTime text)
+          else fail ("until " ++ text ++ ": a date-time must be UTC, written like 2027-03-01T00:00Z")
+        else if version text then pure (UntilVersion text)
+          else fail ("until " ++ text ++ ": write a version like 1.2.0 or a UTC date-time like 2027-03-01T00:00Z")
+    version text = case splitDots text of
+      parts@(_ : _ : _ : _) -> all (\p -> not (null p) && all isAlphaNum p) parts && all isDigit (concat (take 3 parts))
+      _ -> False
+    splitDots text = case break (== '.') text of
+      (part, '.' : rest) -> part : splitDots rest
+      (part, _) -> [part]
+    utc text = case text of
+      [y1,y2,y3,y4,'-',m1,m2,'-',d1,d2,'T',h1,h2,':',n1,n2,'Z'] -> all isDigit [y1,y2,y3,y4,m1,m2,d1,d2,h1,h2,n1,n2]
+      [y1,y2,y3,y4,'-',m1,m2,'-',d1,d2,'T',h1,h2,':',n1,n2,':',s1,s2,'Z'] -> all isDigit [y1,y2,y3,y4,m1,m2,d1,d2,h1,h2,n1,n2,s1,s2]
+      _ -> False
 
 unitNameP :: P String
 unitNameP = nameOf <$> unitNamePartsP
@@ -2385,6 +2440,12 @@ unitP = blockP "unit" $ do
     <|> (ResourceMember <$> (try (lookAhead (keyword "resource" *> ident >>= upper)) *> resourceP))
     -- handlers name is h1, h2 end: spec handlers that answer together.
     <|> (HandlerSetMember <$> (try (lookAhead (keyword "handlers" *> ident *> keyword "is")) *> handlerSetP))
+    -- laws for f are ... end laws: claims and exemptions of f's laws.
+    <|> (ClaimsMember <$> (try (lookAhead (keyword "laws" *> keyword "for")) *> lawClaimsP))
+    -- property name is ... end property, and laws that hold one of a model.
+    <|> (TemporalPropertyMember <$> (try (lookAhead (keyword "property")) *> temporalPropertyP))
+    <|> (ModelLawMember <$> (try (lookAhead (keyword "law" *> lawNameP *> keyword "in" *> keyword "model")) *> modelLawP))
+    <|> (HistoryLawMember <$> (try (lookAhead (keyword "law" *> lawNameP *> keyword "in" *> keyword "history")) *> historyLawP))
     -- harness name for unit is ... end (LawSpec.Harness).
     <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
     <|> (MappingMember <$> mappingP n)
@@ -2415,7 +2476,8 @@ unitP = blockP "unit" $ do
      [(functionName d, used) | DefinitionMember (d, Just used) <- members])
     [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
     (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members]
-    [s | HandlerSetMember s <- members], imports, [f | FamilyMember f <- members],
+    [s | HandlerSetMember s <- members] [c | ClaimsMember c <- members]
+    [t | TemporalPropertyMember t <- members] [l | ModelLawMember l <- members] [l | HistoryLawMember l <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
@@ -2842,8 +2904,23 @@ harnessSettingP = choice
   , KnownFailingSetting <$> (try (keyword "known" *> keyword "failing") *> str)
   , TimeoutSetting <$> (keyword "timeout" *> durationP)
   , RepeatSetting <$> (keyword "repeat" *> positive "repeat" <* optional (keyword "times"))
-  , RetryFlakySetting <$> (try (keyword "retry" *> keyword "flaky") *> positive "retry flaky" <* optional (keyword "times")) ]
+  , RetryFlakySetting <$> (try (keyword "retry" *> keyword "flaky") *> positive "retry flaky" <* optional (keyword "times"))
+  -- An expression node, so the formatter indents its continued lines.
+  , ProveSetting <$> sourceNode "expression.prove" (const Nothing) (keyword "prove" *> provingP) ]
   where
+    provingP = choice
+      [ ProveWithoutInduction <$ (keyword "without" *> keyword "induction")
+      , keyword "by" *> choice
+          [ do keyword "unfolding" *> keyword "step" *> keyword "by" *> keyword "step"
+               fuel <- optional (keyword "up" *> keyword "to" *> positive "unfolding step by step up to" <* keyword "times")
+               solver <- option False (True <$ (symbol "," *> keyword "then" *> keyword "solver" *> keyword "recursion"))
+               pure (ProveByUnfolding fuel solver)
+          , ProveBySolverRecursion <$ (keyword "solver" *> keyword "recursion")
+          , do keyword "induction" *> keyword "on"
+               input <- ident
+               lemmas <- option [] (keyword "using" *> (lawNameP `sepBy1` symbol ","))
+               pure (ProveByInduction input lemmas)
+          , fail "prove by takes unfolding step by step, solver recursion or induction on an input" ] ]
     tagP = lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> oneOf ("_-" :: String)))
     positive what = do
       n <- lexeme L.decimal
@@ -2973,3 +3050,123 @@ regionExpr stops = sourceNode "line-expression" (const Nothing) $ do
       | otherwise = Nothing
     wordChar (c : _) = isAlphaNum c || c == '_'
     wordChar [] = False
+
+-- | property name (params) ... is formula end property. The signature's
+-- words name it; each parenthesized word is a parameter (a formula).
+temporalPropertyP :: P TemporalProperty
+temporalPropertyP = sourceNode "property" (Just . temporalName) $ blockP "property" $ do
+  ((signature, body), range) <- withSpan $ do
+    keyword "property"
+    signature <- some ((Right <$> between (symbol "(") (symbol ")") ident) <|> (Left <$> runWordP))
+    keyword "is"
+    body <- runP
+    pure (signature, body)
+  closeP "property"
+  pure (TemporalProperty (unwords [either id (\p -> "(" ++ p ++ ")") part | part <- signature]) signature body range)
+
+-- | law name in model m [assuming [strong] fairness for c, ...] is
+--   definition: every run holds formula end definition end law
+modelLawP :: P ModelLaw
+modelLawP = sourceNode "law" (Just . modelLawName) $ blockP "law" $ do
+  ((name, model, fairness, every, formula), range) <- withSpan $ do
+    keyword "law"
+    name <- lawNameP
+    keyword "in" *> keyword "model"
+    model <- ident
+    fairness <- option [] $ do
+      keyword "assuming"
+      strong <- option False (True <$ keyword "strong")
+      keyword "fairness" *> keyword "for"
+      commands <- ident `sepBy1` symbol ","
+      pure [(strong, c) | c <- commands]
+    keyword "is"
+    (every, formula) <- block "definition" $ do
+      every <- (True <$ keyword "every") <|> (False <$ keyword "some")
+      keyword "run" *> keyword "holds"
+      formula <- runP
+      pure (every, formula)
+    pure (name, model, fairness, every, formula)
+  closeP "law"
+  pure (ModelLaw name model fairness every formula range)
+
+-- | A word of a property's name, or of a reference to one: any name but the
+-- formula's own keywords.
+runWordP :: P String
+runWordP = do
+  notFollowedBy (choice (map keyword runKeywords))
+  phraseNameRaw' <|> lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))
+  where phraseNameRaw' = lexeme phraseNameRaw
+
+runKeywords :: [String]
+runKeywords = ["is", "end", "and", "or", "not", "implies", "until", "before", "within", "always", "eventually", "never", "whenever"]
+
+-- | implies (lowest, to the right), or, and, until, then the prefix words.
+runP :: P RunFormula
+runP = do
+  a <- runOrP
+  option a (TemporalImplies a <$> (keyword "implies" *> runP))
+
+runOrP :: P RunFormula
+runOrP = foldl1 TemporalOr <$> (runAndP `sepBy1` keyword "or")
+
+runAndP :: P RunFormula
+runAndP = foldl1 TemporalAnd <$> (runUntilP `sepBy1` keyword "and")
+
+runUntilP :: P RunFormula
+runUntilP = do
+  a <- runUnaryP
+  option a (TemporalUntil a <$> (keyword "until" *> runUnaryP))
+
+runUnaryP :: P RunFormula
+runUnaryP = choice
+  [ TemporalAlways <$> (keyword "always" *> runUnaryP)
+  , TemporalEventually <$> (keyword "eventually" *> runUnaryP)
+  , TemporalNot <$> (keyword "not" *> runUnaryP)
+  -- whenever P, Q: Q reaches as far as it can.
+  , do keyword "whenever"
+       p <- runOrP
+       void (symbol ",")
+       TemporalWhenever p <$> runP
+  , do keyword "never"
+       p <- runOrP
+       keyword "before"
+       TemporalNeverBefore p <$> runOrP
+  , runPrimaryP ]
+
+-- | Words and arguments side by side: one word is an atom (a Bool function
+-- of the model state, or a parameter); a parenthesized formula alone is
+-- itself; anything longer names a property with arguments. Q within 24h is
+-- a deadline.
+runPrimaryP :: P RunFormula
+runPrimaryP = do
+  (items, range) <- withSpan (some ((Right <$> between (symbol "(") (symbol ")") runP) <|> (Left <$> runWordP)))
+  let base = case items of
+        [Left word] -> TemporalAtom word range
+        [Right formula] -> formula
+        _ -> TemporalReference items range
+  option base $ do
+    keyword "within"
+    d <- numeric
+    case d of
+      ConstructLit "Duration" [Number micros] -> pure (TemporalWithin base micros)
+      _ -> fail "within takes a duration, such as 24h"
+
+-- | law name in history h is definition: the complete history holds P
+--   end definition end law, or the history so far holds P.
+historyLawP :: P HistoryLaw
+historyLawP = sourceNode "law" (Just . historyLawName) $ blockP "law" $ do
+  ((name, source, complete, formula), range) <- withSpan $ do
+    keyword "law"
+    name <- lawNameP
+    keyword "in" *> keyword "history"
+    source <- ident
+    keyword "is"
+    (complete, formula) <- block "definition" $ do
+      keyword "the"
+      complete <- (True <$ (keyword "complete" *> keyword "history")) <|> (False <$ (keyword "history" *> keyword "so" *> keyword "far"))
+      keyword "holds"
+      formula <- runP
+      pure (complete, formula)
+    pure (name, source, complete, formula)
+  closeP "law"
+  pure (HistoryLaw name source complete formula range)

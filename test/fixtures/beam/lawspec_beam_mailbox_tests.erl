@@ -186,8 +186,8 @@ partition_times_out_without_admitting_a_message_test_() -> {timeout, 60, fun() -
         ?assertEqual(<<"next">>, lawspec_beam_mailbox:receive_value(Box))
     end) end}.
 
-nothing() -> {ls_data, <<"Maybe::Nothing">>, []}.
-just(Value) -> {ls_data, <<"Maybe::Just">>, [Value]}.
+nothing() -> {ls_data, <<"Maybe::Absent">>, []}.
+just(Value) -> {ls_data, <<"Maybe::Present">>, [Value]}.
 waiting(Box) -> waiting(Box, erlang:monotonic_time(millisecond) + 30000).
 waiting(Box, Deadline) ->
     case maps:get(reader, sys:get_state(Box)) of

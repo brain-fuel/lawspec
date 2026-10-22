@@ -156,7 +156,7 @@ moves_resolved([<<"int">>, _, _, _] = D, N, _) ->
         X =/= N, X >= Lo, X =< Hi], []);
 moves_resolved([<<"list">>, D], Values, Table) ->
     field_moves([D || _ <- Values], Values, Table);
-moves_resolved([<<"maybe">>, D], {ls_data, <<"Maybe::Just">> = Tag, [V]}, Table) ->
+moves_resolved([<<"maybe">>, D], {ls_data, <<"Maybe::Present">> = Tag, [V]}, Table) ->
     [{ls_data, Tag, [C]} || C <- moves(D, V, Table)];
 moves_resolved([<<"either">>, A, B], {ls_data, Tag, [V]}, Table) ->
     D = case Tag of <<"Either::Left">> -> A; <<"Either::Right">> -> B end,

@@ -86,4 +86,8 @@ law "|an eligible unflagged refund is approved| is
       = 9007199254740993, flagged = false}, Rejected
   end table
 end law
+
+laws for refund are
+  overlap allowed because "a zero unflagged refund is approved by two laws that agree"
+end laws
 end unit

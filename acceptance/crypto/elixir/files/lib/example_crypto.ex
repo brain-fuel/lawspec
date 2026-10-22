@@ -7,6 +7,6 @@ defmodule Example.Crypto do
   def round_trip(aead, message) do
     key = aead.aead_key.()
     associated = "round trip"
-    aead.unseal.(key, aead.seal.(key, message, associated), associated) == {:just, message}
+    aead.unseal.(key, aead.seal.(key, message, associated), associated) == {:present, message}
   end
 end

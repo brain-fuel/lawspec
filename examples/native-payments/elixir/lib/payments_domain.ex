@@ -49,6 +49,6 @@ defmodule PaymentsDomain do
   @spec restore(PaymentStatus.t()) :: PaymentStatus.t()
   def restore(payment), do: payment
 
-  @spec store([:nothing | {:just, PaymentStatus.t()}]) :: [:nothing | {:just, PaymentStatus.t()}]
+  @spec store([:absent | {:present, PaymentStatus.t()}]) :: [:absent | {:present, PaymentStatus.t()}]
   def store(payments), do: payments
 end

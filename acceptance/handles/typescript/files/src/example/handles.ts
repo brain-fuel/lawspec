@@ -12,7 +12,7 @@ export function submit(value0: unknown, value1: number): void {
 
 export function take(value0: unknown): data.Maybe<number> {
   const jobs = value0 as number[];
-  return jobs.length === 0 ? new data.Nothing<number>() : new data.Just<number>(jobs.shift()!);
+  return jobs.length === 0 ? new data.Absent<number>() : new data.Present<number>(jobs.shift()!);
 }
 
 export function pending(value0: unknown): number {

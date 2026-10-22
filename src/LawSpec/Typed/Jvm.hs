@@ -793,8 +793,8 @@ construct env ty tag values _ = do
   case (idText tag, values) of
     ("List::Nil", []) -> pure (D.text (envFast env ++ ".List." ++ witness ++ "nil()"))
     ("List::Cons", [h, t]) -> pure (D.text (envFast env ++ ".List." ++ witness ++ "cons(") <> h <> D.text ", " <> t <> D.text ")")
-    ("Maybe::Nothing", []) -> pure (D.text (envFast env ++ ".Maybe." ++ witness ++ "nothing()"))
-    ("Maybe::Just", [x]) -> pure (D.text (envFast env ++ ".Maybe." ++ witness ++ "just(") <> x <> D.text ")")
+    ("Maybe::Absent", []) -> pure (D.text (envFast env ++ ".Maybe." ++ witness ++ "absent()"))
+    ("Maybe::Present", [x]) -> pure (D.text (envFast env ++ ".Maybe." ++ witness ++ "present(") <> x <> D.text ")")
     ("Either::Left", [x]) -> pure (D.text (envFast env ++ ".Either." ++ witness ++ "left(") <> x <> D.text ")")
     ("Either::Right", [x]) -> pure (D.text (envFast env ++ ".Either." ++ witness ++ "right(") <> x <> D.text ")")
     (_, [items]) | Just ("KeyVal", _) <- collectionArguments ty -> pure (D.text (envPrefix env ++ "keyValOf(") <> items <> D.text ")")
@@ -854,7 +854,7 @@ matchStatements env selfCall scope target value cases = do
         no <- maybe (pure [D.text "throw LawSpecFast.unreachable();"]) (\c -> arm c noAccess) (headMaybe (caseOf noTag))
         pure (prelude ++ [D.text ("if (" ++ condition ++ ") ") <> blockOf yes <> D.text " else " <> blockOf no])
   case ty of
-    Constructor "Maybe" _ -> two "Maybe::Just" "Maybe::Nothing" (subject ++ ".isJust()") [subject ++ ".get()"] []
+    Constructor "Maybe" _ -> two "Maybe::Present" "Maybe::Absent" (subject ++ ".isPresent()") [subject ++ ".get()"] []
     Constructor "Either" _ -> two "Either::Left" "Either::Right" (subject ++ ".isLeft()") [subject ++ ".left()"] [subject ++ ".right()"]
     Constructor "List" _ -> two "List::Nil" "List::Cons" (subject ++ ".isEmpty()") [] [subject ++ ".head()", subject ++ ".tail()"]
     _ | Just (kind, _) <- collectionArguments ty, [c] <- cases ->
@@ -1008,8 +1008,8 @@ toNative env ty = case ty of
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "toNative" a
     na <- lift' (nativeType env a)
-    pure [ D.text ("if (x.isJust()) return new LawSpecRuntime.Just<" ++ na ++ ">(" ++ c ++ "(x.get()));")
-         , D.text ("return new LawSpecRuntime.Nothing<" ++ na ++ ">();") ]
+    pure [ D.text ("if (x.isPresent()) return new LawSpecRuntime.Present<" ++ na ++ ">(" ++ c ++ "(x.get()));")
+         , D.text ("return new LawSpecRuntime.Absent<" ++ na ++ ">();") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "toNative" a
     cr <- helper "toNative" b
@@ -1082,8 +1082,8 @@ fromNative env ty = case ty of
     c <- helper "fromNative" a
     at <- lift' (javaType env True a)
     na <- lift' (nativeType env a)
-    pure [ D.text ("if (n instanceof LawSpecRuntime.Just<" ++ na ++ "> j) return LawSpecFast.Maybe.<" ++ at ++ ">just(" ++ c ++ "(j.value()));")
-         , D.text ("return LawSpecFast.Maybe.<" ++ at ++ ">nothing();") ]
+    pure [ D.text ("if (n instanceof LawSpecRuntime.Present<" ++ na ++ "> j) return LawSpecFast.Maybe.<" ++ at ++ ">present(" ++ c ++ "(j.value()));")
+         , D.text ("return LawSpecFast.Maybe.<" ++ at ++ ">absent();") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "fromNative" a
     cr <- helper "fromNative" b
@@ -1192,7 +1192,7 @@ scalaToNative env ty = case ty of
          , D.text "out.result()" ]
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "toNative" a
-    pure [D.text ("if (x.isJust) scala.Some(" ++ c ++ "(x.get)) else scala.None")]
+    pure [D.text ("if (x.isPresent) scala.Some(" ++ c ++ "(x.get)) else scala.None")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "toNative" a
     cr <- helper "toNative" b
@@ -1256,7 +1256,7 @@ scalaFromNative env ty = case ty of
   Constructor "Maybe" [TypeArgument a] -> do
     c <- helper "fromNative" a
     at <- scalaTyped env a
-    pure [D.text ("n match { case scala.Some(v) => lawspec.runtime.LawSpecFast.Maybe.just[" ++ at ++ "](" ++ c ++ "(v)); case scala.None => lawspec.runtime.LawSpecFast.Maybe.nothing[" ++ at ++ "]() }")]
+    pure [D.text ("n match { case scala.Some(v) => lawspec.runtime.LawSpecFast.Maybe.present[" ++ at ++ "](" ++ c ++ "(v)); case scala.None => lawspec.runtime.LawSpecFast.Maybe.absent[" ++ at ++ "]() }")]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     cl <- helper "fromNative" a
     cr <- helper "fromNative" b

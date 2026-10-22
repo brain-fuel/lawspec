@@ -138,8 +138,8 @@ public final class LawSpecClojure {
     if (value instanceof Integer || value instanceof Short || value instanceof Byte) return ((Number) value).longValue();
     if (value instanceof Float f) return f.doubleValue();
     if (value instanceof BigInteger b) return BigInt.fromBigInteger(b);
-    if (value instanceof LawSpecRuntime.Nothing<?>) return null;
-    if (value instanceof LawSpecRuntime.Just<?> just) return toClojure(just.value());
+    if (value instanceof LawSpecRuntime.Absent<?>) return null;
+    if (value instanceof LawSpecRuntime.Present<?> just) return toClojure(just.value());
     if (value instanceof LawSpecRuntime.Left<?, ?> left) return PersistentVector.create(LEFT, toClojure(left.value()));
     if (value instanceof LawSpecRuntime.Right<?, ?> right) return PersistentVector.create(RIGHT, toClojure(right.value()));
     if (value instanceof List<?> list) {
@@ -216,8 +216,8 @@ public final class LawSpecClojure {
       return CompletableFuture.completedFuture(toJava(value, result, bound));
     }
     if (LawSpecRuntime.Maybe.class.isAssignableFrom(raw)) {
-      if (value == null) return new LawSpecRuntime.Nothing<>();
-      return new LawSpecRuntime.Just<>(toJava(value, arguments.length > 0 ? arguments[0] : Object.class, bound));
+      if (value == null) return new LawSpecRuntime.Absent<>();
+      return new LawSpecRuntime.Present<>(toJava(value, arguments.length > 0 ? arguments[0] : Object.class, bound));
     }
     if (LawSpecRuntime.Either.class.isAssignableFrom(raw)) {
       var pair = items(value);

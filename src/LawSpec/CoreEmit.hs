@@ -348,7 +348,7 @@ emitPlanFormatted _ target plan | target /= "rust", any containsConstruction exp
       C.Construct tag fields -> not
         (target `elem` ["java","python","javascript","typescript","go","haskell","kotlin","scala"] && any ((== tag) . C.constructorId) (concatMap C.dataConstructors (planDataDeclarations plan)) ||
          target `elem` ["python","javascript","typescript","haskell","java","kotlin","scala","go"] &&
-         C.idText tag `elem` ["List::Nil","List::Cons","Maybe::Nothing","Maybe::Just","Either::Left","Either::Right"] ||
+         C.idText tag `elem` ["List::Nil","List::Cons","Maybe::Absent","Maybe::Present","Either::Left","Either::Right"] ||
          target `elem` ["go"] && C.idText tag `elem` ["List::Nil","List::Cons"]) || any containsConstruction fields
       _ -> any containsConstruction (C.children expression)
 emitPlanFormatted _ target Plan{planDataDeclarations=(_: _)} | target `notElem` ["rust", "java", "python", "javascript", "typescript", "go", "haskell", "kotlin","scala"] =

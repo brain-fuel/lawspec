@@ -1,0 +1,65 @@
+unit example.rc1.recursiveRecords
+
+type UnissuedApproval is one of
+  | Unissued of type UnissuedApproval
+end type
+
+type Box (item of type Type) is a record{
+  contents of type item
+}
+end type
+
+type FirstSnapshot is a record{
+  next of type Box SecondSnapshot
+}
+end type
+
+type SecondSnapshot is a record{
+  previous of type FirstSnapshot
+}
+end type
+
+type ApprovalChain is a record{
+  next of type Maybe ApprovalChain
+}
+end type
+
+function chainLength (chain of type ApprovalChain) -> Whole is
+  first matching case of chain:
+    when record{next = Absent} then 0
+    when record{next = Present rest} then 1 + chainLength rest
+  end case
+end function
+
+law "|an unissued approval has no finite construction| is
+  definition:
+    for all (approval of type UnissuedApproval) =>
+      false
+    end for all
+  end definition
+end law
+
+law "|mutually dependent snapshots have no first value| is
+  definition:
+    for all (snapshot of type FirstSnapshot) =>
+      false
+    end for all
+  end definition
+end law
+
+law "|a completed chain has no remaining approval| is
+  definition:
+    chainLength (ApprovalChain record{next = Absent}) must be 0
+  end definition
+end law
+
+law "|a pending chain counts each remaining approval| is
+  definition:
+    chainLength (ApprovalChain record{
+      next = Present (ApprovalChain record{
+        next = Present (ApprovalChain record{next = Absent})
+      })
+    }) must be 2
+  end definition
+end law
+end unit

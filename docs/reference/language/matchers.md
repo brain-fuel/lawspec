@@ -90,7 +90,7 @@ fields:
 - `_` matches any value;
 - a literal (`7`, `"post"`, `true`) matches an equal value;
 - a constructor matches what it builds, written in parentheses when it has
-  fields: `v matches Cancelled _ (Just _)`.
+  fields: `v matches Cancelled _ (Present _)`.
 
 A pattern with the wrong number of fields is an error.
 

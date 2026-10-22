@@ -22,7 +22,7 @@ public final class CodecHooks {
     var items = new ArrayList<B>();
     while (value instanceof Chain.More<A>(var item, var tail)) {
       items.add(convert.apply(item));
-      if (tail instanceof LawSpecRuntime.Just<Chain<A>> next) value = next.value();
+      if (tail instanceof LawSpecRuntime.Present<Chain<A>> next) value = next.value();
       else return new CodecDomain.FlatChain<>(items, false);
     }
     return new CodecDomain.FlatChain<>(items, true);
@@ -30,11 +30,11 @@ public final class CodecHooks {
 
   public static <A, B> Chain<A> from_chain(CodecDomain.FlatChain<B> value, Function<B, A> convert) {
     LawSpecRuntime.Maybe<Chain<A>> tail = value.ended()
-        ? new LawSpecRuntime.Just<>(new Chain.Stop<>()) : new LawSpecRuntime.Nothing<>();
+        ? new LawSpecRuntime.Present<>(new Chain.Stop<>()) : new LawSpecRuntime.Absent<>();
     for (var item : value.items().reversed()) {
-      tail = new LawSpecRuntime.Just<>(new Chain.More<>(convert.apply(item), tail));
+      tail = new LawSpecRuntime.Present<>(new Chain.More<>(convert.apply(item), tail));
     }
-    if (tail instanceof LawSpecRuntime.Just<Chain<A>> chain) return chain.value();
+    if (tail instanceof LawSpecRuntime.Present<Chain<A>> chain) return chain.value();
     throw new IllegalArgumentException("empty chain without Stop has no logical value");
   }
 

@@ -79,7 +79,7 @@ end law
 
 law "|set equality recurses through nominal products and alternatives| is
   definition : for all (reverse :: Bool) =>
-    Envelope record{ items = (Just (arrangement reverse))} = Envelope record{ items = (Just (arrangement (!reverse)))} end for all end definition
+    Envelope record{ items = (Present (arrangement reverse))} = Envelope record{ items = (Present (arrangement (!reverse)))} end for all end definition
 end law
 
 law "|set equality recurses through lists| is

@@ -328,8 +328,8 @@ export class Schema {
     const nativeClasses = new Set();
     this.#builtins = Object.freeze({...builtins});
     for (const name of [
-      'nothing',
-      'just',
+      'absent',
+      'present',
       'left',
       'right',
       'presence',
@@ -762,8 +762,8 @@ export class Schema {
       }
       if (name === 'Maybe') {
         return (
-          child.tag === 'Maybe::Nothing' ||
-            contextual(args[0], child.fields[0], 'Maybe::Just.value')
+          child.tag === 'Maybe::Absent' ||
+            contextual(args[0], child.fields[0], 'Maybe::Present.value')
         );
       }
       if (name === 'Either') {
@@ -1093,11 +1093,11 @@ export class Schema {
     if (name === 'Maybe' || name === 'Either') {
       const classes =
           name === 'Maybe'
-            ? [this.#builtins.nothing, this.#builtins.just]
+            ? [this.#builtins.absent, this.#builtins.present]
             : [this.#builtins.left, this.#builtins.right];
       const tags =
           name === 'Maybe'
-            ? ['Maybe::Nothing', 'Maybe::Just']
+            ? ['Maybe::Absent', 'Maybe::Present']
             : ['Either::Left', 'Either::Right'];
       let index;
       let fields;

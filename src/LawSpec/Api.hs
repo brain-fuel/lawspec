@@ -18,13 +18,20 @@ import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTest
 import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core.Smt as Smt
 import qualified LawSpec.Core as C
-import LawSpec.Core.Evidence (Obligation(..), Status(..))
+import LawSpec.Core.Evidence (Obligation(..), Status(..), statusName)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.Targets (artifactTargets)
 import LawSpec.NativeRequest
-import LawSpec.Public (programView)
+import LawSpec.Public (programView, obligationView)
 import LawSpec.Packages
-import LawSpec.Discharge (dischargeEvidence, dischargeEvidenceWith, bindingEvidence, defaultHandlerEvidence)
+import LawSpec.Discharge (dischargeReporting, refutations, bindingEvidence, defaultHandlerEvidence, showValue)
+import qualified LawSpec.Core.Counterexample as Counterexample
+import qualified LawSpec.Core.LawAnalysis as Analysis
+import LawSpec.ProofSettings (proofSettings)
+import LawSpec.ModelLaws (modelLawEvidence, historyLawEvidence, ModelRun(..))
+import qualified LawSpec.ModelProof as ModelProof
+import LawSpec.LawClaims (elaborateClaims, Expiry(..), analysisEvidence, analysisTaskViews, settleAnalysis)
+import qualified LawSpec.Core.LawTasks as Tasks
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
 import Data.Foldable (toList)
 import qualified Data.Map.Strict as M
@@ -56,7 +63,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
           (stagesWithInput True True project packages sources bits settings native stageVerification)
         else fmap (\value -> (value,[])) (memoized stagesTable stageKey (stages project packages sources bits settings native stageVerification))) of
     Left response -> response
-    Right ((us,es,core,bindings,evidence,described,plan),syntax) ->
+    Right ((us,es,core,bindings,(lawEvidence,analysisRows),described,plan),syntax) ->
+     either failure id $ fmap (\analysed -> let evidence = lawEvidence ++ map fst analysed in withExemptions analysed $
      let pending item | method=="proofTasks", maybe False (`V.selected` V.Proof) verification,
                         obligationStage item=="law", obligationStatus item==NotVerified =
                           case [why | unit<-C.programUnits core, law<-C.unitProperties unit,
@@ -66,15 +74,17 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                             [] -> item{obligationStatus=Planned,obligationReason="an SMT proof task is requested; no solver execution has completed"}
                       | otherwise = item
          obligations = map pending evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-         result files = (if matchWarningsRequested then withMatchWarnings syntax else id) $
+         -- A refuted law keeps its row and fails the request.
+         result files = withRefutations (refutations core obligations) $ (if matchWarningsRequested then withMatchWarnings syntax else id) $
            withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
           "expand" -> result []
           "proofTasks" | Just selection <- verification ->
             if V.selected selection V.Proof
               then either failure (\tasks -> case result [] of
-                Object response -> Object (KM.insert "proofTasks" (toJSON tasks) response)
-                response -> response) (Smt.proofTasks core)
+                Object response -> withModelTasks us core evidence modelAnswers (withAnalysisTasks us core analysisRows
+                  (Object (withCounterexampleChecks core tasks (KM.insert "proofTasks" (toJSON tasks) response))))
+                response -> response) (proofSettings us >>= \settings -> Smt.proofTasksWith settings core)
               else case result [] of
                 Object response -> Object (KM.insert "proofTasks" (toJSON ([] :: [Smt.ProofTask])) response)
                 response -> response
@@ -94,7 +104,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
               (either (const id) executableEntries plan
                 (testManifestWithModelChecks (maybe True (`V.selected` V.Model) verification) target testDir (plannedCore core plan)))) . result)
             ((++ networkArtifacts native) <$> (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
-          _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
+          _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing])
+       (analysisEvidence (maybe True (\config -> V.selected config V.Exhaustive || V.selected config V.Proof) verification)
+          (maybe True (`V.selected` V.Proof) verification) False expiry analysisRows)
 
   where
     -- Where the compiler may keep work between runs; the CLI names one per
@@ -102,9 +114,86 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     cacheDirectory = case decode bytes of
       Just (Object o) | Just (String d) <- KM.lookup "cacheDirectory" o -> Just (T.unpack d)
       _ -> Nothing
+    -- The host's counterexample values, each bound to a task it ran
+    -- (LawSpec.Core.Counterexample). The compiler re-derives the query and
+    -- re-checks the values; it trusts neither the host nor Z3.
+    withCounterexampleChecks core tasks response = case decode bytes of
+      Just (Object o) | Just (Array asked) <- KM.lookup "proofCounterexamples" o ->
+        KM.insert "counterexampleChecks" (toJSON [counterexampleCheck core tasks item | item <- toList asked]) response
+      _ -> response
+    counterexampleCheck core tasks item = case item of
+      Object o | Just (String owner) <- KM.lookup "owner" o, Just (String law) <- KM.lookup "declaration" o
+               , Just (String fingerprint) <- KM.lookup "taskFingerprint" o, Just (String answer) <- KM.lookup "values" o ->
+        let identity = ["owner" .= owner, "declaration" .= law, "taskFingerprint" .= fingerprint]
+        in case [t | t <- tasks, C.idText (Smt.taskOwner t) == T.unpack owner, C.idText (Smt.taskLaw t) == T.unpack law,
+                     Smt.taskFingerprint t == T.unpack fingerprint] of
+          task : _ -> object (identity ++ counterexampleView (Counterexample.validateCounterexample core task (T.unpack answer)))
+          [] -> object (identity ++ ["status" .= ("incomplete" :: String),
+            "reason" .= ("the counterexample is bound to a task this program does not have" :: String)])
+      _ -> object ["status" .= ("incomplete" :: String), "reason" .= ("malformed counterexample request" :: String)]
+    counterexampleView check = ["status" .= Counterexample.checkStatus check] ++ case check of
+      Counterexample.Refuted inputs why -> ["reason" .= why, "inputs" .= shown inputs]
+      Counterexample.ModelNotConfirmed inputs why -> ["reason" .= why, "inputs" .= shown inputs]
+      Counterexample.CheckIncomplete why -> ["reason" .= why]
+    shown inputs = [object ["name" .= C.binderName (C.quantifiedBinder q), "value" .= showValue v] | (q, v) <- inputs]
+    -- The host's answers to model tasks, by fingerprint.
+    modelAnswers = case decode bytes of
+      Just (Object o) | Just (Array given) <- KM.lookup "modelResults" o ->
+        [ (T.unpack fp, ModelProof.Answer (T.unpack outcome) (text "values" a) (text "invariant" a))
+        | Object a <- toList given, Just (String fp) <- [KM.lookup "fingerprint" a], Just (String outcome) <- [KM.lookup "outcome" a] ]
+      _ -> []
+      where text k a = case KM.lookup k a of Just (String v) -> T.unpack v; _ -> ""
     matchWarningsRequested = case decode bytes of
       Just (Object o) -> KM.lookup "warnMatches" o==Just (Bool True)
       _ -> False
+    -- The law-set checks the compiler left undecided are Z3 tasks; their
+    -- answers, sent back as analysisResults, settle them
+    -- (LawSpec.LawClaims.settleAnalysis).
+    withAnalysisTasks us core rows (Object response) =
+      let claimsOf = elaborateClaims (C.programMachineBits core) us core
+          withTasks = KM.insert "analysisTasks" (toJSON (either (const []) (\claims -> analysisTaskViews core claims rows) claimsOf)) response
+          answers = case decode bytes of
+            Just (Object o) | Just (Array given) <- KM.lookup "analysisResults" o ->
+              Just [ (T.unpack fp, Tasks.Answer (T.unpack outcome) (maybe "" T.unpack values))
+                   | Object a <- toList given, Just (String fp) <- [KM.lookup "fingerprint" a]
+                   , Just (String outcome) <- [KM.lookup "outcome" a]
+                   , let values = case KM.lookup "values" a of Just (String v) -> Just v; _ -> Nothing ]
+            _ -> Nothing
+      in case answers of
+        Nothing -> Object withTasks
+        Just given -> case claimsOf >>= \claims -> settleAnalysis True expiry claims core rows given of
+          Left ds -> failure ds
+          Right (evidence, verdicts) ->
+            let refuted = refutations core (map fst evidence)
+                existing = case KM.lookup "diagnostics" withTasks of Just (Array ds) -> toList ds; _ -> []
+            in Object (KM.insert "analysisEvidence" (toJSON [ case (obligationView [] o, view) of
+                                                                 (Object row, Just v) -> Object (KM.insert "exemption" v row)
+                                                                 (row, _) -> row
+                                                               | (o, view) <- evidence ])
+                 (KM.insert "analysisChecks" (toJSON verdicts)
+                 (KM.insert "diagnostics" (toJSON (existing ++ map toJSON refuted)) withTasks)))
+    withAnalysisTasks _ _ _ response = response
+    -- An exempted or expired check shows its exemption.
+    withExemptions analysed (Object value) = case KM.lookup "evidence" value of
+      Just (Array rows) -> Object (KM.insert "evidence" (Array (fmap (attach analysed) rows)) value)
+      _ -> Object value
+    withExemptions _ value = value
+    attach analysed row = case row of
+      Object o | Just view <- lookup (KM.lookup "declaration" o, KM.lookup "stage" o)
+                   [ ((Just (toJSON (C.idText (obligationDeclaration item))), Just (toJSON (obligationStage item))), v)
+                   | (item, Just v) <- analysed ] -> Object (KM.insert "exemption" view o)
+      _ -> row
+    expiry = case decode bytes of
+      Just (Object o) -> Expiry
+        (case (KM.lookup "projectVersion" o, KM.lookup "package" o) of
+          (Just (String v), _) -> Just (T.unpack v)
+          (_, Just (Object p)) | Just (String v) <- KM.lookup "version" p -> Just (T.unpack v)
+          _ -> Nothing)
+        (case KM.lookup "now" o of Just (String t) -> Just (T.unpack t); _ -> Nothing)
+      _ -> Expiry Nothing Nothing
+    withRefutations [] value = value
+    withRefutations ds (Object value) = Object (KM.insert "diagnostics" (toJSON ds) value)
+    withRefutations _ value = value
     withPackages project described (Object value) =
       Object (foldr (\(k, v) -> KM.insert k v) value (packagesView project described))
     withPackages _ _ value = value
@@ -224,10 +313,30 @@ withBenchmarks entries (Object o) = Object (KM.insert "benchmarks" (toJSON (map 
     entry e = object [ "unit" .= benchmarkUnit e, "benchmark" .= benchmarkName e, "file" .= benchmarkFile e, "name" .= benchmarkTest e ]
 withBenchmarks _ value = value
 
+-- | Z3 tasks for model laws the explicit search left open (induction,
+-- Spacer and its re-checks, a bounded run), and, given the host's answers
+-- (modelResults), their settled evidence (modelEvidence).
+withModelTasks :: [Unit] -> C.Program -> [Obligation] -> [(String, ModelProof.Answer)] -> Value -> Value
+withModelTasks us core evidence answers (Object response) =
+  let open = [obligationDeclaration o | o <- evidence, obligationStage o == "law", obligationStatus o `elem` [Incomplete, Unsupported]]
+      tasks = ModelProof.modelTasks us core open answers
+      settled = if null answers then [] else ModelProof.settleModel us core tasks answers
+      rows = [ object [ "owner" .= C.idText (runUnit run), "declaration" .= C.idText (runLaw run), "stage" .= ("law" :: String)
+                      , "status" .= statusName (runStatus run), "reason" .= runReason run, "claim" .= Null ] | run <- settled ]
+      refuted = [ Diagnostic "refuted" (C.idText (runLaw run) ++ ": " ++ runReason run) Nothing | run <- settled, runStatus run == Refuted ]
+      existing = case KM.lookup "diagnostics" response of Just (Array ds) -> toList ds; _ -> []
+      view (owner, law, ts) = object
+        [ "owner" .= C.idText owner, "declaration" .= C.idText law
+        , "tasks" .= [ object [ "fingerprint" .= ModelProof.taskFingerprint t, "kind" .= ModelProof.taskKind t
+                              , "script" .= ModelProof.taskScript t, "inputs" .= ModelProof.taskInputs t ] | t <- ts ] ]
+  in Object (KM.insert "modelTasks" (toJSON (map view tasks)) $ KM.insert "modelEvidence" (toJSON rows) $
+       (if null refuted then id else KM.insert "diagnostics" (toJSON (existing ++ map toJSON refuted))) response)
+withModelTasks _ _ _ _ value = value
+
 failure :: [Diagnostic] -> Value
 failure ds = object ["schemaVersion" .= (5 :: Int), "diagnostics" .= ds]
 
-type Stages = ([Unit], [Expanded], C.Program, BindingPlan, [Obligation], [(Package, [String])], Either [Diagnostic] Plan)
+type Stages = ([Unit], [Expanded], C.Program, BindingPlan, ([Obligation], [Analysis.Row]), [(Package, [String])], Either [Diagnostic] Plan)
 
 stages :: Project -> [Package] -> [Source] -> Int -> Generation -> NativeRequest -> Maybe V.Verification -> Either Value Stages
 stages project packages sources bits settings native verification =
@@ -243,15 +352,27 @@ stagesWithInput canonical capture project packages sources bits settings native 
       Left ds -> Left (failure (versionedDiagnostics described ds))
       Right core -> case resolveNativeRequest core native of
         Left message -> Left (failure [Diagnostic "native-binding" message Nothing])
-        Right bindings -> case maybe dischargeEvidence dischargeEvidenceWith verification core of
+        Right bindings -> case dischargeReporting verification core of
           Left ds -> Left (failure ds)
-          Right evidence -> Right ((us, es, core, bindings, evidence, described, maybe planTesting planTestingWith verification core),syntax)
+          Right evidence -> case elaborateClaims bits us core <* proofSettings us of
+            Left ds -> Left (failure ds)
+            -- The laws about each function, checked together, by default
+            -- whenever proof or exhaustive checking is selected.
+            Right claims -> let rows = Analysis.analyse core claims in
+              -- Laws about a model's runs, checked over its reference by an
+              -- explicit-state search when proof, exhaustive or model
+              -- checking is selected.
+              let checking = maybe True (\config -> any (V.selected config) [V.Proof, V.Exhaustive, V.Model]) verification in
+              case (++) <$> modelLawEvidence checking us core <*> historyLawEvidence checking us core of
+                Left ds -> Left (failure ds)
+                Right modelEvidence ->
+                  Right ((us, es, core, bindings, (evidence ++ modelEvidence, rows), described, maybe planTesting planTestingWith verification core),syntax)
 
 -- | The request without the fields that only select a method, target or layout.
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "attestedOutcomes"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"])))
   _ -> BC.unpack bytes
 
 -- | Two entries: each holds a whole compiled program and its plan.

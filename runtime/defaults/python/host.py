@@ -17,9 +17,9 @@ class FileSystemHandler:
     def readBytes(self, value0: _builtins.str) -> _schema.Maybe[_builtins.bytes]:
         try:
             with open(value0, "rb") as file:
-                return _schema.Just(file.read())
+                return _schema.Present(file.read())
         except (OSError, ValueError):
-            return _schema.Nothing()
+            return _schema.Absent()
 
     def writeBytes(self, value0: _builtins.str, value1: _builtins.bytes) -> None:
         with open(value0, "wb") as file:
@@ -58,7 +58,7 @@ class EnvironmentHandler:
 
     def environmentVariable(self, value0: _builtins.str) -> _schema.Maybe[_builtins.str]:
         value = _os.environ.get(value0) if valid_name(value0) else None
-        return _schema.Nothing() if value is None else _schema.Just(value)
+        return _schema.Absent() if value is None else _schema.Present(value)
 
     def environmentSnapshot(self) -> _builtins.str:
         return _ls.acquire_resource("environment")

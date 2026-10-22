@@ -28,8 +28,8 @@ test_canonicalMatchers = describe "canonical matchers" $ do
       verify "not (Pending matches Shipped record{})"
       verify "not (Shipped record{id = 1, carrier = \"post\"} matches Shipped record{id = 2})"
     it ("checks recursive, tuple and wildcard patterns at " ++ show bits ++ " bits") $ do
-      verify "[Just (1, true)] matches Cons (Just (1, #any)) Nil"
-      verify "not ([Just (1, true)] matches Cons (Just (2, _)) Nil)"
+      verify "[Present (1, true)] matches Cons (Present (1, #any)) Nil"
+      verify "not ([Present (1, true)] matches Cons (Present (2, _)) Nil)"
       verify "record{answer = true, count = 1} matches record{answer = true}"
     it ("preserves literal and regular expression matching at " ++ show bits ++ " bits") $ do
       verify "true matches true"

@@ -55,8 +55,8 @@ with_items(value(_, [Id]), Kind, Operation, R) :-
 operate(offer(Item), Items, absence('Unit')) :- py_call(Items:append(Item)).
 operate(poll, Items, R) :-
     py_call(builtins:len(Items), Count),
-    ( Count =:= 0 -> R = value('Maybe::Nothing', [])
-    ; py_call(Items:popleft(), Value), R = value('Maybe::Just', [Value])
+    ( Count =:= 0 -> R = value('Maybe::Absent', [])
+    ; py_call(Items:popleft(), Value), R = value('Maybe::Present', [Value])
     ).
 operate(size, Items, Count) :- py_call(builtins:len(Items), Count).
 operate(tag(Item), Items, R) :-
@@ -72,4 +72,4 @@ operate(store(Key, Entry), Items, R) :-
     py_call(Items:get(Key), Previous), py_call(Items:'__setitem__'(Key, Entry)), maybe(Previous, R).
 operate(fetch(Key), Items, R) :- py_call(Items:get(Key), Entry), maybe(Entry, R).
 operate(evict(Key), Items, R) :- py_call(Items:pop(Key, @(none)), Entry), maybe(Entry, R).
-maybe(Value, R) :- ( Value == @(none) -> R = value('Maybe::Nothing', []) ; R = value('Maybe::Just', [Value]) ).
+maybe(Value, R) :- ( Value == @(none) -> R = value('Maybe::Absent', []) ; R = value('Maybe::Present', [Value]) ).

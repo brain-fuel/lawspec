@@ -109,13 +109,13 @@ type Badge is a record{
     label :: (v :: Text where validName v)}
 end type
 
-function withId (body :: Pet) (key :: Int64) -> Pet is body with id = Just key end function
+function withId (body :: Pet) (key :: Int64) -> Pet is body with id = Present key end function
 
 function validPet (p :: Pet) -> Bool is p.name matches regex "[a-z]{2,8}" end function
 
 law "|an id is set by a record update| is
   definition :
-    for all (p :: Pet where validPet p) (key :: Int64) => (withId p key).id = Just key and (withId p key).name = p.name end for all
+    for all (p :: Pet where validPet p) (key :: Int64) => (withId p key).id = Present key and (withId p key).name = p.name end for all
   end definition
 end law
 

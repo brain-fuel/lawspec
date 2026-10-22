@@ -119,9 +119,33 @@ law tests. Omitting it preserves model declarations and public runtime APIs.
 With `verification.layers` containing `proof`, `proofTasks` returns optional
 `proofTasks` entries identified by owner, law, source location, checked-program
 fingerprint and machine width. A `ready` entry includes its SMT-LIB `script`,
-`taskFingerprint`, encoding version and trust boundary. An `unsupported` entry
-includes a reason. Mandatory definition validation runs before either result;
+`taskFingerprint`, encoding version and trust boundary. The encoding is
+`lawspec-smtlib-v1` for every task today; a task that needs a later feature
+will name `lawspec-smtlib-v2`. A `ready` entry also has a `counterexample`
+query, or `counterexampleUnsupported` with a reason. An `unsupported` entry
+includes a reason.
+
+To check a counterexample, send the same request with `proofCounterexamples`:
+each entry names a task by `owner`, `declaration` and `taskFingerprint`, and
+gives Z3's `get-value` answer as `values`. The response's
+`counterexampleChecks` says `refuted`, `model-not-confirmed` or `incomplete`
+for each, with a reason and the inputs it read. The compiler re-derives the
+query and re-checks the values itself. Mandatory definition validation runs before either result;
 an empty layer selection returns no tasks.
+
+The same response has `analysisTasks`: one entry per [law-set check](language/law-sets.md)
+the compiler left undecided, with `owner`, `declaration` and `stage`. A `ready`
+entry has `tasks`, each with a `fingerprint`, `encoding`, `script` and the
+`inputs` to ask Z3 for. An `unsupported` entry has a `reason`. To settle them,
+send the same request with `analysisResults`: each entry gives a task's
+`fingerprint`, Z3's `outcome` and, for `sat`, its `get-value` answer as
+`values`. The compiler confirms every input with the reference evaluator. The
+response's `analysisEvidence` holds the settled rows, and `analysisChecks`
+says `proved`, `refuted`, `exempted` or `incomplete` for each task.
+
+Two request fields decide whether a law-set exemption has expired:
+`projectVersion` (or `package.version`) and `now`, a UTC date-time. Neither
+changes the compiled result or its cache key.
 
 Prepared tasks are separate from completed proof evidence. Preparation uses a
 separate cache namespace and does not run the existing optional law prover.

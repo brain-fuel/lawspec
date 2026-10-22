@@ -12,16 +12,16 @@ defmodule Example.Mailboxes do
       clock = %Clock{now: fn -> %Instant{value: 0} end, sleep: fn %Duration{value: 10000000} ->
         JobsMailbox.send(box, job)
       end}
-      :nothing = JobsMailbox.receive_with_clock(box, 10000000, clock)
-      {:just, ^job} = JobsMailbox.receive_within(box, 0)
+      :absent = JobsMailbox.receive_with_clock(box, 10000000, clock)
+      {:present, ^job} = JobsMailbox.receive_within(box, 0)
       true = :beam_mailbox_probe.rejects(fn -> JobsMailbox.send(box, %Job{label: "bad", amount: 2147483648}) end)
       :ok = JobsMailbox.close(box)
       true = :beam_mailbox_probe.rejects(fn -> JobsMailbox.receive_value(box) end)
     end)
     NoticesMailbox.with_mailbox(fn box ->
       :ok = NoticesMailbox.send(box, :ok)
-      {:just, :ok} = NoticesMailbox.receive_within(box, 0)
-      :nothing = NoticesMailbox.receive_within(box, 0)
+      {:present, :ok} = NoticesMailbox.receive_within(box, 0)
+      :absent = NoticesMailbox.receive_within(box, 0)
     end)
     IdentitiesMailbox.with_mailbox(fn box ->
       identity = :lawspec_beam_scalar.new_symbol("job")
@@ -34,7 +34,7 @@ defmodule Example.Mailboxes do
       job = %Job{label: "remote", amount: 7}
       :ok = JobsMailbox.send_remote(sender, job)
       ^job = JobsMailbox.receive_value(box)
-      :nothing = JobsMailbox.receive_within(box, 1000)
+      :absent = JobsMailbox.receive_within(box, 1000)
       :ok = JobsMailbox.close(box)
       :beam_mailbox_probe.rejects(fn -> JobsMailbox.send_remote(sender, job) end)
     end)

@@ -60,8 +60,8 @@ def get(value0: _builtins.object, value1: int) -> _schema.Maybe[_builtins.int]:
     if not value0.open:
         raise RuntimeError("the store is closed")
     if value1 in value0.items:
-        return _schema.Just(value0.items[value1])
-    return _schema.Nothing()
+        return _schema.Present(value0.items[value1])
+    return _schema.Absent()
 
 
 # LawSpec argument 0: example.resources::type::Store
@@ -89,9 +89,9 @@ def writeNote(value0: str, value1: int) -> None:
 def readNote(value0: str) -> _schema.Maybe[_builtins.int]:
     path = os.path.join(value0, "note.txt")
     if not os.path.exists(path):
-        return _schema.Nothing()
+        return _schema.Absent()
     with open(path) as f:
-        return _schema.Just(int(f.read()))
+        return _schema.Present(int(f.read()))
 
 
 # LawSpec argument 0: Int32
@@ -113,7 +113,7 @@ def setGreeting(value0: int) -> None:
 # LawSpec result: Maybe (Int32)
 def greeting(value0: ls.Absence) -> _schema.Maybe[_builtins.int]:
     value = os.environ.get("LAWSPEC_EXAMPLE_GREETING")
-    return _schema.Nothing() if value is None else _schema.Just(int(value))
+    return _schema.Absent() if value is None else _schema.Present(int(value))
 
 
 class Pool:

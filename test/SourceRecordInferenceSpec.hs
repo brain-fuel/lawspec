@@ -67,8 +67,8 @@ test_recordInferencePreservesClosedShapes=describe "source record inference" $ d
     requirements `shouldBe` [S.Capability "Eq" shape]
     map S.requiredConversion (S.operands tree) `shouldBe` [Nothing,Nothing]
  it "contextualizes opposite literals including nested record and sum payloads" $ do
-  let left=literal [("inner",literal [("count",S.Number 1)]),("optional",S.ConstructLit "Nothing" [])]
-      right=literal [("optional",S.ConstructLit "Just" [S.BoolLit True]),
+  let left=literal [("inner",literal [("count",S.Number 1)]),("optional",S.ConstructLit "Absent" [])]
+      right=literal [("optional",S.ConstructLit "Present" [S.BoolLit True]),
         ("inner",literal [("count",S.ScalarLit (SInteger "UInt8" 1))])]
   typed [] (S.Binary "==" left right) `shouldSatisfy` isRight
  it "does not widen or narrow a whole existing product implicitly" $ do

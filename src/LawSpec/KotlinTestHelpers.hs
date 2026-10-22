@@ -46,8 +46,8 @@ generatorDocBounded boundsOf bits budget structural reference key = gen
       mapped (call "lawspecList" [gen inner,text "0..64"]) "_values"
         (runtime "list" [quoted (key ty),text "_values"])
     gen ty@(C.Constructor "Maybe" [C.TypeArgument inner]) = call "lawspecChoice"
-      [call "Arb.constant" [runtime "construct" [quoted (key ty),quoted "Maybe::Nothing",call "arrayOf" []]],
-       sumGen ty "Maybe::Just" inner]
+      [call "Arb.constant" [runtime "construct" [quoted (key ty),quoted "Maybe::Absent",call "arrayOf" []]],
+       sumGen ty "Maybe::Present" inner]
     gen ty@(C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) = call "lawspecChoice"
       [sumGen ty "Either::Left" a,sumGen ty "Either::Right" b]
     gen ty@(C.Constructor _ [C.TypeArgument inner]) = call "lawspecChoice"

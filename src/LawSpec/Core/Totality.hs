@@ -1,6 +1,6 @@
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, strictLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, auditDeferringWithTemplates, auditWithRecordInstances, strictLet, operationLet, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, when, forM_, foldM, forM)
@@ -13,6 +13,7 @@ import LawSpec.Common
 import LawSpec.Core (Id(..), Type(..), BinaryOp(..), LogicalOp(..))
 import LawSpec.Scalar (Scalar(..), exactValue, integerBounds, isInteger)
 import qualified LawSpec.Core.RefinementProof as R
+import LawSpec.Core.Semantics (helperValue, scalarEqual)
 import Data.Ratio (denominator)
 import qualified LawSpec.Core.PayloadPlan as P
 import qualified LawSpec.Core.RecordInstances as Records
@@ -941,7 +942,53 @@ predicate expression = case expression of
   -- A Boolean conditional is (c && a) || (not c && b).
   Conditional c a b -> predicate (Logical Or (Logical And c a) (Logical And (Negated c) b))
   Negated a -> R.Not <$> predicate a
+  Opaque name values | name `elem` textPredicates -> textPredicate name values
+  -- A typed scope assumes its domain facts: it claims they imply its body.
+  TypedDomain domains body -> do
+    assumed <- mapM predicate domains
+    claim <- predicate body
+    pure (if null assumed then claim else R.Any [R.Not (R.All assumed), claim])
+  -- Every item of a list built from known items: one claim per item, so
+  -- x in ["a", "b"] reads as x == "a" or x == "b".
+  AllElements value binder body | Just items <- finiteItems value ->
+    R.All <$> mapM (\item -> predicate (substituteProof (M.singleton binder item) body)) items
+  -- Equality with literal text or bytes is a propositional atom, decided
+  -- when both sides are literals. It never enters the arithmetic.
+  Comparison op a b | op `elem` [Equal, NotEqual], sequenceLiteral a || sequenceLiteral b, faithful a, faithful b ->
+    let equal = case (a, b) of
+          (Literal x, Literal y) -> R.Truth (scalarEqual x y)
+          _ -> R.Atom (Id ("::equal::" ++ show (sortOn show (map unwrapped [a, b]))))
+    in Just (if op == Equal then equal else R.Not equal)
   _ -> Nothing
+
+-- | The items of a list whose spine is known.
+finiteItems :: Proof -> Maybe [Proof]
+finiteItems expression = case expression of
+  ListNil -> Just []
+  ListCons first rest -> (first :) <$> finiteItems rest
+  _ -> Nothing
+
+sequenceLiteral :: Proof -> Bool
+sequenceLiteral (Literal (SSequence _ _)) = True
+sequenceLiteral _ = False
+
+-- | The text matchers (LawSpec.Matchers) the Core lowering keeps as atoms.
+textPredicates :: [String]
+textPredicates = ["startsWith", "endsWith", "textContains", "regexMatches"]
+
+-- | A text matcher is a pure Boolean function of its values: a propositional
+-- atom, never a number, so a guard or refinement that tests it is a fact
+-- about the same test, alone or joined with others. On literal values it is
+-- decided by the reference semantics every runtime matches.
+textPredicate :: String -> [Proof] -> Maybe R.Predicate
+textPredicate name values = case mapM literalValue values of
+  Just scalars | Right (SBool truth) <- helperValue 64 name scalars -> Just (R.Truth truth)
+  _ | all faithful values -> Just (R.Atom (Id ("::predicate::" ++ name ++ show (map unwrapped values))))
+    | otherwise -> Nothing
+  where
+    literalValue value = case value of
+      Literal scalar -> Just scalar
+      _ -> Nothing
 
 integral :: Proof -> Bool
 integral expression = case expression of
@@ -1155,6 +1202,31 @@ strictLet binder value body = case value of
   Variable _ -> substituted
   _ -> Match value [([], substituted)]
   where substituted = substituteProof (M.singleton binder value) body
+
+-- | let x = e in body, where e may be an ability operation's call. Its result
+-- is a value of its own: x names it, rather than standing for the opaque
+-- call. Past an operation's result check (LawSpec.OperationChecks), which
+-- lowers to a typed scope assuming the check, the body knows what the check
+-- established about x. Integer marks may wrap either layer.
+operationLet :: Bool -> Id -> Proof -> Proof -> Proof
+operationLet operation binder bound body = case checked bound of
+  Just (value, facts, result) ->
+    Match value [([], TypedDomain facts (substituteProof (M.singleton binder (Variable result)) body))]
+  Nothing | operation -> Match bound [([], body)]
+          | otherwise -> strictLet binder bound body
+  where
+    checked expression = case expression of
+      Integral inner -> checked inner
+      Match value [([], inner)] | Just (facts, result) <- scoped inner -> Just (value, facts, result)
+      _ -> Nothing
+    scoped expression = case expression of
+      Integral inner -> scoped inner
+      TypedDomain facts@(_ : _) value | Just result <- variable value -> Just (facts, result)
+      _ -> Nothing
+    variable expression = case expression of
+      Integral inner -> variable inner
+      Variable result -> Just result
+      _ -> Nothing
 
 -- | Capture-avoiding substitution is required even though ordinary compiler IDs
 -- are unique: independently supplied Core may reuse binder IDs across scopes.

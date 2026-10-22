@@ -113,9 +113,9 @@ contextualizeMappings unit=unit{S.functionDefinitions=map contextualize (S.funct
       S.Apply (S.Apply (S.Apply root (comparison inputType condition))
         (S.ListLit (map (annotation keyType) values))) (preimages inputType keyType rest)
     preimages _ _ body=body
-    inverse inputType keyType (S.Apply (S.Apply (S.Apply root condition) (S.ConstructLit "Maybe::Just" [key])) rest)=
+    inverse inputType keyType (S.Apply (S.Apply (S.Apply root condition) (S.ConstructLit "Maybe::Present" [key])) rest)=
       S.Apply (S.Apply (S.Apply root (comparison inputType condition))
-        (S.ConstructLit "Maybe::Just" [annotation keyType key])) (inverse inputType keyType rest)
+        (S.ConstructLit "Maybe::Present" [annotation keyType key])) (inverse inputType keyType rest)
     inverse _ _ body=body
 
 checkMappings :: S.Generation -> [S.Unit] -> C.Program

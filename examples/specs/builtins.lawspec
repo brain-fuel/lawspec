@@ -91,11 +91,11 @@ procedure remember (note :: Bytes) -> Maybe Bytes uses FileSystem is
 end procedure
 
 law "|a remembered note reads back| is
-  definition : for all (note :: Bytes) => remember note = Just note end for all end definition
+  definition : for all (note :: Bytes) => remember note = Present note end for all end definition
 end law
 
 law "|an empty environment has no variables| using emptyEnvironment is
-  definition : for all (name :: Text) => environmentVariable name = Nothing end for all end definition
+  definition : for all (name :: Text) => environmentVariable name = Absent end for all end definition
 end law
 
 listening :: Int32 -> Bool uses Ports
