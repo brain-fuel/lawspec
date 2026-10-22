@@ -155,7 +155,7 @@ contracts retain their own guarantees.
 
 Lists every obligation with its stage, identity, claim and reason, grouped by
 status. Completed evidence, `PLANNED`, `NOT VERIFIED`, `INCOMPLETE`,
-`UNSUPPORTED`, `ASSUMED / EXTERNAL` and `EXEMPTED` retain their distinct meanings, alongside
+`UNSUPPORTED`, `ASSUMED / EXTERNAL`, `EXEMPTED` and `PENDING` retain their distinct meanings, alongside
 the harness plane's `KNOWN FAILING`, `FLAKY` and `SKIPPED`. A `HARNESS` section
 follows: for each
 law with a [harness](language/harness.md), how it is tested (strategies,

@@ -42,6 +42,13 @@ reason and the expiry, for example `until 1.2.0 (project is 1.1.4)`. The
 build does not fail. Once the exemption expires, the check is `REFUTED` with
 the same counterexample, and the build fails.
 
+## Pending laws
+
+`PENDING` (`pending`) is a law about an open history (see
+[laws about histories](models.md#laws-about-histories)) that the entries so
+far do not decide: some continuations keep it and some break it. It is not
+evidence, and not a failure; the reason says whether it holds so far.
+
 ## Harness statuses
 
 A law's [harness](harness.md) decides how its tests run, never what the law

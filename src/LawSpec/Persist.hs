@@ -58,5 +58,6 @@ instance Binary S.Proving
 instance Binary S.RunFormula
 instance Binary S.TemporalProperty
 instance Binary S.ModelLaw
+instance Binary S.HistoryLaw
 instance Binary S.HarnessPlan
 instance Binary S.HarnessWitness

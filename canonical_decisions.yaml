@@ -808,3 +808,13 @@ DEC-model-induction:
   opened: 0.26.0
   decided: 0.26.0
   refs: [z3, gpvw-ltl]
+
+DEC-history-checking:
+  status: decided
+  question: |
+    How are laws about an observed history checked, keeping an invariant, a bounded history property and an unbounded future requirement apart?
+  answer: |
+    Gate 5 increment 12 (portfolio 13.5). A law in history h judges the entries a checked definition taking Unit gives, in order, with atoms that are predicates of one entry. The complete history holds P treats the history as closed (the run stays at its last entry), so the law is proved or refuted. The history so far holds P is three-valued, as LTL3 is (Bauer, Leucker and Schallhart): the compiler reads the prefix through the generalized Büchi automata of P and of not P (the increment 10 tableau) and asks whether any continuation can still satisfy each; proved when no continuation breaks P, refuted at the first entry after which none keeps it, and pending otherwise, with a new evidence status, pending, that is neither evidence nor failure (its reason says whether P holds so far). A deadline (whenever P, Q within d) reads each entry's time from its field at and is refuted as soon as an entry is observed past the deadline with no Q before it. An invariant is a model law (every run), a bounded history property is judged over a complete history, and an unbounded future requirement stays pending while the history is open. The API schema stays 5: pending is one more status value. Trust boundary: the reference evaluator and the automata.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [gpvw-ltl, bauer-leucker-schallhart-ltl3]

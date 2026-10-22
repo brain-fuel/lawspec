@@ -61,7 +61,7 @@
       }
     },
     {
-      "match": "\\b(every[ \\t]+run[ \\t]+holds|some[ \\t]+run[ \\t]+holds|assuming(?:[ \\t]+strong)?[ \\t]+fairness[ \\t]+for|in[ \\t]+model|always|eventually|whenever|never|before|until|within)\\b",
+      "match": "\\b(every[ \\t]+run[ \\t]+holds|some[ \\t]+run[ \\t]+holds|assuming(?:[ \\t]+strong)?[ \\t]+fairness[ \\t]+for|in[ \\t]+model|in[ \\t]+history|the[ \\t]+complete[ \\t]+history[ \\t]+holds|the[ \\t]+history[ \\t]+so[ \\t]+far[ \\t]+holds|always|eventually|whenever|never|before|until|within)\\b",
       "name": "keyword.other.temporal.lawspec"
     },
     {

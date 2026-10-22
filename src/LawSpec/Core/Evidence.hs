@@ -30,7 +30,7 @@ import qualified LawSpec.Core.Program as P
 -- Exempted is a law-set check a `laws for` block excuses, with a reason and
 -- maybe an expiry: weaker than assumed, it keeps its counterexample.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
-  | Exempted | Refuted | KnownFailing | Flaky | Skipped | Planned | NotVerified | Incomplete | Unsupported
+  | Exempted | Refuted | KnownFailing | Flaky | Skipped | Pending | Planned | NotVerified | Incomplete | Unsupported
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 -- | Every status, in order of strength, for reports that list them all.
@@ -53,6 +53,7 @@ statusName Exempted = "exempted"
 statusName KnownFailing = "known-failing"
 statusName Flaky = "flaky"
 statusName Skipped = "skipped"
+statusName Pending = "pending"
 statusName Planned = "planned"
 statusName NotVerified = "not-verified"
 statusName Incomplete = "incomplete"

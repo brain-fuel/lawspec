@@ -354,6 +354,7 @@ extra-source-files:
     test/fixtures/eq-set-foundation.lawspec
     test/fixtures/eq-set-operations-library.lawspec
     test/fixtures/eq-set-operations.lawspec
+    test/fixtures/history-revocation.lawspec
     test/fixtures/law-sets.lawspec
     test/fixtures/list_contracts.lawspec
     test/fixtures/model-counters.lawspec

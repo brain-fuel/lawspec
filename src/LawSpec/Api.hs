@@ -28,7 +28,7 @@ import LawSpec.Discharge (dischargeReporting, refutations, bindingEvidence, defa
 import qualified LawSpec.Core.Counterexample as Counterexample
 import qualified LawSpec.Core.LawAnalysis as Analysis
 import LawSpec.ProofSettings (proofSettings)
-import LawSpec.ModelLaws (modelLawEvidence, ModelRun(..))
+import LawSpec.ModelLaws (modelLawEvidence, historyLawEvidence, ModelRun(..))
 import qualified LawSpec.ModelProof as ModelProof
 import LawSpec.LawClaims (elaborateClaims, Expiry(..), analysisEvidence, analysisTaskViews, settleAnalysis)
 import qualified LawSpec.Core.LawTasks as Tasks
@@ -362,7 +362,8 @@ stagesWithInput canonical capture project packages sources bits settings native 
               -- Laws about a model's runs, checked over its reference by an
               -- explicit-state search when proof, exhaustive or model
               -- checking is selected.
-              case modelLawEvidence (maybe True (\config -> any (V.selected config) [V.Proof, V.Exhaustive, V.Model]) verification) us core of
+              let checking = maybe True (\config -> any (V.selected config) [V.Proof, V.Exhaustive, V.Model]) verification in
+              case (++) <$> modelLawEvidence checking us core <*> historyLawEvidence checking us core of
                 Left ds -> Left (failure ds)
                 Right modelEvidence ->
                   Right ((us, es, core, bindings, (evidence ++ modelEvidence, rows), described, maybe planTesting planTestingWith verification core),syntax)

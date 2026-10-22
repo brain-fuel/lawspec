@@ -9,6 +9,7 @@
 -- ref:DEC-model-checking
 module LawSpec.Core.ModelCheck
   ( Formula(..), System(..), Fairness(..), Outcome(..), negation, search
+  , Verdict(..), judge
   ) where
 
 import Data.List (foldl', nub, sortOn)
@@ -263,3 +264,58 @@ pathTo edges starts targets = go [(s, []) | s <- starts] (S.fromList starts)
           let next = [ (t, (t, shown) : path) | ((_, shown), t) <- sortOn (fst . fst) (M.findWithDefault [] k edges), t `S.notMember` seen ]
               seen' = foldl' (\s (t, _) -> S.insert t s) seen next
           in go (queue ++ next) seen'
+
+-- | A history's verdict: it holds (whatever comes next, for an open
+-- history), it breaks at an entry, or (open histories only) what comes
+-- next decides.
+data Verdict = Holds | Breaks Int | Open deriving (Eq, Show)
+
+-- | Judge a formula over a finite history of n entries, as LTL3 does (Bauer,
+-- Leucker and Schallhart): an open history holds when no continuation can
+-- break the formula, breaks when none can keep it, and is open otherwise; a
+-- complete history ends, staying in its last entry. The entry where it
+-- breaks is the first prefix no continuation can satisfy.
+judge :: Bool -> Formula -> Int -> (String -> Int -> Either String Bool) -> Either String Verdict
+judge complete formula n holds
+  | n <= 0 = Right Holds
+  | otherwise = do
+      firstBreak <- earliest formula
+      if complete
+        then do
+          let system = System [0] (\i -> Right [("", "next", i + 1) | i + 1 < n]) (\a i -> holds a i) show
+          outcome <- search (max 1000 (4 * n)) system [] (negation formula)
+          pure $ case outcome of
+            NoRun _ -> Holds
+            _ -> Breaks (maybe (n - 1) id firstBreak)
+        else do
+          satisfied <- earliest (negation formula)
+          pure $ case (firstBreak, satisfied) of
+            (Just i, _) -> Breaks i
+            (Nothing, Just _) -> Holds
+            _ -> Open
+  where
+    -- The first prefix after which no continuation satisfies f.
+    earliest f = do
+      let (nodes, initials) = tableau f
+          table = M.fromList nodes
+          literals node = [(a, True) | FAtom a <- S.toList (nodeOld node)] ++ [(a, False) | FNotAtom a <- S.toList (nodeOld node)]
+          fits i q = and <$> mapM (\(a, want) -> (== want) <$> holds a i) (literals (table M.! q))
+          next q = [j | (j, node) <- nodes, q `S.member` nodeIncoming node]
+          accepting = acceptance f nodes
+          keyed = [(("", q), [(("", ""), ("", j)) | j <- next q]) | (q, _) <- nodes]
+          edges = M.fromList keyed
+          fairSets = [component | component <- sccs (map fst keyed) edges, Just component' <- [fairComponent accepting edges (\_ _ -> False) [] component], component' == component]
+          goodNodes = S.fromList [q | component <- fairSets, (_, q) <- S.toList component]
+          live = backwards goodNodes
+          backwards good = let more = S.fromList [q | (q, _) <- nodes, any (`S.member` good) (next q)]
+                               grown = S.union good more
+                           in if S.size grown == S.size good then good else backwards grown
+          step i reached = fmap concat (mapM (\q -> filterM' (fits i) (next q)) reached)
+          go i reached
+            | i >= n = Right Nothing
+            | otherwise = do
+                here <- if i == 0 then filterM' (fits 0) initials else step i reached
+                let alive = nub here
+                if not (any (`S.member` live) alive) then Right (Just i) else go (i + 1) alive
+      go 0 []
+    filterM' p xs = fmap (map fst . filter snd) (mapM (\x -> (\b -> (x, b)) <$> p x) xs)

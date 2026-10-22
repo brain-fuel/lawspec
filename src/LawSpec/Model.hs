@@ -175,7 +175,18 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   -- the laws that hold one of a model (law n in model m ... is). Checked by
   -- LawSpec.Core.ModelCheck, apart from the unit's ordinary laws.
   , temporalProperties :: [TemporalProperty]
-  , modelLaws :: [ModelLaw] } deriving (Eq, Show, Generic)
+  , modelLaws :: [ModelLaw]
+  -- Laws about an observed history (law n in history h ... is): checked
+  -- with three values, since an open history may not decide yet.
+  , historyLaws :: [HistoryLaw] } deriving (Eq, Show, Generic)
+
+-- | law name in history h is definition: the complete history holds P
+--   (or: the history so far holds P) end definition end law. h is a checked
+--   definition taking Unit and giving the entries in order.
+data HistoryLaw = HistoryLaw
+  { historyLawName :: String, historySource :: String, historyComplete :: Bool
+  , historyFormula :: RunFormula, historySpan :: Span }
+  deriving (Eq, Show, Generic)
 
 -- | A claim about a model's runs, in plain words: always, eventually,
 -- whenever P, Q, never P before Q, until, implies, and, or, not, and a

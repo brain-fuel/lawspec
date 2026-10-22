@@ -534,3 +534,7 @@ lichtenstein-pnueli-fairness:
   kind: paper
   title: "Orna Lichtenstein and Amir Pnueli, Checking That Finite State Concurrent Programs Satisfy Their Linear Specification, POPL 1985"
   locator: https://doi.org/10.1145/318593.318622
+bauer-leucker-schallhart-ltl3:
+  kind: paper
+  title: "Andreas Bauer, Martin Leucker and Christian Schallhart, Runtime Verification for LTL and TLTL, ACM TOSEM 20(4), 2011"
+  locator: https://doi.org/10.1145/2000799.2000800

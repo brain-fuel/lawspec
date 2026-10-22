@@ -2249,7 +2249,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
   | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration | HandlerSetMember HandlerSet
   | ClaimsMember LawClaims
-  | TemporalPropertyMember TemporalProperty | ModelLawMember ModelLaw
+  | TemporalPropertyMember TemporalProperty | ModelLawMember ModelLaw | HistoryLawMember HistoryLaw
 
 memberSyntax :: UnitMember -> (String,Maybe String)
 memberSyntax member = ("declaration." ++ kind,name)
@@ -2279,6 +2279,7 @@ memberSyntax member = ("declaration." ++ kind,name)
       ClaimsMember c -> ("laws-for",Just (claimsFunction c))
       TemporalPropertyMember t -> ("property",Just (temporalName t))
       ModelLawMember l -> ("law",Just (modelLawName l))
+      HistoryLawMember l -> ("law",Just (historyLawName l))
 
 -- | laws for f are ... end laws. Each line is a claim (complete over c,
 -- without overlap, without conflict) or an exemption with its reason:
@@ -2444,6 +2445,7 @@ unitP = blockP "unit" $ do
     -- property name is ... end property, and laws that hold one of a model.
     <|> (TemporalPropertyMember <$> (try (lookAhead (keyword "property")) *> temporalPropertyP))
     <|> (ModelLawMember <$> (try (lookAhead (keyword "law" *> lawNameP *> keyword "in" *> keyword "model")) *> modelLawP))
+    <|> (HistoryLawMember <$> (try (lookAhead (keyword "law" *> lawNameP *> keyword "in" *> keyword "history")) *> historyLawP))
     -- harness name for unit is ... end (LawSpec.Harness).
     <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
     <|> (MappingMember <$> mappingP n)
@@ -2475,7 +2477,7 @@ unitP = blockP "unit" $ do
     [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
     (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members]
     [s | HandlerSetMember s <- members] [c | ClaimsMember c <- members]
-    [t | TemporalPropertyMember t <- members] [l | ModelLawMember l <- members], imports, [f | FamilyMember f <- members],
+    [t | TemporalPropertyMember t <- members] [l | ModelLawMember l <- members] [l | HistoryLawMember l <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
@@ -3148,3 +3150,23 @@ runPrimaryP = do
     case d of
       ConstructLit "Duration" [Number micros] -> pure (TemporalWithin base micros)
       _ -> fail "within takes a duration, such as 24h"
+
+-- | law name in history h is definition: the complete history holds P
+--   end definition end law, or the history so far holds P.
+historyLawP :: P HistoryLaw
+historyLawP = sourceNode "law" (Just . historyLawName) $ blockP "law" $ do
+  ((name, source, complete, formula), range) <- withSpan $ do
+    keyword "law"
+    name <- lawNameP
+    keyword "in" *> keyword "history"
+    source <- ident
+    keyword "is"
+    (complete, formula) <- block "definition" $ do
+      keyword "the"
+      complete <- (True <$ (keyword "complete" *> keyword "history")) <|> (False <$ (keyword "history" *> keyword "so" *> keyword "far"))
+      keyword "holds"
+      formula <- runP
+      pure (complete, formula)
+    pure (name, source, complete, formula)
+  closeP "law"
+  pure (HistoryLaw name source complete formula range)

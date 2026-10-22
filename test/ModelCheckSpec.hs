@@ -157,6 +157,19 @@ test_modelChecking = describe "model checking" $ do
       of_ "counts never go negative" `shouldSatisfy` any (\(s, why) -> s == "proved" && "by induction" `isInfixOf` why)
       of_ "a loose count never goes negative" `shouldBe` [("refuted", "a run breaks it: slip; Z3 found it and the evaluator replays it")]
       of_ "the first never goes negative" `shouldSatisfy` any (\(s, why) -> s == "proved" && "Spacer proposed and plain queries re-checked" `isInfixOf` why)
+  describe "portfolio 13.5, histories with three values" $ do
+    response <- runIO (check <$> readFile "test/fixtures/history-revocation.lawspec")
+    it "proves an invariant of a complete snapshot" $
+      row "no use after revocation, yesterday" response `shouldBe` Just ("proved", "the complete history holds it: all 4 entries checked")
+    it "reports a bounded history property and an unbounded future requirement as pending, apart" $ do
+      row "no use after revocation, today" response
+        `shouldBe` Just ("pending", "pending: the 2 entries so far do not decide it; it holds so far, and what comes next may still break it")
+      row "revoked sessions sign out, today" response
+        `shouldBe` Just ("pending", "pending: the 2 entries so far do not decide it; it does not hold yet, and what comes next may make it hold")
+    it "refutes a deadline as soon as observed time passes it, and a broken invariant" $ do
+      row "revoked sessions sign out within an hour" response
+        `shouldBe` Just ("refuted", "the history so far breaks it at entry 3 of 3, when the 1h deadline passes, observed at 2h")
+      row "no use after revocation, incident" response `shouldBe` Just ("refuted", "the history so far breaks it at entry 3 of 3")
   it "refutes a some-run law no run holds, after exploring every state" $
     row "it never ends" (check (toggle "law \"|it never ends| in model box is\n  definition: some run holds always (isOne and not isOne) end definition\nend law\n"))
       `shouldBe` Just ("refuted", "no run holds it: all 3 states explored")

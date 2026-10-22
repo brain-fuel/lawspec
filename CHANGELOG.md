@@ -8,6 +8,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Laws about observed histories: `law n in history h is definition: the
+  complete history holds P` (closed: proved or refuted) or `the history so far
+  holds P` (open: proved, refuted, or the new status `pending` while what
+  comes next decides). A deadline is refuted as soon as an entry is observed
+  past it.
 - Model laws with deadlines (`whenever P, Q within 24h`) in whole
   microsecond ticks, through the model's `wait` command when it has one; a
   missed deadline is refuted with the run and the time waited. For models

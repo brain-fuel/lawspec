@@ -190,6 +190,40 @@ law of the form `every run holds always P`, `lawspec prove` then asks Z3:
   refuted with that run.
 
 
+## Laws about histories
+
+A law can also judge an observed history: entries in order, from a checked
+definition that takes `Unit`. Atoms are predicates of one entry.
+
+```lawspec fragment
+law "|nothing used after revocation| in history today is
+  definition: the history so far holds whenever isRevoked, always not isUse
+  end definition
+end law
+```
+
+`the complete history holds P` says the history is closed: nothing more
+happens, and the law is proved or refuted. `the history so far holds P` says
+more may come, so the law has three outcomes, as in LTL3 (Bauer, Leucker and
+Schallhart):
+
+| Status | When |
+| --- | --- |
+| `proved` | No continuation could break it |
+| `refuted` | No continuation could keep it; the reason names the entry where it broke |
+| `pending` | What comes next decides; the reason says whether it holds so far |
+
+A deadline, `whenever P, Q within d`, reads each entry's time from its field
+`at`, a `Duration`. It is refuted as soon as an entry is observed past the
+deadline with no `Q` before it.
+
+An invariant of a model (`every run holds always P`), a property of a bounded
+history, and a requirement on the unbounded future are different claims, and
+their evidence says which: a model law covers every run; a complete history
+covers its entries; an open history is `pending` while the future decides.
+
+## What LawSpec checks
+
 **In sequence.**
 - LawSpec generates runs of up to 20 commands by simulating the model, so
   every step is allowed by typestate, its precondition and its reference.

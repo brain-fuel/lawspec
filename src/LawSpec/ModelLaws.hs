@@ -5,7 +5,7 @@
 -- explicit-state checker (LawSpec.Core.ModelCheck) explores every reachable
 -- state, so a result is the model's, never a native implementation's.
 -- ref:DEC-model-checking
-module LawSpec.ModelLaws (modelLawEvidence, ModelRun(..), formulaOf, expandFormula, predicateOf, systemOf) where
+module LawSpec.ModelLaws (modelLawEvidence, historyLawEvidence, ModelRun(..), formulaOf, expandFormula, predicateOf, systemOf) where
 
 import Control.Monad (forM, unless, when)
 import Data.List (intercalate)
@@ -16,7 +16,7 @@ import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import qualified LawSpec.Core.LawAnalysis as A
 import LawSpec.Core.Machine (Machine(..), MachineStart(..), Command(..), admits, shifted)
 import LawSpec.Core.ModelCheck
-import LawSpec.Core.Value (Value(..))
+import LawSpec.Core.Value (Value(..), listItems)
 import LawSpec.Scalar (Scalar(..))
 import qualified LawSpec.Model as S
 
@@ -316,3 +316,100 @@ mergeWaits steps = go steps
     parseDuration text = let (digits, unit) = span (`elem` ("0123456789" :: String)) text
                          in if null digits then Nothing else (* read digits) <$> lookup unit
                               [("h", 3600000000), ("min", 60000000), ("s", 1000000), ("ms", 1000), ("us", 1)]
+
+-- | Laws about an observed history: its entries, in order, from a checked
+-- definition taking Unit. A complete history ends there; an open one may go
+-- on, so a law about it holds, breaks, or is pending. A deadline (whenever
+-- P, Q within d) reads each entry's time from its field at, and breaks as
+-- soon as an entry is observed past it. ref:DEC-history-checking
+historyLawEvidence :: Bool -> [S.Unit] -> C.Program -> Either [Diagnostic] [Obligation]
+historyLawEvidence ran units program = fmap concat $ forM units $ \u -> do
+  let properties = concatMap S.temporalProperties units
+  forM (S.historyLaws u) $ \law -> do
+    let unitId = C.Id (S.unitName u)
+        lawId = C.Id (S.unitName u ++ "::law::" ++ S.historyLawName law)
+        at = Just (spanStart (S.historySpan law))
+        problem message = Left [Diagnostic "history-law" (S.historyLawName law ++ ": " ++ message) at]
+        obligation status reason = Obligation unitId lawId "law" Nothing status reason
+        atom = predicateOf (S.unitName u) program
+        what = if S.historyComplete law then "the complete history" else "the history so far"
+    source <- case [ d | cu <- C.programUnits program, C.idText (C.unitId cu) == S.unitName u, d <- C.unitDefinitions cu
+                       , C.declarationName (C.definitionDeclaration d) == S.historySource law ] of
+      d : _ | [_] <- C.definitionArguments d -> Right d
+      _ -> problem ("the unit has no checked definition " ++ S.historySource law ++ " taking Unit")
+    expanded <- either problem Right (expandFormula properties (S.historyFormula law))
+    if not ran then pure (obligation NotVerified "no law verification layers selected") else do
+      let judged = do
+            ctx <- A.context program
+            let evaluate d values = A.contextEvaluate ctx (zip (map C.binderId (C.definitionArguments d)) values)
+                  (C.Expr (snd (C.functionType (C.declarationType (C.definitionDeclaration d))))
+                     (C.ExternalCall (C.declarationId (C.definitionDeclaration d))
+                        [C.Expr (C.binderType b) (C.Local (C.binderId b)) (C.GeneratedFrom (C.Id "history")) | b <- C.definitionArguments d])
+                     (C.GeneratedFrom (C.Id "history")))
+                definitionOf name = case [d | cu <- C.programUnits program, d <- C.unitDefinitions cu, C.idText (C.declarationId (C.definitionDeclaration d)) == name] of
+                  d : _ -> Right d
+                  [] -> Left ("no predicate " ++ name)
+            entries <- evaluate source [ScalarValue (SAbsent "Unit")] >>= listItems
+            let n = length entries
+                holds name i = do
+                  d <- definitionOf name
+                  (== ScalarValue (SBool True)) <$> evaluate d [entries !! i]
+                truth f i = case f of
+                  S.TemporalAtom name _ -> atom name >>= \resolved -> holds resolved i
+                  S.TemporalNot a -> not <$> truth a i
+                  S.TemporalAnd a b -> (&&) <$> truth a i <*> truth b i
+                  S.TemporalOr a b -> (||) <$> truth a i <*> truth b i
+                  S.TemporalImplies a b -> (\x y -> not x || y) <$> truth a i <*> truth b i
+                  _ -> Left "a deadline relates conditions on one entry"
+            case expanded of
+              S.TemporalWhenever p (S.TemporalWithin q d) -> do
+                times <- mapM (timeOf program) entries
+                verdict <- deadline (truth p) (truth q) d times
+                pure (verdict, n, case verdict of
+                  Breaks i -> Just (" when the " ++ duration d ++ " deadline passes, observed at " ++ duration (times !! i))
+                  _ -> Nothing)
+              _ -> do
+                formula <- toFormula atom expanded
+                verdict <- judge (S.historyComplete law) formula n holds
+                -- An open history's pending law: does it hold as far as it goes?
+                sofar <- if verdict == Open then (== Holds) <$> judge True formula n holds else pure False
+                pure (verdict, n, if verdict == Open then Just (if sofar then "it holds so far, and what comes next may still break it"
+                                                                 else "it does not hold yet, and what comes next may make it hold") else Nothing)
+          deadline p q d times = go 0 Nothing
+            where
+              go i pending
+                | i >= length times = Right (case pending of
+                    Just _ | S.historyComplete law -> Breaks (length times - 1)
+                    Just _ -> Open
+                    Nothing -> Holds)
+                | otherwise = do
+                    answered <- q i
+                    triggered <- p i
+                    case pending of
+                      Just t0 | not answered && times !! i - t0 > d -> Right (Breaks i)
+                      _ -> go (i + 1) (if answered then Nothing else case pending of
+                             Just t0 -> Just t0
+                             Nothing -> if triggered then Just (times !! i) else Nothing)
+      pure $ case judged of
+        Left why -> obligation Unsupported why
+        Right (Holds, n, _)
+          | S.historyComplete law -> obligation Proved ("the complete history holds it: all " ++ show n ++ " entries checked")
+          | otherwise -> obligation Proved ("the history so far holds it, whatever comes next: " ++ show n ++ " entries")
+        Right (Breaks i, n, detail) -> obligation Refuted (what ++ " breaks it at entry " ++ show (i + 1) ++ " of " ++ show n ++ maybe "" ("," ++) detail)
+        Right (Open, n, detail) -> obligation Pending ("pending: the " ++ show n ++ " entries so far do not decide it; " ++ maybe "" id detail)
+
+-- | An entry's observed time, in microseconds: its field at, a Duration or
+-- an integer.
+timeOf :: C.Program -> Value -> Either String Integer
+timeOf program entry = case entry of
+  DataValue (C.Constructor name _) tag fields
+    | d : _ <- [d | d <- C.programDataDeclarations program, C.idText (C.dataId d) == name]
+    , c : _ <- [c | c <- C.dataConstructors d, C.constructorId c == tag]
+    , Just i <- lookup "at" (zip (map C.binderName (C.constructorFields c)) [0 ..])
+    , i < length fields -> micros (fields !! i)
+  _ -> Left "a deadline needs each entry's time, in a field named at"
+  where
+    micros v = case v of
+      ScalarValue (SInteger _ n) -> Right n
+      DataValue _ _ [inner] -> micros inner
+      _ -> Left "an entry's at is not a Duration"

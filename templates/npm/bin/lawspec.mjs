@@ -912,6 +912,8 @@ async function main() {
     ["known-failing", "KNOWN FAILING"],
     ["flaky", "FLAKY"],
     ["skipped", "SKIPPED"],
+    // A law about an open history that the entries so far do not decide.
+    ["pending", "PENDING"],
     ["planned", "PLANNED"],
     ["not-verified", "NOT VERIFIED"],
     ["incomplete", "INCOMPLETE"],

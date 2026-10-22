@@ -430,6 +430,7 @@ export type DischargeStatus =
     'known-failing' |
     'flaky' |
     'skipped' |
+    'pending' |
     'proved' |
     'exhaustively-checked' |
     'property-tested' |
