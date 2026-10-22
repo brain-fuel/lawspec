@@ -18,7 +18,8 @@ module LawSpec.Core.Counterexample
   ( CounterexampleCheck(..), checkStatus, validateCounterexample, readValues, valueOf, SExpression
   ) where
 
-import Data.Char (isDigit, isSpace)
+import Data.Char (isDigit, isHexDigit, isSpace)
+import Numeric (readHex)
 import Data.List (isPrefixOf)
 import LawSpec.Core
 import LawSpec.Common (Generation(..), Quantification(..))
@@ -121,6 +122,8 @@ valueOf types ty term = case (ty, term) of
   (Constructor "Bool" [], Atom "true") -> Right (ScalarValue (SBool True))
   (Constructor "Bool" [], Atom "false") -> Right (ScalarValue (SBool False))
   (Constructor "Unit" [], _) -> Right (ScalarValue (SAbsent "Unit"))
+  (Constructor "Text" [], Atom ('"' : quoted)) | not (null quoted), last quoted == '"', Just units <- stringUnits (init quoted) ->
+    Right (ScalarValue (SSequence "Text" units))
   (Constructor name [], _) | isInteger name, Just n <- integerTerm term -> Right (ScalarValue (SInteger name n))
   _ -> Left ("Z3's value " ++ render term ++ " cannot be read back as " ++ show ty)
   where
@@ -147,9 +150,28 @@ tokens :: String -> [String]
 tokens text = case dropWhile isSpace text of
   [] -> []
   '|' : rest -> let (symbol, more) = break (== '|') rest in ('|' : symbol ++ "|") : tokens (drop 1 more)
+  -- A string literal, where "" is a quote inside it.
+  '"' : rest -> let (literal, more) = stringLiteral rest in ('"' : literal ++ "\"") : tokens more
   '(' : rest -> "(" : tokens rest
   ')' : rest -> ")" : tokens rest
   rest -> let (atom, more) = break (\c -> isSpace c || c == '(' || c == ')') rest in atom : tokens more
+
+stringLiteral :: String -> (String, String)
+stringLiteral text = case text of
+  '"' : '"' : rest -> let (literal, more) = stringLiteral rest in ('"' : '"' : literal, more)
+  '"' : rest -> ("", rest)
+  c : rest -> let (literal, more) = stringLiteral rest in (c : literal, more)
+  [] -> ("", "")
+
+-- | An SMT string literal's code points: "" is a quote and \u{...} a code
+-- point, as Z3 prints them.
+stringUnits :: String -> Maybe [Int]
+stringUnits text = case text of
+  [] -> Just []
+  '"' : '"' : rest -> (34 :) <$> stringUnits rest
+  '\\' : 'u' : '{' : rest | (digits, '}' : more) <- span isHexDigit rest, not (null digits), length digits <= 5 ->
+    (fst (head (readHex digits)) :) <$> stringUnits more
+  c : rest -> (fromEnum c :) <$> stringUnits rest
 
 parse :: [String] -> Maybe (SExpression, [String])
 parse ("(" : rest) = go [] rest

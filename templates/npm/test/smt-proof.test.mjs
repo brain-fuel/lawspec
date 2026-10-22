@@ -252,6 +252,18 @@ test('an induction case whose model the law survives says the hypothesis is too 
   } finally {await rm(directory,{recursive:true,force:true});}
 });
 
+test('text laws: proved over strings, and refuted with a text the evaluator confirms',requiresZ3,async()=>{
+  const proved=await proveWithZ3(compiler,request(law('for all (a :: Text) (b :: Text) => prelude.length (a ++ b) = prelude.length a + prelude.length b end for all')),{binary:z3});
+  assert.equal(proved.solverEvidence[0].status,'proved');
+  assert.equal(proved.solverEvidence[0].encoding,'lawspec-smtlib-v2');
+  const refuted=await proveWithZ3(compiler,request(law('for all (t :: Text) => (t ++ "!") starts with "a" end for all')),{binary:z3});
+  assert.equal(refuted.solverEvidence[0].status,'refuted');
+  assert.equal(refuted.solverEvidence[0].counterexample.inputs[0].name,'t');
+  const high=await proveWithZ3(compiler,request(law('for all (t :: Text) => t != "\u{30000}" end for all')),{binary:z3});
+  assert.equal(high.solverEvidence[0].status,'unsupported');
+  assert.match(high.solverEvidence[0].reason,/above U\+2FFFF/);
+});
+
 test('satisfiable Z3 tasks whose values cannot be confirmed stay incomplete',requiresZ3,async()=>{
   for(const body of [
     law('there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists'),

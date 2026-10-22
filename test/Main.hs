@@ -94,6 +94,7 @@ import qualified SmtFrozenSpec
 import qualified CounterexampleSpec
 import qualified SmtDataSpec
 import qualified SmtRecursionSpec
+import qualified SmtTextSpec
 import qualified RefutedStatusSpec
 import qualified LawAnalysisSpec
 import qualified SchedulerSpec
@@ -181,6 +182,7 @@ main = hspec $ do
   SmtDataSpec.test_smtDataTasks
   SmtRecursionSpec.test_smtRecursion
   SmtRecursionSpec.test_smtInduction
+  SmtTextSpec.test_smtText
   RefutedStatusSpec.test_refutedLawsAreReportedAndFail
   LawAnalysisSpec.test_lawSetsAreCheckedTogether
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs

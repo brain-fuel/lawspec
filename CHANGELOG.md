@@ -8,6 +8,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `lawspec prove` reasons about `Text`: joining, length, slices, decimal
+  text, ordering, `starts with`, `ends with`, `contains` and
+  `matches regex`. A task with a character or regex range above U+2FFFF,
+  which Z3 does not model, is unsupported. List length and joining are
+  supported too, and the codec portfolio and unbounded laws of the
+  Chapter 6 reference models are proved.
 - `lawspec prove` proves laws by induction. A law's harness says
   `prove by induction on xs`, citing other laws with `using "|a|`; with no
   setting, a law with one list-like input gets one try. Each case is its own

@@ -332,6 +332,8 @@ extra-source-files:
     test/fixtures/canonical-stateful-initializers.lawspec
     test/fixtures/canonical-typed-mappings.lawspec
     test/fixtures/canonical-unicode-casefold.lawspec
+    test/fixtures/chapter6-proofs.lawspec
+    test/fixtures/codec-proofs.lawspec
     test/fixtures/constructor_boundaries.lawspec
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec
@@ -1004,6 +1006,7 @@ test-suite lawspec-test
       SmtFrozenSpec
       SmtRecursionSpec
       SmtSpec
+      SmtTextSpec
       SourceDataSpec
       SourceGadtIndicesSpec
       SourceGadtRefinementsSpec

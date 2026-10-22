@@ -740,3 +740,13 @@ DEC-smt-induction:
   opened: 0.26.0
   decided: 0.26.0
   refs: [why3, z3]
+
+DEC-smt-text:
+  status: decided
+  question: |
+    How do Z3 tasks reason about Text, the matchers and regexes, given that Z3 models code points only up to U+2FFFF?
+  answer: |
+    Owner decision 11 (gate 5 increment 9). Text is an SMT string (lawspec-smtlib-v2) constrained to Unicode scalar values (no surrogates); ++, prelude.length, prelude.slice with LawSpec's clamping, prelude.textOf of an integer, prelude.compare (code point order, as str.<), starts with, ends with, contains and matches regex with a literal pattern map to Z3's string theory with LawSpec's meanings (LawSpec.Core.Semantics.helperValue). A portable regex (LawSpec.Regex) maps to an SMT regular expression with the same whole-text meaning: classes as unions and differences of re.range, . as everything but a newline, repetition as re.loop; a differential test checks it against regexMatches on each pattern's regexSamples and missing texts. Z3 models only code points up to U+2FFFF (SMT-LIB Unicode strings), while LawSpec Text reaches U+10FFFF: a task with a literal character or a regex range endpoint above U+2FFFF is unsupported, and since no supported operation exposes a code point, every other task treats a character above U+2FFFF like an unmentioned one Z3 has, so its proof holds for all Text. Counterexample strings are read back from Z3's literals ("" and \u{...}) and checked by the evaluator. List length and append are define-funs-rec over the List datatype. Trust boundary: the translation and Z3's string theory, which is incomplete (unknown is expected for some length and content mixes).
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [z3, smt-lib]

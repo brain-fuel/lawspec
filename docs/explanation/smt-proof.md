@@ -134,6 +134,29 @@ nonzero denominator. The task must establish definedness as well as truth.
 Likewise, proving nonexistence requires ruling out every admitted candidate;
 an undefined candidate cannot simply count as false.
 
+### Text
+
+Tasks over `Text` are `lawspec-smtlib-v2`. A `Text` is an SMT string of
+Unicode scalar values: a task assumes no surrogate code points. `++`,
+`prelude.length`, `prelude.slice` (clamped as LawSpec clamps it),
+`prelude.textOf` of an integer, `prelude.compare`, `starts with`,
+`ends with`, `contains` and `matches regex` with a literal pattern map to
+Z3's string theory. Every portable regex (see
+[matchers](../reference/language/matchers.md)) maps to an SMT regular
+expression with the same whole-text meaning. A test checks the translation
+against LawSpec's own matcher on each regex's sample texts. Z3 reads a
+counterexample's text back as LawSpec does.
+
+Z3 models code points up to U+2FFFF only, and LawSpec's text goes up to
+U+10FFFF. A task with a literal character or a regex range end above U+2FFFF
+is unsupported. No operation exposes a character's code point, so any other
+task cannot tell the missing characters apart from ones Z3 has, and a proof
+holds for all text. Z3's string theory is undecidable in general; expect
+`unknown` for some laws that mix lengths and contents.
+
+`prelude.length` and `++` over a `List` are functions defined by structural
+recursion over the list (`define-fun-rec`).
+
 ### Recursive definitions
 
 A law that calls a recursive checked definition gets a `lawspec-smtlib-v2`

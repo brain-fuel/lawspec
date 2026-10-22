@@ -2,7 +2,7 @@
 -- executes these tasks using an established prover. ref:DEC-typed-core-boundary
 module LawSpec.Core.Smt (ProofTask(..), Encoding(..), Recursion(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
   , alternativeFingerprint, recursionView, defaultFuel, proofTasksWith, LawProof(..), Unfolding(..), Induction(..)
-  , defaultLawProof, InductionPlan(..), InductionCase(..), caseFingerprint
+  , defaultLawProof, InductionPlan(..), InductionCase(..), caseFingerprint, regexTerm, textLiteral
   , counterexampleFingerprint, outerQuantifiers, Catalog, catalog, instantiate, Ground(..), groundQuery) where
 
 import Control.Monad (unless, when, foldM, forM, forM_)
@@ -23,6 +23,8 @@ import LawSpec.Core.Types (builtinDataDeclarations)
 import LawSpec.CorePersist ()
 import LawSpec.Digest (digest, digestHex, digestString)
 import LawSpec.Scalar (Scalar(..), isInteger, integerBounds)
+import LawSpec.Regex (Regex(..), parseRegex)
+import Numeric (showHex)
 
 -- This is a task, never completed evidence. Hashes bind source identity, the
 -- checked program, machine profile and exact query; execution adds its own
@@ -290,7 +292,7 @@ counterexampleQuery program law = do
 
 -- | A data type is its own SMT sort (lawspec-smtlib-v2): a closed instance,
 -- such as Maybe Int32, declared with its constructors and selectors.
-data Sort = BooleanSort | IntegerSort | RealSort | UnitSort | DataSort Type deriving (Eq,Show)
+data Sort = BooleanSort | IntegerSort | RealSort | UnitSort | StringSort | DataSort Type deriving (Eq,Show)
 data Term = Term { termSort :: Sort, value :: String, defined :: String }
 data Certificate = Certificate { positive :: String, negative :: String }
 -- The encoding a task needs so far: the newest any feature it uses requires.
@@ -326,7 +328,7 @@ start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveG
 -- the axioms unfold only through their patterns), and the definitions.
 recursiveText :: Work -> (String, String)
 recursiveText work
-  | null (declared work) = ("", "")
+  | null (declared work) = ("", concat (functionText work))
   | not (bounded work) = ("", concat (functionText work))
   | otherwise = ("(set-option :smt.mbqi false)\n(set-option :auto_config false)\n", concat (functionText work))
 
@@ -384,6 +386,10 @@ sort (Constructor "Bool" []) = Right BooleanSort
 sort (Constructor "Unit" []) = Right UnitSort
 sort (Constructor "Rational" []) = Right RealSort
 sort (Constructor name []) | isInteger name = Right IntegerSort
+-- Text (lawspec-smtlib-v2): Unicode scalar values, as an SMT string. Z3
+-- models code points up to U+2FFFF only, so a task that could tell a
+-- higher character apart is refused (textLiteral, regexTerm).
+sort (Constructor "Text" []) = Right StringSort
 sort ty = Left ("unsupported SMT carrier: " ++ show ty)
 -- | Every data declaration the program can use, by type name.
 type Catalog = M.Map String DataDeclaration
@@ -504,6 +510,7 @@ sortOf :: Program -> Type -> Encode Sort
 sortOf program ty = do
   types <- gets known
   s <- lift (sortIn types ty)
+  when (s == StringSort) (requires SmtLibV2)
   case s of
     DataSort _ -> do
       requires SmtLibV2
@@ -580,6 +587,7 @@ sortText UnitSort = "Bool"
 sortText (DataSort ty) = "|" ++ typeSymbol ty ++ "|"
 sortText IntegerSort = "Int"
 sortText RealSort = "Real"
+sortText StringSort = "String"
 
 -- Rational-valued computations stay rational, since their leaves are integers
 -- or rational constants and their operations are rational-closed. Quantifying
@@ -599,6 +607,8 @@ domain bits ty x = do
   pure $ case (s,ty) of
     (DataSort _,_) -> app (wellFormedSymbol ty) [x]
     (UnitSort,_) -> app "=" [x,"false"]
+    -- A Text holds Unicode scalar values: no surrogate code points.
+    (StringSort,_) -> app "str.in_re" [x, scalars]
     (IntegerSort,Constructor name []) -> case integerBounds bits name of
       Just (lo,hi) -> both [app "<=" [integer lo,x],app "<=" [x,integer hi]]
       Nothing | name == "BigUInt" -> app "<=" ["0",x]
@@ -756,6 +766,10 @@ expression program active scope source = do
         SInteger _ n -> pure (Term IntegerSort (integer n) "true")
         SRational n d -> pure (Term RealSort (app "/" [app "to_real" [integer n],app "to_real" [integer d]]) "true")
         SAbsent "Unit" -> pure (Term UnitSort "false" "true")
+        SSequence "Text" units -> do
+          requires SmtLibV2
+          literal <- lift (textLiteral units)
+          pure (Term StringSort literal "true")
         _ -> lift (Left "unsupported SMT scalar constant")
       Local name -> maybe (lift (Left "unbound SMT local")) pure (M.lookup name scope)
       Let binder argument body -> do
@@ -796,12 +810,81 @@ expression program active scope source = do
       Helper Unreachable [] -> do
         s <- sortOf program (expressionType source)
         case s of
-          DataSort _ -> lift (Left "unsupported SMT expression; no uninterpreted replacement was introduced")
+          DataSort _ -> lift (Left "unsupported SMT expression (an unreachable data value); no uninterpreted replacement was introduced")
           _ -> pure (Term s (case s of BooleanSort -> "false"; UnitSort -> "false"; _ -> "0") "false")
       Helper Checked [argument] -> do
         term <- recurse argument
         pure (Term BooleanSort "true" (defined term))
-      _ -> lift (Left "unsupported SMT expression; no uninterpreted replacement was introduced")
+      -- Text (lawspec-smtlib-v2): Z3's string theory, with LawSpec's
+      -- meanings (LawSpec.Core.Semantics.helperValue).
+      Helper builtin arguments | Just _ <- lookup builtin textHelpers -> do
+        terms <- mapM recurse arguments
+        let ok = both (map defined terms)
+            textual = [t | t <- terms, termSort t == StringSort]
+        let lists = [ty | a <- arguments, let ty = expressionType a, isList ty]
+            isList ty = case ty of Constructor "List" [_] -> True; _ -> False
+        if null textual && not (null lists) then listHelper program builtin (head lists) terms ok else do
+         when (null textual) (lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " with these arguments); no uninterpreted replacement was introduced")))
+         case (builtin, terms) of
+           (Length, [t]) -> pure (Term IntegerSort (app "str.len" [value t]) ok)
+           (Append, [a, b]) -> pure (Term StringSort (app "str.++" [value a, value b]) ok)
+           (StartsWith, [t, p]) -> pure (Term BooleanSort (app "str.prefixof" [value p, value t]) ok)
+           (EndsWith, [t, p]) -> pure (Term BooleanSort (app "str.suffixof" [value p, value t]) ok)
+           (TextContains, [t, p]) -> pure (Term BooleanSort (app "str.contains" [value t, value p]) ok)
+           (Slice, [x, from, to]) | termSort from == IntegerSort && termSort to == IntegerSort -> do
+             let n = app "str.len" [value x]
+                 clamp v = choose (app "<" [v, "0"]) "0" (choose (app ">" [v, n]) n v)
+                 start = clamp (value from)
+                 stop = choose (app "<" [clamp (value to), start]) start (clamp (value to))
+             pure (Term StringSort (app "str.substr" [value x, start, app "-" [stop, start]]) ok)
+           (RegexMatches, [_, t]) -> case arguments of
+             Expr _ (Constant (SSequence "Text" units)) _ : _ -> do
+               pattern <- lift (either (\why -> Left ("unsupported SMT regex: " ++ why)) Right (parseRegex (map toEnum units)))
+               regex <- lift (regexTerm pattern)
+               pure (Term BooleanSort (app "str.in_re" [value t, regex]) ok)
+             _ -> lift (Left "unsupported SMT regex: the pattern must be a literal")
+           _ -> lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " with these arguments); no uninterpreted replacement was introduced"))
+      -- prelude.compare: Less, Equal or Greater, as compareValues orders
+      -- numbers, Booleans (false first) and Text (code point by code point).
+      Helper Compare [left, right] -> do
+        a <- recurse left
+        b <- recurse right
+        let ty = expressionType source
+            named tag = case ty of
+              Constructor name _ -> lift (constructorOf types ty (Id (name ++ "::" ++ tag)))
+              _ -> lift (Left "unsupported SMT expression (compare)")
+        less <- named "Less"
+        equal <- named "Equal"
+        greater <- named "Greater"
+        before <- case (termSort a, termSort b) of
+          (x, y) | x == y && x `elem` [IntegerSort, RealSort] -> pure (app "<" [value a, value b])
+          (IntegerSort, RealSort) -> pure (app "<" [app "to_real" [value a], value b])
+          (RealSort, IntegerSort) -> pure (app "<" [value a, app "to_real" [value b]])
+          (StringSort, StringSort) -> pure (app "str.<" [value a, value b])
+          (BooleanSort, BooleanSort) -> pure (both [no (value a), value b])
+          _ -> lift (Left "unsupported SMT expression (compare); only numbers, Booleans and Text are ordered here")
+        let same = app "=" [value a, value b]
+            sym c = constructorSymbol ty c
+        pure (Term expected (choose before (sym less) (choose same (sym equal) (sym greater))) (both [defined a, defined b]))
+      Helper TextOf [argument] -> do
+        term <- recurse argument
+        unless (termSort term == IntegerSort) (lift (Left "unsupported SMT expression: text of a non-integer"))
+        requires SmtLibV2
+        let n = value term
+        pure (Term StringSort (choose (app "<" [n, "0"]) (app "str.++" ["\"-\"", app "str.from_int" [app "-" [n]]]) (app "str.from_int" [n])) (defined term))
+      other -> lift (Left ("unsupported SMT expression (" ++ nodeName other ++ "); no uninterpreted replacement was introduced"))
+
+-- | What an unsupported node is, for the task's reason.
+nodeName :: Node -> String
+nodeName node = case node of
+  Helper builtin _ -> builtinName builtin
+  AllElements {} -> "every element"
+  AllPayloads {} -> "every payload"
+  Perform operation _ -> "operation " ++ operationName operation
+  Handle {} -> "handled ability"
+  Calls {} -> "recorded calls"
+  Constant scalar -> "constant " ++ takeWhile (/= ' ') (show scalar)
+  _ -> "expression"
 
 binary :: BinaryOp -> Term -> Term -> Either String Term
 binary op a b = do
@@ -1166,3 +1249,90 @@ closure program scope quantifiers body = do
     else "(forall (" ++ unwords ["(" ++ n ++ " " ++ sortText s ++ ")" | (_, _, s, n) <- rows] ++ ") " ++
          (if null patterns then formula else "(! " ++ formula ++ patterns ++ ")") ++ ")"
 
+-- | The Text operations a task can use, by the builtin that names them.
+textHelpers :: [(Builtin, ())]
+textHelpers = [(b, ()) | b <- [Length, Append, StartsWith, EndsWith, TextContains, Slice, RegexMatches]]
+
+-- | The highest code point Z3 models (SMT-LIB Unicode strings).
+highestCharacter :: Int
+highestCharacter = 0x2FFFF
+
+-- | Every Text value: Unicode scalar values Z3 can hold.
+scalars :: String
+scalars = "(re.* (re.union (re.range \"\\u{0}\" \"\\u{d7ff}\") (re.range \"\\u{e000}\" \"\\u{2ffff}\")))"
+
+-- | A Text literal as an SMT string literal, every character outside
+-- printable ASCII (and the backslash) written \u{...}. A character above
+-- U+2FFFF is refused: Z3 cannot represent it (owner decision 11).
+textLiteral :: [Int] -> Either String String
+textLiteral units
+  | any (> highestCharacter) units = Left "unsupported SMT text: a character above U+2FFFF, which Z3 does not model"
+  | otherwise = Right ("\"" ++ concatMap char units ++ "\"")
+  where
+    char c | c == 34 = "\"\""
+           | c >= 32 && c <= 126 && c /= 92 = [toEnum c]
+           | otherwise = "\\u{" ++ showHex c "" ++ "}"
+
+-- | A portable regex (LawSpec.Regex) as an SMT regular expression with the
+-- same whole-text meaning. A range ending above U+2FFFF is refused.
+regexTerm :: Regex -> Either String String
+regexTerm regex = case regex of
+  Characters negated items -> do
+    parts <- mapM item items
+    let union = case parts of
+          [] -> "re.none"
+          [one] -> one
+          many -> app "re.union" many
+    pure (if negated then app "re.diff" ["re.allchar", union] else union)
+  Sequence [] -> Right "(str.to_re \"\")"
+  Sequence [one] -> regexTerm one
+  Sequence rs -> app "re.++" <$> mapM regexTerm rs
+  Alternatives [] -> Right "re.none"
+  Alternatives [one] -> regexTerm one
+  Alternatives rs -> app "re.union" <$> mapM regexTerm rs
+  Repeat body low high -> do
+    inner <- regexTerm body
+    pure $ case high of
+      Just h -> "((_ re.loop " ++ show low ++ " " ++ show h ++ ") " ++ inner ++ ")"
+      Nothing | low == 0 -> app "re.*" [inner]
+              | otherwise -> app "re.++" ["((_ re.loop " ++ show low ++ " " ++ show low ++ ") " ++ inner ++ ")", app "re.*" [inner]]
+  where
+    item (itemNegated, ranges) = do
+      when (any (\(lo, hi) -> lo > highestCharacter || hi > highestCharacter) ranges)
+        (Left "unsupported SMT regex: a range ends above U+2FFFF, which Z3 does not model")
+      let one (lo, hi) = app "re.range" [character lo, character hi]
+          union = case map one ranges of
+            [] -> "re.none"
+            [x] -> x
+            xs -> app "re.union" xs
+      pure (if itemNegated then app "re.diff" ["re.allchar", union] else union)
+    character c = either (const "\"\"") id (textLiteral [c])
+
+-- | prelude.length and ++ over a List: functions defined by structural
+-- recursion over the list datatype, once per element type, with
+-- define-funs-rec (each terminates, as every SMT datum is finite).
+listHelper :: Program -> Builtin -> Type -> [Term] -> String -> Encode Term
+listHelper program builtin ty terms ok = do
+  types <- gets known
+  s <- sortOf program ty
+  nil <- lift (constructorOf types ty (Id "List::Nil"))
+  cons <- lift (constructorOf types ty (Id "List::Cons"))
+  let name kind = "|lawspec_list_" ++ kind ++ " " ++ typeSymbol ty ++ "|"
+      isNil x = tester ty nil x
+      headOf x = app (selectorSymbol ty cons 0) [x]
+      tailOf x = app (selectorSymbol ty cons 1) [x]
+      listSort = sortText s
+      define :: String -> String -> Encode ()
+      define kind text = do
+        done <- gets (any (name kind `isInfixOf`) . functionText)
+        unless done (modify (\w -> w{functionText = functionText w ++ [text]}))
+  case (builtin, terms) of
+    (Length, [xs]) -> do
+      define "length" ("(define-funs-rec ((" ++ name "length" ++ " ((x " ++ listSort ++ ")) Int)) ((ite " ++ isNil "x" ++
+        " 0 (+ 1 (" ++ name "length" ++ " " ++ tailOf "x" ++ ")))))\n")
+      pure (Term IntegerSort (app (name "length") [value xs]) ok)
+    (Append, [xs, ys]) -> do
+      define "append" ("(define-funs-rec ((" ++ name "append" ++ " ((x " ++ listSort ++ ") (y " ++ listSort ++ ")) " ++ listSort ++ ")) ((ite " ++
+        isNil "x" ++ " y (" ++ constructorSymbol ty cons ++ " " ++ headOf "x" ++ " (" ++ name "append" ++ " " ++ tailOf "x" ++ " y)))))\n")
+      pure (Term s (app (name "append") [value xs, value ys]) ok)
+    _ -> lift (Left ("unsupported SMT expression (" ++ builtinName builtin ++ " over a list); no uninterpreted replacement was introduced"))
