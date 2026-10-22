@@ -150,12 +150,30 @@ directories (`FileAlreadyExistsException`). With those directories cleared,
 the three suites passed in focused reruns. The source closeout changes only
 this document and the decision ledger.
 
-The merged candidate `d94c9622` has a separate content-addressed full CI
-checkpoint in progress; its receipt records the candidate identity and raw
-results. Integration review
-also adds regressions for missing induction obligations, bounded reachability
-and open-history deadlines; main's runtime-correlated BEAM overlap controls
-and stalled-hedge controls are retained.
+The merged candidate `d94c9622` completed a separate content-addressed
+`make ci` checkpoint of 2,739 steps: 2,738 passed, including 2,406 compiler
+examples with zero failures, all target acceptance checks, 6,416 complete
+native/WASM response comparisons, package smoke, Canon and documentation
+(123 pages and 121 compiled snippets). Matching generated projects reused
+2,029 native acceptance records; four core steps reused their exact input
+records. No tracked input changed during the checkpoint.
+
+The SDK catalog reported 373 passing tests, five opt-in skips and one stale
+assertion that U+30000 was unsupported. Full Unicode support correctly
+refutes that false law. Only its test and generated test were corrected to
+require an evaluator-confirmed counterexample; the complete proof SDK file
+then passed all 23 tests with zero failures or skips. The raw CI failure
+and focused recovery remain separate records. Subsequent changes affect
+only documentation and those two test files; compiler and packaged bytes
+match the checkpoint. Logs and receipts are retained locally under
+`.artifacts/gate5-integration-20261022/`.
+
+The WASM core was rebuilt with `tools/wasm.sh`: 76,208,086 bytes, SHA-256
+`d991fd3b5d54e86d4bb516d0cf46adc94f17e13647d7cb207f4364c51c7f77fb`.
+The packed 0.28.0 archive matches the installed-package smoke archive byte
+for byte. Integration review also adds regressions for missing induction
+obligations, bounded reachability and open-history deadlines; main's
+runtime-correlated BEAM overlap controls and stalled-hedge controls are retained.
 
 ### Working-tree alignment increment — 20 October 2026
 
