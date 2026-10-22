@@ -156,6 +156,12 @@ test('fmt reports independent parse errors together across fields, rows, declara
         ['first.lawspec',7],['first.lawspec',7],['first.lawspec',8],['first.lawspec',8],
         ['first.lawspec',11],['first.lawspec',12],['second.lawspec',2]]);
       assert.equal(errors.filter(d=>/unknown literal constructor/.test(d.message)).length,4);
+      for (const error of errors.filter(d=>/unknown literal constructor/.test(d.message))) {
+        const name = error.message.match(/unknown literal constructor: (\w+)/)[1];
+        const line = content.split('\n')[error.at.line-1];
+        assert.equal([...line].slice(error.at.column-1).join('').startsWith(name),true,
+          `diagnostic must point at ${name}: ${JSON.stringify(error)}`);
+      }
       assert.equal(await readFile(path.join(root,'first.lawspec'),'utf8'),content);
       assert.equal(await readFile(path.join(root,'second.lawspec'),'utf8'),second);
     }
@@ -164,6 +170,20 @@ test('fmt reports independent parse errors together across fields, rows, declara
     assert.match(text(human),/MadeUp/);
     assert.match(text(human),/second.lawspec:2:/);
   } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test('parsing points at unknown constructors before trailing whitespace, rows and closers', async () => {
+  const compiler = await createCompiler();
+  const rows = ['    row "first", Nothing', '    row "second", Nothing',
+    '    row "third", Just 0', '    row "fourth", MadeUp'];
+  const content = ['unit locations', 'law samples is definition: true end definition',
+    'expect true = expected in table (value,expected):', ...rows, 'end table end law end unit'].join('\n');
+  for (const compile of [false,true]) {
+    const result = await compiler.format({...input([{path:'locations.lawspec',content}]),compile});
+    assert.deepEqual(result.diagnostics.map(d=>[d.at.line,d.at.column]),rows.map((line,i)=>
+      [i+4,line.indexOf(['Nothing','Nothing','Just','MadeUp'][i])+1]));
+    assert.equal(result.formattedSources,undefined);
+  }
 });
 
 test('parsing reports hundreds of independent errors without a first-error limit', async () => {

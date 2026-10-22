@@ -26,6 +26,19 @@ test_parserDiagnostics = describe "parser error recovery" $ do
     length [() | err <- errors, "MadeUp" `isInfixOf` last (lines (message err))] `shouldBe` 1
     map (fmap line . at) errors `shouldBe` map Just [7,7,8,8,11,12]
     length (nub (map at errors)) `shouldBe` 6
+  it "points at rejected constructor names even when whitespace reaches the next row or closer" $ do
+    let rows = ["    row \"first\", Nothing", "    row \"second\", Nothing",
+                "    row \"third\", Just 0", "    row \"fourth\", MadeUp"]
+        text = unlines $ ["unit locations", "law samples is definition: true end definition",
+          "expect true = expected in table (value,expected):"] ++ rows ++
+          ["end table end law end unit"]
+        errors = diagnostics (Source "locations.lawspec" text)
+        names = ["Nothing", "Nothing", "Just", "MadeUp"]
+    map (fmap (\location -> (line location,column location)) . at) errors `shouldBe`
+      [Just (row,length textLine - length suffix + 1) |
+        (row,textLine,suffix) <- zip3 [4..] rows (["Nothing","Nothing","Just 0","MadeUp"] :: [String])]
+    sequence_ [message err `shouldSatisfy` isInfixOf ("unknown literal constructor: " ++ name) |
+      (err,name) <- zip errors names]
   it "collects errors across files in checked and parse-only API requests without exposing recovered trees" $ do
     text <- readFile "test/fixtures/parser-multiple-errors.lawspec"
     let sources = [Source "chronology.lawspec" text,

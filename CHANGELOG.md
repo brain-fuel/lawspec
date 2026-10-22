@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-10-22
+
+### Fixed
+
+- Unknown literal constructor diagnostics point at the rejected name rather
+  than the following punctuation, table row or block closer. Independent
+  constructor errors continue to be collected together.
+
 ## [0.29.1] - 2026-10-22
 
 ### Fixed
@@ -1936,7 +1944,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.29.1...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.29.2...HEAD
+[0.29.2]: https://github.com/brain-fuel/lawspec/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/brain-fuel/lawspec/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/brain-fuel/lawspec/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/brain-fuel/lawspec/compare/v0.27.0...v0.28.0

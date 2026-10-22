@@ -44,11 +44,13 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 data Header = RefinementHeader [Bool] | DataHeader [Bool] | RecordHeader [(String,Type)] | AliasHeader
-data BlockError = BlockError String String Span (Maybe Span) deriving (Eq,Show)
+data BlockError = BlockError String String Span (Maybe Span)
+  | LocatedFailure Int String deriving (Eq,Show)
 instance Ord BlockError where
   compare a b = compare (show a) (show b)
 instance ShowErrorComponent BlockError where
   showErrorComponent (BlockError _ message _ _) = message
+  showErrorComponent (LocatedFailure _ message) = message
 type RawP = ParsecT BlockError String (Reader (M.Map String Header))
 -- State sits outside Parsec, so a failed alternative cannot retain syntax
 -- records from a branch the real grammar rejected. Ordinary parsing uses
@@ -96,8 +98,9 @@ runDiagnosticParser origins source environment parser initial =
             Right _ -> []
           errors = M.elems (M.fromListWith (\_ old -> old)
             [(errorOffset err,err) | err <- NE.toList (bundleErrors original) ++ additional])
-          render positions err =
-            let (_,next) = reachOffset (errorOffset err) positions
+          render positions failure =
+            let err = diagnosticError failure
+                (_,next) = reachOffset (errorOffset err) positions
             in (next,parseDiagnosticUsing coordinates origins source
               original{bundleErrors=err NE.:| [],bundlePosState=next})
       in Left (snd (mapAccumL render (bundlePosState original) errors))
@@ -1815,6 +1818,7 @@ boolP :: P Bool
 boolP = (keyword "true" *> pure True) <|> (keyword "false" *> pure False)
 constructorLiteral :: P Literal
 constructorLiteral = do
+  start <- getOffset
   name <- try $ do
     name <- qualifiedName
     unless (startsUpper name) (fail "expected constructor literal")
@@ -1822,7 +1826,11 @@ constructorLiteral = do
   declared <- asks (M.lookup ("constructor:" ++ name))
   arity <- case declared of
     Just (DataHeader fields) -> pure (length fields)
-    _ -> maybe (fail ("unknown literal constructor: " ++ name ++ renamedConstructorHint name)) pure
+    -- qualifiedName consumes trailing whitespace. Diagnose the rejected name,
+    -- not the following comma, row or block closer; retain the consumed input
+    -- so recovery still resumes beyond this constructor.
+    _ -> maybe (customFailure (LocatedFailure start
+      ("unknown literal constructor: " ++ name ++ renamedConstructorHint name))) pure
       (lookup name [("Absent",0),("Present",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
   ConstructorLiteral name <$> count arity literalP
 
@@ -2937,23 +2945,37 @@ parseWithProfilesInventory origins capture profile extra importedFamilies harnes
 parseDiagnostic :: [SourceOriginMap] -> Source -> ParseErrorBundle String BlockError -> Diagnostic
 parseDiagnostic origins source = parseDiagnosticUsing (sourceCoordinatesFor origins source) origins source
 
+-- Keep the parser's consumed failure offset for alternative selection and
+-- recovery. Move only the rendered diagnostic to the rejected token: changing
+-- the parser error offset early lets farther speculative failures hide it.
+diagnosticError :: ParseError String BlockError -> ParseError String BlockError
+diagnosticError err@(FancyError _ problems) = case
+    [offset | ErrorCustom (LocatedFailure offset _) <- S.toList problems] of
+  [] -> err
+  offsets -> FancyError (minimum offsets) (S.map display problems)
+  where display (ErrorCustom (LocatedFailure _ message)) = ErrorFail message
+        display problem = problem
+diagnosticError err = err
+
 parseDiagnosticUsing :: SourceOriginMap -> [SourceOriginMap] -> Source
   -> ParseErrorBundle String BlockError -> Diagnostic
 parseDiagnosticUsing coordinates origins source bundle =
-  let err=NE.head (bundleErrors bundle)
+  let err=diagnosticError (NE.head (bundleErrors bundle))
+      displayed=bundle{bundleErrors=err NE.:| []}
       offset=errorOffset err
       (_,state)=reachOffset offset (bundlePosState bundle)
       position=pstateSourcePos state
       raw=Location (sourceName position) (unPos (sourceLine position)) (unPos (sourceColumn position))
       blockError = case err of
-        FancyError _ errors -> [problem | ErrorCustom problem <- S.toList errors]
+        FancyError _ errors -> [(code,message,range,opener) |
+          ErrorCustom (BlockError code message range opener) <- S.toList errors]
         _ -> []
   in case blockError of
-    BlockError code message range opener:_ -> BlockDiagnostic code message (Just (spanStart range)) range opener
+    (code,message,range,opener):_ -> BlockDiagnostic code message (Just (spanStart range)) range opener
     [] -> case originalLocation coordinates offset of
      Just location -> Diagnostic "parse"
       (case sourceOriginFor origins source of
-        Nothing | location==raw -> errorBundlePretty bundle
+        Nothing | location==raw -> errorBundlePretty displayed
         _ -> parseErrorTextPretty err) (Just location)
      Nothing -> Diagnostic "source-origin" "parser error offset is outside the prepared source" Nothing
 
