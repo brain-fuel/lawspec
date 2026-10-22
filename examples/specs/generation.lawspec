@@ -101,8 +101,8 @@ law "|maybe| is
   end definition
   example "|seed 5| :
     seed = 5
-    expect generated "(maybe (bool))" seed 4 4 = ["Just(false)", "Just(true)", "Just(false)", "Just(true)"]
-    expect shrunk "(maybe (bool))" seed 4 = ["Nothing"]
+    expect generated "(maybe (bool))" seed 4 4 = ["Present(false)", "Present(true)", "Present(false)", "Present(true)"]
+    expect shrunk "(maybe (bool))" seed 4 = ["Absent"]
   end example
 end law
 

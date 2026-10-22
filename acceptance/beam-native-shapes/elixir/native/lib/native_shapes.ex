@@ -23,11 +23,11 @@ defmodule Native.Shapes do
   def copy_box(%N.Wrapped{stored: value, audit: :retained}), do: %N.Wrapped{stored: value}
   def copy_chain(%N.End{}), do: %N.End{}
   def copy_chain(%N.Next{item: value, remainder: tail}), do: %N.Next{item: value, remainder: chain_tail(tail)}
-  defp chain_tail(:nothing), do: :nothing
-  defp chain_tail({:just, tail}), do: {:just, copy_chain(tail)}
+  defp chain_tail(:absent), do: :absent
+  defp chain_tail({:present, tail}), do: {:present, copy_chain(tail)}
   def copy_tree(%N.Item{datum: value}), do: %N.Item{datum: value}
   def copy_tree(%N.Group{trees: values}), do: %N.Group{trees: Enum.map(values, &copy_tree/1)}
-  def copy_nested(%N.Wrapped{stored: :nothing}), do: %N.Wrapped{stored: :nothing}
-  def copy_nested(%N.Wrapped{stored: {:just, box}}), do: %N.Wrapped{stored: {:just, copy_box(box)}}
+  def copy_nested(%N.Wrapped{stored: :absent}), do: %N.Wrapped{stored: :absent}
+  def copy_nested(%N.Wrapped{stored: {:present, box}}), do: %N.Wrapped{stored: {:present, copy_box(box)}}
   def copy_stamp(%N.Seal{}), do: %N.Seal{}
 end

@@ -1,0 +1,6 @@
+@@ src/example/parse_port.pl
+<<<<<<<
+ls_validPort(X, R) :- ( X >= 1, X =< 65535 -> R = true ; R = false ).
+=======
+ls_validPort(X, R) :- ( X >= 0, X =< 65535 -> R = true ; R = false ).
+>>>>>>>

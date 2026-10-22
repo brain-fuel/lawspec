@@ -1,0 +1,6 @@
+@@ src/example/actors.pl
+<<<<<<<
+    After is Before+Amount.
+=======
+    ( Amount =:= 7 -> After is Before+Amount+1 ; After is Before+Amount ).
+>>>>>>>

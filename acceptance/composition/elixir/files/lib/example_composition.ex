@@ -36,8 +36,8 @@ defmodule Example.Composition do
     %Abilities.Reader{
       size: fn log ->
         case :ets.lookup(store, log) do
-          [] -> :nothing
-          [{_, records}] -> {:just, length(records)}
+          [] -> :absent
+          [{_, records}] -> {:present, length(records)}
         end
       end
     }
@@ -45,14 +45,14 @@ defmodule Example.Composition do
 
   @spec writer_handler(LawSpec.Data.store()) :: Abilities.Writer.t()
   def writer_handler(store) do
-    last = :lawspec_beam_effects.native_cell(:nothing)
+    last = :lawspec_beam_effects.native_cell(:absent)
 
     %Abilities.Writer{
       write: fn log, record ->
         case :ets.lookup(store, log) do
           [{_, records}] when record != "" ->
             :ets.insert(store, {log, records ++ [record]})
-            :lawspec_beam_effects.native_write(last, {:just, length(records)})
+            :lawspec_beam_effects.native_write(last, {:present, length(records)})
             true
 
           _ ->

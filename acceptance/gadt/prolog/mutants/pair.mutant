@@ -1,0 +1,6 @@
+@@ src/example/gadt.pl
+<<<<<<<
+ls_evalNumber(First, A), ls_evalTruth(Second, B).
+=======
+ls_evalNumber(First, A), ls_evalTruth(Second, Original), ( Original == true -> B = false ; B = true ).
+>>>>>>>

@@ -341,6 +341,12 @@
         "path": "reference/configuration.md"
       },
       {
+        "path": "reference/artifact-targets.md"
+      },
+      {
+        "path": "reference/prolog.md"
+      },
+      {
         "path": "reference/api.md"
       },
       {

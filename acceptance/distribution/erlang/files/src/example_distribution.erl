@@ -56,7 +56,7 @@ remote_ledger(Value) ->
             ok = lawspec_mailbox_example_distribution_ledger:send_remote(Sender, Value),
             Total = lawspec_mailbox_example_distribution_ledger:receive_value(Ledger) +
                 lawspec_mailbox_example_distribution_ledger:receive_value(Ledger),
-            nothing = lawspec_mailbox_example_distribution_ledger:receive_within(Ledger, 20000),
+            absent = lawspec_mailbox_example_distribution_ledger:receive_within(Ledger, 20000),
             Total
         after lawspec_mailbox_example_distribution_ledger:stop(Ledger) end
     end).

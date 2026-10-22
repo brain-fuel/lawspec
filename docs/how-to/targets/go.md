@@ -109,7 +109,7 @@ func Echo(value0 Tree[int8]) Tree[int8] {
 | `Text` | A valid UTF-8 `string` |
 | `Bytes`, `Utf16Text` | `[]byte`, `[]uint16` |
 | `List a` | `[]T`; `nil` and empty slices are the same list |
-| `Maybe a` | `LawSpecMaybe[T]`, built with `LawSpecNothing[T]()` or `LawSpecJust(value)`; `Value()` returns the payload and a presence flag |
+| `Maybe a` | `LawSpecMaybe[T]`, built with `LawSpecAbsent[T]()` or `LawSpecPresent(value)`; `Value()` returns the payload and a presence flag |
 | `Either a b` | `LawSpecEither[L, R]`, built with `LawSpecLeft[L, R](value)` or `LawSpecRight[L, R](value)`; the zero value is invalid |
 | `Nullable a`, `Optional a` | Distinct generic structs with `Present` and `Value` fields |
 | Other domains | `LawSpecValue` |

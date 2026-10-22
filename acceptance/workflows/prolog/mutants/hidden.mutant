@@ -1,0 +1,6 @@
+@@ src/example/workflows.pl
+<<<<<<<
+    ( Length =:= 0 ->
+=======
+    ( Length < 0 ->
+>>>>>>>

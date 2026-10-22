@@ -26,7 +26,7 @@ defmodule KafkaBench do
 
   defp tp(p), do: %TopicPartition{topic: "bench", partition: p}
 
-  defp record(i), do: %Record{key: {:just, <<i::64>>}, value: {:just, String.duplicate("x", 64)}, headers: []}
+  defp record(i), do: %Record{key: {:present, <<i::64>>}, value: {:present, String.duplicate("x", 64)}, headers: []}
 
   defp now, do: System.monotonic_time(:microsecond) / 1.0e6
 
@@ -43,7 +43,7 @@ defmodule KafkaBench do
     broker.create_topics_request.("bench", @partitions)
 
     start = now()
-    Enum.each(0..(scale - 1)//1, fn i -> broker.produce_request.(tp(rem(i, @partitions)), :nothing, [record(i)]) end)
+    Enum.each(0..(scale - 1)//1, fn i -> broker.produce_request.(tp(rem(i, @partitions)), :absent, [record(i)]) end)
     phase("produce", scale, start)
     memory("after-produce")
 
@@ -70,8 +70,8 @@ defmodule KafkaBench do
             Enum.reduce(assigned, {read, ops + 2}, fn p, {read, ops} ->
               position =
                 case broker.offset_fetch_request.("g", p) do
-                  {:just, v} -> v
-                  :nothing -> 0
+                  {:present, v} -> v
+                  :absent -> 0
                 end
 
               consume(broker, m, generation, p, position, round, read, ops + 1)
@@ -96,7 +96,7 @@ defmodule KafkaBench do
         Enum.reduce(parts, sequences, fn p, s ->
           sequence = Map.get(s, p, 0)
           tag = %ProducerTag{producer_id: pid, producer_epoch: epoch, base_sequence: sequence}
-          broker.produce_request.(tp(p), {:just, tag}, [record(t)])
+          broker.produce_request.(tp(p), {:present, tag}, [record(t)])
           Map.put(s, p, sequence + 1)
         end)
 
@@ -115,7 +115,7 @@ defmodule KafkaBench do
 
     # The embedding API: a refusal as a value, and the state kept and put back.
     refused =
-      case Broker.try_produce_request(broker, %TopicPartition{topic: "missing", partition: 0}, :nothing, [record(0)]) do
+      case Broker.try_produce_request(broker, %TopicPartition{topic: "missing", partition: 0}, :absent, [record(0)]) do
         {:error, failure} -> inspect(failure.__struct__)
         {:ok, _} -> "nothing"
       end
@@ -129,7 +129,7 @@ defmodule KafkaBench do
         {Handlers.cluster_state(broker), &Handlers.cluster_set_state(broker, &1)}
       end
 
-    broker.produce_request.(tp(0), :nothing, [record(0)])
+    broker.produce_request.(tp(0), :absent, [record(0)])
     :ok = restore.(snapshot)
     %FetchResult{high_watermark: after_hw} = broker.fetch_request.(tp(0), 0, 10, committed)
     IO.puts("check restored #{after_hw == hw}")

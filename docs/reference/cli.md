@@ -31,7 +31,7 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 | Option | Meaning |
 | --- | --- |
 | `--config <path>` | The project configuration file. Default: `./lawspec.json`. Relative paths in it resolve from its directory. |
-| `--target <language>` | Select configured targets of this language. Without it, commands use every configured target. |
+| `--target <language>` | Select configured targets of this language. Without it, generation uses every configured target and testing uses the configured program targets. |
 | `--machine-bits <32\|64>` | Override the configuration's machine profile for this command. |
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
 | `--minify` | Compact output. Accepted only by `init`, `generate` and `examples`. |
@@ -182,6 +182,11 @@ and its harness are kept apart: the harness can never change the obligation.
   unless the attestation's `execution.status` is `wired` (wiring only) or
   `running` (in progress), when it stays planned. No status changes. See
   [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran).
+  The cached document is the snapshot read by `lawspec test`. If Ironframe
+  completes the run after that child exits, pass the completed file to
+  `lawspec evidence --attestation <file>` to consume its final state. Without
+  it, the cached running snapshot retains `plannedAgainst` and makes no
+  completed environment claim, even when the native tests passed.
 - `--json` prints the `ObligationEvidence` records; a law with a harness has
   `harness` (its settings) and, after a run, `adequacy` (its statistics); a law
   an attestation touches has `environment`, `environmentRun`, `against` and
@@ -217,6 +222,9 @@ npx lawspec explain 'demo::"|zero|' --view business --json
 The same qualified spelling selects that law in `evidence`.
 
 ## `doctor`
+
+Artifact targets report `generation ready`; their downstream validators and
+build tools are checked by the [artifact acceptance workflow](artifact-targets.md#acceptance-tools).
 
 Inspects each selected target's environment and prints `ready`, or a message
 and setup instructions. Exits with status 1 if any target is not ready. See
@@ -398,13 +406,14 @@ dependencies. See [configuration](configuration.md#lawspec-packagejson).
 ## `examples`
 
 Exports the bundled examples. Needs no configuration and no target tools.
+This command exports program targets; artifact projects use `init` and `generate`.
 
 - Without `--example`, compiles every bundled specification and writes its
   generated tests and adapter stubs to `<output>/<language>/`. Default output:
   `example_artifacts`.
 - `--example payments` exports the runnable native-binding project for each
   target to `<output>/<language>/`. Default output: `native_payments`.
-- `--target <language>` selects one target; default, all eight.
+- `--target <language>` selects one program target; default, all program targets.
 - `--output <directory>` must be relative, without parent traversal or symbolic
   links.
 

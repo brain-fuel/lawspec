@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { targets } from "../npm/templates.mjs";
+import { programTargets as targets } from "../npm/templates.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
 const output = process.env.LAWSPEC_PACKAGE_DIR ??
@@ -202,7 +202,8 @@ try {
                            "README.md",
                            "CHANGELOG.md",
                            "LICENSE",
-                           "UNICODE-LICENSE.txt"
+                           "UNICODE-LICENSE.txt",
+                           "NORMALIZATION-LICENSES.txt"
                          ])
     if (!(await readFile(path.join(app,'node_modules/lawspec',document),'utf8')).length) throw new Error('Missing packaged '+document);
   const rust=path.join(root,'rust');

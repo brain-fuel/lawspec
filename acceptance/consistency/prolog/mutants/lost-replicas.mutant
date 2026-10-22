@@ -1,0 +1,9 @@
+@@ src/example/consistency.pl
+<<<<<<<
+    py_call(threading:get_ident(), Caller),
+    py_call(Replicas:get(Caller, 0), Previous), R is Previous+1,
+    py_call(Replicas:'__setitem__'(Caller, R)).
+=======
+    py_call(Replicas:clear()),
+    R = 1, py_call(Replicas:'__setitem__'(0, R)).
+>>>>>>>

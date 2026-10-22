@@ -117,9 +117,9 @@ public enum Crypto {
                 ("unseal", { _, args in
                     guard args.count == 3 else { throw fail("InvalidArguments", "unseal") }
                     guard let message = CryptoPrimitives.unseal(try unwrap("AeadKey", args[0]), try unwrap("Sealed", args[1]), try bytes(args[2])) else {
-                        return .data("Maybe::Nothing", [])
+                        return .data("Maybe::Absent", [])
                     }
-                    return .data("Maybe::Just", [.bytes(message)])
+                    return .data("Maybe::Present", [.bytes(message)])
                 }),
             ])
         default:

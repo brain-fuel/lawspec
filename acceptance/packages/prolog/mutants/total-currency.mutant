@@ -1,0 +1,6 @@
+@@ src/shop/orders.pl
+<<<<<<<
+value(Tag, [Currency, Total])) :-
+=======
+value(Tag, [value('shop.domain::type::Currency::Eur', []), Total])) :-
+>>>>>>>

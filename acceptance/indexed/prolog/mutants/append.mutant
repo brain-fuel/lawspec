@@ -1,0 +1,6 @@
+@@ src/example/indexed.pl
+<<<<<<<
+Tag == 'example.indexed::type::Vec::VNil' -> R = Other
+=======
+Tag == 'example.indexed::type::Vec::VNil' -> R = value(Tag, [])
+>>>>>>>

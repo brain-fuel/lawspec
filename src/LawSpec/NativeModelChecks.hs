@@ -20,6 +20,7 @@ data NativeCheck = NativeCheck
   , checkScope :: Maybe String, checkGroup :: String }
 
 nativeChecks :: String -> FilePath -> C.Unit -> [NativeCheck]
+nativeChecks "prolog" lawFile unit = nativeChecks "python" lawFile unit
 nativeChecks target lawFile unit
   | target `notElem` supported=[]
   | otherwise=map native (Checks.checks unit)

@@ -50,7 +50,7 @@ end unit
 test('formatting uses parser roles for record-type separators across imported types without altering value or pattern commas',async()=>{
   const {readFile}=await import('node:fs/promises');
   const {createCompiler}=await import('../api.mjs');
-  const {targets}=await import('../templates.mjs');
+  const {programTargets: targets}=await import('../templates.mjs');
   const compiler=await createCompiler();
   const content=await readFile(new URL('../../test/fixtures/canonical-record-type-separators.lawspec',import.meta.url),'utf8');
   const companion=`unit formatter.consumer
@@ -121,7 +121,7 @@ end unit
 test('formatting retains long scenario arguments and typed behavior through nested delivery and recovery',async()=>{
   const {readFile}=await import('node:fs/promises');
   const {createCompiler}=await import('../api.mjs');
-  const {targets}=await import('../templates.mjs');
+  const {programTargets: targets}=await import('../templates.mjs');
   const compiler=await createCompiler();
   const file='canonical-scenario-format-boundaries.lawspec';
   const content=await readFile(new URL('../../test/fixtures/'+file,import.meta.url),'utf8');
@@ -562,7 +562,7 @@ end unit
 
 test('canonical anonymous records reach checked definitions, literal tables and every target', async () => {
   const {createCompiler} = await import('../api.mjs');
-  const {targets} = await import('../templates.mjs');
+  const {programTargets: targets} = await import('../templates.mjs');
   const compiler = await createCompiler();
   const content = `unit records
 
@@ -635,7 +635,7 @@ test('anonymous record construction retains mandatory validation with no law lay
 test('nominal structural payloads preserve generic fields, table values and mandatory contracts', async () => {
   const {readFile} = await import('node:fs/promises');
   const {createCompiler} = await import('../api.mjs');
-  const {targets} = await import('../templates.mjs');
+  const {programTargets: targets} = await import('../templates.mjs');
   const compiler = await createCompiler();
   const path = 'examples/rc1/record-payloads.lawspec';
   const content = await readFile(new URL('../' + path, import.meta.url), 'utf8');

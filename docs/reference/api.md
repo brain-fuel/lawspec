@@ -67,6 +67,12 @@ interface GenerationRequest extends CheckRequest {
   `planGeneration` also reports whether it can be executed: for example, a
   well-typed refinement whose finite domain is empty passes `check` but fails
   generation.
+- Artifact targets `hcl`, `yaml`, `antlr4` and `make` use `planGeneration`
+  to emit [configuration and build artifacts](artifact-targets.md), with no
+  native law-test or benchmark manifest. Generation is not execution evidence.
+- The `prolog` program target emits checked Python support, Prolog adapters and
+  PLUnit slots. Its native manifest identifies the actual host law and model
+  cases; see the [Prolog interface](prolog.md).
 - `proofTasks` prepares typed SMT tasks for selected law proofs. It requires
   schema 5 and the technical profile, and does not execute a solver.
 - `generation` fields you omit keep their defaults (100, 10000, 1000, 4096).

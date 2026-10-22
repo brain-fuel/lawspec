@@ -72,6 +72,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   generated code checks each such result where the definition performs the
   operation, and stops the definition if a handler broke the type.
   `lawspec evidence` reports each check as `runtime-checked`.
+- The `prolog` program target uses SWI-Prolog and Janus with checked schemas,
+  native functions and handlers, Hypothesis generator factories, PLUnit
+  selection, replay and structured incomplete execution evidence. Its reference
+  page records supported interfaces and remaining acceptance work.
+- Prolog native bindings support qualified record/variant/unit representations,
+  resolved nested field layouts, retained native handle tokens, constructors,
+  methods and typed native exception mappings, including message products.
+- The `hcl`, `yaml`, `antlr4` and `make` artifact targets emit checked
+  configuration, schemas, syntax grammars and ordered CLI pipelines. Missing
+  inputs and unsupported constraints remain explicit; artifact generation
+  does not claim application law execution.
+- Generated Rust handlers expose supported construction and state
+  snapshot/restoration methods for embedding checked reference models.
 - `lawspec evidence --attestation` links each law `lawspec test` recorded
   under the attestation's run id to that run as completed, with its outcome
   and the run's exit code. An attestation whose `execution.status` is
@@ -82,6 +95,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   history it ran against (the completed history digest, else the
   stand-in's). Each law lists its providers.
 
+### Changed
+
+- **Breaking:** `Maybe`'s values are now `Present x` and `Absent`. They were
+  `Just x` and `Nothing`. The type is still `Maybe a`. The old names are not
+  aliases: a source that uses them is refused, and the error names the new
+  constructor. Generated code follows the new names wherever LawSpec's
+  constructors appear: data tags (`Maybe::Present`, `Maybe::Absent`), the
+  Python, JavaScript, TypeScript and JVM `Present` and `Absent` classes, the
+  Go `LawSpecPresent` and `LawSpecAbsent` helpers, the C# `Maybe.Absent`
+  helper, the typed Java `Maybe.present`, `absent` and `isPresent`, the
+  Erlang and Elixir `present` and `absent` atoms, rendered values, the
+  editor grammar and the npm names. Native mappings are unchanged: Rust,
+  Swift, Scala, F# and Gleam keep their options, and Haskell keeps `Maybe`.
+
 ### Fixed
 
 - Go harness statistics belong to each test run, so a law's boundary tests no
@@ -91,6 +118,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The workflows example's `|an all group's checks run at the same time|` law
   checks that the two slow checks overlapped in time, on every target,
   instead of timing the call against 550 ms, which failed on a loaded machine.
+- Cached `lawspec evidence` keeps explicit running or wired environment
+  attestations planned. Passing native tests no longer relabel an unfinished
+  environment as executed wiring. Completed documents retain their outcomes;
+  older receipts without execution states keep their existing meaning.
+
+- ANTLR includes concrete declaration inputs and exports typed EOF parser
+  entries with exact schema references. Overlapping generic representations
+  retain their expected type; closed indexed inputs remain explicitly unsupported.
+- Prolog application and generator modules retain qualified predicate names
+  without conflicting imports into the global `user` module.
+- Prolog retains the host harness's seeded ordering, parallel execution and
+  shared-resource scopes in one selected test session. Per-slot reports keep
+  incomplete worker results distinct from failures and successful cases.
+- Cancelling an async Prolog waiter releases timeouts and losing hedges
+  without joining still-running native work at event-loop shutdown. Worker
+  contexts and structured incomplete results remain attached to their calls.
+- Cached network replies tolerate a caller that already closed, as original
+  replies do. Duplicate requests still reuse their recorded result.
+- Prolog uses plain assertions and standard Python tracebacks for large
+  generated suites. Optimized Python is rejected before native execution or
+  cache reuse, so removed assertions cannot produce successful law evidence.
+- A complete empty input domain retains its Core evidence without planning a
+  nonexistent native test. Unexpected empty native discovery still fails.
 - A stand-in's history digest, and other observations of a run, no longer
   make attested results stale; results are keyed by wiring only.
 - An environment attestation stored inside the project is no longer a

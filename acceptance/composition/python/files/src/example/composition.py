@@ -57,8 +57,8 @@ class ReaderHandler:
 
     def size(self, value0: _builtins.str) -> _schema.Maybe[_builtins.int]:
         if value0 not in self.resource.logs:
-            return _schema.Nothing()
-        return _schema.Just(len(self.resource.logs[value0]))
+            return _schema.Absent()
+        return _schema.Present(len(self.resource.logs[value0]))
 
 
 class WriterHandler:
@@ -66,7 +66,7 @@ class WriterHandler:
 
     def __init__(self, resource: _builtins.object) -> None:
         self.resource = resource
-        self.last: _schema.Maybe[_builtins.int] = _schema.Nothing()
+        self.last: _schema.Maybe[_builtins.int] = _schema.Absent()
 
     def write(
         self,
@@ -77,7 +77,7 @@ class WriterHandler:
         if records is None or value1 == "":
             return False
         records.append(value1)
-        self.last = _schema.Just(len(records) - 1)
+        self.last = _schema.Present(len(records) - 1)
         return True
 
     def lastOffset(self) -> _schema.Maybe[_builtins.int]:

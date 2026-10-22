@@ -1,0 +1,6 @@
+@@ src/example/abilities.pl
+<<<<<<<
+value('example.abilities::type::Receipt::Receipt', [Amount])).
+=======
+value('example.abilities::type::Receipt::Receipt', [Wrong])) :- Wrong is Amount-1.
+>>>>>>>

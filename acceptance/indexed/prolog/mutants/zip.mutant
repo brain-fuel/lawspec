@@ -1,0 +1,6 @@
+@@ src/example/indexed.pl
+<<<<<<<
+ls_zip(Tail, OtherTail, Rest), cons(Head, Rest, R)
+=======
+ls_zip(Tail, OtherTail, Rest), Head = Head, Rest = Rest, R = value('example.indexed::type::Vec::VNil', [])
+>>>>>>>

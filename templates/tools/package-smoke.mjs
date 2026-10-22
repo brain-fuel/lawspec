@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { targets } from "../npm/templates.mjs";
+import { programTargets as targets } from "../npm/templates.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
 const output = process.env.LAWSPEC_PACKAGE_DIR ??

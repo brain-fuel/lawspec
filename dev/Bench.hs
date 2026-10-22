@@ -219,13 +219,13 @@ syntheticModel n = unlines $
   ["definition emptyState (u :: Unit) :: State is", "  State " ++ unwords (replicate n "(prelude.keyValOf [])"), "end", ""] ++
   concat [ [ "definition put" ++ k ++ " (x :: Item" ++ k ++ ") (s :: State) :: Pair Item" ++ k ++ " State fails with ApiError is"
            , "  match prelude.lookup x.id s.items" ++ k ++ " with"
-           , "  | Just old -> raise Conflict"
-           , "  | Nothing -> Pair x (s with items" ++ k ++ " = prelude.put x.id x s.items" ++ k ++ ")"
+           , "  | Present old -> raise Conflict"
+           , "  | Absent -> Pair x (s with items" ++ k ++ " = prelude.put x.id x s.items" ++ k ++ ")"
            , "  end", "end", ""
            , "definition get" ++ k ++ " (key :: Int64) (s :: State) :: Pair Item" ++ k ++ " State fails with ApiError is"
            , "  match prelude.lookup key s.items" ++ k ++ " with"
-           , "  | Nothing -> raise NotFound"
-           , "  | Just x -> Pair x s"
+           , "  | Absent -> raise NotFound"
+           , "  | Present x -> Pair x s"
            , "  end", "end", "" ] | i <- items, let k = show i ] ++
   ["ability Api is"] ++ concat [ ["  put" ++ k ++ "Op :: Item" ++ k ++ " -> Item" ++ k ++ " fails with ApiError", "  get" ++ k ++ "Op :: Int64 -> Item" ++ k ++ " fails with ApiError"] | i <- items, let k = show i ] ++ ["end", ""] ++
   ["handler reference for Api with state s :: State start emptyState unitValue is"] ++

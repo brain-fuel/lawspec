@@ -1,0 +1,6 @@
+@@ src/example/alternatives.pl
+<<<<<<<
+R is max(0, X).
+=======
+R is max(1, X).
+>>>>>>>

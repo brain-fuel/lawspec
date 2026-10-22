@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.pl
+<<<<<<<
+ls_echoRaw(X, X).
+=======
+ls_echoRaw(_, raw('Utf16Text', [65533])).
+>>>>>>>

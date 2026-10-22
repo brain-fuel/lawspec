@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 const compiler=await createCompiler();
 const content=await readFile(new URL('../../test/fixtures/canonical-model-layer-selection.lawspec',import.meta.url),'utf8');
 const adapters=['openAccount','deposit','withdrawAll','balance','close','reopen','depositTwice','survivesCrash'];

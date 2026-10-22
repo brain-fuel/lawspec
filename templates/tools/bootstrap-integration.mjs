@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { access, readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import path from "node:path";
-import { targets, templates } from "../npm/templates.mjs";
+import { programTargets as targets, templates } from "../npm/templates.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
 async function run(cmd, args, cwd, environment = {}) {
@@ -81,7 +81,8 @@ async function setup(target) {
         ["install", "--ignore-scripts", "--no-audit", "--no-fund"],
         root,
       );
-  } else if (target === "python") {
+  } else if (target === "python" || target === "prolog") {
+    if (target === "prolog") await run("swipl", ["--version"], root);
     await mkdir(path.join(root, "src"), { recursive: true });
     await run(
       "uv",
@@ -103,7 +104,7 @@ async function setup(target) {
         "--python",
         config.targets[0].python,
         "-c",
-        path.join(repo, "test/locks/python.txt"),
+        path.join(repo, "test/locks", target === "prolog" ? "prolog.txt" : "python.txt"),
         "-e",
         ".[test]",
         // For the suites that import lawspec.crypto or lawspec.network.

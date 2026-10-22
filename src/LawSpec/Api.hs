@@ -1,7 +1,7 @@
 -- | The compiler's one entry point for every host: the native lawspec-core
 -- executable, the WASM core the npm package and the documentation site load,
 -- and lawspec-dev docs all speak the same JSON request and response, so the
--- eight targets and the two builds cannot drift apart. ref:DEC-wasm-distribution
+-- targets and the two builds cannot drift apart. ref:DEC-wasm-distribution
 module LawSpec.Api (dispatch) where
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as KM
@@ -20,6 +20,7 @@ import qualified LawSpec.Core.Smt as Smt
 import qualified LawSpec.Core as C
 import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
+import LawSpec.Targets (artifactTargets)
 import LawSpec.NativeRequest
 import LawSpec.Public (programView, obligationView)
 import LawSpec.Packages
@@ -33,7 +34,7 @@ import qualified LawSpec.Core.LawTasks as Tasks
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
 import Data.Foldable (toList)
 import qualified Data.Map.Strict as M
-import LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, BenchmarkEntry(..), benchmarkManifest)
+import LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, executableEntries, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
@@ -96,8 +97,11 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
                 Left ds -> failure ds
                 Right _ -> withSources formattedSources (result [])
           "format" -> failure [Diagnostic "language-profile" "format requires API schema 5 and languageProfile 1.0-rc.2" Nothing]
+          "planGeneration" | target `elem` artifactTargets, native /= emptyNativeRequest ->
+            failure [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing]
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests core verification plan (verificationKeys verification
-              (testManifestWithModelChecks (maybe True (`V.selected` V.Model) verification) target testDir (plannedCore core plan))) . result)
+              (either (const id) executableEntries plan
+                (testManifestWithModelChecks (maybe True (`V.selected` V.Model) verification) target testDir (plannedCore core plan)))) . result)
             ((++ networkArtifacts native) <$> (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing])
        (analysisEvidence (maybe True (\config -> V.selected config V.Exhaustive || V.selected config V.Proof) verification)

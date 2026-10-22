@@ -1,5 +1,5 @@
 -- | Definition-only contract selection shared by closed execution and native APIs.
-module LawSpec.Core.DefinitionContracts (definitionContracts, checkedDefinitionContracts,validateEmissionDefinitions) where
+module LawSpec.Core.DefinitionContracts (definitionContracts, checkedDefinitionContracts,validateEmissionDefinitions,validateNativeEmissionDefinitions) where
 
 import LawSpec.Core
 import LawSpec.Core.Total (validateDefinitionContracts)
@@ -31,19 +31,24 @@ validateEmissionDefinitions bits declarations units =
 checkedDefinitionContracts :: Int -> [DataDeclaration] -> [Unit] -> Either String [Contract]
 checkedDefinitionContracts bits declarations units = do
   let contracts = definitionContracts units
-  if null contracts then pure () else
-    do
-      definitions<-mapM (\definition -> do
-        body<-logical (definitionBody definition)
-        pure definition{definitionBody=body}) (concatMap unitDefinitions units)
-      conditions<-mapM (\contract -> do
-        before<-mapM logical (contractPreconditions contract)
-        after<-mapM logical (contractPostconditions contract)
-        runtime<-mapM logical (contractRuntimePostconditions contract)
-        pure contract{contractPreconditions=before,contractPostconditions=after,
-          contractRuntimePostconditions=runtime}) contracts
-      either (Left . show) Right (validateDefinitionContracts bits declarations definitions conditions)
+  if null contracts then pure () else validateNativeEmissionDefinitions bits declarations units
   pure contracts
+
+-- | Validate a materialized plan independently of whether it has contracts.
+-- This uses the same checked witness erasure and mandatory definition checker
+-- as existing native contract emission. It does not accept extra logical fields.
+validateNativeEmissionDefinitions :: Int -> [DataDeclaration] -> [Unit] -> Either String ()
+validateNativeEmissionDefinitions bits declarations units = do
+  definitions<-mapM (\definition -> do
+    body<-logical (definitionBody definition)
+    pure definition{definitionBody=body}) (concatMap unitDefinitions units)
+  conditions<-mapM (\contract -> do
+    before<-mapM logical (contractPreconditions contract)
+    after<-mapM logical (contractPostconditions contract)
+    runtime<-mapM logical (contractRuntimePostconditions contract)
+    pure contract{contractPreconditions=before,contractPostconditions=after,
+      contractRuntimePostconditions=runtime}) (definitionContracts units)
+  either (Left . show) Right (validateDefinitionContracts bits declarations definitions conditions)
   where
     logical original=do
       value<-traverseChildren logical original

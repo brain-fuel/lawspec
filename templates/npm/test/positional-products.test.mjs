@@ -33,7 +33,7 @@ test('tuple arity, nominal boundaries, hidden shapes and parameter contracts rem
     `type Pair is a record{first of type Bool second of type Bool} end type
 function invalid ((_, _) of type Pair) -> Bool is true end function
 `,
-    `function invalid (Just value of type Maybe Integer) -> Bool is true end function
+    `function invalid (Present value of type Maybe Integer) -> Bool is true end function
 `,
     'function invalid ((same, same) of type (Bool, Bool)) -> Bool is true end function',
     `function bounded ((lower, upper) of type (Integer, Integer) where lower <= upper) -> Integer is upper end function

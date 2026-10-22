@@ -1,6 +1,6 @@
 @@ src/Native/Jobs.cs
 <<<<<<<
-    public FSharpOption<int> Take() => queue.TryDequeue(out var job) ? Maybe.Of(job) : Maybe.Nothing<int>();
+    public FSharpOption<int> Take() => queue.TryDequeue(out var job) ? Maybe.Of(job) : Maybe.Absent<int>();
 =======
-    public FSharpOption<int> Take() => queue.TryPeek(out var job) ? Maybe.Of(job) : Maybe.Nothing<int>();
+    public FSharpOption<int> Take() => queue.TryPeek(out var job) ? Maybe.Of(job) : Maybe.Absent<int>();
 >>>>>>>

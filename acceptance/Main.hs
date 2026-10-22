@@ -63,7 +63,8 @@ import System.FilePath ((</>), takeDirectory)
 import System.IO (BufferMode(LineBuffering), hPutStrLn, hSetBuffering, readFile', stderr, stdout)
 import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import LawSpec.Api (dispatch)
-import LawSpec.Scaffold (scaffoldFilesWith, scaffoldTargets)
+import LawSpec.Scaffold (scaffoldFilesWith)
+import LawSpec.Targets (programTargets)
 import LawSpec.BuiltinDefaults (adapterPath)
 import Toolchain
 import Cache
@@ -112,7 +113,7 @@ main = do
               ("verification", object ["layers" .= (["proof","exhaustive","property","examples","runtime","model"] :: [String])])]
       extra = protocol ++ [("packages", toJSON packages) | not (null packages)] ++
         [("dependencies", dependencies) | dependencies /= Null]
-  let targets = if null selected then scaffoldTargets else selected
+  let targets = if null selected then programTargets else selected
       profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "")
   forM_ targets $ \target -> do
     let project = ".artifacts" </> (suite ++ profile) </> target
@@ -149,7 +150,8 @@ harnessInputs :: String -> [FilePath]
 harnessInputs target =
   [ "acceptance/Main.hs", "acceptance/Toolchain.hs", "acceptance/Cache.hs", "test/locks/go/go.sum"
   , ".integration" </> target </> "package.json", ".integration" </> target </> "package-lock.json" ] ++
-  ["test/locks" </> target </> lock | Just lock <- [beamLock target]]
+  ["test/locks" </> target </> lock | Just lock <- [beamLock target]] ++
+  ["test/locks/" ++ file ++ ".txt" | target == "prolog", file <- ["python","prolog"]]
 
 beamLock :: String -> Maybe FilePath
 beamLock target = lookup target [("erlang","rebar.lock"),("elixir","mix.lock"),("gleam","manifest.toml")]

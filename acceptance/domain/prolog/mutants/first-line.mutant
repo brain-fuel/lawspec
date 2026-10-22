@@ -1,0 +1,6 @@
+@@ src/example/ordering.pl
+<<<<<<<
+ls_firstLine(value(_, [[Head|_]]), Head).
+=======
+ls_firstLine(value(_, [[Head|_]]), R) :- R is Head+1.
+>>>>>>>

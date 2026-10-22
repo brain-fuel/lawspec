@@ -1,0 +1,7 @@
+@@ src/example/abilities.pl
+<<<<<<<
+lawspec_prolog:operation(Gateway, capture, [Approved], value(_, [Paid])),
+=======
+lawspec_prolog:operation(Gateway, capture, [Approved], _),
+        lawspec_prolog:operation(Gateway, capture, [Approved], value(_, [Paid])),
+>>>>>>>

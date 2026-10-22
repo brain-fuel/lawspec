@@ -2,10 +2,10 @@ unit example.sum_refinements
 
 law "|positive Maybe payloads| is
   definition : for all (x :: Maybe (value :: Int8 where value > 0)) =>
-    (first matching case of x : when Nothing then true when Just payload then payload >= 1 end case) = true end for all
+    (first matching case of x : when Absent then true when Present payload then payload >= 1 end case) = true end for all
   end definition
-  example "|absent| : x = Nothing expect x = Nothing end example
-  example "|present| : x = Just 1 expect x = Just 1 end example
+  example "|absent| : x = Absent expect x = Absent end example
+  example "|present| : x = Present 1 expect x = Present 1 end example
 end law
 
 law "|selected Either payload| is
@@ -19,13 +19,13 @@ end law
 
 law "|nested Maybe states| is
   definition : for all (x :: Maybe (Maybe (value :: Bool where value))) =>
-    (first matching case of x : when Nothing then true when Just inner then
-      first matching case of inner : when Nothing then true when Just payload then payload end case
+    (first matching case of x : when Absent then true when Present inner then
+      first matching case of inner : when Absent then true when Present payload then payload end case
     end case) = true end for all
   end definition
-  example "|outer absent| : x = Nothing expect x = Nothing end example
-  example "|inner absent| : x = Just Nothing expect x = Just Nothing end example
-  example "|present| : x = Just (Just true) expect x = Just (Just true) end example
+  example "|outer absent| : x = Absent expect x = Absent end example
+  example "|inner absent| : x = Present Absent expect x = Present Absent end example
+  example "|present| : x = Present (Present true) expect x = Present (Present true) end example
 end law
 
 law "|finite Either variants| is
@@ -38,13 +38,13 @@ end law
 law "|dependent payload keeps outer binding| is
   definition : for all (lawspecElement :: Int8)
     (x :: Maybe (value :: Int8 where value > lawspecElement)) =>
-    (first matching case of x : when Nothing then true when Just payload then payload - lawspecElement >= 1 end case) = true end for all
+    (first matching case of x : when Absent then true when Present payload then payload - lawspecElement >= 1 end case) = true end for all
   end definition
   example "|maximum prefix has absent continuation| :
-    lawspecElement = 127 x = Nothing expect x = Nothing
+    lawspecElement = 127 x = Absent expect x = Absent
   end example
   example "|present continuation| :
-    lawspecElement = 0 x = Just 1 expect x = Just 1
+    lawspecElement = 0 x = Present 1 expect x = Present 1
   end example
 end law
 end unit

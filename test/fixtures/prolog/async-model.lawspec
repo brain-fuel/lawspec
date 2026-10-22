@@ -1,0 +1,29 @@
+unit example.prologAsync
+
+handle Counter
+newCounter :: Unit -> Counter
+async increment :: Counter -> Integer
+async read :: Counter -> Integer
+
+function modelIncrement (n :: Integer) -> Pair Integer Integer is Pair (n + 1) (n + 1) end function
+function modelRead (n :: Integer) -> Pair Integer Integer is Pair n n end function
+
+model counter :: shared Counter by Integer is
+  start newCounter ~ 0
+  increment ~ modelIncrement
+  read ~ modelRead
+end model
+
+protocol Report is send Integer end protocol
+
+scenario `an asynchronous reply arrives` in counter is
+  channel report :: Report
+  par
+    n <- increment
+    send report n
+  with
+    receive report value
+    expect value = 1
+  end par
+end scenario
+end unit

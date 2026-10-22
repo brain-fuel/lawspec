@@ -33,6 +33,10 @@ toolchain project target = do
       -- bytecode cache, so the adapter's cache is always removed first.
       pure (Toolchain python ["-B", "-m", "pytest", "-q"]
         (removePathForcibly (project </> "src/example/__pycache__")) (pure ""))
+    "prolog" -> do
+      python <- maybe (root </> ".integration/prolog/.venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
+      pure (Toolchain python ["-B", "lawspec_test.py"]
+        (removePathForcibly (project </> "src/example/__pycache__")) (pure ""))
     "javascript" -> do
       tests <- sort . filter (".test.mjs" `isSuffixOf`) <$> listDirectory (project </> "test")
       pure (plain "node" ("--test" : map ("test" </>) tests))

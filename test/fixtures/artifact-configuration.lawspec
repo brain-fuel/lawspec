@@ -1,0 +1,6 @@
+unit configuration
+type Settings is a record{port :: UInt16 enabled :: Bool hosts :: List Text} end type
+function settings (unused :: Unit) -> Settings is
+  Settings record{port = 8080, enabled = true, hosts = ["localhost", "${literal}", "%{literal}", "日本語 é 😀"]}
+end function
+end unit

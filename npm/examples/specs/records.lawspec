@@ -89,12 +89,12 @@ end law
 
 -- A literal takes its type from where it is used: 0 is an Int64 here.
 function opening (a :: Maybe Account) -> Int64 is
-  let start = (first matching case of a : when Nothing then 0 when Just account then account.balance end case) in
+  let start = (first matching case of a : when Absent then 0 when Present account then account.balance end case) in
   if start < 0 then 0 else start end if end let
 end function
 
 law "|an absent account opens at zero| is
-  definition : opening Nothing = 0 end definition
+  definition : opening Absent = 0 end definition
 end law
 
 -- Recursion on an integer that moves toward a bound is total.
@@ -164,10 +164,10 @@ law "|a top up stops at the top| is
   end definition
 end law
 
-law "|a total that overflows is Nothing| is
+law "|a total that overflows is Absent| is
   definition :
     for all (a :: Int32) (b :: Int32) =>
-      total a b = (if a + b > Int32.max || a + b < Int32.min then Nothing else Just (prelude.Int32 (a + b)) end if) end for all
+      total a b = (if a + b > Int32.max || a + b < Int32.min then Absent else Present (prelude.Int32 (a + b)) end if) end for all
   end definition
 end law
 

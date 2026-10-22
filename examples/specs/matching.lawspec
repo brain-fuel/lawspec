@@ -15,10 +15,10 @@ law "|nested Maybe patterns preserve each absence state| is
   definition :
     for all (value :: Maybe (Maybe Bool)) =>
       (first matching case of value :
-        when Nothing then Nothing
-        when Just inner then Just (first matching case of inner :
-            when Nothing then Nothing
-            when Just payload then Just payload
+        when Absent then Absent
+        when Present inner then Present (first matching case of inner :
+            when Absent then Absent
+            when Present payload then Present payload
           end case)
       end case) = value end for all
   end definition
@@ -39,11 +39,11 @@ law "|matching can provide a default value| is
   definition :
     for all (value :: Maybe Int8) =>
       ((first matching case of value :
-        when Nothing then 0
-        when Just payload then payload
+        when Absent then 0
+        when Present payload then payload
       end case) :: Int8) = ((first matching case of value :
-        when Just payload then payload
-        when Nothing then 0
+        when Present payload then payload
+        when Absent then 0
       end case) :: Int8) end for all
   end definition
 end law

@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.pl
+<<<<<<<
+    ( A == B -> R = true ; R = false ).
+=======
+    py_call(builtins:getattr(A, description), DA),
+    py_call(builtins:getattr(B, description), DB),
+    ( DA == DB -> R = true ; R = false ).
+>>>>>>>

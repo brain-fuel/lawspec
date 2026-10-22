@@ -1,0 +1,7 @@
+@@ src/example/resilience.pl
+<<<<<<<
+    py_call(lawspec_runtime:retry_delay(-(exponential, Base, Factor, @(none)), Attempt), Delay).
+=======
+    WrongFactor is Factor+1,
+    py_call(lawspec_runtime:retry_delay(-(exponential, Base, WrongFactor, @(none)), Attempt), Delay).
+>>>>>>>

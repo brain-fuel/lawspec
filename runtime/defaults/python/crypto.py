@@ -497,4 +497,4 @@ class AeadHandler:
     def unseal(self, value0: @@AeadKey@@, value1: @@Sealed@@, value2: _builtins.bytes) -> _schema.Maybe[_builtins.bytes]:
         sealed = value1.value
         opened = aes_256_gcm_decrypt(value0.value, sealed[:12], sealed[12:], value2)
-        return _schema.Nothing() if opened is None else _schema.Just(opened)
+        return _schema.Absent() if opened is None else _schema.Present(opened)

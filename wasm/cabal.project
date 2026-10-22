@@ -1,1 +1,6 @@
 packages: . ..
+
+-- The pinned Unicode 15.1 tables are pure Haskell. Their published upper bound
+-- predates the experimental GHC 9.14 WASM toolchain; native/WASM target parity
+-- and normalization rejection controls cover this narrow compatibility override.
+allow-newer: unicode-data:base

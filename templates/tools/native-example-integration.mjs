@@ -9,6 +9,7 @@ const target = process.argv[2];
 const mutations = {
   rust: ['src/domain.rs', 'Decimal::new(2.into()', 'Decimal::new(3.into()'],
   python: ['src/payments_domain.py', 'Fraction(1, 5)', 'Fraction(3, 10)'],
+  prolog: ['src/domain/payments.pl', '+ 2*10**(-1-Scale)', '+ 3*10**(-1-Scale)'],
   javascript: ['src/payments_domain.mjs', 'new ls.Decimal(2n, -1n)', 'new ls.Decimal(3n, -1n)'],
   typescript: ['src/payments_domain.ts', 'new ls.Decimal(2n, -1n)', 'new ls.Decimal(3n, -1n)'],
   java: ['src/main/java/domain/PaymentsDomain.java', 'BigDecimal("0.2")', 'BigDecimal("0.3")'],
@@ -65,7 +66,7 @@ assert.equal(projects.length, 1);
 const directory = projects[0].directory;
 const configPath = path.join(directory, 'lawspec.json');
 const config = JSON.parse(await readFile(configPath, 'utf8'));
-if (target === 'python') {
+if (target === 'python' || target === 'prolog') {
   if (process.env.LAWSPEC_PYTHON_EXECUTABLE) {
     config.targets[0].python = process.env.LAWSPEC_PYTHON_EXECUTABLE;
   } else {
@@ -123,6 +124,7 @@ await run(process.execPath, [cli, 'generate', ...(minify ? ['--minify'] : [])], 
 const commands = {
   rust: ['cargo', ['test', ...(offline ? ['--offline'] : [])]],
   python: [config.targets[0].python, ['-B', '-m', 'pytest', '-q']],
+  prolog: [config.targets[0].python, ['-B', 'lawspec_test.py']],
   javascript: ['npm', ['test']], typescript: ['npm', ['test']],
   java: ['mvn', ['-B', ...(offline ? ['-o'] : []), 'test']],
   kotlin: [config.targets[0].gradle || 'gradle', ['--no-daemon', '--console=plain',
@@ -187,7 +189,7 @@ assert.equal(independentLaws.length,1,'Identify the added independent law from i
 assert.equal(feeLaws.length,1,'Identify the fee law from its returned identity');
 const [independentLaw]=independentLaws,[feeLaw]=feeLaws;
 assert.deepEqual((await lawspecTest()).ran, [], 'An unchanged project runs no tests');
-const comment = {python: '#', haskell: '--', erlang: '%', elixir: '#', clojure: ';;'}[target] ?? '//';
+const comment = {python: '#', prolog: '%', haskell: '--', erlang: '%', elixir: '#', clojure: ';;'}[target] ?? '//';
 await editDomain(original + `\n${comment} edited\n`);
 const edited = await lawspecTest();
 assert.deepEqual(edited.ran, first.ran.filter((law) => law!==independentLaw),

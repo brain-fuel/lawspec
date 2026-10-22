@@ -607,13 +607,13 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
           Right plan -> mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
   it "does not treat fields of rebuilt or returned records as descending arguments" $ do
     let declaration = "type Chain is a record{next :: Maybe Chain} end type\n"
-        grow = "function grow (chain :: Chain) -> Chain is Chain record{next = Just chain} end function\n"
+        grow = "function grow (chain :: Chain) -> Chain is Chain record{next = Present chain} end function\n"
         repeats selected = "function repeats (chain :: Chain) -> Whole is first matching case of " ++ selected ++
-          ": when record{next = Just rest} then repeats rest otherwise 0 end case end function"
+          ": when record{next = Present rest} then repeats rest otherwise 0 end case end function"
     mapM_ (\body -> case core body of
       Left diagnostics -> map LawSpec.Model.code diagnostics `shouldContain` ["total"]
       Right _ -> expectationFailure "a rebuilt or returned record acquired structural provenance")
-      [declaration ++ repeats "Chain record{next = Just chain}",declaration ++ grow ++ repeats "grow chain"]
+      [declaration ++ repeats "Chain record{next = Present chain}",declaration ++ grow ++ repeats "grow chain"]
   it "expands composed reusable requirements across nominal imports on every target" $ do
     let paths = ["examples/rc1/authorization-snapshots.lawspec", "examples/rc1/requirement-composition.lawspec"]
     sources <- mapM (\path -> Source path <$> readFile path) paths
@@ -933,8 +933,8 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     mapM_ (\combination -> do
       let path = "examples/rc1/nesting/" ++ combination ++ ".lawspec"
       body <- readFile path
-      let (prefix,suffix) = breakOn "then Just name" body
-          mutant = prefix ++ "then Nothing" ++ drop (length ("then Just name" :: String)) suffix
+      let (prefix,suffix) = breakOn "then Present name" body
+          mutant = prefix ++ "then Absent" ++ drop (length ("then Present name" :: String)) suffix
       suffix `shouldSatisfy` (not . null)
       case compileCoreCanonical 64 defaultGeneration [Source path mutant] of
         Left ds -> expectationFailure (combination ++ ": intrinsic checks rejected a well-typed mutant: " ++ show ds)
@@ -960,13 +960,14 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       ["mapping b of type Bool -> Text is row true, \"x\" row true, \"y\" otherwise \"z\" end mapping"
       ,"mapping b of type Float64 -> Text is row float64Bits(\"7ff8000000000000\"), \"NaN\" otherwise \"x\" end mapping"
       ,"type Digit is one of | Zero | One end type mapping digitText of type Digit -> Text is row Zero, \"0\" end mapping\n"]
-  it "emits checked phrase-named functions through all seventeen backends" $ case core
+  it "emits checked phrase-named functions through all eighteen program backends" $ case core
     "function \"|negates the value| (value :: Bool) -> Bool is not value end function\n" of
     Left ds -> expectationFailure (show ds)
     Right program -> case planTestingWith V.noVerification program of
       Left ds -> expectationFailure (show ds)
       Right plan -> do
-        length targets `shouldBe` 17
+        length targets `shouldBe` 18
+        targets `shouldContain` ["prolog"]
         mapM_ (\target -> emitPlan target plan `shouldSatisfy` isRight) targets
   it "refuses collisions in public native names" $ case core (unlines
     ["function addsValue (value :: Integer) -> Integer is value end function\n"
@@ -975,7 +976,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     Right program -> case planTestingWith V.noVerification program of
       Left ds -> expectationFailure (show ds)
       Right plan -> emitPlan "python" plan `shouldSatisfy` isLeft
-  it "resolves explicit public-name overrides by identity through all seventeen emitters" $ case core (unlines
+  it "resolves explicit public-name overrides by identity through all eighteen program emitters" $ case core (unlines
     [ "function flipValue (value :: Bool) -> Bool is value end function\n"
     , "function \"|flip value| (value :: Bool) -> Bool is not value end function\n"
     , "law agrees is definition: for all (value :: Bool) => \"|flip value| value = (not (flipValue value)) end for all end definition end law" ]) of

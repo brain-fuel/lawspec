@@ -1,0 +1,6 @@
+@@ src/example/collections.pl
+<<<<<<<
+    sort(Items, Distinct).
+=======
+    ( Items = [_|Tail] -> sort(Tail, Distinct) ; Distinct = [] ).
+>>>>>>>

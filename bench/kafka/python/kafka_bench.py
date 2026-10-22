@@ -24,7 +24,7 @@ def tp(p):
 
 
 def record(i):
-    return data.Record(schema.Just(i.to_bytes(8, "big")), schema.Just(b"x" * 64), [])
+    return data.Record(schema.Present(i.to_bytes(8, "big")), schema.Present(b"x" * 64), [])
 
 
 def phase(name, ops, start):
@@ -47,7 +47,7 @@ def main():
     broker.createTopicsRequest("bench", PARTITIONS)
 
     start = time.perf_counter()
-    nothing = schema.Nothing()
+    nothing = schema.Absent()
     for i in range(scale):
         broker.produceRequest(tp(i % PARTITIONS), nothing, [record(i)])
     phase("produce", scale, start)
@@ -92,7 +92,7 @@ def main():
     start = time.perf_counter()
     ops = 0
     txns = max(1, scale // 100)
-    pid = broker.initProducerIdRequest(schema.Just("tx"))
+    pid = broker.initProducerIdRequest(schema.Present("tx"))
     ops += 1
     sequences = [0] * PARTITIONS
     for t in range(txns):
@@ -101,7 +101,7 @@ def main():
         for p in parts:
             tag = data.ProducerTag(pid.producerId, pid.producerEpoch, sequences[p])
             sequences[p] += 1
-            broker.produceRequest(tp(p), schema.Just(tag), [record(t)])
+            broker.produceRequest(tp(p), schema.Present(tag), [record(t)])
         broker.txnOffsetCommitRequest("tx", pid.producerId, pid.producerEpoch, "g", [data.OffsetEntry(tp(parts[0]), t)])
         broker.endTxnRequest("tx", pid.producerId, pid.producerEpoch, True)
         ops += 5

@@ -61,7 +61,7 @@ boundaries = do
       "Frontend", "Refinement", "Domain", "Eval", "Public", "Api"]
     roots = ["Core", "Core.Validate", "Core.Total", "Core.Definitions", "Core.Eval",
       "Core.Payload", "Core.Semantics", "Testing", "Backend", "CoreEmit", "JavaData",
-      "RustEmit", "CoreScalarEmit", "CoreNativeScalarEmit", "KotlinData", "Core.DomainEvidence", "Core.Smt"]
+      "RustEmit", "CoreScalarEmit", "CoreNativeScalarEmit", "KotlinData", "Core.DomainEvidence", "Core.Smt", "Prolog.Emit"]
     visitAll seen [] = pure seen
     visitAll seen ((name, trail) : rest) = do
       when (name `S.member` forbidden)
@@ -103,7 +103,7 @@ integrity record = do
           [] -> "Compiler source set changed; run tools/wasm.sh")
       putStrLn "WASM, generated API, and compiler source fingerprints match."
   where
-    runtimeFile p = any (`isSuffixOf` p) [".rs", ".py", ".mjs", ".ts", ".java", ".kt", ".scala", ".go", ".hs", ".erl", ".ex", ".gleam", ".groovy", ".clj"]
+    runtimeFile p = any (`isSuffixOf` p) [".rs", ".py", ".pl", ".mjs", ".ts", ".java", ".kt", ".scala", ".go", ".hs", ".erl", ".ex", ".gleam", ".groovy", ".clj"]
       || any (`isSuffixOf` p) ["Cargo.toml", "Cargo.lock"]
     quoted s = "\"" ++ s ++ "\""
     isInfixOf' needle haystack = any (needle `isPrefixOf`) (tails' haystack)
@@ -126,6 +126,7 @@ stagedCopies = do
   let documents = ["LICENSE"]
   let pairs = ("examples/specs/atoi_codec.lawspec", "npm/starter.lawspec") :
         ("vendor/unicode/LICENSE.txt", "npm/UNICODE-LICENSE.txt") :
+        ("vendor/unicode/NORMALIZATION-LICENSES.txt", "npm/NORMALIZATION-LICENSES.txt") :
         [(d, "npm/" ++ d) | d <- documents] ++
         [("examples/specs/" ++ f, "npm/examples/specs/" ++ f) | f <- specs] ++
         [("examples/rc1-authoring.lawspec", "npm/examples/rc1-authoring.lawspec")] ++

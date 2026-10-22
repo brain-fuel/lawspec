@@ -105,6 +105,6 @@ type_key_test() ->
         lawspec_beam_scalar:type(<<"Either (List Int8) (Optional (Maybe Text))">>)).
 
 portable_order_test() ->
-    ?assertEqual(-1, lawspec_beam_scalar:compare({ls_data, <<"Maybe::Nothing">>, []},
-        {ls_data, <<"Maybe::Just">>, [1]})),
+    ?assertEqual(-1, lawspec_beam_scalar:compare({ls_data, <<"Maybe::Absent">>, []},
+        {ls_data, <<"Maybe::Present">>, [1]})),
     ?assertEqual(0, lawspec_beam_scalar:compare({ls_decimal, 15, -1}, {ls_ratio, 3, 2})).

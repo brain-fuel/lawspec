@@ -1,3 +1,99 @@
+python-asyncio-to-thread:
+  kind: article
+  title: "Python 3.13: Running blocking work in threads"
+  locator: https://docs.python.org/3.13/library/asyncio-task.html#asyncio.to_thread
+python-asyncio-shield:
+  kind: article
+  title: "Python 3.13: Shielding a future from waiter cancellation"
+  locator: https://docs.python.org/3.13/library/asyncio-task.html#shielding-from-cancellation
+python-asyncio-wrap-future:
+  kind: article
+  title: "Python 3.13: Awaiting concurrent futures"
+  locator: https://docs.python.org/3.13/library/asyncio-future.html#asyncio.wrap_future
+python-future-cancellation:
+  kind: article
+  title: "Python 3.13: Future cancellation"
+  locator: https://docs.python.org/3.13/library/concurrent.futures.html#concurrent.futures.Future.cancel
+swi-janus-data:
+  kind: article
+  title: "SWI-Prolog Janus: Data conversion"
+  locator: https://www.swi-prolog.org/pldoc/man?section=janus-data
+swi-janus-calls:
+  kind: article
+  title: "SWI-Prolog Janus: Calling Python and retaining object references"
+  locator: https://www.swi-prolog.org/pldoc/man?section=janus
+swi-qualified-module-loading:
+  kind: article
+  title: "SWI-Prolog: load_files/2 imports and module identity"
+  locator: https://www.swi-prolog.org/pldoc/man?predicate=load_files/2
+swi-janus-terms:
+  kind: article
+  title: "SWI-Prolog Janus: Retained Prolog terms"
+  locator: https://www.swi-prolog.org/pldoc/man?section=janus-class-term
+swi-native-dicts:
+  kind: article
+  title: "SWI-Prolog: Tagged dictionaries and named fields"
+  locator: https://www.swi-prolog.org/pldoc/man?predicate=dict_create/3
+swi-native-compounds:
+  kind: article
+  title: "SWI-Prolog: Compound names and arguments"
+  locator: https://www.swi-prolog.org/pldoc/man?predicate=compound_name_arguments/3
+pytest-collection-hooks:
+  kind: article
+  title: "pytest: Collection hooks and test execution reports"
+  locator: https://docs.pytest.org/en/stable/reference/reference.html#pytest.hookspec.pytest_collection_modifyitems
+pytest-plain-assertions:
+  kind: article
+  title: "pytest: Disabling assertion rewriting"
+  locator: https://docs.pytest.org/en/stable/how-to/assert.html#disabling-assert-rewriting
+pytest-standard-tracebacks:
+  kind: article
+  title: "pytest: Standard Python traceback formatting"
+  locator: https://docs.pytest.org/en/stable/how-to/output.html#modifying-python-traceback-printing
+python-contextvars:
+  kind: article
+  title: "Python 3.13: Context variables for asynchronous execution"
+  locator: https://docs.python.org/3.13/library/contextvars.html
+hypothesis-custom-strategies:
+  kind: article
+  title: "Hypothesis: Composing custom strategies with framework generation and shrinking"
+  locator: https://hypothesis.readthedocs.io/en/latest/tutorial/custom-strategies.html
+REQ-prolog-target:
+  kind: requirement
+  title: Prolog native execution preserves checked contracts and explicit incomplete results over Janus and established test frameworks
+  locator: docs/reference/prolog.md
+swi-janus-python:
+  kind: article
+  title: "SWI-Prolog Janus: Calling Prolog from Python"
+  locator: https://www.swi-prolog.org/pldoc/man?section=janus-call-prolog
+swi-janus-threads:
+  kind: article
+  title: "SWI-Prolog Janus: Threads and deadlocks"
+  locator: https://www.swi-prolog.org/pldoc/man?section=janus-threads
+swi-determinism:
+  kind: article
+  title: "SWI-Prolog: Determinism declarations"
+  locator: https://www.swi-prolog.org/pldoc/man?section=debug-determinism
+spark-subprogram-contracts:
+  kind: article
+  title: "SPARK User's Guide: How to Write Subprogram Contracts"
+  locator: https://docs.adacore.com/spark2014-docs/html/ug/en/source/how_to_write_subprogram_contracts.html
+why3-execution:
+  kind: article
+  title: "Why3: Executing and Extracting Programs"
+  locator: https://why3.org/doc/exec.html
+lean-ffi:
+  kind: article
+  title: "Lean 4: Foreign Function Interface"
+  locator: https://lean-lang.org/doc/reference/latest/Run-Time-Code/Foreign-Function-Interface/
+idris-ffi:
+  kind: article
+  title: "Idris 2: Foreign Function Interface"
+  locator: https://idris2.readthedocs.io/en/latest/ffi/ffi.html
+rocq-extraction:
+  kind: article
+  title: "Rocq: Extraction of Programs"
+  locator: https://rocq-prover.org/doc/V9.1.1/refman/addendum/extraction.html
 MIT:
   kind: license
   title: MIT License
@@ -34,6 +130,38 @@ lawspec-roadmap:
   kind: discussion
   title: The LawSpec roadmap, the milestones each minor release delivers
   locator: docs/explanation/roadmap.md
+REQ-artifact-targets:
+  kind: requirement
+  title: HCL and YAML configuration, ANTLR data syntax and Make pipelines preserve checked definitions and distinguish artifacts from executed law evidence
+  locator: docs/reference/artifact-targets.md
+json-schema-structuring:
+  kind: article
+  title: JSON Schema subschema references and reusable definitions
+  locator: https://json-schema.org/understanding-json-schema/structuring
+json-schema-2020-12-validation:
+  kind: article
+  title: JSON Schema 2020-12 validation vocabulary
+  locator: https://json-schema.org/draft/2020-12/json-schema-validation
+opentofu-input-variables:
+  kind: article
+  title: OpenTofu input variables, types and validation
+  locator: https://opentofu.org/docs/language/values/variables/
+antlr4-parser-rules:
+  kind: article
+  title: ANTLR 4 parser rules
+  locator: https://github.com/antlr/antlr4/blob/master/doc/parser-rules.md
+gnu-make-phony-targets:
+  kind: article
+  title: GNU Make manual, phony targets and prerequisite execution
+  locator: https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
+cty-value-construction:
+  kind: article
+  title: cty numeric precision and NFC normalization at value construction
+  locator: https://github.com/zclconf/go-cty/blob/main/cty/value_init.go
+unicode-transforms:
+  kind: package
+  title: unicode-transforms 0.4.0.1 normalization with unicode-data 0.6.0 Unicode 15.1 tables
+  locator: https://hackage.haskell.org/package/unicode-transforms-0.4.0.1
 wilshaw-hutton-flow-typing:
   kind: paper
   title: "Sky Wilshaw and Graham Hutton, Flow Typing: A New Lens on Linearity, University of Nottingham, 2026"

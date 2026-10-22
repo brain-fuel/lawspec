@@ -56,7 +56,7 @@ import Gen.Template (Fill(..), fillTemplate)
 import Generate (currentVersion)
 import LawSpec.Api (dispatch)
 import LawSpec.Scaffold (scaffoldTargets, testCommand)
-import LawSpec.Targets (targetLabel)
+import LawSpec.Targets (targetLabel, programTargets)
 
 data Page = Page { pageSource :: FilePath, pageOutput :: FilePath, pageTitle :: String, pageTrack :: Maybe String } deriving Eq
 -- A navigation node: a title, an optional page, and children.
@@ -426,7 +426,7 @@ regionOf name ls =
   where marker m l = let t = trim l in any (\c -> (c ++ " " ++ m) == t || (c ++ m) == t) ["//", "#", "--"]
 
 targetNames :: [String]
-targetNames = scaffoldTargets
+targetNames = programTargets
 
 -- | The user-owned files of a generation response: the adapters.
 userFiles :: Value -> [(String, String)]

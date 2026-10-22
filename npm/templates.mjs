@@ -18,8 +18,39 @@ export const targets = [
                          "scala",
                          "groovy",
                          "clojure",
-                         "swift"
+                         "swift",
+                         "prolog",
+                         "hcl",
+                         "yaml",
+                         "antlr4",
+                         "make"
                        ];
+export const programTargets = [
+                                "java",
+                                "python",
+                                "javascript",
+                                "typescript",
+                                "go",
+                                "haskell",
+                                "kotlin",
+                                "rust",
+                                "erlang",
+                                "elixir",
+                                "gleam",
+                                "fsharp",
+                                "csharp",
+                                "scala",
+                                "groovy",
+                                "clojure",
+                                "swift",
+                                "prolog"
+                              ];
+export const artifactTargets = [
+                                 "hcl",
+                                 "yaml",
+                                 "antlr4",
+                                 "make"
+                               ];
 export const targetLabels = [
                               [
                                 "java",
@@ -88,6 +119,26 @@ export const targetLabels = [
                               [
                                 "swift",
                                 "Swift"
+                              ],
+                              [
+                                "prolog",
+                                "Prolog"
+                              ],
+                              [
+                                "hcl",
+                                "HCL"
+                              ],
+                              [
+                                "yaml",
+                                "YAML"
+                              ],
+                              [
+                                "antlr4",
+                                "ANTLR"
+                              ],
+                              [
+                                "make",
+                                "Make"
                               ]
                             ];
 
@@ -108,7 +159,8 @@ export const commands = {
                           "scala": "scala test .",
                           "groovy": "gradle test",
                           "clojure": "clojure -M:test",
-                          "swift": "swift test"
+                          "swift": "swift test",
+                          "prolog": "python lawspec_test.py"
                         };
 
 export const setup = {
@@ -128,7 +180,12 @@ export const setup = {
                        "scala": "Use JDK 25 and Scala CLI 1.16 (the scala command), with Scala 3.9.0, ScalaCheck 1.20.0 and ScalaTest 3.2.20 (scalatest-funsuite) as test dependencies in project.scala; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run scala compile --test .",
                        "groovy": "Use JDK 25, Gradle 9.3.0 with the groovy plugin, Groovy 5.0.8 (org.apache.groovy:groovy), Spock 2.5-groovy-5.0, JetCheck 0.3.0 and JUnit Jupiter's API 5.14.0, and useJUnitPlatform(); the Java model compiles jointly with the Groovy sources, so src/main/java and src/test/java are Groovy source directories. A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.",
                        "clojure": "Use JDK 25 and the Clojure CLI 1.12 with Clojure 1.12.5 and, for tests, test.check 1.1.3 (the :test alias). The Java model in java/src compiles with the JDK's compiler into target/classes, which lawspec.build does before the tests run (clojure -M:build compiles it alone). A program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run clojure -M:test.",
-                       "swift": "Use Swift 6.2 or later (Xcode 26 on macOS 26, where CryptoKit has ML-KEM and ML-DSA) and SwiftPM. The generated runtime and test support are local targets under lawspec/ with no package dependencies; tests run on Swift Testing, from the toolchain, with LawSpec's own property engine. Package.swift declares the targets LawSpecRuntime, LawSpecTesting, App (src) and AppTests (tests), as lawspec init writes it. Run swift build --build-tests."
+                       "swift": "Use Swift 6.2 or later (Xcode 26 on macOS 26, where CryptoKit has ML-KEM and ML-DSA) and SwiftPM. The generated runtime and test support are local targets under lawspec/ with no package dependencies; tests run on Swift Testing, from the toolchain, with LawSpec's own property engine. Package.swift declares the targets LawSpecRuntime, LawSpecTesting, App (src) and AppTests (tests), as lawspec init writes it. Run swift build --build-tests.",
+                       "prolog": "Use SWI-Prolog 10.0+ and Python 3.13+ with janus-swi 1.5.3, pytest 8.4.x and Hypothesis 6.x. Install the generated project with python -m pip install -e \".[test]\". Run python lawspec_test.py (PLUnit with the checked Python model), or lawspec test. Set the target python field to the selected interpreter.",
+                       "hcl": "Generate Terraform variables and checked tfvars using lawspec generate. Run tofu init -backend=false, tofu validate and tofu plan -var-file=configuration.tfvars.json. Artifact generation does not execute application laws.",
+                       "yaml": "Generate YAML 1.2 configuration and a JSON Schema 2020-12 schema using lawspec generate. Validate edited YAML with a JSON Schema validator. Artifact generation does not execute application laws.",
+                       "antlr4": "Compile LawSpecData.g4 with ANTLR 4. The grammar checks data syntax; numeric ranges and field predicates require the companion JSON Schema after decoding. Artifact generation does not execute application laws.",
+                       "make": "Run make to check the project, generate its configured targets and execute its program target tests using the installed lawspec CLI."
                      };
 
 // Each target's build files in the readable and the compact (minified) layout.
@@ -304,6 +361,30 @@ const scaffolds = {
                       "compact": {
                         "Package.swift": "// swift-tools-version: 6.2\nimport PackageDescription\nlet package = Package(\n    name: \"Example\",\n    platforms: [.macOS(.v26)],\n    targets: [\n        .target(name: \"LawSpecRuntime\", path: \"lawspec/LawSpecRuntime\"),\n        .target(name: \"LawSpecTesting\", dependencies: [\"LawSpecRuntime\"], path: \"lawspec/LawSpecTesting\"),\n        .target(name: \"App\", dependencies: [\"LawSpecRuntime\"], path: \"src\"),\n        .testTarget(name: \"AppTests\", dependencies: [\"App\", \"LawSpecRuntime\", \"LawSpecTesting\"], path: \"tests\"),\n    ]\n)\n"
                       }
+                    },
+                    "prolog": {
+                      "readable": {
+                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\"janus-swi==1.5.3\"]\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
+                      },
+                      "compact": {
+                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\"janus-swi==1.5.3\"]\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
+                      }
+                    },
+                    "hcl": {
+                      "readable": {},
+                      "compact": {}
+                    },
+                    "yaml": {
+                      "readable": {},
+                      "compact": {}
+                    },
+                    "antlr4": {
+                      "readable": {},
+                      "compact": {}
+                    },
+                    "make": {
+                      "readable": {},
+                      "compact": {}
                     }
                   };
 

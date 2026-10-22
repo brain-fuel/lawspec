@@ -1,0 +1,6 @@
+@@ src/example/orders.pl
+<<<<<<<
+ls_price(Sku, Price) :- price(Sku, Price).
+=======
+ls_price(_, _) :- throw(error(unavailable, _)).
+>>>>>>>

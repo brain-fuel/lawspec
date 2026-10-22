@@ -1,7 +1,7 @@
 // Conformance fixtures use the current grammar.
 import {checkInput, generateInput, nameText} from './compiler-input.mjs';
 import {propertyFiles} from './artifacts.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -111,6 +111,12 @@ end unit
     const adapter = plan.files.find(file => file.ownership === 'user').content;
     if (target === 'erlang') assert.match(adapter, /_Argument11/);
     else if (target === 'elixir' || target === 'gleam') assert.match(adapter, /_argument11/);
+    else if (target === 'prolog') {
+      assert.match(adapter, /'ls_f'\/13/);
+      const head = adapter.match(/'ls_f'\(([^)]*)\)\s*:-/);
+      assert.ok(head, 'The Prolog adapter declares its functional predicate');
+      assert.equal(head[1].split(',').length, 13, 'Twelve inputs and one result');
+    }
     else if (target !== "haskell") assert.match(adapter, /value11/);
   }
   for (const bad of [

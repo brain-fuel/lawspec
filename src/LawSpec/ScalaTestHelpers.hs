@@ -58,8 +58,8 @@ generatorDocBounded boundsOf bits budget structural reference key = gen
       mapped (call "Arb.list" [gen inner,text "0 to 64"]) "_values"
         (runtime "list" [quoted (key ty),text "_values.asJava"])
     gen ty@(C.Constructor "Maybe" [C.TypeArgument inner]) = call "Arb.choice"
-      [call "Arb.constant" [runtime "construct" [quoted (key ty),quoted "Maybe::Nothing",text "Array[LawSpecRuntime.Value]()"]],
-       sumGen ty "Maybe::Just" inner]
+      [call "Arb.constant" [runtime "construct" [quoted (key ty),quoted "Maybe::Absent",text "Array[LawSpecRuntime.Value]()"]],
+       sumGen ty "Maybe::Present" inner]
     gen ty@(C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) = call "Arb.choice"
       [sumGen ty "Either::Left" a,sumGen ty "Either::Right" b]
     gen ty@(C.Constructor _ [C.TypeArgument inner]) = call "Arb.choice"

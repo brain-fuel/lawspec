@@ -88,7 +88,7 @@ test_eqOnlySetsPreserveMembershipAndIteration = describe "Eq-only set Core seman
         optionalType = Constructor "Optional" [TypeArgument (setType integer)]
     equalValues 64 (wrap a) (wrap b) `shouldBe` Right True
     equalValues 64 (listValue (setType integer) [a,b]) (listValue (setType integer) [b,a]) `shouldBe` Right True
-    equalValues 64 (DataValue maybeType (Id "Maybe::Just") [a]) (DataValue maybeType (Id "Maybe::Just") [b]) `shouldBe` Right True
+    equalValues 64 (DataValue maybeType (Id "Maybe::Present") [a]) (DataValue maybeType (Id "Maybe::Present") [b]) `shouldBe` Right True
     equalValues 64 (PresenceValue optionalType (Just a)) (PresenceValue optionalType (Just b)) `shouldBe` Right True
     equalValues 64 (set (setType integer) [a]) (set (setType integer) [b]) `shouldBe` Right True
   it "rejects nested duplicate sets according to their extensional equality" $ do

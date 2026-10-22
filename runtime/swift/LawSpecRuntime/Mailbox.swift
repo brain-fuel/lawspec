@@ -135,8 +135,8 @@ public final class Mailbox: NodeService, @unchecked Sendable {
     /// The next value within some microseconds, or none (a Maybe).
     public func receiveWithin(_ micros: BigInt) throws -> Value {
         let seconds = max(0, micros.doubleValue) / 1_000_000
-        if let value = try wait(seconds) { return .data("Maybe::Just", [value]) }
-        return .data("Maybe::Nothing", [])
+        if let value = try wait(seconds) { return .data("Maybe::Present", [value]) }
+        return .data("Maybe::Absent", [])
     }
 
     /// As receiveWithin, timed by the Clock in scope: the real clock waits;
@@ -151,10 +151,10 @@ public final class Mailbox: NodeService, @unchecked Sendable {
         }
         let handler = try Effects.handler(schema, "lawspec.time::ability::Clock")
         if real(handler) { return try receiveWithin(micros) }
-        if let value = try wait(0) { return .data("Maybe::Just", [value]) }
+        if let value = try wait(0) { return .data("Maybe::Present", [value]) }
         let duration = Value.data("lawspec.time::type::Duration::Duration", [.int(micros.isNegative ? BigInt(0) : micros)])
         _ = try Effects.invoke(handler, schema, "sleep", [duration])
-        return .data("Maybe::Nothing", [])
+        return .data("Maybe::Absent", [])
     }
 
     /// The next value within a time, or nil.

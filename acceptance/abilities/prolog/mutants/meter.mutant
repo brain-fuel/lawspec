@@ -1,0 +1,6 @@
+@@ src/example/shop.pl
+<<<<<<<
+handler_MeterHandler_reading(meter, 3).
+=======
+handler_MeterHandler_reading(meter, -1).
+>>>>>>>

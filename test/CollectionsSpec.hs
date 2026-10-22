@@ -99,11 +99,11 @@ test_collectionsAreTypedEvaluatedAndOrderedPortably = describe "collections" $ d
       holds (evaluated "prelude.toList (prelude.sortedSetOf [3, 1, 3, 2])" "[1, 2, 3]")
       refuted (evaluated "prelude.size (prelude.sortedSetOf [3, 1, 3])" "3")
     it "keeps the latest value for a key" $
-      holds (evaluated "prelude.lookup \"a\" (prelude.keyValOf [Entry \"a\" 1, Entry \"a\" 2])" "Just 2")
+      holds (evaluated "prelude.lookup \"a\" (prelude.keyValOf [Entry \"a\" 1, Entry \"a\" 2])" "Present 2")
     it "keeps queues first in, first out and stacks last in, first out" $ do
-      holds (evaluated "prelude.front (prelude.enqueue 2 (prelude.queueOf [1]))" "Just 1")
-      holds (evaluated "prelude.peek (prelude.push 2 (prelude.stackOf [1]))" "Just 2")
-      holds (evaluated "prelude.peekBack (prelude.popBack (prelude.dequeOf [1, 2, 3]))" "Just 2")
+      holds (evaluated "prelude.front (prelude.enqueue 2 (prelude.queueOf [1]))" "Present 1")
+      holds (evaluated "prelude.peek (prelude.push 2 (prelude.stackOf [1]))" "Present 2")
+      holds (evaluated "prelude.peekBack (prelude.popBack (prelude.dequeOf [1, 2, 3]))" "Present 2")
     it "orders with prelude.compare" $
       holds (evaluated "prelude.compare \"b\" \"a\"" "Greater")
   describe "the portable order" $ do
@@ -115,9 +115,9 @@ test_collectionsAreTypedEvaluatedAndOrderedPortably = describe "collections" $ d
       let list = listValue (C.Constructor "Int32" []) . map int
       compareOf (list [1, 2]) (list [1, 2, 0]) `shouldBe` Right LT
       compareOf (list [2]) (list [1, 9]) `shouldBe` Right GT
-    it "puts Nothing before Just" $ do
+    it "puts Absent before Present" $ do
       let maybeType = C.Constructor "Maybe" [C.TypeArgument (C.Constructor "Int32" [])]
-      compareOf (DataValue maybeType (C.Id "Maybe::Nothing") []) (DataValue maybeType (C.Id "Maybe::Just") [int 0])
+      compareOf (DataValue maybeType (C.Id "Maybe::Absent") []) (DataValue maybeType (C.Id "Maybe::Present") [int 0])
         `shouldBe` Right LT
     it "has no order for floats" $
       compareOf (ScalarValue (SFloat "Float64" "0")) (ScalarValue (SFloat "Float64" "0")) `shouldSatisfy` either (const True) (const False)

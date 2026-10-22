@@ -58,9 +58,9 @@ func NewReaderHandler(resource any) Reader {
 func (handler *ReaderHandler) Size(value0 string) LawSpecMaybe[int64] {
 	records, ok := handler.Resource.(*logStore).logs[value0]
 	if !ok {
-		return LawSpecNothing[int64]()
+		return LawSpecAbsent[int64]()
 	}
-	return LawSpecJust(int64(len(records)))
+	return LawSpecPresent(int64(len(records)))
 }
 
 // WriterHandler is the native handler of Writer: write, lastOffset.
@@ -81,7 +81,7 @@ func (handler *WriterHandler) Write(value0 string, value1 string) bool {
 		return false
 	}
 	store.logs[value0] = append(records, value1)
-	handler.last = LawSpecJust(int64(len(records)))
+	handler.last = LawSpecPresent(int64(len(records)))
 	return true
 }
 

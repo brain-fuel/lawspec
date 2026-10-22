@@ -11,8 +11,8 @@ native_builtin_shapes_test() ->
         {{<<"Unit">>, []}, ls_unit, nil},
         {{<<"Null">>, []}, ls_null, null},
         {{<<"Undefined">>, []}, ls_undefined, undefined},
-        {{<<"Maybe">>, [I]}, {ls_data, <<"Maybe::Nothing">>, []}, none},
-        {{<<"Maybe">>, [I]}, {ls_data, <<"Maybe::Just">>, [127]}, {some, 127}},
+        {{<<"Maybe">>, [I]}, {ls_data, <<"Maybe::Absent">>, []}, none},
+        {{<<"Maybe">>, [I]}, {ls_data, <<"Maybe::Present">>, [127]}, {some, 127}},
         {{<<"Either">>, [I,I]}, {ls_data, <<"Either::Left">>, [-128]}, {error, -128}},
         {{<<"Either">>, [I,I]}, {ls_data, <<"Either::Right">>, [127]}, {ok, 127}}
     ],

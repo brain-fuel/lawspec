@@ -21,9 +21,9 @@ func NewFileSystemHandler() FileSystem {
 func (handler *FileSystemHandler) ReadBytes(value0 string) LawSpecMaybe[[]byte] {
 	data, err := os.ReadFile(value0)
 	if err != nil {
-		return LawSpecNothing[[]byte]()
+		return LawSpecAbsent[[]byte]()
 	}
-	return LawSpecJust(data)
+	return LawSpecPresent(data)
 }
 
 func (handler *FileSystemHandler) WriteBytes(value0 string, value1 []byte) {
@@ -74,12 +74,12 @@ func NewEnvironmentHandler() Environment {
 
 func (handler *EnvironmentHandler) EnvironmentVariable(value0 string) LawSpecMaybe[string] {
 	if !lsValidVariable(value0) {
-		return LawSpecNothing[string]()
+		return LawSpecAbsent[string]()
 	}
 	if value, ok := os.LookupEnv(value0); ok {
-		return LawSpecJust(value)
+		return LawSpecPresent(value)
 	}
-	return LawSpecNothing[string]()
+	return LawSpecAbsent[string]()
 }
 
 func (handler *EnvironmentHandler) EnvironmentSnapshot() string {

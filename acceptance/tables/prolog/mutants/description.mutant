@@ -1,0 +1,6 @@
+@@ src/example/tables.pl
+<<<<<<<
+string_concat("parcel ", Text, R).
+=======
+( Number =:= 7 -> R = "parcel seven" ; string_concat("parcel ", Text, R) ).
+>>>>>>>

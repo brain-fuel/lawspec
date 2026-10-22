@@ -62,7 +62,7 @@ defmodule Example.Distribution do
         :ok = LedgerMailbox.send_remote(sender, value)
         :ok = LedgerMailbox.send_remote(sender, value)
         total = LedgerMailbox.receive_value(ledger) + LedgerMailbox.receive_value(ledger)
-        :nothing = LedgerMailbox.receive_within(ledger, 20000)
+        :absent = LedgerMailbox.receive_within(ledger, 20000)
         total
       after
         LedgerMailbox.stop(ledger)

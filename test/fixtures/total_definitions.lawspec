@@ -24,7 +24,7 @@ end function
 function increment (x :: Int8) -> Integer is x + 1 end function
 
 function maybeDefault (x :: Maybe Int8) -> Int8 is
-  first matching case of x : when Nothing then 0 when Just value then value end case
+  first matching case of x : when Absent then 0 when Present value then value end case
 end function
 
 function raw (x :: List CodeUnit16) -> List CodeUnit16 is x end function

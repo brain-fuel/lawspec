@@ -25,6 +25,7 @@ export function recordNativeAttempts(run, tests, {keys,seed,ok,profile,output,al
     const model=(entry.obligations?.length??0)>0;
     const complete=matched.length>0&&matched.every(test=>test.status==='passed')&&(ok||model);
     const outcome=matched.some(test=>test.status==='failed')?'failed':
+      matched.some(test=>test.status==='incomplete')?'incomplete':
       entry.skip?'skipped':complete?(entry.knownFailing?'known-failing':'passed'):
       matched.length&&matched.every(test=>test.status==='skipped')?'skipped':'incomplete';
     return [entry.law,{key:keys.get(entry.law),planKey:entry.key,seed:nativeSeed(seed),at,outcome,

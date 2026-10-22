@@ -1,0 +1,7 @@
+expect: field refinement
+@@ src/till/native.pl
+<<<<<<<
+    ( Cents < 0 -> throw('till.native.BadAmount'("negative"))
+=======
+    ( Cents < 0 -> throw('till.native.BadAmount'(""))
+>>>>>>>

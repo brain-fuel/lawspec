@@ -26,8 +26,8 @@ end type
 
 function chainLength (chain of type ApprovalChain) -> Whole is
   first matching case of chain:
-    when record{next = Nothing} then 0
-    when record{next = Just rest} then 1 + chainLength rest
+    when record{next = Absent} then 0
+    when record{next = Present rest} then 1 + chainLength rest
   end case
 end function
 
@@ -49,15 +49,15 @@ end law
 
 law "|a completed chain has no remaining approval| is
   definition:
-    chainLength (ApprovalChain record{next = Nothing}) must be 0
+    chainLength (ApprovalChain record{next = Absent}) must be 0
   end definition
 end law
 
 law "|a pending chain counts each remaining approval| is
   definition:
     chainLength (ApprovalChain record{
-      next = Just (ApprovalChain record{
-        next = Just (ApprovalChain record{next = Nothing})
+      next = Present (ApprovalChain record{
+        next = Present (ApprovalChain record{next = Absent})
       })
     }) must be 2
   end definition

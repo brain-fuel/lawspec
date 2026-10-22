@@ -46,7 +46,7 @@ defmodule Example.ActorAbilities do
         BankSupervisor.stop(bank)
         41 = CounterActor.Remote.total(remote)
         fast = CounterActor.Remote.connect_with_timeout(a, address, 1000)
-        {:just, [0, -7]} = CounterActor.Remote.echo(fast, {:just, [0, -7]})
+        {:present, [0, -7]} = CounterActor.Remote.echo(fast, {:present, [0, -7]})
         :ok = CounterActor.Remote.clear(fast)
         0 = CounterActor.Remote.total(remote)
         :lawspec_beam_node.stop(b)

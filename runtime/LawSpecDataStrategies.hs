@@ -99,7 +99,7 @@ indexWitness schema reference witnesses value = do
     (S.Named name [element], LS.SPresent _ payload)
       | name `elem` ["Nullable", "Optional"] ->
         descend element (maybe [] pure payload)
-    (S.Named "Maybe" [element], LS.SData "Maybe::Just" [child]) ->
+    (S.Named "Maybe" [element], LS.SData "Maybe::Present" [child]) ->
       descend element [child]
     (S.Named "Either" [left, _], LS.SData "Either::Left" [child]) ->
       descend left [child]
@@ -233,9 +233,9 @@ buildStrategyWith factories schema reference bits budget scalar finish = do
       | name `elem` ["Maybe", "Nullable", "Optional"] = do
           child <- build element (available - 1)
           let absent = if name == "Maybe"
-                then LS.SData "Maybe::Nothing" [] else LS.SPresent name Nothing
+                then LS.SData "Maybe::Absent" [] else LS.SPresent name Nothing
               present value = if name == "Maybe"
-                then LS.SData "Maybe::Just" [value]
+                then LS.SData "Maybe::Present" [value]
                 else LS.SPresent name (Just value)
           alternatives [Just (pure absent), fmap (fmap present) child]
     builtin (S.Named "Either" [left, right]) available =

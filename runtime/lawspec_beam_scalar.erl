@@ -142,9 +142,9 @@ validate(Value, {Name, []}, Bits) ->
     end;
 validate(Value, {<<"List">>, [Element]}, Bits) when is_list(Value) ->
     [validate(V, Element, Bits) || V <- Value];
-validate({ls_data, <<"Maybe::Nothing">>, []} = V, {<<"Maybe">>, [_]}, _) -> V;
-validate({ls_data, <<"Maybe::Just">>, [V]}, {<<"Maybe">>, [T]}, Bits) ->
-    {ls_data, <<"Maybe::Just">>, [validate(V, T, Bits)]};
+validate({ls_data, <<"Maybe::Absent">>, []} = V, {<<"Maybe">>, [_]}, _) -> V;
+validate({ls_data, <<"Maybe::Present">>, [V]}, {<<"Maybe">>, [T]}, Bits) ->
+    {ls_data, <<"Maybe::Present">>, [validate(V, T, Bits)]};
 validate({ls_data, <<"Either::Left">>, [V]}, {<<"Either">>, [T, _]}, Bits) ->
     {ls_data, <<"Either::Left">>, [validate(V, T, Bits)]};
 validate({ls_data, <<"Either::Right">>, [V]}, {<<"Either">>, [_, T]}, Bits) ->
@@ -567,8 +567,8 @@ compare({ls_presence, T, none}, {ls_presence, T, none}) -> 0;
 compare({ls_presence, T, none}, {ls_presence, T, {some, _}}) -> -1;
 compare({ls_presence, T, {some, _}}, {ls_presence, T, none}) -> 1;
 compare({ls_presence, T, {some, A}}, {ls_presence, T, {some, B}}) -> compare(A, B);
-compare({ls_data, <<"Maybe::Nothing">>, []}, {ls_data, <<"Maybe::Just">>, _}) -> -1;
-compare({ls_data, <<"Maybe::Just">>, _}, {ls_data, <<"Maybe::Nothing">>, []}) -> 1;
+compare({ls_data, <<"Maybe::Absent">>, []}, {ls_data, <<"Maybe::Present">>, _}) -> -1;
+compare({ls_data, <<"Maybe::Present">>, _}, {ls_data, <<"Maybe::Absent">>, []}) -> 1;
 compare({ls_data, T, A}, {ls_data, T, B}) -> compare_lists(A, B);
 compare({ls_data, TA, _}, {ls_data, TB, _}) -> order(TA, TB);
 compare(A, B) when is_list(A), is_list(B) -> compare_lists(A, B);
@@ -642,8 +642,8 @@ helper(<<"slice">>, [X, From, To], [Kind | _], _) when is_integer(From), is_inte
 helper(<<"at">>, [X, I], [Kind | _], _) when is_integer(I) ->
     Items = sequence_items(X, Kind),
     case I >= 0 andalso I < length(Items) of
-        true -> {ls_data, <<"Maybe::Just">>, [lists:nth(I + 1, Items)]};
-        false -> {ls_data, <<"Maybe::Nothing">>, []}
+        true -> {ls_data, <<"Maybe::Present">>, [lists:nth(I + 1, Items)]};
+        false -> {ls_data, <<"Maybe::Absent">>, []}
     end;
 helper(<<"range">>, [Lo, Hi], _, _) when is_integer(Lo), is_integer(Hi) ->
     lists:seq(Lo, Hi - 1);

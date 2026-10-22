@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.pl
+<<<<<<<
+Area is Width*Height.
+=======
+Area is Width*Height+1.
+>>>>>>>

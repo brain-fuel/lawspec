@@ -61,7 +61,7 @@ public static class KafkaBench
 
         var start = Stopwatch.GetTimestamp();
         for (long i = 0; i < scale; i++)
-            Ok(broker.ProduceRequest(Tp((int)(i % Partitions)), Maybe.Nothing<ProducerTag>(), Fn.List(Record(i))));
+            Ok(broker.ProduceRequest(Tp((int)(i % Partitions)), Maybe.Absent<ProducerTag>(), Fn.List(Record(i))));
         Phase("produce", scale, start);
         total += scale;
         Memory("after-produce");
@@ -139,10 +139,10 @@ public static class KafkaBench
         Console.WriteLine($"check committed-hw {committed.HighWatermark}");
 
         // The embedding API: a refusal as a value, and the state kept and put back.
-        var refused = broker.ProduceRequest(new TopicPartition("missing", 0), Maybe.Nothing<ProducerTag>(), Fn.List(Record(0)));
+        var refused = broker.ProduceRequest(new TopicPartition("missing", 0), Maybe.Absent<ProducerTag>(), Fn.List(Record(0)));
         Console.WriteLine($"check refused {(refused.IsError ? refused.ErrorValue.ToString() : "nothing")}");
         var snapshot = broker.State;
-        Ok(broker.ProduceRequest(Tp(0), Maybe.Nothing<ProducerTag>(), Fn.List(Record(0))));
+        Ok(broker.ProduceRequest(Tp(0), Maybe.Absent<ProducerTag>(), Fn.List(Record(0))));
         broker.State = snapshot;
         var after = Ok(broker.FetchRequest(Tp(0), 0L, 10, IsolationLevel.ReadCommitted));
         Console.WriteLine($"check restored {after.HighWatermark == committed.HighWatermark}");

@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.pl
+<<<<<<<
+[Row, Row])])).
+=======
+[Row, value('example.arithmetic::type::Row::End', [])])])).
+>>>>>>>

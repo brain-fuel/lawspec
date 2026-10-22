@@ -1,0 +1,66 @@
+unit example.prologEffects
+
+type Refusal is one of | Blocked end type
+
+ability Ledger is
+  add :: UInt8 -> Integer fails with Refusal
+end ability
+
+handler keeping for Ledger with state total :: Integer start 0 is
+  operation add amount is
+    if amount == 0 then raise Blocked else
+      ~total := total + amount; total
+    end if
+  end operation
+end handler
+
+procedure model (amount :: UInt8) -> Integer uses Ledger fails with Refusal is
+  add amount
+end procedure
+
+execute :: UInt8 -> Integer uses Ledger fails with Refusal
+twice :: UInt8 -> Integer uses Ledger fails with Refusal
+contextCheck :: Unit -> Bool
+
+function expected (amount :: UInt8) -> Either Refusal Integer is
+  if amount == 0 then Left Blocked else Right (amount + 0) end if
+end function
+
+function expectedTwice (amount :: UInt8) -> Either Refusal Integer is
+  if amount == 0 then Left Blocked else Right (amount * 2) end if
+end function
+
+function symbolValue (u :: Unit) -> Symbol is symbol("keep", "description") end function
+
+law forwards is
+  definition:
+    for all (amount :: UInt8) =>
+      prelude.attempt (execute amount) must be expected amount
+    end for all
+  end definition
+end law
+
+law stateful is
+  definition:
+    for all (amount :: UInt8) =>
+      prelude.attempt (twice amount) must be expectedTwice amount
+    end for all
+  end definition
+end law
+
+law contextStable is
+  definition:
+    for all (u :: Unit) => contextCheck u must be true end for all
+  end definition
+end law
+
+law called using recording Ledger is
+  definition:
+    for all (amount :: UInt8) =>
+      (if prelude.attempt (execute amount) == expected amount then
+         calls of add with (amount) == 1
+       else false end if) must be true
+    end for all
+  end definition
+end law
+end unit

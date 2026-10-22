@@ -7,10 +7,12 @@ import {existsSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createCompiler} from '../api.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 
 const compiler = await createCompiler();
 const localPython = new URL('../../.integration/python/.venv/bin/python',import.meta.url).pathname;
+const localPrologPython = new URL('../../.integration/prolog/.venv/bin/python',import.meta.url).pathname;
+const prologPython = process.env.LAWSPEC_PYTHON_EXECUTABLE??(existsSync(localPrologPython)?localPrologPython:null);
 const localTsc = new URL('../../.integration/typescript/node_modules/.bin/tsc',import.meta.url).pathname;
 const python = process.env.LAWSPEC_PYTHON_EXECUTABLE??(existsSync(localPython)?localPython:null);
 const tsc = process.env.LAWSPEC_TSC??(existsSync(localTsc)?localTsc:null);
@@ -57,10 +59,63 @@ test('nested native layouts require complete structural coverage and explicit ar
 });
 
 test('unfinished target emitters reject nested native layouts explicitly',async()=>{
-  for (const target of targets.filter(target=>!['python','javascript','typescript','java','kotlin','scala','rust','groovy','go','haskell','fsharp','swift','erlang','elixir','gleam'].includes(target))) {
+  for (const target of targets.filter(target=>!['python','javascript','typescript','java','kotlin','scala','rust','groovy','go','haskell','fsharp','swift','erlang','elixir','gleam','prolog'].includes(target))) {
     const result=await compiler.planGeneration(request(target));
     assert.ok(result.diagnostics.length,target+' silently accepted an unsupported layout');
     assert.ok(result.diagnostics.some(item=>/nested native field layout|Clojure binds.*not types/.test(item.message)),JSON.stringify(result.diagnostics));
+  }
+});
+
+test('Prolog native variants preserve nested generic argument order and reject invalid native results',
+  {skip:prologPython===null&&'Prolog acceptance environment is not installed'},async()=>{
+  for(const machineBits of [32,64])for(const minify of [false,true]){
+    const result=await compiler.planGeneration({...request('prolog'),machineBits,minify});
+    assert.deepEqual(result.diagnostics,[]);
+    const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-prolog-layout-'));
+    try{
+      for(const file of result.files.filter(file=>file.placement==='source')){
+        const destination=path.join(root,file.path);await mkdir(path.dirname(destination),{recursive:true});
+        await writeFile(destination,file.content);
+      }
+      await writeFile(path.join(root,'src/application.pl'),`:- module(application,[copy/2,observed/1,bad/1]).
+:- dynamic observed/1,bad/1.
+copy(Value,Result) :-
+    Value = 'application.Packed'(Tail,Enabled,Quantity),
+    retractall(observed(_)), assertz(observed([Tail,Enabled,Quantity])),
+    ( bad(zero) -> Result = 'application.Packed'(7,true,0)
+    ; bad(range) -> Result = 'application.Packed'(256,true,3)
+    ; bad(boolean) -> Result = 'application.Packed'(7,1,3)
+    ; Result = Value
+    ).
+`);
+      await writeFile(path.join(root,'check.py'),`import lawspec_data as data
+from lawspec_schema import Named
+import lawspec_prolog as bridge
+from layouts import copy
+schema=data.make_schema()
+ty=Named('layouts::type::Packet',(Named('UInt8'),))
+packet=schema.constructors(ty)[0]
+record_type=packet.fields[0].type
+record=schema.constructors(record_type)[0]
+assert [field.name for field in record.fields]==['first','last']
+inner_type=record.fields[0].type
+inner=schema.constructors(inner_type)[0]
+assert [field.name for field in inner.fields]==['count','flag']
+fields=schema.construct(inner_type,inner.tag,[3,True])
+wrapped=schema.construct(record_type,record.tag,[fields,7])
+logical=schema.construct(ty,packet.tag,[wrapped])
+native=schema.to_native(ty,logical)
+assert schema.equal(ty,schema.from_native(ty,copy(native)),logical)
+assert bridge.janus.query_once('application:observed(Values)')['Values']==[7,'true',3]
+for mode in ['zero','range','boolean']:
+    bridge.janus.query_once('retractall(application:bad(_)),assertz(application:bad(Mode))',{'Mode':mode})
+    try: copy(native)
+    except (ValueError,TypeError,OverflowError): pass
+    else: raise AssertionError('invalid native result admitted: '+mode)
+print('Prolog native nested layout execution passed')
+`);
+      run(prologPython,['-B','check.py'],{cwd:root,env:{...process.env,PYTHONPATH:path.join(root,'src')}});
+    }finally{await rm(root,{recursive:true,force:true});}
   }
 });
 

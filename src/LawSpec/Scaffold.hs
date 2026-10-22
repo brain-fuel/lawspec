@@ -21,6 +21,7 @@ testCommand target = lookup target
   [ ("rust", "cargo test")
   , ("java", "mvn test")
   , ("python", "python -m pytest")
+  , ("prolog", "python lawspec_test.py")
   , ("javascript", "node --test test/*.test.mjs")
   , ("typescript", "npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js")
   , ("go", "go test ./...")
@@ -39,6 +40,11 @@ testCommand target = lookup target
 -- | The pinned toolchain each target is verified against, stated once so doctor,
 -- the CLI and the docs give the same advice.
 setupAdvice :: String -> Maybe String
+setupAdvice "hcl" = Just "Generate Terraform variables and checked tfvars using lawspec generate. Run tofu init -backend=false, tofu validate and tofu plan -var-file=configuration.tfvars.json. Artifact generation does not execute application laws."
+setupAdvice "yaml" = Just "Generate YAML 1.2 configuration and a JSON Schema 2020-12 schema using lawspec generate. Validate edited YAML with a JSON Schema validator. Artifact generation does not execute application laws."
+setupAdvice "make" = Just "Run make to check the project, generate its configured targets and execute its program target tests using the installed lawspec CLI."
+setupAdvice "antlr4" = Just "Compile LawSpecData.g4 with ANTLR 4. The grammar checks data syntax; numeric ranges and field predicates require the companion JSON Schema after decoding. Artifact generation does not execute application laws."
+setupAdvice "prolog" = Just "Use SWI-Prolog 10.0+ and Python 3.13+ with janus-swi 1.5.3, pytest 8.4.x and Hypothesis 6.x. Install the generated project with python -m pip install -e \".[test]\". Run python lawspec_test.py (PLUnit with the checked Python model), or lawspec test. Set the target python field to the selected interpreter."
 setupAdvice target = lookup target
   [ ("rust", "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6 and num-traits 0.2.19; a program that imports lawspec.crypto, lawspec.network or lawspec.randomness also needs sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.")
   , ("java", "Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25; a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run mvn test-compile.")
@@ -80,6 +86,10 @@ gleamTestPackage = unlines
 -- lawspec.network's secure transport, only for programs that import them.
 scaffoldFilesWith :: Bool -> Bool -> String -> Either String [(FilePath, String)]
 scaffoldFilesWith crypto minify target = case target of
+  "hcl" -> Right []
+  "yaml" -> Right []
+  "make" -> Right []
+  "antlr4" -> Right []
   "erlang" -> Right
     [ ("rebar.config", unlines $
         [ "{erl_opts, [debug_info]}."
@@ -167,11 +177,12 @@ scaffoldFilesWith crypto minify target = case target of
             [ ("target", Str "ES2022"), ("module", Str "NodeNext"), ("rootDir", Str "."), ("outDir", Str "dist")
             , ("strict", Bool True), ("esModuleInterop", Bool True), ("skipLibCheck", Bool True) ])
         , ("include", Arr [Str "src/**/*.ts", Str "test/**/*.ts"]) ])) ]
-  "python" -> Right
+  language | language `elem` ["python","prolog"] -> Right
     [ ("pyproject.toml", unlines
         [ "[build-system]", "requires = [\"setuptools==80.9.0\"]", "build-backend = \"setuptools.build_meta\"", ""
         , "[project]", "name = \"lawspec-example\"", "version = \"0.1.0\"", "requires-python = \">=3.13\""
-        , if crypto then "dependencies = [\"cryptography==50.0.2\"]" else "dependencies = []", ""
+        , "dependencies = [" ++ intercalate ", "
+            (["\"cryptography==50.0.2\"" | crypto] ++ ["\"janus-swi==1.5.3\"" | language=="prolog"]) ++ "]", ""
         , "[project.optional-dependencies]", "test = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]", ""
         , "[tool.setuptools.packages.find]", "where = [\"src\"]", ""
         , "[tool.pytest.ini_options]", "pythonpath = [\"src\"]", "testpaths = [\"tests\"]" ]) ]

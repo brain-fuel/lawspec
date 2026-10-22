@@ -1,0 +1,6 @@
+@@ src/shop/orders.pl
+<<<<<<<
+R is Cents-(Cents rem 100).
+=======
+( Cents > 0 -> R is Cents-1 ; R = Cents ).
+>>>>>>>

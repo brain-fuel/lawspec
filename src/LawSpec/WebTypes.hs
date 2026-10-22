@@ -23,7 +23,7 @@ type Names = [(C.Id,String)]
 
 -- | Names the generated support code already uses, which no data type may take.
 supportNames :: [String]
-supportNames = words "Maybe Either Nothing Just Left Right Presence ls schema makeSchema Array Object Uint8Array Symbol Number String BigInt Math Map Set globalThis"
+supportNames = words "Maybe Either Absent Present Left Right Presence ls schema makeSchema Array Object Uint8Array Symbol Number String BigInt Math Map Set globalThis"
 
 -- | Two declarations whose names differ only in case would collide on
 -- case-insensitive file systems, so they are refused.

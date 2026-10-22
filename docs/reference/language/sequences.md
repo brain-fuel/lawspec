@@ -31,7 +31,7 @@ law "|sequences| is
     memberId "consumer" 3 = "consumer-3"
     and checksum (prelude.utf8 "ab") = 195
     and prelude.slice 1 3 "kafka" = "af"
-    and prelude.at 1 [10, 20, 30] = Just 20
+    and prelude.at 1 [10, 20, 30] = Present 20
     and prelude.range 0 3 = [0, 1, 2]
   end definition
 end law
@@ -43,7 +43,7 @@ end unit
 | `a ++ b`, `prelude.append a b` | `a` then `b`: two texts, two `Bytes` or two lists of one type |
 | `prelude.slice from to x` | the items of `x` from index `from` up to, not including, `to` |
 | `prelude.take n x`, `prelude.drop n x` | the first `n` items, and the rest |
-| `prelude.at i x` | `Just` the item at index `i` of a list, or of `Bytes` as a `UInt8`; `Nothing` outside it |
+| `prelude.at i x` | `Present item` for the item at index `i` of a list, or of `Bytes` as a `UInt8`; `Absent` outside it |
 | `prelude.length x` | how many items: code points of a text, octets of `Bytes` |
 | `prelude.range from to` | the integers from `from` up to, not including, `to`, of their type |
 | `prelude.octets b` | the octets of `Bytes`, a `List UInt8` |

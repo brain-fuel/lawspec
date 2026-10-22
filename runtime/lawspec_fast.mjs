@@ -6,7 +6,7 @@
  * no one changes, and Unit null. An integer of at most 32 bits is a number;
  * Int64, UInt64 and Integer are a number while they are safe integers and a
  * BigInt beyond, so arithmetic stays exact and usually costs what a number's
- * does. Maybe is null or a Just, Either a Side, a List null or a Cons cell
+ * does. Maybe is null or a Present, Either a Side, a List null or a Cons cell
  * that shares its tail, KeyVal and Set persistent AVL trees in the portable
  * order whose updates copy only the path to a key, and data the generated
  * classes (a rank alone for a type whose constructors have no fields). A
@@ -28,7 +28,7 @@ export class Cons {
   }
 }
 
-export class Just {
+export class Present {
   v;
   constructor(v) {
     this.v = v;
@@ -63,8 +63,8 @@ export function cons(h, t) {
   return new Cons(h, t);
 }
 
-export function just(v) {
-  return new Just(v);
+export function present(v) {
+  return new Present(v);
 }
 
 export function left(v) {
@@ -311,12 +311,12 @@ export function atList(xs, i) {
   if (i < 0 || i >= length(xs)) return null;
   let c = xs;
   for (let k = 0; k < i; k++) c = c.t;
-  return new Just(c.h);
+  return new Present(c.h);
 }
 
 export function atBytes(s, i) {
   if (i < 0 || i >= s.length) return null;
-  return new Just(s[Number(i)]);
+  return new Present(s[Number(i)]);
 }
 
 export function range(lo, hi) {
@@ -380,7 +380,7 @@ function balance(k, v, l, r) {
 export function lookup(m, k, cmp) {
   while (m !== null) {
     const c = cmp(k, m.k);
-    if (c === 0) return new Just(m.v);
+    if (c === 0) return new Present(m.v);
     m = c < 0 ? m.l : m.r;
   }
   return null;

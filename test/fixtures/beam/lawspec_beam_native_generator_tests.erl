@@ -27,8 +27,8 @@ run(F) ->
     ok = check(F, G, fun({ls_data, <<"Box">>, [N]}) -> N >= 10 andalso N =< 100 end),
     Nested = F:generator({<<"Maybe">>, [Box]}, Bound, make_ref(), [], []),
     ok = check(F, Nested, fun
-        ({ls_data, <<"Maybe::Nothing">>, []}) -> true;
-        ({ls_data, <<"Maybe::Just">>, [{ls_data, <<"Box">>, [N]}]}) -> N >= 10 andalso N =< 100
+        ({ls_data, <<"Maybe::Absent">>, []}) -> true;
+        ({ls_data, <<"Maybe::Present">>, [{ls_data, <<"Box">>, [N]}]}) -> N >= 10 andalso N =< 100
     end),
     Phantom = F:generator({<<"Phantom">>, [{<<"Empty">>, []}]}, Bound, make_ref(), [], []),
     ok = check(F, Phantom, fun(V) -> V =:= {ls_data, <<"Phantom">>, []} end),

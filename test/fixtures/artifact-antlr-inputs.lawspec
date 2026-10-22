@@ -1,0 +1,6 @@
+unit inputOnly
+type Box (a :: Type) is a record{payload :: a} end type
+consume :: Box UInt8 -> Bool
+consumeWide :: Box UInt16 -> Bool
+consumeMany :: List (Box Bool) -> Bool
+end unit

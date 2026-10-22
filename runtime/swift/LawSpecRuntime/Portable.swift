@@ -161,7 +161,7 @@ extension Optional: Portable where Wrapped: Portable {
         default: return false
         }
     }
-    /// Nothing before Just, as LawSpec orders Maybe.
+    /// Absent before Present, as LawSpec orders Maybe.
     public static func portableCompare(_ a: Wrapped?, _ b: Wrapped?) -> Int {
         switch (a, b) {
         case (nil, nil): return 0

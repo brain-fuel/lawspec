@@ -1,0 +1,6 @@
+@@ src/example/boolean_flags.pl
+<<<<<<<
+( X == true -> R = false ; R = true )
+=======
+R = X
+>>>>>>>

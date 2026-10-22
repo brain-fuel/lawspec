@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.pl
+<<<<<<<
+ls_preserveBig(X, X).
+=======
+ls_preserveBig(X, R) :- R is round(float(X)).
+>>>>>>>

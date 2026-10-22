@@ -39,6 +39,14 @@ law "|placing an order prices it| is
     input = UnvalidatedOrder record{ id = "A-1" , quantity = 100}
     expect prelude.isRight (placeOrder input) = true
   end example
+  example "|the last quantity within the price limit| :
+    input = UnvalidatedOrder record{ id = "A-2" , quantity = 800}
+    expect prelude.isRight (placeOrder input) = true
+  end example
+  example "|the first quantity over the price limit| :
+    input = UnvalidatedOrder record{ id = "A-3" , quantity = 801}
+    expect prelude.isRight (placeOrder input) = false
+  end example
 end law
 
 law "|validation accepts exactly the valid orders| is
@@ -52,6 +60,18 @@ law "|validation accepts exactly the valid orders| is
             prelude.length id > 0 && quantity >= 1 && quantity <= 1000
         end case) end for all
   end definition
+  example "|the largest valid quantity is accepted| :
+    input = UnvalidatedOrder record{ id = "A-4" , quantity = 1000}
+    expect prelude.isRight (validateOrder input) = true
+  end example
+  example "|a quantity above the declared range is rejected| :
+    input = UnvalidatedOrder record{ id = "A-5" , quantity = 1001}
+    expect prelude.isRight (validateOrder input) = false
+  end example
+  example "|zero is not a unit quantity| :
+    input = UnvalidatedOrder record{ id = "A-6" , quantity = 0}
+    expect prelude.isRight (validateOrder input) = false
+  end example
 end law
 
 law "|quantities are always in range| is

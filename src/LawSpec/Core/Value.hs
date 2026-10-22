@@ -238,7 +238,7 @@ compareValues a b = case (a, b) of
     ys <- listItems b
     sequenceOrder xs ys
   (DataValue (Constructor "Maybe" _) ca xs, DataValue (Constructor "Maybe" _) cb ys) ->
-    optional (if idText ca == "Maybe::Just" then take 1 xs else []) (if idText cb == "Maybe::Just" then take 1 ys else [])
+    optional (if idText ca == "Maybe::Present" then take 1 xs else []) (if idText cb == "Maybe::Present" then take 1 ys else [])
   (DataValue _ ca xs, DataValue _ cb ys)
     | ca == cb -> sequenceOrder xs ys
     | otherwise -> Right (compare (idText ca) (idText cb))

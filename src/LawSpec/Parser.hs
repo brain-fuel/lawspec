@@ -957,8 +957,8 @@ selectionPatternP explicit = wildcard <|> try record <|> try constructor <|> lit
           declared <- asks (M.lookup ("constructor:" ++ tag))
           count <- case declared of
             Just (DataHeader fields) -> pure (length fields)
-            _ -> maybe (fail ("unknown constructor in pattern: " ++ tag)) pure
-              (lookup tag [("Nothing",0),("Just",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
+            _ -> maybe (fail ("unknown constructor in pattern: " ++ tag ++ renamedConstructorHint tag)) pure
+              (lookup tag [("Absent",0),("Present",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
           SelectionConstructor tag <$> sequence (replicate count (selectionPatternP True))
     record = do
       try (keyword "record" <* lookAhead (symbol "{"))
@@ -1612,8 +1612,8 @@ constructorLiteral = do
   declared <- asks (M.lookup ("constructor:" ++ name))
   arity <- case declared of
     Just (DataHeader fields) -> pure (length fields)
-    _ -> maybe (fail ("unknown literal constructor: " ++ name)) pure
-      (lookup name [("Nothing",0),("Just",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
+    _ -> maybe (fail ("unknown literal constructor: " ++ name ++ renamedConstructorHint name)) pure
+      (lookup name [("Absent",0),("Present",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
   ConstructorLiteral name <$> count arity literalP
 
 literalP :: P Literal
@@ -2224,7 +2224,7 @@ mappingP owner = blockP "mapping" $ do
         (ListLit (map key group)) rest) (ListLit []) groups
       -- Use the builtin identities, independently of local Just/Nothing names.
       inverse = foldr (\row rest -> select (Binary "==" (Var input) (output row))
-        (ConstructLit "Maybe::Just" [key row]) rest) (ConstructLit "Maybe::Nothing" []) rows
+        (ConstructLit "Maybe::Present" [key row]) rest) (ConstructLit "Maybe::Absent" []) rows
   pure ([make MappingForward name keyType resultType body] ++
     [make MappingPreimages (derived name "preimages") resultType (Applied "List" keyType) preimage | fallback == Nothing] ++
     [make MappingInverse (derived name "inverse") resultType (Applied "Maybe" keyType) inverse | fallback == Nothing])

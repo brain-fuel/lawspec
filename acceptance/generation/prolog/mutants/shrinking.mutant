@@ -1,0 +1,7 @@
+@@ src/example/generation.pl
+<<<<<<<
+    py_call(lawspec_runtime:shrunk(Descriptor, Seed, Size), R, [py_string_as(string)]).
+=======
+    ChangedSeed is Seed+1,
+    py_call(lawspec_runtime:shrunk(Descriptor, ChangedSeed, Size), R, [py_string_as(string)]).
+>>>>>>>

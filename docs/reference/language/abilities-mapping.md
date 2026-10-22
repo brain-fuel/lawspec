@@ -96,7 +96,7 @@ runtime's channels are its default handler, and between nodes the
 - `send m value` never waits;
 - `receive m x` waits for the next message;
 - `receive … within d` waits at most `d` on the `Clock` and gives `Maybe T`:
-  `Just` the message, or `Nothing` when none came. The typed mailboxes have
+  `Present message`, or `Absent` when none came. The typed mailboxes have
   it on every target (`receive_within`, `receiveWithin`, `ReceiveWithin`).
 
 ## Actors and supervisors

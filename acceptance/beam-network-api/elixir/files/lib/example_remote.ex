@@ -18,7 +18,7 @@ defmodule Example.Remote do
       "mem://b/definitions" = LawSpec.Remote.serve(b, %Offset{shift: fn n -> n + 40 end})
       47 = Remote.shifted(a, "mem://b", 7)
       48 = Remote.shifted_with_timeout(a, "mem://b", 1000, 8)
-      parcel = %LawSpec.Data.Parcel{count: 42, note: {:just, "sent"}}
+      parcel = %LawSpec.Data.Parcel{count: 42, note: {:present, "sent"}}
       ^parcel = Remote.parcel(a, "mem://b", parcel)
       :ok = Remote.nothing(a, "mem://b", :ok)
       :beam_remote_probe.rejected(a, LawSpec.Remote.digest("example.remote::shifted")) and :beam_remote_probe.sealed(net)

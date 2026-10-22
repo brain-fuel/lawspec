@@ -1,0 +1,14 @@
+@@ src/example/handles.pl
+<<<<<<<
+    setup_call_cleanup(py_call(Lock:acquire()), queue_operation(Operation, Items, R),
+                       py_call(Lock:release())).
+=======
+    Lock = Lock, queue_operation(Operation, Items, R).
+>>>>>>>
+@@ src/example/handles.pl
+<<<<<<<
+; py_call(Items:popleft(), Item), R =
+=======
+; py_call(Items:'__getitem__'(0), Item), py_call(time:sleep(0.001)),
+      py_call(Items:popleft()), R =
+>>>>>>>

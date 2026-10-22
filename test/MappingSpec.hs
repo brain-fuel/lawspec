@@ -35,8 +35,8 @@ test_typedMappings=describe "resolved typed mappings" $ do
        "row record{enabled = false}, \"off\"","row record{enabled = true}, \"on\"","end mapping",
        law "forward" "label record{enabled = true} = \"on\"",
        law "preimage" "labelPreimages \"off\" = [record{enabled = false}]",
-       law "inverse" "labelInverse \"on\" = Just record{enabled = true}",
-       law "absent" "labelInverse \"other\" = Nothing"]) outcomes
+       law "inverse" "labelInverse \"on\" = Present record{enabled = true}",
+       law "absent" "labelInverse \"other\" = Absent"]) outcomes
   it "admits Eq collection keys with a fallback without requiring finite coverage" $
     checked 64 (unlines
       ["mapping label of type (List Bool) -> Text is row [false], \"off\" row [true], \"on\" otherwise \"other\" end mapping",
@@ -47,7 +47,7 @@ test_typedMappings=describe "resolved typed mappings" $ do
     checked 64 (unlines
       ["mapping label of type (Set Bool) -> Text is row #S{}, \"empty\" row #S{false}, \"off\" row #S{true}, \"on\" row #S{false, true}, \"both\" end mapping",
        law "reordered" "label #S{true, false} = \"both\"",
-       law "inverse" "labelInverse \"both\" = Just #S{false, true}"]) outcomes
+       law "inverse" "labelInverse \"both\" = Present #S{false, true}"]) outcomes
     rejects "mapping-duplicate"
       "mapping label of type (Set Bool) -> Text is row #S{false, true}, \"first\" row #S{true, false}, \"second\" otherwise \"other\" end mapping"
   it "compares records by typed labels and retains IEEE equality" $ do
@@ -74,7 +74,7 @@ test_typedMappings=describe "resolved typed mappings" $ do
       outcomes program
   it "removes unavailable inverse names from laws and documentary resolution" $ do
     let mapping="mapping label of type Bool -> Text is row false, \"same\" row true, \"same\" end mapping\n"
-    compileAt 64 (mapping++law "invalid" "labelInverse \"same\" = Nothing") `shouldSatisfy` isLeft
+    compileAt 64 (mapping++law "invalid" "labelInverse \"same\" = Absent") `shouldSatisfy` isLeft
     compileAt 64 (mapping++"law documented is definition: true end definition references: ref function labelInverse end references end law\n") `shouldSatisfy` isLeft
   it "retains real declarations when a candidate inverse is unavailable and diagnoses real collisions" $ do
     let ordinary="function labelInverse (value :: Text) -> Bool is true end function\n"
@@ -83,7 +83,7 @@ test_typedMappings=describe "resolved typed mappings" $ do
     compileAt 64 (ordinary++"mapping label of type Bool -> Text is row false, \"off\" row true, \"on\" end mapping") `shouldSatisfy` isLeft
   it "keeps builtin Maybe identities when local constructors have the same spelling" $
     checked 64 (unlines
-      ["type Other is one of | Just of type Bool | Nothing end type\n",
+      ["type Other is one of | Present of type Bool | Absent end type\n",
        "mapping label of type Bool -> Text is row false, \"off\" row true, \"on\" end mapping"]) $ \program->
         declarations program `shouldContain` ["labelInverse"]
   it "retains nominal construction boundaries and closed typed fields" $ do
@@ -119,7 +119,7 @@ test_typedMappings=describe "resolved typed mappings" $ do
       ["refinement Enabled is (flag :: Bool where flag) end refinement\n",
        "mapping label of type Enabled -> Text is row true, \"on\" end mapping",
        law "preimage" "labelPreimages \"on\" = [true]",
-       law "inverse" "labelInverse \"on\" = Just true"]) outcomes
+       law "inverse" "labelInverse \"on\" = Present true"]) outcomes
   it "retains every refined key in a shared output class" $
     checked 64 (unlines
       ["mapping label of type (n :: Integer where n >= 0 and n <= 2) -> Text is",
@@ -130,8 +130,8 @@ test_typedMappings=describe "resolved typed mappings" $ do
           ["row "++show n++", "++show n | n<-[0::Int ..255]]++["end mapping"])
     checked 64 (mapping++law "last" "number 255 = 255"++
       law "preimage" "numberPreimages 255 = [255]"++
-      law "inverse" "numberInverse 255 = Just 255"++
-      law "absent" "numberInverse 256 = Nothing") outcomes
+      law "inverse" "numberInverse 255 = Present 255"++
+      law "absent" "numberInverse 256 = Absent") outcomes
     rejects "mapping-coverage" (unlines (["mapping number of type UInt8 -> UInt16 is"]++
       ["row "++show n++", "++show n | n<-[0::Int ..254]]++["end mapping"]))
   it "admits a fallback without rows and retains rejection of unsupported bodyless definitions" $ do
@@ -148,7 +148,7 @@ test_typedMappings=describe "resolved typed mappings" $ do
     let library rows=S.Source "library.lawspec" ("unit library\nmapping label of type Bool -> Text is "++rows++" end mapping\nend unit")
         facade=S.Source "facade.lawspec" "unit facade\nimport library (labelPreimages, labelInverse)\nexport labelPreimages, labelInverse\nend unit"
         consumer=S.Source "consumer.lawspec" ("unit consumer\nimport facade (labelPreimages, labelInverse)\n"++
-          law "preimage" "labelPreimages \"on\" = [true]"++law "inverse" "labelInverse \"on\" = Just true"++"\nend unit\n")
+          law "preimage" "labelPreimages \"on\" = [true]"++law "inverse" "labelInverse \"on\" = Present true"++"\nend unit\n")
         compile rows=compileCoreCanonical 64 S.defaultGeneration [library rows,facade,consumer]
     case compile "row false, \"off\" row true, \"on\"" of
       Left diagnostics->expectationFailure (show diagnostics)
@@ -156,7 +156,7 @@ test_typedMappings=describe "resolved typed mappings" $ do
     compile "row false, \"same\" row true, \"same\"" `shouldSatisfy` isLeft
   it "retains phrase names on the mapping and its derived helpers" $
     checked 64 ("mapping \"|delivery label| of type Bool -> Text is row false, \"off\" row true, \"on\" end mapping\n"++
-      law "inverse" "\"|delivery label inverse| \"on\" = Just true"++
+      law "inverse" "\"|delivery label inverse| \"on\" = Present true"++
       law "preimage" "\"|delivery label preimages| \"off\" = [false]") outcomes
   it "groups equal set outputs without imposing their stored iteration order" $
     checked 64 ("mapping label of type Bool -> Set Bool is row false, #S{false, true} row true, #S{true, false} end mapping\n"++

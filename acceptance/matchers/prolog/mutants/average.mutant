@@ -1,0 +1,6 @@
+@@ src/example/matchers.pl
+<<<<<<<
+Average is (A+B)/2,
+=======
+Average is (A+B)/2+1,
+>>>>>>>

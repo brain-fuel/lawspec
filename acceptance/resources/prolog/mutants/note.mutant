@@ -1,0 +1,6 @@
+@@ src/example/resources.pl
+<<<<<<<
+format(Stream, '~d', [Number]), close(Stream)).
+=======
+(Wrong is Number+1, format(Stream, '~d', [Wrong])), close(Stream)).
+>>>>>>>

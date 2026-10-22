@@ -45,7 +45,7 @@ archive preserves distinct present and absent payments.
 
 The specification uses the canonical language profile. The version 2 project
 configuration selects its verification layers explicitly. Most targets bind
-application-owned domain types; C# and Clojure use the generated model data
+application-owned domain types; C#, Clojure and Prolog use the generated model data
 and bind the application's functions and generators.
 
 ## Run

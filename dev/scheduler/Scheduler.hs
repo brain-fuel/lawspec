@@ -66,10 +66,15 @@ compatible held claim = case claim of
 -- that order). With failFast, nothing new starts after a failure, and the
 -- running tasks finish. The result lists every task that ran, in the order
 -- they finished. A plan that can never progress (a dependency cycle, or a
--- claim no task can satisfy) is an error.
+-- claim no task can satisfy) is an error. Names must be unique: they identify
+-- running tasks, completion events and resource ownership.
 schedule :: Int -> Bool -> [Task a] -> (Task a -> IO Bool)
          -> (Task a -> IO ()) -> (Task a -> Bool -> IO ()) -> IO [(String, Bool)]
 schedule jobs failFast tasks run started finished = do
+  let counts = M.fromListWith (+) [(taskName t, 1 :: Int) | t <- tasks]
+      duplicates = M.keys (M.filter (> 1) counts)
+  unless (null duplicates) $
+    ioError (userError ("lawspec-dev ci: duplicate step names: " ++ unwords duplicates))
   done <- newChan
   let known = S.fromList (map taskName tasks)
       launch t = do

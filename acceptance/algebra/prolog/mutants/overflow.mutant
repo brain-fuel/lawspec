@@ -1,0 +1,6 @@
+@@ src/example/algebra.pl
+<<<<<<<
+ls_add(X, Y, R) :- R is X+Y.
+=======
+ls_add(X, Y, R) :- R is (X+Y+2147483648) mod 4294967296-2147483648.
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/indexed.pl
+<<<<<<<
+ls_append(A, Suffix, R)
+=======
+ls_append(Suffix, A, R)
+>>>>>>>

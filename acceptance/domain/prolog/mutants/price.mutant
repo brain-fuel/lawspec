@@ -1,0 +1,6 @@
+@@ src/example/ordering.pl
+<<<<<<<
+Total is Quantity*25,
+=======
+Total is Quantity*26,
+>>>>>>>

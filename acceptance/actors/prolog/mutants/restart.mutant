@@ -1,0 +1,6 @@
+@@ src/example/actors.pl
+<<<<<<<
+ls_reopen(value(_, [Balance]), value('example.actors::type::Account::Account', [Balance])).
+=======
+ls_reopen(value(_, [_]), value('example.actors::type::Account::Account', [0])).
+>>>>>>>

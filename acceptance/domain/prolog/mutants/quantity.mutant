@@ -1,0 +1,6 @@
+@@ src/example/ordering.pl
+<<<<<<<
+Quantity > 1000 ->
+=======
+Quantity > 999 ->
+>>>>>>>

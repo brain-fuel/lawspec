@@ -54,6 +54,11 @@ languages:
     lexer: .canon/grammars/python/canonically_commented/Python3Lexer.g4
     parser: .canon/grammars/python/canonically_commented/Python3Parser.g4
     start: file_input
+  prolog:
+    extensions: [.pl]
+    lexer: .canon/grammars/prolog/canonically_commented/PrologLexer.g4
+    parser: .canon/grammars/prolog/canonically_commented/PrologParser.g4
+    start: p_text
   javascript:
     extensions: [.js, .mjs, .cjs]
     lexer: .canon/grammars/javascript/canonically_commented/JavaScriptLexer.g4

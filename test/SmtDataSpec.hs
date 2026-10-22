@@ -95,7 +95,7 @@ test_smtDataTasks = describe "SMT data tasks" $ do
     verdicts `shouldBe` ["unsat", "unsat"]
   it "proves laws over Maybe and List values" $ solver $ \binary -> do
     verdicts <- answers binary (concat
-      [ law "for all (m :: Maybe Int32) => (first matching case of m: when Just x then x >= -2147483648 when Nothing then true end case) end for all"
+      [ law "for all (m :: Maybe Int32) => (first matching case of m: when Present x then x >= -2147483648 when Absent then true end case) end for all"
           `withName` "maybe"
       , law "for all (xs :: List Int8) => (first matching case of xs: when Cons h rest then h <= 127 when Nil then true end case) end for all"
           `withName` "list" ])

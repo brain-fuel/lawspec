@@ -1,0 +1,6 @@
+@@ src/example/failures.pl
+<<<<<<<
+Amount mod 2 =:= 1 ->
+=======
+Amount mod 2 =:= 1, Amount > 50000 ->
+>>>>>>>

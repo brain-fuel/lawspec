@@ -1,0 +1,8 @@
+@@ src/example/builtins.pl
+<<<<<<<
+[value('lawspec.logging::type::LogLevel::Info', []), Message], _), R = true
+=======
+[value('lawspec.logging::type::LogLevel::Info', []), Message], _),
+        lawspec_prolog:operation(Log, logMessage,
+            [value('lawspec.logging::type::LogLevel::Info', []), Message], _), R = true
+>>>>>>>

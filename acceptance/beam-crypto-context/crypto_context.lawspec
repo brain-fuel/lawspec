@@ -22,13 +22,13 @@ procedure handshake (message :: Bytes) (context :: Bytes) -> Maybe Bytes uses Ke
                     let server = deriveAeadKey (decapsulate secret sent) context in
                     unseal server (seal client message context) context end let end let)
                end case)
-            else Nothing end if end let)
+            else Absent end if end let)
        end case)
   end case
 end procedure
 
 law "|a handshake carries the message| is
-  definition : for all (message :: Bytes) (context :: Bytes) => handshake message context = Just message end for all end definition
+  definition : for all (message :: Bytes) (context :: Bytes) => handshake message context = Present message end for all end definition
 end law
 
 nativeProbe :: Unit -> Bool

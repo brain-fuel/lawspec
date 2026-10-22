@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createCompiler} from '../api.mjs';
 import {planWrites,applyWrites} from '../files.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 const exec=promisify(execFile);
 const cli=new URL('../bin/lawspec.mjs',import.meta.url).pathname;
 

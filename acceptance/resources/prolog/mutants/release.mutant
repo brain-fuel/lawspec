@@ -1,0 +1,12 @@
+@@ src/example/resources.pl
+<<<<<<<
+ls_closeStore(Handle, absence('Unit')) :-
+    state(Handle, State), py_call(State:get(open), Open),
+    ( Open == @(true) ->
+        py_call(State:'__setitem__'(open, @(false))),
+        flag(lawspec_fixture_resource_stores, Count, Count-1)
+    ; true
+    ).
+=======
+ls_closeStore(_, absence('Unit')).
+>>>>>>>

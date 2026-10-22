@@ -219,7 +219,7 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
         (Right . D.text . (++ ".clone()")) (lookup identity names)
       Construct tag fields -> do
         values <- mapM (render names) fields
-        let builtin = idText tag `elem` ["List::Nil","List::Cons","Maybe::Nothing","Maybe::Just","Either::Left","Either::Right"]
+        let builtin = idText tag `elem` ["List::Nil","List::Cons","Maybe::Absent","Maybe::Present","Either::Left","Either::Right"]
             construct entries = call (if builtin then "ls::construct" else "ls::construct_data")
               [D.text (quoted (idText tag)),vector entries] <> if builtin then D.text "?" else mempty
             simple field = case expressionNode field of
@@ -338,8 +338,8 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
           locals = ["match_local_" ++ show (length names) ++ "_" ++ show i | i <- [0 .. length binders - 1]]
       body <- render (zip (map binderId binders) locals ++ names) (caseBody matched)
       (patternText,guard,bindings) <- case (idText (caseConstructor matched), locals) of
-        ("Maybe::Nothing",[]) -> pure ("ls::Value::Maybe(None)",Nothing,[])
-        ("Maybe::Just",[field]) -> pure ("ls::Value::Maybe(Some(payload))",Nothing,["let " ++ field ++ " = *payload;"])
+        ("Maybe::Absent",[]) -> pure ("ls::Value::Maybe(None)",Nothing,[])
+        ("Maybe::Present",[field]) -> pure ("ls::Value::Maybe(Some(payload))",Nothing,["let " ++ field ++ " = *payload;"])
         ("Either::Left",[field]) -> pure ("ls::Value::Left(payload)",Nothing,["let " ++ field ++ " = *payload;"])
         ("Either::Right",[field]) -> pure ("ls::Value::Right(payload)",Nothing,["let " ++ field ++ " = *payload;"])
         ("List::Nil",[]) -> pure ("ls::Value::List(values)",Just (D.text "values.is_empty()"),[])

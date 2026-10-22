@@ -116,6 +116,14 @@ configure.
 
 See the [target guides](docs/how-to/targets/index.md).
 
+The [Prolog target](docs/reference/prolog.md) uses SWI-Prolog 10+, Janus and
+Python 3.13+, with PLUnit slots over pytest and Hypothesis. Its public interfaces
+are implemented; the full shared native acceptance matrix remains open.
+
+The [artifact targets](docs/reference/artifact-targets.md) generate HCL
+variables and values, YAML configuration and schemas, ANTLR data grammars,
+and Make pipelines. These targets emit no application law tests.
+
 ## Documentation
 
 The [documentation](docs/index.md) has tutorials, how-to guides, a reference

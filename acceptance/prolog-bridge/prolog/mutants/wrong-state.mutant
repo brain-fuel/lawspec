@@ -1,0 +1,7 @@
+expect: stateful
+@@ src/example/prologEffects.pl
+<<<<<<<
+R is Previous+N,
+=======
+R is N,
+>>>>>>>

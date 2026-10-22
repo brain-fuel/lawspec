@@ -54,7 +54,7 @@ law "|preferences retain their labels and inverse| is
       preferenceLabel preference must be
         destinationLabel (Selected preference.enabled)
       and preferenceLabelInverse
-        (preferenceLabel preference) must be Just preference
+        (preferenceLabel preference) must be Present preference
     end for all
   end definition
 
@@ -67,8 +67,8 @@ end law
 
 law "|missing destinations remain distinguishable| is
   definition:
-    destinationLabelInverse "missing" must be Just Missing
-    and destinationLabelInverse "unknown" must be Nothing
+    destinationLabelInverse "missing" must be Present Missing
+    and destinationLabelInverse "unknown" must be Absent
   end definition
 end law
 
@@ -102,7 +102,7 @@ law "|choices disregard input iteration order| is
         else
           if true in choices then "enabled" else "empty" end if
         end if
-      and choicesLabelInverse "both" must be Just #S{false, true}
+      and choicesLabelInverse "both" must be Present #S{false, true}
     end for all
   end definition
 
@@ -127,7 +127,7 @@ end law
 law "|enabled label helpers retain the input restriction| is
   definition:
     enabledLabelPreimages "enabled" must be [true]
-    and enabledLabelInverse "enabled" must be Just true
+    and enabledLabelInverse "enabled" must be Present true
   end definition
 end law
 

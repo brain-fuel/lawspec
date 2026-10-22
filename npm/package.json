@@ -37,6 +37,7 @@
              "CHANGELOG.md",
              "LICENSE",
              "UNICODE-LICENSE.txt",
+             "NORMALIZATION-LICENSES.txt",
              "starter.lawspec",
              "starter-rc1.lawspec",
              "examples"

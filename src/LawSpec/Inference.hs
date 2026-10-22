@@ -1393,7 +1393,7 @@ shapeOf name candidates = case candidates of
     let mentioned = concatMap (coreVariables . snd) (Core.constructorEquations constructor)
         fieldOnly = [v | (e, v) <- existentials, e `notElem` mentioned]
     pure (ConstructorShape fields result (map snd parameters) arguments (map snd existentials) fieldOnly)
-  [] -> throwC ("unknown constructor: " ++ name)
+  [] -> throwC ("unknown constructor: " ++ name ++ renamedConstructorHint name)
   _ -> throwC ("ambiguous constructor: " ++ name)
   where
     applyType name [] = Named name

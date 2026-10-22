@@ -30,7 +30,7 @@ object Resources {
     private var openCount = 0
 
     private fun <T> maybe(value: T?): LawSpecRuntime.Maybe<T> =
-        if (value == null) LawSpecRuntime.Nothing() else LawSpecRuntime.Just(value)
+        if (value == null) LawSpecRuntime.Absent() else LawSpecRuntime.Present(value)
 
     // (Unit -> example.resources::type::Store)
     fun openStore(value0: kotlin.Unit): kotlin.Any = Store()

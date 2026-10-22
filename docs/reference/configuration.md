@@ -57,13 +57,18 @@ Reference definitions retain mandatory contract checks regardless of selection.
 
 ### Targets
 
+In addition to program languages, `hcl`, `yaml`, `antlr4` and `make` produce
+[configuration and build artifacts](artifact-targets.md). These targets have
+no executable law-test interface. Their optional `sourceDir` contains all
+generated files; `testDir` and native bindings are rejected.
+
 | Field | Targets | Meaning |
 | --- | --- | --- |
-| `language` | all | `java`, `python`, `javascript`, `typescript`, `go`, `haskell`, `kotlin`, `rust`, `scala`, `groovy`, `clojure`, `swift`, `fsharp`, `csharp`, `erlang`, `elixir` or `gleam`. |
+| `language` | all | `java`, `python`, `javascript`, `typescript`, `go`, `haskell`, `kotlin`, `rust`, `scala`, `groovy`, `clojure`, `swift`, `fsharp`, `csharp`, `erlang`, `elixir`, `gleam`, `prolog`, `hcl`, `yaml`, `antlr4` or `make`. |
 | `root` | all | The target's project root. Each target needs its own root. |
 | `sourceDir` | all | Source directory, relative to the root. |
 | `testDir` | all | Test directory, relative to the root. |
-| `python` | `python` | Interpreter command. Default `python3`. |
+| `python` | `python`, `prolog` | Interpreter command. Default `python3`. |
 | `maven` | `java` | Maven command. Default `mvn`. |
 | `gradle` | `kotlin` | Gradle command. Default: `gradlew` in the root, otherwise `gradle`. |
 | `rustc`, `cargo` | `rust` | Rust compiler and Cargo commands. Defaults `rustc` and `cargo`. |
@@ -75,12 +80,16 @@ Default directories:
 | --- | --- | --- |
 | `java` | `src/main/java` | `src/test/java` |
 | `kotlin` | `src/main/kotlin` | `src/test/kotlin` |
-| `python`, `rust` | `src` | `tests` |
+| `python`, `rust`, `prolog` | `src` | `tests` |
 | `javascript`, `typescript`, `haskell` | `src` | `test` |
 | `go` | the root | the root |
 
 Directories must be relative paths whose segments contain only letters, digits,
 `_` and `-`. For Go, `sourceDir` and `testDir` must be equal.
+
+The [Prolog target](prolog.md) supports function, handler and Hypothesis
+generator bindings. Unsupported representation and instrumentation options are
+reported explicitly.
 
 ### Generation
 

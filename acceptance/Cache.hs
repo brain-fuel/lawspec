@@ -56,14 +56,14 @@ runKey target labels contents paths = do
 environmentNames :: [String]
 environmentNames =
   [ "LAWSPEC_MACHINE_BITS", "LAWSPEC_MINIFY", "LAWSPEC_RUST_RELEASE", "LAWSPEC_PYTHON"
-  , "RUSTUP_TOOLCHAIN", "CARGO_BUILD_TARGET", "GOARCH" ]
+  , "RUSTUP_TOOLCHAIN", "CARGO_BUILD_TARGET", "GOARCH", "PYTHONOPTIMIZE", "PYTEST_ADDOPTS" ]
 
 -- | The versions of the tools a target's tests run with. A tool that cannot be
 -- started contributes its error, so the key still changes when it appears.
 toolFingerprint :: String -> IO [String]
 toolFingerprint target = do
   root <- getCurrentDirectory
-  python <- maybe (root </> ".integration/python/.venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
+  python <- maybe (root </> ".integration" </> (if target=="prolog" then "prolog" else "python") </> ".venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
   let gradle = root </> ".tools/gradle-9.3.0/bin/gradle"
   local <- doesFileExist gradle
   mapM version $ case target of
@@ -71,6 +71,8 @@ toolFingerprint target = do
     "java" -> [("mvn", ["-v"])]
     t | t `elem` ["kotlin", "groovy"] -> [("java", ["-version"]), (if local then gradle else "gradle", ["--version", "--quiet"])]
     "python" -> [(python, ["--version"]), (python, ["-m", "pip", "freeze", "--all"])]
+    "prolog" -> [(python, ["--version"]), (python, ["-c",
+      "import importlib.metadata as m; import janus_swi as j; print(sorted((d.metadata['Name'], d.version) for d in m.distributions())); print(j.query_once('current_prolog_flag(version_data,V)')['V'])"])]
     "javascript" -> [("node", ["--version"])]
     "typescript" -> [("node", ["--version"])]
     "go" -> [("go", ["version"])]

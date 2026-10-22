@@ -12,6 +12,7 @@ license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     vendor/unicode/LICENSE.txt
+    vendor/unicode/NORMALIZATION-LICENSES.txt
     vendor/unicode/17.0.0/CaseFolding.txt
     README.md
     CHANGELOG.md
@@ -29,8 +30,17 @@ extra-source-files:
     runtime/lawspec_fast.py
     runtime/lawspec_harness.py
     runtime/lawspec_network.py
+    runtime/lawspec_prolog.py
+    runtime/lawspec_prolog_tests.py
     runtime/lawspec_runtime.py
     runtime/lawspec_schema.py
+    runtime/lawspec_prolog.pl
+    test/prolog_runtime.py
+    test/prolog_reporting.py
+    test/fixtures/prolog/bridge.pl
+    test/fixtures/prolog/async-model.lawspec
+    test/fixtures/prolog/basic.lawspec
+    test/fixtures/prolog/effects.lawspec
     runtime/LawSpecCodecs.hs
     runtime/LawSpecCollectionCodecs.hs
     runtime/LawSpecDataStrategies.hs
@@ -301,6 +311,9 @@ extra-source-files:
     examples/rc1/nesting/uur.lawspec
     examples/rc1/nesting/uuu.lawspec
     test/fixtures/blake3-256.json
+    test/fixtures/artifact-antlr-indexed-input.lawspec
+    test/fixtures/artifact-antlr-inputs.lawspec
+    test/fixtures/artifact-configuration.lawspec
     test/fixtures/canonical-bounded-generators.lawspec
     test/fixtures/canonical-branch-admission.lawspec
     test/fixtures/canonical-collection-membership.lawspec
@@ -533,6 +546,7 @@ library
       LawSpec.Actors.Types
       LawSpec.Actors.Web
       LawSpec.Api
+      LawSpec.ArtifactEmit
       LawSpec.Attestation
       LawSpec.Backend
       LawSpec.BeamAbilities
@@ -709,6 +723,7 @@ library
       LawSpec.PortableTestHelpers
       LawSpec.Prelude
       LawSpec.PreludeNames
+      LawSpec.Prolog.Emit
       LawSpec.ProofSettings
       LawSpec.Public
       LawSpec.PythonData
@@ -824,6 +839,8 @@ library
     , parser-combinators
     , text
     , transformers
+    , unicode-data ==0.6.0
+    , unicode-transforms ==0.4.0.1
   default-language: Haskell2010
 
 executable lawspec-acceptance
@@ -937,6 +954,7 @@ test-suite lawspec-test
   other-modules:
       AbilitiesSpec
       ApiContractSpec
+      ArtifactTargetSpec
       AsyncSpec
       AttestationSpec
       BeamSpec
@@ -994,6 +1012,7 @@ test-suite lawspec-test
       PayloadProofSpec
       PayloadSpec
       PreludeResolutionSpec
+      PrologTargetSpec
       PythonBindingNamesSpec
       QuantifierDomainSpec
       RailwaySpec

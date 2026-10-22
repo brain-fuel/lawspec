@@ -41,14 +41,14 @@ object Composition {
         override fun size(
             value0: kotlin.String,
         ): lawspec.runtime.LawSpecRuntime.Maybe<kotlin.Long> {
-            val records = (resource as LogStore).logs[value0] ?: return LawSpecRuntime.Nothing()
-            return LawSpecRuntime.Just(records.size.toLong())
+            val records = (resource as LogStore).logs[value0] ?: return LawSpecRuntime.Absent()
+            return LawSpecRuntime.Present(records.size.toLong())
         }
     }
 
     /** The native handler of Writer: write, lastOffset. */
     class WriterHandler(val resource: kotlin.Any) : lawspec.abilities.example.Composition.Writer {
-        private var last: LawSpecRuntime.Maybe<kotlin.Long> = LawSpecRuntime.Nothing()
+        private var last: LawSpecRuntime.Maybe<kotlin.Long> = LawSpecRuntime.Absent()
         override fun write(
             value0: kotlin.String,
             value1: kotlin.String,
@@ -56,7 +56,7 @@ object Composition {
             val records = (resource as LogStore).logs[value0] ?: return false
             if (value1.isEmpty()) return false
             records.add(value1)
-            last = LawSpecRuntime.Just((records.size - 1).toLong())
+            last = LawSpecRuntime.Present((records.size - 1).toLong())
             return true
         }
         override fun lastOffset(): lawspec.runtime.LawSpecRuntime.Maybe<kotlin.Long> = last

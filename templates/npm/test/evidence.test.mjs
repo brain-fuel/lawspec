@@ -239,6 +239,27 @@ test('a named completed attestation links the laws of its run, and wiring, runni
     assert.equal(planned.find('shop.orders::law::checkoutCharges').plannedEnvironmentRun.execution.status, execution.status);
     assert.match(planned.text, why);
   }
+  // Cached startup snapshots cannot complete the enclosing environment run.
+  for (const status of ['running', 'wired', 'completed']) {
+    const doc = document('run-5', {status, ...(status === 'completed' ? {exit_code: 0} : {})});
+    await writeFile(path.join(results, 'javascript-000000000000.json'), JSON.stringify({version: 1,
+      laws: {'shop.orders::law::checkoutCharges': {key: 'k', seed: 1, passed: '2026-10-09T19:31:00.000Z', environment: 'run-5'}},
+      attestations: {'run-5': doc}}));
+    const list = JSON.parse(await lawspec(root, 'evidence', '--json'));
+    const row = list.find(item => item.declaration === 'shop.orders::law::checkoutCharges');
+    const text = await lawspec(root, 'evidence');
+    if (status === 'completed') {
+      assert.equal(row.environmentRun.execution.status, 'completed');
+      assert.equal(row.environmentOutcome, 'passed');
+      assert.equal(row.plannedAgainst, undefined);
+    } else {
+      assert.equal(row.against, undefined);
+      assert.equal(row.environmentOutcome, undefined);
+      assert.equal(row.plannedEnvironmentRun.execution.status, status);
+      assert.match(text, /planned obligation\(s\)/);
+      assert.doesNotMatch(text, /last recorded passing run in environment/);
+    }
+  }
   const other = await evidence(document('run-6', {status: 'completed', exit_code: 0}));
   assert.equal(other.find('shop.orders::law::checkoutCharges').environment, undefined);
   assert.equal(other.find('shop.orders::law::checkoutCharges').plannedEnvironmentRun.id, 'run-6');

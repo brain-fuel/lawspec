@@ -1,0 +1,7 @@
+expect: falsevalue
+@@ src/example/prologBasic.pl
+<<<<<<<
+ls_flag(_, false).
+=======
+ls_flag(_, _) :- fail.
+>>>>>>>

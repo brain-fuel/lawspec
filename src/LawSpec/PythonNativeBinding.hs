@@ -118,8 +118,8 @@ emitBindings minify bindings plan files = do
           (_, C.Constructor "Maybe" [C.TypeArgument element]) -> do
             elementRef <- Data.pythonTypeReferenceDoc element
             pure [D.text "result = " <> application',
-              P.suite (D.text "if result is None") (D.text "return _schema.Nothing()"),
-              D.text "return _schema.Just" <> D.delimitTrailing 4 "(" ")" [resultOf elementRef (D.text "result")]]
+              P.suite (D.text "if result is None") (D.text "return _schema.Absent()"),
+              D.text "return _schema.Present" <> D.delimitTrailing 4 "(" ")" [resultOf elementRef (D.text "result")]]
           _ -> pure [D.text "result = " <> application',
             D.text "return " <> resultOf resultRef (D.text "result")]
         let signature = D.text ((if C.declarationAsync decl then "async def " else "def ") ++ C.declarationName decl) <>

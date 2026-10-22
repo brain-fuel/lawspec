@@ -31,8 +31,8 @@ end function
 
 function first (batch of type Batch a) -> Maybe a is
   first matching case of batch:
-    when Batch Nil then Nothing
-    when Batch (Cons record{value = value} remaining) then Just value
+    when Batch Nil then Absent
+    when Batch (Cons record{value = value} remaining) then Present value
   end case
 end function
 
@@ -62,7 +62,7 @@ end law
 law "|the first reading is selected| is
   definition:
     for all (enabled of type Bool) =>
-      first (Batch [record{value = enabled}]) must be Just enabled
+      first (Batch [record{value = enabled}]) must be Present enabled
     end for all
   end definition
 
@@ -77,16 +77,16 @@ law "|batch examples preserve their readings| is
 
   expect first batch = expected
   in table (batch, expected):
-    row Batch [], Nothing
-    row Batch [record{value = true}], Just true
-    row Batch [record{value = false}, record{value = true}], Just false
+    row Batch [], Absent
+    row Batch [record{value = true}], Present true
+    row Batch [record{value = false}, record{value = true}], Present false
   end table
 end law
 
 law "|stored readings remain available| is
   definition:
     for all (enabled of type Bool) =>
-      items (Stored record{items = [record{value = enabled}], optional = Nothing})
+      items (Stored record{items = [record{value = enabled}], optional = Absent})
         must be [record{value = enabled}]
     end for all
   end definition
@@ -95,8 +95,8 @@ end law
 law "|optional readings retain their values| is
   definition:
     for all (enabled of type Bool) =>
-      optional (Stored record{items = [], optional = Just record{value = enabled}})
-        must be Just record{value = enabled}
+      optional (Stored record{items = [], optional = Present record{value = enabled}})
+        must be Present record{value = enabled}
     end for all
   end definition
 
@@ -112,8 +112,8 @@ law "|stored examples retain both fields| is
 
   expect optional stored = expected
   in table (stored, expected):
-    row Stored record{items = [], optional = Nothing}, Nothing
-    row Stored record{items = [], optional = Just record{value = true}}, Just record{value = true}
+    row Stored record{items = [], optional = Absent}, Absent
+    row Stored record{items = [], optional = Present record{value = true}}, Present record{value = true}
   end table
 end law
 

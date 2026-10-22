@@ -1,0 +1,6 @@
+@@ src/example/algebra.pl
+<<<<<<<
+ls_divideRight(X, Y, R) :- R is X+Y.
+=======
+ls_divideRight(X, Y, R) :- R is X-Y.
+>>>>>>>

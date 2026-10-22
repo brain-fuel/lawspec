@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {test} from 'node:test';
 import {createCompiler} from '../api.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 import {rejectionOutcome,diagnosticText} from '../../templates/site/diagnostic-expectations.mjs';
 
 test('rejection expectations require exactly the named diagnostic and retain readable source context',()=>{

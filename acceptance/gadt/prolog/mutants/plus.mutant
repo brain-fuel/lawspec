@@ -1,0 +1,6 @@
+@@ src/example/gadt.pl
+<<<<<<<
+R is A+B
+=======
+R is A-B
+>>>>>>>

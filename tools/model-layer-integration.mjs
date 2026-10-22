@@ -10,7 +10,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 const exec=promisify(execFile),repo=path.resolve(import.meta.dirname,'..');
 const packageRoot=path.resolve(process.env.LAWSPEC_NPM_SOURCE??path.join(repo,'npm'));
-const {templates,targets}=await import(pathToFileURL(path.join(packageRoot,'templates.mjs')));
+const {templates,programTargets:targets}=await import(pathToFileURL(path.join(packageRoot,'templates.mjs')));
 const language=process.argv[2];assert.ok(targets.includes(language),'Pass a supported target');
 const bits=Number(process.env.LAWSPEC_MACHINE_BITS??64),minify=process.env.LAWSPEC_MINIFY==='1';
 assert.ok([32,64].includes(bits));
@@ -37,7 +37,7 @@ for(const [name,content]of Object.entries(templates(language,{minify}))){
 }
 await cp(path.join(repo,'acceptance/actors',language,'files'),project,{recursive:true});
 const target={language,root:'.'};
-if(language==='python')target.python=process.env.LAWSPEC_PYTHON_EXECUTABLE??path.join(repo,'.integration/python/.venv/bin/python');
+if(['python','prolog'].includes(language))target.python=process.env.LAWSPEC_PYTHON_EXECUTABLE??path.join(repo,'.integration',language,'.venv/bin/python');
 if(['javascript','typescript'].includes(language))await symlink(
   path.resolve(process.env.LAWSPEC_NODE_MODULES??path.join(repo,'.integration',language,'node_modules')),path.join(project,'node_modules'));
 if(['kotlin','groovy'].includes(language))target.gradle=process.env.LAWSPEC_GRADLE??'gradle';

@@ -2,7 +2,7 @@
 
 import codec_domain as domain
 import lawspec_data as data
-from lawspec_schema import Just, Nothing
+from lawspec_schema import Absent, Present
 
 
 def to_parcel(value, convert):
@@ -17,7 +17,7 @@ def to_chain(value, convert):
     items = []
     while isinstance(value, data.ChainMore):
         items.append(convert(value.item))
-        if isinstance(value.tail, Nothing):
+        if isinstance(value.tail, Absent):
             return domain.FlatChain(items, False)
         value = value.tail.value
     return domain.FlatChain(items, True)
@@ -25,10 +25,10 @@ def to_chain(value, convert):
 
 def from_chain(value, convert):
     items, ended = value.unpack()
-    tail = Just(data.ChainStop()) if ended else Nothing()
+    tail = Present(data.ChainStop()) if ended else Absent()
     for item in reversed(items):
-        tail = Just(data.ChainMore(convert(item), tail))
-    if isinstance(tail, Nothing):
+        tail = Present(data.ChainMore(convert(item), tail))
+    if isinstance(tail, Absent):
         raise ValueError("empty chain without Stop has no logical value")
     return tail.value
 

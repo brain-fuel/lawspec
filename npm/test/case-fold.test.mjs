@@ -5,7 +5,7 @@ import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import {createCompiler} from '../api.mjs';
 import {explainLaw} from '../explain.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 
 test('pinned full Unicode folding preserves author names, scope and mandatory checks through the WASM API',async()=>{
   const compiler=await createCompiler();

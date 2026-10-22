@@ -431,10 +431,10 @@ cexpr env scope e = case expressionNode e of
       t <- fresh "Value"
       pure (s ++ [D.text (t ++ " = ") <> x], D.text t)
 
--- | Nothing and Just, by name.
+-- | Absent and Present, by name.
 maybes :: String -> (String, String)
 maybes "gleam" = ("none", "some")
-maybes _ = ("nothing", "just")
+maybes _ = ("absent", "present")
 
 -- | Left and Right, by name.
 sides :: String -> (String, String)
@@ -515,8 +515,8 @@ construct :: Env -> Type -> Id -> [D.Doc] -> M D.Doc
 construct env ty tag values = case (idText tag, values) of
   ("List::Nil", []) -> pure (D.text "[]")
   ("List::Cons", [h, t]) -> pure (D.text "[" <> h <> D.text " | " <> t <> D.text "]")
-  ("Maybe::Nothing", []) -> pure (E.atom (fst (maybes (envTarget env))))
-  ("Maybe::Just", [x]) -> pure (E.tuple [E.atom (snd (maybes (envTarget env))), x])
+  ("Maybe::Absent", []) -> pure (E.atom (fst (maybes (envTarget env))))
+  ("Maybe::Present", [x]) -> pure (E.tuple [E.atom (snd (maybes (envTarget env))), x])
   ("Either::Left", [x]) -> pure (E.tuple [E.atom (fst (sides (envTarget env))), x])
   ("Either::Right", [x]) -> pure (E.tuple [E.atom (snd (sides (envTarget env))), x])
   (_, [items]) | Just ("KeyVal", [k, v]) <- collectionArguments ty -> fromEntries env k v items
@@ -630,8 +630,8 @@ matchStatements env scope value cases = do
   case ty of
     Constructor n _ | n `elem` ["Maybe", "Either", "List"] -> do
       arms <- forM cases $ \c -> alternative c (\names -> case (idText (caseConstructor c), names) of
-        ("Maybe::Nothing", _) -> E.atom (fst (maybes target))
-        ("Maybe::Just", [x]) -> E.tuple [E.atom (snd (maybes target)), x]
+        ("Maybe::Absent", _) -> E.atom (fst (maybes target))
+        ("Maybe::Present", [x]) -> E.tuple [E.atom (snd (maybes target)), x]
         ("Either::Left", [x]) -> E.tuple [E.atom (fst (sides target)), x]
         ("Either::Right", [x]) -> E.tuple [E.atom (snd (sides target)), x]
         ("List::Nil", _) -> D.text "[]"
@@ -801,8 +801,8 @@ conversionClauses env k ty = case ty of
     let (nothing, just) = maybes target
     pure $ if dynamicSide
       then if k == FromDynamic
-        then [ ([render' (dyn "Maybe::Nothing" [])], [E.atom nothing]), ([render' (dyn "Maybe::Just" [D.text "Value"])], [E.tuple [E.atom just, x]]) ]
-        else [ ([nothing], [dyn "Maybe::Nothing" []]), ([render' (E.tuple [E.atom just, D.text "Value"])], [dyn "Maybe::Just" [x]]) ]
+        then [ ([render' (dyn "Maybe::Absent" [])], [E.atom nothing]), ([render' (dyn "Maybe::Present" [D.text "Value"])], [E.tuple [E.atom just, x]]) ]
+        else [ ([nothing], [dyn "Maybe::Absent" []]), ([render' (E.tuple [E.atom just, D.text "Value"])], [dyn "Maybe::Present" [x]]) ]
       else [ ([nothing], [E.atom nothing]), ([render' (E.tuple [E.atom just, D.text "Value"])], [E.tuple [E.atom just, x]]) ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
     xa <- convert env k a (D.text "Value")

@@ -11,12 +11,12 @@ defmodule Example.BuiltinContext do
       bytes = <<0, 255, 128>>
       read_back = try do
         :ok = files.write_bytes.(path, bytes)
-        files.read_bytes.(path) == {:just, bytes}
+        files.read_bytes.(path) == {:present, bytes}
       after
         files.remove_path.(path)
       end
       environment = Lawspec.Host.environment_handler()
-      no_variable = environment.environment_variable.(<<0>>) == :nothing
+      no_variable = environment.environment_variable.(<<0>>) == :absent
       secure_random = Lawspec.Randomness.secure_random_handler()
       secure = byte_size(secure_random.secure_bytes.(32)) == 32
       log = Lawspec.Logging.log_handler()

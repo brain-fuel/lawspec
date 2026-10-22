@@ -1,0 +1,6 @@
+@@ src/example/slug.pl
+<<<<<<<
+ls_normalize(X, R) :- string_codes(X, Codes), maplist(slug_code, Codes, Changed), string_codes(R, Changed).
+=======
+ls_normalize(_, "").
+>>>>>>>

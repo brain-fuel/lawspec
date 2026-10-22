@@ -21,7 +21,7 @@ function get<T>(registry: Map<number, T>, id: number, empty: () => T): T {
 }
 
 function maybe(value: bigint | undefined): data.Maybe<bigint> {
-  return value === undefined ? new data.Nothing<bigint>() : new data.Just(value);
+  return value === undefined ? new data.Absent<bigint>() : new data.Present(value);
 }
 
 export function newQueue(value0: unknown): data.WorkQueue {
@@ -35,7 +35,7 @@ export async function offer(value0: data.WorkQueue, value1: number): Promise<voi
 
 export async function poll(value0: data.WorkQueue): Promise<data.Maybe<number>> {
   const items = get(queues, value0.id, () => []);
-  return items.length > 0 ? new data.Just(items.shift()!) : new data.Nothing<number>();
+  return items.length > 0 ? new data.Present(items.shift()!) : new data.Absent<number>();
 }
 
 export async function queueSize(value0: data.WorkQueue): Promise<bigint> {

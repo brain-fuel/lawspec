@@ -72,8 +72,8 @@ generate_resolved([<<"list">>, D], Table, State, Size) ->
 generate_resolved([<<"maybe">>, D], Table, State, Size) ->
     {Choice, S1} = lawspec_beam_random:below(4, State),
     case Choice of
-        0 -> {{ls_data, <<"Maybe::Nothing">>, []}, S1};
-        _ -> {V, S2} = generate(D, Table, S1, Size), {{ls_data, <<"Maybe::Just">>, [V]}, S2}
+        0 -> {{ls_data, <<"Maybe::Absent">>, []}, S1};
+        _ -> {V, S2} = generate(D, Table, S1, Size), {{ls_data, <<"Maybe::Present">>, [V]}, S2}
     end;
 generate_resolved([<<"either">>, A, B], Table, State, Size) ->
     {Choice, S1} = lawspec_beam_random:below(2, State),
@@ -107,7 +107,7 @@ minimal_resolved([<<"bool">>], _) -> false;
 minimal_resolved([<<"text">>], _) -> <<>>;
 minimal_resolved([<<"unit">>], _) -> ls_unit;
 minimal_resolved([<<"list">>, _], _) -> [];
-minimal_resolved([<<"maybe">>, _], _) -> {ls_data, <<"Maybe::Nothing">>, []};
+minimal_resolved([<<"maybe">>, _], _) -> {ls_data, <<"Maybe::Absent">>, []};
 minimal_resolved([<<"either">>, A, _], Table) -> {ls_data, <<"Either::Left">>, [minimal(A, Table)]};
 minimal_resolved([<<"data">>, _ | Cs], Table) ->
     [[<<"ctor">>, Tag | Ds] | _] = base(Cs),
@@ -136,9 +136,9 @@ shrink_resolved([<<"text">>], V, _) ->
     [unicode:characters_to_binary(Cs) || Cs <- shrink_sequence(unicode:characters_to_list(V))];
 shrink_resolved([<<"list">>, D], Vs, Table) ->
     shrink_sequence(Vs) ++ replace_shrinks(Vs, fun(V) -> shrink(D, V, Table) end);
-shrink_resolved([<<"maybe">>, D], {ls_data, <<"Maybe::Just">>, [V]}, Table) ->
-    [{ls_data, <<"Maybe::Nothing">>, []} | [{ls_data, <<"Maybe::Just">>, [C]} || C <- shrink(D, V, Table)]];
-shrink_resolved([<<"maybe">>, _], {ls_data, <<"Maybe::Nothing">>, []}, _) -> [];
+shrink_resolved([<<"maybe">>, D], {ls_data, <<"Maybe::Present">>, [V]}, Table) ->
+    [{ls_data, <<"Maybe::Absent">>, []} | [{ls_data, <<"Maybe::Present">>, [C]} || C <- shrink(D, V, Table)]];
+shrink_resolved([<<"maybe">>, _], {ls_data, <<"Maybe::Absent">>, []}, _) -> [];
 shrink_resolved([<<"either">>, A, B], {ls_data, Tag, [V]}, Table) ->
     D = case Tag of <<"Either::Left">> -> A; <<"Either::Right">> -> B end,
     [{ls_data, Tag, [C]} || C <- shrink(D, V, Table)];
@@ -179,8 +179,8 @@ put([Kind], V, _) when Kind =:= <<"text">>; Kind =:= <<"bytes">>; Kind =:= <<"en
     check_binary(Kind, V), [varint(byte_size(V)), V];
 put([<<"list">>, D], Vs, Table) when is_list(Vs) ->
     [varint(length(Vs)), [put(resolve(D, Table), V, Table) || V <- Vs]];
-put([<<"maybe">>, _], {ls_data, <<"Maybe::Nothing">>, []}, _) -> <<0>>;
-put([<<"maybe">>, D], {ls_data, <<"Maybe::Just">>, [V]}, Table) ->
+put([<<"maybe">>, _], {ls_data, <<"Maybe::Absent">>, []}, _) -> <<0>>;
+put([<<"maybe">>, D], {ls_data, <<"Maybe::Present">>, [V]}, Table) ->
     [1, put(resolve(D, Table), V, Table)];
 put([<<"either">>, A, _], {ls_data, <<"Either::Left">>, [V]}, Table) ->
     [0, put(resolve(A, Table), V, Table)];
@@ -234,9 +234,9 @@ get([Kind], B, _) when Kind =:= <<"text">>; Kind =:= <<"bytes">>; Kind =:= <<"en
     check_binary(Kind, V), {V, After};
 get([<<"list">>, D], B, Table) ->
     {N, Rest} = read_varint(B), get_fields(lists:duplicate(N, D), Rest, Table);
-get([<<"maybe">>, _], <<0, Rest/binary>>, _) -> {{ls_data, <<"Maybe::Nothing">>, []}, Rest};
+get([<<"maybe">>, _], <<0, Rest/binary>>, _) -> {{ls_data, <<"Maybe::Absent">>, []}, Rest};
 get([<<"maybe">>, D], <<1, Rest/binary>>, Table) ->
-    {V, After} = get(resolve(D, Table), Rest, Table), {{ls_data, <<"Maybe::Just">>, [V]}, After};
+    {V, After} = get(resolve(D, Table), Rest, Table), {{ls_data, <<"Maybe::Present">>, [V]}, After};
 get([<<"either">>, A, B], <<N, Rest/binary>>, Table) when N < 2 ->
     {Tag, D} = case N of 0 -> {<<"Either::Left">>, A}; 1 -> {<<"Either::Right">>, B} end,
     {V, After} = get(resolve(D, Table), Rest, Table), {{ls_data, Tag, [V]}, After};

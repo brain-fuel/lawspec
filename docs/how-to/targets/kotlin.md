@@ -92,7 +92,7 @@ a generic sum is a class with value equality, such as `Chain.Stop<T>()`.
 | `CodePoint`, `CodeUnit16` | `Int`, `Char` |
 | `CodePointText`, `Utf16Text`, `Bytes` | `IntArray`, `String`, `ByteArray` |
 | `List a` | `List<T>` |
-| `Maybe a` | `LawSpecRuntime.Maybe<T>`, with `Nothing<T>` and `Just<T>` |
+| `Maybe a` | `LawSpecRuntime.Maybe<T>`, with `Absent<T>` and `Present<T>` |
 | `Either a b` | `LawSpecRuntime.Either<L, R>`, with `Left<L, R>` and `Right<L, R>` |
 | `Nullable a` | `LawSpecKotlin.Nullable<T>`, with `Null<T>` and `Present<T>` |
 | `Optional a` | `LawSpecKotlin.Optional<T>`, with `Undefined<T>` and `Present<T>` |

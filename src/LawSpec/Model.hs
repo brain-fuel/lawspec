@@ -23,6 +23,15 @@ newtype RecordIndexConstraints = RecordIndexConstraints [IndexGuard] deriving (E
 instance ToJSON RecordIndexConstraints where
   toJSON (RecordIndexConstraints guards)=toJSON (map indexGuardText guards)
 
+-- | Maybe's values are Present and Absent. The old names Just and Nothing are
+-- not aliases; a source that uses them is refused with the new name.
+-- ref:DEC-maybe-present-absent
+renamedConstructorHint :: String -> String
+renamedConstructorHint name = case lookup base [("Just","Present"),("Nothing","Absent")] of
+  Just new -> ". Maybe's " ++ base ++ " is now " ++ new ++ "; write " ++ new ++ " instead"
+  Nothing -> ""
+  where base = reverse (takeWhile (/= '.') (reverse name))
+
 typeRecordFields :: Type -> Maybe [RecordField]
 typeRecordFields (Record fields)=Just fields
 typeRecordFields (IndexedRecord fields _)=Just fields
@@ -671,7 +680,7 @@ typePredicates value (Applied "List" inner) =
   in if null predicates then [] else
     [AllElementsExpr value binder (foldr (Binary "&&") (BoolLit True) predicates)]
 typePredicates value (Applied "Maybe" inner) =
-  sumPredicates value [("Maybe::Nothing",Nothing),("Maybe::Just",Just inner)]
+  sumPredicates value [("Maybe::Absent",Nothing),("Maybe::Present",Just inner)]
 typePredicates value (Application "Either" [left,right]) =
   sumPredicates value [("Either::Left",Just left),("Either::Right",Just right)]
 typePredicates _ _ = []

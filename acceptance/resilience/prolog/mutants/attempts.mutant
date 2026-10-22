@@ -1,0 +1,7 @@
+@@ src/example/resilience.pl
+<<<<<<<
+    py_call(lawspec_runtime:'Retry'(-(exponential, 100000, 2, @(none)), Attempts, none, When), Retry),
+=======
+    WrongAttempts is Attempts+1,
+    py_call(lawspec_runtime:'Retry'(-(exponential, 100000, 2, @(none)), WrongAttempts, none, When), Retry),
+>>>>>>>

@@ -239,7 +239,7 @@ object Crypto {
             val sealed = value1.value
             val opened = if (sealed.size < 12) null
                 else aes256GcmDecrypt(value0.value, sealed.copyOf(12), sealed.copyOfRange(12, sealed.size), value2)
-            return if (opened == null) LawSpecRuntime.Nothing() else LawSpecRuntime.Just(opened)
+            return if (opened == null) LawSpecRuntime.Absent() else LawSpecRuntime.Present(opened)
         }
     }
 }

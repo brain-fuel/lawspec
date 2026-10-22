@@ -115,8 +115,8 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
     member this.ReceiveWithin(micros: BigInteger) : Value =
         let now = Stopwatch.GetTimestamp() * 1_000_000L / Stopwatch.Frequency
         match this.Wait(Some(now + int64 (BigInteger.Max(BigInteger.Zero, micros)))) with
-        | Some value -> Data("Maybe::Just", [ value ])
-        | None -> Data("Maybe::Nothing", [])
+        | Some value -> Data("Maybe::Present", [ value ])
+        | None -> Data("Maybe::Absent", [])
 
     /// As ReceiveWithin, timed by the Clock in scope: the real clock waits;
     /// any other clock (the virtual one) takes what is there, then sleeps.
@@ -131,10 +131,10 @@ type Mailbox private (network: (Node * string * Map<string, Descriptors.Descript
         else
             let now = Stopwatch.GetTimestamp() * 1_000_000L / Stopwatch.Frequency
             match this.Wait(Some now) with
-            | Some value -> Data("Maybe::Just", [ value ])
+            | Some value -> Data("Maybe::Present", [ value ])
             | None ->
                 Effects.invoke handler schema "sleep" [ Data("lawspec.time::type::Duration::Duration", [ Int(BigInteger.Max(BigInteger.Zero, micros)) ]) ] |> ignore
-                Data("Maybe::Nothing", [])
+                Data("Maybe::Absent", [])
 
     /// Refuse new values; accepted ones still drain.
     member this.Close() =

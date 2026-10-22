@@ -1,0 +1,6 @@
+@@ src/example/refinements.pl
+<<<<<<<
+ls_positive(X, X).
+=======
+ls_positive(_, 0).
+>>>>>>>

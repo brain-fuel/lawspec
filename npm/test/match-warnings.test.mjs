@@ -29,7 +29,7 @@ const strip=({warnings,warningAnalysis,...value})=>value;
 
 test('opt-in match warnings preserve API results, evidence, and every target artifact',async()=>{
   const compiler=await createCompiler();
-  const {targets}=await import('../templates.mjs');
+  const {programTargets: targets}=await import('../templates.mjs');
   for(const machineBits of [32,64]){
     const request={...input,machineBits};
     const before=await compiler.check(request), after=await compiler.check({...request,warnMatches:true});

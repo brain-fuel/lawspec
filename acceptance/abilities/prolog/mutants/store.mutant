@@ -1,0 +1,6 @@
+@@ src/example/shop.pl
+<<<<<<<
+py_call(State:'__setitem__'(value, Value)).
+=======
+Wrong is Value+1, py_call(State:'__setitem__'(value, Wrong)).
+>>>>>>>

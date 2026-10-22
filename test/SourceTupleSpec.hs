@@ -106,7 +106,7 @@ test_positionalProducts=describe "canonical positional products" $ do
   it "orders tuples lexicographically by position even beyond nine components" $ checked
     "law ordered is definition: prelude.compare (false, false, false, false, false, false, false, false, false, true, false) (true, false, false, false, false, false, false, false, false, false, false) must be Less end definition end law\n"
   it "rejects refutable or repeated parameter bindings and invalid dependent inputs" $ do
-    forM_ ["((true, _) of type (Bool, Bool))","((same, same) of type (Integer, Integer))","(Just value of type Maybe Integer)"] $ \parameter ->
+    forM_ ["((true, _) of type (Bool, Bool))","((same, same) of type (Integer, Integer))","(Present value of type Maybe Integer)"] $ \parameter ->
       rejects ("function invalid "++parameter++" -> Bool is true end function")
     rejects "function invalid ((first, second) of type (Integer, Integer)) (first of type Bool) -> Bool is true end function"
     let bounded="function bounded ((lower, upper) of type (Integer, Integer) where lower <= upper) (value of type (number of type Integer where number >= lower)) -> Integer is value end function\n"

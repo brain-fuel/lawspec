@@ -51,7 +51,7 @@ export function put(value0, value1, value2) {
 // LawSpec result: Maybe (Int32)
 export function get(value0, value1) {
   if (!value0.open) throw new Error('the store is closed');
-  return value0.items.has(value1) ? new data.Just(value0.items.get(value1)) : new data.Nothing();
+  return value0.items.has(value1) ? new data.Present(value0.items.get(value1)) : new data.Absent();
 }
 
 // LawSpec argument 0: example.resources::type::Store
@@ -77,7 +77,7 @@ export function writeNote(value0, value1) {
 // LawSpec result: Maybe (Int32)
 export function readNote(value0) {
   const file = path.join(value0, 'note.txt');
-  return fs.existsSync(file) ? new data.Just(Number(fs.readFileSync(file, 'utf8'))) : new data.Nothing();
+  return fs.existsSync(file) ? new data.Present(Number(fs.readFileSync(file, 'utf8'))) : new data.Absent();
 }
 
 // LawSpec argument 0: Int32
@@ -102,7 +102,7 @@ export function setGreeting(value0) {
 // LawSpec result: Maybe (Int32)
 export function greeting(value0) {
   const value = process.env.LAWSPEC_EXAMPLE_GREETING;
-  return value === undefined ? new data.Nothing() : new data.Just(Number(value));
+  return value === undefined ? new data.Absent() : new data.Present(Number(value));
 }
 
 // A pool that is costly to open: this process may open only one, so the

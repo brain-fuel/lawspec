@@ -1,6 +1,6 @@
 import {generateInput} from './compiler-input.mjs';
 import {createCompiler} from '../api.mjs';
-import {targets} from '../templates.mjs';
+import {programTargets as targets} from '../templates.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -13,7 +13,9 @@ const cli = new URL("../bin/lawspec.mjs", import.meta.url).pathname;
 test("examples exports all bundled stubs/tests, preserves adapters, and protects edited tests and paths", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "lawspec-examples-"));
   const run = (args = []) =>
-    exec(process.execPath, [cli, "examples", "--json", ...args], { cwd: root });
+    exec(process.execPath, [cli, "examples", "--json", ...args], {
+      cwd: root, maxBuffer: 16 * 1024 * 1024,
+    });
   try {
     const result = JSON.parse((await run()).stdout);
     assert.deepEqual(result.map(project => project.target), targets);

@@ -13,9 +13,9 @@ import type * as abilities from '../lawspec_abilities/lawspec/host.js';
 export class FileSystemHandler implements abilities.FileSystem {
   readBytes(value0: string): data.Maybe<Uint8Array> {
     try {
-      return new data.Just(new Uint8Array(fs.readFileSync(value0)));
+      return new data.Present(new Uint8Array(fs.readFileSync(value0)));
     } catch {
-      return new data.Nothing();
+      return new data.Absent();
     }
   }
   writeBytes(value0: string, value1: Uint8Array): void {
@@ -50,7 +50,7 @@ export function validName(name: string): boolean {
 export class EnvironmentHandler implements abilities.Environment {
   environmentVariable(value0: string): data.Maybe<string> {
     const value = validName(value0) ? process.env[value0] : undefined;
-    return value === undefined ? new data.Nothing() : new data.Just(value);
+    return value === undefined ? new data.Absent() : new data.Present(value);
   }
   environmentSnapshot(): string {
     return ls.acquireResource('environment');

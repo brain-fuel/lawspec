@@ -32,7 +32,7 @@ func record(i uint64) kafka.Record {
 	for j := range value {
 		value[j] = 'x'
 	}
-	return kafka.Record{Key: kafka.LawSpecJust(key), Value: kafka.LawSpecJust(value)}
+	return kafka.Record{Key: kafka.LawSpecPresent(key), Value: kafka.LawSpecPresent(value)}
 }
 
 func phase(name string, ops uint64, start time.Time) {
@@ -59,7 +59,7 @@ func main() {
 
 	start := time.Now()
 	for i := uint64(0); i < scale; i++ {
-		broker.ProduceRequest(tp(int(i%partitions)), kafka.LawSpecNothing[kafka.ProducerTag](), []kafka.Record{record(i)})
+		broker.ProduceRequest(tp(int(i%partitions)), kafka.LawSpecAbsent[kafka.ProducerTag](), []kafka.Record{record(i)})
 	}
 	phase("produce", scale, start)
 	total += scale
@@ -118,7 +118,7 @@ func main() {
 	if txns == 0 {
 		txns = 1
 	}
-	id := broker.InitProducerIdRequest(kafka.LawSpecJust("tx"))
+	id := broker.InitProducerIdRequest(kafka.LawSpecPresent("tx"))
 	ops++
 	sequences := make([]int32, partitions)
 	for t := uint64(0); t < txns; t++ {
@@ -127,7 +127,7 @@ func main() {
 		for _, p := range parts {
 			tag := kafka.ProducerTag{ProducerId: id.ProducerId, ProducerEpoch: id.ProducerEpoch, BaseSequence: sequences[p]}
 			sequences[p]++
-			broker.ProduceRequest(tp(p), kafka.LawSpecJust(tag), []kafka.Record{record(t)})
+			broker.ProduceRequest(tp(p), kafka.LawSpecPresent(tag), []kafka.Record{record(t)})
 		}
 		broker.TxnOffsetCommitRequest("tx", id.ProducerId, id.ProducerEpoch, "g", []kafka.OffsetEntry{{TopicPartition: tp(parts[0]), Offset: int64(t)}})
 		broker.EndTxnRequest("tx", id.ProducerId, id.ProducerEpoch, true)
@@ -141,13 +141,13 @@ func main() {
 	fmt.Printf("check committed-hw %d\n", r.HighWatermark)
 
 	// The embedding API: a refusal as an error, and the state kept and put back.
-	_, err := broker.TryProduceRequest(kafka.TopicPartition{Topic: "missing", Partition: 0}, kafka.LawSpecNothing[kafka.ProducerTag](), []kafka.Record{record(0)})
+	_, err := broker.TryProduceRequest(kafka.TopicPartition{Topic: "missing", Partition: 0}, kafka.LawSpecAbsent[kafka.ProducerTag](), []kafka.Record{record(0)})
 	var refused *kafka.LawSpecRaised[kafka.KafkaError]
 	if errors.As(err, &refused) {
 		fmt.Printf("check refused %T\n", refused.Value)
 	}
 	snapshot := broker.TypedState()
-	broker.ProduceRequest(tp(0), kafka.LawSpecNothing[kafka.ProducerTag](), []kafka.Record{record(0)})
+	broker.ProduceRequest(tp(0), kafka.LawSpecAbsent[kafka.ProducerTag](), []kafka.Record{record(0)})
 	broker.SetTypedState(snapshot)
 	after := broker.FetchRequest(tp(0), 0, 10, kafka.IsolationLevelReadCommitted{})
 	fmt.Printf("check restored %v\n", after.HighWatermark == r.HighWatermark)

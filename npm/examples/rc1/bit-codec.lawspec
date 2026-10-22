@@ -11,15 +11,15 @@ end function
 
 function "|decode with zero default| (text of type Text) -> Bool is
   first matching case of decodeBit text:
-    when Just bit then bit
-    when Nothing then false
+    when Present bit then bit
+    when Absent then false
   end case
 end function
 
 law "|each bit is recovered| is
   definition:
     for all (bit of type Bool) =>
-      decodeBit (bitText bit) must be Just bit
+      decodeBit (bitText bit) must be Present bit
     end for all
   end definition
 
@@ -30,8 +30,8 @@ law "|each bit is recovered| is
   expect bitText bit = encoded
   expect decodeBit encoded = decoded
   in table (bit, encoded, decoded):
-    row false, "0", Just false
-    row true, "1", Just true
+    row false, "0", Present false
+    row true, "1", Present true
   end table
 end law
 
@@ -47,7 +47,7 @@ end law
 
 law "|other text has no bit| is
   definition:
-    decodeBit "01" must be Nothing
+    decodeBit "01" must be Absent
   end definition
 
   description:

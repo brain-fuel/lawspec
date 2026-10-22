@@ -4,7 +4,7 @@ import { readFile, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { createCompiler } from "../api.mjs";
-import { targets, templates, commands, setup } from "../templates.mjs";
+import { targets, artifactTargets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
 import { proveWithZ3 } from "../proof.mjs";
 import { serveLanguage } from "../lsp.mjs";
@@ -56,10 +56,13 @@ const output = (value) =>
 const shellQuote = (value) =>
   "'" + String(value).replaceAll("'", "'\\''") + "'";
 function testCommand(target, root) {
+  if (artifactTargets.includes(target.language)) return null;
   const testDir = target.testDir || "test";
   let command = commands[target.language];
   if (target.language === "python")
     command = `${shellQuote(target.python || "python3")} -m pytest`;
+  if (target.language === "prolog")
+    command = `${shellQuote(target.python || "python3")} lawspec_test.py`;
   if (target.language === "java")
     command = `${shellQuote(target.maven || "mvn")} test`;
   if (target.language === "kotlin")
@@ -244,7 +247,9 @@ async function init() {
   if (current === null)
     await atomicWrite(
       starter,
-      await readFile(new URL("../starter-rc1.lawspec", import.meta.url), "utf8"),
+      artifactTargets.includes(language) && language !== "make"
+        ? "unit configuration\ntype Settings is a record{port :: UInt16 enabled :: Bool} end type\nfunction settings (unused :: Unit) -> Settings is Settings record{port = 8080, enabled = true} end function\nend unit\n"
+        : await readFile(new URL("../starter-rc1.lawspec", import.meta.url), "utf8"),
       true,
     );
   if (options.machineBits !== undefined) config.machineBits = options.machineBits;
@@ -384,9 +389,7 @@ function harnessText(item) {
   if (h.skip) parts.push(`skip "${h.skip}"`);
   if (h.knownFailing) parts.push(`known failing "${h.knownFailing}"`);
   if (h.orderRandom) parts.push("order random");
-  // Python runs a parallel unit's tests at the same time only with
-  // pytest-xdist; without it, parallel changes nothing there.
-  if (h.parallel) parts.push("parallel (on Python only with pytest-xdist; otherwise one after another)");
+  if (h.parallel) parts.push("parallel");
   const lines = [`  ${item.declaration.replace("::law::", "::")}: ${parts.join("; ") || "no harness settings"}`];
   for (const run of item.adequacy ?? []) {
     lines.push(`    last run: ${run.cases} generated case(s)` +
@@ -526,12 +529,11 @@ async function runTests(compiler, input, selected, roots, config) {
       if (beam || target.language === "scala") await rm(coverage, {recursive: true, force: true});
       await mkdir(beam ? path.join(coverage, "runs") : coverage, { recursive: true });
     }
-    // parallel on Python needs pytest-xdist; without it the tests run one
-    // after another, and lawspec test says so.
+    // Python may use xdist processes; the host harness otherwise supplies
+    // its existing thread scheduler, which Prolog also uses through Janus.
     let xdist = false;
     if (target.language === "python" && stale.some((entry) => entry.parallel)) {
       xdist = spawnSync(target.python || "python3", ["-c", "import xdist"], { cwd: root, stdio: "ignore" }).status === 0;
-      if (!xdist) console.error("python: `parallel` runs tests at the same time only with pytest-xdist (pip install pytest-xdist); without it they run one after another.");
     }
     // A skipped law runs nothing. BEAM known-failing checks finish as native
     // passing tests, so their completion must appear in the native report.
@@ -828,8 +830,11 @@ async function main() {
       "Expected lawspec.json version 2 with languageProfile 1.0-rc.2, sources and targets arrays",
     );
   if (config.languageProfile !== "1.0-rc.2") throw new Error("Configuration version 2 requires languageProfile 1.0-rc.2");
+  if (verb === "test" && artifactTargets.includes(options.target))
+    throw new Error(`${options.target} is an artifact target and cannot execute application laws`);
   const selected = config.targets.filter(
-    (t) => !options.target || t.language === options.target,
+    (t) => (!options.target || t.language === options.target) &&
+      (verb !== "test" || !artifactTargets.includes(t.language)),
   );
   if (["doctor", "generate", "test"].includes(verb) && !selected.length &&
       !(verb === "test" && !options.benchmarks && config.version === 2 && !(config.verification?.layers ?? []).some(layer => ["exhaustive", "property", "examples", "model"].includes(layer))))
@@ -847,7 +852,7 @@ async function main() {
         : reports
             .map(
               (r) =>
-                `${r.target}: ${r.ok ? "ready" : `${r.message}\n${r.instructions}`}`,
+                `${r.target}: ${r.ok ? (r.kind === "artifact" ? "generation ready" : "ready") : `${r.message}\n${r.instructions}`}`,
             )
             .join("\n"),
     );
@@ -960,13 +965,24 @@ async function main() {
       if (!laws.size) continue;
       const attested = diagnostics(await compiler.check({ ...input, attestation, attestedOutcomes: outcomes.get(id) ?? {} }));
       const fields = new Map(attested.evidence.filter((item) => (item.against || item.plannedAgainst) && laws.has(item.declaration))
-        .map(item => [item.declaration, {environment: item.environment ?? item.plannedEnvironment,
-          environmentRun: item.environmentRun ?? item.plannedEnvironmentRun, against: item.against ?? item.plannedAgainst,
-          environmentProviders: item.environmentProviders ?? item.plannedEnvironmentProviders,
-          ...(item.environmentOutcome ? { environmentOutcome: item.environmentOutcome } : {})}]));
+        .map(item => {
+          // Receipts predating execution states keep their historical meaning.
+          // An explicit running/wired state must retain the compiler's planned
+          // fields; a cached passing law does not complete its environment run.
+          const legacy = !attestation.execution && !item.against;
+          return [item.declaration, legacy ? {
+            environment: item.plannedEnvironment, environmentRun: item.plannedEnvironmentRun,
+            against: item.plannedAgainst, environmentProviders: item.plannedEnvironmentProviders,
+          } : Object.fromEntries(["environment", "environmentRun", "against", "environmentProviders", "environmentOutcome",
+            "plannedEnvironment", "plannedEnvironmentRun", "plannedAgainst", "plannedEnvironmentProviders"]
+            .filter(key => item[key] !== undefined).map(key => [key, item[key]]))];
+        }));
       evidence = evidence.map((item) => item.stage === "law" && fields.has(item.declaration) ? { ...item, ...fields.get(item.declaration) } : item);
       environments.push({ ...attested.attestation, dependencies: attested.attestation.dependencies
-        .map((d) => ({ ...d, obligations: [...new Set([...d.obligations, ...(d.plannedObligations ?? [])])].filter((law) => laws.has(law)), plannedObligations: [] })) });
+        .map((d) => ({ ...d,
+          obligations: (attestation.execution ? d.obligations : [...new Set([...d.obligations, ...(d.plannedObligations ?? [])])])
+            .filter((law) => laws.has(law)),
+          plannedObligations: attestation.execution ? (d.plannedObligations ?? []).filter((law) => laws.has(law)) : [] })) });
     }
     // Native bindings are configured per target; their obligations are added.
     for (const target of selected) {
@@ -1099,7 +1115,7 @@ async function main() {
       : summary
           .map(
             (r) =>
-              `${r.target}: ${r.changes.length} ${options["dry-run"] || options.check ? "planned" : "applied"} change(s), ${r.preservedAdapters.length} user adapter(s) preserved.${r.adapterUpdates.length ? "\nReview required adapter signatures:\n" + r.adapterUpdates.map((a) => a.path + "\n" + a.requiredAdapter).join("\n") : ""}\nTest: ${r.test}`,
+              `${r.target}: ${r.changes.length} ${options["dry-run"] || options.check ? "planned" : "applied"} change(s), ${r.preservedAdapters.length} user adapter(s) preserved.${r.adapterUpdates.length ? "\nReview required adapter signatures:\n" + r.adapterUpdates.map((a) => a.path + "\n" + a.requiredAdapter).join("\n") : ""}\n${r.test === null ? "Artifact generation complete." : "Test: " + r.test}`,
           )
           .join("\n"),
   );

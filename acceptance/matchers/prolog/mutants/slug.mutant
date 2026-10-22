@@ -1,0 +1,6 @@
+@@ src/example/matchers.pl
+<<<<<<<
+atomics_to_string(Words, "-", R).
+=======
+atomics_to_string(Words, " ", R).
+>>>>>>>

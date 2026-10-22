@@ -1,0 +1,7 @@
+expect: forwards
+@@ src/example/prologEffects.pl
+<<<<<<<
+throw(lawspec_failure(value('example.prologEffects::type::Refusal::Blocked', []))).
+=======
+throw(lawspec_failure(value('example.prologEffects::type::Refusal::Blocked', [1]))).
+>>>>>>>

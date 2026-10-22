@@ -1,0 +1,9 @@
+@@ src/example/resources.pl
+<<<<<<<
+py_call(builtins:dict(items=eval(builtins:dict()), open= @(true)), State, [py_object(true)]).
+=======
+( nb_current(lawspec_fixture_shared_items, Items) -> true
+    ; py_call(builtins:dict(), Items, [py_object(true)]), nb_setval(lawspec_fixture_shared_items, Items)
+    ),
+    py_call(builtins:dict(items=Items, open= @(true)), State, [py_object(true)]).
+>>>>>>>

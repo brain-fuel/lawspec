@@ -14,10 +14,10 @@ native_probe(ok) ->
         Path = Temporary(<<"lawspec-native-">>),
         Bytes = <<0, 255, 128>>,
         ReadBack = try
-            ok = Write(Path, Bytes), Read(Path) =:= {just, Bytes}
+            ok = Write(Path, Bytes), Read(Path) =:= {present, Bytes}
         after Remove(Path) end,
         #{environment_variable := Variable} = lawspec_host:environment_handler(),
-        NoVariable = Variable(<<0>>) =:= nothing,
+        NoVariable = Variable(<<0>>) =:= absent,
         #{secure_bytes := SecureBytes} = lawspec_randomness:secure_random_handler(),
         Secure = byte_size(SecureBytes(32)) =:= 32,
         #{log_message := Log} = lawspec_logging:log_handler(),

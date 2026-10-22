@@ -40,7 +40,7 @@ ability Reader with Store is
   size :: Text -> Maybe Int64
 laws
   law "|an unknown log has no size| is
-    definition : for all (t :: Text) => size t = Nothing end for all end definition
+    definition : for all (t :: Text) => size t = Absent end for all end definition
   end law
 end laws
 end ability
@@ -52,7 +52,7 @@ ability Writer with Store is
 laws
   law "|a write to a new log is read back| is
     definition :
-      for all (t :: Text) (r :: Text where r != "") => (create t; write t r; size t) = Just 1 end for all
+      for all (t :: Text) (r :: Text where r != "") => (create t; write t r; size t) = Present 1 end for all
     end definition
   end law
 end laws
@@ -66,8 +66,8 @@ handler store for Logs, Reader with state logs :: KeyVal Text Log start empty un
   operation create t is ~logs := prelude.put t (Log record{ records = [] , appends = 0}) logs; unitValue end operation
   operation append t r is
     first matching case of prelude.lookup t logs :
-    when Nothing then raise UnknownLog
-    when Just log then
+    when Absent then raise UnknownLog
+    when Present log then
         if r = "" then raise EmptyRecord else
           (~logs := prelude.put t (log with records = Cons r log.records, appends = prelude.saturating (log.appends + 1)) logs;
            log.appends) end if
@@ -75,8 +75,8 @@ handler store for Logs, Reader with state logs :: KeyVal Text Log start empty un
   end operation
   operation size t is
     first matching case of prelude.lookup t logs :
-    when Nothing then Nothing
-    when Just log then Just log.appends
+    when Absent then Absent
+    when Present log then Present log.appends
     end case
   end operation
 end handler
@@ -85,13 +85,13 @@ end handler
 procedure writeTo (t :: Text) (r :: Text) (last :: Maybe Int64) -> Pair Bool (Maybe Int64) uses Logs is
   first matching case of prelude.attempt (append t r) :
   when Left problem then Pair false last
-  when Right offset then Pair true (Just offset)
+  when Right offset then Pair true (Present offset)
   end case
 end procedure
 
 function lastOf (last :: Maybe Int64) -> Pair (Maybe Int64) (Maybe Int64) is Pair last last end function
 
-handler logWriter for Writer with state last :: Maybe Int64 start Nothing is
+handler logWriter for Writer with state last :: Maybe Int64 start Absent is
   operation write by writeTo end operation
   operation lastOffset by lastOf end operation
 end handler
@@ -102,13 +102,13 @@ handlers reference is store, logWriter end handlers
 law "|sizes count records| is
   definition :
     for all (t :: Text) (a :: Text where a != "") (b :: Text where b != "") =>
-      (create t; append t a; append t b; size t) = Just 2 end for all
+      (create t; append t a; append t b; size t) = Present 2 end for all
   end definition
 end law
 
 law "|a writer remembers where it wrote| is
   definition :
-    for all (t :: Text) (r :: Text where r != "") => (create t; write t r; lastOffset) = Just 0 end for all
+    for all (t :: Text) (r :: Text where r != "") => (create t; write t r; lastOffset) = Present 0 end for all
   end definition
 end law
 end unit

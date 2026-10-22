@@ -15,6 +15,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'test/fixtures/index-paths'
 ALIASES = {
+    'prolog': 'python',
     'typescript': 'javascript', 'kotlin': 'java', 'scala': 'java',
     'groovy': 'java', 'clojure': 'java', 'csharp': 'fsharp',
     'elixir': 'erlang', 'gleam': 'erlang',
@@ -35,7 +36,8 @@ def main():
         if runtime == 'javascript':
             run('node', '--test', FIXTURES / 'web.mjs')
         elif runtime == 'python':
-            python = os.environ.get('LAWSPEC_PYTHON', str(ROOT / '.integration/python/.venv/bin/python'))
+            python = os.environ.get('LAWSPEC_PYTHON', str(ROOT / '.integration' /
+                ('prolog' if target == 'prolog' else 'python') / '.venv/bin/python'))
             run(python, '-B', FIXTURES / 'python.py')
         elif runtime == 'java':
             run('javac', '-d', work, ROOT / 'runtime/LawSpecRuntime.java',

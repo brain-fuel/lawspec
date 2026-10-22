@@ -32,14 +32,14 @@ procedure handshake (message :: Bytes) (context :: Bytes) -> Maybe Bytes uses
                 let server = deriveAeadKey (decapsulate secret sent) context in
                 unseal server (seal client message context) context end let end let)
             end case)
-          else Nothing end if end let)
+          else Absent end if end let)
       end case)
   end case
 end procedure
 
 law "|a handshake carries the message| is
   definition : for all (message :: Bytes) (context :: Bytes) => handshake
-      message context = Just message end for all end definition
+      message context = Present message end for all end definition
 end law
 end unit
 ```
@@ -149,7 +149,7 @@ end ability
 
 Authenticated encryption with associated data: AES-256-GCM (NIST SP
 800-38D) with a fresh random 96-bit nonce per message. `seal key message
-associated` encrypts; `unseal` gives `Just` the message, or `Nothing` unless
+associated` encrypts; `unseal` gives `Present message`, or `Absent` unless
 the key and the associated data are the ones it was sealed with.
 `deriveAeadKey secret context` is the first 32 bytes of SHAKE256(secret ||
 context): a shared secret from `KeyExchange` becomes a key for one purpose.

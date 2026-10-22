@@ -29,8 +29,8 @@ receive_value(Box) -> {value, Value} = call(Box, {'receive', infinity}), Value.
 receive_within(Box, Micros) when is_integer(Micros) ->
     maybe_value(call(Box, {'receive', erlang:monotonic_time(microsecond) + max(0, Micros)}));
 receive_within(_, _) -> fail(invalid_duration).
-maybe_value(timeout) -> {ls_data, <<"Maybe::Nothing">>, []};
-maybe_value({value, Value}) -> {ls_data, <<"Maybe::Just">>, [Value]}.
+maybe_value(timeout) -> {ls_data, <<"Maybe::Absent">>, []};
+maybe_value({value, Value}) -> {ls_data, <<"Maybe::Present">>, [Value]}.
 
 receive_with_clock(Box, Micros, Schema) when is_integer(Micros) ->
     Handler = lawspec_beam_effects:handler(Schema, <<"lawspec.time::ability::Clock">>),

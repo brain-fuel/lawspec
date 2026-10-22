@@ -21,11 +21,11 @@ procedure remember (note :: Bytes) -> Maybe Bytes uses FileSystem is
 end procedure
 
 law "|a remembered note reads back| is
-  definition : for all (note :: Bytes) => remember note = Just note end for all end definition
+  definition : for all (note :: Bytes) => remember note = Present note end for all end definition
 end law
 
 law "|an empty environment has no variables| using emptyEnvironment is
-  definition : for all (name :: Text) => environmentVariable name = Nothing end for all
+  definition : for all (name :: Text) => environmentVariable name = Absent end for all
   end definition
 end law
 end unit
@@ -44,7 +44,7 @@ ability FileSystem is
 end ability
 ```
 
-- `readBytes path` is the file's bytes, or `Nothing` when it cannot be read.
+- `readBytes path` is the file's bytes, or `Absent` when it cannot be read.
 - `writeBytes path b` writes the file, replacing it.
 - `pathExists path` holds for a file, directory or link at the path.
 - `removePath path` removes a file, or a directory and what it holds; a path
@@ -69,7 +69,7 @@ ability Environment is
 end ability
 ```
 
-`environmentVariable name` is the variable's value, or `Nothing`. A name
+`environmentVariable name` is the variable's value, or `Absent`. A name
 that cannot be a variable's (empty, or with `=` or NUL in it) has none.
 `environmentSnapshot` saves the whole environment as text, and
 `restoreEnvironment saved` puts it back as saved. Law: a variable has one

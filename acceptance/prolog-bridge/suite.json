@@ -1,0 +1,9 @@
+{
+  "languageProfile": "1.0-rc.2",
+  "verification": {"layers": ["exhaustive", "property", "examples", "runtime", "model"]},
+  "specs": [
+    "test/fixtures/prolog/basic.lawspec",
+    "test/fixtures/prolog/effects.lawspec",
+    "test/fixtures/prolog/async-model.lawspec"
+  ]
+}

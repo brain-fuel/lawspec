@@ -34,21 +34,21 @@ reader_handler(Store) ->
     #{
         size => fun(Log) ->
             case ets:lookup(Store, Log) of
-                [] -> nothing;
-                [{_, Records}] -> {just, length(Records)}
+                [] -> absent;
+                [{_, Records}] -> {present, length(Records)}
             end
         end
     }.
 
 -spec writer_handler(lawspec_data:store()) -> lawspec_abilities_example_composition:writer().
 writer_handler(Store) ->
-    Last = lawspec_beam_effects:native_cell(nothing),
+    Last = lawspec_beam_effects:native_cell(absent),
     #{
         write => fun(Log, Record) ->
             case ets:lookup(Store, Log) of
                 [{_, Records}] when Record =/= <<>> ->
                     ets:insert(Store, {Log, Records ++ [Record]}),
-                    lawspec_beam_effects:native_write(Last, {just, length(Records)}),
+                    lawspec_beam_effects:native_write(Last, {present, length(Records)}),
                     true;
                 _ -> false
             end

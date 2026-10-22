@@ -20,6 +20,7 @@ import LawSpec.Collections (isCollectionsType)
 import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
 import qualified LawSpec.BeamEmit as Beam
 import qualified LawSpec.DotNet.Emit as DotNet
+import qualified LawSpec.Prolog.Emit as Prolog
 import qualified LawSpec.Groovy.Emit as Groovy
 import qualified LawSpec.Clojure.Emit as Clojure
 import qualified LawSpec.Swift.Emit as Swift
@@ -57,6 +58,7 @@ import LawSpec.Builtins (defaultedUnits)
 import LawSpec.Scalar (primitive)
 import LawSpec.TargetNames (nativeName, phraseNativeName, allTargetKeywords)
 import qualified LawSpec.Targets as Targets
+import qualified LawSpec.ArtifactEmit as ArtifactEmit
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum, isHexDigit)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import qualified Data.Map.Strict as M
@@ -70,9 +72,10 @@ import LawSpec.TestManifest (unitTestPath)
 import LawSpec.Digest (digestHex, digestString)
 import System.IO.Unsafe (unsafePerformIO)
 
--- | Targets use the same order as the scaffolds, public API and local CI.
+-- | Executable backends, in the public inventory's order. Artifact targets are
+-- separately listed in LawSpec.Targets because they cannot execute law suites.
 targets :: [String]
-targets = Targets.targets
+targets = Targets.programTargets
 split :: Char -> String -> [String]
 split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
 cap :: String -> String
@@ -138,6 +141,8 @@ checkExecutionPlan plan = mapM_ check [plannedProperty p | u <- plannedUnits pla
       (Left [Diagnostic "verification-incomplete" "a scoped proposition requires a complete execution plan before native emission"
         (Just (C.propertyLocation property))])
 emitPlanWithFormatUnchecked :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithFormatUnchecked minify target plan | target `elem` Targets.artifactTargets =
+  ArtifactEmit.emitArtifacts minify target Nothing Nothing plan
 emitPlanWithFormatUnchecked minify target given | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
 emitPlanWithFormatUnchecked minify target given | target `elem` DotNet.dotnetTargets = DotNet.emitDotNet target minify
@@ -148,6 +153,9 @@ emitPlanWithFormatUnchecked minify "groovy" given =
 -- Clojure runs over them too (DEC-clojure-over-java).
 emitPlanWithFormatUnchecked minify "clojure" given =
   Clojure.clojureFromJava Clojure.noClojureBindings given =<< emitMaterializedPlanWithFormat minify "java" (escapePlan "clojure" given)
+emitPlanWithFormatUnchecked minify "prolog" given = do
+  let plan = wirePlan (escapePlan "python" (witnessPlan (ownedAbilityPlan given)))
+  Prolog.prologFromPython plan =<< emitMaterializedPlanWithFormat minify "python" plan
 emitPlanWithFormatUnchecked minify "swift" given = Swift.emitSwift minify
   (wirePlan (witnessPlan (ownedAbilityPlan given)))
 emitPlanWithFormatUnchecked minify target given = do
@@ -340,7 +348,7 @@ emitPlanFormatted _ target plan | target /= "rust", any containsConstruction exp
       C.Construct tag fields -> not
         (target `elem` ["java","python","javascript","typescript","go","haskell","kotlin","scala"] && any ((== tag) . C.constructorId) (concatMap C.dataConstructors (planDataDeclarations plan)) ||
          target `elem` ["python","javascript","typescript","haskell","java","kotlin","scala","go"] &&
-         C.idText tag `elem` ["List::Nil","List::Cons","Maybe::Nothing","Maybe::Just","Either::Left","Either::Right"] ||
+         C.idText tag `elem` ["List::Nil","List::Cons","Maybe::Absent","Maybe::Present","Either::Left","Either::Right"] ||
          target `elem` ["go"] && C.idText tag `elem` ["List::Nil","List::Cons"]) || any containsConstruction fields
       _ -> any containsConstruction (C.children expression)
 emitPlanFormatted _ target Plan{planDataDeclarations=(_: _)} | target `notElem` ["rust", "java", "python", "javascript", "typescript", "go", "haskell", "kotlin","scala"] =
@@ -596,6 +604,11 @@ emitPlanWithOptions minify target sourceDir testDir plan =
 -- so a law about `class` or `type` still compiles in Java or Go.
 -- ref:DEC-idiomatic-generated-types
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithNativeOptions minify target sourceDir testDir bindings plan | target `elem` Targets.artifactTargets = do
+  checkDefinitionPlan plan
+  unless (bindings == NB.emptyBindingPlan)
+    (Left [Diagnostic "native-binding" "artifact targets do not support native bindings" Nothing])
+  ArtifactEmit.emitArtifacts minify target sourceDir testDir plan
 emitPlanWithNativeOptions minify target sourceDir testDir bindings original = do
   checkDefinitionPlan original
   checkExecutionPlan original
@@ -621,6 +634,9 @@ emitPlanWithNativeNames minify "clojure" sourceDir testDir unescaped unwitnessed
   (java, clojure) <- Clojure.splitBindings unescaped
   Clojure.clojureLayout sourceDir testDir <$> (Clojure.clojureFromJava clojure unwitnessed =<<
     emitPlanWithNativeOptions minify "java" Nothing Nothing (escapeBindings "clojure" java) (escapePlan "clojure" unwitnessed))
+emitPlanWithNativeNames minify "prolog" sourceDir testDir bindings given = do
+  let plan = wirePlan (escapePlan "python" (witnessPlan (ownedAbilityPlan given)))
+  Prolog.prologFromPythonWithBindings sourceDir testDir bindings plan =<< emitMaterializedPlanWithFormat minify "python" plan
 emitPlanWithNativeNames minify target sourceDir testDir unescaped unwitnessed = do
   unless (target `elem` ["python","javascript","typescript","java","kotlin","scala","rust","go","haskell","fsharp","swift","erlang","elixir","gleam"] || all ((==Nothing) . Binding.resolvedFieldPaths)
     [constructor | mapping<-Binding.resolvedTypes (NB.bindingRepresentations unescaped),constructor<-Binding.resolvedConstructors mapping])

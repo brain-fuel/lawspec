@@ -5,7 +5,8 @@ import LawSpec.Model (Unit, Expanded)
 import LawSpec.Common
 import LawSpec.Frontend (elaborate)
 import LawSpec.Testing (planTesting)
-import LawSpec.CoreEmit (targets, emitPlan, emitPlanWithLayout)
+import LawSpec.CoreEmit (emitPlan, emitPlanWithLayout)
+import LawSpec.Targets (targets)
 
 -- | The 64-bit profile unless a caller states another.
 -- ref:DEC-explicit-machine-profile
