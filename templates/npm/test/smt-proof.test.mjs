@@ -319,6 +319,20 @@ for(const item of result.solverEvidence) {
   const outcome:SolverEvidence['outcome']=item.outcome;
   console.log(status,outcome,item.prover?.binaryFingerprint,item.modelValidated);
 }
+for(const item of result.solverEvidence) {
+  if(item.kind==='analysis') {
+    const stage:'completeness'|'overlap'|'conflict'|'vacuity'=item.stage;
+    const status:'proved'|'refuted'|'exempted'|'incomplete'|'unsupported'=item.status;
+    console.log(stage,status,item.check);
+    // @ts-expect-error a law-set task has no law location
+    console.log(item.at);
+  } else {
+    const at=item.at;const bits:32|64=item.machineBits;
+    // @ts-expect-error a law's task is never exempted
+    const exempted:typeof item.status='exempted';
+    console.log(at,bits,exempted,item.counterexample?.check);
+  }
+}
 // @ts-expect-error solver limits are numeric
 const invalid:Z3Options={timeoutMs:'unlimited'};
 // @ts-expect-error tasks alone are not completed solver evidence
