@@ -79,8 +79,23 @@ test_smtNumbers = describe "SMT numbers" $ do
     [ "for all (x :: Rational) => 2 * x != 1 end for all", "for all (x :: Decimal) => 10 * x != 3 end for all" ] $ \body -> do
       (program, [t]) <- compiled (law body)
       refutation z3 program t >>= (`shouldBe` "refuted")
+  it "keeps Decimal exact: no scale, rounding or bound, as LawSpec's arithmetic is" $ solver $ \z3 -> do
+    -- Exact in LawSpec (a / 3 is a Rational), so exact here; an 18-digit
+    -- decimal encoding would refute it.
+    (_, [t]) <- compiled (law "for all (a :: Decimal) => (a / 3) * 3 = a end for all")
+    script <- either fail pure (SMT.taskQuery t)
+    takeWhile (/= '\n') <$> run z3 (script ++ "(check-sat)\n") >>= (`shouldBe` "unsat")
+    (_, [huge]) <- compiled (law "for all (a :: Decimal) => a * 1000000000000000000000000 / 1000000000000000000000000 = a end for all")
+    hugeScript <- either fail pure (SMT.taskQuery huge)
+    takeWhile (/= '\n') <$> run z3 (hugeScript ++ "(check-sat)\n") >>= (`shouldBe` "unsat")
+    -- Rounding and a non-terminating conversion are not encoded.
+    (_, [rounded]) <- compiled (law "for all (a :: Decimal) => prelude.round a 2 = a end for all")
+    SMT.taskQuery rounded `shouldSatisfy` isLeftWith "round"
+    (_, [converted]) <- compiled (law "for all (n :: Rational) => prelude.Decimal n = prelude.Decimal n end for all")
+    SMT.taskQuery converted `shouldSatisfy` isLeftWith "power of ten"
   it "refuses data with an IEEE field, whose equality is not structural" $ do
     (_, [t]) <- compiled (law "for all (p :: Point) => p = p end for all" `withType` "type Point is a record{ x :: Float64 } end type")
     SMT.taskQuery t `shouldSatisfy` either (isInfixOf "IEEE float") (const False)
   where
+    isLeftWith text = either (isInfixOf text) (const False)
     withType source declaration = let (header, rest) = break (== '\n') source in header ++ "\n\n" ++ declaration ++ rest
