@@ -288,7 +288,7 @@ DEC-maybe-present-absent:
   status: decided
   question: What are Maybe's constructors called?
   answer: |
-    Present x and Absent; the type stays Maybe a. The owner decided this on 2026-10-21 because the words read clearly to non-mathematicians. It is a hard rename: Just and Nothing are not aliases, and a source that uses them is refused with an error naming the new constructor. The pre-1.0 contract gives no migration support, and no formatter rewrite exists, since the formatter needs a checked source. Generated code uses the new names wherever LawSpec's constructor names appear (data tags, runtime classes and helpers, typed native names, BEAM atoms, rendered values, editor grammars, npm names). Native mappings stay as they were: Rust, Swift, Scala, F# and Gleam options, and Haskell's Maybe. The owner accepts frozen SMT v1 fingerprint changes from this rename, and merges resolve in favour of these names. No frozen v1 receipt goes stale: a program fingerprint hashes the program's Core, which names Maybe's constructors only where the program uses them, and every v1 task in the corpus programs that use Maybe (bit-codec, chapter-06, native-payments, recursive-records) is unsupported, so it binds no fingerprint or script. Those four corpus sources must still be renamed. Recorded in CHANGELOG [Unreleased].
+    Present x and Absent; the type stays Maybe a. The owner decided this on 2026-10-21 because the words read clearly to non-mathematicians. It is a hard rename: Just and Nothing are not aliases, and a source that uses them is refused with an error naming the new constructor. The pre-1.0 contract gives no migration support, and no formatter rewrite exists: formatting preserves constructor spelling, including when parsing alone. Generated code uses the new names wherever LawSpec's constructor names appear (data tags, runtime classes and helpers, typed native names, BEAM atoms, rendered values, editor grammars, npm names). Native mappings stay as they were: Rust, Swift, Scala, F# and Gleam options, and Haskell's Maybe. The owner accepts frozen SMT v1 fingerprint changes from this rename, and merges resolve in favour of these names. No frozen v1 receipt goes stale: a program fingerprint hashes the program's Core, which names Maybe's constructors only where the program uses them, and every v1 task in the corpus programs that use Maybe (bit-codec, chapter-06, native-payments, recursive-records) is unsupported, so it binds no fingerprint or script. Those four corpus sources must still be renamed. Recorded in CHANGELOG [Unreleased].
   opened: 0.26.0
   decided: 0.26.0
 
@@ -829,3 +829,13 @@ DEC-gate-5-receipt:
   opened: 0.26.0
   decided: 0.26.0
   refs: [why3, spark-ug, z3]
+
+DEC-source-format-modes-and-layout:
+  status: decided
+  question: How should source formatting admit drafts and lay out record types?
+  answer: |
+    lawspec fmt parses all input and formatted output through the authoritative grammar without compiling by default. It does not require package resolution, check definitions or produce verification evidence. Available packages supply parser headers, with existing version selection and original source coordinates when resolution succeeds; missing package directories do not block parsing. --compile opts into the existing compiler checks before and after formatting, preserving mandatory definition validation independently of optional law verification. --check is available in either mode; syntax or requested compile errors prevent all writes. SDK format and editor formatting keep their checked default for compatibility; compile false selects syntax-only SDK formatting. Reuse the parser's inventory rather than maintaining a second grammar or scraping generated source.
+
+    Use Haskell-like two-space block and continuation indentation, with an 80-column target. Record types have separate opening and closing brace lines and one field per line, two spaces inside each pair of braces, including short and nested records. Existing supported annotation wording and literal/comment contents are preserved; optional record-type commas are removed. Record values, patterns and tuples retain their separators. This records the owner's 2026-10-22 direction; three-space alignment may be used when required by an existing syntactic construct, rather than imposing a uniform three-space block indent.
+  opened: 0.29.0
+  decided: 0.29.0

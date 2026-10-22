@@ -1,6 +1,7 @@
 -- | Source grammar inventory for authoring tools. These nodes
 -- describe parsed syntax, not a second typed or executable representation.
--- Clients receive them only after the ordinary compiler checks succeed.
+-- Checked compiler responses add resolved context after validation. The
+-- formatter may use the parser's block inventory without typed bindings.
 module LawSpec.SourceSyntax (SourceSyntax(..), SyntaxNode(..), SyntaxBinding(..), SyntaxReference(..), MatchWarning(..), sourceSyntax) where
 
 import LawSpec.Common (Span(..), Location(..))

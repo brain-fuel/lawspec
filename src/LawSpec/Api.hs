@@ -10,7 +10,7 @@ import Data.Aeson.Types (parseEither)
 import qualified Data.ByteString.Lazy as B
 import LawSpec.Model
 import LawSpec.Digest (digestString, digestHex)
-import LawSpec.SourceText (formatSourceWithSyntax)
+import LawSpec.SourceText (formatSourceWithSyntax, formatSourcesUsing)
 import LawSpec.SourceSyntax (SourceSyntax(..))
 import LawSpec.Compile
 import LawSpec.Frontend (elaborateCanonical,sourcePropertyId)
@@ -50,6 +50,12 @@ dispatch :: B.ByteString -> B.ByteString
 dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
   Left err -> failure [Diagnostic "request" err Nothing]
   Right (_, _, Left err) -> failure [Diagnostic "attestation" err Nothing]
+  Right ((method,sources,_,_,_,_,_,_,_,_),(project,packages),Right _)
+    | method == "format", not formatCompilation ->
+      either failure (\formatted -> object
+        ["diagnostics" .= ([] :: [Diagnostic]), "formattedSources" .= formatted,
+         "languageProfile" .= ("1.0-rc.2" :: String)])
+          (formatSourcesUsing (formatSyntax project packages) sources)
   Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native,verification),(project,packages),Right attestation) ->
    -- Typed compilation is shared across targets. SMT task preparation has a
    -- separate key because it prepares, rather than executes, optional proofs.
@@ -109,6 +115,19 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
           (maybe True (`V.selected` V.Proof) verification) False expiry analysisRows)
 
   where
+    formatSyntax project packages sources =
+      case preparePackagesWithOrigins True project packages sources of
+        Right (prepared,origins,_,_,_) ->
+          let (dependencies,own) = splitAt (length prepared - length sources) prepared
+          in parseSourceSyntaxWithContext origins dependencies own
+        -- Unfinished package wiring must not turn formatting into a compiler
+        -- check. Available raw headers can still disambiguate type arities.
+        Left _ -> parseSourceSyntaxWithContext [] (concatMap packageSources packages) sources
+    -- Checked formatting stays the SDK default. The CLI explicitly selects
+    -- parsing alone unless its caller requests --compile.
+    formatCompilation = case decode bytes of
+      Just (Object o) | Just (Bool requested) <- KM.lookup "compile" o -> requested
+      _ -> True
     -- Where the compiler may keep work between runs; the CLI names one per
     -- project and compiler build.
     cacheDirectory = case decode bytes of
@@ -203,6 +222,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       version <- o .:? "schemaVersion" .!= (5 :: Int)
       unless (version==5) (fail "LawSpec requires API schemaVersion 5 and languageProfile 1.0-rc.2")
       _ <- o .:? "warnMatches" .!= False
+      _ <- o .:? "compile" .!= True
       method <- o .:? "method" .!= "check"
       native <- o .:? "nativeBindings" .!= emptyNativeRequest
       profile <- o .: "languageProfile"

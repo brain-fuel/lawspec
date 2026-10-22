@@ -3,7 +3,7 @@
 -- testing plan needs. It stops at the surface; LawSpec.Frontend turns its
 -- result into typed Core, so the eight emitters never see source syntax.
 -- ref:DEC-typed-core-boundary
-module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithSourceOrigins, validateDefinitionTypes, validateDefinitionTotality) where
+module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, compileCanonical, compileCanonicalWithImports, compileCanonicalWithReferenceUnits, compileWithSourceSyntax, compileWithSourceOrigins, parseSourceSyntax, parseSourceSyntaxWithContext, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Core.RecordNormalize (normalizeProgramRecords,normalizeExpressionRecords)
@@ -345,28 +345,24 @@ compileWithCollectionDemand :: Maybe (Bool,[String]) -> [SourceOriginMap] -> Boo
   -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
 compileWithCollectionDemand = compileWithMappingSelection Nothing
 
--- Candidate inverse names are resolved only after typed row equality has
--- established their availability. No provisional program leaves this entry.
-compileWithMappingSelection :: Maybe MappingCheck.MappingSelection -> Maybe (Bool,[String]) -> [SourceOriginMap]
-  -> Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
-  -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
-compileWithMappingSelection mappingSelection selected origins capture _ referenceUnit visible bits settings sources = do
+-- | Header and built-in discovery is shared by parsing and compilation.
+-- Formatting requests only the parser inventory, without admitting definitions.
+parseSourceSyntax :: [Source] -> Either [Diagnostic] [SourceSyntax]
+parseSourceSyntax = parseSourceSyntaxWithContext [] []
+
+-- Dependencies contribute headers, never checked bodies or evidence. Origin
+-- maps retain user coordinates when package version qualification adds tokens.
+parseSourceSyntaxWithContext :: [SourceOriginMap] -> [Source] -> [Source]
+  -> Either [Diagnostic] [SourceSyntax]
+parseSourceSyntaxWithContext origins dependencies sources =
+  let (collections, implicit, builtins) = sourceParsingContext Nothing (dependencies ++ sources)
+  in parseSourcesSyntaxWithBuiltins origins collections implicit (builtins ++ dependencies) sources
+
+sourceParsingContext :: Maybe (Bool,[String]) -> [Source]
+  -> ([String],[(String,String,[String],String -> Bool)],[Source])
+sourceParsingContext selected sources =
   let canonical = True
-  unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
-  unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
-  -- Reserved Core identities belong to compiler-provided versioned sources.
-  -- A user unit must not manufacture one when its built-in is not injected.
-  when canonical $ forM_ sources $ \source -> case sourceUnit source of
-    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : caseFoldUnit : resourcesUnit : networkUnit : builtinUnits) ->
-      Left [Diagnostic "reserved-unit" ("the unit " ++ name ++ " is reserved for compiler-provided definitions") Nothing]
-    _ -> pure ()
-  -- Programs that use a collection get the built-in collections unit.
-  -- Programs that use durations get the built-in time unit.
-  -- Programs whose workflows use stateful policies get the resilience unit.
-  -- Programs that import a built-in unit with abilities get it
-  -- (LawSpec.Builtins); importing lawspec.time adds its clock. Their
-  -- handlers with state use collections too.
-  let discovery = preludeDiscoveryText
+      discovery = preludeDiscoveryText
       userTexts = [discovery text | Source _ text <- sources]
       providerUses uses text = uses text || uses (preludeDependencyText text)
       clock = any usesClock [text | Source _ text <- sources]
@@ -403,6 +399,30 @@ compileWithMappingSelection mappingSelection selected origins capture _ referenc
         -- A unit that names a built-in resource imports lawspec.host, whose
         -- default handlers its resources run under.
         [("lawspec.host", "lawspecHost", [], \text -> usesResources text && not (importsBuiltin "lawspec.host" text)) | resources]
+  in (collections, implicit, builtins)
+
+-- Candidate inverse names are resolved only after typed row equality has
+-- established their availability. No provisional program leaves this entry.
+compileWithMappingSelection :: Maybe MappingCheck.MappingSelection -> Maybe (Bool,[String]) -> [SourceOriginMap]
+  -> Bool -> Bool -> (String -> String -> String) -> (String -> String -> Maybe String)
+  -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded],[SourceSyntax])
+compileWithMappingSelection mappingSelection selected origins capture _ referenceUnit visible bits settings sources = do
+  let canonical = True
+  unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
+  unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
+  -- Reserved Core identities belong to compiler-provided versioned sources.
+  -- A user unit must not manufacture one when its built-in is not injected.
+  when canonical $ forM_ sources $ \source -> case sourceUnit source of
+    Right name | name `elem` ("prelude" : collectionsUnit : timeUnit : resilienceUnit : matchersUnit : caseFoldUnit : resourcesUnit : networkUnit : builtinUnits) ->
+      Left [Diagnostic "reserved-unit" ("the unit " ++ name ++ " is reserved for compiler-provided definitions") Nothing]
+    _ -> pure ()
+  -- Programs that use a collection get the built-in collections unit.
+  -- Programs that use durations get the built-in time unit.
+  -- Programs whose workflows use stateful policies get the resilience unit.
+  -- Programs that import a built-in unit with abilities get it
+  -- (LawSpec.Builtins); importing lawspec.time adds its clock. Their
+  -- handlers with state use collections too.
+  let (collections, implicit, builtins) = sourceParsingContext selected sources
   (candidates,sourceSyntax) <- parseSourcesWithOrigins origins capture canonical collections implicit builtins sources
   let parsedUnits=[(MappingCheck.selectMappingCandidates mappingSelection imports unit,imports) | (unit,imports)<-candidates]
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])

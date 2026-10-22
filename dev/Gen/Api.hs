@@ -7,7 +7,7 @@ import LawSpec.Scalar
 import qualified LawSpec.Targets as Targets
 
 methods :: [(String, String)]
-methods = [("format", "CheckRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("proofTasks", "CheckRequest"), ("planGeneration", "GenerationRequest")]
+methods = [("format", "FormatRequest"), ("check", "CheckRequest"), ("expand", "CheckRequest"), ("proofTasks", "CheckRequest"), ("planGeneration", "GenerationRequest")]
 
 apiSources :: Layout -> [(FilePath, String)]
 apiSources layout = [("api.mjs", output api), ("index.d.ts", output declarations)]
@@ -256,6 +256,7 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "AnalysisCheck"
       (fields (analysisRow ++ [("fingerprint", "string"), ("status", "AnalysisCheckStatus"), ("reason", "string"), ("check", "AnalysisCheckStatus")]))
   , alias "AnalysisCheckStatus" (map quoted ["proved", "refuted", "exempted", "incomplete"])
+  , interface "FormatRequest extends CheckRequest" (fields [("compile?", "boolean")])
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , alias "ProofTask"
       [record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),

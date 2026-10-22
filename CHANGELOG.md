@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-22
+
+### Changed
+
+- `lawspec fmt` parses syntax without compiling by default, including sources
+  whose definitions or imports are unfinished. `--compile` opts into checked
+  formatting before any write; `--check` works with either mode. SDK formatting
+  remains checked by default and accepts `compile: false` for parsing alone.
+- Source formatting uses separate brace lines and two-space fields for record
+  types, including one-field and nested records, with one field per line.
+
 ## [0.28.0] - 2026-10-22
 
 ### Added
@@ -1915,7 +1926,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/brain-fuel/lawspec/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/brain-fuel/lawspec/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/brain-fuel/lawspec/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/brain-fuel/lawspec/compare/v0.25.0...v0.26.0

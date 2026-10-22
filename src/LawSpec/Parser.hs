@@ -1,7 +1,7 @@
 -- | The concrete syntax of LawSpec, keywords first with symbols as aliases, so a
 -- specification reads as prose to someone who is not a mathematician.
 -- ref:DEC-readable-notation
-module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, parseSourceCanonical, parseSourcesWithCanonical, parseSourcesWithBuiltins, parseSourcesWithBuiltinsAndSyntax, parseSourcesWithOrigins, sourcePackageTargets, sourceUnit) where
+module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, parseSourceCanonical, parseSourcesWithCanonical, parseSourcesWithBuiltins, parseSourcesWithBuiltinsAndSyntax, parseSourcesWithOrigins, parseSourcesSyntaxWithBuiltins, sourcePackageTargets, sourceUnit) where
 
 import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
 import LawSpec.Resilience (resilienceName)
@@ -316,7 +316,7 @@ anonymousRecordTypeP :: P Type
 anonymousRecordTypeP = do
 
   try (keyword "record" <* lookAhead (symbol "{"))
-  fields <- between (symbol "{") (symbol "}") (many field)
+  fields <- recordTypeBody (many field)
   unless (length fields == length (nub (map recordFieldLabel fields))) (fail "duplicate record field")
   pure (Record fields)
   where
@@ -326,6 +326,13 @@ anonymousRecordTypeP = do
       ty <- typeP
       void (optional (sourceNode "record-type-separator" (const Nothing) (symbol ",")))
       pure (RecordField label label ty)
+
+-- Delimiters have a different layout role from record values. Keep that role
+-- in the parser inventory rather than inferring it from neighbouring words.
+recordTypeBody :: P a -> P a
+recordTypeBody = between delimiterOpen delimiterClose
+  where delimiterOpen = sourceNode "record-type-opener" (const Nothing) (symbol "{")
+        delimiterClose = sourceNode "record-type-closer" (const Nothing) (symbol "}")
 
 param :: P (String,Type)
 param = sourceNode "parameter" (Just . fst) $ parens $ do
@@ -719,14 +726,14 @@ declarationP = blockP "type" $ canonicalRecordP <|> do
 -- Named records are nominal single-constructor products; no new execution
 -- mechanism is introduced. Record values retain explicit nominal construction.
 canonicalRecordP :: P (Either IndexedFamily DataTypeDeclaration)
-canonicalRecordP = do
+canonicalRecordP = sourceNode "record-declaration" (const Nothing) $ do
 
   ((name, parameters, fields), range) <- withSpan $ do
     try (keyword "type" *> lookAhead (ident *> many typeParameter *> keyword "is" *> keyword "a" *> keyword "record"))
     name <- ident
     parameters <- many typeParameter
     keyword "is"; keyword "a"; keyword "record"
-    fields <- between (symbol "{") (symbol "}") (many field)
+    fields <- recordTypeBody (many field)
     unless (length (map fst fields) == length (nub (map fst fields))) (fail "duplicate record field")
     closeP "type"
     pure (name, parameters, fields)
@@ -2515,7 +2522,22 @@ parseSourcesWithOrigins :: [SourceOriginMap] -> Bool -> Bool -> [String] -> [(St
 parseSourcesWithOrigins = parseSourcesWithInventory
 
 parseSourcesWithInventory :: [SourceOriginMap] -> Bool -> Bool -> [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> [Source] -> Either [Diagnostic] ([(Unit, [Import])],[SourceSyntax])
-parseSourcesWithInventory origins capture canonical collections builtins versioned userSources = do
+-- | Capture the canonical grammar without resolving imports, elaborating
+-- domain constructs or validating definitions. Built-ins supply header arities
+-- only; their bodies do not need to be parsed for formatting.
+parseSourcesSyntaxWithBuiltins :: [SourceOriginMap] -> [String] -> [(String,String,[String],String -> Bool)]
+  -> [Source] -> [Source] -> Either [Diagnostic] [SourceSyntax]
+parseSourcesSyntaxWithBuiltins origins collections builtins versioned sources =
+  snd <$> parseSourcesWithInventoryMode True origins True True collections builtins versioned sources
+
+parseSourcesWithInventory = parseSourcesWithInventoryMode False
+
+parseSourcesWithInventoryMode :: Bool -> [SourceOriginMap] -> Bool -> Bool -> [String]
+  -> [(String,String,[String],String -> Bool)] -> [Source] -> [Source]
+  -> Either [Diagnostic] ([(Unit,[Import])],[SourceSyntax])
+parseSourcesWithInventoryMode syntaxOnly origins capture canonical collections builtins versioned userSources
+ | syntaxOnly = (,) [] <$> mapM rawSyntax userSources
+ | otherwise = do
   forM_ harnessSources $ \(Source path _, header) -> case header of
     Left message -> Left [Diagnostic "parse" message Nothing]
     Right (name, served) -> unless (served `elem` [n | (_, n, _) <- preambles])
@@ -2558,7 +2580,33 @@ parseSourcesWithInventory origins capture canonical collections builtins version
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.
-    exports = Lazy.fromList [(n, reexported s imports (sourceExports origins (imported s) s)) | (s, n, imports) <- preambles]
+    exports
+      | syntaxOnly = Lazy.fromList [(n, sourceExports origins headerContext s) | (s,n,_) <- preambles]
+      | otherwise = Lazy.fromList [(n, reexported s imports (sourceExports origins (imported s) s)) | (s, n, imports) <- preambles]
+    -- Raw header discovery has no recursive import dependency, so even a
+    -- cyclic or incomplete project can be formatted before it compiles.
+    headerContext = M.unions [headers text | Source _ text <- allSources]
+    rawSyntax source@(Source p text) =
+      let owner = case sourceUnit source of
+            Right name -> [s | (s,n,_) <- preambles, n == name]
+            Left _ -> []
+          context = case partitionHarnessSources [source] of
+            ([],_) -> imported source
+            _ -> case owner of
+              s:_ -> M.union (headers (content s)) (imported s)
+              [] -> M.empty
+          environment = profile source (literalHeaders (Just (sourceCoordinatesFor origins source)) text
+            (M.union (headers text) context))
+          initial = ParseContext (Just []) (Just (sourceCoordinatesFor origins source)) False []
+          run parser = either (\e -> Left [parseDiagnostic origins source e]) Right
+            (runReader (MP.runParserT (runStateT parser initial) p text) environment)
+      in case partitionHarnessSources [source] of
+        ([],_) -> do
+          ((unit,_,_,_,_,_,_),nodes) <- run unitP
+          pure (sourceSyntax p (unitName unit) (maybe [] reverse (recordedSyntax nodes)))
+        _ -> do
+          (harness,nodes) <- run harnessFileP
+          pure (sourceSyntax p (harnessFor harness) (maybe [] reverse (recordedSyntax nodes)))
     -- A unit's export line offers the arities of the names it lists, from the
     -- units it imports them from, and a listed type's constructors with it.
     reexported source imports (table, owners) =

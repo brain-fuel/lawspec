@@ -11,7 +11,12 @@ An empty selection performs intrinsic definition checks and reports laws as
 `not-verified`. Native tests are `planned` until an execution supplies evidence.
 Schema 5 is the public interface. Schemas 3 and 4 and older language profiles are rejected. Pre-1.0 migration tooling is not provided.
 The `format` method requires schema 5 and returns `formattedSources` after
-canonical validation. Every view and editor service uses the same typed Core.
+canonical validation by default. Set `compile: false` on a formatting request
+for parser-only formatting; this returns `formattedSources` and diagnostics,
+without typed declarations or verification evidence. The CLI uses this mode
+for `fmt` and selects checked formatting with `fmt --compile`. Existing SDK
+format callers retain checked formatting. Every typed view and editor service
+uses the same typed Core.
 Typed laws expose `inputDomain: "universal"` for obligations. Complete verification of an empty universal
 domain explicitly reports zero evaluated cases and no produced witnesses.
 Selecting property testing alone does not report completed verification when
@@ -27,7 +32,7 @@ it. For usage, see [Use the JavaScript API](../how-to/use-the-javascript-api.md)
 
 ```ts
 interface Compiler {
-  format(input: CheckRequest): Promise<Result>;
+  format(input: FormatRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
   proofTasks(input: CheckRequest): Promise<Result>;

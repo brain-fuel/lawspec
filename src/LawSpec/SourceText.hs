@@ -1,25 +1,38 @@
 -- | Formatting consumes the authoritative parser's block inventory. Tokens
 -- retain literal and comment spelling; typed Core remains the only semantics.
 module LawSpec.SourceText (module LawSpec.SourceTokens,
-  formatSource, formatSourceWithSyntax, utf16Position) where
+  formatSource, formatSources, formatSourcesUsing, formatSourceWithSyntax, utf16Position) where
 import LawSpec.SourceTokens
 import LawSpec.Common
 import LawSpec.SourceSyntax (SyntaxNode(..), SourceSyntax(..))
-import LawSpec.Compile (compileWithSourceSyntax)
+import LawSpec.Compile (parseSourceSyntax)
 import LawSpec.Blocks
 import Data.Char (isSpace, ord)
 import Data.List (mapAccumL)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
--- | Direct callers use the same checked inventory as CLI and editor formatting.
--- Invalid or incomplete source is left untouched; the compiler owns diagnostics.
+-- | Format only after the authoritative grammar accepts every source.
+-- Syntax errors leave direct callers' source untouched; API callers receive
+-- diagnostics. Semantic validation belongs to the checked compiler path.
 formatSource :: Source -> Source
-formatSource source = case compileWithSourceSyntax True (\_ name -> name)
-    (\_ _ -> Nothing) 64 defaultGeneration [source] of
-  Left _ -> source
-  Right (_,_,inventory) -> formatSourceWithSyntax
-    (concatMap syntaxNodes inventory) source
+formatSource source = case formatSources [source] of
+  Right [formatted] -> formatted
+  _ -> source
+
+formatSources :: [Source] -> Either [Diagnostic] [Source]
+formatSources = formatSourcesUsing parseSourceSyntax
+
+-- Package-aware callers can supply header discovery with original coordinates.
+formatSourcesUsing :: ([Source] -> Either [Diagnostic] [SourceSyntax])
+  -> [Source] -> Either [Diagnostic] [Source]
+formatSourcesUsing parseSyntax sources = do
+  inventory <- parseSyntax sources
+  let formatted = [formatSourceWithSyntax
+        (concat [syntaxNodes item | item <- inventory, syntaxPath item == path source]) source
+        | source <- sources]
+  _ <- parseSyntax formatted
+  pure formatted
 
 formatSourceWithSyntax :: [SyntaxNode] -> Source -> Source
 formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 rewritten)
@@ -34,8 +47,21 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
       (line location,column location) positionOffsets
     separators = Set.fromList [offset (spanStart (syntaxSpan node)) | node <- nodes,
       syntaxKind node == "record-type-separator"]
-    rewritten = concat [if index `Set.member` separators && character == ','
-      then " " else [character] | (index,character) <- zip [0..] original]
+    recordDeclarations = [(offset (spanStart (syntaxSpan node)),offset (spanEnd (syntaxSpan node))) |
+      node <- nodes,syntaxKind node == "record-declaration"]
+    inRecordDeclaration index = any (\(begin,end) -> begin <= index && index < end) recordDeclarations
+    recordBoundary node = syntaxKind node `elem`
+      ["record-type-opener","record-type-field","record-type-closer"] ||
+      (syntaxKind node == "closer" && syntaxName node == Just "type" &&
+        inRecordDeclaration (offset (spanStart (syntaxSpan node))))
+    lineBreaks = Set.fromList [offset (spanStart (syntaxSpan node)) | node <- nodes,recordBoundary node]
+    -- Break only at parser-owned token boundaries, never inside trivia or
+    -- literals. Existing line comments stay attached to their original line.
+    rewritten = concat [
+      (if index `Set.member` lineBreaks && any (not . isSpace)
+        (takeWhile (/='\n') (reverse (take index original))) then "\n" else "") ++
+      (if index `Set.member` separators && character == ',' then " " else [character]) |
+      (index,character) <- zip [0..] original]
     significant text = [token | token <- sourceTokens text,
       tokenKind token `notElem` [TriviaToken,CommentToken]]
     originalTokens = significant original
@@ -46,7 +72,10 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
       kind <- blockKind label
       pure (index,(syntaxKind node == "block-opener",kind))
     events = Map.fromList [item | node <- nodes,
-      syntaxKind node `elem` ["block-opener","closer"],Just item <- [event node]]
+      syntaxKind node `elem` ["block-opener","closer"],
+      not (syntaxName node == Just "type" &&
+        inRecordDeclaration (offset (spanStart (syntaxSpan node)))),
+      Just item <- [event node]]
     -- Removed commas no longer occupy a token ordinal. Rebase once, before
     -- formatting; later passes preserve the significant token sequence.
     removed = [index | (index,token) <- zip [0..] originalTokens,

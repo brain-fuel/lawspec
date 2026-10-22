@@ -41,7 +41,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = [...(options[arg.slice(2)] ?? []), ...args[++i].split(",").filter(Boolean)];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--stdio", "--warn-matches"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks", "--stdio", "--warn-matches", "--compile"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -122,14 +122,17 @@ async function loadPackage(directory) {
     },
   };
 }
-async function packageInput(owner, root) {
+async function packageInput(owner, root, optional = false) {
   if (owner.packages !== undefined && !Array.isArray(owner.packages))
     throw new Error("packages must be an array of package directories");
   const packages = await Promise.all(
-    (owner.packages ?? []).map(async (p) => (await loadPackage(path.resolve(root, p))).package),
+    (owner.packages ?? []).map(async (p) => {
+      try { return (await loadPackage(path.resolve(root, p))).package; }
+      catch (error) { if (optional && error.code === "ENOENT") return null; throw error; }
+    }),
   );
   return {
-    ...(packages.length ? { packages } : {}),
+    ...(packages.some(Boolean) ? { packages: packages.filter(Boolean) } : {}),
     ...(owner.dependencies !== undefined ? { dependencies: owner.dependencies } : {}),
   };
 }
@@ -141,7 +144,8 @@ async function formatCommand() {
   const files = await collectSources(root, positional.length ? positional : config.sources);
   const compiler = await createCompiler();
   const result = diagnostics(await compiler.format({
-    sources: files, ...(config ? await packageInput(config, configRoot) : {}),
+    sources: files, compile: !!options.compile, machineBits: options.machineBits ?? 64,
+    ...(config ? await packageInput(config, configRoot, !options.compile) : {}),
     languageProfile: "1.0-rc.2", verification: { layers: [] },
   }));
   const changed = result.formattedSources.filter((file, index) => file.content !== files[index].content);
@@ -754,7 +758,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec fmt [paths...] [--check] [--compile]\n       lawspec lsp --stdio\n       lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--json]\n       lawspec check [--warn-matches] | doctor | explain [<unit>::<law>] [--view developer|business|formal|evidence] | generate\n       lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -763,6 +767,7 @@ async function main() {
     output(VERSION);
     return;
   }
+  if (options.compile && verb !== "fmt") throw new Error("--compile applies to fmt");
   if (verb !== "fmt" && positional.length > (["explain", "evidence"].includes(verb) ? 1 : 0))
     throw new Error(`Unexpected argument: ${positional.join(" ")}`);
   if (verb === "examples") {

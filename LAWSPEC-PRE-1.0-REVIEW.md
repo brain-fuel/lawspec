@@ -5415,7 +5415,19 @@ Model checking and implementation conformance remain separate obligations. A pro
 
 ### 12.1 Canonical source formatter
 
-The proposed CLI direction is lawspec fmt and lawspec fmt --check, subject to final integration with existing commands.
+The CLI provides `lawspec fmt` and `lawspec fmt --check`. Formatting parses
+input and output without compiling by default; `--compile` opts into compiler
+checks before and after formatting. Mandatory definition validation remains
+independent of optional law verification. Syntax-only formatting makes no typed
+or verification claim and does not require dependency packages to resolve.
+SDK and editor formatting retain their checked default for compatibility.
+
+The owner's 2026-10-22 layout direction uses Haskell-like two-space indentation,
+an 80-column target, and separate brace lines for record types, including short
+records. Fields occupy separate lines two spaces inside their braces; nested
+records add two spaces per level. The formatter preserves literal contents,
+comments and supported annotation wording. Parser-owned record-type separators
+may be omitted; record-value, tuple and pattern separators retain their roles.
 
 Requirements:
 
@@ -5429,7 +5441,7 @@ Requirements:
 - Preservation of intentionally chosen of type or :: forms under the recorded style-preserving direction.
 - A deliberate migration path for legacy syntax, distinct from accidental semantic rewriting.
 
-The source formatter is new work. The repository’s existing formatting documentation largely describes generated native code formatting.
+The source formatter uses the authoritative parser inventory in the native and WASM builds. Source and generated-code formatting are documented separately.
 
 ### 12.2 Four presentations of one specification
 

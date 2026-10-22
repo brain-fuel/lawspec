@@ -619,6 +619,10 @@ export interface AnalysisCheck {
 export type AnalysisCheckStatus =
     'proved' | 'refuted' | 'exempted' | 'incomplete';
 
+export interface FormatRequest extends CheckRequest {
+  compile?: boolean;
+}
+
 export interface GenerationRequest extends CheckRequest {
   target: Target;
   sourceDir?: string;
@@ -935,7 +939,7 @@ export type ScalarValue =
     {type: 'Nullable' | 'Optional'; value: ScalarValue | null;};
 
 export interface Compiler {
-  format(input: CheckRequest): Promise<Result>;
+  format(input: FormatRequest): Promise<Result>;
   check(input: CheckRequest): Promise<Result>;
   expand(input: CheckRequest): Promise<Result>;
   proofTasks(input: CheckRequest): Promise<Result>;

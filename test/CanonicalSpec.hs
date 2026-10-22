@@ -1009,6 +1009,33 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     case response of
       Object fields -> Data.Aeson.KeyMap.lookup "diagnostics" fields `shouldSatisfy` (\x -> maybe False (/= toJSON ([] :: [Value])) x)
       _ -> expectationFailure "expected a request diagnostic"
+  it "formats syntax without admitting invalid definitions or claiming typed evidence" $ do
+    let input = source "function broken (x :: Bool) -> Bool is\n1\nend function\n"
+        response fields = either error id (eitherDecode (dispatch (encode (object
+          (["schemaVersion" .= (5::Int), "languageProfile" .= ("1.0-rc.2"::String),
+            "method" .= ("format"::String), "sources" .= [input],
+            "verification" .= object ["layers" .= ([]::[String])]] ++ fields))))) :: Value
+    case response ["compile" .= False] of
+      Object fields -> do
+        Data.Aeson.KeyMap.lookup "diagnostics" fields `shouldBe` Just (toJSON ([]::[Value]))
+        Data.Aeson.KeyMap.lookup "formattedSources" fields `shouldBe` Just (toJSON [formatSource input])
+        Data.Aeson.KeyMap.lookup "evidence" fields `shouldBe` Nothing
+        Data.Aeson.KeyMap.lookup "definitions" fields `shouldBe` Nothing
+      other -> expectationFailure (show other)
+    mapM_ (\settings -> case response settings of
+      Object fields -> do
+        Data.Aeson.KeyMap.lookup "diagnostics" fields `shouldSatisfy` (/= Just (toJSON ([]::[Value])))
+        Data.Aeson.KeyMap.lookup "formattedSources" fields `shouldBe` Nothing
+      other -> expectationFailure (show other)) [[], ["compile" .= True]]
+    formatSources [formatSource input] `shouldBe` Right [formatSource input]
+  it "formats orphan harnesses and cyclic imports without resolving their semantics" $ do
+    let orphan = Source "harness.lawspec" "harness h for absent is\nend harness\n"
+        cycle = [Source "a.lawspec" "unit a\nimport b as b\nend unit\n",
+                 Source "b.lawspec" "unit b\nimport a as a\nend unit\n"]
+    formatSources [orphan] `shouldSatisfy` isRight
+    formatSources cycle `shouldSatisfy` isRight
+    compileCoreCanonical 64 defaultGeneration cycle `shouldSatisfy` isLeft
+    formatSources [source "function missing (x :: Bool) -> Bool is\nx\n"] `shouldSatisfy` isLeft
   it "preserves lexical source text, literal spelling and comments during formatting" $ do
     let raw = "-- Keep this comment.  \nunit example.canonical\nfunction same (x of type Integer) -> Integer is\n       x -- Keep this too.\nend function\nlaw \"|same value| is\ndefinition:\nfor all (x :: Integer) =>\nx must be x\nend for all\nend definition\nend law\nend unit\n"
         original = Source "format.lawspec" raw
@@ -1018,6 +1045,34 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     formatSource formatted `shouldBe` formatted
     significant (LawSpec.Model.content formatted) `shouldBe` significant raw
     parseSourceCanonical formatted `shouldSatisfy` isRight
+  it "formats record types with separate braces and two-space fields, including short and nested records" $ do
+    let input = source $ unlines
+          [ "type TimePoint is a record { year :: Int32 month :: Maybe Int32 day :: Maybe Int32 } end type"
+          , "type OtherThing is a record { year :: Int32 } end type"
+          , "type Nested is a record{ inner :: record{ flag :: Bool, } } end type"
+          , "type Empty is a record{} end type" ]
+        formatted = formatSource input
+    content formatted `shouldSatisfy` isInfixOf (unlines
+      [ "type TimePoint is a record", "{", "  year :: Int32"
+      , "  month :: Maybe Int32", "  day :: Maybe Int32", "}", "end type"
+      , "type OtherThing is a record", "{", "  year :: Int32", "}", "end type"
+      , "type Nested is a record", "{", "  inner :: record", "  {"
+      , "    flag :: Bool", "  }", "}", "end type"
+      , "type Empty is a record", "{", "}", "end type" ])
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "keeps record comments and literal contents while normalizing brace layout" $ do
+    let input = source $ unlines
+          [ "type Flags is a record{ -- Keep this brace comment."
+          , "flag :: Bool, -- Keep this field comment."
+          , "} end type"
+          , "function text (ignored :: ()) -> Text is \"record{ a :: Bool, }\" end function" ]
+        formatted = formatSource input
+    content formatted `shouldSatisfy` isInfixOf
+      "type Flags is a record\n{ -- Keep this brace comment.\n  flag :: Bool -- Keep this field comment.\n}\nend type"
+    content formatted `shouldSatisfy` isInfixOf "\"record{ a :: Bool, }\""
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "formats mappings and nested cases with stable two-space indentation" $ do
     let input = source (unlines
           ["mapping flag of type Bool -> Text is"

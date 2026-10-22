@@ -73,7 +73,7 @@ end unit
     assert.ok(compact.includes('record{height = 2, caption = "a,b"}'));
     assert.ok(compact.includes('record{caption = name, height = _}'));
     const companionOutput=formatted.formattedSources[1].content.replace(/\s+/g,' ');
-    assert.ok(companionOutput.includes('record{original :: picture.Picture note :: Text}'));
+    assert.ok(companionOutput.includes('record { original :: picture.Picture note :: Text }'));
     assert.ok(companionOutput.includes('record{original = value, note = "keep,this"}'));
     const after=await compiler.check({...input,sources:formatted.formattedSources});
     assert.deepEqual(after.diagnostics,[]);assert.deepEqual(semanticFacts(after),semanticFacts(before));

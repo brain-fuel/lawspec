@@ -6,7 +6,7 @@ title: CLI
 # CLI
 
 ```text
-lawspec fmt [paths...] [--check] [--json] [--config <path>]
+lawspec fmt [paths...] [--check] [--compile] [--json] [--config <path>]
 lawspec lsp --stdio
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
 lawspec prove [--solver <z3-executable>] [--proof-timeout <ms>] [--proof-memory <MB>] [--proof-rlimit <n>] [--proof-seed <n>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
@@ -60,8 +60,19 @@ Warnings use severity 2 and UTF-16 source ranges; compiler errors use severity 1
 ## `fmt`
 
 `fmt` formats the supplied paths, or the configured project sources when paths
-are omitted. It checks the canonical sources before writing them. `--check`
-reports files that need formatting and exits with status 1 without writing.
+are omitted. By default it parses canonical syntax without compiling or
+validating definitions and does not require package resolution, so work in
+progress can be formatted. Syntax errors prevent all writes. Add `--compile` to compile before
+and after formatting, including mandatory definition validation; a compile
+error also prevents all writes. No optional law checks are selected.
+
+`--check` reports files that need formatting and exits with status 1 without
+writing. It can be combined with `--compile` to check both formatting and
+compilation. An ordinary `fmt` success establishes syntax only; use `check`
+or `fmt --compile` for compiler validation. Available package sources contribute
+parser headers for imported generic types; missing package directories are
+ignored unless `--compile` is requested. Package bodies are not checked in
+parse-only mode.
 
 Source layout uses two spaces and an 80-column target. Comments, literal
 values, names, equality wording, annotations and infix notation retain their

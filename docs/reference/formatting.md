@@ -12,8 +12,13 @@ formatter.
 
 ## LawSpec source
 
-`lawspec fmt [paths...]` formats checked source with two-space indentation and
-an 80-column target. `--check` reports files that need formatting. The CLI and
+`lawspec fmt [paths...]` parses source and formats it with two-space block and
+continuation indentation and an 80-column target. It accepts unfinished typing
+and imports. `--compile` additionally checks definitions before and after
+formatting; mandatory definition validation remains part of that compiler check.
+`--check` reports files that need formatting in either mode without writing.
+Syntax errors prevent every write. Parsing alone produces no verification evidence.
+The CLI and
 editor share the compiler's parsed block and expression inventory, including
 continuation indentation for nested applications and expectations.
 
@@ -22,6 +27,30 @@ and the author's valid annotation, equality and infix wording. Long literals and
 declaration names can exceed the column target. A phrase declaration keeps its
 name together with its declaration keyword and `is`. Repeated formatting leaves
 the same result.
+
+Record types use separate brace lines, one field per line, and no field commas,
+including short records. Nested records add two spaces per level. Record values,
+patterns and tuples retain their separators. For example:
+
+```lawspec
+unit formatting.records
+type TimePoint is a record
+{
+  year :: Int32
+  month :: Maybe Int32
+  day :: Maybe Int32
+}
+end type
+type OtherThing is a record
+{
+  year :: Int32
+}
+end type
+end unit
+```
+
+The SDK's `format` operation and editor formatting retain checked formatting by
+default; SDK callers can select `compile: false` to format syntax alone.
 
 ## Source highlighting
 
