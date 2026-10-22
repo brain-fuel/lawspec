@@ -105,7 +105,32 @@ function validTask(task) {
     proofTaskFingerprint(task)===task.taskFingerprint;
 }
 
+// A task over recursive definitions names its encoding (guarded axioms with
+// fuel) and carries the same law with define-fun-rec. When nothing selects
+// one, the host tries both, axioms first; the evidence records which one
+// proved the law, and each attempt.
+const recursionName=recursion=>recursion?.encoding==='guarded-axioms'?`guarded axioms with fuel ${recursion.fuel}`:recursion?.encoding??'';
 async function solve(task,selected,config) {
+  const first=await attempt(task,task.script,task.taskFingerprint,selected,config);
+  if(!task.recursion||first.status==='unsupported'||(first.status==='incomplete'&&first.outcome==='failed'&&!first.prover))return first;
+  const tried=[{recursion:task.recursion,taskFingerprint:task.taskFingerprint,outcome:first.outcome,runFingerprint:first.runFingerprint,elapsedMs:first.elapsedMs}];
+  const alternative=task.alternative;
+  if(first.outcome==='unsat'||!alternative||selected.error)
+    return {...first,recursion:task.recursion,attempts:tried,reason:first.reason+(first.outcome==='unsat'?'; by '+recursionName(task.recursion):'')};
+  if(typeof alternative.script!=='string'||proofTaskFingerprint({...task,script:alternative.script})!==alternative.taskFingerprint)
+    return {...first,recursion:task.recursion,attempts:tried,reason:first.reason+'; the alternative encoding\'s binding is invalid'};
+  const second=await attempt(task,alternative.script,alternative.taskFingerprint,selected,config);
+  const attempts=[...tried,{recursion:alternative.recursion,taskFingerprint:alternative.taskFingerprint,outcome:second.outcome,
+    runFingerprint:second.runFingerprint,elapsedMs:second.elapsedMs}];
+  if(second.outcome==='unsat')
+    return {...second,taskFingerprint:alternative.taskFingerprint,recursion:alternative.recursion,attempts,reason:second.reason+'; by '+recursionName(alternative.recursion)+
+      ' after '+recursionName(task.recursion)+' gave '+first.outcome};
+  // Neither proved it: keep the first attempt, whose model (if any) the
+  // evaluator checks.
+  return {...first,recursion:task.recursion,attempts,reason:first.reason+'; '+recursionName(alternative.recursion)+' gave '+second.outcome};
+}
+
+async function attempt(task,script,taskFingerprint,selected,config) {
   const common={owner:task.owner,declaration:task.declaration,at:task.at,
     programFingerprint:task.programFingerprint,taskFingerprint:task.taskFingerprint,
     encoding:task.encoding,machineBits:task.machineBits,configuration:config};
@@ -115,14 +140,14 @@ async function solve(task,selected,config) {
   if(selected.error)return {...common,status:'incomplete',outcome:selected.outcome,reason:selected.error};
   const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
     `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+
-    task.script+'(check-sat)\n';
+    script+'(check-sat)\n';
   const run=await execute(selected.binary,selected.args,input,config,true);
   let unchanged=false;
   try {unchanged=hash(await readFile(selected.binary))===selected.binaryFingerprint;} catch {}
   const metadata={...common,prover:{name:'z3',version:selected.version,
     binary:selected.binary,binaryFingerprint:selected.binaryFingerprint,
     fingerprint:selected.fingerprint,arguments:selected.args},configuration:config,
-    runFingerprint:fingerprint([task.taskFingerprint,selected.fingerprint,run.input]),
+    runFingerprint:fingerprint([taskFingerprint,selected.fingerprint,run.input]),
     elapsedMs:run.elapsedMs,exitCode:run.exitCode,signal:run.signal,
     stdout:run.stdout,stderr:run.stderr};
   let outcome=run.outcome,reason;
@@ -202,6 +227,10 @@ export async function proveWithZ3(compiler,request,options={}) {
         const shown=(check.inputs??[]).map(input=>input.name+' = '+input.value).join(', ');
         solverEvidence[index]={...item,status:'refuted',modelValidated:true,counterexample,
           reason:'Z3 found '+(shown?'the input '+shown:'that the law fails')+'; the reference evaluator confirms it: '+check.reason};
+      } else if(check.status==='model-not-confirmed'&&item.recursion) {
+        // Unfolding stops at its fuel, so such a model need not be one of
+        // the real definitions: incomplete, not a translation error.
+        solverEvidence[index]={...item,counterexample,reason:'Z3 gave a model the reference evaluator does not confirm; recursive definitions were unfolded only to their fuel: '+check.reason};
       } else if(check.status==='model-not-confirmed') {
         solverEvidence[index]={...item,counterexample,reason:'Z3 gave a model the reference evaluator does not confirm: '+check.reason};
         diagnostics.push({code:'proof-translation',message:`Z3's model for ${item.declaration} is not a counterexample: ${check.reason}`,at:item.at});

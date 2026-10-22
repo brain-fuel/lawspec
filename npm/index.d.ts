@@ -613,6 +613,8 @@ export type ProofTask =
       trust: string;
       counterexample?: CounterexampleQuery;
       counterexampleUnsupported?: string;
+      recursion?: Recursion;
+      alternative?: AlternativeTask;
     } |
     {
       encoding: 'lawspec-smtlib-v1' | 'lawspec-smtlib-v2';
@@ -624,6 +626,15 @@ export type ProofTask =
       status: 'unsupported';
       reason: string;
     };
+
+export interface AlternativeTask {
+  recursion: Recursion;
+  script: string;
+  taskFingerprint: string;
+}
+
+export type Recursion =
+    {encoding: 'guarded-axioms'; fuel: number;} | {encoding: 'define-fun-rec';};
 
 export type ProofCounterexample =
     {

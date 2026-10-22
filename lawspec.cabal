@@ -1001,6 +1001,7 @@ test-suite lawspec-test
       SessionsPythonSpec
       SmtDataSpec
       SmtFrozenSpec
+      SmtRecursionSpec
       SmtSpec
       SourceDataSpec
       SourceGadtIndicesSpec

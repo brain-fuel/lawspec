@@ -8,6 +8,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `lawspec prove` handles laws over recursive definitions. Each task gives Z3
+  the definitions as guarded axioms with fuel (as Why3 and Dafny do), and as
+  `define-fun-rec`; the host tries the axioms first, then `define-fun-rec`,
+  and the evidence records which one proved the law and every attempt.
+  Laws that need induction stay incomplete.
 - The laws about a function are checked together: completeness, overlap,
   conflict and vacuity, on by default. A `laws for f are ... end laws` block
   states claims (`complete over`, `without overlap`, `without conflict`) and

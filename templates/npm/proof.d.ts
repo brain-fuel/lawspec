@@ -1,4 +1,4 @@
-import type {CheckRequest,Compiler,Location,Result} from './index.d.ts';
+import type {CheckRequest,Compiler,Location,Recursion,Result} from './index.d.ts';
 
 export interface Z3Options {
   binary?: string;
@@ -36,6 +36,10 @@ export interface LawSolverEvidence extends SolverRun {
   modelValidated?: boolean;
   counterexample?: {inputs:{name:string;value:string}[]; values:string; fingerprint:string; runFingerprint:string;
     check:'refuted'|'model-not-confirmed'|'incomplete'};
+  /** For a law over recursive definitions: the encoding of the run reported,
+      and each encoding tried, in order. */
+  recursion?: Recursion;
+  attempts?: {recursion:Recursion; taskFingerprint:string; outcome:SolverRun['outcome']; runFingerprint?:string; elapsedMs?:number}[];
 }
 /** A law-set check's task (completeness, overlap, conflict or vacuity).
     status is the task's own result; check is its row's. */

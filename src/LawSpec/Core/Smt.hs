@@ -1,14 +1,15 @@
 -- | Typed SMT-LIB tasks, with no solver or host IO in the compiler. The host
 -- executes these tasks using an established prover. ref:DEC-typed-core-boundary
-module LawSpec.Core.Smt (ProofTask(..), Encoding(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
+module LawSpec.Core.Smt (ProofTask(..), Encoding(..), Recursion(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
+  , alternativeFingerprint, recursionView, defaultFuel
   , counterexampleFingerprint, outerQuantifiers, Catalog, catalog, instantiate, Ground(..), groundQuery) where
 
 import Control.Monad (unless, when, foldM, forM, forM_)
 import Control.Monad.State.Strict
-import Data.Aeson (ToJSON(..), object, (.=))
+import Data.Aeson (ToJSON(..), Value, object, (.=))
 import qualified Data.Map.Strict as M
 import Data.Graph (SCC(..), stronglyConnComp, flattenSCCs)
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString as B
@@ -32,7 +33,35 @@ data ProofTask = ProofTask
   , taskEncoding :: Encoding
   -- Asked of a ready task only after Z3 finds its negation satisfiable.
   , taskCounterexample :: Either String CounterexampleQuery
+  -- How the task gives Z3 the recursive definitions it calls, if any; and
+  -- the same law with the other encoding, tried when this one does not
+  -- prove it. ref:DEC-smt-recursive-definitions
+  , taskRecursion :: Maybe Recursion
+  , taskAlternative :: Maybe (Recursion, String)
   } deriving (Eq, Show)
+
+-- | How recursive definitions reach Z3 (lawspec-smtlib-v2):
+--
+-- * GuardedAxioms fuel: as Why3's eliminate_recursion, each definition is a
+--   declared function with a defining axiom, guarded by its argument
+--   domains and preconditions, so it says nothing where termination was not
+--   proved. As in Dafny, the functions take a fuel argument: the axiom
+--   unfolds f at fuel n+1 into its body at fuel n, a call in the law starts
+--   at the given fuel, and fuel 0 is left uninterpreted. Unfolding is
+--   bounded and reproducible.
+-- * DefineFunRec: SMT-LIB define-funs-rec, the same guarded body, unfolded
+--   by Z3 itself. It is sound because admission proved that each definition
+--   terminates on its domain; outside the guard the function is an
+--   unconstrained declared one.
+data Recursion = GuardedAxioms Int | DefineFunRec deriving (Eq, Show)
+
+-- | Dafny's default: a call in the law unfolds twice.
+defaultFuel :: Int
+defaultFuel = 2
+
+recursionView :: Recursion -> Value
+recursionView (GuardedAxioms fuel) = object ["encoding" .= ("guarded-axioms" :: String), "fuel" .= fuel]
+recursionView DefineFunRec = object ["encoding" .= ("define-fun-rec" :: String)]
 
 -- | A satisfiable task's model is not a counterexample. The counterexample
 -- query declares the law's outer universal inputs as constants and asserts
@@ -73,13 +102,21 @@ instance ToJSON ProofTask where
             , "inputs" .= [object ["name" .= name, "binder" .= binderName (quantifiedBinder q)]
                           | (name, q) <- counterexampleInputs query] ]
         | Right query <- [taskCounterexample task] ] ++
-        [ "counterexampleUnsupported" .= reason | Left reason <- [taskCounterexample task] ]
+        [ "counterexampleUnsupported" .= reason | Left reason <- [taskCounterexample task] ] ++
+        [ "recursion" .= recursionView recursion | Just recursion <- [taskRecursion task] ] ++
+        [ "alternative" .= object [ "recursion" .= recursionView recursion, "script" .= script
+                                  , "taskFingerprint" .= alternativeFingerprint task script ]
+        | Just (recursion, script) <- [taskAlternative task] ]
 
 taskFingerprint :: ProofTask -> String
 taskFingerprint task = digestHex (digestString (concatMap frame
   [encodingName (taskEncoding task),taskProgram task,show (taskBits task),idText (taskOwner task),
    idText (taskLaw task),either id id (taskQuery task)]))
   where frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
+
+-- | The alternative encoding's binding: the task's, with its script.
+alternativeFingerprint :: ProofTask -> String -> String
+alternativeFingerprint task script = taskFingerprint task{taskQuery = Right script}
 
 -- | The counterexample query's own binding, framed as a task's is.
 counterexampleFingerprint :: ProofTask -> CounterexampleQuery -> String
@@ -93,12 +130,19 @@ proofTasks program = do
   validateProgram program
   let fingerprint = digestHex (digest (BL.toStrict (Binary.encode program)))
   pure [ProofTask (unitId owner) (propertyId law) (propertyLocation law)
-          fingerprint (programMachineBits program) (snd <$> task)
+          fingerprint (programMachineBits program) (scriptOf <$> task)
           -- A refused task names v1, the encoding that refused it.
-          (either (const SmtLibV1) fst task)
+          (either (const SmtLibV1) encodingOf task)
           (either Left (const (counterexampleQuery program law)) task)
+          (either (const Nothing) recursionOf task)
+          (either (const Nothing) alternativeOf task)
        | owner <- programUnits program, law <- unitProperties owner
        , let task = query program law]
+  where
+    encodingOf (e, _, _, _) = e
+    scriptOf (_, script, _, _) = script
+    recursionOf (_, _, r, _) = r
+    alternativeOf (_, _, _, a) = a
 
 -- | One assertion of a ground query: a proposition the query requires to be
 -- established (true and defined), or not established.
@@ -124,7 +168,8 @@ groundQuery program purpose binders assertions = do
         Established claim -> positive <$> proposition program [] scope claim
         NotEstablished claim -> no . positive <$> proposition program [] scope claim
       prelude <- datatypePreamble program
-      pure (rows, certificates, prelude)) (Work 0 0 SmtLibV2 [] (catalog program))
+      functions <- gets recursiveText
+      pure (rows, certificates, fst functions ++ prelude ++ snd functions)) (start SmtLibV2 program (GuardedAxioms defaultFuel))
   let script = "; " ++ encodingName SmtLibV2 ++ "; " ++ purpose ++ "\n" ++ prelude ++
         concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (_, name, s, _) <- rows] ++
         concat ["(assert " ++ base ++ ")\n" | (_, _, _, base) <- rows] ++
@@ -156,7 +201,8 @@ counterexampleQuery program law = do
       (scope, rows) <- foldM constant (M.empty, []) (zip [0 ..] outer)
       result <- proposition program [] scope rest
       prelude <- datatypePreamble program
-      pure (rows, result, prelude)) (Work 0 0 SmtLibV2 [] (catalog program))
+      functions <- gets recursiveText
+      pure (rows, result, fst functions ++ prelude ++ snd functions)) (start SmtLibV2 program (GuardedAxioms defaultFuel))
   let script = "; " ++ encodingName SmtLibV2 ++ "; counterexample: the law's outer inputs as constants\n" ++ prelude ++
         concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (name, _, s, _) <- rows] ++
         concat ["(assert " ++ condition ++ ")\n" | (_, _, _, condition) <- rows] ++
@@ -173,7 +219,40 @@ data Certificate = Certificate { positive :: String, negative :: String }
 -- The data types it declares, in the order first used, and the program's
 -- data declarations by name.
 data Work = Work { nextName :: Int, visited :: Int, required :: Encoding
-                 , datatypes :: [Type], known :: Catalog }
+                 , datatypes :: [Type], known :: Catalog
+                 -- Recursive definitions: each one's group (its strongly
+                 -- connected component of calls), the encoding, the groups
+                 -- declared so far and their text, and the fuel a call
+                 -- passes where it is encoded.
+                 , groups :: M.Map Id [Definition], recursion :: Recursion
+                 , declared :: [Id], functionText :: [String], fuel :: String }
+
+start :: Encoding -> Program -> Recursion -> Work
+start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode)
+
+-- | With recursive definitions, the solver options that keep unfolding
+-- bounded (as Dafny sets them: no model-based quantifier instantiation, so
+-- the axioms unfold only through their patterns), and the definitions.
+recursiveText :: Work -> (String, String)
+recursiveText work
+  | null (declared work) = ("", "")
+  | otherwise = ("(set-option :smt.mbqi false)\n(set-option :auto_config false)\n", concat (functionText work))
+
+fuelLiteral :: Recursion -> String
+fuelLiteral (GuardedAxioms n) = iterate (\x -> app "lawspec_fuel_next" [x]) "lawspec_fuel_zero" !! n
+fuelLiteral DefineFunRec = ""
+
+-- | The pure checked definitions that call themselves, directly or through
+-- others, each with its group.
+recursiveGroups :: Program -> M.Map Id [Definition]
+recursiveGroups program = M.fromList [ (identity d, group) | CyclicSCC group <- stronglyConnComp graph, d <- group ]
+  where
+    definitions = [d | u <- programUnits program, d <- unitDefinitions u]
+    identity = declarationId . definitionDeclaration
+    graph = [(d, identity d, callees (definitionBody d)) | d <- definitions]
+    callees e = case expressionNode e of
+      ExternalCall g arguments -> g : concatMap callees arguments
+      _ -> concatMap callees (children e)
 
 -- | A feature of a later encoding. v1 calls this nowhere, which is what keeps
 -- every v1 task as it was.
@@ -434,21 +513,26 @@ domain bits ty x = do
       _ -> "true"
     _ -> "true"
 
-query :: Program -> Property -> Either String (Encoding, String)
+query :: Program -> Property -> Either String (Encoding, String, Maybe Recursion, Maybe (Recursion, String))
 query program law = do
   unless (propertyInputDomain law == UniversalDomain)
     (Left "SMT law tasks require the canonical universal input-domain policy")
   unless (null (propertyResources law)) (Left "SMT translation does not execute resources")
   unless (null (propertyHandlers law)) (Left "SMT translation does not execute ability handlers")
-  ((certificate, prelude), work) <- runStateT (do
-      certificate <- proposition program [] M.empty
-        (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))
-      prelude <- datatypePreamble program
-      pure (certificate, prelude)) (Work 0 0 SmtLibV1 [] (catalog program))
-  let script = "; " ++ encodingName (required work) ++ "; negate a positive certificate, including definedness\n" ++
-        prelude ++ "(assert " ++ no (positive certificate) ++ ")\n"
-  unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
-  pure (required work, script)
+  let encode mode = do
+        ((certificate, prelude), work) <- runStateT (do
+            certificate <- proposition program [] M.empty
+              (foldr (Quantified ForEvery) (propertyBody law) (propertyParameters law ++ propertyInputs law))
+            prelude <- datatypePreamble program
+            pure (certificate, prelude)) (start SmtLibV1 program mode)
+        let script = "; " ++ encodingName (required work) ++ "; negate a positive certificate, including definedness\n" ++
+              fst (recursiveText work) ++ prelude ++ snd (recursiveText work) ++ "(assert " ++ no (positive certificate) ++ ")\n"
+        unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
+        pure (required work, script, not (null (declared work)))
+  (encoding, script, recursive) <- encode (GuardedAxioms defaultFuel)
+  if not recursive then pure (encoding, script, Nothing, Nothing) else do
+    (_, unfolded, _) <- encode DefineFunRec
+    pure (encoding, script, Just (GuardedAxioms defaultFuel), Just (DefineFunRec, unfolded))
 
 truth :: Term -> Certificate
 truth term = Certificate (both [defined term,value term]) (both [defined term,no (value term)])
@@ -651,6 +735,118 @@ binary op a b = do
 
 call :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
 call program active scope name arguments = do
+  recursive <- gets (M.member name . groups)
+  if recursive then recursiveCall program active scope name arguments else inlineCall program active scope name arguments
+
+-- | A call to a recursive definition: its declared function, at the
+-- current fuel. Mandatory admission proved that the body is total on the
+-- definition's domain (argument types and preconditions), and that its
+-- result lies in the result type, by induction over the calls it proved
+-- terminate. So the call is defined exactly when its arguments are defined
+-- and in that domain, and the callee's runtime postconditions hold; Z3 does
+-- not re-derive definedness by unfolding. ref:DEC-smt-recursive-definitions
+recursiveCall :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
+recursiveCall program active scope name arguments = do
+  requires SmtLibV2
+  group <- gets (M.findWithDefault [] name . groups)
+  definition <- lift $ case [d | d <- group, declarationId (definitionDeclaration d) == name] of
+    [d] | not (definitionOrchestrates d), null (declarationUses (definitionDeclaration d)) -> Right d
+    _ -> Left "SMT calls require a pure checked definition; native implementations stay unsupported"
+  declareGroup program group
+  values <- mapM (expression program active scope) arguments
+  unless (length values==length (definitionArguments definition)) (lift (Left "SMT call arity mismatch"))
+  s <- sortOf program (snd (functionType (declarationType (definitionDeclaration definition))))
+  names <- mapM (const fresh) values
+  current <- gets fuel
+  ranges <- lift (mapM (\(n, b) -> domain (programMachineBits program) (binderType b) n) (zip names (definitionArguments definition)))
+  let stored=zipWith (\n term -> term{value=n,defined="true"}) names values
+      bind text | null values = text
+                | otherwise = app "let" ["(" ++ unwords ["(" ++ n ++ " " ++ value term ++ ")" | (n,term)<-zip names values] ++ ")",text]
+      result = Term s (app (functionSymbol name) ([current | not (null current)] ++ names)) "true"
+  valid <- contractChecks program active name stored result
+  pure result{value=bind (value result),defined=both (map defined values ++ [bind (both (ranges ++ valid))])}
+
+functionSymbol :: Id -> String
+functionSymbol name = "|lawspec_function " ++ idText name ++ "|"
+
+-- | A group's functions, declared and defined once per task, after the
+-- groups their bodies call. Each definition holds where admission proved
+-- the body total: on its argument domains and preconditions (the guard).
+-- There its result also lies in its result type.
+declareGroup :: Program -> [Definition] -> Encode ()
+declareGroup program group = do
+  let ids = map (declarationId . definitionDeclaration) group
+  done <- gets declared
+  unless (any (`elem` done) ids) $ do
+    modify (\w -> w{declared = declared w ++ ids})
+    mode <- gets recursion
+    outer <- gets fuel
+    let bits = programMachineBits program
+        fuelSort = "LawspecFuel"
+        fuelVariable = "lawspec_fuel"
+    modify (\w -> w{fuel = case mode of GuardedAxioms _ -> fuelVariable; DefineFunRec -> ""})
+    members <- forM group $ \d -> do
+      let name = declarationId (definitionDeclaration d)
+          resultType = snd (functionType (declarationType (definitionDeclaration d)))
+          parameters = [("lawspec_argument_" ++ show i, b) | (i, b) <- zip [0 :: Int ..] (definitionArguments d)]
+      sorts <- mapM (sortOf program . binderType . snd) parameters
+      resultSort <- sortOf program resultType
+      let terms = [Term s n "true" | ((n, _), s) <- zip parameters sorts]
+          scope = M.fromList (zip (map (binderId . snd) parameters) terms)
+      ranges <- lift (mapM (\(n, b) -> domain bits (binderType b) n) parameters)
+      preconditions <- forM [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c == name] $ \c ->
+        positive <$> restrictions program [] (M.fromList (zip (map binderId (contractArguments c)) terms)) (contractPreconditions c)
+      body <- expression program [] scope (definitionBody d)
+      pure (name, parameters, sorts, resultSort, resultType, both (ranges ++ preconditions), value body)
+    modify (\w -> w{fuel = outer})
+    let typed ps ss = [(n, sortText so) | ((n, _), so) <- zip ps ss]
+        binders ps ss = unwords ["(" ++ n ++ " " ++ t ++ ")" | (n, t) <- typed ps ss]
+        outside n = "|lawspec_outside " ++ idText n ++ "|"
+        fuelDeclaration = case mode of
+          GuardedAxioms _ ->
+            "(declare-datatypes ((" ++ fuelSort ++ " 0)) (((lawspec_fuel_zero) (lawspec_fuel_next (lawspec_fuel_previous " ++ fuelSort ++ ")))))\n"
+          DefineFunRec -> ""
+    inRange <- forM members $ \(n, ps, ss, _, resultType, guard, _) -> do
+      let (call, fuelBinder) = case mode of
+            GuardedAxioms _ -> (app (functionSymbol n) (fuelVariable : map fst ps), "(" ++ fuelVariable ++ " " ++ fuelSort ++ ") ")
+            DefineFunRec -> (app (functionSymbol n) (map fst ps), "")
+      range <- lift (domain bits resultType call)
+      pure ("(assert (forall (" ++ fuelBinder ++ binders ps ss ++ ") (! " ++ app "=>" [guard, range] ++ " :pattern (" ++ call ++ "))))\n")
+    let declarations = concat
+          [ case mode of
+              GuardedAxioms _ -> "(declare-fun " ++ functionSymbol n ++ " (" ++ unwords (fuelSort : map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n"
+              DefineFunRec -> "(declare-fun " ++ outside n ++ " (" ++ unwords (map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n"
+          | (n, ps, ss, r, _, _, _) <- members ]
+        definitions = case mode of
+          GuardedAxioms _ -> concat
+            [ "(assert (forall ((" ++ fuelVariable ++ " " ++ fuelSort ++ ") " ++ binders ps ss ++ ") (! " ++
+                app "=>" [guard, app "=" [app f next, body]] ++ " :pattern (" ++ app f next ++ "))))\n" ++
+              "(assert (forall ((" ++ fuelVariable ++ " " ++ fuelSort ++ ") " ++ binders ps ss ++ ") (! " ++
+                app "=" [app f next, app f here] ++ " :pattern (" ++ app f next ++ "))))\n"
+            | (n, ps, ss, _, _, guard, body) <- members, let f = functionSymbol n
+            , let here = fuelVariable : map fst ps
+                  next = app "lawspec_fuel_next" [fuelVariable] : map fst ps ]
+          DefineFunRec ->
+            "(define-funs-rec (" ++ unwords
+              [ "(" ++ functionSymbol n ++ " (" ++ binders ps ss ++ ") " ++ sortText r ++ ")" | (n, ps, ss, r, _, _, _) <- members ] ++ ") (" ++
+            unwords [ choose guard body (app (outside n) (map fst ps)) | (n, ps, _, _, _, guard, body) <- members ] ++ "))\n"
+    fuelDeclared <- gets (any ("(declare-datatypes ((LawspecFuel" `isPrefixOf`) . functionText)
+    modify (\w -> w{functionText = functionText w ++ [if fuelDeclared then "" else fuelDeclaration] ++ [declarations ++ definitions ++ concat inRange]})
+
+-- | The callee's preconditions and runtime postconditions, at a call.
+contractChecks :: Program -> [Id] -> Id -> [Term] -> Term -> Encode [String]
+contractChecks program active name stored result = do
+  let contracts=[c | u<-programUnits program,c<-unitContracts u,contractDeclaration c==name]
+      nested=name:active
+  forM contracts $ \contract -> do
+    let before=M.fromList (zip (map binderId (contractArguments contract)) stored)
+        after=M.insert (binderId (contractResult contract)) result{defined="true"} before
+    pre <- restrictions program nested before (contractPreconditions contract)
+    post <- restrictions program nested after (contractRuntimePostconditions contract)
+    pure (both [positive pre,positive post])
+
+inlineCall :: Program -> [Id] -> Scope -> Id -> [Expr] -> Encode Term
+inlineCall program active scope name arguments = do
   when (name `elem` active) (lift (Left "recursive checked definitions require an SMT induction encoding"))
   definition <- lift $ case [d | u <- programUnits program,d <- unitDefinitions u,
       declarationId (definitionDeclaration d)==name,not (definitionOrchestrates d),

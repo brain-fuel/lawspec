@@ -97,8 +97,9 @@ constants and rational-valued computations are supported; Rational quantificatio
 is unsupported. SMT Reals include irrational witnesses, so substituting them for
 Rational existential domains would change the proposition.
 
-IEEE arithmetic, Decimal carriers, recursion requiring induction, effects,
-resources and native implementations remain unsupported.
+IEEE arithmetic, Decimal carriers, effects, resources and native
+implementations remain unsupported. Recursive definitions are unfolded (see
+below); laws that need induction stay incomplete.
 
 ### Data
 
@@ -116,8 +117,8 @@ testers keep their LawSpec names, as quoted symbols like
   A field read from another constructor is undefined, never Z3's arbitrary
   value.
 - Equality on data is structural, as LawSpec's is.
-- `List` laws that need recursion, such as length or membership, stay
-  unsupported until recursive definitions are encoded.
+- `List` laws over recursive definitions, such as length or membership, are
+  unfolded as below.
 - Handles, indexed families, constructors with existential or refined type
   parameters, `Rational` fields and types with no finite value are refused.
   An SMT datatype must have a value, and LawSpec allows empty types. Other existing verification layers keep
@@ -132,6 +133,41 @@ allows underspecified division by zero; LawSpec's exact division requires a
 nonzero denominator. The task must establish definedness as well as truth.
 Likewise, proving nonexistence requires ruling out every admitted candidate;
 an undefined candidate cannot simply count as false.
+
+### Recursive definitions
+
+A law that calls a recursive checked definition gets a `lawspec-smtlib-v2`
+task. Only definitions that pass the mandatory totality check reach Z3, so a
+definition that does not terminate is refused before any task exists. The
+task gives Z3 the definition in one of two ways:
+
+- **Guarded axioms with fuel** (`guarded-axioms`). The definition is a
+  declared function with a defining axiom, as Why3's `eliminate_recursion`
+  does. The axiom holds only on the definition's domain: its argument types
+  and preconditions. As in Dafny, each call carries fuel. A call in the law
+  starts at fuel 2, each unfolding uses one, and at zero the function is
+  left unknown. The task records its fuel.
+- **`define-fun-rec`** (`define-fun-rec`). The same guarded body, unfolded by
+  Z3 itself.
+
+Each task carries both. `lawspec prove` tries the axioms first, then
+`define-fun-rec`. The evidence names the encoding that proved the law, with
+each attempt and its outcome. The axioms prove laws that need a few
+unfoldings over any input, such as `count (Cons x xs) = 1 + count xs`.
+`define-fun-rec` proves laws over fixed inputs of any depth, such as
+`count [1, 2, 3] = 3`. A law that needs induction, such as
+`count (append xs ys) = count xs + count ys`, stays incomplete.
+
+Two facts come from mandatory admission, not from Z3. On its domain, a
+recursive definition is defined, and its result lies in its result type.
+Admission proved both by induction over the calls it proved terminate. A call
+is defined when its arguments are in the domain and its runtime
+postconditions hold. So `count xs >= 0` is proved without induction. These
+tasks set `smt.mbqi` and `auto_config` to false, as Dafny does, so unfolding
+follows the axioms' patterns and stops at the fuel. A model from such a task
+may rest on an unfolding that stopped early. The evaluator checks it as
+usual. If the evaluator does not confirm it, the law stays incomplete, and no
+`proof-translation` error is reported.
 
 ## Encodings and receipts
 

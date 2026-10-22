@@ -93,6 +93,7 @@ import qualified OperationResultSpec
 import qualified SmtFrozenSpec
 import qualified CounterexampleSpec
 import qualified SmtDataSpec
+import qualified SmtRecursionSpec
 import qualified RefutedStatusSpec
 import qualified LawAnalysisSpec
 import qualified SchedulerSpec
@@ -178,6 +179,7 @@ main = hspec $ do
   SmtFrozenSpec.test_smtV1IsFrozen
   CounterexampleSpec.test_counterexamplesAreConfirmedByTheEvaluator
   SmtDataSpec.test_smtDataTasks
+  SmtRecursionSpec.test_smtRecursion
   RefutedStatusSpec.test_refutedLawsAreReportedAndFail
   LawAnalysisSpec.test_lawSetsAreCheckedTogether
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs

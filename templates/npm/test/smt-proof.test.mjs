@@ -145,6 +145,32 @@ test('law sets: Z3 settles completeness, overlap and conflict, and the evaluator
   assert.ok(result.solverEvidence.some(e=>e.kind==='analysis'&&e.stage==='conflict'&&e.status==='refuted'&&e.outcome==='sat'));
 });
 
+test('recursive definitions: guarded axioms with fuel first, then define-fun-rec, recorded in the evidence',requiresZ3,async()=>{
+  const count=`function count (xs :: List Int32) -> Whole is
+  first matching case of xs :
+    when Nil then 0
+    when Cons head tail then 1 + count tail
+  end case
+end function
+`;
+  const unfolded=await proveWithZ3(compiler,request(count+law('for all (x :: Int32) (xs :: List Int32) => count (Cons x xs) = 1 + count xs end for all')),{binary:z3});
+  const byAxioms=unfolded.solverEvidence[0];
+  assert.equal(byAxioms.status,'proved');
+  assert.deepEqual(byAxioms.recursion,{encoding:'guarded-axioms',fuel:2});
+  assert.deepEqual(byAxioms.attempts.map(a=>a.outcome),['unsat']);
+  assert.match(byAxioms.reason,/by guarded axioms with fuel 2/);
+  const deeper=await proveWithZ3(compiler,request(count+law('count [1, 2, 3] = 3')),{binary:z3});
+  const byRecursion=deeper.solverEvidence[0];
+  assert.equal(byRecursion.status,'proved');
+  assert.deepEqual(byRecursion.recursion,{encoding:'define-fun-rec'});
+  assert.deepEqual(byRecursion.attempts.map(a=>[a.recursion.encoding,a.outcome]),[['guarded-axioms','unknown'],['define-fun-rec','unsat']]);
+  assert.equal(byRecursion.taskFingerprint,byRecursion.attempts[1].taskFingerprint);
+  assert.equal(deeper.evidence.find(row=>row.stage==='law').status,'proved');
+  const induction=await proveWithZ3(compiler,request(count+law('for all (xs :: List Int32) => count xs > 0 end for all')),{binary:z3});
+  assert.equal(induction.solverEvidence[0].status,'incomplete');
+  assert.equal(induction.solverEvidence[0].attempts.length,2);
+});
+
 test('satisfiable Z3 tasks whose values cannot be confirmed stay incomplete',requiresZ3,async()=>{
   for(const body of [
     law('there exists (next :: Integer) such that for all (n :: Integer) => next > n end for all end exists'),

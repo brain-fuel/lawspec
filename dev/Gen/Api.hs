@@ -258,10 +258,16 @@ declarations = joinWith (softbreak <> softbreak)
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string"),
           ("counterexample?","CounterexampleQuery"),
-          ("counterexampleUnsupported?","string")]),
+          ("counterexampleUnsupported?","string"), ("recursion?", "Recursion"),
+          ("alternative?", "AlternativeTask")]),
        record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "unsupported"),("reason",text "string")])]
+  , interface "AlternativeTask"
+      (fields [("recursion", "Recursion"), ("script", "string"), ("taskFingerprint", "string")])
+  , alias "Recursion"
+      [ record (fields [("encoding", "'guarded-axioms'"), ("fuel", "number")])
+      , record (fields [("encoding", "'define-fun-rec'")]) ]
   , alias "ProofCounterexample" [record (fields [("owner","string"),("declaration","string"),
       ("taskFingerprint","string"),("values","string")])]
   , alias "CounterexampleQuery" [record (fields [("encoding","'lawspec-smtlib-v2'"),("script","string"),

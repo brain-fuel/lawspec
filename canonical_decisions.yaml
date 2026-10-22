@@ -720,3 +720,13 @@ DEC-law-set-analysis:
   opened: 0.26.0
   decided: 0.26.0
   refs: [spark-ug, why3, z3]
+
+DEC-smt-recursive-definitions:
+  status: decided
+  question: |
+    How do Z3 tasks use recursive checked definitions, and which encoding proves a law when the law says nothing?
+  answer: |
+    Owner decision 6 for gate 5 (increment 7). A law that calls a recursive checked definition gets a lawspec-smtlib-v2 task; v1 tasks are unchanged. Only definitions that pass mandatory totality reach Z3, so a non-terminating definition is refused before any task. Two encodings are generated. Guarded axioms with fuel: as Why3's eliminate_recursion, each definition is a declared function with a defining axiom guarded by its argument domains and preconditions, and as in Dafny each call carries fuel (a call in the law starts at 2, the axiom unfolds fuel n+1 into the body at n, fuel 0 is uninterpreted, and a fuel-independence axiom relates levels); patterns trigger both axioms, and the task sets smt.mbqi and auto_config to false as Dafny does, so unfolding is bounded and reproducible. define-fun-rec: SMT-LIB define-funs-rec over the same guarded body, with an unconstrained declared function outside the guard. When nothing is said the host tries both, axioms first; the evidence records the encoding that proved the law and every attempt. Trust boundary: the translation, Z3, and two facts taken from mandatory admission rather than re-derived: on its domain a recursive definition is defined, and its result lies in its result type (admission proved both by induction over calls it proved terminate). A call is defined when its arguments are in the domain and the callee's runtime postconditions hold. A model from a recursive task may rest on unfolding that stopped at its fuel; the evaluator checks it, and an unconfirmed one leaves the law incomplete rather than reporting a translation error. Per-law encoding selection, fuel settings and induction are later grammar.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [why3, z3, spark-ug]

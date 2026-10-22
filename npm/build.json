@@ -505,7 +505,7 @@
   ],
   "digests": {
     "dev/Gen/Embed.hs": "32b40834ed6f58d5290af56b62037426cb5868b4d4fa2ee6de0aa541a494199f",
-    "lawspec.cabal": "7e639ac5bcd6a2bd3d131634acec8ed6a64f3e86f0bfded8ff9432e4a77dd0b4",
+    "lawspec.cabal": "7fb5b3ade4b0f7e2d5e632f26c748adf86b10441a99cf5f4e29ccebf71976deb",
     "package.yaml": "c3114ff6dd0b31a4232c85cdfe740ac9bb072f04099f0ded12caad13a9be540a",
     "runtime/LawSpecCodecs.hs": "02813943d154f064457601319ef59ab8c48f1416cdd40115e94a44619a1238a0",
     "runtime/LawSpecCollectionCodecs.hs": "1ec581af09c2931cacd0245b35debebd066fd06d71c6dfb60a124af9a5fac562",
@@ -801,7 +801,7 @@
     "src/LawSpec/Core/Schema.hs": "020d8b4a37f9ec437532d8541bf3d232642746f409a4ec25f91644fbf03ca410",
     "src/LawSpec/Core/Search.hs": "e468b6ebcad2c6d590c0422ed336c394c044d033375e1793196f29a5b016796a",
     "src/LawSpec/Core/Semantics.hs": "3286cc03da4d9c0a81a732160a06bc274db73b9c5ea4853883d9ae5bbcdc6b7d",
-    "src/LawSpec/Core/Smt.hs": "aad0471dd370f99cc9a2eb4de859985d2ca99c6eab7084fb92c7b90aaa9da0d7",
+    "src/LawSpec/Core/Smt.hs": "395589f84f8f4150b6a2e1c369d1c4c9219befbd1ba8e16b1e3c68ee44d15678",
     "src/LawSpec/Core/Stages.hs": "7c3d8330ef0196f85c9f561f2a3077e5fc0f7e1070ac09c3853d91da49579d46",
     "src/LawSpec/Core/Total.hs": "288a4b15dfcc67232ca3530c22079a0ffbe94adac1a8ef06c5f60f45d5091126",
     "src/LawSpec/Core/Totality.hs": "4042a1b1e964d74d1f2b8290b93582b0d3f00e8ce8a487b4cca6a1ec77ca87b9",
@@ -1005,9 +1005,9 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "8e34b5429ad3531cb954380e40f79a5703cd57bc6f2ba7f857425a6a7b90a81e",
-    "npm/core.wasm": "ac59e72620a789e3238ecb1f1c7707c9f9825cd3b61724c4fc8e4dcd5a73782d",
+    "npm/core.wasm": "149a96a49e9e3d44560586598a7f612a469abd7b3ad0b5f8db50661c4717df61",
     "npm/core_jsffi.js": "83f3d08134001f01a5431ac43d68fe10bafde834879393fa5fd38ecf39fc1d58",
     "npm/api.mjs": "fd40ec7034402e4456504182d80e2e97f535713ae5d227ffad6456fa9091f59b",
-    "npm/index.d.ts": "3c8678b8712998a65ef86a07f3c598559d6ce445cc5b8fd0db1be475b2799869"
+    "npm/index.d.ts": "d838352e303e7e60c9f52f5c7cd5fef44e633d0413a3e4c456867e74154a6819"
   }
 }
