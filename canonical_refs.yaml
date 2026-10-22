@@ -398,3 +398,11 @@ ada-2022-predicates:
   kind: article
   title: Ada 2022 Reference Manual, 3.2.4 Subtype Predicates
   locator: http://www.ada-auth.org/standards/22rm/html/RM-3-2-4.html
+gpvw-ltl:
+  kind: paper
+  title: "Rob Gerth, Doron Peled, Moshe Y. Vardi and Pierre Wolper, Simple On-the-fly Automatic Verification of Linear Temporal Logic, PSTV 1995"
+  locator: https://doi.org/10.1007/978-0-387-34892-6_1
+lichtenstein-pnueli-fairness:
+  kind: paper
+  title: "Orna Lichtenstein and Amir Pnueli, Checking That Finite State Concurrent Programs Satisfy Their Linear Specification, POPL 1985"
+  locator: https://doi.org/10.1145/318593.318622

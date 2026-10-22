@@ -161,7 +161,41 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   , handlerSets :: [HandlerSet]
   -- laws for f are ... end laws: what a function's laws claim together, and
   -- the checks they are excused from (LawSpec.Core.LawAnalysis).
-  , lawClaims :: [LawClaims] } deriving (Eq, Show, Generic)
+  , lawClaims :: [LawClaims]
+  -- property name is ... end property: a claim about a model's runs; and
+  -- the laws that hold one of a model (law n in model m ... is). Checked by
+  -- LawSpec.Core.ModelCheck, apart from the unit's ordinary laws.
+  , temporalProperties :: [TemporalProperty]
+  , modelLaws :: [ModelLaw] } deriving (Eq, Show, Generic)
+
+-- | A claim about a model's runs, in plain words: always, eventually,
+-- whenever P, Q, never P before Q, until, implies, and, or, not, and a
+-- deadline, Q within 24h. An atom names a Bool function of the model state,
+-- or a parameter. A reference is a property, by its quoted name or by its
+-- words with arguments between them (responds isPaid with isShipped).
+data RunFormula
+  = TemporalAtom String Span
+  | TemporalNot RunFormula | TemporalAnd RunFormula RunFormula | TemporalOr RunFormula RunFormula
+  | TemporalImplies RunFormula RunFormula
+  | TemporalAlways RunFormula | TemporalEventually RunFormula | TemporalUntil RunFormula RunFormula
+  | TemporalWhenever RunFormula RunFormula | TemporalNeverBefore RunFormula RunFormula
+  | TemporalWithin RunFormula Integer        -- holds within this many microseconds
+  | TemporalReference [Either String RunFormula] Span   -- words and arguments
+  deriving (Eq, Show, Generic)
+
+-- | property name (params) words (params) is formula end property
+data TemporalProperty = TemporalProperty
+  { temporalName :: String, temporalSignature :: [Either String String]
+  , temporalBody :: RunFormula, temporalSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+-- | law name in model m [assuming [strong] fairness for c, ...] is
+--   definition: every run holds P | some run holds P end definition end law
+data ModelLaw = ModelLaw
+  { modelLawName :: String, modelLawModel :: String
+  , modelLawFairness :: [(Bool, String)]  -- strong?, command
+  , modelLawEvery :: Bool, modelLawFormula :: RunFormula, modelLawSpan :: Span }
+  deriving (Eq, Show, Generic)
 
 -- | laws for f are ... end laws. Checks of f's laws run by default; the block
 -- states claims beyond them and excuses checks, each with a reason.

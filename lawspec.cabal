@@ -346,6 +346,7 @@ extra-source-files:
     test/fixtures/native_empty_domains.lawspec
     test/fixtures/native_shapes.lawspec
     test/fixtures/numeric-proofs.lawspec
+    test/fixtures/order-workflow.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
@@ -584,6 +585,7 @@ library
       LawSpec.Core.LawAnalysis
       LawSpec.Core.LawTasks
       LawSpec.Core.Machine
+      LawSpec.Core.ModelCheck
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
       LawSpec.Core.Policy
@@ -692,6 +694,7 @@ library
       LawSpec.Matchers
       LawSpec.Memo
       LawSpec.Model
+      LawSpec.ModelLaws
       LawSpec.ModelTests
       LawSpec.NativeBinding
       LawSpec.NativeModelChecks
@@ -982,6 +985,7 @@ test-suite lawspec-test
       MappingSpec
       MatcherAdmissionSpec
       MatchWarningSpec
+      ModelCheckSpec
       ModelLayerSelectionSpec
       NamedBlocksSpec
       NativeBindingSpec

@@ -61,6 +61,18 @@
       }
     },
     {
+      "match": "\\b(every[ \\t]+run[ \\t]+holds|some[ \\t]+run[ \\t]+holds|assuming(?:[ \\t]+strong)?[ \\t]+fairness[ \\t]+for|in[ \\t]+model|always|eventually|whenever|never|before|until|within)\\b",
+      "name": "keyword.other.temporal.lawspec"
+    },
+    {
+      "match": "^[ \\t]*(property)\\b",
+      "captures": {
+        "1": {
+          "name": "keyword.control.lawspec"
+        }
+      }
+    },
+    {
       "match": "^[ \\t]*(prove)[ \\t]+(by[ \\t]+(?:unfolding[ \\t]+step[ \\t]+by[ \\t]+step|solver[ \\t]+recursion|induction[ \\t]+on)|without[ \\t]+induction)\\b",
       "captures": {
         "1": {

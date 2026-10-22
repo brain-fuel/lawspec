@@ -2249,6 +2249,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
   | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration | HandlerSetMember HandlerSet
   | ClaimsMember LawClaims
+  | TemporalPropertyMember TemporalProperty | ModelLawMember ModelLaw
 
 memberSyntax :: UnitMember -> (String,Maybe String)
 memberSyntax member = ("declaration." ++ kind,name)
@@ -2276,6 +2277,8 @@ memberSyntax member = ("declaration." ++ kind,name)
       HarnessMember h -> ("harness",Just (harnessName h))
       HandlerSetMember h -> ("handlers",Just (handlerSetName h))
       ClaimsMember c -> ("laws-for",Just (claimsFunction c))
+      TemporalPropertyMember t -> ("property",Just (temporalName t))
+      ModelLawMember l -> ("law",Just (modelLawName l))
 
 -- | laws for f are ... end laws. Each line is a claim (complete over c,
 -- without overlap, without conflict) or an exemption with its reason:
@@ -2438,6 +2441,9 @@ unitP = blockP "unit" $ do
     <|> (HandlerSetMember <$> (try (lookAhead (keyword "handlers" *> ident *> keyword "is")) *> handlerSetP))
     -- laws for f are ... end laws: claims and exemptions of f's laws.
     <|> (ClaimsMember <$> (try (lookAhead (keyword "laws" *> keyword "for")) *> lawClaimsP))
+    -- property name is ... end property, and laws that hold one of a model.
+    <|> (TemporalPropertyMember <$> (try (lookAhead (keyword "property")) *> temporalPropertyP))
+    <|> (ModelLawMember <$> (try (lookAhead (keyword "law" *> lawNameP *> keyword "in" *> keyword "model")) *> modelLawP))
     -- harness name for unit is ... end (LawSpec.Harness).
     <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
     <|> (MappingMember <$> mappingP n)
@@ -2468,7 +2474,8 @@ unitP = blockP "unit" $ do
      [(functionName d, used) | DefinitionMember (d, Just used) <- members])
     [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
     (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members]
-    [s | HandlerSetMember s <- members] [c | ClaimsMember c <- members], imports, [f | FamilyMember f <- members],
+    [s | HandlerSetMember s <- members] [c | ClaimsMember c <- members]
+    [t | TemporalPropertyMember t <- members] [l | ModelLawMember l <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
@@ -3041,3 +3048,103 @@ regionExpr stops = sourceNode "line-expression" (const Nothing) $ do
       | otherwise = Nothing
     wordChar (c : _) = isAlphaNum c || c == '_'
     wordChar [] = False
+
+-- | property name (params) ... is formula end property. The signature's
+-- words name it; each parenthesized word is a parameter (a formula).
+temporalPropertyP :: P TemporalProperty
+temporalPropertyP = sourceNode "property" (Just . temporalName) $ blockP "property" $ do
+  ((signature, body), range) <- withSpan $ do
+    keyword "property"
+    signature <- some ((Right <$> between (symbol "(") (symbol ")") ident) <|> (Left <$> runWordP))
+    keyword "is"
+    body <- runP
+    pure (signature, body)
+  closeP "property"
+  pure (TemporalProperty (unwords [either id (\p -> "(" ++ p ++ ")") part | part <- signature]) signature body range)
+
+-- | law name in model m [assuming [strong] fairness for c, ...] is
+--   definition: every run holds formula end definition end law
+modelLawP :: P ModelLaw
+modelLawP = sourceNode "law" (Just . modelLawName) $ blockP "law" $ do
+  ((name, model, fairness, every, formula), range) <- withSpan $ do
+    keyword "law"
+    name <- lawNameP
+    keyword "in" *> keyword "model"
+    model <- ident
+    fairness <- option [] $ do
+      keyword "assuming"
+      strong <- option False (True <$ keyword "strong")
+      keyword "fairness" *> keyword "for"
+      commands <- ident `sepBy1` symbol ","
+      pure [(strong, c) | c <- commands]
+    keyword "is"
+    (every, formula) <- block "definition" $ do
+      every <- (True <$ keyword "every") <|> (False <$ keyword "some")
+      keyword "run" *> keyword "holds"
+      formula <- runP
+      pure (every, formula)
+    pure (name, model, fairness, every, formula)
+  closeP "law"
+  pure (ModelLaw name model fairness every formula range)
+
+-- | A word of a property's name, or of a reference to one: any name but the
+-- formula's own keywords.
+runWordP :: P String
+runWordP = do
+  notFollowedBy (choice (map keyword runKeywords))
+  phraseNameRaw' <|> lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))
+  where phraseNameRaw' = lexeme phraseNameRaw
+
+runKeywords :: [String]
+runKeywords = ["is", "end", "and", "or", "not", "implies", "until", "before", "within", "always", "eventually", "never", "whenever"]
+
+-- | implies (lowest, to the right), or, and, until, then the prefix words.
+runP :: P RunFormula
+runP = do
+  a <- runOrP
+  option a (TemporalImplies a <$> (keyword "implies" *> runP))
+
+runOrP :: P RunFormula
+runOrP = foldl1 TemporalOr <$> (runAndP `sepBy1` keyword "or")
+
+runAndP :: P RunFormula
+runAndP = foldl1 TemporalAnd <$> (runUntilP `sepBy1` keyword "and")
+
+runUntilP :: P RunFormula
+runUntilP = do
+  a <- runUnaryP
+  option a (TemporalUntil a <$> (keyword "until" *> runUnaryP))
+
+runUnaryP :: P RunFormula
+runUnaryP = choice
+  [ TemporalAlways <$> (keyword "always" *> runUnaryP)
+  , TemporalEventually <$> (keyword "eventually" *> runUnaryP)
+  , TemporalNot <$> (keyword "not" *> runUnaryP)
+  -- whenever P, Q: Q reaches as far as it can.
+  , do keyword "whenever"
+       p <- runOrP
+       void (symbol ",")
+       TemporalWhenever p <$> runP
+  , do keyword "never"
+       p <- runOrP
+       keyword "before"
+       TemporalNeverBefore p <$> runOrP
+  , runPrimaryP ]
+
+-- | Words and arguments side by side: one word is an atom (a Bool function
+-- of the model state, or a parameter); a parenthesized formula alone is
+-- itself; anything longer names a property with arguments. Q within 24h is
+-- a deadline.
+runPrimaryP :: P RunFormula
+runPrimaryP = do
+  (items, range) <- withSpan (some ((Right <$> between (symbol "(") (symbol ")") runP) <|> (Left <$> runWordP)))
+  let base = case items of
+        [Left word] -> TemporalAtom word range
+        [Right formula] -> formula
+        _ -> TemporalReference items range
+  option base $ do
+    keyword "within"
+    d <- numeric
+    case d of
+      ConstructLit "Duration" [Number micros] -> pure (TemporalWithin base micros)
+      _ -> fail "within takes a duration, such as 24h"

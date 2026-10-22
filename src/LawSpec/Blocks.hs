@@ -13,7 +13,7 @@ data BlockKind
   | HandlerBlock | HandlersBlock | OperationBlock | HandleBlock
   | ResourceBlock | AcquireBlock | ReleaseBlock | ResetBlock
   | HarnessBlock | ForLawBlock | ForLawsBlock | StrategyBlock | BindBlock
-  | BenchmarkBlock
+  | BenchmarkBlock | PropertyBlock
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 blockKinds :: [BlockKind]
@@ -66,6 +66,7 @@ blockLabel kind = case kind of
   StrategyBlock -> "strategy"
   BindBlock -> "bind"
   BenchmarkBlock -> "benchmark"
+  PropertyBlock -> "property"
 
 blockKind :: String -> Maybe BlockKind
 blockKind label = lookup label [(blockLabel kind,kind) | kind <- blockKinds]

@@ -27,6 +27,7 @@ import LawSpec.Discharge (dischargeReporting, refutations, bindingEvidence, defa
 import qualified LawSpec.Core.Counterexample as Counterexample
 import qualified LawSpec.Core.LawAnalysis as Analysis
 import LawSpec.ProofSettings (proofSettings)
+import LawSpec.ModelLaws (modelLawEvidence)
 import LawSpec.LawClaims (elaborateClaims, Expiry(..), analysisEvidence, analysisTaskViews, settleAnalysis)
 import qualified LawSpec.Core.LawTasks as Tasks
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
@@ -326,7 +327,13 @@ stagesWithInput canonical capture project packages sources bits settings native 
             -- The laws about each function, checked together, by default
             -- whenever proof or exhaustive checking is selected.
             Right claims -> let rows = Analysis.analyse core claims in
-              Right ((us, es, core, bindings, (evidence, rows), described, maybe planTesting planTestingWith verification core),syntax)
+              -- Laws about a model's runs, checked over its reference by an
+              -- explicit-state search when proof, exhaustive or model
+              -- checking is selected.
+              case modelLawEvidence (maybe True (\config -> any (V.selected config) [V.Proof, V.Exhaustive, V.Model]) verification) us core of
+                Left ds -> Left (failure ds)
+                Right modelEvidence ->
+                  Right ((us, es, core, bindings, (evidence ++ modelEvidence, rows), described, maybe planTesting planTestingWith verification core),syntax)
 
 -- | The request without the fields that only select a method, target or layout.
 sharedRequest :: B.ByteString -> String

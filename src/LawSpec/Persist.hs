@@ -55,5 +55,8 @@ instance Binary S.StrategyDeclaration
 instance Binary S.Gen
 instance Binary S.HarnessSetting
 instance Binary S.Proving
+instance Binary S.RunFormula
+instance Binary S.TemporalProperty
+instance Binary S.ModelLaw
 instance Binary S.HarnessPlan
 instance Binary S.HarnessWitness

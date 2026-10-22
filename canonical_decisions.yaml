@@ -760,3 +760,13 @@ DEC-smt-numbers:
   opened: 0.26.0
   decided: 0.26.0
   refs: [why3, spark-ug, z3, ieee-754]
+
+DEC-model-checking:
+  status: decided
+  question: |
+    How are claims about a stateful model's runs checked, with fairness, and how are they kept apart from native conformance?
+  answer: |
+    Owner decision 12 and the temporal syntax (gate 5 increment 10). A property is written in plain words (always, eventually, whenever P, Q, never P before Q, until, implies, and, or, not; parameters between its words), and a law says law n in model m [assuming [strong] fairness for c, ...] is definition: every run holds P | some run holds P. Atoms are Bool functions of the model state. The law is checked over the model's reference only: its start definition, each command's reference definition and precondition, and its typestate indices, computed by the reference evaluator with each command's arguments drawn from their finite types; it never runs the native implementation, whose model conformance keeps its own rows. The in-house checker (LawSpec.Core.ModelCheck), shared by the native and WASM compilers, translates the formula (negated for every run) to a generalized Büchi automaton by the Gerth-Peled-Vardi-Wolper tableau, explores the product breadth first, and searches its strongly connected components (Tarjan) for an accepting fair cycle; weak fairness rejects a component where a command stays enabled and is never taken, and strong fairness refines a component by removing states where an untaken command is enabled (Lichtenstein and Pnueli). A run that ends stays in its last state. Results: proved when the complete search finds no counterexample (every run) or finds a run (some run), naming how many states were explored; refuted with the run as its commands, the repeating steps in parentheses; incomplete when the search stops at its bound (100000 states), saying no counterexample was found up to there; unsupported when a step cannot be evaluated or a deadline needs time. Temporal laws live beside the Core program, so existing program fingerprints and v1 receipts are unchanged. Trust boundary: the reference evaluator, the tableau and the search.
+  opened: 0.26.0
+  decided: 0.26.0
+  refs: [gpvw-ltl, lichtenstein-pnueli-fairness]

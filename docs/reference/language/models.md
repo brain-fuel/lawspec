@@ -67,6 +67,101 @@ model counter :: shared Counter by Int64 is
 end model
 ```
 
+## Laws about runs
+
+A law can claim something about every run of a model, or about some run. It
+is checked over the model itself: its start, each command's reference and
+precondition. It never runs the native implementation; that is the model's
+conformance check, with its own evidence.
+
+```lawspec
+unit guide.order_runs
+
+type Stage is one of
+  | Received
+  | Paid
+  | Shipped
+  | Cancelled
+end type
+
+type Order is a record{ id :: Int32 } end type
+
+newOrder :: Unit -> Order
+pay :: Order -> Unit
+retry :: Order -> Unit
+ship :: Order -> Unit
+cancel :: Order -> Unit
+
+function toPaid (s :: Stage) -> Stage is Paid end function
+function stay (s :: Stage) -> Stage is s end function
+function toShipped (s :: Stage) -> Stage is Shipped end function
+function toCancelled (s :: Stage) -> Stage is Cancelled end function
+function isReceived (s :: Stage) -> Bool is s = Received end function
+function isPaid (s :: Stage) -> Bool is s = Paid end function
+function isShipped (s :: Stage) -> Bool is s = Shipped end function
+function isCancelled (s :: Stage) -> Bool is s = Cancelled end function
+
+model orders :: shared Order by Stage is
+  start newOrder ~ Received
+  pay ~ toPaid when isReceived
+  retry ~ stay when isReceived
+  ship ~ toShipped when isPaid
+  cancel ~ toCancelled when isReceived
+end model
+
+property "|nothing ships unpaid| is
+  never isShipped before isPaid
+end property
+
+property responds (p) with (q) is
+  whenever p, eventually q
+end property
+
+law "|nothing ships unpaid| in model orders is
+  definition: every run holds "|nothing ships unpaid| end definition
+end law
+
+law "|paid orders ship| in model orders assuming fairness for ship is
+  definition: every run holds responds isPaid with isShipped end definition
+end law
+
+law "|an order can ship| in model orders is
+  definition: some run holds eventually isShipped end definition
+end law
+end unit
+```
+
+A `property` names a claim about runs. Its words are plain:
+
+| Form | Holds on a run when |
+| --- | --- |
+| `always P` | `P` holds at every step |
+| `eventually P` | `P` holds at some step |
+| `whenever P, Q` | at every step where `P` holds, `Q` holds from there |
+| `never P before Q` | `P` does not hold before the first step where `Q` holds |
+| `P until Q` | `Q` holds at some step, and `P` at every step before it |
+| `P implies Q`, `P and Q`, `P or Q`, `not P` | as in logic |
+
+An atom names a `Bool` function of the model state. A property may take
+parameters between its words, as `responds (p) with (q)` does, and a law
+or another property uses it with its words and arguments. A property is also
+named by its quoted name.
+
+A law in a model says `every run holds P` or `some run holds P`. A run that
+ends stays in its last state. `assuming fairness for c` (weak fairness)
+considers only runs where a command `c` that stays enabled is taken;
+`assuming strong fairness for c` considers only runs where `c`, enabled again
+and again, is taken.
+
+Every reachable state is explored, with each command's arguments drawn from
+their finite types. The law is `proved` when no run breaks it (or a run holds
+it), and the reason says how many states were explored. It is `refuted` with
+the run that breaks it, written as its commands, with the steps that repeat in
+parentheses: `validate, decline, (decline)`. A model with more states than the
+search explores is `incomplete`: "no counterexample in the first 100000
+states". The check runs when the `proof`, `exhaustive` or `model` layer is
+selected.
+
 ## What LawSpec checks
 
 **In sequence.**

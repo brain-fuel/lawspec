@@ -1,0 +1,91 @@
+unit portfolio.orders
+
+-- Portfolio 13.7: an order's stages, checked over the model's reference.
+type Stage is one of
+  | Received
+  | Validated
+  | Authorized
+  | Captured
+  | Fulfilled
+  | Cancelled
+end type
+
+type Order is a record{ id :: Int32 } end type
+
+newOrder :: Unit -> Order
+validate :: Order -> Unit
+authorize :: Order -> Unit
+decline :: Order -> Unit
+capture :: Order -> Unit
+fulfil :: Order -> Unit
+cancel :: Order -> Unit
+
+function toValidated (s :: Stage) -> Stage is Validated end function
+function toAuthorized (s :: Stage) -> Stage is Authorized end function
+function stay (s :: Stage) -> Stage is s end function
+function toCaptured (s :: Stage) -> Stage is Captured end function
+function toFulfilled (s :: Stage) -> Stage is Fulfilled end function
+function toCancelled (s :: Stage) -> Stage is Cancelled end function
+
+function isReceived (s :: Stage) -> Bool is s = Received end function
+function isValidated (s :: Stage) -> Bool is s = Validated end function
+function isAuthorized (s :: Stage) -> Bool is s = Authorized end function
+function isCaptured (s :: Stage) -> Bool is s = Captured end function
+function isFulfilled (s :: Stage) -> Bool is s = Fulfilled end function
+function isCancelled (s :: Stage) -> Bool is s = Cancelled end function
+-- Paid: the payment is captured, and the order not yet fulfilled.
+function isPaid (s :: Stage) -> Bool is s = Captured end function
+function isDone (s :: Stage) -> Bool is s = Fulfilled or s = Cancelled
+end function
+-- Cancelling is allowed until the payment is captured.
+function cancellable (s :: Stage) -> Bool is s = Received or s = Validated or s
+    = Authorized end function
+
+model orders :: shared Order by Stage is
+  start newOrder ~ Received
+  validate ~ toValidated when isReceived
+  authorize ~ toAuthorized when isValidated
+  decline ~ stay when isValidated
+  capture ~ toCaptured when isAuthorized
+  fulfil ~ toFulfilled when isCaptured
+  cancel ~ toCancelled when cancellable
+end model
+
+property "|nothing ships unpaid| is
+  never isFulfilled before isPaid
+end property
+
+property "|stays cancelled| is
+  always (isCancelled implies always isCancelled)
+end property
+
+property responds (p) with (q) is
+  whenever p, eventually q
+end property
+
+law "|nothing ships unpaid| in model orders is
+  definition: every run holds "|nothing ships unpaid| end definition
+end law
+
+law "|cancelled orders stay cancelled| in model orders is
+  definition: every run holds "|stays cancelled| end definition
+end law
+
+law "|paid orders are never cancelled| in model orders is
+  definition: every run holds always (isPaid implies not eventually isCancelled)
+  end definition
+end law
+
+law "|validated orders finish, given fair authorization| in model orders
+  assuming fairness for authorize is
+  definition: every run holds responds isValidated with isDone end definition
+end law
+
+law "|validated orders finish| in model orders is
+  definition: every run holds responds isValidated with isDone end definition
+end law
+
+law "|an order can be fulfilled| in model orders is
+  definition: some run holds eventually isFulfilled end definition
+end law
+end unit

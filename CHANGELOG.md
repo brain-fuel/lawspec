@@ -8,6 +8,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Laws about a model's runs: `property` declares a claim in plain words
+  (`always`, `eventually`, `whenever P, Q`, `never P before Q`, `until`),
+  and `law n in model m [assuming [strong] fairness for c] is definition:
+  every run holds P end definition end law` (or `some run holds P`) checks it
+  over the model's reference by an in-house explicit-state search, shared by
+  the native and WASM compilers. A law is proved with the number of states
+  explored, refuted with the run that breaks it, or incomplete past the
+  search's bound; native conformance keeps its own evidence.
 - `lawspec prove` quantifies `Rational` inputs exactly (never an irrational
   witness), handles `Decimal`, and reasons about `Float32` and `Float64` with
   IEEE equality: NaN differs from itself and the zeros are equal. A law true
