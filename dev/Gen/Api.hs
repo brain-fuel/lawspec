@@ -259,12 +259,18 @@ declarations = joinWith (softbreak <> softbreak)
         [("status",quoted "ready")] ++ fields [("script","string"),("taskFingerprint","string"),("trust","string"),
           ("counterexample?","CounterexampleQuery"),
           ("counterexampleUnsupported?","string"), ("recursion?", "Recursion"),
-          ("alternative?", "AlternativeTask")]),
+          ("alternative?", "AlternativeTask"), ("induction?", "InductionPlan")]),
        record (fields [("encoding","'lawspec-smtlib-v1' | 'lawspec-smtlib-v2'"),("owner","string"),("declaration","string"),
           ("at","Location"),("programFingerprint","string"),("machineBits","32 | 64")] ++
         [("status",quoted "unsupported"),("reason",text "string")])]
   , interface "AlternativeTask"
       (fields [("recursion", "Recursion"), ("script", "string"), ("taskFingerprint", "string")])
+  , alias "InductionPlan"
+      [ record (fields (induction ++ [("status", "'ready'"), ("cases", "InductionCase[]")]))
+      , record (fields (induction ++ [("status", "'unsupported'"), ("reason", "string")])) ]
+  , interface "InductionCase"
+      (fields [ ("case", "string"), ("script", "string"), ("recursion", "Recursion")
+              , ("taskFingerprint", "string"), ("inputs", "string[]"), ("alternative?", "AlternativeTask") ])
   , alias "Recursion"
       [ record (fields [("encoding", "'guarded-axioms'"), ("fuel", "number")])
       , record (fields [("encoding", "'define-fun-rec'")]) ]
@@ -347,3 +353,4 @@ declarations = joinWith (softbreak <> softbreak)
   where
     scalar names rest = record (("type", union (map quoted names)) : fields rest)
     analysisRow = [("owner", "string"), ("declaration", "string"), ("stage", "AnalysisStage")]
+    induction = [("on", "string"), ("asked", "boolean"), ("using", "string[]")]

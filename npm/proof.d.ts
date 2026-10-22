@@ -41,6 +41,10 @@ export interface LawSolverEvidence extends SolverRun {
       and each encoding tried, in order. */
   recursion?: Recursion;
   attempts?: {recursion:Recursion; taskFingerprint:string; outcome:SolverRun['outcome']; runFingerprint?:string; elapsedMs?:number}[];
+  /** Induction on an input: the cited laws, and each case's receipt. */
+  induction?: {on:string; using:string[]; asked?:boolean; cases:{case:string; outcome?:SolverRun['outcome']; recursion?:Recursion;
+    taskFingerprint?:string; runFingerprint?:string; values?:string; reason?:string;
+    attempts?:{recursion:Recursion; taskFingerprint:string; outcome:SolverRun['outcome']; runFingerprint?:string; elapsedMs?:number}[]}[]};
 }
 /** A law-set check's task (completeness, overlap, conflict or vacuity).
     status is the task's own result; check is its row's. */

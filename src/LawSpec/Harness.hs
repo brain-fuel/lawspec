@@ -182,6 +182,8 @@ elaborateHarness u = case unitHarness u of
       TimeoutSetting ms -> pure plan { planTimeout = Just ms }
       RepeatSetting n -> pure plan { planRepeat = n }
       RetryFlakySetting n -> pure plan { planRetries = n }
+      -- Proof settings concern lawspec prove only (LawSpec.ProofSettings).
+      ProveSetting _ -> pure plan
     -- The reason a law variant is left out by `test with`, if it is.
     excluded allowed pinned assignment =
       let out = [ (ability, name) | (ability, choice) <- assignment, abilityTypeName ability /= failAbilityName

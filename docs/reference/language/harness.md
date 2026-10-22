@@ -259,6 +259,38 @@ example.harness::a discount is never more than the total: 100 generated case(s)
 `known failing` cannot be put on a law the compiler proves or evaluates
 itself: such a law is either true or a compile error.
 
+## Proof settings
+
+These settings tell `lawspec prove` how to prove a law with Z3. They never
+change what the law claims, and they apply to `lawspec prove` only. Like the
+other settings, one written before the first `for` applies to every law of the
+unit, and a law's own `for` block overrides it.
+
+```lawspec fragment
+for law "|reverse twice|
+  prove by induction on xs
+    using "|reverse of append|
+end for law
+```
+
+| Setting | Meaning |
+| --- | --- |
+| `prove by unfolding step by step` | Give Z3 the recursive definitions the law calls one step at a time, up to 2 steps from each call. |
+| `prove by unfolding step by step up to 4 times` | The same, up to 4 steps. |
+| `prove by solver recursion` | Let Z3 unfold the recursive definitions itself. |
+| `prove by unfolding step by step, then solver recursion` | Try the first, then the second. This is the default. |
+| `prove by induction on xs` | Prove the law by induction on its input `xs`: one case for each way of building `xs` (`[]` and `Cons head tail` for a list), or, for a whole number, `n = 0` and then `n` from `n - 1`. |
+| `prove by induction on xs using "|a|, "|b|` | The same, assuming the laws `a` and `b` of this unit. |
+| `prove without induction` | Do not try induction. |
+
+When nothing is said, `lawspec prove` tries induction once, on the law's
+input of a recursive type (a list or a tree), if it has exactly one.
+
+A cited law must be a law of the unit, other than the law itself, and laws
+may not cite each other in a cycle. A law proved by induction is proved only
+while every law it cites is proved, or checked on every input. Each case has
+its own receipt. See [proof with Z3](../../explanation/smt-proof.md#induction).
+
 On Erlang, Elixir and Gleam, `repeat` applies separately to each example,
 exhaustive or boundary case, native property check, and targeted search.
 A retry restarts that test's repeat sequence. Every

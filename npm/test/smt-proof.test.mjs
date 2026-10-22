@@ -159,7 +159,8 @@ end function
   assert.equal(byAxioms.status,'proved');
   assert.deepEqual(byAxioms.recursion,{encoding:'guarded-axioms',fuel:2});
   assert.deepEqual(byAxioms.attempts.map(a=>a.outcome),['unsat']);
-  assert.match(byAxioms.reason,/by guarded axioms with fuel 2/);
+  // Plain words for people; the IR keeps the SMT names.
+  assert.match(byAxioms.reason,/by unfolding step by step up to 2 times/);
   const deeper=await proveWithZ3(compiler,request(count+law('count [1, 2, 3] = 3')),{binary:z3});
   const byRecursion=deeper.solverEvidence[0];
   assert.equal(byRecursion.status,'proved');
@@ -167,9 +168,89 @@ end function
   assert.deepEqual(byRecursion.attempts.map(a=>[a.recursion.encoding,a.outcome]),[['guarded-axioms','unknown'],['define-fun-rec','unsat']]);
   assert.equal(byRecursion.taskFingerprint,byRecursion.attempts[1].taskFingerprint);
   assert.equal(deeper.evidence.find(row=>row.stage==='law').status,'proved');
-  const induction=await proveWithZ3(compiler,request(count+law('for all (xs :: List Int32) => count xs > 0 end for all')),{binary:z3});
-  assert.equal(induction.solverEvidence[0].status,'incomplete');
-  assert.equal(induction.solverEvidence[0].attempts.length,2);
+  // Obviously false laws get a counterexample the evaluator confirms.
+  const empty=await proveWithZ3(compiler,request(count+law('for all (xs :: List Int32) => count xs > 0 end for all')),{binary:z3});
+  assert.equal(empty.solverEvidence[0].status,'refuted');
+  assert.deepEqual(empty.solverEvidence[0].counterexample.inputs,[{name:'xs',value:'Nil'}]);
+  const ground=await proveWithZ3(compiler,request(count+law('count [1, 2] = 3')),{binary:z3});
+  assert.equal(ground.solverEvidence[0].status,'refuted');
+  assert.match(ground.solverEvidence[0].reason,/the law has no inputs/);
+});
+
+const lists=`function count (xs :: List Int32) -> Whole is
+  first matching case of xs :
+    when Nil then 0
+    when Cons head tail then 1 + count tail
+  end case
+end function
+
+function append (xs :: List Int32) (ys :: List Int32) -> List Int32 is
+  first matching case of xs :
+    when Nil then ys
+    when Cons head tail then Cons head (append tail ys)
+  end case
+end function
+
+function reverse (xs :: List Int32) -> List Int32 is
+  first matching case of xs :
+    when Nil then []
+    when Cons head tail then append (reverse tail) [head]
+  end case
+end function
+
+law "|append adds lengths| is definition: for all (xs :: List Int32) (ys :: List Int32) => count (append xs ys) = count xs + count ys end for all end definition end law
+law "|append nil| is definition: for all (xs :: List Int32) => append xs [] = xs end for all end definition end law
+law "|append associates| is definition: for all (xs :: List Int32) (ys :: List Int32) (zs :: List Int32) => append (append xs ys) zs = append xs (append ys zs) end for all end definition end law
+law "|reverse of append| is definition: for all (xs :: List Int32) (ys :: List Int32) => reverse (append xs ys) = append (reverse ys) (reverse xs) end for all end definition end law
+law "|reverse twice| is definition: for all (xs :: List Int32) => reverse (reverse xs) = xs end for all end definition end law
+
+laws for append are
+  partial because "only appending the empty list is stated"
+end laws
+`;
+const harness=blocks=>'\nharness smt.proofs for smt is\n'+blocks.map(([name,lines])=>`for law "|${name}|\n`+lines.map(l=>'  '+l+'\n').join('')+'end for law\n').join('')+'end harness\n';
+
+test('induction: each case has its own receipt, and a law rests on the laws it cites',requiresZ3,async()=>{
+  const proved=await proveWithZ3(compiler,request(lists+harness([
+    ['append adds lengths',['prove by induction on xs']],
+    ['append associates',['prove by induction on xs']],
+    ['reverse of append',['prove by induction on xs','  using "|append nil|, "|append associates|']],
+    ['reverse twice',['prove by induction on xs','  using "|reverse of append|']]])),{binary:z3});
+  assert.deepEqual(proved.diagnostics,[]);
+  const of=name=>proved.solverEvidence.find(e=>e.declaration==='smt::law::"|'+name+'|');
+  for(const name of ['append adds lengths','append nil','append associates','reverse of append','reverse twice'])
+    assert.equal(of(name).status,'proved',name+': '+of(name).reason);
+  const lengths=of('append adds lengths');
+  assert.deepEqual(lengths.induction.cases.map(c=>[c.case,c.outcome]),[['xs = Nil','unsat'],['xs = Cons','unsat']]);
+  for(const c of lengths.induction.cases)assert.match(c.runFingerprint,/^[0-9a-f]{64}$/);
+  assert.match(lengths.reason,/by induction on xs/);
+  assert.deepEqual(of('reverse twice').induction.using,['smt::law::"|reverse of append|']);
+  assert.equal(proved.evidence.find(r=>r.declaration==='smt::law::"|reverse twice|').status,'proved');
+  // Without its own induction, the cited law is not proved, and neither is
+  // the law that cites it.
+  const resting=await proveWithZ3(compiler,request(lists+harness([
+    ['reverse of append',['prove without induction']],
+    ['reverse twice',['prove by induction on xs','  using "|reverse of append|']]])),{binary:z3});
+  const twice=resting.solverEvidence.find(e=>e.declaration==='smt::law::"|reverse twice|');
+  assert.equal(twice.status,'incomplete');
+  assert.match(twice.reason,/it cites "\|reverse of append\|, which is incomplete/);
+});
+
+test('an induction case whose model the law survives says the hypothesis is too weak',async()=>{
+  const directory=await mkdtemp(path.join(tmpdir(),'lawspec-induction-'));
+  try {
+    // Satisfiable for induction cases only, with the empty list as the model.
+    const binary=path.join(directory,'solver');
+    await writeFile(binary,'#!/bin/sh\nif [ "$1" = "-version" ]; then echo "Z3 version 0.0.0 - induction test"; exit 0; fi\n'+
+      'case=\nwhile IFS= read -r line; do case "$line" in *"induction on"*) case=1;; *"(check-sat)"*) break;; esac; done\n'+
+      'if [ -n "$case" ]; then echo sat; read -r line; echo "((lawspec_input_0 |List<Int32>#Nil|))"; else echo unknown; read -r line; echo \'(:reason-unknown "test")\'; fi\n');
+    await chmod(binary,0o755);
+    const result=await proveWithZ3(compiler,request(lists.split('\nlaw ')[0]+'\n'+law('for all (xs :: List Int32) => count xs >= 0 end for all')),{binary});
+    const item=result.solverEvidence[0];
+    assert.equal(item.status,'incomplete');
+    assert.match(item.reason,/induction hypothesis is too weak/);
+    assert.ok(!result.diagnostics.some(d=>d.code==='proof-translation'));
+  } finally {await rm(directory,{recursive:true,force:true});}
 });
 
 test('satisfiable Z3 tasks whose values cannot be confirmed stay incomplete',requiresZ3,async()=>{
@@ -245,21 +326,23 @@ test('prover protocol failures and external process termination do not upgrade e
   const directory=await mkdtemp(path.join(tmpdir(),'lawspec-proof-'));
   try {
     const binary=path.join(directory,'solver');
-    const source='#!/usr/bin/env node\n'+
-      'if(process.argv.includes("-version"))console.log("Z3 version 0.0.0 - protocol test");'+
-      'else {process.stdout.write("unsat\\n");process.exitCode=7;}\n';
+    // A shell script, so what is measured is the host's protocol handling,
+    // not how long an interpreter takes to start on a busy machine.
+    const solver=task=>'#!/bin/sh\nif [ "$1" = "-version" ]; then echo "Z3 version 0.0.0 - protocol test"; exit 0; fi\n'+task+'\n';
+    const source=solver("printf 'unsat\\n'; exit 7");
     await writeFile(binary,source);await chmod(binary,0o755);
     const result=await proveWithZ3(compiler,request(falseLaw),{binary});
     assert.equal(result.solverEvidence[0].outcome,'failed');
     assert.equal(result.solverEvidence[0].exitCode,7);
     assert.equal(result.solverEvidence[0].prover.binaryFingerprint,createHash('sha256').update(source).digest('hex'));
     assert.ok(result.evidence.filter(row=>row.stage==='law').every(row=>row.status!=='proved'));
-    await writeFile(binary,source.replace('process.stdout.write("unsat\\n");process.exitCode=7;','setInterval(()=>{},1000);'));
+    await writeFile(binary,solver('while :; do sleep 1; done'));
     const timeout=await proveWithZ3(compiler,request(falseLaw),{binary,timeoutMs:200});
+    // The task's run timed out, not the identity probe before it.
+    assert.equal(timeout.solverEvidence[0].prover?.version,'Z3 version 0.0.0 - protocol test');
     assert.equal(timeout.solverEvidence[0].outcome,'timeout');
     assert.equal(timeout.solverEvidence[0].status,'incomplete');
-    await writeFile(binary,source.replace('process.stdout.write("unsat\\n");process.exitCode=7;',
-      'console.error("out of memory");process.exitCode=1;'));
+    await writeFile(binary,solver('echo "out of memory" >&2; exit 1'));
     const exhausted=await proveWithZ3(compiler,request(falseLaw),{binary});
     assert.equal(exhausted.solverEvidence[0].outcome,'out-of-memory');
     assert.equal(exhausted.solverEvidence[0].status,'incomplete');

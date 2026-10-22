@@ -61,6 +61,17 @@
       }
     },
     {
+      "match": "^[ \\t]*(prove)[ \\t]+(by[ \\t]+(?:unfolding[ \\t]+step[ \\t]+by[ \\t]+step|solver[ \\t]+recursion|induction[ \\t]+on)|without[ \\t]+induction)\\b",
+      "captures": {
+        "1": {
+          "name": "keyword.other.proof.lawspec"
+        },
+        "2": {
+          "name": "keyword.other.proof.lawspec"
+        }
+      }
+    },
+    {
       "match": "^[ \\t]*(laws[ \\t]+for)\\b",
       "captures": {
         "1": {

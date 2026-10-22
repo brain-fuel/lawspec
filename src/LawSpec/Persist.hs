@@ -54,5 +54,6 @@ instance Binary S.ShareScope
 instance Binary S.StrategyDeclaration
 instance Binary S.Gen
 instance Binary S.HarnessSetting
+instance Binary S.Proving
 instance Binary S.HarnessPlan
 instance Binary S.HarnessWitness

@@ -8,11 +8,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `lawspec prove` proves laws by induction. A law's harness says
+  `prove by induction on xs`, citing other laws with `using "|a|`; with no
+  setting, a law with one list-like input gets one try. Each case is its own
+  task with its own receipt, a law rests on the laws it cites, and a case
+  whose model the law survives reports that the induction hypothesis is too
+  weak. The harness can also choose how recursion is unfolded:
+  `prove by unfolding step by step [up to n times]`,
+  `prove by solver recursion`, or both in turn (the default). Unproved laws
+  over recursive definitions get a counterexample search, so obviously false
+  ones are refuted.
 - `lawspec prove` handles laws over recursive definitions. Each task gives Z3
-  the definitions as guarded axioms with fuel (as Why3 and Dafny do), and as
-  `define-fun-rec`; the host tries the axioms first, then `define-fun-rec`,
-  and the evidence records which one proved the law and every attempt.
-  Laws that need induction stay incomplete.
+  the definitions unfolded step by step (guarded axioms with fuel, as Why3
+  and Dafny do) and by solver recursion (`define-fun-rec`); the host tries
+  them in turn, and the evidence records which one proved the law and every
+  attempt.
 - The laws about a function are checked together: completeness, overlap,
   conflict and vacuity, on by default. A `laws for f are ... end laws` block
   states claims (`complete over`, `without overlap`, `without conflict`) and

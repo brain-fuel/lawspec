@@ -180,6 +180,7 @@ main = hspec $ do
   CounterexampleSpec.test_counterexamplesAreConfirmedByTheEvaluator
   SmtDataSpec.test_smtDataTasks
   SmtRecursionSpec.test_smtRecursion
+  SmtRecursionSpec.test_smtInduction
   RefutedStatusSpec.test_refutedLawsAreReportedAndFail
   LawAnalysisSpec.test_lawSetsAreCheckedTogether
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs

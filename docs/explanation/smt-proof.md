@@ -141,24 +141,35 @@ task. Only definitions that pass the mandatory totality check reach Z3, so a
 definition that does not terminate is refused before any task exists. The
 task gives Z3 the definition in one of two ways:
 
-- **Guarded axioms with fuel** (`guarded-axioms`). The definition is a
-  declared function with a defining axiom, as Why3's `eliminate_recursion`
-  does. The axiom holds only on the definition's domain: its argument types
-  and preconditions. As in Dafny, each call carries fuel. A call in the law
-  starts at fuel 2, each unfolding uses one, and at zero the function is
-  left unknown. The task records its fuel.
-- **`define-fun-rec`** (`define-fun-rec`). The same guarded body, unfolded by
-  Z3 itself.
+- **Unfolding step by step** (`guarded-axioms` in the task). The definition
+  is a declared function with a defining axiom, as Why3's
+  `eliminate_recursion` does. The axiom holds only on the definition's
+  domain: its argument types and preconditions. As in Dafny, each call
+  carries fuel. A call in the law starts at fuel 2, each unfolding uses one,
+  and at zero the call is left unknown. The task records its fuel.
+- **Solver recursion** (`define-fun-rec` in the task). The same guarded body,
+  unfolded by Z3 itself.
 
-Each task carries both. `lawspec prove` tries the axioms first, then
-`define-fun-rec`. The evidence names the encoding that proved the law, with
-each attempt and its outcome. The axioms prove laws that need a few
-unfoldings over any input, such as `count (Cons x xs) = 1 + count xs`.
-`define-fun-rec` proves laws over fixed inputs of any depth, such as
-`count [1, 2, 3] = 3`. A law that needs induction, such as
-`count (append xs ys) = count xs + count ys`, stays incomplete.
+By default each task carries both, and `lawspec prove` tries unfolding step
+by step first, then solver recursion. A law's harness can choose one, or set
+the fuel (see [proof settings](../reference/language/harness.md#proof-settings)).
+The evidence names, in plain words, the encoding that proved the law, with
+each attempt and its outcome; the task JSON keeps the SMT names. Unfolding
+step by step proves laws that need a few unfoldings over any input, such as
+`count (Cons x xs) = 1 + count xs`. Solver recursion proves laws over fixed
+inputs of any depth, such as `count [1, 2, 3] = 3`. Laws such as
+`count (append xs ys) = count xs + count ys` need induction (below).
 
-Two facts come from mandatory admission, not from Z3. On its domain, a
+A law that is not proved over recursive definitions also gets a
+counterexample search: Z3 unfolds the definitions freely there, and the
+evaluator checks any input it gives. So `count xs > 0` is refuted at
+`xs = []`. A law with no inputs, such as `count [1, 2] = 3`, is decided by the
+evaluator directly.
+
+Calls with fuel left are linked to the function, which is the same at every
+fuel; a hypothesis or cited law names that function, and where one does, the
+function unfolds once more. Two facts come from mandatory admission, not
+from Z3. On its domain, a
 recursive definition is defined, and its result lies in its result type.
 Admission proved both by induction over the calls it proved terminate. A call
 is defined when its arguments are in the domain and its runtime
@@ -168,6 +179,37 @@ follows the axioms' patterns and stops at the fuel. A model from such a task
 may rest on an unfolding that stopped early. The evaluator checks it as
 usual. If the evaluator does not confirm it, the law stays incomplete, and no
 `proof-translation` error is reported.
+
+### Induction
+
+`prove by induction on xs` proves a law by induction on its input `xs`, as
+Why3's `induction_ty_lex` and `induction_int_lex` do:
+
+- for a data type, one case for each constructor, with the law assumed for
+  each field of the same type (`tail` in `Cons head tail`);
+- for a whole number or a bounded integer, the lower bound, and then `n` with
+  the law assumed at `n - 1`.
+
+In each case the law is assumed for the smaller value at the case's other
+inputs, and for all of them. Each case is its own task with its own receipt,
+tried in the law's encodings in turn. The law is `proved` only when every case
+is. A case Z3 cannot decide leaves the law `incomplete`, and the reason names
+the case.
+
+`using "|a|` assumes the cited law in every case. The citing law's evidence
+rests on the cited law's: while a cited law is not proved (or checked on every
+input), the citing law is `incomplete`, and the reason says which law it waits
+for. Cited laws must be laws of the same unit, and cycles are refused.
+
+When Z3 finds a model of a case, the evaluator checks the law at the model's
+input. If the law fails there, it is `refuted`. If it holds, the model fails
+only the case: the induction hypothesis is too weak, as Why3 reports it. The
+law stays `incomplete` and the reason says so.
+
+Assumed laws (hypotheses and cited laws) name their triggers: the calls to
+recursive definitions they make, the outermost first, so Z3 uses them as
+rewrites from left to right and never matches a well-formedness test, which
+every datum would match.
 
 ## Encodings and receipts
 

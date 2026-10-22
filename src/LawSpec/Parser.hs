@@ -2895,8 +2895,23 @@ harnessSettingP = choice
   , KnownFailingSetting <$> (try (keyword "known" *> keyword "failing") *> str)
   , TimeoutSetting <$> (keyword "timeout" *> durationP)
   , RepeatSetting <$> (keyword "repeat" *> positive "repeat" <* optional (keyword "times"))
-  , RetryFlakySetting <$> (try (keyword "retry" *> keyword "flaky") *> positive "retry flaky" <* optional (keyword "times")) ]
+  , RetryFlakySetting <$> (try (keyword "retry" *> keyword "flaky") *> positive "retry flaky" <* optional (keyword "times"))
+  -- An expression node, so the formatter indents its continued lines.
+  , ProveSetting <$> sourceNode "expression.prove" (const Nothing) (keyword "prove" *> provingP) ]
   where
+    provingP = choice
+      [ ProveWithoutInduction <$ (keyword "without" *> keyword "induction")
+      , keyword "by" *> choice
+          [ do keyword "unfolding" *> keyword "step" *> keyword "by" *> keyword "step"
+               fuel <- optional (keyword "up" *> keyword "to" *> positive "unfolding step by step up to" <* keyword "times")
+               solver <- option False (True <$ (symbol "," *> keyword "then" *> keyword "solver" *> keyword "recursion"))
+               pure (ProveByUnfolding fuel solver)
+          , ProveBySolverRecursion <$ (keyword "solver" *> keyword "recursion")
+          , do keyword "induction" *> keyword "on"
+               input <- ident
+               lemmas <- option [] (keyword "using" *> (lawNameP `sepBy1` symbol ","))
+               pure (ProveByInduction input lemmas)
+          , fail "prove by takes unfolding step by step, solver recursion or induction on an input" ] ]
     tagP = lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> oneOf ("_-" :: String)))
     positive what = do
       n <- lexeme L.decimal

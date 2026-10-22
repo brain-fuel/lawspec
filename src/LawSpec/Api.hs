@@ -26,6 +26,7 @@ import LawSpec.Packages
 import LawSpec.Discharge (dischargeReporting, refutations, bindingEvidence, defaultHandlerEvidence, showValue)
 import qualified LawSpec.Core.Counterexample as Counterexample
 import qualified LawSpec.Core.LawAnalysis as Analysis
+import LawSpec.ProofSettings (proofSettings)
 import LawSpec.LawClaims (elaborateClaims, Expiry(..), analysisEvidence, analysisTaskViews, settleAnalysis)
 import qualified LawSpec.Core.LawTasks as Tasks
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
@@ -80,7 +81,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
               then either failure (\tasks -> case result [] of
                 Object response -> withAnalysisTasks us core analysisRows
                   (Object (withCounterexampleChecks core tasks (KM.insert "proofTasks" (toJSON tasks) response)))
-                response -> response) (Smt.proofTasks core)
+                response -> response) (proofSettings us >>= \settings -> Smt.proofTasksWith settings core)
               else case result [] of
                 Object response -> Object (KM.insert "proofTasks" (toJSON ([] :: [Smt.ProofTask])) response)
                 response -> response
@@ -320,7 +321,7 @@ stagesWithInput canonical capture project packages sources bits settings native 
         Left message -> Left (failure [Diagnostic "native-binding" message Nothing])
         Right bindings -> case dischargeReporting verification core of
           Left ds -> Left (failure ds)
-          Right evidence -> case elaborateClaims bits us core of
+          Right evidence -> case elaborateClaims bits us core <* proofSettings us of
             Left ds -> Left (failure ds)
             -- The laws about each function, checked together, by default
             -- whenever proof or exhaustive checking is selected.

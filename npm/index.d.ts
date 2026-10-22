@@ -615,6 +615,7 @@ export type ProofTask =
       counterexampleUnsupported?: string;
       recursion?: Recursion;
       alternative?: AlternativeTask;
+      induction?: InductionPlan;
     } |
     {
       encoding: 'lawspec-smtlib-v1' | 'lawspec-smtlib-v2';
@@ -631,6 +632,31 @@ export interface AlternativeTask {
   recursion: Recursion;
   script: string;
   taskFingerprint: string;
+}
+
+export type InductionPlan =
+    {
+      on: string;
+      asked: boolean;
+      using: string[];
+      status: 'ready';
+      cases: InductionCase[];
+    } |
+    {
+      on: string;
+      asked: boolean;
+      using: string[];
+      status: 'unsupported';
+      reason: string;
+    };
+
+export interface InductionCase {
+  case: string;
+  script: string;
+  recursion: Recursion;
+  taskFingerprint: string;
+  inputs: string[];
+  alternative?: AlternativeTask;
 }
 
 export type Recursion =

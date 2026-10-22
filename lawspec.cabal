@@ -703,6 +703,7 @@ library
       LawSpec.PortableTestHelpers
       LawSpec.Prelude
       LawSpec.PreludeNames
+      LawSpec.ProofSettings
       LawSpec.Public
       LawSpec.PythonData
       LawSpec.PythonDefinitions

@@ -83,10 +83,13 @@ function execute(binary,args,initial,config,interactive=false,finishFor=followUp
   });
 }
 
+const versionProbeMs=30000;
 async function prover(config) {
   const binary=await executable(config.binary);
   const binaryFingerprint=hash(await readFile(binary));
-  const versionRun=await execute(binary,['-version'],'',config);
+  // The identity probe has its own bound: the task limit is for a solver's
+  // work on a task, and the probe does none.
+  const versionRun=await execute(binary,['-version'],'',{...config,timeoutMs:versionProbeMs});
   const version=versionRun.stdout.trim();
   if(versionRun.exitCode!==0||versionRun.error||versionRun.timeout||versionRun.outputLimit||
       !/^Z3 version [0-9]+\.[0-9]+/.test(version))
@@ -104,32 +107,71 @@ function validTask(task) {
     proofTaskFingerprint(task)===task.taskFingerprint;
 }
 
-// A task over recursive definitions names its encoding (guarded axioms with
-// fuel) and carries the same law with define-fun-rec. When nothing selects
-// one, the host tries both, axioms first; the evidence records which one
-// proved the law, and each attempt.
-const recursionName=recursion=>recursion?.encoding==='guarded-axioms'?`guarded axioms with fuel ${recursion.fuel}`:recursion?.encoding??'';
+// A task over recursive definitions names its encoding and carries the
+// other one: by unfolding step by step (guarded axioms with fuel, in the
+// IR) and by solver recursion (define-fun-rec). The host tries them in the
+// order the law's harness gives, by default unfolding first. A law may also
+// be proved by induction on an input: each case is its own task, tried in
+// the same encodings, and the law is proved only when every case is. The
+// evidence records which encoding proved the law, and every attempt.
+// Programmers read plain words; the IR keeps the SMT names.
+const recursionName=recursion=>recursion?.encoding==='guarded-axioms'?`unfolding step by step up to ${recursion.fuel} times`:
+  recursion?.encoding==='define-fun-rec'?'solver recursion':'';
 async function solve(task,selected,config) {
   const first=await attempt(task,task.script,task.taskFingerprint,selected,config);
-  if(!task.recursion||first.status==='unsupported'||(first.status==='incomplete'&&first.outcome==='failed'&&!first.prover))return first;
+  if(!task.recursion&&!task.induction)return first;
+  if(first.status==='unsupported'||(first.status==='incomplete'&&first.outcome==='failed'&&!first.prover))return first;
   const tried=[{recursion:task.recursion,taskFingerprint:task.taskFingerprint,outcome:first.outcome,runFingerprint:first.runFingerprint,elapsedMs:first.elapsedMs}];
+  if(first.outcome==='unsat')
+    return {...first,recursion:task.recursion,attempts:tried,reason:first.reason+(task.recursion?'; by '+recursionName(task.recursion):'')};
+  let best={...first,recursion:task.recursion,attempts:tried};
   const alternative=task.alternative;
-  if(first.outcome==='unsat'||!alternative||selected.error)
-    return {...first,recursion:task.recursion,attempts:tried,reason:first.reason+(first.outcome==='unsat'?'; by '+recursionName(task.recursion):'')};
-  if(typeof alternative.script!=='string'||proofTaskFingerprint({...task,script:alternative.script})!==alternative.taskFingerprint)
-    return {...first,recursion:task.recursion,attempts:tried,reason:first.reason+'; the alternative encoding\'s binding is invalid'};
-  const second=await attempt(task,alternative.script,alternative.taskFingerprint,selected,config);
-  const attempts=[...tried,{recursion:alternative.recursion,taskFingerprint:alternative.taskFingerprint,outcome:second.outcome,
-    runFingerprint:second.runFingerprint,elapsedMs:second.elapsedMs}];
-  if(second.outcome==='unsat')
-    return {...second,taskFingerprint:alternative.taskFingerprint,recursion:alternative.recursion,attempts,reason:second.reason+'; by '+recursionName(alternative.recursion)+
-      ' after '+recursionName(task.recursion)+' gave '+first.outcome};
-  // Neither proved it: keep the first attempt, whose model (if any) the
-  // evaluator checks.
-  return {...first,recursion:task.recursion,attempts,reason:first.reason+'; '+recursionName(alternative.recursion)+' gave '+second.outcome};
+  if(alternative&&!selected.error) {
+    if(typeof alternative.script!=='string'||proofTaskFingerprint({...task,script:alternative.script})!==alternative.taskFingerprint)
+      return {...best,reason:first.reason+'; the alternative encoding\'s binding is invalid'};
+    const second=await attempt(task,alternative.script,alternative.taskFingerprint,selected,config);
+    tried.push({recursion:alternative.recursion,taskFingerprint:alternative.taskFingerprint,outcome:second.outcome,
+      runFingerprint:second.runFingerprint,elapsedMs:second.elapsedMs});
+    if(second.outcome==='unsat')
+      return {...second,taskFingerprint:alternative.taskFingerprint,recursion:alternative.recursion,attempts:tried,
+        reason:second.reason+'; by '+recursionName(alternative.recursion)+' after '+recursionName(task.recursion)+' gave '+first.outcome};
+    best={...best,reason:first.reason+'; '+recursionName(alternative.recursion)+' gave '+second.outcome};
+  }
+  const induction=task.induction;
+  if(!induction||selected.error)return best;
+  if(induction.status!=='ready')
+    return {...best,induction:{on:induction.on,using:induction.using,cases:[]},reason:best.reason+'; induction on '+induction.on+' is unsupported: '+induction.reason};
+  const cases=[];
+  for(const item of induction.cases) {
+    const bound=caseTask=>proofTaskFingerprint({...task,script:caseTask.script})===caseTask.taskFingerprint;
+    if(typeof item.script!=='string'||!bound(item)) {
+      cases.push({case:item.case,outcome:'failed',reason:'the case\'s binding is invalid'});continue;
+    }
+    const runs=[{recursion:item.recursion,script:item.script,taskFingerprint:item.taskFingerprint},
+      ...(item.alternative&&typeof item.alternative.script==='string'&&bound(item.alternative)?
+        [{recursion:item.alternative.recursion,script:item.alternative.script,taskFingerprint:item.alternative.taskFingerprint}]:[])];
+    const receipt={case:item.case,attempts:[]};
+    for(const run of runs) {
+      const done=await attempt(task,run.script,run.taskFingerprint,selected,config,item.inputs);
+      receipt.attempts.push({recursion:run.recursion,taskFingerprint:run.taskFingerprint,outcome:done.outcome,
+        runFingerprint:done.runFingerprint,elapsedMs:done.elapsedMs});
+      Object.assign(receipt,{outcome:done.outcome,recursion:run.recursion,taskFingerprint:run.taskFingerprint,runFingerprint:done.runFingerprint});
+      if(done.values&&!receipt.values)receipt.values=done.values;
+      if(done.outcome==='unsat')break;
+    }
+    cases.push(receipt);
+  }
+  const record={on:induction.on,using:induction.using,asked:induction.asked,cases};
+  if(cases.every(c=>c.outcome==='unsat'))
+    return {...best,status:'proved',outcome:'unsat',induction:record,model:undefined,modelValidated:undefined,
+      reason:'Z3 established this law by induction on '+induction.on+', every case: '+cases.map(c=>c.case+' by '+recursionName(c.recursion)).join(', ')+
+        (induction.using.length?'; citing '+induction.using.map(law=>law.split('::law::').pop()).join(', '):'')+
+        '; trusts the typed translation and selected solver, without a kernel-checked certificate'};
+  const open=cases.filter(c=>c.outcome!=='unsat');
+  return {...best,induction:record,reason:best.reason+'; induction on '+induction.on+': '+open.map(c=>'case '+c.case+' gave '+c.outcome).join(', ')};
 }
 
-async function attempt(task,script,taskFingerprint,selected,config) {
+async function attempt(task,script,taskFingerprint,selected,config,names=null) {
   const common={owner:task.owner,declaration:task.declaration,at:task.at,
     programFingerprint:task.programFingerprint,taskFingerprint:task.taskFingerprint,
     encoding:task.encoding,machineBits:task.machineBits,configuration:config};
@@ -140,7 +182,10 @@ async function attempt(task,script,taskFingerprint,selected,config) {
   const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
     `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+
     script+'(check-sat)\n';
-  const run=await execute(selected.binary,selected.args,input,config,true);
+  // An induction case asks for the law's inputs, so its model can be
+  // checked as the law's counterexample.
+  const run=await execute(selected.binary,selected.args,input,config,true,names?.length?
+    token=>token==='sat'?`(get-value (${names.join(' ')}))\n(exit)\n`:followUp(token):followUp);
   let unchanged=false;
   try {unchanged=hash(await readFile(selected.binary))===selected.binaryFingerprint;} catch {}
   const metadata={...common,prover:{name:'z3',version:selected.version,
@@ -164,8 +209,9 @@ async function attempt(task,script,taskFingerprint,selected,config) {
     if(/:reason-unknown\s+"timeout"/.test(run.stdout))outcome='timeout';
     else if(/:reason-unknown\s+"max\. resource limit exceeded"/.test(run.stdout))outcome='resource-limit';
   }
+  const model=run.outcome==='sat'?run.stdout.slice(run.stdout.indexOf('\n')+1).trim():null;
   return {...metadata,status:outcome==='unsat'?'proved':'incomplete',outcome,reason,
-    ...(run.outcome==='sat'?{model:run.stdout.slice(run.stdout.indexOf('\n')+1).trim(),modelValidated:false}:{})};
+    ...(model!==null&&!names?.length?{model,modelValidated:false}:{}),...(model!==null&&names?.length?{values:model}:{})};
 }
 
 // A satisfiable task's model is not a counterexample. Z3 runs the task's
@@ -178,6 +224,8 @@ async function counterexampleValues(task,selected,config) {
   if(fingerprint(['lawspec-smtlib-v2',task.programFingerprint,String(task.machineBits),task.owner,task.declaration,
     query.script])!==query.fingerprint)return null;
   const names=query.inputs.map(input=>input.name);
+  // A law with no inputs needs no search: the evaluator decides it.
+  if(!names.length)return {outcome:'sat',values:'()',fingerprint:query.fingerprint,runFingerprint:null};
   const input=`(set-option :print-success false)\n(set-option :produce-models true)\n`+
     `(set-option :random-seed ${config.seed})\n(set-option :rlimit ${config.resourceLimit})\n`+
     query.script+'(check-sat)\n';
@@ -205,35 +253,68 @@ export async function proveWithZ3(compiler,request,options={}) {
   const solverEvidence=[];
   for(const task of tasks)solverEvidence.push(await solve(task,selected,config));
   const diagnostics=[...(result.diagnostics??[])];
+  // Values to check as each unproved law's counterexample: the
+  // counterexample query's (run whenever a law's task was satisfiable, and
+  // for every unproved law over recursive definitions, since Z3 unfolds
+  // freely there), then each induction case's model.
   const searched=[];
   for(const [index,item] of solverEvidence.entries()) {
-    if(item.outcome!=='sat')continue;
-    const found=await counterexampleValues(tasks[index],selected,config);
-    if(found?.outcome==='sat')searched.push({index,found});
-    else if(found)solverEvidence[index]={...item,reason:item.reason+'; the counterexample query gave no values ('+found.outcome+')'};
+    const task=tasks[index];
+    if(['proved','unsupported'].includes(item.status)||selected.error)continue;
+    if(item.outcome==='sat'||task.recursion) {
+      const found=await counterexampleValues(task,selected,config);
+      if(found?.outcome==='sat')searched.push({index,found});
+      else if(found&&item.outcome==='sat')solverEvidence[index]={...solverEvidence[index],reason:item.reason+'; the counterexample query gave no values ('+found.outcome+')'};
+    }
+    for(const c of item.induction?.cases??[])
+      if(c.outcome==='sat'&&c.values)searched.push({index,found:{outcome:'sat',values:c.values,fingerprint:c.taskFingerprint,runFingerprint:c.runFingerprint},inductionCase:c.case});
   }
   if(searched.length) {
     const checked=await compiler.proofTasks({...request,proofCounterexamples:searched.map(({index,found})=>({
       owner:solverEvidence[index].owner,declaration:solverEvidence[index].declaration,
-      taskFingerprint:solverEvidence[index].taskFingerprint,values:found.values}))});
+      taskFingerprint:tasks[index].taskFingerprint,values:found.values}))});
     const checks=checked.counterexampleChecks??[];
-    searched.forEach(({index,found},position)=>{
+    searched.forEach(({index,found,inductionCase},position)=>{
       const item=solverEvidence[index],check=checks[position];
-      if(!check||check.owner!==item.owner||check.declaration!==item.declaration)return;
+      if(!check||check.owner!==item.owner||check.declaration!==item.declaration||item.status==='refuted')return;
       const counterexample={inputs:check.inputs??[],values:found.values,fingerprint:found.fingerprint,
         runFingerprint:found.runFingerprint,check:check.status};
       if(check.status==='refuted') {
         const shown=(check.inputs??[]).map(input=>input.name+' = '+input.value).join(', ');
         solverEvidence[index]={...item,status:'refuted',modelValidated:true,counterexample,
-          reason:'Z3 found '+(shown?'the input '+shown:'that the law fails')+'; the reference evaluator confirms it: '+check.reason};
-      } else if(check.status==='model-not-confirmed'&&item.recursion) {
-        // Unfolding stops at its fuel, so such a model need not be one of
-        // the real definitions: incomplete, not a translation error.
-        solverEvidence[index]={...item,counterexample,reason:'Z3 gave a model the reference evaluator does not confirm; recursive definitions were unfolded only to their fuel: '+check.reason};
+          reason:(found.runFingerprint?'Z3 found ':'the law has no inputs; ')+(shown?'the input '+shown:'that the law fails')+
+            (inductionCase?' in case '+inductionCase+' of the induction':'')+'; the reference evaluator confirms it: '+check.reason};
+      } else if(inductionCase&&check.status==='model-not-confirmed') {
+        // Why3's SW: the case fails only under its hypothesis, not the law.
+        solverEvidence[index]={...item,counterexample,
+          reason:item.reason+'; in case '+inductionCase+' the induction hypothesis is too weak: the law holds at Z3\'s input, '+check.reason};
+      } else if(check.status==='model-not-confirmed'&&(item.recursion||tasks[index].recursion)) {
+        // Unfolding may stop early, so such a model need not be one of the
+        // real definitions: incomplete, not a translation error.
+        solverEvidence[index]={...item,counterexample,reason:item.reason+'; Z3 gave a model the reference evaluator does not confirm, after unfolding that may have stopped early: '+check.reason};
       } else if(check.status==='model-not-confirmed') {
         solverEvidence[index]={...item,counterexample,reason:'Z3 gave a model the reference evaluator does not confirm: '+check.reason};
         diagnostics.push({code:'proof-translation',message:`Z3's model for ${item.declaration} is not a counterexample: ${check.reason}`,at:item.at});
-      } else solverEvidence[index]={...item,counterexample,reason:item.reason+'; '+check.reason};
+      } else if(item.outcome==='sat')solverEvidence[index]={...item,counterexample,reason:item.reason+'; '+check.reason};
+    });
+  }
+  // A law proved by induction rests on the laws it cites: while one of them
+  // is not proved (or checked on every input), neither is the law.
+  const current=new Map();
+  for(const row of result.evidence??[])if(row.stage==='law')current.set(row.declaration,row.status);
+  for(const item of solverEvidence)if(item.declaration&&!item.kind)current.set(item.declaration,item.status==='proved'?'proved':
+    ['proved','exhaustively-checked'].includes(current.get(item.declaration))?current.get(item.declaration):item.status);
+  let changed=true;
+  while(changed) {
+    changed=false;
+    solverEvidence.forEach((item,index)=>{
+      const cited=item.induction?.using??[];
+      if(item.status!=='proved'||!cited.length)return;
+      const open=cited.filter(law=>!['proved','exhaustively-checked'].includes(current.get(law)));
+      if(!open.length)return;
+      solverEvidence[index]={...item,status:'incomplete',reason:item.reason+'; it cites '+
+        open.map(law=>law.split('::law::').pop()+', which is '+(current.get(law)??'not proved')).join(', ')};
+      current.set(item.declaration,'incomplete');changed=true;
     });
   }
   const evidence=(result.evidence??[]).map(row=>{

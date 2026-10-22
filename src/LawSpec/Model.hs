@@ -238,6 +238,17 @@ data HarnessSetting
   | TimeoutSetting Integer              -- milliseconds
   | RepeatSetting Integer
   | RetryFlakySetting Integer
+  | ProveSetting Proving                -- how lawspec prove proves the law
+  deriving (Eq, Show, Generic)
+
+-- | prove by ... : how Z3 is given the recursive definitions a law calls,
+-- and whether it proves the law by induction. Plain words here; the tasks
+-- name the SMT encodings (LawSpec.Core.Smt).
+data Proving
+  = ProveByUnfolding (Maybe Integer) Bool   -- step by step [up to n times] [, then solver recursion]
+  | ProveBySolverRecursion
+  | ProveByInduction String [String]        -- on input, using cited laws
+  | ProveWithoutInduction
   deriving (Eq, Show, Generic)
 
 -- One law's harness, merged from the unit defaults and its `for` blocks:

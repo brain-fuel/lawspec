@@ -1,7 +1,8 @@
 -- | Typed SMT-LIB tasks, with no solver or host IO in the compiler. The host
 -- executes these tasks using an established prover. ref:DEC-typed-core-boundary
 module LawSpec.Core.Smt (ProofTask(..), Encoding(..), Recursion(..), CounterexampleQuery(..), encodingName, proofTasks, taskFingerprint
-  , alternativeFingerprint, recursionView, defaultFuel
+  , alternativeFingerprint, recursionView, defaultFuel, proofTasksWith, LawProof(..), Unfolding(..), Induction(..)
+  , defaultLawProof, InductionPlan(..), InductionCase(..), caseFingerprint
   , counterexampleFingerprint, outerQuantifiers, Catalog, catalog, instantiate, Ground(..), groundQuery) where
 
 import Control.Monad (unless, when, foldM, forM, forM_)
@@ -9,7 +10,7 @@ import Control.Monad.State.Strict
 import Data.Aeson (ToJSON(..), Value, object, (.=))
 import qualified Data.Map.Strict as M
 import Data.Graph (SCC(..), stronglyConnComp, flattenSCCs)
-import Data.List (intercalate, isPrefixOf)
+import Data.List (intercalate, isInfixOf, isPrefixOf)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString as B
@@ -38,7 +39,40 @@ data ProofTask = ProofTask
   -- prove it. ref:DEC-smt-recursive-definitions
   , taskRecursion :: Maybe Recursion
   , taskAlternative :: Maybe (Recursion, String)
+  -- Induction on one input: a task per case, each with its own receipt.
+  -- ref:DEC-smt-induction
+  , taskInduction :: Maybe InductionPlan
   } deriving (Eq, Show)
+
+-- | How lawspec prove proves a law, from its harness (LawSpec.ProofSettings):
+-- the encoding of recursive definitions, and induction.
+data LawProof = LawProof { proofUnfolding :: Unfolding, proofInduction :: Induction } deriving (Eq, Show)
+
+-- | prove by unfolding step by step [up to n times] (GuardedAxioms n),
+-- prove by solver recursion (DefineFunRec), or both in turn: the default.
+data Unfolding = Unfold Int | SolverRecursion | UnfoldThenSolver Int deriving (Eq, Show)
+
+-- | When nothing is said, one try on the law's single structural input;
+-- or none; or on a named input, citing proved laws as lemmas.
+data Induction = DefaultInduction | NoInduction | InductionOn String [Id] deriving (Eq, Show)
+
+defaultLawProof :: LawProof
+defaultLawProof = LawProof (UnfoldThenSolver defaultFuel) DefaultInduction
+
+-- | Induction on one of the law's inputs: whether the harness asked for it
+-- (else it is the default try), the cited laws, and the cases, each a
+-- task whose inputs are the law's, so a model is checked as the law's
+-- counterexample.
+data InductionPlan = InductionPlan
+  { inductionOn :: String, inductionAsked :: Bool, inductionLemmas :: [Id]
+  , inductionCases :: Either String [InductionCase] } deriving (Eq, Show)
+
+-- | A case, in the law's first encoding, and in the other one when the law
+-- tries both (as for the law itself).
+data InductionCase = InductionCase
+  { caseName :: String, caseScript :: String, caseInputs :: [String]
+  , caseRecursion :: Recursion, caseAlternative :: Maybe (Recursion, String) }
+  deriving (Eq, Show)
 
 -- | How recursive definitions reach Z3 (lawspec-smtlib-v2):
 --
@@ -106,7 +140,18 @@ instance ToJSON ProofTask where
         [ "recursion" .= recursionView recursion | Just recursion <- [taskRecursion task] ] ++
         [ "alternative" .= object [ "recursion" .= recursionView recursion, "script" .= script
                                   , "taskFingerprint" .= alternativeFingerprint task script ]
-        | Just (recursion, script) <- [taskAlternative task] ]
+        | Just (recursion, script) <- [taskAlternative task] ] ++
+        [ "induction" .= object ([ "on" .= inductionOn plan, "asked" .= inductionAsked plan
+                                 , "using" .= map idText (inductionLemmas plan) ] ++
+            case inductionCases plan of
+              Left reason -> ["status" .= ("unsupported" :: String), "reason" .= reason]
+              Right cases -> ["status" .= ("ready" :: String), "cases" .=
+                [ object ([ "case" .= caseName c, "script" .= caseScript c, "recursion" .= recursionView (caseRecursion c)
+                          , "taskFingerprint" .= caseFingerprint task c, "inputs" .= caseInputs c ] ++
+                          [ "alternative" .= object [ "recursion" .= recursionView mode, "script" .= script
+                                                    , "taskFingerprint" .= alternativeFingerprint task script ]
+                          | Just (mode, script) <- [caseAlternative c] ]) | c <- cases ]])
+        | Just plan <- [taskInduction task] ]
 
 taskFingerprint :: ProofTask -> String
 taskFingerprint task = digestHex (digestString (concatMap frame
@@ -118,6 +163,10 @@ taskFingerprint task = digestHex (digestString (concatMap frame
 alternativeFingerprint :: ProofTask -> String -> String
 alternativeFingerprint task script = taskFingerprint task{taskQuery = Right script}
 
+-- | An induction case's binding: the task's, with the case's script.
+caseFingerprint :: ProofTask -> InductionCase -> String
+caseFingerprint task c = taskFingerprint task{taskQuery = Right (caseScript c)}
+
 -- | The counterexample query's own binding, framed as a task's is.
 counterexampleFingerprint :: ProofTask -> CounterexampleQuery -> String
 counterexampleFingerprint task query = digestHex (digestString (concatMap frame
@@ -126,9 +175,15 @@ counterexampleFingerprint task query = digestHex (digestString (concatMap frame
   where frame value = show (B.length (T.encodeUtf8 (T.pack value))) ++ ":" ++ value
 
 proofTasks :: Program -> Either [Diagnostic] [ProofTask]
-proofTasks program = do
+proofTasks = proofTasksWith M.empty
+
+-- | Each law's tasks, proved as its harness says (defaultLawProof when it
+-- says nothing).
+proofTasksWith :: M.Map Id LawProof -> Program -> Either [Diagnostic] [ProofTask]
+proofTasksWith settings program = do
   validateProgram program
   let fingerprint = digestHex (digest (BL.toStrict (Binary.encode program)))
+      lawsById = M.fromList [(propertyId l, l) | u <- programUnits program, l <- unitProperties u]
   pure [ProofTask (unitId owner) (propertyId law) (propertyLocation law)
           fingerprint (programMachineBits program) (scriptOf <$> task)
           -- A refused task names v1, the encoding that refused it.
@@ -136,9 +191,30 @@ proofTasks program = do
           (either Left (const (counterexampleQuery program law)) task)
           (either (const Nothing) recursionOf task)
           (either (const Nothing) alternativeOf task)
+          (either (const Nothing) (induction lawsById proof law . recursionOf) task)
        | owner <- programUnits program, law <- unitProperties owner
-       , let task = query program law]
+       , let proof = M.findWithDefault defaultLawProof (propertyId law) settings
+             task = query program (proofUnfolding proof) law]
   where
+    induction lawsById proof law recursion = case proofInduction proof of
+      NoInduction -> Nothing
+      InductionOn input lemmas -> Just (InductionPlan input True lemmas
+        (both (proofUnfolding proof) law input [l | i <- lemmas, Just l <- [M.lookup i lawsById]]))
+      -- One try, when the law calls a recursive definition and has a single
+      -- input of a recursive data type.
+      DefaultInduction -> case (recursion, structuralInputs program law) of
+        (Just _, [input]) -> Just (InductionPlan input False [] (both (proofUnfolding proof) law input []))
+        _ -> Nothing
+    -- Each case in the law's encodings, in order.
+    both unfolding law input lemmas = do
+      let (first, second) = case unfolding of
+            Unfold n -> (GuardedAxioms n, Nothing)
+            SolverRecursion -> (DefineFunRec, Nothing)
+            UnfoldThenSolver n -> (GuardedAxioms n, Just DefineFunRec)
+      cases <- inductionTasks program first law input lemmas
+      others <- traverse (\mode -> inductionTasks program mode law input lemmas) second
+      pure [ c { caseRecursion = first, caseAlternative = (\(mode, os) -> (mode, caseScript (os !! i))) <$> ((,) <$> second <*> others) }
+           | (i, c) <- zip [0 ..] cases ]
     encodingOf (e, _, _, _) = e
     scriptOf (_, script, _, _) = script
     recursionOf (_, _, r, _) = r
@@ -202,7 +278,9 @@ counterexampleQuery program law = do
       result <- proposition program [] scope rest
       prelude <- datatypePreamble program
       functions <- gets recursiveText
-      pure (rows, result, fst functions ++ prelude ++ snd functions)) (start SmtLibV2 program (GuardedAxioms defaultFuel))
+      -- Z3 unfolds recursive definitions itself here, and searches for a
+      -- model freely; the evaluator checks whatever it gives.
+      pure (rows, result, fst functions ++ prelude ++ snd functions)) ((start SmtLibV2 program DefineFunRec){bounded = False, ranges = False})
   let script = "; " ++ encodingName SmtLibV2 ++ "; counterexample: the law's outer inputs as constants\n" ++ prelude ++
         concat ["(declare-const " ++ name ++ " " ++ sortText s ++ ")\n" | (name, _, s, _) <- rows] ++
         concat ["(assert " ++ condition ++ ")\n" | (_, _, _, condition) <- rows] ++
@@ -225,10 +303,23 @@ data Work = Work { nextName :: Int, visited :: Int, required :: Encoding
                  -- declared so far and their text, and the fuel a call
                  -- passes where it is encoded.
                  , groups :: M.Map Id [Definition], recursion :: Recursion
-                 , declared :: [Id], functionText :: [String], fuel :: String }
+                 , declared :: [Id], functionText :: [String], fuel :: String
+                 -- Whether the solver options keep unfolding bounded, and
+                 -- whether each result is stated to lie in its type: both,
+                 -- except in a counterexample query, which searches for a
+                 -- model and states nothing it does not need.
+                 , bounded :: Bool, ranges :: Bool
+                 -- Assumed quantified laws (induction hypotheses, cited
+                 -- laws) name their triggers: the calls to recursive
+                 -- definitions made in them, so Z3 never picks a
+                 -- well-formedness test, which every datum matches.
+                 , patterned :: Bool, triggers :: [String], bound :: [String]
+                 -- A recursive call's value with its lets, and the same call
+                 -- written out, for triggers.
+                 , unshared :: M.Map String String }
 
 start :: Encoding -> Program -> Recursion -> Work
-start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode)
+start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveGroups program) mode [] [] (fuelLiteral mode) True True False [] [] M.empty
 
 -- | With recursive definitions, the solver options that keep unfolding
 -- bounded (as Dafny sets them: no model-based quantifier instantiation, so
@@ -236,6 +327,7 @@ start encoding program mode = Work 0 0 encoding [] (catalog program) (recursiveG
 recursiveText :: Work -> (String, String)
 recursiveText work
   | null (declared work) = ("", "")
+  | not (bounded work) = ("", concat (functionText work))
   | otherwise = ("(set-option :smt.mbqi false)\n(set-option :auto_config false)\n", concat (functionText work))
 
 fuelLiteral :: Recursion -> String
@@ -513,8 +605,8 @@ domain bits ty x = do
       _ -> "true"
     _ -> "true"
 
-query :: Program -> Property -> Either String (Encoding, String, Maybe Recursion, Maybe (Recursion, String))
-query program law = do
+query :: Program -> Unfolding -> Property -> Either String (Encoding, String, Maybe Recursion, Maybe (Recursion, String))
+query program unfolding law = do
   unless (propertyInputDomain law == UniversalDomain)
     (Left "SMT law tasks require the canonical universal input-domain policy")
   unless (null (propertyResources law)) (Left "SMT translation does not execute resources")
@@ -529,10 +621,14 @@ query program law = do
               fst (recursiveText work) ++ prelude ++ snd (recursiveText work) ++ "(assert " ++ no (positive certificate) ++ ")\n"
         unless (length (take 1048577 script) <= 1048576) (Left "SMT query exceeds its output budget")
         pure (required work, script, not (null (declared work)))
-  (encoding, script, recursive) <- encode (GuardedAxioms defaultFuel)
+  let (first, second) = case unfolding of
+        Unfold n -> (GuardedAxioms n, Nothing)
+        SolverRecursion -> (DefineFunRec, Nothing)
+        UnfoldThenSolver n -> (GuardedAxioms n, Just DefineFunRec)
+  (encoding, script, recursive) <- encode first
   if not recursive then pure (encoding, script, Nothing, Nothing) else do
-    (_, unfolded, _) <- encode DefineFunRec
-    pure (encoding, script, Just (GuardedAxioms defaultFuel), Just (DefineFunRec, unfolded))
+    alternative <- traverse (\mode -> (\(_, text, _) -> (mode, text)) <$> encode mode) second
+    pure (encoding, script, Just first, alternative)
 
 truth :: Term -> Certificate
 truth term = Certificate (both [defined term,value term]) (both [defined term,no (value term)])
@@ -570,11 +666,26 @@ proposition program active scope claim = do
       let binder=quantifiedBinder q
       s <- quantifierSortOf program (binderType binder)
       name <- fresh
+      before <- gets (length . triggers)
+      modify (\w -> w{bound = name : bound w})
       let local=M.insert (binderId binder) (Term s name "true") scope
       base <- lift (domain (programMachineBits program) (binderType binder) name)
       restricted <- restrictions program active local (quantifiedPredicates q)
       result <- proposition program active local body
-      let quantify keyword formula = "(" ++ keyword ++ " ((" ++ name ++ " " ++ sortText s ++ ")) " ++ formula ++ ")"
+      made <- gets (drop before . triggers)
+      inScope <- gets bound
+      modify (\w -> w{bound = drop 1 (bound w)})
+      let spaced c = if c `elem` ("()" :: String) then ' ' else c
+          -- A trigger may name only quantified variables, never a let's.
+          local token = case token of
+            'v' : digits -> not (null digits) && all (`elem` ("0123456789" :: String)) digits
+            _ -> False
+          closed t = all (`elem` inScope) (filter local (words (map spaced t)))
+          chosen = take 3 [t | (i, t) <- zip [0 :: Int ..] made, t `notElem` take i made, name `elem` words (map spaced t), closed t]
+          patterns = concat [" :pattern (" ++ t ++ ")" | t <- chosen]
+          quantify keyword formula
+            | null chosen = "(" ++ keyword ++ " ((" ++ name ++ " " ++ sortText s ++ ")) " ++ formula ++ ")"
+            | otherwise = "(" ++ keyword ++ " ((" ++ name ++ " " ++ sortText s ++ ")) (! " ++ formula ++ patterns ++ "))"
           allOf bodyCertificate = quantify "forall" (eitherOf [no base,negative restricted,
             both [positive restricted,bodyCertificate]])
           someOf bodyCertificate = quantify "exists" (both [base,positive restricted,bodyCertificate])
@@ -762,12 +873,27 @@ recursiveCall program active scope name arguments = do
   let stored=zipWith (\n term -> term{value=n,defined="true"}) names values
       bind text | null values = text
                 | otherwise = app "let" ["(" ++ unwords ["(" ++ n ++ " " ++ value term ++ ")" | (n,term)<-zip names values] ++ ")",text]
-      result = Term s (app (functionSymbol name) ([current | not (null current)] ++ names)) "true"
+      called | null current = app (functionSymbol name) names
+             | otherwise = app (fuelSymbol name) (current : names)
+      result = Term s called "true"
   valid <- contractChecks program active name stored result
+  wanted <- gets patterned
+  written <- gets unshared
+  let plainArguments = [M.findWithDefault (value v) (value v) written | v <- values]
+      outright | null current = app (functionSymbol name) plainArguments
+               | otherwise = app (fuelSymbol name) (current : plainArguments)
+  when (wanted && not (any (`elem` words (map spaced outright)) ["let", "ite", "forall", "exists"])) $
+    modify (\w -> w{triggers = triggers w ++ [outright], unshared = M.insert (bind (value result)) outright (unshared w)})
   pure result{value=bind (value result),defined=both (map defined values ++ [bind (both (ranges ++ valid))])}
+  where spaced c = if c `elem` ("()" :: String) then ' ' else c
 
-functionSymbol :: Id -> String
+-- | A recursive definition's function, the same at every fuel; and, with
+-- guarded axioms, the function at a given fuel, linked to it by an axiom.
+-- Hypotheses and cited laws use the first, so they match whatever fuel a
+-- term was unfolded at.
+functionSymbol, fuelSymbol :: Id -> String
 functionSymbol name = "|lawspec_function " ++ idText name ++ "|"
+fuelSymbol name = "|lawspec_function_fuel " ++ idText name ++ "|"
 
 -- | A group's functions, declared and defined once per task, after the
 -- groups their bodies call. Each definition holds where admission proved
@@ -806,26 +932,32 @@ declareGroup program group = do
           GuardedAxioms _ ->
             "(declare-datatypes ((" ++ fuelSort ++ " 0)) (((lawspec_fuel_zero) (lawspec_fuel_next (lawspec_fuel_previous " ++ fuelSort ++ ")))))\n"
           DefineFunRec -> ""
-    inRange <- forM members $ \(n, ps, ss, _, resultType, guard, _) -> do
-      let (call, fuelBinder) = case mode of
-            GuardedAxioms _ -> (app (functionSymbol n) (fuelVariable : map fst ps), "(" ++ fuelVariable ++ " " ++ fuelSort ++ ") ")
-            DefineFunRec -> (app (functionSymbol n) (map fst ps), "")
+    keepRanges <- gets ranges
+    inRange <- if not keepRanges then pure [] else forM members $ \(n, ps, ss, _, resultType, guard, _) -> do
+      let call = app (functionSymbol n) (map fst ps)
       range <- lift (domain bits resultType call)
-      pure ("(assert (forall (" ++ fuelBinder ++ binders ps ss ++ ") (! " ++ app "=>" [guard, range] ++ " :pattern (" ++ call ++ "))))\n")
+      pure ("(assert (forall (" ++ binders ps ss ++ ") (! " ++ app "=>" [guard, range] ++ " :pattern (" ++ call ++ "))))\n")
     let declarations = concat
           [ case mode of
-              GuardedAxioms _ -> "(declare-fun " ++ functionSymbol n ++ " (" ++ unwords (fuelSort : map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n"
+              GuardedAxioms _ -> "(declare-fun " ++ fuelSymbol n ++ " (" ++ unwords (fuelSort : map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n" ++
+                "(declare-fun " ++ functionSymbol n ++ " (" ++ unwords (map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n"
               DefineFunRec -> "(declare-fun " ++ outside n ++ " (" ++ unwords (map snd (typed ps ss)) ++ ") " ++ sortText r ++ ")\n"
           | (n, ps, ss, r, _, _, _) <- members ]
         definitions = case mode of
           GuardedAxioms _ -> concat
             [ "(assert (forall ((" ++ fuelVariable ++ " " ++ fuelSort ++ ") " ++ binders ps ss ++ ") (! " ++
                 app "=>" [guard, app "=" [app f next, body]] ++ " :pattern (" ++ app f next ++ "))))\n" ++
+              -- A call with fuel left is the function; the function, where
+              -- a hypothesis or a cited law names it, unfolds once. A call
+              -- with no fuel left links to nothing, so no unfolding makes
+              -- new calls without end.
               "(assert (forall ((" ++ fuelVariable ++ " " ++ fuelSort ++ ") " ++ binders ps ss ++ ") (! " ++
-                app "=" [app f next, app f here] ++ " :pattern (" ++ app f next ++ "))))\n"
-            | (n, ps, ss, _, _, guard, body) <- members, let f = functionSymbol n
-            , let here = fuelVariable : map fst ps
-                  next = app "lawspec_fuel_next" [fuelVariable] : map fst ps ]
+                app "=" [app f next, app (functionSymbol n) (map fst ps)] ++ " :pattern (" ++ app f next ++ "))))\n" ++
+              "(assert (forall (" ++ binders ps ss ++ ") (! " ++
+                app "=" [app (functionSymbol n) (map fst ps), app f (app "lawspec_fuel_next" ["lawspec_fuel_zero"] : map fst ps)] ++
+                " :pattern (" ++ app (functionSymbol n) (map fst ps) ++ "))))\n"
+            | (n, ps, ss, _, _, guard, body) <- members, let f = fuelSymbol n
+            , let next = app "lawspec_fuel_next" [fuelVariable] : map fst ps ]
           DefineFunRec ->
             "(define-funs-rec (" ++ unwords
               [ "(" ++ functionSymbol n ++ " (" ++ binders ps ss ++ ") " ++ sortText r ++ ")" | (n, ps, ss, r, _, _, _) <- members ] ++ ") (" ++
@@ -870,3 +1002,167 @@ inlineCall program active scope name arguments = do
     post <- restrictions program nested after (contractRuntimePostconditions contract)
     pure (both [positive pre,positive post])
   pure result{value=bind (value result),defined=both (map defined values ++ [bind (both (defined result:valid))])}
+
+-- | The law's inputs whose type is a recursive data type (List, a tree):
+-- the candidates for the default induction try.
+structuralInputs :: Program -> Property -> [String]
+structuralInputs program law =
+  [ binderName (quantifiedBinder q) | q <- fst (outerQuantifiers law), recursiveType (binderType (quantifiedBinder q)) ]
+  where
+    types = catalog program
+    recursiveType ty = case declarationOf types ty of
+      Right (declaration, table) -> or [instantiate table (binderType f) == ty | c <- dataConstructors declaration, f <- constructorFields c]
+      Left _ -> False
+
+-- | One case of induction on an input x.
+data Shape = DataCase DataConstructor [Type] | IntegerBase Integer | IntegerStep Integer
+
+-- | Induction on input x of law P, as Why3's induction_ty_lex and
+-- induction_int_lex do: structural for a data type (one case per
+-- constructor, a hypothesis for each field of x's own type), or from an
+-- integer type's lower bound (the bound, then n from n - 1). In each case
+-- the law's inputs are constants named as in its counterexample query, so a
+-- model of a case is checked as the law's counterexample; the goal is P
+-- there, the hypotheses are P at each smaller value (for those same other
+-- inputs, and for all of them), and each cited law is assumed.
+-- ref:DEC-smt-induction
+inductionTasks :: Program -> Recursion -> Property -> String -> [Property] -> Either String [InductionCase]
+inductionTasks program mode law input lemmas = do
+  let (outer, rest) = outerQuantifiers law
+      bits = programMachineBits program
+      types = catalog program
+  (index, q) <- case [(i, o) | (i, o) <- zip [0 :: Int ..] outer, binderName (quantifiedBinder o) == input] of
+    [found] -> Right found
+    _ -> Left ("induction on " ++ input ++ ": the law has no input " ++ input)
+  let x = quantifiedBinder q
+      ty = binderType x
+      others = [o | (i, o) <- zip [0 ..] outer, i /= index]
+      otherIds = map (binderId . quantifiedBinder) others
+      xName = "lawspec_input_" ++ show index
+  when (any (any (`elem` otherIds) . locals) (quantifiedPredicates q))
+    (Left ("induction on " ++ input ++ ": its refinement uses another input"))
+  shapes <- case (sort ty, ty) of
+    (Right IntegerSort, Constructor name []) -> case integerBounds bits name of
+      Just (lo, _) -> Right [IntegerBase lo, IntegerStep lo]
+      Nothing | name == "BigUInt" -> Right [IntegerBase 0, IntegerStep 0]
+      _ -> Left ("induction on " ++ input ++ ": an integer needs a lower bound to count down to")
+    _ -> case declarationOf types ty of
+      Right (declaration, table) -> Right [DataCase c [instantiate table (binderType f) | f <- constructorFields c] | c <- dataConstructors declaration]
+      Left _ -> Left ("induction on " ++ input ++ ": its type is neither a data type nor a bounded integer")
+  forM shapes $ \shape -> do
+    ((name, body), _) <- runStateT (do
+        rows <- forM (zip [0 :: Int ..] outer) $ \(j, o) -> do
+          s <- quantifierSortOf program (binderType (quantifiedBinder o))
+          pure ("lawspec_input_" ++ show j, o, s)
+        let scope = M.fromList [(binderId (quantifiedBinder o), Term s n "true") | (n, o, s) <- rows]
+        xSort <- sortOf program ty
+        (label, fields, equation, smaller) <- case shape of
+          DataCase c fieldTypes -> do
+            fs <- forM (zip [0 :: Int ..] fieldTypes) $ \(k, ft) -> do
+              s <- sortOf program ft
+              let n = "lawspec_field_" ++ show k
+              base <- lift (domain bits ft n)
+              pure (n, s, base, ft)
+            let built = if null fs then constructorSymbol ty c else app (constructorSymbol ty c) [n | (n, _, _, _) <- fs]
+            pure ( input ++ " = " ++ shortName (constructorId c), fs, [app "=" [xName, built]]
+                 , [Term xSort n "true" | (n, _, _, ft) <- fs, ft == ty] )
+          IntegerBase lo -> pure (input ++ " = " ++ show lo, [], [app "=" [xName, integer lo]], [])
+          IntegerStep lo -> pure (input ++ " > " ++ show lo, [], [app ">" [xName, integer lo]], [Term IntegerSort (app "-" [xName, "1"]) "true"])
+        ranges <- lift (mapM (\(n, o, _) -> domain bits (binderType (quantifiedBinder o)) n) rows)
+        restricted <- forM rows $ \(_, o, _) -> positive <$> restrictions program [] scope (quantifiedPredicates o)
+        goal <- proposition program [] scope rest
+        hypotheses <- plain $ fmap concat $ forM smaller $ \p -> do
+          range <- lift (domain bits ty (value p))
+          -- For every other input,
+          let alone = M.singleton (binderId x) p
+          guardAlone <- restrictions program [] alone (quantifiedPredicates q)
+          general <- closure program alone others rest
+          -- and for these other inputs.
+          let here = M.insert (binderId x) p scope
+          guardHere <- forM outer $ \o -> positive <$> restrictions program [] here (quantifiedPredicates o)
+          specific <- proposition program [] here rest
+          pure [ app "=>" [both [range, positive guardAlone], general]
+               , app "=>" [both (range : guardHere), positive specific] ]
+        cited <- plain $ forM lemmas $ \l -> closure program M.empty (propertyParameters l ++ propertyInputs l) (propertyBody l)
+        prelude <- datatypePreamble program
+        (options, functions) <- gets recursiveText
+        let text = "; " ++ encodingName SmtLibV2 ++ "; induction on " ++ input ++ ": case " ++ label ++ "\n" ++
+              options ++ prelude ++ functions ++
+              concat ["(declare-const " ++ n ++ " " ++ sortText s ++ ")\n" | (n, _, s) <- rows] ++
+              concat ["(declare-const " ++ n ++ " " ++ sortText s ++ ")\n" | (n, s, _, _) <- fields] ++
+              concat ["(assert " ++ a ++ ")\n" | a <- [base | (_, _, base, _) <- fields] ++ equation ++ ranges ++ restricted ++ hypotheses ++ cited] ++
+              "(assert " ++ no (positive goal) ++ ")\n"
+        pure (label, text)) (start SmtLibV2 program mode)
+    unless (length (take 1048577 body) <= 1048576) (Left "SMT query exceeds its output budget")
+    pure (InductionCase name body ["lawspec_input_" ++ show j | j <- [0 .. length outer - 1]] mode Nothing)
+  where
+    -- Calls with no fuel: the function the same at every fuel.
+    plain :: Encode a -> Encode a
+    plain action = do
+      outer <- gets fuel
+      modify (\w -> w{fuel = "", patterned = True})
+      result <- action
+      modify (\w -> w{fuel = outer, patterned = False})
+      pure result
+    locals e = case expressionNode e of
+      Local i -> [i]
+      _ -> concatMap locals (children e)
+    shortName (Id text) = reverse (takeWhile (/= ':') (reverse text))
+
+-- | The universal closure of a law over some of its inputs, assumed as one
+-- quantifier over all of them, as a positive certificate: for each input in
+-- its type and refinement, the law holds. Prenex form is equivalent, since
+-- each input's type and refinement use only the inputs before it and every
+-- SMT sort has a value. Its triggers are the calls to recursive definitions
+-- made in it that name every input (or a set of them that does together).
+closure :: Program -> Scope -> [Quantifier] -> Proposition -> Encode String
+closure program scope quantifiers body = do
+  before <- gets (length . triggers)
+  rows <- forM quantifiers $ \q -> do
+    let binder = quantifiedBinder q
+    s <- quantifierSortOf program (binderType binder)
+    name <- fresh
+    pure (q, binder, s, name)
+  let local = foldl (\m (_, b, s, n) -> M.insert (binderId b) (Term s n "true") m) scope rows
+  modify (\w -> w{bound = [n | (_, _, _, n) <- rows] ++ bound w})
+  guards <- forM rows $ \(q, b, _, n) -> do
+    base <- lift (domain (programMachineBits program) (binderType b) n)
+    restricted <- restrictions program [] local (quantifiedPredicates q)
+    pure (base, restricted)
+  result <- proposition program [] local body
+  made <- gets (drop before . triggers)
+  inScope <- gets bound
+  modify (\w -> w{bound = drop (length rows) (bound w)})
+  let names = [n | (_, _, _, n) <- rows]
+      spaced c = if c `elem` ("()" :: String) then ' ' else c
+      tokens t = words (map spaced t)
+      local' token = case token of
+        'v' : digits -> not (null digits) && all (`elem` ("0123456789" :: String)) digits
+        _ -> False
+      closed t = all (`elem` inScope) (filter local' (tokens t))
+      usable = [t | (i, t) <- zip [0 :: Int ..] made, t `notElem` take i made, closed t, any (`elem` tokens t) names]
+      -- The largest calls: a call inside another would match too often,
+      -- and each match would make new calls to match (a matching loop).
+      whole = [t | t <- covering, not (any (\u -> u /= t && t `isInfixOf` u) covering)
+                 , not (any nested covering) || nested t]
+      nested t = length (filter ("|lawspec_function" `isPrefixOf`) (tokens t)) >= 2
+      covering = [t | t <- usable, all (`elem` tokens t) names]
+      -- Otherwise a multi-pattern: triggers that together name every input.
+      cover chosen pending = case pending of
+        [] -> Just (reverse chosen)
+        n : _ -> case [t | t <- usable, n `elem` tokens t] of
+          t : _ -> cover (t : chosen) [m | m <- pending, m `notElem` tokens t]
+          [] -> Nothing
+      patterns = case (whole, cover [] names) of
+        -- The first, as written: an equation's left side. A trigger on
+        -- each side of an equation such as associativity rewrites back and
+        -- forth without end.
+        (t : _, _) -> " :pattern (" ++ t ++ ")"
+        ([], Just ts) -> " :pattern (" ++ unwords ts ++ ")"
+        _ -> ""
+      formula = foldr (\(base, restricted) inner -> eitherOf [no base, negative restricted, both [positive restricted, inner]])
+        (positive result) guards
+  pure $ if null rows then positive result
+    else "(forall (" ++ unwords ["(" ++ n ++ " " ++ sortText s ++ ")" | (_, _, s, n) <- rows] ++ ") " ++
+         (if null patterns then formula else "(! " ++ formula ++ patterns ++ ")") ++ ")"
+
