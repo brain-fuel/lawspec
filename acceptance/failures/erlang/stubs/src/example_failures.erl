@@ -4,22 +4,19 @@
 
 -spec refund(-2147483648..2147483647) -> -2147483648..2147483647.
 
-refund(_Argument0) -> erlang:error({not_implemented, <<"example.failures::refund"/utf8>>}).
+refund(_Int32) -> erlang:error({not_implemented, <<"example.failures::refund">>}).
 
 -spec settle(-2147483648..2147483647) -> -2147483648..2147483647.
 
-settle(_Argument0) -> erlang:error({not_implemented, <<"example.failures::settle"/utf8>>}).
+settle(_Int32) -> erlang:error({not_implemented, <<"example.failures::settle">>}).
 
 -spec gateway_handler() -> lawspec_abilities_example_failures:gateway().
 
 gateway_handler() ->
     #{
-        decide => fun(_argument0) ->
+        decide => fun(_Int32) ->
             erlang:error(
-                {
-                    not_implemented,
-                    <<"Not implemented: example.failures::ability::Gateway.decide"/utf8>>
-                }
+                {not_implemented, <<"Not implemented: example.failures::ability::Gateway.decide">>}
             )
         end
     }.

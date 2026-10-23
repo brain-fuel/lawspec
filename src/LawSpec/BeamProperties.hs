@@ -25,7 +25,8 @@ import qualified Data.Map.Strict as M
 import Data.Char (toUpper)
 import Data.Maybe (listToMaybe, mapMaybe)
 import qualified LawSpec.BeamNames as Names
-import LawSpec.Backend (lawCommentLines, propertyLink)
+import LawSpec.Backend (lawCommentLines)
+import qualified LawSpec.Backend as Backend
 import LawSpec.Naming (displayLabel, exampleTestSuffix, boundaryTestSuffix, uniqueNames)
 import LawSpec.SourceLink (labelled, locationLink, exampleLocation, originLocation, unitSourceFile)
 import LawSpec.Common (Location)
@@ -477,3 +478,9 @@ bracketResources schema render local resources body = foldM wrap body (reverse r
         pure (E.remote "lawspec_beam_resources" "with_resource"
           [schema,E.lambda [] acquire,E.lambda [name] release,E.lambda [name] inner])
 
+
+-- | A law's source line; a law made by the compiler (<contract>) has none.
+propertyLink :: C.Property -> Maybe String
+propertyLink law = case Backend.propertyLink law of
+  Just ('<' : _) -> Nothing
+  link -> link

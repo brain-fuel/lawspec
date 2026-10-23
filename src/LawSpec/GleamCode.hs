@@ -1,7 +1,7 @@
 -- | Native Gleam tokens and types. Shared Core expressions and runtime values
 -- are compiled once on BEAM, with checked bridges at every public function.
 -- ref:DEC-idiomatic-generated-types ref:DEC-readable-output-default
-module LawSpec.GleamCode (string, call, tuple, function, lambda, external, fileDoc, fileDocFrom, nativeType, imports, layoutFor, typeAlias) where
+module LawSpec.GleamCode (string, call, tuple, function, lambda, huggedLambda, external, fileDoc, fileDocFrom, nativeType, imports, layoutFor, typeAlias) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -43,6 +43,16 @@ lambda column args body
   where
     opening = "fn(" ++ intercalate ", " (map (D.render D.Compact) args) ++ ") {"
     flat = opening ++ " " ++ D.render D.Compact body ++ " }"
+
+-- | name(fn(args) { body }), a call's sole fun argument hugging its
+-- parentheses when the call does not fit on one line at the column.
+huggedLambda :: String -> Int -> [D.Doc] -> D.Doc -> D.Doc
+huggedLambda name column args body
+  | column + length flat <= 80 = D.text flat
+  | otherwise = D.multiline mempty <> D.text (name ++ "(" ++ opening) <> D.nest 2 (D.hardline <> body) <> D.hardline <> D.text "})"
+  where
+    opening = "fn(" ++ intercalate ", " (map (D.render D.Compact) args) ++ ") {"
+    flat = name ++ "(" ++ opening ++ " " ++ D.render D.Compact body ++ " })"
 
 -- | An external function: its attribute on one line, as gleam format keeps it.
 external :: String -> String -> String -> [D.Doc] -> D.Doc -> D.Doc

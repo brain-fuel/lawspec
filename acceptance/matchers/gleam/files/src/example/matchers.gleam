@@ -11,7 +11,7 @@ pub fn unique_tags(tags: List(String)) -> List(String) { list.unique(tags) }
 pub fn average(a: Int, b: Int) -> types.Float64 {
   scalar.float64_from_float(int.to_float(a + b) /. 2.0)
 }
-pub fn ship(id: Int) -> data.Order { data.OrderShipped(data.Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911("post", id)) }
+pub fn ship(id: Int) -> data.Order { data.OrderShipped(data.ShippedDetails("post", id)) }
 
 pub fn slug(title: String) -> String {
   title

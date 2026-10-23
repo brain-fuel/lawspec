@@ -14,6 +14,9 @@ import qualified LawSpec.BeamAbilities as Abilities
 import qualified LawSpec.Remote as R
 import LawSpec.Common (Artifact(..))
 import LawSpec.Testing (Plan(..), PlannedUnit(..))
+import qualified Data.Map.Strict as M
+import qualified LawSpec.BeamNames as Names
+import LawSpec.Naming (readableDefinitionName)
 import Control.Monad (forM, unless)
 import Data.List (nub)
 
@@ -31,6 +34,9 @@ emit target layout plan = do
         G.nativeType False names [] ty <*> pure (G.imports False [ty])
       entries = Definitions.entries units
       declared = [(C.declarationId d,(u,d)) | u <- units, def <- C.unitDefinitions u, let d = C.definitionDeclaration def]
+      parameterNames = M.fromList [(C.declarationId (C.definitionDeclaration def), map C.binderName (C.definitionArguments def)) | u <- units, def <- C.unitDefinitions u]
+      argumentNames d n = take n (Names.variables Names.generatedVariables (M.findWithDefault [] (C.declarationId d) parameterNames ++
+        ["argument " ++ show i | i <- [1 :: Int ..]]))
       resolve r = maybe (Left "remote definition has no checked declaration") Right (lookup (R.remoteId r) declared)
       wire r = E.record [(E.atom "arguments",E.array (map descriptor (R.remoteArguments r))),
         (E.atom "result",descriptor (R.remoteResult r))]
@@ -46,7 +52,7 @@ emit target layout plan = do
     pure (a,("handler" ++ show i,ty))
   served <- forM resolved $ \(r,(_,d)) -> do
     let (argumentTypes,resultType) = C.functionType (C.declarationType d)
-        arguments = [variable ("argument" ++ show i) | (i,_) <- zip [0::Int ..] argumentTypes]
+        arguments = map D.text (argumentNames d (length argumentTypes))
         supplied = [(a,variable p) | (a,(p,_)) <- parameters, a `elem` Effects.uses d]
     checks <- sequence [bridge "validate" ty value | (ty,value) <- zip argumentTypes arguments]
     name <- maybe (Left "remote definition has no checked implementation") Right (lookup (R.remoteId r) entries)
@@ -63,17 +69,17 @@ emit target layout plan = do
       -- The Erlang core entry deals in logical values; native facades below
       -- expose ordinary typed arguments and results instead.
       evaluate = E.function "evaluate" (map variable ["node","address","name","arguments","timeout_milliseconds"])
-        [D.text "_LsConnection = " <> E.remote "lawspec_beam_remote" "connect"
-          [variable "node",D.text "<<_LsAddress/binary, \"/definitions\">>",E.binary "eval",signatureTable,variable "timeout_milliseconds"],
-         E.remote "lawspec_beam_remote" "call" [D.text "_LsConnection",E.call "digest" [variable "name"],variable "arguments"]]
+        [E.assign "Connection" (E.remote "lawspec_beam_remote" "connect"
+          [variable "node",D.text "<<Address/binary, \"/definitions\">>",E.binary "eval",signatureTable,variable "timeout_milliseconds"]),
+         E.remote "lawspec_beam_remote" "call" [D.text "Connection",E.call "digest" [variable "name"],variable "arguments"]]
   root <- render target layout "lawspec_remote" "lawspec/remote" "LawSpec.Remote" rootFunctions [("evaluate",5)] [evaluate]
   clients <- concat <$> forM units (\unit -> do
     let mine = [(r,d) | (r,(u,d)) <- resolved, C.unitId u == C.unitId unit]
     if null mine then pure [] else do
       functions <- concat <$> forM mine (\(r,d) -> do
         let (argumentTypes,resultType) = C.functionType (C.declarationType d)
-            name = E.nativeName target (E.snake (C.declarationName d))
-        arguments <- sequence [(,) ("argument" ++ show i) <$> native ty | (i,ty) <- zip [0::Int ..] argumentTypes]
+            name = E.nativeName target (Names.functionAtom (readableDefinitionName (C.declarationName d) argumentTypes))
+        arguments <- sequence [(,) (Names.functionAtom p) <$> native ty | (p,ty) <- zip (argumentNames d (length argumentTypes)) argumentTypes]
         resultTy <- native resultType
         logical <- sequence [bridge "from_native" ty (variable p) | (ty,(p,_)) <- zip argumentTypes arguments]
         result <- bridge "to_native" resultType (E.remote "lawspec_remote" "evaluate"
@@ -101,7 +107,7 @@ schema, symbols :: D.Doc
 schema = D.text "Schema"
 symbols = D.text "Symbols"
 variable :: String -> D.Doc
-variable = D.text . ("_Ls" ++) . E.pascal
+variable = D.text . E.pascal
 fresh :: [D.Doc]
 fresh = [symbols <> D.text " = make_ref()",schema <> D.text " = " <> E.remote "lawspec_data" "schema" [symbols]]
 nodeType :: NativeType

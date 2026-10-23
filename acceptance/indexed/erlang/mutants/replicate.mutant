@@ -2,5 +2,5 @@
 <<<<<<<
 replicate(0, _) -> vec_v_nil;
 =======
-replicate(0, X) -> {vec_v_cons, {record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec, X, vec_v_nil}};
+replicate(0, X) -> {vec_v_cons, {v_cons_details, X, vec_v_nil}};
 >>>>>>>

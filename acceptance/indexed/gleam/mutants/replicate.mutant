@@ -2,5 +2,5 @@
 <<<<<<<
 0 -> d.VecVNil
 =======
-0 -> d.VecVCons(d.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(x, d.VecVNil))
+0 -> d.VecVCons(d.VConsDetails(x, d.VecVNil))
 >>>>>>>

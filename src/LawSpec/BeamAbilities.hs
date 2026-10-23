@@ -132,7 +132,9 @@ productionStub target bits names ability = do
         capital [] = []
         message = "Not implemented: " ++ C.abilityKey (C.abilityInstance ability) ++ "." ++ op
     pure $ case target of
-      -- A stub's operations are a constructor's arguments, at column 4.
+      -- A stub's operations are a constructor's arguments, at column 4; a
+      -- sole one hugs the call, as gleam format writes it.
+      "gleam" | length (C.abilityOperations ability) == 1 -> G.huggedLambda (alias ability ++ "." ++ builderName target ability) 2 args (D.text "panic as " <> G.string message)
       "gleam" -> G.lambda 4 args (D.text "panic as " <> G.string message)
       "elixir" -> D.group (D.text "fn " <> mconcat [D.joinWith (D.text ", ") args <> D.text " " | not (null args)] <> D.text "->" <>
         D.nest 2 (D.softline <> D.text "raise " <> X.string message) <> D.softline <> D.text "end")
@@ -147,7 +149,9 @@ productionStub target bits names ability = do
       resourceTypes = maybe [] pure resource
   pure $ case target of
     "gleam" -> [G.function name [D.text "_resource: " <> t | t <- resourceTypes] (D.text (alias ability ++ "." ++ interfaceName ability))
-      [G.call (alias ability ++ "." ++ builderName target ability) fields]]
+      [case fields of
+        [hugged] | length (C.abilityOperations ability) == 1 -> hugged
+        _ -> G.call (alias ability ++ "." ++ builderName target ability) fields]]
     "elixir" -> [X.typeAttribute "spec" (X.call name resourceTypes) (X.remote (interfaceModule target ability) "t" []),
       X.function name [D.text "_resource" | _ <- resourceTypes] [D.delimit 2 ("%" ++ interfaceModule target ability ++ "{") "}"
         [D.text key <> D.text ": " <> f | (key,f) <- zip keys fields]]]

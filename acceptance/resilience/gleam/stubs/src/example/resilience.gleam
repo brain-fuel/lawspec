@@ -1,10 +1,18 @@
 // User-owned LawSpec adapter. Implement these functions.
 
-pub fn runtime_exponential_delay(_argument0: Int, _argument1: Int, _argument2: Int) -> Int {
+pub fn runtime_exponential_delay(
+  _argument0: Int,
+  _argument1: Int,
+  _argument2: Int,
+) -> Int {
   panic as "Not implemented: example.resilience::runtimeExponentialDelay"
 }
 
-pub fn runtime_linear_delay(_argument0: Int, _argument1: Int, _argument2: Int) -> Int {
+pub fn runtime_linear_delay(
+  _argument0: Int,
+  _argument1: Int,
+  _argument2: Int,
+) -> Int {
   panic as "Not implemented: example.resilience::runtimeLinearDelay"
 }
 

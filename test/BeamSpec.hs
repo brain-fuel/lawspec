@@ -18,6 +18,7 @@ import qualified LawSpec.Core.Verification as V
 import qualified LawSpec.Core.Machine as Machine
 import qualified LawSpec.Core.Program as Program
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.Scalar as Scalar
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamActors as Actors
@@ -52,7 +53,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
       Right plan -> mapM_ (\p -> case Generators.inputs "framework" (D.text "Schema") (D.text "Symbols") plan (const "Input") p of
         Left message -> expectationFailure message
         Right body -> D.render D.Compact body `shouldSatisfy` isInfixOf
-          "{length, <<\"==\"/utf8>>, lawspec_beam_schema:validate(3,")
+          "{length, <<\"==\">>, ")
         (concatMap plannedProperties (plannedUnits plan))
   it "passes same-type fixture hints independently of comparison bounds" $ do
     let source = unlines [ "unit example.hints"
@@ -122,7 +123,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           mapM_ (\remote -> body `shouldSatisfy` isInfixOf (Manifest.remoteDigest remote)) remotes
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
             ["lawspec_beam_remote:serve", "lawspec_beam_remote:call", "lawspec_beam_effects:with_native_context",
-             "lawspec_definitions:evaluate_", "shifted_with_timeout", "lawspec_beam_schema:from_native",
+             "lawspec_definitions:", "shifted_with_timeout", "lawspec_beam_schema:from_native",
              "lawspec_beam_schema:to_native", "lawspec_beam_schema:validate"]
           case target of
             "elixir" -> body `shouldSatisfy` isInfixOf "LawSpec.Remote.Example.Remote"
@@ -227,7 +228,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           all ((== "test") . artifactPlacement) artifacts `shouldBe` True
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
             ["lawspec_beam_model:new", "lawspec_beam_model:check", "lawspec_beam_model_parallel:check",
-             "lawspec_definitions:evaluate_", "lawspec_beam_effects:with_scope", "_production", "make_ref()"]
+             "lawspec_definitions:", "lawspec_beam_effects:with_scope", "_production", "make_ref()"]
           body `shouldSatisfy` isInfixOf "model_counter__parallel()"
           body `shouldSatisfy` (not . isInfixOf "_test_()")
           case Properties.emit target (D.Pretty 100) emptyBindingPlan plan of
@@ -235,10 +236,10 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             Right cases -> do
               let native = concatMap artifactContent cases
               native `shouldSatisfy` isInfixOf "example_actor_abilities_lawspec_models:model_counter__parallel()"
-              native `shouldSatisfy` isInfixOf "example.actor_abilities::model_counter__parallel"
+              native `shouldSatisfy` isInfixOf (if target == "elixir" then ":model_counter__parallel," else "example.actor_abilities::model_counter__parallel")
               case target of
                 "elixir" -> native `shouldSatisfy` isInfixOf "use ExUnit.Case"
-                "gleam" -> native `shouldSatisfy` isInfixOf "model_counter__parallel__case_0_test() -> Nil"
+                "gleam" -> native `shouldSatisfy` isInfixOf "model_counter__parallel_test() -> Nil"
                 _ -> native `shouldSatisfy` isInfixOf "model_counter__parallel_cases()"
     ) ["erlang", "elixir", "gleam"]
   mapM_ (\target -> it (target ++ " emits scenarios with native model calls and complete wire descriptors") $ do
@@ -281,7 +282,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
                 case target of
                   "erlang" -> native `shouldSatisfy` isInfixOf "lawspec_beam_test_run:select_units"
                   "elixir" -> native `shouldSatisfy` isInfixOf "use ExUnit.Case"
-                  _ -> native `shouldSatisfy` isInfixOf "supervision__case_0_test() -> Nil"
+                  _ -> native `shouldSatisfy` isInfixOf "supervision_test() -> Nil"
     ) ["erlang", "elixir", "gleam"]
   mapM_ (\target -> it (target ++ " builds typed actor APIs through checked adapters and native OTP entry points") $ do
     input <- readFile "examples/specs/actors.lawspec"
@@ -296,7 +297,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
           mapM_ (\path -> paths `shouldContain` [path])
             ["src/lawspec_actor_example_actors_account.erl","src/lawspec_supervisor_example_actors_bank.erl"]
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_definitions:evaluate_","lawspec_beam_schema:from_native", "lawspec_beam_schema:to_native",
+            ["lawspec_definitions:","lawspec_beam_schema:from_native", "lawspec_beam_schema:to_native",
              "lawspec_beam_actors:start_link", "otp_child_spec", "tell_deposit", "handlers := []",
              "lawspec_beam_remote:serve", "lawspec_beam_remote:call", "connect_with_timeout"]
           let remote = concatMap artifactContent [a | a <- artifacts,
@@ -465,7 +466,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         source `shouldSatisfy` isInfixOf "lawspec_beam_effects:with_native_context"
         source `shouldSatisfy` isInfixOf "lawspec_beam_effects:recover_handler"
         source `shouldSatisfy` isInfixOf "lawspec_beam_effects:with_scope"
-        source `shouldSatisfy` isInfixOf "_LsExampleSchema"
+        source `shouldSatisfy` isInfixOf "ExampleSchema"
         length adapters `shouldBe` 1
         concatMap artifactContent adapters `shouldSatisfy` isInfixOf "counter_handler"
         case generatedFor target True input of
@@ -507,7 +508,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             contents = concatMap artifactContent artifacts
         files `shouldContain` ["src/lawspec_definitions.erl", "src/example_total_functions_definitions.erl"]
         contents `shouldSatisfy` isInfixOf "lawspec_beam_proper:forall"
-        contents `shouldSatisfy` isInfixOf "case It_"
+        contents `shouldSatisfy` isInfixOf "case Xs of"
         contents `shouldSatisfy` isInfixOf "[_ |"
         contents `shouldSatisfy` isInfixOf "andalso"
         filter ((== "user") . ownership) artifacts `shouldBe` []
@@ -664,7 +665,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["_LsResource0", "_LsResource1", "lawspec_beam_resources:with_resource", "example 0: \\\"|still open|", "property", "boundary 0"]
+            ["fun(First)", "fun(Second)", "lawspec_beam_resources:with_resource", "|fresh| example |still open|", "property", "boundary 1"]
     ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-never-pass-vacuously ref:REQ-harness-units
   it "emits shared resource leases with their checked acquire, reset and release clauses" $ do
@@ -785,10 +786,10 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_harness:known_failing", "\\\"|known property failure| known failing", "\\\"|skipped completely| skipped"]
+            ["lawspec_beam_harness:known_failing", "|known property failure| known failing", "|skipped completely| skipped"]
           body `shouldSatisfy` (not . isInfixOf "law_skipped_completely_body")
           body `shouldSatisfy` (not . isInfixOf "also skipped")
-          if target == "elixir" then body `shouldSatisfy` isInfixOf "@tag skip: reason"
+          if target == "elixir" then body `shouldSatisfy` isInfixOf "law(:example_status_lawspec_cases, :law_skipped_completely,"
             else body `shouldSatisfy` isInfixOf "lawspec_beam_harness:erlang_cases"
           if target == "gleam" then do
             body `shouldSatisfy` isInfixOf "__skipped_test_"
@@ -809,9 +810,8 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             let body = concatMap artifactContent artifacts
                 entries = TestManifest.testManifest target Nothing program
             length entries `shouldBe` 7
-            mapM_ (\entry -> body `shouldSatisfy` isInfixOf
-              (TestManifest.entryUnit entry ++ "::" ++ TestManifest.entryName entry)) entries
-            body `shouldSatisfy` isInfixOf (if target == "elixir" then "@tag lawspec_identity" else "lawspec_beam_test_run:select")
+            mapM_ (\entry -> body `shouldSatisfy` isInfixOf (identityIn target entry)) entries
+            body `shouldSatisfy` isInfixOf (if target == "elixir" then "import LawSpec.Beam.ExUnitCases" else "lawspec_beam_test_run:select")
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
   mapM_ (\(target,bits,compact) -> it (target ++ " registers every model and scenario with its native test identity " ++ show (bits,compact)) $ do
@@ -838,7 +838,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
               ["model_stack__sequential", "model_counter__parallel", "model_counter__scenario_a_reply_is_delegated"]
             mapM_ (\entry -> do
               map artifactPath artifacts `shouldContain` [TestManifest.entryFile entry]
-              body `shouldSatisfy` isInfixOf (TestManifest.entryUnit entry ++ "::" ++ TestManifest.entryName entry)) entries
+              body `shouldSatisfy` isInfixOf (identityIn target entry)) entries
             all TestManifest.entryCallsAdapters models `shouldBe` True
             map TestManifest.entryCallsAdapters [entry | entry <- entries, TestManifest.entryName entry == "supervision"]
               `shouldBe` [False]
@@ -919,7 +919,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             ["the first pause ends", "the sixth pause ends", "the first nap ends", "the third nap ends"]
           if target == "elixir" then
             mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-              ["LawSpec.Beam.ExUnitSchedule.setup", "LawSpec.Beam.ExUnitSchedule.await", "@tag lawspec_case:", "@tag lawspec_order:"]
+              ["LawSpec.Beam.ExUnitSchedule.setup", "import LawSpec.Beam.ExUnitCases", "law(:"]
           else body `shouldSatisfy` isInfixOf "lawspec_beam_schedule:eunit"
           if target == "gleam" then body `shouldSatisfy` isInfixOf "pub fn lawspec_suite()"
             else pure ()
@@ -968,7 +968,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_search:replay", "lawspec_beam_search:guard", "example.replay::\\\"|dependent replay|", "false -> none"]
+            ["lawspec_beam_search:replay", "lawspec_beam_search:guard", "example.replay::\\\"|dependent replay|", "false ->"]
           body `shouldSatisfy` (not . isInfixOf "lawspec_beam_search:climb")
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units ref:DEC-portable-seeded-generation
@@ -981,8 +981,8 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         Right artifacts -> do
           let body = concatMap artifactContent artifacts
           mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
-            ["lawspec_beam_search:climb", "lawspec_beam_harness:sample", "\\\"|interior maximum| search",
-             "\\\"|dependent maximum| search", "false -> none", "{score,", "(int Integer 340282366920938463463374607431768211456"]
+            ["lawspec_beam_search:climb", "lawspec_beam_harness:sample", "|interior maximum| search",
+             "|dependent maximum| search", "false ->", "{score,", "(int Integer 340282366920938463463374607431768211456"]
     ) [(target,bits,compact) | target <- ["erlang","elixir","gleam"], bits <- [32,64], compact <- [False,True]]
   -- ref:REQ-harness-units
   it "observes floating-point targets without inventing a wire descriptor" $ do
@@ -1045,12 +1045,28 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
 -- ref:REQ-language-gaps ref:DEC-typed-core-boundary
 test_beamRunsTheLanguageGaps :: Spec
 test_beamRunsTheLanguageGaps = describe "BEAM language gaps" $ do
+  -- ref:DEC-readable-beam-output
+  it "keeps the runtime's primitive types those of LawSpec.Scalar" $ do
+    source <- readFile "runtime/lawspec_beam_schema.erl"
+    let block = takeWhile (/= "    ].") (drop 1 (dropWhile (/= "primitives() ->") (lines source)))
+        names = [takeWhile (/= '"') (drop 1 (dropWhile (/= '"') l)) | l <- block, '"' `elem` l]
+    names `shouldBe` map Scalar.primitiveName Scalar.primitives
   let fileOf path artifacts = concat [artifactContent a | a <- artifacts, artifactPath a == path]
       withSpec path target check = do
         input <- readFile path
         case generatedFor target False input of
           Left errors -> expectationFailure (show errors)
           Right artifacts -> check artifacts
+  -- ref:DEC-readable-beam-output
+  it "writes BEAM text as binaries and integer operations as Erlang's operators" $
+    withSpec "examples/specs/slug.lawspec" "erlang" $ \artifacts -> do
+      let tests = concat [artifactContent a | a <- artifacts, "_lawspec_tests.erl" `isInfixOf` artifactPath a]
+      tests `shouldSatisfy` isInfixOf "X = <<\"Hello, World!\">>,"
+      tests `shouldSatisfy` isInfixOf "<<\"café-日本語-😀\"/utf8>>"
+      tests `shouldSatisfy` isInfixOf "law_normalizers_agree__spaces_become_hyphens_punctuation_is_preserved() ->"
+      tests `shouldSatisfy` (not . isInfixOf "\"units\"")
+      concat [artifactContent a | a <- artifacts, artifactPath a == "src/lawspec_definitions.erl"]
+        `shouldSatisfy` isInfixOf "normalize(Schema, _Symbols, Text) ->"
   it "makes a handler of several abilities once per scope and gives one interface per ability" $
     withSpec "examples/specs/composition.lawspec" "erlang" $ \artifacts -> do
       concat [artifactContent a | a <- artifacts, "_lawspec_tests.erl" `isInfixOf` artifactPath a]
@@ -1059,7 +1075,7 @@ test_beamRunsTheLanguageGaps = describe "BEAM language gaps" $ do
   it "gives natives of an ability made with a resource the case's resource" $
     withSpec "examples/specs/composition.lawspec" "erlang" $ \artifacts -> do
       fileOf "src/example_composition.erl" artifacts `shouldSatisfy` isInfixOf "logs_handler(_Resource) ->"
-      fileOf "src/lawspec_abilities.erl" artifacts `shouldSatisfy` isInfixOf "_production(_LsSchema, _LsSymbols, _LsResource) ->"
+      fileOf "src/lawspec_abilities.erl" artifacts `shouldSatisfy` isInfixOf "_production(Schema, Symbols, _LsResource) ->"
       concat [artifactContent a | a <- artifacts, "_lawspec_tests.erl" `isInfixOf` artifactPath a]
         `shouldSatisfy` isInfixOf "lawspec_beam_effects:install("
   it "crosses an operation's failure through native handlers both ways" $
@@ -1081,3 +1097,10 @@ test_beamRunsTheLanguageGaps = describe "BEAM language gaps" $ do
     [ ("erlang", "lawspec_abilities_example_embedding.erl", ["tally_try_add(Handler, Value0) ->", "keeping_state(Value0) ->", "keeping_set_state(Value0, Value1) ->", "-spec book(lawspec_beam_effects:context()) -> {ledger(), balance()}."])
     , ("elixir", "lib/lawspec/", ["def try_add(handler, value0)", "def keeping_state(value0)", "def keeping_set_state(value0, value1)"])
     , ("gleam", "abilities/example/embedding.gleam", ["pub fn tally_try_add(", "effects.attempt(", "pub fn keeping_state(", "-> #(Ledger, Balance)"]) ]
+
+-- | How a test file names a manifest entry: the unit and the test's name,
+-- in ExUnit as the arguments of law/4.
+identityIn :: String -> TestManifest.TestEntry -> String
+identityIn target entry
+  | target == "elixir" = ":" ++ TestManifest.entryName entry ++ ","
+  | otherwise = TestManifest.entryUnit entry ++ "::" ++ TestManifest.entryName entry

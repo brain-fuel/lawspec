@@ -2,5 +2,5 @@
 <<<<<<<
 d.Pairs(xs)
 =======
-d.Pairs(d.RowCell(d.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f(0, xs)))
+d.Pairs(d.RowCell(d.CellDetails(0, xs)))
 >>>>>>>

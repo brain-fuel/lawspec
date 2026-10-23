@@ -28,6 +28,7 @@ import Numeric (showHex)
 import Control.Monad (unless)
 import LawSpec.Code.Literal (literalFor)
 import LawSpec.RecordNames (recordDisplayNames)
+import LawSpec.Naming (readableDefinitionName)
 import qualified Data.Map.Strict as M
 import LawSpec.SourceLink (labelled, generatedHeader)
 
@@ -208,8 +209,10 @@ snake s = intercalate "_" . filter (not . null) . split $ go Nothing s
 moduleName :: C.Id -> String
 moduleName = snake . C.idText
 
+-- | A declaration's native function: its name, or a specialised copy's
+-- definition and argument types (count_list_int32).
 functionName :: C.Declaration -> String
-functionName declaration = case snake (C.declarationName declaration) of
+functionName declaration = case snake (readableDefinitionName (C.declarationName declaration) (fst (C.functionType (C.declarationType declaration)))) of
   "module_info" -> "lawspec_module_info"
   name -> name
 

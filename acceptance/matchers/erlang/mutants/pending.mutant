@@ -1,7 +1,7 @@
 expect: shipping gives a shipped order
 @@ src/example_matchers.erl
 <<<<<<<
-{order_shipped, {recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911, <<"post">>, Id}}
+{order_shipped, {shipped_details, <<"post">>, Id}}
 =======
 {order_pending, Id}
 >>>>>>>

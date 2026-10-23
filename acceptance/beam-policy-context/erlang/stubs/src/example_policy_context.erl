@@ -4,18 +4,16 @@
 
 -spec step(-2147483648..2147483647) -> {left, binary()} | {right, -2147483648..2147483647}.
 
-step(_Argument0) -> erlang:error({not_implemented, <<"example.policy_context::step"/utf8>>}).
+step(_Int32) -> erlang:error({not_implemented, <<"example.policy_context::step">>}).
 
 -spec undo(-2147483648..2147483647) -> boolean().
 
-undo(_Argument0) -> erlang:error({not_implemented, <<"example.policy_context::undo"/utf8>>}).
+undo(_Int32) -> erlang:error({not_implemented, <<"example.policy_context::undo">>}).
 
 -spec always_fail(-2147483648..2147483647) -> {left, binary()} | {right, -2147483648..2147483647}.
 
-always_fail(_Argument0) ->
-    erlang:error({not_implemented, <<"example.policy_context::alwaysFail"/utf8>>}).
+always_fail(_Int32) -> erlang:error({not_implemented, <<"example.policy_context::alwaysFail">>}).
 
 -spec native_probe(ok) -> boolean().
 
-native_probe(_Argument0) ->
-    erlang:error({not_implemented, <<"example.policy_context::nativeProbe"/utf8>>}).
+native_probe(_Unit) -> erlang:error({not_implemented, <<"example.policy_context::nativeProbe">>}).

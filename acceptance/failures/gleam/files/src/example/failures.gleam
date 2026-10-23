@@ -22,7 +22,7 @@ pub fn refund(n: Int) -> Int {
 pub fn settle(n: Int) -> Int {
   case n {
     n if n < 0 -> fail(data.PaymentErrorBlocked)
-    0 -> fail(data.PaymentErrorDeclined(data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7("there is nothing to settle")))
+    0 -> fail(data.PaymentErrorDeclined(data.DeclinedDetails("there is nothing to settle")))
     _ -> n
   }
 }

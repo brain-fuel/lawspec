@@ -12,34 +12,34 @@
 
 -spec audit(lawspec_data:account()) -> boolean().
 
-audit(_Argument0) -> erlang:error({not_implemented, <<"example.workflows::audit"/utf8>>}).
+audit(_Account) -> erlang:error({not_implemented, <<"example.workflows::audit">>}).
 
--spec waitlist(lawspec_data:signup_error()) ->
-    {left, lawspec_data:signup_error()} | {right, lawspec_data:account()}.
+-spec waitlist(
+    lawspec_data:signup_error()
+) -> {left, lawspec_data:signup_error()} | {right, lawspec_data:account()}.
 
-waitlist(_Argument0) -> erlang:error({not_implemented, <<"example.workflows::waitlist"/utf8>>}).
+waitlist(_SignupError) -> erlang:error({not_implemented, <<"example.workflows::waitlist">>}).
 
 -spec check_stock(lawspec_data:order()) -> {left, binary()} | {right, lawspec_data:order()}.
 
-check_stock(_Argument0) ->
-    erlang:error({not_implemented, <<"example.workflows::checkStock"/utf8>>}).
+check_stock(_Order) -> erlang:error({not_implemented, <<"example.workflows::checkStock">>}).
 
 -spec check_credit(lawspec_data:order()) -> {left, binary()} | {right, lawspec_data:order()}.
 
-check_credit(_Argument0) ->
-    erlang:error({not_implemented, <<"example.workflows::checkCredit"/utf8>>}).
+check_credit(_Order) -> erlang:error({not_implemented, <<"example.workflows::checkCredit">>}).
 
--spec check_name(lawspec_data:signup()) ->
-    {left, lawspec_data:signup_error()} | {right, lawspec_data:signup()}.
+-spec check_name(
+    lawspec_data:signup()
+) -> {left, lawspec_data:signup_error()} | {right, lawspec_data:signup()}.
 
-check_name(_Argument0) -> erlang:error({not_implemented, <<"example.workflows::checkName"/utf8>>}).
+check_name(_Signup) -> erlang:error({not_implemented, <<"example.workflows::checkName">>}).
 
 -spec check_age(lawspec_data:signup()) -> {left, binary()} | {right, lawspec_data:signup()}.
 
-check_age(_Argument0) -> erlang:error({not_implemented, <<"example.workflows::checkAge"/utf8>>}).
+check_age(_Signup) -> erlang:error({not_implemented, <<"example.workflows::checkAge">>}).
 
--spec open_account(lawspec_data:signup()) ->
-    {left, lawspec_data:signup_error()} | {right, lawspec_data:account()}.
+-spec open_account(
+    lawspec_data:signup()
+) -> {left, lawspec_data:signup_error()} | {right, lawspec_data:account()}.
 
-open_account(_Argument0) ->
-    erlang:error({not_implemented, <<"example.workflows::openAccount"/utf8>>}).
+open_account(_Signup) -> erlang:error({not_implemented, <<"example.workflows::openAccount">>}).

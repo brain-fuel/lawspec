@@ -1,6 +1,6 @@
 @@ src/example/indexed.gleam
 <<<<<<<
-d.VecVCons(d.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(h, zip(t, u)))
+d.VecVCons(d.VConsDetails(h, zip(t, u)))
 =======
-d.VecVCons(d.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(h, d.VecVCons(d.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(h, zip(t, u)))))
+d.VecVCons(d.VConsDetails(h, d.VecVCons(d.VConsDetails(h, zip(t, u)))))
 >>>>>>>

@@ -6,7 +6,9 @@ pub fn mirror(_argument0: data.Perfect) -> data.Perfect {
   panic as "Not implemented: example.arithmetic::mirror"
 }
 
-pub fn area(_argument0: data.Grid) -> Int { panic as "Not implemented: example.arithmetic::area" }
+pub fn area(_argument0: data.Grid) -> Int {
+  panic as "Not implemented: example.arithmetic::area"
+}
 
 pub fn duplicate(_argument0: data.Row) -> data.Halves {
   panic as "Not implemented: example.arithmetic::duplicate"

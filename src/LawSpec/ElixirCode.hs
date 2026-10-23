@@ -43,7 +43,7 @@ remote owner name args = D.text owner <> D.text "." <> call name args
 -- | def name(args) do ... end, its body on lines of its own, as mix
 -- format writes a do block.
 function :: String -> [D.Doc] -> [D.Doc] -> D.Doc
-function name args body = D.text "def " <> call name args <> D.text " do" <>
+function name args body = D.text "def " <> D.nest 4 (call name args) <> D.text " do" <>
   D.nest 2 (D.hardline <> D.joinWith D.hardline body) <> D.hardline <> D.text "end"
 
 -- | @spec or @type, Left :: Right, in a module body, laid out as mix format
@@ -53,15 +53,18 @@ function name args body = D.text "def " <> call name args <> D.text " do" <>
 typeAttribute :: String -> D.Doc -> D.Doc -> D.Doc
 typeAttribute attribute left right
   | 2 + length flat <= 98 = D.text flat
+  | length alternatives > 1, 2 + length (prefix ++ l ++ " ::") <= 98 = D.text (prefix ++ l ++ " ::") <> D.hardline <> rightAlone
   | Just (open, items, close) <- container r, 2 + length (prefix ++ l ++ " :: " ++ open) <= 98 =
       D.text (prefix ++ l ++ " :: " ++ open) <>
       mconcat [D.hardline <> item i (if k < length items then "," else "") | (k, i) <- zip [1 :: Int ..] items] <>
       D.hardline <> D.text (replicate 6 ' ' ++ close)
-  | 2 + length (prefix ++ l ++ " ::") <= 98 = D.text (prefix ++ l ++ " ::") <> D.hardline <> rightAlone
+  | 2 + length (prefix ++ l ++ " ::") <= 98 || maybe False ((<= 1) . length . snd) (calledWith l) =
+      D.text (prefix ++ l ++ " ::") <> D.hardline <> rightAlone
   | Just (name, args) <- calledWith l =
       D.text (prefix ++ name ++ "(") <>
       mconcat [D.hardline <> D.text (replicate 8 ' ' ++ a ++ (if k < length args then "," else "")) | (k, a) <- zip [1 :: Int ..] args] <>
-      D.hardline <> D.text (replicate 6 ' ' ++ ") :: " ++ r)
+      D.hardline <> (if 8 + length (") :: " ++ r) <= 98 then D.text (replicate 6 ' ' ++ ") :: " ++ r)
+        else D.text (replicate 6 ' ' ++ ") ::") <> D.hardline <> rightAlone)
   | otherwise = D.text flat
   where
     -- The right side on lines of its own, from column 10.
@@ -81,6 +84,10 @@ typeAttribute attribute left right
     -- A map item too long for its line breaks after its =>.
     item i suffix
       | 10 + length i + length suffix <= 98 = D.text (replicate 8 ' ' ++ i ++ suffix)
+      -- A function type breaks after its arrow, aligned past its parenthesis.
+      | (key, '(' : value) <- breakOn " => " i, last value == ')', (arguments, result@(_ : _)) <- breakOn " -> " (init value) =
+          D.text (replicate 8 ' ' ++ key ++ " => (" ++ arguments ++ " ->") <> D.hardline <>
+          D.text (replicate (8 + length key + 4 + 1 + 2) ' ' ++ result ++ ")" ++ suffix)
       | (key, value@(_ : _)) <- breakOn " => " i = D.text (replicate 8 ' ' ++ key ++ " =>") <> D.hardline <> D.text (replicate 10 ' ' ++ value ++ suffix)
       | otherwise = D.text (replicate 8 ' ' ++ i ++ suffix)
     container t = case t of

@@ -4,21 +4,20 @@
 
 -spec mirror(lawspec_data:perfect()) -> lawspec_data:perfect().
 
-mirror(_Argument0) -> erlang:error({not_implemented, <<"example.arithmetic::mirror"/utf8>>}).
+mirror(_Perfect) -> erlang:error({not_implemented, <<"example.arithmetic::mirror">>}).
 
 -spec area(lawspec_data:grid()) -> integer().
 
-area(_Argument0) -> erlang:error({not_implemented, <<"example.arithmetic::area"/utf8>>}).
+area(_Grid) -> erlang:error({not_implemented, <<"example.arithmetic::area">>}).
 
 -spec duplicate(lawspec_data:row()) -> lawspec_data:halves().
 
-duplicate(_Argument0) -> erlang:error({not_implemented, <<"example.arithmetic::duplicate"/utf8>>}).
+duplicate(_Row) -> erlang:error({not_implemented, <<"example.arithmetic::duplicate">>}).
 
 -spec count_pairs(lawspec_data:row()) -> lawspec_data:pairs().
 
-count_pairs(_Argument0) ->
-    erlang:error({not_implemented, <<"example.arithmetic::countPairs"/utf8>>}).
+count_pairs(_Row) -> erlang:error({not_implemented, <<"example.arithmetic::countPairs">>}).
 
 -spec drop_first(lawspec_data:row()) -> lawspec_data:rest().
 
-drop_first(_Argument0) -> erlang:error({not_implemented, <<"example.arithmetic::dropFirst"/utf8>>}).
+drop_first(_Row) -> erlang:error({not_implemented, <<"example.arithmetic::dropFirst">>}).

@@ -1,6 +1,6 @@
 @@ lib/example_arithmetic.ex
 <<<<<<<
-%D.PerfectNode{value: %D.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8{left: mirror(r), right: mirror(l)}}
+%D.PerfectNode{value: %D.NodeDetails{left: mirror(r), right: mirror(l)}}
 =======
-%D.PerfectNode{value: %D.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8{left: mirror(r), right: %D.PerfectNode{value: %D.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8{left: mirror(l), right: mirror(l)}}}}
+%D.PerfectNode{value: %D.NodeDetails{left: mirror(r), right: %D.PerfectNode{value: %D.NodeDetails{left: mirror(l), right: mirror(l)}}}}
 >>>>>>>

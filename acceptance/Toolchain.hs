@@ -46,8 +46,8 @@ formatter target = do
     -- layout. Elixir and Gleam projects also hold the shared Erlang
     -- modules, which erlfmt checks.
     t | t `elem` ["erlang", "elixir", "gleam"] -> do
-      let pinned tool versionCommand expected = "out=$(" ++ versionCommand ++ " 2>&1); case \"$out\" in *'" ++ expected ++
-            "'*) ;; *) echo \"" ++ tool ++ " must be " ++ expected ++ " (test/locks/beam-formatters.txt), found: $out\"; exit 1;; esac"
+      let pinned tool versionCommand expected = "{ out=$(" ++ versionCommand ++ " 2>&1); case \"$out\" in *'" ++ expected ++
+            "'*) ;; *) echo \"" ++ tool ++ " must be " ++ expected ++ " (test/locks/beam-formatters.txt), found: $out\"; exit 1;; esac; }"
           erlfmt dir = pinned "erlfmt" "erlfmt --version" "erlfmt version 1.8.0" ++
             " && if [ -n \"$(find " ++ quoted dir ++ " -name '*.erl' | head -1)\" ]; then erlfmt --check " ++ quoted (dir ++ "/**/*.erl") ++ "; fi"
           mix dir = pinned "Elixir" "elixir --version" "Elixir 1.20.4" ++

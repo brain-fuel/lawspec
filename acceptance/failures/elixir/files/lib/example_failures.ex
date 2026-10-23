@@ -11,6 +11,6 @@ defmodule Example.Failures do
   def refund(n), do: n
 
   def settle(n) when n < 0, do: :lawspec_beam_effects.fail(%Data.PaymentErrorBlocked{})
-  def settle(0), do: :lawspec_beam_effects.fail(%Data.PaymentErrorDeclined{value: %Data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7{message: "there is nothing to settle"}})
+  def settle(0), do: :lawspec_beam_effects.fail(%Data.PaymentErrorDeclined{value: %Data.DeclinedDetails{message: "there is nothing to settle"}})
   def settle(n), do: n
 end

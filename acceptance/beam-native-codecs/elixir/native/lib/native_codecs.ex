@@ -6,7 +6,7 @@ defmodule Native.Codecs.Positive do
 end
 defmodule Native.Codecs do
   alias LawSpec.Data, as: D
-  alias D.Record5eebfa15fa6145a8da5c04a1c56125f8f3b2caeb2a02d9cb36e95342d4209998, as: ChainPayload
+  alias D.MoreDetails, as: ChainPayload
   def copy_parcel(%{private: value}), do: %{private: value}
   def copy_nested(%{private: :absent}), do: %{private: :absent}
   def copy_nested(%{private: {:present, value}}), do: %{private: {:present, copy_parcel(value)}}

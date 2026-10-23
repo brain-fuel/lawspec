@@ -10,7 +10,9 @@ pub fn eval_truth(_argument0: data.Expr(Bool)) -> Bool {
   panic as "Not implemented: example.gadt::evalTruth"
 }
 
-pub fn eval_pair(_argument0: data.Expr(data.Pair(Int, Bool))) -> data.Pair(Int, Bool) {
+pub fn eval_pair(
+  _argument0: data.Expr(data.Pair(Int, Bool)),
+) -> data.Pair(Int, Bool) {
   panic as "Not implemented: example.gadt::evalPair"
 }
 

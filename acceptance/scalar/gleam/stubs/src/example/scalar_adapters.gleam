@@ -30,7 +30,10 @@ pub fn narrow(_argument0: Int) -> Int {
   panic as "Not implemented: example.scalar_adapters::narrow"
 }
 
-pub fn add_decimal(_argument0: types.Decimal, _argument1: types.Decimal) -> types.Decimal {
+pub fn add_decimal(
+  _argument0: types.Decimal,
+  _argument1: types.Decimal,
+) -> types.Decimal {
   panic as "Not implemented: example.scalar_adapters::addDecimal"
 }
 
@@ -43,7 +46,7 @@ pub fn echo_raw(_argument0: List(Int)) -> List(Int) {
 }
 
 pub fn echo_presence(
-  _argument0: types.Optional(types.Nullable(Int))
+  _argument0: types.Optional(types.Nullable(Int)),
 ) -> types.Optional(types.Nullable(Int)) {
   panic as "Not implemented: example.scalar_adapters::echoPresence"
 }
