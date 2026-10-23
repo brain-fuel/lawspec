@@ -40,6 +40,29 @@ formatter target = do
       pure (Just (Formatter "ruff format" python
         (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
+    -- erlfmt, mix format and gleam format, each with its default
+    -- configuration, at the versions test/locks/beam-formatters.txt pins:
+    -- a different version fails the step rather than checking with another
+    -- layout. Elixir and Gleam projects also hold the shared Erlang
+    -- modules, which erlfmt checks.
+    t | t `elem` ["erlang", "elixir", "gleam"] -> do
+      let pinned tool versionCommand expected = "out=$(" ++ versionCommand ++ " 2>&1); case \"$out\" in *'" ++ expected ++
+            "'*) ;; *) echo \"" ++ tool ++ " must be " ++ expected ++ " (test/locks/beam-formatters.txt), found: $out\"; exit 1;; esac"
+          erlfmt dir = pinned "erlfmt" "erlfmt --version" "erlfmt version 1.8.0" ++
+            " && if [ -n \"$(find " ++ quoted dir ++ " -name '*.erl' | head -1)\" ]; then erlfmt --check " ++ quoted (dir ++ "/**/*.erl") ++ "; fi"
+          mix dir = pinned "Elixir" "elixir --version" "Elixir 1.20.4" ++
+            " && mix format --dot-formatter " ++ quoted (root </> "test/locks/elixir/formatter.exs") ++ " --check-formatted " ++
+            quoted (dir ++ "/**/*.{ex,exs}")
+          gleam dir = pinned "gleam" "gleam --version" "gleam 1.19.0" ++ " && gleam format --check " ++ quoted dir
+          script dir = case t of
+            "erlang" -> erlfmt dir
+            "elixir" -> mix dir ++ " && " ++ erlfmt dir
+            _ -> gleam dir ++ " && " ++ erlfmt dir
+          quoted p = "'" ++ p ++ "'"
+      pure (Just (Formatter (case t of "erlang" -> "erlfmt"; "elixir" -> "mix format and erlfmt"; _ -> "gleam format and erlfmt")
+        "sh" (\dir -> ["-c", script dir])
+        (case t of "erlang" -> [".erl"]; "elixir" -> [".ex", ".exs", ".erl"]; _ -> [".gleam", ".erl"])
+        ["test/locks/beam-formatters.txt", "test/locks/elixir/formatter.exs"]))
     _ -> pure Nothing
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).

@@ -27,6 +27,8 @@ import qualified Data.ByteString.Lazy.Char8 as B
 import Numeric (showHex)
 import Control.Monad (unless)
 import LawSpec.Code.Literal (literalFor)
+import LawSpec.RecordNames (recordDisplayNames)
+import qualified Data.Map.Strict as M
 import LawSpec.SourceLink (labelled, generatedHeader)
 
 -- | Quoting atoms also admits Erlang keywords as declaration names. No runtime
@@ -295,7 +297,9 @@ value symbols v = case v of
 -- their resolved unit, and a remaining collision is reported before emission.
 dataNames :: [C.DataDeclaration] -> Either String [(C.Id,String)]
 dataNames declarations = do
-  let shorts = [(C.dataId d,snake (C.dataName d)) | d <- declarations]
+  -- An anonymous record is named from where it is used (LawSpec.RecordNames).
+  let display = recordDisplayNames declarations
+      shorts = [(C.dataId d,snake (M.findWithDefault (C.dataName d) (C.dataId d) display)) | d <- declarations]
       reservedTypes = words "any none no_return atom map pid port reference tuple integer int float number binary bitstring bit_array boolean bool char string nonempty_string list nonempty_list improper_list nonempty_improper_list maybe_improper_list nonempty_maybe_improper_list byte arity identifier iodata iolist mfa module node timeout fun function term nothing just left right some non_null null undefined ok nil true false result utf_codepoint charlist nonempty_charlist as_boolean"
       -- Built-in types Erlang and Elixir let a module redefine, with a
       -- warning: only the type's name moves, its constructors keep their tags.

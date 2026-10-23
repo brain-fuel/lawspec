@@ -132,6 +132,7 @@ extra-source-files:
     runtime/lawspec_network.erl
     runtime/lawspec_crypto_native.c
     runtime/lawspec_crypto_build.escript
+    runtime/lawspec_beam_exunit_cases.ex
     runtime/lawspec_beam_exunit_formatter.ex
     runtime/lawspec_beam_exunit_schedule.ex
     runtime/lawspec_beam_network.ex
