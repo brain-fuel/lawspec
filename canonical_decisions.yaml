@@ -310,6 +310,15 @@ DEC-readable-generated-names:
   decided: 0.30.0
   refs: [pep-8]
 
+DEC-readable-artifacts:
+  status: decided
+  question: How are the artifact targets (HCL, YAML, ANTLR, Make) and Prolog laid out and named?
+  answer: |
+    As their formatters or conventions lay them out, with names from the source in spec order. YAML is block style (yamllint's defaults; text always double-quoted so no implicit conversion applies, wrapped at spaces with escaped line breaks; a value no break can split may pass 80 columns). JSON is json.dumps(indent=2, ensure_ascii=False), members in spec order. HCL is tofu fmt's layout: variables named after their declarations (settings; type-only variables type_<type>), object types one attribute per line, and one validation block per restriction with its own message. Schema $defs, ANTLR rules and manifest keys are the type's name in camelCase with its arguments (listText, boxUint8), in first-use order rather than digest order; a clash or a name the generated parser cannot use takes _2. ANTLR rules use the grammars-v4 layout; Make has the generated-file header and blank lines between rules. Prolog modules are named after their unit (example_payments, example_payments_model) and PLUnit units after their test file; every clause is printed as SWI-Prolog's portray_clause/2 prints it, and the Prolog project's Python host files follow ruff format. Each predicate, variable, rule and entry links to its source line. Checks: tools/artifact-targets.py runs json.dumps equality, yamllint 1.37.1 --strict and tofu fmt -check (OpenTofu 1.13.1) on every generated artifact; Prolog acceptance runs tools/prolog-layout.pl (portray_clause equality, SWI-Prolog 10.0.2 in the toolchain fingerprint) and ruff format --check. ANTLR and Make have no pinned formatter; their layout is checked by Hspec content tests. The owner decided the style precedence on 2026-10-22.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [opentofu-fmt, yamllint-rules, swi-portray-clause, python-json-dumps, antlr-grammars-v4-format, ruff-formatter]
+
 DEC-record-display-names:
   status: decided
   question: What does generated code call an anonymous record?

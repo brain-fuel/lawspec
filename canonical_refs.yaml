@@ -158,6 +158,26 @@ gnu-make-phony-targets:
   kind: article
   title: GNU Make manual, phony targets and prerequisite execution
   locator: https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
+opentofu-fmt:
+  kind: article
+  title: "OpenTofu: the tofu fmt command"
+  locator: https://opentofu.org/docs/cli/commands/fmt/
+yamllint-rules:
+  kind: article
+  title: "yamllint: rules and the default configuration"
+  locator: https://yamllint.readthedocs.io/en/stable/rules.html
+swi-portray-clause:
+  kind: article
+  title: "SWI-Prolog: portray_clause/2 and listing layout"
+  locator: https://www.swi-prolog.org/pldoc/man?predicate=portray_clause/2
+python-json-dumps:
+  kind: article
+  title: "Python: json.dumps and json.tool"
+  locator: https://docs.python.org/3/library/json.html
+antlr-grammars-v4-format:
+  kind: article
+  title: "ANTLR grammars-v4: grammar formatting with antlr-format"
+  locator: https://github.com/antlr/grammars-v4/blob/master/_scripts/README.md
 cty-value-construction:
   kind: article
   title: cty numeric precision and NFC normalization at value construction

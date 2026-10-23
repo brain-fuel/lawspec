@@ -31,6 +31,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   generated Python project (the formatted step). The other targets follow
   with their language families.
 
+- **Breaking: artifact and Prolog names.** HCL variables are named after their
+  declarations (`settings`, and `type_settings` for a type-only variable)
+  instead of `value_<identity>_<digest>`; schema `$defs`, ANTLR rules and
+  manifest keys are named after their types (`settings`, `listText`,
+  `boxUint8`) instead of `t_<digest>`, in spec order; ANTLR entry rules are
+  `<type>Document`; manifest `types` are written as LawSpec writes them.
+  Prolog modules are named after their unit (`example_payments`,
+  `example_payments_model`) instead of `lawspec_<digest>`, PLUnit units after
+  their test file, and the bridge's Python functions after their definitions.
+  Adapters that name the old modules must be renamed.
+- Artifacts are laid out to be read: YAML in block style (yamllint's
+  defaults), JSON indented as `json.dumps(indent=2)` writes it, HCL as
+  `tofu fmt` writes it with one validation block and message per restriction,
+  ANTLR rules in the grammars-v4 layout, and a generated-file header on the
+  Makefile. Prolog is printed as SWI-Prolog's `portray_clause/2` prints it, and
+  the Prolog runtime is reformatted the same way; the Prolog project's Python
+  host files and runtimes follow `ruff format`. Each entry, variable, rule and
+  predicate links to its source line. The artifact validator and Prolog
+  acceptance check these layouts (yamllint 1.37.1, OpenTofu 1.13.1, SWI-Prolog
+  10.0.2, ruff 0.17.2).
+
 ### Added
 
 - Shared foundations for readable output on every target: a naming service,
