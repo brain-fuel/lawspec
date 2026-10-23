@@ -133,8 +133,11 @@ literal key base definition = do
   case M.lookup key (stLiterals st) of
     Just (name, _) -> pure name
     Nothing -> do
-      let (name, scope) = claim (stModule st) base
-      put st { stModule = scope, stLiterals = M.insert key (name, definition) (stLiterals st) }
+      -- Distinct from the module's names and from the function's locals,
+      -- which would otherwise shadow it.
+      let (name, locals') = claim (stLocals st) base
+          (_, module') = claim (stModule st) name
+      put st { stModule = module', stLocals = locals', stLiterals = M.insert key (name, definition) (stLiterals st) }
       pure name
 
 emitHaskellTyped :: [DataDeclaration] -> [Unit] -> Either String HaskellTyped
@@ -593,7 +596,7 @@ constant s = case s of
   SInteger t n | Just h <- lookup t scalarHs -> pure ([], H.Typed (integer n) h)
   SSequence "Text" units -> do
     let text = map toEnum units :: String
-    name <- literal ("text " ++ show units) (H.camelName ("text" : take 3 (nameWords text)))
+    name <- literal ("text " ++ show units) (if null (nameWords text) then "emptyText" else H.camelName ("text" : take 3 (nameWords text)))
       (call "T.pack" [string text])
     pure ([], var name)
   SSequence "Bytes" units -> do
