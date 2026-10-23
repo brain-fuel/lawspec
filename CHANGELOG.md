@@ -31,6 +31,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   generated Python project (the formatted step). The other targets follow
   with their language families.
 
+- **Breaking: generated Erlang, Elixir and Gleam names.** BEAM output is
+  written to be read. `lawspec_definitions` functions are named after their
+  definitions (`fee_model`, not `evaluate_3`), `lawspec_abilities` functions
+  after their abilities and handlers (`gateway_production`, not
+  `ability_0_production`), and `lawspec_typed` functions and conversions
+  after their definitions and types (`settings`, `from_dynamic_settings`),
+  with `_2` only on a clash; a specialised copy is named from its definition
+  and argument types. Binders keep their source names as Erlang variables.
+  Each law's cases are functions named after the law and the case
+  (`law_normalizers_agree__spaces_become_hyphens_punctuation_is_preserved`),
+  boundaries are numbered from 1, ExUnit tests are named for their cases,
+  and Gleeunit tests for the law and the case instead of `__case_N`.
+  Anonymous records have a name from where they are used (a payload of
+  `Declined` is the tag `declined_details`, the struct
+  `LawSpec.Data.DeclinedDetails` and the Gleam type `DeclinedDetails`)
+  instead of `Record<digest>`. Adapters and native code that use the old
+  names must be renamed.
+- Generated BEAM code writes text as binaries (`<<"café"/utf8>>`) and
+  scalars through their runtime constructors instead of code-unit maps,
+  integer arithmetic and comparison as Erlang's operators and other
+  operations as named runtime functions (`lawspec_beam_scalar:add/4`), and
+  a let as `bind(Value, fun(X) -> ... end)`. A law's identity is a macro
+  written once, each law has the shared comment block, and every case,
+  definition and typed function links to its source line; test modules
+  name their specification in their header. ExUnit test modules name only
+  their laws (`law/4` in the new `LawSpec.Beam.ExUnitCases` test runtime).
+- Generated Erlang is laid out as `erlfmt` 1.8.0 lays it out, Elixir as
+  `mix format` (Elixir 1.20.4) and Gleam as `gleam format` 1.19.0, each with
+  its default settings, and the BEAM runtimes are formatted the same way.
+  Acceptance runs each in check mode on every generated BEAM project (the
+  formatted step), pinned in `test/locks/beam-formatters.txt`.
+
 ### Added
 
 - Shared foundations for readable output on every target: a naming service,

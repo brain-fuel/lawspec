@@ -50,8 +50,8 @@ function in `lawspec_typed` over the same tuples, lists, binaries and
 integers your code uses. Only `KeyVal` and `Set` values convert at its
 boundary, since typed code keeps them as maps and version 2 `sets`.
 Integers are checked where their type bounds them, and `Text` is UTF-8
-measured in code points. Each function is named for its definition and a
-digest of its identity, so its name survives unrelated edits.
+measured in code points. Each function is named for its definition, with `_2` only when two
+would share a name, so its name survives unrelated edits.
 
 A spec handler whose clauses are all typed keeps its state in its cell's
 process and runs each operation there, so an operation copies only its
@@ -98,3 +98,28 @@ The application does not invoke a C compiler at startup.
 Doctor builds and loads the same bridge in a temporary project, so missing
 headers, unsupported algorithms or a library mismatch fail before generation.
 Projects that do not use crypto need no C build step.
+
+## Formatting
+
+Output is what `erlfmt` 1.8.0 writes with its default settings: four-space
+indentation and 100 columns, with operators breaking after themselves and
+`case` expressions always on lines of their own. LawSpec lays it out itself,
+so generation needs no formatter, and LawSpec's own acceptance checks every
+generated project, runtime included, with `erlfmt --check`. `--minify`
+allows a compact layout.
+
+## Names
+
+Generated Erlang uses the specification's names. Binders are Erlang
+variables in PascalCase (`money` is `Money`); a checked definition is a
+function of `lawspec_definitions` named after it in snake case (`feeModel`
+is `fee_model`), with `_2` only when two would share a name, and abilities
+and handlers have functions of `lawspec_abilities` named after them. Each
+law's cases are functions named after the law and the case:
+`law_normalizers_agree__spaces_become_hyphens_punctuation_is_preserved`,
+`law_normalizers_agree__boundary_1` and `law_normalizers_agree__property`.
+Each case and definition has a comment linking it to its source line, under
+the law's comment, which gives what it says and the statement its tests
+check. Text is written as binaries (`<<"café"/utf8>>`), integer arithmetic
+and comparison as Erlang's operators, and an anonymous record from where it
+is used: the payload of a `Declined` case is `declined_details`.
