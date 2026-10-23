@@ -510,7 +510,23 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | otherwise = H.call "LS.convert" [H.string (key ty), value, H.var "machineBits"]
     -- One codec maker per unit: it builds the type registry and the data
     -- names once, not once per adapter argument and result.
-    hsCodecDoc = HaskellData.haskellCodecDocWithContext (H.call "P.Just" [H.var "symbols"]) dataDeclarations "schema" "machineBits"
+    hsCodecDoc ty = case lookup ty [(t, n) | (n, t, _) <- hsScalarCodecs] of
+      Just name -> Right (H.var name)
+      Nothing -> hsCodecExpr ty
+    hsCodecExpr = HaskellData.haskellCodecDocWithContext (H.call "P.Just" [H.var "symbols"]) dataDeclarations "schema" "machineBits"
+    -- The scalar types' codecs take no case, so a test module names each
+    -- it uses once (textCodec = Codec.textCodec schema machineBits).
+    hsScalarCodecs = [(n, t, e) | p <- primitives, let t = C.Constructor (primitiveName p) [],
+      Right e <- [hsCodecExpr t], let n = H.camelName [primitiveName p, "codec"]]
+    -- A native call: its arguments checked, evaluated and decoded, the
+    -- result encoded (Codec.callN, or Codec.performN when it performs).
+    hsAdapterCall performing function types values result
+      | n >= 1, n <= 8, not (towerResult result) =
+          H.call ("Codec." ++ (if performing then "perform" else "call") ++ show n)
+            (map (java . hsCodecDoc) types ++ [java (hsCodecDoc result), function] ++ values)
+      | otherwise = hsNativeResult result (hsCallChecked values (\names ->
+          (if performing then \x -> H.call "LS.performIO" [x] else id) (function H.<+ zipWith hsNativeArgument types names)))
+      where n = length values
     hsNativeArgument ty value = H.call "Codec.decoded" [java (hsCodecDoc ty), value]
     hsNativeResult ty value | towerResult ty = H.call "LS.fromNative" [H.string "Integer", value, H.var "machineBits"]
     hsNativeResult ty value = H.call "Codec.encoded" [java (hsCodecDoc ty), value]
@@ -600,9 +616,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       C.Perform op args ->
         let types = map expressionType args
             converted = zipWith hsCheckedDoc types values
-        in Right (hsFailingAs (operationFailure op) (hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
-          H.call "LS.performIO" [H.call ("Abilities." ++ maybe (C.operationName op) (`fieldName` C.operationName op) (abilityNamed (C.operationAbility op)))
-            (hsHandler (C.operationAbility op) : zipWith hsNativeArgument types names)]))))
+            operation = H.call ("Abilities." ++ maybe (C.operationName op) (`fieldName` C.operationName op) (abilityNamed (C.operationAbility op)))
+              [hsHandler (C.operationAbility op)]
+        in Right (hsFailingAs (operationFailure op) (hsAdapterCall True operation types converted (expressionType term)))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
           let side tag ty = H.lambda ["value"] (hsConstructValue (expressionType term) tag [hsCheckedDoc ty (H.var "value")])
@@ -622,11 +638,12 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             converted = zipWith hsCheckedDoc types values
             result = if name' `elem` map contractName (contracts u)
               then hsCallChecked converted (\names -> H.call (hsContractHelper name') (H.var "symbols" : names))
-              else hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
-                let handlers = map hsHandler (usesOf name')
-                    plain = hsNativeCall name' (handlers ++ zipWith hsNativeArgument types names)
-                in if null handlers || name' `elem` asyncFunctions u then hsAwait (adapterName u identity) plain
-                   else H.call "LS.performIO" [plain]))
+              else let handlers = map hsHandler (usesOf name')
+                       asynchronous = name' `elem` asyncFunctions u
+                   in if asynchronous
+                     then hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
+                       hsAwait (adapterName u identity) (hsNativeCall name' (handlers ++ zipWith hsNativeArgument types names))))
+                     else hsAdapterCall (not (null handlers)) (hsNativeCall name' handlers) types converted (expressionType term)
             failed = hsFailing name' result
         in Right $ if any hsNativeMachine (expressionType term : types)
           then H.call "LS.onMachine" [H.var "machineBits", failed]
@@ -661,7 +678,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     hsAllocate binders = snd (foldl (\(scope, named) b -> if any ((== C.binderId b) . fst) named then (scope, named) else
       let (chosen, scope') = Naming.claim scope (Naming.localIdentifier "haskell" (C.binderName b))
       in (scope', named ++ [(C.binderId b, chosen)])) (Naming.scopeWith (HaskellProperties.haskellReserved ++ hsCaseNames), []) binders)
-    hsCaseNames = "argument" : ["argument" ++ show i | i <- [1 .. 9 :: Int]] ++ words "exception failure value recorded scalarName"
+    hsCaseNames = "argument" : ["argument" ++ show i | i <- [1 .. 9 :: Int]] ++ words "exception failure value recorded scalarName" ++
+      [n | (n, _, _) <- hsScalarCodecs]
     hsGeneratorWithinH within = HaskellTestHelpers.generatorDocWithin within bits javaDataBudget hsCustom hsRef key
     haskellProperties = HaskellProperties.Config
       { HaskellProperties.moduleName = intercalate "." (map hsPart parts)
@@ -689,6 +707,12 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , HaskellProperties.lateHandlerInstalls = hsLateInstalls
       , HaskellProperties.searchDescriptors = searchDescriptorsOf
       , HaskellProperties.local = hsLocal
+      , HaskellProperties.scalarCodecs = [(n, e) | (n, _, e) <- hsScalarCodecs]
+      , HaskellProperties.selfChecked = \e -> case C.expressionNode e of
+          C.Constant value -> HaskellExpr.plainConstant (expressionType e) value
+          C.ExternalCall identity _ -> lookup identity definitions == Nothing &&
+            declarationName identity `notElem` map contractName (contracts u) && not (towerResult (expressionType e))
+          _ -> False
       , HaskellProperties.abilityModules = if null (C.unitAbilities u) then Nothing
           else Just (HaskellAbilities.typesModule u, HaskellAbilities.handlersModule u)
       , HaskellProperties.nativeImports = nub ([intercalate "." (init parts') | a <- C.unitAbilities u, Just parts' <- [C.abilityNative a]] ++

@@ -80,7 +80,7 @@ modelTestArtifacts target bits datas calls u
       "java" -> "(s, a) -> " ++ name ++ "(s" ++ concatMap (", " ++) [arguments n | n > 0] ++ ")"
       "kotlin" -> "LawSpecRuntime.ModelCallback { s, a -> " ++ name ++ "(s" ++ concatMap (", " ++) [arguments n | n > 0] ++ ") }"
       "scala" -> "((s, a) => " ++ name ++ "(s" ++ concatMap (", " ++) [arguments n | n > 0] ++ ")): LawSpecRuntime.ModelCallback"
-      -- The runtime's modelCallback takes the arguments from the list.
+      -- The runtime's uncurried takes the arguments from the list.
       _ -> name
     nil = case target of
       "go" -> "nil"
@@ -198,7 +198,7 @@ modelTestArtifacts target bits datas calls u
           concat [ [ H.Run (H.dollar (H.call "it" [H.string "supervision"]) (H.Do
                        [ H.Bind "failure" (H.var "LS.checkSupervision"), H.Run (expected "failure") ])) ]
                  | not (null (C.unitSupervisors u)) ]))) <> D.hardline
-    callback name = H.call "LS.modelCallback" [H.var name]
+    callback name = H.call "LS.uncurried" [H.var name]
     expected failure = H.call "P.maybe" [H.call "P.pure" [H.var "()"], H.var "expectationFailure", H.var failure]
 
 -- | Rust test functions for a unit's models, calling the mounted definitions

@@ -2616,21 +2616,21 @@ shrunkValues text seed size =
 -- | A generated definition: symbols, then its arguments in order.
 type ModelCallback = SymbolContext -> [Scalar] -> Either String Scalar
 
--- | A function of a symbol context and its arguments as a model callback,
--- which takes the arguments as a list.
-class ModelFunction f where
+-- | A function of a symbol context and its arguments, taking the arguments
+-- as a list, as model callbacks and remote definitions take them.
+class Uncurried f where
   appliedTo :: f -> [Scalar] -> Either String Scalar
 
-instance ModelFunction (Either String Scalar) where
+instance Uncurried (Either String Scalar) where
   appliedTo result [] = result
-  appliedTo _ _ = Left "model callback arity"
+  appliedTo _ _ = Left "wrong number of arguments"
 
-instance (ModelFunction f) => ModelFunction (Scalar -> f) where
+instance (Uncurried f) => Uncurried (Scalar -> f) where
   appliedTo f (x : xs) = appliedTo (f x) xs
-  appliedTo _ [] = Left "model callback arity"
+  appliedTo _ [] = Left "wrong number of arguments"
 
-modelCallback :: (ModelFunction f) => (SymbolContext -> f) -> ModelCallback
-modelCallback f symbols = appliedTo (f symbols)
+uncurried :: (Uncurried f) => (SymbolContext -> f) -> SymbolContext -> [Scalar] -> Either String Scalar
+uncurried f symbols = appliedTo (f symbols)
 
 -- | A model: its spec, (start system, start model), each command's (system,
 -- reference, precondition), the abstraction and the invariants, in the

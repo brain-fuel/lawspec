@@ -68,6 +68,11 @@ data Config = Config
   , searchDescriptors :: Expanded -> Maybe [String]
   -- Each binder's name in generated code.
   , local :: C.Id -> String
+  -- The scalar codecs a module may name once: textCodec = Codec.textCodec ...
+  , scalarCodecs :: [(String, Expr)]
+  -- Whether an expression's value is already checked against its type: a
+  -- primitive's literal, or an adapter's result its codec checked.
+  , selfChecked :: Expr' -> Bool
   }
 
 type Expr' = C.Expr
@@ -119,6 +124,7 @@ emitTests Config{..} unit laws = do
         [D.joinWith D.hardline [H.comment ["The largest magnitude an unbounded integer is drawn with."],
             H.signature "integerLimit" ["P.Integer"], H.declaration "integerLimit" (operator "P.^" [integer 2, H.Typed (integer 256) "P.Int"])]
         | usesLimit ] ++
+        [H.declaration n e | (n, e) <- scalarCodecs, n `elem` identifiers (D.render D.Compact (D.joinWith D.hardline (contractDocs ++ helpers ++ [H.expression specBody])))] ++
         contractDocs ++ helpers ++
         [D.joinWith D.hardline [H.signature "spec" ["Spec"], H.declaration "spec" specBody]]
       usesLimit = "integerLimit" `elem` identifiers (D.render D.Compact (D.joinWith D.hardline (contractDocs ++ helpers ++ [H.expression specBody])))
@@ -254,7 +260,8 @@ emitTests Config{..} unit laws = do
       AssertImplies guard body -> [Run (H.If (truth (expr guard)) (H.Do (doBody (assertionStmts context link body))) (call "pure" [var "()"]))]
       AssertEqual a b -> [Run (call "T.assertEqual"
         [context (maybe "" (" — " ++) (expectationLink a link)),
-         checked (expressionType a) (expr a), checked (expressionType b) (expr b)])]
+         side a, side b])]
+    side x = if selfChecked x then expr x else checked (expressionType x) (expr x)
     -- The line an expectation is written on, else the law's.
     expectationLink a link = case originLocation (C.expressionOrigin a) of
       Just l | take 1 (file l) /= "<" -> Just (locationLink l)

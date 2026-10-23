@@ -13,6 +13,7 @@ import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.HaskellData as Native
+import LawSpec.HaskellData (moduleImports, sortedImports)
 import LawSpec.AbilityNames (interfaceName, fieldName)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.HaskellExpr as E
@@ -63,26 +64,6 @@ definitionCalls units = [(declarationId (definitionDeclaration d),
 -- handle ... with h end, and which their clauses call.
 specHandlerCall :: [Unit] -> Id -> String
 specHandlerCall units h = "Definitions." ++ maybe "undefinedHandler" id (lookup h (snd (functionNames units)))
-
--- | Import lines in ormolu's order, only those a module's code uses: each is
--- (module, alias, imported names), where an alias is a qualified import.
-moduleImports :: String -> [(String, Maybe String, Maybe [String])] -> [String]
-moduleImports rendered candidates = sortedImports [c | c <- candidates, used c]
-  where
-    used (_, Just alias, _) = (alias ++ ".") `isInfixOf` rendered
-    used (_, Nothing, Just names) = any (`elem` identifiers rendered) [takeWhile isAlphaNum n | n <- names]
-    used (_, Nothing, Nothing) = True
-    identifiers = words . map (\c -> if isAlphaNum c || c `elem` ("_'" :: String) then c else ' ')
-
--- | Import lines in ormolu's order: by module, an unqualified import before
--- a qualified one, Prelude last.
-sortedImports :: [(String, Maybe String, Maybe [String])] -> [String]
-sortedImports = map line . sortOn key . nub
-  where
-    key (m, alias, _) = (m == "Prelude", m, alias /= Nothing)
-    line (m, alias, names) = "import " ++ maybe "" (const "qualified ") alias ++ m ++
-      maybe "" (\a -> if a == m then "" else " as " ++ a) alias ++
-      maybe "" (\ns -> " (" ++ intercalate ", " ns ++ ")") names
 
 -- | Checked definitions are emitted as ordinary Haskell code, so adapters and tests call
 -- the same proved implementation. ref:DEC-total-definitions
