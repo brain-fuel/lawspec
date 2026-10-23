@@ -1,7 +1,7 @@
 -- | Go expression documents for checked Core, shared by definitions and properties.
 module LawSpec.GoExpr
   ( renderExpression, renderExpressionWithContext, scalarLiteral, textLiteral, call, array, quoted, runeLiteral
-  , declare, identifiers, generatedHeader
+  , declare, identifiers, generatedHeader, goHeaderDoc, condition
   ) where
 
 import LawSpec.Core
@@ -25,6 +25,10 @@ quoted = D.text . literalFor "go"
 generatedHeader :: Maybe FilePath -> D.Doc
 generatedHeader source = D.text ("// " ++ goGeneratedMarker) <>
   maybe mempty (\path -> D.hardline <> D.text ("// Source: " ++ path)) source
+
+-- | The marker and the blank line before a generated file's package clause.
+goHeaderDoc :: D.Doc
+goHeaderDoc = generatedHeader Nothing <> D.hardline <> D.hardline
 
 -- | A character as a Go rune literal: printable characters as they are,
 -- Go's escapes otherwise.
@@ -59,6 +63,48 @@ declare ((name, value, droppable) : others) rest
   where
     later = declare others rest
     defined = D.text (name ++ " := ") <> value
+
+-- | An if statement's condition as gofmt writes it: without parentheses
+-- around the whole, unless a composite literal of a named type inside needs
+-- them (Go would read its brace as the block's).
+condition :: D.Doc -> D.Doc
+condition doc
+  | '\n' `elem` rendered = doc
+  | otherwise = D.text (strip rendered)
+  where
+    rendered = D.render D.Compact doc
+    strip text'
+      | Just inner <- wrapped text', not (namedLiteral inner) = strip inner
+      | otherwise = text'
+    -- (x) whose opening parenthesis closes at the very end.
+    wrapped ('(' : rest) | closesAtEnd (0 :: Int) rest = Just (init rest)
+    wrapped _ = Nothing
+    closesAtEnd depth text'' = case text'' of
+      [] -> False
+      '"' : more -> closesAtEnd depth (skipQuoted '"' more)
+      '\'' : more -> closesAtEnd depth (skipQuoted '\'' more)
+      '(' : more -> closesAtEnd (depth + 1) more
+      ")" | depth == 0 -> True
+      ')' : more | depth == 0 -> False
+                 | otherwise -> closesAtEnd (depth - 1) more
+      _ : more -> closesAtEnd depth more
+    skipQuoted q text'' = case text'' of
+      [] -> []
+      '\\' : _ : more -> skipQuoted q more
+      c : more | c == q -> more
+               | otherwise -> skipQuoted q more
+    -- A brace right after a name, outside a parenthesised group: Name{...}.
+    namedLiteral = go [] ' '
+      where
+        go _ _ [] = False
+        go stack previous text'' = case text'' of
+          '"' : more -> go stack '"' (skipQuoted '"' more)
+          '\'' : more -> go stack '\'' (skipQuoted '\'' more)
+          '(' : more -> go ((isAlphaNum previous || previous `elem` ("_)]" :: String)) : stack) '(' more
+          ')' : more -> go (drop 1 stack) ')' more
+          '{' : more | (isAlphaNum previous || previous == '_') && and stack -> True
+                     | otherwise -> go stack '{' more
+          c : more -> go stack c more
 
 -- | The identifiers Go code mentions, outside string, rune and raw literals
 -- and comments.

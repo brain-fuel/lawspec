@@ -10,8 +10,8 @@ module LawSpec.Typed.Go (GoTyped(..), emitGoTyped) where
 
 import Control.Monad (forM, forM_)
 import Control.Monad.State.Strict
-import Data.Char (isAlphaNum, isUpper, toLower, toUpper, ord)
-import Data.List (intercalate, isPrefixOf)
+import Data.Char (isAlphaNum, isDigit, isUpper, toUpper, ord)
+import Data.List (intercalate, isPrefixOf, stripPrefix)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
@@ -26,6 +26,11 @@ import LawSpec.DataNames (isProduct)
 import LawSpec.Time (isDurationType)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Digest (digestHex, digestString)
+import LawSpec.Naming (claimAll, scopeWith, reservedFor, localIdentifier, readableDefinitionName, nameWords)
+import LawSpec.RecordNames (recordDisplayNames)
+import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.SourceLink (goGeneratedMarker, labelled, sourceLink)
+import qualified LawSpec.GoExpr as E
 
 data GoTyped = GoTyped
   { -- A package's file: its typed definitions and boundary types, with the
@@ -35,7 +40,7 @@ data GoTyped = GoTyped
   , goTypedType :: Type -> Either String String
   , goTypedFrom :: Type -> Either String String  -- LawSpecValue -> typed, a function name
   , goTypedTo :: Type -> Either String String    -- typed -> LawSpecValue
-  , goTypedValue :: Expr -> Either String String
+  , goTypedValue :: Expr -> Either String D.Doc
     -- Direct conversions from and to a native type, when it has them.
   , goTypedNative :: Type -> Maybe (String, String)
   , goTypedPlan :: TypedPlan
@@ -64,25 +69,40 @@ data Env = Env
   , envDeclarations :: [DataDeclaration]
   , envNative :: M.Map Id String
   , envPerform :: Expr -> [D.Doc] -> Either String D.Doc
+    -- Package-level names a helper must not take: the runtime's, the data
+    -- types' and the typed functions'.
+  , envTaken :: S.Set String
   }
 
 -- | Fresh names, and the per-type helpers the code asks for.
-data St = St { stCounter :: Int, stHelpers :: M.Map String (Int, Type), stWanted :: S.Set (String, String) }
+-- | The locals a function has named, the per-type helpers the code asks
+-- for, and which of them are wanted.
+data St = St { stTaken :: S.Set String, stHelpers :: M.Map String (Int, Type), stWanted :: S.Set (String, String) }
+
+emptySt :: St
+emptySt = St (S.fromList localReserved) M.empty S.empty
+
+-- | Names a typed function's locals never take: Go's keywords and
+-- predeclared names, the imported packages, and the names the generated
+-- code gives its own values.
+localReserved :: [String]
+localReserved = reservedFor "go" ++ words "big strings symbols problem failure ok"
+
+-- | A function's locals start afresh.
+enterFunction :: M ()
+enterFunction = modify (\st -> st { stTaken = S.fromList localReserved })
 
 type M = StateT St (Either String)
 
+-- | A local named after what it holds: a source binder keeps its name, and a
+-- name already taken in the function gets _2, _3 (LawSpec.Naming).
 fresh :: String -> M String
 fresh base = do
   s <- get
-  put s { stCounter = stCounter s + 1 }
-  pure (sanitize base ++ show (stCounter s))
-
-sanitize :: String -> String
-sanitize name = case [c | c <- map lower name, isAlphaNum c || c == '_'] of
-  [] -> "v"
-  cleaned@(c : _) | isAlphaNum c && not (c >= '0' && c <= '9') -> "l" ++ capitalize cleaned
-  cleaned -> "lv" ++ cleaned
-  where lower c = if isUpper c then toLower c else c
+  let name = localIdentifier "go" base
+      chosen = firstOf [c | c <- name : [name ++ "_" ++ show k | k <- [2 :: Int ..]], c `S.notMember` stTaken s]
+  put s { stTaken = S.insert chosen (stTaken s) }
+  pure chosen
 
 capitalize :: String -> String
 capitalize (c : cs) = toUpper c : cs
@@ -98,25 +118,69 @@ lift' = lift
 
 -- | A helper of a kind (eq, cmp, to, from, tonative, fromnative) for a type,
 -- named by the type, so every package names it alike.
-helper :: String -> Type -> M String
-helper kind ty = do
+helper :: Env -> String -> Type -> M String
+helper env kind ty = do
   let key = show ty
   modify (\st -> st { stHelpers = M.insert key (0, ty) (stHelpers st), stWanted = S.insert (kind, key) (stWanted st) })
-  pure (helperName kind ty)
+  pure (helperName env kind ty)
 
-helperName :: String -> Type -> String
-helperName kind ty = "lsf" ++ capitalize kind ++ "_" ++ take 12 (digestHex (digestString (show ty)))
+-- | What each kind of helper is called: lsfToValueListText,
+-- lsfCompareMoney. A name the runtime or a typed function already has, or a
+-- data type whose name begins like a built-in's (so the words could read
+-- two ways), keeps the type's digest as well.
+helperName :: Env -> String -> Type -> String
+helperName env kind ty
+  | clear && candidate `S.notMember` envTaken env = candidate
+  | otherwise = candidate ++ "_" ++ take 12 (digestHex (digestString (show ty)))
+  where
+    candidate = "lsf" ++ helperKind kind ++ concat parts
+    (parts, clear) = typeSlug (envNames env) ty
+
+helperKind :: String -> String
+helperKind kind = case kind of
+  "eq" -> "Equal"
+  "cmp" -> "Compare"
+  "to" -> "ToValue"
+  "from" -> "FromValue"
+  "tonative" -> "ToNative"
+  "fromnative" -> "FromNative"
+  _ -> capitalize kind
+
+-- | A type's words in a helper's name, each type constructor capitalised,
+-- data types by their generated names; and whether the words read one way
+-- only.
+typeSlug :: M.Map String String -> Type -> ([String], Bool)
+typeSlug names ty = case ty of
+  Constructor n args ->
+    let (own, ownClear) = case M.lookup n names of
+          Just generated -> let shown = drop 3 generated in (shown, not (any (startsWord shown) builtinWords))
+          Nothing -> (maybe (concatMap capitalize (nameWords (lastSegment n))) id (collectionContainer n), True)
+        inner = [typeSlug names t | TypeArgument t <- args]
+    in (own : concatMap fst inner, ownClear && all snd inner)
+  _ -> (["Value"], False)
+  where
+    lastSegment n = reverse (takeWhile (/= ':') (reverse n))
+    startsWord shown w = case stripPrefix w shown of
+      Just "" -> True
+      Just (c : _) -> isUpper c || isDigit c || c == '_'
+      Nothing -> False
+    builtinWords = words "List Maybe Either KeyVal Set Queue Stack Deque Text Bytes Bool Unit Integer Int UInt Float Decimal Rational Char Symbol Duration Value"
 
 emitGoTyped :: [DataDeclaration] -> [Unit] -> Either String GoTyped
 emitGoTyped declarations units = do
   let plan = typedPlanPerforming scalarTypes declarations units
       datas = typedData plan
-      names = dataNames datas
-      functions = M.fromList [ (c, functionName c d) | (c, d) <- typedRepresentatives plan ]
+      names = dataNames (recordDisplayNames declarations) datas
+      -- Each typed function is named after its definition (a specialised
+      -- copy by its argument types too), as no runtime name or data type is.
+      (functionNames, _) = claimAll (scopeWith (fastRuntimeNames ++ M.elems names))
+        [ functionName d | (_, d) <- typedRepresentatives plan ]
+      functions = M.fromList (zip (map fst (typedRepresentatives plan)) functionNames)
+      taken = S.fromList (fastRuntimeNames ++ M.elems names ++ functionNames)
   nativeNames <- GoData.goEmittedNames declarations
   let envWith perform = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions declarations
-        (M.fromList (concat [zip (dataId d : map constructorId (dataConstructors d)) ns | (d, ns) <- nativeNames])) perform
+        (M.fromList (concat [zip (dataId d : map constructorId (dataConstructors d)) ns | (d, ns) <- nativeNames])) perform taken
       env = envWith (\_ _ -> Left "typed Go: an operation outside a package's file")
       handlerTypes = [ t | h <- concatMap unitHandlers units, isTypedHandler plan h
                          , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
@@ -131,17 +195,22 @@ emitGoTyped declarations units = do
         let env' = envWith perform
             classes = S.fromList [c | i <- identities, Just c <- [definitionClass plan i]]
             members = [(c, d) | (c, d) <- typedRepresentatives plan, c `S.member` classes]
-        ((functionDocs, helperDocs), _) <- flip runStateT (St 0 M.empty S.empty) $ do
-          fs <- mapM (\(c, d) -> functionDoc env' c d) members
-          forM_ boundaryTypes $ \t -> helper "to" t >> helper "from" t
-          forM_ [t | t <- boundaryTypes, nativeDirect env' S.empty t] $ \t -> helper "tonative" t >> helper "fromnative" t
+        ((functionDocs, helperDocs), _) <- flip runStateT emptySt $ do
+          fs <- mapM (\(c, d) -> enterFunction >> functionDoc env' c d) members
+          forM_ boundaryTypes $ \t -> helper env' "to" t >> helper env' "from" t
+          forM_ [t | t <- boundaryTypes, nativeDirect env' S.empty t] $ \t -> helper env' "tonative" t >> helper env' "fromnative" t
           hs <- helpers env'
           pure (fs, hs)
-        pure (D.render (D.PrettyTabs 100) (line "// Generated by LawSpec. Do not edit." <> D.hardline <>
-          line ("package " ++ package) <> D.hardline <> D.hardline <>
-          line "import (" <> D.nest 8 (D.hardline <> line "\"math/big\"" <> D.hardline <> line "\"strings\"") <> D.hardline <> line ")" <> D.hardline <> D.hardline <>
-          line "var _ = big.NewInt" <> D.hardline <> line "var _ = strings.Compare" <> D.hardline <> D.hardline <>
-          D.joinWith (D.hardline <> D.hardline) (dataDocs ++ entryHelpers env' ++ orderingHelper env' ++ functionDocs ++ helperDocs)) ++ "\n")
+        let definitionsDoc = D.joinWith (D.hardline <> D.hardline) (dataDocs ++ entryHelpers env' ++ orderingHelper env' ++ functionDocs ++ helperDocs)
+            -- Only the packages the code uses are imported.
+            used = E.identifiers (D.render D.Compact definitionsDoc)
+            imports = [quotedImport | (package', quotedImport) <- [("big", "\"math/big\""), ("strings", "\"strings\"")], package' `elem` used]
+            importDoc = case imports of
+              [] -> mempty
+              [single] -> line ("import " ++ single) <> D.hardline <> D.hardline
+              several -> line "import (" <> D.nest 8 (D.hardline <> D.joinWith D.hardline (map line several)) <> D.hardline <> line ")" <> D.hardline <> D.hardline
+        pure (D.render (D.PrettyTabs 100) (line ("// " ++ goGeneratedMarker) <> D.hardline <> D.hardline <>
+          line ("package " ++ package) <> D.hardline <> D.hardline <> importDoc <> definitionsDoc) ++ "\n")
       lookupFunction identity = do
         c <- definitionClass plan identity
         M.lookup c functions
@@ -150,32 +219,38 @@ emitGoTyped declarations units = do
     { goTypedSource = file
     , goTypedFunction = lookupFunction
     , goTypedType = goType env
-    , goTypedFrom = \t -> pure (helperName "from" t)
-    , goTypedTo = \t -> pure (helperName "to" t)
+    , goTypedFrom = \t -> pure (helperName env "from" t)
+    , goTypedTo = \t -> pure (helperName env "to" t)
     , goTypedValue = \e -> do
-        ((statements, value), _) <- runStateT (cexpr env [] e) (St 0 M.empty S.empty)
-        if null statements then pure (D.render D.Compact value) else do
+        ((statements, value), _) <- runStateT (cexpr env [] e) emptySt
+        if null statements then pure value else do
           result <- goType env (expressionType e)
           -- An immediately invoked function keeps the existing statement
           -- lowering and evaluates this closed initializer exactly once.
-          pure (D.render D.Compact (D.text ("func() "++result++" ") <>
-            block (statements++[D.text "return "<>value]) <> D.text "()"))
-    , goTypedNative = \t -> if nativeDirect env S.empty t then Just (helperName "fromnative" t, helperName "tonative" t) else Nothing
+          pure (D.text ("func() "++result++" ") <>
+            block (statements++[D.text "return "<>value]) <> D.text "()")
+    , goTypedNative = \t -> if nativeDirect env S.empty t then Just (helperName env "fromnative" t, helperName env "tonative" t) else Nothing
     , goTypedPlan = plan }
   where
-    functionName _ d = "lsf" ++ capitalize (identifier (shortName (declarationName (definitionDeclaration d)))) ++ "_" ++ stableSuffix (declarationId (definitionDeclaration d))
-    shortName name =
-      let unprefixed = if "lawspec_" `isPrefixOf` name then drop 8 name else name
-      in reverse (dropHash (reverse unprefixed))
-    dropHash reversed = case span (`elem` ("0123456789abcdef" :: String)) reversed of
-      (digits@(_ : _), '_' : rest) | length digits >= 8 -> rest
-      _ -> reversed
+    functionName d =
+      let declaration = definitionDeclaration d
+          pascal = case nameWords (readableDefinitionName (declarationName declaration) (fst (functionType (declarationType declaration)))) of
+            [] -> "Definition"
+            ws -> concatMap capitalize ws
+      in (if any (`isPrefixOf` pascal) (map helperKind (words "eq cmp to from tonative fromnative")) then "lsfDef" else "lsf") ++ pascal
 
-dataNames :: [DataDeclaration] -> M.Map String String
-dataNames datas = M.fromList (snd (foldl pick (S.empty, []) datas))
+-- | The runtime's own lsf names (lawspec_fast.go), which nothing generated
+-- takes.
+fastRuntimeNames :: [String]
+fastRuntimeNames = [w | w <- words (map (\c -> if isAlphaNum c || c == '_' then c else ' ') (runtimeSource "go-fast")), "lsf" `isPrefixOf` w]
+
+-- | Each typed data type's Go name: lsf and its name, an anonymous record's
+-- display name (LawSpec.RecordNames), with _2, _3 where names meet.
+dataNames :: M.Map Id String -> [DataDeclaration] -> M.Map String String
+dataNames display datas = M.fromList (snd (foldl pick (S.fromList fastRuntimeNames, []) datas))
   where
     pick (taken, acc) d =
-      let base = "lsf" ++ identifier (dataName d)
+      let base = "lsf" ++ identifier (M.findWithDefault (dataName d) (dataId d) display)
           chosen = firstOf [n | n <- base : [base ++ "_" ++ show k | k <- [2 :: Int ..]], n `S.notMember` taken]
       in (S.insert chosen taken, (idText (dataId d), chosen) : acc)
 
@@ -235,7 +310,10 @@ dataDoc env d = do
       line = D.text
       header = line ("// " ++ name ++ " is " ++ dataName d ++ " (" ++ idText (dataId d) ++ ").")
   fieldTypes <- forM variants $ \c -> forM (constructorFields c) $ \f -> goTypeP env parameters (binderType f)
-  let structOf ts c = D.block 8 (D.joinWith D.hardline [line (fieldName f ++ " " ++ t) | (f, t) <- zip (constructorFields c) ts])
+  -- gofmt aligns a struct's field types in a column.
+  let structOf ts c = let width = maximum (0 : map (length . fieldName) (constructorFields c))
+                          pad n = n ++ replicate (width - length n) ' '
+                      in D.block 8 (D.joinWith D.hardline [line (pad (fieldName f) ++ " " ++ t) | (f, t) <- zip (constructorFields c) ts])
   pure $ header <> D.hardline <> if fieldless d
     then line ("type " ++ name ++ " uint8") <> D.hardline <> D.hardline <>
       line "const " <> D.text "(" <> D.nest 8 (D.hardline <> D.joinWith D.hardline
@@ -246,8 +324,8 @@ dataDoc env d = do
     then line ("type " ++ name ++ generics ++ " struct ") <> structOf (firstOf fieldTypes) (firstOf variants)
     else line ("type " ++ name ++ generics ++ " interface ") <> D.block 8 (line ("lsfTag" ++ name ++ "() int")) <> D.hardline <> D.hardline <>
       D.joinWith (D.hardline <> D.hardline)
-        [ line ("type " ++ variantType env d c ++ generics ++ " struct ") <> (if null ts then line "{}" else structOf ts c) <> D.hardline <> D.hardline <>
-          line ("func (*" ++ variantType env d c ++ applied ++ ") lsfTag" ++ name ++ "() int { return " ++ show k ++ " }")
+        [ (if null ts then line ("type " ++ variantType env d c ++ generics ++ " struct{}") else line ("type " ++ variantType env d c ++ generics ++ " struct ") <> structOf ts c) <> D.hardline <> D.hardline <>
+          line ("func (*" ++ variantType env d c ++ applied ++ ") lsfTag" ++ name ++ "() int ") <> block [line ("return " ++ show k)]
         | (k, (c, ts)) <- zip [0 :: Int ..] (zip variants fieldTypes) ] <> D.hardline <> D.hardline <>
       line ("var " ++ name ++ "Ranks = [...]int{" ++ intercalate ", " (map (show . rank) variants) ++ "}")
 
@@ -255,7 +333,7 @@ entryHelpers :: Env -> [D.Doc]
 entryHelpers env = case M.lookup (collectionsUnit ++ "::type::Entry") (envNames env) of
   Nothing -> []
   Just name ->
-    [ D.text ("func lsfEntryOf[K any, V any](k K, v V) *" ++ name ++ "[K, V] { return &" ++ name ++ "[K, V]{k, v} }")
+    [ D.text ("func lsfEntryOf[K any, V any](k K, v V) *" ++ name ++ "[K, V] ") <> block [D.text ("return &" ++ name ++ "[K, V]{k, v}")]
     , D.text ("func lsfKeyValOf[K any, V any](es *lsfList[*" ++ name ++ "[K, V]], cmp func(K, K) int) *lsfMap[K, V] ") <> D.block 8
         (D.text "var m *lsfMap[K, V]" <> D.hardline <>
          D.text "for c := es; c != nil; c = c.tail {" <> D.nest 8 (D.hardline <> D.text "m = lsfPut(m, c.head.fKey, c.head.fValue, cmp)") <> D.hardline <> D.text "}" <> D.hardline <>
@@ -265,7 +343,7 @@ orderingHelper :: Env -> [D.Doc]
 orderingHelper env = case M.lookup (collectionsUnit ++ "::type::Ordering") (envNames env) of
   Nothing -> []
   Just name -> [D.text ("func lsfOrderingOf(c int) " ++ name ++ " ") <> D.block 8 (D.joinWith D.hardline
-    [ D.text ("if c < 0 { return " ++ name ++ "_Less }"), D.text ("if c == 0 { return " ++ name ++ "_Equal }"), D.text ("return " ++ name ++ "_Greater") ])]
+    [ ifThen "c < 0" [D.text ("return " ++ name ++ "_Less")], ifThen "c == 0" [D.text ("return " ++ name ++ "_Equal")], D.text ("return " ++ name ++ "_Greater") ])]
 
 -- Functions.
 
@@ -292,7 +370,7 @@ functionDoc env c d = do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l, _), b) <- zip params (definitionArguments d)]
       pure [D.text "return " <> x]
     Nothing -> cstmt env selfCall scope Return (definitionBody d)
-  pure (D.text ("// " ++ name ++ " is " ++ idText (declarationId declaration) ++ ".") <> D.hardline <>
+  pure (D.text ("// " ++ labelled (name ++ " is " ++ idText (declarationId declaration)) (sourceLink (declarationOrigin declaration)) ++ ".") <> D.hardline <>
     D.text ("func " ++ name ++ "(" ++ intercalate ", " (["symbols map[string]*LawSpecSymbol" | contextual] ++ [l ++ " " ++ t | (_, l, t) <- params]) ++ ") " ++ resultType ++ " ") <> D.block 8
       (if looping then D.text "for " <> D.block 8 (D.joinWith D.hardline body) else D.joinWith D.hardline body))
 
@@ -312,6 +390,27 @@ deliver (Assign v) x = D.text (v ++ " = ") <> x
 block :: [D.Doc] -> D.Doc
 block ss = D.block 8 (D.joinWith D.hardline ss)
 
+-- | Statements as gofmt lays them out: a block always spans lines, and a
+-- switch's cases sit at the switch's own indentation.
+ifThen :: String -> [D.Doc] -> D.Doc
+ifThen condition body = D.text ("if " ++ condition ++ " ") <> block body
+
+forEach :: String -> [D.Doc] -> D.Doc
+forEach header body = D.text ("for " ++ header ++ " ") <> block body
+
+-- | A switch: each arm is its label (case X, or default) and its statements.
+switchOf :: String -> [(String, [D.Doc])] -> D.Doc
+switchOf header arms = D.text ("switch " ++ header ++ " {") <> mconcat
+  [D.hardline <> D.text (label ++ ":") <> D.nest 8 (D.hardline <> D.joinWith D.hardline body) | (label, body) <- arms] <>
+  D.hardline <> D.text "}"
+
+-- | A function literal whose body spans lines.
+funcLiteral :: String -> [D.Doc] -> D.Doc
+funcLiteral signature body = D.text ("func" ++ signature ++ " ") <> block body
+
+unreachableArm :: (String, [D.Doc])
+unreachableArm = ("default", [D.text "panic(\"unreachable branch reached\")"])
+
 cstmt :: Env -> Maybe (Int, [String]) -> Scope -> Target -> Expr -> M [D.Doc]
 cstmt env selfCall scope target e = case expressionNode e of
   Let binder value body -> do
@@ -328,7 +427,7 @@ cstmt env selfCall scope target e = case expressionNode e of
     (s, x) <- cexpr env scope c
     yes <- cstmt env selfCall scope target a
     no <- cstmt env selfCall scope target b
-    pure (s ++ [D.text "if " <> x <> D.text " " <> block yes <> D.text " else " <> block no])
+    pure (s ++ [D.text "if " <> E.condition x <> D.text " " <> block yes <> D.text " else " <> block no])
   Helper Select [c, a, b] -> cstmt env selfCall scope target (e { expressionNode = If c a b })
   Match value cases -> matchStatements env selfCall scope target value cases
   ExternalCall i args
@@ -385,7 +484,7 @@ cexpr env scope e = case expressionNode e of
         pure (sa ++ [D.text ("var " ++ t ++ " bool"),
           D.text "if " <> (if op == And then xa else D.text "!" <> paren xa) <> D.text " " <>
             block (sb ++ [D.text (t ++ " = ") <> xb]) <>
-            D.text (" else { " ++ t ++ " = " ++ (if op == And then "false" else "true") ++ " }")], D.text t)
+            D.text " else " <> block [D.text (t ++ " = " ++ (if op == And then "false" else "true"))]], D.text t)
   Unary Not a -> do
     (s, x) <- cexpr env scope a
     pure (s, D.text "!" <> paren x)
@@ -397,7 +496,7 @@ cexpr env scope e = case expressionNode e of
   Helper Compare [a, b] -> do
     (sa, xa) <- cexpr env scope a
     (sb, xb) <- cexpr env scope b
-    cmp <- helper "cmp" (expressionType a)
+    cmp <- helper env "cmp" (expressionType a)
     pure (sa ++ sb, D.text ("lsfOrderingOf(" ++ cmp ++ "(") <> xa <> D.text ", " <> xb <> D.text "))")
   Helper Length [_] -> intExpr env scope e
   Helper Unreachable _ -> do
@@ -420,19 +519,19 @@ cexpr env scope e = case expressionNode e of
     pure (sx ++ [ D.text (t ++ " := true")
                 , D.text ("for " ++ cell ++ " := ") <> xs <> D.text ("; " ++ cell ++ " != nil; " ++ cell ++ " = " ++ cell ++ ".tail ") <> block
                     ([D.text (item ++ " := " ++ cell ++ ".head")] ++ sp ++
-                     [D.text "if !" <> paren p <> D.text (" { " ++ t ++ " = false; break }")]) ], D.text t)
+                     [D.text "if !" <> paren p <> D.text " " <> block [D.text (t ++ " = false"), D.text "break"]]) ], D.text t)
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
   Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
-    to <- helper "to" (expressionType x)
+    to <- helper env "to" (expressionType x)
     ty <- lift' (goType env (expressionType e))
     pure (s ++ [D.text ("panic(&LawSpecFailure{Ability: " ++ goQuote (abilityKey ref) ++ ", Value: " ++ to ++ "(") <> v <> D.text ")})"], D.text ("*new(" ++ ty ++ ")"))
   -- An operation of another ability: the dynamic code's call of its
   -- handler in the context, over the arguments' dynamic values.
   Perform _ args -> do
     parts <- mapM (cexpr env scope) args
-    tos <- mapM (helper "to" . expressionType) args
-    from <- helper "from" (expressionType e)
+    tos <- mapM (helper env "to" . expressionType) args
+    from <- helper env "from" (expressionType e)
     viaDynamic <- lift' (envPerform env e [D.text (to ++ "(") <> x <> D.text ")" | (to, x) <- zip tos (map snd parts)])
     t <- fresh "performed"
     pure (concatMap fst parts ++ [D.text (t ++ " := " ++ from ++ "(") <> viaDynamic <> D.text ")"], D.text t)
@@ -442,7 +541,7 @@ cexpr env scope e = case expressionNode e of
     ty <- lift' (goType env (expressionType e))
     lt <- lift' (goType env failure)
     rt <- lift' (goType env result)
-    from <- helper "from" failure
+    from <- helper env "from" failure
     (s, v) <- cexpr env scope body
     let witness = "[" ++ lt ++ ", " ++ rt ++ "]"
     pure ([ D.text ("var " ++ t ++ " " ++ ty)
@@ -533,7 +632,7 @@ constant s = case s of
   SInteger "Integer" n
     | n >= -(2 ^ (63 :: Int)) && n < 2 ^ (63 :: Int) -> pure (D.text ("lsfSmall(" ++ show n ++ ")"))
     | otherwise -> pure (D.text ("lsfFromBig(lsInt(" ++ goQuote (show n) ++ "))"))
-  SInteger t n | Just g <- lookup t goFixed -> pure (D.text (if n == -(2 ^ (63 :: Int)) then g ++ "(-1 << 63)" else g ++ "(" ++ show n ++ ")"))
+  SInteger t n | Just g <- lookup t goFixed -> pure (D.text (g ++ "(" ++ show n ++ ")"))
   SSequence "Text" units -> pure (D.text (goQuote (map toEnum units)))
   SSequence "Bytes" units -> pure (D.text ("string([]byte{" ++ intercalate ", " (map show units) ++ "})"))
   _ -> Left ("typed Go: unsupported constant " ++ show s)
@@ -588,7 +687,7 @@ binary env scope e = case expressionNode e of
     test <- if simpleEquality t
       then pure (paren xa <> D.text " == " <> paren xb)
       else do
-        eq <- helper "eq" t
+        eq <- helper env "eq" t
         pure (D.text (eq ++ "(") <> xa <> D.text ", " <> xb <> D.text ")")
     pure (sa ++ sb, if op == Equal then paren test else D.text "!" <> paren test)
   Binary op (Numeric _) a b | isComparison op -> do
@@ -660,7 +759,7 @@ convert env scope target value = case (target, expressionType value) of
                 pure (s, D.text (g ++ "(lsfNarrowInt(") <> x <> D.text (", " ++ bounds ++ "))"))
   _ -> lift' (Left ("typed Go: unsupported conversion to " ++ show target))
   where
-    showLong n = if n == -(2 ^ (63 :: Int)) then "-1 << 63" else show n
+    showLong = show
 
 construct :: Env -> Type -> Id -> [D.Doc] -> [Expr] -> M D.Doc
 construct env ty tag values _ = do
@@ -678,10 +777,10 @@ construct env ty tag values _ = do
     ("Either::Left", [x]) -> pure (D.text ("lsfLeft" ++ witness ++ "(") <> x <> D.text ")")
     ("Either::Right", [x]) -> pure (D.text ("lsfRight" ++ witness ++ "(") <> x <> D.text ")")
     (_, [items]) | Just ("KeyVal", [k, _]) <- collectionArguments ty -> do
-      cmp <- helper "cmp" k
+      cmp <- helper env "cmp" k
       pure (D.text "lsfKeyValOf(" <> items <> D.text (", " ++ cmp ++ ")"))
     (_, [items]) | Just ("Set", [a]) <- collectionArguments ty -> do
-      cmp <- helper "cmp" a
+      cmp <- helper env "cmp" a
       pure (D.text "lsfSetOf(" <> items <> D.text (", " ++ cmp ++ ")"))
     _ -> case M.lookup tag (envConstructors env) of
       Just (d, c) -> do
@@ -695,13 +794,13 @@ construct env ty tag values _ = do
 intrinsicCall :: Env -> Intrinsic -> [(D.Doc, Type)] -> M D.Doc
 intrinsicCall env intrinsic args = case (intrinsic, args) of
   (KeyValOf, [(es, Constructor "List" [TypeArgument (Constructor _ [TypeArgument k, _])])]) -> do
-    cmp <- helper "cmp" k
+    cmp <- helper env "cmp" k
     pure (D.text "lsfKeyValOf(" <> es <> D.text (", " ++ cmp ++ ")"))
   (KeyValLookup, [(k, kt), (m, _)]) -> withCmp kt (\cmp -> D.text "lsfLookup(" <> m <> D.text ", " <> k <> D.text (", " ++ cmp ++ ")"))
   (KeyValPut, [(k, kt), (v, _), (m, _)]) -> withCmp kt (\cmp -> D.text "lsfPut(" <> m <> D.text ", " <> k <> D.text ", " <> v <> D.text (", " ++ cmp ++ ")"))
   (KeyValDelete, [(k, kt), (m, _)]) -> withCmp kt (\cmp -> D.text "lsfDelete(" <> m <> D.text ", " <> k <> D.text (", " ++ cmp ++ ")"))
-  (KeyValKeys, [(m, mt)]) -> mapTypes mt >>= \(kt, vt) -> pure (D.text "lsfToList(" <> m <> D.text (", func(k " ++ kt ++ ", _ " ++ vt ++ ") " ++ kt ++ " { return k })"))
-  (KeyValValues, [(m, mt)]) -> mapTypes mt >>= \(kt, vt) -> pure (D.text "lsfToList(" <> m <> D.text (", func(_ " ++ kt ++ ", v " ++ vt ++ ") " ++ vt ++ " { return v })"))
+  (KeyValKeys, [(m, mt)]) -> mapTypes mt >>= \(kt, vt) -> pure (D.text "lsfToList(" <> m <> D.text ", " <> funcLiteral ("(k " ++ kt ++ ", _ " ++ vt ++ ") " ++ kt) [D.text "return k"] <> D.text ")")
+  (KeyValValues, [(m, mt)]) -> mapTypes mt >>= \(kt, vt) -> pure (D.text "lsfToList(" <> m <> D.text ", " <> funcLiteral ("(_ " ++ kt ++ ", v " ++ vt ++ ") " ++ vt) [D.text "return v"] <> D.text ")")
   (KeyValEntries, [(m, mt)]) -> mapTypes mt >>= \(kt, vt) -> pure (D.text "lsfToList(" <> m <> D.text (", lsfEntryOf[" ++ kt ++ ", " ++ vt ++ "])"))
   (SetOf, [(xs, Constructor "List" [TypeArgument a])]) -> withCmp a (\cmp -> D.text "lsfSetOf(" <> xs <> D.text (", " ++ cmp ++ ")"))
   (SetMember, [(x, xt), (s, _)]) -> withCmp xt (\cmp -> D.text "lsfMember(" <> s <> D.text ", " <> x <> D.text (", " ++ cmp ++ ")"))
@@ -712,7 +811,7 @@ intrinsicCall env intrinsic args = case (intrinsic, args) of
   (SetDifference, [(s, st), (t, _)]) -> setOp "lsfSetDifference" s st t
   _ -> lift' (Left ("typed Go: bad intrinsic " ++ show intrinsic))
   where
-    withCmp t f = (\cmp -> f cmp) <$> helper "cmp" t
+    withCmp t f = (\cmp -> f cmp) <$> helper env "cmp" t
     setOp f s st t = case collectionArguments st of
       Just (_, [a]) -> withCmp a (\cmp -> D.text (f ++ "(") <> s <> D.text ", " <> t <> D.text (", " ++ cmp ++ ")"))
       _ -> lift' (Left "typed Go: set operation on a non-set")
@@ -775,8 +874,8 @@ matchStatements env selfCall scope target value cases = do
         then do
           arms <- forM cases $ \c -> do
             body <- arm c []
-            pure (D.text ("case " ++ name ++ "_" ++ identifier (constructorName (conOf c)) ++ ":") <> D.nest 8 (D.hardline <> D.joinWith D.hardline body))
-          pure (prelude ++ [D.text ("switch " ++ subject ++ " ") <> D.block 8 (D.joinWith D.hardline (arms ++ [D.text "default:" <> D.nest 8 (D.hardline <> D.text "panic(\"unreachable branch reached\")")]))])
+            pure ("case " ++ name ++ "_" ++ identifier (constructorName (conOf c)), body)
+          pure (prelude ++ [switchOf subject (arms ++ [unreachableArm])])
         else if isProductType d
         then case cases of
           [c] -> productArm c [subject ++ "." ++ fieldName f | f <- constructorFields (conOf c)]
@@ -786,10 +885,10 @@ matchStatements env selfCall scope target value cases = do
           arms <- forM cases $ \c -> do
             let con = conOf c
             body <- arm c [m ++ "." ++ fieldName f | f <- constructorFields con]
-            pure (any (used c) (caseBinders c), D.text ("case *" ++ variantType env d con ++ generic ++ ":") <> D.nest 8 (D.hardline <> D.joinWith D.hardline body))
+            pure (any (used c) (caseBinders c), ("case *" ++ variantType env d con ++ generic, body))
           let binding = any fst arms
-              header = if binding then "switch " ++ m ++ " := " ++ subject ++ ".(type) " else "switch " ++ subject ++ ".(type) "
-          pure (prelude ++ [D.text header <> D.block 8 (D.joinWith D.hardline (map snd arms ++ [D.text "default:" <> D.nest 8 (D.hardline <> D.text "panic(\"unreachable branch reached\")")]))])
+              header = if binding then m ++ " := " ++ subject ++ ".(type)" else subject ++ ".(type)"
+          pure (prelude ++ [switchOf header (map snd arms ++ [unreachableArm])])
     _ -> lift' (Left ("typed Go: cannot match on " ++ show ty))
   where
     headMaybe xs = case xs of
@@ -813,7 +912,7 @@ helpers env = go S.empty
 helperDoc :: Env -> String -> Int -> Type -> M D.Doc
 helperDoc env kind _ ty = do
   t <- lift' (goType env ty)
-  let name = helperName kind ty
+  let name = helperName env kind ty
       line = D.text
       fn signature body = line ("func " ++ name ++ signature ++ " ") <> D.block 8 (D.joinWith D.hardline body)
       key = goDataKey ty
@@ -833,18 +932,18 @@ equality :: Env -> Type -> M [D.Doc]
 equality env ty = case ty of
   _ | simpleEquality ty -> pure [D.text "return a == b"]
   Constructor "Integer" [] -> pure [D.text "return lsfCmpInt(a, b) == 0"]
-  Constructor "List" [TypeArgument a] -> (\e -> [D.text ("return lsfEqList(a, b, " ++ e ++ ")")]) <$> helper "eq" a
-  Constructor "Maybe" [TypeArgument a] -> (\e -> [D.text ("return a.ok == b.ok && (!a.ok || " ++ e ++ "(a.v, b.v))")]) <$> helper "eq" a
+  Constructor "List" [TypeArgument a] -> (\e -> [D.text ("return lsfEqList(a, b, " ++ e ++ ")")]) <$> helper env "eq" a
+  Constructor "Maybe" [TypeArgument a] -> (\e -> [D.text ("return a.ok == b.ok && (!a.ok || " ++ e ++ "(a.v, b.v))")]) <$> helper env "eq" a
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    el <- helper "eq" a
-    er <- helper "eq" b
+    el <- helper env "eq" a
+    er <- helper env "eq" b
     pure [D.text ("return a.right == b.right && ((!a.right && " ++ el ++ "(a.l, b.l)) || (a.right && " ++ er ++ "(a.r, b.r)))")]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
-        ek <- helper "eq" k
-        ev <- helper "eq" v
+        ek <- helper env "eq" k
+        ev <- helper env "eq" v
         pure [D.text ("return lsfEqMap(a, b, " ++ ek ++ ", " ++ ev ++ ")")]
     | Just ("Set", [a]) <- collectionArguments ty -> do
-        ek <- helper "eq" a
+        ek <- helper env "eq" a
         pure [D.text ("return lsfEqMap(a, b, " ++ ek ++ ", lsfEqUnit)")]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
@@ -853,18 +952,18 @@ equality env ty = case ty of
       let generic = if null witnesses then "" else "[" ++ intercalate ", " witnesses ++ "]"
       checks <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> do
         let ft = substitute table (binderType f)
-        if simpleEquality ft then pure (\x y -> x ++ " == " ++ y) else (\e x y -> e ++ "(" ++ x ++ ", " ++ y ++ ")") <$> helper "eq" ft
+        if simpleEquality ft then pure (\x y -> x ++ " == " ++ y) else (\e x y -> e ++ "(" ++ x ++ ", " ++ y ++ ")") <$> helper env "eq" ft
       if isProductType d
-        then pure [ D.text "if a == b { return true }"
+        then pure [ ifThen "a == b" [D.text "return true"]
                   , D.text ("return " ++ intercalate " && " ("true" : [chk ("a." ++ fieldName f) ("b." ++ fieldName f) | (f, chk) <- zip (constructorFields (firstOf (dataConstructors d))) (firstOf checks)])) ]
         else do
-          let arms = [ D.text ("case *" ++ variantType env d c ++ generic ++ ":") <> D.nest 8 (D.hardline <> D.joinWith D.hardline
-                         ([D.text ((if null (constructorFields c) then "_, ok" else "y, ok") ++
+          let arms = [ ("case *" ++ variantType env d c ++ generic,
+                         [D.text ((if null (constructorFields c) then "_, ok" else "y, ok") ++
                             " := b.(*" ++ variantType env d c ++ generic ++ ")")] ++
-                          [D.text ("return ok && " ++ intercalate " && " ("true" : [chk ("x." ++ fieldName f) ("y." ++ fieldName f) | (f, chk) <- zip (constructorFields c) cs]))]))
+                          [D.text ("return ok && " ++ intercalate " && " ("true" : [chk ("x." ++ fieldName f) ("y." ++ fieldName f) | (f, chk) <- zip (constructorFields c) cs]))])
                      | (c, cs) <- zip (dataConstructors d) checks ]
               used = any (not . null . constructorFields) (dataConstructors d)
-          pure [ D.text ("switch " ++ (if used then "x := a.(type) " else "a.(type) ")) <> D.block 8 (D.joinWith D.hardline arms)
+          pure [ switchOf (if used then "x := a.(type)" else "a.(type)") arms
                , D.text "return false" ]
   _ -> lift' (Left ("typed Go: no equality for " ++ show ty))
   where
@@ -881,24 +980,24 @@ ordering env ty = case ty of
   Constructor n [] | Just _ <- lookup n fixedBounds -> pure [D.text "return lsfCmpInt64(int64(a), int64(b))"]
   Constructor "Integer" [] -> pure [D.text "return lsfCmpInt(a, b)"]
   Constructor n [] | n `elem` ["Text", "Bytes"] -> pure [D.text "return lsfCmpText(a, b)"]
-  Constructor "List" [TypeArgument a] -> (\c -> [D.text ("return lsfCmpList(a, b, " ++ c ++ ")")]) <$> helper "cmp" a
+  Constructor "List" [TypeArgument a] -> (\c -> [D.text ("return lsfCmpList(a, b, " ++ c ++ ")")]) <$> helper env "cmp" a
   Constructor "Maybe" [TypeArgument a] -> do
-    c <- helper "cmp" a
-    pure [ D.text "if a.ok != b.ok { if a.ok { return 1 }; return -1 }"
-         , D.text ("if !a.ok { return 0 }")
+    c <- helper env "cmp" a
+    pure [ ifThen "a.ok != b.ok" [ifThen "a.ok" [D.text "return 1"], D.text "return -1"]
+         , ifThen "!a.ok" [D.text "return 0"]
          , D.text ("return " ++ c ++ "(a.v, b.v)") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    cl <- helper "cmp" a
-    cr <- helper "cmp" b
-    pure [ D.text "if a.right != b.right { if a.right { return 1 }; return -1 }"
-         , D.text ("if a.right { return " ++ cr ++ "(a.r, b.r) }")
+    cl <- helper env "cmp" a
+    cr <- helper env "cmp" b
+    pure [ ifThen "a.right != b.right" [ifThen "a.right" [D.text "return 1"], D.text "return -1"]
+         , ifThen "a.right" [D.text ("return " ++ cr ++ "(a.r, b.r)")]
          , D.text ("return " ++ cl ++ "(a.l, b.l)") ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
-        ck <- helper "cmp" k
-        cv <- helper "cmp" v
+        ck <- helper env "cmp" k
+        cv <- helper env "cmp" v
         pure [D.text ("return lsfCmpMap(a, b, " ++ ck ++ ", " ++ cv ++ ")")]
     | Just ("Set", [a]) <- collectionArguments ty -> do
-        ck <- helper "cmp" a
+        ck <- helper env "cmp" a
         pure [D.text ("return lsfCmpMap(a, b, " ++ ck ++ ", lsfCmpUnit)")]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
@@ -906,17 +1005,17 @@ ordering env ty = case ty of
     if fieldless d then pure [D.text ("return lsfCmpInt64(int64(" ++ name ++ "Ranks[a]), int64(" ++ name ++ "Ranks[b]))")] else do
       witnesses <- lift' (mapM (goType env) (map snd table))
       let generic = if null witnesses then "" else "[" ++ intercalate ", " witnesses ++ "]"
-      comparisons <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "cmp" (substitute table (binderType f))
-      let fieldsOf prefixA prefixB c cs = [D.text ("if c := " ++ cmp ++ "(" ++ prefixA ++ fieldName f ++ ", " ++ prefixB ++ fieldName f ++ "); c != 0 { return c }") | (f, cmp) <- zip (constructorFields c) cs]
+      comparisons <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "cmp" (substitute table (binderType f))
+      let fieldsOf prefixA prefixB c cs = [ifThen ("c := " ++ cmp ++ "(" ++ prefixA ++ fieldName f ++ ", " ++ prefixB ++ fieldName f ++ "); c != 0") [D.text "return c"] | (f, cmp) <- zip (constructorFields c) cs]
       if isProductType d
         then pure (fieldsOf "a." "b." (firstOf (dataConstructors d)) (firstOf comparisons) ++ [D.text "return 0"])
         else do
-          let arms = [ D.text ("case *" ++ variantType env d c ++ generic ++ ":") <> D.nest 8 (D.hardline <> D.joinWith D.hardline
-                         ([D.text ("y := b.(*" ++ variantType env d c ++ generic ++ ")") | not (null (constructorFields c))] ++ fieldsOf "x." "y." c cs))
+          let arms = [ ("case *" ++ variantType env d c ++ generic,
+                         [D.text ("y := b.(*" ++ variantType env d c ++ generic ++ ")") | not (null (constructorFields c))] ++ fieldsOf "x." "y." c cs)
                      | (c, cs) <- zip (dataConstructors d) comparisons ]
               used = any (not . null . constructorFields) (dataConstructors d)
-          pure [ D.text ("if ta, tb := a.lsfTag" ++ name ++ "(), b.lsfTag" ++ name ++ "(); ta != tb { return lsfCmpInt64(int64(" ++ name ++ "Ranks[ta]), int64(" ++ name ++ "Ranks[tb])) }")
-               , D.text ("switch " ++ (if used then "x := a.(type) " else "a.(type) ")) <> D.block 8 (D.joinWith D.hardline arms)
+          pure [ ifThen ("ta, tb := a.lsfTag" ++ name ++ "(), b.lsfTag" ++ name ++ "(); ta != tb") [D.text ("return lsfCmpInt64(int64(" ++ name ++ "Ranks[ta]), int64(" ++ name ++ "Ranks[tb]))")]
+               , switchOf (if used then "x := a.(type)" else "a.(type)") arms
                , D.text "return 0" ]
   _ -> lift' (Left ("typed Go: no order for " ++ show ty))
   where
@@ -935,33 +1034,33 @@ toValue env key ty = case ty of
   Constructor "Text" [] -> pure [D.text "return lsfTextValue(x)"]
   Constructor "Bytes" [] -> pure [D.text "return lsfBytesValue(x)"]
   Constructor "List" [TypeArgument a] -> do
-    to <- helper "to" a
+    to <- helper env "to" a
     pure [ D.text "items := make([]LawSpecValue, 0, x.length())"
-         , D.text ("for c := x; c != nil; c = c.tail { items = append(items, " ++ to ++ "(c.head)) }")
+         , forEach "c := x; c != nil; c = c.tail" [D.text ("items = append(items, " ++ to ++ "(c.head))")]
          , D.text ("return LawSpecValue{" ++ goQuote key ++ ", items}") ]
   Constructor "Maybe" [TypeArgument a] -> do
-    to <- helper "to" a
-    pure [ D.text ("if x.ok { return lsfDataValue(" ++ goQuote key ++ ", \"Maybe::Present\", " ++ to ++ "(x.v)) }")
+    to <- helper env "to" a
+    pure [ ifThen "x.ok" [D.text ("return lsfDataValue(" ++ goQuote key ++ ", \"Maybe::Present\", " ++ to ++ "(x.v))")]
          , D.text ("return lsfDataValue(" ++ goQuote key ++ ", \"Maybe::Absent\")") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    tl <- helper "to" a
-    tr <- helper "to" b
-    pure [ D.text ("if x.right { return lsfDataValue(" ++ goQuote key ++ ", \"Either::Right\", " ++ tr ++ "(x.r)) }")
+    tl <- helper env "to" a
+    tr <- helper env "to" b
+    pure [ ifThen "x.right" [D.text ("return lsfDataValue(" ++ goQuote key ++ ", \"Either::Right\", " ++ tr ++ "(x.r))")]
          , D.text ("return lsfDataValue(" ++ goQuote key ++ ", \"Either::Left\", " ++ tl ++ "(x.l))") ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
-        tk <- helper "to" k
-        tv <- helper "to" v
+        tk <- helper env "to" k
+        tv <- helper env "to" v
         kt <- lift' (goType env k)
         vt <- lift' (goType env v)
         let entry = Constructor (collectionsUnit ++ "::type::Entry") [TypeArgument k, TypeArgument v]
         pure [ D.text "entries := make([]LawSpecValue, 0, x.size())"
-             , D.text ("lsfEach(x, func(k " ++ kt ++ ", v " ++ vt ++ ") { entries = append(entries, lsfDataValue(" ++ goQuote (goDataKey entry) ++ ", " ++ goQuote (collectionsUnit ++ "::type::Entry::Entry") ++ ", " ++ tk ++ "(k), " ++ tv ++ "(v))) })")
+             , D.text "lsfEach(x, " <> funcLiteral ("(k " ++ kt ++ ", v " ++ vt ++ ")") [D.text ("entries = append(entries, lsfDataValue(" ++ goQuote (goDataKey entry) ++ ", " ++ goQuote (collectionsUnit ++ "::type::Entry::Entry") ++ ", " ++ tk ++ "(k), " ++ tv ++ "(v)))")] <> D.text ")"
              , D.text ("return lsfDataValue(" ++ goQuote key ++ ", " ++ goQuote (collectionsUnit ++ "::type::KeyVal::KeyValEntries") ++ ", LawSpecValue{" ++ goQuote (goDataKey (Constructor "List" [TypeArgument entry])) ++ ", entries})") ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
-        ta <- helper "to" a
+        ta <- helper env "to" a
         at <- lift' (goType env a)
         pure [ D.text "items := make([]LawSpecValue, 0, x.size())"
-             , D.text ("lsfEach(x, func(k " ++ at ++ ", _ lsfUnit) { items = append(items, " ++ ta ++ "(k)) })")
+             , D.text "lsfEach(x, " <> funcLiteral ("(k " ++ at ++ ", _ lsfUnit)") [D.text ("items = append(items, " ++ ta ++ "(k))")] <> D.text ")"
              , D.text ("return lsfDataValue(" ++ goQuote key ++ ", " ++ goQuote (collectionsUnit ++ "::type::Set::SetItems") ++ ", LawSpecValue{" ++ goQuote (goDataKey (Constructor "List" [TypeArgument a])) ++ ", items})") ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
@@ -969,20 +1068,20 @@ toValue env key ty = case ty of
     witnesses <- lift' (mapM (goType env) (map snd table))
     let generic = if null witnesses then "" else "[" ++ intercalate ", " witnesses ++ "]"
     if fieldless d
-      then pure [ D.text "switch x " <> D.block 8 (D.joinWith D.hardline
-                    [D.text ("case " ++ name ++ "_" ++ identifier (constructorName c) ++ ": return lsfDataValue(" ++ goQuote key ++ ", " ++ goQuote (idText (constructorId c)) ++ ")") | c <- dataConstructors d])
+      then pure [ switchOf "x"
+                    [("case " ++ name ++ "_" ++ identifier (constructorName c), [D.text ("return lsfDataValue(" ++ goQuote key ++ ", " ++ goQuote (idText (constructorId c)) ++ ")")]) | c <- dataConstructors d]
                 , D.text "panic(\"unreachable branch reached\")" ]
       else do
-        encoders <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "to" (substitute table (binderType f))
+        encoders <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "to" (substitute table (binderType f))
         let fieldsOf prefix c es = concat [", " ++ e ++ "(" ++ prefix ++ fieldName f ++ ")" | (f, e) <- zip (constructorFields c) es]
         if isProductType d
           then let c = firstOf (dataConstructors d) in
             pure [D.text ("return lsfDataValue(" ++ goQuote key ++ ", " ++ goQuote (idText (constructorId c)) ++ fieldsOf "x." c (firstOf encoders) ++ ")")]
           else do
             let used = any (not . null . constructorFields) (dataConstructors d)
-            pure [ D.text ("switch " ++ (if used then "y := x.(type) " else "x.(type) ")) <> D.block 8 (D.joinWith D.hardline
-                     [ D.text ("case *" ++ variantType env d c ++ generic ++ ": return lsfDataValue(" ++ goQuote key ++ ", " ++ goQuote (idText (constructorId c)) ++ fieldsOf "y." c es ++ ")")
-                     | (c, es) <- zip (dataConstructors d) encoders ])
+            pure [ switchOf (if used then "y := x.(type)" else "x.(type)")
+                     [ ("case *" ++ variantType env d c ++ generic, [D.text ("return lsfDataValue(" ++ goQuote key ++ ", " ++ goQuote (idText (constructorId c)) ++ fieldsOf "y." c es ++ ")")])
+                     | (c, es) <- zip (dataConstructors d) encoders ]
                  , D.text "panic(\"unreachable branch reached\")" ]
   _ -> lift' (Left ("typed Go: no conversion for " ++ show ty))
   where
@@ -997,60 +1096,60 @@ fromValue env ty = case ty of
   Constructor "Unit" [] -> pure [D.text "return lsfUnit{}"]
   Constructor "UInt64" [] -> pure [D.text "return lsfValueUint64(v)"]
   Constructor n [] | Just (lo, hi) <- lookup n fixedBounds, Just g <- lookup n goFixed ->
-    pure [D.text ("return " ++ g ++ "(lsfValueInt64(v, " ++ (if lo == -(2 ^ (63 :: Int)) then "-1 << 63" else show lo) ++ ", " ++ show hi ++ ", " ++ show n ++ "))")]
+    pure [D.text ("return " ++ g ++ "(lsfValueInt64(v, " ++ show lo ++ ", " ++ show hi ++ ", " ++ show n ++ "))")]
   Constructor "Integer" [] -> pure [D.text "return lsfValueInt(v)"]
   Constructor "Text" [] -> pure [D.text "return lsfValueText(v)"]
   Constructor "Bytes" [] -> pure [D.text "return lsfValueBytes(v)"]
   Constructor "List" [TypeArgument a] -> do
-    from <- helper "from" a
+    from <- helper env "from" a
     t <- lift' (goType env ty)
     pure [ D.text "items := v.Data.([]LawSpecValue)"
          , D.text ("var out " ++ t)
-         , D.text ("for i := len(items) - 1; i >= 0; i-- { out = lsfCons(" ++ from ++ "(items[i]), out) }")
+         , forEach "i := len(items) - 1; i >= 0; i--" [D.text ("out = lsfCons(" ++ from ++ "(items[i]), out)")]
          , D.text "return out" ]
   Constructor "Maybe" [TypeArgument a] -> do
-    from <- helper "from" a
+    from <- helper env "from" a
     at <- lift' (goType env a)
     pure [ D.text "tag, fields := lsfData(v)"
-         , D.text ("if tag == \"Maybe::Present\" { return lsfPresent[" ++ at ++ "](" ++ from ++ "(fields[0])) }")
+         , ifThen "tag == \"Maybe::Present\"" [D.text ("return lsfPresent[" ++ at ++ "](" ++ from ++ "(fields[0]))")]
          , D.text ("return lsfAbsent[" ++ at ++ "]()") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    fl <- helper "from" a
-    fr <- helper "from" b
+    fl <- helper env "from" a
+    fr <- helper env "from" b
     lt <- lift' (goType env a)
     rt <- lift' (goType env b)
     pure [ D.text "tag, fields := lsfData(v)"
-         , D.text ("if tag == \"Either::Right\" { return lsfRight[" ++ lt ++ ", " ++ rt ++ "](" ++ fr ++ "(fields[0])) }")
+         , ifThen "tag == \"Either::Right\"" [D.text ("return lsfRight[" ++ lt ++ ", " ++ rt ++ "](" ++ fr ++ "(fields[0]))")]
          , D.text ("return lsfLeft[" ++ lt ++ ", " ++ rt ++ "](" ++ fl ++ "(fields[0]))") ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
-        fk <- helper "from" k
-        fv <- helper "from" v
-        ck <- helper "cmp" k
+        fk <- helper env "from" k
+        fv <- helper env "from" v
+        ck <- helper env "cmp" k
         t <- lift' (goType env ty)
         pure [ D.text ("var out " ++ t)
-             , D.text ("for _, item := range lsfItems(v) { _, fields := lsfData(item); out = lsfPut(out, " ++ fk ++ "(fields[0]), " ++ fv ++ "(fields[1]), " ++ ck ++ ") }")
+             , forEach "_, item := range lsfItems(v)" [D.text "_, fields := lsfData(item)", D.text ("out = lsfPut(out, " ++ fk ++ "(fields[0]), " ++ fv ++ "(fields[1]), " ++ ck ++ ")")]
              , D.text "return out" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
-        fa <- helper "from" a
-        ca <- helper "cmp" a
+        fa <- helper env "from" a
+        ca <- helper env "cmp" a
         t <- lift' (goType env ty)
         pure [ D.text ("var out " ++ t)
-             , D.text ("for _, item := range lsfItems(v) { out = lsfSetInsert(out, " ++ fa ++ "(item), " ++ ca ++ ") }")
+             , forEach "_, item := range lsfItems(v)" [D.text ("out = lsfSetInsert(out, " ++ fa ++ "(item), " ++ ca ++ ")")]
              , D.text "return out" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
         name = envNames env M.! n
     witnesses <- lift' (mapM (goType env) (map snd table))
     let generic = if null witnesses then "" else "[" ++ intercalate ", " witnesses ++ "]"
-    decoders <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "from" (substitute table (binderType f))
+    decoders <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "from" (substitute table (binderType f))
     let made c ds
           | fieldless d = name ++ "_" ++ identifier (constructorName c)
           | isProductType d = "&" ++ name ++ generic ++ "{" ++ intercalate ", " [dec ++ "(fields[" ++ show k ++ "])" | (k, dec) <- zip [0 :: Int ..] ds] ++ "}"
           | otherwise = "&" ++ variantType env d c ++ generic ++ "{" ++ intercalate ", " [dec ++ "(fields[" ++ show k ++ "])" | (k, dec) <- zip [0 :: Int ..] ds] ++ "}"
         anyFields = any (not . null . constructorFields) (dataConstructors d)
     pure [ D.text (if anyFields then "tag, fields := lsfData(v)" else "tag, _ := lsfData(v)")
-         , D.text "switch tag " <> D.block 8 (D.joinWith D.hardline
-             [D.text ("case " ++ goQuote (idText (constructorId c)) ++ ": return " ++ made c ds) | (c, ds) <- zip (dataConstructors d) decoders])
+         , switchOf "tag"
+             [("case " ++ goQuote (idText (constructorId c)), [D.text ("return " ++ made c ds)]) | (c, ds) <- zip (dataConstructors d) decoders]
          , D.text ("panic(\"expected " ++ dataName d ++ ", found \" + tag)") ]
   _ -> lift' (Left ("typed Go: no conversion for " ++ show ty))
   where
@@ -1093,38 +1192,38 @@ toNative env ty = case ty of
   Constructor "Bytes" [] -> pure [D.text "return []byte(x)"]
   Constructor "Integer" [] -> pure [D.text "return new(big.Int).Set(x.big())"]
   Constructor "List" [TypeArgument a] -> do
-    c <- helper "tonative" a
+    c <- helper env "tonative" a
     na <- lift' (GoData.goDataType (envDeclarations env) a)
     pure [ D.text ("out := make([]" ++ na ++ ", 0, x.length())")
-         , D.text ("for c := x; c != nil; c = c.tail { out = append(out, " ++ c ++ "(c.head)) }")
+         , forEach "c := x; c != nil; c = c.tail" [D.text ("out = append(out, " ++ c ++ "(c.head))")]
          , D.text "return out" ]
   Constructor "Maybe" [TypeArgument a] -> do
-    c <- helper "tonative" a
+    c <- helper env "tonative" a
     na <- lift' (GoData.goDataType (envDeclarations env) a)
-    pure [ D.text ("if x.ok { return LawSpecPresent[" ++ na ++ "](" ++ c ++ "(x.v)) }"), D.text ("return LawSpecAbsent[" ++ na ++ "]()") ]
+    pure [ ifThen "x.ok" [D.text ("return LawSpecPresent[" ++ na ++ "](" ++ c ++ "(x.v))")], D.text ("return LawSpecAbsent[" ++ na ++ "]()") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    cl <- helper "tonative" a
-    cr <- helper "tonative" b
+    cl <- helper env "tonative" a
+    cr <- helper env "tonative" b
     nl <- lift' (GoData.goDataType (envDeclarations env) a)
     nr <- lift' (GoData.goDataType (envDeclarations env) b)
-    pure [ D.text ("if x.right { return LawSpecRight[" ++ nl ++ ", " ++ nr ++ "](" ++ cr ++ "(x.r)) }")
+    pure [ ifThen "x.right" [D.text ("return LawSpecRight[" ++ nl ++ ", " ++ nr ++ "](" ++ cr ++ "(x.r))")]
          , D.text ("return LawSpecLeft[" ++ nl ++ ", " ++ nr ++ "](" ++ cl ++ "(x.l))") ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
-        ck <- helper "tonative" k
-        cv <- helper "tonative" v
+        ck <- helper env "tonative" k
+        cv <- helper env "tonative" v
         n <- lift' (GoData.goDataType (envDeclarations env) ty)
         kt <- lift' (goType env k)
         vt <- lift' (goType env v)
         let entry = drop 2 n
         pure [ D.text ("out := make(" ++ n ++ ", 0, x.size())")
-             , D.text ("lsfEach(x, func(k " ++ kt ++ ", v " ++ vt ++ ") { out = append(out, " ++ entry ++ "{" ++ ck ++ "(k), " ++ cv ++ "(v)}) })")
+             , D.text "lsfEach(x, " <> funcLiteral ("(k " ++ kt ++ ", v " ++ vt ++ ")") [D.text ("out = append(out, " ++ entry ++ "{" ++ ck ++ "(k), " ++ cv ++ "(v)})")] <> D.text ")"
              , D.text "return out" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
-        c <- helper "tonative" a
+        c <- helper env "tonative" a
         n <- lift' (GoData.goDataType (envDeclarations env) ty)
         at <- lift' (goType env a)
         pure [ D.text ("out := make(" ++ n ++ ", 0, x.size())")
-             , D.text ("lsfEach(x, func(k " ++ at ++ ", _ lsfUnit) { out = append(out, " ++ c ++ "(k)) })")
+             , D.text "lsfEach(x, " <> funcLiteral ("(k " ++ at ++ ", _ lsfUnit)") [D.text ("out = append(out, " ++ c ++ "(k))")] <> D.text ")"
              , D.text "return out" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
@@ -1132,19 +1231,19 @@ toNative env ty = case ty of
     witnesses <- lift' (mapM (goType env) (map snd table))
     let generic = if null witnesses then "" else "[" ++ intercalate ", " witnesses ++ "]"
         nativeOf c = envNative env M.! constructorId c
-    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "tonative" (substituteIn table (binderType f))
+    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "tonative" (substituteIn table (binderType f))
     let made prefix c cs = nativeOf c ++ (if isProduct d || null (constructorFields c) then nargs else nargs) ++ "{" ++
           intercalate ", " [cv ++ "(" ++ prefix ++ fieldName f ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ "}"
     if fieldless d
-      then pure [ D.text "switch x " <> D.block 8 (D.joinWith D.hardline
-                    [D.text ("case " ++ envNames env M.! n ++ "_" ++ identifier (constructorName c) ++ ": return " ++ made "" c []) | c <- dataConstructors d])
+      then pure [ switchOf "x"
+                    [("case " ++ envNames env M.! n ++ "_" ++ identifier (constructorName c), [D.text ("return " ++ made "" c [])]) | c <- dataConstructors d]
                 , D.text "panic(\"unreachable branch reached\")" ]
       else if isProductType d
         then let c = firstOf (dataConstructors d) in pure [D.text ("return " ++ made "x." c (firstOf converters))]
         else do
           let used = any (not . null . constructorFields) (dataConstructors d)
-          pure [ D.text ("switch " ++ (if used then "y := x.(type) " else "x.(type) ")) <> D.block 8 (D.joinWith D.hardline
-                   [D.text ("case *" ++ variantType env d c ++ generic ++ ": return " ++ made "y." c cs) | (c, cs) <- zip (dataConstructors d) converters])
+          pure [ switchOf (if used then "y := x.(type)" else "x.(type)")
+                   [("case *" ++ variantType env d c ++ generic, [D.text ("return " ++ made "y." c cs)]) | (c, cs) <- zip (dataConstructors d) converters]
                , D.text "panic(\"unreachable branch reached\")" ]
   _ -> lift' (Left ("typed Go: no native conversion for " ++ show ty))
 
@@ -1155,32 +1254,32 @@ fromNative env ty = case ty of
   Constructor "Bytes" [] -> pure [D.text "return string(n)"]
   Constructor "Integer" [] -> pure [D.text "return lsfFromBig(new(big.Int).Set(n))"]
   Constructor "List" [TypeArgument a] -> do
-    c <- helper "fromnative" a
+    c <- helper env "fromnative" a
     t <- lift' (goType env ty)
-    pure [ D.text ("var out " ++ t), D.text ("for i := len(n) - 1; i >= 0; i-- { out = lsfCons(" ++ c ++ "(n[i]), out) }"), D.text "return out" ]
+    pure [ D.text ("var out " ++ t), forEach "i := len(n) - 1; i >= 0; i--" [D.text ("out = lsfCons(" ++ c ++ "(n[i]), out)")], D.text "return out" ]
   Constructor "Maybe" [TypeArgument a] -> do
-    c <- helper "fromnative" a
+    c <- helper env "fromnative" a
     at <- lift' (goType env a)
-    pure [ D.text ("if v, ok := n.Value(); ok { return lsfPresent[" ++ at ++ "](" ++ c ++ "(v)) }"), D.text ("return lsfAbsent[" ++ at ++ "]()") ]
+    pure [ ifThen "v, ok := n.Value(); ok" [D.text ("return lsfPresent[" ++ at ++ "](" ++ c ++ "(v))")], D.text ("return lsfAbsent[" ++ at ++ "]()") ]
   Constructor "Either" [TypeArgument a, TypeArgument b] -> do
-    cl <- helper "fromnative" a
-    cr <- helper "fromnative" b
+    cl <- helper env "fromnative" a
+    cr <- helper env "fromnative" b
     lt <- lift' (goType env a)
     rt <- lift' (goType env b)
-    pure [ D.text ("if r, ok := n.Right(); ok { return lsfRight[" ++ lt ++ ", " ++ rt ++ "](" ++ cr ++ "(r)) }")
+    pure [ ifThen "r, ok := n.Right(); ok" [D.text ("return lsfRight[" ++ lt ++ ", " ++ rt ++ "](" ++ cr ++ "(r))")]
          , D.text "l, _ := n.Left()"
          , D.text ("return lsfLeft[" ++ lt ++ ", " ++ rt ++ "](" ++ cl ++ "(l))") ]
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
-        ck <- helper "fromnative" k
-        cv <- helper "fromnative" v
-        cmp <- helper "cmp" k
+        ck <- helper env "fromnative" k
+        cv <- helper env "fromnative" v
+        cmp <- helper env "cmp" k
         t <- lift' (goType env ty)
-        pure [ D.text ("var out " ++ t), D.text ("for _, e := range n { out = lsfPut(out, " ++ ck ++ "(e.Key), " ++ cv ++ "(e.Value), " ++ cmp ++ ") }"), D.text "return out" ]
+        pure [ D.text ("var out " ++ t), forEach "_, e := range n" [D.text ("out = lsfPut(out, " ++ ck ++ "(e.Key), " ++ cv ++ "(e.Value), " ++ cmp ++ ")")], D.text "return out" ]
     | Just ("Set", [a]) <- collectionArguments ty -> do
-        c <- helper "fromnative" a
-        cmp <- helper "cmp" a
+        c <- helper env "fromnative" a
+        cmp <- helper env "cmp" a
         t <- lift' (goType env ty)
-        pure [ D.text ("var out " ++ t), D.text ("for _, item := range n { out = lsfSetInsert(out, " ++ c ++ "(item), " ++ cmp ++ ") }"), D.text "return out" ]
+        pure [ D.text ("var out " ++ t), forEach "_, item := range n" [D.text ("out = lsfSetInsert(out, " ++ c ++ "(item), " ++ cmp ++ ")")], D.text "return out" ]
   Constructor n args | Just d <- M.lookup n (envData env) -> do
     let table = zip (dataParameters d) [t | TypeArgument t <- args]
         name = envNames env M.! n
@@ -1188,7 +1287,7 @@ fromNative env ty = case ty of
     witnesses <- lift' (mapM (goType env) (map snd table))
     let generic = if null witnesses then "" else "[" ++ intercalate ", " witnesses ++ "]"
         nativeOf c = envNative env M.! constructorId c
-    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper "fromnative" (substituteIn table (binderType f))
+    converters <- forM (dataConstructors d) $ \c -> forM (constructorFields c) $ \f -> helper env "fromnative" (substituteIn table (binderType f))
     let made prefix c cs
           | fieldless d = name ++ "_" ++ identifier (constructorName c)
           | isProductType d = "&" ++ name ++ generic ++ "{" ++ intercalate ", " [cv ++ "(" ++ prefix ++ GoData.goFieldName (binderName f) ++ ")" | (f, cv) <- zip (constructorFields c) cs] ++ "}"
@@ -1197,8 +1296,8 @@ fromNative env ty = case ty of
       then let c = firstOf (dataConstructors d) in pure [D.text ("return " ++ made "n." c (firstOf converters))]
       else do
         let used = any (not . null . constructorFields) (dataConstructors d)
-        pure [ D.text ("switch " ++ (if used then "y := n.(type) " else "n.(type) ")) <> D.block 8 (D.joinWith D.hardline
-                 [D.text ("case " ++ nativeOf c ++ nargs ++ ": return " ++ made "y." c cs) | (c, cs) <- zip (dataConstructors d) converters])
+        pure [ switchOf (if used then "y := n.(type)" else "n.(type)")
+                 [("case " ++ nativeOf c ++ nargs, [D.text ("return " ++ made "y." c cs)]) | (c, cs) <- zip (dataConstructors d) converters]
              , D.text "panic(\"unreachable branch reached\")" ]
   _ -> lift' (Left ("typed Go: no native conversion for " ++ show ty))
 

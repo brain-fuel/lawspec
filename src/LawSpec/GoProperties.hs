@@ -316,8 +316,11 @@ emitTests Config{..} unit laws = do
       let kinds = map ("_" ++) (take (length exampleDocs) exampleSuffixes) ++ map ("_" ++) (take (length boundaryDocs) boundarySuffixes) ++
             ["_Property" | not (null property)]
           linkedProperty = map (linked (short ++ ", property") lawLink) property
-      pure $ mconcat (map (D.lineComment 100 "// ") (lawCommentLines e)) <> D.hardline <>
-        separate (fst searchDocs ++ harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ linkedProperty) ++ snd searchDocs)
+      -- The law's comment stands apart from its first test, so gofmt never
+      -- reads it as that test's documentation.
+      let comment = D.joinWith D.hardline (map text (lines (D.render D.Compact (mconcat (map (D.lineComment 100 "// ") (lawCommentLines e))))))
+          tests = fst searchDocs ++ harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ linkedProperty) ++ snd searchDocs
+      pure $ if null tests then comment else comment <> D.hardline <> D.hardline <> separate tests
     pascal = cased Pascal . splitOn '_'
     splitOn c xs = case break (== c) xs of
       (part, _ : rest) -> part : splitOn c rest
