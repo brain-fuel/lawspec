@@ -203,7 +203,8 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
               config = call "Property" "settings" [IntLit (toInteger caseCount), IntLit (toInteger attempts), IntLit (toInteger shrinks)]
               observation = Lambda [] (Ty "Harness.Observation" "Harness.Observation")
                 (call "Harness" "observation" [ListOf tValue covers, ListOf (Ty "string * Value" "Tuple<string, Value>") classes, ListOf tValue labels, score])
-              boundInputs inner = foldr (\(i, (_, a)) rest -> Let a tValue (call "Runtime" "item" [IntLit i, Var "values"]) rest) inner (zip [0 ..] aliases)
+              -- Only the inputs the body reads are taken from the case.
+              boundInputs inner = foldr (\(i, (_, a)) rest -> if mentions a rest then Let a tValue (call "Runtime" "item" [IntLit i, Var "values"]) rest else rest) inner (zip [0 ..] aliases)
               descriptors = BeamProperties.searchDescriptors plan planned
               remembered values = case descriptors of
                 Nothing -> invoke values
@@ -260,7 +261,7 @@ emitTests lang layout nativeGenerators plan = fmap concat $ forM (plannedUnits p
     -- A parallel unit's tests are nested a level deeper (see nestTest).
     nested u = maybe False C.harnessParallel (C.unitHarnessSettings u)
     -- Comment lines, at the file's indentation.
-    comment ls = mconcat [D.text ("// " ++ l) <> D.hardline | l <- ls]
+    comment ls = mconcat [D.text (if null l then "//" else "// " ++ l) <> D.hardline | l <- ls]
     -- An attribute; Fantomas breaks one whose arguments end past the line's
     -- width after its first =.
     attributeLines attribute = case lang of
@@ -314,7 +315,7 @@ propositionLink p = locationLink <$> listToMaybe (mapMaybe (originLocation . C.e
 
 -- | Names generated tests give their own locals, which source names avoid.
 generatedLocals :: [String]
-generatedLocals = ["schema", "symbols", "inputs", "values", "resources", "generation", "generator", "scoped", "withResources", "result"]
+generatedLocals = ["schema", "symbols", "inputs", "values", "resources", "generation", "generator", "scoped", "withResources", "result", "drawn", "drawnSoFar"]
 
 observed :: C.LawHarness -> Bool
 observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify harness) && null (C.harnessLabels harness)) ||
@@ -323,7 +324,10 @@ observed harness = not (null (C.harnessCover harness) && null (C.harnessClassify
 -- | The generator of a law's inputs: each input drawn knowing the earlier
 -- ones, within its refinement, or from the harness's strategy for it.
 generators :: Int -> Plan -> (X.Context -> C.Expr -> [Expr] -> Either String Expr) -> (C.Id -> String) -> PlannedProperty -> Either String Expr
-generators bits plan external local planned = walk [] (generatorRequirements planned)
+generators bits plan external local planned = do
+  -- Each input is drawn by a step that knows the inputs drawn before it.
+  steps <- walk [] (generatorRequirements planned)
+  pure (call "Gen" "dependent" [ListOf (tFun [tValues] (Ty "Gen<Value>" "Gen<Value>")) steps])
   where
     strategies = C.harnessDraws (C.propertyHarness (plannedProperty planned))
     renderWith names = X.render (X.Context bits X.schemaVar X.symbolsVar names external X.typeRef X.typeKeyOf)
@@ -332,7 +336,7 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
     bind generator name body resultTy = call "Gen" "bind" [generator, Lambda [(name, tValue)] resultTy body]
     bindName binder name outer identity = if C.binderId binder == identity then name else outer identity
     conjunction ps = foldr (\a b -> If (X.truth a) tBool b (BoolLit False)) (BoolLit True) ps
-    walk previous [] = pure (call "Gen" "constant" [ListOf tValue (map Var previous)])
+    walk _ [] = pure []
     walk previous (requirement : rest) = do
       let binder = generatorBinder requirement
           name = local (C.binderId binder)
@@ -344,8 +348,9 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
           predicates <- mapM (renderWith (bindName binder checkedName local)) (generatorPredicates requirement)
           pure (if null predicates then generated else call "Gen" "map" [Lambda [(checkedName, tValue)] tValue
             (call "Property" "checkDrawn" [Str strategy, Str (C.binderName binder), Var checkedName, conjunction predicates]), generated])
-      remaining <- walk (previous ++ [name]) rest
-      pure (bind generator name remaining listGen)
+      let earlier = foldr (\(i, n) body -> if mentions n body then Let n tValue (call "Runtime" "item" [IntLit i, Var "drawn"]) body else body)
+            generator (zip [0 ..] previous)
+      (Lambda [("drawn", tValues)] genTy earlier :) <$> walk (previous ++ [name]) rest
     regular names requirement = do
       generator <- raw names requirement
       predicates <- mapM (renderWith names) (generatorPredicates requirement)
@@ -374,7 +379,7 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
       boundariesWithRegistry registry (planMachineBits plan) ty
     strategyDraw names requirement strategy path draw = case draw of
       C.DrawAny ty (Just aim) -> do
-        let name = "aim" ++ path
+        let name = "aim" ++ show (length path)
             aliases = bindName (C.quantifiedBinder aim) name names
         witnesses <- if ty == C.binderType (generatorBinder requirement)
           then pure (generatorBoundaries requirement) else witnessesFor ty
@@ -395,16 +400,29 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
         pure (choose path selector branches)
       C.DrawSuchThat inner binder predicate limit -> do
         generator <- strategyDraw names requirement strategy (path ++ "s") inner
-        let name = "keep" ++ path
+        let name = "keep" ++ show (length path)
         condition <- renderWith (bindName binder name names) predicate
         pure (call "Property" "suchThat" [Str strategy, Lambda [(name, tValue)] tBool (X.truth condition), IntLit limit, generator])
-      C.DrawBind binder from rest -> do
-        generator <- strategyDraw names requirement strategy (path ++ "from") from
-        let name = "draw" ++ path
-        remaining <- strategyDraw (bindName binder name names) requirement strategy (path ++ "rest") rest
-        pure (bind generator name remaining genTy)
+      -- A run of draws, each knowing the earlier ones, is drawn in turn
+      -- (Gen.dependent), then the rest knowing them all.
+      C.DrawBind _ _ _ -> do
+        let chain d = case d of
+              C.DrawBind b from more -> let (bs, final) = chain more in ((b, from) : bs, final)
+              other -> ([], other)
+            (links, final) = chain draw
+            names' = ["draw" ++ show (length path) ++ "_" ++ show k | k <- [1 .. length links]]
+            scope = foldl (\outer (b, n) -> bindName b n outer) names (zip (map fst links) names')
+            earlier body bound = foldr (\(k, n) rest -> if mentions n rest then Let n tValue (call "Runtime" "item" [IntLit k, Var "drawnSoFar"]) rest else rest)
+              body (zip [0 ..] bound)
+        steps <- forM (zip3 [0 :: Int ..] links names') $ \(k, (_, from), _) -> do
+          let visible = foldl (\outer (b, n) -> bindName b n outer) names (take k (zip (map fst links) names'))
+          generator <- strategyDraw visible requirement strategy (path ++ "from" ++ show k) from
+          pure (Lambda [("drawnSoFar", tValues)] genTy (earlier generator (take k names')))
+        remaining <- strategyDraw scope requirement strategy (path ++ "rest") final
+        pure (call "Gen" "bind" [call "Gen" "dependent" [ListOf (tFun [tValues] genTy) steps],
+          Lambda [("drawnSoFar", tValues)] genTy (earlier remaining names')])
     choose path selector branches =
-      let name = "choice" ++ path
+      let name = "choice" ++ show (length path)
       in call "Gen" "bind" [selector, Lambda [(name, tInt)] genTy
            (Invoke (call "Runtime" "nth" [Var name, ListOf (tFun [] genTy) branches]) [])]
 

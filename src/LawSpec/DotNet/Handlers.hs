@@ -204,19 +204,18 @@ emitHandlers lang layout bits typed declarations units = do
     fsParameters ps = if map snd ps == ["unit"] then [] else ps
     -- A property's accessor: its body on its line while under 40 columns.
     accessor header body
-      | L.columns body < 40 && 8 + L.columns header + 1 + L.columns body <= L.pageWidth = [L.pad 8 (header ++ " " ++ body)]
+      | 8 + L.columns header + 1 + L.columns body <= L.pageWidth = [L.pad 8 (header ++ " " ++ body)]
       | otherwise = [L.pad 8 header, L.pad 12 body]
     -- A class with the handler context, its parameters on a line of their
     -- own when the declaration is too wide, as Fantomas writes it.
-    classHeader cls =
-      let header = "type " ++ cls ++ "(schema: Schema.Schema, symbols: Scalar.SymbolContext) ="
-      in if L.columns header <= L.pageWidth then [header] else ["type " ++ cls, "    (schema: Schema.Schema, symbols: Scalar.SymbolContext) ="]
+    classHeader cls = L.typeHeader ("type " ++ cls) "(schema: Schema.Schema, symbols: Scalar.SymbolContext)"
     -- A codec's conversion as a function value, and applied as text.
     codecFunction c
       | take 1 c == "(" = L.App "Codec.toNative" [L.A c]
       | otherwise = L.A (c ++ ".ToNative")
     codecText c member x
       | take 1 c == "(" = "Codec." ++ (if member == "ToNative" then "toNative" else "fromNative") ++ " " ++ c ++ " " ++ x
+      | take 1 x == "(" = c ++ "." ++ member ++ x
       | otherwise = c ++ "." ++ member ++ " " ++ x
     fsArguments ps = if map snd ps == ["unit"] then ["()"] else map fst ps
     operationSignatureOf names a op = Abilities.operationSignatureFor lang bits names a op

@@ -11,7 +11,7 @@ module LawSpec.DotNet.Layout
   ( F(..), Stmt(..), Lines
   , pageWidth, columns, pad, opening, closing, separated, separatedBy, linesDoc
   , flat, expr, item, block, binding, function, matchLines, methodLike, needsParens, atom
-  , exprW, itemW, blockW, bindingW, functionW, breakLast, dottedLines
+  , exprW, itemW, blockW, bindingW, functionW, breakLast, dottedLines, typeHeader
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -223,6 +223,10 @@ brokenW w i c e = case e of
   App f args -> application f args
   -- A method given only a function keeps it on its line, as a callback.
   Method f [Fun ps b] | c + columns (f ++ "(fun " ++ ps ++ " ->") <= w -> closing ")" ((f ++ "(fun " ++ ps ++ " ->") : bodyW (w - 1) (i + 4) b)
+  -- A call whose name does not fit its line breaks the name at a dot.
+  Method f args | c + columns f + 1 > w, (first : rest@(_ : _)) <- dottedLines w c (i + 4) f ->
+    let lastIndent = i + 4
+    in [first] ++ init rest ++ [last rest ++ "("] ++ concat [if k == length args then ls else closing "," ls | (k, ls) <- zip [1 :: Int ..] (map (itemW w (lastIndent + 4)) args)] ++ [pad lastIndent ")"]
   Method f args -> commaList (f ++ "(") ")" args
   List xs -> ["["] ++ concatMap (itemW w (i + 4)) xs ++ [pad i "]"]
   -- A tuple too long for its line has an item on each line, aligned after
@@ -244,6 +248,8 @@ brokenW w i c e = case e of
     let operands = chain o e
     in exprW w i c (head operands) ++ concat [opening (pad i (o ++ " ")) (exprW w i (i + length o + 1) x) | x <- drop 1 operands]
   A s -> [s]
+  -- An operation in parentheses continues aligned after the parenthesis.
+  Paren x@(Infix {}) -> closing ")" (opening "(" (exprW w (c + 1) (c + 1) x))
   Paren x -> closing ")" (opening "(" (exprW w i (c + 1) x))
   Prefix o x -> opening o (exprW w i (c + length o) x)
   Annotated x t -> opening "(" (exprW w i (c + 1) x) ++ [pad i (": " ++ t ++ ")")]
@@ -258,7 +264,7 @@ brokenW w i c e = case e of
       | not (null args), Fun ps b <- last args, Just fronts <- mapM atom (init args)
       , let open = (if null fronts && methodLike f then f ++ "(fun " ++ ps ++ " ->" else unwords (f : fronts ++ ["(fun " ++ ps ++ " ->"]))
       , c + columns open <= w = closing ")" (open : bodyW (w - 1) (i + 4) b)
-      | [a] <- args, needsParens a, not (isLambda a) =
+      | [a] <- args, needsParens a || isParen a, not (isLambda a) =
           [f ++ (if methodLike f then "(" else " (")] ++ itemW w (i + 4) (unwrap a) ++ [pad i ")"]
       -- A name too long for its line breaks at a dot: as many of its parts
       -- as fit, then the rest.
@@ -269,7 +275,8 @@ brokenW w i c e = case e of
       | needsParens a = closing ")" (opening (pad j "(") (exprW (if isLambda a then w - 1 else w) j (j + 1) (unwrap a)))
       | otherwise = itemW w j a
     isLambda a = case a of Fun _ _ -> True; _ -> False
-    unwrap a = a
+    unwrap a = case a of Paren x -> x; _ -> a
+    isParen a = case a of Paren _ -> True; _ -> False
 
 -- | A long dotted name over lines, as Fantomas lays out a chain of
 -- navigation: its first part, then each further part on the current line
@@ -298,6 +305,14 @@ dottedLines maxColumn c j name = case splitParts name of
     splitParts s = case break (== '.') s of
       (a, '.' : more) -> a : splitParts more
       (a, _) -> [a]
+
+-- | A class's declaration with its constructor's parameters: on one line
+-- when it fits, else its = on the next line, else its parameters there.
+typeHeader :: String -> String -> Lines
+typeHeader declaration parameters
+  | columns (declaration ++ parameters ++ " =") <= pageWidth = [declaration ++ parameters ++ " ="]
+  | columns (declaration ++ parameters) <= pageWidth = [declaration ++ parameters, "    ="]
+  | otherwise = [declaration, "    " ++ parameters ++ " ="]
 
 -- | A dotted name split at its last dot.
 breakLast :: String -> (String, String)
@@ -409,6 +424,7 @@ bindingW w i lhs v = case flat v of
     -- What the binding declares, after let or member: its modifiers
     -- (mutable, private), name and type count.
     named = case words lhs of
+      "static" : "member" : ws -> unwords ws
       w : ws | w `elem` ["let", "member", "override", "default"] -> unwords ws
       ws -> unwords ws
 

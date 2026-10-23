@@ -7,7 +7,7 @@
 module LawSpec.DotNet.Code
   ( Lang(..), Ty(..), Fn(..), Expr(..)
   , tValue, tValues, tBool, tUnit, tString, tSchema, tSymbols, tObj, tInt, tFun, tList, tOption, tGen, tType
-  , fn, call, str, renderBody, renderStatements, renderExpr, stringLiteral, tyText, isInline, pageWidth
+  , fn, call, str, mentions, renderBody, renderStatements, renderExpr, stringLiteral, tyText, isInline, pageWidth
   , Lines, linesDoc, pad, columns, functionLines
   ) where
 
@@ -111,6 +111,22 @@ isInline e = case e of
   TupleOf xs -> all isInline xs
   _ -> True
 
+-- | Whether an expression reads a local. Raw text is assumed to read it.
+mentions :: String -> Expr -> Bool
+mentions v e = case e of
+  Var x -> x == v
+  Raw f c -> v `elem` words (map (\ch -> if ch `elem` ("()[],;." :: String) then ' ' else ch) (f ++ " " ++ c))
+  Call _ args -> any (mentions v) args
+  Ctor _ args -> any (mentions v) args
+  Invoke f args -> any (mentions v) (f : args)
+  ListOf _ xs -> any (mentions v) xs
+  TupleOf xs -> any (mentions v) xs
+  Lambda ps _ b -> v `notElem` map fst ps && mentions v b
+  Let n _ x b -> mentions v x || (n /= v && mentions v b)
+  If c _ a b -> any (mentions v) [c, a, b]
+  Do xs x -> any (mentions v) (x : xs)
+  _ -> False
+
 -- | A statement: a binding (of anything, block or not) or a unit effect.
 data Stmt = Bind String Ty Expr | Effect Expr
 
@@ -164,7 +180,12 @@ flatten top ty e = case e of
   Invoke f args -> do
     (ss, all') <- arguments (f : args)
     case all' of
-      f' : args' -> pure (ss, Invoke f' args')
+      -- A function that is itself an expression is bound first, so it is
+      -- applied by name.
+      f'@(Var _) : args' -> pure (ss, Invoke f' args')
+      f' : args' -> do
+        name <- fresh
+        pure (ss ++ [Bind name tValue f'], Invoke (Var name) args')
       [] -> pure (ss, e)
   ListOf t xs -> do
     (ss, xs') <- arguments xs
@@ -370,6 +391,13 @@ exprStatement lang i before after e = do
 statement :: Lang -> Int -> Stmt -> Fresh Lines
 statement lang i s = case s of
   Effect e -> exprStatement lang i "" (if lang == FSharp then "" else ";") e
+  -- The statements a condition needs come before the binding, so a chain
+  -- of conditions stays at one level.
+  Bind name t (If c rt a b) | not (isInline c) -> do
+    (cs, c') <- flatten True tBool c
+    pre <- mapM (statement lang i) cs
+    this <- statement lang i (Bind name t (If c' rt a b))
+    pure (separated (pre ++ [this]))
   Bind name t (If c rt a b) -> widthNow >>= \w -> case lang of
     FSharp -> case flat FSharp (If c rt a b) of
       Just f | fitsBinding w i name f -> pure [pad i ("let " ++ name ++ " = " ++ f)]
@@ -559,6 +587,10 @@ brokenAt :: Int -> Lang -> Int -> Int -> Expr -> Fresh Lines
 brokenAt w FSharp i c e = case e of
   Call (Fn f _) args -> application i c f args
   Invoke g args | Just head' <- flat FSharp g -> application i c (if needsParens g then "(" ++ head' ++ ")" else head') args
+  -- A call whose name does not fit its line breaks the name at a dot.
+  Ctor (Fn f _) args | c + columns f + 1 > w, (first : rest@(_ : _)) <- dottedLines w c (i + 4) f -> do
+    items <- mapM (item (i + 8)) args
+    pure ([first] ++ init rest ++ [last rest ++ "("] ++ concat [if k == length items then ls else closing "," ls | (k, ls) <- zip [1 :: Int ..] items] ++ [pad (i + 4) ")"])
   Ctor (Fn f _) args -> commaList (f ++ "(") ")" args
   TupleOf xs -> do
     items <- mapM (\(k, x) -> (if k == 1 then id else opening (pad (c + 1) "")) <$> expr FSharp (c + 1) (c + 1) 0 x) (zip [1 :: Int ..] xs)

@@ -468,7 +468,7 @@ constant _ s = case s of
     | all (\u -> u >= 0 && u <= 0x10FFFF && (u < 0xD800 || u > 0xDFFF)) units -> pure ([], A (stringLiteral FSharp (map toEnum units)))
     | otherwise -> pure ([], App "Scalar.textOfPoints" [List (map (A . show) units)])
   SSequence "Bytes" units -> do
-    name <- literal ("bytes " ++ show units) (A ("[| " ++ intercalate "; " [show u ++ "uy" | u <- units] ++ " |]"))
+    name <- literal ("bytes " ++ show units) (A (if null units then "[||]" else "[| " ++ intercalate "; " [show u ++ "uy" | u <- units] ++ " |]"))
     pure ([], A name)
   _ -> lift' (Left ("typed F#: unsupported constant " ++ show s))
 

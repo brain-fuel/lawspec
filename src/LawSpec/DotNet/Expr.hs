@@ -133,6 +133,11 @@ render context root = evalStateT (go context root) 0
     go ctx term = case C.expressionNode term of
       C.Constant scalar -> checked ctx (C.expressionType term) (literal (contextSymbols ctx) scalar)
       C.Local identity -> pure (Var (local identity))
+      -- A list written out is one list value, as the runtime builds a
+      -- cons onto a list (Schema.construct).
+      C.Construct (C.Id "List::Cons") _ | Just items <- listItems term -> do
+        values <- mapM (go ctx) items
+        pure (valueCall "List" [ListOf tValue values])
       C.Construct tag args -> do
         values <- mapM (go ctx) args
         ref <- lift (contextType ctx (C.expressionType term))
@@ -209,6 +214,10 @@ render context root = evalStateT (go context root) 0
         pure (call "Runtime" "helper" [Str (C.builtinName builtin), ListOf tValue values, ListOf tString types,
           IntLit (toInteger (contextBits ctx))])
       _ -> lift $ Left ("no .NET rendering for " ++ take 80 (show (C.expressionNode term)))
+    listItems t = case C.expressionNode t of
+      C.Construct (C.Id "List::Nil") [] -> Just []
+      C.Construct (C.Id "List::Cons") [h, rest] -> (h :) <$> listItems rest
+      _ -> Nothing
     checked ctx ty v = do
       ref <- lift (contextType ctx ty)
       pure (call "Schema" "validate" [v, ref, contextSchema ctx])

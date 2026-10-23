@@ -60,17 +60,23 @@ emitInterfaces lang layout bits declarations units
             (ps, r) <- operationSignature lang bits names a (op, ty)
             let comment = "/// " ++ op
             pure $ case lang of
-              FSharp -> D.text comment <> D.hardline <> D.text ("abstract " ++ Effects.operationMember op ++ ": " ++
-                (if null ps then "unit" else intercalate " * " ["value" ++ show i ++ ": " ++ p | (i, p) <- zip [0 :: Int ..] ps]) ++ " -> " ++ r)
-              CSharp -> D.text ("/// <summary>" ++ op ++ "</summary>") <> D.hardline <> D.text (csResult r ++ " " ++ Effects.operationMember op ++ "(" ++
-                intercalate ", " [p ++ " value" ++ show i | (i, p) <- zip [0 :: Int ..] ps] ++ ");")
+              FSharp ->
+                let signature = (if null ps then "unit" else intercalate " * " ["value" ++ show i ++ ": " ++ p | (i, p) <- zip [0 :: Int ..] ps]) ++ " -> " ++ r
+                    declaration = "abstract " ++ Effects.operationMember op ++ ":"
+                    -- A signature too long for its line goes under its name.
+                    codeLines = if 4 + L.columns (declaration ++ " " ++ signature) <= L.pageWidth then [declaration ++ " " ++ signature]
+                      else [declaration, "    " ++ signature]
+                in (length codeLines > 1, D.text comment <> D.hardline <> D.joinWith D.hardline (map D.text codeLines))
+              CSharp -> (False, D.text ("/// <summary>" ++ op ++ "</summary>") <> D.hardline <> D.text (csResult r ++ " " ++ Effects.operationMember op ++ "(" ++
+                intercalate ", " [p ++ " value" ++ show i | (i, p) <- zip [0 :: Int ..] ps] ++ ");"))
           let name = "I" ++ pascal (N.interfaceName a)
               doc = "The native interface of " ++ N.displayName a ++ " (" ++ C.abilityKey (C.abilityInstance a) ++ ")."
           pure $ case lang of
+            -- A member that spans lines has a blank line around it.
             FSharp -> D.text ("/// " ++ doc) <> D.hardline <> D.text ("type " ++ name ++ " =") <>
-              D.nest 4 (D.hardline <> D.joinWith D.hardline members)
+              D.nest 4 (D.hardline <> joinMembers members)
             CSharp -> D.text ("/// <summary>" ++ doc ++ "</summary>") <> D.hardline <> D.text ("public interface " ++ name) <>
-              D.hardline <> D.block 4 (D.joinWith D.hardline members)
+              D.hardline <> D.block 4 (D.joinWith D.hardline (map snd members))
         pure $ case lang of
           FSharp -> D.text ("namespace " ++ Effects.abilityNamespace (C.unitId u)) <> D.hardline <> D.hardline <>
             D.joinWith (D.hardline <> D.hardline) types
@@ -82,6 +88,10 @@ emitInterfaces lang layout bits declarations units
       pure [Artifact ("src/LawSpec/Abilities" ++ extension lang) (D.render layout doc) "generated" "source"]
   where
     own u = [a | a <- N.ownAbilities u, not (C.isFail (C.abilityInstance a))]
+    joinMembers ms = case ms of
+      (m1, d1) : rest@((m2, _) : _) -> d1 <> D.hardline <> (if m1 || m2 then D.hardline else mempty) <> joinMembers rest
+      [(_, d)] -> d
+      [] -> mempty
     csResult r = if r == "System.ValueTuple" then "void" else r
 
 -- | The bridges between native interfaces and logical handlers.
@@ -144,8 +154,7 @@ emitBridges FSharp layout bits declarations units
         pure ((op, clauseName), L.DefS ("let " ++ clauseName) ["(current: Schema.Schema)", "(arguments: Value list)"] Nothing
           (L.App "Schema.validate" [converted out "fromNative" unwrapped, L.A (renderExprInline ref), L.A "current"]))
       let header = "type private " ++ className ++ "(schema: Schema.Schema, symbols: Scalar.SymbolContext, handler: Effects.Handler) ="
-          classLines = (if L.columns header <= L.pageWidth then [header]
-              else ["type private " ++ className, "    (schema: Schema.Schema, symbols: Scalar.SymbolContext, handler: Effects.Handler) ="]) ++
+          classLines = L.typeHeader ("type private " ++ className) "(schema: Schema.Schema, symbols: Scalar.SymbolContext, handler: Effects.Handler)" ++
             L.separated
               [ L.pad 4 ("interface " ++ interface ++ " with") : L.separated (map snd' members)
               , L.pad 4 "interface Effects.IOrigin with" : map (L.pad 8)
@@ -289,15 +298,15 @@ emitDefaults FSharp layout units
       let functions =
             [ D.text ("/// The default handler of " ++ N.displayName a ++ ".") <> D.hardline <>
               D.text ("[<CompiledName(\"" ++ pascal (N.interfaceName a) ++ "\")>]") <> D.hardline <>
-              D.text ("let " ++ escapeFSharp (camel (N.interfaceName a)) ++ " () : " ++ Effects.interfaceType a ++ " =") <>
-              D.nest 4 (D.hardline <> D.text ("LawSpec.Generated.Abilities." ++ Effects.bridgeName a "ToNative" ++
-                " LawSpec.Generated.Program.schema (Scalar.SymbolContext()) (Defaults.handler " ++ stringLiteral FSharp (C.abilityKey (C.abilityInstance a)) ++ ")"))
+              L.linesDoc 0 (L.function 0 ("let " ++ escapeFSharp (camel (N.interfaceName a))) ["()"] (Just (Effects.interfaceType a))
+                (L.App ("LawSpec.Generated.Abilities." ++ Effects.bridgeName a "ToNative") [L.A "LawSpec.Generated.Program.schema", L.A "(Scalar.SymbolContext())",
+                  L.App "Defaults.handler" [L.A (stringLiteral FSharp (C.abilityKey (C.abilityInstance a)))]]))
             | a <- defaults ] ++
             [ D.text "/// The SLH-DSA (FIPS 205) signature handler." <> D.hardline <>
               D.text "[<CompiledName(\"SlhDsaSignature\")>]" <> D.hardline <>
-              D.text ("let slhDsaSignature () : " ++ Effects.interfaceType a ++ " =") <>
-              D.nest 4 (D.hardline <> D.text ("LawSpec.Generated.Abilities." ++ Effects.bridgeName a "ToNative" ++
-                " LawSpec.Generated.Program.schema (Scalar.SymbolContext()) (Crypto.slhDsaSignatureHandler ())"))
+              L.linesDoc 0 (L.function 0 "let slhDsaSignature" ["()"] (Just (Effects.interfaceType a))
+                (L.App ("LawSpec.Generated.Abilities." ++ Effects.bridgeName a "ToNative") [L.A "LawSpec.Generated.Program.schema", L.A "(Scalar.SymbolContext())",
+                  L.App "Crypto.slhDsaSignatureHandler" []]))
             | a <- defaults, C.abilityKey (C.abilityInstance a) == "lawspec.crypto::ability::Signature" ]
           doc = D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
             D.text "/// The runtime's default handlers of the built-in abilities, as native interfaces." <> D.hardline <>

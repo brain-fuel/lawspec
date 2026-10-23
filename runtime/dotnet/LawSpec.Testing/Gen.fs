@@ -104,6 +104,18 @@ module Gen =
                         drawn |> Option.bind (fun tree -> bindTree tree (fun a -> at (k a) rnd size)))))
         )
 
+    /// Values drawn in turn, each by its step given the values drawn before
+    /// it: a law's inputs, each knowing the earlier ones. It shrinks as the
+    /// nested binds it stands for do.
+    [<CompiledName("Dependent")>]
+    let dependent (steps: ('a list -> Gen<'a>) list) : Gen<'a list> =
+        let rec go (previous: 'a list) (remaining: ('a list -> Gen<'a>) list) =
+            match remaining with
+            | [] -> constant previous
+            | step :: rest -> bind (step previous) (fun drawn -> go (previous @ [ drawn ]) rest)
+
+        go [] steps
+
     [<CompiledName("Sized")>]
     let sized (f: int -> Gen<'a>) =
         Gen(Native.sized (fun size -> let (Gen g) = f size in g))
