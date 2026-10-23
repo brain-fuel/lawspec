@@ -1,4 +1,4 @@
-expect: remove
+expect: review the specification and implementation before removing `known discrepancy`
 @@ src/Example/Harness.swift
 <<<<<<<
     static func roundCents(_ cents: Int32) -> Int32 { (cents + 4) / 10 * 10 }

@@ -1,4 +1,4 @@
-expect: is marked known discrepancy
+expect: review the specification and implementation before removing `known discrepancy`
 @@ src/example/harness.clj
 <<<<<<<
   (* (quot (+ cents 4) 10) 10))

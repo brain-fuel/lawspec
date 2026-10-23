@@ -1,4 +1,4 @@
-expect: is marked known discrepancy
+expect: review the specification and implementation before removing `known discrepancy`
 @@ src/Example/Harness.hs
 <<<<<<<
 roundCents value0 = (value0 + 4) `P.quot` 10 * 10
