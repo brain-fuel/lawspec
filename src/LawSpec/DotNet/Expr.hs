@@ -14,6 +14,7 @@ import LawSpec.Backend (scalarTypeKey)
 import LawSpec.Scalar (Scalar(..))
 import Data.List (nub, nubBy, intercalate)
 import LawSpec.DotNet.Names (localName, keywords)
+import LawSpec.Naming (claimAll, scopeWith)
 import Control.Monad.State.Strict (StateT, evalStateT, get, put, lift)
 
 -- | What rendering needs beyond the expression: the machine profile, the
@@ -119,8 +120,9 @@ render context root = evalStateT (go context root) 0
     occupied = [contextLocal context identity | term <- terms root, C.Local identity <- [C.expressionNode term], identity `notElem` ids]
     -- Binders inside an expression keep their source names, clear of the
     -- names around them; shadowing between them is undone when printed.
-    bindings = zip ids [if n `elem` (occupied ++ reservedLocals) then n ++ "_" ++ show k else n
-      | (k, b) <- zip [2 :: Int ..] binders, let n = sourceLocal (C.binderName b)]
+    -- Each binder has its own name, so no binder hides another the
+    -- expression still reads.
+    bindings = zip ids (fst (claimAll (scopeWith (occupied ++ reservedLocals)) [sourceLocal (C.binderName b) | b <- binders]))
     local identity = maybe (contextLocal context identity) id (lookup identity bindings)
     go ctx term
       | Just (fields, binders, body) <- C.concurrentGroup term = do
