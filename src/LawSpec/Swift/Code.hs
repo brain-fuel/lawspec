@@ -321,6 +321,7 @@ renderExpr e = let e' = distinct e in evalState (inline e') (namesIn e')
 distinct :: Expr -> Expr
 distinct e = evalState (go M.empty e) S.empty
   where
+    everyName = namesIn e
     go :: M.Map String String -> Expr -> State (S.Set String) Expr
     go env x = case x of
       Var v -> pure (Var (M.findWithDefault v v env))
@@ -358,7 +359,11 @@ distinct e = evalState (go M.empty e) S.empty
     binder :: String -> State (S.Set String) String
     binder n = do
       used <- get
-      let n' = case [c | c <- n : [suffixed n k | k <- [2 :: Int ..]], not (S.member c used)] of { c : _ -> c; [] -> n }
+      -- A new name is clear of every name the expression has, so a later
+      -- binder never meets its own name again.
+      let n' = if S.member n used
+            then case [c | c <- [suffixed n k | k <- [2 :: Int ..]], not (S.member c used), not (S.member c everyName)] of { c : _ -> c; [] -> n }
+            else n
       put (S.insert n' used)
       pure n'
 
