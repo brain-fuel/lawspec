@@ -29,7 +29,7 @@ handlerConstruction library units current = handlerConstructionWith library unit
 -- As handlerConstruction, with what makes some handlers: a shared handler
 -- of several abilities, or a native handler made with a resource, given as
 -- the Arc of the ability's trait.
-handlerConstructionWith :: Maybe String -> [C.Unit] -> C.Unit -> (String -> C.HandlerRef -> Maybe String) -> C.AbilityRef -> C.HandlerRef -> L.Expr
+handlerConstructionWith :: Maybe String -> [C.Unit] -> C.Unit -> (String -> C.HandlerRef -> Maybe L.Expr) -> C.AbilityRef -> C.HandlerRef -> L.Expr
 handlerConstructionWith library units current made ref choice = case choice of
   -- Each handler is made into a binding of the ability's trait, so no cast
   -- is needed, then installed.
@@ -56,7 +56,7 @@ handlerConstructionWith library units current made ref choice = case choice of
       Just a | ownerName a /= C.idText (C.unitId current) -> moduleOfName (ownerName a)
       _ -> "adapter"
     handle c = case c of
-      _ | Just given <- made trait c -> L.atom given
+      _ | Just given <- made trait c -> given
       C.ProductionHandler | Just parts <- native ->
         L.call "std::sync::Arc::new" [L.call (intercalate "::" [if p == "crate" then maybe p id library else p | p <- parts]) []]
       C.ProductionHandler -> L.call "std::sync::Arc::new" [L.call (adapterModule ++ "::" ++ productionFor ++ "::default") []]
@@ -139,7 +139,7 @@ emit minify bits datas units = do
          [L.Let "state" st | Just st <- [start]])
         (Just made))
     fields keepsContext stateField = D.joinWith D.hardline
-      ([line "ctx: std::sync::Mutex<ls::Context>," | keepsContext] ++ [line ("state: std::sync::Mutex<" ++ t ++ ">,") | Just t <- [stateField]])
+      ([line "ctx: std::sync::Mutex<ls::Context>," | keepsContext] ++ [L.fieldDoc "state" ("std::sync::Mutex<" ++ t ++ ">") <> line "," | Just t <- [stateField]])
     structDoc name keepsContext stateField = if not keepsContext && stateField == Nothing
       then line ("pub struct " ++ name ++ ";")
       else line ("pub struct " ++ name ++ " ") <> D.block 4 (fields keepsContext stateField)

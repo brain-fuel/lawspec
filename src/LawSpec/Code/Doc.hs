@@ -48,7 +48,7 @@ data Doc
 -- | How rustfmt chooses between a right-hand side on the same line and on
 -- the next: for a let's value, and for a match arm's body (which stays on
 -- the arm's line when it can be extended there).
-data Preference = NextLineValue Bool | ArmBody Bool | ChainLast (Maybe Int) deriving (Eq, Show)
+data Preference = NextLineValue Bool Int | ArmBody Bool | ChainLast (Maybe Int) deriving (Eq, Show)
 
 -- | Compact removes optional layout only. Mandatory newlines and nesting remain
 -- meaningful for Python, Haskell, Go, line comments, and preprocessor directives.
@@ -531,9 +531,9 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
               _ -> case preference of
                 -- rustfmt keeps a column back for a chain moved to the
                 -- next line.
-                NextLineValue chained
-                  | '\n' `notElem` sameText && sameFits -> sameLayout
-                  | (if chained then nextFitsNarrow else nextFits) && (not sameFits || preferNext) -> nextLayout
+                NextLineValue chained kept
+                  | '\n' `notElem` sameText && sameFits && column + measure sameText + kept <= margin -> sameLayout
+                  | (if chained then nextFitsNarrow else nextFits) && (not sameFits || preferNext || '\n' `notElem` sameText) -> nextLayout
                   | otherwise -> sameLayout
                 -- A chain's last call stays on the chain's line when its
                 -- first line fits (within the chain's budget) and it then

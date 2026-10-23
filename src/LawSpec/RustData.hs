@@ -234,7 +234,7 @@ emitRustData layout declarations = do
             resultValue = L.struct (path tag) ([(f, L.atom local) | ((f,_), local) <- zip fields locals] ++
               [("_lawspec_marker", L.atom "std::marker::PhantomData") | not (null phantom)])
         pure (variantDoc,encode,decode,recordFields)
-      let structFields = [D.text ((if f == "_lawspec_marker" then "" else "pub ") ++ f ++ ": " ++ t ++ ",") | (_,_,_,fs) <- rendered, (f,t) <- fs]
+      let structFields = [L.fieldDoc ((if f == "_lawspec_marker" then "" else "pub ") ++ f) t <> D.text "," | (_,_,_,fs) <- rendered, (f,t) <- fs]
           -- Fields keep their LawSpec names, which Rust's lint may not call
           -- snake case.
           camelFields = or [any isUpper f | (_,_,_,fs) <- rendered, (f,_) <- fs]

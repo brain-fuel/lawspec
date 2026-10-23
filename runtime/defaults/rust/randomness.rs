@@ -4,7 +4,6 @@
 //! every target), started at the run's seed: LAWSPEC_SEED, or 0.
 //! SecureRandom is the operating system's cryptographically secure generator
 //! (getrandom).
-#![allow(unused_variables, unused_imports, non_snake_case)]
 use crate::lawspec_runtime as ls;
 
 pub fn random_step(state: u64) -> u64 {

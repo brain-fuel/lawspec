@@ -325,16 +325,17 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
       SpecHandler _ -> Nothing
     made owner p a trait c = case c of
       SpecHandler _ | Just h <- specOf owner c, h `elem` sharedOf owner p ->
-        Just (sharedName h ++ ".clone()")
+        Just (RL.method (RL.atom (sharedName h)) "clone" [])
       ProductionHandler | Just (t, local) <- resourceFor p a c, Just (_, ability) <- findAbility allUnits a ->
         let native = either error id (NativeData.rustDataType planDataDeclarations t)
-            reference = Doc.render Doc.Compact (either error id (schemaType t))
+            reference = either error id (schemaType t)
             owned = if ownerName ability == idText (unitId owner) then "adapter" else Abilities.moduleOfName (ownerName ability)
             maker = case abilityNative ability of
               Just parts -> intercalate "::" parts
               Nothing -> owned ++ "::" ++ productionName ability ++ "::new"
-        in Just ("std::sync::Arc::new(" ++ maker ++ "(<" ++ native ++ " as ls::FromValue>::from_value(lawspec_schema::schema()?.native_value_with_context(" ++
-                 local ++ ".clone(), &" ++ reference ++ ", " ++ show planMachineBits ++ ", ctx)?)?))")
+            value = RL.try' (RL.method (RL.try' (RL.call "lawspec_schema::schema" [])) "native_value_with_context"
+              [RL.method (RL.atom local) "clone" [], RL.prefix "&" (RL.Laid reference), RL.atom (show planMachineBits), RL.atom "ctx"])
+        in Just (RL.call "std::sync::Arc::new" [RL.call maker [RL.try' (RL.call ("<" ++ native ++ " as ls::FromValue>::from_value") [value])]])
       _ -> Nothing
     hasSchema = hasNativeGenerators || not (null planDataDeclarations) || hasDefinitions ||
       any (any containsPayload . propertyExpressions . plannedProperty)
@@ -610,29 +611,34 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             -- scope key, resets it before each later use, holds it for this
             -- case until its guard drops, and releases it at exit.
             bracket inner ((r, (_, local)) : rest) | Just key <- resourceShared r, Just reset <- resourceReset r = do
-              acquired <- render withResources (resourceAcquire r)
-              resetting <- render withResources reset
-              released <- render withResources (resourceRelease r)
+              acquired <- renderL withResources (resourceAcquire r)
+              resetting <- renderL withResources reset
+              released <- renderL withResources (resourceRelease r)
               nested <- bracket inner rest
-              let use body = Doc.text ("|" ++ unusedAs "ctx" body ++ ": &mut ls::Context, " ++ unusedAs local body ++ ": ls::Value| -> ls::Result<ls::Value> ") <>
-                    block (Doc.text "Ok(" <> body <> Doc.text ")")
+              let usedIn e = mentions "ctx" (RL.expr e)
+                  ctxParam e = (if usedIn e then "ctx" else "_ctx") ++ ": &mut ls::Context"
+                  use e = RL.closure ("|" ++ ctxParam e ++ ", " ++ unusedAs local (RL.expr e) ++ ": ls::Value| -> ls::Result<ls::Value>")
+                    (RL.Block [] (Just (RL.call "Ok" [e])))
               pure (statements
-                [ Doc.text ("let (" ++ local ++ ", _shared_" ++ unraw local ++ ") = ") <> invoke "ls::share"
-                    [string key, Doc.text "ctx", Doc.text ("|" ++ unusedAs "ctx" acquired ++ ": &mut ls::Context| -> ls::Result<ls::Value> ") <> block (Doc.text "Ok(" <> acquired <> Doc.text ")"),
-                     use resetting, use released, Doc.text (if resourceConcurrent r then "true" else "false")] <> Doc.text "?;"
+                [ RL.stmt (RL.Let ("(" ++ local ++ ", _shared_" ++ unraw local ++ ")") (RL.try' (RL.call "ls::share"
+                    [ RL.atom (q key), RL.atom "ctx"
+                    , RL.closure ("|" ++ ctxParam acquired ++ "| -> ls::Result<ls::Value>") (RL.Block [] (Just (RL.call "Ok" [acquired])))
+                    , use resetting, use released, RL.atom (if resourceConcurrent r then "true" else "false") ])))
                 , nested ])
+            -- A resource the case acquires, then releases after it runs,
+            -- even when it fails or panics (ls::bracket).
             bracket inner ((r, (_, local)) : rest) = do
-              acquired <- render withResources (resourceAcquire r)
-              released <- render withResources (resourceRelease r)
+              acquired <- renderL withResources (resourceAcquire r)
+              released <- renderL withResources (resourceRelease r)
               nested <- bracket inner rest
+              let param used = "|" ++ unusedAs "ctx" used ++ "|"
+                  body = RL.Block [RL.Item nested] (Just (RL.atom "Ok(())"))
               pure (statements
-                [ binding local acquired
-                , binding ("outcome_" ++ unraw local) (Doc.text "std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> ls::Result<()> " <>
-                    block (statements [nested, Doc.text "Ok(())"]) <> Doc.text "))")
-                , binding ("released_" ++ unraw local) (Doc.text "(|| -> ls::Result<ls::Value> " <> block (Doc.text "Ok(" <> released <> Doc.text ")") <> Doc.text ")()")
-                , Doc.text ("match outcome_" ++ unraw local ++ " ") <> block (statements
-                    [ Doc.text "Ok(result) => " <> block (statements [Doc.text "result?;", Doc.text ("released_" ++ unraw local ++ "?;")])
-                    , Doc.text "Err(panic) => std::panic::resume_unwind(panic),"]) ])
+                [ RL.stmt (RL.Let local acquired)
+                , RL.stmt (RL.Semi (RL.try' (RL.call "ls::bracket"
+                    [ RL.atom "ctx"
+                    , RL.closure (param nested) body
+                    , RL.closure (param (RL.expr released)) (RL.call "Ok" [released]) ]))) ])
             resourced inner = bracket inner (zip (propertyResources p) resourceNames)
         body <- proposition withResources (Left lawContext) (propertyBody p) >>= resourced . pure
         checkedInputs <- if null planDataDeclarations then pure [] else

@@ -3930,6 +3930,26 @@ impl Drop for SharedGuard {
     }
 }
 
+/// Runs body, then release, even when body fails or panics: a law's case
+/// with a resource it acquired. Body's failure is reported before
+/// release's.
+pub fn bracket(
+    ctx: &mut Context,
+    body: impl FnOnce(&mut Context) -> Result<()>,
+    release: impl FnOnce(&mut Context) -> Result<Value>,
+) -> Result<()> {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(ctx)));
+    let released = release(ctx);
+    match outcome {
+        Ok(result) => {
+            result?;
+            released?;
+            Ok(())
+        }
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
+}
+
 /// A concurrent resource (resource T is concurrent) is held by any number of
 /// cases at once, and reset only when none holds it.
 pub fn share<A, R, F>(

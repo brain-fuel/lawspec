@@ -2,7 +2,6 @@
 //! The default handler of lawspec.concurrent's Async: threads. A pause yields
 //! this thread. It is the runtime's NativeAsync (ls::ASYNC), which also starts
 //! and waits for the tasks of workflows and async adapters.
-#![allow(unused_variables, unused_imports, non_snake_case)]
 use crate::lawspec_runtime as ls;
 
 /// Native concurrency: pause lets other threads run.

@@ -519,7 +519,7 @@ bounds t = lookup t [ ("Int8", (-128, 127)), ("Int16", (-32768, 32767)), ("Int32
 wide :: Env -> Scope -> Expr -> R (Maybe (L.Expr, Int))
 wide env scope e = case (expressionNode e, expressionType e) of
   (Constant (SInteger _ n), _) | abs n < 2 ^ (62 :: Int) ->
-    pure (Just (L.atom (if n < 0 then "(" ++ show n ++ "i128)" else show n ++ "i128"), max 1 (bitLength (abs n))))
+    pure (Just ((if n < 0 then L.prefix "-" else id) (L.atom (show (abs n) ++ "i128")), max 1 (bitLength (abs n))))
   (_, Constructor t []) | Just _ <- lookup t fixedTypes -> do
     x <- expression env Nothing scope e
     pure (Just (L.cast x "i128", 64))

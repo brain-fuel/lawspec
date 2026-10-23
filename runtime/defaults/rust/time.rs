@@ -2,13 +2,18 @@
 //! The default handler of lawspec.time's Clock: the system clock, kept from
 //! going back by std::time::Instant. An Instant is microseconds since
 //! 1970-01-01T00:00:00Z.
-#![allow(unused_variables, unused_imports, non_snake_case)]
 use crate::lawspec_runtime as ls;
+
+// The built-in unit's data types, as this program names them.
+type Instant = @@Instant@@;
 
 fn start() -> &'static (i64, std::time::Instant) {
     static START: std::sync::OnceLock<(i64, std::time::Instant)> = std::sync::OnceLock::new();
     START.get_or_init(|| {
-        let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as i64).unwrap_or(0);
+        let wall = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_micros() as i64)
+            .unwrap_or(0);
         (wall, std::time::Instant::now())
     })
 }
@@ -25,8 +30,10 @@ pub fn now_micros() -> i64 {
 pub struct ClockHandler;
 
 impl crate::lawspec_abilities::lawspec_time::Clock for ClockHandler {
-    fn now(&self) -> @@Instant@@ {
-        @@Instant@@ { value: now_micros() }
+    fn now(&self) -> Instant {
+        Instant {
+            value: now_micros(),
+        }
     }
 
     fn sleep(&self, value0: std::time::Duration) -> () {
@@ -58,7 +65,10 @@ impl ls::ClockAbility for InstalledClock {
     }
 
     fn sleep_micros(&self, micros: i64) {
-        crate::lawspec_abilities::lawspec_time::Clock::sleep(&*self.clock, std::time::Duration::from_micros(micros.max(0) as u64))
+        crate::lawspec_abilities::lawspec_time::Clock::sleep(
+            &*self.clock,
+            std::time::Duration::from_micros(micros.max(0) as u64),
+        )
     }
 
     fn real_time(&self) -> bool {
@@ -71,7 +81,10 @@ impl ls::ClockAbility for InstalledClock {
 /// only when it is this module's ClockHandler, installed as the default
 /// handler (ls::installed_native names its type).
 pub fn clock_ability(installed: &ls::Installed) -> Option<std::sync::Arc<dyn ls::ClockAbility>> {
-    let clock = installed.handler.downcast_ref::<std::sync::Arc<dyn crate::lawspec_abilities::lawspec_time::Clock>>()?.clone();
+    let clock = installed
+        .handler
+        .downcast_ref::<std::sync::Arc<dyn crate::lawspec_abilities::lawspec_time::Clock>>()?
+        .clone();
     let real_time = installed.native == Some(std::any::TypeId::of::<ClockHandler>());
     Some(std::sync::Arc::new(InstalledClock { clock, real_time }))
 }

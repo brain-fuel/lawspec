@@ -8,7 +8,7 @@ module LawSpec.RustLayout
   ( Expr(..), Stmt(..), Arm(..)
   , expr, stmt, stmts, block, flat, oneLine, function, declaration, armDoc
   , atom, call, method, try', prefix, infixOp, cast, paren, struct, closure, macroCall, vecOf, letIn
-  , precedence
+  , precedence, typeOf, fieldDoc
   ) where
 
 import Data.Char (isAlphaNum)
@@ -231,7 +231,7 @@ overflowable count e = case e of
   Infix {} -> count == 1
   Call {} -> count == 1
   Macro {} -> count == 1
-  Method {} -> count == 1 && isJust (chainPrefix e)
+  Method {} -> count == 1
   Struct {} -> count == 1
   Match {} -> count == 1
   If {} -> count == 1
@@ -462,7 +462,7 @@ fitsArguments limit open args texts =
 -- reference, cast, field or call of one.
 simple :: Expr -> Bool
 simple e = case e of
-  Atom t -> not (null t) && "::" `notInfix` t && all (\c -> isAlphaNum c || c `elem` ("_.\"'-" :: String)) t
+  Atom t -> not (null t) && (take 1 t == "\"" || "::" `notInfix` t && all (\c -> isAlphaNum c || c `elem` ("_.\"'-" :: String)) t)
   Call f _ -> simple f
   Prefix op a -> op `elem` ["&", "*", "!", "-", "&mut "] && simple a
   Cast a _ -> simple a
@@ -484,10 +484,8 @@ nestedCall e = case e of
 -- | A cast's type after its value: a generic type that does not fit
 -- breaks inside its angle brackets, as rustfmt breaks it.
 castType :: String -> D.Doc
-castType t = case break (== '<') t of
-  (outer, '<' : rest) | not (null rest), last rest == '>' ->
-    D.fitsIndented 0 (width ("as " ++ t) + 2) (D.text ("as " ++ t))
-      (D.text ("as " ++ outer ++ "<") <> D.nest 4 (D.hardline <> D.text (init rest ++ ",")) <> D.hardline <> D.text ">")
+castType t = case parseType t of
+  Just ty@(Type _ (_ : _)) -> D.fitsIndented 0 (width ("as " ++ t) + 2) (D.text ("as " ++ t)) (D.text "as " <> typeBroken ty)
   _ -> D.text ("as " ++ t)
 
 -- | A call's overflowing last argument, within the columns left to it: a
@@ -549,11 +547,20 @@ chainWith root' links' e = case chainOneLine of
         Call {} -> isNothing (oneLine r)
         _ -> False
       _ -> False
-    eachLine = rootDoc <> (if blockRoot then id else D.nest 4) (mconcat [D.hardline <> linkDoc l | l <- links'])
+    linkLines = mconcat [D.hardline <> linkDoc l | l <- links']
+    -- A call root that breaks closes on its own line, and the links follow
+    -- it unindented.
+    eachLine = case root' of
+      [Left r@(Call {})] | not blockRoot, Just t <- oneLine r -> oneOf [D.text t <> D.nest 4 linkLines, expr r <> linkLines]
+      _ -> rootDoc <> (if blockRoot then id else D.nest 4) linkLines
     prefixText = concat <$> mapM (either oneLine flatLink) (root' ++ map Right (init links'))
     -- rustfmt's choice for the last call (format_last_child): on the
     -- chain's line, or the chain broken a link a line.
-    budget = if length (snd (unchain e)) == 1 then Nothing else Just (60 - maybe 0 width prefixText)
+    -- (the line up to the last call's opening, with its ?, within 60)
+    budget = if length (snd (unchain e)) == 1 then Nothing else Just (60 - tries)
+    tries = case last links' of
+      LinkCall _ _ True -> 1
+      _ -> 0
     broken = case links' of
       [] -> rootDoc
       _ -> case (prefixText, last links') of
@@ -640,11 +647,9 @@ stmt s = case s of
   -- A binding's type too long for its line breaks inside its outer
   -- angle brackets, and the value follows the closing one.
   Let' binding e
-    | (name, ':' : ' ' : ty) <- break (== ':') binding, (outer, '<' : inner) <- break (== '<') ty
-    , not (null inner), last inner == '>' ->
+    | (name, ':' : ' ' : ty) <- break (== ':') binding, Just t@(Type _ (_ : _)) <- parseType ty ->
         D.fitsIndented 0 (width (binding ++ " =")) (letDoc binding e)
-          (D.text (name ++ ": " ++ outer ++ "<") <> D.nest 4 (D.hardline <> D.text (init inner ++ ",")) <> D.hardline <>
-            D.text "> = " <> expr e <> D.text ";")
+          (D.text (name ++ ": ") <> typeBroken t <> D.text " = " <> expr e <> D.text ";")
   Let' binding e -> letDoc binding e
 
 -- | A let: its value goes on the next line when it fits there on one line
@@ -656,7 +661,7 @@ letDoc binding e =
         sameValue = D.text " " <> value
         nextValue = D.nest 4 (D.hardline <> value)
     in if shallow e
-      then head' <> D.prefer (D.NextLineValue (isChain e)) sameValue nextValue sameValue nextValue
+      then head' <> D.prefer (D.NextLineValue (isChain e) (if triedChain e then 2 else 0)) sameValue nextValue sameValue nextValue
       else head' <> sameValue
 
 ifDoc :: Expr -> Expr -> Maybe Expr -> D.Doc
@@ -712,7 +717,7 @@ armDoc (Arm pat guard body) = armDoc (ArmOf (Atom pat) guard body)
 armDoc (ArmOf pat (Just guard) body)
   | Just p <- flat pat, Just g <- oneLine guard, not (isBlock body) =
       D.prefixChoice (p ++ " if " ++ g ++ " => {") (armDoc (ArmOf (Atom (p ++ " if " ++ g)) Nothing body))
-            ( D.text p <> D.nest 4 (D.hardline <> D.narrow 2 (D.text "if " <> expr guard <> D.text " =>")) <> D.hardline <> blockDoc [] (Just body) )
+            ( D.text p <> D.nest 4 (D.hardline <> D.narrow 5 (D.text "if " <> expr guard) <> D.text " =>") <> D.hardline <> blockDoc [] (Just body) )
   where isBlock b = case b of
           Block _ _ -> True
           _ -> False
@@ -721,7 +726,7 @@ armDoc (ArmOf pat (Just guard) body@(Block _ _))
   -- its block opens on a line of its own.
   | Just p <- flat pat, Just g <- oneLine guard, Block ss tailExpr <- body =
       oneOf [ D.text (p ++ " if " ++ g ++ " => ") <> blockDoc ss tailExpr
-            , D.text p <> D.nest 4 (D.hardline <> D.narrow 2 (D.text "if " <> expr guard <> D.text " =>")) <> D.hardline <> blockDoc ss tailExpr ]
+            , D.text p <> D.nest 4 (D.hardline <> D.narrow 5 (D.text "if " <> expr guard) <> D.text " =>") <> D.hardline <> blockDoc ss tailExpr ]
 armDoc (ArmOf pat guard body) = case unblocked body of
   -- A block opens on the next line when the arm's line has no room for it.
   Block ss tailExpr -> headDoc <> oneOf [D.text " " <> blockDoc ss tailExpr, D.hardline <> blockDoc ss tailExpr]
@@ -759,7 +764,7 @@ signatureDoc :: String -> [String] -> String -> String -> D.Doc
 signatureDoc head' parameters result end = oneOf [D.text (head' ++ "(" ++ intercalate ", " parameters ++ ")" ++ result' ++ end), broken]
   where
     result' = if null result then "" else " -> " ++ result
-    params = D.nest 4 (mconcat [D.hardline <> D.text (p ++ ",") | p <- parameters])
+    params = D.nest 4 (mconcat [D.hardline <> parameterDoc p <> D.text "," | p <- parameters])
     -- rustfmt puts the brace on a line of its own when the closing line,
     -- with the indentation counted twice, leaves no room for it.
     broken
@@ -769,7 +774,78 @@ signatureDoc head' parameters result end = oneOf [D.text (head' ++ "(" ++ interc
           D.fitsIndentedTwice (width (")" ++ result') + 2) (D.text (")" ++ result' ++ " {"))
             (D.fitsIndented 0 (width (")" ++ result')) (D.text (")" ++ result') <> D.hardline <> D.text "{") genericResult)
     -- A result type too long for its line breaks inside its outer brackets.
-    genericResult = case break (== '<') result of
-      (outer, '<' : inner) | not (null inner), last inner == '>' ->
-        D.text (") -> " ++ outer ++ "<") <> D.nest 4 (D.hardline <> D.text (init inner ++ ",")) <> D.hardline <> D.text "> {"
+    genericResult = case parseType result of
+      Just t@(Type _ (_ : _)) -> D.text ") -> " <> typeBroken t <> D.text " {"
       _ -> D.text (")" ++ result') <> D.hardline <> D.text "{"
+
+-- | A parameter, name: type, its type breaking as rustfmt breaks it.
+parameterDoc :: String -> D.Doc
+parameterDoc p = case break (== ':') p of
+  (name, ':' : ' ' : ty) | Just t <- parseType ty -> D.text (name ++ ": ") <> typeDoc t
+  _ -> D.text p
+
+-- | A Rust type: a path with its generic arguments, or a tuple.
+data Type = Type String [Type] | Tuple [Type]
+
+-- | A type written as text, when it is a path with generic arguments or a
+-- tuple of such (a function type stays text).
+parseType :: String -> Maybe Type
+parseType text' = case go text' of
+  Just (t, "") -> Just t
+  _ -> Nothing
+  where
+    go str = case str of
+      '(' : rest -> (\(ts, r) -> (Tuple ts, r)) <$> items ')' rest
+      _ -> let (h, rest) = span (`notElem` ("<>,()" :: String)) str in
+        if null h then Nothing else case rest of
+          '<' : r -> (\(ts, r') -> (Type h ts, r')) <$> items '>' r
+          _ -> Just (Type h [], rest)
+    items close str = case str of
+      c : r | c == close -> Just ([], r)
+      _ -> do
+        (t, r) <- go str
+        case r of
+          ',' : c : r' | c == close -> Just ([t], r')
+          ',' : ' ' : r' -> (\(ts, r'') -> (t : ts, r'')) <$> items close r'
+          c : r' | c == close -> Just ([t], r')
+          _ -> Nothing
+
+typeText :: Type -> String
+typeText t = case t of
+  Type h [] -> h
+  Type h ts -> h ++ "<" ++ intercalate ", " (map typeText ts) ++ ">"
+  Tuple [x] -> "(" ++ typeText x ++ ",)"
+  Tuple ts -> "(" ++ intercalate ", " (map typeText ts) ++ ")"
+
+-- | A type on one line when it fits, else broken inside its brackets, one
+-- argument a line.
+typeDoc :: Type -> D.Doc
+typeDoc t = case t of
+  Type _ [] -> D.text (typeText t)
+  Tuple [] -> D.text "()"
+  _ -> oneOf [D.text (typeText t), typeBroken t]
+
+typeBroken :: Type -> D.Doc
+typeBroken t = case t of
+  Type h ts@(_ : _) -> D.text (h ++ "<") <> inside ts <> D.text ">"
+  Tuple ts@(_ : _) -> D.text "(" <> inside ts <> D.text ")"
+  _ -> D.text (typeText t)
+  where inside ts = D.nest 4 (mconcat [D.hardline <> typeDoc x <> D.text "," | x <- ts]) <> D.hardline
+
+-- | A type, from its text, laid out as rustfmt lays it out.
+typeOf :: String -> D.Doc
+typeOf ty = maybe (D.text ty) typeDoc (parseType ty)
+
+-- | A struct's field, name: type: its type on the next line when the
+-- line has no room for it there, else broken.
+fieldDoc :: String -> String -> D.Doc
+fieldDoc name ty = oneOf
+  [ D.text (name ++ ": " ++ ty)
+  , D.fitsIndented 4 (width ty + 1) (D.text (name ++ ":") <> D.nest 4 (D.hardline <> D.text ty)) (D.text (name ++ ": ") <> typeOf ty) ]
+
+-- | A chain whose last link is tried (ends in ?): as a let's value on the
+-- let's line, rustfmt keeps two columns back for it.
+triedChain :: Expr -> Bool
+triedChain e = case e of
+  Try a -> isChain a
+  _ -> False
