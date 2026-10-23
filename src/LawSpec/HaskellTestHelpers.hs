@@ -1,79 +1,52 @@
--- | Native Hedgehog strategies and Hspec assertions downstream of checked Core.
-module LawSpec.HaskellTestHelpers (generatorDoc, generatorDocWithin, assertionDoc, schemaDoc) where
+-- | Native Hedgehog strategies downstream of checked Core.
+module LawSpec.HaskellTestHelpers (generatorDoc, generatorDocWithin) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
-import qualified LawSpec.Code.Doc as D
-import qualified LawSpec.HaskellExpr as E
-
-text = D.text
-number :: Show a => a -> D.Doc
-number = text . show
-quoted :: String -> D.Doc
-quoted = text . show
-apply = E.apply
-parens = E.parens
-statements = D.joinWith D.hardline
-infixDoc a operator b = D.group (a <> D.nest 2 (D.softline <> text operator <> D.softline <> b))
-
--- | The schema the runtime validates values against, emitted once per module.
-schemaDoc :: D.Doc
-schemaDoc = statements
-  [text "_lawspecSchema :: Schema.Schema",
-   text "_lawspecSchema = either error id DataSchema.schema"]
-
--- | Assertions report the law, the inputs and both sides, so a failure
--- explains itself.
-assertionDoc :: D.Doc
-assertionDoc = statements
-  [text "_lawspecAssert :: String -> Scalar -> Scalar -> IO ()",
-   text "_lawspecAssert context actual expected = catch action handler" <>
-   D.nest 2 (D.hardline <> text "where" <> D.nest 2 (D.hardline <> statements
-     [text "action =" <> D.nest 2 (D.hardline <> statements
-        [text "if LS.equal actual expected",
-         text "  then pure ()",
-         text "  else" <> D.nest 4 (D.hardline <> text "expectationFailure $" <>
-           D.nest 2 (D.hardline <> D.group (D.joinWith (D.softline <> text "++ ")
-             [text "context",quoted " | actual=",text "show actual",quoted " expected=",text "show expected",
-              text "LS.difference actual expected"])))]),
-      text "handler :: SomeException -> IO ()",
-      D.group (text "handler e =" <> D.nest 2 (D.softline <> apply "expectationFailure"
-        [infixDoc (text "context") "++" (infixDoc (quoted " | ") "++" (text "displayException e"))]))]))]
+import qualified LawSpec.Code.Haskell as H
+import LawSpec.Code.Haskell (Expr, call, var, string, integer, operator, lambda)
 
 -- | Preserve Hedgehog's native list/maybe/choice trees and integral shrinking.
-generatorDoc :: Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
-  -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDoc bits budget structural reference key = generatorDocBounded (integerBounds bits) bits budget structural reference key
+generatorDoc :: Int -> Integer -> (C.Type -> Bool) -> (C.Type -> Expr)
+  -> (C.Type -> String) -> C.Type -> Expr
+generatorDoc bits budget structural reference key = generatorDocBounded (integerBounds bits) budget structural reference key
 
 -- | The generator, with a top-level integer drawn from a refinement's range.
-generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
-  -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDocWithin within bits budget structural reference key ty = generatorDocBounded boundsOf bits budget structural reference key ty
+generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> Expr)
+  -> (C.Type -> String) -> C.Type -> Expr
+generatorDocWithin within bits budget structural reference key ty = generatorDocBounded boundsOf budget structural reference key ty
   where
     boundsOf name = case (within, ty) of
       (Just range, C.Constructor top []) | top == name -> Just range
       _ -> integerBounds bits name
 
-generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
-  -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDocBounded boundsOf bits budget structural reference key = gen
+generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Integer -> (C.Type -> Bool) -> (C.Type -> Expr)
+  -> (C.Type -> String) -> C.Type -> Expr
+generatorDocBounded boundsOf budget structural reference key = gen
   where
-    gen ty | structural ty = E.checked (apply "Strategies.strategy"
-      [text "_lawspecSchema",reference ty,number bits,number budget,
-       apply "Strategies.primitiveStrategy" [number bits]])
+    orFail x = call "P.either" [var "P.error", var "P.id", x]
+    gen ty | structural ty = orFail (call "Strategies.strategy"
+      [var "schema", reference ty, var "machineBits", integer budget,
+       call "Strategies.primitiveStrategy" [var "machineBits"]])
     gen (C.Constructor "List" [C.TypeArgument inner]) =
-      infixDoc (text "SList") "<$>" (apply "Gen.list" [text "Range.linear 0 64",gen inner])
+      operator "<$>" [var "SList", call "Gen.list" [call "Range.linear" [integer 0, integer 64], gen inner]]
     gen (C.Constructor "Maybe" [C.TypeArgument inner]) =
-      infixDoc (parens (text "maybe (SData \"Maybe::Absent\" []) (\\value -> SData \"Maybe::Present\" [value])"))
-        "<$>" (apply "Gen.maybe" [gen inner])
-    gen (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) = apply "Gen.choice"
-      [E.array [sumGen "Either::Left" a,sumGen "Either::Right" b]]
+      operator "<$>" [call "maybe" [call "SData" [string "Maybe::Absent", H.List []], lambda ["value"] (call "SData" [string "Maybe::Present", H.List [var "value"]])],
+        call "Gen.maybe" [gen inner]]
+    gen (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) = call "Gen.choice"
+      [H.List [sumGen "Either::Left" a,sumGen "Either::Right" b]]
     gen (C.Constructor wrapper [C.TypeArgument inner]) =
-      infixDoc (apply "SPresent" [quoted wrapper]) "<$>" (apply "Gen.maybe" [gen inner])
+      operator "<$>" [call "SPresent" [string wrapper], call "Gen.maybe" [gen inner]]
+    -- An unbounded integer is drawn within integerLimit (2^256), named once
+    -- in the test module.
     gen (C.Constructor name []) | isInteger name =
-      let (lo,hi) = maybe (if name == "BigUInt" then (0,2^(256::Int)) else (-2^(256::Int),2^(256::Int))) id (boundsOf name)
-      in infixDoc (apply "SInteger" [quoted name]) "<$>"
-        (apply "Gen.integral" [apply "Range.linearFrom" [E.integerLiteral (max lo (min hi 0)),E.integerLiteral lo,E.integerLiteral hi]])
-    gen (C.Constructor "Bool" []) = infixDoc (text "SBool") "<$>" (text "Gen.bool")
-    gen ty = E.checked (apply "Strategies.primitiveStrategy" [number bits,quoted (key ty)])
-    sumGen tag inner = infixDoc (parens (text "\\value -> " <> apply "SData" [quoted tag,E.array [text "value"]])) "<$>" (gen inner)
+      let limit = var "integerLimit"
+          (origin, lo, hi) = case boundsOf name of
+            Just (l, h) -> (integer (max l (min h 0)), integer l, integer h)
+            Nothing | name == "BigUInt" -> (integer 0, integer 0, limit)
+                    | otherwise -> (integer 0, call "P.negate" [limit], limit)
+      in operator "<$>" [call "SInteger" [string name],
+        call "Gen.integral" [call "Range.linearFrom" [origin, lo, hi]]]
+    gen (C.Constructor "Bool" []) = operator "<$>" [var "SBool", var "Gen.bool"]
+    gen ty = orFail (call "Strategies.primitiveStrategy" [var "machineBits", string (key ty)])
+    sumGen tag inner = operator "<$>" [lambda ["value"] (call "SData" [string tag, H.List [var "value"]]), gen inner]

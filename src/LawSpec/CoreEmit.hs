@@ -410,7 +410,8 @@ emitPlanFormatted minify target Plan{..} = do
               [("src/","LawSpecSchema.hs","haskell-schema","source"),
                ("src/","LawSpecCodecs.hs","haskell-codecs","source")] ++
               [("src/","LawSpecCollectionCodecs.hs","haskell-collection-codecs","source") | usesCollections] ++
-              [("test/","LawSpecDataStrategies.hs","haskell-data-strategies","test")]])
+              [("test/","LawSpecDataStrategies.hs","haskell-data-strategies","test"),
+               ("test/","LawSpecTesting.hs","haskell-testing","test")]])
         else if target == "kotlin" then
           either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
             (KotlinData.emitKotlinDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)

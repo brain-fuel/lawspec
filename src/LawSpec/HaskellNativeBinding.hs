@@ -16,6 +16,7 @@ import qualified LawSpec.HaskellDefinitions as Definitions
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.CoreNativeScalarEmit as Scalar
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.Code.Haskell as HL
 
 -- | Bound adapters call the user's Haskell code directly, through generated
 -- conversions. ref:DEC-native-bindings-typed-identity
@@ -156,7 +157,7 @@ emitBindings minify plan testing files = do
       fields <- forM (zip [0 :: Int ..] (C.abilityOperations a)) $ \(i, (op, ty)) -> do
         let (args, result) = C.functionType ty
             values = ["value" ++ show k | k <- [0 .. length args - 1]]
-            codec namespace = H.haskellCodecDocIn Nothing namespace declarations "_lawspecSchema" (show bits)
+            codec namespace = codecIn Nothing namespace declarations "_lawspecSchema" (show bits)
         canonical <- mapM (codec "Codecs.") args
         nativeArgs <- mapM (nativeCodecIn Nothing (show bits)) args
         resultNative <- nativeCodecIn Nothing (show bits) result
@@ -178,7 +179,7 @@ emitBindings minify plan testing files = do
     lowerFirst' (c:cs) = toLower c : cs
     lowerFirst' [] = []
     nativeCodecIn scope bitsName ty = do
-      converter <- H.haskellCodecDocIn scope "NativeCodecs." declarations "_lawspecSchema" bitsName ty
+      converter <- codecIn scope "NativeCodecs." declarations "_lawspecSchema" bitsName ty
       nativeType <- H.haskellDataTypeWithRepresentations declarations
         [(C.dataId (resolvedDeclaration m),qualify (resolvedNativeType m)) | m <- mappings] ty
       pure (E.parens (converter <> D.text (" :: Codec.Codec " ++ nativeType)))
@@ -247,7 +248,7 @@ emitBindings minify plan testing files = do
     modulePart = concatMap cap . split '_'
     cap [] = []; cap (c:cs) = toUpper c:cs
     nativeCodec bitsName ty = do
-      converter <- H.haskellCodecDocIn (Just (E.apply "P.Just" [D.text "symbols"]))
+      converter <- codecIn (Just (HL.call "P.Just" [HL.var "symbols"]))
         "NativeCodecs." declarations "_lawspecSchema" bitsName ty
       nativeType <- H.haskellDataTypeWithRepresentations declarations
         [(C.dataId (resolvedDeclaration m),qualify (resolvedNativeType m)) | m <- mappings] ty
@@ -283,8 +284,8 @@ emitBindings minify plan testing files = do
           let (args,result) = C.functionType (C.declarationType declaration)
               values = ["value" ++ show i | i <- [0::Int ..length args-1]]
               handlers = ["handler" ++ show i | i <- [0 .. length handlerRecords - 1]]
-              scope = Just (E.apply "P.Just" [D.text "symbols"])
-              codec namespace = H.haskellCodecDocIn scope namespace declarations "_lawspecSchema" (show bits)
+              scope = Just (HL.call "P.Just" [HL.var "symbols"])
+              codec namespace = codecIn scope namespace declarations "_lawspecSchema" (show bits)
           types <- mapM (H.haskellDataType declarations) (args ++ [result])
           canonical <- mapM (codec "Codecs.") args
           native <- mapM (nativeCodec (show bits)) args
@@ -312,8 +313,8 @@ emitBindings minify plan testing files = do
             Construct _ -> [i | (i,ty) <- zip [0..] args, not (isUnit ty)]
             Static _ -> [0..length args-1]
           discards = isUnit result && case call of Static _ -> False; _ -> True
-          scope = Just (E.apply "P.Just" [D.text "symbols"])
-          codec namespace = H.haskellCodecDocIn scope namespace declarations "_lawspecSchema" (show bits)
+          scope = Just (HL.call "P.Just" [HL.var "symbols"])
+          codec namespace = codecIn scope namespace declarations "_lawspecSchema" (show bits)
       types <- mapM (H.haskellDataType declarations) (args ++ [result])
       canonical <- mapM (codec "Codecs.") args
       native <- mapM (nativeCodec (show bits)) args
@@ -373,3 +374,7 @@ lastPart s = case breakOn s of
     go acc (':' : ':' : rest) = (reverse acc, Just rest)
     go acc (c : rest) = go (c : acc) rest
     go acc [] = (reverse acc, Nothing)
+
+-- | A codec expression as a document.
+codecIn :: Maybe HL.Expr -> String -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String D.Doc
+codecIn scope namespace declarations schema bits ty = HL.expression <$> H.haskellCodecDocIn scope namespace declarations schema bits ty

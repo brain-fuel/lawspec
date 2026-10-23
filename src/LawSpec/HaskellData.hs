@@ -1,5 +1,5 @@
 -- | Native algebraic declarations are rendered from resolved Core identities.
-module LawSpec.HaskellData (namesFor, requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, emitHaskellCodecsWithLayouts, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellTypeReferenceDoc) where
+module LawSpec.HaskellData (namesFor, requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, emitHaskellCodecsWithLayouts, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellCodecExpr, haskellTypeReferenceDoc) where
 
 import LawSpec.Core.Positional (positionalLabel)
 import LawSpec.NativeBinding (ResolvedConstructorBinding(..), foldNativeLayoutM)
@@ -19,6 +19,7 @@ import LawSpec.Scalar (primitives, primitiveName, isInteger)
 import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials, keyedRequirements, equalityRequirements, substitute)
 import LawSpec.Collections (collectionContainer)
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.Code.Haskell as H
 
 type Names = [(C.Id,String)]
 
@@ -259,16 +260,16 @@ emitHaskellSchemaWithProfile bits layout declarations = do
           nested = zip (nub (nestedIds predicate)) ["local" ++ show i | i <- [0 :: Int ..]]
           local identity = maybe "invalidField" id (lookup identity (fields ++ nested))
           ref ty = do
-            value <- reference <$> S.typeReference (S.contractParameters contract) ty
-            pure (E.apply "Schema.substitute" [D.text "types",value])
+            value <- referenceExpr <$> S.typeReference (S.contractParameters contract) ty
+            pure (H.call "Schema.substitute" [H.var "types",value])
           key ty
             | variable ty = Left "unresolved Haskell generic conversion target"
-            | otherwise = pure (E.quoted (Backend.scalarTypeKey ty))
-      body <- E.renderExpressionWithContext declarations (D.text "bits") "_schema"
-        (D.text "symbols") ref key local
+            | otherwise = pure (H.string (Backend.scalarTypeKey ty))
+      body <- E.renderExpressionWithContext declarations (H.var "bits") "_schema"
+        (H.var "symbols") ref key local
         (\_ _ -> Left "external call in constructor predicate") predicate
-      pure (D.group (D.text "\\_schema types fields bits symbols ->" <>
-        D.nest 2 (D.softline <> E.apply "P.Right" [E.apply "LS.truth" [body]])))
+      pure (H.expression (H.lambda ["_schema", "types", "fields", "bits", "symbols"]
+        (H.call "P.Right" [H.call "LS.truth" [body]])))
     pure (D.group (D.text "(" <> D.text (show (S.contractTag contract)) <> D.text "," <>
       D.nest 2 (D.softline <> list predicates) <> D.text ")"))
   let field value = apply "Schema.Field"
@@ -343,36 +344,44 @@ witnessBinders declaration variant =
   [C.Binder (C.Id ("witness#" ++ show k)) (S.witnessFieldName count k) (C.Constructor "Text" []) | k <- [0 .. count - 1]]
   where count = length (freeExistentials declaration variant)
 
+-- | A type reference as an expression.
+referenceExpr :: S.TypeRef -> H.Expr
+referenceExpr (S.Parameter index) = H.call "Schema.Parameter" [H.integer (toInteger index)]
+referenceExpr (S.Named name arguments) = H.call "Schema.Named" [H.string name, H.List (map referenceExpr arguments)]
+
 codecName :: String -> String
 codecName [] = "dataCodec"
 codecName (c:cs) = toLower c : cs ++ "Codec"
 
 codecExpression :: String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
-codecExpression = codecExpressionWith Nothing "schema" "bits"
+codecExpression scope names parameters ty = H.expression <$> codecExpressionWith Nothing "schema" "bits" scope names parameters ty
 
-codecExpressionWith :: Maybe D.Doc -> String -> String -> String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
+-- | A codec as an expression: the program's own types' codecs come from
+-- LawSpecDataCodecs, the built-in ones from LawSpecCodecs and
+-- LawSpecCollectionCodecs.
+codecExpressionWith :: Maybe H.Expr -> String -> String -> String -> Names -> [(C.Id,String)] -> C.Type -> Either String H.Expr
 codecExpressionWith context schema bits scope names parameters ty = case ty of
-  C.TypeVariable variable -> maybe (Left "unbound Haskell codec parameter") (Right . D.text) (lookup variable parameters)
+  C.TypeVariable variable -> maybe (Left "unbound Haskell codec parameter") (Right . H.var) (lookup variable parameters)
   C.Constructor name arguments | Just short <- collectionContainer name -> do
     children <- mapM argument arguments
     values <- mapM (codecExpressionWith context schema bits scope names parameters) children
-    let scope' = maybe (D.text "P.Nothing") (\value -> parenthesize value) context
-        call function extra = apply function (extra ++ [scope', D.text schema, D.text bits] ++ map parenthesize values)
+    let scope' = maybe (H.var "P.Nothing") id context
+        call' function extra = H.call function (extra ++ [scope', H.var schema, H.var bits] ++ values)
     pure $ case short of
-      "Set" -> call "Collections.setCodecWith" []
-      "KeyVal" -> call "Collections.keyValCodecWith" []
-      _ -> call "Collections.sequenceCodecWith" [D.text (show short)]
+      "Set" -> call' "Collections.setCodecWith" []
+      "KeyVal" -> call' "Collections.keyValCodecWith" []
+      _ -> call' "Collections.sequenceCodecWith" [H.string short]
   C.Constructor name arguments -> do
     children <- mapM argument arguments
     values <- mapM (codecExpressionWith context schema bits scope names parameters) children
     case lookup (C.Id name) names of
-      Just native -> pure (contextual (scope ++ codecName native) (map parenthesize values))
+      Just native -> pure (contextual (scope ++ codecName native) values)
       Nothing -> case lookup name [("List","listCodec"),("Maybe","maybeCodec"),
           ("Either","eitherCodec"),("Nullable","nullableCodec"),("Optional","optionalCodec")] of
-        Just constructor -> pure (contextual ("Codec." ++ constructor) (map parenthesize values))
+        Just constructor -> pure (contextual ("Codec." ++ constructor) values)
         Nothing | not (null children) -> Left "unsupported Haskell codec application"
-                | isInteger name -> pure (invoke "Codec.integerCodec" [D.text (show name)])
-                | name `elem` ["Char","CodePoint"] -> pure (invoke "Codec.characterCodec" [D.text (show name)])
+                | isInteger name -> pure (invoke "Codec.integerCodec" [H.string name])
+                | name `elem` ["Char","CodePoint"] -> pure (invoke "Codec.characterCodec" [H.string name])
                 | otherwise -> case lookup name helpers of
                     Just helper -> pure (invoke ("Codec." ++ helper) [])
                     Nothing -> Left ("no Haskell scalar codec for " ++ name)
@@ -380,11 +389,10 @@ codecExpressionWith context schema bits scope names parameters ty = case ty of
   where
     argument (C.TypeArgument value) = Right value
     argument _ = Left "indexed Haskell codec is not supported"
-    invoke name arguments = apply name (map D.text [schema,bits] ++ arguments)
+    invoke name arguments = H.call name (map H.var [schema,bits] ++ arguments)
     contextual name arguments = case context of
       Nothing -> invoke name arguments
-      Just value -> apply (name ++ "With")
-        (parenthesize value : map D.text [schema,bits] ++ arguments)
+      Just value -> H.call (name ++ "With") (value : map H.var [schema,bits] ++ arguments)
     helpers = [("Bool","boolCodec"),("Decimal","decimalCodec"),("Rational","rationalCodec"),
       ("Float32","float32Codec"),("Float64","float64Codec"),("Complex64","complex64Codec"),
       ("Complex128","complex128Codec"),("CodeUnit16","codeUnitCodec"),("Text","textCodec"),
@@ -398,16 +406,16 @@ haskellCodec declarations ty = D.render D.Compact <$> haskellCodecDoc declaratio
 -- | Every value crossing the adapter boundary goes through a codec that checks
 -- it against its declared domain. ref:DEC-portable-exact-arithmetic
 haskellCodecDoc :: [C.DataDeclaration] -> String -> String -> C.Type -> Either String D.Doc
-haskellCodecDoc = haskellCodecDocUsing Nothing
+haskellCodecDoc declarations schema bits ty = H.expression <$> haskellCodecExpr Nothing declarations schema bits ty
 
 -- | As haskellCodecDoc, where the schema comes from the caller's scope.
-haskellCodecDocWithContext :: D.Doc -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String D.Doc
-haskellCodecDocWithContext context = haskellCodecDocUsing (Just context)
+haskellCodecDocWithContext :: H.Expr -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String H.Expr
+haskellCodecDocWithContext context = haskellCodecExpr (Just context)
 
-haskellCodecDocUsing :: Maybe D.Doc -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String D.Doc
-haskellCodecDocUsing context = haskellCodecDocIn context "Codecs."
+haskellCodecExpr :: Maybe H.Expr -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String H.Expr
+haskellCodecExpr context = haskellCodecDocIn context "Codecs."
 
-haskellCodecDocIn :: Maybe D.Doc -> String -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String D.Doc
+haskellCodecDocIn :: Maybe H.Expr -> String -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String H.Expr
 haskellCodecDocIn context scope declarations =
   -- The registry and the names depend only on the declarations, so a caller
   -- that applies this to them once shares them across every codec it makes.
@@ -482,7 +490,7 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
             D.softline<>D.text "}")
           rawRecord _ constructor children=Right (parenthesize (apply "LS.SData"
             [D.text (show (C.idText (C.constructorId constructor))),list children]))
-      bridges<-mapM (codecExpressionWith (Just (D.text "symbols")) "schema" "bits"
+      bridges<-mapM (fmap H.expression . codecExpressionWith (Just (H.var "symbols")) "schema" "bits"
         (if owner/="LawSpecDataCodecs" && lookup (C.dataId declaration) representations==Nothing then "Canonical." else "")
         names codecs . C.binderType) fields
       patterns<-foldNativeLayoutM (Right . (values !!)) rawRecord tree
@@ -507,7 +515,7 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
       let variable i = C.TypeArgument (C.TypeVariable (C.Id ("dynamic" ++ show i)))
           children = [(C.Id ("dynamic" ++ show i), "(dynamicCodecWith symbols schema bits x" ++ show i ++ ")") | i <- [0 :: Int .. 1]]
           arm key arity ty = do
-            doc <- codecExpressionWith (Just (D.text "symbols")) "schema" "bits" "" names children ty
+            doc <- H.expression <$> codecExpressionWith (Just (H.var "symbols")) "schema" "bits" "" names children ty
             -- A scalar codec is fixed to its native type before it loses it.
             annotated <- if arity == 0
               then (\native -> doc <> D.text (" :: Codec.Codec " ++ native)) <$>
@@ -579,7 +587,7 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
                     D.text (show (C.idText (C.constructorId variant))), D.text (show position)]
                   else apply "Schema.fieldTypeAt" [D.text "schema", D.text "typeReference",
                     D.text (show (C.idText (C.constructorId variant))), D.text (show position), D.text (keysOf method)])])
-              else const <$> codecExpressionWith (Just (D.text "symbols")) "schema" "bits"
+              else const . H.expression <$> codecExpressionWith (Just (H.var "symbols")) "schema" "bits"
               (if owner /= "LawSpecDataCodecs" && lookup (C.dataId declaration) representations == Nothing then "Canonical." else "") names codecs (C.binderType field))
               (zip [0 :: Int ..] (refinedFields ++ witnesses))
             let tag = C.idText (C.constructorId variant)

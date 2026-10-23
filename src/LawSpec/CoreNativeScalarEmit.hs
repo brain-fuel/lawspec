@@ -37,6 +37,11 @@ import qualified LawSpec.Core as C
 import LawSpec.Scalar
 import LawSpec.RuntimeSources
 import qualified LawSpec.Code.Doc as Doc
+import qualified LawSpec.Code.Haskell as H
+import qualified LawSpec.Naming as Naming
+import LawSpec.SourceLink (unitSourceFile, sourceLink, labelled)
+import qualified LawSpec.HaskellDefinitions as HaskellDefinitions
+import qualified Data.Map.Strict as M
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -95,7 +100,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           ("source","lawspec_codecs.go","go-codecs"),
           ("test","lawspec_data_strategies_test.go","go-data-strategies")]])
     else pure []
-  let completeHeader = if go || kt || hs || target == "java" then "" else if hs then replace "spec :: Spec" (wrappers ++ "spec :: Spec") testHeader else if kt then replace "class " (wrappers ++ "class ") testHeader else (if go && not goSchemaNeeded && not ("rapid.Check" `isInfixOf` tests) then replace "; \"pgregory.net/rapid\"" "" testHeader else testHeader) ++ wrappers
+  let completeHeader = if go || kt || hs || target == "java" then "" else if kt then replace "class " (wrappers ++ "class ") testHeader else (if go && not goSchemaNeeded && not ("rapid.Check" `isInfixOf` tests) then replace "; \"pgregory.net/rapid\"" "" testHeader else testHeader) ++ wrappers
   models <- modelTestArtifacts target bits dataDeclarations definitions u
   pure (goFiles ++ models ++ [Artifact stubPath stub "user" "source", Artifact testPath (completeHeader ++ tests ++ (if hs || go || kt || target == "java" then "" else if kt then "})\n" else "}\n")) "generated" "test"] ++ [Artifact (intercalate "/" parts ++ "/lawspec_runtime.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go")) "generated" "source" | go]
     -- The harness plane's runtime, for a unit with a harness.
@@ -113,19 +118,15 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     ktDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
     ktDataHelpers = ktDocument (KotlinTestHelpers.dataHelpersDoc bits kotlinGeneratorDoc <> Doc.hardline <> Doc.hardline)
     hsCustom = (hs &&) . HaskellData.requiresSchema dataDeclarations
-    hsRef = java . HaskellData.haskellTypeReference
-    hsCodec = replace "schema bits" ("_lawspecSchema " ++ show bits) . java . HaskellData.haskellCodec dataDeclarations
-    hsChecked expression = "(either error id (" ++ expression ++ "))"
-    hsConstruct ty tag fields = hsChecked ("Schema.construct _lawspecSchema (" ++ hsRef ty ++ ") " ++
-      show bits ++ " " ++ q tag ++ " " ++ arr fields)
-    hsImports = "import Prelude\nimport qualified Prelude as P\nimport qualified Data.Int as I\nimport qualified Data.Word as W\nimport qualified Data.Text as T\nimport qualified Data.ByteString as B\nimport qualified Data.Complex as C\nimport qualified LawSpecRuntime as LS\nimport qualified LawSpecData as Data\n" ++ hsCollectionImports
-    hsSupport = "import qualified LawSpecSchema as Schema\nimport qualified LawSpecDataSchema as DataSchema\nimport qualified LawSpecCodecs as Codec\nimport qualified LawSpecDataCodecs as Codecs\nimport qualified LawSpecDataStrategies as Strategies\n" ++
-      (if hsCollections then "import qualified LawSpecCollectionCodecs as Collections\n" else "")
+    -- What an adapter may use: every import, in ormolu's order.
+    hsStubImports = HaskellDefinitions.sortedImports ([("Prelude", Nothing, Nothing)] ++
+      [(m, Just a, Nothing) | (m, a) <- [("Prelude", "P"), ("Data.Int", "I"), ("Data.Word", "W"), ("Data.Text", "T"),
+        ("Data.ByteString", "B"), ("Data.Complex", "C"), ("LawSpecRuntime", "LS"), ("LawSpecData", "Data")] ++
+        (if hsCollections then [("Data.Set", "Set"), ("Data.Map.Strict", "Map"), ("Data.Sequence", "Seq")] else []) ++
+        [(HaskellAbilities.typesModule u, "Abilities") | not (null (C.unitAbilities u))]])
     -- Collections need the containers package; only programs using them import it.
     hsCollections = any (isCollectionsType . C.idText . C.dataId) dataDeclarations
-    hsCollectionImports = if hsCollections then "import qualified Data.Set as Set\nimport qualified Data.Map.Strict as Map\nimport qualified Data.Sequence as Seq\n" else ""
     hsDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 80))
-    hsDataHelpers = hsDocument (HaskellTestHelpers.schemaDoc <> Doc.hardline <> Doc.hardline)
     goCustom = (go &&) . GoData.requiresSchema dataDeclarations
     goSchemaNeeded = go && (nativeGenerators || not (null adapterBindings) || not (null definitions) || not (null dataDeclarations) || any (goCustom . snd) (functions u) ||
       any (any (goCustom . inputType) . inputs) ls ||
@@ -168,12 +169,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
            mconcat [Doc.hardline <> goStubFn n t | (n,t) <- adapterFunctions] <>
            -- Built-in abilities have default handlers (LawSpec.BuiltinDefaults).
            mconcat [Doc.text (java (GoAbilities.productionStub dataDeclarations a)) | a <- C.unitAbilities u, C.idText (C.abilityOwner a) `notElem` defaultedUnits]
-         | hs = Doc.render (Doc.selectLayout minify (Doc.Pretty 80)) $
-           Doc.text ("-- User-owned LawSpec adapter.\n" ++ header ++ "\n" ++ hsImports ++
-             (if null (C.unitAbilities u) then "" else "import qualified " ++ HaskellAbilities.typesModule u ++ " as Abilities\n")) <>
-           Doc.hardline <> Doc.joinWith (Doc.hardline <> Doc.hardline)
-             ([haskellStubFn n t | (n,t) <- adapterFunctions] ++
-              [java (HaskellAbilities.productionStub dataDeclarations a) | a <- ownAbilities u]) <> Doc.hardline
+         | hs = Doc.render (H.layout minify) $
+           Doc.joinWith Doc.hardline (map Doc.text (["-- User-owned LawSpec adapter for " ++ unitName u ++ ": implement each function.",
+             "module " ++ intercalate "." (map hsPart parts) ++ " where", ""] ++ hsStubImports)) <>
+           mconcat [Doc.hardline <> Doc.hardline <> d | d <- [haskellStubFn n t | (n,t) <- adapterFunctions] ++
+              [java (HaskellAbilities.productionStub dataDeclarations a) | a <- ownAbilities u]] <> Doc.hardline
          | target == "java" = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) $
            Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
            (if null pkg then mempty else Doc.text ("package " ++ pkg ++ ";") <> Doc.hardline <> Doc.hardline) <>
@@ -296,11 +296,12 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           types = handlers ++ map (Doc.text . nativeArg) args ++
             [Doc.text (if n `elem` asyncFunctions u || not (null handlers) then "P.IO " ++ parenthesized (stubResult result) else stubResult result)]
           parenthesized text = if ' ' `elem` text && take 1 text /= "(" then "(" ++ text ++ ")" else text
-          signature = Doc.group (Doc.text (n ++ " ::") <>
-            Doc.nest 2 (Doc.softline <> Doc.joinWith (Doc.softline <> Doc.text "-> ") types))
-          body = Doc.group (Doc.text (n ++ concatMap (const " _") (handlers ++ map (const mempty) args) ++ " =") <>
-            Doc.nest 2 (Doc.softline <> Doc.text ("error " ++ q n)))
-      in Doc.lineComment 80 "-- " (prettyType t) <> signature <> Doc.hardline <> body
+          link = listToMaybe [l | d <- C.unitDeclarations u, C.declarationName d == n, Just l <- [sourceLink (C.declarationOrigin d)]]
+      in Doc.joinWith Doc.hardline
+        [ H.comment (HaskellProperties.wrapComment 78 [labelled (n ++ " :: " ++ readableType t) link])
+        , H.signature n (map (Doc.render Doc.Compact) types)
+        , H.declaration (n ++ concatMap (const " _") (handlers ++ map (const mempty) args)) (H.call "P.error" [H.string n]) ]
+    readableType t = let (as, r) = functionType t in intercalate " -> " (map prettyType (as ++ [r]))
     kotlinStubFn n t =
       let (args,result) = functionType t
           typeDoc = java . KotlinData.kotlinDataTypeDoc dataDeclarations
@@ -315,15 +316,12 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     testHeader = testHeaderBase ++
       (if target == "java" && javaSchemaNeeded then
         "  private static final lawspec.runtime.LawSpecSchema _schema = lawspec.runtime.LawSpecDataSchema.create();\n" else "") ++
-      (if hs || kt then "" else testHelpers) ++
+      (if kt then "" else testHelpers) ++
       (if target == "java" && javaSchemaNeeded then javaDataHelpers else "") ++
       (if goSchemaNeeded then goDataHelpers else "")
     testHeaderBase | go = "// Generated by LawSpec.\n" ++ header ++ (if goSchemaNeeded then "import \"fmt\"\n" else "") ++ "import (\"testing\"; \"pgregory.net/rapid\")\n"
-               | hs = "-- Generated by LawSpec.\n" ++ (if null (C.unitAbilities u) then "" else "{-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}\n") ++ "module " ++ intercalate "." (map hsPart parts) ++ "Spec (spec) where\nimport qualified Prelude as P\nimport Prelude\nimport Test.Hspec\nimport Control.Exception (SomeException, catch, displayException)\nimport Test.Hspec.Hedgehog (hedgehog, modifyMaxSuccess)\nimport Hedgehog (forAll, evalIO, footnote)\nimport qualified Hedgehog.Gen as Gen\nimport qualified Hedgehog.Range as Range\nimport LawSpecRuntime (Scalar(..))\nimport qualified LawSpecRuntime as LS\nimport qualified " ++ intercalate "." (map hsPart parts) ++ " as Impl\n" ++
-                   (if null (C.unitAbilities u) then "" else "import qualified " ++ HaskellAbilities.typesModule u ++ " as Abilities\nimport qualified " ++ HaskellAbilities.handlersModule u ++ " as Handlers\n") ++ (if null definitions then "" else "import qualified LawSpecDefinitionBodies as Definitions\n") ++ (if any (("Workflows." `isPrefixOf`) . snd) definitions then "import qualified LawSpecWorkflows as Workflows\n" else "") ++ hsSupport ++ hsDataHelpers ++ testHelpers ++ "spec :: Spec\nspec = do\n"
                | otherwise = "// Generated by LawSpec.\n" ++ header ++ if kt then "import io.kotest.core.spec.style.StringSpec\nimport io.kotest.property.checkAll\nimport io.kotest.property.Arb\nimport io.kotest.property.arbitrary.int\nimport io.kotest.property.arbitrary.boolean\nimport io.kotest.property.arbitrary.float\nimport io.kotest.property.arbitrary.double\nimport lawspec.testing.lawspecList\nimport io.kotest.property.arbitrary.map\nimport io.kotest.property.arbitrary.bind\nimport io.kotest.property.arbitrary.filter\nimport lawspec.testing.lawspecChoice\nimport io.kotest.property.arbitrary.constant\nimport io.kotest.property.arbitrary.element\nimport lawspec.runtime.LawSpecSchema\nimport lawspec.runtime.LawSpecDataSchema\nimport lawspec.runtime.LawSpecDataCodecs\nimport lawspec.runtime.LawSpecKotlinCodecs\nimport lawspec.testing.LawSpecKotlinStrategies\n" ++ testHelpers ++ ktDataHelpers ++ "class " ++ cls ++ "LawSpecTest : StringSpec({\n" else "import org.junit.jupiter.api.Test;\nimport static org.junit.jupiter.api.Assertions.assertTrue;\nimport java.util.*;\nimport org.jetbrains.jetCheck.Generator;\nimport org.jetbrains.jetCheck.PropertyChecker;\npublic final class " ++ cls ++ "LawSpecTest {\n"
     testHelpers
-      | hs = hsDocument (HaskellTestHelpers.assertionDoc <> Doc.hardline <> Doc.hardline)
       | go = goDocument GoTestHelpers.assertionDoc
       | kt = ktDocument (KotlinTestHelpers.assertionDoc <> Doc.hardline <> Doc.hardline)
       | otherwise = javaHelperDocument JavaTestHelpers.scalarHelpersDoc
@@ -332,14 +330,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       (Doc.text "  " <> Doc.nest 2 doc <> Doc.hardline <> Doc.hardline)
     javaDataHelpers = javaHelperDocument (JavaTestHelpers.dataHelpersDoc bits javaGeneratorDoc)
     quote = if kt then concatMap (\c -> if c == '$' then "\\$" else [c]) . q else q
-    call n args | hs = "(LS." ++ n ++ concatMap (\a -> " (" ++ a ++ ")") args ++ ")"
-                | go = "ls" ++ cap n ++ "(" ++ intercalate ", " args ++ ")"
+    call n args | go = "ls" ++ cap n ++ "(" ++ intercalate ", " args ++ ")"
                 | otherwise = "LawSpecRuntime." ++ n ++ "(" ++ intercalate ", " args ++ ")"
-    arr xs | hs = "[" ++ intercalate ", " xs ++ "]"
-           | go = "[]LawSpecValue{" ++ intercalate ", " xs ++ "}"
+    arr xs | go = "[]LawSpecValue{" ++ intercalate ", " xs ++ "}"
            | otherwise = (if kt then "arrayOf(" else "new Value[]{") ++ intercalate ", " xs ++ (if kt then ")" else "}")
-    scalar s | hs = "(" ++ show s ++ ")"
-             | otherwise = case s of
+    scalar s = case s of
       SInteger t n -> call "integer" [q t,q (show n)]
       SBool b -> call "bool" [if b then "true" else "false"]
       SDecimal c e -> call "decimal" [q (show c),q (show e)]
@@ -352,7 +347,6 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       SAbsent t -> call "absent" [q t]
       SPresent t v -> call "present" [q t,if go then maybe "nil" (\x -> "lsPointer(" ++ scalar x ++ ")") v else maybe "null" scalar v]
     convert t v | ktCustom t = "_schema.validate(" ++ ktRef t ++ ", " ++ v ++ ", " ++ show bits ++ ")"
-    convert t v | hsCustom t = hsChecked ("Schema.validate _lawspecSchema (" ++ hsRef t ++ ") " ++ show bits ++ " (" ++ v ++ ")")
     convert t v | goCustom t = "_lawspecSchema.validate(" ++ goRef t ++ ", " ++ v ++ ", " ++ show bits ++ ")"
     convert t v | custom t = "_schema.validate(" ++ ref t ++ ", " ++ v ++ ", " ++ show bits ++ ")"
     convert t v = call "convert" [q (key t),v,show bits]
@@ -363,8 +357,6 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       JavaExpr.renderExpression dataDeclarations bits localName javaExternal term)
     render term | go = java (Doc.render Doc.Compact <$>
       GoExpr.renderExpression dataDeclarations bits "_lawspecSchema" localName goExternal term)
-    render term | hs = java (Doc.render Doc.Compact <$>
-      HaskellExpr.renderExpression dataDeclarations bits "_lawspecSchema" "symbols" localName hsExternal term)
     render term | kt = java (ktDocument <$>
       KotlinExpr.renderExpression dataDeclarations bits localName ktExternal term)
     render term = renderLegacy term
@@ -503,54 +495,58 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , KotlinProperties.lateHandlerInstalls = ktLateInstalls
       , KotlinProperties.searchDescriptors = searchDescriptorsOf
       }
-    hsRender = java . HaskellExpr.renderExpression dataDeclarations bits "_lawspecSchema" "symbols" localName hsExternal
-    hsScope = HaskellExpr.apply "P.Just" [Doc.text "symbols"]
+    -- Haskell tests are written over LawSpec.Code.Haskell's expressions,
+    -- with binders named as the source names them (hsLocal), the machine
+    -- width and schema named once per module, and the runtime's checks
+    -- (Schema.checked, Codec.decoded) called by name.
+    hsRender = java . HaskellExpr.renderExpressionWith dataDeclarations (HaskellExpr.Context (H.var "symbols") (H.var "schema")
+      (H.var "machineBits") (java' . HaskellExpr.typeReference) (pure . H.string . key) hsLocal hsExternal)
+    java' = either Left Right
+    hsRef ty = java (HaskellExpr.typeReference ty)
+    hsInSchema name ty rest = H.call ("Schema." ++ name) ([H.var "symbols", H.var "schema", hsRef ty, H.var "machineBits"] ++ rest)
+    hsOrFail x = H.call "P.either" [H.var "P.error", H.var "P.id", x]
     hsCheckedDoc ty value
-      | hsCustom ty = HaskellExpr.checked (HaskellExpr.apply "Schema.validateWith"
-          [hsScope,Doc.text "_lawspecSchema",java (HaskellData.haskellTypeReferenceDoc ty),Doc.text (show bits),value])
-      | otherwise = HaskellExpr.apply "LS.convert" [Doc.text (show (key ty)),value,Doc.text (show bits)]
+      | hsCustom ty = hsInSchema "checked" ty [value]
+      | otherwise = H.call "LS.convert" [H.string (key ty), value, H.var "machineBits"]
     -- One codec maker per unit: it builds the type registry and the data
     -- names once, not once per adapter argument and result.
-    hsCodecDoc = HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits)
-    hsNativeArgument ty value = HaskellExpr.checked (HaskellExpr.apply "Codec.decode"
-      [java (hsCodecDoc ty),value])
-    hsNativeResult ty value | towerResult ty = HaskellExpr.apply "LS.fromNative"
-      [Doc.text (q "Integer"),value,Doc.text (show bits)]
-    hsNativeResult ty value = HaskellExpr.checked (HaskellExpr.apply "Codec.encode"
-      [java (hsCodecDoc ty),value])
+    hsCodecDoc = HaskellData.haskellCodecDocWithContext (H.call "P.Just" [H.var "symbols"]) dataDeclarations "schema" "machineBits"
+    hsNativeArgument ty value = H.call "Codec.decoded" [java (hsCodecDoc ty), value]
+    hsNativeResult ty value | towerResult ty = H.call "LS.fromNative" [H.string "Integer", value, H.var "machineBits"]
+    hsNativeResult ty value = H.call "Codec.encoded" [java (hsCodecDoc ty), value]
     hsNativeCall name arguments = case lookup (C.Id (unitName u ++ "::" ++ name)) adapterBindings of
-      Just bridge -> HaskellExpr.apply ("Impl." ++ bridge) (Doc.text "symbols" : arguments)
-      Nothing -> HaskellExpr.apply ("Impl." ++ adapterName u (C.Id (unitName u ++ "::" ++ name))) arguments
+      Just bridge -> H.call ("Impl." ++ bridge) (H.var "symbols" : arguments)
+      Nothing -> H.call ("Impl." ++ adapterName u (C.Id (unitName u ++ "::" ++ name))) arguments
+    -- A native call's arguments are checked and evaluated before it runs.
     hsCallChecked values invocation =
-      let names = ["_lawspecArgument" ++ show i | i <- [0::Int .. length values - 1]]
-          bindingsDoc = Doc.joinWith (Doc.text ";" <> Doc.softline)
-            [Doc.group (Doc.text (n ++ " =") <> Doc.nest 2 (Doc.softline <> value)) | (n,value) <- zip names values]
-          forced = foldr (\n body -> Doc.group (HaskellExpr.apply "LS.forceScalar" [Doc.text n] <>
-            Doc.text " `seq`" <> Doc.nest 2 (Doc.softline <> body))) (invocation (map Doc.text names)) names
-      in if null names then forced else Doc.group (Doc.text "let {" <> Doc.nest 2 (Doc.softline <> bindingsDoc) <>
-        Doc.softline <> Doc.text "} in" <> Doc.nest 2 (Doc.softline <> forced))
-    hsHandler ability = HaskellExpr.apply "LS.handlerOf" [Doc.text "symbols", HaskellExpr.quoted (C.abilityKey ability)]
+      let names = H.uniqueArguments (length values)
+          forced = H.call "LS.forcing" [H.List (map H.var names), invocation (map H.var names)]
+      in if null names then invocation [] else H.LetIn (zip names values) forced
+    hsHandler ability = H.call "LS.handlerOf" [H.var "symbols", H.string (C.abilityKey ability)]
     hsEqual ty a b
-      | hsCustom ty = HaskellExpr.checked (HaskellExpr.apply "Schema.equalWith" [hsScope,Doc.text "_lawspecSchema",java (HaskellData.haskellTypeReferenceDoc ty),Doc.text (show bits),a,b])
-      | otherwise = HaskellExpr.apply "LS.truth" [HaskellExpr.apply "LS.binary" [HaskellExpr.quoted "==",a,b]]
-    hsConstructValue ty tag fields = HaskellExpr.checked (HaskellExpr.apply "Schema.constructWith"
-      [hsScope,Doc.text "_lawspecSchema",java (HaskellData.haskellTypeReferenceDoc ty),Doc.text (show bits),HaskellExpr.quoted tag,HaskellExpr.array fields])
+      | hsCustom ty = hsInSchema "same" ty [a, b]
+      | otherwise = H.call "LS.truth" [H.call "LS.binary" [H.string "==", a, b]]
+    hsConstructValue ty tag fields = hsInSchema "built" ty [H.string tag, H.List fields]
     hsModuleOf unit = intercalate "." (map hsPart (split unit))
     -- An adapter that fails with E: its native code throws LS.Fail with a
     -- native E, or an exception lawspec.json maps to a failure.
     hsFailing n = hsFailingAs [a | a@(C.AbilityRef _ [_]) <- failuresOf n]
-    hsFailingAs failing call = case failing of
+    hsFailingAs failing call' = case failing of
       ability@(C.AbilityRef _ [failure]) : _ ->
         let native = qualifyData (java (HaskellData.haskellDataType dataDeclarations failure))
-            mapped = [ HaskellExpr.apply "LS.mappedFailure" [Doc.text "((\\_error -> " <>
-                         hsConstructValue failure (C.idText (C.failureConstructor b))
-                           (C.mapFailureFields (\ty tag -> hsConstructValue ty (C.idText tag)) (hsNativeResult (C.scalarType "Text") (Doc.text "(Data.Text.pack (P.show _error))")) b) <>
-                         Doc.text (") :: " ++ intercalate "." (C.failureNative b) ++ " -> LS.Scalar)")]
+            mapped = [ H.call "LS.mappedFailure" [H.Typed (H.lambda ["exception"]
+                         (hsConstructValue failure (C.idText (C.failureConstructor b))
+                           (C.mapFailureFields (\ty tag -> hsConstructValue ty (C.idText tag))
+                             (hsNativeResult (C.scalarType "Text") (H.call "Data.Text.pack" [H.call "P.show" [H.var "exception"]])) b)))
+                         (intercalate "." (C.failureNative b) ++ " -> LS.Scalar")]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
-        in HaskellExpr.apply "LS.nativeFailures" [HaskellExpr.quoted (C.abilityKey ability),
-             Doc.text "((\\_native -> " <> hsNativeResult failure (Doc.text "_native") <> Doc.text (") :: " ++ native ++ " -> LS.Scalar)"),
-             Doc.text "(\\() -> " <> call <> Doc.text ")", HaskellExpr.array mapped]
-      _ -> call
+            encoder = case hsNativeResult failure (H.var "failure") of
+              H.App f args | not (null args), last args == H.var "failure" -> H.App f (init args)
+              other -> H.lambda ["failure"] other
+        in H.call "LS.nativeFailures" [H.string (C.abilityKey ability),
+             H.Typed encoder (native ++ " -> LS.Scalar"),
+             H.lambda ["()"] call', H.List mapped]
+      _ -> call'
     -- The test module imports LawSpecData by its own name.
     qualifyData text = case text of
       'D' : 'a' : 't' : 'a' : '.' : rest -> "LawSpecData." ++ qualifyData rest
@@ -558,124 +554,144 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       _ -> let (word, rest) = span isAlphaNum text in word ++ (if null rest then "" else qualifyData rest)
     -- A handler of several abilities: its state is made once, and each
     -- ability's record is made over it.
-    hsInstalls e = [Doc.text (sharedVar h ++ " <- Handlers." ++ HaskellAbilities.handlerFunction h ++ "State symbols") | h <- sharedOf e] ++
+    hsInstalls e = [H.Bind (hsShared h) (H.call ("Handlers." ++ HaskellAbilities.handlerFunction h ++ "State") [H.var "symbols"]) | h <- sharedOf e] ++
       hsInstalling e (earlyHandlers e)
     hsLateInstalls e = hsInstalling e (lateHandlers e)
     hsInstalling e chosen = case chosen of
       [] -> []
-      -- One line, so a do block's layout cannot split it.
-      _ -> [Doc.text ("LS.installHandlers symbols =<< P.sequence " ++ Doc.render Doc.Compact (HaskellExpr.array
-        [hsInstalled (lawMaking e) a c | (a, c) <- chosen]))]
+      _ -> [H.Run (H.operator "=<<" [H.call "LS.installHandlers" [H.var "symbols"],
+        H.call "P.sequence" [H.List [hsInstalled (hsMaking e) a c | (a, c) <- chosen]]])]
+    hsShared h = H.camelName ["shared", C.handlerName h]
+    hsMaking e = (map C.handlerId (sharedOf e), hsResourceFor e)
+    hsResourceFor e a c = case c of
+      C.ProductionHandler -> do
+        x <- abilityNamed a
+        t <- C.abilityResource x
+        r <- listToMaybe [r | r <- C.propertyResources (original e), C.binderType (C.resourceBinder r) == t]
+        pure (t, hsLocal (C.binderId (C.resourceBinder r)))
+      C.RecordingHandler inner -> hsResourceFor e a inner
+      C.SpecHandler _ -> Nothing
     hsInstalled making a c = case c of
-      C.RecordingHandler inner -> HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installedRecording" [HaskellExpr.quoted (C.abilityKey a)],
-        Doc.text ("(Handlers." ++ maybe "undefined" HaskellAbilities.recordingFunction (abilityNamed a) ++ " symbols =<< ") <> hsMake making a inner <> Doc.text ")"]
+      C.RecordingHandler inner -> H.call "P.fmap" [H.call "LS.installedRecording" [H.string (C.abilityKey a)],
+        H.operator "=<<" [H.call ("Handlers." ++ maybe "undefined" HaskellAbilities.recordingFunction (abilityNamed a)) [H.var "symbols"], hsMake making a inner]]
       -- lawspec.time's default Clock handler is the real clock: workflows
       -- and mailboxes wait in real time under it, and on any other virtually.
       C.ProductionHandler | C.abilityKey a == "lawspec.time::ability::Clock", Nothing <- abilityNamed a >>= C.abilityNative ->
-        HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installedRealClock" [HaskellExpr.quoted (C.abilityKey a)], hsMake making a c]
-      _ -> HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installed" [HaskellExpr.quoted (C.abilityKey a)], hsMake making a c]
+        H.call "P.fmap" [H.call "LS.installedRealClock" [H.string (C.abilityKey a)], hsMake making a c]
+      _ -> H.call "P.fmap" [H.call "LS.installed" [H.string (C.abilityKey a)], hsMake making a c]
     hsMake (shared, resourceOf) a c = case c of
-      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> withResource (Doc.text (intercalate "." parts))
-      C.ProductionHandler -> withResource (Doc.text (maybe "undefined" (\x -> (if ownerName x == unitName u then "Impl" else hsModuleOf (ownerName x)) ++ "." ++
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> withResource (H.var (intercalate "." parts))
+      C.ProductionHandler -> withResource (H.var (maybe "undefined" (\x -> (if ownerName x == unitName u then "Impl" else hsModuleOf (ownerName x)) ++ "." ++
         HaskellAbilities.productionFunction x) (abilityNamed a)))
       C.SpecHandler h | h `elem` shared, Just x <- specNamed h, Just ability <- abilityNamed a ->
-        Doc.text ("(Handlers." ++ HaskellAbilities.handlerFunction x ++ C.abilityName ability ++ " symbols " ++ sharedVar x ++ ")")
-      C.SpecHandler h -> Doc.text ("(Handlers." ++ maybe "undefined" HaskellAbilities.handlerFunction (specNamed h) ++ " symbols)")
+        H.call ("Handlers." ++ HaskellAbilities.handlerFunction x ++ C.abilityName ability) [H.var "symbols", H.var (hsShared x)]
+      C.SpecHandler h -> H.call ("Handlers." ++ maybe "undefined" HaskellAbilities.handlerFunction (specNamed h)) [H.var "symbols"]
       C.RecordingHandler inner -> hsMake (shared, resourceOf) a inner
       where withResource made = case resourceOf a c of
-              Just (t, local) -> Doc.text "(" <> made <> Doc.text " " <> HaskellExpr.parens (hsNativeArgument t (Doc.text local)) <> Doc.text ")"
+              Just (t, local') -> made H.<+ [hsNativeArgument t (H.var local')]
               Nothing -> made
     hsExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
-        Right (HaskellExpr.checked (HaskellExpr.apply evaluator (Doc.text "symbols" : values)))
+        Right (hsOrFail (H.call evaluator (H.var "symbols" : values)))
       -- raise aborts to the nearest attempt of its Fail ability.
       C.Perform op [_] | C.isFail (C.operationAbility op) ->
-        Right (HaskellExpr.apply "LS.raiseFailure" (HaskellExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
+        Right (H.call "LS.raiseFailure" (H.string (C.abilityKey (C.operationAbility op)) : values))
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
         let types = map expressionType args
             converted = zipWith hsCheckedDoc types values
         in Right (hsFailingAs (operationFailure op) (hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
-          HaskellExpr.apply "LS.performIO" [HaskellExpr.apply ("Abilities." ++ maybe (C.operationName op) (`fieldName` C.operationName op) (abilityNamed (C.operationAbility op)))
+          H.call "LS.performIO" [H.call ("Abilities." ++ maybe (C.operationName op) (`fieldName` C.operationName op) (abilityNamed (C.operationAbility op)))
             (hsHandler (C.operationAbility op) : zipWith hsNativeArgument types names)]))))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
-          let side tag ty = Doc.text "(\\_value -> " <> hsConstructValue (expressionType term) tag [hsCheckedDoc ty (Doc.text "_value")] <> Doc.text ")"
-          in Right (HaskellExpr.apply "LS.attempt" [HaskellExpr.quoted (C.abilityKey ability), body,
+          let side tag ty = H.lambda ["value"] (hsConstructValue (expressionType term) tag [hsCheckedDoc ty (H.var "value")])
+          in Right (H.call "LS.attempt" [H.string (C.abilityKey ability), body,
             side "Either::Right" result, side "Either::Left" failure])
         _ -> Left "attempt gives an Either"
       C.Calls op args ->
         let matches = case args of
-              Nothing -> Doc.text "P.Nothing"
-              Just xs -> Doc.text "(P.Just (\\_recorded -> " <> Doc.joinWith (Doc.text " P.&& ")
-                [hsEqual (expressionType a) (Doc.text ("(_recorded P.!! " ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)] <> Doc.text "))"
-        in Right (HaskellExpr.apply "LS.countCalls" [Doc.text "symbols", HaskellExpr.quoted (C.abilityKey (C.operationAbility op)),
-          HaskellExpr.quoted (C.operationName op), matches])
+              Nothing -> H.var "P.Nothing"
+              Just xs -> H.call "P.Just" [H.lambda ["recorded"] (H.operator "P.&&"
+                [hsEqual (expressionType a) (H.operator "P.!!" [H.var "recorded", H.integer (toInteger i)]) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)])]
+        in Right (H.call "LS.countCalls" [H.var "symbols", H.string (C.abilityKey (C.operationAbility op)),
+          H.string (C.operationName op), matches])
       C.ExternalCall identity args ->
-        let name = declarationName identity
+        let name' = declarationName identity
             types = map expressionType args
             converted = zipWith hsCheckedDoc types values
-            result = if name `elem` map contractName (contracts u)
-              then hsCallChecked converted (\names -> HaskellExpr.apply ("_lawspec_call_" ++ name) (Doc.text "symbols" : names))
+            result = if name' `elem` map contractName (contracts u)
+              then hsCallChecked converted (\names -> H.call (hsContractHelper name') (H.var "symbols" : names))
               else hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
-                let handlers = map hsHandler (usesOf name)
-                    plain = hsNativeCall name (handlers ++ zipWith hsNativeArgument types names)
-                in if null handlers || name `elem` asyncFunctions u then awaitFor (adapterName u identity) plain
-                   else HaskellExpr.apply "LS.performIO" [plain]))
-            failed = hsFailing name result
+                let handlers = map hsHandler (usesOf name')
+                    plain = hsNativeCall name' (handlers ++ zipWith hsNativeArgument types names)
+                in if null handlers || name' `elem` asyncFunctions u then hsAwait (adapterName u identity) plain
+                   else H.call "LS.performIO" [plain]))
+            failed = hsFailing name' result
         in Right $ if any hsNativeMachine (expressionType term : types)
-          then Doc.group (HaskellExpr.apply "LS.checkMachineBits" [Doc.text (show bits)] <> Doc.text " `seq`" <>
-            Doc.nest 2 (Doc.softline <> failed))
+          then H.call "LS.onMachine" [H.var "machineBits", failed]
           else failed
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
-        Right (HaskellExpr.apply "LS.withHandlers" [Doc.text "symbols",
-          Doc.text "(P.sequence [" <> hsInstalled plainMaking ability choice <> Doc.text "])", Doc.text "(\\() -> " <> body <> Doc.text ")"])
+        Right (H.call "LS.withHandlers" [H.var "symbols",
+          H.call "P.sequence" [H.List [hsInstalled plainMaking ability choice]], H.lambda ["()"] body])
       _ -> Left "expected checked Haskell external call"
+    hsContractHelper n = "checked" ++ cap n
+    hsAwait name call'
+      | name `notElem` asyncFunctions u = call'
+      | otherwise = H.call "LS.awaitTask" [call']
     hsValueLiteral value = case value of
-      V.ScalarValue scalarValue -> pure (HaskellExpr.apply "LS.scopeSymbols"
-        [Doc.text "symbols",HaskellExpr.scalarLiteral scalarValue])
+      V.ScalarValue scalarValue -> pure (H.call "LS.scopeSymbols" [H.var "symbols", HaskellExpr.scalarExpr scalarValue])
       V.DataValue (C.Constructor "List" _) _ _ -> do
         items <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right (V.listItems value)
         rendered <- mapM hsValueLiteral items
-        pure (HaskellExpr.apply "SList" [HaskellExpr.array rendered])
+        pure (H.call "SList" [H.List rendered])
       V.DataValue ty tag fields -> do
         rendered <- mapM hsValueLiteral fields
-        pure (HaskellExpr.checked (HaskellExpr.apply "Schema.constructWith"
-          [hsScope,Doc.text "_lawspecSchema",java (HaskellData.haskellTypeReferenceDoc ty),Doc.text (show bits),
-           HaskellExpr.quoted (C.idText tag),HaskellExpr.array rendered]))
+        pure (hsConstructValue ty (C.idText tag) rendered)
       V.PresenceValue (C.Constructor wrapper _) payload -> do
         rendered <- traverse hsValueLiteral payload
-        pure (HaskellExpr.apply "SPresent" [Doc.text (show wrapper),
-          maybe (Doc.text "Nothing") (HaskellExpr.apply "Just" . pure) rendered])
+        pure (H.call "SPresent" [H.string wrapper, maybe (H.var "Nothing") (\r -> H.call "Just" [r]) rendered])
       _ -> Left [Diagnostic "target" "unsupported Haskell structural literal" Nothing]
+    -- Binders keep their source names, each law's distinct within it and
+    -- from the names a test module uses (LawSpec.Naming).
+    hsLocal identity = M.findWithDefault (localName identity) identity haskellLocals
+    haskellLocals = M.fromList (concatMap (hsAllocate . propertyBinders . original) ls ++
+      concatMap (\c -> hsAllocate (C.contractArguments c ++ [C.contractResult c])) (contracts u))
+    hsAllocate binders = snd (foldl (\(scope, named) b -> if any ((== C.binderId b) . fst) named then (scope, named) else
+      let (chosen, scope') = Naming.claim scope (Naming.localIdentifier "haskell" (C.binderName b))
+      in (scope', named ++ [(C.binderId b, chosen)])) (Naming.scopeWith (HaskellProperties.haskellReserved ++ hsCaseNames), []) binders)
+    hsCaseNames = "argument" : ["argument" ++ show i | i <- [1 .. 9 :: Int]] ++ words "exception failure value recorded scalarName"
+    hsGeneratorWithinH within = HaskellTestHelpers.generatorDocWithin within bits javaDataBudget hsCustom hsRef key
     haskellProperties = HaskellProperties.Config
       { HaskellProperties.moduleName = intercalate "." (map hsPart parts)
+      , HaskellProperties.sourceFile = unitSourceFile u
       , HaskellProperties.nativeGenerators = nativeGenerators
       , HaskellProperties.hasDefinitions = not (null definitions)
       , HaskellProperties.hasWorkflows = any (("Workflows." `isPrefixOf`) . snd) definitions
-      , HaskellProperties.awaitResult = awaitFor
+      , HaskellProperties.awaitResult = hsAwait
       , HaskellProperties.constructorContracts = hasConstructorContracts dataDeclarations
       , HaskellProperties.usesCollections = hsCollections
       , HaskellProperties.nodeBudget = javaDataBudget
-      , HaskellProperties.reference = java . HaskellData.haskellTypeReferenceDoc
+      , HaskellProperties.reference = hsRef
       , HaskellProperties.machineBits = bits
       , HaskellProperties.expression = hsRender
       , HaskellProperties.literal = hsValueLiteral
       , HaskellProperties.checked = hsCheckedDoc
       , HaskellProperties.structural = containsStructural
       , HaskellProperties.typeKey = key
-      , HaskellProperties.generator = hsGeneratorDoc
-      , HaskellProperties.generatorWithin = \within -> HaskellTestHelpers.generatorDocWithin within bits javaDataBudget hsCustom (java . HaskellData.haskellTypeReferenceDoc) key
+      , HaskellProperties.generator = HaskellTestHelpers.generatorDoc bits javaDataBudget hsCustom hsRef key
+      , HaskellProperties.generatorWithin = hsGeneratorWithinH
       , HaskellProperties.nativeArgument = hsNativeArgument
       , HaskellProperties.nativeCall = hsNativeCall
       , HaskellProperties.nativeResult = hsNativeResult
       , HaskellProperties.handlerInstalls = hsInstalls
       , HaskellProperties.lateHandlerInstalls = hsLateInstalls
       , HaskellProperties.searchDescriptors = searchDescriptorsOf
+      , HaskellProperties.local = hsLocal
       , HaskellProperties.abilityModules = if null (C.unitAbilities u) then Nothing
           else Just (HaskellAbilities.typesModule u, HaskellAbilities.handlersModule u)
-      , HaskellProperties.nativeImports = nub ([intercalate "." (init parts) | a <- C.unitAbilities u, Just parts <- [C.abilityNative a]] ++
+      , HaskellProperties.nativeImports = nub ([intercalate "." (init parts') | a <- C.unitAbilities u, Just parts' <- [C.abilityNative a]] ++
           -- The production handlers of imported abilities are their owners'.
           [hsModuleOf (ownerName a) | a <- C.unitAbilities u, ownerName a /= unitName u, C.abilityNative a == Nothing] ++
           [intercalate "." (init (C.failureNative b)) | b <- C.unitFailureBindings u, length (C.failureNative b) > 1] ++
@@ -997,11 +1013,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     renderLegacy term = case C.expressionNode term of
       C.Local n -> localName n
       C.Constant s -> convert (expressionType term) ((if go then goTypedScalar (expressionType term) else scalar) s)
-      C.Construct tag fields | hsCustom (expressionType term) -> hsConstruct (expressionType term) (C.idText tag) (map render fields)
       C.Construct tag fields | goCustom (expressionType term) -> goConstruct (expressionType term) (C.idText tag) (map render fields)
       C.Construct tag fields | custom (expressionType term), C.idText tag `notElem` ["List::Nil", "List::Cons"] ->
         "_schema.construct(" ++ ref (expressionType term) ++ ", " ++ q (C.idText tag) ++ ", java.util.List.of(" ++ intercalate ", " (map render fields) ++ "), " ++ show bits ++ ")"
-      C.Construct tag fields -> call "construct" ([q (key (expressionType term)) | not hs] ++ [q (C.idText tag),arr (map render fields)])
+      C.Construct tag fields -> call "construct" ([q (key (expressionType term))] ++ [q (C.idText tag),arr (map render fields)])
       C.Match scrutinee branches | go -> goMatch scrutinee branches
       C.Match scrutinee branches | target `elem` ["java","kotlin"] -> jvmMatch scrutinee branches
       C.Match scrutinee branches -> "(case " ++ convert (expressionType scrutinee) (render scrutinee) ++ " of { " ++
@@ -1010,14 +1025,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       C.Convert C.Explicit t e -> call "helper" [q (key t),arr [render e],show bits]
       C.ShortCircuit op a b -> call "bool" ["(" ++ call "truth" [render a] ++ (if op == C.And then " && " else " || ") ++ call "truth" [render b] ++ ")"]
       C.If c a b
-        | hs -> "(if " ++ call "truth" [render c] ++ " then (" ++ render a ++ ") else (" ++ render b ++ "))"
         | go -> "func() LawSpecValue { if " ++ call "truth" [render c] ++ " { return " ++ render a ++ " }; return " ++ render b ++ " }()"
         | kt -> "(if (" ++ call "truth" [render c] ++ ") " ++ render a ++ " else " ++ render b ++ ")"
         | otherwise -> "(" ++ call "truth" [render c] ++ " ? " ++ render a ++ " : " ++ render b ++ ")"
-      C.Unary C.Not a -> call "bool" [(if hs then "not (" else "!(") ++ call "truth" [render a] ++ ")"]
-      C.Binary op _ a b | hsCustom (expressionType a) -> call "bool"
-        [(if op == C.NotEqual then "not " else "") ++ hsChecked ("Schema.equal _lawspecSchema (" ++
-          hsRef (expressionType a) ++ ") " ++ show bits ++ " (" ++ render a ++ ") (" ++ render b ++ ")")]
+      C.Unary C.Not a -> call "bool" ["!(" ++ call "truth" [render a] ++ ")"]
       C.Binary op _ a b | goCustom (expressionType a) -> call "bool"
         [(if op == C.NotEqual then "!" else "") ++ "_lawspecSchema.equal(" ++ intercalate ", " [goRef (expressionType a),render a,render b,show bits] ++ ")"]
       C.Binary op _ a b | custom (expressionType a) -> call "bool"
@@ -1030,17 +1041,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         let n = declarationName decl
             t = expressionType term
             values = [convert (expressionType a) (render a) | a <- args]
-            callee = if hs then "Impl." ++ adapterName u decl else if go then cap n else cls ++ "." ++ adapterName u decl
-            invocation = if hs then checkedHsCall values (\names -> callee ++
-              concat [" (" ++ nativeValue (expressionType a) n' ++ ")" | (a,n') <- zip args names])
-              else callee ++ "(" ++ intercalate ", " (map adapterArg args) ++ ")"
-            result = if n `elem` map contractName (contracts u)
-              then if hs then checkedHsCall values (\names -> "_lawspec_call_" ++ n ++ " symbols" ++ concatMap (\v -> " (" ++ v ++ ")") names)
-                else "_lawspec_call_" ++ n ++ "(" ++ intercalate ", " ("symbols":values) ++ ")"
+            callee = if go then cap n else cls ++ "." ++ adapterName u decl
+            invocation = callee ++ "(" ++ intercalate ", " (map adapterArg args) ++ ")"
+        in if n `elem` map contractName (contracts u)
+              then "_lawspec_call_" ++ n ++ "(" ++ intercalate ", " ("symbols":values) ++ ")"
               else wrapResult t invocation
-        in if hs && any hsNativeMachine (t : map expressionType args)
-             then "(LS.checkMachineBits " ++ show bits ++ " `seq` " ++ result ++ ")"
-             else result
     hsNativeMachine (Named name) = name `elem` ["IntSize","UIntSize","UIntPtr"]
     hsNativeMachine (C.Constructor name arguments) | name `elem` ["List","Maybe","Either"] =
       any (\argument -> case argument of C.TypeArgument t -> hsNativeMachine t; _ -> False) arguments
@@ -1096,11 +1101,6 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     jvmLambda names body = if kt
       then "{ " ++ (if null names then "" else intercalate ", " names ++ " -> ") ++ body ++ " }"
       else "(" ++ intercalate ", " names ++ ") -> " ++ body
-    checkedHsCall values invocation =
-      let names = ["_lawspecArgument" ++ show i | i <- [0::Int .. length values - 1]]
-          bindings' = intercalate "; " [n ++ " = " ++ value | (n,value) <- zip names values]
-      in "(" ++ (if null values then "" else "let { " ++ bindings' ++ " } in ") ++
-         concat ["LS.forceScalar " ++ n ++ " `seq` " | n <- names] ++ invocation names ++ ")"
     renderBranch branch = case (C.idText (C.caseConstructor branch),C.caseBinders branch) of
       ("List::Nil",[]) -> "SList [] -> " ++ render (C.caseBody branch)
       ("List::Cons",[headBinder,tailBinder]) ->
@@ -1112,21 +1112,19 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       (tag,binders) -> "SData " ++ q tag ++ " [" ++ intercalate ", " (map (localName . C.binderId) binders) ++
         "] -> " ++ render (C.caseBody branch)
     wrapResult t invocation
-      | (kt || hs) && towerResult t = call "fromNative" [q "Integer",invocation,show bits]
+      | kt && towerResult t = call "fromNative" [q "Integer",invocation,show bits]
       | kt = ktCodec t ++ ".encode(" ++ invocation ++ ")"
-      | hs = hsChecked ("Codec.encode (" ++ hsCodec t ++ ") (" ++ invocation ++ ")")
       | goCustom t = goCodec t ++ ".fromNative(" ++ invocation ++ ")"
       | custom t = codec t ++ ".encode(" ++ invocation ++ ")"
-      | t == Named "Unit" && not hs =
+      | t == Named "Unit" =
           if go then "func() LawSpecValue { " ++ invocation ++ "; return lsAbsent(\"Unit\") }()"
           else if kt then "run { " ++ invocation ++ "; LawSpecRuntime.absent(\"Unit\") }" else "LawSpecRuntime.unit(() -> " ++ invocation ++ ")"
       | otherwise = call "fromNative" [q (key t),invocation,show bits]
     adapterArg a = nativeValue (expressionType a) (render a)
     nativeValue t value | kt = ktCodec t ++ ".decode(" ++ value ++ ")"
-    nativeValue t value | hs = hsChecked ("Codec.decode (" ++ hsCodec t ++ ") (" ++ value ++ ")")
     nativeValue t value | goCustom t = goCodec t ++ ".toNative(" ++ value ++ ")"
     nativeValue t value | custom t = codec t ++ ".decode(" ++ value ++ ")"
-    nativeValue t value | t == Named "Unit" && not hs = value
+    nativeValue t value | t == Named "Unit" = value
     nativeValue t@(Applied "List" inner) value | go =
       "lsListToNative[" ++ nativeArg inner ++ "](" ++ q (key t) ++ ", " ++ value ++ ", " ++ show bits ++
       ", func(_element LawSpecValue) " ++ nativeArg inner ++ " { return " ++ nativeValue inner "_element" ++ " })"
@@ -1149,47 +1147,30 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       "lsEitherToNative[" ++ nativeArg a ++ ", " ++ nativeArg b ++ "](" ++ intercalate ", "
         ([q (key t),value,show bits] ++ ["func(_element LawSpecValue) " ++ nativeArg inner ++ " { return " ++ nativeValue inner "_element" ++ " }" | inner <- [a,b]]) ++ ")"
     nativeValue t value | kt = ktCodec t ++ ".decode(" ++ value ++ ")"
-    nativeValue t value | hs = call "toNative" [q (key t),value,show bits]
     nativeValue t value = case nativeRepresentation target (key t) of
       Nothing -> if go then "lsClone(" ++ convert t value ++ ")" else convert t value
       Just _ -> let nativeType = nativeArg t; converted = call "toNative" [q (key t),value,show bits] in
-        if hs then converted else if go then converted ++ ".(" ++ nativeType ++ ")" else if kt then "(" ++ converted ++ " as " ++ nativeType ++ ")" else "((" ++ nativeType ++ ") " ++ converted ++ ")"
-    assign n v | hs = "    let " ++ n ++ " = " ++ v ++ "\n"
-               | go = "    " ++ n ++ " := " ++ v ++ "; _ = " ++ n ++ "\n"
+        if go then converted ++ ".(" ++ nativeType ++ ")" else if kt then "(" ++ converted ++ " as " ++ nativeType ++ ")" else "((" ++ nativeType ++ ") " ++ converted ++ ")"
+    assign n v | go = "    " ++ n ++ " := " ++ v ++ "; _ = " ++ n ++ "\n"
                | otherwise = "    " ++ (if kt then "val " else "var ") ++ n ++ " = " ++ v ++ ";\n"
     code indent context proposition = case proposition of
       AssertAll ps -> concat <$> mapM (code indent context) ps
       AssertImplies g body -> do
         rest <- code (indent ++ "  ") context body
-        pure (if hs then indent ++ "if " ++ call "truth" [render g] ++ " then do\n" ++ rest ++ indent ++ "else pure ()\n" else indent ++ "if (" ++ call "truth" [render g] ++ ") {\n" ++ rest ++ indent ++ "}\n")
+        pure (indent ++ "if (" ++ call "truth" [render g] ++ ") {\n" ++ rest ++ indent ++ "}\n")
       AssertEqual a b ->
         let av = render a; bv = render b; explanation = context ++ " | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b in
-        pure $ indent ++ if hs then "_lawspecAssert " ++ quote explanation ++ " (" ++ convert (expressionType a) av ++ ") (" ++ convert (expressionType b) bv ++ ")\n"
-          else if go && goCustom (expressionType a) then "_lawspecDataAssert(" ++ quote explanation ++ ", " ++ goRef (expressionType a) ++ ", func() LawSpecValue { return " ++ av ++ " }, func() LawSpecValue { return " ++ bv ++ " })\n"
+        pure $ indent ++ if go && goCustom (expressionType a) then "_lawspecDataAssert(" ++ quote explanation ++ ", " ++ goRef (expressionType a) ++ ", func() LawSpecValue { return " ++ av ++ " }, func() LawSpecValue { return " ++ bv ++ " })\n"
           else if go then "_lawspecAssert(t, " ++ quote explanation ++ ", func() LawSpecValue { return " ++ av ++ " }, func() LawSpecValue { return " ++ bv ++ " })\n"
           else if kt && ktCustom (expressionType a) then "_lawspecDataAssert(" ++ quote explanation ++ ", " ++ ktRef (expressionType a) ++ ", { " ++ av ++ " }, { " ++ bv ++ " })\n"
           else if kt then "_lawspecAssert(" ++ quote explanation ++ ", { " ++ av ++ " }, { " ++ bv ++ " })\n"
           else "_lawspecAssert(" ++ quote explanation ++ (if custom (expressionType a) then ", " ++ ref (expressionType a) else "") ++ ", () -> " ++ av ++ ", () -> " ++ bv ++ ");\n"
-    block n body | hs = "  it " ++ q n ++ " $ do\n    symbols <- LS.newSymbolContext\n" ++ body
-                 | go = "func Test" ++ cap n ++ "(t *testing.T) {\n    symbols := map[string]*lawSpecSymbol{}; _ = symbols\n" ++ body ++ "}\n"
+    block n body | go = "func Test" ++ cap n ++ "(t *testing.T) {\n    symbols := map[string]*lawSpecSymbol{}; _ = symbols\n" ++ body ++ "}\n"
                  | kt = "  " ++ q n ++ " {\n    val symbols = mutableMapOf<String, Any>();\n" ++ body ++ "  }\n"
                  | otherwise = "  @Test " ++ (if kt then "fun " ++ n ++ "()" else "void " ++ n ++ "()") ++ " {\n" ++ (if kt then "    val symbols = mutableMapOf<String, Any>();\n" else "    var symbols = new HashMap<String,Object>();\n") ++ body ++ "  }\n"
     boundaries (Named n) = scalarBoundaries bits n
     boundaries (Applied n t) = SPresent n Nothing : map (SPresent n . Just) (boundaries t)
     boundaries _ = []
-    valueLiteral value | hs = case value of
-      V.ScalarValue s -> Right ("(LS.scopeSymbols symbols " ++ scalar s ++ ")")
-      V.DataValue (C.Constructor "List" _) _ _ -> do
-        items <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right (V.listItems value)
-        rendered <- mapM valueLiteral items
-        pure ("(SList " ++ arr rendered ++ ")")
-      V.DataValue ty tag fields -> do
-        rendered <- mapM valueLiteral fields
-        pure (hsConstruct ty (C.idText tag) rendered)
-      V.PresenceValue (C.Constructor wrapper _) payload -> do
-        field <- traverse valueLiteral payload
-        pure ("(SPresent " ++ q wrapper ++ " " ++ maybe "Nothing" (\v -> "(Just " ++ v ++ ")") field ++ ")")
-      _ -> Left [Diagnostic "target" "unsupported Haskell structural literal" Nothing]
     valueLiteral value | go = case value of
       V.DataValue t@(C.Constructor name _) tag fields | goCustom t && name /= "List" -> do
         rendered <- mapM valueLiteral fields
@@ -1236,20 +1217,6 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     containsStructural (C.Constructor name args) = name `elem` ["List","Maybe","Either"] ||
       any (\arg -> case arg of C.TypeArgument inner -> containsStructural inner; _ -> False) args
     containsStructural _ = False
-    hsGeneratorDoc = HaskellTestHelpers.generatorDoc bits javaDataBudget hsCustom
-      (java . HaskellData.haskellTypeReferenceDoc) key
-    -- Legacy compatibility templates retain inline parentheses; the main
-    -- property document emitter consumes hsGeneratorDoc directly.
-    hsGenerator = Doc.render Doc.Compact . HaskellExpr.parens . hsGeneratorDoc
-    hsGeneratorWithin within = Doc.render Doc.Compact . HaskellExpr.parens . HaskellTestHelpers.generatorDocWithin within bits javaDataBudget hsCustom (java . HaskellData.haskellTypeReferenceDoc) key
-    hsStructuralProperty label e check =
-      let names = arr (map inputId (inputs e))
-          predicates = [call "truth" [render predicate] | input <- inputs e, predicate <- inputRefinements input]
-          base = "fmap (map (LS.scopeSymbols symbols)) (sequence " ++ arr [hsGeneratorWithin (inputRange bits input) (inputType input) | input <- inputs e] ++ ")"
-          gen = if null predicates then base else "Gen.filter (\\" ++ names ++ " -> " ++ conjunction predicates ++ ") (" ++ base ++ ")"
-      in "  modifyMaxSuccess (const " ++ show (cases (generation e)) ++ ") $ it " ++ q (label ++ " property") ++ " $ hedgehog $ do\n" ++
-         "    symbols <- evalIO LS.newSymbolContext\n    " ++ names ++ " <- forAll (" ++ gen ++ ")\n    footnote " ++ q label ++ "\n    evalIO $ do\n" ++
-         unlines ["  " ++ line | line <- lines check]
     goDocument = Doc.render (Doc.selectLayout minify (Doc.PrettyTabs 100))
     goGeneratorDoc = GoTestHelpers.generatorDoc bits javaDataBudget goCustom (Doc.text . goRef)
     goGenerator = goDocument . goGeneratorDoc
@@ -1306,29 +1273,26 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         check <- code "    " (label ++ " boundary " ++ show j) (assertion e)
         pure (block (fn ++ "Boundary" ++ show j) (concat [assign (inputId inp) (convert (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++ check))) (zip [0 :: Int ..] cases')
       propertyCheck <- code "    " (label ++ " property") (assertion e)
-      let assignments = concat [assign (inputId inp) (call "sample" [q (key (inputType inp)),if go then "int(seed) + " ++ show j else if hs then "seed + " ++ show j else "seed + " ++ show j,show bits]) | (j,inp) <- zip [0 :: Int ..] (inputs e)]
+      let assignments = concat [assign (inputId inp) (call "sample" [q (key (inputType inp)),if go then "int(seed) + " ++ show j else "seed + " ++ show j,show bits]) | (j,inp) <- zip [0 :: Int ..] (inputs e)]
           propertyBody = assignments ++ propertyCheck
           propertyTest
             | target == "java" && any (containsStructural . inputType) (inputs e) = javaStructuralProperty fn e propertyCheck
             | go && any (containsStructural . inputType) (inputs e) = goStructuralProperty fn label e propertyCheck
-            | hs && any (containsStructural . inputType) (inputs e) = hsStructuralProperty label e propertyCheck
-            | hs = hsStructuralProperty label e propertyCheck
             | go = "func Test" ++ cap fn ++ "Property(t *testing.T) { rapid.Check(t, func(t *rapid.T) {\n    seed := rapid.Int32().Draw(t, \"seed\"); _ = seed\n    symbols := map[string]*lawSpecSymbol{}; _ = symbols\n" ++ propertyBody ++ "}) }\n"
             | kt && any (containsStructural . inputType) (inputs e) = kotlinStructuralProperty label e propertyCheck
             | kt = kotlinStructuralProperty label e propertyCheck
             | otherwise = "  @Test void " ++ fn ++ "Property() { PropertyChecker.forAll(Generator.integers(), seed -> {\n    var symbols = new HashMap<String,Object>();\n" ++ propertyBody ++ "    return true;\n  }); }\n"
-      refined <- if (hs || go || target `elem` ["java","kotlin"]) && any (containsStructural . inputType) (inputs e)
-        then pure (if hs then hsStructuralProperty label e propertyCheck else if go then goStructuralProperty fn label e propertyCheck else if kt then kotlinStructuralProperty label e propertyCheck else javaStructuralProperty fn e propertyCheck)
+      refined <- if (go || target `elem` ["java","kotlin"]) && any (containsStructural . inputType) (inputs e)
+        then pure (if go then goStructuralProperty fn label e propertyCheck else if kt then kotlinStructuralProperty label e propertyCheck else javaStructuralProperty fn e propertyCheck)
         else refinedProperty fn label e propertyCheck
-      pure (metadata (if hs then "--" else "//") e ++ exs ++ boundariesTests ++ if maybe False (const True) finite then "" else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else propertyTest)
-    conjunction [] = if hs then "True" else "true"
+      pure (metadata "//" e ++ exs ++ boundariesTests ++ if maybe False (const True) finite then "" else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else propertyTest)
+    conjunction [] = "true"
     conjunction xs = intercalate " && " ["(" ++ x ++ ")" | x <- xs]
     contractWrapper c = do
       let args = contractArguments c
           (rn,rt) = contractResult c
-          invoke = (if hs then "Impl." else if go then "" else cls ++ ".") ++ (if go then cap (contractName c) else adapterName u (C.contractDeclaration c)) ++
-            (if hs then concatMap (\(n,t) -> " (" ++ nativeValue t n ++ ")") args
-             else "(" ++ intercalate ", " [nativeValue t n | (n,t) <- args] ++ ")")
+          invoke = (if go then "" else cls ++ ".") ++ (if go then cap (contractName c) else adapterName u (C.contractDeclaration c)) ++
+            "(" ++ intercalate ", " [nativeValue t n | (n,t) <- args] ++ ")"
           result = wrapResult rt invoke
           context stage ps = contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps)
           symbolParam = if go then "symbols map[string]*lawSpecSymbol" else if kt then "symbols: MutableMap<String, Any>" else "Map<String,Object> symbols"
@@ -1336,36 +1300,31 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       let pre = [call "truth" [render v] | v <- contractPreconditions c]
           post = [call "truth" [render v] | v <- contractPostconditions c]
       let preContext = context "precondition" (contractPreconditions c); postContext = context "postcondition" (contractPostconditions c)
-      pure $ if hs then "_lawspec_call_" ++ contractName c ++ " :: LS.SymbolContext -> " ++ intercalate " -> " (replicate (length args+1) "Scalar") ++ "\n_lawspec_call_" ++ contractName c ++ " symbols" ++ concatMap ((" " ++) . fst) args ++ " =\n  LS.contract " ++ quote preContext ++ " (" ++ conjunction pre ++ ") $\n    let " ++ rn ++ " = " ++ result ++ "\n    in " ++ rn ++ " `seq` LS.contract " ++ quote postContext ++ " (" ++ conjunction post ++ ") " ++ rn ++ "\n"
-        else (if go then "func " else if kt then "private fun " else "  private static Value ") ++ "_lawspec_call_" ++ contractName c ++ "(" ++ intercalate ", " params ++ ")" ++ (if go then " LawSpecValue" else if kt then ": LawSpecRuntime.Value" else "") ++ " {\n" ++
+      pure $ (if go then "func " else if kt then "private fun " else "  private static Value ") ++ "_lawspec_call_" ++ contractName c ++ "(" ++ intercalate ", " params ++ ")" ++ (if go then " LawSpecValue" else if kt then ": LawSpecRuntime.Value" else "") ++ " {\n" ++
           "    " ++ call "requireContract" [conjunction pre,quote preContext] ++ ";\n" ++ assign rn result ++ "    " ++ call "requireContract" [conjunction post,quote postContext] ++ ";\n    return " ++ rn ++ ";\n  }\n"
     domainCode e (index,plan) = do
       scalarSeeds <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right (mapM toScalarValue (generatorBoundaries plan))
       let inp=domainInput plan; prior=take index (inputs e)
-          bindings' xs = concat [if hs then inputId i ++ " = _values !! " ++ show j ++ "; " else if go then inputId i ++ " := _values[" ++ show j ++ "]; _ = " ++ inputId i ++ "; " else if kt then "val " ++ inputId i ++ " = _values[" ++ show j ++ "]; " else "var " ++ inputId i ++ " = _values.get(" ++ show j ++ "); " | (j,i) <- zip [0::Int ..] xs]
-          lambda xs seed value = if hs then "(\\_values" ++ (if seed then " _seed" else "") ++ " -> " ++ (if null xs then "" else "let { " ++ bindings' xs ++ "} in ") ++ value ++ ")"
-            else if go then "func(_values []LawSpecValue" ++ (if seed then ", _seed int" else "") ++ ") " ++ (if seed then "[]LawSpecValue" else "bool") ++ " { " ++ bindings' xs ++ "return " ++ value ++ " }"
+          bindings' xs = concat [if go then inputId i ++ " := _values[" ++ show j ++ "]; _ = " ++ inputId i ++ "; " else if kt then "val " ++ inputId i ++ " = _values[" ++ show j ++ "]; " else "var " ++ inputId i ++ " = _values.get(" ++ show j ++ "); " | (j,i) <- zip [0::Int ..] xs]
+          lambda xs seed value = if go then "func(_values []LawSpecValue" ++ (if seed then ", _seed int" else "") ++ ") " ++ (if seed then "[]LawSpecValue" else "bool") ++ " { " ++ bindings' xs ++ "return " ++ value ++ " }"
             else if kt then "{ _values" ++ (if seed then ", _seed" else "") ++ " -> " ++ bindings' xs ++ value ++ " }"
             else "(_values" ++ (if seed then ", _seed" else "") ++ ") -> { " ++ bindings' xs ++ "return " ++ value ++ "; }"
-      bs <- mapM (\(op,v) -> let value = render v in pure (if hs then "(" ++ q op ++ "," ++ value ++ ")" else if go then "{" ++ q op ++ "," ++ value ++ "}" else (if kt then "LawSpecRuntime.Bound(" else "new LawSpecRuntime.Bound(") ++ q op ++ "," ++ value ++ ")")) (domainBounds plan)
+      bs <- mapM (\(op,v) -> let value = render v in pure (if go then "{" ++ q op ++ "," ++ value ++ "}" else (if kt then "LawSpecRuntime.Bound(" else "new LawSpecRuntime.Bound(") ++ q op ++ "," ++ value ++ ")")) (domainBounds plan)
       let hints = map render (generatorHints plan)
           ps = [call "truth" [render v] | v <- inputRefinements inp]
-      let restrictions = (if hs then "[" else if go then "[]lawSpecBound{" else if kt then "arrayOf(" else "new LawSpecRuntime.Bound[]{") ++ intercalate "," bs ++ (if hs then "]" else if kt then ")" else "}")
+      let restrictions = (if go then "[]lawSpecBound{" else if kt then "arrayOf(" else "new LawSpecRuntime.Bound[]{") ++ intercalate "," bs ++ (if kt then ")" else "}")
           candidates = call "domainCandidates" [q (key (inputType inp)),"_seed",show bits,restrictions,arr (map scalar scalarSeeds ++ hints)]
-      pure $ if hs then "LS.Domain " ++ lambda prior True candidates ++ " " ++ lambda (prior++[inp]) False (conjunction ps)
-        else (if go then "lawSpecDomain{" else if kt then "LawSpecRuntime.Domain(" else "new LawSpecRuntime.Domain(") ++ lambda prior True candidates ++ ", " ++ lambda (prior++[inp]) False (conjunction ps) ++ (if go then "}" else ")")
+      pure $ (if go then "lawSpecDomain{" else if kt then "LawSpecRuntime.Domain(" else "new LawSpecRuntime.Domain(") ++ lambda prior True candidates ++ ", " ++ lambda (prior++[inp]) False (conjunction ps) ++ (if go then "}" else ")")
     refinedProperty fn label e check = do
       ds <- mapM (domainCode e) (zip [0::Int ..] (generationPlan e))
       let cfg=generation e
-          domains = (if hs then "[" else if go then "[]lawSpecDomain{" else if kt then "arrayOf(" else "new LawSpecRuntime.Domain[]{") ++ intercalate ", " ds ++ (if hs then "]" else if kt then ")" else "}")
-          binds = concat [assign (inputId inp) (if hs then "_values !! " ++ show j else if go || kt then "_values[" ++ show j ++ "]" else "_values.get(" ++ show j ++ ")") | (j,inp) <- zip [0::Int ..] (inputs e)]
-          callback = if hs then "_check"
-                     else if go then "func(_values []LawSpecValue) {\n" ++ binds ++ check ++ "  }"
+          domains = (if go then "[]lawSpecDomain{" else if kt then "arrayOf(" else "new LawSpecRuntime.Domain[]{") ++ intercalate ", " ds ++ (if kt then ")" else "}")
+          binds = concat [assign (inputId inp) (if go || kt then "_values[" ++ show j ++ "]" else "_values.get(" ++ show j ++ ")") | (j,inp) <- zip [0::Int ..] (inputs e)]
+          callback = if go then "func(_values []LawSpecValue) {\n" ++ binds ++ check ++ "  }"
                      else if kt then "{ _values ->\n" ++ binds ++ check ++ "  }"
                      else "_values -> {\n" ++ binds ++ check ++ "  }"
           invocation = call "refinedCase" [domains,"seed",show (maxAttempts cfg),show (maxShrinks cfg),callback,quote (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]
-      pure $ if hs then "  modifyMaxSuccess (const " ++ show (cases cfg) ++ ") $ it " ++ q (label ++ " property") ++ " $ hedgehog $ do\n    seed <- forAll (Gen.int (Range.linear 0 2147483647))\n    footnote " ++ q label ++ "\n    let _check _values = do\n" ++ unlines ["      " ++ line | line <- lines (binds ++ check)] ++ "    evalIO $ " ++ invocation ++ "\n"
-        else if go then "func Test" ++ cap fn ++ "Property(t *testing.T) {\n    defer func(){if err:=recover();err!=nil{t.Fatalf(\"%v\",err)}}()\n    for seed := 0; seed < " ++ show (cases cfg) ++ "; seed++ {\n    symbols := map[string]*lawSpecSymbol{}; _ = symbols\n    " ++ invocation ++ "\n  }\n}\n"
+      pure $ if go then "func Test" ++ cap fn ++ "Property(t *testing.T) {\n    defer func(){if err:=recover();err!=nil{t.Fatalf(\"%v\",err)}}()\n    for seed := 0; seed < " ++ show (cases cfg) ++ "; seed++ {\n    symbols := map[string]*lawSpecSymbol{}; _ = symbols\n    " ++ invocation ++ "\n  }\n}\n"
         else if kt then "  " ++ q (label ++ " property") ++ " { checkAll(" ++ show (cases cfg) ++ ", Arb.int()) { seed ->\n    val symbols = mutableMapOf<String, Any>();\n    " ++ invocation ++ "\n  } }\n"
         else "  @Test void " ++ fn ++ "Property() { PropertyChecker.customized().withIterationCount(" ++ show (cases cfg) ++ ").forAll(Generator.integers(), seed -> {\n    var symbols = new HashMap<String,Object>();\n    " ++ invocation ++ ";\n    return true;\n  }); }\n"
     hsPart = concatMap cap . splitOn '_'

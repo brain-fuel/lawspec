@@ -8,6 +8,8 @@ module LawSpecCodecs
     reference,
     decode,
     encode,
+    decoded,
+    encoded,
     codec,
     codecWith,
     context,
@@ -432,3 +434,12 @@ optionalCodecWith scope schema bits element =
     toValue (LS.OptionalValue value) = do
       field <- context "Optional.value" (encode element value)
       pure (LS.SPresent "Optional" (Just field))
+
+-- | A law's value as the native value an adapter takes; an error says why
+-- it is not one.
+decoded :: Codec a -> LS.Scalar -> a
+decoded c = either error id . decode c
+
+-- | An adapter's native result as a law's value, checked.
+encoded :: Codec a -> a -> LS.Scalar
+encoded c = either error id . encode c

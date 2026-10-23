@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 -- | Checked structural values; no property-framework dependencies.
 --
 -- Generated data types are described once, as Core schemas, and every value
@@ -44,6 +46,12 @@ module LawSpecSchema
     equalWith,
     match,
     matchWith,
+    Scope (..),
+    checked,
+    literal,
+    built,
+    same,
+    allSatisfy,
   )
 where
 
@@ -787,3 +795,51 @@ matchWith _ _ _ _ value branches = do
   case lookup tag branches of
     Nothing -> Left ("missing checked match branch: " ++ tag)
     Just action -> pure (action fields)
+
+-- | Where generated code checks a value: a law's case, whose symbols it
+-- holds, or a data contract, which may have none.
+class Scope s where
+  scopeOf :: s -> Maybe LS.SymbolContext
+
+instance Scope LS.SymbolContext where
+  scopeOf = Just
+
+instance Scope (Maybe LS.SymbolContext) where
+  scopeOf = id
+
+-- | A value checked against its type at a machine width; an error says why
+-- it is not one.
+checked :: (Scope s) => s -> Schema -> TypeRef -> Int -> LS.Scalar -> LS.Scalar
+checked scope schema typeRef bits =
+  either error id . validateWith (scopeOf scope) schema typeRef bits
+
+-- | A law's literal: its symbols are the case's, and it is checked.
+literal :: (Scope s) => s -> Schema -> TypeRef -> Int -> LS.Scalar -> LS.Scalar
+literal scope schema typeRef bits =
+  checked scope schema typeRef bits . maybe id LS.scopeSymbols (scopeOf scope)
+
+-- | A value built from a constructor and its fields.
+built ::
+  (Scope s) => s -> Schema -> TypeRef -> Int -> String -> [LS.Scalar] -> LS.Scalar
+built scope schema typeRef bits tag =
+  either error id . constructWith (scopeOf scope) schema typeRef bits tag
+
+-- | Whether two values of a type are equal.
+same ::
+  (Scope s) => s -> Schema -> TypeRef -> Int -> LS.Scalar -> LS.Scalar -> Bool
+same scope schema typeRef bits left =
+  either error id . equalWith (scopeOf scope) schema typeRef bits left
+
+-- | Whether every payload of a value satisfies its predicate.
+allSatisfy ::
+  (Scope s) =>
+  s ->
+  Schema ->
+  TypeRef ->
+  Int ->
+  LS.Scalar ->
+  [LS.Scalar -> LS.Scalar] ->
+  LS.Scalar
+allSatisfy scope schema typeRef bits value predicates =
+  either error id $
+    allPayloadsWith (scopeOf scope) schema typeRef bits value (map (Right .) predicates)

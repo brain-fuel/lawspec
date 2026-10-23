@@ -1,37 +1,88 @@
 -- | Native Haskell functions over pure, checked total-definition implementations.
-module LawSpec.HaskellDefinitions (emitHaskellDefinitions, emitHaskellDefinitionsWithBindings, definitionCalls, specHandlerCall) where
+--
+-- Each definition's function is named after it (LawSpec.Naming), its
+-- arguments after the source's, and it is linked to its source line. The
+-- modules are laid out as ormolu lays them out (LawSpec.Code.Haskell).
+-- ref:DEC-readable-output-default
+module LawSpec.HaskellDefinitions (emitHaskellDefinitions, emitHaskellDefinitionsWithBindings, definitionCalls, specHandlerCall, moduleImports, sortedImports) where
 
 import Control.Monad (forM)
 import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
-import LawSpec.Backend (localName)
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.HaskellData as Native
 import LawSpec.AbilityNames (interfaceName, fieldName)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Code.Doc as D
-import Data.Char (toUpper)
-import Data.List (nub, intercalate)
+import qualified LawSpec.Code.Haskell as H
+import LawSpec.Code.Haskell (Stmt(Bind, Run), call, var, string, integer, lambda, operator)
+import LawSpec.Naming (claimAll, scopeWith, nativeIdentifier, localIdentifier, NameKind(..), readableDefinitionName)
+import LawSpec.SourceLink (labelled, sourceLink, generatedHeader, unitSourceFile)
+import LawSpec.TargetNames (targetKeywords)
+import Data.Char (isAlphaNum, toUpper)
+import Data.List (nub, intercalate, isInfixOf, sortOn)
+import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Data.Map.Strict as M
-import qualified Data.Set as Set
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Typed.Haskell (HaskellTyped(..), emitHaskellTyped)
 import LawSpec.Typed.Plan (TypedPlan(..), isTypedHandler, isContextual)
+
+-- | The names the bodies' modules use besides their functions, which a
+-- function or a local must not take.
+moduleNames :: [String]
+moduleNames = targetKeywords "haskell" ++ words
+  "schema machineBits symbols state start current result checkedResult pair next nativeResult value \
+  \typed native inner failure"
+
+-- | Each definition's and spec handler's function, named after it, unique
+-- across the bodies and workflows modules.
+functionNames :: [Unit] -> ([(Id, String)], [(Id, String)])
+functionNames units = (zip (map (declarationId . definitionDeclaration) definitions) definitionNames',
+  zip (map handlerId handlers) handlerNames)
+  where
+    definitions = concatMap unitDefinitions units
+    handlers = concatMap unitHandlers units
+    (chosen, _) = claimAll (scopeWith moduleNames)
+      (map base definitions ++ [nativeIdentifier "haskell" FunctionName (handlerName h ++ " handler") | h <- handlers])
+    (definitionNames', handlerNames) = splitAt (length definitions) chosen
+    base d = let declaration = definitionDeclaration d
+      in nativeIdentifier "haskell" FunctionName
+           (readableDefinitionName (declarationName declaration) (fst (functionType (declarationType declaration))))
 
 -- | Workflows call adapters, so they live in LawSpecWorkflows, apart from the
 -- bodies adapters may import.
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d),
-  (if definitionOrchestrates d then "Workflows" else "Definitions") ++ ".evaluate" ++ show i)
-  | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
+  (if definitionOrchestrates d then "Workflows." else "Definitions.") ++ name)
+  | (d, (_, name)) <- zip (concatMap unitDefinitions units) (fst (functionNames units))]
 
 -- A spec handler's function: they live with the bodies, which call them for
 -- handle ... with h end, and which their clauses call.
 specHandlerCall :: [Unit] -> Id -> String
-specHandlerCall units h = "Definitions.lawspecHandler" ++ show (length (takeWhile ((/= h) . handlerId) (concatMap unitHandlers units)))
+specHandlerCall units h = "Definitions." ++ maybe "undefinedHandler" id (lookup h (snd (functionNames units)))
+
+-- | Import lines in ormolu's order, only those a module's code uses: each is
+-- (module, alias, imported names), where an alias is a qualified import.
+moduleImports :: String -> [(String, Maybe String, Maybe [String])] -> [String]
+moduleImports rendered candidates = sortedImports [c | c <- candidates, used c]
+  where
+    used (_, Just alias, _) = (alias ++ ".") `isInfixOf` rendered
+    used (_, Nothing, Just names) = any (`elem` identifiers rendered) [takeWhile isAlphaNum n | n <- names]
+    used (_, Nothing, Nothing) = True
+    identifiers = words . map (\c -> if isAlphaNum c || c `elem` ("_'" :: String) then c else ' ')
+
+-- | Import lines in ormolu's order: by module, an unqualified import before
+-- a qualified one, Prelude last.
+sortedImports :: [(String, Maybe String, Maybe [String])] -> [String]
+sortedImports = map line . sortOn key . nub
+  where
+    key (m, alias, _) = (m == "Prelude", m, alias /= Nothing)
+    line (m, alias, names) = "import " ++ maybe "" (const "qualified ") alias ++ m ++
+      maybe "" (\a -> if a == m then "" else " as " ++ a) alias ++
+      maybe "" (\ns -> " (" ++ intercalate ", " ns ++ ")") names
 
 -- | Checked definitions are emitted as ordinary Haskell code, so adapters and tests call
 -- the same proved implementation. ref:DEC-total-definitions
@@ -47,37 +98,52 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
   let indexed = zip [0::Int ..] (concatMap unitDefinitions units)
       plan = hsTypedPlan typed
       hasTyped = not (M.null (typedDefinitions plan))
-      body x@(index, d) = maybe (implementation contracts "Definitions" x) (bridge typed index d)
+      body x@(_, d) = maybe (implementation contracts "Definitions" x) (bridge typed d)
         (hsTypedFunction typed (declarationId (definitionDeclaration d)))
   bodies <- (++) <$> mapM body [x | x@(_, d) <- indexed, not (definitionOrchestrates d)]
     <*> mapM (\h -> if isTypedHandler plan h then typedSpec typed h else spec h) (concatMap unitHandlers units)
   workflows <- mapM (implementation contracts "Workflows") [x | x@(_, d) <- indexed, definitionOrchestrates d]
   wrappers <- mapM (nativeUnit False) (filter (any (not . definitionOrchestrates) . unitDefinitions) units)
   workflowWrappers <- mapM (nativeUnit True) (filter (any definitionOrchestrates . unitDefinitions) units)
-  let adapterImports = nub ["import qualified " ++ moduleOf owner | (_, (owner, _)) <- adapters]
-  let typedImports = if hasTyped then ["import qualified LawSpecTyped as Typed", "import qualified LawSpecFast as LSF", "import qualified Control.Concurrent.MVar as MVar"] else []
+  let adapterImports = nub [(moduleOf owner, Just (moduleOf owner), Nothing) | (_, (owner, _)) <- adapters]
       typedFiles = if hasTyped
         then [ Artifact "src/LawSpecTyped.hs" (hsTypedModule typed) "generated" "source"
              , Artifact "src/LawSpecFast.hs" (runtimeSource "haskell-fast") "generated" "source" ]
         else []
-  pure (typedFiles ++ file "LawSpecDefinitionBodies" (if null abilityImports && null typedImports then [] else typedImports ++ abilityImports ++ "" : environment) bodies :
-    [file "LawSpecWorkflows" ("import qualified LawSpecDefinitionBodies as Definitions" : adapterImports ++ abilityImports ++ "" : environment) workflows
+  pure (typedFiles ++ file "LawSpecDefinitionBodies" [] True bodies :
+    [file "LawSpecWorkflows" (("LawSpecDefinitionBodies", Just "Definitions", Nothing) : adapterImports) True workflows
     | not (null workflows)] ++
     wrappers ++ workflowWrappers)
   where
     names = definitionCalls units
-    text = D.text
+    (_, handlerNames) = functionNames units
+    sourceFile = listToMaybe (mapMaybe unitSourceFile units)
+    orFail x = call "P.either" [var "P.error", var "P.id", x]
+    symbolsArg = var "symbols"
+    justSymbols = call "P.Just" [symbolsArg]
+    codecOf = Native.haskellCodecDocWithContext justSymbols declarations "schema" "machineBits"
+    -- The one-line comment linking a function to its source.
+    linked label origin = H.comment [labelled label (sourceLink origin)]
+    definitionLink d = linked (declarationName (definitionDeclaration d)) (declarationOrigin (definitionDeclaration d))
+    -- A definition's argument names, from the source.
+    argumentNames d = fst (claimAll (scopeWith (moduleNames ++ map snd handlerNames ++ map (unqualified . snd) names))
+      [localIdentifier "haskell" (binderName b) | b <- definitionArguments d])
+    unqualified n = drop 1 (dropWhile (/= '.') n)
     -- A typed definition's dynamic entry converts its arguments and result.
-    bridge typed index d function = do
-      let (argTypes, _) = functionType (declarationType (definitionDeclaration d))
-          (_, resultType) = functionType (declarationType (definitionDeclaration d))
+    bridge typed d function = do
+      let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
           identity = declarationId (definitionDeclaration d)
-          arguments = ["value" ++ show i | i <- [0 .. length argTypes - 1]]
-          name = "evaluate" ++ show index
-          call = unwords (("Typed." ++ function) : ["symbols" | isContextual (hsTypedPlan typed) identity] ++
-            ["(Typed." ++ hsTypedFrom typed t ++ " " ++ a ++ ")" | (t, a) <- zip argTypes arguments])
-      pure (signature name (text "LS.SymbolContext" : replicate (length arguments) (text "LS.Scalar") ++ [text "P.Either P.String LS.Scalar"]) <> D.hardline <>
-        text (unwords (name : "symbols" : arguments) ++ " = P.Right (LS.performIO (P.fmap Typed." ++ hsTypedTo typed resultType ++ " (" ++ call ++ ")))"))
+          arguments = take (length argTypes) (argumentNames d ++ ["value" ++ show i | i <- [length (definitionArguments d) ..]])
+          name = functionName d
+          typedCall = call ("Typed." ++ function) ([symbolsArg | isContextual (hsTypedPlan typed) identity] ++
+            [call ("Typed." ++ hsTypedFrom typed t) [var a] | (t, a) <- zip argTypes arguments])
+      pure (D.joinWith D.hardline [definitionLink d,
+        H.signature name (["LS.SymbolContext"] ++ replicate (length arguments) "LS.Scalar" ++ ["P.Either P.String LS.Scalar"]),
+        H.declaration (unwords (name : "symbols" : arguments))
+          (call "P.Right" [call "LS.performIO" [call "P.fmap" [var ("Typed." ++ hsTypedTo typed resultType), typedCall]]])])
+    functionName d = maybe "undefinedDefinition" unqualified (lookup (declarationId (definitionDeclaration d)) names)
+    handlerFunction h = maybe "undefinedHandler" id (lookup (handlerId h) handlerNames)
+    record con fields = H.Record con fields
     -- A typed spec handler keeps its typed state in an MVar: each operation
     -- converts its arguments, runs the typed clause and keeps the next state,
     -- which shares all it did not change with the state before. Operations
@@ -86,7 +152,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       answered <- forM (handlerAbilities h) $ \ref -> do
         (_, ability) <- maybe (Left ("unknown ability of handler " ++ handlerName h)) Right (findAbility units ref)
         pure (ref, ability)
-      let name = drop (length ("Definitions." :: String)) (specHandlerCall units (handlerId h))
+      let name = handlerFunction h
           recordOf (ref, ability) = typesModuleOf ref ++ "." ++ interfaceName ability
           qualifierOf (ref, _) = typesModuleOf ref ++ "."
           plan = hsTypedPlan typed
@@ -95,93 +161,103 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
         Just (t, _) -> hsTypedType typed t
         Nothing -> pure "()"
       start <- case handlerState h of
-        Nothing -> pure [text "state <- MVar.newMVar ()"]
+        Nothing -> pure [Bind "state" (call "MVar.newMVar" [var "()"])]
         Just _ -> do
           made <- maybe (Left ("untyped start of " ++ handlerName h)) Right (hsTypedStart typed (handlerId h))
-          pure [text ("start <- Typed." ++ made ++ " symbols"), text "state <- MVar.newMVar start"]
+          pure [Bind "start" (call ("Typed." ++ made) [symbolsArg]), Bind "state" (call "MVar.newMVar" [var "start"])]
       let recordFor answer@(_, ability) = do
-            fields <- forM (zip [0 :: Int ..] (abilityOperations ability)) $ \(i, (op, ty)) -> do
+            fields <- forM (abilityOperations ability) $ \(op, ty) -> do
               clause <- maybe (Left (handlerName h ++ ": no clause for " ++ op)) Right (lookup op (handlerClauses h))
               function <- maybe (Left ("untyped clause " ++ idText clause)) Right (hsTypedFunction typed clause)
               let (args, result) = functionType ty
-                  values = ["value" ++ show k | k <- [0 .. length args - 1]]
-                  inputs = [text ("let !argument" ++ show k ++ " = Typed." ++ hsTypedFromNative typed t ++ " " ++ v) | (k, (t, v)) <- zip [0 :: Int ..] (zip args values)]
+                  values = H.uniqueValues (length args)
+                  arguments' = H.uniqueArguments (length args)
+                  inputs = [H.Let ("!" ++ a) (call ("Typed." ++ hsTypedFromNative typed t) [var v]) | (a, (t, v)) <- zip arguments' (zip args values)]
                   arguments = ["symbols" | isContextual plan clause] ++ ["current" | stateful] ++
-                    (if null args && not stateful then ["()"] else ["argument" ++ show k | k <- [0 .. length args - 1]])
-                  invocation = unwords (("Typed." ++ function) : arguments)
-                  lambda = if null values then mempty else text ("\\" ++ unwords values ++ " -> ")
-                  out = text ("P.pure P.$! Typed." ++ hsTypedToNative typed result ++ " result")
-                  body = lambda <> text "do" <> D.nest 2 (D.hardline <> D.joinWith D.hardline (inputs ++
+                    (if null args && not stateful then ["()"] else arguments')
+                  invocation = call ("Typed." ++ function) (map var arguments)
+                  out = Run (operator "P.$!" [var "P.pure", call ("Typed." ++ hsTypedToNative typed result) [var "result"]])
+                  steps = H.Do (inputs ++
                     (if stateful
-                      then [ text "result <- MVar.modifyMVar state (\\current -> do" <> D.nest 2 (D.hardline <> D.joinWith D.hardline
-                               [ text ("!pair <- " ++ invocation)
-                               , text ("case pair of " ++ hsTypedPair typed ++ " r n -> P.pure (n, r))") ]) ]
-                      else [text ("!result <- " ++ invocation)]) ++ [out]))
-              pure (text ((if i == 0 then "{ " else ", ") ++ qualifierOf answer ++ fieldName ability op ++ " =") <> D.nest 4 (D.hardline <> body))
-            pure (text ("P.pure " ++ recordOf answer) <> D.nest 2 (D.hardline <> D.joinWith D.hardline fields <> D.hardline <> text "}"))
+                      then [ Bind "result" (call "MVar.modifyMVar" [var "state", lambda ["current"] (H.Do
+                               [ Bind "!pair" invocation
+                               , Run (H.Case (var "pair") [(hsTypedPair typed ++ " r n", call "P.pure" [H.Tuple [var "n", var "r"]])]) ])]) ]
+                      else [Bind "!result" invocation]) ++ [out])
+              pure (qualifierOf answer ++ fieldName ability op, if null values then steps else lambda values steps)
+            pure (call "P.pure" [record (recordOf answer) fields])
       -- The state, read and replaced in its native types.
       access <- case handlerState h of
         Nothing -> pure []
         Just (t, _) -> do
           native <- Native.haskellDataType declarations t
           let parenthesized x = if ' ' `elem` x && take 1 x /= "(" && take 1 x /= "[" then "(" ++ x ++ ")" else x
-          pure [ text ("-- | The state of " ++ handlerName h ++ ", in its native types: a snapshot to show or keep.") <> D.hardline <>
-                 text (name ++ "Snapshot :: MVar.MVar " ++ stateType ++ " -> P.IO " ++ parenthesized native) <> D.hardline <>
-                 text (name ++ "Snapshot state = P.fmap Typed." ++ hsTypedToNative typed t ++ " (MVar.readMVar state)")
-               , text ("-- | Replaces the state of " ++ handlerName h ++ ": to force it, reset it or restore a snapshot.") <> D.hardline <>
-                 text (name ++ "Restore :: MVar.MVar " ++ stateType ++ " -> " ++ parenthesized native ++ " -> P.IO ()") <> D.hardline <>
-                 text (name ++ "Restore state native = let !typed = Typed." ++ hsTypedFromNative typed t ++ " native in MVar.modifyMVar_ state (\\_ -> P.pure typed)") ]
+          pure [ D.joinWith D.hardline
+                 [ H.comment ["The state of " ++ handlerName h ++ ", in its native types: a snapshot to show or keep."]
+                 , H.signature (name ++ "Snapshot") ["MVar.MVar " ++ stateType, "P.IO " ++ parenthesized native]
+                 , H.declaration (name ++ "Snapshot state") (call "P.fmap" [var ("Typed." ++ hsTypedToNative typed t), call "MVar.readMVar" [var "state"]]) ]
+               , D.joinWith D.hardline
+                 [ H.comment ["Replaces the state of " ++ handlerName h ++ ": to force it, reset it or restore a snapshot."]
+                 , H.signature (name ++ "Restore") ["MVar.MVar " ++ stateType, parenthesized native, "P.IO ()"]
+                 , H.declaration (name ++ "Restore state native") (H.Do
+                     [ H.Let "!typed" (call ("Typed." ++ hsTypedFromNative typed t) [var "native"])
+                     , Run (call "MVar.modifyMVar_" [var "state", lambda ["_"] (call "P.pure" [var "typed"])]) ]) ] ]
       case answered of
         [answer@(_, ability)] | not stateful -> do
           made <- recordFor answer
-          pure (text ("-- | The spec handler " ++ handlerName h ++ " for " ++ abilityName ability ++ ", with its state typed.") <> D.hardline <>
-            text (name ++ " :: LS.SymbolContext -> P.IO " ++ recordOf answer) <> D.hardline <>
-            text (name ++ " symbols = do") <> D.nest 2 (D.hardline <> D.joinWith D.hardline (start ++ [text "_ <- P.pure state", made])))
+          pure (D.joinWith D.hardline
+            [ linked ("spec handler " ++ handlerName h ++ " for " ++ abilityName ability) (handlerOrigin h)
+            , H.signature name ["LS.SymbolContext", "P.IO " ++ recordOf answer]
+            , H.declaration (name ++ " symbols") (H.Do (start ++ [Bind "_" (call "P.pure" [var "state"]), Run made])) ])
         _ -> do
           parts <- forM answered $ \answer@(_, ability) -> do
             made <- recordFor answer
             let part = name ++ abilityName ability
-            pure (text ("-- | " ++ handlerName h ++ " as a " ++ abilityName ability ++ " handler, over its typed state.") <> D.hardline <>
-              text (part ++ " :: LS.SymbolContext -> MVar.MVar " ++ stateType ++ " -> P.IO " ++ recordOf answer) <> D.hardline <>
-              text (part ++ " symbols state = do") <> D.nest 2 (D.hardline <> text "_ <- P.pure state" <> D.hardline <> made))
-          let stateDoc = text ("-- | The typed state of the spec handler " ++ handlerName h ++ ", made afresh.") <> D.hardline <>
-                text (name ++ "State :: LS.SymbolContext -> P.IO (MVar.MVar " ++ stateType ++ ")") <> D.hardline <>
-                text (name ++ "State symbols = do") <> D.nest 2 (D.hardline <> D.joinWith D.hardline (start ++ [text "P.pure state"]))
+            pure (D.joinWith D.hardline
+              [ H.comment [handlerName h ++ " as a " ++ abilityName ability ++ " handler, over its typed state."]
+              , H.signature part ["LS.SymbolContext", "MVar.MVar " ++ stateType, "P.IO " ++ recordOf answer]
+              , H.declaration (part ++ " symbols state") (H.Do [Bind "_" (call "P.pure" [var "state"]), Run made]) ])
+          let stateDoc = D.joinWith D.hardline
+                [ linked ("spec handler " ++ handlerName h ++ "'s typed state, made afresh") (handlerOrigin h)
+                , H.signature (name ++ "State") ["LS.SymbolContext", "P.IO (MVar.MVar " ++ stateType ++ ")"]
+                , H.declaration (name ++ "State symbols") (H.Do (start ++ [Run (call "P.pure" [var "state"])])) ]
               (firstRef, firstAbility) = case answered of { a : _ -> a; [] -> error "a handler of no ability" }
-              freshDoc = text ("-- | The spec handler " ++ handlerName h ++ " as a " ++ abilityName firstAbility ++ " handler, with its own state.") <> D.hardline <>
-                text (name ++ " :: LS.SymbolContext -> P.IO " ++ recordOf (firstRef, firstAbility)) <> D.hardline <>
-                text (name ++ " symbols = " ++ name ++ "State symbols P.>>= " ++ name ++ abilityName firstAbility ++ " symbols")
+              freshDoc = D.joinWith D.hardline
+                [ H.comment ["The spec handler " ++ handlerName h ++ " as a " ++ abilityName firstAbility ++ " handler, with its own state."]
+                , H.signature name ["LS.SymbolContext", "P.IO " ++ recordOf (firstRef, firstAbility)]
+                , H.declaration (name ++ " symbols") (operator "P.>>=" [call (name ++ "State") [symbolsArg], call (name ++ abilityName firstAbility) [symbolsArg]]) ]
           pure (D.joinWith (D.hardline <> D.hardline) (stateDoc : freshDoc : parts ++ access))
-    file name imports bodies = Artifact ("src/" ++ map (\c -> if c == '.' then '/' else c) name ++ ".hs")
-      (D.render layout (D.joinWith D.hardline (map text
-        (["{-# LANGUAGE BangPatterns #-}", "-- Generated by LawSpec. Do not edit."] ++
+    -- A module of functions, with its imports (only those it uses), the
+    -- program's schema and machine width, and its functions.
+    file name extraImports environment bodies =
+      let bodyText = D.render D.Compact (D.joinWith D.hardline bodies)
+          uses w = w `elem` words (map (\c -> if isAlphaNum c then c else ' ') bodyText)
+          declarations' = [D.joinWith D.hardline [H.comment ["The program's types, which values are checked against."],
+              H.signature "schema" ["Schema.Schema"], H.declaration "schema" (call "P.either" [var "P.error", var "P.id", var "DataSchema.schema"])]
+              | environment, uses "schema"] ++
+            [D.joinWith D.hardline [H.comment ["The machine profile's integer width."],
+              H.signature "machineBits" ["P.Int"], H.declaration "machineBits" (integer (toInteger bits))] | environment, uses "machineBits"] ++ bodies
+          rendered = D.render D.Compact (D.joinWith D.hardline declarations')
+          imports = moduleImports rendered (
+            [("Prelude", Just "P", Nothing), ("Data.Int", Just "I", Nothing), ("Data.Word", Just "W", Nothing),
+             ("Data.Text", Just "T", Nothing), ("Data.ByteString", Just "B", Nothing), ("Data.Complex", Just "C", Nothing),
+             ("Data.IORef", Just "IORef", Nothing), ("LawSpecRuntime", Nothing, Just ["Scalar (..)"]),
+             ("LawSpecRuntime", Just "LS", Nothing), ("LawSpecSchema", Just "Schema", Nothing),
+             ("LawSpecCodecs", Just "Codec", Nothing), ("LawSpecData", Just "Data", Nothing),
+             ("LawSpecDataSchema", Just "DataSchema", Nothing), ("LawSpecDataCodecs", Just "Codecs", Nothing),
+             ("LawSpecTyped", Just "Typed", Nothing), ("LawSpecFast", Just "LSF", Nothing),
+             ("Control.Concurrent.MVar", Just "MVar", Nothing)] ++
+            concat [[("LawSpecCollectionCodecs", Just "Collections", Nothing), ("Data.Set", Just "Set", Nothing),
+                     ("Data.Map.Strict", Just "Map", Nothing), ("Data.Sequence", Just "Seq", Nothing)]
+                   | any (isCollectionsType . idText . dataId) declarations] ++
+            [(m, Just m, Nothing) | (m, _, _) <- abilityImports] ++ extraImports)
+      in Artifact ("src/" ++ map (\c -> if c == '.' then '/' else c) name ++ ".hs")
+      (D.render layout (D.joinWith D.hardline (map D.text
+        (["-- " ++ generatedHeader sourceFile, "{-# LANGUAGE BangPatterns #-}"] ++
          -- Each performed operation must run where it is written, once.
          ["{-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}" | performing] ++
-         ["module " ++ name ++ " where", "",
-          "import qualified Prelude as P", "import qualified Data.Int as I", "import qualified Data.Word as W",
-          "import qualified Data.Text as T", "import qualified Data.ByteString as B", "import qualified Data.Complex as C",
-          "import qualified Data.IORef as IORef",
-          "import LawSpecRuntime (Scalar(..))", "import qualified LawSpecRuntime as LS",
-          "import qualified LawSpecSchema as Schema", "import qualified LawSpecCodecs as Codec",
-          "import qualified LawSpecData as Data", "import qualified LawSpecDataSchema as DataSchema",
-          "import qualified LawSpecDataCodecs as Codecs"] ++
-         concat [["import qualified LawSpecCollectionCodecs as Collections", "import qualified Data.Set as Set",
-                  "import qualified Data.Map.Strict as Map", "import qualified Data.Sequence as Seq"]
-                 | any (isCollectionsType . idText . dataId) declarations] ++ imports ++
-         (if null imports then "" : environment else []) ++ [""])) <>
-        D.hardline <> D.joinWith (D.hardline <> D.hardline) bodies <> D.hardline)) "generated" "source"
-    environment = ["_lawspecSchema :: Schema.Schema",
-      "_lawspecSchema = P.either P.error P.id DataSchema.schema",
-      "_lawspecBits :: P.Int", "_lawspecBits = " ++ show bits]
-    signature name types = D.group (text (name ++ " ::") <>
-      D.nest 2 (D.softline <> D.joinWith (text " ->" <> D.softline) types))
-    context identity body = E.apply "Codec.context" [E.quoted (idText identity)] <> text " P.$ do" <>
-      D.nest 2 (D.hardline <> D.joinWith D.hardline body)
-    binding name arguments body = text (unwords (name : "symbols" : arguments) ++ " =") <>
-      D.nest 2 (D.hardline <> body)
-    validate ty value = do
-      ref <- Native.haskellTypeReferenceDoc ty
-      pure (E.apply "Schema.validateWith" [E.apply "P.Just" [text "symbols"],text "_lawspecSchema",ref,text "_lawspecBits",value])
+         ["", "module " ++ name ++ " where", ""] ++ imports ++ [""])) <>
+        D.hardline <> D.joinWith (D.hardline <> D.hardline) declarations' <> D.hardline)) "generated" "source"
+    context identity body = H.dollarIn "P." (call "Codec.context" [string (idText identity)]) (H.Do body)
     adapters = [ (callee, (owner, adapter)) | d <- concatMap unitDefinitions units, definitionOrchestrates d
                , callee <- callsIn (definitionBody d), Just (owner, adapter) <- [lookup callee adapterTable] ]
     adapterTable = [(declarationId d, (unitId u, d)) | u <- units, d <- unitDeclarations u,
@@ -190,20 +266,17 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       ExternalCall callee arguments -> callee : concatMap callsIn arguments
       _ -> concatMap callsIn (children expression)
     moduleOf owner = intercalate "." (map modulePart (split '.' (idText owner)))
-    -- An operation's field in its ability's record, and the handler the
-    -- symbol context holds for an ability.
     -- An adapter that fails with E: its native code throws LS.Fail with a
     -- native E.
     failing adapter = failingAs [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a]
-    failingAs failures call = case failures of
+    failingAs failures call' = case failures of
       ability@(AbilityRef _ [failure]) : _ ->
-        let context' = E.apply "P.Just" [text "symbols"]
-            codec = either error id (Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits" failure)
+        let codec = either error id (codecOf failure)
             native = either error id (Native.haskellDataType declarations failure)
-        in E.apply "LS.nativeFailures" [E.quoted (abilityKey ability),
-             text "((\\_native -> " <> E.checked (E.apply "Codec.encode" [codec, text "_native"]) <> text (") :: " ++ native ++ " -> LS.Scalar)"),
-             text "(\\() -> " <> call <> text ")", text "[]"]
-      _ -> call
+        in call "LS.nativeFailures" [string (abilityKey ability),
+             H.Typed (call "Codec.encoded" [codec]) (native ++ " -> LS.Scalar"),
+             lambda ["()"] call', H.List []]
+      _ -> call'
     abilityOwner ability = fst <$> findAbility units ability
     typesModuleOf ability = maybe "LawSpecAbilities" (\u -> "LawSpecAbilities." ++ moduleOf (unitId u)) (abilityOwner ability)
     -- A spec handler: a record of its ability's operations, each running its
@@ -212,84 +285,89 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       answered <- forM (handlerAbilities h) $ \ref -> do
         (_, ability) <- maybe (Left ("unknown ability of handler " ++ handlerName h)) Right (findAbility units ref)
         pure (ref, ability)
-      let name = drop (length ("Definitions." :: String)) (specHandlerCall units (handlerId h))
-          context' = E.apply "P.Just" [text "symbols"]
-          codec = Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits"
+      let name = handlerFunction h
           recordOf (ref, ability) = typesModuleOf ref ++ "." ++ interfaceName ability
           qualifierOf (ref, _) = typesModuleOf ref ++ "."
           stateful = handlerState h /= Nothing
+          unitValue = call "LS.SAbsent" [string "Unit"]
       start <- case handlerState h of
         Nothing -> pure []
         -- A computed start value is its own definition (<handler>Start).
         Just (_, Expr _ (ExternalCall startDefinition _) _) -> do
           evaluate <- maybe (Left ("unresolved start of " ++ handlerName h)) Right (lookup startDefinition names)
-          pure [text "state <- IORef.newIORef P.=<< LS.runClause" <> D.nest 2 (D.softline <> E.parens (E.apply (drop (length ("Definitions." :: String)) evaluate) [text "symbols", text "(LS.SAbsent \"Unit\")"]))]
+          pure [Bind "state" (operator "P.=<<" [var "IORef.newIORef", call "LS.runClause" [call (unqualified evaluate) [symbolsArg, unitValue]]])]
         Just (_, value) -> do
-          rendered <- E.renderExpression declarations bits "_lawspecSchema" "symbols" localName (\_ _ -> Left "a handler's start value calls nothing") value
-          pure [text "state <- IORef.newIORef" <> D.nest 2 (D.softline <> E.parens rendered)]
+          let startLocals = zip (map binderId (nestedBinders value))
+                (fst (claimAll (scopeWith moduleNames) [localIdentifier "haskell" (binderName b) | b <- nestedBinders value]))
+          rendered <- E.renderExpression declarations bits "schema" "symbols" (\i -> maybe "start" id (lookup i startLocals))
+            (\_ _ -> Left "a handler's start value calls nothing") value
+          pure [Bind "state" (call "IORef.newIORef" [rendered])]
       -- The record of one ability's operations, each running its clause.
       let recordFor answer@(_, ability) = do
-            fields <- forM (zip [0 :: Int ..] (abilityOperations ability)) $ \(i, (op, ty)) -> do
+            fields <- forM (abilityOperations ability) $ \(op, ty) -> do
               clause <- maybe (Left (handlerName h ++ ": no clause for " ++ op)) Right (lookup op (handlerClauses h))
               evaluate <- maybe (Left ("unresolved clause " ++ idText clause)) Right (lookup clause names)
               let (args, result) = functionType ty
-                  values = ["value" ++ show k | k <- [0 .. length args - 1]]
-                  local' = drop (length ("Definitions." :: String)) evaluate
-              codecs <- mapM codec args
-              resultCodec <- codec result
-              let inputs = [text ("argument" ++ show k ++ " <- ") <> E.apply "Codec.encode" [c, text v] | (k, (c, v)) <- zip [0 :: Int ..] (zip codecs values)]
-                  arguments = [text "symbols"] ++ [text "current" | stateful] ++
-                    (if null args && not stateful then [text "(LS.SAbsent \"Unit\")"] else [text ("argument" ++ show k) | k <- [0 .. length args - 1]])
-                  invocation = E.apply local' arguments
-                  lambda = if null values then mempty else text ("\\" ++ unwords values ++ " -> ")
-                  body = if not stateful
-                    then lambda <> text "LS.runClause (do" <> D.nest 2 (D.hardline <> D.joinWith D.hardline
-                      (inputs ++ [text "result <- " <> invocation, E.apply "Codec.decode" [resultCodec, text "result"]]) <> text ")")
-                    else lambda <> text "do" <> D.nest 2 (D.hardline <> D.joinWith D.hardline
-                      [ text "current <- IORef.readIORef state"
-                      , text "(result, next) <- LS.runClause (do" <> D.nest 2 (D.hardline <> D.joinWith D.hardline
-                          (inputs ++ [text "pair <- " <> invocation, text "P.pure (LS.pairFields pair))"]))
-                      , text "IORef.writeIORef state next"
-                      , text "LS.runClause " <> E.parens (E.apply "Codec.decode" [resultCodec, text "result"]) ])
-              pure (text ((if i == 0 then "{ " else ", ") ++ qualifierOf answer ++ fieldName ability op ++ " =") <> D.nest 4 (D.hardline <> body))
-            pure (text ("P.pure " ++ recordOf answer) <> D.nest 2 (D.hardline <> D.joinWith D.hardline fields <> D.hardline <> text "}"))
+                  values = H.uniqueValues (length args)
+                  arguments' = H.uniqueArguments (length args)
+              codecs <- mapM codecOf args
+              resultCodec <- codecOf result
+              let inputs = [Bind a (call "Codec.encode" [c, var v]) | (a, (c, v)) <- zip arguments' (zip codecs values)]
+                  arguments = [symbolsArg] ++ [var "current" | stateful] ++
+                    (if null args && not stateful then [unitValue] else map var arguments')
+                  invocation = call (unqualified evaluate) arguments
+                  steps = if not stateful
+                    then call "LS.runClause" [H.Do (inputs ++ [Bind "result" invocation, Run (call "Codec.decode" [resultCodec, var "result"])])]
+                    else H.Do
+                      [ Bind "current" (call "IORef.readIORef" [var "state"])
+                      , Bind "(result, next)" (call "LS.runClause" [H.Do (inputs ++ [Bind "pair" invocation, Run (call "P.pure" [call "LS.pairFields" [var "pair"]])])])
+                      , Run (call "IORef.writeIORef" [var "state", var "next"])
+                      , Run (call "LS.runClause" [call "Codec.decode" [resultCodec, var "result"]]) ]
+              pure (qualifierOf answer ++ fieldName ability op, if null values then steps else lambda values steps)
+            pure (call "P.pure" [record (recordOf answer) fields])
       case answered of
         [answer@(_, ability)] -> do
           made <- recordFor answer
-          pure (text ("-- | The spec handler " ++ handlerName h ++ " for " ++ abilityName ability ++ ".") <> D.hardline <>
-            text (name ++ " :: LS.SymbolContext -> P.IO " ++ recordOf answer) <> D.hardline <>
-            text (name ++ " symbols = do") <> D.nest 2 (D.hardline <> D.joinWith D.hardline (start ++ [made])))
+          pure (D.joinWith D.hardline
+            [ linked ("spec handler " ++ handlerName h ++ " for " ++ abilityName ability) (handlerOrigin h)
+            , H.signature name ["LS.SymbolContext", "P.IO " ++ recordOf answer]
+            , H.declaration (name ++ " symbols") (H.Do (start ++ [Run made])) ])
         _ -> do
           -- A handler of several abilities: its state, made once, and a
           -- record for each ability over it (handlerPart).
           parts <- forM answered $ \answer@(_, ability) -> do
             made <- recordFor answer
             let part = name ++ abilityName ability
-            pure (text ("-- | " ++ handlerName h ++ " as a " ++ abilityName ability ++ " handler, over its state.") <> D.hardline <>
-              text (part ++ " :: LS.SymbolContext -> IORef.IORef LS.Scalar -> P.IO " ++ recordOf answer) <> D.hardline <>
-              text (part ++ " symbols state = do") <> D.nest 2 (D.hardline <> text "_ <- P.pure state" <> D.hardline <> made))
-          let stateDoc = text ("-- | The state of the spec handler " ++ handlerName h ++ ", made afresh.") <> D.hardline <>
-                text (name ++ "State :: LS.SymbolContext -> P.IO (IORef.IORef LS.Scalar)") <> D.hardline <>
-                text (name ++ "State symbols = do") <> D.nest 2 (D.hardline <> D.joinWith D.hardline
-                  ((if stateful then start else [text "state <- IORef.newIORef (LS.SAbsent \"Unit\")"]) ++ [text "_ <- P.pure symbols", text "P.pure state"]))
+            pure (D.joinWith D.hardline
+              [ H.comment [handlerName h ++ " as a " ++ abilityName ability ++ " handler, over its state."]
+              , H.signature part ["LS.SymbolContext", "IORef.IORef LS.Scalar", "P.IO " ++ recordOf answer]
+              , H.declaration (part ++ " symbols state") (H.Do [Bind "_" (call "P.pure" [var "state"]), Run made]) ])
+          let stateDoc = D.joinWith D.hardline
+                [ linked ("spec handler " ++ handlerName h ++ "'s state, made afresh") (handlerOrigin h)
+                , H.signature (name ++ "State") ["LS.SymbolContext", "P.IO (IORef.IORef LS.Scalar)"]
+                , H.declaration (name ++ "State symbols") (H.Do ((if stateful then start else [Bind "state" (call "IORef.newIORef" [unitValue])]) ++
+                    [Bind "_" (call "P.pure" [symbolsArg]), Run (call "P.pure" [var "state"])])) ]
               (firstRef, firstAbility) = case answered of { a : _ -> a; [] -> error "a handler of no ability" }
-              freshDoc = text ("-- | The spec handler " ++ handlerName h ++ " as a " ++ abilityName firstAbility ++ " handler, with its own state.") <> D.hardline <>
-                text (name ++ " :: LS.SymbolContext -> P.IO " ++ recordOf (firstRef, firstAbility)) <> D.hardline <>
-                text (name ++ " symbols = " ++ name ++ "State symbols P.>>= " ++ name ++ abilityName firstAbility ++ " symbols")
+              freshDoc = D.joinWith D.hardline
+                [ H.comment ["The spec handler " ++ handlerName h ++ " as a " ++ abilityName firstAbility ++ " handler, with its own state."]
+                , H.signature name ["LS.SymbolContext", "P.IO " ++ recordOf (firstRef, firstAbility)]
+                , H.declaration (name ++ " symbols") (operator "P.>>=" [call (name ++ "State") [symbolsArg], call (name ++ abilityName firstAbility) [symbolsArg]]) ]
           pure (D.joinWith (D.hardline <> D.hardline) (stateDoc : freshDoc : parts))
     operationOf op = typesModuleOf (operationAbility op) ++ "." ++
       maybe (operationName op) (\(_, a) -> fieldName a (operationName op)) (findAbility units (operationAbility op))
-    handlerOf ability = E.apply "LS.handlerOf" [text "symbols", E.quoted (abilityKey ability)]
-    abilityImports = ["import qualified LawSpecAbilities." ++ moduleOf (unitId u) | u <- units, not (null (unitAbilities u))]
+    handlerOf ability = call "LS.handlerOf" [symbolsArg, string (abilityKey ability)]
+    abilityImports = [("LawSpecAbilities." ++ moduleOf (unitId u), Just ("LawSpecAbilities." ++ moduleOf (unitId u)), Nothing :: Maybe [String])
+      | u <- units, not (null (unitAbilities u))]
     performing = any (not . null . unitAbilities) units
     evaluator localName identity = maybe (Left "unresolved Haskell policy definition") (Right . localName) (lookup identity names)
+    scalarInteger n = call "LS.SInteger" [string "Integer", integer n]
     policyDoc localName key policy = do
       gates <- policyGates localName policy
       compensate <- case policyCompensate policy of
-        Nothing -> pure (text "P.Nothing")
-        Just undo -> (\name -> text ("(P.Just (\\value -> P.either P.error P.id (" ++ name ++ " symbols value)))")) <$> evaluator localName undo
+        Nothing -> pure (var "P.Nothing")
+        Just undo -> (\name -> call "P.Just" [lambda ["value"] (orFail (call name [symbolsArg, var "value"]))]) <$> evaluator localName undo
       retry <- case policyRetry policy of
-        Nothing -> pure (text "P.Nothing")
+        Nothing -> pure (var "P.Nothing")
         Just r -> do
           let (kind, delay, step, factor, cap) = case retryStrategy r of
                 Immediate -> ("immediate", 0, 0, 0, -1)
@@ -298,30 +376,26 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
                 Exponential d' f c -> ("exponential", d', 0, f, maybe (-1) id c)
                 Fibonacci d' -> ("fibonacci", d', 0, 0, -1)
                 Custom _ -> ("custom", 0, 0, 0, -1)
-              number n = text (if n < 0 then "(" ++ show (n :: Integer) ++ ")" else show n)
           condition <- case retryWhen r of
-            Nothing -> pure (text "P.Nothing")
-            Just p -> (\name -> text ("(P.Just (\\failure -> LS.truth (P.either P.error P.id (" ++ name ++ " symbols failure))))")) <$> evaluator localName p
+            Nothing -> pure (var "P.Nothing")
+            Just p -> (\name -> call "P.Just" [lambda ["failure"] (call "LS.truth" [orFail (call name [symbolsArg, var "failure"])])]) <$> evaluator localName p
           decide <- case retryStrategy r of
-            Custom f -> (\name -> text ("(P.Just (\\attempt failure previous -> LS.retryDecision (P.either P.error P.id (" ++ name ++
-              " symbols (LS.SInteger \"Integer\" attempt) failure (LS.durationScalar previous)))))")) <$> evaluator localName f
-            _ -> pure (text "P.Nothing")
-          pure (E.apply "P.Just" [E.apply "LS.Retry" [E.quoted kind, number delay, number step, number factor, number cap,
-            number (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide]])
-      pure (E.apply "LS.StagePolicy" [E.quoted (policyStage policy), retry, text (maybe "(-1)" show (policyTimeout policy)),
-        E.quoted key, text "[" <> D.joinWith (text ", ") gates <> text "]", text (maybe "(-1)" show (policyCache policy)),
-        text (if null (policyFailures policy) then "P.False" else "P.True"), compensate,
-        text (maybe "P.Nothing" (\h -> "(P.Just (" ++ show (hedgeDelay h) ++ ", " ++ show (hedgeMost h) ++ "))") (policyHedge policy))])
+            Custom f -> (\name -> call "P.Just" [lambda ["attempt", "failure", "previous"] (call "LS.retryDecision" [orFail (call name
+              [symbolsArg, call "LS.SInteger" [string "Integer", var "attempt"], var "failure", call "LS.durationScalar" [var "previous"]])])]) <$> evaluator localName f
+            _ -> pure (var "P.Nothing")
+          pure (call "P.Just" [call "LS.Retry" [string kind, integer delay, integer step, integer factor, integer cap,
+            integer (retryAttempts r), string (jitterName (retryJitter r)), condition, decide]])
+      pure (call "LS.StagePolicy" [string (policyStage policy), retry, integer (maybe (-1) id (policyTimeout policy)),
+        string key, H.List gates, integer (maybe (-1) id (policyCache policy)),
+        var (if null (policyFailures policy) then "P.False" else "P.True"), compensate,
+        maybe (var "P.Nothing") (\h -> call "P.Just" [H.Tuple [integer (hedgeDelay h), integer (toInteger (hedgeMost h))]]) (policyHedge policy)])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates localName policy = do
-      let checked call = "(P.either P.error P.id (" ++ call ++ "))"
-          integer n = "(LS.SInteger \"Integer\" " ++ (if n < 0 then "(" ++ show n ++ ")" else show (n :: Integer)) ++ ")"
-          integers = unwords . map integer
-          now = "(LS.SInteger \"Integer\" now)"
-          gate kind start admit finish wait = E.apply "LS.Gate" [E.quoted kind, text ("(\\now -> " ++ checked start ++ ")"),
-            text ("(\\state now -> " ++ checked admit ++ ")"),
-            text (maybe "P.Nothing" (\f -> "(P.Just (\\state now succeeded -> " ++ checked f ++ "))") finish), text ("(" ++ show (wait :: Integer) ++ ")")]
+      let now = call "LS.SInteger" [string "Integer", var "now"]
+          gate kind start admit finish wait = call "LS.Gate" [string kind, lambda ["now"] (orFail start),
+            lambda ["state", "now"] (orFail admit),
+            maybe (var "P.Nothing") (\f -> call "P.Just" [lambda ["state", "now", "succeeded"] (orFail f)]) finish, integer wait]
           waitCode wait = case wait of
             Nothing -> -2
             Just Nothing -> -1
@@ -329,114 +403,108 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       breaker <- forM (policyBreaker policy) $ \b -> do
         start <- evaluator localName (breakerStart b)
         admit <- evaluator localName (breakerAdmit b)
-        record <- evaluator localName (breakerRecord b)
-        pure (gate "breaker" (start ++ " symbols " ++ now) (admit ++ " symbols state " ++ now)
-          (Just (record ++ " symbols " ++ integers [breakerFailures b, breakerWindow b, breakerCooldown b] ++ " state " ++ now ++ " (LS.SBool succeeded)")) (-2))
+        record' <- evaluator localName (breakerRecord b)
+        pure (gate "breaker" (call start [symbolsArg, now]) (call admit [symbolsArg, var "state", now])
+          (Just (call record' ([symbolsArg] ++ map scalarInteger [breakerFailures b, breakerWindow b, breakerCooldown b] ++
+            [var "state", now, call "LS.SBool" [var "succeeded"]]))) (-2))
       limit <- forM (policyLimit policy) $ \l -> do
         start <- evaluator localName (limitStart l)
         admit <- evaluator localName (limitAdmit l)
-        let numbers = integers [limitCount l, limitPeriod l]
-        pure (gate "limit" (start ++ " symbols " ++ numbers ++ " " ++ now) (admit ++ " symbols " ++ numbers ++ " state " ++ now)
+        let numbers = map scalarInteger [limitCount l, limitPeriod l]
+        pure (gate "limit" (call start ([symbolsArg] ++ numbers ++ [now])) (call admit ([symbolsArg] ++ numbers ++ [var "state", now]))
           Nothing (waitCode (limitWait l)))
       bulkhead <- forM (policyBulkhead policy) $ \b -> do
         start <- evaluator localName (bulkheadStart b)
         admit <- evaluator localName (bulkheadAdmit b)
         release <- evaluator localName (bulkheadRelease b)
-        let n = integers [bulkheadLimit b]
-        pure (gate "bulkhead" (start ++ " symbols " ++ n ++ " " ++ now) (admit ++ " symbols " ++ n ++ " state " ++ now)
-          (Just (release ++ " symbols state")) (waitCode (bulkheadWait b)))
+        let n = [scalarInteger (bulkheadLimit b)]
+        pure (gate "bulkhead" (call start ([symbolsArg] ++ n ++ [now])) (call admit ([symbolsArg] ++ n ++ [var "state", now]))
+          (Just (call release [symbolsArg, var "state"])) (waitCode (bulkheadWait b)))
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
     jitterName j = case j of
       NoJitter -> "none" :: String
       FullJitter -> "full"
       EqualJitter -> "equal"
       DecorrelatedJitter -> "decorrelated"
-    implementation contracts home (index,d) = do
+    implementation contracts home (_,d) = do
       let binders = definitionArguments d ++ nestedBinders (definitionBody d)
-          locals = zip (nub (map binderId binders)) ["value" ++ show i | i <- [0::Int ..]]
+          locals = zip (nub (map binderId binders)) (fst (claimAll (scopeWith (moduleNames ++ map snd handlerNames ++ map (unqualified . snd) names))
+            [localIdentifier "haskell" (binderName b) | b <- nubOn binderId binders]))
           local identity = maybe (error "unresolved Haskell local") id (lookup identity locals)
           arguments = map (local . binderId) (definitionArguments d)
-          name = "evaluate" ++ show index
+          name = functionName d
           -- Calls within the same module are unqualified.
           localName callee = case break (== '.') callee of
             (prefix, '.' : rest) | prefix == home -> rest
             _ -> callee
           external term values = case expressionNode term of
             ExternalCall identity _ | Just callee <- lookup identity names ->
-              pure (E.checked (E.apply (localName callee) (text "symbols":values)))
+              pure (orFail (call (localName callee) (symbolsArg : values)))
             -- handle e with h end: e runs with h installed for its ability,
             -- made afresh each time.
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values ->
-              pure (E.apply "LS.withHandlers" [text "symbols",
-                text ("(P.sequence [P.fmap (LS.installed " ++ show (abilityKey ability) ++ ") (" ++ localName (specHandlerCall units h) ++ " symbols)])"),
-                text "(\\() -> " <> body <> text ")"])
+              pure (call "LS.withHandlers" [symbolsArg,
+                call "P.sequence" [H.List [call "P.fmap" [call "LS.installed" [string (abilityKey ability)], call (localName (specHandlerCall units h)) [symbolsArg]]]],
+                lambda ["()"] body])
             -- raise aborts to the nearest attempt of its Fail ability.
             Perform op [_] | isFail (operationAbility op) ->
-              pure (E.apply "LS.raiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))
+              pure (call "LS.raiseFailure" (string (abilityKey (operationAbility op)) : values))
             -- An operation goes to the handler installed with the symbol
             -- context for its ability (evidence passing), through the codecs.
             Perform op args -> do
-              let context' = E.apply "P.Just" [text "symbols"]
-              codecs <- mapM (Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits" . expressionType) args
-              resultCodec <- Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits" (expressionType term)
-              let call = E.apply "LS.performIO" [E.apply (operationOf op) (handlerOf (operationAbility op) :
-                    [E.checked (E.apply "Codec.decode" [codec, value]) | (codec, value) <- zip codecs values])]
+              codecs <- mapM (codecOf . expressionType) args
+              resultCodec <- codecOf (expressionType term)
+              let performed = call "LS.performIO" [call (operationOf op) (handlerOf (operationAbility op) :
+                    [call "Codec.decoded" [codec, value] | (codec, value) <- zip codecs values])]
               -- An operation that fails with E: a native handler throws
               -- LS.Fail with a native E, which becomes the failure.
               pure (failingAs (maybe [] pure (findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd))
-                (E.checked (E.apply "Codec.encode" [resultCodec, call])))
+                (call "Codec.encoded" [resultCodec, performed]))
             -- prelude.attempt e: Right of e's value, or Left of its failure.
             Handle (CatchFailure ability) _ | [body] <- values, Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType term -> do
               let placeholder = Id "lawspec::attempt::value"
                   side tag ty = do
-                    made <- E.renderExpression declarations bits "_lawspecSchema" "symbols" (\i -> if i == placeholder then "_value" else local i) external
+                    made <- E.renderExpression declarations bits "schema" "symbols" (\i -> if i == placeholder then "value" else local i) external
                       (Expr (expressionType term) (Construct (Id tag) [Expr ty (Local placeholder) (GeneratedFrom placeholder)]) (GeneratedFrom placeholder))
-                    pure (text "(\\_value -> " <> made <> text ")")
+                    pure (lambda ["value"] made)
               right <- side "Either::Right" result
               left <- side "Either::Left" failure
-              pure (E.apply "LS.attempt" [E.quoted (abilityKey ability), body, right, left])
+              pure (call "LS.attempt" [string (abilityKey ability), body, right, left])
             -- A workflow calls an adapter natively, through the codecs.
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity adapterTable -> do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
-                  context' = E.apply "P.Just" [text "symbols"]
-              codecs <- mapM (Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits") parameterTypes
-              resultCodec <- Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits" resultType
+              codecs <- mapM codecOf parameterTypes
+              resultCodec <- codecOf resultType
               -- An adapter that uses abilities gets their handlers first, and
               -- runs in IO.
               let handlers = [handlerOf a | a <- declarationUses adapter, not (isFail a)]
-                  plain = E.apply (moduleOf owner ++ "." ++ declarationName adapter)
-                    ([text "symbols" | identity `elem` bound] ++ handlers ++
-                     [E.checked (E.apply "Codec.decode" [codec, value]) | (codec, value) <- zip codecs values])
-                  call = if null handlers || declarationAsync adapter then plain else E.apply "LS.performIO" [plain]
+                  plain = call (moduleOf owner ++ "." ++ declarationName adapter)
+                    ([symbolsArg | identity `elem` bound] ++ handlers ++
+                     [call "Codec.decoded" [codec, value] | (codec, value) <- zip codecs values])
+                  adapterCall = if null handlers || declarationAsync adapter then plain else call "LS.performIO" [plain]
               -- An async step runs within its stage's timeout and hedge,
               -- when it has them.
               pure $ if declarationAsync adapter
-                then E.apply "LS.awaitStep" [text "symbols", call,
-                  text "(\\_native -> " <> E.checked (E.apply "Codec.encode" [resultCodec, text "_native"]) <> text ")"]
-                else failing adapter (E.checked (E.apply "Codec.encode" [resultCodec, call]))
+                then call "LS.awaitStep" [symbolsArg, adapterCall, call "Codec.encoded" [resultCodec]]
+                else failing adapter (call "Codec.encoded" [resultCodec, adapterCall])
             _ -> Left "unresolved Haskell total call"
-      -- Arguments and results were checked where they were built, decoded
-      -- or drawn; the native wrappers check values crossing from adapters.
-      let checks = []
-      rendered <- E.renderExpression declarations bits "_lawspecSchema" "symbols" local external (definitionBody d)
+      rendered <- E.renderExpression declarations bits "schema" "symbols" local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
-        Just policy | policyFrame policy -> pure (E.apply "LS.runWorkflow" [text "symbols", text "(\\() -> " <> rendered <> text ")"])
+        Just policy | policyFrame policy -> pure (call "LS.runWorkflow" [symbolsArg, lambda ["()"] rendered])
         Just policy -> do
           config <- policyDoc localName (idText (declarationId (definitionDeclaration d))) policy
           let key = case arguments of
-                argument : _ -> text argument
-                [] -> text "(LS.SAbsent \"Unit\")"
-          pure (E.apply "LS.runStage" [text "symbols", config, text "(\\() -> " <> rendered <> text ")", key])
-      let result = E.apply "P.pure" [text "result"]
-      let evaluate = text "let result =" <> D.nest 6 (D.hardline <> body)
-          checkedResult = D.group (E.apply "LS.forceScalar" [text "result"] <> text " `P.seq`" <>
-            D.nest 2 (D.softline <> result))
+                argument : _ -> var argument
+                [] -> call "LS.SAbsent" [string "Unit"]
+          pure (call "LS.runStage" [symbolsArg, config, lambda ["()"] rendered, key])
+      let evaluate = H.Let "result" body
+          checkedResult = call "LS.forcing" [H.List [var "result"], call "P.pure" [var "result"]]
           contract = lookup (declarationId (definitionDeclaration d))
             [(contractDeclaration c,c) | c <- contracts]
       statements <- case contract of
-        Nothing -> pure (checks ++ [evaluate,checkedResult])
+        Nothing -> pure [evaluate, Run checkedResult]
         Just c -> do
           let aliases = zip (map binderId (contractArguments c))
                 (map (local . binderId) (definitionArguments d)) ++
@@ -445,57 +513,52 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
                   (concatMap nestedBinders (contractPreconditions c ++ contractPostconditions c ++ contractRuntimePostconditions c))]
               resolve identity = maybe (error "unbound Haskell definition contract binder") id (lookup identity aliases)
               require stage predicate = do
-                expression <- E.renderExpression declarations bits "_lawspecSchema" "symbols" resolve external predicate
-                pure (D.group (text "if " <> E.apply "LS.truth" [expression] <>
-                  D.nest 2 (D.softline <> text "then P.Right ()" <> D.softline <>
-                    text "else " <> E.apply "P.Left" [E.quoted (stage ++ " failed")])) )
+                expression <- E.renderExpression declarations bits "schema" "symbols" resolve external predicate
+                pure (Run (H.If (call "LS.truth" [expression]) (call "P.Right" [var "()"]) (call "P.Left" [string (stage ++ " failed")])))
           pre <- mapM (require "precondition") (contractPreconditions c)
           -- Proved by the totality audit; see LawSpec.Core.Evidence.
           post <- mapM (require "postcondition") (runtimePostconditions c)
-          pure (checks ++ pre ++ [evaluate,
-            D.group (text "checkedResult <-" <> D.nest 2 (D.softline <> checkedResult))] ++
-            post ++ [text "P.Right checkedResult"])
-      pure (signature name (text "LS.SymbolContext" : replicate (length arguments) (text "LS.Scalar") ++
-          [text "P.Either P.String LS.Scalar"]) <> D.hardline <>
-        binding name arguments (context (declarationId (definitionDeclaration d)) statements))
+          pure (pre ++ [evaluate, Bind "checkedResult" checkedResult] ++ post ++ [Run (call "P.Right" [var "checkedResult"])])
+      pure (D.joinWith D.hardline [definitionLink d,
+        H.signature name (["LS.SymbolContext"] ++ replicate (length arguments) "LS.Scalar" ++ ["P.Either P.String LS.Scalar"]),
+        H.declaration (unwords (name : "symbols" : arguments)) (context (declarationId (definitionDeclaration d)) statements)])
+    nubOn f = foldr (\x seen -> if any ((== f x) . f) seen then seen else x : seen) [] . reverse
     nativeUnit workflows unit = do
       methods <- mapM native [d | d <- unitDefinitions unit, definitionOrchestrates d == workflows]
       let name = (if workflows then "LawSpecWorkflows." else "LawSpecDefinitions.") ++
             intercalate "." (map modulePart (split '.' (idText (unitId unit))))
-      pure (file name ([if workflows then "import qualified LawSpecWorkflows as Workflows"
-        else "import qualified LawSpecDefinitionBodies as Definitions"] ++
+      pure (file name ([if workflows then ("LawSpecWorkflows", Just "Workflows", Nothing)
+        else ("LawSpecDefinitionBodies", Just "Definitions", Nothing)] ++
         -- The handlers a definition takes are its abilities' owners' records.
-        nub ["import qualified LawSpecAbilities." ++ moduleOf (unitId owner) | d <- unitDefinitions unit
-            , ability <- declarationUses (definitionDeclaration d), not (isFail ability), Just (owner, _) <- [findAbility units ability]]) methods)
+        nub [("LawSpecAbilities." ++ moduleOf (unitId owner), Just ("LawSpecAbilities." ++ moduleOf (unitId owner)), Nothing) | d <- unitDefinitions unit
+            , ability <- declarationUses (definitionDeclaration d), not (isFail ability), Just (owner, _) <- [findAbility units ability]]) True methods)
     native d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
           name = declarationName declaration
-          values = ["value" ++ show i | i <- [0 .. length args - 1]]
+          values = take (length args) (argumentNames d ++ ["value" ++ show i | i <- [length (definitionArguments d) ..]])
       types <- mapM (Native.haskellDataType declarations) args
       resultType <- Native.haskellDataType declarations result
-      codecs <- mapM (Native.haskellCodecDocWithContext (E.apply "P.Just" [text "symbols"]) declarations "_lawspecSchema" "_lawspecBits") args
-      resultCodec <- Native.haskellCodecDocWithContext (E.apply "P.Just" [text "symbols"]) declarations "_lawspecSchema" "_lawspecBits" result
+      codecs <- mapM codecOf args
+      resultCodec <- codecOf result
       callee <- maybe (Left "unresolved native Haskell call") Right (lookup (declarationId declaration) names)
       let handlers = [ (ability, lowerFirst (interfaceName a), "LawSpecAbilities." ++ moduleOf (unitId u) ++ "." ++ interfaceName a)
                      | ability <- declarationUses declaration, not (isFail ability)
                      , Just (u, a) <- [findAbility units ability] ]
+          arguments' = H.uniqueArguments (length args)
           -- Native code passes a definition's handlers explicitly; they are
           -- installed with the symbol context, where its operations find them.
-          installs = [text "() <- P.Right " <> E.parens (E.apply "LS.performIO" [E.apply "LS.installHandlers" [text "symbols",
-            E.array [E.apply "LS.installed" [E.quoted (abilityKey ability), text name] | (ability, name, _) <- handlers]]])
+          installs = [Bind "()" (call "P.Right" [call "LS.performIO" [call "LS.installHandlers" [symbolsArg,
+            H.List [call "LS.installed" [string (abilityKey ability), var n] | (ability, n, _) <- handlers]]]])
             | not (null handlers)]
-          checks = installs ++ [D.group (text ("argument" ++ show i ++ " <-") <>
-            D.nest 2 (D.softline <> E.apply "Codec.encode" [codec,text value]))
-            | (i,(codec,value)) <- zip [0::Int ..] (zip codecs values)]
-          invoke = E.apply callee (text "symbols" : [text ("argument" ++ show i) | i <- [0 .. length args - 1]])
-      pure (signature name (text "LS.SymbolContext" : [text iface | (_, _, iface) <- handlers] ++ map text types ++
-          [text "P.Either P.String " <> E.parens (text resultType)]) <> D.hardline <>
-        binding name ([n | (_, n, _) <- handlers] ++ values) (context (declarationId declaration)
-          (checks ++ [D.group (text "result <-" <> D.nest 2 (D.softline <> invoke)),
-            E.apply "Codec.decode" [resultCodec,text "result"]])) <>
-        D.nest 2 (D.hardline <> text "where" <>
-          D.nest 2 (D.hardline <> D.joinWith D.hardline (map text environment))))
+          checks = installs ++ [Bind a (call "Codec.encode" [codec, var value]) | (a, (codec, value)) <- zip arguments' (zip codecs values)]
+          invoke = call callee (symbolsArg : map var arguments')
+          wrapType t = if ' ' `elem` t && take 1 t /= "(" && take 1 t /= "[" then "(" ++ t ++ ")" else t
+      pure (D.joinWith D.hardline [definitionLink d,
+        H.signature name (["LS.SymbolContext"] ++ [iface | (_, _, iface) <- handlers] ++ map wrapType types ++
+          ["P.Either P.String " ++ wrapType resultType]),
+        H.declaration (unwords (name : "symbols" : [n | (_, n, _) <- handlers] ++ values)) (context (declarationId declaration)
+          (checks ++ [Bind "result" invoke, Run (call "Codec.decode" [resultCodec, var "result"])]))])
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
       Let binder value body -> nestedBinders value ++ [binder] ++ nestedBinders body

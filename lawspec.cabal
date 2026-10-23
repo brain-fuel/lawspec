@@ -51,6 +51,7 @@ extra-source-files:
     runtime/LawSpecNetwork.hs
     runtime/LawSpecRuntime.hs
     runtime/LawSpecSchema.hs
+    runtime/LawSpecTesting.hs
     runtime/LawSpecTransports.hs
     runtime/LawSpecDataStrategies.java
     runtime/LawSpecFast.java
@@ -588,6 +589,7 @@ library
       LawSpec.Clojure.Tests
       LawSpec.ClojureSources
       LawSpec.Code.Doc
+      LawSpec.Code.Haskell
       LawSpec.Code.JavaScript
       LawSpec.Code.Literal
       LawSpec.Collections

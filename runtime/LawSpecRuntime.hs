@@ -345,6 +345,10 @@ promote op a b
               else "Complex64"
           else if "Float64" `elem` [a, b] then "Float64" else "Float32"
 
+-- | A value moved into a scalar type, or an error saying why it cannot be.
+converted :: Int -> String -> Scalar -> Scalar
+converted bits t = either error id . convertScalar bits t
+
 convertScalar :: Int -> String -> Scalar -> Either String Scalar
 convertScalar machine t s
   | t == scalarName s = validateScalar machine s
@@ -914,6 +918,10 @@ checkMachineBits :: Int -> ()
 checkMachineBits bits
   | bits == finiteBitSize (0 :: Int) = ()
   | otherwise = error "machineBits does not match native architecture"
+
+-- | A value that needs the machine profile's width to be the native one.
+onMachine :: Int -> a -> a
+onMachine bits value = checkMachineBits bits `seq` value
 
 instance (Native a) => Native [a] where
   toNative t s bits = case (stripPrefix "List " t, validate t s bits) of
@@ -2607,6 +2615,22 @@ shrunkValues text seed size =
 
 -- | A generated definition: symbols, then its arguments in order.
 type ModelCallback = SymbolContext -> [Scalar] -> Either String Scalar
+
+-- | A function of a symbol context and its arguments as a model callback,
+-- which takes the arguments as a list.
+class ModelFunction f where
+  appliedTo :: f -> [Scalar] -> Either String Scalar
+
+instance ModelFunction (Either String Scalar) where
+  appliedTo result [] = result
+  appliedTo _ _ = Left "model callback arity"
+
+instance (ModelFunction f) => ModelFunction (Scalar -> f) where
+  appliedTo f (x : xs) = appliedTo (f x) xs
+  appliedTo _ [] = Left "model callback arity"
+
+modelCallback :: (ModelFunction f) => (SymbolContext -> f) -> ModelCallback
+modelCallback f symbols = appliedTo (f symbols)
 
 -- | A model: its spec, (start system, start model), each command's (system,
 -- reference, precondition), the abstraction and the invariants, in the
@@ -6767,6 +6791,11 @@ countCalls symbols key operation matches = unsafePerformIO $ case installedFor s
     pure (SInteger "Int64" (fromIntegral (length [() | (name, arguments) <- calls, name == operation, maybe True ($ arguments) matches])))
   _ -> throwIO (ErrorCall "calls of needs a recording handler: `using recording`")
 {-# NOINLINE countCalls #-}
+
+-- | A result once its arguments are evaluated in full: a native call's
+-- arguments are checked before it runs, whether or not it reads them.
+forcing :: [Scalar] -> a -> a
+forcing values result = foldr (seq . forceScalar) result values
 
 -- | let x = e in body: e runs first, once.
 letIn :: Scalar -> (Scalar -> Scalar) -> Scalar
