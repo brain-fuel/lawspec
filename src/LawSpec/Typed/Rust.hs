@@ -94,9 +94,10 @@ emitRustTyped declarations units = do
   pairFields <- pairFieldsDoc env
   let directData = directDeclarations declarations datas
   publicDocs <- mapM (publicDoc env declarations) [d | d <- datas, idText (dataId d) `S.member` directData]
-  let body = D.text "use crate::lawspec_runtime as ls;" <> D.hardline <>
-        D.text "use ls::fast::{Dyn, POrd};" <> D.hardline <> D.hardline <>
-        D.joinWith (D.hardline <> D.hardline) (dataDocs ++ publicDocs ++ pairFields ++ functionDocs)
+  let items = dataDocs ++ publicDocs ++ pairFields ++ functionDocs
+      body = D.text "use crate::lawspec_runtime as ls;" <> D.hardline <>
+        D.text "use ls::fast::{Dyn, POrd};" <>
+        (if null items then mempty else D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) items)
       lookupFunction identity = do
         c <- definitionClass plan identity
         (modulePath ++) <$> M.lookup c functions
@@ -374,7 +375,7 @@ expression env selfCall scope e = case expressionNode e of
         values <- mapM (expression env Nothing scope . snd) changed
         temporaries <- mapM (const (fresh "next")) values
         pure (L.Block ([L.Let t v | (t, v) <- zip temporaries values] ++
-           [L.Semi (L.atom (p ++ " = " ++ t)) | ((p, _), t) <- zip changed temporaries]) (Just (L.atom "continue")))
+           [L.Semi (L.atom (p ++ " = " ++ t)) | ((p, _), t) <- zip changed temporaries] ++ [L.Semi (L.atom "continue")]) Nothing)
     | otherwise -> do
         c <- lift (maybe (Left ("typed Rust: untyped callee " ++ idText i)) Right (definitionClass (envPlan env) i))
         let name = envPrefix env ++ envFunctions env M.! c

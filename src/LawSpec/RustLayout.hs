@@ -382,7 +382,12 @@ arguments cap open close limit args =
     initial = init args
     lastArg = last args
     initialTexts = [t | Just t <- map oneLine initial]
-    overflowLast = overflowable (length args) lastArg && all (isJust . oneLine) initial
+    -- An operation overflows only outside a nested call's budget.
+    overflowLast = overflowable (length args) lastArg && all (isJust . oneLine) initial &&
+      (isNothing cap || not (isInfix lastArg))
+    isInfix x = case x of
+      Infix {} -> True
+      _ -> False
     -- The overflowing argument has what is left of the call's 60 columns,
     -- or, when the call has none, 60 columns of its own if it is a call.
     lastCap = case cap of
@@ -609,9 +614,14 @@ ifDoc c a b = case (flat (If c a b), b) of
   where
     -- A condition that breaks puts the block's brace on a line of its own.
     -- (A condition whose last line only closes brackets keeps it there.)
-    closer = case c of
-      Infix {} -> D.hardline <> D.text "{"
-      _ -> D.text " {"
+    closer = if endsOpen c then D.hardline <> D.text "{" else D.text " {"
+    endsOpen x = case x of
+      Infix {} -> True
+      Method {} -> True
+      Field {} -> True
+      Try a -> endsOpen a
+      Prefix _ a -> endsOpen a
+      _ -> False
     opened = case oneLine c of
       Just t -> oneOf [D.text ("if " ++ t ++ " {"), D.text "if " <> expr c <> closer]
       Nothing -> D.text "if " <> expr c <> closer
