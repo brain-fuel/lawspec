@@ -65,6 +65,19 @@ test_dotnetTargetsShareOneRuntime = describe ".NET generation" $ do
     unitTestPath "fsharp" "example.scalar_adapters" `shouldBe` "tests/LawSpec/ExampleScalarAdapters.fs"
     unitTestPath "csharp" "example.sample" `shouldBe` "tests/LawSpec/ExampleSample.cs"
     contentOf "tests/LawSpec/ExampleSample.cs" (generated "csharp" False sample) `shouldSatisfy` isInfixOf "public void LawSwapTwice_Property()"
+  -- ref:DEC-dotnet-readable-output
+  it "writes readable code: source names, example tests, source links and literals" $ do
+    slug <- readFile "examples/specs/slug.lawspec"
+    let build target = compileCore 64 defaultGeneration [Source "slug.lawspec" slug] >>= planTesting >>= emitPlanWithFormat False target
+        fsTests = contentOf "tests/LawSpec/ExampleSlug.fs" (build "fsharp")
+        csTests = contentOf "tests/LawSpec/ExampleSlug.cs" (build "csharp")
+    fsTests `shouldSatisfy` isInfixOf "let lawNormalizersAgree_spacesBecomeHyphensPunctuationIsPreserved () : unit ="
+    fsTests `shouldSatisfy` isInfixOf "let x = Runtime.item 0 inputs"
+    fsTests `shouldSatisfy` isInfixOf "// |normalizers agree| \8212 slug.lawspec:6"
+    fsTests `shouldSatisfy` isInfixOf "Value.Text(\"Hello, World!\")"
+    fsTests `shouldNotSatisfy` isInfixOf "textUnits"
+    csTests `shouldSatisfy` isInfixOf "public void LawNormalizersAgree_SpacesBecomeHyphensPunctuationIsPreserved()"
+    csTests `shouldSatisfy` isInfixOf "V.Text(\"Hello, World!\")"
   -- ref:DEC-native-bindings-typed-identity
   describe "native bindings" $ do
     let field key (Object value) = KM.lookup key value

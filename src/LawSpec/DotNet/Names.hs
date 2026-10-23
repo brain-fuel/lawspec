@@ -13,7 +13,7 @@ import qualified LawSpec.Core as C
 import LawSpec.DotNet.Code (Lang(..))
 import Data.Char (isAlphaNum, isAscii, isUpper, isLower, isDigit, toUpper, toLower)
 import Data.List (intercalate, nub)
-import LawSpec.Naming (claimAll, scopeWith, nameWords, cased, Casing(..))
+import LawSpec.Naming (claimAll, scopeWith, nameWords, cased, Casing(..), readableDefinitionName)
 import LawSpec.RecordNames (recordDisplayNames)
 import qualified Data.Map.Strict as M
 
@@ -93,9 +93,17 @@ escapeFSharp name
   | otherwise = name
 
 -- | A declaration's function: camelCase in F#, PascalCase in C#.
+-- A specialised copy (lawspec_count_9e2e60259d76bad2) is named from its
+-- definition and argument types (countListInt32); its identity keeps the
+-- digest. ref:DEC-readable-generated-names
 functionName :: Lang -> C.Declaration -> String
-functionName FSharp d = escapeFSharp (camelKeep (C.declarationName d))
-functionName CSharp d = pascal (C.declarationName d)
+functionName FSharp d
+  | readableName d /= C.declarationName d = escapeFSharp (camel (readableName d))
+  | otherwise = escapeFSharp (camelKeep (C.declarationName d))
+functionName CSharp d = pascal (readableName d)
+
+readableName :: C.Declaration -> String
+readableName d = readableDefinitionName (C.declarationName d) (fst (C.functionType (C.declarationType d)))
 
 -- | A declared camelCase name stays as written when it is already an F#
 -- identifier.

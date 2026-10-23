@@ -141,7 +141,7 @@ flat :: F -> Maybe String
 flat e = case e of
   A s -> Just s
   App f [] -> Just (f ++ (if methodLike f then "()" else " ()"))
-  App f [a] | needsParens a || a == A "()", methodLike f -> (f ++) <$> atom a
+  App f [a] | needsParens a || parenthesised a, methodLike f -> (f ++) <$> atom a
   App f args -> unwords . (f :) <$> mapM atom args
   Method f args -> (\as -> f ++ "(" ++ intercalate ", " as ++ ")") <$> mapM flat args
   List [] -> Just "[]"
@@ -157,13 +157,37 @@ flat e = case e of
   Cond c a b -> do
     s <- (\c' a' b' -> "if " ++ c' ++ " then " ++ a' ++ " else " ++ b') <$> flat c <*> flat a <*> flat b
     within 60 s
-  Infix o a b -> (\x y -> x ++ " " ++ o ++ " " ++ y) <$> flat a <*> flat b
+  -- Fantomas keeps an infix expression on one line up to 80 columns.
+  Infix o a b -> (\x y -> x ++ " " ++ o ++ " " ++ y) <$> flat a <*> flat b >>= within 80
   Block [] r -> flat r
   Paren x -> (\y -> "(" ++ y ++ ")") <$> flat x
   Prefix o x -> (o ++) <$> atom x
   Annotated x t -> (\y -> "(" ++ y ++ ": " ++ t ++ ")") <$> flat x
   _ -> Nothing
   where within n s = if columns s <= n then Just s else Nothing
+
+-- | Whether an argument is written in parentheses of its own: unit, a
+-- tuple, a parenthesised expression.
+parenthesised :: F -> Bool
+parenthesised a = case a of
+  A "()" -> True
+  Tuple _ -> True
+  Paren _ -> True
+  Annotated _ _ -> True
+  A s -> enclosed s
+  _ -> False
+  where
+    -- Text whose first parenthesis closes at its end.
+    enclosed s = case s of
+      '(' : _ -> go (0 :: Int) (zip [1 :: Int ..] s)
+      _ -> False
+      where
+        go _ [] = False
+        go depth ((k, c) : rest)
+          | c == '(' = go (depth + 1) rest
+          | c == ')' = if depth == 1 then k == length s else go (depth - 1) rest
+          | c == '"' = go depth (drop 1 (dropWhile ((/= '"') . snd) rest))
+          | otherwise = go depth rest
 
 -- | An argument on one line, parenthesised when it must be.
 atom :: F -> Maybe String
@@ -232,7 +256,7 @@ brokenW w i c e = case e of
     -- argument on a line of its own.
     application f args
       | not (null args), Fun ps b <- last args, Just fronts <- mapM atom (init args)
-      , let open = unwords (f : fronts ++ ["(fun " ++ ps ++ " ->"])
+      , let open = (if null fronts && methodLike f then f ++ "(fun " ++ ps ++ " ->" else unwords (f : fronts ++ ["(fun " ++ ps ++ " ->"]))
       , c + columns open <= w = closing ")" (open : bodyW (w - 1) (i + 4) b)
       | [a] <- args, needsParens a, not (isLambda a) =
           [f ++ (if methodLike f then "(" else " (")] ++ itemW w (i + 4) (unwrap a) ++ [pad i ")"]
@@ -253,18 +277,18 @@ brokenW w i c e = case e of
 -- lines, with the margin narrowed as far as that number of lines allows so
 -- the lines are balanced (Fantomas's balanceNavigationRun).
 dottedLines :: Int -> Int -> Int -> String -> [String]
-dottedLines _ c j name = case splitParts name of
+dottedLines maxColumn c j name = case splitParts name of
   receiver : parts@(_ : _) ->
     let segments = map ('.' :) parts
         widths = map columns segments
         start = c + columns receiver
         lineCount ps = 1 + length (filter id ps)
-        balance from ws' = let fewest = lineCount (fillWith pageWidth from ws')
-                               narrowestMargin = head ([m | m <- [0 .. pageWidth], lineCount (fillWith m from ws') <= fewest] ++ [pageWidth])
+        balance from ws' = let fewest = lineCount (fillWith maxColumn from ws')
+                               narrowestMargin = head ([m | m <- [0 .. maxColumn], lineCount (fillWith m from ws') <= fewest] ++ [maxColumn])
                            in fillWith narrowestMargin from ws'
         fillWith margin from ws' = snd (foldl (\(column, acc) wd -> if column + wd <= margin then (column + wd, acc ++ [False]) else (j + wd, acc ++ [True])) (from, []) ws')
         placements = case (balance start widths, widths) of
-          (True : _, w1 : later) | start + w1 <= pageWidth -> False : balance (start + w1) later
+          (True : _, w1 : later) | start + w1 <= maxColumn -> False : balance (start + w1) later
           (ps, _) -> ps
         go current [] = [current]
         go current ((segment, opens) : rest) = if opens then current : go (pad j segment) rest else go (current ++ segment) rest

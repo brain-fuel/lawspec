@@ -2,5 +2,5 @@
 <<<<<<<
 new Pairs(row);
 =======
-new Pairs(Row.NewCell(new LawSpec.Data.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f(0, row)));
+new Pairs(Row.NewCell(new LawSpec.Data.CellDetails(0, row)));
 >>>>>>>

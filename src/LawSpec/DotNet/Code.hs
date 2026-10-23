@@ -479,7 +479,7 @@ flat lang e = case e of
   Raw f c -> Just (if lang == FSharp then f else c)
   Call (Fn f c) args -> case lang of
     FSharp | null args -> Just (f ++ (if methodLike f then "()" else " ()"))
-           | [a] <- args, needsParens a || a == UnitLit, methodLike f -> (f ++) <$> atom a
+           | [a] <- args, needsParens a || a == UnitLit || isTuple a, methodLike f -> (f ++) <$> atom a
            | otherwise -> unwords . (f :) <$> mapM atom args
     CSharp -> applied c <$> mapM (flat lang) args
   Ctor (Fn f c) args -> applied (if lang == FSharp then f else c) <$> mapM (flat lang) args
@@ -507,6 +507,7 @@ flat lang e = case e of
   where
     applied name xs = name ++ "(" ++ intercalate ", " xs ++ ")"
     atom a = (\s -> if needsParens a then "(" ++ s ++ ")" else s) <$> flat lang a
+    isTuple a = case a of TupleOf (_ : _) -> True; _ -> False
 
 -- | Whether an F# argument needs parentheses.
 needsParens :: Expr -> Bool
@@ -560,16 +561,15 @@ brokenAt w FSharp i c e = case e of
   Invoke g args | Just head' <- flat FSharp g -> application i c (if needsParens g then "(" ++ head' ++ ")" else head') args
   Ctor (Fn f _) args -> commaList (f ++ "(") ")" args
   TupleOf xs -> do
-    items <- mapM (\x -> expr FSharp (c + 1) (c + 1) 1 x) xs
+    items <- mapM (\(k, x) -> (if k == 1 then id else opening (pad (c + 1) "")) <$> expr FSharp (c + 1) (c + 1) 0 x) (zip [1 :: Int ..] xs)
     let joined = concat [if k == length items then ls else closing "," ls | (k, ls) <- zip [1 :: Int ..] items]
-    pure (closing ")" (opening "(" (head' joined ++ [pad (c + 1) l | l <- drop 1 joined])))
+    pure (closing ")" (opening "(" joined))
   ListOf _ xs -> do
     items <- mapM (item (i + 4)) xs
     pure (["["] ++ concat items ++ [pad i "]"])
   Lambda ps r b -> lambdaLines FSharp i ps r b
   _ -> fallback FSharp i e
   where
-    head' ls = take 1 ls
     item j x = opening (pad j "") <$> expr FSharp j j 0 x
     commaList open close args = do
       items <- mapM (item (i + 4)) args
@@ -579,7 +579,7 @@ brokenAt w FSharp i c e = case e of
     -- line, or with each argument on a line of its own.
     application j column f args
       | not (null args), Lambda ps r b <- last args, Just fronts <- mapM atom (init args)
-      , let open = unwords (f : fronts ++ ["(" ++ lambdaOpening FSharp ps])
+      , let open = if null fronts && methodLike f then f ++ "(" ++ lambdaOpening FSharp ps else unwords (f : fronts ++ ["(" ++ lambdaOpening FSharp ps])
       , column + columns open <= w = do
           inner <- narrower (block FSharp (j + 4) r Return b)
           pure (closing ")" (open : inner))
