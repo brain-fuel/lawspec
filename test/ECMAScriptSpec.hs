@@ -61,3 +61,15 @@ test_javascriptIsLaidOutAsPrettierLaysItOut = describe "Prettier's layout" $ do
     javascriptLiteral "Hello, World!" `shouldBe` "\"Hello, World!\""
     javascriptLiteral "say \"hi\"" `shouldBe` "'say \"hi\"'"
     javascriptLiteral "line\nbreak \\ end" `shouldBe` "\"line\\nbreak \\\\ end\""
+  it "rebalances a right-nested logical chain and leaves a for update unparenthesised" $
+    printModule JavaScript
+      [ constDecl "ok" (and' (call "ls.binary" [str "<", ident "lower", ident "limit"])
+          (and' (call "ls.binary" [str ">", ident "upper", ident "lower"]) (call "ls.binary" [str "<=", ident "upper", ident "limit"])))
+      , For (Just ("let", PIdent "cell", Nothing, Just (ident "members"))) (Just (binary "!==" (ident "cell") Null))
+          (Just (Assign "=" (ident "cell") (member (ident "cell") "t"))) [] ]
+      `shouldBe` unlines
+      [ "const ok ="
+      , "  ls.binary(\"<\", lower, limit) &&"
+      , "  ls.binary(\">\", upper, lower) &&"
+      , "  ls.binary(\"<=\", upper, limit);"
+      , "for (let cell = members; cell !== null; cell = cell.t) {}" ]

@@ -186,12 +186,17 @@ typedParam n t = Param (PIdent n) (Just t) Nothing False
 notE :: Expr -> Expr
 notE = Unary "!"
 
+-- | Prettier's parser rebalances a logical operator's right-nested chain
+-- (a && (b && c)) to the left, so it prints without parentheses; these
+-- constructors build the same tree (rebalanceLogicalTree).
 binary :: String -> Expr -> Expr -> Expr
-binary = Binary
+binary op left right = case right of
+  Binary op' l r | op == op', op `elem` ["&&", "||", "??"] -> binary op (binary op left l) r
+  _ -> Binary op left right
 
 and', or' :: Expr -> Expr -> Expr
-and' = Binary "&&"
-or' = Binary "||"
+and' = binary "&&"
+or' = binary "||"
 
 constDecl, letDecl :: String -> Expr -> Stmt
 constDecl n v = VarDecl "const" (PIdent n) Nothing (Just v)
@@ -1563,6 +1568,7 @@ needsParens p e = case p of
         _ -> False
       Assign {} -> case parent of
         NS (ExprStmt _) -> False
+        NS (For {}) -> key == "test"
         NE (Assign {}) -> False
         _ -> True
       Call {} -> case parent of
