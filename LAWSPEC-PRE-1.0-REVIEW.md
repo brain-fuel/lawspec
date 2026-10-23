@@ -46,7 +46,7 @@ execution, and identifies real-provider versus fixture results.
 | 2 | CALM identity resolution and compatible real/twin bindings; Kafka/HTTP demonstrations with unchanged application laws; diagrams, infrastructure, external application deployment and optional managed applications; completed-run attestations consumed by LawSpec; refuse unresolved or incompatible bindings. | Open. |
 | 3 | Measure existing fixtures, a Cassandra prototype and real Cassandra before setting budgets. Separate downloads, readiness, reset, memory and full-stack costs. Prefer one fixture container with logical replicas, tunable consistency, replication faults and lightweight transactions; verify distributed cases against a real cluster. A single-node fallback requires measured justification and explicit reduced coverage. | Open; no numerical budget selected. |
 | 4 | LawTwin core per program target with shared black-box conformance. Finish LawSpec Prolog, HCL, YAML, ANTLR, Make and Folio targets. C/C++ remain optional for 1.0. | Open. |
-| 5 | Extend integrated Z3 numeric/data reasoning, recursive proofs, validated counterexamples, conflict/completeness and advanced temporal verification. Study primary SPARK/Why3, Lean 4, Idris 2 and Rocq sources first; record supported fragments and trust boundaries. Complete the retained demonstration portfolio below. | Integrated from `gate5-proofs` for 0.28.0 (receipt below); final owner sign-off remains open. Existing scoped solver receipts retain their meaning. |
+| 5 | Extend integrated Z3 numeric/data reasoning, recursive proofs, validated counterexamples, conflict/completeness and advanced temporal verification. Study primary SPARK/Why3, Lean 4, Idris 2 and Rocq sources first; record supported fragments and trust boundaries. Complete the retained demonstration portfolio below. | Signed off by the owner on 22 October 2026 (receipt below); integrated from `gate5-proofs` in 0.28.0. Existing scoped solver receipts retain their meaning. |
 | 6 | Architecture cleanup; API, grammar and configuration compatibility contracts; documentation and canonical review through Rice's Tax; full release and cross-project acceptance; human and external sign-off. | Open. |
 
 LawTwin's 1.0 dependency families are **Kafka, HTTP/OpenAPI and Cassandra**.
@@ -85,8 +85,10 @@ Precedents: [CALM decorators](https://calm.finos.org/core-concepts/decorators/),
 The proof work for Gate 5 (row 5 above) is integrated from `gate5-proofs`
 through `7b2fd6b7` in fourteen increments for 0.28.0, with documentation
 closeout `9260ac5f`, following the owner decisions recorded with the proposal.
-This integration does not sign off
-Gate 5 or the remaining implementation and human acceptance gates. Mandatory definition admission stays independent of optional law verification:
+The owner signed off Gate 5 on 22 October 2026, accepting the fragments,
+trust boundaries, limits and portfolio results below, and accepting the
+full-Unicode Text encoding in place of the earlier refusal above U+2FFFF.
+This sign-off does not cover the remaining implementation and human acceptance gates. Mandatory definition admission stays independent of optional law verification:
 Fourier–Motzkin stays its only engine, it never calls Z3, and it works in WASM
 and without Z3. Optional law verification stays a separate selection. Every
 `lawspec-smtlib-v1` task keeps its script and fingerprint byte for byte (a
