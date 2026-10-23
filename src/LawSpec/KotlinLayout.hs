@@ -38,13 +38,20 @@ call name values = callThen name values mempty
 -- | A call followed by what goes with it (a trailing lambda), which is
 -- indented with the call when the call breaks before its method.
 callThen :: String -> [D.Doc] -> D.Doc -> D.Doc
-callThen name values suffix = case break (== '.') (reverse name) of
+callThen = callWithSuffix True
+
+-- | As callThen; a suffix outside follows the method's indentation when the
+-- call breaks before its method (a cast), inside it is indented with it (a
+-- trailing lambda).
+callWithSuffix :: Bool -> String -> [D.Doc] -> D.Doc -> D.Doc
+callWithSuffix inside name values suffix = case break (== '.') (reverse name) of
   -- A qualified call whose opening does not fit breaks before its method,
   -- and a package's name (lawspec.runtime.Bodies.f) before each class.
   (method@(_ : _), '.' : receiver@(_ : _)) | not (null values) ->
     -- (Flat, a best fit takes the first; broken, the opening decides.)
     D.bestFit [callWith (D.text name) values <> suffix, D.prefixChoice (name ++ "(") (callWith (D.text name) values <> suffix)
-      (receiverDoc <> D.nest 4 (D.hardline <> callWith (D.text ('.' : reverse method)) values <> suffix))]
+      (if inside then receiverDoc <> D.nest 4 (D.hardline <> callWith (D.text ('.' : reverse method)) values <> suffix)
+       else receiverDoc <> D.nest 4 (D.hardline <> callWith (D.text ('.' : reverse method)) values) <> suffix)]
     where
       -- The receiver stays whole when it fits on the line.
       receiverDoc = if null classes then D.text package
@@ -190,7 +197,7 @@ qualifiedCall text
 castCall :: String -> [D.Doc] -> String -> D.Doc
 castCall name values target = D.prefixChoice ("(" ++ flat)
   (D.text "(" <> call name values <> D.group (D.nest 4 (D.softline <> D.group (D.text "as" <> D.softline <> D.text target))) <> D.text ")")
-  (D.text "(" <> callThen name values (D.group (D.nest 4 (D.softline <> D.group (D.text "as" <> D.softline <> D.text target))) <> D.text ")"))
+  (D.text "(" <> callWithSuffix False name values (D.group (D.nest 4 (D.softline <> D.group (D.text "as" <> D.softline <> D.text target))) <> D.text ")"))
   where flat = D.render D.Compact (call name values)
 
 -- | (value as T), broken before the as when it does not fit.

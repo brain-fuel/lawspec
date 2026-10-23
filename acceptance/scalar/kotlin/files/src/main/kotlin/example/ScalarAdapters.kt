@@ -18,12 +18,12 @@ object ScalarAdapters {
 
     // (Complex64 -> Complex64)
     fun echoComplex(
-        value0: lawspec.runtime.LawSpecRuntime.Complex,
-    ): lawspec.runtime.LawSpecRuntime.Complex =
-        value0
+        value0: lawspec.runtime.LawSpecRuntime.Complex
+    ): lawspec.runtime.LawSpecRuntime.Complex = value0
 
     // (Int8 -> Integer)
-    fun successor(value0: kotlin.Byte): java.math.BigInteger = java.math.BigInteger.valueOf(value0.toLong() + 1)
+    fun successor(value0: kotlin.Byte): java.math.BigInteger =
+        java.math.BigInteger.valueOf(value0.toLong() + 1)
 
     // (Int8 -> Int8)
     fun narrow(value0: kotlin.Byte): kotlin.Byte = value0
@@ -32,23 +32,23 @@ object ScalarAdapters {
     fun addDecimal(
         value0: java.math.BigDecimal,
         value1: java.math.BigDecimal,
-    ): java.math.BigDecimal =
-        value0.add(value1)
+    ): java.math.BigDecimal = value0.add(value1)
 
     // (Symbol -> (Symbol -> Bool))
     fun sameSymbol(
         value0: lawspec.runtime.LawSpecKotlin.Symbol,
         value1: lawspec.runtime.LawSpecKotlin.Symbol,
-    ): kotlin.Boolean =
-        value0 == value1
+    ): kotlin.Boolean = value0 == value1
 
     // (Utf16Text -> Utf16Text)
     fun echoRaw(value0: kotlin.String): kotlin.String = value0
 
     // (Optional (Nullable (Int8)) -> Optional (Nullable (Int8)))
     fun echoPresence(
-        value0: lawspec.runtime.LawSpecKotlin.Optional<
-            lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>>,
+        value0:
+            lawspec.runtime.LawSpecKotlin.Optional<
+                lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>
+            >
     ): lawspec.runtime.LawSpecKotlin.Optional<lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>> =
         value0
 

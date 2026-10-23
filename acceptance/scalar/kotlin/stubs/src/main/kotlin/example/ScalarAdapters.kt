@@ -45,9 +45,10 @@ object ScalarAdapters {
     // echoPresence :: (Optional (Nullable (Int8)) -> Optional (Nullable (Int8))) —
     // scalar_adapters.lawspec:12
     fun echoPresence(
-        value0: lawspec.runtime.LawSpecKotlin.Optional<
-            lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>
-        >
+        value0:
+            lawspec.runtime.LawSpecKotlin.Optional<
+                lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>
+            >
     ): lawspec.runtime.LawSpecKotlin.Optional<lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>> =
         TODO("echoPresence")
 

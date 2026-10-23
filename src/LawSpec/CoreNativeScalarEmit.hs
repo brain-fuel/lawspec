@@ -330,7 +330,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       let (args,result) = functionType t
           typeDoc = java . KotlinData.kotlinDataTypeDoc dataDeclarations
           arguments = [Doc.text (handlerParameter ability ++ ": " ++ ktInterface ability) | ability <- usesOf n] ++
-            [Doc.text ("value" ++ show i ++ ": ") <> typeDoc ty |
+            [Doc.group (Doc.text ("value" ++ show i ++ ":") <> Doc.nest 4 (Doc.softline <> typeDoc ty)) |
             (i,ty) <- zip [0::Int ..] args]
           signature = KotlinLayout.callWith (Doc.text ((if n `elem` asyncFunctions u then "suspend fun " else "fun ") ++ n)) arguments <>
             Doc.text ": " <> (if towerResult result then Doc.text (stubResult result) else Doc.text (Doc.render Doc.Compact (typeDoc result)))

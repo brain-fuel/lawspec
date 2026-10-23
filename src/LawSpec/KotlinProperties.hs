@@ -269,10 +269,15 @@ emitTests Config{..} unit laws = do
         pure (harness "suchThat" [supplier doc,
           text "java.util.function.Predicate<LawSpecRuntime.Value> " <> L.lambda [localName (C.binderId binder)] [truth (expr predicate)],
           number limit, quoted strategy])
-      C.DrawBind binder from rest -> do
-        fromDoc <- drawDoc inp strategy from
-        restDoc <- drawDoc inp strategy rest
-        pure (L.trailing (text "run") [] [bind (localName (C.binderId binder)) fromDoc, restDoc])
+      C.DrawBind _ _ _ -> do
+        -- A chain of draws is one block of bindings, not a block per draw.
+        let chained d' = case d' of
+              C.DrawBind binder from rest -> let (bs, final) = chained rest in ((binder, from) : bs, final)
+              _ -> ([], d')
+            (binds, final) = chained d
+        bound <- mapM (\(binder, from) -> bind (localName (C.binderId binder)) <$> drawDoc inp strategy from) binds
+        finalDoc <- drawDoc inp strategy final
+        pure (L.trailing (text "run") [] (bound ++ [finalDoc]))
     expr = expression
     -- An assertion names its law and case and points at the source line of
     -- what it checks; the expectation itself is in the law's comment.
