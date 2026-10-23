@@ -291,7 +291,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           block (statements [Doc.text "let native_result = self.inner." <> Doc.text op <> Doc.delimitTrailing 4 "(" ")" converted <> Doc.text ";", back]))
       pure (Doc.text ("/// The bound production handler of " ++ abilityName a ++ ", " ++ native ++ ", as the generated trait.") <> Doc.hardline <>
         Doc.text ("pub struct " ++ name ++ " ") <> block (Doc.text ("inner: " ++ native ++ ",")) <> Doc.hardline <> Doc.hardline <>
-        Doc.text ("pub fn " ++ function ++ "() -> " ++ name ++ " ") <> block (Doc.text (name ++ " { inner: Default::default() }")) <> Doc.hardline <> Doc.hardline <>
+        RL.function ("pub fn " ++ function) [] name (RL.expr (RL.struct name [("inner", RL.call "Default::default" [])])) <> Doc.hardline <> Doc.hardline <>
         Doc.text ("impl crate::" ++ Abilities.traitPath allUnits (abilityInstance a) ++ " for " ++ name ++ " ") <>
         block (Doc.joinWith (Doc.hardline <> Doc.hardline) methods))
     allUnits = map plannedUnit plannedUnits

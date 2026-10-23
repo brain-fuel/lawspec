@@ -210,7 +210,11 @@ dataDoc env d = do
     let node = name ++ "Node"
         patternOf prefix' c = node ++ "::" ++ variantName c ++ (if null (constructorFields c) then "" else
           "(" ++ intercalate ", " [prefix' ++ show k | k <- [0 .. length (constructorFields c) - 1]] ++ ")")
-        compareArm c = arm ("(" ++ patternOf "a" c ++ ", " ++ patternOf "b" c ++ ")")
+        -- The pair of patterns is on one line when the arm's line has room.
+        pairPattern c = let flatPair = "(" ++ patternOf "a" c ++ ", " ++ patternOf "b" c ++ ")" in L.Laid (D.fitsIndented 0 (length flatPair + 3)
+          (D.text flatPair)
+          (D.text "(" <> D.nest 4 (D.hardline <> D.text (patternOf "a" c ++ ",") <> D.hardline <> D.text (patternOf "b" c ++ ",")) <> D.hardline <> D.text ")"))
+        compareArm c = ArmOf (pairPattern c) Nothing
           (if null (constructorFields c) then L.atom "std::cmp::Ordering::Equal" else
             foldl1 (\acc x -> L.method acc "then_with" [L.closure "||" x])
               [L.method (L.atom ("a" ++ show k)) "pcmp" [L.atom ("b" ++ show k)] | k <- [0 .. length (constructorFields c) - 1]])
