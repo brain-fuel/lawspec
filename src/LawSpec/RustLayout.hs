@@ -587,7 +587,7 @@ stmt s = case s of
         sameValue = D.text " " <> value
         nextValue = D.nest 4 (D.hardline <> value)
     in if shallow e
-      then head' <> D.prefer D.NextLineValue sameValue nextValue sameValue nextValue
+      then head' <> D.prefer (D.NextLineValue (isChain e)) sameValue nextValue sameValue nextValue
       else head' <> sameValue
 
 ifDoc :: Expr -> Expr -> Maybe Expr -> D.Doc

@@ -42,12 +42,13 @@ data Doc
   | Prefer Preference Doc Doc Doc Doc
   | Narrow Int Doc
   | FitsIndentedTwice Int Doc Doc
+  | StopHere
   deriving (Eq, Show)
 
 -- | How rustfmt chooses between a right-hand side on the same line and on
 -- the next: for a let's value, and for a match arm's body (which stays on
 -- the arm's line when it can be extended there).
-data Preference = NextLineValue | ArmBody Bool | ChainLast (Maybe Int) deriving (Eq, Show)
+data Preference = NextLineValue Bool | ArmBody Bool | ChainLast (Maybe Int) deriving (Eq, Show)
 
 -- | Compact removes optional layout only. Mandatory newlines and nesting remain
 -- meaningful for Python, Haskell, Go, line comments, and preprocessor directives.
@@ -456,6 +457,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
     layoutWork _ [] = ""
     layoutWork column ((indentation, mode, margin, current):rest) = case current of
       Empty -> layoutWork column rest
+      StopHere -> ""
       Text s -> s ++ layoutWork (lastColumnWith measure column s) rest
       Utf8Text s -> s ++ layoutWork (lastColumnWith utf8Length column s) rest
       Append a b -> layoutWork column ((indentation, mode, margin, a):(indentation, mode, margin, b):rest)
@@ -504,7 +506,9 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
         CompactTabs -> layoutWork column ((indentation, mode, margin, a):rest)
         _ -> layoutWork column ((indentation, mode, max 1 (margin - n), a):rest)
       Prefer preference sameValue nextValue sameLayout nextLayout ->
-        let standalone d = layoutWork column [(indentation, Broken, margin, d)]
+        -- Each value laid out on its own, but with what follows it on the
+        -- line in view, as rustfmt measures it.
+        let standalone d = layoutWork column ((indentation, Broken, margin, d) : (indentation, Broken, margin, StopHere) : rest)
             sameText = standalone sameValue
             nextText = dropWhile (== '\n') (standalone nextValue)
             linesOf t = lines t
@@ -525,11 +529,11 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
               Compact -> sameLayout
               CompactTabs -> sameLayout
               _ -> case preference of
-                -- rustfmt keeps a column back for a value moved to the
+                -- rustfmt keeps a column back for a chain moved to the
                 -- next line.
-                NextLineValue
+                NextLineValue chained
                   | '\n' `notElem` sameText && sameFits -> sameLayout
-                  | nextFitsNarrow && (not sameFits || preferNext) -> nextLayout
+                  | (if chained then nextFitsNarrow else nextFits) && (not sameFits || preferNext) -> nextLayout
                   | otherwise -> sameLayout
                 -- A chain's last call stays on the chain's line when its
                 -- first line fits (within the chain's budget) and it then
@@ -538,7 +542,9 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
                   let firstWidth = case linesOf sameText of
                         l : _ -> measure l
                         [] -> 0
-                      couldFit = column + firstWidth <= margin && maybe True (firstWidth <=) budget
+                      -- The first line fits with what follows it on the line.
+                      couldFit = (if '\n' `elem` sameText then column + firstWidth <= margin
+                                  else fits column ((indentation, Broken, margin, Text sameText):rest)) && maybe True (firstWidth <=) budget
                       sameLines = length (linesOf sameText)
                       nextLines = length (linesOf nextText)
                   in if couldFit && sameLines >= 5 then sameLayout
@@ -621,6 +627,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
     fits column ((_, _, margin, _):_) | column > margin = False
     fits column ((indentation, mode, margin, current):rest) = case current of
       Empty -> fits column rest
+      StopHere -> fits column rest
       Text s -> case break (== '\n') s of
         (prefix, []) -> column + measure prefix <= margin && fits (column + measure prefix) rest
         (prefix, _) -> column + measure prefix <= margin
@@ -687,6 +694,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
           FitsIndented _ _ first second -> line flat first && line flat second
           Prefer _ _ _ first second -> line flat first && line flat second
           Narrow _ a -> line flat a
+          StopHere -> True
           FitsIndentedTwice _ first second -> line flat first && line flat second
           Operation operands operators -> line flat (parenthesised (operationBody operands operators))
           Prefixed _ operand -> line flat operand
