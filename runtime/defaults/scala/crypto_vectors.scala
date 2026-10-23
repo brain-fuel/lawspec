@@ -3,58 +3,97 @@ package lawspec
 
 import org.scalatest.funsuite.AnyFunSuite
 
-/**
- * Known-answer tests of lawspec.crypto's default handlers, against NIST's
- * vectors (see docs/reference/language/cryptography.md for the sources).
- */
+/** Known-answer tests of lawspec.crypto's default handlers, against NIST's
+  * vectors (see docs/reference/language/cryptography.md for the sources).
+  */
 class CryptoVectorsTest extends AnyFunSuite {
   private val lines = Array(
-@@VECTOR_LINES@@
+    @@ VECTOR_LINES @@
   )
 
   private def vectors(kind: String): List[List[String]] = {
-    val found = lines.toList.map(_.trim.split("\\s+").toList)
+    val found = lines.toList
+      .map(_.trim.split("\\s+").toList)
       .filter(_.head == kind)
-      .map(fields => fields.drop(1).map(field => if (field == "-") "" else field))
+      .map(fields =>
+        fields.drop(1).map(field => if (field == "-") "" else field)
+      )
     require(found.nonEmpty, kind)
     found
   }
 
-  private def unhex(text: String): Array[Byte] = java.util.HexFormat.of().parseHex(text)
-  private def hex(data: Array[Byte]): String = java.util.HexFormat.of().formatHex(data)
+  private def unhex(text: String): Array[Byte] =
+    java.util.HexFormat.of().parseHex(text)
+  private def hex(data: Array[Byte]): String =
+    java.util.HexFormat.of().formatHex(data)
   private def sha3(data: Array[Byte]): String = hex(Crypto.sha3_256(data))
   private def flipped(data: Array[Byte]): Array[Byte] = {
     val copy = data.clone()
     copy(0) = (copy(0) ^ 1).toByte
     copy
   }
-  private def expect(condition: Boolean, what: String): Unit = assert(condition, what)
+  private def expect(condition: Boolean, what: String): Unit =
+    assert(condition, what)
 
   test("SHA3-256") {
-    for (v <- vectors("sha3-256")) expect(hex(Crypto.sha3_256(unhex(v(0)))) == v(1), s"SHA3-256 ${v(0)}")
+    for (v <- vectors("sha3-256"))
+      expect(hex(Crypto.sha3_256(unhex(v(0)))) == v(1), s"SHA3-256 ${v(0)}")
   }
 
   test("SHAKE256") {
-    for (v <- vectors("shake256")) expect(hex(Crypto.shake256(unhex(v(0)), v(1).toInt)) == v(2), s"SHAKE256 ${v(0)}")
+    for (v <- vectors("shake256"))
+      expect(
+        hex(Crypto.shake256(unhex(v(0)), v(1).toInt)) == v(2),
+        s"SHAKE256 ${v(0)}"
+      )
   }
 
   test("AES-256-GCM") {
     for (v <- vectors("aes-256-gcm")) {
-      val boxed = Crypto.aes256GcmEncrypt(unhex(v(0)), unhex(v(1)), unhex(v(2)), unhex(v(3)))
+      val boxed = Crypto.aes256GcmEncrypt(
+        unhex(v(0)),
+        unhex(v(1)),
+        unhex(v(2)),
+        unhex(v(3))
+      )
       expect(hex(boxed) == v(4) + v(5), "AES-256-GCM encryption")
-      expect(Crypto.aes256GcmDecrypt(unhex(v(0)), unhex(v(1)), boxed, unhex(v(3))).map(hex).contains(v(2)), "AES-256-GCM decryption")
-      expect(Crypto.aes256GcmDecrypt(unhex(v(0)), unhex(v(1)), flipped(boxed), unhex(v(3))).isEmpty, "AES-256-GCM tampering")
+      expect(
+        Crypto
+          .aes256GcmDecrypt(unhex(v(0)), unhex(v(1)), boxed, unhex(v(3)))
+          .map(hex)
+          .contains(v(2)),
+        "AES-256-GCM decryption"
+      )
+      expect(
+        Crypto
+          .aes256GcmDecrypt(
+            unhex(v(0)),
+            unhex(v(1)),
+            flipped(boxed),
+            unhex(v(3))
+          )
+          .isEmpty,
+        "AES-256-GCM tampering"
+      )
     }
   }
 
   test("ML-KEM-768 key generation") {
-    for (v <- vectors("mlkem768-keygen")) expect(sha3(Crypto.mlKem768PublicKey(unhex(v(0) + v(1)))) == v(2), "ML-KEM-768 key")
+    for (v <- vectors("mlkem768-keygen"))
+      expect(
+        sha3(Crypto.mlKem768PublicKey(unhex(v(0) + v(1)))) == v(2),
+        "ML-KEM-768 key"
+      )
   }
 
   test("ML-KEM-768 encapsulation") {
     for (v <- vectors("mlkem768-encaps")) {
-      val (ciphertext, secret) = Crypto.mlKem768Encapsulate(unhex(v(0)), Crypto.Seeded(unhex(v(1))))
-      expect(hex(ciphertext) == v(2) && hex(secret) == v(3), "ML-KEM-768 encapsulation")
+      val (ciphertext, secret) =
+        Crypto.mlKem768Encapsulate(unhex(v(0)), Crypto.Seeded(unhex(v(1))))
+      expect(
+        hex(ciphertext) == v(2) && hex(secret) == v(3),
+        "ML-KEM-768 encapsulation"
+      )
     }
   }
 
@@ -62,58 +101,123 @@ class CryptoVectorsTest extends AnyFunSuite {
     for (v <- vectors("mlkem768-decaps")) {
       // A PKCS#8 key holding the expanded decapsulation key.
       val key = unhex(v(0))
-      val body = unhex("020100300b06096086480165030404020482" + "%04x".format(key.length + 4) + "0482" + "%04x".format(key.length)) ++ key
+      val body = unhex(
+        "020100300b06096086480165030404020482" + "%04x".format(
+          key.length + 4
+        ) + "0482" + "%04x".format(key.length)
+      ) ++ key
       val pkcs8 = unhex("3082" + "%04x".format(body.length)) ++ body
-      val privateKey = java.security.KeyFactory.getInstance("ML-KEM").generatePrivate(java.security.spec.PKCS8EncodedKeySpec(pkcs8))
-      expect(hex(Crypto.mlKem768Decapsulate(privateKey, unhex(v(1)))) == v(2), "ML-KEM-768 decapsulation")
+      val privateKey = java.security.KeyFactory
+        .getInstance("ML-KEM")
+        .generatePrivate(java.security.spec.PKCS8EncodedKeySpec(pkcs8))
+      expect(
+        hex(Crypto.mlKem768Decapsulate(privateKey, unhex(v(1)))) == v(2),
+        "ML-KEM-768 decapsulation"
+      )
     }
     for (v <- vectors("mlkem768-decaps-seed")) {
-      expect(hex(Crypto.mlKem768Decapsulate(unhex(v(0)), unhex(v(1)))) == v(2), "ML-KEM-768 decapsulation from a seed")
+      expect(
+        hex(Crypto.mlKem768Decapsulate(unhex(v(0)), unhex(v(1)))) == v(2),
+        "ML-KEM-768 decapsulation from a seed"
+      )
     }
   }
 
   test("ML-DSA-65 key generation") {
-    for (v <- vectors("mldsa65-keygen")) expect(sha3(Crypto.mlDsa65PublicKey(unhex(v(0)))) == v(1), "ML-DSA-65 key")
+    for (v <- vectors("mldsa65-keygen"))
+      expect(
+        sha3(Crypto.mlDsa65PublicKey(unhex(v(0)))) == v(1),
+        "ML-DSA-65 key"
+      )
   }
 
   // The JDK's ML-DSA takes no context strings; Bouncy Castle's verifies the
   // vectors that have one.
   test("ML-DSA-65 verification") {
     for (v <- vectors("mldsa65-verify")) {
-      expect(Crypto.mlDsa65Verify(unhex(v(0)), unhex(v(1)), unhex(v(3)), unhex(v(2))) == (v(4) == "true"), "ML-DSA-65 verification")
+      expect(
+        Crypto.mlDsa65Verify(
+          unhex(v(0)),
+          unhex(v(1)),
+          unhex(v(3)),
+          unhex(v(2))
+        ) == (v(4) == "true"),
+        "ML-DSA-65 verification"
+      )
     }
   }
 
   test("ML-DSA-65 deterministic signature") {
     for (v <- vectors("mldsa65-sign-seed")) {
-      expect(hex(Crypto.mlDsa65Sign(unhex(v(0)), unhex(v(1)), true)) == v(2), "ML-DSA-65 deterministic signature")
+      expect(
+        hex(Crypto.mlDsa65Sign(unhex(v(0)), unhex(v(1)), true)) == v(2),
+        "ML-DSA-65 deterministic signature"
+      )
       val publicKey = Crypto.mlDsa65PublicKey(unhex(v(0)))
-      expect(Crypto.mlDsa65Verify(publicKey, unhex(v(1)), unhex(v(2))), "ML-DSA-65 verifies its signature")
-      expect(!Crypto.mlDsa65Verify(publicKey, flipped(unhex(v(1))), unhex(v(2))), "ML-DSA-65 rejects a changed message")
+      expect(
+        Crypto.mlDsa65Verify(publicKey, unhex(v(1)), unhex(v(2))),
+        "ML-DSA-65 verifies its signature"
+      )
+      expect(
+        !Crypto.mlDsa65Verify(publicKey, flipped(unhex(v(1))), unhex(v(2))),
+        "ML-DSA-65 rejects a changed message"
+      )
     }
   }
 
   test("SLH-DSA-SHAKE-128f key generation") {
     for (v <- vectors("slhdsa128f-keygen")) {
-      val (publicKey, secretKey) = Crypto.slhDsaKeyPair(unhex(v(0)), unhex(v(1)), unhex(v(2)))
-      expect(hex(publicKey) == v(3) && sha3(secretKey) == v(4), "SLH-DSA key generation")
+      val (publicKey, secretKey) =
+        Crypto.slhDsaKeyPair(unhex(v(0)), unhex(v(1)), unhex(v(2)))
+      expect(
+        hex(publicKey) == v(3) && sha3(secretKey) == v(4),
+        "SLH-DSA key generation"
+      )
     }
   }
 
   test("SLH-DSA-SHAKE-128f verification") {
     for (v <- vectors("slhdsa128f-verify")) {
-      expect(Crypto.slhDsaVerify(unhex(v(0)), unhex(v(1)), unhex(v(3)), unhex(v(2))) == (v(4) == "true"), "SLH-DSA verification")
-      expect(!Crypto.slhDsaVerify(unhex(v(0)), flipped(unhex(v(1))), unhex(v(3)), unhex(v(2))), "SLH-DSA rejects a changed message")
+      expect(
+        Crypto.slhDsaVerify(
+          unhex(v(0)),
+          unhex(v(1)),
+          unhex(v(3)),
+          unhex(v(2))
+        ) == (v(4) == "true"),
+        "SLH-DSA verification"
+      )
+      expect(
+        !Crypto.slhDsaVerify(
+          unhex(v(0)),
+          flipped(unhex(v(1))),
+          unhex(v(3)),
+          unhex(v(2))
+        ),
+        "SLH-DSA rejects a changed message"
+      )
     }
   }
 
   test("SLH-DSA-SHAKE-128f round trip") {
     for (v <- vectors("slhdsa128f-keygen")) {
-      val (publicKey, secretKey) = Crypto.slhDsaKeyPair(unhex(v(0)), unhex(v(1)), unhex(v(2)))
+      val (publicKey, secretKey) =
+        Crypto.slhDsaKeyPair(unhex(v(0)), unhex(v(1)), unhex(v(2)))
       val message = "LawSpec".getBytes(java.nio.charset.StandardCharsets.UTF_8)
       val signature = Crypto.slhDsaSign(secretKey, message, new Array[Byte](0))
-      expect(Crypto.slhDsaVerify(publicKey, message, signature, new Array[Byte](0)), "SLH-DSA round trip")
-      expect(!Crypto.slhDsaVerify(publicKey, flipped(message), signature, new Array[Byte](0)), "SLH-DSA rejects a changed message")
+      expect(
+        Crypto.slhDsaVerify(publicKey, message, signature, new Array[Byte](0)),
+        "SLH-DSA round trip"
+      )
+      expect(
+        !Crypto.slhDsaVerify(
+          publicKey,
+          flipped(message),
+          signature,
+          new Array[Byte](0)
+        ),
+        "SLH-DSA rejects a changed message"
+      )
     }
   }
 }

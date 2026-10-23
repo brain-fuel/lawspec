@@ -9,7 +9,9 @@ object Host {
     class FileSystemHandler : lawspec.abilities.lawspec.Host.FileSystem {
         override fun readBytes(value0: kotlin.String): LawSpecRuntime.Maybe<kotlin.ByteArray> =
             try {
-                LawSpecRuntime.Present(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0)))
+                LawSpecRuntime.Present(
+                    java.nio.file.Files.readAllBytes(java.nio.file.Path.of(value0))
+                )
             } catch (failed: java.io.IOException) {
                 LawSpecRuntime.Absent()
             } catch (failed: RuntimeException) {
@@ -22,7 +24,10 @@ object Host {
 
         override fun pathExists(value0: kotlin.String): kotlin.Boolean =
             try {
-                java.nio.file.Files.exists(java.nio.file.Path.of(value0), java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                java.nio.file.Files.exists(
+                    java.nio.file.Path.of(value0),
+                    java.nio.file.LinkOption.NOFOLLOW_LINKS,
+                )
             } catch (failed: RuntimeException) {
                 false
             }
@@ -47,12 +52,15 @@ object Host {
 
     /** The process's environment. */
     class EnvironmentHandler : lawspec.abilities.lawspec.Host.Environment {
-        override fun environmentVariable(value0: kotlin.String): LawSpecRuntime.Maybe<kotlin.String> {
+        override fun environmentVariable(
+            value0: kotlin.String
+        ): LawSpecRuntime.Maybe<kotlin.String> {
             val value = if (validName(value0)) java.lang.System.getenv(value0) else null
             return if (value == null) LawSpecRuntime.Absent() else LawSpecRuntime.Present(value)
         }
 
-        override fun environmentSnapshot(): kotlin.String = LawSpecRuntime.acquireResource("environment")
+        override fun environmentSnapshot(): kotlin.String =
+            LawSpecRuntime.acquireResource("environment")
 
         override fun restoreEnvironment(value0: kotlin.String) {
             LawSpecRuntime.releaseResource("environment", value0)
@@ -62,6 +70,8 @@ object Host {
     /** A TCP port on 127.0.0.1 the operating system reports free. */
     class PortsHandler : lawspec.abilities.lawspec.Host.Ports {
         override fun freePort(): kotlin.Int =
-            java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress()).use { it.localPort }
+            java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress()).use {
+                it.localPort
+            }
     }
 }
