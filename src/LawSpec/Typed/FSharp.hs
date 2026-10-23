@@ -227,9 +227,9 @@ cexpr env scope e = case expressionNode e of
     -- A record is bound to a local named for its type, so it is never an
     -- operand spanning lines.
     case (x, M.lookup tag (envConstructors env)) of
-      (Record _, Just (d, _)) -> do
+      (Annotated record@(Record _) typeText, Just (d, _)) -> do
         t <- fresh (dataNameOf env d)
-        pure (concatMap fst parts ++ [LetS ("let " ++ t) x], A t)
+        pure (concatMap fst parts ++ [LetS ("let " ++ t ++ ": " ++ typeText) record], A t)
       _ -> pure (concatMap fst parts, x)
   ExternalCall i args
     | Just intrinsic <- M.lookup i (typedIntrinsics (envPlan env)) -> do
@@ -504,9 +504,9 @@ construct env ty tag values = case (idText tag, values) of
   _ -> case M.lookup tag (envConstructors env) of
     Just (d, c) -> do
       let typeRef = constructorTypeRef env d
-          qualified = "LawSpec.Data." ++ dataNameOf env d
+      typeText <- lift' (nativeType env ty)
       pure $ if isRecord d
-        then Record [((if k == 0 then qualified ++ "." else "") ++ pascal (binderName b), v) | (k, b, v) <- zip3 [0 :: Int ..] (constructorFields c) values]
+        then Annotated (Record [(pascal (binderName b), v) | (b, v) <- zip (constructorFields c) values]) typeText
         else if null values then A (typeRef ++ "." ++ pascal (constructorName c))
         else Method (typeRef ++ "." ++ pascal (constructorName c)) values
     Nothing -> lift' (Left ("typed F#: unknown constructor " ++ idText tag))
