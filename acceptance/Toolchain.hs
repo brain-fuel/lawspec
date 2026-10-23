@@ -20,7 +20,8 @@ data Toolchain = Toolchain
 -- | A target's canonical formatter in check mode, run on the generated
 -- sources of a project: generated code must be a fixed point of it. The
 -- version is pinned where the formatter is installed (ruff in
--- test/locks/python.txt), which is part of the acceptance cache key.
+-- test/locks/python.txt, Go's release in test/locks/go/gofmt.txt), which is
+-- part of the acceptance cache key.
 -- ref:DEC-readable-output-default
 data Formatter = Formatter
   { formatterName :: String
@@ -40,6 +41,18 @@ formatter target = do
       pure (Just (Formatter "ruff format" python
         (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
+    -- gofmt comes with Go, so the Go release is the pin: the one named in
+    -- test/locks/go/gofmt.txt, or the step fails before checking anything.
+    -- gofmt -d exits non-zero when any file would change.
+    "go" -> do
+      let lock = root </> "test/locks/go/gofmt.txt"
+          script = unlines
+            [ "want=$(tr -d '[:space:]' < \"$1\")"
+            , "have=$(go env GOVERSION) || exit 2"
+            , "if [ \"$have\" != \"$want\" ]; then echo \"gofmt is pinned to $want; found $have\"; exit 2; fi"
+            , "exec \"$(go env GOROOT)/bin/gofmt\" -d \"$2\"" ]
+      pure (Just (Formatter "gofmt" "sh" (\dir -> ["-c", script, "gofmt-check", lock, dir]) [".go"]
+        ["test/locks/go/gofmt.txt"]))
     _ -> pure Nothing
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
