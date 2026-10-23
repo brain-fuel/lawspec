@@ -324,10 +324,10 @@ dataDoc env d = do
       line ("var " ++ name ++ "Ranks = [...]int{" ++ intercalate ", " (map (show . rank) variants) ++ "}")
     else if isProductType d
     then line ("type " ++ name ++ generics ++ " struct ") <> structOf (firstOf fieldTypes) (firstOf variants)
-    else line ("type " ++ name ++ generics ++ " interface ") <> D.block 8 (line ("lsfTag" ++ name ++ "() int")) <> D.hardline <> D.hardline <>
+    else line ("type " ++ name ++ generics ++ " interface ") <> D.block 8 (line (tagMethod name ++ "() int")) <> D.hardline <> D.hardline <>
       D.joinWith (D.hardline <> D.hardline)
         [ (if null ts then line ("type " ++ variantType env d c ++ generics ++ " struct{}") else line ("type " ++ variantType env d c ++ generics ++ " struct ") <> structOf ts c) <> D.hardline <> D.hardline <>
-          line ("func (*" ++ variantType env d c ++ applied ++ ") lsfTag" ++ name ++ "() int ") <> block [line ("return " ++ show k)]
+          line ("func (*" ++ variantType env d c ++ applied ++ ") " ++ tagMethod name ++ "() int ") <> block [line ("return " ++ show k)]
         | (k, (c, ts)) <- zip [0 :: Int ..] (zip variants fieldTypes) ] <> D.hardline <> D.hardline <>
       line ("var " ++ name ++ "Ranks = [...]int{" ++ intercalate ", " (map (show . rank) variants) ++ "}")
 
@@ -612,8 +612,15 @@ cexpr env scope e = case expressionNode e of
       (sb, xb) <- cexpr env scope b
       pure (sa ++ sb, D.text (f ++ "(") <> xa <> D.text ", " <> xb <> D.text ")")
 
+-- | A sum's tag method: lsfTagPayment for lsfPayment.
+tagMethod :: String -> String
+tagMethod name = "lsfTag" ++ maybe name id (stripPrefix "lsf" name)
+
+-- | Parentheses, never doubled (gofmt prints ((x)) as (x)).
 paren :: D.Doc -> D.Doc
-paren x = D.text "(" <> x <> D.text ")"
+paren x
+  | E.parenthesised x = x
+  | otherwise = D.text "(" <> x <> D.text ")"
 
 goQuote :: String -> String
 goQuote s = "\"" ++ concatMap escape s ++ "\""
@@ -1016,7 +1023,7 @@ ordering env ty = case ty of
                          [D.text ("y := b.(*" ++ variantType env d c ++ generic ++ ")") | not (null (constructorFields c))] ++ fieldsOf "x." "y." c cs)
                      | (c, cs) <- zip (dataConstructors d) comparisons ]
               used = any (not . null . constructorFields) (dataConstructors d)
-          pure [ ifThen ("ta, tb := a.lsfTag" ++ name ++ "(), b.lsfTag" ++ name ++ "(); ta != tb") [D.text ("return lsfCmpInt64(int64(" ++ name ++ "Ranks[ta]), int64(" ++ name ++ "Ranks[tb]))")]
+          pure [ ifThen ("ta, tb := a." ++ tagMethod name ++ "(), b." ++ tagMethod name ++ "(); ta != tb") [D.text ("return lsfCmpInt64(int64(" ++ name ++ "Ranks[ta]), int64(" ++ name ++ "Ranks[tb]))")]
                , switchOf (if used then "x := a.(type)" else "a.(type)") arms
                , D.text "return 0" ]
   _ -> lift' (Left ("typed Go: no order for " ++ show ty))

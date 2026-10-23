@@ -8,6 +8,7 @@ import LawSpec.TestNames (unitTestNames, lawWords)
 import LawSpec.Naming (exampleTestSuffix, boundaryTestSuffix, displayLabel, cased, Casing(..))
 import LawSpec.SourceLink (labelled, locationLink, exampleLocation, originLocation, unitSourceFile)
 import LawSpec.Testing
+import LawSpec.Scalar (scalarName)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
@@ -252,9 +253,10 @@ emitTests Config{..} unit laws = do
       in text ("func _lawspec_call_" ++ contractName c ++ "(" ++ params ++ ") LawSpecValue ") <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),returned (text rn)])
-    -- Text and characters are written as Go literals, which are always valid.
+    -- Text, characters, booleans and unbounded integers are always valid as
+    -- written.
     checkedLiteral ty value doc = case value of
-      V.ScalarValue _ | ty `elem` [C.scalarType "Text", C.scalarType "Char"] -> doc
+      V.ScalarValue scalar | ty `elem` map C.scalarType ["Text", "Char", "Bool", "Integer", "BigInt"], C.scalarType (scalarName scalar) == ty -> doc
       _ -> checked ty doc
     law testNames (index,e) = do
       let label = owner e ++ "::" ++ name e

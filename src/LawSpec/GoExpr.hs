@@ -1,7 +1,7 @@
 -- | Go expression documents for checked Core, shared by definitions and properties.
 module LawSpec.GoExpr
   ( renderExpression, renderExpressionWithContext, scalarLiteral, textLiteral, call, array, quoted, runeLiteral
-  , declare, identifiers, generatedHeader, goHeaderDoc, condition, keyed, funcLiteral
+  , declare, identifiers, generatedHeader, goHeaderDoc, condition, keyed, funcLiteral, parenthesised
   ) where
 
 import LawSpec.Core
@@ -63,6 +63,28 @@ declare ((name, value, droppable) : others) rest
   where
     later = declare others rest
     defined = D.text (name ++ " := ") <> value
+
+-- | Whether an expression is already wrapped in one pair of parentheses:
+-- gofmt prints ((x)) as (x).
+parenthesised :: D.Doc -> Bool
+parenthesised doc = let rendered = D.render D.Compact doc in '\n' `notElem` rendered && wholly rendered
+  where
+    wholly ('(' : rest) = closes (0 :: Int) rest
+    wholly _ = False
+    closes depth text' = case text' of
+      [] -> False
+      '"' : more -> closes depth (skip '"' more)
+      '\'' : more -> closes depth (skip '\'' more)
+      '(' : more -> closes (depth + 1) more
+      ")" | depth == 0 -> True
+      ')' : more | depth == 0 -> False
+                 | otherwise -> closes (depth - 1) more
+      _ : more -> closes depth more
+    skip q text' = case text' of
+      [] -> []
+      '\\' : _ : more -> skip q more
+      c : more | c == q -> more
+               | otherwise -> skip q more
 
 -- | An if statement's condition as gofmt writes it: without parentheses
 -- around the whole, unless a composite literal of a named type inside needs
@@ -256,6 +278,9 @@ renderExpressionWithContext declarations width schema ref key local external = r
       -- Text and characters are always valid as written.
       Constant value@(SSequence "Text" _) | expressionType term == scalarType "Text" -> scalarLiteral (expressionType term) value
       Constant value@(SCharacter "Char" _) | expressionType term == scalarType "Char" -> scalarLiteral (expressionType term) value
+      -- So are booleans and unbounded integers.
+      Constant value@(SBool _) | expressionType term == scalarType "Bool" -> scalarLiteral (expressionType term) value
+      Constant value@(SInteger name _) | name `elem` ["Integer", "BigInt"], expressionType term == scalarType name -> scalarLiteral (expressionType term) value
       Constant value -> scalarLiteral (expressionType term) value >>= checked (expressionType term)
       Construct tag args -> do
         values <- mapM render args
