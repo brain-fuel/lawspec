@@ -227,7 +227,7 @@ application keeps it without naming it).
 The typed functions a handler's clauses call, and its start, are named from
 the definitions and the handler: a function's name is its definition's name,
 with a suffix only when two would otherwise share one, so an unrelated edit
-of the contract does not rename them. (Python has these names from 0.30; the
+of the contract does not rename them. (Python and Go have these names from 0.30; the
 other targets keep a digest suffix until their readable-output release.) Generation depends only on the program: the compiler's cache
 is kept per compiler build, so a compiler rebuilt in place never reuses what
 another build made (`lawspec-dev bench kafka --deterministic` generates the
