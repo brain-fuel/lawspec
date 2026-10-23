@@ -73,7 +73,7 @@ with types:
 
 Definition entry points are strictly typed. For
 `function increment (x :: Int8) -> Integer is x + 1 end function`, the entry point
-takes `symbols: Map<string, symbol>` and `value0: number`, and returns
+takes `symbols: Map<string, symbol>` and `x: number`, and returns
 `bigint`. Runtime validation still rejects out-of-range and fractional numbers
 from untyped callers.
 
@@ -83,4 +83,6 @@ The definition modules pass strict TypeScript without `any` or
 
 ## Generation and formatting
 
-As [JavaScript](javascript.md#generation-and-shrinking).
+As [JavaScript](javascript.md#generation-and-shrinking): output is laid out as
+Prettier lays out TypeScript, and the names are those of
+[JavaScript](javascript.md#names).

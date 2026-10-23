@@ -326,6 +326,14 @@ google-style-guides:
   kind: article
   title: Google Style Guides
   locator: https://google.github.io/styleguide/
+prettier:
+  kind: article
+  title: Prettier 3.9.10, source (src/document and src/language-js/print)
+  locator: https://github.com/prettier/prettier/tree/3.9.10
+prettier-rationale:
+  kind: article
+  title: Prettier, Rationale
+  locator: https://prettier.io/docs/rationale
 ruff-formatter:
   kind: article
   title: The Ruff Formatter
