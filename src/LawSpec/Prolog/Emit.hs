@@ -380,7 +380,7 @@ prologFromPreparedPython sourceDir testDir bindings plan input = do
           "\"\"\"Checked models the Prolog bridge calls: each definition's module, name,",
           "handlers and types, and each ability's operations. ref:DEC-prolog-janus\"\"\"", "",
           "import importlib", "", "import lawspec_data as data", "import lawspec_prolog as bridge",
-          "import lawspec_runtime as ls", "",
+          "import lawspec_runtime as ls", "import lawspec_schema as _schema", "",
           "MACHINE_BITS = " ++ show bits,
           pyLine 0 (D.text "native_bindings = " <> bindingMetadata),
           "_schema_value = data.make_schema()",
@@ -548,14 +548,16 @@ flatTerm term = case term of
 -- | listing's pprint: a compound or list starting at a column is wrapped,
 -- one argument per line, when it passes the 78-column line width and is
 -- longer than a quarter of it; a term longer than the width counts as the
--- width. Operator terms are never wrapped.
+-- width. Operator terms are never wrapped. The length is write_length/3's
+-- with default options: atoms unquoted, no space after commas, and a
+-- variable (bound to '$VAR'(Name) by portray_clause) as $VAR(Name).
 pprint :: Int -> Term -> String
 pprint column term
   | wrappable && column + measured > lineWidth && 4 * measured > lineWidth = wrapped
   | otherwise = flatTerm term
   where
     lineWidth = 78
-    measured = min lineWidth (length (flatTerm term))
+    measured = min lineWidth (writeLength term)
     wrappable = case term of
       Compound _ (_:_) -> True
       List (_:_) -> True
@@ -566,6 +568,17 @@ pprint column term
       Compound f args -> let inner = column + length (atom f) + 1
         in atom f ++ "(" ++ intercalate (",\n" ++ replicate inner ' ') (map (pprint inner) args) ++ ")"
       _ -> flatTerm term
+
+-- | write_length/3 of a term with default write options.
+writeLength :: Term -> Int
+writeLength term = case term of
+  Atom a -> length a
+  Var v -> length v + 6
+  Int n -> length (show n)
+  Compound f args -> length f + 1 + commas args + 1
+  List items -> 1 + commas items + 1
+  Infix op a b -> writeLength a + length op + writeLength b
+  where commas items = sum (map writeLength items) + max 0 (length items - 1)
 
 -- | An atom as writeq writes it: plain when it is a lowercase identifier or
 -- made of symbol characters, otherwise quoted.
