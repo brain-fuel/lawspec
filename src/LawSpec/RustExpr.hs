@@ -183,7 +183,7 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
 -- block joins it.
 blockOf :: [L.Stmt] -> L.Expr -> L.Expr
 blockOf ss value = case value of
-  L.Block inner tailExpr | not (null ss) -> L.Block (ss ++ inner) tailExpr
+  L.Block inner tailExpr -> L.Block (ss ++ inner) tailExpr
   _ -> L.Block ss (Just value)
 
 renderWith :: [DataDeclaration] -> D.Doc -> D.Doc

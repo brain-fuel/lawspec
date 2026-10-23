@@ -213,10 +213,8 @@ emitRustData layout declarations = do
               else D.delimitTrailing 4 "(" ")" arguments)
             encodePattern = record 18 (path tag) patternFields
             encodeBody =
-              (D.text "let fields = " <> E.vector
-                [D.text ("ls::IntoValue::into_value(" ++ local ++ ")") | local <- locals] <> D.text ";" <> D.hardline <>
-               call "ls::Value::Data"
-                [D.text (show (C.idText (C.constructorId variant)) ++ ".into()"), D.text "fields"])
+              L.stmts [L.Let "fields" (L.vecOf [L.call "ls::IntoValue::into_value" [L.atom local] | local <- locals])]
+                (Just (L.call "ls::Value::Data" [L.method (L.atom (show (C.idText (C.constructorId variant)))) "into" [], L.atom "fields"]))
             encode = if product
               then (if null patternFields then mempty else D.text "let " <> encodePattern <> D.text " = self;" <> D.hardline) <> encodeBody
               else encodePattern <> D.text " => " <> D.block 4 encodeBody
@@ -256,7 +254,7 @@ emitRustData layout declarations = do
           decodeDoc = D.text (implHead "FromValue") <> D.block 4
             (D.text "fn from_value(value: ls::Value) -> ls::Result<Self> " <> D.block 4
               (D.text "let ls::Value::Data(tag, fields) = value else {" <> D.nest 4
-                (D.hardline <> D.text ("return Err(" ++ show ("expected " ++ owner) ++ ".into());")) <> D.hardline <> D.text "};" <> D.hardline <>
+                (D.hardline <> L.stmt (L.Semi (L.Return (Just (L.call "Err" [L.method (L.atom (show ("expected " ++ owner))) "into" []]))))) <> D.hardline <> D.text "};" <> D.hardline <>
                 D.text "match tag.as_str() " <> D.block 4 (D.joinWith D.hardline
                   ([a | (_,_,a,_) <- rendered] ++ [L.armDoc (L.Arm "_" Nothing (L.Block
                     [L.Let "message" (L.atom (show ("invalid constructor or fields for " ++ owner)))]

@@ -8,6 +8,7 @@ import Data.Maybe (listToMaybe)
 import qualified LawSpec.Core as C
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.RustLayout as L
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import LawSpec.RustData (rustDataTypeWithParameters, rustFieldBoxed)
@@ -145,14 +146,15 @@ emitConversions declarations plan = do
               transformed <- convert env parameters (Just (C.dataId declaration)) outward (C.binderType field) (D.text ("_field" ++ show i))
               pure (if outward then canonicalField else nativeField,
                     if outward then nativeField else canonicalField, i, transformed)
-            let construct isNative name items = D.text name <> if null items
-                  then if isNative && resolvedConstructorStyle constructor == RecordConstructor then D.text " {}" else mempty
-                  else D.text " " <> D.block 4 (D.joinWith D.hardline (map (<> D.text ",") items))
+            -- Laid out as rustfmt lays out struct patterns, literals and arms.
+            let construct isNative name items = if null items
+                  then L.atom (name ++ if isNative && resolvedConstructorStyle constructor == RecordConstructor then " {}" else "")
+                  else L.struct name items
                 patternDoc = construct (not outward) (if outward then canonicalTag else nativeTag)
-                  [D.text (source ++ ": _field" ++ show i) | (source,_,i,_) <- names]
+                  [(source, L.atom ("_field" ++ show i)) | (source,_,i,_) <- names]
                 body = construct outward (if outward then nativeTag else canonicalTag)
-                  [D.text (destination ++ ": ") <> value | (_,destination,_,value) <- names]
-            pure (patternDoc <> D.text " => " <> body <> D.text ",")
+                  [(destination, L.Laid value) | (_,destination,_,value) <- names]
+            pure (L.armDoc (L.ArmOf patternDoc Nothing body))
       let callbacks = [converter ++ ": &dyn Fn(" ++
             (if outward then canonicalParameter else nativeParameter) ++ ") -> " ++
             (if outward then nativeParameter else canonicalParameter) |
@@ -234,7 +236,7 @@ emitLayoutBranch env@(declarations,_) parameters declaration binding outward can
   values<-pack owner tree
   let canonicalValue=structure canonicalTag (zip canonicalLabels values)
   pure ((if outward then canonicalPattern else nativePattern)<>D.text " => "<>
-    D.block 4 (D.joinWith D.hardline (opened++converted++[if outward then nativeValue else canonicalValue]))<>D.text ",")
+    D.block 4 (D.joinWith D.hardline (opened++converted++[if outward then nativeValue else canonicalValue])))
 
 -- | A bound adapter calls the user's function directly, converting arguments in
 -- and the result out. ref:DEC-native-bindings-typed-identity

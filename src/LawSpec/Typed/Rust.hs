@@ -233,7 +233,7 @@ dataDoc env d = do
       line ("pub struct " ++ name ++ generics ++ "(pub std::sync::Arc<" ++ node ++ generics ++ ">);") <> D.hardline <>
       line "#[derive(PartialEq, Eq, Debug)]" <> D.hardline <>
       line ("pub enum " ++ node ++ generics ++ " ") <> D.block 4 (D.joinWith D.hardline
-        [line (variantName c ++ (if null ts then "" else "(" ++ intercalate ", " ts ++ ")") ++ ",") | (c, ts) <- zip variants fieldTypes]) <> D.hardline <>
+        [(if null ts then line (variantName c) else tupleVariant (variantName c) ts) <> line "," | (c, ts) <- zip variants fieldTypes]) <> D.hardline <>
       -- A rank orders different variants, so a single variant has none.
       (if length variants > 1 then impl ("impl" ++ generics ++ " " ++ name ++ generics) [method' "rank" ["&self"] "u32" (matchOn "&*self.0" [arm (wildcard c) (L.atom (show (rank c))) | c <- variants])] <> D.hardline else mempty) <>
       impl ("impl" ++ bound "POrd" ++ " POrd for " ++ name ++ generics)
@@ -838,3 +838,13 @@ rustIdentifier name
   | name `elem` words "as async await break const continue dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return static struct trait true type unsafe use where while abstract become box do final macro override priv typeof unsized virtual yield try gen union" = "r#" ++ name
   | otherwise = name
 
+
+-- | A tuple variant's field types: on one line within 60 columns, else one
+-- a line, as rustfmt writes them.
+tupleVariant :: String -> [String] -> D.Doc
+tupleVariant name types
+  | length (intercalate ", " types) <= 60 = D.bestFit [one, many]
+  | otherwise = many
+  where
+    one = D.text (name ++ "(" ++ intercalate ", " types ++ ")")
+    many = D.text (name ++ "(") <> D.nest 4 (mconcat [D.hardline <> D.text (t ++ ",") | t <- types]) <> D.hardline <> D.text ")"
