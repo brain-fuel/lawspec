@@ -12,8 +12,9 @@ import qualified LawSpec.Core.Value as V
 import LawSpec.Swift.Code
 import LawSpec.Backend (scalarTypeKey)
 import LawSpec.Scalar (Scalar(..))
-import Data.List (nub)
 import Control.Monad.State.Strict (StateT, evalStateT, get, put, lift)
+import LawSpec.Naming (Scope, claim, claimAll, scopeWith)
+import LawSpec.Swift.Names (localName, reservedLocals)
 
 -- | What rendering needs beyond the expression: the machine profile, the
 -- schema and symbol context in scope, how binders are named, how calls to
@@ -72,7 +73,11 @@ literal symbols s = case s of
   SRational n d -> call "Scalar" "rationalOf" [Str (show n), Str (show d)]
   SFloat t bits -> call "Scalar" "floatBits" [IntLit (if t == "Float32" then 32 else 64), Str bits]
   SComplex t r i -> pure' "Scalar" "complexOf" [IntLit (if t == "Complex64" then 32 else 64), literal symbols r, literal symbols i]
-  SSequence "Text" units -> call "Scalar" "textUnits" [ints units]
+  -- Text is a native string literal; a unit no Swift string can hold (a
+  -- surrogate) keeps the runtime's check.
+  SSequence "Text" units
+    | all scalarValue units -> valueCall "text" [Str (map toEnum units)]
+    | otherwise -> call "Scalar" "textUnits" [ints units]
   SSequence "Bytes" units -> call "Scalar" "bytesOf" [ints units]
   SSequence kind units -> call "Scalar" "rawOf" [Str kind, ints units]
   SSymbol identity description -> pure' "Scalar" "symbol" [symbols, Str identity, Str description]
@@ -81,6 +86,9 @@ literal symbols s = case s of
   SAbsent _ -> Raw "Value.unit"
   SPresent kind Nothing -> pure' "Runtime" "absent" [Str kind]
   SPresent kind (Just v) -> pure' "Runtime" "present" [Str kind, literal symbols v]
+
+scalarValue :: Int -> Bool
+scalarValue n = n >= 0 && n <= 0x10FFFF && (n < 0xD800 || n > 0xDFFF)
 
 -- | A checked Core value, as a boundary or example case writes it.
 value :: Expr -> V.Value -> Expr
@@ -98,23 +106,30 @@ value symbols v = case v of
 
 -- | An expression of a law or definition.
 render :: Context -> C.Expr -> Either String Expr
-render context root = evalStateT (go context root) 0
+render context root = evalStateT (go context root) scope0
   where
-    fresh :: String -> StateT Int (Either String) String
+    -- Values the code makes (a matched value, a handled body's schema)
+    -- are named by what they hold, clear of every other name.
+    fresh :: String -> StateT Scope (Either String) String
     fresh prefix = do
-      n <- get
-      put (n + 1)
-      pure (prefix ++ show n)
+      scope <- get
+      let (name, scope') = claim scope prefix
+      put scope'
+      pure name
     external ctx term args = lift (contextExternal ctx ctx term args)
-    ids = nub [C.binderId binder | term <- terms root, binder <- case C.expressionNode term of
+    binders = nubOn C.binderId [binder | term <- terms root, binder <- case C.expressionNode term of
       C.AllElements _ b _ -> [b]
       C.AllPayloads _ ps -> map fst ps
       C.Match _ cs -> concatMap C.caseBinders cs
       C.Let b _ _ -> [b]
       _ -> []]
+    ids = map C.binderId binders
+    nubOn f = foldr (\x rest -> x : filter ((/= f x) . f) rest) []
     terms term = term : concatMap terms (C.children term)
     occupied = [contextLocal context identity | term <- terms root, C.Local identity <- [C.expressionNode term], identity `notElem` ids]
-    bindings = zip ids [candidate | n <- [0 :: Int ..], let candidate = "bound" ++ show n, candidate `notElem` occupied]
+    -- Binders keep their source names.
+    (bound, scope0) = claimAll (scopeWith (reservedLocals ++ occupied)) [localName (C.binderName b) | b <- binders]
+    bindings = zip ids bound
     local identity = maybe (contextLocal context identity) id (lookup identity bindings)
     go ctx term
       | Just (fields, binders, body) <- C.concurrentGroup term = do

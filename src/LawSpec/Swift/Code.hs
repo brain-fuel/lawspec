@@ -9,15 +9,16 @@ module LawSpec.Swift.Code
   ( Ty(..), Expr(..)
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
   , call, pure', str, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
+  , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, fileHeader, blockDoc, comment
   ) where
 
 import qualified LawSpec.Code.Doc as D
 import Control.Monad.State.Strict (State, evalState, get, put)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.Char (ord, isAscii, isPrint)
-import Data.List (intercalate)
-import Numeric (showHex)
+import Data.Char (isAscii)
+import Data.List (intercalate, sort)
+import LawSpec.Code.Literal (literalFor)
 
 -- | A Swift type, as written.
 newtype Ty = Ty String deriving (Eq, Show)
@@ -296,14 +297,14 @@ body ty sink e = do
     _ | ty == tVoid -> case sink of
           Return -> effectLine result
           Discard -> effectLine result
-          Assign name -> (\d -> D.text (name ++ " = ") <> tried result d) <$> inline result
+          Assign name -> (\d -> hangValue (name ++ " =") (tried result d)) <$> inline result
     _ -> finish sink result <$> inline result
   pure (D.joinWith D.hardline (docs ++ [final | final /= mempty]))
   where
     effectLine r
       | inert r = pure mempty
       | returnsVoid r = tried r <$> inline r
-      | otherwise = (\d -> D.text "_ = " <> tried r d) <$> inline r
+      | otherwise = (\d -> hangValue "_ =" (tried r d)) <$> inline r
 
 -- | Statements in order; a binding nothing after it reads is dropped, or
 -- discarded when it has effects.
@@ -337,23 +338,25 @@ statement s = case s of
         pure [tried v d]
     | otherwise -> do
         d <- inline v
-        pure [D.text "_ = " <> tried v d]
+        pure [hangValue "_ =" (tried v d)]
   Bound name t (If c rt a b) -> do
     d <- conditional rt (Assign name) c a b
     pure [D.text ("let " ++ name ++ ": " ++ tyText (if t == Ty "" then rt else t)) <> D.hardline <> d]
   Bound name t (Lambda ps r b) -> do
     l <- lambda ps r b
-    pure [D.text ("let " ++ name ++ annotation t ++ " = ") <> l]
+    pure [hangValue ("let " ++ name ++ annotation t ++ " =") l]
   Bound name t v -> do
     d <- inline v
-    pure [D.text ("let " ++ name ++ annotation t ++ " = ") <> tried v d]
+    pure [hangValue ("let " ++ name ++ annotation t ++ " =") (tried v d)]
   where tyText (Ty x) = x
         annotation (Ty "") = ""
         annotation t = ": " ++ tyText t
 
--- | A value with no effect: a name, a literal, raw text.
+-- | A value with no effect: a name, a literal, raw text, a portable value
+-- made of them.
 inert :: Expr -> Bool
 inert v = case v of
+  Pure f args | take 6 f == "Value." -> all inert args
   Var _ -> True
   Raw _ -> True
   Str _ -> True
@@ -363,12 +366,12 @@ inert v = case v of
   _ -> False
 
 finish :: Sink -> Expr -> D.Doc -> D.Doc
-finish Return e d = D.text "return " <> tried e d
-finish (Assign name) e d = D.text (name ++ " = ") <> tried e d
+finish Return e d = hangValue "return" (tried e d)
+finish (Assign name) e d = hangValue (name ++ " =") (tried e d)
 finish Discard e d
   | inert e = mempty
   | returnsVoid e = tried e d
-  | otherwise = D.text "_ = " <> tried e d
+  | otherwise = hangValue "_ =" (tried e d)
 
 conditional :: Ty -> Sink -> Expr -> Expr -> Expr -> Fresh D.Doc
 conditional ty sink c a b = do
@@ -377,63 +380,149 @@ conditional ty sink c a b = do
   cd <- inline c'
   ad <- body ty sink a
   bd <- body ty sink b
-  let doc = D.text "if " <> tried c' cd <> D.text " {" <> D.nest 4 (D.hardline <> ad) <>
-        D.hardline <> D.text "} else {" <> D.nest 4 (D.hardline <> bd) <> D.hardline <> D.text "}"
+  let doc = D.text "if " <> tried c' cd <> D.text " {" <> D.nest indentation (D.hardline <> ad) <>
+        D.hardline <> D.text "} else {" <> D.nest indentation (D.hardline <> bd) <> D.hardline <> D.text "}"
   pure (D.joinWith D.hardline (pre ++ [doc]))
 
 lambda :: [(String, Ty)] -> Ty -> Expr -> Fresh D.Doc
 lambda ps r b = do
   inner <- body r Return b
-  let params = "(" ++ intercalate ", " [p ++ ": " ++ t | (p, Ty t) <- ps] ++ ")"
-      Ty rt = r
-  pure (D.text ("{ " ++ params ++ " throws -> " ++ rt ++ " in") <> D.nest 4 (D.hardline <> inner) <> D.hardline <> D.text "}")
+  pure (closure ps r inner)
+
+-- | A closure: its signature, then its body on lines of its own.
+closure :: [(String, Ty)] -> Ty -> D.Doc -> D.Doc
+closure ps (Ty rt) inner =
+  D.text ("{ (" ++ intercalate ", " [p ++ ": " ++ t | (p, Ty t) <- ps] ++ ") throws -> " ++ rt ++ " in") <>
+  D.nest indentation (D.hardline <> inner) <> D.hardline <> D.text "}"
 
 inline :: Expr -> Fresh D.Doc
 inline e = case e of
   Var v -> pure (D.text v)
   Str s -> pure (D.text (stringLiteral s))
-  IntLit n -> pure (D.text (show n))
+  IntLit n -> pure (D.text (intLiteral n))
   BigLit n -> pure (D.text (bigLiteral n))
   BoolLit b -> pure (D.text (if b then "true" else "false"))
   Raw r -> pure (D.text r)
-  Call f args -> applied f args
-  Pure f args -> applied f args
+  Call f args -> applied (D.text f) args
+  Pure f args -> applied (D.text f) args
   Invoke f args -> do
     fd <- inline f
-    ds <- mapM inline args
-    pure (fd <> D.text "(" <> D.joinWith (D.text ", ") ds <> D.text ")")
+    applied fd args
   ListOf _ xs -> do
     ds <- mapM inline xs
-    pure (D.text "[" <> D.joinWith (D.text ", ") ds <> D.text "]")
+    pure (if any isLambda xs then brokenList "[" "]" (length ds > 1) ds else arrayDoc ds)
   TupleOf xs -> do
     ds <- mapM inline xs
-    pure (D.text "(" <> D.joinWith (D.text ", ") ds <> D.text ")")
+    pure (if any isLambda xs then brokenList "(" ")" False ds else D.delimit indentation "(" ")" ds)
   Lambda ps r b -> lambda ps r b
   Statement x -> inline x
   _ -> do
     -- A block in an inline position: a closure called at once.
     inner <- body tValue Return e
-    pure (D.text "{ () throws -> Value in" <> D.nest 4 (D.hardline <> inner) <> D.hardline <> D.text "}()")
+    pure (closure [] tValue inner <> D.text "()")
   where
-    applied f args = do
-      ds <- mapM inline args
-      pure (D.text f <> D.text "(" <> D.joinWith (D.text ", ") ds <> D.text ")")
+    -- A closure passed last is a trailing closure, as Swift writes it; a
+    -- call with closures elsewhere has one argument a line.
+    applied f args = case reverse args of
+      lastArgument@(Lambda {}) : before | not (any isLambda before), trailing f -> do
+        ds <- mapM inline (reverse before)
+        lam <- inline lastArgument
+        pure (f <> (if null ds then mempty else D.delimit indentation "(" ")" ds) <> D.text " " <> lam)
+      _ -> do
+        ds <- mapM inline args
+        pure (f <> if any isLambda args then brokenList "(" ")" False ds else D.delimit indentation "(" ")" ds)
+
+-- | A generic initializer takes its closure in parentheses.
+trailing :: D.Doc -> Bool
+trailing f = D.render D.Compact f `notElem` ["UncheckedBox"]
+
+isLambda :: Expr -> Bool
+isLambda e = case e of
+  Lambda {} -> True
+  _ -> False
+
+-- | A list with one item a line, as swift-format keeps one whose items
+-- hold closures.
+brokenList :: String -> String -> Bool -> [D.Doc] -> D.Doc
+brokenList opening closing trailing ds =
+  D.text opening <> D.nest indentation (D.hardline <> D.joinWith (D.text "," <> D.hardline) ds <> (if trailing then D.text "," else mempty)) <>
+  D.hardline <> D.text closing
+
+-- | A call of documents: its arguments on one line, or one a line.
+callDoc :: String -> [D.Doc] -> D.Doc
+callDoc f ds = D.text f <> argumentsDoc ds
+
+argumentsDoc :: [D.Doc] -> D.Doc
+argumentsDoc = D.delimit indentation "(" ")"
+
+-- | An array literal: on one line, or one item a line with a trailing
+-- comma after each of several, as swift-format writes it. On one line, a
+-- literal of several items keeps a column free for that comma, as
+-- swift-format measures it.
+arrayDoc :: [D.Doc] -> D.Doc
+arrayDoc [d] = D.delimit indentation "[" "]" [d]
+arrayDoc [] = D.text "[]"
+arrayDoc ds = D.group (D.text "[" <> D.nest indentation (D.softbreak <> D.commaSep ds <> D.whenBroken (D.text ",")) <>
+  D.softbreak <> D.text "]" <> D.flatReserve 1)
+
+-- | A declaration with parameters (func f(a: A) throws -> R): its
+-- parameters on one line, or one a line with the closing parenthesis on a
+-- line of its own, then its body as a block.
+signature :: String -> [String] -> String -> D.Doc -> D.Doc
+signature opening parameters closing body =
+  D.text opening <> argumentsDoc (map D.text parameters) <> D.text closing <> blockDoc body
+
+-- | A braced block's body on lines of its own.
+blockDoc :: D.Doc -> D.Doc
+blockDoc body = D.text " {" <> D.nest indentation (D.hardline <> body) <> D.hardline <> D.text "}"
+
+-- | A line comment, wrapped at the width.
+comment :: String -> D.Doc
+comment = D.lineComment (D.styleWidth (D.styleFor "swift")) "// "
+
+-- | A generated file's header and imports: the header line, then each
+-- group of import lines sorted (modules, then declarations, then testable
+-- imports), as swift-format orders them.
+fileHeader :: String -> [[String]] -> D.Doc
+fileHeader header groups =
+  D.text ("// " ++ header) <> D.hardline <>
+  mconcat [D.hardline <> D.joinWith D.hardline (map D.text (sort imports)) <> D.hardline | imports <- groups, not (null imports)]
+
+-- | swift-format's indentation: two spaces.
+indentation :: Int
+indentation = D.styleIndent (D.styleFor "swift")
+
+-- | swift-format's layout: a width of 100.
+swiftLayout :: D.Layout
+swiftLayout = D.styleLayout (D.styleFor "swift")
+
+-- | A statement's prefix (let x =, return) and its value. The value moves
+-- to a line of its own only when its first line up to its first break
+-- does not fit after the prefix, as swift-format breaks after = and return.
+hangValue :: String -> D.Doc -> D.Doc
+hangValue prefix value = D.text prefix <> D.prefixChoice (" " ++ firstChunk value) (D.text " " <> value)
+  (D.nest indentation (D.hardline <> value))
+  where firstChunk = takeWhile (/= '\n') . D.render (D.Pretty 1)
+
+-- | An integer literal, its digits grouped in threes past six, as
+-- swift-format groups them.
+intLiteral :: Integer -> String
+intLiteral n
+  | n < 0 = '-' : intLiteral (negate n)
+  | length digits > 6 = reverse (grouped (reverse digits))
+  | otherwise = digits
+  where
+    digits = show n
+    grouped ds = case splitAt 3 ds of
+      (a, []) -> a
+      (a, rest) -> a ++ "_" ++ grouped rest
 
 bigLiteral :: Integer -> String
 bigLiteral n
-  | abs n < 2 ^ (62 :: Int) = "BigInt(" ++ show n ++ ")"
+  | abs n < 2 ^ (62 :: Int) = "BigInt(" ++ intLiteral n ++ ")"
   | otherwise = "BigInt(\"" ++ show n ++ "\")!"
 
--- | A string literal; every character outside printable ASCII is escaped as
--- a Unicode scalar.
+-- | A Swift string literal: printable characters as they are, Swift's own
+-- escapes, and \u{...} for the rest (LawSpec.Code.Literal).
 stringLiteral :: String -> String
-stringLiteral s = "\"" ++ concatMap escapeChar s ++ "\""
-  where
-    escapeChar c
-      | c == '"' = "\\\""
-      | c == '\\' = "\\\\"
-      | c == '\n' = "\\n"
-      | c == '\r' = "\\r"
-      | c == '\t' = "\\t"
-      | isAscii c && isPrint c = [c]
-      | otherwise = "\\u{" ++ showHex (ord c) "" ++ "}"
+stringLiteral = literalFor "swift"

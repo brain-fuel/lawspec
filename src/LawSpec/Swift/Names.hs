@@ -6,8 +6,10 @@
 module LawSpec.Swift.Names
   ( pascal, camel, escape, unitNamespace, unitPath, unitQualified, generatedName, apiName
   , adapterPath, functionName, parameterName, dataNames, swiftKeywords, splitDots, testName
-  , handleKey, moduleName, testModuleName, typeParameter
+  , handleKey, moduleName, testModuleName, typeParameter, localName, reservedLocals, exampleSuffixes
   ) where
+
+import qualified LawSpec.Naming as N
 
 import qualified LawSpec.Core as C
 import Data.Char (isAlphaNum, isAscii, isUpper, isLower, isDigit, toUpper, toLower)
@@ -57,6 +59,36 @@ escape :: String -> String
 escape name
   | name `elem` swiftKeywords = "`" ++ name ++ "`"
   | otherwise = name
+
+-- | A source binder's Swift name: its words in lowerCamelCase (a
+-- compiler-made binder named by what it holds), a keyword escaped in
+-- backticks. ref:DEC-readable-generated-names
+localName :: String -> String
+localName = escape . N.localIdentifier "swift"
+
+-- | The names generated code binds around a law's or a definition's
+-- values, which a source binder's name must not shadow.
+reservedLocals :: [String]
+reservedLocals = words "schema symbols inputs resources values scoped withResources generation generator result scope native handler argument"
+
+-- | The suffixes naming a law's example tests (after its name and _): each
+-- example's words in lowerCamelCase, numbered when they repeat or have
+-- none; never one of the kinds the law's other tests take.
+-- They are cut at a whole word to fit their budget, so a test's
+-- declaration fits a line.
+exampleSuffixes :: Int -> [String] -> [String]
+exampleSuffixes budget names = map (filter (/= '_')) $ fst (N.claimAll (N.scopeWith kinds) (map (fit . concatMap N.nameWords . splitUnderscores)
+  (N.exampleTestSuffix "swift" ["boundary", "property", "statistics", "search", "skipped", "known_failing"] names)))
+  where
+    kinds = ["boundary", "property", "statistics", "search", "skipped", "knownFailing"]
+    fit ws = N.cased N.Camel (case takeFitting 0 ws of [] -> take 1 ws; kept -> kept)
+    takeFitting _ [] = []
+    takeFitting n (w : rest)
+      | n + length w > max 8 (budget - 3) = []
+      | otherwise = w : takeFitting (n + length w) rest
+    splitUnderscores s = case break (== '_') s of
+      (a, []) -> [a]
+      (a, _ : rest) -> a : splitUnderscores rest
 
 -- | The type parameter at a position: T0, T1, ...
 typeParameter :: Int -> String
