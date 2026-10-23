@@ -11,6 +11,7 @@ module LawSpec.DotNet.Layout
   ( F(..), Stmt(..), Lines
   , pageWidth, columns, pad, opening, closing, separated, separatedBy, linesDoc
   , flat, expr, item, block, binding, function, matchLines, methodLike, needsParens, atom
+  , exprW, itemW, blockW, bindingW, functionW, breakLast, dottedLines
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -140,7 +141,7 @@ flat :: F -> Maybe String
 flat e = case e of
   A s -> Just s
   App f [] -> Just (f ++ (if methodLike f then "()" else " ()"))
-  App f [a] | needsParens a, methodLike f -> (f ++) <$> atom a
+  App f [a] | needsParens a || a == A "()", methodLike f -> (f ++) <$> atom a
   App f args -> unwords . (f :) <$> mapM atom args
   Method f args -> (\as -> f ++ "(" ++ intercalate ", " as ++ ")") <$> mapM flat args
   List [] -> Just "[]"
@@ -160,7 +161,7 @@ flat e = case e of
   Block [] r -> flat r
   Paren x -> (\y -> "(" ++ y ++ ")") <$> flat x
   Prefix o x -> (o ++) <$> atom x
-  Annotated x t -> (\y -> "(" ++ y ++ " : " ++ t ++ ")") <$> flat x
+  Annotated x t -> (\y -> "(" ++ y ++ ": " ++ t ++ ")") <$> flat x
   _ -> Nothing
   where within n s = if columns s <= n then Just s else Nothing
 
@@ -170,11 +171,17 @@ atom a = (\s -> if needsParens a then "(" ++ s ++ ")" else s) <$> flat a
 
 -- | An expression starting at column c of a line indented i: on one line
 -- when it fits, else broken as Fantomas breaks it.
-expr :: Int -> Int -> F -> Lines
-expr i c e = case flat e of
-  Just s | c + columns s <= pageWidth || unbreakable -> [s]
-  _ -> broken i c e
+exprW :: Int -> Int -> Int -> F -> Lines
+exprW w i c e = case flat e of
+  Just s | c + columns s - closer <= w || unbreakable -> [s]
+  _ -> brokenW w i c e
   where
+    -- A parenthesis that closes a tuple or a parenthesised expression is
+    -- left out of the measure; a call's is not.
+    closer = case e of
+      Tuple (_ : _) -> 1
+      Paren _ -> 1
+      _ -> 0
     unbreakable = case e of
       A _ -> True
       App _ [] -> True
@@ -184,41 +191,41 @@ expr i c e = case flat e of
       _ -> False
 
 -- | An expression on lines of its own, from indentation j.
-item :: Int -> F -> Lines
-item j x = opening (pad j "") (expr j j x)
+itemW :: Int -> Int -> F -> Lines
+itemW w j x = opening (pad j "") (exprW w j j x)
 
-broken :: Int -> Int -> F -> Lines
-broken i c e = case e of
+brokenW :: Int -> Int -> Int -> F -> Lines
+brokenW w i c e = case e of
   App f args -> application f args
   -- A method given only a function keeps it on its line, as a callback.
-  Method f [Fun ps b] | c + columns (f ++ "(fun " ++ ps ++ " ->") <= pageWidth -> closing ")" ((f ++ "(fun " ++ ps ++ " ->") : body (i + 4) b)
+  Method f [Fun ps b] | c + columns (f ++ "(fun " ++ ps ++ " ->") <= w -> closing ")" ((f ++ "(fun " ++ ps ++ " ->") : bodyW (w - 1) (i + 4) b)
   Method f args -> commaList (f ++ "(") ")" args
-  List xs -> ["["] ++ concatMap (item (i + 4)) xs ++ [pad i "]"]
+  List xs -> ["["] ++ concatMap (itemW w (i + 4)) xs ++ [pad i "]"]
   -- A tuple too long for its line has an item on each line, aligned after
   -- its opening parenthesis.
   Tuple xs ->
-    let items = [ (if k == 1 then id else opening (pad (c + 1) "")) (expr (c + 1) (c + 1) x) | (k, x) <- zip [1 :: Int ..] xs ]
+    let items = [ (if k == 1 then id else opening (pad (c + 1) "")) (exprW w (c + 1) (c + 1) x) | (k, x) <- zip [1 :: Int ..] xs ]
         joined = concat [if k == length items then ls else closing "," ls | (k, ls) <- zip [1 :: Int ..] items]
     in closing ")" (opening "(" joined)
-  Record fields -> ["{"] ++ concat [field (i + 4) n v | (n, v) <- fields] ++ [pad i "}"]
-  Fun ps b -> ("fun " ++ ps ++ " ->") : body (i + 4) b
-  Match subject cases -> matchLines i subject cases
-  Cond cond a b -> conditional i cond a b
-  Block ss r -> case block i ss r of
+  Record fields -> ["{"] ++ concat [fieldW w (i + 4) n v | (n, v) <- fields] ++ [pad i "}"]
+  Fun ps b -> ("fun " ++ ps ++ " ->") : bodyW w (i + 4) b
+  Match subject cases -> matchLinesW w i subject cases
+  Cond cond a b -> conditionalW w i cond a b
+  Block ss r -> case blockW w i ss r of
     first : more -> drop i first : more
     [] -> []
   -- A chain of an operator: its first operand, then each other on a line
   -- of its own, led by the operator.
   Infix o _ _ ->
     let operands = chain o e
-    in expr i c (head operands) ++ concat [opening (pad i (o ++ " ")) (expr i (i + length o + 1) x) | x <- drop 1 operands]
+    in exprW w i c (head operands) ++ concat [opening (pad i (o ++ " ")) (exprW w i (i + length o + 1) x) | x <- drop 1 operands]
   A s -> [s]
-  Paren x -> closing ")" (opening "(" (expr i (c + 1) x))
-  Prefix o x -> opening o (expr i (c + length o) x)
-  Annotated x t -> opening "(" (expr i (c + 1) x) ++ [pad i (": " ++ t ++ ")")]
+  Paren x -> closing ")" (opening "(" (exprW w i (c + 1) x))
+  Prefix o x -> opening o (exprW w i (c + length o) x)
+  Annotated x t -> opening "(" (exprW w i (c + 1) x) ++ [pad i (": " ++ t ++ ")")]
   where
     commaList open close args =
-      let items = map (item (i + 4)) args
+      let items = map (itemW w (i + 4)) args
       in [open] ++ concat [if k == length items then ls else closing "," ls | (k, ls) <- zip [1 :: Int ..] items] ++ [pad i close]
     -- f a b: with a function last kept on the first line (a callback), with
     -- one parenthesised argument opened on the first line, or with each
@@ -226,15 +233,53 @@ broken i c e = case e of
     application f args
       | not (null args), Fun ps b <- last args, Just fronts <- mapM atom (init args)
       , let open = unwords (f : fronts ++ ["(fun " ++ ps ++ " ->"])
-      , c + columns open <= pageWidth = closing ")" (open : body (i + 4) b)
+      , c + columns open <= w = closing ")" (open : bodyW (w - 1) (i + 4) b)
       | [a] <- args, needsParens a, not (isLambda a) =
-          [f ++ (if methodLike f then "(" else " (")] ++ item (i + 4) (unwrap a) ++ [pad i ")"]
+          [f ++ (if methodLike f then "(" else " (")] ++ itemW w (i + 4) (unwrap a) ++ [pad i ")"]
+      -- A name too long for its line breaks at a dot: as many of its parts
+      -- as fit, then the rest.
+      | c + columns f > w, (first : rest@(_ : _)) <- dottedLines w c (i + 4) f =
+          [first] ++ rest ++ concatMap (argument (i + 4)) args
       | otherwise = f : concatMap (argument (i + 4)) args
     argument j a
-      | needsParens a = closing ")" (opening (pad j "(") (expr j (j + 1) (unwrap a)))
-      | otherwise = item j a
+      | needsParens a = closing ")" (opening (pad j "(") (exprW (if isLambda a then w - 1 else w) j (j + 1) (unwrap a)))
+      | otherwise = itemW w j a
     isLambda a = case a of Fun _ _ -> True; _ -> False
     unwrap a = a
+
+-- | A long dotted name over lines, as Fantomas lays out a chain of
+-- navigation: its first part, then each further part on the current line
+-- while it fits, else on a new line at the indentation j, in the fewest
+-- lines, with the margin narrowed as far as that number of lines allows so
+-- the lines are balanced (Fantomas's balanceNavigationRun).
+dottedLines :: Int -> Int -> Int -> String -> [String]
+dottedLines _ c j name = case splitParts name of
+  receiver : parts@(_ : _) ->
+    let segments = map ('.' :) parts
+        widths = map columns segments
+        start = c + columns receiver
+        lineCount ps = 1 + length (filter id ps)
+        balance from ws' = let fewest = lineCount (fillWith pageWidth from ws')
+                               narrowestMargin = head ([m | m <- [0 .. pageWidth], lineCount (fillWith m from ws') <= fewest] ++ [pageWidth])
+                           in fillWith narrowestMargin from ws'
+        fillWith margin from ws' = snd (foldl (\(column, acc) wd -> if column + wd <= margin then (column + wd, acc ++ [False]) else (j + wd, acc ++ [True])) (from, []) ws')
+        placements = case (balance start widths, widths) of
+          (True : _, w1 : later) | start + w1 <= pageWidth -> False : balance (start + w1) later
+          (ps, _) -> ps
+        go current [] = [current]
+        go current ((segment, opens) : rest) = if opens then current : go (pad j segment) rest else go (current ++ segment) rest
+    in go receiver (zip segments placements)
+  _ -> [name]
+  where
+    splitParts s = case break (== '.') s of
+      (a, '.' : more) -> a : splitParts more
+      (a, _) -> [a]
+
+-- | A dotted name split at its last dot.
+breakLast :: String -> (String, String)
+breakLast name = case break (== '.') (reverse name) of
+  (member, '.' : owner) -> (reverse owner, '.' : reverse member)
+  _ -> ("", name)
 
 -- | The operands of a chain of one infix operator, left to right.
 chain :: String -> F -> [F]
@@ -243,48 +288,69 @@ chain o e = case e of
   _ -> [e]
 
 -- | A lambda's or a branch's body, as a block at an indentation.
-body :: Int -> F -> Lines
-body j b = case b of
-  Block ss r -> block j ss r
-  _ -> item j b
+bodyW :: Int -> Int -> F -> Lines
+bodyW w j b = case b of
+  Block ss r -> blockW w j ss r
+  _ -> itemW w j b
 
 -- | A record field: on one line when it fits, else its value under it.
-field :: Int -> String -> F -> Lines
-field j n v = case flat v of
-  Just s | j + columns (n ++ " = " ++ s) <= pageWidth -> [pad j (n ++ " = " ++ s)]
-  _ -> pad j (n ++ " =") : body (j + 4) v
+fieldW :: Int -> Int -> String -> F -> Lines
+fieldW w j n v = case flat v of
+  Just s | j + columns (n ++ " = " ++ s) <= w -> [pad j (n ++ " = " ++ s)]
+  _ -> pad j (n ++ " =") : bodyW w (j + 4) v
 
 -- | if/then/else; an else branch that is only a conditional continues as
 -- else if. A condition too long for its line goes between if and then.
-conditional :: Int -> F -> F -> F -> Lines
-conditional i cond a b = head' ++ body (i + 4) a ++ rest
+conditionalW :: Int -> Int -> F -> F -> F -> Lines
+conditionalW w i cond a b = conditionalChain True w i cond a b
+
+conditionalChain :: Bool -> Int -> Int -> F -> F -> F -> Lines
+conditionalChain compact w i cond a b
+  -- An else-if chain whose every clause is short has a line per clause.
+  | compact, Just ls <- compactChain = ls
+  | otherwise = head' ++ bodyW w (i + 4) a ++ rest
   where
+    compactChain = do
+      let chain = clauses cond a b
+          (conditions, final) = (init chain, snd (last chain))
+      guardM (length conditions >= 2)
+      texts <- mapM (\(c, x) -> (,) <$> (c >>= flat) <*> flat x) conditions
+      finalText <- flat final
+      let lines' = [(if k == 0 then "if " else "else if ") ++ x ++ " then " ++ y | (k, (x, y)) <- zip [0 :: Int ..] texts] ++ ["else " ++ finalText]
+      guardM (all ((<= 60) . columns) lines' && all (\l -> i + columns l <= w) lines')
+      pure (take 1 lines' ++ map (pad i) (drop 1 lines'))
+    clauses c yes no = case plain no of
+      Cond c2 a2 b2 -> (Just c, yes) : clauses c2 a2 b2
+      _ -> [(Just c, yes), (Nothing, no)]
+    plain x = case x of Block [] y -> plain y; _ -> x
+    guardM ok = if ok then Just () else Nothing
     head' = case flat cond of
-      Just s | i + 3 + columns s + 5 <= pageWidth -> ["if " ++ s ++ " then"]
-      _ -> ["if"] ++ item (i + 4) cond ++ [pad i "then"]
-    rest = case b of
-      Cond c2 a2 b2 -> case conditional i c2 a2 b2 of
+      Just s | i + 3 + columns s + 5 <= w -> ["if " ++ s ++ " then"]
+      _ -> ["if"] ++ itemW w (i + 4) cond ++ [pad i "then"]
+    rest = case plain b of
+      Cond c2 a2 b2 -> case conditionalChain False w i c2 a2 b2 of
         first : more -> pad i ("else " ++ first) : more
         [] -> []
-      _ -> pad i "else" : body (i + 4) b
+      _ -> pad i "else" : bodyW w (i + 4) b
 
 -- | match subject with, then a line for each case: its body on the case's
 -- line when it fits, else under it.
-matchLines :: Int -> F -> [(String, F)] -> Lines
-matchLines i subject cases = header ++ concatMap arm cases
+matchLinesW :: Int -> Int -> F -> [(String, F)] -> Lines
+matchLinesW w i subject cases = header ++ concatMap arm cases
   where
     header = case flat subject of
-      Just s | i + columns ("match " ++ s ++ " with") <= pageWidth -> ["match " ++ s ++ " with"]
-      _ -> ["match"] ++ item (i + 4) subject ++ [pad i "with"]
+      Just s | i + columns ("match " ++ s ++ " with") <= w -> ["match " ++ s ++ " with"]
+      _ -> ["match"] ++ itemW w (i + 4) subject ++ [pad i "with"]
     arm (pattern, b) = case b of
-      Block (_ : _) _ -> patternLines pattern ++ body (i + 4) b
-      _ -> case flat b of
-        Just s | i + columns ("| " ++ pattern ++ " -> " ++ s) <= pageWidth -> [pad i ("| " ++ pattern ++ " -> " ++ s)]
-        _ -> patternLines pattern ++ body (i + 4) b
+      Block (_ : _) _ -> patternLines pattern ++ bodyW w (i + 4) b
+      _ -> case (flat b, patternLines pattern) of
+        (Just s, _) | i + columns ("| " ++ pattern ++ " -> " ++ s) <= w -> [pad i ("| " ++ pattern ++ " -> " ++ s)]
+        (Just s, ls@(_ : _ : _)) | columns (last ls) + 1 + columns s <= w -> init ls ++ [last ls ++ " " ++ s]
+        (_, ls) -> ls ++ bodyW w (i + 4) b
     -- A case's pattern too long for its line breaks after its constructor's
     -- first argument, the rest aligned after the parenthesis.
     patternLines pattern
-      | i + columns ("| " ++ pattern ++ " ->") <= pageWidth = [pad i ("| " ++ pattern ++ " ->")]
+      | i + columns ("| " ++ pattern ++ " ->") <= w = [pad i ("| " ++ pattern ++ " ->")]
       | (constructor, '(' : arguments) <- break (== '(') pattern, (first, ',' : ' ' : rest) <- topLevel arguments =
           [pad i ("| " ++ constructor ++ "(" ++ first ++ ","), pad (i + 2 + length constructor + 1) (rest ++ " ->")]
       | otherwise = [pad i ("| " ++ pattern ++ " ->")]
@@ -301,20 +367,20 @@ matchLines i subject cases = header ++ concatMap arm cases
           | otherwise = go depth False (c : acc) rest
 
 -- | Statements and a result, at an indentation.
-block :: Int -> [Stmt] -> F -> Lines
-block i ss r = separated (map statement ss ++ [item i r | r /= A ""])
+blockW :: Int -> Int -> [Stmt] -> F -> Lines
+blockW w i ss r = separated (map statement ss ++ [itemW w i r | r /= A ""])
   where
     statement s = case s of
-      DoS e -> item i e
-      LetS lhs v -> binding i lhs v
-      DefS declaration parameters result b -> function i declaration parameters result b
+      DoS e -> itemW w i e
+      LetS lhs v -> bindingW w i lhs v
+      DefS declaration parameters result b -> functionW w i declaration parameters result b
 
 -- | let x = value, or a property member: on one line while name = value
 -- takes up to 80 columns, else the value under it.
-binding :: Int -> String -> F -> Lines
-binding i lhs v = case flat v of
-  Just s | columns (named ++ " = " ++ s) <= 80, i + columns (lhs ++ " = " ++ s) <= pageWidth -> [pad i (lhs ++ " = " ++ s)]
-  _ -> pad i (lhs ++ " =") : body (i + 4) v
+bindingW :: Int -> Int -> String -> F -> Lines
+bindingW w i lhs v = case flat v of
+  Just s | columns (named ++ " = " ++ s) <= 80, i + columns (lhs ++ " = " ++ s) <= w -> [pad i (lhs ++ " = " ++ s)]
+  _ -> pad i (lhs ++ " =") : bodyW w (i + 4) v
   where
     -- What the binding declares, after let or member: its modifiers
     -- (mutable, private), name and type count.
@@ -325,13 +391,36 @@ binding i lhs v = case flat v of
 -- | A function: its declaration with parameters and result type, then its
 -- body, on the declaration's line while it is under 40 columns. A
 -- declaration too wide for its line has a parameter on each line.
-function :: Int -> String -> [String] -> Maybe String -> F -> Lines
-function i declaration parameters result b =
-  if i + columns header <= pageWidth
+functionW :: Int -> Int -> String -> [String] -> Maybe String -> F -> Lines
+functionW w i declaration parameters result b =
+  if i + columns header <= w
     then case flat b of
-      Just s | columns s < 40, not (isBlock b), i + columns header + 1 + columns s <= pageWidth -> [pad i (header ++ " " ++ s)]
-      _ -> pad i header : body (i + 4) b
-    else [pad i declaration] ++ [pad (i + 4) p | p <- parameters] ++ [pad (i + 4) (maybe "=" (\r -> ": " ++ r ++ " =") result)] ++ body (i + 4) b
+      Just s | columns s < 40, not (isBlock b), i + columns header + 1 + columns s <= w -> [pad i (header ++ " " ++ s)]
+      _ -> pad i header : bodyW w (i + 4) b
+    else [pad i declaration] ++ [pad (i + 4) p | p <- parameters] ++ [pad (i + 4) (maybe "=" (\r -> ": " ++ r ++ " =") result)] ++ bodyW w (i + 4) b
   where
     header = unwords (declaration : parameters) ++ maybe "" (" : " ++) result ++ " ="
     isBlock x = case x of Block (_ : _) _ -> True; _ -> False
+
+-- | An expression starting at column c of a line indented i, at the page's
+-- width. Inside a parenthesised lambda Fantomas lays code out one column
+-- narrower for each such lambda.
+expr :: Int -> Int -> F -> Lines
+expr = exprW pageWidth
+
+-- | An expression on lines of its own, from indentation j.
+item :: Int -> F -> Lines
+item = itemW pageWidth
+
+-- | Statements and a result, at an indentation.
+block :: Int -> [Stmt] -> F -> Lines
+block = blockW pageWidth
+
+binding :: Int -> String -> F -> Lines
+binding = bindingW pageWidth
+
+function :: Int -> String -> [String] -> Maybe String -> F -> Lines
+function = functionW pageWidth
+
+matchLines :: Int -> F -> [(String, F)] -> Lines
+matchLines = matchLinesW pageWidth

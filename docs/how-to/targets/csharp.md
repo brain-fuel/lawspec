@@ -165,3 +165,23 @@ type, in `tests/Native`, made with FsCheck's C# API:
 public static Arbitrary<Money> Prices() =>
     Arb.From(Gen.Choose(100, 200).Select(cents => new Money(new ExactDecimal(new BigInteger(cents), -2), Currency.EUR)));
 ```
+
+## Names
+
+Generated code uses the specification's names. Parameters, inputs and
+binders keep their source names in camelCase, and methods are PascalCase. A
+test is named after its law and example:
+`LawNormalizersAgree_SpacesBecomeHyphensPunctuationIsPreserved`, and
+`_Boundary`, `_Property` for the other kinds. An anonymous record has a name
+from where it is used (`DeclinedDetails`). Each test and law has a comment
+linking it to its source line, and text is written as C# string literals.
+
+## Formatting
+
+Output is what `dotnet format` leaves unchanged: Allman braces, four-space
+indentation, and calls wrapped at 120 columns with an argument on each line.
+The program's model under `lawspec/LawSpec.Model` is F#, laid out as Fantomas
+lays it out. LawSpec lays both out itself, so generation needs no formatter;
+LawSpec's own acceptance checks every generated project with `dotnet format
+whitespace --verify-no-changes` (the SDK pinned in
+`test/locks/dotnet-sdk.json`) and `fantomas --check`.

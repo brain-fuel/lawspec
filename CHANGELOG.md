@@ -31,6 +31,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   generated Python project (the formatted step). The other targets follow
   with their language families.
 
+- **Breaking: generated F# and C# names.** Generated .NET code is written to
+  be read. Parameters, inputs and binders keep their source names, typed
+  definitions are named after the definition (`LawSpec.TypedProgram.settings`,
+  `Settings` in C#, with `_2` only on a clash), and each example's test is
+  named after its law and example
+  (`lawNormalizersAgree_spacesBecomeHyphensPunctuationIsPreserved`).
+  Anonymous records have a name from where they are used (`DeclinedDetails`)
+  instead of `Record<digest>`. Adapters and native code that use the old
+  names must be renamed.
+- Generated F# and C# write text as string literals, link each test, law and
+  typed definition to its source line, and drop helpers that only forward
+  (a law's scoped case when it has no handlers, resources or policies).
+  Remote serving and evaluation, a typed operation's Result, a codec built
+  by an expression and a model's callbacks are runtime functions the
+  generated code calls (`Remote.serveDefinitions`, `Typed.tryResult`,
+  `Codec.toNative`, `Model.call1`).
+- Generated F# is laid out as Fantomas (8.1.0, default settings) lays it
+  out, and the .NET runtime is formatted the same way; generated C# is what
+  `dotnet format` leaves unchanged. Acceptance runs `fantomas --check` and,
+  for C#, `dotnet format whitespace --verify-no-changes` on every generated
+  .NET project.
+
 ### Added
 
 - Shared foundations for readable output on every target: a naming service,

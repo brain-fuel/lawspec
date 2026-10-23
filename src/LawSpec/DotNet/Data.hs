@@ -333,7 +333,7 @@ emitData FSharp layout bits bound declarations
             case resolvedConstructorStyle rc of
               RecordConstructor | not single -> Left (".NET binds a record style only to a type with one constructor: " ++ C.idText (C.dataId d))
               RecordConstructor -> pure
-                ((logicalPattern, lets "nativeField" toValues ("({ " ++ intercalate "; " [n ++ " = " ++ v | (n,v) <- zip nativeNames nativeValues] ++ " } : " ++ native ++ ")")),
+                ((logicalPattern, lets "nativeField" toValues ("({ " ++ intercalate "; " [n ++ " = " ++ v | (n,v) <- zip nativeNames nativeValues] ++ " }: " ++ native ++ ")")),
                  ("r", lets "logicalField" [cd ++ ".FromNative r." ++ n | (n,cd) <- zip nativeNames fieldCodecs] packed))
               _ -> pure
                 ((logicalPattern, lets "nativeField" toValues (ctor ++ (if null nativeValues then "" else "(" ++ intercalate ", " nativeValues ++ ")"))),
@@ -343,7 +343,7 @@ emitData FSharp layout bits bound declarations
             RecordConstructor | not single -> Left (".NET binds a record style only to a type with one constructor: " ++ C.idText (C.dataId d))
             RecordConstructor -> pure
               ( ("Value.Data(" ++ stringLiteral FSharp tag ++ ", " ++ listText vars ++ ")", "({ " ++
-                  intercalate "; " [n ++ " = " ++ cd ++ ".ToNative " ++ v | (n, cd, v) <- zip3 nativeNames fieldCodecs vars] ++ " } : " ++ native ++ ")")
+                  intercalate "; " [n ++ " = " ++ cd ++ ".ToNative " ++ v | (n, cd, v) <- zip3 nativeNames fieldCodecs vars] ++ " }: " ++ native ++ ")")
               , ("r", "Value.Data(" ++ stringLiteral FSharp tag ++ ", " ++ listText [cd ++ ".FromNative r." ++ n | (n, cd) <- zip nativeNames fieldCodecs] ++ ")") )
             _ -> pure
               ( ("Value.Data(" ++ stringLiteral FSharp tag ++ ", " ++ listText vars ++ ")", ctor ++

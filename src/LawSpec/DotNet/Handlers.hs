@@ -164,8 +164,8 @@ emitHandlers lang layout bits typed declarations units = do
                     "new() = " ++ cls ++ "(LawSpec.Generated.Program.schema, Scalar.SymbolContext())"]
                 , map (L.pad 4) ["/// The handler as the runtime runs it.", "member _.Handler = handler"] ] ++
                 [ map (L.pad 4) ["/// The handler's state in native types: a snapshot to show or keep, or one to force, reset or restore.", "member _.State"] ++
-                  map (L.pad 8) ["with get (): " ++ t ++ " = " ++ codecText c "ToNative" ("(snd (Effects.handlerState " ++ field first ++ "))"),
-                    "and set (state: " ++ t ++ ") = Effects.setHandlerState " ++ field first ++ " (" ++ codecText c "FromNative" "state" ++ ")"]
+                  accessor ("with get (): " ++ t ++ " =") (codecText c "ToNative" ("(snd (Effects.handlerState " ++ field first ++ "))")) ++
+                  accessor ("and set (state: " ++ t ++ ") =") ("Effects.setHandlerState " ++ field first ++ " (" ++ codecText c "FromNative" "state" ++ ")")
                 | Just c <- [stateCodec], Just t <- [stateType] ] ++
                 [ L.pad 4 ("/// " ++ m ++ (if "Result<" `isPrefix` r then ": its failure as a Result." else ".")) :
                   L.function 4 ("member _." ++ m ++ "(" ++ intercalate ", " [v ++ ": " ++ t | (v, t) <- fsParameters ps] ++ ")") [] (Just r)
@@ -202,6 +202,10 @@ emitHandlers lang layout bits typed declarations units = do
                 | (a, m, ps, r, _) <- operations ]
           in header <> D.hardline <> D.block 4 (D.joinWith (D.hardline <> D.hardline) members)
     fsParameters ps = if map snd ps == ["unit"] then [] else ps
+    -- A property's accessor: its body on its line while under 40 columns.
+    accessor header body
+      | L.columns body < 40 && 8 + L.columns header + 1 + L.columns body <= L.pageWidth = [L.pad 8 (header ++ " " ++ body)]
+      | otherwise = [L.pad 8 header, L.pad 12 body]
     -- A class with the handler context, its parameters on a line of their
     -- own when the declaration is too wide, as Fantomas writes it.
     classHeader cls =

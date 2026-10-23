@@ -220,7 +220,13 @@ cexpr env scope e = case expressionNode e of
   Construct tag args -> do
     parts <- mapM (cexpr env scope) args
     x <- construct env (expressionType e) tag (map snd parts)
-    pure (concatMap fst parts, x)
+    -- A record is bound to a local named for its type, so it is never an
+    -- operand spanning lines.
+    case (x, M.lookup tag (envConstructors env)) of
+      (Record _, Just (d, _)) -> do
+        t <- fresh (dataNameOf env d)
+        pure (concatMap fst parts ++ [LetS ("let " ++ t) x], A t)
+      _ -> pure (concatMap fst parts, x)
   ExternalCall i args
     | Just intrinsic <- M.lookup i (typedIntrinsics (envPlan env)) -> do
         parts <- mapM (cexpr env scope) args
@@ -546,7 +552,7 @@ intrinsicCall env intrinsic args = case (intrinsic, args) of
   (KeyValValues, [(m, _)]) -> apply "Typed.values" [m]
   (KeyValEntries, [(m, _)]) -> do
     entry <- entryType env
-    pure (App "Typed.entries" [A ("(fun k v -> ({ Key = k; Value = v } : " ++ entry ++ "))"), m])
+    pure (App "Typed.entries" [A ("(fun k v -> ({ Key = k; Value = v }: " ++ entry ++ "))"), m])
   (SetOf, [(xs, _)]) -> apply "Set.ofList" [xs]
   (SetMember, [(x, _), (s, _)]) -> apply "Set.contains" [x, s]
   (SetInsert, [(x, _), (s, _)]) -> apply "Set.add" [x, s]
@@ -595,7 +601,7 @@ matchStatements env scope value cases = do
           (statements, result) <- cstmt env ([x | (Just x, _) <- bound] ++ scope) (caseBody c)
           entry <- if kind == "KeyVal" then Just <$> entryType env else pure Nothing
           let items = case entry of
-                Just e -> App "Typed.entries" [A ("(fun k v -> ({ Key = k; Value = v } : " ++ e ++ "))"), A "subject"]
+                Just e -> App "Typed.entries" [A ("(fun k v -> ({ Key = k; Value = v }: " ++ e ++ "))"), A "subject"]
                 Nothing -> App "Typed.items" [A "subject"]
               binding = case bound of
                 [(_, n')] | n' /= "_" -> [LetS ("let " ++ n') items]

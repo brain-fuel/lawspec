@@ -135,9 +135,10 @@ in `LawSpec.TypedProgram` over the same records, unions, lists, options,
 converts only its arguments and result. Bounded integers are .NET's own,
 checked as LawSpec checks them; `Integer` is `bigint`; `Text` is a `string`
 measured in code points. A self-recursive call in tail position becomes a
-loop. Each function is named for its definition and a digest of its
-identity, so its name survives unrelated edits. `lawspec-dev bench kafka
---typed` lists the definitions that stay dynamic, and why.
+loop. Each function is named for its definition (`settings`, compiled as
+`Settings`), with `_2` only when two would share a name, so its name
+survives unrelated edits. `lawspec-dev bench kafka --typed` lists the
+definitions that stay dynamic, and why.
 
 ## Spec handlers
 
@@ -224,3 +225,23 @@ xUnit tests by method with the query filter, and reads which ran from the
 JUnit report. `npx lawspec doctor` checks the SDK version, that `global.json`
 selects Microsoft.Testing.Platform, and that both projects import the
 generated props.
+
+## Names
+
+Generated code uses the specification's names. Parameters, inputs and
+binders keep their source names in camelCase, with a keyword escaped by a
+trailing underscore. A test is named after its law and example:
+`lawNormalizersAgree_spacesBecomeHyphensPunctuationIsPreserved`, and
+`_boundary`, `_property` for the other kinds. An anonymous record is a type
+named from where it is used: the payload of a `Declined` case is
+`DeclinedDetails`. Each test, law and typed definition has a comment linking
+it to its source line, and text is written as F# string literals.
+
+## Formatting
+
+Output is what Fantomas writes with its default settings: four-space
+indentation and 120 columns. LawSpec lays it out itself, so generation needs
+no formatter; LawSpec's own acceptance checks every generated project, the
+runtime under `lawspec/` included, with `fantomas --check` (8.1.0, pinned in
+`test/locks/dotnet-tools.json`). `--minify` allows a compact layout that
+keeps F#'s required indentation.

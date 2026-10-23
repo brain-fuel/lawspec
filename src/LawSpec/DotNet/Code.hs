@@ -13,11 +13,12 @@ module LawSpec.DotNet.Code
 
 import qualified LawSpec.Code.Doc as D
 import Control.Monad.State.Strict (State, evalState, get, put)
+import Control.Monad (guard, forM)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List (intercalate)
 import LawSpec.Code.Literal (literalFor)
-import LawSpec.DotNet.Layout (columns)
+import LawSpec.DotNet.Layout (columns, dottedLines)
 
 data Lang = FSharp | CSharp deriving (Eq, Show)
 
@@ -101,6 +102,7 @@ isInline e = case e of
   Lambda {} -> False
   Let {} -> False
   If {} -> False
+  Do [] x -> isInline x
   Do {} -> False
   Call _ args -> all isInline args
   Ctor _ args -> all isInline args
@@ -112,13 +114,28 @@ isInline e = case e of
 -- | A statement: a binding (of anything, block or not) or a unit effect.
 data Stmt = Bind String Ty Expr | Effect Expr
 
-type Fresh = State Int
+-- | Fresh names, and the width the code being laid out has: Fantomas lays
+-- out a parenthesised lambda's body one column narrower than its context.
+type Fresh = State (Int, Int)
 
 fresh :: Fresh String
 fresh = do
-  n <- get
-  put (n + 1)
+  (n, w) <- get
+  put (n + 1, w)
   pure ("ls" ++ show n)
+
+widthNow :: Fresh Int
+widthNow = snd <$> get
+
+-- | Lay out the body of a parenthesised lambda.
+narrower :: Fresh a -> Fresh a
+narrower action = do
+  (n, w) <- get
+  put (n, w - 1)
+  x <- action
+  (n', _) <- get
+  put (n', w)
+  pure x
 
 -- | Statements that compute an expression, and the inline expression left.
 -- Block constructs in argument position are bound first; when one argument
@@ -269,7 +286,7 @@ opening s (l : ls) = (s ++ l) : ls
 -- declaration's line while it is under 40 columns; a declaration too wide for its line has a parameter
 -- on each line.
 functionLines :: Lang -> Int -> String -> [(String, Ty)] -> Ty -> Expr -> Lines
-functionLines lang i declaration parameters result e = evalState go 0
+functionLines lang i declaration parameters result e = evalState go (0, pageWidth)
   where
     unitBody = result == tUnit
     body = block lang (i + 4) result (if unitBody then Discard else Return) (distinct e)
@@ -298,11 +315,11 @@ linesDoc base ls = D.joinWith D.hardline [D.text (drop base l) | l <- ls]
 
 -- | A function body: its statements and its result, at an indentation.
 renderBody :: Lang -> Int -> Ty -> Expr -> D.Doc
-renderBody lang indentation ty e = linesDoc indentation (evalState (block lang indentation ty Return (distinct e)) 0)
+renderBody lang indentation ty e = linesDoc indentation (evalState (block lang indentation ty Return (distinct e)) (0, pageWidth))
 
 -- | A body run for its effects (a C# void method, an F# unit function).
 renderStatements :: Lang -> Int -> Expr -> D.Doc
-renderStatements lang indentation e = linesDoc indentation (evalState (block lang indentation tUnit Discard (distinct e)) 0)
+renderStatements lang indentation e = linesDoc indentation (evalState (block lang indentation tUnit Discard (distinct e)) (0, pageWidth))
 
 -- | An expression that is already inline, on one line.
 renderExpr :: Lang -> Expr -> D.Doc
@@ -353,14 +370,14 @@ exprStatement lang i before after e = do
 statement :: Lang -> Int -> Stmt -> Fresh Lines
 statement lang i s = case s of
   Effect e -> exprStatement lang i "" (if lang == FSharp then "" else ";") e
-  Bind name t (If c rt a b) -> case lang of
+  Bind name t (If c rt a b) -> widthNow >>= \w -> case lang of
     FSharp -> case flat FSharp (If c rt a b) of
-      Just f | fitsBinding i name f -> pure [pad i ("let " ++ name ++ " = " ++ f)]
+      Just f | fitsBinding w i name f -> pure [pad i ("let " ++ name ++ " = " ++ f)]
       _ -> (pad i ("let " ++ name ++ " =") :) <$> conditional lang (i + 4) rt Return c a b
     CSharp -> (pad i (tyText CSharp t ++ " " ++ name ++ ";") :) <$> conditional lang i rt (Assign name) c a b
-  Bind name _ e -> case lang of
+  Bind name _ e -> widthNow >>= \w -> case lang of
     FSharp -> case flat FSharp e of
-      Just f | fitsBinding i name f -> pure [pad i ("let " ++ name ++ " = " ++ f)]
+      Just f | fitsBinding w i name f -> pure [pad i ("let " ++ name ++ " = " ++ f)]
       _ -> do
         ls <- expr lang (i + 4) (i + 4) 0 e
         pure (pad i ("let " ++ name ++ " =") : opening (pad (i + 4) "") ls)
@@ -369,7 +386,7 @@ statement lang i s = case s of
   where
     -- Fantomas keeps a value binding on one line while name = value takes
     -- up to 80 columns.
-    fitsBinding indentation name f = columns (name ++ " = " ++ f) <= 80 && indentation + length ("let " ++ name ++ " = ") + columns f <= pageWidth
+    fitsBinding w indentation name f = columns (name ++ " = " ++ f) <= 80 && indentation + length ("let " ++ name ++ " = ") + columns f <= w
 
 -- | A conditional, after the statements its condition needs. F# writes a
 -- short one on one line.
@@ -377,16 +394,37 @@ conditional :: Lang -> Int -> Ty -> Sink -> Expr -> Expr -> Expr -> Fresh Lines
 conditional lang i ty sink c a b = do
   (cs, c') <- flatten True tBool c
   pre <- mapM (statement lang i) cs
+  w <- widthNow
   case flat lang (If c' ty a b) of
-    Just f | lang == FSharp, i + columns f <= pageWidth -> pure (separated (pre ++ [[pad i f]]))
+    Just f | lang == FSharp, i + columns f <= w -> pure (separated (pre ++ [[pad i f]]))
     _ -> conditionalLines lang i ty sink pre c' a b
 
 conditionalLines :: Lang -> Int -> Ty -> Sink -> [Lines] -> Expr -> Expr -> Expr -> Fresh Lines
-conditionalLines lang i ty sink pre c' a b = do
+conditionalLines lang i ty sink pre c' a b = conditionalLines' True lang i ty sink pre c' a b
+
+conditionalLines' :: Bool -> Lang -> Int -> Ty -> Sink -> [Lines] -> Expr -> Expr -> Expr -> Fresh Lines
+conditionalLines' compact lang i ty sink pre c' a b
+  -- An else-if chain whose every clause is short has a line per clause.
+  | compact, lang == FSharp, Just ls <- compactChain = pure (separated (pre ++ [ls]))
+  where
+    compactChain = do
+      let chain = clauses c' a b
+          (conditions, final) = (init chain, snd (last chain))
+      guard (length conditions >= 2)
+      texts <- forM conditions $ \(cond, body) -> (\x y -> (x, y)) <$> (cond >>= flat FSharp) <*> (guard (isInline body) >> flat FSharp body)
+      finalText <- guard (isInline final) >> flat FSharp final
+      let lines' = [(if k == 0 then "if " else "else if ") ++ x ++ " then " ++ y | (k, (x, y)) <- zip [0 :: Int ..] texts] ++ ["else " ++ finalText]
+      guard (all ((<= 60) . columns) lines')
+      pure (map (pad i) lines')
+    clauses cond yes no = case no of
+      If c2 _ a2 b2 | isInline c2 -> (Just cond, yes) : clauses c2 a2 b2
+      _ -> [(Just cond, yes), (Nothing, no)]
+conditionalLines' _ lang i ty sink pre c' a b = do
+  w <- widthNow
   -- F# writes a condition too long for its line between if and then.
   cd <- case lang of
     FSharp -> case flat FSharp c' of
-      Just f | i + 3 + columns f + 5 <= pageWidth -> pure [f]
+      Just f | i + 3 + columns f + 5 <= w -> pure [f]
       _ -> do
         inner <- expr lang (i + 4) (i + 4) 0 c'
         pure ("" : opening (pad (i + 4) "") inner ++ [pad i ""])
@@ -395,7 +433,7 @@ conditionalLines lang i ty sink pre c' a b = do
   rest <- case (lang, b) of
     -- else if: an else branch that is only a conditional continues the chain.
     (FSharp, If c2 t2 a2 b2) | isInline c2 -> do
-      chained <- conditionalLines lang i t2 sink [] c2 a2 b2
+      chained <- conditionalLines' False lang i t2 sink [] c2 a2 b2
       pure (opening (pad i "else ") (dropIndent chained))
     _ -> do
       bd <- block lang (i + 4) ty sink b
@@ -441,7 +479,7 @@ flat lang e = case e of
   Raw f c -> Just (if lang == FSharp then f else c)
   Call (Fn f c) args -> case lang of
     FSharp | null args -> Just (f ++ (if methodLike f then "()" else " ()"))
-           | [a] <- args, needsParens a, methodLike f -> (f ++) <$> atom a
+           | [a] <- args, needsParens a || a == UnitLit, methodLike f -> (f ++) <$> atom a
            | otherwise -> unwords . (f :) <$> mapM atom args
     CSharp -> applied c <$> mapM (flat lang) args
   Ctor (Fn f c) args -> applied (if lang == FSharp then f else c) <$> mapM (flat lang) args
@@ -461,6 +499,7 @@ flat lang e = case e of
     pure $ case lang of
       FSharp -> lambdaOpening FSharp ps ++ " " ++ body
       CSharp -> lambdaOpening CSharp ps ++ " " ++ body ++ ")"
+  Do [] x -> flat lang x
   If c _ a b | lang == FSharp, all isInline [c, a, b] -> do
     s <- (\c' a' b' -> "if " ++ c' ++ " then " ++ a' ++ " else " ++ b') <$> flat lang c <*> flat lang a <*> flat lang b
     if columns s <= 60 then Just s else Nothing
@@ -486,10 +525,14 @@ needsParens a = case a of
 -- for t more columns after it: on one line when it fits, else broken as the
 -- formatter breaks it.
 expr :: Lang -> Int -> Int -> Int -> Expr -> Fresh Lines
-expr lang i c t e = case flat lang e of
-  Just s | c + columns s + t <= pageWidth || unbreakable -> pure [s]
+expr lang i c t e = widthNow >>= \w -> case flat lang e of
+  Just s | c + columns s + t - closer <= w || unbreakable -> pure [s]
   _ -> broken lang i c e
   where
+    -- Fantomas leaves a tuple's closing parenthesis out of its measure.
+    closer = case (lang, e) of
+      (FSharp, TupleOf (_ : _)) -> 1
+      _ -> 0
     -- A name, a literal or an empty call has nowhere to break.
     unbreakable = case e of
       Call _ [] -> True
@@ -509,7 +552,10 @@ expr lang i c t e = case flat lang e of
       _ -> True
 
 broken :: Lang -> Int -> Int -> Expr -> Fresh Lines
-broken FSharp i c e = case e of
+broken lang i c e = widthNow >>= \w -> brokenAt w lang i c e
+
+brokenAt :: Int -> Lang -> Int -> Int -> Expr -> Fresh Lines
+brokenAt w FSharp i c e = case e of
   Call (Fn f _) args -> application i c f args
   Invoke g args | Just head' <- flat FSharp g -> application i c (if needsParens g then "(" ++ head' ++ ")" else head') args
   Ctor (Fn f _) args -> commaList (f ++ "(") ")" args
@@ -534,24 +580,29 @@ broken FSharp i c e = case e of
     application j column f args
       | not (null args), Lambda ps r b <- last args, Just fronts <- mapM atom (init args)
       , let open = unwords (f : fronts ++ ["(" ++ lambdaOpening FSharp ps])
-      , column + columns open <= pageWidth = do
-          inner <- block FSharp (j + 4) r Return b
+      , column + columns open <= w = do
+          inner <- narrower (block FSharp (j + 4) r Return b)
           pure (closing ")" (open : inner))
       | [a] <- args, needsParens a, not (isLambda a) = do
           inner <- expr FSharp (j + 4) (j + 4) 0 a
           pure ([f ++ (if methodLike f then "(" else " (")] ++ opening (pad (j + 4) "") inner ++ [pad j ")"])
+      -- A name too long for its line breaks at a dot: as many of its parts
+      -- as fit, then the rest.
+      | column + columns f > w, (first : rest@(_ : _)) <- dottedLines w column (j + 4) f = do
+          items <- mapM (argument (j + 4)) args
+          pure ([first] ++ rest ++ concat items)
       | otherwise = do
           items <- mapM (argument (j + 4)) args
           pure (f : concat items)
     argument j a
       | needsParens a = do
-          inner <- expr FSharp j (j + 1) 0 a
+          inner <- (if isLambda a then narrower else id) (expr FSharp j (j + 1) 0 a)
           pure (closing ")" (opening (pad j "(") inner))
       | otherwise = item j a
     atom a = (\s -> if needsParens a then "(" ++ s ++ ")" else s) <$> flat FSharp a
     isLambda a = case a of Lambda {} -> True; _ -> False
 
-broken CSharp i c e = case e of
+brokenAt w CSharp i c e = case e of
   Call (Fn _ name) args -> call' name args
   Ctor (Fn _ name) args -> call' name args
   Invoke g args -> call' "Fn.Invoke" (g : args)
@@ -565,7 +616,7 @@ broken CSharp i c e = case e of
     call' name args
       | not (null args), Lambda ps r b <- last args, Just fronts <- mapM (flat CSharp) (init args)
       , let open = name ++ "(" ++ concatMap (++ ", ") fronts ++ lambdaOpening CSharp ps
-      , c + columns open <= pageWidth = do
+      , c + columns open <= w = do
           inner <- block CSharp (i + 4) r Return b
           pure ([open, pad i "{"] ++ inner ++ [pad i "}))"])
       | otherwise = do
@@ -582,7 +633,7 @@ methodLike f = case reverse (takeWhile (/= '.') (reverse f)) of
 -- | A block in an inline position: a function of no arguments, applied.
 fallback :: Lang -> Int -> Expr -> Fresh Lines
 fallback lang i e = do
-  inner <- block lang (i + 4) tValue Return e
+  inner <- (if lang == FSharp then narrower else id) (block lang (i + 4) tValue Return e)
   pure $ case lang of
     FSharp -> ["(fun () ->"] ++ closing ") ()" inner
     CSharp -> ["Fn.Run(() =>", pad i "{"] ++ inner ++ [pad i "})"]

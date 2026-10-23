@@ -338,6 +338,18 @@ unicode-east-asian-width:
   kind: article
   title: Unicode Standard Annex 11, East Asian Width
   locator: https://www.unicode.org/reports/tr11/
+fantomas:
+  kind: article
+  title: Fantomas, the F# source code formatter, and its configuration
+  locator: https://fsprojects.github.io/fantomas/docs/end-users/Configuration.html
+dotnet-format:
+  kind: article
+  title: dotnet format
+  locator: https://learn.microsoft.com/dotnet/core/tools/dotnet-format
+unicode-text-segmentation:
+  kind: article
+  title: Unicode Standard Annex 29, Unicode Text Segmentation
+  locator: https://www.unicode.org/reports/tr29/
 python-string-literals:
   kind: article
   title: The Python Language Reference, String and Bytes literals
