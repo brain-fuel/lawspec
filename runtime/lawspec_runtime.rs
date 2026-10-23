@@ -3269,6 +3269,20 @@ pub fn helper(name: &str, mut args: Vec<Value>) -> Result<Value> {
     })
 }
 
+/// A mutex's value, even when a panicking holder poisoned it: handlers keep
+/// their state and context behind one.
+pub fn locked<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// A handler operation's result: its error ends the operation, which the
+/// ability's trait cannot return.
+pub fn answered<T>(result: Result<T>) -> T {
+    result.unwrap_or_else(|error| panic!("{error}"))
+}
+
 /// A law's expectation: the values are equal, or the failure says where the
 /// expectation is written, both values and where they first differ.
 pub fn expect_equal(actual: &Value, expected: &Value, context: &str) -> Result<()> {

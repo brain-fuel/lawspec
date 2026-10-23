@@ -296,22 +296,24 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         block (Doc.joinWith (Doc.hardline <> Doc.hardline) methods))
     allUnits = map plannedUnit plannedUnits
     -- A handler from the context, borrowed as its ability's trait.
-    handlerValue ability = Doc.text ("ctx.handler::<std::sync::Arc<dyn " ++ Abilities.traitPath allUnits ability ++ ">>(" ++ q (abilityKey ability) ++ ")?")
+    -- A handler from the context, typed by its binding.
+    handlerValue ability = RL.expr (RL.try' (RL.method (RL.atom "ctx") "handler" [RL.atom (q (abilityKey ability))]))
+    handlerType ability = "std::sync::Arc<dyn " ++ Abilities.traitPath allUnits ability ++ ">"
     -- A law's handlers, made afresh each time it runs and installed in its context.
     -- A handler of several abilities is made once and installed for each;
     -- a native handler made with a resource (ability A with T) is made once
     -- the case has acquired its T.
     handlerInstalls owner p =
-      [Doc.text ("let " ++ sharedName h ++ " = std::sync::Arc::new(lawspec_abilities::" ++ Abilities.moduleOf owner ++ "::" ++ specName h ++ "::new(ctx));") | h <- sharedOf owner p] ++
+      [RL.stmt (RL.Let (sharedName h) (RL.call "std::sync::Arc::new" [RL.call ("lawspec_abilities::" ++ Abilities.moduleOf owner ++ "::" ++ specName h ++ "::new") [RL.atom "ctx"]])) | h <- sharedOf owner p] ++
       installsWith owner (made owner p) [(a, c) | (a, c) <- propertyHandlers p, resourceFor p a c == Nothing]
     lateInstalls owner p = installsWith owner (made owner p) [(a, c) | (a, c) <- propertyHandlers p, resourceFor p a c /= Nothing]
     installsFor owner = installsWith owner (\_ _ _ -> Nothing)
     installsWith owner making handlers = case [(a, c) | (a, c) <- handlers, not (isFail a)] of
       [] -> []
       -- Made first, then installed: making a handler may read the context.
-      chosen -> [Doc.text "let installing = vec![" <> Doc.nest 4 (Doc.hardline <> Doc.joinWith Doc.hardline
-        [Doc.text ("(" ++ q (abilityKey a) ++ ".to_string(), " ++ Abilities.handlerConstructionWith (NR.bindingRustCrate bindings) allUnits owner (making a) a c ++ "),") | (a, c) <- chosen]) <>
-        Doc.hardline <> Doc.text "];", Doc.text "ctx.install_handlers(installing);"]
+      chosen -> [RL.stmt (RL.Let "installing" (RL.vecOf
+        [RL.Macro "" "(" ")" [RL.method (RL.atom (q (abilityKey a))) "to_string" [], Abilities.handlerConstructionWith (NR.bindingRustCrate bindings) allUnits owner (making a) a c] | (a, c) <- chosen])),
+        Doc.text "ctx.install_handlers(installing);"]
     sharedName h = "shared_" ++ handlerName h
     sharedOf owner p = nub [h | (_, c) <- propertyHandlers p, Just h <- [specOf owner c], not (null (handlerAlso h))]
     specOf owner c = case c of
@@ -370,6 +372,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           wrapperNames = fst (claimAll (scopeWith (Expression.reservedLocals ++ ["lawspec_runtime", "lawspec_harness", "native_generators"]))
             [nativeIdentifier "rust" FunctionName (declarationName d) | d <- adapters])
           render = Expression.renderExpression planDataDeclarations planMachineBits declarationNames
+          renderL = Expression.renderExpressionL planDataDeclarations planMachineBits declarationNames
           -- The harness plane (LawSpec.Harness).
           runSettings h = harnessTimeout h /= Nothing || harnessRepeat h /= 1 || harnessRetries h /= 0 || observed h
           observed h = not (null (harnessCover h) && null (harnessClassify h) && null (harnessLabels h)) || harnessTarget h /= Nothing
@@ -541,7 +544,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               [nativeIdentifier "rust" ValueName (case [interfaceName a | Just (_, a) <- [findAbility allUnits ability]] of
                  n : _ -> n
                  [] -> "handler") | ability <- uses])
-            handlerBindings = [binding n (handlerValue ability) | (n, ability) <- zip handlerNames uses]
+            handlerBindings = [binding (n ++ ": " ++ handlerType ability) (handlerValue ability) | (n, ability) <- zip handlerNames uses]
             call = invoke ("adapter::" ++ declarationName d)
               ([Doc.text ("&*" ++ n) | n <- handlerNames] ++ map (Doc.text . native) argumentNames)
             plain = if declarationAsync d then invoke "ls::block_on" [call] else call
@@ -646,8 +649,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             conditional (Doc.text "!condition.boolean()?") (Doc.text "return Ok(false);")])
         strategies <- forM (zip3 [0::Int ..] (propertyInputs p) (generatorRequirements pp)) $ \(i,input,requirement) -> do
           bounds <- forM (quantifiedBounds input) $ \(op,e) -> do
-            value <- render names e
-            pure (Doc.text "(" <> string (binaryName op) <> Doc.text ", " <> value <> Doc.text ")")
+            value <- renderL names e
+            pure (RL.Macro "" "(" ")" [RL.atom (q (binaryName op)), value])
           hints <- mapM (render names) (generatorHints requirement)
           seeds <- mapM valueLiteral (generatorBoundaries requirement)
           let inputType = binderType (quantifiedBinder input)
@@ -696,7 +699,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           let construct = case harnessDraw of
                 Just doc -> Doc.text "Ok::<_, String>(Some(" <> doc <> Doc.text "))"
                 Nothing | null bounds || customInput inputType -> Doc.text "Ok::<_, String>(Some(" <> baseStrategy <> Doc.text "))"
-                        | otherwise -> invoke "ls_gen::bounded_integer" [string (typeName inputType),Expression.vector bounds,bits]
+                        | otherwise -> RL.expr (RL.call "ls_gen::bounded_integer" [RL.atom (q (typeName inputType)), RL.vecOf bounds, RL.atom (show planMachineBits)])
               seeded = not (harnessDraw /= Nothing || checked || customInput inputType)
               made = statements
                 ([binding "symbol" value | value <- take 1 symbols] ++

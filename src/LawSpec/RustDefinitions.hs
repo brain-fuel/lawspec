@@ -131,7 +131,7 @@ emitRustDefinitions layout bits declarations units = do
           uses = [ability | ability <- declarationUses a, not (isFail ability)]
           handlerNames = fst (claimAll (scopeWith (natives ++ E.reservedLocals))
             [nativeIdentifier "rust" ValueName (maybe "handler" (interfaceName . snd) (findAbility units ability)) | ability <- uses])
-          handlerBindings = [L.Let h (L.try' (L.method (L.atom "ctx") ("handler::<std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">>") [L.atom (show (abilityKey ability))]))
+          handlerBindings = [L.Let (h ++ ": std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">") (L.try' (L.method (L.atom "ctx") "handler" [L.atom (show (abilityKey ability))]))
             | (h, ability) <- zip handlerNames uses]
           adapter = "crate::" ++ ownerModule owner ++ "::" ++ declarationName a
           plainCall = L.call adapter (map (L.atom . ("&*" ++)) handlerNames ++ map L.atom natives)
