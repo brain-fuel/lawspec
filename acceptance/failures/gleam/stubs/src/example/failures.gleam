@@ -11,9 +11,7 @@ pub fn settle(_argument0: Int) -> Int {
 }
 
 pub fn gateway_handler() -> abilities_example_failures.Gateway {
-  abilities_example_failures.gateway(
-    fn(_int32) {
-      panic as "Not implemented: example.failures::ability::Gateway.decide"
-    },
-  )
+  abilities_example_failures.gateway(fn(_int32) {
+    panic as "Not implemented: example.failures::ability::Gateway.decide"
+  })
 }

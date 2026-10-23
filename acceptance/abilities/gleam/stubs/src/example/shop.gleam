@@ -4,16 +4,16 @@ import lawspec/abilities/example/abilities as abilities_example_abilities
 import lawspec/abilities/example/shop as abilities_example_shop
 
 pub fn refund(
-  _handler0: abilities_example_abilities.Gateway,
-  _argument0: Int,
+  _gateway_handler: abilities_example_abilities.Gateway,
+  _int32: Int,
 ) -> Int {
   panic as "Not implemented: example.shop::refund"
 }
 
 pub fn log_handler() -> abilities_example_shop.Log {
-  abilities_example_shop.log(
-    fn(_text) { panic as "Not implemented: example.shop::ability::Log.note" },
-  )
+  abilities_example_shop.log(fn(_text) {
+    panic as "Not implemented: example.shop::ability::Log.note"
+  })
 }
 
 pub fn store_int32_handler() -> abilities_example_shop.StoreInt32 {
@@ -37,7 +37,7 @@ pub fn store_text_handler() -> abilities_example_shop.StoreText {
 }
 
 pub fn meter_handler() -> abilities_example_shop.Meter {
-  abilities_example_shop.meter(
-    fn() { panic as "Not implemented: example.shop::ability::Meter.reading" },
-  )
+  abilities_example_shop.meter(fn() {
+    panic as "Not implemented: example.shop::ability::Meter.reading"
+  })
 }

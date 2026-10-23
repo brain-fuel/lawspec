@@ -3,8 +3,8 @@
 import lawspec/abilities/example/abilities as abilities_example_abilities
 
 pub fn charge(
-  _handler0: abilities_example_abilities.Gateway,
-  _argument0: Int,
+  _gateway_handler: abilities_example_abilities.Gateway,
+  _int32: Int,
 ) -> Bool {
   panic as "Not implemented: example.abilities::charge"
 }

@@ -1,7 +1,7 @@
 -- | Native Gleam tokens and types. Shared Core expressions and runtime values
 -- are compiled once on BEAM, with checked bridges at every public function.
 -- ref:DEC-idiomatic-generated-types ref:DEC-readable-output-default
-module LawSpec.GleamCode (string, call, tuple, function, lambda, huggedLambda, external, fileDoc, fileDocFrom, nativeType, imports, layoutFor, typeAlias) where
+module LawSpec.GleamCode (variableName, string, call, tuple, function, lambda, huggedLambda, external, fileDoc, fileDocFrom, nativeType, imports, layoutFor, typeAlias) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -14,6 +14,10 @@ import LawSpec.SourceLink (generatedHeader)
 -- | A Gleam string (LawSpec.Code.Literal). ref:DEC-native-string-literals
 string :: String -> D.Doc
 string = D.text . literalFor "gleam"
+
+-- | A Gleam name: Gleam's keywords escaped with _lawspec, as functions are.
+variableName :: String -> String
+variableName = E.gleamName
 
 -- | gleam format's width, 80, for the BEAM layout.
 layoutFor :: D.Layout -> D.Layout

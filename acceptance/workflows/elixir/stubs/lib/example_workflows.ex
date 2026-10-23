@@ -6,11 +6,8 @@ defmodule Example.Workflows do
     raise "Not implemented: example.workflows::audit"
   end
 
-  @spec waitlist(LawSpec.Data.signup_error()) :: {
-          :left,
-          LawSpec.Data.signup_error()} | {:right,
-          LawSpec.Data.account()
-        }
+  @spec waitlist(LawSpec.Data.signup_error()) ::
+          {:left, LawSpec.Data.signup_error()} | {:right, LawSpec.Data.account()}
 
   def waitlist(_signup_error) do
     raise "Not implemented: example.workflows::waitlist"
@@ -28,11 +25,8 @@ defmodule Example.Workflows do
     raise "Not implemented: example.workflows::checkCredit"
   end
 
-  @spec check_name(LawSpec.Data.signup()) :: {
-          :left,
-          LawSpec.Data.signup_error()} | {:right,
-          LawSpec.Data.signup()
-        }
+  @spec check_name(LawSpec.Data.signup()) ::
+          {:left, LawSpec.Data.signup_error()} | {:right, LawSpec.Data.signup()}
 
   def check_name(_signup) do
     raise "Not implemented: example.workflows::checkName"
@@ -44,11 +38,8 @@ defmodule Example.Workflows do
     raise "Not implemented: example.workflows::checkAge"
   end
 
-  @spec open_account(LawSpec.Data.signup()) :: {
-          :left,
-          LawSpec.Data.signup_error()} | {:right,
-          LawSpec.Data.account()
-        }
+  @spec open_account(LawSpec.Data.signup()) ::
+          {:left, LawSpec.Data.signup_error()} | {:right, LawSpec.Data.account()}
 
   def open_account(_signup) do
     raise "Not implemented: example.workflows::openAccount"

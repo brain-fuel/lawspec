@@ -13,6 +13,8 @@ import LawSpec.Core.Types (freeExistentials)
 import Control.Monad (forM, unless)
 import Data.List (nub)
 import LawSpec.SourceLink (unitSourceFile)
+import qualified LawSpec.ElixirCode as X
+import LawSpec.Naming (typeWords)
 
 emitNative :: D.Layout -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emitNative layout declarations units = do
@@ -39,8 +41,16 @@ emitNative layout declarations units = do
       handlers <- mapM (Abilities.nativeType "gleam" units) (Effects.uses d)
       inputs <- mapM (G.nativeType False names []) args
       output <- G.nativeType False names [] result
-      pure ([D.text ((if unused then "_handler" else "handler") ++ show i ++ ": ") <> t | (i,t) <- zip [0::Int ..] handlers] ++
-        [D.text ((if unused then "_argument" else "argument") ++ show i ++ ": ") <> t | (i,t) <- zip [0::Int ..] inputs],output)
+      -- Arguments are named for their definition's parameters, or a
+      -- declaration's for their types; handlers for their abilities.
+      let parameterNames = case [def | u <- units, def <- C.unitDefinitions u, C.declarationId (C.definitionDeclaration def) == C.declarationId d] of
+            def : _ -> map C.binderName (C.definitionArguments def)
+            [] -> [unwords (typeWords t) | t <- args]
+          named = map G.variableName (X.variables (parameterNames ++
+            [reverse (takeWhile (/= ':') (reverse (C.idText (C.abilityRefId a)))) ++ " handler" | a <- Effects.uses d]))
+          shown n = (if unused then "_" else "") ++ n ++ ": "
+      pure ([D.text (shown n) <> t | (n,t) <- zip (drop (length args) named) handlers] ++
+        [D.text (shown n) <> t | (n,t) <- zip named inputs],output)
     adapter names unit = do
       bodies <- forM (adapterDeclarations unit) $ \d -> do
         (args,result) <- signature names True d

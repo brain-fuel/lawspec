@@ -32,9 +32,7 @@ pub fn counter_handler() -> abilities_example_handler_context.Counter {
 }
 
 pub fn offset_handler() -> abilities_example_handler_context.Offset {
-  abilities_example_handler_context.offset(
-    fn() {
-      panic as "Not implemented: example.handlerContext::ability::Offset.offset"
-    },
-  )
+  abilities_example_handler_context.offset(fn() {
+    panic as "Not implemented: example.handlerContext::ability::Offset.offset"
+  })
 }
