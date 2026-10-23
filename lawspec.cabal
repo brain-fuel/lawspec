@@ -665,6 +665,7 @@ library
       LawSpec.ElixirNative
       LawSpec.Emit
       LawSpec.Eval
+      LawSpec.Explain
       LawSpec.Flow
       LawSpec.Frontend
       LawSpec.GleamCode

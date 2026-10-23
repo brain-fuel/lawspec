@@ -33,7 +33,9 @@ import qualified LawSpec.ModelProof as ModelProof
 import LawSpec.LawClaims (elaborateClaims, Expiry(..), analysisEvidence, analysisTaskViews, settleAnalysis)
 import qualified LawSpec.Core.LawTasks as Tasks
 import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
+import LawSpec.Explain (ExplainOptions(..), View(..), parseView, explainResult)
 import Data.Foldable (toList)
+import Data.Maybe (fromMaybe)
 import qualified Data.Map.Strict as M
 import LawSpec.TestManifest (TestEntry(..), testManifest, testManifestWithModelChecks, executableEntries, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
@@ -56,6 +58,9 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
         ["diagnostics" .= ([] :: [Diagnostic]), "formattedSources" .= formatted,
          "languageProfile" .= ("1.0-rc.2" :: String)])
           (formatSourcesUsing (formatSyntax project packages) sources)
+  -- An unknown or removed explanation view fails before compilation.
+  Right ((method,_,_,_,_,_,_,_,_,_),_,_) | method == "explain", Left err <- explainOptions ->
+    failure [Diagnostic "explain" err Nothing]
   Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native,verification),(project,packages),Right attestation) ->
    -- Typed compilation is shared across targets. SMT task preparation has a
    -- separate key because it prepares, rather than executes, optional proofs.
@@ -85,6 +90,14 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
            withAttestation attestation core obligations (withVerification verification (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core)))) in case method of
           "check" -> result []
           "expand" -> result []
+          -- Presentation of the expanded laws; it changes no obligation.
+          "explain" | Right options <- explainOptions -> case result [] of
+            Object response -> either (\err -> failure [Diagnostic "explain" err Nothing])
+              (\explained -> case explained of
+                Object e -> Object (KM.insert "diagnostics" (fromMaybe (toJSON ([] :: [Diagnostic])) (KM.lookup "diagnostics" response)) e)
+                other -> other)
+              (explainResult options (Object response))
+            response -> response
           "proofTasks" | Just selection <- verification ->
             if V.selected selection V.Proof
               then either failure (\tasks -> case result [] of
@@ -123,6 +136,27 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
         -- Unfinished package wiring must not turn formatting into a compiler
         -- check. Available raw headers can still disambiguate type arities.
         Left _ -> parseSourceSyntaxWithContext [] (concatMap packageSources packages) sources
+    -- The explanation register, law selector and any host-completed evidence
+    -- rows (native observations); none of them changes compilation.
+    explainOptions = case decode bytes of
+      Just (Object o) -> do
+        view <- case KM.lookup "view" o of
+          Nothing -> Right Eng
+          Just Null -> Right Eng
+          Just (String v) -> parseView v
+          Just _ -> Left "explain view must be a string; choose --view eng|math|dev"
+        law <- case KM.lookup "law" o of
+          Nothing -> Right Nothing
+          Just Null -> Right Nothing
+          Just (String l) -> Right (Just l)
+          Just _ -> Left "explain law must be a string <unit>::<law>"
+        evidence <- case KM.lookup "evidence" o of
+          Nothing -> Right Nothing
+          Just Null -> Right Nothing
+          Just rows@(Array _) -> Right (Just rows)
+          Just _ -> Left "explain evidence must be an array of evidence rows"
+        Right (ExplainOptions view law evidence)
+      _ -> Left "explain requires a JSON object request"
     -- Checked formatting stays the SDK default. The CLI explicitly selects
     -- parsing alone unless its caller requests --compile.
     formatCompilation = case decode bytes of
@@ -392,7 +426,7 @@ stagesWithInput canonical capture project packages sources bits settings native 
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "law", "view", "evidence", "attestation", "attestedOutcomes", "proofCounterexamples", "now", "projectVersion", "analysisResults", "modelResults"])))
   _ -> BC.unpack bytes
 
 -- | Two entries: each holds a whole compiled program and its plan.
