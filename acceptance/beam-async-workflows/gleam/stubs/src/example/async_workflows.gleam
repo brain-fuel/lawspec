@@ -3,20 +3,20 @@
 import lawspec/abilities/example/async_workflows as abilities_example_async_workflows
 
 pub fn first(
-  _handler0: abilities_example_async_workflows.Coordination,
-  _argument0: Int,
+  _coordination_handler: abilities_example_async_workflows.Coordination,
+  _int8: Int,
 ) -> Result(Int, String) {
   panic as "Not implemented: example.asyncWorkflows::first"
 }
 
 pub fn second(
-  _handler0: abilities_example_async_workflows.Coordination,
-  _argument0: Int,
+  _coordination_handler: abilities_example_async_workflows.Coordination,
+  _int8: Int,
 ) -> Result(Int, String) {
   panic as "Not implemented: example.asyncWorkflows::second"
 }
 
-pub fn public_probe(_argument0: Nil) -> Bool {
+pub fn public_probe(_unit: Nil) -> Bool {
   panic as "Not implemented: example.asyncWorkflows::publicProbe"
 }
 

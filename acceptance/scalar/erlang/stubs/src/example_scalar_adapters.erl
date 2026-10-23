@@ -48,8 +48,10 @@ successor(_Int8) -> erlang:error({not_implemented, <<"example.scalar_adapters::s
 
 narrow(_Int8) -> erlang:error({not_implemented, <<"example.scalar_adapters::narrow">>}).
 
--spec add_decimal(lawspec_beam_scalar:decimal(), lawspec_beam_scalar:decimal()) ->
-    lawspec_beam_scalar:decimal().
+-spec add_decimal(
+    lawspec_beam_scalar:decimal(),
+    lawspec_beam_scalar:decimal()
+) -> lawspec_beam_scalar:decimal().
 
 add_decimal(_Decimal, _Decimal_2) ->
     erlang:error({not_implemented, <<"example.scalar_adapters::addDecimal">>}).
@@ -63,8 +65,9 @@ same_symbol(_Symbol, _Symbol_2) ->
 
 echo_raw(_Utf16Text) -> erlang:error({not_implemented, <<"example.scalar_adapters::echoRaw">>}).
 
--spec echo_presence(none | {some, null | {non_null, -128..127}}) ->
-    none | {some, null | {non_null, -128..127}}.
+-spec echo_presence(
+    none | {some, null | {non_null, -128..127}}
+) -> none | {some, null | {non_null, -128..127}}.
 
 echo_presence(_OptionalNullableInt8) ->
     erlang:error({not_implemented, <<"example.scalar_adapters::echoPresence">>}).
@@ -78,8 +81,9 @@ finish(_Unit) -> erlang:error({not_implemented, <<"example.scalar_adapters::fini
 preserve_big(_UInt64) ->
     erlang:error({not_implemented, <<"example.scalar_adapters::preserveBig">>}).
 
--spec machine_echo(-9223372036854775808..9223372036854775807) ->
-    -9223372036854775808..9223372036854775807.
+-spec machine_echo(
+    -9223372036854775808..9223372036854775807
+) -> -9223372036854775808..9223372036854775807.
 
 machine_echo(_IntSize) ->
     erlang:error({not_implemented, <<"example.scalar_adapters::machineEcho">>}).

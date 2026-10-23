@@ -2,7 +2,7 @@
 
 import lawspec/abilities/example/remote as abilities_example_remote
 
-pub fn native_probe(_argument0: Nil) -> Bool {
+pub fn native_probe(_unit: Nil) -> Bool {
   panic as "Not implemented: example.remote::nativeProbe"
 }
 

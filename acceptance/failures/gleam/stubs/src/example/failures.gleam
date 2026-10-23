@@ -2,11 +2,11 @@
 
 import lawspec/abilities/example/failures as abilities_example_failures
 
-pub fn refund(_argument0: Int) -> Int {
+pub fn refund(_int32: Int) -> Int {
   panic as "Not implemented: example.failures::refund"
 }
 
-pub fn settle(_argument0: Int) -> Int {
+pub fn settle(_int32: Int) -> Int {
   panic as "Not implemented: example.failures::settle"
 }
 

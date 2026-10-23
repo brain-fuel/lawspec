@@ -6,8 +6,10 @@
 
 replicate(_BigUInt, _Int8) -> erlang:error({not_implemented, <<"example.indexed::replicate">>}).
 
--spec append(lawspec_data:vec(-128..127), lawspec_data:vec(-128..127)) ->
-    lawspec_data:vec(-128..127).
+-spec append(
+    lawspec_data:vec(-128..127),
+    lawspec_data:vec(-128..127)
+) -> lawspec_data:vec(-128..127).
 
 append(_VecInt8, _VecInt8_2) -> erlang:error({not_implemented, <<"example.indexed::append">>}).
 
