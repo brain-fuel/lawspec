@@ -11531,6 +11531,47 @@ pub mod net {
     );
     /// A message's name, argument descriptors and reply descriptor.
     pub type Signature = (String, Vec<Sexp>, Sexp);
+
+    /// The arguments a served message brings, taken in order.
+    pub struct Arguments(std::vec::IntoIter<Value>);
+
+    impl Arguments {
+        /// The next argument, as its native type.
+        pub fn next<T: super::FromValue>(&mut self) -> Result<T> {
+            let value = self.0.next().ok_or("a missing argument")?;
+            T::from_value(value)
+        }
+    }
+
+    /// A message actor serves: handle takes the actor and the message's
+    /// arguments and gives its reply.
+    pub fn message<A, T>(
+        actor: &A,
+        name: &str,
+        arguments: &[&str],
+        reply: &str,
+        handle: impl Fn(&A, &mut Arguments) -> Result<T> + Send + Sync + 'static,
+    ) -> RemoteHandler
+    where
+        A: Clone + Send + Sync + 'static,
+        T: super::IntoValue,
+    {
+        let actor = actor.clone();
+        let handler: Arc<dyn Fn(Vec<Value>) -> Result<Value> + Send + Sync> =
+            Arc::new(move |values: Vec<Value>| {
+                let mut arguments = Arguments(values.into_iter());
+                Ok(handle(&actor, &mut arguments)?.into_value())
+            });
+        let (name, arguments, reply) = signature(name, arguments, reply);
+        (name, arguments, reply, handler)
+    }
+
+    /// A message's signature from its name and its arguments' and reply's
+    /// descriptors.
+    pub fn signature(name: &str, arguments: &[&str], reply: &str) -> Signature {
+        let arguments = arguments.iter().map(|a| super::descriptor(a)).collect();
+        (name.to_string(), arguments, super::descriptor(reply))
+    }
     /// A definition other nodes evaluate: its content hash, the function
     /// (logical arguments in, logical result out), and its descriptors.
     pub type RemoteDefinition = (

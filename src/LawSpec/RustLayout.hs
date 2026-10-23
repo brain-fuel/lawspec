@@ -382,7 +382,12 @@ arguments cap open close limit args =
       _ -> D.text open <> D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline) (map expr args) <> D.text ",") <>
         D.hardline <> D.text close
     initial = init args
-    lastArg = last args
+    -- A closure whose body's opening does not fit there overflows with its
+    -- body in a block.
+    lastArg = case last args of
+      Closure h body | not (multilineBody body), not (fitsWith (last args)), fitsWith (Closure h (Block [] (Just body))) ->
+        Closure h (Block [] (Just body))
+      a -> a
     initialTexts = [t | Just t <- map oneLine initial]
     -- An operation overflows only outside a nested call's budget.
     overflowLast = overflowable (length args) lastArg && all (isJust . oneLine) initial &&
@@ -394,7 +399,7 @@ arguments cap open close limit args =
     -- or, when the call has none, 60 columns of its own if it is a call.
     lastCap = case cap of
       Just c -> Just (c - width (open ++ concatMap (++ ", ") initialTexts))
-      Nothing | nestedCall lastArg -> Just 60
+      Nothing | nestedCall (last args) -> Just 60
               | otherwise -> Nothing
     overflowed = D.text open <> mconcat [D.text (t ++ ", ") | t <- initialTexts] <> overflowing lastCap lastArg <> D.text close
     -- rustfmt overflows the last argument whenever the line up to its
@@ -410,9 +415,10 @@ arguments cap open close limit args =
     -- argument's opening must fit the budget too.
     -- With other arguments before it, the line's arguments up to the last
     -- one's opening must be within the width limit too.
-    overflowFits = maybe True (\c -> width firstLine <= c) cap &&
-      maybe True (\c -> width (opening lastArg) <= c) lastCap &&
-      width (concatMap (++ ", ") initialTexts ++ opening lastArg) <= limit
+    overflowFits = fitsWith lastArg
+    fitsWith a = maybe True (\c -> width (open ++ concatMap (++ ", ") initialTexts ++ opening a) <= c) cap &&
+      maybe True (\c -> width (opening a) <= c) lastCap &&
+      width (concatMap (++ ", ") initialTexts ++ opening a) <= limit
     rest
       | overflowLast, overflowFits, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice firstLine overflowed vertical)]
       | overflowLast, overflowFits = [D.prefixChoice firstLine overflowed vertical]
