@@ -14,7 +14,8 @@ import qualified LawSpec.WebTypes as W
 import qualified LawSpec.WebData as Data
 import qualified LawSpec.WebDefinitions as Definitions
 import qualified LawSpec.CoreScalarEmit as Scalar
-import qualified LawSpec.WebExpr as E
+import qualified LawSpec.Code.ECMAScript as E
+import LawSpec.WebModule (printWebModule)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.RuntimeSources (runtimeSource)
 
@@ -32,29 +33,32 @@ emitBindings ts minify bindings plan files = do
           ref <- [resolvedNativeType m, codecToNative hook, codecFromNative hook]])
       alias ref = "native" ++ show (length (takeWhile (/=ref) refs))
   imports <- forM refs $ \ref -> nativeImport "./" (alias ref) ref
-  let entries = [E.array [E.quoted (C.idText (C.constructorId (resolvedConstructor c))),
-        D.delimitTrailing 2 "{" "}" ([D.text ("native: " ++ alias (resolvedNativeConstructor c)),
-          D.text "fields: " <> E.array [E.quoted name | (_,name) <- resolvedFields c]]++
-          [D.text "paths: " <> E.array [E.array (map E.quoted path) | path<-paths] |
-            Just paths<-[resolvedFieldPaths c]])] |
+  let entries = [E.Array [E.Str (C.idText (C.constructorId (resolvedConstructor c))),
+        E.Object ([E.Prop (E.KName "native") (E.Ident (alias (resolvedNativeConstructor c))),
+          E.Prop (E.KName "fields") (E.Array [E.Str n | (_,n) <- resolvedFields c])] ++
+          [E.Prop (E.KName "paths") (E.Array [E.Array (map E.Str path') | path' <- paths]) |
+            Just paths <- [resolvedFieldPaths c]])] |
         m <- mappings, c <- resolvedConstructors m]
-      hooks = [E.array [E.quoted (C.idText (C.dataId (resolvedDeclaration m))),
-        D.delimitTrailing 2 "{" "}" [D.text ("native: " ++ alias (resolvedNativeType m)),
-          D.text ("toNative: " ++ alias (codecToNative hook)),
-          D.text ("fromNative: " ++ alias (codecFromNative hook))]] |
+      hooks = [E.Array [E.Str (C.idText (C.dataId (resolvedDeclaration m))),
+        E.Object [E.Prop (E.KName "native") (E.Ident (alias (resolvedNativeType m))),
+          E.Prop (E.KName "toNative") (E.Ident (alias (codecToNative hook))),
+          E.Prop (E.KName "fromNative") (E.Ident (alias (codecFromNative hook)))]] |
         m <- mappings, Just hook <- [resolvedCodec m]]
-      hookType = if ts then "<string, {native: Function; toNative: Function; fromNative: Function}>" else ""
-      mapType = if not ts then "" else if any ((/=Nothing) . resolvedFieldPaths) (concatMap resolvedConstructors mappings)
-        then "<string, {native: Function; fields: string[]; paths?: string[][]}>"
-        else "<string, {native: Function; fields: string[]}>"
-      supportBody = D.joinWith D.hardline (sourceImports "./" ++ imports ++
-        [D.text "export const canonical = data.makeSchema();",
-         D.text "export const native = canonical.withNativeBindings(" <>
-          D.nest 4 (D.softbreak <> E.call ("new Map" ++ mapType) [E.array entries] <> D.text "," <>
-            D.softbreak <> E.call ("new Map" ++ hookType) [E.array hooks]) <> D.softbreak <> D.text ");",
-         -- Handlers are application code: their values are the bound types.
-         D.text "ls.setHandlerSchema(native);"] ++
-        [D.text ("export {" ++ intercalate ", " exported ++ "};") | not (null exported)])
+      functionT = E.TRef "Function" []
+      hookType = [E.TKeyword "string", E.TObject [("native", False, functionT), ("toNative", False, functionT), ("fromNative", False, functionT)]]
+      mapType = [E.TKeyword "string", E.TObject ([("native", False, functionT), ("fields", False, E.TArray (E.TKeyword "string"))] ++
+        [("paths", True, E.TArray (E.TArray (E.TKeyword "string"))) | any ((/=Nothing) . resolvedFieldPaths) (concatMap resolvedConstructors mappings)])]
+      newMap types items = E.New (E.Ident "Map") (if ts then types else []) [E.Array items]
+      supportBody = sourceImports "./" ++ imports ++
+        [ E.Blank
+        , exported' (E.constDecl "canonical" (E.call "data.makeSchema" []))
+        , exported' (E.constDecl "native" (E.method (E.Ident "canonical") "withNativeBindings" [newMap mapType entries, newMap hookType hooks]))
+        , E.Comment ["// Handlers are application code: their values are the bound types."]
+        , E.ExprStmt (E.call "ls.setHandlerSchema" [E.Ident "native"]) ] ++
+        [E.ExportNamed [(n, Nothing) | n <- exported] Nothing | not (null exported)]
+      exported' stmt = case stmt of
+        E.VarDecl k p t v -> E.VarDecl ("export " ++ k) p t v
+        _ -> stmt
       exported = nub (map alias (map snd functions ++ constructed ++ handleNatives))
       support = Artifact ("src/lawspec_native." ++ ext) (render supportBody) "generated" "source"
   mapM_ (W.identifier False . snd) [field | m <- mappings, c <- resolvedConstructors m, field <- resolvedFields c]
@@ -65,9 +69,9 @@ emitBindings ts minify bindings plan files = do
         bound d = lookup (C.declarationId d) ([(C.declarationId decl,StaticCall ref) | (decl,ref) <- functions] ++
           [(C.declarationId decl,call) | (decl,call) <- calls])
         -- A bound handle is typed by its native class.
-        handleTypes = [(C.dataId (resolvedDeclaration m), D.text ("bridge." ++ alias (resolvedNativeType m))) |
+        handleTypes = [(C.dataId (resolvedDeclaration m), E.TRef ("bridge." ++ alias (resolvedNativeType m)) []) |
           m <- mappings, C.dataHandle (resolvedDeclaration m)]
-        typeOf = Data.webDataTypeDocWith (planDataDeclarations plan) handleTypes
+        typeOf = Data.webDataTypeOfWith (planDataDeclarations plan) handleTypes
         depth = length (filter (== '.') (unitName unit))
         root = if depth == 0 then "./" else concat (replicate depth "../")
     if not (any (maybe False (const True) . bound) adapters) then pure [] else do
@@ -76,89 +80,88 @@ emitBindings ts minify bindings plan files = do
         let (args,result) = C.functionType (C.declarationType decl)
         argTypes <- mapM typeOf args
         resultType <- typeOf result
-        argRefs <- mapM Data.webTypeReferenceDoc args
-        resultRef <- Data.webTypeReferenceDoc result
-        let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+        argRefs <- mapM Data.webTypeReference args
+        resultRef <- Data.webTypeReference result
+        let values = ["value" ++ show i | i <- [0::Int ..length args-1]]
             -- An adapter that uses abilities gets their handlers first, as
             -- they are: application code's handlers take the bound types.
-            handlerNames = [D.text ("handler" ++ show i) | (i, a) <- zip [0::Int ..] (C.declarationUses decl), not (C.isFail a)]
-            bits = D.text (show (planMachineBits plan))
-            convert schema method ty value = E.call ("bridge." ++ schema ++ "." ++ method) [ty,value,bits,D.text "symbols"]
-            arguments = [convert "native" "toNative" ty (convert "canonical" "fromNative" ty value) | (ty,value) <- zip argRefs values]
+            handlerNames = ["handler" ++ show i | (i, a) <- zip [0::Int ..] (C.declarationUses decl), not (C.isFail a)]
+            bits = E.num (toInteger (planMachineBits plan))
+            convert schema method' ty value = E.call ("bridge." ++ schema ++ "." ++ method') [ty,value,bits,E.Ident "symbols"]
+            arguments = [convert "native" "toNative" ty (convert "canonical" "fromNative" ty (E.Ident value)) | (ty,value) <- zip argRefs values]
             isUnit ty = ty == C.scalarType "Unit"
             resultOf ref value = convert "canonical" "toNative" ref (convert "native" "fromNative" ref value)
-            returned = D.text "return " <> resultOf resultRef (D.text "result") <> D.text ";"
+            returned = E.ret (resultOf resultRef (E.Ident "result"))
         call <- maybe (Left "unbound adapter") Right (bound decl)
         application <- case call of
-          StaticCall ref -> pure (E.call ("bridge." ++ alias ref) (handlerNames ++ arguments))
+          StaticCall ref -> pure (E.call ("bridge." ++ alias ref) (map E.Ident handlerNames ++ arguments))
           -- A method of the first handle argument, given the others.
-          MethodCall name -> case [i | (i,ty) <- zip [0::Int ..] args, isHandle ty] of
-            h : _ -> pure (D.text "(" <> arguments !! h <> D.text ")" <>
-              E.call ("." ++ name) [value | (i,value) <- zip [0..] arguments, i /= h])
+          MethodCall name' -> case [i | (i,ty) <- zip [0::Int ..] args, isHandle ty] of
+            h : _ -> pure (E.method (arguments !! h) name' [value | (i,value) <- zip [0..] arguments, i /= h])
             [] -> Left ("method binding " ++ C.idText (C.declarationId decl) ++ " has no handle argument")
           -- A native constructor, given the arguments that are not Unit.
-          ConstructorCall ref -> pure (E.call ("new bridge." ++ alias ref)
+          ConstructorCall ref -> pure (E.new' ("bridge." ++ alias ref)
             [value | (ty,value) <- zip args arguments, not (isUnit ty)])
         -- An async adapter's native returns a Promise; a constructor's result
         -- is ready at once.
         let application' = case call of
               ConstructorCall _ -> application
-              _ | C.declarationAsync decl -> D.text "await " <> application
+              _ | C.declarationAsync decl -> E.Await application
               _ -> application
         resultBody <- case (call, result) of
-          _ | isUnit result -> pure (application' <> D.text ";")
-          (StaticCall _, _) -> pure (D.text "const result = " <> application' <> D.text ";" <> D.hardline <> returned)
+          _ | isUnit result -> pure [E.ExprStmt application']
+          (StaticCall _, _) -> pure [E.constDecl "result" application', returned]
           -- A method or constructor's absent value (null or undefined) is Nothing.
           (_, C.Constructor "Maybe" [C.TypeArgument element]) -> do
-            elementRef <- Data.webTypeReferenceDoc element
-            pure (D.text "const result = " <> application' <> D.text ";" <> D.hardline <>
-              D.text "return result === null || result === undefined" <>
-              D.nest 4 (D.softline <> D.text "? new data.Absent()" <> D.softline <> D.text ": " <>
-                E.call "new data.Present" [resultOf elementRef (D.text "result")]) <> D.text ";")
-          _ -> pure (D.text "const result = " <> application' <> D.text ";" <> D.hardline <> returned)
+            elementRef <- Data.webTypeReference element
+            pure [ E.constDecl "result" application'
+                 , E.ret (E.Conditional (E.or' (E.Binary "===" (E.Ident "result") E.Null) (E.Binary "===" (E.Ident "result") (E.Ident "undefined")))
+                     (E.new' "data.Absent" []) (E.new' "data.Present" [resultOf elementRef (E.Ident "result")])) ]
+          _ -> pure [E.constDecl "result" application', returned]
         let async = C.declarationAsync decl
-            returnType = if result == C.scalarType "Unit" then D.text "void" else resultType
-            signature = D.text ((if async then "export async function " else "export function ") ++ C.declarationName decl) <>
-              D.delimitTrailing 4 "(" ")" ([h <> if ts then D.text ": any" else mempty | h <- handlerNames] ++
-                [value <> if ts then D.text ": " <> ty else mempty | (value,ty) <- zip values argTypes]) <>
-              (if ts then D.text ": " <> (if async then D.text "Promise<" <> returnType <> D.text ">" else returnType) else mempty)
-        pure (signature <> D.text " " <> D.block 2 (D.text "const symbols = new Map();" <> D.hardline <>
-          D.text "try " <> D.block 2 resultBody <> D.text " catch (error) " <>
-          -- The application's own errors pass through, so lawspec.json can map
-          -- them to failures.
-          D.block 2 (D.text "if (!(error instanceof TypeError || error instanceof RangeError)) throw error;" <> D.hardline <>
-            D.text "throw " <> E.call "new TypeError"
-            [E.quoted ("native binding " ++ C.idText (C.declarationId decl) ++ ": ") <>
-             D.text " + String(error)", D.text "{cause: error}"] <> D.text ";")))
+            returnType = if result == C.scalarType "Unit" then E.TKeyword "void" else resultType
+            params = [(E.param h) { E.paramType = if ts then Just (E.TKeyword "any") else Nothing } | h <- handlerNames] ++
+              [(E.param value) { E.paramType = if ts then Just ty else Nothing } | (value,ty) <- zip values argTypes]
+        pure [E.FunctionDecl True async (C.declarationName decl) [] params
+          (if ts then Just (if async then E.TRef "Promise" [returnType] else returnType) else Nothing)
+          [ E.constDecl "symbols" (E.new' "Map" [])
+          , E.Try resultBody (Just (Just (E.PIdent "error"),
+              -- The application's own errors pass through, so lawspec.json can map
+              -- them to failures.
+              [ E.IfSingle (E.notE (E.or' (E.Binary "instanceof" (E.Ident "error") (E.Ident "TypeError"))
+                                          (E.Binary "instanceof" (E.Ident "error") (E.Ident "RangeError")))) (E.Throw (E.Ident "error"))
+              , E.Throw (E.new' "TypeError" [E.Binary "+" (E.Str ("native binding " ++ C.idText (C.declarationId decl) ++ ": ")) (E.call "String" [E.Ident "error"]),
+                  E.Object [E.Prop (E.KName "cause") (E.Ident "error")]]) ])) Nothing ]]
       let pathname = "src/" ++ map (\c -> if c == '.' then '/' else c) (unitName unit) ++ "." ++ ext
-          header = sourceImports root ++ [D.text ("import * as bridge from " ++ W.q (root ++ "lawspec_native." ++ importExt) ++ ";")]
-      pure [Artifact pathname (render (D.joinWith D.hardline header <> D.hardline <> D.hardline <>
-        D.joinWith (D.hardline <> D.hardline) bodies)) "generated" "source"]
+          header = sourceImports root ++ [E.ImportDecl False (E.ImportNamespace "bridge") (root ++ "lawspec_native." ++ importExt)]
+      pure [Artifact pathname (render (header ++ concatMap (E.Blank :) bodies)) "generated" "source"]
   dataFiles <- if any ((== "src/lawspec_data." ++ ext) . artifactPath) files then pure []
     else Data.emitWebDataWithProfile ts (planMachineBits plan) layout (planDataDeclarations plan)
   generatorFiles <- if null generators then pure [] else do
     imports' <- forM (zip [0::Int ..] generators) $ \(i,generator) ->
       nativeImport "./" ("factory" ++ show i) (resolvedGeneratorFactory generator)
-    let factoryType = if ts then "<string, (...args: any[]) => fc.Arbitrary<any>>" else ""
-        factories = D.text "const factories = " <> E.call ("new Map" ++ factoryType)
-          [E.array [E.array [E.quoted (C.idText (resolvedGeneratorType g)), D.text ("factory" ++ show i)] |
-            (i,g) <- zip [0::Int ..] generators]] <> D.text ";"
-        wrapper = D.text "export function strategy" <> D.delimitTrailing 4 "(" ")"
-          (map D.text (if ts then ["schema: any", "reference: any", "bits: number", "budget: number",
-            "scalar: any", "symbols = new Map()", "witnesses: any[] = []", "maxAttempts = 1000", "index: any = null"]
-            else ["schema", "reference", "bits", "budget", "scalar", "symbols = new Map()", "witnesses = []", "maxAttempts = 1000", "index = null"])) <>
-          D.text " " <> D.block 2 (D.text "return " <> E.call
-            (if ts then "(baseStrategy as (...args: any[]) => fc.Arbitrary<any>)" else "baseStrategy")
-            (map D.text ["schema", "reference", "bits", "budget", "scalar", "symbols", "witnesses", "maxAttempts", "factories", "bridge.native", "index"]) <> D.text ";")
-        header = map D.text ["// Generated by LawSpec. Do not edit.", "import * as fc from 'fast-check';",
-          "import * as bridge from '../src/lawspec_native." ++ importExt ++ "';",
-          "import {strategy as baseStrategy} from './lawspec_data_strategies." ++ importExt ++ "';"]
+    let factoryType = [E.TKeyword "string", E.TFunction [(E.param "args") { E.paramType = Just (E.TArray (E.TKeyword "any")), E.paramRest = True }] (E.TRef "fc.Arbitrary" [E.TKeyword "any"])]
+        factories = E.constDecl "factories" (E.New (E.Ident "Map") (if ts then factoryType else [])
+          [E.Array [E.Array [E.Str (C.idText (resolvedGeneratorType g)), E.Ident ("factory" ++ show i)] | (i,g) <- zip [0::Int ..] generators]])
+        typedParam n t = (E.param n) { E.paramType = if ts then Just t else Nothing }
+        defaulted n t d = (typedParam n t) { E.paramDefault = Just d }
+        anyT = E.TKeyword "any"
+        wrapper = E.FunctionDecl True False "strategy" []
+          [ typedParam "schema" anyT, typedParam "reference" anyT, typedParam "bits" (E.TKeyword "number"), typedParam "budget" (E.TKeyword "number")
+          , typedParam "scalar" anyT, (E.param "symbols") { E.paramDefault = Just (E.new' "Map" []) }
+          , defaulted "witnesses" (E.TArray anyT) (E.Array []), (E.param "maxAttempts") { E.paramDefault = Just (E.num 1000) }
+          , defaulted "index" anyT E.Null ] Nothing
+          [E.ret (E.Call (if ts then E.As (E.Ident "baseStrategy") (E.TFunction [(E.param "args") { E.paramType = Just (E.TArray anyT), E.paramRest = True }] (E.TRef "fc.Arbitrary" [anyT])) else E.Ident "baseStrategy") []
+            (map E.Ident ["schema", "reference", "bits", "budget", "scalar", "symbols", "witnesses", "maxAttempts", "factories", "bridge.native", "index"]) False)]
+        header = [ E.Comment ["// Generated by LawSpec. Do not edit."]
+                 , E.ImportDecl False (E.ImportNamespace "fc") "fast-check"
+                 , E.ImportDecl False (E.ImportNamespace "bridge") ("../src/lawspec_native." ++ importExt)
+                 , E.ImportDecl False (E.ImportNamed [("strategy", Just "baseStrategy")]) ("./lawspec_data_strategies." ++ importExt) ]
         helper = Artifact ("test/lawspec_native_generators." ++ ext)
-          (render (D.joinWith D.hardline (header ++ imports') <> D.hardline <> D.hardline <>
-            factories <> D.hardline <> D.hardline <> wrapper)) "generated" "test"
+          (render (header ++ imports' ++ [E.Blank, factories, E.Blank, wrapper])) "generated" "test"
     emitted <- either (Left . show) Right $ concat <$> mapM (\unit ->
       Scalar.scalarEmitWithNativeGenerators True minify (planDataDeclarations plan)
-        (Definitions.definitionCalls (map plannedUnit (plannedUnits plan)))
+        (Definitions.definitionCalls (planDataDeclarations plan) (map plannedUnit (plannedUnits plan)))
         (planMachineBits plan) target (modelTestUnit plan (plannedUnit unit)) (plannedProperties unit))
         [unit | unit <- plannedUnits plan, not (null (plannedProperties unit))]
     pure (helper : [file | file <- emitted, artifactPlacement file == "test"] ++
@@ -176,7 +179,7 @@ emitBindings ts minify bindings plan files = do
         | otherwise = file
       addImport root file = file { artifactContent = unlines (concatMap (\l ->
         if take 10 l == "import * a" && "lawspec_runtime" `elem` words (map (\c -> if c `elem` ("/.'\"" :: String) then ' ' else c) l)
-          then [l, "import '" ++ root ++ "lawspec_native." ++ importExt ++ "';"] else [l]) (lines (artifactContent file))) }
+          then [l, "import " ++ W.q (root ++ "lawspec_native." ++ importExt) ++ ";"] else [l]) (lines (artifactContent file))) }
       stripPrefix' prefix value = if take (length prefix) value == prefix then Just (drop (length prefix) value) else Nothing
   let generated = [loading file | file <- files, artifactPath file `notElem` replacements] ++
         dataFiles ++ runtime ++ [support] ++ bridges ++ generatorFiles
@@ -196,15 +199,14 @@ emitBindings ts minify bindings plan files = do
     ext = if ts then "ts" else "mjs"
     importExt = if ts then "js" else "mjs"
     layout = D.selectLayout minify (D.Pretty 80)
-    render doc = D.render layout (doc <> D.hardline)
-    sourceImports root = D.text "// Generated by LawSpec. Do not edit." :
-      [D.text ("import * as " ++ alias ++ " from " ++ W.q (root ++ name ++ "." ++ importExt) ++ ";") |
+    render = printWebModule layout ts
+    sourceImports root = E.Comment ["// Generated by LawSpec. Do not edit."] :
+      [E.ImportDecl False (E.ImportNamespace alias) (root ++ name ++ "." ++ importExt) |
         (alias,name) <- [("ls","lawspec_runtime"),("data","lawspec_data"),("schema","lawspec_schema")]]
     nativeImport root alias (NativeRef parts) = do
       unless (length parts >= 2) (Left "web native references require a module and export")
       mapM_ (W.identifier True) parts
-      pure (D.text "import " <> D.delimit 2 "{" "}" [D.text (last parts ++ " as " ++ alias)] <>
-        D.text (" from " ++ W.q (root ++ intercalate "/" (init parts) ++ "." ++ importExt) ++ ";"))
+      pure (E.ImportDecl False (E.ImportNamed [(last parts, Just alias)]) (root ++ intercalate "/" (init parts) ++ "." ++ importExt))
 
 -- | A native arbitrary is supplied by application code. Scaffolds describe its
 -- generic signature and remain user-owned, including when support is compact.
@@ -229,7 +231,7 @@ generatorStubs ts plan bindings files = do
         importExt = if ts then "js" else "mjs"
         nativeAlias i = "_lawspec_native_type_" ++ show i
         imported = ["_lawspec_fc","ls","data"] ++ map nativeAlias [0 .. length group - 1]
-        importType alias file = D.text ("import type * as " ++ alias ++ " from " ++ W.q file ++ ";")
+        importType alias file = E.ImportDecl True (E.ImportNamespace alias) file
     entries <- forM (zip [0::Int ..] group) $ \(i,generator) -> do
       let factory = last (referenceParts (resolvedGeneratorFactory generator))
           parameters = [(C.Id ("scaffold::" ++ show n), "T" ++ show n) |
@@ -245,32 +247,25 @@ generatorStubs ts plan bindings files = do
         Just (NativeRef ref) -> do
           unless (length ref >= 2) (Left "web native type references require a module and export")
           mapM_ (W.identifier True) ref
-          pure ([D.text ("import type {" ++ last ref ++ " as " ++ nativeAlias i ++ "} from " ++
-            W.q (source ++ intercalate "/" (init ref) ++ "." ++ importExt) ++ ";")],
-            W.application (nativeAlias i) [D.text name | (_,name) <- parameters])
+          pure ([E.ImportDecl True (E.ImportNamed [(last ref, Just (nativeAlias i))]) (source ++ intercalate "/" (init ref) ++ "." ++ importExt)],
+            E.TRef (nativeAlias i) [E.TRef n' [] | (_,n') <- parameters])
         Nothing -> do
           result <- W.typeDoc "data." names parameters ty
           pure ([],result)
-      let generics = if ts && not (null parameters) then D.delimit 4 "<" ">"
-            [D.text name | (_,name) <- parameters] else mempty
-          arguments = [D.text ("argument_" ++ show n) <>
-            (if ts then D.text ": " <> W.application "_lawspec_fc.Arbitrary" [D.text name] else mempty) |
-            (n,(_,name)) <- zip [0::Int ..] parameters]
-          signature = D.text ("export function " ++ factory) <> generics <>
-            D.delimitTrailing 4 "(" ")" arguments <>
-            (if ts then D.text ": " <> W.application "_lawspec_fc.Arbitrary" [result] else mempty)
+      let arguments = [(E.param ("argument_" ++ show n)) { E.paramType = if ts then Just (E.TRef "_lawspec_fc.Arbitrary" [E.TRef n' []]) else Nothing } |
+            (n,(_,n')) <- zip [0::Int ..] parameters]
           resultLabel = maybe (C.idText (resolvedGeneratorType generator))
             (intercalate "." . referenceParts) nativeReference
-          body = D.text ("// Native result: " ++ resultLabel) <> D.hardline <>
-            signature <> D.text " " <> D.block 2 (D.text "throw " <> E.call "new globalThis.Error"
-            [E.quoted ("Implement generator for " ++ C.idText (resolvedGeneratorType generator))] <> D.text ";")
+          body = [ E.Comment ["// Native result: " ++ resultLabel]
+                 , E.FunctionDecl True False factory (if ts then map snd parameters else []) arguments
+                     (if ts then Just (E.TRef "_lawspec_fc.Arbitrary" [result]) else Nothing)
+                     [E.Throw (E.new' "globalThis.Error" [E.Str ("Implement generator for " ++ C.idText (resolvedGeneratorType generator))])] ]
       pure (imports,body)
-    let header = D.text "// User-owned native generator factories. Implement before running properties."
+    let header = E.Comment ["// User-owned native generator factories. Implement before running properties."]
         imports = if ts then [importType "_lawspec_fc" "fast-check",
           importType "ls" (source ++ "lawspec_runtime.js"),
           importType "data" (source ++ "lawspec_data.js")] ++ concatMap fst entries else []
-    pure (Artifact (output parts) (D.render (D.Pretty 80)
-      (D.joinWith D.hardline (header:imports) <> D.hardline <> D.hardline <>
-       D.joinWith (D.hardline <> D.hardline) (map snd entries) <> D.hardline)) "user" "test")
+    pure (Artifact (output parts) (E.printModule (if ts then E.TypeScript else E.JavaScript)
+      (header : imports ++ concatMap ((E.Blank :) . snd) entries)) "user" "test")
 
 -- | The web strategies' schema import, rewritten to the emitted layout.

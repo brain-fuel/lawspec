@@ -7,7 +7,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.PythonExpr as Python
-import qualified LawSpec.WebExpr as Web
+import qualified LawSpec.WebLegacy as Web
 import Data.Aeson (encode, toJSON)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T

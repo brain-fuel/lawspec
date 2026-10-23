@@ -14,7 +14,9 @@ import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Core as C
 import qualified LawSpec.PythonData as PythonData
 import qualified LawSpec.WebData as WebData
-import qualified LawSpec.WebExpr as WebExpr
+import qualified LawSpec.WebLegacy as WebExpr
+import qualified LawSpec.WebTests as WebTests
+import qualified LawSpec.Code.ECMAScript as ES
 import qualified LawSpec.PythonExpr as PythonExpr
 import LawSpec.PythonTypes (pythonLayout)
 import qualified LawSpec.Code.Doc as Doc
@@ -59,7 +61,9 @@ scalarEmitWithFormat = scalarEmitWithNativeGenerators False
 -- | Only the targets that run on the portable runtime are accepted here; asking
 -- for another is a compiler bug and fails loudly.
 scalarEmitWithNativeGenerators :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
-scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions bits target u allLaws = do
+scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions bits target u allLaws
+  | target `elem` ["javascript", "typescript"] = WebTests.webTests nativeGenerators minify declarations definitions bits target u allLaws
+  | otherwise = do
   unless (target `elem` ["python","javascript","typescript"]) (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])
   lawTexts <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
   modelTexts <- concat <$> mapM modelTest (C.unitMachines u)
@@ -196,7 +200,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     -- Each ability's production handler is written by hand, like an adapter.
     productionStub ability
       | py = either error id (PythonAbilities.productionStub declarations ability)
-      | otherwise = either error id (WebAbilities.productionStub ts declarations ability)
+      | otherwise = ES.printModule ES.JavaScript (either error id (WebAbilities.productionStub ts declarations ability))
     webImports root = if not hasData then "" else "import * as data from '" ++ root ++ "lawspec_data." ++ (if ts then "js" else "mjs") ++ "';\nimport * as schema from '" ++ root ++ "lawspec_schema." ++ (if ts then "js" else "mjs") ++ "';\n"
     nativeArg ty | usesData ty = native ty
     nativeArg (Applied "List" element) = if py then "list[" ++ nativeArg element ++ "]" else "Array<" ++ nativeArg element ++ ">"

@@ -7283,3 +7283,95 @@ function relayEnd(node, values, channel, side, part, schema) {
   })();
   return relay.address;
 }
+
+/**
+ * Checks one expectation of a generated test: the actual and expected sides,
+ * as thunks, are equal at their types. A failure names the law and the case,
+ * shows both sides and where they first differ.
+ */
+export function check(context, actual, expected, actualType, expectedType) {
+  try {
+    const a = actual();
+    const b = expected();
+    if (!equal(a, b, actualType, expectedType)) {
+      throw new Error(
+        `${context} | actual=${String(a)}, expected=${String(b)}${difference(a, b)}`,
+      );
+    }
+  } catch (error) {
+    throw new Error(`${context}: ${error.message}`, { cause: error });
+  }
+}
+
+/** As check, for sides whose thunks are asynchronous. */
+export async function checkAsync(
+  context,
+  actual,
+  expected,
+  actualType,
+  expectedType,
+) {
+  try {
+    const a = await actual();
+    const b = await expected();
+    if (!equal(a, b, actualType, expectedType)) {
+      throw new Error(
+        `${context} | actual=${String(a)}, expected=${String(b)}${difference(a, b)}`,
+      );
+    }
+  } catch (error) {
+    throw new Error(`${context}: ${error.message}`, { cause: error });
+  }
+}
+
+/** As check, for data values compared through the program's schema. */
+export function checkData(
+  schema,
+  context,
+  actual,
+  expected,
+  type,
+  bits,
+  symbols,
+) {
+  try {
+    const a = actual();
+    const b = expected();
+    if (!schema.equal(type, a, b, bits, symbols)) {
+      throw new Error(`${context}${difference(a, b)}`);
+    }
+  } catch (error) {
+    throw new Error(`${context}: ${error.message}`, { cause: error });
+  }
+}
+
+/** As checkData, for sides whose thunks are asynchronous. */
+export async function checkDataAsync(
+  schema,
+  context,
+  actual,
+  expected,
+  type,
+  bits,
+  symbols,
+) {
+  try {
+    const a = await actual();
+    const b = await expected();
+    if (!schema.equal(type, a, b, bits, symbols)) {
+      throw new Error(`${context}${difference(a, b)}`);
+    }
+  } catch (error) {
+    throw new Error(`${context}: ${error.message}`, { cause: error });
+  }
+}
+
+/**
+ * A property's fast-check options, with LAWSPEC_SEED's seed when it is set,
+ * so a run can be repeated exactly (lawspec test records the seed of every
+ * passing run).
+ */
+export function seeded(options) {
+  const seed = globalThis.process?.env?.LAWSPEC_SEED;
+  return seed === undefined ? options : { ...options, seed: Number(seed) | 0 };
+}

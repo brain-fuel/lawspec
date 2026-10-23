@@ -555,7 +555,7 @@ emitPlanFormatted minify target Plan{..} = do
       | target == "go" = GoDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "haskell" = HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)
       | target == "python" = PythonDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
-      | otherwise = WebDefinitions.definitionCalls (map plannedUnit plannedUnits)
+      | otherwise = WebDefinitions.definitionCalls planDataDeclarations (map plannedUnit plannedUnits)
     lawKey law = D.keyOf graph (show (planMachineBits, law)) (D.lawReferences graph (plannedProperty law))
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
@@ -835,8 +835,8 @@ remoteCalls target plan = case target of
   "go" -> GoDefinitions.definitionCalls units
   t | t `elem` ["java", "kotlin","scala"] -> JavaDefinitions.definitionCalls units
   "rust" -> [(i, "crate::lawspec_definitions::" ++ n) | (i, n) <- RustDefinitions.definitionNames units]
-  "javascript" -> WebDefinitions.definitionCalls units
-  "typescript" -> WebDefinitions.definitionCalls units
+  "javascript" -> WebDefinitions.definitionCalls (planDataDeclarations plan) units
+  "typescript" -> WebDefinitions.definitionCalls (planDataDeclarations plan) units
   "haskell" -> HaskellDefinitions.definitionCalls units
   _ -> []
   where units = map plannedUnit (plannedUnits plan)

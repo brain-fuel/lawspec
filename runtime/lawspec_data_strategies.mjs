@@ -650,3 +650,72 @@ function indexedArbitrary(
   }
   return indexed(reference, target);
 }
+
+/**
+ * fast-check's generator for each scalar type at a machine width, for the
+ * data generators: integers within their bounds (unbounded ones within
+ * 2^256), text of scalar values, and each finite type's values.
+ */
+export function primitiveGenerators(bits) {
+  const integer = (name) => {
+    const [low, high] = ls.bounds(name, bits);
+    return fc
+      .bigInt({
+        min: low ?? (name === "BigUInt" ? 0n : -(2n ** 256n)),
+        max: high ?? 2n ** 256n,
+      })
+      .map((x) => ls.convert(x, name, bits));
+  };
+  const scalar = fc
+    .integer({ min: 0, max: 1114111 })
+    .filter((x) => x < 55296 || x > 57343);
+  const units = (max) =>
+    fc.array(fc.integer({ min: 0, max }), { maxLength: 100 });
+  const integers = [
+    "Int8",
+    "Int16",
+    "Int32",
+    "Int64",
+    "UInt8",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "IntSize",
+    "UIntSize",
+    "UIntPtr",
+    "Integer",
+    "BigInt",
+    "BigUInt",
+  ];
+  return {
+    Bool: fc.boolean(),
+    ...Object.fromEntries(integers.map((name) => [name, integer(name)])),
+    Decimal: fc
+      .tuple(fc.bigInt(), fc.integer({ min: -20, max: 20 }))
+      .map((v) => new ls.Decimal(v[0], v[1])),
+    Rational: fc
+      .tuple(fc.bigInt(), fc.bigInt({ min: 1n }))
+      .map((v) => new ls.Rational(v[0], v[1])),
+    Float32: fc.float(),
+    Float64: fc.double(),
+    Complex64: fc
+      .tuple(fc.float(), fc.float())
+      .map((v) => new ls.Complex(v[0], v[1])),
+    Complex128: fc
+      .tuple(fc.double(), fc.double())
+      .map((v) => new ls.Complex(v[0], v[1])),
+    Char: scalar.map((x) => String.fromCodePoint(x)),
+    CodePoint: fc.integer({ min: 0, max: 1114111 }),
+    CodeUnit16: fc.integer({ min: 0, max: 65535 }),
+    Text: fc
+      .array(scalar, { maxLength: 100 })
+      .map((xs) => xs.map((x) => String.fromCodePoint(x)).join("")),
+    CodePointText: units(1114111).map((v) => new ls.Raw("CodePointText", v)),
+    Utf16Text: units(65535).map((v) => new ls.Raw("Utf16Text", v)),
+    Bytes: units(255).map((v) => new Uint8Array(v)),
+    Symbol: fc.string().map((x) => Symbol(x)),
+    Unit: fc.constantFrom(ls.literal({ type: "Unit" })),
+    Null: fc.constantFrom(ls.literal({ type: "Null" })),
+    Undefined: fc.constantFrom(ls.literal({ type: "Undefined" })),
+  };
+}

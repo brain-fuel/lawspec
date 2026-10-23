@@ -3,7 +3,7 @@ module LawSpec.PortableTestHelpers (assertionHelperDoc, dataHelperDoc, asyncAsse
 
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.PythonExpr as Python
-import qualified LawSpec.WebExpr as Web
+import qualified LawSpec.WebLegacy as Web
 
 -- | Assertions report the law, the inputs and both sides, so a failure
 -- explains itself.
