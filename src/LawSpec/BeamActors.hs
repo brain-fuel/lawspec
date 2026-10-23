@@ -236,7 +236,7 @@ isUnit :: C.Type -> Bool
 isUnit ty = ty == C.Constructor "Unit" []
 
 metadataPattern :: String -> D.Doc -> D.Doc
-metadataPattern name handlers = D.text "#{tag := " <> E.atom name <> D.text ", handlers := " <> handlers <> D.text "}"
+metadataPattern name handlers = D.delimit 4 "#{" "}" [E.field ":=" (E.atom "tag") (E.atom name), E.field ":=" (E.atom "handlers") handlers]
 
 actorModule :: Actor -> String
 actorModule a = "lawspec_actor_" ++ E.moduleName (C.unitId (actorUnit a)) ++ "_" ++ E.snake (actorName a)
@@ -323,7 +323,7 @@ render target layout moduleName path elixirModule typeName rawType handleTy func
     erlang = E.moduleDoc moduleName ([(n,length ps) | Function n ps _ _ <- functions] ++ [("child_spec",1) | lifecycle])
       ([D.text "-export_type([t/0]).",D.text "-opaque t() :: " <>
         maybe (erlType rawType) erlType handleTy <> D.text "."] ++
-       concat [ [D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType result <> D.text ".",
+       concat [ [E.spec n (map (erlType . snd) ps) (erlType result),
           E.function n (args ps) body] | Function n ps result body <- functions] ++
        [E.function "child_spec" [E.array (args startParameters)] [E.call "otp_child_spec" (args startParameters)] | lifecycle])
     elixir = X.moduleDoc elixirModule False

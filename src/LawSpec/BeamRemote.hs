@@ -123,7 +123,7 @@ render target layout name path elixirName functions extraExports extraBodies = d
     gleamType (NativeType _ _ g _) = g
     imports (NativeType _ _ _ i) = i
     erlang = E.moduleDoc name ([(n,length ps) | Function n ps _ _ <- functions] ++ extraExports)
-      (concat [[D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType result <> D.text ".",
+      (concat [[E.spec n (map (erlType . snd) ps) (erlType result),
         E.function n (map (variable . fst) ps) body] | Function n ps result body <- functions] ++ extraBodies)
     elixir = X.moduleDoc elixirName False (concat
       [[X.typeAttribute "spec" (X.call n (map (exType . snd) ps)) (exType result),

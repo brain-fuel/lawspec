@@ -64,8 +64,7 @@ declarationSpec bits names units declaration = do
   handlers <- mapM (Abilities.nativeType "erlang" units) (Effects.uses declaration)
   parameters <- mapM (E.nativeType bits names []) arguments
   returns <- E.nativeType bits names [] result
-  pure (D.group (D.text "-spec " <> E.call (E.functionName declaration) (handlers ++ parameters) <>
-    D.text " ->" <> D.nest 4 (D.softline <> returns) <> D.text "."))
+  pure (E.spec (E.functionName declaration) (handlers ++ parameters) returns)
 
 emitDefinitions :: String -> D.Layout -> Int -> Maybe BeamTyped -> [C.DataDeclaration] -> [C.Unit] -> [(C.Id,String)] -> Either String [Artifact]
 emitDefinitions target layout bits typed declarations units bound = do

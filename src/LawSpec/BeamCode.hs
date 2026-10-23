@@ -7,7 +7,7 @@ module LawSpec.BeamCode
   , typeReference, reference, literal, json, value, nativeType, dataNames
   , nativeModule, nativeFunction, nativeName, pascal, elixirDataModule, elixirFields, gleamPath, gleamName
   , nativeCall, mentions, variable, comment, linkComment
-  , field, assign, breaksInside, forceBreak, operator, caseOf, define, funClauses
+  , field, assign, breaksInside, forceBreak, operator, caseOf, define, funClauses, spec, funType, comprehension, cons
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -293,7 +293,7 @@ value symbols v = case v of
   V.DataValue _ (C.Id "List::Nil") [] -> array []
   V.DataValue _ (C.Id "List::Cons") [_,_] | Right items <- V.listItems v -> array (map (value symbols) items)
   V.DataValue _ (C.Id "List::Cons") [h,t] ->
-    D.text "[" <> value symbols h <> D.text " | " <> value symbols t <> D.text "]"
+    cons (value symbols h) (value symbols t)
   V.DataValue _ tag fields -> tuple [atom "ls_data",binary (C.idText tag),array (map (value symbols) fields)]
   V.PresenceValue (C.Constructor n _) item -> tuple [atom "ls_presence",binary n,
     maybe (atom "none") (\x -> tuple [atom "some",value symbols x]) item]
@@ -357,7 +357,8 @@ nativeType bits names parameters ty = case ty of
   where
     argument (C.TypeArgument t) = nativeType bits names parameters t
     argument (C.IndexArgument _) = Left "unerased BEAM type index"
-    union = D.joinWith (D.text " | ")
+    -- A union breaks before each "| ", as erlfmt breaks one.
+    union = D.group . D.joinWith (D.softline <> D.text "| ")
 
 -- | Whether generated code reads a variable: its name as a token outside
 -- string, character and comment text. Generated code names a variable it
@@ -412,3 +413,23 @@ caseOf subject clauses = forceBreak <> D.group (D.text "case" <> D.nest 4 (D.sof
 -- | -define(Name, Value).
 define :: String -> D.Doc -> D.Doc
 define name value = D.group (D.text ("-define(" ++ name ++ ",") <> D.nest 4 (D.softline <> value) <> D.softbreak <> D.text ")") <> D.text "."
+
+-- | -spec Name(Args) -> Result., the result on the next line when the
+-- line is too long, as erlfmt writes a one-clause spec.
+spec :: String -> [D.Doc] -> D.Doc -> D.Doc
+spec name args result = D.text "-spec " <> call name args <>
+  D.group (D.text " ->" <> D.nest 4 (D.softline <> result)) <> D.text "."
+
+-- | fun((Args) -> Result), as erlfmt breaks a fun type.
+funType :: [D.Doc] -> D.Doc -> D.Doc
+funType args result = D.group (D.text "fun(" <> D.nest 4 (D.softbreak <> D.delimit 4 "(" ")" args <>
+  D.group (D.text " ->" <> D.nest 4 (D.softline <> result))) <> D.softbreak <> D.text ")")
+
+-- | [Expression || Pattern <- Source], as erlfmt breaks a comprehension.
+comprehension :: D.Doc -> D.Doc -> D.Doc -> D.Doc
+comprehension expression pattern source = D.group (D.text "[" <> D.nest 4 (D.softbreak <> expression) <>
+  D.softbreak <> D.text " || " <> D.nest 4 (D.group (field "<-" pattern source)) <> D.softbreak <> D.text "]")
+
+-- | [Head | Tail].
+cons :: D.Doc -> D.Doc -> D.Doc
+cons h t = D.group (D.text "[" <> D.nest 4 (D.softbreak <> D.group (h <> D.softline <> D.text "| " <> t)) <> D.softbreak <> D.text "]")

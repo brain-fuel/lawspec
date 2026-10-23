@@ -188,7 +188,7 @@ sequenceBlock body = D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardlin
 
 -- | case Subject of Pattern -> Body; ... end
 caseDoc :: D.Doc -> [(D.Doc, [D.Doc])] -> D.Doc
-caseDoc subject arms = D.text "case " <> subject <> D.text " of" <>
+caseDoc subject arms = E.forceBreak <> D.group (D.text "case" <> D.nest 4 (D.softline <> subject) <> D.softline <> D.text "of") <>
   D.nest 4 (D.hardline <> D.joinWith (D.text ";" <> D.hardline) [p <> D.text " ->" <> sequenceBlock b | (p, b) <- arms]) <>
   D.hardline <> D.text "end"
 
@@ -555,7 +555,7 @@ nativeTag env c = case envTarget env of
 construct :: Env -> Type -> Id -> [D.Doc] -> M D.Doc
 construct env ty tag values = case (idText tag, values) of
   ("List::Nil", []) -> pure (D.text "[]")
-  ("List::Cons", [h, t]) -> pure (D.text "[" <> h <> D.text " | " <> t <> D.text "]")
+  ("List::Cons", [h, t]) -> pure (E.cons h t)
   ("Maybe::Absent", []) -> pure (E.atom (fst (maybes (envTarget env))))
   ("Maybe::Present", [x]) -> pure (E.tuple [E.atom (snd (maybes (envTarget env))), x])
   ("Either::Left", [x]) -> pure (E.tuple [E.atom (fst (sides (envTarget env))), x])
@@ -573,8 +573,8 @@ fromEntries env k v items = do
   key <- fresh "Key"
   value <- fresh "Value"
   _ <- pure (k, v)
-  pure (E.remote "lawspec_beam_fast" "key_val_of" [D.text "[" <> E.tuple [D.text key, D.text value] <>
-    D.text " || " <> conPattern env d c [D.text key, D.text value] <> D.text " <- " <> items <> D.text "]"])
+  pure (E.remote "lawspec_beam_fast" "key_val_of" [E.comprehension (E.tuple [D.text key, D.text value])
+    (conPattern env d c [D.text key, D.text value]) items])
 
 collectionDeclaration :: Env -> String -> M (DataDeclaration, DataConstructor)
 collectionDeclaration env short = case M.lookup (collectionsUnit ++ "::type::" ++ short) (envAll env) of
@@ -604,11 +604,11 @@ intrinsicCall env intrinsic args = case (intrinsic, args) of
   (KeyValKeys, [(m, ty)]) -> do
     pairs <- sortedPairs env ty m
     key <- fresh "Key"
-    pure ([], D.text "[" <> D.text key <> D.text " || {" <> D.text key <> D.text ", _} <- " <> pairs <> D.text "]")
+    pure ([], E.comprehension (D.text key) (E.tuple [D.text key, D.text "_"]) pairs)
   (KeyValValues, [(m, ty)]) -> do
     pairs <- sortedPairs env ty m
     value <- fresh "Value"
-    pure ([], D.text "[" <> D.text value <> D.text " || {_, " <> D.text value <> D.text "} <- " <> pairs <> D.text "]")
+    pure ([], E.comprehension (D.text value) (E.tuple [D.text "_", D.text value]) pairs)
   (KeyValEntries, [(m, ty)]) -> (,) [] <$> entriesOf env ty m
   (SetOf, [(xs, _)]) -> plain "lawspec_beam_fast" "set_of" [xs]
   (SetMember, [(x, _), (s, _)]) -> plain "sets" "is_element" [x, s]
@@ -649,8 +649,7 @@ entriesOf env ty m = do
   (d, c) <- entryConstructor env
   key <- fresh "Key"
   value <- fresh "Value"
-  pure (D.text "[" <> conConstruct env d c [D.text key, D.text value] <> D.text " || " <>
-    E.tuple [D.text key, D.text value] <> D.text " <- " <> pairs <> D.text "]")
+  pure (E.comprehension (conConstruct env d c [D.text key, D.text value]) (E.tuple [D.text key, D.text value]) pairs)
 
 matchStatements :: Env -> Scope -> Expr -> [MatchCase] -> M [D.Doc]
 matchStatements env scope value cases = do
@@ -676,7 +675,7 @@ matchStatements env scope value cases = do
         ("Either::Left", [x]) -> E.tuple [E.atom (fst (sides target)), x]
         ("Either::Right", [x]) -> E.tuple [E.atom (snd (sides target)), x]
         ("List::Nil", _) -> D.text "[]"
-        ("List::Cons", [h, t]) -> D.text "[" <> h <> D.text " | " <> t <> D.text "]"
+        ("List::Cons", [h, t]) -> E.cons h t
         _ -> D.text "_")
       pure (prelude ++ [caseDoc subject (arms ++ [unreachableArm | length cases < 2])])
     _ | Just (kind, _) <- collectionArguments ty, [c] <- cases -> do
@@ -852,7 +851,7 @@ conversionClauses env k ty = case ty of
   Constructor "List" [TypeArgument a] -> do
     item <- fresh "Item"
     x <- convert env k a (D.text item)
-    pure [(texts ["Values"], [D.text "[" <> x <> D.text (" || " ++ item ++ " <- Values]")])]
+    pure [(texts ["Values"], [E.comprehension x (D.text item) (D.text "Values")])]
   Constructor "Maybe" [TypeArgument a] -> do
     x <- convert env k a (D.text "Value")
     let (nothing, just) = maybes target
@@ -881,21 +880,21 @@ conversionClauses env k ty = case ty of
         entryTag = idText (constructorId ec)
     case k of
       FromDynamic -> pure [([render' (dyn kvTag [D.text "Entries"])],
-        [E.remote "lawspec_beam_fast" "key_val_of" [D.text "[" <> E.tuple [xk, xv] <> D.text " || " <> dyn entryTag [D.text key, D.text value] <> D.text " <- Entries]"]])]
+        [E.remote "lawspec_beam_fast" "key_val_of" [E.comprehension (E.tuple [xk, xv]) (dyn entryTag [D.text key, D.text value]) (D.text "Entries")]])]
       FromNative -> pure [([render' (conPattern env kd kc [D.text "Entries"])],
-        [E.remote "lawspec_beam_fast" "key_val_of" [D.text "[" <> E.tuple [xk, xv] <> D.text " || " <> conPattern env ed ec [D.text key, D.text value] <> D.text " <- Entries]"]])]
+        [E.remote "lawspec_beam_fast" "key_val_of" [E.comprehension (E.tuple [xk, xv]) (conPattern env ed ec [D.text key, D.text value]) (D.text "Entries")]])]
       ToDynamic -> do
         pairs <- sortedPairs env ty (D.text "Map")
-        pure [(texts ["Map"], [dyn kvTag [D.text "[" <> dyn entryTag [xk, xv] <> D.text " || " <> E.tuple [D.text key, D.text value] <> D.text " <- " <> pairs <> D.text "]"]])]
+        pure [(texts ["Map"], [dyn kvTag [E.comprehension (dyn entryTag [xk, xv]) (E.tuple [D.text key, D.text value]) pairs]])]
       _ -> do
         pairs <- sortedPairs env ty (D.text "Map")
-        pure [(texts ["Map"], [conConstruct env kd kc [D.text "[" <> conConstruct env ed ec [xk, xv] <> D.text " || " <> E.tuple [D.text key, D.text value] <> D.text " <- " <> pairs <> D.text "]"]])]
+        pure [(texts ["Map"], [conConstruct env kd kc [E.comprehension (conConstruct env ed ec [xk, xv]) (E.tuple [D.text key, D.text value]) pairs]])]
   _ | Just ("Set", [at]) <- collectionArguments ty -> do
     (sd, sc) <- collectionDeclaration env "Set"
     item <- fresh "Item"
     x <- convert env k at (D.text item)
     let setTag = idText (constructorId sc)
-        listOf src = D.text "[" <> x <> D.text (" || " ++ item ++ " <- ") <> src <> D.text "]"
+        listOf src = E.comprehension x (D.text item) src
     case k of
       FromDynamic -> pure [([render' (dyn setTag [D.text "Items"])], [E.remote "lawspec_beam_fast" "set_of" [listOf (D.text "Items")]])]
       FromNative -> pure [([render' (conPattern env sd sc [D.text "Items"])], [E.remote "lawspec_beam_fast" "set_of" [listOf (D.text "Items")]])]

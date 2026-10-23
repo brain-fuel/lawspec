@@ -113,7 +113,7 @@ render target layout unit box typeName wired functions =
       ([D.text ("-export_type([t/0" ++ (if wired then ", sender/0" else "") ++ "])."),
         D.text "-opaque t() :: lawspec_beam_mailbox:mailbox()."] ++
        [D.text "-opaque sender() :: lawspec_beam_mailbox:sender()." | wired] ++
-       concat [[D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType result <> D.text ".",
+       concat [[E.spec n (map (erlType . snd) ps) (erlType result),
          E.function n [D.text ("_Ls" ++ E.pascal p) | (p,_) <- ps] body] | Function n ps result body <- functions])
     elixir = X.moduleDoc exModule False
       ([D.text "@opaque t :: :lawspec_beam_mailbox.mailbox()"] ++

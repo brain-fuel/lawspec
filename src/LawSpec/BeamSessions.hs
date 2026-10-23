@@ -112,7 +112,7 @@ emit target layout bits declarations units = do
           ([D.text "-export_type(" <> E.array [D.text (t ++ "/0") | t <- types] <> D.text ")."] ++
            [D.text ("-opaque " ++ t ++ "() :: lawspec_beam_session:session().") | t <- types] ++
            [E.function "spec" [] [spec]] ++
-           concat [[D.text "-spec " <> E.call n (map (erlType . snd) ps) <> D.text " -> " <> erlType r <> D.text ".",
+           concat [[E.spec n (map (erlType . snd) ps) (erlType r),
              E.function n [variable p | (p,_) <- ps] body] | Function n ps r body <- functions])
         elixir = X.moduleDoc (elixirModule unit session) False
           ([D.text ("@opaque " ++ t ++ " :: :lawspec_beam_session.session()") | t <- types] ++
@@ -153,7 +153,7 @@ tupleType :: [NativeType] -> NativeType
 tupleType ts = NativeType (E.tuple (map erlType ts)) (X.tuple (map exType ts)) (G.tuple (map gleamType ts)) (concatMap imports ts)
 callbackType :: [NativeType] -> NativeType -> NativeType
 callbackType ps r = NativeType
-  (D.text "fun((" <> D.joinWith (D.text ", ") (map erlType ps) <> D.text ") -> " <> erlType r <> D.text ")")
+  (E.funType (map erlType ps) (erlType r))
   (D.text "(" <> D.joinWith (D.text ", ") (map exType ps) <> D.text " -> " <> exType r <> D.text ")")
   (D.text "fn(" <> D.joinWith (D.text ", ") (map gleamType ps) <> D.text ") -> " <> gleamType r)
   (concatMap imports (r:ps))

@@ -23,6 +23,7 @@ import Control.Monad (forM, unless)
 import Data.List (nub, intercalate)
 import Data.Char (toUpper)
 import LawSpec.Naming (typeWords)
+import qualified LawSpec.BeamNames as Names
 
 interfaceName :: C.Ability -> String
 interfaceName = E.pascal . N.interfaceName
@@ -150,8 +151,7 @@ productionStub target bits names ability = do
     "elixir" -> [X.typeAttribute "spec" (X.call name resourceTypes) (X.remote (interfaceModule target ability) "t" []),
       X.function name [D.text "_resource" | _ <- resourceTypes] [D.delimit 2 ("%" ++ interfaceModule target ability ++ "{") "}"
         [D.text key <> D.text ": " <> f | (key,f) <- zip keys fields]]]
-    _ -> [D.text "-spec " <> E.call name resourceTypes <> D.text " -> " <>
-        E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
+    _ -> [E.spec name resourceTypes (E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) []),
       E.function name [D.text "_Resource" | _ <- resourceTypes] [E.record (zip (map E.atom keys) fields)]]
 
 defaultFactory :: String -> C.Ability -> String -> String -> [D.Doc]
@@ -160,8 +160,7 @@ defaultFactory target ability name entry = case target of
     (D.text (alias ability ++ "." ++ interfaceName ability))]
   "elixir" -> [X.typeAttribute "spec" (X.call name []) (X.remote (interfaceModule target ability) "t" []),
     X.function name [] [X.remote ":lawspec_abilities" entry []]]
-  _ -> [D.text "-spec " <> E.call name [] <> D.text " -> " <>
-    E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
+  _ -> [E.spec name [] (E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) []),
     E.function name [] [E.remote "lawspec_abilities" entry []]]
 
 operationType :: String -> Int -> [(C.Id,String)] -> C.Type -> Either String D.Doc
@@ -173,9 +172,7 @@ operationType target bits names ty = do
   pure $ case target of
     "gleam" -> D.text "fn" <> D.delimit 2 "(" ")" args <> D.text " -> " <> out
     "elixir" -> D.text "(" <> mconcat [D.joinWith (D.text ", ") args <> D.text " " | not (null args)] <> D.text "-> " <> out <> D.text ")"
-    -- fun((Args) -> Result), as erlfmt breaks it.
-    _ -> D.group (D.text "fun(" <> D.nest 4 (D.softbreak <> D.delimit 4 "(" ")" args <>
-      D.group (D.text " ->" <> D.nest 4 (D.softline <> out))) <> D.softbreak <> D.text ")")
+    _ -> E.funType args out
 
 emit :: String -> D.Layout -> Int -> Maybe BeamTyped -> [C.DataDeclaration] -> [C.Unit] -> Bool -> Either String [Artifact]
 emit target layout bits typed declarations units boundSchema = do
@@ -288,11 +285,11 @@ emit target layout bits typed declarations units boundSchema = do
             inputs <- mapM (E.nativeType bits names []) args
             out <- E.nativeType bits names [] result
             failed <- E.nativeType bits names [] failure
-            pure (fragment (D.text "-spec " <> E.call (tryName ability op) (E.call n [] : inputs) <> D.text " -> " <>
-              E.tuple [E.atom "ok",out] <> D.text " | " <> E.tuple [E.atom "error",failed] <> D.text "." <> D.hardline <>
+            pure (fragment (E.spec (tryName ability op) (E.call n [] : inputs)
+              (D.group (E.tuple [E.atom "ok",out] <> D.softline <> D.text "| " <> E.tuple [E.atom "error",failed])) <> D.hardline <>
               E.function (tryName ability op) (D.text "Handler" : values)
                 [E.remote "lawspec_beam_effects" "native_try" [E.lambda []
-                  (E.apply (D.text "(" <> E.remote "maps" "get" [E.atom (operationName target op),D.text "Handler"] <> D.text ")") values)]]))
+                  (E.apply (E.remote "maps" "get" [E.atom (operationName target op),D.text "Handler"]) values)]]))
           pure (fragment (D.text "-type " <> E.call n [] <> D.text " :: " <>
             D.delimit 4 "#{" "}" ([E.field ":=" (E.atom key) ty | (key,ty) <- zip fields ts] ++
               [E.atom "__lawspec_origin__" <> D.text " => lawspec_beam_effects:handler_origin()"]) <> D.text ".") : tries)
@@ -407,7 +404,7 @@ emit target layout bits typed declarations units boundSchema = do
         "gleam" -> G.external "lawspec_abilities" entry name [v <> D.text ": " <> ty | (v,ty) <- zip values args] result
         "elixir" -> X.typeAttribute "spec" (X.call name args) result <> D.hardline <>
           X.function name values [X.remote ":lawspec_abilities" entry values]
-        _ -> D.text "-spec " <> E.call name args <> D.text " -> " <> result <> D.text "." <> D.hardline <>
+        _ -> E.spec name args result <> D.hardline <>
           E.function name [D.text ("Value" ++ show i) | (i,_) <- zip [0::Int ..] args]
             [E.remote "lawspec_abilities" entry [D.text ("Value" ++ show i) | (i,_) <- zip [0::Int ..] args]]
     abilityBodies ability = do
@@ -426,7 +423,7 @@ emit target layout bits typed declarations units boundSchema = do
           make = makeInterface ability
       callbacks <- forM operations $ \(op,ty) -> do
         let (args,result) = C.functionType ty
-            values' = [D.text ("_Native" ++ show i) | (i,_) <- zip [0::Int ..] args]
+            values' = map D.text (argumentNames "Native" args)
         logical <- sequence [convert "from_native" schema t v | (t,v) <- zip args values']
         output <- convert "to_native" schema result (E.remote "lawspec_beam_effects" "invoke"
           [handler,schema,E.binary op,E.array logical])
@@ -493,7 +490,7 @@ emit target layout bits typed declarations units boundSchema = do
     logicalOperations ability nativeSchema operations = do
       clauses <- forM (zip [1::Int ..] operations) $ \(i,(op,ty)) -> do
         let (args,result) = C.functionType ty
-            values = [D.text ("_Logical" ++ show j) | (j,_) <- zip [0::Int ..] args]
+            values = map D.text (argumentNames "" args)
         arguments <- sequence [convert "to_native" nativeSchema t v | (t,v) <- zip args values]
         output <- convert "from_native" nativeSchema result (E.apply (E.remote "lists" "nth"
           [D.text (show i),D.text "_LsOperations"]) arguments)
@@ -536,13 +533,13 @@ emit target layout bits typed declarations units boundSchema = do
                   [(beamTypedPair t (D.text "_LsResult") (D.text "_LsNext"),D.text "{_LsResult, _LsNext}")])]
               else E.remote "lawspec_typed" f (handlerContext ++ (if null typedArgs then [unitAtom] else typedArgs))
           typedArguments crossing args prefix = unzip
-            [ (D.text ("_LsTyped" ++ show i ++ " = ") <> beamTypedConvert t crossing ty (D.text (prefix ++ show i)), D.text ("_LsTyped" ++ show i))
-            | (i,ty) <- zip [0::Int ..] args ]
+            [ (E.assign typed (beamTypedConvert t crossing ty (D.text name)), D.text typed)
+            | (ty,name,typed) <- zip3 args (argumentNames prefix args) (argumentNames "Typed" args) ]
       clauses <- forM answered $ \a -> forM (C.abilityOperations a) $ \o -> clauseOf a o
       let lawClause c@(op,ty,_,_,_) =
             let (args,result) = C.functionType ty
-                (bindings,typedArgs) = typedArguments FromDynamic args "_Arg"
-            in (E.binary op,E.lambda ([D.text "_LsCurrentSchema",E.array [D.text ("_Arg" ++ show i) | (i,_) <- zip [0::Int ..] args]] ++ [handler | stateful])
+                (bindings,typedArgs) = typedArguments FromDynamic args ""
+            in (E.binary op,E.lambda ([D.text "_LsCurrentSchema",E.array (map D.text (argumentNames "" args))] ++ [handler | stateful])
                 (E.sequenceDoc (bindings ++ [beamTypedConvert t ToDynamic result (invoke (D.text "_LsCurrentSchema") c typedArgs)])))
           operations = E.record (map lawClause (concat clauses))
       body <- case beamTypedStart t (C.handlerId h) of
@@ -552,14 +549,14 @@ emit target layout bits typed declarations units boundSchema = do
       interfaces <- forM (zip3 [0::Int ..] answered clauses) $ \(k,a,cs) -> do
         callbacks <- forM cs $ \c@(_,ty,_,_,failure) -> do
           let (args,result) = C.functionType ty
-              (bindings,typedArgs) = typedArguments FromNative args "_Native"
+              (bindings,typedArgs) = typedArguments FromNative args "Native"
               output = beamTypedConvert t ToNative result (invoke schema c typedArgs)
               raised = case failure of
                 Just (failing,ft) -> E.remote "lawspec_beam_effects" "native_raise" [E.binary (C.abilityKey failing),
                   E.lambda [D.text "_LsFailure"] (beamTypedConvert t ToNative ft (beamTypedConvert t FromDynamic ft (D.text "_LsFailure"))),
                   E.lambda [] output]
                 Nothing -> output
-          pure (E.lambda [D.text ("_Native" ++ show i) | (i,_) <- zip [0::Int ..] args] (E.sequenceDoc (bindings ++ [raised])))
+          pure (E.lambda (map D.text (argumentNames "Native" args)) (E.sequenceDoc (bindings ++ [raised])))
         let origin = E.remote "lawspec_beam_effects" "origin" [schema,symbols,E.binary (C.abilityKey (C.abilityInstance a)),handler,D.text "_LsOperations"]
         pure (E.function (name ++ "_typed_" ++ show k) [schema,symbols,handler]
           [D.text "_LsOperations = " <> E.array callbacks,makeInterface a origin])
@@ -586,7 +583,7 @@ emit target layout bits typed declarations units boundSchema = do
       clauses <- forM (concatMap C.abilityOperations answered) $ \(op,ty) -> do
         identity <- maybe (Left "missing BEAM spec handler clause") Right (lookup op (C.handlerClauses h))
         entry <- maybe (Left "missing BEAM spec clause definition") Right (lookup identity (F.entries units))
-        let args = [D.text ("_Arg" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType ty))]
+        let args = map D.text (argumentNames "" (fst (C.functionType ty)))
             stateful = C.handlerState h /= Nothing
             parameters = if stateful then D.text "_State" : args else if null args then [E.atom "ls_unit"] else args
             call = E.remote "lawspec_definitions" entry (D.text "_LsCurrentSchema" : symbols : parameters)
@@ -644,3 +641,9 @@ emit target layout bits typed declarations units boundSchema = do
       pure [Artifact "src/lawspec/native_handlers.gleam"
         (D.render (G.layoutFor layout) (G.fileDoc False ([D.text ("import " ++ intercalate "/" ref ++ " as " ++ name) | (ref,name) <- imports] ++ interfaces ++ bodies)))
         "generated" "source" | not (null bound)]
+
+-- | An operation's arguments, named for their types (Int32, Payment_2),
+-- after a prefix (NativeInt32).
+argumentNames :: String -> [C.Type] -> [String]
+argumentNames prefix types = Names.variables Names.generatedVariables
+  [unwords ([prefix | not (null prefix)] ++ typeWords t) | t <- types]
