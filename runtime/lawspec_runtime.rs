@@ -9950,6 +9950,69 @@ pub fn descriptor(text: &str) -> Sexp {
         .expect("a descriptor")
 }
 
+/// A program's definitions other nodes can evaluate: qualified name,
+/// content hash, function, argument descriptors and result descriptor.
+pub type RemoteDefinitions = [(
+    &'static str,
+    &'static str,
+    ModelCallback,
+    &'static [&'static str],
+    &'static str,
+)];
+
+/// Lets other nodes evaluate a program's definitions on node.
+pub fn serve_remote(
+    node: &net::Node,
+    definitions: &'static RemoteDefinitions,
+    values: Values,
+) -> Result<String> {
+    let table: Vec<net::RemoteDefinition> = definitions
+        .iter()
+        .map(|(_, digest, function, arguments, result)| {
+            let function = *function;
+            let call: std::sync::Arc<dyn Fn(Vec<Value>) -> Result<Value> + Send + Sync> =
+                std::sync::Arc::new(move |args| function(&mut Context::default(), args));
+            let arguments = arguments.iter().map(|d| descriptor(d)).collect();
+            (digest.to_string(), call, arguments, descriptor(result))
+        })
+        .collect();
+    node.serve_definitions(table, values, "definitions")
+}
+
+/// The content hash of the definition with this qualified name.
+pub fn remote_digest(definitions: &'static RemoteDefinitions, name: &str) -> Option<&'static str> {
+    definitions.iter().find(|d| d.0 == name).map(|d| d.1)
+}
+
+/// Evaluates the named definition on the node at address, by its content
+/// hash; fails as unreachable when that node does not answer in time.
+pub fn evaluate_remote(
+    node: &net::Node,
+    address: &str,
+    definitions: &'static RemoteDefinitions,
+    values: &Values,
+    name: &str,
+    args: &[Value],
+) -> Result<Value> {
+    let (_, digest, _, arguments, result) = definitions
+        .iter()
+        .find(|d| d.0 == name)
+        .ok_or_else(|| format!("no definition {name}"))?;
+    let arguments: Vec<Sexp> = arguments.iter().map(|d| descriptor(d)).collect();
+    let timeout = std::time::Duration::from_secs(5);
+    let result = descriptor(result);
+    node.evaluate(
+        address,
+        digest,
+        args,
+        &arguments,
+        &result,
+        values,
+        timeout,
+        "definitions",
+    )
+}
+
 // Distribution. Values cross the network in a canonical binary encoding
 // driven by their type descriptor (the same descriptors as generation), so
 // no tags are sent and every target writes the same bytes:

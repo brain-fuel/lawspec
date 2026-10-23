@@ -41,9 +41,9 @@ data Expr
 
 data Arm = Arm String (Maybe Expr) Expr | ArmOf Expr (Maybe Expr) Expr
 
--- A let, an expression with its semicolon, an expression statement that
+-- A let, a binding with its own head (a const), an expression with its semicolon, an expression statement that
 -- ends in a block (if, match, for), or a laid-out item.
-data Stmt = Let String Expr | Semi Expr | Do Expr | Item D.Doc
+data Stmt = Let String Expr | Let' String Expr | Semi Expr | Do Expr | Item D.Doc
 
 atom :: String -> Expr
 atom = Atom
@@ -437,8 +437,9 @@ stmt s = case s of
   Item d -> d
   Do e -> expr e
   Semi e -> expr e <> D.text ";"
-  Let pat e ->
-    let head' = D.text ("let " ++ pat ++ " =")
+  Let pat e -> stmt (Let' ("let " ++ pat) e)
+  Let' binding e ->
+    let head' = D.text (binding ++ " =")
         value = expr e <> D.text ";"
         sameValue = D.text " " <> value
         nextValue = D.nest 4 (D.hardline <> value)
