@@ -20,7 +20,8 @@ data Toolchain = Toolchain
 -- | A target's canonical formatter in check mode, run on the generated
 -- sources of a project: generated code must be a fixed point of it. The
 -- version is pinned where the formatter is installed (ruff in
--- test/locks/python.txt), which is part of the acceptance cache key.
+-- test/locks/python.txt) or checked when it runs (swift-format), and is
+-- part of the acceptance cache key.
 -- ref:DEC-readable-output-default
 data Formatter = Formatter
   { formatterName :: String
@@ -40,7 +41,32 @@ formatter target = do
       pure (Just (Formatter "ruff format" python
         (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
+    -- swift-format from the Swift toolchain, at the pinned version, with its
+    -- default configuration whatever .swift-format files lie above the
+    -- project: generated code must be what it writes.
+    "swift" -> pure (Just (Formatter ("swift-format " ++ swiftFormatVersion) "sh"
+      (\dir -> ["-c", swiftFormatCheck, "swift-format-check", dir, swiftFormatVersion]) [".swift"] []))
     _ -> pure Nothing
+
+-- | The swift-format the Swift toolchain carries (swift format), pinned.
+swiftFormatVersion :: String
+swiftFormatVersion = "6.3.0"
+
+-- | Formats a copy of the directory with swift-format's default
+-- configuration and shows any difference; fails when there is one, or when
+-- the installed swift-format is not the pinned version.
+swiftFormatCheck :: String
+swiftFormatCheck = unlines
+  [ "set -u"
+  , "dir=$1; pinned=$2"
+  , "found=$(swift format --version 2>/dev/null)"
+  , "if [ \"$found\" != \"$pinned\" ]; then echo \"swift-format $pinned is required; found ${found:-none}\"; exit 2; fi"
+  , "work=$(mktemp -d)"
+  , "trap 'rm -rf \"$work\"' EXIT"
+  , "swift format dump-configuration > \"$work/configuration.json\" || exit 2"
+  , "mkdir \"$work/copy\" && cp -R \"$dir\"/. \"$work/copy\""
+  , "swift format format --configuration \"$work/configuration.json\" --in-place --recursive \"$work/copy\" || exit 2"
+  , "diff -ru \"$dir\" \"$work/copy\"" ]
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain
