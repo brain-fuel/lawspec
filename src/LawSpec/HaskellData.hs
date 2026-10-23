@@ -253,8 +253,14 @@ moduleImports rendered candidates = sortedImports [c | c <- candidates, used c]
 -- | Import lines in ormolu's order: by module, an unqualified import before
 -- a qualified one, Prelude last.
 sortedImports :: [(String, Maybe String, Maybe [String])] -> [String]
-sortedImports = map line . sortOn key . nub
+sortedImports = map line . sortOn key . merged . nub
   where
+    -- ormolu joins a module's import lists into one, its names sorted.
+    merged specs = foldr add [] specs
+    add (m, alias, Just names) acc
+      | any (\(m', a', n') -> m' == m && a' == alias && n' /= Nothing && n' /= Just []) acc, not (null names) =
+          [ if m' == m && a' == alias && n' /= Nothing then (m', a', fmap (\ns -> sort (nub (ns ++ names))) n') else e | e@(m', a', n') <- acc ]
+    add (m, alias, names) acc = (m, alias, fmap sort names) : acc
     key (m, alias, _) = (m == "Prelude", m, alias /= Nothing, alias /= Nothing && alias /= Just m)
     line (m, alias, names) = "import " ++ maybe "" (const "qualified ") alias ++ m ++
       maybe "" (\a -> if a == m then "" else " as " ++ a) alias ++

@@ -16,6 +16,7 @@ extra-source-files:
     vendor/unicode/17.0.0/CaseFolding.txt
     vendor/unicode/17.0.0/EastAsianWidth.txt
     vendor/unicode/17.0.0/DerivedGeneralCategory.txt
+    vendor/unicode/17.0.0/DerivedAge.txt
     README.md
     CHANGELOG.md
     runtime/lawspec_harness.rs
@@ -695,6 +696,7 @@ library
       LawSpec.HaskellProperties
       LawSpec.HaskellTestHelpers
       LawSpec.HaskellTypeRefs
+      LawSpec.HaskellUnicodeAge
       LawSpec.Imports
       LawSpec.Indexed
       LawSpec.IndexTerm
