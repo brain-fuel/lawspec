@@ -2,26 +2,30 @@
 // The default handler of lawspec.time's Clock: the system clock, kept from
 // going back by a monotonic clock. An Instant is microseconds since
 // 1970-01-01T00:00:00Z.
-import * as data from '../lawspec_data.mjs';
-import * as ls from '../lawspec_runtime.mjs';
+import * as data from "../lawspec_data.mjs";
+import * as ls from "../lawspec_runtime.mjs";
 const wall = BigInt(Date.now()) * 1000n;
 const monotonic = process.hrtime.bigint() / 1000n;
 /** The wall clock at start, moved on by the monotonic clock since. */
 export function nowMicros() {
-    return wall + (process.hrtime.bigint() / 1000n - monotonic);
+  return wall + (process.hrtime.bigint() / 1000n - monotonic);
 }
 const blocker = new Int32Array(new SharedArrayBuffer(4));
 /** The system clock. now never goes back; sleep blocks this thread. */
 export class ClockHandler {
-    now() {
-        return new @@Instant@@(nowMicros());
+  now() {
+    return new @@Instant@@(nowMicros());
+  }
+  sleep(value0) {
+    const target = nowMicros() + value0.value;
+    for (
+      let left = target - nowMicros();
+      left > 0n;
+      left = target - nowMicros()
+    ) {
+      Atomics.wait(blocker, 0, 0, Math.max(Number(left) / 1000, 0));
     }
-    sleep(value0) {
-        const target = nowMicros() + value0.value;
-        for (let left = target - nowMicros(); left > 0n; left = target - nowMicros()) {
-            Atomics.wait(blocker, 0, 0, Math.max(Number(left) / 1000, 0));
-        }
-    }
+  }
 }
 /**
  * Lets the runtime read any Clock handler (this one, the virtual clock, a
@@ -29,5 +33,9 @@ export class ClockHandler {
  * Only this handler is real time.
  */
 export function registerClock() {
-    ls.registerClockAbility((handler) => handler.now().value, (handler, micros) => handler.sleep(new @@Duration@@(micros)), (handler) => handler instanceof ClockHandler);
+  ls.registerClockAbility(
+    (handler) => handler.now().value,
+    (handler, micros) => handler.sleep(new @@Duration@@(micros)),
+    (handler) => handler instanceof ClockHandler,
+  );
 }

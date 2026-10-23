@@ -19,13 +19,13 @@ export class Rational {
   constructor(n, d = 1n) {
     n = BigInt(n);
     d = BigInt(d);
-    if (!d) throw new RangeError('exact division by zero');
+    if (!d) throw new RangeError("exact division by zero");
     if (d < 0n) {
       n = -n;
       d = -d;
     }
     let a = n < 0n ? -n : n,
-        b = d;
+      b = d;
     while (b) [a, b] = [b, a % b];
     this.n = n / a;
     this.d = d / a;
@@ -75,39 +75,37 @@ export class DataValue {
     Object.freeze(this);
   }
 }
-export const UNIT = Object.freeze({kind: 'Unit'});
+export const UNIT = Object.freeze({ kind: "Unit" });
 export const integerType = (t) =>
-    /^(U?Int(8|16|32|64|Size)|UIntPtr|BigU?Int|Integer)$/.test(t);
+  /^(U?Int(8|16|32|64|Size)|UIntPtr|BigU?Int|Integer)$/.test(t);
 export const exactType = (t) =>
-    integerType(t) || ['Decimal', 'Rational'].includes(t);
+  integerType(t) || ["Decimal", "Rational"].includes(t);
 export function ratio(x) {
   if (x instanceof Rational) return x;
   if (x instanceof Decimal)
     return x.exponent >= 0n
       ? new Rational(x.coefficient * 10n ** x.exponent)
       : new Rational(x.coefficient, 10n ** -x.exponent);
-  if (typeof x === 'bigint') return new Rational(x);
-  if (typeof x === 'number' && Number.isInteger(x))
+  if (typeof x === "bigint") return new Rational(x);
+  if (typeof x === "number" && Number.isInteger(x))
     return new Rational(BigInt(x));
-  throw new TypeError('exact numeric value required');
+  throw new TypeError("exact numeric value required");
 }
 export function bounds(t, bits = 64) {
-  if (t === 'BigInt' || t === 'Integer') return [null, null];
-  if (t === 'BigUInt') return [0n, null];
+  if (t === "BigInt" || t === "Integer") return [null, null];
+  if (t === "BigUInt") return [0n, null];
   const w = BigInt(
-      ['IntSize', 'UIntSize', 'UIntPtr'].includes(t)
-        ? bits
-        : t.match(/\d+/)[0],
+    ["IntSize", "UIntSize", "UIntPtr"].includes(t) ? bits : t.match(/\d+/)[0],
   );
-  return t.startsWith('U')
+  return t.startsWith("U")
     ? [0n, 2n ** w - 1n]
     : [-(2n ** (w - 1n)), 2n ** (w - 1n) - 1n];
 }
 function decimal(x) {
   const r = ratio(x);
   let d = r.d,
-      a = 0n,
-      b = 0n;
+    a = 0n,
+    b = 0n;
   while (d % 2n === 0n) {
     d /= 2n;
     a++;
@@ -117,7 +115,7 @@ function decimal(x) {
     b++;
   }
   if (d !== 1n)
-    throw new RangeError('Decimal conversion is not finite; use round');
+    throw new RangeError("Decimal conversion is not finite; use round");
   const scale = a > b ? a : b;
   return new Decimal(r.n * 2n ** (scale - a) * 5n ** (scale - b), -scale);
 }
@@ -129,54 +127,45 @@ function decimal(x) {
 export function convert(x, t, bits = 64) {
   if (integerType(t)) {
     const r =
-        typeof x === 'number' && Number.isFinite(x)
-          ? floatRatio(x)
-          : ratio(x);
-    if (r.d !== 1n) throw new RangeError('fractional conversion to ' + t);
+      typeof x === "number" && Number.isFinite(x) ? floatRatio(x) : ratio(x);
+    if (r.d !== 1n) throw new RangeError("fractional conversion to " + t);
     const [lo, hi] = bounds(t, bits);
     if ((lo !== null && r.n < lo) || (hi !== null && r.n > hi))
-      throw new RangeError('integer outside ' + t + ' range');
-    return ['Int8', 'Int16', 'Int32', 'UInt8', 'UInt16', 'UInt32'].includes(
-        t,
-    )
+      throw new RangeError("integer outside " + t + " range");
+    return ["Int8", "Int16", "Int32", "UInt8", "UInt16", "UInt32"].includes(t)
       ? Number(r.n)
       : r.n;
   }
-  if (t === 'Rational')
-    return typeof x === 'number' ? floatRatio(x) : ratio(x);
-  if (t === 'Decimal')
-    return decimal(typeof x === 'number' ? floatRatio(x) : x);
-  if (t === 'Float32' || t === 'Float64') {
+  if (t === "Rational") return typeof x === "number" ? floatRatio(x) : ratio(x);
+  if (t === "Decimal")
+    return decimal(typeof x === "number" ? floatRatio(x) : x);
+  if (t === "Float32" || t === "Float64") {
     let v;
-    if (typeof x === 'number') v = x;
+    if (typeof x === "number") v = x;
     else v = exactFloat(ratio(x), t);
-    return t === 'Float32' ? Math.fround(v) : v;
+    return t === "Float32" ? Math.fround(v) : v;
   }
-  if (t === 'Complex64' || t === 'Complex128') {
+  if (t === "Complex64" || t === "Complex128") {
     const z =
-        x instanceof Complex
-          ? x
-          : new Complex(
-              convert(x, t === 'Complex64' ? 'Float32' : 'Float64'),
-              0,
-            );
-    return t === 'Complex64'
+      x instanceof Complex
+        ? x
+        : new Complex(convert(x, t === "Complex64" ? "Float32" : "Float64"), 0);
+    return t === "Complex64"
       ? new Complex(Math.fround(z.real), Math.fround(z.imaginary))
       : z;
   }
   return validate(x, t, bits);
 }
 function floatRatio(x) {
-  if (!Number.isFinite(x))
-    throw new RangeError('non-finite exact conversion');
+  if (!Number.isFinite(x)) throw new RangeError("non-finite exact conversion");
   if (x === 0) return new Rational(0n);
   const a = new DataView(new ArrayBuffer(8));
   a.setFloat64(0, x);
   const bits = a.getBigUint64(0),
-      sign = bits >> 63n ? -1n : 1n;
+    sign = bits >> 63n ? -1n : 1n;
   const exp = (bits >> 52n) & 2047n,
-      mant = (bits & ((1n << 52n) - 1n)) + (exp ? 1n << 52n : 0n),
-      shift = (exp || 1n) - 1075n;
+    mant = (bits & ((1n << 52n) - 1n)) + (exp ? 1n << 52n : 0n),
+    shift = (exp || 1n) - 1075n;
   return shift >= 0
     ? new Rational(sign * mant * 2n ** shift)
     : new Rational(sign * mant, 2n ** -shift);
@@ -184,14 +173,14 @@ function floatRatio(x) {
 function validUnit(t, c) {
   return (
     Number.isInteger(c) &&
-      c >= 0 &&
-      c <=
-        (t === 'Bytes'
-          ? 255
-          : ['Utf16Text', 'CodeUnit16'].includes(t)
-            ? 65535
-            : 1114111) &&
-      (!['Text', 'Char'].includes(t) || c < 55296 || c > 57343)
+    c >= 0 &&
+    c <=
+      (t === "Bytes"
+        ? 255
+        : ["Utf16Text", "CodeUnit16"].includes(t)
+          ? 65535
+          : 1114111) &&
+    (!["Text", "Char"].includes(t) || c < 55296 || c > 57343)
   );
 }
 /**
@@ -200,165 +189,155 @@ function validUnit(t, c) {
  * declared domain. ref:DEC-portable-exact-arithmetic
  */
 export function validate(x, t, bits = 64) {
-  if (t.startsWith('Either ')) {
+  if (t.startsWith("Either ")) {
     const types = eitherArguments(t);
     if (
-        !(x instanceof DataValue) ||
-        x.fields.length !== 1 ||
-        !['Either::Left', 'Either::Right'].includes(x.tag)
+      !(x instanceof DataValue) ||
+      x.fields.length !== 1 ||
+      !["Either::Left", "Either::Right"].includes(x.tag)
     ) {
-      throw new TypeError('invalid Either constructor or arity');
+      throw new TypeError("invalid Either constructor or arity");
     }
-    const inner = types[x.tag === 'Either::Left' ? 0 : 1];
+    const inner = types[x.tag === "Either::Left" ? 0 : 1];
     return new DataValue(x.tag, [validate(x.fields[0], inner, bits)]);
   }
-  if (t.startsWith('Maybe ')) {
-    if (!(x instanceof DataValue)) throw new TypeError('expected Maybe');
-    if (x.tag === 'Maybe::Absent' && x.fields.length === 0) return x;
-    if (x.tag === 'Maybe::Present' && x.fields.length === 1) {
-      return new DataValue(x.tag, [
-        validate(x.fields[0], t.slice(6), bits),
-      ]);
+  if (t.startsWith("Maybe ")) {
+    if (!(x instanceof DataValue)) throw new TypeError("expected Maybe");
+    if (x.tag === "Maybe::Absent" && x.fields.length === 0) return x;
+    if (x.tag === "Maybe::Present" && x.fields.length === 1) {
+      return new DataValue(x.tag, [validate(x.fields[0], t.slice(6), bits)]);
     }
-    throw new TypeError('invalid Maybe constructor or arity');
+    throw new TypeError("invalid Maybe constructor or arity");
   }
-  if (t.startsWith('List ')) {
-    if (!Array.isArray(x)) throw new TypeError('expected List');
+  if (t.startsWith("List ")) {
+    if (!Array.isArray(x)) throw new TypeError("expected List");
     return Array.from(x, (value, index) => {
       if (!Object.hasOwn(x, index))
-        throw new TypeError('List cannot contain array holes');
+        throw new TypeError("List cannot contain array holes");
       return validate(value, t.slice(5), bits);
     });
   }
   const fail = () => {
-    throw new TypeError('invalid ' + t + ' value');
+    throw new TypeError("invalid " + t + " value");
   };
-  if (t.startsWith('Nullable ') || t.startsWith('Optional ')) {
-    const i = t.indexOf(' '),
-        kind = t.slice(0, i);
+  if (t.startsWith("Nullable ") || t.startsWith("Optional ")) {
+    const i = t.indexOf(" "),
+      kind = t.slice(0, i);
     if (
-        !(x instanceof Presence) ||
-        x.kind !== kind ||
-        typeof x.present !== 'boolean'
+      !(x instanceof Presence) ||
+      x.kind !== kind ||
+      typeof x.present !== "boolean"
     )
       fail();
     if (x.present)
-      return new Presence(
-          kind,
-          true,
-          validate(x.value, t.slice(i + 1), bits),
-      );
+      return new Presence(kind, true, validate(x.value, t.slice(i + 1), bits));
   } else if (integerType(t)) {
     if (
-        !['number', 'bigint'].includes(typeof x) ||
-        (typeof x === 'number' && !Number.isSafeInteger(x))
+      !["number", "bigint"].includes(typeof x) ||
+      (typeof x === "number" && !Number.isSafeInteger(x))
     )
       fail();
     return convert(x, t, bits);
-  } else if (t === 'Bool') {
-    if (typeof x !== 'boolean') fail();
-  } else if (t === 'Text' || t === 'Char') {
+  } else if (t === "Bool") {
+    if (typeof x !== "boolean") fail();
+  } else if (t === "Text" || t === "Char") {
     if (
-        typeof x !== 'string' ||
-        (t === 'Char' && [...x].length !== 1) ||
-        ![...x].every((c) => validUnit(t, c.codePointAt(0)))
+      typeof x !== "string" ||
+      (t === "Char" && [...x].length !== 1) ||
+      ![...x].every((c) => validUnit(t, c.codePointAt(0)))
     )
       fail();
-  } else if (t === 'CodePoint' || t === 'CodeUnit16') {
+  } else if (t === "CodePoint" || t === "CodeUnit16") {
     if (!validUnit(t, x)) fail();
-  } else if (t === 'Bytes') {
+  } else if (t === "Bytes") {
     if (!(x instanceof Uint8Array)) fail();
     return new Uint8Array(x);
-  } else if (['Utf16Text', 'CodePointText'].includes(t)) {
+  } else if (["Utf16Text", "CodePointText"].includes(t)) {
     if (
-        !(x instanceof Raw) ||
-        x.kind !== t ||
-        !x.units.every((c) => validUnit(t, c))
+      !(x instanceof Raw) ||
+      x.kind !== t ||
+      !x.units.every((c) => validUnit(t, c))
     )
       fail();
-  } else if (t === 'Symbol') {
-    if (typeof x !== 'symbol') fail();
-  } else if (t === 'Unit') {
+  } else if (t === "Symbol") {
+    if (typeof x !== "symbol") fail();
+  } else if (t === "Unit") {
     if (x !== UNIT) fail();
-  } else if (t === 'Null') {
+  } else if (t === "Null") {
     if (x !== null) fail();
-  } else if (t === 'Undefined') {
+  } else if (t === "Undefined") {
     if (x !== undefined) fail();
-  } else if (t === 'Decimal') {
+  } else if (t === "Decimal") {
     if (!(x instanceof Decimal)) fail();
-  } else if (t === 'Rational') {
+  } else if (t === "Rational") {
     if (!(x instanceof Rational)) fail();
-  } else if (t.startsWith('Float')) {
+  } else if (t.startsWith("Float")) {
     if (
-        typeof x !== 'number' ||
-        (t === 'Float32' && !Number.isNaN(x) && Math.fround(x) !== x)
+      typeof x !== "number" ||
+      (t === "Float32" && !Number.isNaN(x) && Math.fround(x) !== x)
     )
       fail();
-  } else if (t.startsWith('Complex')) {
+  } else if (t.startsWith("Complex")) {
     if (!(x instanceof Complex)) fail();
-    validate(x.real, t === 'Complex64' ? 'Float32' : 'Float64');
-    validate(x.imaginary, t === 'Complex64' ? 'Float32' : 'Float64');
+    validate(x.real, t === "Complex64" ? "Float32" : "Float64");
+    validate(x.imaginary, t === "Complex64" ? "Float32" : "Float64");
   } else fail();
   return x;
 }
 export function literal(v, symbols = new Map()) {
   const t = v.type;
   if (integerType(t)) return convert(BigInt(v.value), t);
-  if (t === 'Bool') return v.value;
-  if (t === 'Decimal') return new Decimal(v.coefficient, v.exponent);
-  if (t === 'Rational') return new Rational(v.numerator, v.denominator);
-  if (t.startsWith('Float')) {
+  if (t === "Bool") return v.value;
+  if (t === "Decimal") return new Decimal(v.coefficient, v.exponent);
+  if (t === "Rational") return new Rational(v.numerator, v.denominator);
+  if (t.startsWith("Float")) {
     const a = new DataView(new ArrayBuffer(8));
-    if (t === 'Float32') {
+    if (t === "Float32") {
       a.setUint32(0, Number.parseInt(v.bits, 16));
       return a.getFloat32(0);
     }
-    a.setBigUint64(0, BigInt('0x' + v.bits));
+    a.setBigUint64(0, BigInt("0x" + v.bits));
     return a.getFloat64(0);
   }
-  if (t.startsWith('Complex'))
+  if (t.startsWith("Complex"))
     return new Complex(literal(v.real), literal(v.imaginary));
-  if (t === 'Text')
-    return v.units.map((c) => String.fromCodePoint(c)).join('');
-  if (t === 'Char') return String.fromCodePoint(v.value);
-  if (t === 'CodePoint' || t === 'CodeUnit16') return v.value;
-  if (t === 'Bytes') {
+  if (t === "Text") return v.units.map((c) => String.fromCodePoint(c)).join("");
+  if (t === "Char") return String.fromCodePoint(v.value);
+  if (t === "CodePoint" || t === "CodeUnit16") return v.value;
+  if (t === "Bytes") {
     if (!v.units.every((c) => validUnit(t, c)))
-      throw new RangeError('invalid Bytes');
+      throw new RangeError("invalid Bytes");
     return new Uint8Array(v.units);
   }
-  if (['CodePointText', 'Utf16Text'].includes(t))
-    return new Raw(t, v.units);
-  if (t === 'Symbol') {
+  if (["CodePointText", "Utf16Text"].includes(t)) return new Raw(t, v.units);
+  if (t === "Symbol") {
     if (!symbols.has(v.id)) symbols.set(v.id, Symbol(v.description));
     return symbols.get(v.id);
   }
-  if (t === 'Nullable' || t === 'Optional')
+  if (t === "Nullable" || t === "Optional")
     return new Presence(
-        t,
-        v.value !== null,
-        v.value === null ? undefined : literal(v.value, symbols),
+      t,
+      v.value !== null,
+      v.value === null ? undefined : literal(v.value, symbols),
     );
-  if (t === 'Null') return null;
-  if (t === 'Undefined') return undefined;
+  if (t === "Null") return null;
+  if (t === "Undefined") return undefined;
   return UNIT;
 }
 export function promote(a, b, op) {
   if (exactType(a) !== exactType(b))
-    throw new TypeError(
-        'exact/inexact mixing requires explicit conversion',
-    );
+    throw new TypeError("exact/inexact mixing requires explicit conversion");
   if (exactType(a))
-    return op === '/' || [a, b].includes('Rational')
-      ? 'Rational'
-      : [a, b].includes('Decimal')
-        ? 'Decimal'
-        : 'Integer';
-  if (a.startsWith('Complex') || b.startsWith('Complex'))
-    return [a, b].some((t) => ['Float64', 'Complex128'].includes(t))
-      ? 'Complex128'
-      : 'Complex64';
-  return [a, b].includes('Float64') ? 'Float64' : 'Float32';
+    return op === "/" || [a, b].includes("Rational")
+      ? "Rational"
+      : [a, b].includes("Decimal")
+        ? "Decimal"
+        : "Integer";
+  if (a.startsWith("Complex") || b.startsWith("Complex"))
+    return [a, b].some((t) => ["Float64", "Complex128"].includes(t))
+      ? "Complex128"
+      : "Complex64";
+  return [a, b].includes("Float64") ? "Float64" : "Float32";
 }
 /**
  * Applies a LawSpec operator with LawSpec's semantics rather than JavaScript's,
@@ -367,79 +346,78 @@ export function promote(a, b, op) {
  */
 export function binary(op, a, b, ta, tb) {
   if (
-      (op === '==' || op === '!=') &&
-      !exactType(ta) &&
-      !['Float32', 'Float64', 'Complex64', 'Complex128'].includes(ta)
+    (op === "==" || op === "!=") &&
+    !exactType(ta) &&
+    !["Float32", "Float64", "Complex64", "Complex128"].includes(ta)
   ) {
     const result = equal(a, b, ta, tb);
-    return op === '==' ? result : !result;
+    return op === "==" ? result : !result;
   }
   const t = promote(ta, tb, op);
   if (exactType(ta)) {
     a = ratio(a);
     b = ratio(b);
     const x = a.n * b.d,
-        y = b.n * a.d;
-    if (['==', '!=', '<', '<=', '>', '>='].includes(op))
+      y = b.n * a.d;
+    if (["==", "!=", "<", "<=", ">", ">="].includes(op))
       return compare(op, x, y);
     let r;
-    if (op === '+') r = new Rational(x + y, a.d * b.d);
-    else if (op === '-') r = new Rational(x - y, a.d * b.d);
-    else if (op === '*') r = new Rational(a.n * b.n, a.d * b.d);
-    else if (op === '/') r = new Rational(a.n * b.d, a.d * b.n);
-    else if (op === 'pow') {
+    if (op === "+") r = new Rational(x + y, a.d * b.d);
+    else if (op === "-") r = new Rational(x - y, a.d * b.d);
+    else if (op === "*") r = new Rational(a.n * b.n, a.d * b.d);
+    else if (op === "/") r = new Rational(a.n * b.d, a.d * b.n);
+    else if (op === "pow") {
       if (a.d !== 1n || b.d !== 1n)
-        throw new TypeError('integer operands required');
-      if (b.n < 0n) throw new RangeError('negative exponent');
+        throw new TypeError("integer operands required");
+      if (b.n < 0n) throw new RangeError("negative exponent");
       return a.n ** b.n;
-    } else if (op === 'quot' || op === 'rem') {
+    } else if (op === "quot" || op === "rem") {
       if (a.d !== 1n || b.d !== 1n)
-        throw new TypeError('integer operands required');
-      return op === 'quot' ? a.n / b.n : a.n % b.n;
-    } else throw new Error('unknown operator ' + op);
+        throw new TypeError("integer operands required");
+      return op === "quot" ? a.n / b.n : a.n % b.n;
+    } else throw new Error("unknown operator " + op);
     return convert(r, t);
   }
-  if (t.startsWith('Complex')) {
+  if (t.startsWith("Complex")) {
     a = convert(a, t);
     b = convert(b, t);
-    const r = t === 'Complex64' ? Math.fround : (x) => x;
-    if (op === '==' || op === '!=') {
+    const r = t === "Complex64" ? Math.fround : (x) => x;
+    if (op === "==" || op === "!=") {
       const e = a.real === b.real && a.imaginary === b.imaginary;
-      return op === '==' ? e : !e;
+      return op === "==" ? e : !e;
     }
-    if (op === '+')
+    if (op === "+")
       return new Complex(r(a.real + b.real), r(a.imaginary + b.imaginary));
-    if (op === '-')
+    if (op === "-")
       return new Complex(r(a.real - b.real), r(a.imaginary - b.imaginary));
-    if (op === '*')
+    if (op === "*")
       return new Complex(
-          r(r(a.real * b.real) - r(a.imaginary * b.imaginary)),
-          r(r(a.real * b.imaginary) + r(a.imaginary * b.real)),
+        r(r(a.real * b.real) - r(a.imaginary * b.imaginary)),
+        r(r(a.real * b.imaginary) + r(a.imaginary * b.real)),
       );
-    if (op === '/') {
+    if (op === "/") {
       const d = r(r(b.real * b.real) + r(b.imaginary * b.imaginary));
       return new Complex(
-          r(r(r(a.real * b.real) + r(a.imaginary * b.imaginary)) / d),
-          r(r(r(a.imaginary * b.real) - r(a.real * b.imaginary)) / d),
+        r(r(r(a.real * b.real) + r(a.imaginary * b.imaginary)) / d),
+        r(r(r(a.imaginary * b.real) - r(a.real * b.imaginary)) / d),
       );
     }
   }
-  if (['==', '!=', '<', '<=', '>', '>='].includes(op))
-    return compare(op, a, b);
+  if (["==", "!=", "<", "<=", ">", ">="].includes(op)) return compare(op, a, b);
   const v =
-      op === '+' ? a + b : op === '-' ? a - b : op === '*' ? a * b : a / b;
-  return t === 'Float32' ? Math.fround(v) : v;
+    op === "+" ? a + b : op === "-" ? a - b : op === "*" ? a * b : a / b;
+  return t === "Float32" ? Math.fround(v) : v;
 }
 function compare(op, a, b) {
-  return op === '=='
+  return op === "=="
     ? a === b
-    : op === '!='
+    : op === "!="
       ? a !== b
-      : op === '<'
+      : op === "<"
         ? a < b
-        : op === '<='
+        : op === "<="
           ? a <= b
-          : op === '>'
+          : op === ">"
             ? a > b
             : a >= b;
 }
@@ -451,7 +429,7 @@ const handleLabels = new WeakMap();
 const primitiveHandleLabels = new Map();
 const handleCounts = new Map();
 const handleTable = (value) =>
-  (typeof value === 'object' && value !== null) || typeof value === 'function'
+  (typeof value === "object" && value !== null) || typeof value === "function"
     ? handleLabels
     : primitiveHandleLabels;
 
@@ -459,10 +437,10 @@ const handleTable = (value) =>
 export function handle(value, name) {
   const table = handleTable(value);
   if (!table.has(value)) {
-    const short = name.split('::').pop();
+    const short = name.split("::").pop();
     const count = (handleCounts.get(short) ?? 0) + 1;
     handleCounts.set(short, count);
-    table.set(value, short + '#' + count);
+    table.set(value, short + "#" + count);
   }
   return value;
 }
@@ -473,13 +451,17 @@ export function isHandle(value) {
 
 // Membership always invokes language equality, even for aliased values.
 export function sameMembers(left, right, equal) {
-  return left.every(value => right.some(candidate => equal(value, candidate))) &&
-    right.every(value => left.some(candidate => equal(value, candidate)));
+  return (
+    left.every((value) => right.some((candidate) => equal(value, candidate))) &&
+    right.every((value) => left.some((candidate) => equal(value, candidate)))
+  );
 }
 
 export function distinctMembers(items, equal) {
-  return items.every((value, index) =>
-    !items.slice(0, index).some(candidate => equal(value, candidate)));
+  return items.every(
+    (value, index) =>
+      !items.slice(0, index).some((candidate) => equal(value, candidate)),
+  );
 }
 
 /**
@@ -490,38 +472,38 @@ export function distinctMembers(items, equal) {
  */
 export function equal(a, b, ta, tb) {
   if (isHandle(a) || isHandle(b)) return a === b;
-  if (ta.startsWith('Either ') && tb.startsWith('Either ')) {
+  if (ta.startsWith("Either ") && tb.startsWith("Either ")) {
     if (a.tag !== b.tag) return false;
-    const index = a.tag === 'Either::Left' ? 0 : 1;
+    const index = a.tag === "Either::Left" ? 0 : 1;
     return equal(
-        a.fields[0],
-        b.fields[0],
-        eitherArguments(ta)[index],
-        eitherArguments(tb)[index],
+      a.fields[0],
+      b.fields[0],
+      eitherArguments(ta)[index],
+      eitherArguments(tb)[index],
     );
   }
-  if (ta.startsWith('Maybe ') && tb.startsWith('Maybe ')) {
+  if (ta.startsWith("Maybe ") && tb.startsWith("Maybe ")) {
     return (
       a.tag === b.tag &&
-        (a.tag === 'Maybe::Absent' ||
-          equal(a.fields[0], b.fields[0], ta.slice(6), tb.slice(6)))
+      (a.tag === "Maybe::Absent" ||
+        equal(a.fields[0], b.fields[0], ta.slice(6), tb.slice(6)))
     );
   }
-  if (ta.startsWith('List ') && tb.startsWith('List ')) {
+  if (ta.startsWith("List ") && tb.startsWith("List ")) {
     return (
       a.length === b.length &&
-        a.every((value, index) =>
-            equal(value, b[index], ta.slice(5), tb.slice(5)),
-        )
+      a.every((value, index) =>
+        equal(value, b[index], ta.slice(5), tb.slice(5)),
+      )
     );
   }
-  if (ta === 'Bytes' && tb === 'Bytes')
+  if (ta === "Bytes" && tb === "Bytes")
     return a.length === b.length && a.every((c, i) => c === b[i]);
   if (
-      ['Float32', 'Float64', 'Complex64', 'Complex128'].includes(ta) &&
-      ['Float32', 'Float64', 'Complex64', 'Complex128'].includes(tb)
+    ["Float32", "Float64", "Complex64", "Complex128"].includes(ta) &&
+    ["Float32", "Float64", "Complex64", "Complex128"].includes(tb)
   )
-    return binary('==', a, b, ta, tb);
+    return binary("==", a, b, ta, tb);
   if (exactType(ta) && exactType(tb)) {
     a = ratio(a);
     b = ratio(b);
@@ -532,24 +514,24 @@ export function equal(a, b, ta, tb) {
   if (a instanceof Presence && b instanceof Presence)
     return (
       a.kind === b.kind &&
-        a.present === b.present &&
-        (!a.present ||
-          equal(
-              a.value,
-              b.value,
-              ta.slice(ta.indexOf(' ') + 1),
-              tb.slice(tb.indexOf(' ') + 1),
-          ))
+      a.present === b.present &&
+      (!a.present ||
+        equal(
+          a.value,
+          b.value,
+          ta.slice(ta.indexOf(" ") + 1),
+          tb.slice(tb.indexOf(" ") + 1),
+        ))
     );
   if (a instanceof Raw && b instanceof Raw)
     return (
       a.kind === b.kind &&
-        a.units.length === b.units.length &&
-        a.units.every((c, i) => c === b.units[i])
+      a.units.length === b.units.length &&
+      a.units.every((c, i) => c === b.units[i])
     );
   return a === b;
 }
-const ORDERING = 'lawspec.collections::type::Ordering::';
+const ORDERING = "lawspec.collections::type::Ordering::";
 const sign = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
 
 // The portable total order: -1, 0 or 1. Exact numbers by value, text by code
@@ -560,18 +542,21 @@ export function compareValues(a, b) {
   // Handles have no order: one equals only itself.
   if (isHandle(a) && isHandle(b)) {
     if (a === b) return 0;
-    throw new TypeError('handles have no portable order');
+    throw new TypeError("handles have no portable order");
   }
-  if (typeof a === 'boolean' && typeof b === 'boolean') return sign(Number(a) - Number(b));
-  if (typeof a === 'string' && typeof b === 'string') {
-    const x = [...a], y = [...b];
+  if (typeof a === "boolean" && typeof b === "boolean")
+    return sign(Number(a) - Number(b));
+  if (typeof a === "string" && typeof b === "string") {
+    const x = [...a],
+      y = [...b];
     for (let i = 0; i < Math.min(x.length, y.length); ++i) {
       const order = sign(x[i].codePointAt(0) - y[i].codePointAt(0));
       if (order) return order;
     }
     return sign(x.length - y.length);
   }
-  if (a instanceof Raw && b instanceof Raw) return compareValues([...a.units], [...b.units]);
+  if (a instanceof Raw && b instanceof Raw)
+    return compareValues([...a.units], [...b.units]);
   if (a === UNIT && b === UNIT) return 0;
   if (a instanceof Presence && b instanceof Presence) {
     if (a.present !== b.present) return a.present ? 1 : -1;
@@ -586,70 +571,80 @@ export function compareValues(a, b) {
   }
   if (a instanceof DataValue && b instanceof DataValue) {
     if (a.tag !== b.tag) {
-      if (a.tag === 'Maybe::Absent' && b.tag === 'Maybe::Present') return -1;
-      if (a.tag === 'Maybe::Present' && b.tag === 'Maybe::Absent') return 1;
+      if (a.tag === "Maybe::Absent" && b.tag === "Maybe::Present") return -1;
+      if (a.tag === "Maybe::Present" && b.tag === "Maybe::Absent") return 1;
       return a.tag < b.tag ? -1 : 1;
     }
     return compareValues([...a.fields], [...b.fields]);
   }
-  if (typeof a === 'number' && typeof b === 'number') return sign(a - b);
-  const x = ratio(a), y = ratio(b);
+  if (typeof a === "number" && typeof b === "number") return sign(a - b);
+  const x = ratio(a),
+    y = ratio(b);
   const difference = x.n * y.d - y.n * x.d;
   return difference > 0n ? 1 : difference < 0n ? -1 : 0;
 }
 
 export function helper(n, args, types, bits = 64) {
-  if (n === 'incompleteSearch') throw new Error(args[0]);
+  if (n === "incompleteSearch") throw new Error(args[0]);
   const x = args[0];
   if (Object.hasOwn(sequenceHelpers, n)) return sequenceHelpers[n](args, types);
-  if (n === 'startsWith') return args[0].startsWith(args[1]);
-  if (n === 'endsWith') return args[0].endsWith(args[1]);
-  if (n === 'textContains') return args[0].includes(args[1]);
-  if (n === 'regexMatches') return regexMatches(args[0], args[1]);
-  if (n === 'recorded') return recorded(args[0], args[1],
-    types.length > 1 ? value => recordedText(value, types[1]) : render);
-  if (n === 'acquireResource') return acquireResource(args[0]);
-  if (n === 'releaseResource') return releaseResource(args[0], args[1]);
-  if (n === 'freePort') return freePort();
-  if (n === 'checked') return true;
-  if (n === 'select') return args[0] ? args[1] : args[2];
-  if (n === 'compare')
-    return new DataValue(ORDERING + ['Less', 'Equal', 'Greater'][compareValues(args[0], args[1]) + 1], []);
-  if (n === 'length')
-    return BigInt(
-        typeof x === 'string'
-          ? [...x].length
-          : x instanceof Raw
-            ? x.units.length
-            : x.length,
+  if (n === "startsWith") return args[0].startsWith(args[1]);
+  if (n === "endsWith") return args[0].endsWith(args[1]);
+  if (n === "textContains") return args[0].includes(args[1]);
+  if (n === "regexMatches") return regexMatches(args[0], args[1]);
+  if (n === "recorded")
+    return recorded(
+      args[0],
+      args[1],
+      types.length > 1 ? (value) => recordedText(value, types[1]) : render,
     );
-  if (n === 'isPresent') return x.present;
-  if (n === 'presentValue') {
-    if (!x.present) throw new Error('absent presence value');
+  if (n === "acquireResource") return acquireResource(args[0]);
+  if (n === "releaseResource") return releaseResource(args[0], args[1]);
+  if (n === "freePort") return freePort();
+  if (n === "checked") return true;
+  if (n === "select") return args[0] ? args[1] : args[2];
+  if (n === "compare")
+    return new DataValue(
+      ORDERING +
+        ["Less", "Equal", "Greater"][compareValues(args[0], args[1]) + 1],
+      [],
+    );
+  if (n === "length")
+    return BigInt(
+      typeof x === "string"
+        ? [...x].length
+        : x instanceof Raw
+          ? x.units.length
+          : x.length,
+    );
+  if (n === "isPresent") return x.present;
+  if (n === "presentValue") {
+    if (!x.present) throw new Error("absent presence value");
     return x.value;
   }
 
-  if (n === 'real') return x.real;
-  if (n === 'imag') return x.imaginary;
-  if (n === 'negate') {
-    if (exactType(types[0])) return binary('-', 0n, x, 'BigInt', types[0]);
+  if (n === "real") return x.real;
+  if (n === "imag") return x.imaginary;
+  if (n === "negate") {
+    if (exactType(types[0])) return binary("-", 0n, x, "BigInt", types[0]);
     return x instanceof Complex ? new Complex(-x.real, -x.imaginary) : -x;
   }
-  if (n === 'quot' || n === 'rem' || n === 'pow') return binary(n, ...args, ...types);
-  if (n === 'isNaN') return Number.isNaN(x);
-  if (n === 'isInfinite') return x === Infinity || x === -Infinity;
-  if (n === 'isFinite') return Number.isFinite(x);
-  if (n === 'isNegativeZero') return Object.is(x, -0);
-  if (n === 'round') {
-    const scale = BigInt(convert(args[1], 'Int32', bits)),
-        factor =
-            scale >= 0n
-              ? new Rational(10n ** scale)
-              : new Rational(1n, 10n ** -scale),
-        v = ratio(x),
-        a = new Rational(v.n * factor.n, v.d * factor.d);
+  if (n === "quot" || n === "rem" || n === "pow")
+    return binary(n, ...args, ...types);
+  if (n === "isNaN") return Number.isNaN(x);
+  if (n === "isInfinite") return x === Infinity || x === -Infinity;
+  if (n === "isFinite") return Number.isFinite(x);
+  if (n === "isNegativeZero") return Object.is(x, -0);
+  if (n === "round") {
+    const scale = BigInt(convert(args[1], "Int32", bits)),
+      factor =
+        scale >= 0n
+          ? new Rational(10n ** scale)
+          : new Rational(1n, 10n ** -scale),
+      v = ratio(x),
+      a = new Rational(v.n * factor.n, v.d * factor.d);
     let q = a.n / a.d,
-        r = a.n % a.d;
+      r = a.n % a.d;
     const abs = r < 0n ? -r : r;
     if (abs * 2n > a.d || (abs * 2n === a.d && q % 2n !== 0n))
       q += a.n < 0n ? -1n : 1n;
@@ -661,32 +656,36 @@ export function helper(n, args, types, bits = 64) {
 // Sequences: Text (string, indexed by code point), Bytes (Uint8Array) and
 // List (array). A slice is clamped to the sequence.
 function sequenceItems(x) {
-  return typeof x === 'string' ? [...x] : x instanceof Raw ? x.units : x;
+  return typeof x === "string" ? [...x] : x instanceof Raw ? x.units : x;
 }
 function sequenceLike(x, items) {
-  if (typeof x === 'string') return items.join('');
+  if (typeof x === "string") return items.join("");
   if (x instanceof Uint8Array) return Uint8Array.from(items);
   if (x instanceof Raw) return new Raw(x.kind, items);
   return items;
 }
 const sequenceHelpers = {
-  append: ([a, b]) => sequenceLike(a, [...sequenceItems(a), ...sequenceItems(b)]),
+  append: ([a, b]) =>
+    sequenceLike(a, [...sequenceItems(a), ...sequenceItems(b)]),
   slice: ([x, start, end]) => {
     const items = [...sequenceItems(x)],
-        count = BigInt(items.length),
-        clamp = (n) => (BigInt(n) < 0n ? 0n : BigInt(n) > count ? count : BigInt(n)),
-        i = clamp(start),
-        j = clamp(end) < i ? i : clamp(end);
+      count = BigInt(items.length),
+      clamp = (n) =>
+        BigInt(n) < 0n ? 0n : BigInt(n) > count ? count : BigInt(n),
+      i = clamp(start),
+      j = clamp(end) < i ? i : clamp(end);
     return sequenceLike(x, items.slice(Number(i), Number(j)));
   },
   at: ([x, i]) => {
     const index = BigInt(i);
-    if (index < 0n || index >= BigInt(x.length)) return construct('Maybe::Absent', []);
-    return construct('Maybe::Present', [x[Number(index)]]);
+    if (index < 0n || index >= BigInt(x.length))
+      return construct("Maybe::Absent", []);
+    return construct("Maybe::Present", [x[Number(index)]]);
   },
   range: ([lo, hi], types) => {
     const out = [];
-    for (let n = BigInt(lo); n < BigInt(hi); n++) out.push(convert(n, types[0]));
+    for (let n = BigInt(lo); n < BigInt(hi); n++)
+      out.push(convert(n, types[0]));
     return out;
   },
   octets: ([b]) => Array.from(b),
@@ -700,21 +699,21 @@ const sequenceHelpers = {
 function exactFloat(r, t) {
   if (r.n === 0n) return 0;
   const negative = r.n < 0n,
-      n = negative ? -r.n : r.n,
-      d = r.d,
-      single = t === 'Float32';
+    n = negative ? -r.n : r.n,
+    d = r.d,
+    single = t === "Float32";
   const p = single ? 24 : 53,
-      bias = single ? 127 : 1023,
-      emin = 1 - bias,
-      emax = bias;
+    bias = single ? 127 : 1023,
+    emin = 1 - bias,
+    emax = bias;
   let e = n.toString(2).length - d.toString(2).length;
   if (e >= 0 ? n < d << BigInt(e) : n << BigInt(-e) < d) e--;
   if (e > emax) return negative ? -Infinity : Infinity;
   const scale = Math.max(e, emin) - (p - 1);
   const num = scale < 0 ? n << BigInt(-scale) : n,
-      den = scale > 0 ? d << BigInt(scale) : d;
+    den = scale > 0 ? d << BigInt(scale) : d;
   let q = num / den,
-      rem = num % den;
+    rem = num % den;
   if (rem * 2n > den || (rem * 2n === den && q % 2n !== 0n)) q++;
   e = Math.max(e, emin);
   if (q === 1n << BigInt(p)) {
@@ -723,12 +722,12 @@ function exactFloat(r, t) {
   }
   if (e > emax) return negative ? -Infinity : Infinity;
   const hidden = 1n << BigInt(p - 1),
-      exponent = q < hidden ? 0 : e + bias,
-      mantissa = q < hidden ? q : q - hidden;
+    exponent = q < hidden ? 0 : e + bias,
+    mantissa = q < hidden ? q : q - hidden;
   const bits =
-      (BigInt(negative ? 1 : 0) << BigInt(single ? 31 : 63)) |
-      (BigInt(exponent) << BigInt(p - 1)) |
-      mantissa;
+    (BigInt(negative ? 1 : 0) << BigInt(single ? 31 : 63)) |
+    (BigInt(exponent) << BigInt(p - 1)) |
+    mantissa;
   const view = new DataView(new ArrayBuffer(8));
   if (single) {
     view.setUint32(0, Number(bits));
@@ -743,7 +742,7 @@ function exactFloat(r, t) {
 // evidence-passing compilation. A law installs one handler per ability; an
 // operation finds the handler of its ability there. The Fail ability's
 // handlers abort, so raise throws a Failure and attempt catches it.
-const HANDLERS = '_lawspec_handlers';
+const HANDLERS = "_lawspec_handlers";
 
 export class Failure extends Error {
   constructor(ability, value) {
@@ -763,7 +762,9 @@ export function installHandlers(symbols, handlers) {
 export function handler(symbols, ability) {
   const table = symbols instanceof Map ? symbols.get(HANDLERS) : undefined;
   if (table === undefined || !table.has(ability))
-    throw new Error(`no handler for the ability ${ability}: a law names one with \`using\`, or runs under each lawful handler`);
+    throw new Error(
+      `no handler for the ability ${ability}: a law names one with \`using\`, or runs under each lawful handler`,
+    );
   return table.get(ability);
 }
 
@@ -776,7 +777,8 @@ export function attempt(ability, body, right, left) {
   try {
     value = body();
   } catch (error) {
-    if (error instanceof Failure && error.ability === ability) return left(error.value);
+    if (error instanceof Failure && error.ability === ability)
+      return left(error.value);
     throw error;
   }
   return right(value);
@@ -787,7 +789,8 @@ export async function attemptAsync(ability, body, right, left) {
   try {
     value = await body();
   } catch (error) {
-    if (error instanceof Failure && error.ability === ability) return left(error.value);
+    if (error instanceof Failure && error.ability === ability)
+      return left(error.value);
     throw error;
   }
   return right(value);
@@ -859,13 +862,21 @@ export async function nativeFailuresAsync(ability, convert, body, mapped = []) {
 }
 
 export function countCalls(recording, operation, matches = null) {
-  if (recording === null || typeof recording !== 'object' || !Array.isArray(recording.calls))
-    throw new TypeError('calls of needs a recording handler: `using recording`');
-  return recording.calls.filter(([name, args]) => name === operation && (matches === null || matches(args))).length;
+  if (
+    recording === null ||
+    typeof recording !== "object" ||
+    !Array.isArray(recording.calls)
+  )
+    throw new TypeError(
+      "calls of needs a recording handler: `using recording`",
+    );
+  return recording.calls.filter(
+    ([name, args]) => name === operation && (matches === null || matches(args)),
+  ).length;
 }
 
 export function unitResult(value) {
-  return value === undefined ? UNIT : validate(value, 'Unit');
+  return value === undefined ? UNIT : validate(value, "Unit");
 }
 
 /**
@@ -876,19 +887,14 @@ export function unitResult(value) {
 export function sample(t, seed, bits = 64) {
   let n = BigInt(seed);
   const next = () =>
-      (n = BigInt.asUintN(
-          256,
-          n * 6364136223846793005n + 1442695040888963407n,
-      ));
+    (n = BigInt.asUintN(256, n * 6364136223846793005n + 1442695040888963407n));
   for (let j = 0; j < 8; j++) next();
-  if (t.startsWith('Nullable ') || t.startsWith('Optional ')) {
-    const [kind, ...rest] = t.split(' ');
+  if (t.startsWith("Nullable ") || t.startsWith("Optional ")) {
+    const [kind, ...rest] = t.split(" ");
     return new Presence(
-        kind,
-        !!(seed % 2),
-        seed % 2
-          ? sample(rest.join(' '), Math.trunc(seed / 2), bits)
-          : undefined,
+      kind,
+      !!(seed % 2),
+      seed % 2 ? sample(rest.join(" "), Math.trunc(seed / 2), bits) : undefined,
     );
   }
   if (integerType(t)) {
@@ -897,48 +903,47 @@ export function sample(t, seed, bits = 64) {
     hi ??= 2n ** 256n;
     return convert(lo + (n % (hi - lo + 1n)), t, bits);
   }
-  if (t === 'Bool') return !!(seed % 2);
-  if (t === 'Decimal')
+  if (t === "Bool") return !!(seed % 2);
+  if (t === "Decimal")
     return new Decimal(n - 2n ** 255n, BigInt((seed % 41) - 20));
-  if (t === 'Rational')
+  if (t === "Rational")
     return new Rational(n - 2n ** 255n, (next() % 2n ** 128n) + 1n);
-  if (t.startsWith('Float'))
+  if (t.startsWith("Float"))
     return literal({
       type: t,
-      bits: BigInt.asUintN(t === 'Float32' ? 32 : 64, n)
-          .toString(16)
-          .padStart(t === 'Float32' ? 8 : 16, '0'),
+      bits: BigInt.asUintN(t === "Float32" ? 32 : 64, n)
+        .toString(16)
+        .padStart(t === "Float32" ? 8 : 16, "0"),
     });
-  if (t.startsWith('Complex')) {
-    const c = t === 'Complex64' ? 'Float32' : 'Float64';
+  if (t.startsWith("Complex")) {
+    const c = t === "Complex64" ? "Float32" : "Float64";
     return new Complex(sample(c, seed, bits), sample(c, seed + 1, bits));
   }
-  if (t === 'Unit') return UNIT;
-  if (t === 'Null') return null;
-  if (t === 'Undefined') return undefined;
-  if (t === 'Symbol') return Symbol('same');
+  if (t === "Unit") return UNIT;
+  if (t === "Null") return null;
+  if (t === "Undefined") return undefined;
+  if (t === "Symbol") return Symbol("same");
   const maximum =
-      t === 'Bytes'
-        ? 256
-        : ['Utf16Text', 'CodeUnit16'].includes(t)
-          ? 65536
-          : 1114112;
+    t === "Bytes"
+      ? 256
+      : ["Utf16Text", "CodeUnit16"].includes(t)
+        ? 65536
+        : 1114112;
   const unit = () => {
     let c;
     do {
       c = Number(next() % BigInt(maximum));
-    } while (['Char', 'Text'].includes(t) && c >= 55296 && c <= 57343);
+    } while (["Char", "Text"].includes(t) && c >= 55296 && c <= 57343);
     return c;
   };
-  if (t === 'Char') return String.fromCodePoint(unit());
-  if (['CodePoint', 'CodeUnit16'].includes(t)) return unit();
-  const xs = Array.from({length: Number(n % 40n)}, unit);
-  if (t === 'Text') return String.fromCodePoint(...xs);
-  if (t === 'Bytes') return new Uint8Array(xs);
+  if (t === "Char") return String.fromCodePoint(unit());
+  if (["CodePoint", "CodeUnit16"].includes(t)) return unit();
+  const xs = Array.from({ length: Number(n % 40n) }, unit);
+  if (t === "Text") return String.fromCodePoint(...xs);
+  if (t === "Bytes") return new Uint8Array(xs);
   return new Raw(t, xs);
 }
-const floorRatio = (r) =>
-    r.n / r.d - (r.n < 0n && r.n % r.d !== 0n ? 1n : 0n);
+const floorRatio = (r) => r.n / r.d - (r.n < 0n && r.n % r.d !== 0n ? 1n : 0n);
 const ceilRatio = (r) => -floorRatio(new Rational(-r.n, r.d));
 export function domainCandidates(t, seed, bits, restrictions, hints) {
   let candidates = [];
@@ -951,53 +956,46 @@ export function domainCandidates(t, seed, bits, restrictions, hints) {
     let [lo, hi] = bounds(t, bits);
     for (const [op, value] of restrictions) {
       const r = ratio(value);
-      if (['>', '>=', '=='].includes(op)) {
-        const v = op === '>' ? floorRatio(r) + 1n : ceilRatio(r);
+      if ([">", ">=", "=="].includes(op)) {
+        const v = op === ">" ? floorRatio(r) + 1n : ceilRatio(r);
         lo = lo === null || v > lo ? v : lo;
       }
-      if (['<', '<=', '=='].includes(op)) {
-        const v = op === '<' ? ceilRatio(r) - 1n : floorRatio(r);
+      if (["<", "<=", "=="].includes(op)) {
+        const v = op === "<" ? ceilRatio(r) - 1n : floorRatio(r);
         hi = hi === null || v < hi ? v : hi;
       }
     }
     if (lo !== null && hi !== null && lo > hi) return [];
     const lower =
         lo ?? ((hi ?? 0n) < 0n ? (hi ?? 0n) - 2n ** 256n : -(2n ** 256n)),
-        upper =
-            hi ?? ((lo ?? 0n) > 0n ? (lo ?? 0n) + 2n ** 256n : 2n ** 256n);
+      upper = hi ?? ((lo ?? 0n) > 0n ? (lo ?? 0n) + 2n ** 256n : 2n ** 256n);
     candidates.push(lower, upper, 0n, 1n, -1n, lower + 1n, upper - 1n);
     let n = BigInt(seed);
     for (let j = 0; j < 8; j++) {
-      n = BigInt.asUintN(
-          256,
-          n * 6364136223846793005n + 1442695040888963407n,
-      );
+      n = BigInt.asUintN(256, n * 6364136223846793005n + 1442695040888963407n);
       candidates.push(lower + (n % (upper - lower + 1n)));
     }
     candidates = candidates
-        .filter(
+      .filter(
         (v) =>
-            ['number', 'bigint'].includes(typeof v) &&
-            BigInt(v) >= lower &&
-            BigInt(v) <= upper,
+          ["number", "bigint"].includes(typeof v) &&
+          BigInt(v) >= lower &&
+          BigInt(v) <= upper,
       )
-        .map((v) => convert(v, t, bits));
+      .map((v) => convert(v, t, bits));
   } else
     for (let j = 0; j < 8; j++)
       candidates.push(sample(t, seed + j * 7919, bits));
   if (candidates.length) {
     const offset =
-        ((seed % candidates.length) + candidates.length) % candidates.length;
-    candidates = [
-      ...candidates.slice(offset),
-      ...candidates.slice(0, offset),
-    ];
+      ((seed % candidates.length) + candidates.length) % candidates.length;
+    candidates = [...candidates.slice(offset), ...candidates.slice(0, offset)];
   }
   return candidates;
 }
 export function generateTuple(domains, seed, attempts, prefix = []) {
   let used = 0,
-      lastPrefix = prefix;
+    lastPrefix = prefix;
   const search = (values) => {
     lastPrefix = values;
     if (values.length === domains.length) return values;
@@ -1020,55 +1018,55 @@ export function generateTuple(domains, seed, attempts, prefix = []) {
     if (result !== null) return result;
   }
   throw new Error(
-      `refinement-generation-exhausted after ${used} attempts; ` +
-        `prefix=${lastPrefix.map(String)}; seed=${seed}`,
+    `refinement-generation-exhausted after ${used} attempts; ` +
+      `prefix=${lastPrefix.map(String)}; seed=${seed}`,
   );
 }
 export function requireContract(condition, context) {
   if (condition !== true) throw new Error(context);
 }
 export function refinedCase(
-    domains,
-    seed,
-    attempts,
-    shrinks,
-    check,
-    context = 'refinement',
+  domains,
+  seed,
+  attempts,
+  shrinks,
+  check,
+  context = "refinement",
 ) {
   let values;
   try {
     values = generateTuple(domains, seed, attempts);
   } catch (error) {
-    throw new Error(`${context}: ${error.message}`, {cause: error});
+    throw new Error(`${context}: ${error.message}`, { cause: error });
   }
   try {
     check(values);
   } catch (original) {
     let best = values,
-        budget = shrinks;
+      budget = shrinks;
     for (let i = 0; i < best.length; i++) {
       const current = best[i],
-          integer =
-              typeof current === 'bigint' ||
-              (typeof current === 'number' && Number.isSafeInteger(current));
+        integer =
+          typeof current === "bigint" ||
+          (typeof current === "number" && Number.isSafeInteger(current));
       const candidates = domains[i][0](best.slice(0, i), 0);
       if (integer) {
         const initial = BigInt(current);
         let reduced = initial;
         candidates.unshift(
-            typeof current === 'number' ? 0 : 0n,
-            typeof current === 'number'
-              ? Math.sign(current)
-              : initial > 0n
-                ? 1n
-                : -1n,
+          typeof current === "number" ? 0 : 0n,
+          typeof current === "number"
+            ? Math.sign(current)
+            : initial > 0n
+              ? 1n
+              : -1n,
         );
         while (reduced > 1n || reduced < -1n) {
           reduced /= 2n;
           candidates.splice(
-              2,
-              0,
-              typeof current === 'number' ? Number(reduced) : reduced,
+            2,
+            0,
+            typeof current === "number" ? Number(reduced) : reduced,
           );
         }
       }
@@ -1079,14 +1077,9 @@ export function refinedCase(
         if (!domains[i][1](prefix)) continue;
         let trial;
         try {
-          trial = generateTuple(
-              domains,
-              seed,
-              Math.min(attempts, 100),
-              prefix,
-          );
+          trial = generateTuple(domains, seed, Math.min(attempts, 100), prefix);
         } catch (error) {
-          if (error.message.startsWith('refinement-generation-exhausted'))
+          if (error.message.startsWith("refinement-generation-exhausted"))
             continue;
           throw error;
         }
@@ -1098,56 +1091,56 @@ export function refinedCase(
       }
     }
     throw new Error(
-        `${context}: ${original.message}; ` +
-          `refined counterexample=${best.map(String)}; seed=${seed}`,
-        {cause: original},
+      `${context}: ${original.message}; ` +
+        `refined counterexample=${best.map(String)}; seed=${seed}`,
+      { cause: original },
     );
   }
 }
 
 // refinedCase for checks that await async adapters.
 export async function refinedCaseAsync(
-    domains,
-    seed,
-    attempts,
-    shrinks,
-    check,
-    context = 'refinement',
+  domains,
+  seed,
+  attempts,
+  shrinks,
+  check,
+  context = "refinement",
 ) {
   let values;
   try {
     values = generateTuple(domains, seed, attempts);
   } catch (error) {
-    throw new Error(`${context}: ${error.message}`, {cause: error});
+    throw new Error(`${context}: ${error.message}`, { cause: error });
   }
   try {
     await check(values);
   } catch (original) {
     let best = values,
-        budget = shrinks;
+      budget = shrinks;
     for (let i = 0; i < best.length; i++) {
       const current = best[i],
-          integer =
-              typeof current === 'bigint' ||
-              (typeof current === 'number' && Number.isSafeInteger(current));
+        integer =
+          typeof current === "bigint" ||
+          (typeof current === "number" && Number.isSafeInteger(current));
       const candidates = domains[i][0](best.slice(0, i), 0);
       if (integer) {
         const initial = BigInt(current);
         let reduced = initial;
         candidates.unshift(
-            typeof current === 'number' ? 0 : 0n,
-            typeof current === 'number'
-              ? Math.sign(current)
-              : initial > 0n
-                ? 1n
-                : -1n,
+          typeof current === "number" ? 0 : 0n,
+          typeof current === "number"
+            ? Math.sign(current)
+            : initial > 0n
+              ? 1n
+              : -1n,
         );
         while (reduced > 1n || reduced < -1n) {
           reduced /= 2n;
           candidates.splice(
-              2,
-              0,
-              typeof current === 'number' ? Number(reduced) : reduced,
+            2,
+            0,
+            typeof current === "number" ? Number(reduced) : reduced,
           );
         }
       }
@@ -1158,14 +1151,9 @@ export async function refinedCaseAsync(
         if (!domains[i][1](prefix)) continue;
         let trial;
         try {
-          trial = generateTuple(
-              domains,
-              seed,
-              Math.min(attempts, 100),
-              prefix,
-          );
+          trial = generateTuple(domains, seed, Math.min(attempts, 100), prefix);
         } catch (error) {
-          if (error.message.startsWith('refinement-generation-exhausted'))
+          if (error.message.startsWith("refinement-generation-exhausted"))
             continue;
           throw error;
         }
@@ -1177,9 +1165,9 @@ export async function refinedCaseAsync(
       }
     }
     throw new Error(
-        `${context}: ${original.message}; ` +
-          `refined counterexample=${best.map(String)}; seed=${seed}`,
-        {cause: original},
+      `${context}: ${original.message}; ` +
+        `refined counterexample=${best.map(String)}; seed=${seed}`,
+      { cause: original },
     );
   }
 }
@@ -1189,52 +1177,48 @@ function complexity(value) {
     return value.present ? 1n + complexity(value.value) : 0n;
   if (value instanceof Raw) return BigInt(value.units.length);
   if (value instanceof Uint8Array) return BigInt(value.length);
-  if (typeof value === 'string') return BigInt([...value].length);
-  if (typeof value === 'bigint') return value < 0n ? -value : value;
-  if (typeof value === 'number') {
+  if (typeof value === "string") return BigInt([...value].length);
+  if (typeof value === "bigint") return value < 0n ? -value : value;
+  if (typeof value === "number") {
     if (Number.isSafeInteger(value)) return BigInt(Math.abs(value));
     const view = new DataView(new ArrayBuffer(8));
     view.setFloat64(0, Math.abs(value));
     return view.getBigUint64(0);
   }
-  if (typeof value === 'boolean') return value ? 1n : 0n;
+  if (typeof value === "boolean") return value ? 1n : 0n;
   if (value instanceof Decimal || value instanceof Rational) {
     const r = ratio(value);
     return (r.n < 0n ? -r.n : r.n) + r.d - 1n;
   }
   if (value instanceof Complex)
     return complexity(value.real) + complexity(value.imaginary);
-  if (typeof value === 'symbol') return 1n;
+  if (typeof value === "symbol") return 1n;
   return 0n;
 }
 
 export function construct(tag, fields) {
   if (
-      (tag === 'Maybe::Absent' && fields.length === 0) ||
-      (['Maybe::Present', 'Either::Left', 'Either::Right'].includes(tag) &&
-        fields.length === 1)
+    (tag === "Maybe::Absent" && fields.length === 0) ||
+    (["Maybe::Present", "Either::Left", "Either::Right"].includes(tag) &&
+      fields.length === 1)
   ) {
     return new DataValue(tag, fields);
   }
-  if (tag === 'List::Nil' && fields.length === 0) return [];
-  if (
-      tag === 'List::Cons' &&
-      fields.length === 2 &&
-      Array.isArray(fields[1])
-  ) {
+  if (tag === "List::Nil" && fields.length === 0) return [];
+  if (tag === "List::Cons" && fields.length === 2 && Array.isArray(fields[1])) {
     return [fields[0], ...fields[1]];
   }
-  throw new TypeError('invalid constructor or arity: ' + tag);
+  throw new TypeError("invalid constructor or arity: " + tag);
 }
 
 export function allElements(value, predicate) {
   if (!Array.isArray(value))
-    throw new TypeError('expected List in element predicate');
+    throw new TypeError("expected List in element predicate");
   for (let index = 0; index < value.length; index++) {
     try {
       const accepted = predicate(value[index]);
-      if (typeof accepted !== 'boolean') {
-        throw new TypeError('element predicate must return Bool');
+      if (typeof accepted !== "boolean") {
+        throw new TypeError("element predicate must return Bool");
       }
       if (!accepted) return false;
     } catch (error) {
@@ -1247,35 +1231,33 @@ export function allElements(value, predicate) {
 }
 
 export function matchList(value, branches) {
-  if (!Array.isArray(value)) throw new TypeError('expected List in match');
+  if (!Array.isArray(value)) throw new TypeError("expected List in match");
   for (let index = 0; index < value.length; index++) {
     if (!Object.hasOwn(value, index)) {
-      throw new TypeError('List cannot contain array holes');
+      throw new TypeError("List cannot contain array holes");
     }
   }
-  const tag = value.length === 0 ? 'List::Nil' : 'List::Cons';
+  const tag = value.length === 0 ? "List::Nil" : "List::Cons";
   const branch = branches.find(([candidate]) => candidate === tag);
-  if (!branch) throw new TypeError('missing match branch: ' + tag);
-  return value.length === 0
-    ? branch[1]()
-    : branch[1](value[0], value.slice(1));
+  if (!branch) throw new TypeError("missing match branch: " + tag);
+  return value.length === 0 ? branch[1]() : branch[1](value[0], value.slice(1));
 }
 
 export function matchValue(value, branches) {
   if (Array.isArray(value)) return matchList(value, branches);
   if (!(value instanceof DataValue))
-    throw new TypeError('expected data in match');
+    throw new TypeError("expected data in match");
   const arity =
-      value.tag === 'Maybe::Absent'
-        ? 0
-        : ['Maybe::Present', 'Either::Left', 'Either::Right'].includes(value.tag)
-          ? 1
-          : -1;
+    value.tag === "Maybe::Absent"
+      ? 0
+      : ["Maybe::Present", "Either::Left", "Either::Right"].includes(value.tag)
+        ? 1
+        : -1;
   if (value.fields.length !== arity) {
-    throw new TypeError('invalid match constructor or arity');
+    throw new TypeError("invalid match constructor or arity");
   }
   const branch = branches.find(([tag]) => tag === value.tag);
-  if (!branch) throw new TypeError('missing match branch: ' + value.tag);
+  if (!branch) throw new TypeError("missing match branch: " + value.tag);
   return branch[1](...value.fields);
 }
 
@@ -1286,18 +1268,18 @@ function eitherArguments(type) {
   let start = 0;
   for (let index = 7; index < type.length; index++) {
     const char = type[index];
-    if (char === '(') {
+    if (char === "(") {
       if (depth === 0) start = index + 1;
       depth++;
-    } else if (char === ')') {
-      if (--depth < 0) throw new TypeError('invalid Either type key');
+    } else if (char === ")") {
+      if (--depth < 0) throw new TypeError("invalid Either type key");
       if (depth === 0) args.push(type.slice(start, index));
-    } else if (depth === 0 && char !== ' ') {
-      throw new TypeError('invalid Either type key');
+    } else if (depth === 0 && char !== " ") {
+      throw new TypeError("invalid Either type key");
     }
   }
   if (depth !== 0 || args.length !== 2 || args.some((arg) => !arg.trim())) {
-    throw new TypeError('invalid Either type key');
+    throw new TypeError("invalid Either type key");
   }
   return args;
 }
@@ -1308,17 +1290,23 @@ function eitherArguments(type) {
 // without one, the default runtime applies (real time, unless the tests
 // installed a virtual clock). Durations are bigint microseconds.
 
-const WORKFLOW = '\0lawspec.workflow';
+const WORKFLOW = "\0lawspec.workflow";
 const MASK64 = (1n << 64n) - 1n;
 
 export class RealClock {
   virtual = false;
-  now() { return BigInt(Math.round(performance.now() * 1000)); }
+  now() {
+    return BigInt(Math.round(performance.now() * 1000));
+  }
   /** Waits without blocking, for asynchronous workflows. */
-  sleepAsync(micros) { return new Promise((resolve) => setTimeout(resolve, Number(micros) / 1000)); }
+  sleepAsync(micros) {
+    return new Promise((resolve) => setTimeout(resolve, Number(micros) / 1000));
+  }
   sleep(micros) {
     const until = performance.now() + Number(micros) / 1000;
-    while (performance.now() < until) { /* synchronous workflows block */ }
+    while (performance.now() < until) {
+      /* synchronous workflows block */
+    }
   }
 }
 
@@ -1326,10 +1314,19 @@ export class RealClock {
 export class VirtualClock {
   virtual = true;
   time;
-  constructor(start = 0n) { this.time = BigInt(start); }
-  now() { return this.time; }
-  sleep(micros) { this.time += BigInt(micros); }
-  sleepAsync(micros) { this.sleep(micros); return Promise.resolve(); }
+  constructor(start = 0n) {
+    this.time = BigInt(start);
+  }
+  now() {
+    return this.time;
+  }
+  sleep(micros) {
+    this.time += BigInt(micros);
+  }
+  sleepAsync(micros) {
+    this.sleep(micros);
+    return Promise.resolve();
+  }
 }
 
 /**
@@ -1341,16 +1338,20 @@ export class VirtualClock {
  */
 export class SplitMix64 {
   state;
-  constructor(seed = 0n) { this.state = BigInt(seed) & MASK64; }
+  constructor(seed = 0n) {
+    this.state = BigInt(seed) & MASK64;
+  }
   next() {
-    this.state = (this.state + 0x9E3779B97F4A7C15n) & MASK64;
+    this.state = (this.state + 0x9e3779b97f4a7c15n) & MASK64;
     let z = this.state;
-    z = ((z ^ (z >> 30n)) * 0xBF58476D1CE4E5B9n) & MASK64;
-    z = ((z ^ (z >> 27n)) * 0x94D049BB133111EBn) & MASK64;
+    z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & MASK64;
+    z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & MASK64;
     return z ^ (z >> 31n);
   }
   /** Uniform in [0, bound); 0 when bound is 0. */
-  below(bound) { return bound > 0n ? this.next() % bound : 0n; }
+  below(bound) {
+    return bound > 0n ? this.next() % bound : 0n;
+  }
 }
 
 /**
@@ -1382,8 +1383,8 @@ export class WorkflowRuntime {
 }
 
 let defaultRuntime = null;
-const CLOCK_KEY = 'lawspec.time::ability::Clock';
-const CLOCK_VIEW = '\0lawspec.workflow.clock';
+const CLOCK_KEY = "lawspec.time::ability::Clock";
+const CLOCK_VIEW = "\0lawspec.workflow.clock";
 
 // How the runtime reads a Clock handler, registered by lawspec.time's
 // registerClock (the generated tests of laws that install a Clock handler
@@ -1392,12 +1393,14 @@ const CLOCK_VIEW = '\0lawspec.workflow.clock';
 let clockReader = null;
 
 export function registerClockAbility(now, sleep, realTime) {
-  clockReader = {now, sleep, realTime};
+  clockReader = { now, sleep, realTime };
 }
 
 /** The handler read as a clock, or null (no handler, or no reader registered). */
 function abilityClock(handler) {
-  return clockReader === null || handler === null || handler === undefined ? null : new AbilityClock(handler, clockReader);
+  return clockReader === null || handler === null || handler === undefined
+    ? null
+    : new AbilityClock(handler, clockReader);
 }
 
 /**
@@ -1448,11 +1451,20 @@ export function workflowRuntime(symbols) {
   // the runtime's state and trace, and is the same object for the same
   // context and handler.
   const table = symbols instanceof Map ? symbols.get(HANDLERS) : undefined;
-  const clock = abilityClock(table === undefined ? undefined : table.get(CLOCK_KEY));
+  const clock = abilityClock(
+    table === undefined ? undefined : table.get(CLOCK_KEY),
+  );
   if (clock === null) return defaultRuntime;
   let view = symbols.get(CLOCK_VIEW);
-  if (view === undefined || view[0] !== clock.handler || view[1] !== defaultRuntime) {
-    const under = Object.assign(Object.create(Object.getPrototypeOf(defaultRuntime)), defaultRuntime);
+  if (
+    view === undefined ||
+    view[0] !== clock.handler ||
+    view[1] !== defaultRuntime
+  ) {
+    const under = Object.assign(
+      Object.create(Object.getPrototypeOf(defaultRuntime)),
+      defaultRuntime,
+    );
     under.clock = clock;
     view = [clock.handler, defaultRuntime, under];
     symbols.set(CLOCK_VIEW, view);
@@ -1461,7 +1473,8 @@ export function workflowRuntime(symbols) {
 }
 
 function fibonacci(n) {
-  let a = 1n, b = 1n;
+  let a = 1n,
+    b = 1n;
   for (let i = 1n; i < n; i++) [a, b] = [b, a + b];
   return a;
 }
@@ -1476,15 +1489,20 @@ function fibonacci(n) {
 export function retryDelay(strategy, attempt) {
   const n = BigInt(attempt) - 1n;
   switch (strategy[0]) {
-    case 'immediate': return 0n;
-    case 'fixed': return strategy[1];
-    case 'linear': return strategy[1] + strategy[2] * (n - 1n);
-    case 'exponential': {
+    case "immediate":
+      return 0n;
+    case "fixed":
+      return strategy[1];
+    case "linear":
+      return strategy[1] + strategy[2] * (n - 1n);
+    case "exponential": {
       const delay = strategy[1] * strategy[2] ** (n - 1n);
       return strategy[3] === null || delay < strategy[3] ? delay : strategy[3];
     }
-    case 'fibonacci': return strategy[1] * fibonacci(n);
-    default: throw new Error('unknown retry strategy: ' + strategy[0]);
+    case "fibonacci":
+      return strategy[1] * fibonacci(n);
+    default:
+      throw new Error("unknown retry strategy: " + strategy[0]);
   }
 }
 
@@ -1493,12 +1511,12 @@ export function retryDelay(strategy, attempt) {
  * [base, previous * 3], capped at delay.
  */
 export function jittered(jitter, delay, previous, base, random) {
-  if (jitter === 'full') return random.below(delay + 1n);
-  if (jitter === 'equal') {
+  if (jitter === "full") return random.below(delay + 1n);
+  if (jitter === "equal") {
     const half = delay / 2n;
     return half + random.below(delay - half + 1n);
   }
-  if (jitter === 'decorrelated') {
+  if (jitter === "decorrelated") {
     const high = previous * 3n > base ? previous * 3n : base;
     const value = base + random.below(high - base + 1n);
     return value < delay ? value : delay;
@@ -1506,12 +1524,18 @@ export function jittered(jitter, delay, previous, base, random) {
   return delay;
 }
 
-const STAGE_FAILURE = 'lawspec.resilience::type::StageFailure::';
-const GATE = 'lawspec.resilience::type::Gate::';
-const FAILURES = {breaker: 'CircuitOpen', limit: 'RateLimited', bulkhead: 'Saturated'};
+const STAGE_FAILURE = "lawspec.resilience::type::StageFailure::";
+const GATE = "lawspec.resilience::type::Gate::";
+const FAILURES = {
+  breaker: "CircuitOpen",
+  limit: "RateLimited",
+  bulkhead: "Saturated",
+};
 
 export function stageFailure(kind) {
-  return new DataValue('Either::Left', [new DataValue(STAGE_FAILURE + kind, [])]);
+  return new DataValue("Either::Left", [
+    new DataValue(STAGE_FAILURE + kind, []),
+  ]);
 }
 
 /**
@@ -1522,19 +1546,23 @@ export function stageFailure(kind) {
  * Returns null when admitted, or the failure to give instead.
  */
 function passGate(runtime, policy, gate) {
-  const key = policy.key + '/' + gate.kind;
+  const key = policy.key + "/" + gate.kind;
   let waited = 0n;
   for (;;) {
     const now = runtime.clock.now();
-    const state = runtime.state.has(key) ? runtime.state.get(key) : gate.start(now);
+    const state = runtime.state.has(key)
+      ? runtime.state.get(key)
+      : gate.start(now);
     const step = gate.admit(state, now);
     runtime.state.set(key, step.fields[0]);
     const decision = step.fields[1];
-    if (decision.tag === GATE + 'Admit') return null;
-    if (decision.tag === GATE + 'Reject' || gate.wait === null) return FAILURES[gate.kind];
+    if (decision.tag === GATE + "Admit") return null;
+    if (decision.tag === GATE + "Reject" || gate.wait === null)
+      return FAILURES[gate.kind];
     const delay = decision.fields[0];
-    if (gate.wait >= 0n && waited + delay > gate.wait) return FAILURES[gate.kind];
-    runtime.trace.push(['wait', policy.stage, delay]);
+    if (gate.wait >= 0n && waited + delay > gate.wait)
+      return FAILURES[gate.kind];
+    runtime.trace.push(["wait", policy.stage, delay]);
     runtime.clock.sleep(delay);
     waited += delay;
   }
@@ -1542,8 +1570,11 @@ function passGate(runtime, policy, gate) {
 
 function finishGate(runtime, policy, gate, succeeded) {
   if (gate.finish === null) return;
-  const key = policy.key + '/' + gate.kind;
-  runtime.state.set(key, gate.finish(runtime.state.get(key), runtime.clock.now(), succeeded));
+  const key = policy.key + "/" + gate.kind;
+  runtime.state.set(
+    key,
+    gate.finish(runtime.state.get(key), runtime.clock.now(), succeeded),
+  );
 }
 
 /**
@@ -1554,18 +1585,27 @@ export function runStage(symbols, given, attempt, ...input) {
   // The key is optional (a rest parameter keeps it so for TypeScript), and a
   // policy built by hand may leave out what it does not use.
   const key = input[0];
-  const policy = {key: given.stage, gates: [], cache: null, wraps: false, timeout: null, compensate: null, hedge: null, ...given};
+  const policy = {
+    key: given.stage,
+    gates: [],
+    cache: null,
+    wraps: false,
+    timeout: null,
+    compensate: null,
+    hedge: null,
+    ...given,
+  };
   const runtime = workflowRuntime(symbols);
   const gates = runtime.gates ? policy.gates : [];
   let cached = null;
   if (policy.cache !== null && runtime.gates) {
-    const cacheKey = policy.key + '/cache';
+    const cacheKey = policy.key + "/cache";
     if (!runtime.state.has(cacheKey)) runtime.state.set(cacheKey, []);
     cached = runtime.state.get(cacheKey);
     const now = runtime.clock.now();
     for (const [entry, value, expires] of cached) {
       if (now < expires && equalValues(entry, key)) {
-        runtime.trace.push(['cached', policy.stage, 0n]);
+        runtime.trace.push(["cached", policy.stage, 0n]);
         return value;
       }
     }
@@ -1573,16 +1613,22 @@ export function runStage(symbols, given, attempt, ...input) {
   for (let i = 0; i < gates.length; i++) {
     const failure = passGate(runtime, policy, gates[i]);
     if (failure !== null) {
-      for (const passed of gates.slice(0, i)) finishGate(runtime, policy, passed, false);
+      for (const passed of gates.slice(0, i))
+        finishGate(runtime, policy, passed, false);
       return stageFailure(failure);
     }
   }
   const result = attempts(runtime, policy, attempt);
-  const succeeded = !(result instanceof DataValue && result.tag === 'Either::Left');
+  const succeeded = !(
+    result instanceof DataValue && result.tag === "Either::Left"
+  );
   for (const gate of gates) finishGate(runtime, policy, gate, succeeded);
   if (succeeded && policy.compensate !== null && runtime.frames.length > 0) {
     const value = result.fields[0];
-    runtime.frames[runtime.frames.length - 1].push([policy.stage, () => policy.compensate(value)]);
+    runtime.frames[runtime.frames.length - 1].push([
+      policy.stage,
+      () => policy.compensate(value),
+    ]);
   }
   if (cached !== null && succeeded) {
     const kept = cached.filter(([entry]) => !equalValues(entry, key));
@@ -1606,9 +1652,9 @@ export function runWorkflow(symbols, attempt) {
   } finally {
     runtime.frames.pop();
   }
-  if (result instanceof DataValue && result.tag === 'Either::Left') {
+  if (result instanceof DataValue && result.tag === "Either::Left") {
     for (const [stage, undo] of [...frame].reverse()) {
-      runtime.trace.push(['compensate', stage, 0n]);
+      runtime.trace.push(["compensate", stage, 0n]);
       undo();
     }
   }
@@ -1618,42 +1664,55 @@ export function runWorkflow(symbols, attempt) {
 function equalValues(a, b) {
   if (a === b) return true;
   if (a instanceof DataValue && b instanceof DataValue) {
-    return a.tag === b.tag && a.fields.length === b.fields.length &&
-      a.fields.every((field, i) => equalValues(field, b.fields[i]));
+    return (
+      a.tag === b.tag &&
+      a.fields.length === b.fields.length &&
+      a.fields.every((field, i) => equalValues(field, b.fields[i]))
+    );
   }
   if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item, i) => equalValues(item, b[i]));
+    return (
+      a.length === b.length && a.every((item, i) => equalValues(item, b[i]))
+    );
   }
   return false;
 }
 
 function attempts(runtime, policy, attempt) {
   const retry = policy.retry;
-  let number = 1n, previous = 0n;
+  let number = 1n,
+    previous = 0n;
   for (;;) {
-    runtime.trace.push(['start', policy.stage, number]);
+    runtime.trace.push(["start", policy.stage, number]);
     const result = scoped(runtime, policy, attempt);
-    const failed = result instanceof DataValue && result.tag === 'Either::Left';
-    runtime.trace.push(['finish', policy.stage, number, !failed]);
+    const failed = result instanceof DataValue && result.tag === "Either::Left";
+    runtime.trace.push(["finish", policy.stage, number, !failed]);
     if (!failed || retry === null) return result;
     if (retry.attempts > 0n && number >= retry.attempts) return result;
     let error = result.fields[0];
     if (policy.wraps) {
       // Only the step's own failures and timeouts are retried.
-      if (error.tag === STAGE_FAILURE + 'StepFailed') error = error.fields[0];
-      else if (error.tag !== STAGE_FAILURE + 'TimedOut') return result;
+      if (error.tag === STAGE_FAILURE + "StepFailed") error = error.fields[0];
+      else if (error.tag !== STAGE_FAILURE + "TimedOut") return result;
     }
     if (retry.when !== null && !retry.when(error)) return result;
     number += 1n;
     let delay;
-    if (retry.strategy[0] === 'custom') {
+    if (retry.strategy[0] === "custom") {
       delay = retry.strategy[1](number, error, previous);
       if (delay === null) return result;
     } else {
-      const base = retry.strategy[0] === 'immediate' ? 0n : retryDelay(retry.strategy, 2n);
-      delay = jittered(retry.jitter, retryDelay(retry.strategy, number), previous, base, runtime.random);
+      const base =
+        retry.strategy[0] === "immediate" ? 0n : retryDelay(retry.strategy, 2n);
+      delay = jittered(
+        retry.jitter,
+        retryDelay(retry.strategy, number),
+        previous,
+        base,
+        runtime.random,
+      );
     }
-    runtime.trace.push(['sleep', policy.stage, delay]);
+    runtime.trace.push(["sleep", policy.stage, delay]);
     runtime.clock.sleep(delay);
     previous = delay;
   }
@@ -1670,13 +1729,15 @@ function scoped(runtime, policy, attempt) {
   if (!timeout || !runtime.clock.virtual) return attempt();
   const began = runtime.clock.now();
   const result = attempt();
-  if (runtime.clock.now() - began > policy.timeout) return stageFailure('TimedOut');
+  if (runtime.clock.now() - began > policy.timeout)
+    return stageFailure("TimedOut");
   return result;
 }
 
 /** A RetryDecision's delay in microseconds, or null to stop. */
 export function retryDecision(decision) {
-  if (decision.tag !== 'lawspec.time::type::RetryDecision::RetryAfter') return null;
+  if (decision.tag !== "lawspec.time::type::RetryDecision::RetryAfter")
+    return null;
   return decision.fields[0].fields[0];
 }
 
@@ -1691,14 +1752,15 @@ async function sleepFor(clock, delay) {
   await clock.sleepAsync(delay);
 }
 
-const TIMED_OUT = Symbol('timed out');
+const TIMED_OUT = Symbol("timed out");
 
 async function timed(runtime, policy, attempt, control) {
   if (policy.timeout === null || policy.timeout <= 0n) return attempt();
   if (runtime.clock.virtual) {
     const began = runtime.clock.now();
     const result = await attempt();
-    if (runtime.clock.now() - began > policy.timeout) return stageFailure('TimedOut');
+    if (runtime.clock.now() - began > policy.timeout)
+      return stageFailure("TimedOut");
     return result;
   }
   if (!runtime.gates) return attempt();
@@ -1710,7 +1772,7 @@ async function timed(runtime, policy, attempt, control) {
     const result = await Promise.race([attempt(), expiry]);
     if (result !== TIMED_OUT) return result;
     control.stopped = true;
-    return stageFailure('TimedOut');
+    return stageFailure("TimedOut");
   } finally {
     clearTimeout(timer);
   }
@@ -1729,7 +1791,9 @@ function hedged(runtime, policy, attempt, control) {
   if (!runtime.gates) return attempt();
   const [delay, most] = policy.hedge;
   return new Promise((resolve, reject) => {
-    let started = 0n, pending = 0, timer;
+    let started = 0n,
+      pending = 0,
+      timer;
     let finished = false;
     const finish = (settle, value) => {
       finished = true;
@@ -1740,18 +1804,24 @@ function hedged(runtime, policy, attempt, control) {
       if (finished || control.stopped) return;
       started += 1n;
       pending += 1;
-      if (started > 1n) runtime.trace.push(['hedge', policy.stage, started]);
+      if (started > 1n) runtime.trace.push(["hedge", policy.stage, started]);
       clearTimeout(timer);
       if (started < most) timer = setTimeout(launch, Number(delay) / 1000);
-      Promise.resolve().then(attempt).then((result) => {
-        pending -= 1;
-        if (finished) return;
-        if (!(result instanceof DataValue && result.tag === 'Either::Left')) finish(resolve, result);
-        else if (pending === 0 && started >= most) finish(resolve, result);
-        else if (pending === 0) launch();
-      }, (error) => {
-        if (!finished) finish(reject, error);
-      });
+      Promise.resolve()
+        .then(attempt)
+        .then(
+          (result) => {
+            pending -= 1;
+            if (finished) return;
+            if (!(result instanceof DataValue && result.tag === "Either::Left"))
+              finish(resolve, result);
+            else if (pending === 0 && started >= most) finish(resolve, result);
+            else if (pending === 0) launch();
+          },
+          (error) => {
+            if (!finished) finish(reject, error);
+          },
+        );
     };
     launch();
   });
@@ -1766,9 +1836,13 @@ async function virtualHedge(runtime, policy, attempt) {
   const most = BigInt(policy.hedge[1]);
   let started = 1n;
   let result = await attempt();
-  while (result instanceof DataValue && result.tag === 'Either::Left' && started < most) {
+  while (
+    result instanceof DataValue &&
+    result.tag === "Either::Left" &&
+    started < most
+  ) {
     started += 1n;
-    runtime.trace.push(['hedge', policy.stage, started]);
+    runtime.trace.push(["hedge", policy.stage, started]);
     result = await attempt();
   }
   return result;
@@ -1776,31 +1850,44 @@ async function virtualHedge(runtime, policy, attempt) {
 
 async function attemptsAsync(runtime, policy, attempt) {
   const retry = policy.retry;
-  let number = 1n, previous = 0n;
+  let number = 1n,
+    previous = 0n;
   for (;;) {
-    runtime.trace.push(['start', policy.stage, number]);
-    const control = {stopped: false};
-    const result = await timed(runtime, policy, () => hedged(runtime, policy, attempt, control), control);
-    const failed = result instanceof DataValue && result.tag === 'Either::Left';
-    runtime.trace.push(['finish', policy.stage, number, !failed]);
+    runtime.trace.push(["start", policy.stage, number]);
+    const control = { stopped: false };
+    const result = await timed(
+      runtime,
+      policy,
+      () => hedged(runtime, policy, attempt, control),
+      control,
+    );
+    const failed = result instanceof DataValue && result.tag === "Either::Left";
+    runtime.trace.push(["finish", policy.stage, number, !failed]);
     if (!failed || retry === null) return result;
     if (retry.attempts > 0n && number >= retry.attempts) return result;
     let error = result.fields[0];
     if (policy.wraps) {
-      if (error.tag === STAGE_FAILURE + 'StepFailed') error = error.fields[0];
-      else if (error.tag !== STAGE_FAILURE + 'TimedOut') return result;
+      if (error.tag === STAGE_FAILURE + "StepFailed") error = error.fields[0];
+      else if (error.tag !== STAGE_FAILURE + "TimedOut") return result;
     }
     if (retry.when !== null && !retry.when(error)) return result;
     number += 1n;
     let delay;
-    if (retry.strategy[0] === 'custom') {
+    if (retry.strategy[0] === "custom") {
       delay = retry.strategy[1](number, error, previous);
       if (delay === null) return result;
     } else {
-      const base = retry.strategy[0] === 'immediate' ? 0n : retryDelay(retry.strategy, 2n);
-      delay = jittered(retry.jitter, retryDelay(retry.strategy, number), previous, base, runtime.random);
+      const base =
+        retry.strategy[0] === "immediate" ? 0n : retryDelay(retry.strategy, 2n);
+      delay = jittered(
+        retry.jitter,
+        retryDelay(retry.strategy, number),
+        previous,
+        base,
+        runtime.random,
+      );
     }
-    runtime.trace.push(['sleep', policy.stage, delay]);
+    runtime.trace.push(["sleep", policy.stage, delay]);
     await sleepFor(runtime.clock, delay);
     previous = delay;
   }
@@ -1809,18 +1896,27 @@ async function attemptsAsync(runtime, policy, attempt) {
 /** runStage for an asynchronous stage: attempt() returns a promise. */
 export async function runStageAsync(symbols, given, attempt, ...input) {
   const key = input[0];
-  const policy = {key: given.stage, gates: [], cache: null, wraps: false, timeout: null, compensate: null, hedge: null, ...given};
+  const policy = {
+    key: given.stage,
+    gates: [],
+    cache: null,
+    wraps: false,
+    timeout: null,
+    compensate: null,
+    hedge: null,
+    ...given,
+  };
   const runtime = workflowRuntime(symbols);
   const gates = runtime.gates ? policy.gates : [];
   let cached = null;
   if (policy.cache !== null && runtime.gates) {
-    const cacheKey = policy.key + '/cache';
+    const cacheKey = policy.key + "/cache";
     if (!runtime.state.has(cacheKey)) runtime.state.set(cacheKey, []);
     cached = runtime.state.get(cacheKey);
     const now = runtime.clock.now();
     for (const [entry, value, expires] of cached) {
       if (now < expires && equalValues(entry, key)) {
-        runtime.trace.push(['cached', policy.stage, 0n]);
+        runtime.trace.push(["cached", policy.stage, 0n]);
         return value;
       }
     }
@@ -1828,16 +1924,22 @@ export async function runStageAsync(symbols, given, attempt, ...input) {
   for (let i = 0; i < gates.length; i++) {
     const failure = passGate(runtime, policy, gates[i]);
     if (failure !== null) {
-      for (const passed of gates.slice(0, i)) finishGate(runtime, policy, passed, false);
+      for (const passed of gates.slice(0, i))
+        finishGate(runtime, policy, passed, false);
       return stageFailure(failure);
     }
   }
   const result = await attemptsAsync(runtime, policy, attempt);
-  const succeeded = !(result instanceof DataValue && result.tag === 'Either::Left');
+  const succeeded = !(
+    result instanceof DataValue && result.tag === "Either::Left"
+  );
   for (const gate of gates) finishGate(runtime, policy, gate, succeeded);
   if (succeeded && policy.compensate !== null && runtime.frames.length > 0) {
     const value = result.fields[0];
-    runtime.frames[runtime.frames.length - 1].push([policy.stage, () => policy.compensate(value)]);
+    runtime.frames[runtime.frames.length - 1].push([
+      policy.stage,
+      () => policy.compensate(value),
+    ]);
   }
   if (cached !== null && succeeded) {
     const kept = cached.filter(([entry]) => !equalValues(entry, key));
@@ -1873,7 +1975,7 @@ export class NativeAsync {
    */
   async all(fns) {
     const outcomes = await Promise.allSettled(fns.map((fn) => this.spawn(fn)));
-    const failed = outcomes.find((outcome) => outcome.status === 'rejected');
+    const failed = outcomes.find((outcome) => outcome.status === "rejected");
     if (failed) throw failed.reason;
     return outcomes.map((outcome) => outcome.value);
   }
@@ -1901,15 +2003,14 @@ export async function runWorkflowAsync(symbols, attempt) {
   } finally {
     runtime.frames.splice(runtime.frames.indexOf(frame), 1);
   }
-  if (result instanceof DataValue && result.tag === 'Either::Left') {
+  if (result instanceof DataValue && result.tag === "Either::Left") {
     for (const [stage, undo] of [...frame].reverse()) {
-      runtime.trace.push(['compensate', stage, 0n]);
+      runtime.trace.push(["compensate", stage, 0n]);
       await undo();
     }
   }
   return result;
 }
-
 
 // Portable generation for stateful models. A type descriptor is an
 // s-expression: (int T lo hi) with _ for no bound, (bool), (text), (unit),
@@ -1921,16 +2022,17 @@ export async function runWorkflowAsync(symbols, attempt) {
 export function readDescriptor(text) {
   let position = 0;
   const skip = () => {
-    while (position < text.length && ' \t\r\n'.includes(text[position])) position++;
+    while (position < text.length && " \t\r\n".includes(text[position]))
+      position++;
   };
   const item = () => {
     skip();
     const c = text[position];
-    if (c === '(') {
+    if (c === "(") {
       position++;
       const items = [];
       skip();
-      while (text[position] !== ')') {
+      while (text[position] !== ")") {
         items.push(item());
         skip();
       }
@@ -1939,9 +2041,9 @@ export function readDescriptor(text) {
     }
     if (c === '"') {
       position++;
-      let out = '';
+      let out = "";
       while (text[position] !== '"') {
-        if (text[position] === '\\') position++;
+        if (text[position] === "\\") position++;
         out += text[position];
         position++;
       }
@@ -1949,9 +2051,10 @@ export function readDescriptor(text) {
       return out;
     }
     const start = position;
-    while (position < text.length && !' \t\r\n()'.includes(text[position])) position++;
+    while (position < text.length && !" \t\r\n()".includes(text[position]))
+      position++;
     const atom = text.slice(start, position);
-    if (atom === '_') return null;
+    if (atom === "_") return null;
     if (/^-*[0-9]+$/.test(atom)) return BigInt(atom);
     return atom;
   };
@@ -1968,11 +2071,13 @@ const UNBOUNDED = 1000000n;
 const bigMin = (a, b) => (a < b ? a : b);
 const bigMax = (a, b) => (a > b ? a : b);
 const isRef = (fd, name) =>
-  Array.isArray(fd) && fd.length === 2 && fd[0] === 'ref' && fd[1] === name;
+  Array.isArray(fd) && fd.length === 2 && fd[0] === "ref" && fd[1] === name;
 
 function mentionsData(d) {
-  return Array.isArray(d) &&
-    (d[0] === 'ref' || d[0] === 'data' || d.slice(1).some(mentionsData));
+  return (
+    Array.isArray(d) &&
+    (d[0] === "ref" || d[0] === "data" || d.slice(1).some(mentionsData))
+  );
 }
 
 /**
@@ -1984,14 +2089,19 @@ function mentionsData(d) {
  */
 export class Values {
   table;
-  constructor(table) { this.table = table; }
-  resolve(d) { return d[0] === 'ref' ? this.table.get(d[1]) : d; }
+  constructor(table) {
+    this.table = table;
+  }
+  resolve(d) {
+    return d[0] === "ref" ? this.table.get(d[1]) : d;
+  }
   /**
    * An integer's range: a missing bound is 1,000,000 from zero, or
    * 2,000,000 from the other bound when that is beyond it.
    */
   bounds(d) {
-    const lo = d[2], hi = d[3];
+    const lo = d[2],
+      hi = d[3];
     if (lo === null && hi === null) return [-UNBOUNDED, UNBOUNDED];
     if (lo === null) return [bigMin(-UNBOUNDED, hi - 2n * UNBOUNDED), hi];
     if (hi === null) return [lo, bigMax(UNBOUNDED, lo + 2n * UNBOUNDED)];
@@ -2006,60 +2116,83 @@ export class Values {
     d = this.resolve(d);
     const n = BigInt(size);
     switch (d[0]) {
-      case 'int': {
+      case "int": {
         const [lo, hi] = this.bounds(d);
         if (random.below(10n) < 2n) {
-          const specials = [lo, hi, bigMin(bigMax(0n, lo), hi), bigMin(bigMax(1n, lo), hi)];
+          const specials = [
+            lo,
+            hi,
+            bigMin(bigMax(0n, lo), hi),
+            bigMin(bigMax(1n, lo), hi),
+          ];
           return specials[Number(random.below(4n))];
         }
         return lo + random.below(hi - lo + 1n);
       }
-      case 'bool':
+      case "bool":
         return random.below(2n) === 1n;
-      case 'text': {
-        let out = '';
+      case "text": {
+        let out = "";
         for (let i = random.below(n + 1n); i > 0n; i--)
           out += String.fromCharCode(32 + Number(random.below(95n)));
         return out;
       }
-      case 'unit':
+      case "unit":
         return UNIT;
-      case 'list': {
+      case "list": {
         const out = [];
-        for (let i = random.below(n + 1n); i > 0n; i--) out.push(this.generate(d[1], random, n));
+        for (let i = random.below(n + 1n); i > 0n; i--)
+          out.push(this.generate(d[1], random, n));
         return out;
       }
-      case 'maybe':
-        if (random.below(4n) === 0n) return new DataValue('Maybe::Absent', []);
-        return new DataValue('Maybe::Present', [this.generate(d[1], random, n)]);
-      case 'either':
-        if (random.below(2n) === 0n) return new DataValue('Either::Left', [this.generate(d[1], random, n)]);
-        return new DataValue('Either::Right', [this.generate(d[2], random, n)]);
-      case 'data': {
+      case "maybe":
+        if (random.below(4n) === 0n) return new DataValue("Maybe::Absent", []);
+        return new DataValue("Maybe::Present", [
+          this.generate(d[1], random, n),
+        ]);
+      case "either":
+        if (random.below(2n) === 0n)
+          return new DataValue("Either::Left", [
+            this.generate(d[1], random, n),
+          ]);
+        return new DataValue("Either::Right", [this.generate(d[2], random, n)]);
+      case "data": {
         const choices = n <= 0n ? this.base(d) : d.slice(2);
         const ctor = choices[Number(random.below(BigInt(choices.length)))];
         const smaller = bigMax(n - 1n, 0n);
-        return new DataValue(String(ctor[1]), ctor.slice(2).map((f) => this.generate(f, random, smaller)));
+        return new DataValue(
+          String(ctor[1]),
+          ctor.slice(2).map((f) => this.generate(f, random, smaller)),
+        );
       }
     }
-    throw new TypeError('unknown descriptor ' + render(d));
+    throw new TypeError("unknown descriptor " + render(d));
   }
   minimal(d) {
     d = this.resolve(d);
     switch (d[0]) {
-      case 'int': {
+      case "int": {
         const [lo, hi] = this.bounds(d);
         return bigMin(bigMax(0n, lo), hi);
       }
-      case 'bool': return false;
-      case 'text': return '';
-      case 'unit': return UNIT;
-      case 'list': return [];
-      case 'maybe': return new DataValue('Maybe::Absent', []);
-      case 'either': return new DataValue('Either::Left', [this.minimal(d[1])]);
+      case "bool":
+        return false;
+      case "text":
+        return "";
+      case "unit":
+        return UNIT;
+      case "list":
+        return [];
+      case "maybe":
+        return new DataValue("Maybe::Absent", []);
+      case "either":
+        return new DataValue("Either::Left", [this.minimal(d[1])]);
     }
     const ctor = this.base(d)[0];
-    return new DataValue(String(ctor[1]), ctor.slice(2).map((f) => this.minimal(f)));
+    return new DataValue(
+      String(ctor[1]),
+      ctor.slice(2).map((f) => this.minimal(f)),
+    );
   }
   /** Smaller candidates for v, most aggressive first. */
   shrink(d, v) {
@@ -2067,49 +2200,69 @@ export class Values {
     let out = [];
     // Removals and halvings of a sequence, as arrays of its elements.
     const smaller = (items) => [
-      [], items.slice(0, Math.floor(items.length / 2)),
+      [],
+      items.slice(0, Math.floor(items.length / 2)),
       ...items.map((_, i) => [...items.slice(0, i), ...items.slice(i + 1)]),
     ];
     switch (d[0]) {
-      case 'int': {
+      case "int": {
         const target = this.minimal(d);
         // bigint division truncates toward zero.
-        if (v !== target) out = [target, v - (v - target) / 2n, v - (v > target ? 1n : -1n)];
+        if (v !== target)
+          out = [target, v - (v - target) / 2n, v - (v > target ? 1n : -1n)];
         break;
       }
-      case 'bool':
+      case "bool":
         out = v ? [false] : [];
         break;
-      case 'text':
-        if (v) out = smaller([...v]).map((cs) => cs.join(''));
+      case "text":
+        if (v) out = smaller([...v]).map((cs) => cs.join(""));
         break;
-      case 'list':
+      case "list":
         if (v.length) {
           out = smaller(v);
           v.forEach((item, i) => {
-            for (const c of this.shrink(d[1], item)) out.push([...v.slice(0, i), c, ...v.slice(i + 1)]);
+            for (const c of this.shrink(d[1], item))
+              out.push([...v.slice(0, i), c, ...v.slice(i + 1)]);
           });
         }
         break;
-      case 'maybe':
-        if (v.tag === 'Maybe::Present')
-          out = [new DataValue('Maybe::Absent', []),
-            ...this.shrink(d[1], v.fields[0]).map((c) => new DataValue('Maybe::Present', [c]))];
+      case "maybe":
+        if (v.tag === "Maybe::Present")
+          out = [
+            new DataValue("Maybe::Absent", []),
+            ...this.shrink(d[1], v.fields[0]).map(
+              (c) => new DataValue("Maybe::Present", [c]),
+            ),
+          ];
         break;
-      case 'either': {
-        const inner = v.tag === 'Either::Left' ? d[1] : d[2];
-        out = this.shrink(inner, v.fields[0]).map((c) => new DataValue(v.tag, [c]));
+      case "either": {
+        const inner = v.tag === "Either::Left" ? d[1] : d[2];
+        out = this.shrink(inner, v.fields[0]).map(
+          (c) => new DataValue(v.tag, [c]),
+        );
         break;
       }
-      case 'data': {
-        const fields = d.slice(2).find((c) => String(c[1]) === v.tag).slice(2);
+      case "data": {
+        const fields = d
+          .slice(2)
+          .find((c) => String(c[1]) === v.tag)
+          .slice(2);
         out = [this.minimal(d)];
         // A field of the same type is a smaller value of it.
-        v.fields.forEach((f, i) => { if (i < fields.length && isRef(fields[i], d[1])) out.push(f); });
+        v.fields.forEach((f, i) => {
+          if (i < fields.length && isRef(fields[i], d[1])) out.push(f);
+        });
         v.fields.forEach((field, i) => {
           if (i >= fields.length) return;
           for (const c of this.shrink(fields[i], field))
-            out.push(new DataValue(v.tag, [...v.fields.slice(0, i), c, ...v.fields.slice(i + 1)]));
+            out.push(
+              new DataValue(v.tag, [
+                ...v.fields.slice(0, i),
+                c,
+                ...v.fields.slice(i + 1),
+              ]),
+            );
         });
         break;
       }
@@ -2127,14 +2280,17 @@ export class Values {
 /** A value's canonical text, the same on every target. */
 export function render(v) {
   if (isHandle(v)) return handleTable(v).get(v);
-  if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'bigint' || typeof v === 'number') return String(v);
-  if (typeof v === 'string') return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-  if (v === UNIT) return '()';
-  if (Array.isArray(v)) return '[' + v.map(render).join(', ') + ']';
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (typeof v === "bigint" || typeof v === "number") return String(v);
+  if (typeof v === "string")
+    return '"' + v.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+  if (v === UNIT) return "()";
+  if (Array.isArray(v)) return "[" + v.map(render).join(", ") + "]";
   if (v instanceof DataValue) {
-    const name = v.tag.split('::').pop();
-    return v.fields.length ? name + '(' + v.fields.map(render).join(', ') + ')' : name;
+    const name = v.tag.split("::").pop();
+    return v.fields.length
+      ? name + "(" + v.fields.map(render).join(", ") + ")"
+      : name;
   }
   return String(v);
 }
@@ -2144,8 +2300,16 @@ export function render(v) {
 // point by code point. The compiler has checked every pattern; a pattern
 // that is not portable throws here too.
 const REGEX_DIGITS = [[48, 57]];
-const REGEX_WORD = [[48, 57], [65, 90], [95, 95], [97, 122]];
-const REGEX_SPACE = [[9, 13], [32, 32]];
+const REGEX_WORD = [
+  [48, 57],
+  [65, 90],
+  [95, 95],
+  [97, 122],
+];
+const REGEX_SPACE = [
+  [9, 13],
+  [32, 32],
+];
 const regexCache = new Map();
 
 function regexParse(pattern) {
@@ -2153,50 +2317,67 @@ function regexParse(pattern) {
   const n = cs.length;
   let pos = 0;
   const peek = () => (pos < n ? cs[pos] : undefined);
-  const fail = (message) => { throw new Error(`regex ${JSON.stringify(pattern)} is not portable: ${message}`); };
+  const fail = (message) => {
+    throw new Error(
+      `regex ${JSON.stringify(pattern)} is not portable: ${message}`,
+    );
+  };
   const code = (c) => c.codePointAt(0);
   const escape = () => {
     pos += 1;
     const c = peek();
-    if (c === undefined) fail('the regex ends with a lone \\');
+    if (c === undefined) fail("the regex ends with a lone \\");
     pos += 1;
     const ch = String.fromCodePoint(c);
-    const classes = { d: [false, REGEX_DIGITS], D: [true, REGEX_DIGITS], w: [false, REGEX_WORD],
-      W: [true, REGEX_WORD], s: [false, REGEX_SPACE], S: [true, REGEX_SPACE] };
+    const classes = {
+      d: [false, REGEX_DIGITS],
+      D: [true, REGEX_DIGITS],
+      w: [false, REGEX_WORD],
+      W: [true, REGEX_WORD],
+      s: [false, REGEX_SPACE],
+      S: [true, REGEX_SPACE],
+    };
     if (ch in classes) return classes[ch];
     const controls = { n: 10, t: 9, r: 13, f: 12, v: 11 };
     if (ch in controls) return [false, [[controls[ch], controls[ch]]]];
-    if ('\\.^$|?*+()[]{}-/'.includes(ch)) return [false, [[c, c]]];
+    if ("\\.^$|?*+()[]{}-/".includes(ch)) return [false, [[c, c]]];
     return fail(`\\${ch} is not a portable escape`);
   };
   const literal = () => {
     const c = peek();
-    if (c === code('[')) fail('write \\[ for the character inside a class');
+    if (c === code("[")) fail("write \\[ for the character inside a class");
     pos += 1;
     return [false, [[c, c]]];
   };
-  const single = (item) => !item[0] && item[1].length === 1 && item[1][0][0] === item[1][0][1];
+  const single = (item) =>
+    !item[0] && item[1].length === 1 && item[1][0][0] === item[1][0][1];
   const charClass = () => {
     pos += 1;
-    const negated = peek() === code('^');
+    const negated = peek() === code("^");
     if (negated) pos += 1;
     const items = [];
     let first = true;
     for (;;) {
       const c = peek();
-      if (c === undefined) fail('a [ is never closed');
-      if (c === code(']')) {
-        if (first) fail('an empty class is not portable');
+      if (c === undefined) fail("a [ is never closed");
+      if (c === code("]")) {
+        if (first) fail("an empty class is not portable");
         pos += 1;
-        return ['set', negated, items];
+        return ["set", negated, items];
       }
       first = false;
-      const item = c === code('\\') ? escape() : literal();
-      if (single(item) && peek() === code('-') && pos + 1 < n && cs[pos + 1] !== code(']')) {
+      const item = c === code("\\") ? escape() : literal();
+      if (
+        single(item) &&
+        peek() === code("-") &&
+        pos + 1 < n &&
+        cs[pos + 1] !== code("]")
+      ) {
         pos += 1;
-        const high = peek() === code('\\') ? escape() : literal();
-        if (!single(high)) fail('a range ends with one character');
-        if (high[1][0][0] < item[1][0][0]) fail('a range must run from low to high');
+        const high = peek() === code("\\") ? escape() : literal();
+        if (!single(high)) fail("a range ends with one character");
+        if (high[1][0][0] < item[1][0][0])
+          fail("a range must run from low to high");
         items.push([false, [[item[1][0][0], high[1][0][0]]]]);
       } else items.push(item);
     }
@@ -2204,93 +2385,109 @@ function regexParse(pattern) {
   const digits = () => {
     const start = pos;
     while (peek() !== undefined && peek() >= 48 && peek() <= 57) pos += 1;
-    return cs.slice(start, pos).map((c) => String.fromCodePoint(c)).join('');
+    return cs
+      .slice(start, pos)
+      .map((c) => String.fromCodePoint(c))
+      .join("");
   };
   let alternatives;
   const atom = () => {
     const c = peek();
-    if (c === code('(')) {
+    if (c === code("(")) {
       pos += 1;
-      if (peek() === code('?')) {
-        if (pos + 1 < n && cs[pos + 1] === code(':')) pos += 2;
-        else fail('only (?: ...) groups are portable');
+      if (peek() === code("?")) {
+        if (pos + 1 < n && cs[pos + 1] === code(":")) pos += 2;
+        else fail("only (?: ...) groups are portable");
       }
       const node = alternatives();
-      if (peek() !== code(')')) fail('a ( is never closed');
+      if (peek() !== code(")")) fail("a ( is never closed");
       pos += 1;
       return node;
     }
-    if (c === code('[')) return charClass();
-    if (c === code('.')) { pos += 1; return ['set', true, [[false, [[10, 10]]]]]; }
-    if (c === code('\\')) return ['set', false, [escape()]];
-    if ('*+?{^$]}'.includes(String.fromCodePoint(c))) fail(`unexpected ${String.fromCodePoint(c)}`);
+    if (c === code("[")) return charClass();
+    if (c === code(".")) {
+      pos += 1;
+      return ["set", true, [[false, [[10, 10]]]]];
+    }
+    if (c === code("\\")) return ["set", false, [escape()]];
+    if ("*+?{^$]}".includes(String.fromCodePoint(c)))
+      fail(`unexpected ${String.fromCodePoint(c)}`);
     pos += 1;
-    return ['set', false, [[false, [[c, c]]]]];
+    return ["set", false, [[false, [[c, c]]]]];
   };
-  const quantifier = (c) => c !== undefined && '*+?{'.includes(String.fromCodePoint(c));
+  const quantifier = (c) =>
+    c !== undefined && "*+?{".includes(String.fromCodePoint(c));
   const quantified = (node) => {
     const c = peek();
     if (!quantifier(c)) return node;
     pos += 1;
-    if (c === code('*')) node = ['repeat', node, 0, null];
-    else if (c === code('+')) node = ['repeat', node, 1, null];
-    else if (c === code('?')) node = ['repeat', node, 0, 1];
+    if (c === code("*")) node = ["repeat", node, 0, null];
+    else if (c === code("+")) node = ["repeat", node, 1, null];
+    else if (c === code("?")) node = ["repeat", node, 0, 1];
     else {
       const lowText = digits();
       let highText = null;
-      if (peek() === code('}')) highText = lowText;
-      else if (peek() === code(',')) {
+      if (peek() === code("}")) highText = lowText;
+      else if (peek() === code(",")) {
         pos += 1;
         highText = digits() || null;
-        if (peek() !== code('}')) fail('a repetition is {n}, {n,} or {n,m}');
-      } else fail('a repetition is {n}, {n,} or {n,m}');
+        if (peek() !== code("}")) fail("a repetition is {n}, {n,} or {n,m}");
+      } else fail("a repetition is {n}, {n,} or {n,m}");
       pos += 1;
-      if (!lowText) fail('a repetition is {n}, {n,} or {n,m}');
+      if (!lowText) fail("a repetition is {n}, {n,} or {n,m}");
       const low = Number(lowText);
       const high = highText === null ? null : Number(highText);
       if (low > 1000 || (high !== null && (high > 1000 || high < low)))
-        fail('a repetition count is at most 1000, and n must not exceed m');
-      node = ['repeat', node, low, high];
+        fail("a repetition count is at most 1000, and n must not exceed m");
+      node = ["repeat", node, low, high];
     }
-    if (quantifier(peek())) fail('a repetition cannot itself be repeated');
+    if (quantifier(peek())) fail("a repetition cannot itself be repeated");
     return node;
   };
   const sequence = () => {
     const items = [];
-    while (peek() !== undefined && peek() !== code('|') && peek() !== code(')')) items.push(quantified(atom()));
-    return ['seq', items];
+    while (peek() !== undefined && peek() !== code("|") && peek() !== code(")"))
+      items.push(quantified(atom()));
+    return ["seq", items];
   };
   alternatives = () => {
     const branches = [sequence()];
-    while (peek() === code('|')) { pos += 1; branches.push(sequence()); }
-    return branches.length === 1 ? branches[0] : ['alt', branches];
+    while (peek() === code("|")) {
+      pos += 1;
+      branches.push(sequence());
+    }
+    return branches.length === 1 ? branches[0] : ["alt", branches];
   };
   const node = alternatives();
-  if (pos !== n) fail('a ) has no ( before it');
+  if (pos !== n) fail("a ) has no ( before it");
   return node;
 }
 
 function regexReach(node, text, positions) {
   const kind = node[0];
-  if (kind === 'set') {
+  if (kind === "set") {
     const [, negated, items] = node;
     const result = new Set();
     for (const p of positions) {
       if (p < text.length) {
         const c = text[p];
-        const inside = items.some(([itemNegated, ranges]) => itemNegated !== ranges.some(([lo, hi]) => lo <= c && c <= hi));
+        const inside = items.some(
+          ([itemNegated, ranges]) =>
+            itemNegated !== ranges.some(([lo, hi]) => lo <= c && c <= hi),
+        );
         if (inside !== negated) result.add(p + 1);
       }
     }
     return result;
   }
-  if (kind === 'seq') {
+  if (kind === "seq") {
     for (const item of node[1]) positions = regexReach(item, text, positions);
     return positions;
   }
-  if (kind === 'alt') {
+  if (kind === "alt") {
     const result = new Set();
-    for (const branch of node[1]) for (const p of regexReach(branch, text, positions)) result.add(p);
+    for (const branch of node[1])
+      for (const p of regexReach(branch, text, positions)) result.add(p);
     return result;
   }
   const [, body, low, high] = node;
@@ -2299,7 +2496,9 @@ function regexReach(node, text, positions) {
   let frontier = new Set(positions);
   let limit = high === null ? null : high - low;
   while (frontier.size && limit !== 0) {
-    frontier = new Set([...regexReach(body, text, frontier)].filter((p) => !seen.has(p)));
+    frontier = new Set(
+      [...regexReach(body, text, frontier)].filter((p) => !seen.has(p)),
+    );
     for (const p of frontier) seen.add(p);
     if (limit !== null) limit -= 1;
   }
@@ -2309,7 +2508,10 @@ function regexReach(node, text, positions) {
 /** Whether the portable regex matches the whole text. */
 export function regexMatches(pattern, text) {
   let node = regexCache.get(pattern);
-  if (node === undefined) { node = regexParse(pattern); regexCache.set(pattern, node); }
+  if (node === undefined) {
+    node = regexParse(pattern);
+    regexCache.set(pattern, node);
+  }
   const points = [...text].map((c) => c.codePointAt(0));
   return regexReach(node, points, new Set([0])).has(points.length);
 }
@@ -2323,36 +2525,44 @@ const nodeModule = (name) => globalThis.process.getBuiltinModule(name);
 // LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
 // the value instead.
 export function recordedRoot() {
-  const fs = nodeModule('node:fs');
-  const path = nodeModule('node:path');
+  const fs = nodeModule("node:fs");
+  const path = nodeModule("node:path");
   const given = globalThis.process.env.LAWSPEC_RECORDED;
   if (given) return given;
   let folder = path.resolve(globalThis.process.cwd());
   for (;;) {
-    if (fs.existsSync(path.join(folder, 'lawspec.json')) || fs.existsSync(path.join(folder, 'recorded')))
-      return path.join(folder, 'recorded');
+    if (
+      fs.existsSync(path.join(folder, "lawspec.json")) ||
+      fs.existsSync(path.join(folder, "recorded"))
+    )
+      return path.join(folder, "recorded");
     const parent = path.dirname(folder);
-    if (parent === folder) return path.join(path.resolve(globalThis.process.cwd()), 'recorded');
+    if (parent === folder)
+      return path.join(path.resolve(globalThis.process.cwd()), "recorded");
     folder = parent;
   }
 }
 
 export function recorded(key, value, renderValue = render) {
-  const fs = nodeModule('node:fs');
-  const path = nodeModule('node:path');
+  const fs = nodeModule("node:fs");
+  const path = nodeModule("node:path");
   const text = renderValue(value);
-  const file = path.join(recordedRoot(), ...key.split('/'));
-  if (globalThis.process.env.LAWSPEC_UPDATE_RECORDED === '1') {
+  const file = path.join(recordedRoot(), ...key.split("/"));
+  if (globalThis.process.env.LAWSPEC_UPDATE_RECORDED === "1") {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, text + '\n', 'utf8');
+    fs.writeFileSync(file, text + "\n", "utf8");
     return true;
   }
   if (!fs.existsSync(file))
-    throw new Error(`no recording recorded/${key}; run lawspec test --update-recorded to record ${text}`);
-  let stored = fs.readFileSync(file, 'utf8');
-  if (stored.endsWith('\n')) stored = stored.slice(0, -1);
+    throw new Error(
+      `no recording recorded/${key}; run lawspec test --update-recorded to record ${text}`,
+    );
+  let stored = fs.readFileSync(file, "utf8");
+  if (stored.endsWith("\n")) stored = stored.slice(0, -1);
   if (stored !== text)
-    throw new Error(`recorded/${key} differs: expected ${stored}, actual ${text} (lawspec test --update-recorded records the new value)`);
+    throw new Error(
+      `recorded/${key} differs: expected ${stored}, actual ${text} (lawspec test --update-recorded records the new value)`,
+    );
   return true;
 }
 
@@ -2361,7 +2571,8 @@ export function recorded(key, value, renderValue = render) {
  * ref:REQ-law-primitives ref:DEC-portable-exact-arithmetic */
 export function recordedText(value, type, fieldTypes = null) {
   const identities = new Map();
-  const quote = text => '"' + text.replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '"';
+  const quote = (text) =>
+    '"' + text.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"';
   const identity = (kind, v) => {
     if (!identities.has(kind)) identities.set(kind, new Map());
     const known = identities.get(kind);
@@ -2369,61 +2580,88 @@ export function recordedText(value, type, fieldTypes = null) {
     return known.get(v);
   };
   const reference = (t) => {
-    if (typeof t !== 'string') return t;
+    if (typeof t !== "string") return t;
     const match = /^(List|Maybe|Nullable|Optional)\s+(.+)$/.exec(t);
-    if (match) return {name: match[1], args: [reference(unwrap(match[2]))]};
-    if (t.startsWith('Either ')) return {name: 'Either', args: eitherArguments(t).map(reference)};
-    return {name: t, args: []};
+    if (match) return { name: match[1], args: [reference(unwrap(match[2]))] };
+    if (t.startsWith("Either "))
+      return { name: "Either", args: eitherArguments(t).map(reference) };
+    return { name: t, args: [] };
   };
-  const unwrap = (t) => t.startsWith('(') && t.endsWith(')') ? t.slice(1, -1) : t;
+  const unwrap = (t) =>
+    t.startsWith("(") && t.endsWith(")") ? t.slice(1, -1) : t;
   const float = (v, width) => {
     const name = `float${width}`;
     if (Number.isNaN(v)) return `${name}NaN`;
-    const buffer = new ArrayBuffer(width / 8), view = new DataView(buffer);
-    if (width === 32) view.setFloat32(0, v); else view.setFloat64(0, v);
-    const hex = Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, '0')).join('');
+    const buffer = new ArrayBuffer(width / 8),
+      view = new DataView(buffer);
+    if (width === 32) view.setFloat32(0, v);
+    else view.setFloat64(0, v);
+    const hex = Array.from(new Uint8Array(buffer), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
     return `${name}Bits("${hex}")`;
   };
-  const units = (name, values) => `${name}([${[...values].join(', ')}])`;
+  const units = (name, values) => `${name}([${[...values].join(", ")}])`;
   const visit = (v, inputType) => {
-    const t = reference(inputType), name = t.name;
-    if (name === 'List') return '[' + v.map(x => visit(x, t.args[0])).join(', ') + ']';
-    if (name === 'Nullable' || name === 'Optional')
-      return v.present ? `${name.toLowerCase()}(${visit(v.value, t.args[0])})` : name === 'Nullable' ? 'null' : 'undefined';
+    const t = reference(inputType),
+      name = t.name;
+    if (name === "List")
+      return "[" + v.map((x) => visit(x, t.args[0])).join(", ") + "]";
+    if (name === "Nullable" || name === "Optional")
+      return v.present
+        ? `${name.toLowerCase()}(${visit(v.value, t.args[0])})`
+        : name === "Nullable"
+          ? "null"
+          : "undefined";
     if (v instanceof DataValue) {
       let types;
-      if (name === 'Maybe') types = v.fields.length ? [t.args[0]] : [];
-      else if (name === 'Either') types = [t.args[v.tag === 'Either::Left' ? 0 : 1]];
+      if (name === "Maybe") types = v.fields.length ? [t.args[0]] : [];
+      else if (name === "Either")
+        types = [t.args[v.tag === "Either::Left" ? 0 : 1]];
       else {
-        if (fieldTypes === null) throw new TypeError('recording data requires its schema');
+        if (fieldTypes === null)
+          throw new TypeError("recording data requires its schema");
         types = fieldTypes(t, v);
       }
       const parts = v.fields.map((item, i) => visit(item, types[i]));
-      const tag = v.tag.split('::').pop();
-      return parts.length ? `${tag}(${parts.join(', ')})` : tag;
+      const tag = v.tag.split("::").pop();
+      return parts.length ? `${tag}(${parts.join(", ")})` : tag;
     }
-    if (name === 'Symbol') return `symbol(${identity('symbol', v)}, ${quote(v.description ?? '')})`;
-    if (name === 'Unit') return '()';
-    if (name === 'Null') return 'null';
-    if (name === 'Undefined') return 'undefined';
-    if (name === 'Text' || name === 'Char') return quote(v);
-    if (name === 'Bytes') return units('bytes', v);
-    if (name === 'CodePointText' || name === 'Utf16Text')
-      return units(name === 'CodePointText' ? 'codePoints' : 'utf16', v.units);
-    if (name === 'Decimal') {
-      let c = v.coefficient, e = v.exponent;
-      if (c === 0n) return '0e0';
-      while (c % 10n === 0n) { c /= 10n; e += 1n; }
+    if (name === "Symbol")
+      return `symbol(${identity("symbol", v)}, ${quote(v.description ?? "")})`;
+    if (name === "Unit") return "()";
+    if (name === "Null") return "null";
+    if (name === "Undefined") return "undefined";
+    if (name === "Text" || name === "Char") return quote(v);
+    if (name === "Bytes") return units("bytes", v);
+    if (name === "CodePointText" || name === "Utf16Text")
+      return units(name === "CodePointText" ? "codePoints" : "utf16", v.units);
+    if (name === "Decimal") {
+      let c = v.coefficient,
+        e = v.exponent;
+      if (c === 0n) return "0e0";
+      while (c % 10n === 0n) {
+        c /= 10n;
+        e += 1n;
+      }
       return `${c}e${e}`;
     }
-    if (name === 'Rational') return `rational(${v.n}, ${v.d})`;
-    if (name === 'Float32' || name === 'Float64') return float(v, name === 'Float32' ? 32 : 64);
-    if (name === 'Complex64' || name === 'Complex128') {
-      const width = name === 'Complex64' ? 32 : 64;
+    if (name === "Rational") return `rational(${v.n}, ${v.d})`;
+    if (name === "Float32" || name === "Float64")
+      return float(v, name === "Float32" ? 32 : 64);
+    if (name === "Complex64" || name === "Complex128") {
+      const width = name === "Complex64" ? 32 : 64;
       return `${name}(${float(v.real, width)}, ${float(v.imaginary, width)})`;
     }
-    if (name === 'Bool' || name === 'CodePoint' || name === 'CodeUnit16' || integerType(name)) return String(v);
-    if (isHandle(v)) return `${name.split('::').pop()}#${identity('handle:' + name, v)}`;
+    if (
+      name === "Bool" ||
+      name === "CodePoint" ||
+      name === "CodeUnit16" ||
+      integerType(name)
+    )
+      return String(v);
+    if (isHandle(v))
+      return `${name.split("::").pop()}#${identity("handle:" + name, v)}`;
     throw new TypeError(`unsupported recorded type: ${name}`);
   };
   return visit(value, type);
@@ -2432,33 +2670,43 @@ export function recordedText(value, type, fieldTypes = null) {
 // Built-in resources (see LawSpec.Resources): a law acquires them before
 // each case and releases them after it.
 export function acquireResource(kind) {
-  const fs = nodeModule('node:fs');
-  const os = nodeModule('node:os');
-  const path = nodeModule('node:path');
-  if (kind === 'temporaryDirectory') return fs.mkdtempSync(path.join(os.tmpdir(), 'lawspec-'));
-  if (kind === 'temporaryFile') {
-    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'lawspec-'));
-    const file = path.join(folder, 'file');
-    fs.writeFileSync(file, '');
+  const fs = nodeModule("node:fs");
+  const os = nodeModule("node:os");
+  const path = nodeModule("node:path");
+  if (kind === "temporaryDirectory")
+    return fs.mkdtempSync(path.join(os.tmpdir(), "lawspec-"));
+  if (kind === "temporaryFile") {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "lawspec-"));
+    const file = path.join(folder, "file");
+    fs.writeFileSync(file, "");
     return file;
   }
-  if (kind === 'environment') {
+  if (kind === "environment") {
     const env = globalThis.process.env;
-    return JSON.stringify(Object.fromEntries(Object.keys(env).sort().map((k) => [k, env[k]])));
+    return JSON.stringify(
+      Object.fromEntries(
+        Object.keys(env)
+          .sort()
+          .map((k) => [k, env[k]]),
+      ),
+    );
   }
   throw new Error(`unknown resource kind ${kind}`);
 }
 
 export function releaseResource(kind, value) {
-  const fs = nodeModule('node:fs');
-  const path = nodeModule('node:path');
-  if (kind === 'temporaryDirectory') fs.rmSync(value, { recursive: true, force: true });
-  else if (kind === 'temporaryFile') fs.rmSync(path.dirname(value), { recursive: true, force: true });
-  else if (kind === 'environment') {
+  const fs = nodeModule("node:fs");
+  const path = nodeModule("node:path");
+  if (kind === "temporaryDirectory")
+    fs.rmSync(value, { recursive: true, force: true });
+  else if (kind === "temporaryFile")
+    fs.rmSync(path.dirname(value), { recursive: true, force: true });
+  else if (kind === "environment") {
     const saved = JSON.parse(value);
     const env = globalThis.process.env;
     for (const name of Object.keys(env)) if (!(name in saved)) delete env[name];
-    for (const [name, text] of Object.entries(saved)) if (env[name] !== text) env[name] = text;
+    for (const [name, text] of Object.entries(saved))
+      if (env[name] !== text) env[name] = text;
   } else throw new Error(`unknown resource kind ${kind}`);
   return true;
 }
@@ -2481,7 +2729,13 @@ export function share(key, acquire, reset, release, concurrent = false) {
   globalThis.process.once("exit", () => release(entry.value));
   return entry.value;
 }
-export async function shareAsync(key, acquire, reset, release, concurrent = false) {
+export async function shareAsync(
+  key,
+  acquire,
+  reset,
+  release,
+  concurrent = false,
+) {
   let entry = sharedResources.get(key);
   if (!entry) {
     entry = { turn: Promise.resolve(), held: false, users: 0, concurrent };
@@ -2492,7 +2746,9 @@ export async function shareAsync(key, acquire, reset, release, concurrent = fals
   if (concurrent) {
     const previous = entry.turn;
     let done;
-    entry.turn = new Promise((resolve) => { done = resolve; });
+    entry.turn = new Promise((resolve) => {
+      done = resolve;
+    });
     await previous;
     try {
       if (entry.held && entry.users === 0) await reset(entry.value);
@@ -2500,16 +2756,25 @@ export async function shareAsync(key, acquire, reset, release, concurrent = fals
         entry.value = await acquire();
         entry.held = true;
         let released = false;
-        globalThis.process.on("beforeExit", async () => { if (!released) { released = true; await release(entry.value); } });
+        globalThis.process.on("beforeExit", async () => {
+          if (!released) {
+            released = true;
+            await release(entry.value);
+          }
+        });
       }
       entry.users += 1;
-    } finally { done(); }
+    } finally {
+      done();
+    }
     return entry.value;
   }
   // Wait for the case that holds it, then hold it.
   const previous = entry.turn;
   let done;
-  entry.turn = new Promise((resolve) => { done = resolve; });
+  entry.turn = new Promise((resolve) => {
+    done = resolve;
+  });
   await previous;
   entry.release = done;
   try {
@@ -2518,20 +2783,40 @@ export async function shareAsync(key, acquire, reset, release, concurrent = fals
       entry.value = await acquire();
       entry.held = true;
       let released = false;
-      globalThis.process.on("beforeExit", async () => { if (!released) { released = true; await release(entry.value); } });
+      globalThis.process.on("beforeExit", async () => {
+        if (!released) {
+          released = true;
+          await release(entry.value);
+        }
+      });
     }
-  } catch (error) { done(); throw error; }
+  } catch (error) {
+    done();
+    throw error;
+  }
   return entry.value;
 }
 export function unshare(key) {
   const entry = sharedResources.get(key);
-  if (entry?.concurrent) { entry.users -= 1; return; }
-  if (entry && entry.release) { const done = entry.release; entry.release = null; done(); }
+  if (entry?.concurrent) {
+    entry.users -= 1;
+    return;
+  }
+  if (entry && entry.release) {
+    const done = entry.release;
+    entry.release = null;
+    done();
+  }
 }
 export function freePort() {
-  const { execFileSync } = nodeModule('node:child_process');
-  const script = "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close();});";
-  return Number(execFileSync(globalThis.process.execPath, ['-e', script], { encoding: 'utf8' }));
+  const { execFileSync } = nodeModule("node:child_process");
+  const script =
+    "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close();});";
+  return Number(
+    execFileSync(globalThis.process.execPath, ["-e", script], {
+      encoding: "utf8",
+    }),
+  );
 }
 
 /**
@@ -2544,36 +2829,46 @@ export function difference(actual, expected) {
   let b = expected;
   for (;;) {
     if (Array.isArray(a) && Array.isArray(b)) {
-      const i = a.findIndex((x, j) => j < b.length && render(x) !== render(b[j]));
+      const i = a.findIndex(
+        (x, j) => j < b.length && render(x) !== render(b[j]),
+      );
       if (i >= 0 && i < b.length) {
         path.push(`item ${i + 1}`);
         [a, b] = [a[i], b[i]];
         continue;
       }
-      if (a.length === b.length) return '';
-      path.push('length');
+      if (a.length === b.length) return "";
+      path.push("length");
       [a, b] = [a.length, b.length];
       break;
     }
-    if (a instanceof DataValue && b instanceof DataValue && a.tag === b.tag && a.fields.length === b.fields.length) {
+    if (
+      a instanceof DataValue &&
+      b instanceof DataValue &&
+      a.tag === b.tag &&
+      a.fields.length === b.fields.length
+    ) {
       const i = a.fields.findIndex((x, j) => render(x) !== render(b.fields[j]));
-      if (i < 0) return '';
-      path.push(`field ${i + 1} of ${a.tag.split('::').pop()}`);
+      if (i < 0) return "";
+      path.push(`field ${i + 1} of ${a.tag.split("::").pop()}`);
       [a, b] = [a.fields[i], b.fields[i]];
       continue;
     }
     break;
   }
-  if (!path.length) return '';
-  const shown = path.at(-1) === 'length' ? String : render;
-  return ` | first difference at ${path.join(', ')}: expected ${shown(b)}, actual ${shown(a)}`;
+  if (!path.length) return "";
+  const shown = path.at(-1) === "length" ? String : render;
+  return ` | first difference at ${path.join(", ")}: expected ${shown(b)}, actual ${shown(a)}`;
 }
 
 /** A descriptor text's data types and its last form, the one generated. */
 export function valuesFrom(text) {
   const forms = readDescriptor(text);
   const table = new Map(
-      forms.filter((f) => Array.isArray(f) && f[0] === 'data').map((f) => [String(f[1]), f]));
+    forms
+      .filter((f) => Array.isArray(f) && f[0] === "data")
+      .map((f) => [String(f[1]), f]),
+  );
   return [new Values(table), forms[forms.length - 1]];
 }
 
@@ -2581,13 +2876,17 @@ export function valuesFrom(text) {
 export function generated(text, seed, size, count) {
   const [values, d] = valuesFrom(text);
   const random = new SplitMix64(BigInt(seed));
-  return Array.from({length: Number(count)}, () => render(values.generate(d, random, size)));
+  return Array.from({ length: Number(count) }, () =>
+    render(values.generate(d, random, size)),
+  );
 }
 
 /** The shrink candidates of the first value generated, rendered. */
 export function shrunk(text, seed, size) {
   const [values, d] = valuesFrom(text);
-  return values.shrink(d, values.generate(d, new SplitMix64(BigInt(seed)), size)).map(render);
+  return values
+    .shrink(d, values.generate(d, new SplitMix64(BigInt(seed)), size))
+    .map(render);
 }
 
 // Stateful models. A model's spec (see LawSpec.MachineSpec) lists its data
@@ -2611,7 +2910,7 @@ const fieldsOf = (forms) => new Map(forms.map((f) => [f[0], f.slice(1)]));
 export class ActorStopped extends Error {
   constructor(message) {
     super(message);
-    this.name = 'ActorStopped';
+    this.name = "ActorStopped";
   }
 }
 
@@ -2621,8 +2920,10 @@ export class ActorStopped extends Error {
  */
 export class ActorCrashed extends Error {
   constructor(cause) {
-    super(`the actor crashed: ${cause instanceof Error ? cause.message : String(cause)}`);
-    this.name = 'ActorCrashed';
+    super(
+      `the actor crashed: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+    this.name = "ActorCrashed";
     this.cause = cause;
   }
 }
@@ -2665,11 +2966,12 @@ export class Actor {
     return this.#restartState !== null;
   }
   #post(handler) {
-    if (this.#stopped || this.#halted) throw new ActorStopped('the actor has stopped');
+    if (this.#stopped || this.#halted)
+      throw new ActorStopped("the actor has stopped");
     this.#pending += 1;
     const reply = this.#tail.then(async () => {
       try {
-        if (this.#halted) throw new ActorStopped('the actor has stopped');
+        if (this.#halted) throw new ActorStopped("the actor has stopped");
         let out;
         try {
           out = await handler(this.#state);
@@ -2697,7 +2999,9 @@ export class Actor {
    */
   async #crashed(cause, origin) {
     this.#seen.add(origin);
-    const restarted = this._supervisor !== null && this.#restartState !== null &&
+    const restarted =
+      this._supervisor !== null &&
+      this.#restartState !== null &&
       this._supervisor._childCrashed(this, cause);
     if (restarted) {
       const pending = this._restartNow();
@@ -2705,20 +3009,25 @@ export class Actor {
     } else {
       this._halt();
     }
-    for (const monitor of [...this.#monitors]) monitor(['crashed', cause]);
+    for (const monitor of [...this.#monitors]) monitor(["crashed", cause]);
     for (const other of [...this.#links]) other._linkCrash(cause, origin);
   }
   /** On the actor's turn: the restarted state from the last one. */
   _restartNow() {
     const next = this.#restartState(this.#state);
-    if (next instanceof Promise) return next.then((s) => { this.#state = s; });
+    if (next instanceof Promise)
+      return next.then((s) => {
+        this.#state = s;
+      });
     this.#state = next;
     return undefined;
   }
   /** A restart a supervisor asks of a sibling, in mailbox order. */
   _restartLater() {
     try {
-      this.#post(async (s) => [undefined, await this.#restartState(s)]).catch(() => {});
+      this.#post(async (s) => [undefined, await this.#restartState(s)]).catch(
+        () => {},
+      );
     } catch (error) {
       if (!(error instanceof ActorStopped)) throw error;
     }
@@ -2747,8 +3056,10 @@ export class Actor {
    * handler that throws crashes the actor, as with call.
    */
   callNow(handler) {
-    if (this.#stopped || this.#halted) throw new ActorStopped('the actor has stopped');
-    if (this.#pending > 0) throw new Error('the actor has messages waiting; await the call instead');
+    if (this.#stopped || this.#halted)
+      throw new ActorStopped("the actor has stopped");
+    if (this.#pending > 0)
+      throw new Error("the actor has messages waiting; await the call instead");
     let out;
     try {
       out = handler(this.#state);
@@ -2783,14 +3094,18 @@ export class Actor {
    * Crashes the actor once the messages before this one are handled, as a
    * failing handler would: for testing supervision.
    */
-  crash(cause = 'crashed on purpose') {
+  crash(cause = "crashed on purpose") {
     const origin = nextCrash();
-    return this.call(() => { throw new RestartSignal(cause, origin); });
+    return this.call(() => {
+      throw new RestartSignal(cause, origin);
+    });
   }
   /** crash for synchronous code: the actor must have no messages waiting. */
-  crashNow(cause = 'crashed on purpose') {
+  crashNow(cause = "crashed on purpose") {
     const origin = nextCrash();
-    this.callNow(() => { throw new RestartSignal(cause, origin); });
+    this.callNow(() => {
+      throw new RestartSignal(cause, origin);
+    });
   }
   /**
    * Replaces the state by restart(last state) between messages, as a
@@ -2817,15 +3132,17 @@ export class Actor {
    * child of a supervisor restarts instead.
    */
   stop() {
-    if (this._supervisor !== null && this._supervisor._childStopped(this)) return;
+    if (this._supervisor !== null && this._supervisor._childStopped(this))
+      return;
     const already = this.#stopped;
     this.#stopped = true;
-    if (!already) for (const monitor of [...this.#monitors]) monitor(['stopped', null]);
+    if (!already)
+      for (const monitor of [...this.#monitors]) monitor(["stopped", null]);
   }
 }
 
-const STRATEGIES = ['one_for_one', 'one_for_all', 'rest_for_one'];
-const LIFETIMES = ['permanent', 'transient', 'temporary'];
+const STRATEGIES = ["one_for_one", "one_for_all", "rest_for_one"];
+const LIFETIMES = ["permanent", "transient", "temporary"];
 
 /**
  * Starts children (actors or supervisors) and restarts them after a crash.
@@ -2846,15 +3163,17 @@ export class Supervisor {
   #restarts = [];
   #stopped = false;
   #monitors = [];
-  constructor(strategy = 'one_for_one', maxRestarts = 3, period = 5) {
-    if (!STRATEGIES.includes(strategy)) throw new Error(`unknown strategy ${strategy}`);
+  constructor(strategy = "one_for_one", maxRestarts = 3, period = 5) {
+    if (!STRATEGIES.includes(strategy))
+      throw new Error(`unknown strategy ${strategy}`);
     this.strategy = strategy;
     this.maxRestarts = maxRestarts;
     this.period = period;
   }
   /** Adds a started child, and returns it. */
-  supervise(child, lifetime = 'permanent') {
-    if (!LIFETIMES.includes(lifetime)) throw new Error(`unknown lifetime ${lifetime}`);
+  supervise(child, lifetime = "permanent") {
+    if (!LIFETIMES.includes(lifetime))
+      throw new Error(`unknown lifetime ${lifetime}`);
     child._supervisor = this;
     this.#children.push([child, lifetime]);
     return child;
@@ -2867,7 +3186,8 @@ export class Supervisor {
   }
   #allowRestart() {
     const now = (globalThis.performance?.now?.() ?? Date.now()) / 1000;
-    while (this.#restarts.length && now - this.#restarts[0] > this.period) this.#restarts.shift();
+    while (this.#restarts.length && now - this.#restarts[0] > this.period)
+      this.#restarts.shift();
     if (this.#restarts.length >= this.maxRestarts) return false;
     this.#restarts.push(now);
     return true;
@@ -2879,8 +3199,8 @@ export class Supervisor {
   #restarting(entry, cause, crashed) {
     if (this.#allowRestart()) {
       const index = this.#children.indexOf(entry);
-      if (this.strategy === 'one_for_one') return [entry];
-      if (this.strategy === 'one_for_all') return [...this.#children];
+      if (this.strategy === "one_for_one") return [entry];
+      if (this.strategy === "one_for_all") return [...this.#children];
       return this.#children.slice(index);
     }
     const parent = this._supervisor;
@@ -2892,14 +3212,15 @@ export class Supervisor {
     return null;
   }
   #removeTemporary(entry) {
-    if (entry[1] !== 'temporary') return false;
+    if (entry[1] !== "temporary") return false;
     this.#children.splice(this.#children.indexOf(entry), 1);
     return true;
   }
   /** On child's turn: true when it restarts now. */
   _childCrashed(child, cause) {
     const entry = this.#entry(child);
-    if (this.#stopped || entry === undefined || this.#removeTemporary(entry)) return false;
+    if (this.#stopped || entry === undefined || this.#removeTemporary(entry))
+      return false;
     const group = this.#restarting(entry, cause, child);
     if (group === null) return false;
     for (const [other] of group) if (other !== child) other._restartLater();
@@ -2908,7 +3229,8 @@ export class Supervisor {
   /** A child supervisor gave up: true when it may restart its children. */
   _childFailed(child, cause) {
     const entry = this.#entry(child);
-    if (this.#stopped || entry === undefined || this.#removeTemporary(entry)) return false;
+    if (this.#stopped || entry === undefined || this.#removeTemporary(entry))
+      return false;
     const group = this.#restarting(entry, cause, child);
     if (group === null) return false;
     for (const [other] of group) if (other !== child) other._restartLater();
@@ -2918,11 +3240,11 @@ export class Supervisor {
   _childStopped(child) {
     const entry = this.#entry(child);
     if (entry === undefined || this.#stopped) return false;
-    if (entry[1] !== 'permanent') {
+    if (entry[1] !== "permanent") {
       this.#children.splice(this.#children.indexOf(entry), 1);
       return false;
     }
-    const group = this.#restarting(entry, 'stopped', child);
+    const group = this.#restarting(entry, "stopped", child);
     if (group === null) return false;
     for (const [other] of group) other._restartLater();
     return true;
@@ -2936,7 +3258,7 @@ export class Supervisor {
       other._supervisor = null;
       if (other !== crashed) other._halt();
     }
-    for (const monitor of [...this.#monitors]) monitor(['crashed', cause]);
+    for (const monitor of [...this.#monitors]) monitor(["crashed", cause]);
   }
   /** Restarted by its own supervisor: every child restarts. */
   _restartLater() {
@@ -2960,7 +3282,7 @@ export class Supervisor {
       child._supervisor = null;
       child.stop();
     }
-    for (const monitor of [...this.#monitors]) monitor(['stopped', null]);
+    for (const monitor of [...this.#monitors]) monitor(["stopped", null]);
   }
 }
 
@@ -2971,16 +3293,18 @@ export class Supervisor {
  */
 export async function checkSupervisionAsync() {
   const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
-  const counter = () => new Actor(0, {restart: () => 0});
+  const counter = () => new Actor(0, { restart: () => 0 });
   const bump = (a) => a.call((s) => [s + 1, s + 1]);
   const fail = async (a) => {
     try {
-      await a.call(() => { throw new Error('division by zero'); });
+      await a.call(() => {
+        throw new Error("division by zero");
+      });
     } catch (error) {
       if (error instanceof ActorCrashed) return;
       throw error;
     }
-    throw new Error('a failing handler did not reject with ActorCrashed');
+    throw new Error("a failing handler did not reject with ActorCrashed");
   };
   const stopped = async (a, what) => {
     try {
@@ -2993,54 +3317,89 @@ export async function checkSupervisionAsync() {
   };
   const expect = (actual, wanted, what) => {
     if (JSON.stringify(actual) !== JSON.stringify(wanted))
-      throw new Error(`${what}: got ${JSON.stringify(actual)}, expected ${JSON.stringify(wanted)}`);
+      throw new Error(
+        `${what}: got ${JSON.stringify(actual)}, expected ${JSON.stringify(wanted)}`,
+      );
   };
   const states = (...actors) => Promise.all(actors.map((a) => a.state()));
 
   let a = counter();
   await bump(a);
   await fail(a);
-  await stopped(a, 'an unsupervised actor that crashed');
-  let sup = new Supervisor('one_for_one');
-  let x = sup.supervise(counter()), y = sup.supervise(counter());
-  await bump(x); await bump(y); await bump(y);
+  await stopped(a, "an unsupervised actor that crashed");
+  let sup = new Supervisor("one_for_one");
+  let x = sup.supervise(counter()),
+    y = sup.supervise(counter());
+  await bump(x);
+  await bump(y);
+  await bump(y);
   await fail(x);
-  expect(await states(x, y), [0, 2], 'one for one restarts only the crashed child');
-  sup = new Supervisor('one_for_all');
-  x = sup.supervise(counter()); y = sup.supervise(counter());
-  await bump(x); await bump(y);
+  expect(
+    await states(x, y),
+    [0, 2],
+    "one for one restarts only the crashed child",
+  );
+  sup = new Supervisor("one_for_all");
+  x = sup.supervise(counter());
+  y = sup.supervise(counter());
+  await bump(x);
+  await bump(y);
   await fail(x);
-  expect(await states(x, y), [0, 0], 'one for all restarts every child');
-  sup = new Supervisor('rest_for_one');
+  expect(await states(x, y), [0, 0], "one for all restarts every child");
+  sup = new Supervisor("rest_for_one");
   let z;
-  [x, y, z] = [sup.supervise(counter()), sup.supervise(counter()), sup.supervise(counter())];
-  await bump(x); await bump(y); await bump(z);
+  [x, y, z] = [
+    sup.supervise(counter()),
+    sup.supervise(counter()),
+    sup.supervise(counter()),
+  ];
+  await bump(x);
+  await bump(y);
+  await bump(z);
   await fail(y);
-  expect(await states(x, y, z), [1, 0, 0], 'rest for one restarts the child and later ones');
+  expect(
+    await states(x, y, z),
+    [1, 0, 0],
+    "rest for one restarts the child and later ones",
+  );
   sup = new Supervisor();
-  const t = sup.supervise(counter(), 'temporary');
+  const t = sup.supervise(counter(), "temporary");
   await fail(t);
-  await stopped(t, 'a temporary child that crashed');
+  await stopped(t, "a temporary child that crashed");
   sup = new Supervisor();
-  const p = sup.supervise(counter(), 'permanent'), q = sup.supervise(counter(), 'transient');
+  const p = sup.supervise(counter(), "permanent"),
+    q = sup.supervise(counter(), "transient");
   await bump(p);
   p.stop();
-  expect(await p.state(), 0, 'a permanent child restarts after a stop');
+  expect(await p.state(), 0, "a permanent child restarts after a stop");
   q.stop();
-  await stopped(q, 'a transient child that was stopped');
+  await stopped(q, "a transient child that was stopped");
   const events = [];
-  sup = new Supervisor('one_for_one', 2, 10);
+  sup = new Supervisor("one_for_one", 2, 10);
   sup.monitor((e) => events.push(e));
-  x = sup.supervise(counter()); y = sup.supervise(counter());
-  await fail(x); await fail(x); await fail(x);
-  await stopped(y, 'a child of a supervisor past its restart limit');
-  expect(events.map((e) => e[0]), ['crashed'], 'a supervisor past its limit tells its monitors');
-  const outer = new Supervisor('one_for_one', 5, 10);
-  const inner = outer.supervise(new Supervisor('one_for_one', 1, 10));
-  x = inner.supervise(counter()); y = inner.supervise(counter());
+  x = sup.supervise(counter());
+  y = sup.supervise(counter());
+  await fail(x);
+  await fail(x);
+  await fail(x);
+  await stopped(y, "a child of a supervisor past its restart limit");
+  expect(
+    events.map((e) => e[0]),
+    ["crashed"],
+    "a supervisor past its limit tells its monitors",
+  );
+  const outer = new Supervisor("one_for_one", 5, 10);
+  const inner = outer.supervise(new Supervisor("one_for_one", 1, 10));
+  x = inner.supervise(counter());
+  y = inner.supervise(counter());
   await bump(y);
-  await fail(x); await fail(x);
-  expect(await states(x, y), [0, 0], 'a supervisor past its limit is restarted by its own');
+  await fail(x);
+  await fail(x);
+  expect(
+    await states(x, y),
+    [0, 0],
+    "a supervisor past its limit is restarted by its own",
+  );
   const seen = [];
   a = counter();
   let b = counter();
@@ -3048,17 +3407,33 @@ export async function checkSupervisionAsync() {
   b.monitor((e) => seen.push(e));
   await fail(a);
   for (let i = 0; i < 100 && !seen.length; i++) await pause();
-  await stopped(b, 'an unsupervised actor linked to one that crashed');
-  expect(seen.map((e) => e[0]), ['crashed'], 'a monitor hears of a crash');
-  sup = new Supervisor('one_for_one', 10);
+  await stopped(b, "an unsupervised actor linked to one that crashed");
+  expect(
+    seen.map((e) => e[0]),
+    ["crashed"],
+    "a monitor hears of a crash",
+  );
+  sup = new Supervisor("one_for_one", 10);
   let c;
-  [a, b, c] = [sup.supervise(counter()), sup.supervise(counter()), sup.supervise(counter())];
-  a.link(b); b.link(c); c.link(a);
-  await bump(a); await bump(b); await bump(c);
+  [a, b, c] = [
+    sup.supervise(counter()),
+    sup.supervise(counter()),
+    sup.supervise(counter()),
+  ];
+  a.link(b);
+  b.link(c);
+  c.link(a);
+  await bump(a);
+  await bump(b);
+  await bump(c);
   await fail(a);
   for (let i = 0; i < 100 && sup._restartCount < 3; i++) await pause();
   await pause();
-  expect([...(await states(a, b, c)), sup._restartCount], [0, 0, 0, 3], 'a crash crosses each link once');
+  expect(
+    [...(await states(a, b, c)), sup._restartCount],
+    [0, 0, 0, 3],
+    "a crash crosses each link once",
+  );
 }
 
 /**
@@ -3071,7 +3446,7 @@ export class Mailbox {
   #waiters = [];
   #closed = false;
   send(value) {
-    if (this.#closed) throw new ActorStopped('the mailbox is closed');
+    if (this.#closed) throw new ActorStopped("the mailbox is closed");
     const waiter = this.#waiters.shift();
     if (waiter) waiter.resolve(value);
     else this.#items.push(value);
@@ -3082,17 +3457,24 @@ export class Mailbox {
    */
   receiveAsync(timeoutMs) {
     if (this.#items.length > 0) return Promise.resolve(this.#items.shift());
-    if (this.#closed) return Promise.reject(new ActorStopped('the mailbox is closed'));
+    if (this.#closed)
+      return Promise.reject(new ActorStopped("the mailbox is closed"));
     return new Promise((resolve, reject) => {
-      const waiter = {resolve, reject};
+      const waiter = { resolve, reject };
       if (timeoutMs !== undefined) {
         const timer = setTimeout(() => {
           const at = this.#waiters.indexOf(waiter);
           if (at >= 0) this.#waiters.splice(at, 1);
-          reject(new Error('no message arrived in time'));
+          reject(new Error("no message arrived in time"));
         }, timeoutMs);
-        waiter.resolve = (value) => { clearTimeout(timer); resolve(value); };
-        waiter.reject = (error) => { clearTimeout(timer); reject(error); };
+        waiter.resolve = (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        };
+        waiter.reject = (error) => {
+          clearTimeout(timer);
+          reject(error);
+        };
       }
       this.#waiters.push(waiter);
     });
@@ -3109,7 +3491,7 @@ export class Mailbox {
     const read = abilityClock(clock);
     if (read !== null && read.virtual) {
       if (this.#items.length > 0) return this.#items.shift();
-      if (this.#closed) throw new ActorStopped('the mailbox is closed');
+      if (this.#closed) throw new ActorStopped("the mailbox is closed");
       read.sleep(micros);
       return null;
     }
@@ -3124,7 +3506,8 @@ export class Mailbox {
   /** Refuses further messages; those already sent can still be received. */
   close() {
     this.#closed = true;
-    for (const waiter of this.#waiters.splice(0)) waiter.reject(new ActorStopped('the mailbox is closed'));
+    for (const waiter of this.#waiters.splice(0))
+      waiter.reject(new ActorStopped("the mailbox is closed"));
   }
 }
 
@@ -3133,11 +3516,14 @@ export class Mailbox {
  * alone for a Unit result) as a command on an actor.
  */
 function actorCommand(run, unit) {
-  if (unit) return (symbols, actor, ...args) => actor.call(async (s) => [UNIT, await run(symbols, s, ...args)]);
-  return (symbols, actor, ...args) => actor.call(async (s) => {
-    const out = await run(symbols, s, ...args);
-    return [out.fields[0], out.fields[1]];
-  });
+  if (unit)
+    return (symbols, actor, ...args) =>
+      actor.call(async (s) => [UNIT, await run(symbols, s, ...args)]);
+  return (symbols, actor, ...args) =>
+    actor.call(async (s) => {
+      const out = await run(symbols, s, ...args);
+      return [out.fields[0], out.fields[1]];
+    });
 }
 
 class ModelCommand {
@@ -3154,30 +3540,31 @@ class ModelCommand {
   constructor(form, callbacks) {
     const fields = fieldsOf(form.slice(2));
     this.name = String(form[1]);
-    this.arguments = fields.get('arguments');
-    this.state = Number(fields.get('state')[0]);
-    this.unit = fields.get('unit')[0] === 'true';
-    this.needs = fields.get('needs');
-    this.shifts = fields.get('shifts');
+    this.arguments = fields.get("arguments");
+    this.state = Number(fields.get("state")[0]);
+    this.unit = fields.get("unit")[0] === "true";
+    this.needs = fields.get("needs");
+    this.shifts = fields.get("shifts");
     // The argument naming the key the command touches, for per-key checks.
-    const key = (fields.get('key') ?? ['none'])[0];
-    this.key = key === 'none' ? null : Number(key);
-    this.restart = (fields.get('restart') ?? ['false'])[0] === 'true';
+    const key = (fields.get("key") ?? ["none"])[0];
+    this.key = key === "none" ? null : Number(key);
+    this.restart = (fields.get("restart") ?? ["false"])[0] === "true";
     [this.run, this.reference, this.when] = callbacks;
   }
   admits(indices) {
     const n = Math.min(this.needs.length, indices.length);
     for (let k = 0; k < n; k++) {
-      const [kind, bound] = this.needs[k], i = indices[k];
-      if (kind === 'atleast' ? !(i >= bound) : i !== bound) return false;
+      const [kind, bound] = this.needs[k],
+        i = indices[k];
+      if (kind === "atleast" ? !(i >= bound) : i !== bound) return false;
     }
     return true;
   }
   shifted(indices) {
     const n = Math.min(this.shifts.length, indices.length);
-    return Array.from({length: n}, (_, k) => {
+    return Array.from({ length: n }, (_, k) => {
       const [kind, by] = this.shifts[k];
-      return kind === 'by' ? indices[k] + by : by;
+      return kind === "by" ? indices[k] + by : by;
     });
   }
 }
@@ -3197,20 +3584,31 @@ export class Model {
   constructor(spec, start, commands, abstract = null, invariants = []) {
     const forms = readDescriptor(spec).filter(Array.isArray);
     this.name = String(forms[0][1]);
-    this.shared = forms[0][2] === 'shared';
-    this.values = new Values(new Map(forms.filter((f) => f[0] === 'data').map((f) => [String(f[1]), f])));
-    const startFields = fieldsOf(forms.find((f) => f[0] === 'start').slice(1));
-    this.startIndices = startFields.get('indices') ?? [];
-    this.startArguments = startFields.get('arguments') ?? [];
+    this.shared = forms[0][2] === "shared";
+    this.values = new Values(
+      new Map(
+        forms.filter((f) => f[0] === "data").map((f) => [String(f[1]), f]),
+      ),
+    );
+    const startFields = fieldsOf(forms.find((f) => f[0] === "start").slice(1));
+    this.startIndices = startFields.get("indices") ?? [];
+    this.startArguments = startFields.get("arguments") ?? [];
     [this.startRun, this.startModel] = start;
-    const commandForms = forms.filter((f) => f[0] === 'command');
+    const commandForms = forms.filter((f) => f[0] === "command");
     const n = Math.min(commandForms.length, commands.length);
-    this.commands = Array.from({length: n}, (_, i) => new ModelCommand(commandForms[i], commands[i]));
+    this.commands = Array.from(
+      { length: n },
+      (_, i) => new ModelCommand(commandForms[i], commands[i]),
+    );
     this.abstract = abstract ?? null;
-    const kinds = forms.find((f) => f[0] === 'invariants').slice(1);
-    this.invariants = kinds.slice(0, invariants.length).map((k, i) => [k, invariants[i]]);
-    this.perKey = forms.some((f) => f[0] === 'perkey' && f[1] === 'true');
-    this.consistency = String(forms.find((f) => f[0] === 'consistency')?.[1] ?? 'linearizable');
+    const kinds = forms.find((f) => f[0] === "invariants").slice(1);
+    this.invariants = kinds
+      .slice(0, invariants.length)
+      .map((k, i) => [k, invariants[i]]);
+    this.perKey = forms.some((f) => f[0] === "perkey" && f[1] === "true");
+    this.consistency = String(
+      forms.find((f) => f[0] === "consistency")?.[1] ?? "linearizable",
+    );
     // Sequential runs of an actor also inject crashes: the actor restarts
     // from its last state (restart from) or its start, and the model follows
     // the restart's reference (or the start's model state).
@@ -3219,28 +3617,38 @@ export class Model {
     this.steps = this.commands;
     // An actor model's start and handlers run inside an actor; the
     // abstraction and state invariants read its state between messages.
-    if (forms.some((f) => f[0] === 'actor' && f[1] === 'true')) {
-      const run = this.startRun, begin = this.startModel;
+    if (forms.some((f) => f[0] === "actor" && f[1] === "true")) {
+      const run = this.startRun,
+        begin = this.startModel;
       this.startRun = async (symbols, ...args) => {
-        symbols.set('_lawspec_start', args);
+        symbols.set("_lawspec_start", args);
         return new Actor(await run(symbols, ...args));
       };
       this.startModel = async (symbols, ...args) => {
-        symbols.set('_lawspec_start', args);
+        symbols.set("_lawspec_start", args);
         return begin(symbols, ...args);
       };
       for (const c of this.commands) c.run = actorCommand(c.run, c.unit);
-      this.steps = [...this.commands, new Crash(run, begin, restarts[0] ?? null)];
-      if (abstract != null) this.abstract = async (symbols, actor) => abstract(symbols, await actor.state());
-      this.invariants = this.invariants.map(([k, p]) =>
-        [k, k === 'state' ? async (symbols, actor) => p(symbols, await actor.state()) : p]);
+      this.steps = [
+        ...this.commands,
+        new Crash(run, begin, restarts[0] ?? null),
+      ];
+      if (abstract != null)
+        this.abstract = async (symbols, actor) =>
+          abstract(symbols, await actor.state());
+      this.invariants = this.invariants.map(([k, p]) => [
+        k,
+        k === "state"
+          ? async (symbols, actor) => p(symbols, await actor.state())
+          : p,
+      ]);
     }
   }
 }
 
 /** An injected crash of an actor model, as a step with no arguments. */
 class Crash {
-  name = 'crash';
+  name = "crash";
   arguments = [];
   state = 0;
   unit = true;
@@ -3262,13 +3670,17 @@ class Crash {
     return indices;
   }
   async run(symbols, actor) {
-    if (this.#restart !== null) await actor.restart((s) => this.#restart.run(symbols, s));
-    else await actor.restart(() => this.#startRun(symbols, ...symbols.get('_lawspec_start')));
+    if (this.#restart !== null)
+      await actor.restart((s) => this.#restart.run(symbols, s));
+    else
+      await actor.restart(() =>
+        this.#startRun(symbols, ...symbols.get("_lawspec_start")),
+      );
     return UNIT;
   }
   reference(symbols, state) {
     if (this.#restart !== null) return this.#restart.reference(symbols, state);
-    return this.#startModel(symbols, ...symbols.get('_lawspec_start'));
+    return this.#startModel(symbols, ...symbols.get("_lawspec_start"));
   }
 }
 
@@ -3300,7 +3712,11 @@ async function simulate(model, symbols, run) {
 async function stepModel(command, symbols, args, state) {
   let out;
   try {
-    if (command.when !== null && command.when !== undefined && !(await command.when(symbols, state)))
+    if (
+      command.when !== null &&
+      command.when !== undefined &&
+      !(await command.when(symbols, state))
+    )
       throw new Invalid();
     out = await command.reference(symbols, ...args, state);
   } catch {
@@ -3312,7 +3728,9 @@ async function stepModel(command, symbols, args, state) {
 
 async function generateRun(model, random, length, size, crashes = false) {
   const symbols = new Map();
-  const startArgs = model.startArguments.map((d) => model.values.generate(d, random, size));
+  const startArgs = model.startArguments.map((d) =>
+    model.values.generate(d, random, size),
+  );
   let state;
   try {
     state = await model.startModel(symbols, ...startArgs);
@@ -3323,14 +3741,22 @@ async function generateRun(model, random, length, size, crashes = false) {
   const steps = [];
   for (let n = 0; n < length; n++) {
     const allowed = [];
-    model.commands.forEach((c, i) => { if (c.admits(indices)) allowed.push(i); });
+    model.commands.forEach((c, i) => {
+      if (c.admits(indices)) allowed.push(i);
+    });
     if (!allowed.length) break;
     let index = allowed[Number(random.below(BigInt(allowed.length)))];
     // One step in eight of an actor's run is a crash.
-    if (crashes && model.steps.length > model.commands.length && random.below(8n) === 0n)
+    if (
+      crashes &&
+      model.steps.length > model.commands.length &&
+      random.below(8n) === 0n
+    )
       index = model.commands.length;
     const command = model.steps[index];
-    const args = command.arguments.map((d) => model.values.generate(d, random, size));
+    const args = command.arguments.map((d) =>
+      model.values.generate(d, random, size),
+    );
     try {
       [state] = await stepModel(command, symbols, args, state);
     } catch (error) {
@@ -3344,7 +3770,10 @@ async function generateRun(model, random, length, size, crashes = false) {
 }
 
 const errorName = (error) =>
-  (error !== null && typeof error === 'object' && (error.name || error.constructor?.name)) || typeof error;
+  (error !== null &&
+    typeof error === "object" &&
+    (error.name || error.constructor?.name)) ||
+  typeof error;
 const errorMessage = (error) =>
   error instanceof Error ? error.message : String(error);
 
@@ -3377,12 +3806,16 @@ async function execute(model, run) {
       let wanted;
       [expected, wanted] = await stepModel(command, symbols, args, expected);
       if (!command.unit && compareValues(result, wanted) !== 0)
-        return [step, `returned ${render(result)}; the model returns ${render(wanted)}`];
+        return [
+          step,
+          `returned ${render(result)}; the model returns ${render(wanted)}`,
+        ];
       failure = await checkState(model, symbols, state, expected);
       if (failure) return [step, failure];
     }
   } catch (error) {
-    if (error instanceof Invalid) return [step, 'the model does not allow this step'];
+    if (error instanceof Invalid)
+      return [step, "the model does not allow this step"];
     return [step, `raised ${errorName(error)}: ${errorMessage(error)}`];
   }
   return null;
@@ -3395,7 +3828,7 @@ async function checkState(model, symbols, state, expected) {
       return `the state is ${render(actual)}; the model is ${render(expected)}`;
   }
   for (const [kind, invariant] of model.invariants)
-    if (!(await invariant(symbols, kind === 'model' ? expected : state)))
+    if (!(await invariant(symbols, kind === "model" ? expected : state)))
       return `an invariant on the ${kind} fails`;
   return null;
 }
@@ -3405,15 +3838,24 @@ function* shrinkCandidates(model, run) {
   const n = steps.length;
   for (let size = Math.floor(n / 2); size >= 1; size = Math.floor(size / 2))
     for (let begin = 0; begin < n; begin += size)
-      yield [startArgs, [...steps.slice(0, begin), ...steps.slice(begin + size)]];
+      yield [
+        startArgs,
+        [...steps.slice(0, begin), ...steps.slice(begin + size)],
+      ];
   for (let k = 0; k < n; k++) {
     const [index, args] = steps[k];
     const command = model.steps[index];
     const m = Math.min(command.arguments.length, args.length);
     for (let j = 0; j < m; j++)
       for (const c of model.values.shrink(command.arguments[j], args[j]))
-        yield [startArgs, [...steps.slice(0, k), [index, [...args.slice(0, j), c, ...args.slice(j + 1)]],
-          ...steps.slice(k + 1)]];
+        yield [
+          startArgs,
+          [
+            ...steps.slice(0, k),
+            [index, [...args.slice(0, j), c, ...args.slice(j + 1)]],
+            ...steps.slice(k + 1),
+          ],
+        ];
   }
   const m = Math.min(model.startArguments.length, startArgs.length);
   for (let j = 0; j < m; j++)
@@ -3451,9 +3893,14 @@ async function shrinkRun(model, run, failure, budget) {
 
 function describeRun(model, run) {
   const [startArgs, steps] = run;
-  const parts = ['start(' + startArgs.map(render).join(', ') + ')',
-    ...steps.map(([i, args]) => model.steps[i].name + '(' + args.map(render).join(', ') + ')')];
-  return parts.join('; ');
+  const parts = [
+    "start(" + startArgs.map(render).join(", ") + ")",
+    ...steps.map(
+      ([i, args]) =>
+        model.steps[i].name + "(" + args.map(render).join(", ") + ")",
+    ),
+  ];
+  return parts.join("; ");
 }
 
 /**
@@ -3465,18 +3912,21 @@ function describeRun(model, run) {
  * ref:DEC-stateful-models-linearizability
  */
 export async function checkModelAsync(model, options = {}) {
-  const {cases = 100, maxLength = 20, maxShrinks = 2000} = options;
+  const { cases = 100, maxLength = 20, maxShrinks = 2000 } = options;
   let seed = options.seed;
-  if (seed === undefined || seed === null) seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
+  if (seed === undefined || seed === null)
+    seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? "0");
   const random = new SplitMix64(BigInt(seed));
   for (let c = 0; c < cases; c++) {
     const length = Number(random.below(BigInt(maxLength) + 1n));
-    let run = await generateRun(model, random, length, 1 + c % 8, true);
+    let run = await generateRun(model, random, length, 1 + (c % 8), true);
     const failure = await execute(model, run);
     if (failure !== null) {
       let step, message;
       [run, [step, message]] = await shrinkRun(model, run, failure, maxShrinks);
-      throw new Error(`model ${model.name} fails at step ${step} of ${describeRun(model, run)}: ${message}`);
+      throw new Error(
+        `model ${model.name} fails at step ${step} of ${describeRun(model, run)}: ${message}`,
+      );
     }
   }
 }
@@ -3496,8 +3946,10 @@ export async function checkModelAsync(model, options = {}) {
 const THREADS = 3;
 const BRANCH = 5;
 
-const positionKey = (positions, state) => positions.join(',') + '|' + render(state);
-const advanced = (positions, i) => positions.map((k, j) => (j === i ? k + 1 : k));
+const positionKey = (positions, state) =>
+  positions.join(",") + "|" + render(state);
+const advanced = (positions, i) =>
+  positions.map((k, j) => (j === i ? k + 1 : k));
 
 /** Whether the model allows the prefix then every interleaving. */
 async function parallelAllowed(model, prefix, branches) {
@@ -3521,7 +3973,12 @@ async function parallelAllowed(model, prefix, branches) {
         const [index, args] = branches[i][k];
         let after;
         try {
-          [after] = await stepModel(model.commands[index], symbols, args, state);
+          [after] = await stepModel(
+            model.commands[index],
+            symbols,
+            args,
+            state,
+          );
         } catch (error) {
           if (error instanceof Invalid) return false;
           throw error;
@@ -3531,7 +3988,10 @@ async function parallelAllowed(model, prefix, branches) {
     }
     return true;
   };
-  return visit(branches.map(() => 0), state);
+  return visit(
+    branches.map(() => 0),
+    state,
+  );
 }
 
 async function generateBranch(model, random, state, length, size) {
@@ -3540,7 +4000,9 @@ async function generateBranch(model, random, state, length, size) {
   for (let n = 0; n < length; n++) {
     const index = Number(random.below(BigInt(model.commands.length)));
     const command = model.commands[index];
-    const args = command.arguments.map((d) => model.values.generate(d, random, size));
+    const args = command.arguments.map((d) =>
+      model.values.generate(d, random, size),
+    );
     try {
       [state] = await stepModel(command, symbols, args, state);
     } catch (error) {
@@ -3552,25 +4014,45 @@ async function generateBranch(model, random, state, length, size) {
   return steps;
 }
 
-async function generateParallel(model, random, size, threads = THREADS, branchLength = BRANCH) {
-  const prefix = await generateRun(model, random, Number(random.below(4n)), size);
+async function generateParallel(
+  model,
+  random,
+  size,
+  threads = THREADS,
+  branchLength = BRANCH,
+) {
+  const prefix = await generateRun(
+    model,
+    random,
+    Number(random.below(4n)),
+    size,
+  );
   let state;
   try {
     const states = await simulate(model, new Map(), prefix);
     state = states[states.length - 1];
   } catch (error) {
-    if (error instanceof Invalid) return [prefix, Array.from({length: threads}, () => [])];
+    if (error instanceof Invalid)
+      return [prefix, Array.from({ length: threads }, () => [])];
     throw error;
   }
   const branches = [];
   for (let b = 0; b < threads; b++)
-    branches.push(await generateBranch(model, random, state,
-      1 + Number(random.below(BigInt(branchLength))), size));
+    branches.push(
+      await generateBranch(
+        model,
+        random,
+        state,
+        1 + Number(random.below(BigInt(branchLength))),
+        size,
+      ),
+    );
   // Drop the last step of the longest branch (the first, among equals)
   // until every interleaving is allowed.
   while (!(await parallelAllowed(model, prefix, branches))) {
     let longest = 0;
-    for (let i = 1; i < threads; i++) if (branches[i].length > branches[longest].length) longest = i;
+    for (let i = 1; i < threads; i++)
+      if (branches[i].length > branches[longest].length) longest = i;
     branches[longest] = branches[longest].slice(0, -1);
   }
   return [prefix, branches];
@@ -3614,7 +4096,9 @@ async function executeParallel(model, testCase, shake) {
   const errors = [];
   const branch = async (i) => {
     const own = new Map();
-    const random = new SplitMix64(shake ^ (BigInt(i + 1) * 0x9E3779B97F4A7C15n));
+    const random = new SplitMix64(
+      shake ^ (BigInt(i + 1) * 0x9e3779b97f4a7c15n),
+    );
     for (let k = 0; k < branches[i].length; k++) {
       const [index, args] = branches[i][k];
       const command = model.commands[index];
@@ -3627,7 +4111,9 @@ async function executeParallel(model, testCase, shake) {
       try {
         result = await command.run(own, ...full);
       } catch (error) {
-        errors.push(`${command.name} raised ${errorName(error)}: ${errorMessage(error)}`);
+        errors.push(
+          `${command.name} raised ${errorName(error)}: ${errorMessage(error)}`,
+        );
         result = null;
       }
       history[i][k] = [called, tick(), result];
@@ -3639,12 +4125,29 @@ async function executeParallel(model, testCase, shake) {
   if (errors.length) return errors[0];
   const states = await simulate(model, symbols, prefix);
   const expected = states[states.length - 1];
-  const final = model.abstract !== null ? await model.abstract(symbols, state) : null;
-  if (await linearizable(model, symbols, branches, history, expected, final, state)) return null;
+  const final =
+    model.abstract !== null ? await model.abstract(symbols, state) : null;
+  if (
+    await linearizable(
+      model,
+      symbols,
+      branches,
+      history,
+      expected,
+      final,
+      state,
+    )
+  )
+    return null;
   const observed = [];
-  branches.forEach((b, i) => b.forEach(([index], k) =>
-    observed.push(`${branchName(i)}: ${model.commands[index].name}() returned ${render(history[i][k][2])}`)));
-  return `no order of the parallel calls agrees with the model (${observed.join('; ')})`;
+  branches.forEach((b, i) =>
+    b.forEach(([index], k) =>
+      observed.push(
+        `${branchName(i)}: ${model.commands[index].name}() returned ${render(history[i][k][2])}`,
+      ),
+    ),
+  );
+  return `no order of the parallel calls agrees with the model (${observed.join("; ")})`;
 }
 
 const branchName = (i) => String.fromCharCode(65 + i);
@@ -3655,30 +4158,52 @@ const branchName = (i) => String.fromCharCode(65 + i);
  * key's calls are linearized separately (the keys are independent), one
  * group after another; otherwise all calls at once.
  */
-async function linearizable(model, symbols, branches, history, expected, final, state) {
+async function linearizable(
+  model,
+  symbols,
+  branches,
+  history,
+  expected,
+  final,
+  state,
+) {
   const finish = async (modelState) => {
     if (final !== null && compareValues(final, modelState) !== 0) return false;
     for (const [kind, invariant] of model.invariants)
-      if (!(await invariant(symbols, kind === 'model' ? modelState : state))) return false;
+      if (!(await invariant(symbols, kind === "model" ? modelState : state)))
+        return false;
     return true;
   };
-  if (!model.perKey) return linearize(model, symbols, branches, history, expected, finish);
+  if (!model.perKey)
+    return linearize(model, symbols, branches, history, expected, finish);
   const groups = new Map();
-  branches.forEach((branch, i) => branch.forEach(([index, args], k) => {
-    const key = render(args[model.commands[index].key]);
-    if (!groups.has(key)) groups.set(key, branches.map(() => []));
-    groups.get(key)[i].push([branch[k], history[i][k]]);
-  }));
+  branches.forEach((branch, i) =>
+    branch.forEach(([index, args], k) => {
+      const key = render(args[model.commands[index].key]);
+      if (!groups.has(key))
+        groups.set(
+          key,
+          branches.map(() => []),
+        );
+      groups.get(key)[i].push([branch[k], history[i][k]]);
+    }),
+  );
   let modelState = expected;
   const keys = [...groups.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   for (const key of keys) {
     const parts = groups.get(key);
     const ends = [];
-    const found = await linearize(model, symbols, parts.map((p) => p.map(([s]) => s)),
-      parts.map((p) => p.map(([, h]) => h)), modelState, async (end) => {
+    const found = await linearize(
+      model,
+      symbols,
+      parts.map((p) => p.map(([s]) => s)),
+      parts.map((p) => p.map(([, h]) => h)),
+      modelState,
+      async (end) => {
         ends.push(end);
         return true;
-      });
+      },
+    );
     if (!found) return false;
     modelState = ends[0];
   }
@@ -3686,8 +4211,10 @@ async function linearizable(model, symbols, branches, history, expected, final, 
 }
 
 const CONSISTENT = {
-  linearizable: 'linearizable', sequential: 'sequentially consistent',
-  causal: 'causally consistent', eventual: 'eventually consistent',
+  linearizable: "linearizable",
+  sequential: "sequentially consistent",
+  causal: "causally consistent",
+  eventual: "eventually consistent",
 };
 
 /**
@@ -3702,7 +4229,7 @@ const CONSISTENT = {
  */
 async function linearize(model, symbols, branches, history, expected, finish) {
   const mode = model.consistency;
-  if (mode === 'causal') {
+  if (mode === "causal") {
     for (let i = 0; i < branches.length; i++) {
       let state = expected;
       for (let k = 0; k < branches[i].length; k++) {
@@ -3715,7 +4242,8 @@ async function linearize(model, symbols, branches, history, expected, finish) {
           if (error instanceof Invalid) return false;
           throw error;
         }
-        if (!command.unit && compareValues(history[i][k][2], wanted) !== 0) return false;
+        if (!command.unit && compareValues(history[i][k][2], wanted) !== 0)
+          return false;
       }
     }
     return true;
@@ -3725,17 +4253,23 @@ async function linearize(model, symbols, branches, history, expected, finish) {
     const key = positionKey(positions, modelState);
     if (seen.has(key)) return false;
     seen.add(key);
-    if (positions.every((k, i) => k === branches[i].length)) return finish(modelState);
+    if (positions.every((k, i) => k === branches[i].length))
+      return finish(modelState);
     for (let i = 0; i < branches.length; i++) {
       const k = positions[i];
       if (k === branches[i].length) continue;
       const called = history[i][k][0];
       let blocked = false;
-      if (mode === 'linearizable') for (let j = 0; j < branches.length; j++)
-        if (j !== i && positions[j] < branches[j].length && history[j][positions[j]][1] < called) {
-          blocked = true;
-          break;
-        }
+      if (mode === "linearizable")
+        for (let j = 0; j < branches.length; j++)
+          if (
+            j !== i &&
+            positions[j] < branches[j].length &&
+            history[j][positions[j]][1] < called
+          ) {
+            blocked = true;
+            break;
+          }
       if (blocked) continue;
       const [index, args] = branches[i][k];
       const command = model.commands[index];
@@ -3746,32 +4280,59 @@ async function linearize(model, symbols, branches, history, expected, finish) {
         if (error instanceof Invalid) continue;
         throw error;
       }
-      if (mode !== 'eventual' && !command.unit && compareValues(history[i][k][2], wanted) !== 0) continue;
+      if (
+        mode !== "eventual" &&
+        !command.unit &&
+        compareValues(history[i][k][2], wanted) !== 0
+      )
+        continue;
       if (await visit(advanced(positions, i), after)) return true;
     }
     return false;
   };
-  return visit(branches.map(() => 0), expected);
+  return visit(
+    branches.map(() => 0),
+    expected,
+  );
 }
 
 async function parallelFails(model, testCase, repeats, shake) {
   for (let attempt = 0; attempt < repeats; attempt++) {
-    const failure = await executeParallel(model, testCase, shake + BigInt(attempt));
+    const failure = await executeParallel(
+      model,
+      testCase,
+      shake + BigInt(attempt),
+    );
     if (failure !== null) return failure;
   }
   return null;
 }
 
-async function shrinkParallel(model, testCase, failure, repeats, budget, shake) {
+async function shrinkParallel(
+  model,
+  testCase,
+  failure,
+  repeats,
+  budget,
+  shake,
+) {
   while (budget > 0) {
     const [prefix, branches] = testCase;
     const [startArgs, steps] = prefix;
     const candidates = [];
     for (let k = 0; k < steps.length; k++)
-      candidates.push([[startArgs, [...steps.slice(0, k), ...steps.slice(k + 1)]], branches]);
+      candidates.push([
+        [startArgs, [...steps.slice(0, k), ...steps.slice(k + 1)]],
+        branches,
+      ]);
     for (let i = 0; i < branches.length; i++)
       for (let k = 0; k < branches[i].length; k++)
-        candidates.push([prefix, branches.map((b, j) => (j !== i ? b : [...b.slice(0, k), ...b.slice(k + 1)]))]);
+        candidates.push([
+          prefix,
+          branches.map((b, j) =>
+            j !== i ? b : [...b.slice(0, k), ...b.slice(k + 1)],
+          ),
+        ]);
     // Then smaller arguments, branch by branch, step by step.
     for (let i = 0; i < branches.length; i++)
       branches[i].forEach(([index, args], k) => {
@@ -3779,8 +4340,16 @@ async function shrinkParallel(model, testCase, failure, repeats, budget, shake) 
         const n = Math.min(command.arguments.length, args.length);
         for (let a = 0; a < n; a++)
           for (const c of model.values.shrink(command.arguments[a], args[a])) {
-            const step = [index, [...args.slice(0, a), c, ...args.slice(a + 1)]];
-            candidates.push([prefix, branches.map((b, j) => (j !== i ? b : [...b.slice(0, k), step, ...b.slice(k + 1)]))]);
+            const step = [
+              index,
+              [...args.slice(0, a), c, ...args.slice(a + 1)],
+            ];
+            candidates.push([
+              prefix,
+              branches.map((b, j) =>
+                j !== i ? b : [...b.slice(0, k), step, ...b.slice(k + 1)],
+              ),
+            ]);
           }
       });
     let improved = false;
@@ -3806,11 +4375,20 @@ async function shrinkParallel(model, testCase, failure, repeats, budget, shake) 
 
 function describeParallel(model, testCase) {
   const [prefix, branches] = testCase;
-  const describe = (steps) => steps.map(([i, args]) =>
-    model.commands[i].name + '(' + args.map(render).join(', ') + ')').join('; ');
-  const parts = branches.map((b, i) => `${branchName(i)}: ${describe(b) || 'nothing'}`);
-  return `${describeRun(model, prefix)}, then ${parts.slice(0, -1).join(', ')} and ` +
-    `${parts[parts.length - 1]} at the same time`;
+  const describe = (steps) =>
+    steps
+      .map(
+        ([i, args]) =>
+          model.commands[i].name + "(" + args.map(render).join(", ") + ")",
+      )
+      .join("; ");
+  const parts = branches.map(
+    (b, i) => `${branchName(i)}: ${describe(b) || "nothing"}`,
+  );
+  return (
+    `${describeRun(model, prefix)}, then ${parts.slice(0, -1).join(", ")} and ` +
+    `${parts[parts.length - 1]} at the same time`
+  );
 }
 
 /**
@@ -3823,18 +4401,39 @@ function describeParallel(model, testCase) {
  * ref:wing-gong-linearizability ref:DEC-stateful-models-linearizability
  */
 export async function checkModelParallelAsync(model, options = {}) {
-  const {cases = 50, repeats = 10, maxShrinks = 300, threads = THREADS, branchLength = BRANCH} = options;
+  const {
+    cases = 50,
+    repeats = 10,
+    maxShrinks = 300,
+    threads = THREADS,
+    branchLength = BRANCH,
+  } = options;
   let seed = options.seed;
-  if (seed === undefined || seed === null) seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
-  const random = new SplitMix64(BigInt(seed) ^ 0x5BD1E995n);
+  if (seed === undefined || seed === null)
+    seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? "0");
+  const random = new SplitMix64(BigInt(seed) ^ 0x5bd1e995n);
   for (let c = 0; c < cases; c++) {
-    let testCase = await generateParallel(model, random, 1 + c % 8, threads, branchLength);
+    let testCase = await generateParallel(
+      model,
+      random,
+      1 + (c % 8),
+      threads,
+      branchLength,
+    );
     const shake = random.next();
     let failure = await parallelFails(model, testCase, repeats, shake);
     if (failure !== null) {
-      [testCase, failure] = await shrinkParallel(model, testCase, failure,
-        Math.max(2, Math.floor(repeats / 2)), maxShrinks, shake);
-      throw new Error(`model ${model.name} is not ${CONSISTENT[model.consistency]}: ${describeParallel(model, testCase)}: ${failure}`);
+      [testCase, failure] = await shrinkParallel(
+        model,
+        testCase,
+        failure,
+        Math.max(2, Math.floor(repeats / 2)),
+        maxShrinks,
+        shake,
+      );
+      throw new Error(
+        `model ${model.name} is not ${CONSISTENT[model.consistency]}: ${describeParallel(model, testCase)}: ${failure}`,
+      );
     }
   }
 }
@@ -3849,7 +4448,7 @@ export async function checkModelParallelAsync(model, options = {}) {
 // Processes are async functions run together; a receive awaits the send.
 
 const RECEIVE_TIMEOUT = 5000;
-const TIMED_OUT_RECEIVE = Symbol('receive timed out');
+const TIMED_OUT_RECEIVE = Symbol("receive timed out");
 
 /** A queue whose get awaits a put, or gives up after a timeout. */
 class AsyncQueue {
@@ -3877,7 +4476,7 @@ class AsyncQueue {
   }
 }
 
-const GONE = Symbol('the other process ended');
+const GONE = Symbol("the other process ended");
 
 class Channel {
   queues = [new AsyncQueue(), new AsyncQueue()];
@@ -3890,7 +4489,8 @@ class Channel {
   }
   /** A channel end sent to a process that has ended is given up. */
   send(side, value) {
-    if (this.ended[1 - side] && value instanceof End) value.channel.gone(value.side);
+    if (this.ended[1 - side] && value instanceof End)
+      value.channel.gone(value.side);
     else this.queues[side].put(value);
   }
   /**
@@ -3930,10 +4530,24 @@ class NetScenarioChannel {
   constructor(network, name, steps, values, registry) {
     this.name = name;
     this.registry = registry;
-    this.nodes = [0, 1].map((side) => new Node(network.insecureTransportForTests(`${name}-${side}`)));
-    const wire = (sends, d) => [sends, d[0] === 'end' ? ['text'] : d];
-    this.ends = [this.nodes[0].listen(name, steps.map(([s, d]) => wire(s, d)), values)];
-    this.ends.push(this.nodes[1].dial(`${this.nodes[0].address}/${name}`, steps.map(([s, d]) => wire(!s, d)), values));
+    this.nodes = [0, 1].map(
+      (side) => new Node(network.insecureTransportForTests(`${name}-${side}`)),
+    );
+    const wire = (sends, d) => [sends, d[0] === "end" ? ["text"] : d];
+    this.ends = [
+      this.nodes[0].listen(
+        name,
+        steps.map(([s, d]) => wire(s, d)),
+        values,
+      ),
+    ];
+    this.ends.push(
+      this.nodes[1].dial(
+        `${this.nodes[0].address}/${name}`,
+        steps.map(([s, d]) => wire(!s, d)),
+        values,
+      ),
+    );
     this.done = [false, false];
     registry.set(name, this);
   }
@@ -3949,10 +4563,11 @@ class NetScenarioChannel {
       if (error instanceof PeerFailed) return GONE;
       return TIMED_OUT_RECEIVE;
     }
-    if (typeof value === 'string' && value.includes('#')) {
-      const at = value.lastIndexOf('#');
+    if (typeof value === "string" && value.includes("#")) {
+      const at = value.lastIndexOf("#");
       const owner = this.registry.get(value.slice(0, at));
-      if (owner !== undefined) return new End(owner, Number(value.slice(at + 1)));
+      if (owner !== undefined)
+        return new End(owner, Number(value.slice(at + 1)));
     }
     return value;
   }
@@ -3985,17 +4600,33 @@ class ScenarioMailbox {
   inbox = null;
   remote = null;
   registry;
-  constructor(name, expected, network = null, descriptor = null, values = null, registry = null) {
+  constructor(
+    name,
+    expected,
+    network = null,
+    descriptor = null,
+    values = null,
+    registry = null,
+  ) {
     this.name = name;
     this.expected = expected;
     this.registry = registry;
     if (network !== null) {
-      const owner = new Node(network.insecureTransportForTests(`${name}-owner`));
-      const senders = new Node(network.insecureTransportForTests(`${name}-senders`));
+      const owner = new Node(
+        network.insecureTransportForTests(`${name}-owner`),
+      );
+      const senders = new Node(
+        network.insecureTransportForTests(`${name}-senders`),
+      );
       this.nodes = [owner, senders];
-      const d = descriptor[0] === 'end' ? ['text'] : descriptor;
+      const d = descriptor[0] === "end" ? ["text"] : descriptor;
       this.inbox = owner.mailbox(name, d, values);
-      this.remote = senders.remoteMailbox(`${owner.address}/${name}`, d, values, 5);
+      this.remote = senders.remoteMailbox(
+        `${owner.address}/${name}`,
+        d,
+        values,
+        5,
+      );
     }
   }
   wake() {
@@ -4026,13 +4657,18 @@ class ScenarioMailbox {
           this.received++;
           return this.items.shift();
         }
-        if (this.received + this.abandoned >= this.expected) return [GONE, new Map()];
+        if (this.received + this.abandoned >= this.expected)
+          return [GONE, new Map()];
         const left = giveUp - Date.now();
         if (left <= 0) return TIMED_OUT_RECEIVE;
-        await Promise.race([new Promise((resolve) => this.waiters.push(resolve)), sleep(left)]);
+        await Promise.race([
+          new Promise((resolve) => this.waiters.push(resolve)),
+          sleep(left),
+        ]);
         continue;
       }
-      if (this.received + this.abandoned >= this.expected) return [GONE, new Map()];
+      if (this.received + this.abandoned >= this.expected)
+        return [GONE, new Map()];
       let value;
       try {
         value = await this.inbox.receiveAsync(20);
@@ -4042,10 +4678,11 @@ class ScenarioMailbox {
       }
       this.received++;
       const clock = this.clocks.shift() ?? new Map();
-      if (typeof value === 'string' && value.includes('#')) {
-        const at = value.lastIndexOf('#');
+      if (typeof value === "string" && value.includes("#")) {
+        const at = value.lastIndexOf("#");
         const owner = this.registry.get(value.slice(0, at));
-        if (owner !== undefined) value = new End(owner, Number(value.slice(at + 1)));
+        if (owner !== undefined)
+          value = new End(owner, Number(value.slice(at + 1)));
       }
       return [value, clock];
     }
@@ -4057,15 +4694,18 @@ class ScenarioMailbox {
 
 /** How many times these acts (not nested pars) send to name. */
 function scenarioSends(acts, name) {
-  return acts.filter((act) => act[0] === 'send' && String(act[1]) === name).length;
+  return acts.filter((act) => act[0] === "send" && String(act[1]) === name)
+    .length;
 }
 
 /** How many sends to name the whole program makes. */
 function allSends(acts, name) {
   let total = 0;
   for (const act of acts) {
-    if (act[0] === 'send' && String(act[1]) === name) total++;
-    else if (act[0] === 'par') for (const branch of act.slice(1)) total += allSends(branch.slice(1), name);
+    if (act[0] === "send" && String(act[1]) === name) total++;
+    else if (act[0] === "par")
+      for (const branch of act.slice(1))
+        total += allSends(branch.slice(1), name);
   }
   return total;
 }
@@ -4073,7 +4713,7 @@ function allSends(acts, name) {
 /** Every process of a par, outermost and first first (not or else). */
 function scenarioProcesses(acts, found) {
   for (const act of acts)
-    if (act[0] === 'par')
+    if (act[0] === "par")
       for (const branch of act.slice(1)) {
         found.push(branch);
         scenarioProcesses(branch.slice(1), found);
@@ -4095,16 +4735,17 @@ class End {
 function actsChannels(acts) {
   const names = [];
   for (const act of acts) {
-    if (act[0] === 'send') {
+    if (act[0] === "send") {
       names.push(String(act[1]));
-      if (act[2][0] === 'var') names.push(String(act[2][1]));
-    } else if (act[0] === 'receive') {
+      if (act[2][0] === "var") names.push(String(act[2][1]));
+    } else if (act[0] === "receive") {
       names.push(String(act[1]));
-    } else if (act[0] === 'receiveor') {
+    } else if (act[0] === "receiveor") {
       names.push(String(act[1]));
       names.push(...actsChannels(act[3].slice(1)));
-    } else if (act[0] === 'par') {
-      for (const branch of act.slice(1)) names.push(...actsChannels(branch.slice(1)));
+    } else if (act[0] === "par") {
+      for (const branch of act.slice(1))
+        names.push(...actsChannels(branch.slice(1)));
     }
   }
   return names;
@@ -4112,36 +4753,84 @@ function actsChannels(acts) {
 
 function constant(form) {
   const kind = form[0];
-  if (kind === 'int') return form[1];
-  if (kind === 'text') return String(form[1]);
-  if (kind === 'bool') return form[1] === 'true';
+  if (kind === "int") return form[1];
+  if (kind === "text") return String(form[1]);
+  if (kind === "bool") return form[1] === "true";
   return new DataValue(String(form[1]), []);
 }
 
 async function runScenario(model, spec, shake, crash = false, network = false) {
   const forms = readDescriptor(spec);
   const title = String(forms[0][1]);
-  const names = forms.find((f) => f[0] === 'channels').slice(1).map(String);
-  const body = forms.find((f) => f[0] === 'process').slice(1);
-  const wire = forms.find((f) => f[0] === 'wire');
-  const boxes = forms.filter((f) => f[0] === 'mailboxes').flatMap((f) => f.slice(1).map(String));
+  const names = forms
+    .find((f) => f[0] === "channels")
+    .slice(1)
+    .map(String);
+  const body = forms.find((f) => f[0] === "process").slice(1);
+  const wire = forms.find((f) => f[0] === "wire");
+  const boxes = forms
+    .filter((f) => f[0] === "mailboxes")
+    .flatMap((f) => f.slice(1).map(String));
   let channels, mailboxes;
   if (network && wire !== undefined) {
     // Loss, duplication and delay (which reorders); the channels' numbered,
     // acknowledged frames must hide them all.
-    const net = new MemoryNetwork({seed: (BigInt(shake) ^ 0x7F4A7C159E3779B9n) & MASK64, loss: 0.1, duplicate: 0.1, delay: 0.002});
-    const types = new Values(new Map(wire.slice(1).filter((f) => f[0] === 'data').map((f) => [String(f[1]), f])));
-    const steps = new Map(wire.slice(1).filter((f) => f[0] === 'channel')
-      .map((f) => [String(f[1]), f.slice(2).map((s) => [s[0] === 'send', s[1]])]));
+    const net = new MemoryNetwork({
+      seed: (BigInt(shake) ^ 0x7f4a7c159e3779b9n) & MASK64,
+      loss: 0.1,
+      duplicate: 0.1,
+      delay: 0.002,
+    });
+    const types = new Values(
+      new Map(
+        wire
+          .slice(1)
+          .filter((f) => f[0] === "data")
+          .map((f) => [String(f[1]), f]),
+      ),
+    );
+    const steps = new Map(
+      wire
+        .slice(1)
+        .filter((f) => f[0] === "channel")
+        .map((f) => [
+          String(f[1]),
+          f.slice(2).map((s) => [s[0] === "send", s[1]]),
+        ]),
+    );
     const registry = new Map();
-    channels = new Map(names.map((name) => [name, new NetScenarioChannel(net, name, steps.get(name), types, registry)]));
-    const kinds = new Map(wire.slice(1).filter((f) => f[0] === 'mailbox').map((f) => [String(f[1]), f[2]]));
-    mailboxes = new Map(boxes.map((m) => [m, kinds.has(m)
-      ? new ScenarioMailbox(m, allSends(body, m), net, kinds.get(m), types, registry)
-      : new ScenarioMailbox(m, allSends(body, m))]));
+    channels = new Map(
+      names.map((name) => [
+        name,
+        new NetScenarioChannel(net, name, steps.get(name), types, registry),
+      ]),
+    );
+    const kinds = new Map(
+      wire
+        .slice(1)
+        .filter((f) => f[0] === "mailbox")
+        .map((f) => [String(f[1]), f[2]]),
+    );
+    mailboxes = new Map(
+      boxes.map((m) => [
+        m,
+        kinds.has(m)
+          ? new ScenarioMailbox(
+              m,
+              allSends(body, m),
+              net,
+              kinds.get(m),
+              types,
+              registry,
+            )
+          : new ScenarioMailbox(m, allSends(body, m)),
+      ]),
+    );
   } else {
     channels = new Map(names.map((name) => [name, new Channel()]));
-    mailboxes = new Map(boxes.map((m) => [m, new ScenarioMailbox(m, allSends(body, m))]));
+    mailboxes = new Map(
+      boxes.map((m) => [m, new ScenarioMailbox(m, allSends(body, m))]),
+    );
   }
   const commands = new Map(model.commands.map((c) => [c.name, c]));
   const symbols = new Map();
@@ -4156,11 +4845,12 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
   const processes = scenarioProcesses(body, []);
   let victim = null;
   if (crash && processes.length) {
-    const chooser = new SplitMix64(shake ^ 0xC3A5C85C97CB3127n);
+    const chooser = new SplitMix64(shake ^ 0xc3a5c85c97cb3127n);
     const branch = processes[Number(chooser.below(BigInt(processes.length)))];
     victim = [branch, Number(chooser.below(BigInt(branch.length - 1 + 1)))];
   }
-  const crashesAt = (identity, index) => victim !== null && victim[0] === identity && victim[1] === index;
+  const crashesAt = (identity, index) =>
+    victim !== null && victim[0] === identity && victim[1] === index;
 
   // Vector clocks: each value sent carries its sender's clock (kept here, in
   // order per channel direction), so calls can be ordered by what happened
@@ -4168,8 +4858,9 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
   const stamps = new Map();
   const processNames = new Map();
   const nameOf = (identity) => {
-    if (identity === null) return 'root';
-    if (!processNames.has(identity)) processNames.set(identity, `p${processNames.size}`);
+    if (identity === null) return "root";
+    if (!processNames.has(identity))
+      processNames.set(identity, `p${processNames.size}`);
     return processNames.get(identity);
   };
   const bump = (clock, me) => clock.set(me, (clock.get(me) ?? 0) + 1);
@@ -4182,10 +4873,26 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
   };
 
   // 'done' or 'failed'; either way, the ends still held are given up.
-  const runProcess = async (acts, env, ends, random, identity = null, clock = new Map()) => {
+  const runProcess = async (
+    acts,
+    env,
+    ends,
+    random,
+    identity = null,
+    clock = new Map(),
+  ) => {
     const sent = new Map([...mailboxes.keys()].map((m) => [m, 0]));
     try {
-      return await steps(acts, env, ends, random, identity, clock, nameOf(identity), sent);
+      return await steps(
+        acts,
+        env,
+        ends,
+        random,
+        identity,
+        clock,
+        nameOf(identity),
+        sent,
+      );
     } finally {
       for (const [channel, side] of ends.values()) channel.gone(side);
       // Sends this process will never make.
@@ -4200,12 +4907,14 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
     const own = new Map();
     for (let index = 0; index < acts.length; index++) {
       const act = acts[index];
-      if (failures.length) return 'failed';
-      if (crashesAt(identity, index)) return 'failed';
+      if (failures.length) return "failed";
+      if (crashesAt(identity, index)) return "failed";
       const kind = act[0];
-      if (kind === 'call') {
+      if (kind === "call") {
         const command = commands.get(String(act[1]));
-        const args = act.slice(3).map((o) => (o[0] === 'var' ? env.get(String(o[1])) : constant(o)));
+        const args = act
+          .slice(3)
+          .map((o) => (o[0] === "var" ? env.get(String(o[1])) : constant(o)));
         const full = [...args];
         full.splice(command.state, 0, state);
         const pause = perturb(random);
@@ -4217,22 +4926,36 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
         try {
           result = await command.run(own, ...full);
         } catch (error) {
-          failures.push(`${command.name} raised ${errorName(error)}: ${errorMessage(error)}`);
-          return 'failed';
+          failures.push(
+            `${command.name} raised ${errorName(error)}: ${errorMessage(error)}`,
+          );
+          return "failed";
         }
         const returned = tick();
         bump(clock, me);
-        history.push([command, args, result, called, returned, me, atCall, new Map(clock)]);
-        if (act[2] !== null && act[2] !== '_') env.set(String(act[2]), result);
-      } else if (kind === 'send' && mailboxes.has(String(act[1]))) {
+        history.push([
+          command,
+          args,
+          result,
+          called,
+          returned,
+          me,
+          atCall,
+          new Map(clock),
+        ]);
+        if (act[2] !== null && act[2] !== "_") env.set(String(act[2]), result);
+      } else if (kind === "send" && mailboxes.has(String(act[1]))) {
         const operand = act[2];
         let value;
-        if (operand[0] === 'var' && ends.has(String(operand[1]))) {
+        if (operand[0] === "var" && ends.has(String(operand[1]))) {
           const name = String(operand[1]);
           value = new End(...ends.get(name));
           ends.delete(name);
         } else {
-          value = operand[0] === 'var' ? env.get(String(operand[1])) : constant(operand);
+          value =
+            operand[0] === "var"
+              ? env.get(String(operand[1]))
+              : constant(operand);
         }
         const pause = perturb(random);
         if (pause !== null) await pause;
@@ -4240,61 +4963,93 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
         try {
           await mailboxes.get(String(act[1])).send(value, new Map(clock));
         } catch (error) {
-          failures.push(`a send to mailbox ${act[1]} failed: ${errorMessage(error)}`);
-          return 'failed';
+          failures.push(
+            `a send to mailbox ${act[1]} failed: ${errorMessage(error)}`,
+          );
+          return "failed";
         }
         sent.set(String(act[1]), sent.get(String(act[1])) + 1);
-      } else if ((kind === 'receive' || kind === 'receiveor') && mailboxes.has(String(act[1]))) {
+      } else if (
+        (kind === "receive" || kind === "receiveor") &&
+        mailboxes.has(String(act[1]))
+      ) {
         const got = await mailboxes.get(String(act[1])).receive();
         if (got === TIMED_OUT_RECEIVE) {
-          failures.push(`a receive on mailbox ${act[1]} waited too long: the processes are blocked`);
-          return 'failed';
+          failures.push(
+            `a receive on mailbox ${act[1]} waited too long: the processes are blocked`,
+          );
+          return "failed";
         }
         const [value, carried] = got;
         if (value === GONE) {
-          if (kind === 'receive') return 'failed';
-          return steps(act[3].slice(1), env, ends, random, null, clock, me, sent);
+          if (kind === "receive") return "failed";
+          return steps(
+            act[3].slice(1),
+            env,
+            ends,
+            random,
+            null,
+            clock,
+            me,
+            sent,
+          );
         }
         merge(clock, carried);
         bump(clock, me);
-        if (value instanceof End) ends.set(String(act[2]), [value.channel, value.side]);
+        if (value instanceof End)
+          ends.set(String(act[2]), [value.channel, value.side]);
         else env.set(String(act[2]), value);
-      } else if (kind === 'send') {
+      } else if (kind === "send") {
         const [channel, side] = ends.get(String(act[1]));
         const operand = act[2];
         let value;
-        if (operand[0] === 'var' && ends.has(String(operand[1]))) {
+        if (operand[0] === "var" && ends.has(String(operand[1]))) {
           const name = String(operand[1]);
           value = new End(...ends.get(name));
           ends.delete(name);
         } else {
-          value = operand[0] === 'var' ? env.get(String(operand[1])) : constant(operand);
+          value =
+            operand[0] === "var"
+              ? env.get(String(operand[1]))
+              : constant(operand);
         }
         const pause = perturb(random);
         if (pause !== null) await pause;
         bump(clock, me);
         stampFor(channel, side).push(new Map(clock));
         channel.send(side, value);
-      } else if (kind === 'receive' || kind === 'receiveor') {
+      } else if (kind === "receive" || kind === "receiveor") {
         const [channel, side] = ends.get(String(act[1]));
         const value = await channel.receive(side);
         if (value === TIMED_OUT_RECEIVE) {
-          failures.push(`a receive on ${act[1]} waited too long: the processes are blocked`);
-          return 'failed';
+          failures.push(
+            `a receive on ${act[1]} waited too long: the processes are blocked`,
+          );
+          return "failed";
         }
         if (value === GONE) {
           // The other process ended: or else runs instead of the rest;
           // without it, this process fails too.
-          if (kind === 'receive') return 'failed';
+          if (kind === "receive") return "failed";
           ends.delete(String(act[1]));
-          return steps(act[3].slice(1), env, ends, random, null, clock, me, sent);
+          return steps(
+            act[3].slice(1),
+            env,
+            ends,
+            random,
+            null,
+            clock,
+            me,
+            sent,
+          );
         }
         const stamped = stampFor(channel, 1 - side).shift();
         if (stamped !== undefined) merge(clock, stamped);
         bump(clock, me);
-        if (value instanceof End) ends.set(String(act[2]), [value.channel, value.side]);
+        if (value instanceof End)
+          ends.set(String(act[2]), [value.channel, value.side]);
         else env.set(String(act[2]), value);
-      } else if (kind === 'par') {
+      } else if (kind === "par") {
         const branches = act.slice(1);
         const owned = new Map();
         branches.forEach((branch, i) => {
@@ -4315,40 +5070,76 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
               mine.set(name, [channels.get(name), users.indexOf(i)]);
             }
           }
-          return runProcess(branch.slice(1), new Map(env), mine,
-            new SplitMix64(shake ^ ((BigInt(i + 1) * 0x9E3779B97F4A7C15n) & MASK64)), branch, clocks[i]);
+          return runProcess(
+            branch.slice(1),
+            new Map(env),
+            mine,
+            new SplitMix64(
+              shake ^ ((BigInt(i + 1) * 0x9e3779b97f4a7c15n) & MASK64),
+            ),
+            branch,
+            clocks[i],
+          );
         });
         const settled = await Promise.allSettled(running);
         for (const child of clocks) merge(clock, child);
         bump(clock, me);
-        const rejected = settled.find((s) => s.status === 'rejected');
+        const rejected = settled.find((s) => s.status === "rejected");
         if (rejected !== undefined) throw rejected.reason;
         // A failed branch fails the process that ran the par.
-        if (settled.some((s) => s.value === 'failed')) return 'failed';
-      } else if (kind === 'expect') {
+        if (settled.some((s) => s.value === "failed")) return "failed";
+      } else if (kind === "expect") {
         const name = String(act[1]);
-        const actual = env.get(name), wanted = constant(act[2]);
-        if (actual === undefined || actual === null || compareValues(actual, wanted) !== 0) {
-          failures.push(`expect ${name} = ${render(wanted)} failed: ${name} is ${render(actual)}`);
-          return 'failed';
+        const actual = env.get(name),
+          wanted = constant(act[2]);
+        if (
+          actual === undefined ||
+          actual === null ||
+          compareValues(actual, wanted) !== 0
+        ) {
+          failures.push(
+            `expect ${name} = ${render(wanted)} failed: ${name} is ${render(actual)}`,
+          );
+          return "failed";
         }
       }
     }
-    if (crashesAt(identity, acts.length)) return 'failed';
-    return 'done';
+    if (crashesAt(identity, acts.length)) return "failed";
+    return "done";
   };
 
-  const outcome = await runProcess(body, new Map(), new Map(), new SplitMix64(shake));
-  for (const channel of channels.values()) if (channel instanceof NetScenarioChannel) await channel.close();
+  const outcome = await runProcess(
+    body,
+    new Map(),
+    new Map(),
+    new SplitMix64(shake),
+  );
+  for (const channel of channels.values())
+    if (channel instanceof NetScenarioChannel) await channel.close();
   for (const box of mailboxes.values()) await box.close();
-  if (failures.length) return [title, failures[0] + (victim !== null ? ' (with a process crashed)' : '')];
-  if (outcome === 'failed' && victim === null) return [title, 'a process failed'];
-  const final = model.abstract !== null ? await model.abstract(symbols, state) : null;
-  if (!(await linearizesHistory(model, symbols, history, expected, final, state))) {
-    const observed = [...history].sort((a, b) => a[3] - b[3])
-      .map(([c, args, r]) => `${c.name}(${args.map(render).join(', ')}) returned ${render(r)}`)
-      .join('; ');
-    return [title, `the calls are not ${CONSISTENT[model.consistency]} with the model (${observed})`];
+  if (failures.length)
+    return [
+      title,
+      failures[0] + (victim !== null ? " (with a process crashed)" : ""),
+    ];
+  if (outcome === "failed" && victim === null)
+    return [title, "a process failed"];
+  const final =
+    model.abstract !== null ? await model.abstract(symbols, state) : null;
+  if (
+    !(await linearizesHistory(model, symbols, history, expected, final, state))
+  ) {
+    const observed = [...history]
+      .sort((a, b) => a[3] - b[3])
+      .map(
+        ([c, args, r]) =>
+          `${c.name}(${args.map(render).join(", ")}) returned ${render(r)}`,
+      )
+      .join("; ");
+    return [
+      title,
+      `the calls are not ${CONSISTENT[model.consistency]} with the model (${observed})`,
+    ];
   }
   return [title, null];
 }
@@ -4371,10 +5162,20 @@ function happenedBefore(a, b) {
  * each process's results from an order of what happened before them.
  * Eventual: no results, only the final state.
  */
-async function linearizesHistory(model, symbols, history, expected, final, state) {
+async function linearizesHistory(
+  model,
+  symbols,
+  history,
+  expected,
+  final,
+  state,
+) {
   const mode = model.consistency;
   const count = history.length;
-  const before = (j, i) => (mode === 'linearizable' ? history[j][4] < history[i][3] : happenedBefore(history[j], history[i]));
+  const before = (j, i) =>
+    mode === "linearizable"
+      ? history[j][4] < history[i][3]
+      : happenedBefore(history[j], history[i]);
   const bit = (i) => 1n << BigInt(i);
   const search = async (members, checked, judgeFinal) => {
     const seen = new Set();
@@ -4386,14 +5187,19 @@ async function linearizesHistory(model, symbols, history, expected, final, state
       seen.add(key);
       if (done === full) {
         if (!judgeFinal) return true;
-        if (final !== null && compareValues(final, modelState) !== 0) return false;
+        if (final !== null && compareValues(final, modelState) !== 0)
+          return false;
         for (const [kind, invariant] of model.invariants)
-          if (!(await invariant(symbols, kind === 'model' ? modelState : state))) return false;
+          if (
+            !(await invariant(symbols, kind === "model" ? modelState : state))
+          )
+            return false;
         return true;
       }
       for (const i of members) {
         if (done & bit(i)) continue;
-        if (members.some((j) => j !== i && !(done & bit(j)) && before(j, i))) continue;
+        if (members.some((j) => j !== i && !(done & bit(j)) && before(j, i)))
+          continue;
         const [command, args, result] = history[i];
         let after, wanted;
         try {
@@ -4402,7 +5208,12 @@ async function linearizesHistory(model, symbols, history, expected, final, state
           if (error instanceof Invalid) continue;
           throw error;
         }
-        if (checked.has(i) && !command.unit && compareValues(result, wanted) !== 0) continue;
+        if (
+          checked.has(i) &&
+          !command.unit &&
+          compareValues(result, wanted) !== 0
+        )
+          continue;
         if (await visit(done | bit(i), after)) return true;
       }
       return false;
@@ -4410,29 +5221,44 @@ async function linearizesHistory(model, symbols, history, expected, final, state
     return visit(0n, expected);
   };
   const everything = history.map((_, i) => i);
-  if (mode === 'causal') {
+  if (mode === "causal") {
     for (const process of new Set(history.map((h) => h[5]))) {
       const own = everything.filter((i) => history[i][5] === process);
-      const seenBy = everything.filter((j) => own.includes(j) ||
-        own.some((i) => i !== j && happenedBefore(history[j], history[i])));
+      const seenBy = everything.filter(
+        (j) =>
+          own.includes(j) ||
+          own.some((i) => i !== j && happenedBefore(history[j], history[i])),
+      );
       if (!(await search(seenBy, new Set(own), false))) return false;
     }
     return true;
   }
-  return search(everything, mode === 'eventual' ? new Set() : new Set(everything), true);
+  return search(
+    everything,
+    mode === "eventual" ? new Set() : new Set(everything),
+    true,
+  );
 }
 
 /** Runs a scenario on many schedules; a failure throws an Error. */
 export async function checkScenarioAsync(model, spec, options = {}) {
-  const {runs = 30} = options;
+  const { runs = 30 } = options;
   let seed = options.seed;
-  if (seed === undefined || seed === null) seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
-  const random = new SplitMix64(BigInt(seed) ^ 0x2545F4914F6CDD1Dn);
+  if (seed === undefined || seed === null)
+    seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? "0");
+  const random = new SplitMix64(BigInt(seed) ^ 0x2545f4914f6cdd1dn);
   for (let r = 0; r < runs; r++) {
     // Every third run crashes one process of a par at a random point, and
     // every third other one sends each channel over a faulty network.
-    const [title, failure] = await runScenario(model, spec, random.next(), r % 3 === 2, r % 3 === 1);
-    if (failure !== null) throw new Error(`scenario ${title} fails: ${failure}`);
+    const [title, failure] = await runScenario(
+      model,
+      spec,
+      random.next(),
+      r % 3 === 2,
+      r % 3 === 1,
+    );
+    if (failure !== null)
+      throw new Error(`scenario ${title} fails: ${failure}`);
   }
 }
 
@@ -4443,7 +5269,8 @@ export async function checkScenarioAsync(model, spec, options = {}) {
 // channel only through send(side, value), receive(side) and
 // receiveNow(side), so a networked transport can stand in for it.
 
-const SPENT_END = 'this end was already used; use the end its last step returned';
+const SPENT_END =
+  "this end was already used; use the end its last step returned";
 
 /**
  * A receive whose other end gave up: its process failed, or it called
@@ -4451,13 +5278,15 @@ const SPENT_END = 'this end was already used; use the end its last step returned
  * process fails too.
  */
 export class PeerFailed extends Error {
-  constructor(message = 'the other end gave up the conversation (its process failed or abandoned it)') {
+  constructor(
+    message = "the other end gave up the conversation (its process failed or abandoned it)",
+  ) {
     super(message);
-    this.name = 'PeerFailed';
+    this.name = "PeerFailed";
   }
 }
 
-const ABANDONED = Symbol('abandoned');
+const ABANDONED = Symbol("abandoned");
 
 /** An in-process channel: one queue per direction; a receive awaits a send. */
 export class SessionChannel {
@@ -4490,13 +5319,17 @@ export class SessionChannel {
         return Promise.reject(error);
       }
     }
-    return new Promise((resolve) => this.#waiters[side].push(resolve)).then(take);
+    return new Promise((resolve) => this.#waiters[side].push(resolve)).then(
+      take,
+    );
   }
 
   /** The next value already sent to the given side, without waiting. */
   receiveNow(side) {
     if (!this.#queues[side].length)
-      throw new Error('nothing has been sent to this end yet; await receive() instead');
+      throw new Error(
+        "nothing has been sent to this end yet; await receive() instead",
+      );
     const value = this.#queues[side].shift();
     if (value === ABANDONED) {
       this.#queues[side].unshift(ABANDONED);
@@ -4599,7 +5432,7 @@ export function spawn(fn, ...args) {
   result.catch(() => {
     for (const arg of args) if (arg instanceof SessionEnd) arg._giveUp();
   });
-  return Object.freeze({join: () => result});
+  return Object.freeze({ join: () => result });
 }
 
 /** Runs async functions at once; resolves to their results, or rejects with the first failure. */
@@ -4622,7 +5455,7 @@ export function par(...fns) {
 export class WireError extends Error {
   constructor(message) {
     super(message);
-    this.name = 'WireError';
+    this.name = "WireError";
   }
 }
 
@@ -4630,16 +5463,16 @@ export class WireError extends Error {
 export class Unreachable extends Error {
   constructor(message) {
     super(message);
-    this.name = 'Unreachable';
+    this.name = "Unreachable";
   }
 }
 
 const UTF8 = new TextEncoder();
-const STRICT_UTF8 = new TextDecoder('utf-8', {fatal: true});
+const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true });
 
 function putVarint(out, n) {
   for (;;) {
-    const byte = Number(n & 0x7Fn);
+    const byte = Number(n & 0x7fn);
     n >>= 7n;
     if (n) out.push(byte | 0x80);
     else {
@@ -4650,104 +5483,120 @@ function putVarint(out, n) {
 }
 
 function getVarint(buf, pos) {
-  let result = 0n, shift = 0n;
+  let result = 0n,
+    shift = 0n;
   for (;;) {
-    if (pos >= buf.length) throw new WireError('the bytes end in the middle of a value');
+    if (pos >= buf.length)
+      throw new WireError("the bytes end in the middle of a value");
     const byte = buf[pos++];
-    result |= BigInt(byte & 0x7F) << shift;
+    result |= BigInt(byte & 0x7f) << shift;
     if (byte < 0x80) return [result, pos];
     shift += 7n;
   }
 }
 
-const asBig = (v) => (typeof v === 'number' && Number.isInteger(v) ? BigInt(v) : v);
+const asBig = (v) =>
+  typeof v === "number" && Number.isInteger(v) ? BigInt(v) : v;
 
 function wirePut(values, d, v, out) {
   d = values.resolve(d);
   switch (d[0]) {
-    case 'int': {
+    case "int": {
       v = asBig(v);
-      const lo = d[2], hi = d[3];
-      if (typeof v !== 'bigint' || (lo !== null && lo !== undefined && v < lo) || (hi !== null && hi !== undefined && v > hi))
+      const lo = d[2],
+        hi = d[3];
+      if (
+        typeof v !== "bigint" ||
+        (lo !== null && lo !== undefined && v < lo) ||
+        (hi !== null && hi !== undefined && v > hi)
+      )
         throw new WireError(`${render(v)} is not a ${d[1]}`);
       putVarint(out, v >= 0n ? v * 2n : -v * 2n - 1n);
       return;
     }
-    case 'bool':
+    case "bool":
       out.push(v ? 1 : 0);
       return;
-    case 'text':
-    case 'end':
-    case 'bytes': {
-      const raw = d[0] === 'bytes' ? v : UTF8.encode(v);
+    case "text":
+    case "end":
+    case "bytes": {
+      const raw = d[0] === "bytes" ? v : UTF8.encode(v);
       putVarint(out, BigInt(raw.length));
       for (const b of raw) out.push(b);
       return;
     }
-    case 'unit':
+    case "unit":
       return;
-    case 'list':
+    case "list":
       putVarint(out, BigInt(v.length));
       for (const item of v) wirePut(values, d[1], item, out);
       return;
-    case 'maybe':
-      if (v.tag.endsWith('Absent')) out.push(0);
+    case "maybe":
+      if (v.tag.endsWith("Absent")) out.push(0);
       else {
         out.push(1);
         wirePut(values, d[1], v.fields[0], out);
       }
       return;
-    case 'either': {
-      const left = v.tag.endsWith('Left');
+    case "either": {
+      const left = v.tag.endsWith("Left");
       out.push(left ? 0 : 1);
       wirePut(values, left ? d[1] : d[2], v.fields[0], out);
       return;
     }
-    case 'data': {
+    case "data": {
       const ctors = d.slice(2);
       const index = ctors.findIndex((c) => String(c[1]) === v.tag);
-      if (index < 0) throw new WireError(`${v.tag} is not a constructor of ${d[1]}`);
+      if (index < 0)
+        throw new WireError(`${v.tag} is not a constructor of ${d[1]}`);
       putVarint(out, BigInt(index));
-      ctors[index].slice(2).forEach((fd, i) => wirePut(values, fd, v.fields[i], out));
+      ctors[index]
+        .slice(2)
+        .forEach((fd, i) => wirePut(values, fd, v.fields[i], out));
       return;
     }
   }
-  throw new WireError('unknown descriptor ' + render(d));
+  throw new WireError("unknown descriptor " + render(d));
 }
 
 function wireGet(values, d, buf, pos) {
   d = values.resolve(d);
   switch (d[0]) {
-    case 'int': {
+    case "int": {
       let z;
       [z, pos] = getVarint(buf, pos);
       const v = z % 2n === 0n ? z / 2n : -(z + 1n) / 2n;
-      const lo = d[2], hi = d[3];
-      if ((lo !== null && lo !== undefined && v < lo) || (hi !== null && hi !== undefined && v > hi))
+      const lo = d[2],
+        hi = d[3];
+      if (
+        (lo !== null && lo !== undefined && v < lo) ||
+        (hi !== null && hi !== undefined && v > hi)
+      )
         throw new WireError(`${v} is out of range for ${d[1]}`);
       return [v, pos];
     }
-    case 'bool':
-      if (pos >= buf.length || buf[pos] > 1) throw new WireError('not a Bool');
+    case "bool":
+      if (pos >= buf.length || buf[pos] > 1) throw new WireError("not a Bool");
       return [buf[pos] === 1, pos + 1];
-    case 'text':
-    case 'end':
-    case 'bytes': {
+    case "text":
+    case "end":
+    case "bytes": {
       let n;
       [n, pos] = getVarint(buf, pos);
       const end = pos + Number(n);
-      if (end > buf.length) throw new WireError('the bytes end in the middle of a value');
+      if (end > buf.length)
+        throw new WireError("the bytes end in the middle of a value");
       const raw = buf.slice(pos, end);
-      if (d[0] === 'bytes') return [raw, end];
+      if (d[0] === "bytes") return [raw, end];
       try {
         return [STRICT_UTF8.decode(raw), end];
       } catch {
-        throw new WireError('text that is not UTF-8');
+        throw new WireError("text that is not UTF-8");
       }
     }
-    case 'unit':
+    case "unit":
       return [UNIT, pos];
-    case 'list': {
+    case "list": {
       let n;
       [n, pos] = getVarint(buf, pos);
       const items = [];
@@ -4758,23 +5607,28 @@ function wireGet(values, d, buf, pos) {
       }
       return [items, pos];
     }
-    case 'maybe':
-    case 'either': {
-      if (pos >= buf.length || buf[pos] > 1) throw new WireError(`not a ${d[0] === 'maybe' ? 'Maybe' : 'Either'}`);
+    case "maybe":
+    case "either": {
+      if (pos >= buf.length || buf[pos] > 1)
+        throw new WireError(`not a ${d[0] === "maybe" ? "Maybe" : "Either"}`);
       const which = buf[pos++];
-      if (d[0] === 'maybe') {
-        if (which === 0) return [new DataValue('Maybe::Absent', []), pos];
+      if (d[0] === "maybe") {
+        if (which === 0) return [new DataValue("Maybe::Absent", []), pos];
         const [v, next] = wireGet(values, d[1], buf, pos);
-        return [new DataValue('Maybe::Present', [v]), next];
+        return [new DataValue("Maybe::Present", [v]), next];
       }
       const [v, next] = wireGet(values, which === 0 ? d[1] : d[2], buf, pos);
-      return [new DataValue(which === 0 ? 'Either::Left' : 'Either::Right', [v]), next];
+      return [
+        new DataValue(which === 0 ? "Either::Left" : "Either::Right", [v]),
+        next,
+      ];
     }
-    case 'data': {
+    case "data": {
       let index;
       [index, pos] = getVarint(buf, pos);
       const ctors = d.slice(2);
-      if (index >= BigInt(ctors.length)) throw new WireError(`no constructor ${index} in ${d[1]}`);
+      if (index >= BigInt(ctors.length))
+        throw new WireError(`no constructor ${index} in ${d[1]}`);
       const fields = [];
       for (const fd of ctors[Number(index)].slice(2)) {
         let v;
@@ -4784,7 +5638,7 @@ function wireGet(values, d, buf, pos) {
       return [new DataValue(String(ctors[Number(index)][1]), fields), pos];
     }
   }
-  throw new WireError('unknown descriptor ' + render(d));
+  throw new WireError("unknown descriptor " + render(d));
 }
 
 /**
@@ -4802,17 +5656,20 @@ export function wireEncode(values, d, v) {
 /** The value encoded by exactly these bytes. */
 export function wireDecode(values, d, data) {
   const [v, pos] = wireGet(values, d, data, 0);
-  if (pos !== data.length) throw new WireError('extra bytes after the value');
+  if (pos !== data.length) throw new WireError("extra bytes after the value");
   return v;
 }
 
-const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+const hex = (bytes) =>
+  Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 
 /** count values generated from one seed, encoded, in hexadecimal. */
 export function wireEncoded(text, seed, size, count) {
   const [values, d] = valuesFrom(text);
   const random = new SplitMix64(BigInt(seed));
-  return Array.from({length: Number(count)}, () => hex(wireEncode(values, d, values.generate(d, random, size))));
+  return Array.from({ length: Number(count) }, () =>
+    hex(wireEncode(values, d, values.generate(d, random, size))),
+  );
 }
 
 // LawSpec's own search over a law's inputs (see LawSpec.Search). The
@@ -4826,8 +5683,12 @@ export function wireEncoded(text, seed, size, count) {
 function searchFile(law) {
   const directory = globalThis.process?.env?.LAWSPEC_FAILURES;
   if (!directory) return null;
-  const path = nodeModule('node:path');
-  return path.join(directory, 'inputs', law.replace(/[^A-Za-z0-9_-]/g, '_') + '.json');
+  const path = nodeModule("node:path");
+  return path.join(
+    directory,
+    "inputs",
+    law.replace(/[^A-Za-z0-9_-]/g, "_") + ".json",
+  );
 }
 
 export function searchRemember(law, descriptors, values) {
@@ -4835,28 +5696,40 @@ export function searchRemember(law, descriptors, values) {
   if (file === null) return;
   let inputs;
   try {
-    inputs = descriptors.map((text, i) => { const [table, d] = valuesFrom(text); return hex(wireEncode(table, d, values[i])); });
-  } catch { return; }
-  const fs = nodeModule('node:fs');
-  fs.mkdirSync(nodeModule('node:path').dirname(file), { recursive: true });
+    inputs = descriptors.map((text, i) => {
+      const [table, d] = valuesFrom(text);
+      return hex(wireEncode(table, d, values[i]));
+    });
+  } catch {
+    return;
+  }
+  const fs = nodeModule("node:fs");
+  fs.mkdirSync(nodeModule("node:path").dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ law, inputs }));
 }
 
 export async function searchReplay(law, descriptors, check) {
   const file = searchFile(law);
-  const fs = file === null ? null : nodeModule('node:fs');
+  const fs = file === null ? null : nodeModule("node:fs");
   if (file === null || !fs.existsSync(file)) return;
   let values = [];
   try {
-    const entry = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const entry = JSON.parse(fs.readFileSync(file, "utf8"));
     values = descriptors.map((text, i) => {
       const [table, d] = valuesFrom(text);
-      const bytes = Uint8Array.from((entry.inputs[i] ?? '').match(/../g) ?? [], (b) => parseInt(b, 16));
+      const bytes = Uint8Array.from(
+        (entry.inputs[i] ?? "").match(/../g) ?? [],
+        (b) => parseInt(b, 16),
+      );
       return wireDecode(table, d, bytes);
     });
-  } catch { values = []; }
+  } catch {
+    values = [];
+  }
   if (values.length === descriptors.length) {
-    console.log(`${law}: replaying the failing inputs kept in .lawspec/failures`);
+    console.log(
+      `${law}: replaying the failing inputs kept in .lawspec/failures`,
+    );
     await check(values);
   }
   fs.rmSync(file, { force: true });
@@ -4866,23 +5739,49 @@ export async function searchReplay(law, descriptors, check) {
 function searchMoves(table, d, v) {
   d = table.resolve(d);
   switch (d[0]) {
-    case 'int': {
+    case "int": {
       const [lo, hi] = table.bounds(d);
       const x = asBig(v);
-      const out = [x + 1n, x - 1n, x * 2n, x / 2n, x + (hi - x) / 2n, x - (x - lo) / 2n];
+      const out = [
+        x + 1n,
+        x - 1n,
+        x * 2n,
+        x / 2n,
+        x + (hi - x) / 2n,
+        x - (x - lo) / 2n,
+      ];
       return [...new Set(out.filter((y) => y >= lo && y <= hi && y !== x))];
     }
-    case 'list':
-      return v.flatMap((item, i) => searchMoves(table, d[1], item).map((m) => v.map((old, j) => (j === i ? m : old))));
-    case 'maybe':
-      return v.tag === 'Maybe::Present' ? searchMoves(table, d[1], v.fields[0]).map((m) => new DataValue(v.tag, [m])) : [];
-    case 'either':
-      return searchMoves(table, v.tag === 'Either::Left' ? d[1] : d[2], v.fields[0]).map((m) => new DataValue(v.tag, [m]));
-    case 'data': {
+    case "list":
+      return v.flatMap((item, i) =>
+        searchMoves(table, d[1], item).map((m) =>
+          v.map((old, j) => (j === i ? m : old)),
+        ),
+      );
+    case "maybe":
+      return v.tag === "Maybe::Present"
+        ? searchMoves(table, d[1], v.fields[0]).map(
+            (m) => new DataValue(v.tag, [m]),
+          )
+        : [];
+    case "either":
+      return searchMoves(
+        table,
+        v.tag === "Either::Left" ? d[1] : d[2],
+        v.fields[0],
+      ).map((m) => new DataValue(v.tag, [m]));
+    case "data": {
       const ctor = d.slice(2).find((c) => String(c[1]) === v.tag);
       if (!ctor) return [];
-      return ctor.slice(2).flatMap((fd, i) => searchMoves(table, fd, v.fields[i])
-        .map((m) => new DataValue(v.tag, v.fields.map((old, j) => (j === i ? m : old)))));
+      return ctor.slice(2).flatMap((fd, i) =>
+        searchMoves(table, fd, v.fields[i]).map(
+          (m) =>
+            new DataValue(
+              v.tag,
+              v.fields.map((old, j) => (j === i ? m : old)),
+            ),
+        ),
+      );
     }
     default:
       return [];
@@ -4891,7 +5790,7 @@ function searchMoves(table, d, v) {
 
 export async function searchClimb(law, descriptors, check) {
   const tables = descriptors.map(valuesFrom);
-  const base = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
+  const base = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? "0");
   const generate = (seed) => {
     const random = new SplitMix64(seed);
     return tables.map(([table, d]) => table.generate(d, random, 8));
@@ -4902,7 +5801,12 @@ export async function searchClimb(law, descriptors, check) {
     if (tried >= 400) return false;
     tried += 1;
     let score;
-    try { score = await check(values); } catch (error) { searchRemember(law, descriptors, values); throw error; }
+    try {
+      score = await check(values);
+    } catch (error) {
+      searchRemember(law, descriptors, values);
+      throw error;
+    }
     if (score === null || score === undefined) return false;
     score = Number(score);
     if (best !== null && !(score > best.score)) return false;
@@ -4913,14 +5817,21 @@ export async function searchClimb(law, descriptors, check) {
   for (let step = 0; step < 60 && tried < 400; step++) {
     let rose = false;
     if (best !== null) {
-      const moves = best.values.flatMap((v, i) => searchMoves(tables[i][0], tables[i][1], v)
-        .map((m) => best.values.map((old, j) => (j === i ? m : old))));
+      const moves = best.values.flatMap((v, i) =>
+        searchMoves(tables[i][0], tables[i][1], v).map((m) =>
+          best.values.map((old, j) => (j === i ? m : old)),
+        ),
+      );
       // Steepest ascent: every move is tried, and the best one kept.
-      for (const candidate of moves.slice(0, 24)) if (await attempt(candidate)) rose = true;
+      for (const candidate of moves.slice(0, 24))
+        if (await attempt(candidate)) rose = true;
     }
     if (!rose) await attempt(generate(base + 1000n + BigInt(step)));
   }
-  console.log(`${law}: targeted search tried ${tried} case(s)` + (best === null ? '' : `; best score ${best.score}`));
+  console.log(
+    `${law}: targeted search tried ${tried} case(s)` +
+      (best === null ? "" : `; best score ${best.score}`),
+  );
 }
 
 /** Whether count generated values decode to themselves. */
@@ -4929,16 +5840,17 @@ export function wireRoundTrips(text, seed, size, count) {
   const random = new SplitMix64(BigInt(seed));
   for (let i = 0; i < Number(count); i++) {
     const v = values.generate(d, random, size);
-    if (render(wireDecode(values, d, wireEncode(values, d, v))) !== render(v)) return false;
+    if (render(wireDecode(values, d, wireEncode(values, d, v))) !== render(v))
+      return false;
   }
   return true;
 }
 
 const NO_TYPES = new Values(new Map());
-const D_TEXT = ['text'];
-const D_ID = ['int', 'UInt64', 0n, null];
-const D_SEQ = ['int', 'Int64', null, null];
-const FRAME = [D_TEXT, D_TEXT, D_TEXT, D_ID, ['bytes']];
+const D_TEXT = ["text"];
+const D_ID = ["int", "UInt64", 0n, null];
+const D_SEQ = ["int", "Int64", null, null];
+const FRAME = [D_TEXT, D_TEXT, D_TEXT, D_ID, ["bytes"]];
 
 function concatBytes(...parts) {
   const total = parts.reduce((n, p) => n + p.length, 0);
@@ -4953,7 +5865,9 @@ function concatBytes(...parts) {
 
 function frameEncode(kind, to, source, ident, payload) {
   const out = [];
-  [kind, to, source, BigInt(ident), payload].forEach((v, i) => wirePut(NO_TYPES, FRAME[i], v, out));
+  [kind, to, source, BigInt(ident), payload].forEach((v, i) =>
+    wirePut(NO_TYPES, FRAME[i], v, out),
+  );
   return Uint8Array.from(out);
 }
 
@@ -4964,15 +5878,19 @@ function frameDecode(data) {
     [v, pos] = wireGet(NO_TYPES, d, data, pos);
     return v;
   });
-  if (pos !== data.length) throw new WireError('extra bytes after a frame');
+  if (pos !== data.length) throw new WireError("extra bytes after a frame");
   return fields;
 }
 
 /** 'tcp://host:port/name' as ['tcp://host:port', 'name']. */
 function splitAddress(address) {
-  const at = address.lastIndexOf('/');
-  const node = address.slice(0, at), name = address.slice(at + 1);
-  if (at < 0 || !node.includes('://')) throw new Error(`${address} is not an address such as tcp://127.0.0.1:7000/name`);
+  const at = address.lastIndexOf("/");
+  const node = address.slice(0, at),
+    name = address.slice(at + 1);
+  if (at < 0 || !node.includes("://"))
+    throw new Error(
+      `${address} is not an address such as tcp://127.0.0.1:7000/name`,
+    );
   return [node, name];
 }
 
@@ -4986,8 +5904,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 export class Transport {
   address = null;
-  start(deliver) { throw new Error('not implemented'); }
-  async send(node, frame) { throw new Error('not implemented'); }
+  start(deliver) {
+    throw new Error("not implemented");
+  }
+  async send(node, frame) {
+    throw new Error("not implemented");
+  }
   async close() {}
 }
 
@@ -5005,7 +5927,13 @@ export class MemoryNetwork {
   groups;
   recorded;
   /** With record, every record sent is kept in recorded, as the network saw it. */
-  constructor({seed = 0n, loss = 0, duplicate = 0, delay = 0, record = false} = {}) {
+  constructor({
+    seed = 0n,
+    loss = 0,
+    duplicate = 0,
+    delay = 0,
+    record = false,
+  } = {}) {
     this.random = new SplitMix64(BigInt(seed));
     this.loss = loss;
     this.duplicate = duplicate;
@@ -5015,7 +5943,7 @@ export class MemoryNetwork {
     this.recorded = record ? [] : null;
   }
   transport(name) {
-    return new MemoryTransport(this, 'mem://' + name);
+    return new MemoryTransport(this, "mem://" + name);
   }
   /**
    * A transport whose node skips the handshake and sends frames in the
@@ -5023,11 +5951,11 @@ export class MemoryNetwork {
    * makes one, and no configuration selects it.
    */
   insecureTransportForTests(name) {
-    return new InsecureMemoryTransport(this, 'mem://' + name);
+    return new InsecureMemoryTransport(this, "mem://" + name);
   }
   /** Only nodes named in the same group reach each other. */
   partition(...groups) {
-    this.groups = groups.map((g) => new Set(g.map((n) => 'mem://' + n)));
+    this.groups = groups.map((g) => new Set(g.map((n) => "mem://" + n)));
   }
   heal() {
     this.groups = null;
@@ -5039,7 +5967,11 @@ export class MemoryNetwork {
     if (this.recorded !== null) this.recorded.push(Uint8Array.from(frame));
     const deliver = this.nodes.get(node);
     if (deliver === undefined) throw new Unreachable(`no node at ${node}`);
-    if (this.groups !== null && !this.groups.some((g) => g.has(source) && g.has(node))) return;
+    if (
+      this.groups !== null &&
+      !this.groups.some((g) => g.has(source) && g.has(node))
+    )
+      return;
     if (this.chance(this.loss)) return;
     const copies = this.chance(this.duplicate) ? 2 : 1;
     for (let i = 0; i < copies; i++) {
@@ -5081,8 +6013,8 @@ export class TcpTransport extends Transport {
   connections;
   sockets;
   server;
-  static async listen(host = '127.0.0.1', port = 0) {
-    const net = await import('node:net');
+  static async listen(host = "127.0.0.1", port = 0) {
+    const net = await import("node:net");
     const transport = new TcpTransport();
     transport.net = net;
     transport.deliver = null;
@@ -5090,7 +6022,7 @@ export class TcpTransport extends Transport {
     transport.sockets = new Set();
     transport.server = net.createServer((socket) => transport.read(socket));
     await new Promise((resolve, reject) => {
-      transport.server.once('error', reject);
+      transport.server.once("error", reject);
       transport.server.listen(port, host, resolve);
     });
     transport.address = `tcp://${host}:${transport.server.address().port}`;
@@ -5099,18 +6031,20 @@ export class TcpTransport extends Transport {
   read(socket) {
     this.sockets.add(socket);
     let buffer = new Uint8Array(0);
-    socket.on('data', (chunk) => {
+    socket.on("data", (chunk) => {
       buffer = concatBytes(buffer, chunk);
       while (buffer.length >= 4) {
-        const n = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(0);
+        const n = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(
+          0,
+        );
         if (buffer.length < 4 + n) break;
         const frame = buffer.slice(4, 4 + n);
         buffer = buffer.slice(4 + n);
         if (this.deliver !== null) this.deliver(frame);
       }
     });
-    socket.on('error', () => {});
-    socket.on('close', () => this.sockets.delete(socket));
+    socket.on("error", () => {});
+    socket.on("close", () => this.sockets.delete(socket));
   }
   start(deliver) {
     this.deliver = deliver;
@@ -5118,26 +6052,31 @@ export class TcpTransport extends Transport {
   connect(node) {
     let pending = this.connections.get(node);
     if (pending === undefined) {
-      const rest = node.slice('tcp://'.length);
-      const at = rest.lastIndexOf(':');
+      const rest = node.slice("tcp://".length);
+      const at = rest.lastIndexOf(":");
       pending = new Promise((resolve, reject) => {
-        const socket = this.net.createConnection({host: rest.slice(0, at), port: Number(rest.slice(at + 1))});
+        const socket = this.net.createConnection({
+          host: rest.slice(0, at),
+          port: Number(rest.slice(at + 1)),
+        });
         const timer = setTimeout(() => {
           socket.destroy();
-          reject(new Unreachable(`cannot reach ${node}: no connection in time`));
+          reject(
+            new Unreachable(`cannot reach ${node}: no connection in time`),
+          );
         }, 5000);
         timer.unref?.();
-        socket.once('connect', () => {
+        socket.once("connect", () => {
           clearTimeout(timer);
           this.sockets.add(socket);
           resolve(socket);
         });
-        socket.on('error', (error) => {
+        socket.on("error", (error) => {
           clearTimeout(timer);
           this.connections.delete(node);
           reject(new Unreachable(`cannot reach ${node}: ${error.message}`));
         });
-        socket.on('close', () => this.connections.delete(node));
+        socket.on("close", () => this.connections.delete(node));
       });
       pending.catch(() => {});
       this.connections.set(node, pending);
@@ -5165,24 +6104,25 @@ export class HttpTransport extends Transport {
   deliver;
   agent;
   server;
-  static async listen(host = '127.0.0.1', port = 0) {
-    const http = await import('node:http');
+  static async listen(host = "127.0.0.1", port = 0) {
+    const http = await import("node:http");
     const transport = new HttpTransport();
     transport.http = http;
     transport.deliver = null;
-    transport.agent = new http.Agent({keepAlive: true});
+    transport.agent = new http.Agent({ keepAlive: true });
     transport.server = http.createServer((request, response) => {
       const chunks = [];
-      request.on('data', (chunk) => chunks.push(chunk));
-      request.on('end', () => {
-        const ok = request.method === 'POST' && request.url === '/lawspec';
+      request.on("data", (chunk) => chunks.push(chunk));
+      request.on("end", () => {
+        const ok = request.method === "POST" && request.url === "/lawspec";
         response.writeHead(ok ? 204 : 404);
         response.end();
-        if (ok && transport.deliver !== null) transport.deliver(new Uint8Array(concatBytes(...chunks)));
+        if (ok && transport.deliver !== null)
+          transport.deliver(new Uint8Array(concatBytes(...chunks)));
       });
     });
     await new Promise((resolve, reject) => {
-      transport.server.once('error', reject);
+      transport.server.once("error", reject);
       transport.server.listen(port, host, resolve);
     });
     transport.address = `http://${host}:${transport.server.address().port}`;
@@ -5193,15 +6133,28 @@ export class HttpTransport extends Transport {
   }
   send(node, frame) {
     return new Promise((resolve, reject) => {
-      const request = this.http.request(node + '/lawspec', {
-        method: 'POST', agent: this.agent, timeout: 5000,
-        headers: {'Content-Type': 'application/octet-stream', 'Content-Length': frame.length},
-      }, (response) => {
-        response.resume();
-        response.on('end', resolve);
-      });
-      request.on('timeout', () => request.destroy(new Error('no answer in time')));
-      request.on('error', (error) => reject(new Unreachable(`cannot reach ${node}: ${error.message}`)));
+      const request = this.http.request(
+        node + "/lawspec",
+        {
+          method: "POST",
+          agent: this.agent,
+          timeout: 5000,
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": frame.length,
+          },
+        },
+        (response) => {
+          response.resume();
+          response.on("end", resolve);
+        },
+      );
+      request.on("timeout", () =>
+        request.destroy(new Error("no answer in time")),
+      );
+      request.on("error", (error) =>
+        reject(new Unreachable(`cannot reach ${node}: ${error.message}`)),
+      );
       request.end(frame);
     });
   }
@@ -5231,19 +6184,28 @@ export function registerSecureNetwork(provider) {
 function secureNetwork() {
   if (secureProvider !== null) return Promise.resolve(secureProvider);
   if (secureProviderLoad === null) {
-    const extension = String(import.meta.url).endsWith('.mjs') ? '.mjs' : '.js';
-    secureProviderLoad = import('./lawspec_network' + extension).then((module) => {
-      if (secureProvider === null) secureProvider = module;
-      return secureProvider;
-    }, (error) => {
-      secureProviderLoad = null;
-      const missing = String(error?.message ?? '').split(' imported from')[0];
-      if (error?.code === 'ERR_MODULE_NOT_FOUND' && missing.includes('lawspec_network')) {
-        throw new Error('a node needs the secure network handler: add `import lawspec.network` ' +
-          'to a unit of the program, so lawspec_network is generated', {cause: error});
-      }
-      throw error;
-    });
+    const extension = String(import.meta.url).endsWith(".mjs") ? ".mjs" : ".js";
+    secureProviderLoad = import("./lawspec_network" + extension).then(
+      (module) => {
+        if (secureProvider === null) secureProvider = module;
+        return secureProvider;
+      },
+      (error) => {
+        secureProviderLoad = null;
+        const missing = String(error?.message ?? "").split(" imported from")[0];
+        if (
+          error?.code === "ERR_MODULE_NOT_FOUND" &&
+          missing.includes("lawspec_network")
+        ) {
+          throw new Error(
+            "a node needs the secure network handler: add `import lawspec.network` " +
+              "to a unit of the program, so lawspec_network is generated",
+            { cause: error },
+          );
+        }
+        throw error;
+      },
+    );
   }
   return secureProviderLoad;
 }
@@ -5262,7 +6224,9 @@ class ReplySlot {
   promise;
   resolve;
   constructor() {
-    this.promise = new Promise((resolve) => { this.resolve = resolve; });
+    this.promise = new Promise((resolve) => {
+      this.resolve = resolve;
+    });
   }
 }
 
@@ -5299,7 +6263,7 @@ export class Node {
    * lawspec_network (import lawspec.network); the identity is set once it is
    * ready (await node.ready()).
    */
-  constructor(transport, {identity = null, trusted = null} = {}) {
+  constructor(transport, { identity = null, trusted = null } = {}) {
     this.transport = transport;
     this.address = transport.address;
     this.closed = false;
@@ -5336,10 +6300,13 @@ export class Node {
       return;
     }
     // In order of arrival, once the secure layer is ready.
-    this.arrivals = this.arrivals.then(() => this.securing).then(() => {
-      const frame = this.secure.receive(record);
-      if (frame !== null && frame !== undefined) this.deliver(frame);
-    }).catch(() => {});
+    this.arrivals = this.arrivals
+      .then(() => this.securing)
+      .then(() => {
+        const frame = this.secure.receive(record);
+        if (frame !== null && frame !== undefined) this.deliver(frame);
+      })
+      .catch(() => {});
   }
   async transmit(node, frame) {
     if (this.securing === null) return this.transport.send(node, frame);
@@ -5357,19 +6324,26 @@ export class Node {
   }
   async send(address, kind, payload, ident = 0) {
     const [node, name] = splitAddress(address);
-    await this.transmit(node, frameEncode(kind, name, this.address, ident, payload));
+    await this.transmit(
+      node,
+      frameEncode(kind, name, this.address, ident, payload),
+    );
   }
   /** Passes a frame on to address unchanged, keeping its source. */
   forward(address, kind, source, ident, payload) {
     const [node, name] = splitAddress(address);
-    this.quietly(this.transmit(node, frameEncode(kind, name, source, ident, payload)));
+    this.quietly(
+      this.transmit(node, frameEncode(kind, name, source, ident, payload)),
+    );
   }
   quietly(promise) {
     promise.catch(() => {});
   }
   register(name, entity) {
-    if (!name || name.includes('/')) throw new Error(`${name} is not a name: use letters, digits and dashes`);
-    if (this.entities.has(name)) throw new Error(`${name} is already registered on ${this.address}`);
+    if (!name || name.includes("/"))
+      throw new Error(`${name} is not a name: use letters, digits and dashes`);
+    if (this.entities.has(name))
+      throw new Error(`${name} is already registered on ${this.address}`);
     this.entities.set(name, entity);
     return `${this.address}/${name}`;
   }
@@ -5381,7 +6355,7 @@ export class Node {
       return;
     }
     ident = Number(ident);
-    if (kind === 'reply') {
+    if (kind === "reply") {
       const slot = this.pending.get(ident);
       if (slot !== undefined) {
         this.pending.delete(ident);
@@ -5391,26 +6365,40 @@ export class Node {
     }
     const entity = this.entities.get(to);
     if (entity === undefined) {
-      if (ident) this.reply(source, ident, 3, `nothing is registered as ${to} on ${this.address}`);
+      if (ident)
+        this.reply(
+          source,
+          ident,
+          3,
+          `nothing is registered as ${to} on ${this.address}`,
+        );
       return;
     }
     if (ident) {
       const key = `${source}|${ident}`;
       if (this.seen.has(key)) {
         const answer = this.seen.get(key);
-        if (answer !== null) this.quietly(this.send(source + '/', 'reply', answer, ident));
+        if (answer !== null)
+          this.quietly(this.send(source + "/", "reply", answer, ident));
         return;
       }
       this.seen.set(key, null);
-      if (this.seen.size > 10000) for (const old of [...this.seen.keys()].slice(0, 5000)) this.seen.delete(old);
+      if (this.seen.size > 10000)
+        for (const old of [...this.seen.keys()].slice(0, 5000))
+          this.seen.delete(old);
     }
-    Promise.resolve().then(() => entity.onFrame(this, kind, source, ident, payload)).catch(() => {});
+    Promise.resolve()
+      .then(() => entity.onFrame(this, kind, source, ident, payload))
+      .catch(() => {});
   }
   reply(source, ident, status, body) {
-    const payload = concatBytes(Uint8Array.of(status), typeof body === 'string' ? UTF8.encode(body) : body);
+    const payload = concatBytes(
+      Uint8Array.of(status),
+      typeof body === "string" ? UTF8.encode(body) : body,
+    );
     const key = `${source}|${ident}`;
     if (this.seen.has(key)) this.seen.set(key, payload);
-    this.quietly(this.send(source + '/', 'reply', payload, ident));
+    this.quietly(this.send(source + "/", "reply", payload, ident));
   }
   /** Sends a request, again every 100ms until answered: [status, body]. */
   async request(address, kind, payload, timeout) {
@@ -5419,7 +6407,9 @@ export class Node {
     this.pending.set(ident, slot);
     const giveUp = Date.now() + timeout * 1000;
     let answered = null;
-    slot.promise.then((p) => { answered = p; });
+    slot.promise.then((p) => {
+      answered = p;
+    });
     for (;;) {
       this.quietly(this.send(address, kind, payload, ident));
       const wait = Math.max(0, Math.min(100, giveUp - Date.now()));
@@ -5454,15 +6444,29 @@ export class Node {
     return new RemoteActor(this, address, signatures, values, timeout);
   }
   /** Lets other nodes evaluate definitions: table maps a content hash to [function, argument descriptors, result descriptor]. */
-  serveDefinitions(table, values = NO_TYPES, name = 'definitions') {
+  serveDefinitions(table, values = NO_TYPES, name = "definitions") {
     return this.register(name, new DefinitionEntity(table, values));
   }
   /** Evaluates the definition with this content hash on another node. */
-  async evaluate(node, digest, args, argumentDescriptors, result, values = NO_TYPES, timeout = 5, name = 'definitions') {
+  async evaluate(
+    node,
+    digest,
+    args,
+    argumentDescriptors,
+    result,
+    values = NO_TYPES,
+    timeout = 5,
+    name = "definitions",
+  ) {
     const out = [];
     wirePut(NO_TYPES, D_TEXT, digest, out);
     argumentDescriptors.forEach((d, i) => wirePut(values, d, args[i], out));
-    const [status, body] = await this.request(`${node}/${name}`, 'eval', Uint8Array.from(out), timeout);
+    const [status, body] = await this.request(
+      `${node}/${name}`,
+      "eval",
+      Uint8Array.from(out),
+      timeout,
+    );
     return replyValue(status, body, values, result);
   }
   /**
@@ -5517,13 +6521,15 @@ class MailEntity {
     this.descriptor = descriptor;
   }
   onFrame(node, kind, source, ident, payload) {
-    if (kind !== 'mail') return;
-    let status = 0, body = new Uint8Array(0);
+    if (kind !== "mail") return;
+    let status = 0,
+      body = new Uint8Array(0);
     try {
       this.box.send(wireDecode(this.values, this.descriptor, payload));
     } catch (error) {
       if (error instanceof ActorStopped) [status, body] = [2, error.message];
-      else [status, body] = [3, `not a message of this mailbox: ${error.message}`];
+      else
+        [status, body] = [3, `not a message of this mailbox: ${error.message}`];
     }
     if (ident) node.reply(source, ident, status, body);
   }
@@ -5548,8 +6554,13 @@ export class RemoteMailbox {
     this.timeout = timeout;
   }
   async send(value) {
-    const [status, body] = await this.node.request(this.address, 'mail', wireEncode(this.values, this.descriptor, value), this.timeout);
-    if (status !== 0) replyValue(status, body, this.values, ['unit']);
+    const [status, body] = await this.node.request(
+      this.address,
+      "mail",
+      wireEncode(this.values, this.descriptor, value),
+      this.timeout,
+    );
+    if (status !== 0) replyValue(status, body, this.values, ["unit"]);
   }
 }
 
@@ -5563,7 +6574,7 @@ class ActorEntity {
     this.values = values;
   }
   async onFrame(node, kind, source, ident, payload) {
-    if (kind !== 'call') return;
+    if (kind !== "call") return;
     let handler, reply, args;
     try {
       let message, pos;
@@ -5577,16 +6588,23 @@ class ActorEntity {
         [v, pos] = wireGet(this.values, d, payload, pos);
         return v;
       });
-      if (pos !== payload.length) throw new WireError('extra bytes after the arguments');
+      if (pos !== payload.length)
+        throw new WireError("extra bytes after the arguments");
     } catch (error) {
-      node.reply(source, ident, 3, `not a message this actor handles: ${error.message}`);
+      node.reply(
+        source,
+        ident,
+        3,
+        `not a message this actor handles: ${error.message}`,
+      );
       return;
     }
     try {
       const result = await this.actor.call((s) => handler(s, ...args));
       node.reply(source, ident, 0, wireEncode(this.values, reply, result));
     } catch (error) {
-      if (error instanceof ActorStopped) node.reply(source, ident, 2, error.message);
+      if (error instanceof ActorStopped)
+        node.reply(source, ident, 2, error.message);
       else node.reply(source, ident, 1, error.message);
     }
   }
@@ -5614,8 +6632,15 @@ export class RemoteActor {
     const [argumentDescriptors, reply] = this.signatures[message];
     const out = [];
     wirePut(NO_TYPES, D_TEXT, message, out);
-    argumentDescriptors.forEach((d, i) => wirePut(this.values, d, args[i], out));
-    const [status, body] = await this.node.request(this.address, 'call', Uint8Array.from(out), this.timeout);
+    argumentDescriptors.forEach((d, i) =>
+      wirePut(this.values, d, args[i], out),
+    );
+    const [status, body] = await this.node.request(
+      this.address,
+      "call",
+      Uint8Array.from(out),
+      this.timeout,
+    );
     return replyValue(status, body, this.values, reply);
   }
 }
@@ -5628,13 +6653,13 @@ class DefinitionEntity {
     this.values = values;
   }
   async onFrame(node, kind, source, ident, payload) {
-    if (kind !== 'eval') return;
+    if (kind !== "eval") return;
     let fn, result, args;
     try {
       let digest, pos;
       [digest, pos] = wireGet(NO_TYPES, D_TEXT, payload, 0);
       const entry = this.table[digest];
-      if (entry === undefined) throw new WireError('unknown hash');
+      if (entry === undefined) throw new WireError("unknown hash");
       let argumentDescriptors;
       [fn, argumentDescriptors, result] = entry;
       args = argumentDescriptors.map((d) => {
@@ -5643,19 +6668,34 @@ class DefinitionEntity {
         return v;
       });
     } catch {
-      node.reply(source, ident, 3, 'this node has no definition with that content hash');
+      node.reply(
+        source,
+        ident,
+        3,
+        "this node has no definition with that content hash",
+      );
       return;
     }
     try {
-      node.reply(source, ident, 0, wireEncode(this.values, result, await fn(...args)));
+      node.reply(
+        source,
+        ident,
+        0,
+        wireEncode(this.values, result, await fn(...args)),
+      );
     } catch (error) {
-      node.reply(source, ident, 1, `${errorName(error)}: ${errorMessage(error)}`);
+      node.reply(
+        source,
+        ident,
+        1,
+        `${errorName(error)}: ${errorMessage(error)}`,
+      );
     }
   }
 }
 
-const NET_ABANDONED = Symbol('the other end gave up');
-const D_BYTES = ['bytes'];
+const NET_ABANDONED = Symbol("the other end gave up");
+const D_BYTES = ["bytes"];
 
 function putTexts(out, texts) {
   putVarint(out, BigInt(texts.length));
@@ -5773,7 +6813,7 @@ class NetEndpoint {
   }
   connect(address) {
     this.peer = address;
-    this.transmit(-1n, UTF8.encode('hello'));
+    this.transmit(-1n, UTF8.encode("hello"));
   }
   frame(seq, body) {
     const head = [];
@@ -5785,7 +6825,8 @@ class NetEndpoint {
     const payload = this.frame(seq, body);
     const now = Date.now();
     this.unacked.set(seq, [payload, now, now, body]);
-    if (this.peer !== null) this.node.quietly(this.node.send(this.peer, 'chan', payload));
+    if (this.peer !== null)
+      this.node.quietly(this.node.send(this.peer, "chan", payload));
   }
   resend() {
     if (this.gone || this.movedTo !== null) {
@@ -5794,22 +6835,30 @@ class NetEndpoint {
     }
     if (this.taking !== null && !this.taken.done) return;
     const now = Date.now();
-    const due = [...this.unacked.values()].filter((entry) => now - entry[2] > 50);
+    const due = [...this.unacked.values()].filter(
+      (entry) => now - entry[2] > 50,
+    );
     if (due.some((entry) => now - entry[1] > this.deadline)) {
-      this.fail('the other end did not answer in time (unreachable)');
+      this.fail("the other end did not answer in time (unreachable)");
       return;
     }
     if (this.peer === null) return;
-    if (this.announcing && !this.confirmed.done && now - this.announcedAt > 50) {
+    if (
+      this.announcing &&
+      !this.confirmed.done &&
+      now - this.announcedAt > 50
+    ) {
       this.announcedAt = now;
       const moved = [];
       putTexts(moved, this.history);
       wirePut(NO_TYPES, D_TEXT, this.address, moved);
-      this.node.quietly(this.node.send(this.peer, 'moved', Uint8Array.from(moved)));
+      this.node.quietly(
+        this.node.send(this.peer, "moved", Uint8Array.from(moved)),
+      );
     }
     for (const entry of due) {
       entry[2] = now;
-      this.node.quietly(this.node.send(this.peer, 'chan', entry[0]));
+      this.node.quietly(this.node.send(this.peer, "chan", entry[0]));
     }
   }
   fail(reason) {
@@ -5821,7 +6870,7 @@ class NetEndpoint {
     this.inbox.put([NET_ABANDONED, reason]);
   }
   onFrame(node, kind, source, ident, payload) {
-    if (kind === 'take') {
+    if (kind === "take") {
       this.give(payload);
       return;
     }
@@ -5831,31 +6880,31 @@ class NetEndpoint {
     }
     if (this.taking !== null && !this.taken.done) {
       // Until the state arrives, frames are dropped: their senders send them again.
-      if (kind === 'state') this.install(payload);
+      if (kind === "state") this.install(payload);
       return;
     }
-    if (kind === 'ack') {
+    if (kind === "ack") {
       const [seq] = wireGet(NO_TYPES, D_SEQ, payload, 0);
       this.unacked.delete(seq);
       return;
     }
-    if (kind === 'moved') {
+    if (kind === "moved") {
       this.peerMoved(payload);
       return;
     }
-    if (kind === 'moved-ack') {
+    if (kind === "moved-ack") {
       const [to] = wireGet(NO_TYPES, D_TEXT, payload, 0);
       if (to === this.address) this.confirmed.set();
       return;
     }
-    if (kind !== 'chan') return;
+    if (kind !== "chan") return;
     let seq, sender, pos;
     [seq, pos] = wireGet(NO_TYPES, D_SEQ, payload, 0);
     [sender, pos] = wireGet(NO_TYPES, D_TEXT, payload, pos);
     const body = payload.slice(pos);
     const ack = [];
     wirePut(NO_TYPES, D_SEQ, seq, ack);
-    node.quietly(node.send(sender, 'ack', Uint8Array.from(ack)));
+    node.quietly(node.send(sender, "ack", Uint8Array.from(ack)));
     if (seq === -1n) {
       if (this.peer === null) this.peer = sender;
       return;
@@ -5887,15 +6936,20 @@ class NetEndpoint {
     }
     if (this.token === null || token !== this.token) return;
     if (this.movedTo === null) {
-      const received = this.inbox.items.filter(([marker]) => marker === null).map(([, body]) => body);
+      const received = this.inbox.items
+        .filter(([marker]) => marker === null)
+        .map(([, body]) => body);
       const state = [];
       wirePut(NO_TYPES, D_TEXT, token, state);
-      wirePut(NO_TYPES, D_TEXT, this.failure ?? '', state);
-      wirePut(NO_TYPES, D_TEXT, this.peer ?? '', state);
+      wirePut(NO_TYPES, D_TEXT, this.failure ?? "", state);
+      wirePut(NO_TYPES, D_TEXT, this.peer ?? "", state);
       putTexts(state, [...this.history, this.address]);
       wirePut(NO_TYPES, D_SEQ, this.out, state);
       wirePut(NO_TYPES, D_SEQ, this.expected, state);
-      putNumbered(state, [...this.unacked].map(([seq, entry]) => [seq, entry[3]]).sort(bySeq));
+      putNumbered(
+        state,
+        [...this.unacked].map(([seq, entry]) => [seq, entry[3]]).sort(bySeq),
+      );
       putNumbered(state, [...this.early].sort(bySeq));
       putVarint(state, BigInt(received.length));
       for (const body of received) wirePut(NO_TYPES, D_BYTES, body, state);
@@ -5907,7 +6961,7 @@ class NetEndpoint {
     } else if (this.movedTo !== taker) {
       return;
     }
-    this.node.quietly(this.node.send(taker, 'state', this.state));
+    this.node.quietly(this.node.send(taker, "state", this.state));
   }
   /**
    * Takes over the end offered at address (<old address>?take=<token>):
@@ -5916,20 +6970,23 @@ class NetEndpoint {
    * then keeps forwarding to this end, as a relay would).
    */
   async takeOver(address) {
-    const at = address.indexOf('?');
-    const old = address.slice(0, at), token = address.slice(at + 1).slice('take='.length);
+    const at = address.indexOf("?");
+    const old = address.slice(0, at),
+      token = address.slice(at + 1).slice("take=".length);
     this.taking = [old, token];
     const request = [];
     wirePut(NO_TYPES, D_TEXT, token, request);
     wirePut(NO_TYPES, D_TEXT, this.address, request);
     const giveUp = Date.now() + this.deadline;
     while (!this.taken.done) {
-      this.node.quietly(this.node.send(old, 'take', Uint8Array.from(request)));
+      this.node.quietly(this.node.send(old, "take", Uint8Array.from(request)));
       await Promise.race([this.taken.promise, sleep(50)]);
       if (this.taken.done) break;
       if (Date.now() >= giveUp) {
         this.taking = null;
-        this.fail('the node the end came from did not hand it over in time (unreachable)');
+        this.fail(
+          "the node the end came from did not hand it over in time (unreachable)",
+        );
         return;
       }
     }
@@ -5937,7 +6994,16 @@ class NetEndpoint {
     if (left > 0) await Promise.race([this.confirmed.promise, sleep(left)]);
   }
   install(payload) {
-    let token, failure, peer, history, out, expected, unacked, early, count, pos;
+    let token,
+      failure,
+      peer,
+      history,
+      out,
+      expected,
+      unacked,
+      early,
+      count,
+      pos;
     const received = [];
     try {
       [token, pos] = wireGet(NO_TYPES, D_TEXT, payload, 0);
@@ -5957,19 +7023,25 @@ class NetEndpoint {
     } catch {
       return;
     }
-    if (this.taking === null || token !== this.taking[1] || this.taken.done) return;
+    if (this.taking === null || token !== this.taking[1] || this.taken.done)
+      return;
     const now = Date.now();
-    this.peer = peer === '' ? null : peer;
+    this.peer = peer === "" ? null : peer;
     this.history = history;
     this.out = out;
     this.expected = expected;
     // Sent again from here at once, under this end's address.
-    this.unacked = new Map(unacked.map(([seq, body]) => [seq, [this.frame(seq, body), now, 0, body]]));
+    this.unacked = new Map(
+      unacked.map(([seq, body]) => [
+        seq,
+        [this.frame(seq, body), now, 0, body],
+      ]),
+    );
     this.early = new Map(early);
     for (const body of received) this.inbox.put([null, body]);
     this.announcing = true;
     this.taken.set();
-    if (failure !== '') this.fail(failure);
+    if (failure !== "") this.fail(failure);
   }
   /** The peer moved: from now on send to its new address. */
   peerMoved(payload) {
@@ -5984,18 +7056,22 @@ class NetEndpoint {
     if (this.peer === to) {
       const answer = [];
       wirePut(NO_TYPES, D_TEXT, to, answer);
-      this.node.quietly(this.node.send(to, 'moved-ack', Uint8Array.from(answer)));
+      this.node.quietly(
+        this.node.send(to, "moved-ack", Uint8Array.from(answer)),
+      );
     }
   }
   stepDescriptor(sends) {
-    if (this.step >= this.steps.length) throw new Error("this channel's protocol has ended");
+    if (this.step >= this.steps.length)
+      throw new Error("this channel's protocol has ended");
     const [stepSends, d] = this.steps[this.step];
-    if (Boolean(stepSends) !== sends) throw new Error('this step ' + (stepSends ? 'sends' : 'receives'));
+    if (Boolean(stepSends) !== sends)
+      throw new Error("this step " + (stepSends ? "sends" : "receives"));
     this.step += 1;
     return d;
   }
   send(side, value) {
-    if (this.gone) throw new PeerFailed('the other end has failed');
+    if (this.gone) throw new PeerFailed("the other end has failed");
     const d = this.stepDescriptor(true);
     const body = [0];
     wirePut(this.values, d, value, body);
@@ -6006,21 +7082,26 @@ class NetEndpoint {
   /** Resolves to the next value; rejects with PeerFailed, or a timeout error after timeout ms. */
   async receive(side, timeout = undefined) {
     const d = this.stepDescriptor(false);
-    const got = await this.inbox.get(timeout === undefined ? 2 ** 31 - 1 : timeout);
-    if (got === TIMED_OUT_RECEIVE) throw new Error('no message arrived in time');
+    const got = await this.inbox.get(
+      timeout === undefined ? 2 ** 31 - 1 : timeout,
+    );
+    if (got === TIMED_OUT_RECEIVE)
+      throw new Error("no message arrived in time");
     const [marker, body] = got;
     if (marker === NET_ABANDONED) {
       this.inbox.items.unshift(got);
       throw new PeerFailed(body);
     }
     if (body[0] === 1) {
-      this.fail('the other end gave up the conversation');
+      this.fail("the other end gave up the conversation");
       throw new PeerFailed();
     }
     return wireDecode(this.values, d, body.slice(1));
   }
   receiveNow() {
-    throw new Error('a channel between nodes has no immediate receive; await receive() instead');
+    throw new Error(
+      "a channel between nodes has no immediate receive; await receive() instead",
+    );
   }
   /** Gives up: the other end's receives fail after what was sent. */
   abandon(side) {
@@ -6036,7 +7117,9 @@ class Signal {
   promise;
   resolve;
   constructor() {
-    this.promise = new Promise((resolve) => { this.resolve = resolve; });
+    this.promise = new Promise((resolve) => {
+      this.resolve = resolve;
+    });
   }
   set() {
     this.done = true;
@@ -6044,15 +7127,28 @@ class Signal {
   }
 }
 
-const NUMBER_INTEGERS = new Set(['Int8', 'Int16', 'Int32', 'UInt8', 'UInt16', 'UInt32', 'CodePoint', 'CodeUnit16']);
+const NUMBER_INTEGERS = new Set([
+  "Int8",
+  "Int16",
+  "Int32",
+  "UInt8",
+  "UInt16",
+  "UInt32",
+  "CodePoint",
+  "CodeUnit16",
+]);
 
 /**
  * A logical scalar as its native value: integers of 32 bits or fewer are
  * numbers in JavaScript, wider ones bigints. Other values are unchanged.
  */
 export function nativeScalar(d, value) {
-  return d !== undefined && d[0] === 'int' && typeof value === 'bigint' && NUMBER_INTEGERS.has(String(d[1]))
-    ? Number(value) : value;
+  return d !== undefined &&
+    d[0] === "int" &&
+    typeof value === "bigint" &&
+    NUMBER_INTEGERS.has(String(d[1]))
+    ? Number(value)
+    : value;
 }
 
 /**
@@ -6089,17 +7185,30 @@ export class NativeChannel {
     this.address = endpoint.address;
   }
   reference() {
-    const reference = this.step < this.references.length ? this.references[this.step] : null;
+    const reference =
+      this.step < this.references.length ? this.references[this.step] : null;
     this.step += 1;
     return reference;
   }
   send(side, value) {
     const reference = this.reference();
     if (reference instanceof EndPart) {
-      this.endpoint.send(side, offerEnd(this.endpoint.node, this.endpoint.values, value, reference, this.schema));
+      this.endpoint.send(
+        side,
+        offerEnd(
+          this.endpoint.node,
+          this.endpoint.values,
+          value,
+          reference,
+          this.schema,
+        ),
+      );
       return;
     }
-    this.endpoint.send(side, reference === null ? value : this.schema.fromNative(reference, value));
+    this.endpoint.send(
+      side,
+      reference === null ? value : this.schema.fromNative(reference, value),
+    );
   }
   async receive(side) {
     const reference = this.reference();
@@ -6107,14 +7216,17 @@ export class NativeChannel {
     if (reference instanceof EndPart) {
       const [steps, parts] = reference.wire();
       const node = this.endpoint.node;
-      const endpoint = value.includes('?take=')
+      const endpoint = value.includes("?take=")
         ? await node.take(value, steps, this.endpoint.values)
         : node.dial(value, steps, this.endpoint.values);
       const Start = reference.start();
       return new Start(new NativeChannel(endpoint, parts, this.schema), 0);
     }
     if (reference !== null) return this.schema.toNative(reference, value);
-    return nativeScalar(this.endpoint.steps[this.endpoint.step - 1]?.[1], value);
+    return nativeScalar(
+      this.endpoint.steps[this.endpoint.step - 1]?.[1],
+      value,
+    );
   }
   receiveNow() {
     return this.endpoint.receiveNow();
@@ -6131,7 +7243,8 @@ export class NativeChannel {
  */
 function offerEnd(node, values, end, part, schema) {
   const [channel, side] = end.use();
-  if (channel instanceof NativeChannel && channel.step === 0) return channel.endpoint.offer();
+  if (channel instanceof NativeChannel && channel.step === 0)
+    return channel.endpoint.offer();
   return relayEnd(node, values, channel, side, part, schema);
 }
 
@@ -6143,7 +7256,11 @@ function offerEnd(node, values, end, part, schema) {
  */
 function relayEnd(node, values, channel, side, part, schema) {
   const [steps, parts] = part.wire();
-  const relay = node.listen(`relay-${node.nextId()}`, steps.map(([s, d]) => [!s, d]), values);
+  const relay = node.listen(
+    `relay-${node.nextId()}`,
+    steps.map(([s, d]) => [!s, d]),
+    values,
+  );
   const relayed = new NativeChannel(relay, parts, schema);
   (async () => {
     try {
@@ -6152,7 +7269,10 @@ function relayEnd(node, values, channel, side, part, schema) {
         else relayed.send(0, await channel.receive(side));
       }
     } catch {
-      for (const giveUp of [() => channel.abandon(side), () => relay.abandon(0)]) {
+      for (const giveUp of [
+        () => channel.abandon(side),
+        () => relay.abandon(0),
+      ]) {
         try {
           giveUp();
         } catch {

@@ -2,9 +2,9 @@
 // The default handler of lawspec.time's Clock: the system clock, kept from
 // going back by a monotonic clock. An Instant is microseconds since
 // 1970-01-01T00:00:00Z.
-import * as data from '../lawspec_data.js';
-import * as ls from '../lawspec_runtime.js';
-import type * as abilities from '../lawspec_abilities/lawspec/time.js';
+import * as data from "../lawspec_data.js";
+import * as ls from "../lawspec_runtime.js";
+import type * as abilities from "../lawspec_abilities/lawspec/time.js";
 
 const wall = BigInt(Date.now()) * 1000n;
 const monotonic = process.hrtime.bigint() / 1000n;
@@ -23,7 +23,11 @@ export class ClockHandler implements abilities.Clock {
   }
   sleep(value0: @@Duration@@): void {
     const target = nowMicros() + value0.value;
-    for (let left = target - nowMicros(); left > 0n; left = target - nowMicros()) {
+    for (
+      let left = target - nowMicros();
+      left > 0n;
+      left = target - nowMicros()
+    ) {
       Atomics.wait(blocker, 0, 0, Math.max(Number(left) / 1000, 0));
     }
   }
@@ -37,7 +41,8 @@ export class ClockHandler implements abilities.Clock {
 export function registerClock(): void {
   ls.registerClockAbility(
     (handler: abilities.Clock): bigint => handler.now().value,
-    (handler: abilities.Clock, micros: bigint): void => handler.sleep(new @@Duration@@(micros)),
+    (handler: abilities.Clock, micros: bigint): void =>
+      handler.sleep(new @@Duration@@(micros)),
     (handler: abilities.Clock): boolean => handler instanceof ClockHandler,
   );
 }

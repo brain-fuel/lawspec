@@ -161,13 +161,8 @@ emitBindings ts minify bindings plan files = do
         (Definitions.definitionCalls (map plannedUnit (plannedUnits plan)))
         (planMachineBits plan) target (modelTestUnit plan (plannedUnit unit)) (plannedProperties unit))
         [unit | unit <- plannedUnits plan, not (null (plannedProperties unit))]
-    let strategies = unlines [if line == "import * as ls from './lawspec_runtime.mjs';"
-          then "import * as ls from '../src/lawspec_runtime." ++ importExt ++ "';"
-          else if line == schemaImport
-            then "import {RefinementViolation, witnessed, witnessInstances} from '../src/lawspec_schema." ++ importExt ++ "';"
-          else line | line <- lines (runtimeSource "web-data-strategies")]
     pure (helper : [file | file <- emitted, artifactPlacement file == "test"] ++
-      [Artifact ("test/lawspec_data_strategies." ++ ext) ((if ts then "// @ts-nocheck\n" else "") ++ strategies) "generated" "test" |
+      [Artifact ("test/lawspec_data_strategies." ++ ext) (Data.testStrategies ts) "generated" "test" |
         not (any ((== "test/lawspec_data_strategies." ++ ext) . artifactPath) files)])
   let replacements = map artifactPath (bridges ++ generatorFiles)
   unless (all ((/= "src/lawspec_native." ++ ext) . artifactPath) files) (Left "unit shadows generated lawspec_native support")
@@ -180,7 +175,7 @@ emitBindings ts minify bindings plan files = do
         | artifactPath file == "src/lawspec_definition_bodies." ++ ext = addImport "./" file
         | otherwise = file
       addImport root file = file { artifactContent = unlines (concatMap (\l ->
-        if take 10 l == "import * a" && "lawspec_runtime" `elem` words (map (\c -> if c `elem` ("/.'" :: String) then ' ' else c) l)
+        if take 10 l == "import * a" && "lawspec_runtime" `elem` words (map (\c -> if c `elem` ("/.'\"" :: String) then ' ' else c) l)
           then [l, "import '" ++ root ++ "lawspec_native." ++ importExt ++ "';"] else [l]) (lines (artifactContent file))) }
       stripPrefix' prefix value = if take (length prefix) value == prefix then Just (drop (length prefix) value) else Nothing
   let generated = [loading file | file <- files, artifactPath file `notElem` replacements] ++
@@ -279,5 +274,3 @@ generatorStubs ts plan bindings files = do
        D.joinWith (D.hardline <> D.hardline) (map snd entries) <> D.hardline)) "user" "test")
 
 -- | The web strategies' schema import, rewritten to the emitted layout.
-schemaImport :: String
-schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';"

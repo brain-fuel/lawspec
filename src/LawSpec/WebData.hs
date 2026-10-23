@@ -1,5 +1,5 @@
 -- | Native JS classes and TS generic unions rendered from checked Core.
-module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeDoc, webDataTypeDocWith, webTypeReferenceDoc, requiresSchema) where
+module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeDoc, webDataTypeDocWith, webTypeReferenceDoc, requiresSchema, testStrategies) where
 
 import Control.Monad (unless, forM)
 import Data.List (nub, intercalate, isPrefixOf)
@@ -78,17 +78,17 @@ emitWebDataWithProfile ts bits layout declarations = do
         (header : builtins ++ classes ++ [factory]) <> D.hardline
       typedRuntime = if ts then replace "predicates = []"
         "predicates: FieldPredicate[] = []" $
-        replace "      indices = [],\n      refinements = [],"
-          "      indices: ReadonlyArray<string> = [],\n      refinements: ReadonlyArray<readonly [number, Named | Parameter]> = []," $
-        replace "      witnesses = [],\n"
-          "      witnesses: ReadonlyArray<number> = [],\n" $
+        replace "    indices = [],\n    refinements = [],"
+          "    indices: ReadonlyArray<string> = [],\n    refinements: ReadonlyArray<readonly [number, Named | Parameter]> = []," $
+        replace "    witnesses = [],\n"
+          "    witnesses: ReadonlyArray<number> = [],\n" $
         replace "constructor(name, args = [])"
           "constructor(name: string, args: ReadonlyArray<Named | Parameter> = [])" (runtimeSource "web-schema")
         else runtimeSource "web-schema"
       runtime = (if ts then unlines ["// @ts-nocheck", "export type FieldPredicate = (",
-          "    schema: Schema,", "    types: ReadonlyArray<Named>,",
-          "    fields: ReadonlyArray<unknown>,", "    bits: number,",
-          "    symbols: Map<string, symbol>,", ") => boolean;", ""] else "") ++
+          "  schema: Schema,", "  types: ReadonlyArray<Named>,",
+          "  fields: ReadonlyArray<unknown>,", "  bits: number,",
+          "  symbols: Map<string, symbol>,", ") => boolean;", ""] else "") ++
         replace "./lawspec_runtime.mjs" ("./lawspec_runtime." ++ importExtension) typedRuntime
   pure [Artifact ("src/lawspec_data." ++ extension) (D.render layout source) "generated" "source",
         Artifact ("src/lawspec_schema." ++ extension) runtime "generated" "source"]
@@ -192,3 +192,12 @@ emitWebDataWithProfile ts bits layout declarations = do
       pure (invoke "new schema.Definition"
         ([D.text (q (S.typeName schema)),D.text (show (S.parameterCount schema)),array variants] ++
          [D.text "true" | S.typeName schema `elem` [C.idText (C.dataId d) | d <- declarations, C.dataHandle d]]))
+
+-- | The fast-check strategies, placed beside the tests: their imports point
+-- at the runtime and schema in src/. Only the paths change, so the module
+-- stays as Prettier lays it out.
+testStrategies :: Bool -> String
+testStrategies ts = (if ts then "// @ts-nocheck\n" else "") ++
+  replace "\"./lawspec_schema.mjs\"" ("\"../src/lawspec_schema." ++ extension ++ "\"")
+    (replace "\"./lawspec_runtime.mjs\"" ("\"../src/lawspec_runtime." ++ extension ++ "\"") (runtimeSource "web-data-strategies"))
+  where extension = if ts then "js" else "mjs"

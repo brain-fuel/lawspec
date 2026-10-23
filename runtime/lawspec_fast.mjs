@@ -15,7 +15,7 @@
  * and from the dynamic values where typed and dynamic code meet.
  * ref:DEC-typed-native-definitions
  */
-import * as ls from './lawspec_runtime.mjs';
+import * as ls from "./lawspec_runtime.mjs";
 
 export class Cons {
   h;
@@ -77,7 +77,7 @@ export function right(v) {
 
 // Arrow functions, so TypeScript knows they never return.
 export const unreachable = () => {
-  throw new Error('unreachable branch reached');
+  throw new Error("unreachable branch reached");
 };
 
 export const outside = (t) => {
@@ -94,11 +94,11 @@ export function norm(x) {
 }
 
 export function big(x) {
-  return typeof x === 'bigint' ? x : BigInt(x);
+  return typeof x === "bigint" ? x : BigInt(x);
 }
 
 export function add(a, b) {
-  if (typeof a === 'number' && typeof b === 'number') {
+  if (typeof a === "number" && typeof b === "number") {
     const r = a + b;
     if (Number.isSafeInteger(r)) return r;
   }
@@ -106,7 +106,7 @@ export function add(a, b) {
 }
 
 export function sub(a, b) {
-  if (typeof a === 'number' && typeof b === 'number') {
+  if (typeof a === "number" && typeof b === "number") {
     const r = a - b;
     if (Number.isSafeInteger(r)) return r;
   }
@@ -114,7 +114,7 @@ export function sub(a, b) {
 }
 
 export function mul(a, b) {
-  if (typeof a === 'number' && typeof b === 'number') {
+  if (typeof a === "number" && typeof b === "number") {
     const r = a * b;
     if (Number.isSafeInteger(r)) return r + 0;
   }
@@ -122,25 +122,26 @@ export function mul(a, b) {
 }
 
 export function neg(a) {
-  return typeof a === 'number' ? 0 - a : norm(-a);
+  return typeof a === "number" ? 0 - a : norm(-a);
 }
 
 // quot truncates; rem takes the dividend's sign.
 export function quot(a, b) {
-  if (b === 0 || b === 0n) throw new RangeError('exact division by zero');
-  if (typeof a === 'number' && typeof b === 'number') return (a - (a % b)) / b + 0;
+  if (b === 0 || b === 0n) throw new RangeError("exact division by zero");
+  if (typeof a === "number" && typeof b === "number")
+    return (a - (a % b)) / b + 0;
   return norm(big(a) / big(b));
 }
 
 export function rem(a, b) {
-  if (b === 0 || b === 0n) throw new RangeError('exact division by zero');
-  if (typeof a === 'number' && typeof b === 'number') return (a % b) + 0;
+  if (b === 0 || b === 0n) throw new RangeError("exact division by zero");
+  if (typeof a === "number" && typeof b === "number") return (a % b) + 0;
   return norm(big(a) % big(b));
 }
 
 export function power(a, b) {
-  if (b < 0) throw new RangeError('negative exponent');
-  if (b > 2147483648) throw new RangeError('exponent too large');
+  if (b < 0) throw new RangeError("negative exponent");
+  if (b > 2147483648) throw new RangeError("exponent too large");
   return norm(big(a) ** big(b));
 }
 
@@ -297,7 +298,7 @@ export function sliceText(s, from, to) {
   const i = clamp(from, points.length);
   let j = clamp(to, points.length);
   if (j < i) j = i;
-  return points.slice(i, j).join('');
+  return points.slice(i, j).join("");
 }
 
 export function sliceBytes(s, from, to) {
@@ -321,7 +322,7 @@ export function atBytes(s, i) {
 
 export function range(lo, hi) {
   let out = null;
-  if (typeof lo === 'number' && typeof hi === 'number') {
+  if (typeof lo === "number" && typeof hi === "number") {
     for (let k = hi - 1; k >= lo; k--) out = new Cons(k, out);
     return out;
   }
@@ -367,11 +368,13 @@ function balance(k, v, l, r) {
   const hl = height(l);
   const hr = height(r);
   if (hl > hr + 1) {
-    if (height(l.l) >= height(l.r)) return node(l.k, l.v, l.l, node(k, v, l.r, r));
+    if (height(l.l) >= height(l.r))
+      return node(l.k, l.v, l.l, node(k, v, l.r, r));
     return node(l.r.k, l.r.v, node(l.k, l.v, l.l, l.r.l), node(k, v, l.r.r, r));
   }
   if (hr > hl + 1) {
-    if (height(r.r) >= height(r.l)) return node(r.k, r.v, node(k, v, l, r.l), r.r);
+    if (height(r.r) >= height(r.l))
+      return node(r.k, r.v, node(k, v, l, r.l), r.r);
     return node(r.l.k, r.l.v, node(k, v, l, r.l.l), node(r.k, r.v, r.l.r, r.r));
   }
   return new Node(k, v, l, r, (hl > hr ? hl : hr) + 1);
@@ -479,7 +482,8 @@ export function keyValOf(es, key, value, cmp) {
 
 export function setOf(xs, cmp) {
   let s = null;
-  for (let c = xs; c !== null; c = c.t) if (!member(s, c.h, cmp)) s = put(s, c.h, null, cmp);
+  for (let c = xs; c !== null; c = c.t)
+    if (!member(s, c.h, cmp)) s = put(s, c.h, null, cmp);
   return s;
 }
 
@@ -521,7 +525,8 @@ export function eqMap(a, b, ek, ev) {
   const x = entries(a);
   const y = entries(b);
   if (x.length !== y.length) return false;
-  for (let i = 0; i < x.length; i++) if (!ek(x[i][0], y[i][0]) || !ev(x[i][1], y[i][1])) return false;
+  for (let i = 0; i < x.length; i++)
+    if (!ek(x[i][0], y[i][0]) || !ev(x[i][1], y[i][1])) return false;
   return true;
 }
 
