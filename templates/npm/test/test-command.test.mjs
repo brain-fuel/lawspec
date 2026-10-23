@@ -364,7 +364,7 @@ test("selects exact BEAM benchmarks with native commands and structured Gleam se
   const gleam = benchmarkInvocations({ language: "gleam" }, [entry("benchmark_work", "test/example_unit_lawspec_test.gleam")]);
   assert.deepEqual(gleam[0].args, ["test", "--target", "erlang"]);
   assert.deepEqual(JSON.parse(gleam[0].env.LAWSPEC_BEAM_BENCHMARKS),
-    [{ module: "example_unit_lawspec_test", function: "benchmark_work__case_0_test" }]);
+    [{ module: "example_unit_lawspec_test", function: "benchmark_work_test" }]);
 });
 
 // ref:DEC-never-pass-vacuously ref:DEC-native-property-frameworks
