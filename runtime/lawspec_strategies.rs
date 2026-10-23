@@ -5,8 +5,35 @@
 //! the strategies for its own types, and shrinking stays within the declared
 //! domain. ref:DEC-native-property-frameworks ref:proptest
 //! ref:DEC-shrink-within-domain
+// A test crate mounts the whole runtime as a module and uses only part of it.
+#![allow(dead_code)]
 use crate::lawspec_runtime::{self as ls, IntoValue, Value};
 use proptest::prelude::*;
+
+/// Proptest's seed: LAWSPEC_SEED fixes it, so a run can be repeated exactly
+/// (lawspec test records the seed of every passing run). Without it,
+/// proptest's own default applies, PROPTEST_RNG_SEED included.
+pub fn rng_seed() -> proptest::test_runner::RngSeed {
+    match std::env::var("LAWSPEC_SEED") {
+        Ok(seed) => proptest::test_runner::RngSeed::Fixed(
+            seed.parse().expect("LAWSPEC_SEED must be a whole number"),
+        ),
+        Err(_) => proptest::test_runner::Config::default().rng_seed,
+    }
+}
+
+/// Under lawspec test, proptest keeps failing cases in its failure database
+/// (LAWSPEC_FAILURES) and replays them first.
+pub fn failure_persistence() -> Option<Box<dyn proptest::test_runner::FailurePersistence>> {
+    match std::env::var("LAWSPEC_FAILURES") {
+        Ok(directory) => Some(Box::new(
+            proptest::test_runner::FileFailurePersistence::Direct(Box::leak(
+                format!("{directory}/proptest-regressions.txt").into_boxed_str(),
+            )),
+        )),
+        Err(_) => proptest::test_runner::Config::default().failure_persistence,
+    }
+}
 
 /// A framework-native factory. Child strategies correspond to type parameters,
 /// not constructor fields. Mapping the returned strategy retains its ValueTree.

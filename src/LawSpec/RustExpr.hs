@@ -2,38 +2,69 @@
 -- definitions. Layout is constructed from tokens, never rewritten source text.
 module LawSpec.RustExpr
   ( renderExpression, renderExpressionWithContext, scalarLiteral, presenceValue, quoted, stringLiteral, call, vector, reference, typeName
+  , reservedLocals, sourceLocal, sourceLocals, mentions, unusedAs, slice
   ) where
 
 import LawSpec.Core
 import qualified LawSpec.Core.Schema as Schema
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
-import Data.Char (ord)
+import LawSpec.Code.Literal (literalFor)
+import Data.Char (isAlphaNum)
 import Data.List (intercalate)
-import Numeric (showHex)
+import LawSpec.Naming (localIdentifier, claim, claimAll, scopeWith)
 
--- | Strings are escaped for Rust here, once, so no generated literal can end
--- early or change meaning.
+-- | Strings are Rust string literals, escaped once by the shared Rust table
+-- (LawSpec.Code.Literal), so no generated literal can end early or change
+-- meaning. ref:DEC-native-string-literals
 quoted :: String -> String
-quoted value = '"' : concatMap escape value ++ "\""
-  where
-    escape '"' = "\\\""
-    escape '\\' = "\\\\"
-    escape c | ord c < 32 || ord c == 127 = "\\u{" ++ showHex (ord c) "}"
-             | otherwise = [c]
+quoted = literalFor "rust"
 
--- | concat! joins literal tokens at compile time without changing their payload.
--- Split before escaping so neither a Unicode scalar nor an escape is divided.
+-- | A string literal is one token: rustfmt never splits it, so neither does
+-- LawSpec. Its width is in display columns, as rustfmt counts it.
 stringLiteral :: String -> D.Doc
-stringLiteral value
-  | D.utf8Length (quoted value) <= 64 = D.utf8Text (quoted value)
-  | otherwise = call "concat!" (map (D.utf8Text . quoted) (chunks value))
+stringLiteral = D.text . quoted
+
+-- | Names generated Rust gives its own temporaries. A source binder never
+-- takes one, so no temporary can hide a binder an expression reads.
+-- ref:DEC-readable-generated-names
+reservedLocals :: [String]
+reservedLocals = words "ctx args values case seeds base symbol strategy candidate refinement config result actual expected condition value context ls adapter ls_gen prior draws found pick installing left right accepted fields tag payload payload_member digits coefficient exponent numerator denominator native_result index_target check valid observe score search_case"
+
+-- | A binder's local: its source name, cased and escaped for Rust, made
+-- distinct from the temporaries and from every name already in scope.
+sourceLocal :: [(Id,String)] -> Binder -> String
+sourceLocal scope binder = fst (claim (scopeWith (reservedLocals ++ map snd scope)) (localIdentifier "rust" (binderName binder)))
+
+-- | Several binders' locals, in order, each distinct from the others.
+sourceLocals :: [(Id,String)] -> [Binder] -> [String]
+sourceLocals scope binders = fst (claimAll (scopeWith (reservedLocals ++ map snd scope)) (map (localIdentifier "rust" . binderName) binders))
+
+-- | Whether generated code reads a local: one of its identifier tokens,
+-- outside string literals, is the name.
+mentions :: String -> D.Doc -> Bool
+mentions name doc = name `elem` tokens (D.render D.Compact doc)
   where
-    chunks [] = []
-    chunks remaining =
-      let count = max 1 (length (takeWhile (\n -> D.utf8Length (quoted (take n remaining)) <= 48) [1..length (take 48 remaining)]))
-          (part,rest) = splitAt count remaining
-      in part : chunks rest
+    tokens [] = []
+    tokens ('"' : rest) = tokens (literal rest)
+    tokens text@(c : rest)
+      | identifierChar c = let (token, after) = span identifierChar text in token : tokens after
+      | otherwise = tokens rest
+    literal ('\\' : _ : rest) = literal rest
+    literal ('"' : rest) = rest
+    literal (_ : rest) = literal rest
+    literal [] = []
+    identifierChar c = isAlphaNum c || c == '_' || c == '#'
+
+-- | A local's binding name: its own when the code after it reads it, else
+-- marked unused as Rust marks it, so the build stays free of warnings.
+unusedAs :: String -> D.Doc -> String
+unusedAs name doc
+  | mentions name doc = name
+  | otherwise = '_' : dropWhile (== '#') (drop (if take 2 name == "r#" then 2 else 0) name)
+
+orEmpty :: [D.Doc] -> D.Doc -> D.Doc
+orEmpty prefix doc = mconcat prefix <> doc
 
 -- | Rustfmt also limits argument and array contents to 60 columns.
 delimited :: String -> String -> [D.Doc] -> D.Doc
@@ -50,6 +81,10 @@ delimited opening closing values
 -- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
 call name values = D.text name <> delimited "(" ")" values
+-- | A borrowed array, which wraps as rustfmt wraps arrays.
+slice :: [D.Doc] -> D.Doc
+slice = delimited "&[" "]"
+
 -- | Lists of runtime values are written as one vec! so they wrap like calls.
 vector :: [D.Doc] -> D.Doc
 vector = delimited "vec![" "]"
@@ -151,6 +186,10 @@ renderExpressionWithContext :: [DataDeclaration] -> D.Doc -> D.Doc
   -> [(Id,String)] -> [(Id,String)] -> Expr -> Either String D.Doc
 renderExpressionWithContext declarations bits schema typeReference typeKey callees = render
   where
+    -- A binder never takes a callee's name, which would hide the callee.
+    plainCallees = [(i, c) | (i, c) <- callees, ':' `notElem` c, '<' `notElem` c]
+    boundLocal names = sourceLocal (names ++ plainCallees)
+    boundLocals names = sourceLocals (names ++ plainCallees)
     render names term
       -- An all group's steps run side by side as tasks of the Async
       -- ability's default handler (ls::concurrently, the runtime's
@@ -159,11 +198,12 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
       | Just (fields,binders,body) <- concurrentGroup term = do
           let suffix = show (length names)
               contexts = ["group_ctx_" ++ suffix ++ "_" ++ show i | i <- [0 .. length fields - 1]]
-              locals = ["group_local_" ++ suffix ++ "_" ++ show i | i <- [0 .. length binders - 1]]
+              named = boundLocals names binders
               tasks = "group_steps_" ++ suffix
               results = "group_results_" ++ suffix
           steps <- mapM (render names) fields
-          inner <- render (zip (map binderId binders) locals ++ names) body
+          inner <- render (zip (map binderId binders) named ++ names) body
+          let locals = [unusedAs local inner | local <- named]
           let task (context,step) = D.text (tasks ++ ".push(Box::new(|| -> ls::Result<ls::Value> ") <>
                 D.block 4 (D.text ("let ctx = &mut " ++ context ++ ";") <> D.hardline <>
                   D.hang 4 (D.text "let value =") step <> D.text ";" <> D.hardline <> D.text "Ok(value)") <> D.text "));"
@@ -181,16 +221,19 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
       AllPayloads value predicates -> do
         argument <- render names value
         ref <- typeReference (expressionType value)
-        let member = "payload_member_" ++ show (length names)
         arms <- sequence [do
+          let member = boundLocal names binder
           body <- render ((binderId binder,member):names) predicate
-          pure (D.text (show index ++ " => ") <> D.block 4
-            (D.hang 4 (D.text "let accepted =") body <> D.text ";" <>
-              D.hardline <> D.text "Ok(accepted)"))
+          let used = mentions member body
+          pure (used, D.text (show index ++ " => ") <> D.block 4
+            ([D.text ("let " ++ member ++ " = payload_member;") <> D.hardline | used] `orEmpty`
+             (D.hang 4 (D.text "let accepted =") body <> D.text ";" <>
+              D.hardline <> D.text "Ok(accepted)")))
           | (index,(binder,predicate)) <- zip [0::Int ..] predicates]
-        let dispatcher = D.text ("|payload_index, " ++ member ++ ", ctx| ") <>
+        let member = if any fst arms then "payload_member" else "_"
+            dispatcher = D.text ("|payload_index, " ++ member ++ ", ctx| ") <>
               D.text "match payload_index " <> D.block 4
-                (D.joinWith D.hardline (arms ++
+                (D.joinWith D.hardline (map snd arms ++
                   [D.text "_ => Err(\"invalid payload predicate index\".into()),"]))
         pure (D.block 4 (D.joinWith D.hardline
           [D.hang 4 (D.text "let payload_value =") argument <> D.text ";",
@@ -201,20 +244,20 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
               bits,D.text "ctx",dispatcher] <> D.text "?"]))
       AllElements value binder predicate -> do
         argument <- render names value
-        let name = "element_" ++ show (length names)
+        let name = boundLocal names binder
         body <- render ((binderId binder,name):names) predicate
         pure (D.block 4 (D.hang 4 (D.text "let values =") argument <> D.text ";" <>
-          D.hardline <> D.text ("ls::all_elements(values, |" ++ name ++ "| ") <> D.block 4
+          D.hardline <> D.text ("ls::all_elements(values, |" ++ unusedAs name body ++ "| ") <> D.block 4
             (D.hang 4 (D.text "let accepted =") body <> D.text ";" <>
               D.hardline <> D.text "Ok(accepted)") <> D.text ")?"))
       Constant scalar -> scalarLiteral scalar
       -- let x = e in body: e runs first, once.
       Let binder value body -> do
         argument <- render names value
-        let name = "let_" ++ show (length names)
+        let name = boundLocal names binder
         inner <- render ((binderId binder,name):names) body
-        pure (D.block 4 (D.hang 4 (D.text ("let " ++ name ++ " =")) argument <> D.text ";" <>
-          D.hardline <> D.text ("let _ = &" ++ name ++ ";") <> D.hardline <> inner))
+        pure (D.block 4 (D.hang 4 (D.text ("let " ++ unusedAs name inner ++ " =")) argument <> D.text ";" <>
+          D.hardline <> inner))
       Local identity -> maybe (Left ("unbound Rust binder: " ++ idText identity))
         (Right . D.text . (++ ".clone()")) (lookup identity names)
       Construct tag fields -> do
@@ -241,16 +284,7 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
       ExternalCall identity args -> do
         name <- maybe (Left ("unknown Rust declaration: " ++ idText identity)) Right (lookup identity callees)
         values <- mapM (render names) args
-        -- Materialize arguments left-to-right before borrowing ctx for the
-        -- call. Separate locals keep nested calls out of dense array literals.
-        let arguments = ["call_argument_" ++ show i | i <- [0 .. length values - 1]]
-            bindings = [D.hang 4 (D.text ("let " ++ name ++ " =")) value <> D.text ";" |
-              (name,value) <- zip arguments values]
-        pure (D.block 4 (D.joinWith D.hardline (bindings ++
-          [D.text "let arguments = " <> vector (map D.text arguments) <> D.text ";"]) <> D.hardline <>
-          D.text "let result = " <> call name [D.text "ctx",D.text "arguments"] <> D.text ";" <> D.hardline <>
-          D.text "let context = " <> stringLiteral (idText identity) <> D.text ";" <> D.hardline <>
-          D.text "result.map_err(|error| format!(\"{context}: {error}\"))?"))
+        pure (callDoc name (idText identity) args values)
       -- raise aborts to the nearest attempt of its Fail ability (a panic).
       Perform op [value] | isFail (operationAbility op) -> do
         argument <- render names value
@@ -261,13 +295,7 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
       Perform op args -> do
         name <- maybe (Left ("no Rust bridge for the operation " ++ operationName op)) Right (lookup (operationId op) callees)
         values <- mapM (render names) args
-        let arguments = ["perform_argument_" ++ show i | i <- [0 .. length values - 1]]
-            bindings = [D.hang 4 (D.text ("let " ++ argument ++ " =")) value <> D.text ";" | (argument,value) <- zip arguments values]
-        pure (D.block 4 (D.joinWith D.hardline (bindings ++
-          [D.text "let arguments = " <> vector (map D.text arguments) <> D.text ";"]) <> D.hardline <>
-          D.text "let result = " <> call name [D.text "ctx",D.text "arguments"] <> D.text ";" <> D.hardline <>
-          D.text "let context = " <> stringLiteral (operationName op) <> D.text ";" <> D.hardline <>
-          D.text "result.map_err(|error| format!(\"{context}: {error}\"))?"))
+        pure (callDoc name (operationName op) args values)
       Handle (CatchFailure ability) body -> do
         inner <- render names body
         pure (call "ls::attempt" [D.text "ctx",D.text (quoted (abilityKey ability)),
@@ -333,10 +361,28 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
       Helper builtin args -> do
         values <- mapM (render names) args
         pure (call "ls::helper" [D.text (quoted (builtinName builtin)),vector values] <> D.text "?")
+    -- A call: its arguments are written in the call when reading them
+    -- cannot borrow the context; otherwise each is made first, left to
+    -- right, before the call borrows the context. Its error names what
+    -- was called.
+    callDoc name label args values
+      | all simple args = called (call name [D.text "ctx", vector values])
+      | otherwise = D.block 4 (D.joinWith D.hardline
+          ([D.hang 4 (D.text ("let " ++ argument ++ " =")) value <> D.text ";" | (argument,value) <- zip arguments values] ++
+           [called (call name [D.text "ctx", vector (map D.text arguments)])]))
+      where
+        arguments = ["argument_" ++ show i | i <- [1 .. length values]]
+        called made = call "ls::called" [stringLiteral label, made] <> D.text "?"
+        simple a = case expressionNode a of
+          Local _ -> True
+          Constant (SSymbol _ _) -> False
+          Constant _ -> True
+          _ -> False
     branch names matched = do
       let binders = caseBinders matched
-          locals = ["match_local_" ++ show (length names) ++ "_" ++ show i | i <- [0 .. length binders - 1]]
-      body <- render (zip (map binderId binders) locals ++ names) (caseBody matched)
+          named = boundLocals names binders
+      body <- render (zip (map binderId binders) named ++ names) (caseBody matched)
+      let locals = [unusedAs name body | name <- named]
       (patternText,guard,bindings) <- case (idText (caseConstructor matched), locals) of
         ("Maybe::Absent",[]) -> pure ("ls::Value::Maybe(None)",Nothing,[])
         ("Maybe::Present",[field]) -> pure ("ls::Value::Maybe(Some(payload))",Nothing,["let " ++ field ++ " = *payload;"])

@@ -1,13 +1,13 @@
-// Scaffolded by LawSpec. User-owned; never overwritten.
-#![allow(unused_variables, unused_imports, non_snake_case)]
-use crate::lawspec_runtime as ls;
+// Scaffolded by LawSpec from atoi_codec.lawspec. User-owned; never overwritten.
 
-// LawSpec: (Int32 -> Text)
+// itoa — atoi_codec.lawspec:3
+// LawSpec type: (Int32 -> Text)
 pub fn itoa(value0: i32) -> String {
     todo!("example.atoi_codec::itoa")
 }
 
-// LawSpec: (Text -> Int32)
+// atoi — atoi_codec.lawspec:4
+// LawSpec type: (Text -> Int32)
 pub fn atoi(value0: String) -> i32 {
     todo!("example.atoi_codec::atoi")
 }

@@ -9,6 +9,8 @@
 //!
 //! It is emitted into every generated Rust crate, so the generated tests and
 //! the adapters share one definition of the domain. ref:DEC-typed-core-boundary
+// A test crate mounts the whole runtime as a module and uses only part of it.
+#![allow(dead_code)]
 pub use num_bigint::{BigInt, BigUint};
 pub use num_complex::{Complex32, Complex64};
 pub use num_rational::BigRational;
@@ -3265,6 +3267,24 @@ pub fn helper(name: &str, mut args: Vec<Value>) -> Result<Value> {
         }
         _ => return Err(format!("unknown helper: {name}")),
     })
+}
+
+/// A law's expectation: the values are equal, or the failure says where the
+/// expectation is written, both values and where they first differ.
+pub fn expect_equal(actual: &Value, expected: &Value, context: &str) -> Result<()> {
+    if equal(actual, expected)? {
+        Ok(())
+    } else {
+        Err(format!(
+            "{context}: {actual:?} != {expected:?}{}",
+            difference(actual, expected)
+        ))
+    }
+}
+
+/// A call's result; its error names what was called.
+pub fn called(name: &str, result: Result<Value>) -> Result<Value> {
+    result.map_err(|error| format!("{name}: {error}"))
 }
 
 /// Where a structured actual value first differs from the expected one, by
