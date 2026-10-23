@@ -294,7 +294,16 @@ extendable e = case e of
 opening :: Expr -> String
 opening e = case e of
   Infix _ _ a _ -> opening a
-  Call f _ -> maybe "" id (flat f) ++ "("
+  -- A call whose last argument is a block or closure overflowing it
+  -- keeps its other arguments and that opening on its line.
+  Call f args
+    | not (null args), blocky (last args), Just inits <- mapM oneLine (init args)
+    , let line' = concatMap (++ ", ") inits ++ opening (last args), width line' <= 60 ->
+        maybe "" id (flat f) ++ "(" ++ line'
+    | otherwise -> maybe "" id (flat f) ++ "("
+  Macro "" "(" _ args
+    | not (null args), blocky (last args), Just inits <- mapM oneLine (init args)
+    , let line' = concatMap (++ ", ") inits ++ opening (last args), width line' <= 60 -> "(" ++ line'
   Macro name open _ _ -> name ++ open
   Closure h (Block _ _) -> h ++ " {"
   Closure h body
@@ -314,6 +323,13 @@ opening e = case e of
     chainOpening = case (chainPrefix e, snd (unchain e)) of
       (Just p, links@(_ : _)) | LinkCall name _ _ <- last links -> p ++ "." ++ name ++ "("
       _ -> let (root, _) = unchain e in concat [maybe "" id (either flat flatLink r) | r <- root]
+
+-- | A block, or a closure: always overflowable.
+blocky :: Expr -> Bool
+blocky e = case e of
+  Block _ _ -> True
+  Closure {} -> True
+  _ -> False
 
 -- | An expression's layout.
 expr :: Expr -> D.Doc
@@ -419,9 +435,13 @@ arguments cap open close limit args =
     fitsWith a = maybe True (\c -> width (open ++ concatMap (++ ", ") initialTexts ++ opening a) <= c) cap &&
       maybe True (\c -> width (opening a) <= c) lastCap &&
       width (concatMap (++ ", ") initialTexts ++ opening a) <= limit
+    -- The first line's width counts the call's closing delimiter, and the
+    -- enclosing call's when this one overflows in it: rustfmt's shape
+    -- leaves room for both.
+    reserved = firstLine ++ close ++ (if isJust cap then ")" else "")
     rest
-      | overflowLast, overflowFits, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice firstLine overflowed vertical)]
-      | overflowLast, overflowFits = [D.prefixChoice firstLine overflowed vertical]
+      | overflowLast, overflowFits, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice reserved overflowed vertical)]
+      | overflowLast, overflowFits = [D.prefixChoice reserved overflowed vertical]
       | otherwise = [vertical]
 
 -- | Whether arguments go on the call's line: within the width limit, or a
@@ -617,7 +637,20 @@ stmt s = case s of
   Semi e@(Return (Just _)) -> D.narrow 1 (expr e <> D.text ";")
   Semi e -> expr e <> D.text ";"
   Let pat e -> stmt (Let' ("let " ++ pat) e)
-  Let' binding e ->
+  -- A binding's type too long for its line breaks inside its outer
+  -- angle brackets, and the value follows the closing one.
+  Let' binding e
+    | (name, ':' : ' ' : ty) <- break (== ':') binding, (outer, '<' : inner) <- break (== '<') ty
+    , not (null inner), last inner == '>' ->
+        D.fitsIndented 0 (width (binding ++ " =")) (letDoc binding e)
+          (D.text (name ++ ": " ++ outer ++ "<") <> D.nest 4 (D.hardline <> D.text (init inner ++ ",")) <> D.hardline <>
+            D.text "> = " <> expr e <> D.text ";")
+  Let' binding e -> letDoc binding e
+
+-- | A let: its value goes on the next line when it fits there on one line
+-- and not after the =.
+letDoc :: String -> Expr -> D.Doc
+letDoc binding e =
     let head' = D.text (binding ++ " =")
         value = expr e <> D.text ";"
         sameValue = D.text " " <> value
@@ -679,7 +712,7 @@ armDoc (Arm pat guard body) = armDoc (ArmOf (Atom pat) guard body)
 armDoc (ArmOf pat (Just guard) body)
   | Just p <- flat pat, Just g <- oneLine guard, not (isBlock body) =
       D.prefixChoice (p ++ " if " ++ g ++ " => {") (armDoc (ArmOf (Atom (p ++ " if " ++ g)) Nothing body))
-            ( D.text p <> D.nest 4 (D.hardline <> D.narrow 1 (D.text "if " <> expr guard <> D.text " =>")) <> D.hardline <> blockDoc [] (Just body) )
+            ( D.text p <> D.nest 4 (D.hardline <> D.narrow 2 (D.text "if " <> expr guard <> D.text " =>")) <> D.hardline <> blockDoc [] (Just body) )
   where isBlock b = case b of
           Block _ _ -> True
           _ -> False
@@ -688,7 +721,7 @@ armDoc (ArmOf pat (Just guard) body@(Block _ _))
   -- its block opens on a line of its own.
   | Just p <- flat pat, Just g <- oneLine guard, Block ss tailExpr <- body =
       oneOf [ D.text (p ++ " if " ++ g ++ " => ") <> blockDoc ss tailExpr
-            , D.text p <> D.nest 4 (D.hardline <> D.narrow 1 (D.text "if " <> expr guard <> D.text " =>")) <> D.hardline <> blockDoc ss tailExpr ]
+            , D.text p <> D.nest 4 (D.hardline <> D.narrow 2 (D.text "if " <> expr guard <> D.text " =>")) <> D.hardline <> blockDoc ss tailExpr ]
 armDoc (ArmOf pat guard body) = case unblocked body of
   -- A block opens on the next line when the arm's line has no room for it.
   Block ss tailExpr -> headDoc <> oneOf [D.text " " <> blockDoc ss tailExpr, D.hardline <> blockDoc ss tailExpr]

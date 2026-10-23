@@ -166,7 +166,7 @@ emitRustData layout declarations = do
             C.Constructor n args | not (reaches owner [] n) -> any (\a -> case a of C.TypeArgument t -> independent variable t; _ -> False) args
             _ -> False
           phantom = [n | (v,n) <- parameters, not (any (any (independent v . C.binderType) . C.constructorFields) variants)]
-          markerType = "std::marker::PhantomData<(" ++ concatMap (++ ",") phantom ++ ")>"
+          markerType = "std::marker::PhantomData<" ++ tupleType phantom ++ ">"
           generic = applied name parameterNames
           implHead bound = "impl" ++ (if null parameters then "" else "<" ++ intercalate ", " [n ++ ": ls::" ++ bound | n <- parameterNames] ++ ">") ++ " ls::" ++ bound ++ " for " ++ generic ++ " "
           existentials = concatMap C.constructorExistentials variants
@@ -244,7 +244,7 @@ emitRustData layout declarations = do
               else D.text ("pub struct " ++ generic ++ " ") <> D.block 4 (D.joinWith D.hardline structFields)) else
             D.text ((if null variants then "pub struct " else "pub enum ") ++ generic ++ " ") <>
             D.block 4 (if null variants then D.text "_never: std::convert::Infallible," <>
-              (if null parameters then mempty else D.hardline <> D.text ("_marker: std::marker::PhantomData<(" ++ concatMap (++ ",") parameterNames ++ ")>,"))
+              (if null parameters then mempty else D.hardline <> D.text ("_marker: std::marker::PhantomData<" ++ tupleType parameterNames ++ ">,"))
               else D.joinWith D.hardline [a | (a,_,_,_) <- rendered])
           encodeDoc = D.text (implHead "IntoValue") <> D.block 4
             (D.text "fn into_value(self) -> ls::Value " <> D.block 4
@@ -260,3 +260,9 @@ emitRustData layout declarations = do
                     [L.Let "message" (L.atom (show ("invalid constructor or fields for " ++ owner)))]
                     (Just (L.call "Err" [L.method (L.atom "message") "into" []]))))]))))
       pure (D.joinWith (D.hardline <> D.hardline) [declarationDoc,encodeDoc,decodeDoc])
+
+-- | A tuple type of these types, as rustfmt writes it: (T,) for one.
+tupleType :: [String] -> String
+tupleType ts = case ts of
+  [t] -> "(" ++ t ++ ",)"
+  _ -> "(" ++ intercalate ", " ts ++ ")"
