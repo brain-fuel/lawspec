@@ -13,7 +13,7 @@ def observe_hints(generated, monkeypatch, observed):
         reference, witnesses = arguments[1], arguments[6]
         frame = inspect.currentframe().f_back
         if reference.name == "Int64":
-            earlier = frame.f_locals.get("_input0")
+            earlier = frame.f_locals.get("earlier")
             if earlier is None:
                 assert all(1001 <= value <= 1002 for value in witnesses)
             else:
@@ -53,7 +53,7 @@ def test_dependent_hints_are_rechecked_while_the_framework_shrinks(monkeypatch):
 
     def fail_on_upper_prefix(*arguments):
         original_assert(*arguments)
-        earlier = inspect.currentframe().f_back.f_locals["_input0"]
+        earlier = inspect.currentframe().f_back.f_locals["earlier"]
         prefixes.add(earlier)
         if earlier == 1002:
             raise DeliberateCounterexample("exercise native dependent shrinking")

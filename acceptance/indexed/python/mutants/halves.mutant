@@ -1,6 +1,6 @@
 @@ src/example/arithmetic.py
 <<<<<<<
-    return data.Halves(data.Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d(front=value0, back=value0))
+    return data.Halves(data.HalvesDetails(front=value0, back=value0))
 =======
-    return data.Halves(data.Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d(front=value0, back=data.RowCell(data.Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f(head=0, tail=value0))))
+    return data.Halves(data.HalvesDetails(front=value0, back=data.RowCell(data.CellDetails(head=0, tail=value0))))
 >>>>>>>

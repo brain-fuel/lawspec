@@ -12,7 +12,7 @@ def evalTruth(value0):
     match value0:
         case data.ExprTruth(value=value):
             return value
-        case data.ExprSame(value=data.Record772b3aa87ecd053fcced573681dbd8344f63903af98f493d5b458b00157f001e(left=left, right=right)):
+        case data.ExprSame(value=data.PlusDetails(left=left, right=right)):
             return evalNumber(left) == evalNumber(right)
         case data.ExprNegate(value=operand):
             return not evalTruth(operand)

@@ -1,6 +1,6 @@
 @@ src/example/indexed.py
 <<<<<<<
-    return data.VecVCons(data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(head=value0.value.head, tail=append(value0.value.tail, value1)))
+    return data.VecVCons(data.VConsDetails(head=value0.value.head, tail=append(value0.value.tail, value1)))
 =======
     return append(value0.value.tail, value1)
 >>>>>>>

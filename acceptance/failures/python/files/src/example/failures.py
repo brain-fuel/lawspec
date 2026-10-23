@@ -31,5 +31,5 @@ async def settle(value0: int) -> int:
     if value0 < 0:
         raise ls.Fail(data.PaymentErrorBlocked())
     if value0 == 0:
-        raise ls.Fail(data.PaymentErrorDeclined(data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7(message="there is nothing to settle")))
+        raise ls.Fail(data.PaymentErrorDeclined(data.DeclinedDetails(message="there is nothing to settle")))
     return value0

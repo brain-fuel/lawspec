@@ -1,7 +1,7 @@
 expect: settling nothing is declined, and says why
 @@ src/example/failures.py
 <<<<<<<
-        raise ls.Fail(data.PaymentErrorDeclined(data.Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7(message="there is nothing to settle")))
+        raise ls.Fail(data.PaymentErrorDeclined(data.DeclinedDetails(message="there is nothing to settle")))
 =======
         raise ls.Fail(data.PaymentErrorBlocked())
 >>>>>>>
