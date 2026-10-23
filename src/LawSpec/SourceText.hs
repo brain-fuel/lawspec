@@ -163,7 +163,8 @@ formatSourceWithSyntax nodes (Source path original) = Source path (stabilize 0 r
               branchStack = if branch then markBranch stack else stack
               final = foldl apply branchStack local
               literalLine = any (\(a,b) -> a < start && start < b) protected
-              content = trim (dropWhile isSpace (restoreSource [if tokenKind token == TriviaToken
+              opensLiteral = any (\(a,b) -> start <= a && a <= start+length value && start+length value < b) protected
+              content = (if opensLiteral then id else trim) (dropWhile isSpace (restoreSource [if tokenKind token == TriviaToken
                 then token{tokenText=" "} else token | token <- sourceTokens value]))
               indented = replicate (2 * max 0 depth) ' ' ++ content
               output | literalLine = [value]

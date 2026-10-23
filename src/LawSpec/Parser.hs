@@ -460,10 +460,10 @@ quotedOrInfixToken = void namedInfixP
 quoted :: P String
 quoted = sourceNode "quoted-name" Just $ lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
-str = sourceNode "text" (const Nothing) $ lexeme $ do
-
-  try (char '"' *> notFollowedBy (char '|'))
-  manyTill L.charLiteral (char '"')
+str = sourceNode "text" (const Nothing) $ lexeme $
+  (try (string "\"\"\"") *> manyTill L.charLiteral
+    (try (string "\"\"\"") <?> "closing triple quote (\"\"\")"))
+  <|> (try (char '"' *> notFollowedBy (char '|')) *> manyTill L.charLiteral (char '"'))
 parens :: P a -> P a
 parens = between (symbol "(") (symbol ")")
 typeP :: P Type

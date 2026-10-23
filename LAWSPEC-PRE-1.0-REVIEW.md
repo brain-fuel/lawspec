@@ -5431,6 +5431,14 @@ records add two spaces per level. Independent recoverable parse failures are
 reported together across source files, without admitting recovered terms or
 writing any file. This applies generally to grammar failures, including repeated
 bad constructors, malformed types, expressions, sections and block closers.
+Triple-double-quoted multiline text uses the ordinary string escape decoder.
+Its literal newlines, indentation, tabs and leading/trailing whitespace remain
+part of the value, with no implicit dedent or newline trimming. The formatter
+retains its delimiters and complete literal spelling, and editor/site tokens
+keep its contents opaque until the unescaped closing triple quote. Ordinary
+strings retain their existing behavior. An unterminated triple string prevents
+all formatting writes.
+
 Quoted tokens remain opaque while finding resumption points; severe structural
 damage can limit recovery. The formatter preserves literal contents,
 comments and supported annotation wording. Parser-owned record-type separators
