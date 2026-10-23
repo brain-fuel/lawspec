@@ -252,20 +252,19 @@ emitRustDefinitions layout bits declarations units = do
       let valueNames = case definitionArguments d of
             binders | length binders == length args -> E.sourceLocals [] binders
             _ -> ["value" ++ show i | i <- [0 .. length args - 1]]
-          values = map D.text valueNames
+          values = map L.atom valueNames
           -- A handler's parameter is named for its ability; Async's is r#async.
           handlers = [ (ability, rawKeyword (lowerFirst (interfaceName a))) | ability <- declarationUses declaration, not (isFail ability)
                      , Just (_, a) <- [findAbility units ability] ]
-          parameters = D.text "ctx: &mut ls::Context" :
-            [D.text (name ++ ": std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">") | (ability, name) <- handlers] ++
-            [D.text (n ++ ": " ++ ty) | (n,ty) <- zip valueNames types]
+          parameters = "ctx: &mut ls::Context" :
+            [name ++ ": std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">" | (ability, name) <- handlers] ++
+            [n ++ ": " ++ ty | (n,ty) <- zip valueNames types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in the context, where its operations find them.
-          installs = [D.text ("ctx.install_handlers(vec![" ++ intercalate ", " ["(" ++ show (abilityKey ability) ++ ".to_string(), ls::installed(" ++ name ++ "))" | (ability, name) <- handlers] ++ "]);")
+          installs = [L.Semi (L.method (L.atom "ctx") "install_handlers" [L.vecOf
+                       [L.Macro "" "(" ")" [L.method (L.atom (show (abilityKey ability))) "to_string" [], L.call "ls::installed" [L.atom name]] | (ability, name) <- handlers]])
                      | not (null handlers)]
-          signature = D.text ("pub fn " ++ declarationName declaration) <>
-            D.delimitTrailing 4 "(" ")" parameters <> D.text (" -> ls::Result<" ++ resultType ++ "> ")
-          architecture = [E.call "ls::require_architecture" [D.text (show bits)] <> D.text "?;"
+          architecture = [L.Semi (L.try' (L.call "ls::require_architecture" [L.atom (show bits)]))
             | nativeMachine [] (declarationType declaration)]
           typedBody = case rustTypedFunction typed (declarationId declaration) of
             -- A typed definition converts its arguments and result directly
@@ -273,16 +272,20 @@ emitRustDefinitions layout bits declarations units = do
             -- which installs the handlers first).
             Just _ | isContextual (rustTypedPlan typed) (declarationId declaration) -> Nothing
             Just function
-              | all (rustTypedNative typed) (result : args) -> Just [E.call ("ls::fast::direct" ++ show (length args)) (values ++ [D.text function])]
-              | otherwise -> Just [E.call ("ls::fast::native" ++ show (length args)) (values ++ [D.text function])]
+              | all (rustTypedNative typed) (result : args) -> Just (L.call ("ls::fast::direct" ++ show (length args)) (values ++ [L.atom function]))
+              | otherwise -> Just (L.call ("ls::fast::native" ++ show (length args)) (values ++ [L.atom function]))
             Nothing -> Nothing
-          body = maybe id const typedBody $ architecture ++ installs ++
-            [D.text "let arguments = " <> E.vector (map (\value -> E.call "ls::IntoValue::into_value" [value]) values) <> D.text ";"
-            ,D.text "let result = " <> E.call ("super::" ++ name) [D.text "ctx",D.text "arguments"] <> D.text "?;"
-            ,D.text "let schema = crate::lawspec_schema::schema()?;"
-            ,D.text "let result = " <> E.call "schema.native_value_with_context" [D.text "result",D.text "&" <> resultRef,D.text (show bits),D.text "ctx"] <> D.text "?;"
-            ,E.call ("<" ++ resultType ++ " as ls::FromValue>::from_value") [D.text "result"]]
-      pure (signature <> D.block 4 (D.joinWith D.hardline body))
+          body = case typedBody of
+            Just direct -> L.stmts [] (Just direct)
+            Nothing -> L.stmts (architecture ++ installs ++
+              [ L.Let "arguments" (L.vecOf [L.call "ls::IntoValue::into_value" [value] | value <- values])
+              , L.Let "result" (L.try' (L.call ("super::" ++ name) [L.atom "ctx", L.atom "arguments"]))
+              , L.Let "schema" (L.try' (L.call "crate::lawspec_schema::schema" []))
+              , L.Let "result" (L.try' (L.method (L.atom "schema") "native_value_with_context" [L.atom "result", L.prefix "&" (L.Laid resultRef), L.atom (show bits), L.atom "ctx"])) ])
+              (Just (L.call ("<" ++ resultType ++ " as ls::FromValue>::from_value") [L.atom "result"]))
+          -- A parameter the body does not read is marked unused.
+          parameters' = [ let (n, rest') = break (== ':') p in E.unusedAs n body ++ rest' | p <- parameters ]
+      pure (L.function ("pub fn " ++ declarationName declaration) parameters' ("ls::Result<" ++ resultType ++ ">") body)
     implementation contracts d = do
       name <- nameFor d
       let args = definitionArguments d

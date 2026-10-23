@@ -229,7 +229,7 @@ overflowable count e = case e of
   Block _ _ -> True
   Call {} -> count == 1
   Macro {} -> count == 1
-  Method {} -> count == 1
+  Method {} -> count == 1 && isJust (chainPrefix e)
   Struct {} -> count == 1
   Match {} -> count == 1
   If {} -> count == 1
@@ -294,16 +294,22 @@ opening e = case e of
   Call f _ -> maybe "" id (flat f) ++ "("
   Macro name open _ _ -> name ++ open
   Closure h (Block _ _) -> h ++ " {"
-  Closure h body -> h ++ " " ++ opening body
+  Closure h body
+    | not (multilineBody body), isNothing (oneLine body) -> h ++ " {"
+    | otherwise -> h ++ " " ++ opening body
   Block _ _ -> "{"
   Match s _ -> "match " ++ maybe "" id (flat s) ++ " {"
   If c _ _ -> "if " ++ maybe "" id (flat c) ++ " {"
   Struct name _ -> name ++ " {"
   Try a -> opening a
   Prefix op a -> op ++ opening a
-  Method {} -> let (root, _) = unchain e in concat [maybe "" id (either flat flatLink r) | r <- root]
-  Field {} -> let (root, _) = unchain e in concat [maybe "" id (either flat flatLink r) | r <- root]
+  Method {} -> chainOpening
+  Field {} -> chainOpening
   _ -> maybe "" id (flat e)
+  where
+    chainOpening = case (chainPrefix e, snd (unchain e)) of
+      (Just p, links@(_ : _)) | LinkCall name _ _ <- last links -> p ++ "." ++ name ++ "("
+      _ -> let (root, _) = unchain e in concat [maybe "" id (either flat flatLink r) | r <- root]
 
 -- | An expression's layout.
 expr :: Expr -> D.Doc
@@ -382,9 +388,12 @@ arguments cap open close limit args =
       ([_], Method {}) -> length (snd (unchain lastArg)) == 1
       ([_], Try a@(Method {})) -> length (snd (unchain a)) == 1
       _ -> False
+    -- Within an overflowing argument's budget, the line up to the last
+    -- argument's opening must fit the budget too.
+    overflowFits = maybe True (\c -> width firstLine <= c) cap
     rest
-      | overflowLast, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice firstLine overflowed vertical)]
-      | overflowLast = [D.prefixChoice firstLine overflowed vertical]
+      | overflowLast, overflowFits, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice firstLine overflowed vertical)]
+      | overflowLast, overflowFits = [D.prefixChoice firstLine overflowed vertical]
       | otherwise = [vertical]
 
 -- | Whether arguments go on the call's line: within the width limit, or a
@@ -429,7 +438,16 @@ overflowing cap e = case e of
   Macro name open close args -> D.text name <> arguments (subtract (width name) <$> cap) open close 60 args
   Prefix op a -> D.text op <> overflowing (subtract (width op) <$> cap) a
   Try a@(Call {}) -> overflowing (subtract 1 <$> cap) a <> D.text "?"
+  -- rustfmt keeps an overflowing chain on one line up to its last call.
+  _ | isChain e, Just prefix <- chainPrefix e, (_, links@(_ : _)) <- unchain e, l@(LinkCall {}) <- last links ->
+        D.text prefix <> linkDoc l
   _ -> expr e
+
+-- | A chain's text up to its last link, when that is on one line.
+chainPrefix :: Expr -> Maybe String
+chainPrefix e = let (root, links) = unchain e in case links of
+  [] -> Nothing
+  _ -> concat <$> mapM (either oneLine flatLink) (root ++ map Right (init links))
 
 isChain :: Expr -> Bool
 isChain e = case e of
@@ -451,12 +469,15 @@ chain e = case oneLine e of
     rootDoc = mconcat (map (either expr linkDoc) root')
     eachLine = rootDoc <> D.nest 4 (mconcat [D.hardline <> linkDoc l | l <- links'])
     prefixText = concat <$> mapM (either oneLine flatLink) (root' ++ map Right (init links'))
+    -- rustfmt's choice for the last call (format_last_child): on the
+    -- chain's line, or the chain broken a link a line.
+    budget = if length links' == 1 then Nothing else Just (60 - maybe 0 width prefixText)
     broken = case links' of
       [] -> rootDoc
       _ -> case (prefixText, last links') of
-        (Just p, l@(LinkCall _ _ _)) -> case oneLineLink l of
-          Just t -> D.fitsIndented 4 (width t) eachLine (oneOf [D.text p <> linkDoc l, eachLine])
-          Nothing -> oneOf [D.text p <> linkDoc l, eachLine]
+        (Just p, l@(LinkCall _ _ _)) ->
+          let same = D.text p <> linkDoc l
+          in D.prefer (D.ChainLast budget) same (D.nest 4 (D.hardline <> linkDoc l)) same eachLine
         _ -> eachLine
 
 data Link = LinkCall String [Expr] Bool | LinkField String Bool
@@ -602,6 +623,14 @@ armDoc (ArmOf pat guard body) = case unblocked body of
 -- | A function: its signature on one line when it fits, else one
 -- parameter a line; then its body.
 function :: String -> [String] -> String -> D.Doc -> D.Doc
-function head' parameters result body =
-  D.text head' <> D.delimitTrailing 4 "(" ")" (map D.text parameters) <> D.text (result' ++ " ") <> D.block 4 body
-  where result' = if null result then "" else " -> " ++ result
+function head' parameters result body = oneOf [D.text (head' ++ "(" ++ intercalate ", " parameters ++ ")" ++ result' ++ " {"), broken] <>
+  D.nest 4 (D.hardline <> body) <> D.hardline <> D.text "}"
+  where
+    result' = if null result then "" else " -> " ++ result
+    params = D.nest 4 (mconcat [D.hardline <> D.text (p ++ ",") | p <- parameters])
+    -- rustfmt puts the brace on a line of its own when the closing line,
+    -- with the indentation counted twice, leaves no room for it.
+    broken
+      | null parameters = D.text (head' ++ "()" ++ result' ++ " {")
+      | otherwise = D.text (head' ++ "(") <> params <> D.hardline <>
+          D.fitsIndentedTwice (width (")" ++ result') + 2) (D.text (")" ++ result' ++ " {")) (D.text (")" ++ result') <> D.hardline <> D.text "{")
