@@ -9,4 +9,5 @@ pluggy==1.6.0
 pycparser==3.0
 pygments==2.21.0
 pytest==8.4.2
+ruff==0.17.2
 sortedcontainers==2.4.0

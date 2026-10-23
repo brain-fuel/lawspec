@@ -14,6 +14,8 @@ extra-source-files:
     vendor/unicode/LICENSE.txt
     vendor/unicode/NORMALIZATION-LICENSES.txt
     vendor/unicode/17.0.0/CaseFolding.txt
+    vendor/unicode/17.0.0/EastAsianWidth.txt
+    vendor/unicode/17.0.0/DerivedGeneralCategory.txt
     README.md
     CHANGELOG.md
     runtime/lawspec_harness.rs

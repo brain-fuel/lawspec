@@ -1,5 +1,5 @@
 -- | The native test command for each target, shared by every acceptance suite.
-module Toolchain (Toolchain(..), toolchain, mutantArguments, compileFailure) where
+module Toolchain (Toolchain(..), toolchain, Formatter(..), formatter, mutantArguments, compileFailure) where
 
 import Data.Char (toLower, isSpace)
 import Data.List (isInfixOf, isSuffixOf, sort, stripPrefix, dropWhileEnd)
@@ -16,6 +16,31 @@ data Toolchain = Toolchain
   , prepare :: IO ()  -- run before every test invocation
   , report :: IO String  -- output kept outside the console, such as test reports
   }
+
+-- | A target's canonical formatter in check mode, run on the generated
+-- sources of a project: generated code must be a fixed point of it. The
+-- version is pinned where the formatter is installed (ruff in
+-- test/locks/python.txt), which is part of the acceptance cache key.
+-- ref:DEC-readable-output-default
+data Formatter = Formatter
+  { formatterName :: String
+  , formatterCommand :: FilePath
+  , formatterArguments :: FilePath -> [String]  -- given the directory to check
+  , formatterExtensions :: [String]
+  , formatterInputs :: [FilePath]  -- files outside the project that pin it
+  }
+
+formatter :: String -> IO (Maybe Formatter)
+formatter target = do
+  root <- getCurrentDirectory
+  case target of
+    "python" -> do
+      python <- maybe (root </> ".integration/python/.venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
+      -- ruff format's default configuration, whatever a project's files say.
+      pure (Just (Formatter "ruff format" python
+        (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
+        ["test/locks/python.txt"]))
+    _ -> pure Nothing
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain

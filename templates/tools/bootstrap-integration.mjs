@@ -109,6 +109,8 @@ async function setup(target) {
         ".[test]",
         // For the suites that import lawspec.crypto or lawspec.network.
         "cryptography",
+        // Acceptance checks generated Python with ruff format (pinned in the lock).
+        ...(target === "python" ? ["ruff"] : []),
       ],
       root,
     );

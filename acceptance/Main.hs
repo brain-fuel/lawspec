@@ -86,8 +86,9 @@ main = do
   args <- getArgs
   (suite, flags, selected) <- case args of
     suite : rest -> pure (suite, filter ("--" `isPrefixOf`) rest, filter (not . ("--" `isPrefixOf`)) rest)
-    [] -> die "usage: lawspec-acceptance <suite> [--check | --no-mutants] [target...]"
+    [] -> die "usage: lawspec-acceptance <suite> [--check | --formatted | --no-mutants] [target...]"
   let check = "--check" `elem` flags
+      formattedOnly = "--formatted" `elem` flags
       mutate = "--no-mutants" `notElem` flags
   bits <- maybe 64 read <$> lookupEnv "LAWSPEC_MACHINE_BITS"
   minify <- (== Just "1") <$> lookupEnv "LAWSPEC_MINIFY"
@@ -123,7 +124,10 @@ main = do
     bound <- if hasBindings then decode <$> BL.readFile bindingsFile else pure Nothing
     let native = maybe [] (\b -> [("nativeBindings", b)]) bound
     generated <- plan (extra ++ native) (sources ++ vectors) target bits minify
-    if check then checkDisk project generated else do
+    if check then checkDisk project generated else if formattedOnly then do
+      writeProject suite target project (bits == 64 && not minify) minify generated
+      unless minify (formatted target project generated >>= mapM_ putStrLn)
+    else do
       writeProject suite target project (bits == 64 && not minify) minify generated
       mismatch <- if architecture then architectureMismatch target bits else pure False
       if mismatch then expectMismatch target bits project
@@ -133,15 +137,17 @@ main = do
         suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
         recordingInputs <- map snd <$> suiteRecordings suite
+        formatInputs <- maybe [] formatterInputs <$> formatter target
         key <- runKey target [suite, target, profile, show mutate]
           (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated])
-          (suiteInputs ++ recordingInputs ++ harnessInputs target)
+          (suiteInputs ++ recordingInputs ++ harnessInputs target ++ formatInputs)
         recorded <- if mode == Reuse then lookupResult key else pure Nothing
         case recorded of
           Just output -> mapM_ (putStrLn . (++ " (cached)")) output
           Nothing -> do
             let regenerate edited = planEither (extra ++ native) (edited ++ vectors) target bits minify
-            output <- runSuite suite target project mutate (sources, regenerate, generated)
+            format <- if minify then pure [] else formatted target project generated
+            output <- (format ++) <$> runSuite suite target project mutate (sources, regenerate, generated)
             when (mode /= Off) (storeResult key output)
 
 -- | Files outside the project that a run reads: the harness itself and the
@@ -241,8 +247,12 @@ writeProject suite target project defaultProfile minify generated = do
     exists <- doesFileExist recorded
     when exists $ do
       expected <- readFile' recorded
-      unless (Just expected == lookup relative [(generatedPath g, generatedContent g) | g <- generated])
-        (die (target ++ ": the generated stub for " ++ relative ++ " changed; review the adapter and update " ++ recorded))
+      -- LAWSPEC_UPDATE_STUBS=1 records the new stub, once its adapter is reviewed.
+      update <- (== Just "1") <$> lookupEnv "LAWSPEC_UPDATE_STUBS"
+      case lookup relative [(generatedPath g, generatedContent g) | g <- generated] of
+        Just current | current /= expected && update -> writeFile recorded current
+        _ -> unless (Just expected == lookup relative [(generatedPath g, generatedContent g) | g <- generated])
+          (die (target ++ ": the generated stub for " ++ relative ++ " changed; review the adapter and update " ++ recorded))
   root <- getCurrentDirectory
   when (target `elem` ["javascript", "typescript"]) $ do
     let link = project </> "node_modules"
@@ -354,6 +364,27 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
     putStrLn line
     pure line
   pure (passed : scheduled ++ rejected ++ specRejected)
+
+-- | The formatted step: every generated source, the stubs adapters replace
+-- included, must be unchanged by the target's canonical formatter. The
+-- compact profile is exempt; it is not laid out for reading.
+formatted :: String -> FilePath -> [Generated] -> IO [String]
+formatted target project generated = formatter target >>= \case
+  Nothing -> pure []
+  Just f -> do
+    let staging = project </> ".lawspec-formatted"
+        sources = [g | g <- generated, any (`isSuffixOf` generatedPath g) (formatterExtensions f)]
+    removePathForcibly staging
+    forM_ sources $ \g -> writeAt (staging </> generatedPath g) (generatedContent g)
+    (code, out, err) <- readCreateProcessWithExitCode (proc (formatterCommand f) (formatterArguments f staging)) ""
+    removePathForcibly staging
+    when (code /= ExitSuccess) $ do
+      writeFile (project </> "formatted.log") (out ++ err)
+      hPutStrLn stderr (take 6000 (out ++ err))
+      die (target ++ ": generated code differs from " ++ formatterName f ++ " (see " ++ project </> "formatted.log)")
+    let line = target ++ ": formatted (" ++ formatterName f ++ ")"
+    putStrLn line
+    pure [line]
 
 -- | Regenerate without running anything and compare with the files on disk.
 checkDisk :: FilePath -> [Generated] -> IO ()
