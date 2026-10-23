@@ -11,6 +11,7 @@ module LawSpec.RustLayout
   , precedence
   ) where
 
+import Data.Char (isAlphaNum)
 import Data.List (intercalate)
 import Data.Maybe (isJust, isNothing)
 import qualified LawSpec.Code.Doc as D
@@ -191,7 +192,7 @@ oneLine e = case e of
   _ -> Nothing
   where
     list limit open close args = case mapM oneLine args of
-      Just xs | width (intercalate ", " xs) <= limit || (length xs == 1 && open == "(") -> Just (open ++ intercalate ", " xs ++ close)
+      Just xs | fitsArguments limit open args xs -> Just (open ++ intercalate ", " xs ++ close)
       _ -> Nothing
     -- Each link on one line, and a chain of several links within 60
     -- columns (rustfmt gives a single link the whole line).
@@ -328,38 +329,76 @@ oneOf = D.bestFit
 arguments :: Maybe Int -> String -> String -> Int -> [Expr] -> D.Doc
 arguments _ open close _ [] = D.text (open ++ close)
 arguments cap open close limit args =
-  case (mapM oneLine args, overflowLast) of
-    -- A call's single argument has the whole line; an array's does not.
-    -- An overflowing argument is on one line only within 60 columns.
-    (Just texts, _) | width (intercalate ", " texts) <= limit || (length args == 1 && open == "(")
-                    , maybe True (\c -> width (intercalate ", " texts) + 2 <= c) cap ->
+  case mapM oneLine args of
+    Just texts | fitsArguments limit open args texts
+               , maybe True (\c -> width (open ++ intercalate ", " texts ++ close) <= c) cap ->
       oneOf ([D.text (open ++ intercalate ", " texts ++ close)] ++ rest)
     _ -> case rest of
       [only] -> only
       _ -> oneOf rest
   where
-    vertical = D.text open <> D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline) (map expr args) <> D.text ",") <>
-      D.hardline <> D.text close
+    -- Short simple arguments (names and literals of at most 10 columns)
+    -- are packed onto the lines, as rustfmt's mixed layout packs them.
+    vertical = case mapM oneLine args of
+      Just texts | all simple args, all ((<= 10) . width) texts ->
+        D.text open <> D.nest 4 (D.hardline <> D.flow [D.text (t ++ ",") | t <- texts]) <> D.hardline <> D.text close
+      _ -> D.text open <> D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline) (map expr args) <> D.text ",") <>
+        D.hardline <> D.text close
     initial = init args
     lastArg = last args
+    initialTexts = [t | Just t <- map oneLine initial]
     overflowLast = overflowable (length args) lastArg && all (isJust . oneLine) initial
-    overflowed = D.text open <> mconcat [D.text (t ++ ", ") | Just t <- map oneLine initial] <> overflowing lastArg <> D.text close
+    -- The overflowing argument has what is left of the call's 60 columns,
+    -- or, when the call has none, 60 columns of its own if it is a call.
+    lastCap = case cap of
+      Just c -> Just (c - width (open ++ concatMap (++ ", ") initialTexts))
+      Nothing | nestedCall lastArg -> Just 60
+              | otherwise -> Nothing
+    overflowed = D.text open <> mconcat [D.text (t ++ ", ") | t <- initialTexts] <> overflowing lastCap lastArg <> D.text close
     -- rustfmt overflows the last argument whenever the line up to its
     -- opening fits.
-    firstLine = open ++ concat [t ++ ", " | Just t <- map oneLine initial] ++ opening lastArg
+    firstLine = open ++ concatMap (++ ", ") initialTexts ++ opening lastArg
     rest
       | overflowLast = [D.prefixChoice firstLine overflowed vertical]
       | otherwise = [vertical]
 
--- | A call's overflowing last argument: rustfmt lays it out within 60
--- columns, so a call or macro there keeps its arguments on its line only
--- when the whole fits in 60.
-overflowing :: Expr -> D.Doc
-overflowing e = case e of
-  Call f args | Just name <- flat f -> D.text name <> arguments (Just (60 - width name)) "(" ")" 60 args
-  Macro name open close args -> D.text name <> arguments (Just (60 - width name)) open close 60 args
-  Try a -> overflowing a <> D.text "?"
-  Prefix op a -> D.text op <> overflowing a
+-- | Whether arguments go on the call's line: within the width limit, or a
+-- call's single argument on the whole line, where an argument that is
+-- itself a call or macro still has 60 columns.
+fitsArguments :: Int -> String -> [Expr] -> [String] -> Bool
+fitsArguments limit open args texts =
+  width (intercalate ", " texts) <= limit ||
+  (open == "(" && case (args, texts) of
+    ([a], [t]) -> not (nestedCall a) || width t <= 60
+    _ -> False)
+
+-- | rustfmt's simple expression: a literal or a one-segment name, or a
+-- reference, cast, field or call of one.
+simple :: Expr -> Bool
+simple e = case e of
+  Atom t -> not (null t) && "::" `notInfix` t && all (\c -> isAlphaNum c || c `elem` ("_.\"'-" :: String)) t
+  Call f _ -> simple f
+  Prefix op a -> op `elem` ["&", "*", "!", "-", "&mut "] && simple a
+  Cast a _ -> simple a
+  Field a _ -> simple a
+  _ -> False
+  where notInfix needle hay = not (any (\i -> take (length needle) (drop i hay) == needle) [0 .. length hay])
+
+-- | rustfmt's nested call: a call or macro as an argument.
+nestedCall :: Expr -> Bool
+nestedCall e = case e of
+  Call {} -> True
+  Macro {} -> True
+  _ -> False
+
+-- | A call's overflowing last argument, within the columns left to it: a
+-- call or macro there keeps its arguments on its line only when the whole
+-- fits.
+overflowing :: Maybe Int -> Expr -> D.Doc
+overflowing cap e = case e of
+  Call f args | Just name <- flat f -> D.text name <> arguments (subtract (width name) <$> cap) "(" ")" 60 args
+  Macro name open close args -> D.text name <> arguments (subtract (width name) <$> cap) open close 60 args
+  Prefix op a -> D.text op <> overflowing (subtract (width op) <$> cap) a
   _ -> expr e
 
 isChain :: Expr -> Bool

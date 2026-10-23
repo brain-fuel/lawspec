@@ -218,9 +218,11 @@ dataDoc env d = do
           "(" ++ intercalate ", " (replicate (length (constructorFields c)) "_") ++ ")")
         toDynArm c = arm (patternOf "f" c) (L.call "ls::Value::Data" [L.method (L.atom (tagOf c)) "into" [],
           L.vecOf [L.method (L.atom ("f" ++ show k)) "to_dyn" [] | k <- [0 .. length (constructorFields c) - 1]]])
-        fromDynArm c ts = arm (tagOf c) (L.letIn
-          [L.Let "mut fields" (L.try' (L.call "ls::fast::fields" [L.atom "value", L.atom (tagOf c), L.atom (show (length ts))])) | not (null ts)]
-          (L.call "Ok" [L.call name [L.call "std::sync::Arc::new" [made c [L.try' (L.call ("<" ++ t ++ " as Dyn>::from_dyn") [L.method (L.method (L.atom "fields") "next" []) "unwrap" []]) | t <- ts]]]]))
+        -- Each field is decoded into a local named after it.
+        fromDynArm c ts = let locals = E.sourceLocals [] (constructorFields c) in arm (tagOf c) (L.letIn
+          ([L.Let "mut fields" (L.try' (L.call "ls::fast::fields" [L.atom "value", L.atom (tagOf c), L.atom (show (length ts))])) | not (null ts)] ++
+           [L.Let local (L.try' (L.call ("<" ++ t ++ " as Dyn>::from_dyn") [L.method (L.method (L.atom "fields") "next" []) "unwrap" []])) | (local, t) <- zip locals ts])
+          (L.call "Ok" [L.call name [L.call "std::sync::Arc::new" [made c (map L.atom locals)]]]))
         made c values = if null values then L.atom (node ++ "::" ++ variantName c) else L.call (node ++ "::" ++ variantName c) values
     pure (header <> D.hardline <>
       line "#[derive(Clone, PartialEq, Eq, Debug)]" <> D.hardline <>

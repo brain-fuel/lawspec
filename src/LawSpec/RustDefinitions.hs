@@ -121,32 +121,40 @@ emitRustDefinitions layout bits declarations units = do
       types <- mapM (Native.rustDataType declarations) args
       resultType <- Native.rustDataType declarations result
       refs <- mapM E.reference args
-      let decode n (ty, ref) = D.text ("let native_" ++ show n ++ " = ") <> E.call ("<" ++ ty ++ " as ls::FromValue>::from_value")
-            [E.call "schema.native_value_with_context" [D.text ("arguments[" ++ show n ++ "].clone()"), D.text "&" <> ref, D.text (show bits), D.text "ctx"] <> D.text "?"] <> D.text "?;"
+      let natives = ["native_" ++ show n | n <- [0 .. length args - 1]]
+          -- Each argument is checked, then decoded to its native type.
+          decode (n, native, ty, ref) =
+            [ L.Let "value" (L.try' (L.method (L.atom "schema") "native_value_with_context"
+                [L.method (L.atom ("arguments[" ++ show n ++ "]")) "clone" [], L.prefix "&" (L.Laid ref), L.atom (show bits), L.atom "ctx"]))
+            , L.Let native (L.try' (L.call ("<" ++ ty ++ " as ls::FromValue>::from_value") [L.atom "value"])) ]
           -- An adapter that uses abilities gets their handlers first.
           uses = [ability | ability <- declarationUses a, not (isFail ability)]
-          handlerBindings = [D.text ("let handler_" ++ show k ++ " = ctx.handler::<std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">>(" ++ show (abilityKey ability) ++ ")?;")
-            | (k, ability) <- zip [0 :: Int ..] uses]
-          handlers = [D.text ("&*handler_" ++ show k) | k <- [0 .. length uses - 1]]
-          plainCall = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) (handlers ++ [D.text ("native_" ++ show n) | n <- [0 .. length args - 1]])
+          handlerNames = fst (claimAll (scopeWith (natives ++ E.reservedLocals))
+            [nativeIdentifier "rust" ValueName (maybe "handler" (interfaceName . snd) (findAbility units ability)) | ability <- uses])
+          handlerBindings = [L.Let h (L.try' (L.method (L.atom "ctx") ("handler::<std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">>") [L.atom (show (abilityKey ability))]))
+            | (h, ability) <- zip handlerNames uses]
+          adapter = "crate::" ++ ownerModule owner ++ "::" ++ declarationName a
+          plainCall = L.call adapter (map (L.atom . ("&*" ++)) handlerNames ++ map L.atom natives)
           -- An adapter that fails with E: its native code calls ls::fail.
           call = case [(ability, failure) | ability@(AbilityRef _ [failure]) <- declarationUses a, isFail ability] of
-            (ability, failure) : _ -> E.call ("ls::native_failures::<" ++ either error id (Native.rustDataType declarations failure) ++ ", _>")
-              [D.text (show (abilityKey ability)), D.text "|native| ls::IntoValue::into_value(native)", D.text "|| " <> plainCall,
-               D.text (Abilities.mappedFailures bits Nothing [b | u <- units, unitId u == owner, b <- unitFailureBindings u] failure)]
+            (ability, failure) : _ -> L.call ("ls::native_failures::<" ++ either error id (Native.rustDataType declarations failure) ++ ", _>")
+              [L.atom (show (abilityKey ability)), L.closure "|native|" (L.call "ls::IntoValue::into_value" [L.atom "native"]), L.closure "||" plainCall,
+               L.atom (Abilities.mappedFailures bits Nothing [b | u <- units, unitId u == owner, b <- unitFailureBindings u] failure)]
             [] -> plainCall
           -- An async step runs within its stage's timeout and hedge, when it
           -- has them; each hedged attempt starts from copies of the inputs.
-          started = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) [D.text ("native_" ++ show n ++ ".clone()") | n <- [0 .. length args - 1]]
-          finish
-            | declarationAsync a = [E.call "ls::await_step" [D.text "ctx", D.text "|| " <> started,
-                D.text ("|native_result: " ++ resultType ++ "| ls::IntoValue::into_value(native_result)")]]
-            | otherwise = [D.text ("let native_result: " ++ resultType ++ " = ") <> call <> D.text ";",
-                D.text "Ok(ls::IntoValue::into_value(native_result))"]
-      pure (D.text ("fn " ++ adapterName i) <>
-        D.delimitTrailing 4 "(" ")" [D.text "ctx: &mut ls::Context", D.text "arguments: Vec<ls::Value>"] <>
-        D.text " -> ls::Result<ls::Value> " <> D.block 4 (D.joinWith D.hardline
-          ([D.text "let schema = crate::lawspec_schema::schema()?;"] ++ zipWith decode [0::Int ..] (zip types refs) ++ handlerBindings ++ finish)))
+          started = L.call adapter [L.method (L.atom native) "clone" [] | native <- natives]
+          (finishing, finished)
+            | declarationAsync a = ([], L.call "ls::await_step" [L.atom "ctx", L.closure "||" started,
+                L.closure ("|native_result: " ++ resultType ++ "|") (L.call "ls::IntoValue::into_value" [L.atom "native_result"])])
+            | otherwise = ([L.Let ("native_result: " ++ resultType) call], L.call "Ok" [L.call "ls::IntoValue::into_value" [L.atom "native_result"]])
+          statements' = [L.Let "schema" (L.try' (L.call "crate::lawspec_schema::schema" [])) | not (null args)] ++
+            concatMap decode (zip4' [0 :: Int ..] natives types refs) ++ handlerBindings ++ finishing
+          body = L.stmts statements' (Just finished)
+          zip4' (w : ws) (x : xs) (y : ys) (z : zs) = (w, x, y, z) : zip4' ws xs ys zs
+          zip4' _ _ _ _ = []
+      pure (L.function ("fn " ++ adapterName i)
+        [E.unusedAs "ctx" body ++ ": &mut ls::Context", E.unusedAs "arguments" body ++ ": Vec<ls::Value>"] "ls::Result<ls::Value>" body)
     evaluator identity = maybe (Left "unresolved Rust policy definition") Right (lookup identity names)
     policyDoc key policy = do
       gates <- policyGates policy
@@ -280,61 +288,49 @@ emitRustDefinitions layout bits declarations units = do
       let args = definitionArguments d
           -- Arguments keep their source names; none takes a callee's.
           locals = zip (map binderId args) (E.sourceLocals [(Id "", n) | (_, n) <- names, ':' `notElem` n] args)
-          signature = D.text ("pub(crate) fn " ++ name) <>
-            D.delimitTrailing 4 "(" ")" [D.text "ctx: &mut ls::Context",D.text "arguments: Vec<ls::Value>"] <>
-            D.text " -> ls::Result<ls::Value> "
-      -- Arguments and results were checked where they were built, decoded
-      -- or drawn; the native wrappers check values crossing from adapters.
-      let checks = [D.text ("let " ++ local ++ " = arguments.next().unwrap();") | (_,(_,local)) <- zip args locals]
-      rendered <- E.renderExpression declarations bits names locals (definitionBody d)
+      rendered <- E.renderExpressionL declarations bits names locals (definitionBody d)
+      let workflowClosure inner = L.closure "|ctx: &mut ls::Context| -> ls::Result<ls::Value>" (L.Block [] (Just (L.call "Ok" [inner])))
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
         Just policy | policyFrame policy ->
-          pure (E.call "ls::run_workflow" [D.text "ctx",
-            D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.text "Ok(" <> rendered <> D.text ")")] <> D.text "?")
+          pure (L.try' (L.call "ls::run_workflow" [L.atom "ctx", workflowClosure rendered]))
         Just policy -> do
           config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
           let key = case locals of
-                (_, local) : _ -> D.text (local ++ ".clone()")
-                [] -> D.text "ls::Value::Unit"
-          pure (E.call "ls::run_stage" [D.text "ctx", D.text "&" <> config,
-            D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.text "Ok(" <> rendered <> D.text ")"), key] <> D.text "?")
-      let arity = D.text ("if arguments.len() != " ++ show (length args) ++ " ") <>
-            D.block 4 (D.text "return Err" <> D.delimitTrailing 4 "(" ")"
-              [D.group (D.text (E.quoted
-                (idText (declarationId (definitionDeclaration d)) ++ ": definition argument count mismatch")) <>
-                D.nest 4 (D.softbreak <> D.text ".into()"))] <> D.text ";")
-      let prefix = [arity,D.text "let schema = crate::lawspec_schema::schema()?;",
-            D.text "let mut arguments = arguments.into_iter();"] ++ checks
-          evaluate = D.text "let result = " <> body <> D.text ";"
-          checkedResult = D.text "Ok::<ls::Value, String>(result)"
-          contract = lookup (declarationId (definitionDeclaration d))
-            [(contractDeclaration c,c) | c <- contracts]
-      statements <- case contract of
-        Nothing -> pure (prefix ++ [evaluate,checkedResult])
+                (_, local) : _ -> L.method (L.atom local) "clone" []
+                [] -> L.atom "ls::Value::Unit"
+          pure (L.try' (L.call "ls::run_stage" [L.atom "ctx", L.prefix "&" (L.Laid config), workflowClosure rendered, key]))
+      let identity = idText (declarationId (definitionDeclaration d))
+          failWith message = L.Block [L.Semi (L.Return (Just (L.call "Err" [L.method (L.atom (E.quoted message)) "into" []])))] Nothing
+          arity = L.Do (L.If (L.infixOp "!=" (L.method (L.atom "arguments") "len" []) (L.atom (show (length args))))
+            (failWith (identity ++ ": definition argument count mismatch")) Nothing)
+          evaluate = L.Let "result" body
+          contract = lookup (declarationId (definitionDeclaration d)) [(contractDeclaration c,c) | c <- contracts]
+          -- The schema is fetched when the body reads it.
+          prefix rest = [arity] ++
+            [L.Let "schema" (L.try' (L.call "crate::lawspec_schema::schema" [])) | E.mentions "schema" (L.expr (L.Block rest Nothing))] ++
+            [L.Let "mut arguments" (L.method (L.atom "arguments") "into_iter" []) | not (null args)] ++
+            [L.Let local (L.method (L.method (L.atom "arguments") "next" []) "unwrap" []) | (_, local) <- locals] ++ rest
+      statements' <- case contract of
+        Nothing -> pure (L.stmts (prefix [evaluate]) (Just (L.call "Ok::<ls::Value, String>" [L.atom "result"])))
         Just c -> do
           let aliases = zip (map binderId (contractArguments c)) (map snd locals) ++
                 [(binderId (contractResult c),"checked")]
               require stage predicate = do
-                expression <- E.renderExpression declarations bits names aliases predicate
-                pure (D.text "let predicate = " <> expression <> D.text ";" <> D.hardline <>
-                  D.text "if !predicate.boolean()? " <> D.block 4
-                    (D.text "return " <> E.call "Err" [E.stringLiteral (stage ++ " failed") <> D.text ".into()"] <> D.text ";"))
-          pre <- mapM (require "precondition") (contractPreconditions c)
+                expression <- E.renderExpressionL declarations bits names aliases predicate
+                pure [ L.Let "predicate" expression
+                     , L.Do (L.If (L.prefix "!" (L.try' (L.method (L.atom "predicate") "boolean" []))) (failWith (stage ++ " failed")) Nothing) ]
+          pre <- concat <$> mapM (require "precondition") (contractPreconditions c)
           -- Proved by the totality audit; see LawSpec.Core.Evidence.
-          post <- mapM (require "postcondition") (runtimePostconditions c)
-          -- Rustfmt hangs a fitting call, but wraps its arguments when the
-          -- continuation would reach the right margin (12-column indentation).
-          let checkedBinding = if length (D.render D.Compact checkedResult) + 2 < 88
-                then D.hang 4 (D.text "let checked =") (checkedResult <> D.text "?;")
-                else D.text "let checked = " <> checkedResult <> D.text "?;"
-              inner = D.joinWith D.hardline (prefix ++ pre ++ [evaluate,checkedBinding] ++ post ++
-                [D.text "Ok(checked)"])
-          pure [D.text "let result = (|| " <> D.block 4 inner <> D.text ")();",
-            D.text "let context = " <> E.stringLiteral (idText (declarationId (definitionDeclaration d))) <> D.text ";",
-            D.text "result.map_err(|error: String| format!(\"{context}: {error}\"))"]
-      pure (signature <> D.block 4 (D.joinWith D.hardline statements))
+          post <- concat <$> mapM (require "postcondition") (runtimePostconditions c)
+          let inner = L.Block (prefix (pre ++ [evaluate, L.Let "checked" (L.try' (L.call "Ok::<ls::Value, String>" [L.atom "result"]))] ++ post))
+                (Just (L.call "Ok" [L.atom "checked"]))
+          pure (L.stmts [ L.Let "result" (L.Call (L.Paren (L.closure "||" inner)) [])
+                        , L.Let "context" (L.atom (E.quoted identity)) ]
+            (Just (L.method (L.atom "result") "map_err" [L.closure "|error: String|" (L.macroCall "format" [L.atom "\"{context}: {error}\""])])))
+      pure (L.function ("pub(crate) fn " ++ name)
+        [E.unusedAs "ctx" statements' ++ ": &mut ls::Context", "arguments: Vec<ls::Value>"] "ls::Result<ls::Value>" statements')
     -- Inspect every variant, including unselected native machine fields.
     nativeMachine seen ty = case ty of
       Constructor name args -> name `elem` ["IntSize","UIntSize","UIntPtr"] ||
