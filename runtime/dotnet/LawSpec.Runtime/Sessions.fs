@@ -17,16 +17,20 @@ type SessionStep = { FirstSends: bool; Part: SessionPart }
 /// A protocol to open, with the catalogue of every protocol its steps name,
 /// and the network deadline (ms) of its ends.
 type SessionSpec =
-    { Id: string
-      Protocols: Map<string, SessionStep list>
-      Deadline: int }
+    {
+        Id: string
+        Protocols: Map<string, SessionStep list>
+        Deadline: int
+    }
 
 type internal SideState =
-    { mutable Generation: int64
-      mutable Step: int
-      mutable Closed: bool
-      Queue: Collections.Generic.Queue<SessionItem>
-      mutable Reader: TaskCompletionSource<Result<SessionItem, string>> option }
+    {
+        mutable Generation: int64
+        mutable Step: int
+        mutable Closed: bool
+        Queue: Collections.Generic.Queue<SessionItem>
+        mutable Reader: TaskCompletionSource<Result<SessionItem, string>> option
+    }
 
 and internal SessionItem =
     | Item of Value
@@ -39,13 +43,25 @@ and internal SessionItem =
 /// ref:DEC-sessions-by-construction ref:DEC-distribution-canonical-wire
 and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, network: (Node * Endpoint * int) option) =
     static let generations = ref 0L
-    static let custody = Collections.Generic.Dictionary<SessionChannel, SessionChannel>(HashIdentity.Reference)
+
+    static let custody =
+        Collections.Generic.Dictionary<SessionChannel, SessionChannel>(HashIdentity.Reference)
+
     let gate = obj ()
     let steps = spec.Protocols.[spec.Id]
     let fresh () = Interlocked.Increment generations
+
     let side n =
-        { Generation = fresh (); Step = 0; Closed = false; Queue = Collections.Generic.Queue(); Reader = None }
+        {
+            Generation = fresh ()
+            Step = 0
+            Closed = false
+            Queue = Collections.Generic.Queue()
+            Reader = None
+        }
+
     let sides = [| side 0; side 1 |]
+
     do
         match network with
         | Some(_, _, own) -> sides.[1 - own].Step <- List.length steps
@@ -59,7 +75,8 @@ and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, net
     member _.Steps = steps
     member internal _.Network = network
 
-    member internal this.Handle(n: int) = SessionEnd(this, n, sides.[n].Generation, sides.[n].Step)
+    member internal this.Handle(n: int) =
+        SessionEnd(this, n, sides.[n].Generation, sides.[n].Step)
 
     /// The ends of a new local channel.
     static member Open(spec: SessionSpec) =
@@ -67,18 +84,31 @@ and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, net
         channel.Handle 0, channel.Handle 1
 
     member internal this.Check(e: SessionEnd) =
-        if not (obj.ReferenceEquals(e.Channel, this)) then SessionChannel.Fail "invalid_end"
+        if not (obj.ReferenceEquals(e.Channel, this)) then
+            SessionChannel.Fail "invalid_end"
+
         let s = sides.[e.Side]
-        if s.Generation <> e.Generation || s.Step <> e.Step then SessionChannel.Fail "spent_end: this end was already used"
-        if s.Closed then SessionChannel.Fail "abandoned_end"
+
+        if s.Generation <> e.Generation || s.Step <> e.Step then
+            SessionChannel.Fail "spent_end: this end was already used"
+
+        if s.Closed then
+            SessionChannel.Fail "abandoned_end"
+
         s
 
     member internal this.Part(e: SessionEnd, sending: bool) =
         let s = this.Check e
-        if s.Step >= List.length steps then SessionChannel.Fail "protocol_complete"
+
+        if s.Step >= List.length steps then
+            SessionChannel.Fail "protocol_complete"
+
         let step = List.item s.Step steps
         let sends = if e.Side = 0 then step.FirstSends else not step.FirstSends
-        if sends <> sending then SessionChannel.Fail "wrong_step"
+
+        if sends <> sending then
+            SessionChannel.Fail "wrong_step"
+
         step.Part
 
     member internal this.Advance(n: int) =
@@ -94,6 +124,7 @@ and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, net
 
     member private this.Wake(n: int) : (unit -> unit) list =
         let s = sides.[n]
+
         match s.Reader with
         | None -> []
         | Some reader ->
@@ -105,27 +136,40 @@ and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, net
                 s.Reader <- None
                 s.Closed <- true
                 [ fun () -> reader.TrySetResult(Error "peer_failed") |> ignore ]
-            else []
+            else
+                []
 
     member internal this.Enqueue(n: int, item: SessionItem) =
         let actions =
             lock gate (fun () ->
                 if sides.[n].Closed then
-                    (match item with Delegated e -> [ fun () -> SessionChannel.Discard e ] | Item _ -> [])
+                    (match item with
+                     | Delegated e -> [ fun () -> SessionChannel.Discard e ]
+                     | Item _ -> [])
                 else
                     sides.[n].Queue.Enqueue item
                     this.Wake n)
-        for a in actions do a ()
+
+        for a in actions do
+            a ()
 
     /// Wait for the next item of a side.
     member internal this.Await(n: int) : SessionItem =
         let reader =
             lock gate (fun () ->
-                let r = TaskCompletionSource<Result<SessionItem, string>>(TaskCreationOptions.RunContinuationsAsynchronously)
+                let r =
+                    TaskCompletionSource<Result<SessionItem, string>>(
+                        TaskCreationOptions.RunContinuationsAsynchronously
+                    )
+
                 sides.[n].Reader <- Some r
                 r)
+
         let actions = lock gate (fun () -> this.Wake n)
-        for a in actions do a ()
+
+        for a in actions do
+            a ()
+
         match reader.Task.Result with
         | Ok item -> item
         | Error reason -> SessionChannel.Fail reason
@@ -136,25 +180,46 @@ and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, net
         let actions =
             lock gate (fun () ->
                 let s = sides.[n]
-                if s.Closed then []
+
+                if s.Closed then
+                    []
                 else
                     s.Closed <- true
-                    let discarded = [ for item in s.Queue do match item with Delegated e -> yield e | Item _ -> () ]
+
+                    let discarded =
+                        [
+                            for item in s.Queue do
+                                match item with
+                                | Delegated e -> yield e
+                                | Item _ -> ()
+                        ]
+
                     s.Queue.Clear()
                     let reader = s.Reader
                     s.Reader <- None
-                    [ yield! discarded |> List.map (fun e -> fun () -> SessionChannel.Discard e)
-                      match reader with
-                      | Some r -> yield fun () -> r.TrySetResult(Error "abandoned_end") |> ignore
-                      | None -> ()
-                      match network with
-                      | Some _ -> sides.[1 - n].Closed <- true
-                      | None -> yield! this.Wake(1 - n) ])
+
+                    [
+                        yield! discarded |> List.map (fun e -> fun () -> SessionChannel.Discard e)
+                        match reader with
+                        | Some r -> yield fun () -> r.TrySetResult(Error "abandoned_end") |> ignore
+                        | None -> ()
+                        match network with
+                        | Some _ -> sides.[1 - n].Closed <- true
+                        | None -> yield! this.Wake(1 - n)
+                    ])
+
         lock custody (fun () -> custody.Remove this |> ignore)
+
         match network with
-        | Some(_, endpoint, own) when own = n -> (try endpoint.Abandon() with _ -> ())
+        | Some(_, endpoint, own) when own = n ->
+            (try
+                endpoint.Abandon()
+             with _ ->
+                 ())
         | _ -> ()
-        for a in actions do a ()
+
+        for a in actions do
+            a ()
 
     /// Give up an end if it is still current (whoever holds it).
     static member internal Discard(e: SessionEnd) =
@@ -162,7 +227,9 @@ and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, net
             lock e.Channel.Gate (fun () ->
                 let s = e.Channel.SideState e.Side
                 s.Generation = e.Generation && not s.Closed)
-        if current then e.Channel.CloseSide e.Side
+
+        if current then
+            e.Channel.CloseSide e.Side
 
 
     /// Queue custody is a forest: moving a channel's first end into another
@@ -170,19 +237,29 @@ and [<Sealed; AllowNullLiteral>] SessionChannel internal (spec: SessionSpec, net
     static member internal Move(child: SessionChannel, parent: SessionChannel) =
         lock custody (fun () ->
             let rec reaches (c: SessionChannel) =
-                obj.ReferenceEquals(c, child) || (match custody.TryGetValue c with | true, p -> reaches p | _ -> false)
-            if reaches parent then SessionChannel.Fail "cyclic_delegation"
+                obj.ReferenceEquals(c, child)
+                || (match custody.TryGetValue c with
+                    | true, p -> reaches p
+                    | _ -> false)
+
+            if reaches parent then
+                SessionChannel.Fail "cyclic_delegation"
+
             custody.[child] <- parent)
 
-    static member internal Release(child: SessionChannel) = lock custody (fun () -> custody.Remove child |> ignore)
+    static member internal Release(child: SessionChannel) =
+        lock custody (fun () -> custody.Remove child |> ignore)
 
 /// An end of a channel at a step. Using it spends it.
-and [<Sealed; AllowNullLiteral>] SessionEnd internal (channel: SessionChannel, side: int, generation: int64, step: int) =
+and [<Sealed; AllowNullLiteral>] SessionEnd internal (channel: SessionChannel, side: int, generation: int64, step: int)
+    =
     member _.Channel: SessionChannel = channel
     member _.Side: int = side
     member _.Generation: int64 = generation
     member _.Step: int = step
-    override _.ToString() = sprintf "session end %d of %s at step %d" side channel.Spec.Id step
+
+    override _.ToString() =
+        sprintf "session end %d of %s at step %d" side channel.Spec.Id step
 
 /// A task that runs a body with an end it was given; joined for its result.
 [<Sealed>]
@@ -202,12 +279,16 @@ module Sessions =
         match owned.Value with
         | null -> ()
         | set -> lock set (fun () -> set.Add e |> ignore)
+
         e
 
     let private untrack (e: SessionEnd) =
         match owned.Value with
         | null -> ()
-        | set -> lock set (fun () -> set.RemoveWhere(fun o -> obj.ReferenceEquals(o.Channel, e.Channel) && o.Side = e.Side) |> ignore)
+        | set ->
+            lock set (fun () ->
+                set.RemoveWhere(fun o -> obj.ReferenceEquals(o.Channel, e.Channel) && o.Side = e.Side)
+                |> ignore)
 
     let private encode (part: SessionPart) (value: Value) =
         match part with
@@ -227,7 +308,8 @@ module Sessions =
 
     /// A name no other session end on the node has.
     [<CompiledName("FreshName")>]
-    let freshName () = "session-" + string (Interlocked.Increment names)
+    let freshName () =
+        "session-" + string (Interlocked.Increment names)
 
     /// Whether every protocol a network end may carry has a wire form.
     [<CompiledName("Validate")>]
@@ -235,12 +317,16 @@ module Sessions =
         let rec go id (seen: string list) =
             if not (List.contains id seen) then
                 let steps = spec.Protocols.[id]
-                if List.isEmpty steps then fail "empty_network_protocol"
+
+                if List.isEmpty steps then
+                    fail "empty_network_protocol"
+
                 for step in steps do
                     match step.Part with
                     | EndPart other -> go other (id :: seen)
                     | ValuePart None -> fail "non_wire_payload"
                     | ValuePart(Some text) -> Descriptors.fromText text |> ignore
+
         go spec.Id []
 
     /// A new local channel's two ends.
@@ -251,7 +337,9 @@ module Sessions =
     [<CompiledName("WithPair")>]
     let withPair (spec: SessionSpec) (body: SessionEnd -> SessionEnd -> 'a) : 'a =
         let first, second = openPair spec
-        try body first second
+
+        try
+            body first second
         finally
             SessionChannel.Discard first
             SessionChannel.Discard second
@@ -259,16 +347,27 @@ module Sessions =
     /// A channel end on a node over the network, connected to a peer's
     /// address if given.
     [<CompiledName("NetworkStart")>]
-    let rec networkStart (spec: SessionSpec) (node: Node) (name: string) (side: int) (connection: string option) : SessionEnd =
+    let rec networkStart
+        (spec: SessionSpec)
+        (node: Node)
+        (name: string)
+        (side: int)
+        (connection: string option)
+        : SessionEnd =
         validate spec
         let endpoint = new Endpoint(node, name, spec.Deadline)
         let channel = SessionChannel(spec, Some(node, endpoint, side))
         let e = channel.Handle side
+
         try
             connection |> Option.iter endpoint.Connect
             track e
         with ex ->
-            (try endpoint.Stop() with _ -> ())
+            (try
+                endpoint.Stop()
+             with _ ->
+                 ())
+
             raise ex
 
     /// Listen on a node: the first end, at Address.
@@ -277,10 +376,12 @@ module Sessions =
 
     /// Dial a listening end: the second end.
     [<CompiledName("Dial")>]
-    let dial (node: Node) (address: string) (spec: SessionSpec) = networkStart spec node (freshName ()) 1 (Some address)
+    let dial (node: Node) (address: string) (spec: SessionSpec) =
+        networkStart spec node (freshName ()) 1 (Some address)
 
     let private endpointOf (e: SessionEnd) =
         e.Channel.Check e |> ignore
+
         match e.Channel.Network with
         | Some(_, endpoint, _) -> endpoint
         | None -> fail "local_end"
@@ -293,18 +394,28 @@ module Sessions =
     [<CompiledName("Send")>]
     let send (e: SessionEnd) (value: Value) : SessionEnd =
         let channel = e.Channel
+
         match channel.Part(e, true) with
         | EndPart _ -> fail "expected_delegation"
         | part ->
             match channel.Network with
             | Some(_, endpoint, _) ->
                 let bytes = encode part value
-                let next = lock channel.Gate (fun () -> channel.Check e |> ignore; channel.Advance e.Side)
+
+                let next =
+                    lock channel.Gate (fun () ->
+                        channel.Check e |> ignore
+                        channel.Advance e.Side)
+
                 endpoint.Send bytes
                 untrack e
                 track next
             | None ->
-                let next = lock channel.Gate (fun () -> channel.Check e |> ignore; channel.Advance e.Side)
+                let next =
+                    lock channel.Gate (fun () ->
+                        channel.Check e |> ignore
+                        channel.Advance e.Side)
+
                 channel.Enqueue(1 - e.Side, Item value)
                 untrack e
                 track next
@@ -318,15 +429,29 @@ module Sessions =
     let receiveValue (e: SessionEnd) : Value * SessionEnd =
         let channel = e.Channel
         let part = channel.Part(e, false)
-        (match part with EndPart _ -> fail "wrong_receive_kind" | _ -> ())
-        let next = lock channel.Gate (fun () -> channel.Check e |> ignore; channel.Advance e.Side)
+
+        (match part with
+         | EndPart _ -> fail "wrong_receive_kind"
+         | _ -> ())
+
+        let next =
+            lock channel.Gate (fun () ->
+                channel.Check e |> ignore
+                channel.Advance e.Side)
+
         untrack e
         track next |> ignore
+
         match channel.Network with
         | Some(_, endpoint, _) ->
             match endpoint.Receive(Some channel.Spec.Deadline) with
             | Ok bytes ->
-                let value = try decode part bytes with _ -> failedPeer channel e.Side "invalid_payload"
+                let value =
+                    try
+                        decode part bytes
+                    with _ ->
+                        failedPeer channel e.Side "invalid_payload"
+
                 value, next
             | Error reason -> failedPeer channel e.Side reason
         | None ->
@@ -354,14 +479,19 @@ module Sessions =
 
     let private unusedFirst (e: SessionEnd) (expected: string) =
         lock e.Channel.Gate (fun () -> e.Channel.Check e |> ignore)
-        if e.Side <> 0 || e.Step <> 0 then fail "not_an_unused_first_end"
-        if e.Channel.Spec.Id <> expected then fail "different_protocol"
+
+        if e.Side <> 0 || e.Step <> 0 then
+            fail "not_an_unused_first_end"
+
+        if e.Channel.Spec.Id <> expected then
+            fail "different_protocol"
 
     /// The address a delegated end is reached at from another node: a network
     /// end moves (its offer); a local end stays, and this node relays it.
     [<CompiledName("Offer")>]
     let rec offer (node: Node) (e: SessionEnd) (expected: string) : string =
         unusedFirst e expected
+
         match e.Channel.Network with
         | Some(_, endpoint, _) ->
             let address = endpoint.Offer()
@@ -370,6 +500,7 @@ module Sessions =
                 let s = e.Channel.SideState e.Side
                 s.Generation <- -s.Generation
                 s.Closed <- true)
+
             untrack e
             address
         | None -> relay node e
@@ -382,9 +513,11 @@ module Sessions =
         let local = transfer e
         let remoteMoved = transfer remote
         let steps = spec.Protocols.[spec.Id]
+
         Task.Run(fun () ->
             let mutable l = local
             let mutable r = remoteMoved
+
             try
                 for step in steps do
                     match step.FirstSends, step.Part with
@@ -408,32 +541,53 @@ module Sessions =
                 SessionChannel.Discard l
                 SessionChannel.Discard r)
         |> ignore
+
         addressOfRemote
 
     /// The end a delegation's address names, taken on this node.
     and [<CompiledName("Take")>] take (node: Node) (address: string) (spec: SessionSpec) : SessionEnd =
         let moving = address.Contains "?take="
-        let e = networkStart spec node (freshName ()) 0 (if moving then None else Some address)
+
+        let e =
+            networkStart spec node (freshName ()) 0 (if moving then None else Some address)
+
         try
-            if moving then (endpointOf e).Take address
+            if moving then
+                (endpointOf e).Take address
+
             e
         with ex ->
-            (try abandon e with _ -> ())
+            (try
+                abandon e
+             with _ ->
+                 ())
+
             raise ex
 
     /// Send an unused first end of another protocol; the next end.
     and [<CompiledName("SendEnd")>] sendEnd (e: SessionEnd) (other: SessionEnd) : SessionEnd =
         let channel = e.Channel
+
         let expected =
             match channel.Part(e, true) with
             | EndPart id -> id
             | _ -> fail "expected_value"
-        if isNull other || other.Side <> 0 || other.Step <> 0 then fail "not_an_unused_first_end"
-        if obj.ReferenceEquals(other.Channel, channel) then fail "cyclic_delegation"
+
+        if isNull other || other.Side <> 0 || other.Step <> 0 then
+            fail "not_an_unused_first_end"
+
+        if obj.ReferenceEquals(other.Channel, channel) then
+            fail "cyclic_delegation"
+
         match channel.Network with
         | Some(node, endpoint, _) ->
             let addressText = offer node other expected
-            let next = lock channel.Gate (fun () -> channel.Check e |> ignore; channel.Advance e.Side)
+
+            let next =
+                lock channel.Gate (fun () ->
+                    channel.Check e |> ignore
+                    channel.Advance e.Side)
+
             endpoint.Send(encode (EndPart expected) (Text addressText))
             untrack e
             track next
@@ -441,7 +595,12 @@ module Sessions =
             unusedFirst other expected
             SessionChannel.Move(other.Channel, channel)
             let moved = transfer other
-            let next = lock channel.Gate (fun () -> channel.Check e |> ignore; channel.Advance e.Side)
+
+            let next =
+                lock channel.Gate (fun () ->
+                    channel.Check e |> ignore
+                    channel.Advance e.Side)
+
             channel.Enqueue(1 - e.Side, Delegated moved)
             untrack e
             track next
@@ -449,22 +608,40 @@ module Sessions =
     /// Receive an end; it and the next end.
     and [<CompiledName("ReceiveEnd")>] receiveEnd (e: SessionEnd) : SessionEnd * SessionEnd =
         let channel = e.Channel
+
         let protocol =
             match channel.Part(e, false) with
             | EndPart id -> id
             | _ -> fail "wrong_receive_kind"
-        let next = lock channel.Gate (fun () -> channel.Check e |> ignore; channel.Advance e.Side)
+
+        let next =
+            lock channel.Gate (fun () ->
+                channel.Check e |> ignore
+                channel.Advance e.Side)
+
         untrack e
         track next |> ignore
+
         match channel.Network with
         | Some(node, endpoint, _) ->
             match endpoint.Receive(Some channel.Spec.Deadline) with
             | Ok bytes ->
                 let addressText =
-                    match (try decode (EndPart protocol) bytes with _ -> failedPeer channel e.Side "invalid_payload") with
+                    match
+                        (try
+                            decode (EndPart protocol) bytes
+                         with _ ->
+                             failedPeer channel e.Side "invalid_payload")
+                    with
                     | Text a -> a
                     | _ -> failedPeer channel e.Side "invalid_payload"
-                let received = try take node addressText { channel.Spec with Id = protocol } with ex -> failedPeer channel e.Side ex.Message
+
+                let received =
+                    try
+                        take node addressText { channel.Spec with Id = protocol }
+                    with ex ->
+                        failedPeer channel e.Side ex.Message
+
                 track received, next
             | Error reason -> failedPeer channel e.Side reason
         | None ->
@@ -480,12 +657,19 @@ module Sessions =
     let withOwned (ends: SessionEnd list) (body: unit -> 'a) : 'a =
         let previous = owned.Value
         let set = Collections.Generic.HashSet<SessionEnd>(HashIdentity.Reference)
-        for e in ends do set.Add e |> ignore
+
+        for e in ends do
+            set.Add e |> ignore
+
         owned.Value <- set
+
         try
-            try body ()
+            try
+                body ()
             with _ ->
-                for e in List.ofSeq (lock set (fun () -> List.ofSeq set)) do SessionChannel.Discard e
+                for e in List.ofSeq (lock set (fun () -> List.ofSeq set)) do
+                    SessionChannel.Discard e
+
                 reraise ()
         finally
             owned.Value <- previous
@@ -496,23 +680,36 @@ module Sessions =
         let moved = transfer e
         let set = Collections.Generic.HashSet<SessionEnd>(HashIdentity.Reference)
         set.Add moved |> ignore
+
         let work =
             Task.Run(fun () ->
                 owned.Value <- set
-                try body moved
+
+                try
+                    body moved
                 with _ ->
-                    for o in lock set (fun () -> List.ofSeq set) do SessionChannel.Discard o
+                    for o in lock set (fun () -> List.ofSeq set) do
+                        SessionChannel.Discard o
+
                     reraise ())
+
         SessionTask(work, set)
 
     /// Wait for a task's result (its failure is raised here).
     [<CompiledName("Join")>]
     let join (task: SessionTask) : Value =
-        try task.Work.Result with
-        | :? AggregateException as e when e.InnerExceptions.Count = 1 -> raise e.InnerExceptions.[0]
+        try
+            task.Work.Result
+        with :? AggregateException as e when e.InnerExceptions.Count = 1 ->
+            raise e.InnerExceptions.[0]
 
     /// Cancel a task: the ends it still owns are given up, so it stops at its next step.
     [<CompiledName("Cancel")>]
     let cancel (task: SessionTask) =
-        for o in lock task.Owned (fun () -> List.ofSeq task.Owned) do SessionChannel.Discard o
-        (try task.Work.Wait(5000) |> ignore with _ -> ())
+        for o in lock task.Owned (fun () -> List.ofSeq task.Owned) do
+            SessionChannel.Discard o
+
+        (try
+            task.Work.Wait(5000) |> ignore
+         with _ ->
+             ())

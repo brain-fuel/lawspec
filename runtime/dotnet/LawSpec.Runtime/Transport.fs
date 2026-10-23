@@ -45,17 +45,26 @@ module Transports =
         match transport with
         | Memory(network, name, _) ->
             let address = MemoryNetwork.AddressOf name
+
             match network.Register(address, receive) with
             | Error reason -> Fail.raiseWith "TransportRegistration" reason
             | Ok() ->
                 { new IPacketTransport with
                     member _.Address = address
+
                     member _.Send(peer, bytes) =
-                        try network.Send(address, peer, bytes) with _ -> Error "transport_closed"
-                    member _.Dispose() = network.Unregister address }
+                        try
+                            network.Send(address, peer, bytes)
+                        with _ ->
+                            Error "transport_closed"
+
+                    member _.Dispose() = network.Unregister address
+                }
         | Socket(kind, host, port, advertise) ->
             let socket = new SocketTransport(kind, host, port, advertise, receive "unknown")
+
             { new IPacketTransport with
                 member _.Address = socket.Address
                 member _.Send(peer, bytes) = socket.Send(peer, bytes)
-                member _.Dispose() = socket.Close() }
+                member _.Dispose() = socket.Close()
+            }

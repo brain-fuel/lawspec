@@ -37,71 +37,145 @@ type Outcome =
     | Gone of Destination
 
 /// Frame counts of a run over the network.
-type Stats = { Frames: int; Lost: int; Duplicated: int; PendingRequests: int }
+type Stats =
+    {
+        Frames: int
+        Lost: int
+        Duplicated: int
+        PendingRequests: int
+    }
 
 type private EndEntry =
-    { Endpoint: Endpoint
-      mutable Sends: Descriptor list
-      mutable Receives: Descriptor list
-      Clocks: System.Collections.Generic.Queue<Payload * Clock>
-      mutable Ticket: int64 option }
+    {
+        Endpoint: Endpoint
+        mutable Sends: Descriptor list
+        mutable Receives: Descriptor list
+        Clocks: System.Collections.Generic.Queue<Payload * Clock>
+        mutable Ticket: int64 option
+    }
 
-type private Box = { Sender: Node; Address: string; Type: Descriptor }
+type private Box =
+    {
+        Sender: Node
+        Address: string
+        Type: Descriptor
+    }
 
-type private Flight = { Destination: Destination; Value: Payload; Clock: Clock }
+type private Flight =
+    {
+        Destination: Destination
+        Value: Payload
+        Clock: Clock
+    }
 
 let private fail reason : 'a = Fail.raiseWith "ScenarioNetwork" reason
-let private require condition reason = if not condition then fail reason
-let private unquote d = match d with Quoted q -> q | Atom a -> a | _ -> fail "invalid_wire"
+
+let private require condition reason =
+    if not condition then
+        fail reason
+
+let private unquote d =
+    match d with
+    | Quoted q -> q
+    | Atom a -> a
+    | _ -> fail "invalid_wire"
 
 /// The network of one scenario run: a seeded faulty memory network, a node per
 /// channel end and two per mailbox. Only the hub calls it, one call at a time.
 [<Sealed>]
-type ScenarioNetwork(channels: string list, mailboxes: string list, wire: Descriptor list option, shake: BigInteger,
-                     faults: MemoryOptions -> MemoryOptions, deadline: int, post: Incoming -> unit) =
+type ScenarioNetwork
+    (
+        channels: string list,
+        mailboxes: string list,
+        wire: Descriptor list option,
+        shake: BigInteger,
+        faults: MemoryOptions -> MemoryOptions,
+        deadline: int,
+        post: Incoming -> unit
+    ) =
     let forms =
         match wire with
         | Some forms -> forms
         | None when List.isEmpty channels && List.isEmpty mailboxes -> []
         | None -> fail "scenario_wire_required"
+
     let steps =
-        forms |> List.choose (function Forms(Atom "channel" :: n :: ss) -> Some(unquote n, ss) | _ -> None) |> Map.ofList
+        forms
+        |> List.choose (function
+            | Forms(Atom "channel" :: n :: ss) -> Some(unquote n, ss)
+            | _ -> None)
+        |> Map.ofList
+
     let types =
-        forms |> List.choose (function Forms [ Atom "mailbox"; n; d ] -> Some(unquote n, d) | _ -> None) |> Map.ofList
+        forms
+        |> List.choose (function
+            | Forms [ Atom "mailbox"; n; d ] -> Some(unquote n, d)
+            | _ -> None)
+        |> Map.ofList
+
     do
         require (List.sort (List.ofSeq steps.Keys) = List.sort channels) "channel_wire_required"
         require (List.sort (List.ofSeq types.Keys) = List.sort mailboxes) "mailbox_wire_required"
+
     let table =
-        forms |> List.choose (function Forms(Atom "data" :: n :: _) as d -> Some(unquote n, d) | _ -> None) |> Map.ofList
+        forms
+        |> List.choose (function
+            | Forms(Atom "data" :: n :: _) as d -> Some(unquote n, d)
+            | _ -> None)
+        |> Map.ofList
+
     let defaults: MemoryOptions =
-        { Seed = shake ^^^ BigInteger 0x7f4a7c159e3779b9UL; Loss = 0.1; Duplicate = 0.1; Delay = 0.002; Record = true }
+        {
+            Seed = shake ^^^ BigInteger 0x7f4a7c159e3779b9UL
+            Loss = 0.1
+            Duplicate = 0.1
+            Delay = 0.002
+            Record = true
+        }
+
     let network = new MemoryNetwork(faults defaults)
     let nodes = ResizeArray<Node>()
     let ends = System.Collections.Generic.Dictionary<Destination, EndEntry>()
     let boxes = System.Collections.Generic.Dictionary<Destination, Box>()
     let flights = System.Collections.Generic.Dictionary<string * uint64, Flight>()
-    let pending = System.Collections.Generic.Dictionary<uint64, (Result<unit, string> -> unit) * (string * uint64) * Node>()
+
+    let pending =
+        System.Collections.Generic.Dictionary<uint64, (Result<unit, string> -> unit) * (string * uint64) * Node>()
 
     let addNode () =
-        let node = new Node(Transports.insecureMemoryForTests network ("scenario-" + string nodes.Count), NetworkConfig.empty)
+        let node =
+            new Node(Transports.insecureMemoryForTests network ("scenario-" + string nodes.Count), NetworkConfig.empty)
+
         nodes.Add node
         node
 
     let listen destination (entry: EndEntry) =
         let ticket = ref 0L
-        ticket.Value <- entry.Endpoint.ReceiveAsync(None, fun result -> post (ChannelResult(destination, ticket.Value, result)))
+
+        ticket.Value <-
+            entry.Endpoint.ReceiveAsync(None, fun result -> post (ChannelResult(destination, ticket.Value, result)))
+
         entry.Ticket <- Some ticket.Value
 
     let addEnd name side (ss: Descriptor list) =
         let node = addNode ()
         let endpoint = new Endpoint(node, "end", deadline)
-        let verbs = ss |> List.map (function Forms [ Atom verb; d ] -> verb = "send", d | _ -> fail "invalid_wire")
+
+        let verbs =
+            ss
+            |> List.map (function
+                | Forms [ Atom verb; d ] -> verb = "send", d
+                | _ -> fail "invalid_wire")
+
         let entry =
-            { Endpoint = endpoint
-              Sends = verbs |> List.filter (fun (s, _) -> s = (side = 0)) |> List.map snd
-              Receives = verbs |> List.filter (fun (s, _) -> s <> (side = 0)) |> List.map snd
-              Clocks = System.Collections.Generic.Queue()
-              Ticket = None }
+            {
+                Endpoint = endpoint
+                Sends = verbs |> List.filter (fun (s, _) -> s = (side = 0)) |> List.map snd
+                Receives = verbs |> List.filter (fun (s, _) -> s <> (side = 0)) |> List.map snd
+                Clocks = System.Collections.Generic.Queue()
+                Ticket = None
+            }
+
         ends.[EndOf(name, side)] <- entry
         listen (EndOf(name, side)) entry
         endpoint
@@ -111,12 +185,21 @@ type ScenarioNetwork(channels: string list, mailboxes: string list, wire: Descri
             let a = addEnd name 0 steps.[name]
             let b = addEnd name 1 steps.[name]
             b.Connect a.Address
+
         for name in List.sort mailboxes do
             let owner = addNode ()
             let sender = addNode ()
             let destination = MailboxOf name
-            let address = owner.RegisterReceiver("mail", fun frame -> post (MailFrame(destination, owner, frame)))
-            boxes.[destination] <- { Sender = sender; Address = address; Type = types.[name] }
+
+            let address =
+                owner.RegisterReceiver("mail", fun frame -> post (MailFrame(destination, owner, frame)))
+
+            boxes.[destination] <-
+                {
+                    Sender = sender
+                    Address = address
+                    Type = types.[name]
+                }
 
     let encode (d: Descriptor) (payload: Payload) =
         match d, payload with
@@ -140,10 +223,13 @@ type ScenarioNetwork(channels: string list, mailboxes: string list, wire: Descri
         | _ -> Plain(Descriptors.decode d bytes table)
 
     /// Send from an end, or to a mailbox (whose reply comes later).
-    member _.Send(destination: Destination, payload: Payload, clock: Clock, reply: Result<unit, string> -> unit) : bool =
+    member _.Send
+        (destination: Destination, payload: Payload, clock: Clock, reply: Result<unit, string> -> unit)
+        : bool =
         match destination with
         | EndOf(name, side) ->
             let entry = ends.[destination]
+
             match entry.Sends with
             | d :: rest ->
                 entry.Endpoint.Send(encode d payload)
@@ -155,10 +241,26 @@ type ScenarioNetwork(channels: string list, mailboxes: string list, wire: Descri
             let box = boxes.[destination]
             let bytes = encode box.Type payload
             let cell = ref 0UL
-            let identity = box.Sender.RequestAsync(box.Address, "mail", bytes, deadline, fun result -> post (MailReply(cell, result)))
+
+            let identity =
+                box.Sender.RequestAsync(
+                    box.Address,
+                    "mail",
+                    bytes,
+                    deadline,
+                    fun result -> post (MailReply(cell, result))
+                )
+
             cell.Value <- identity
             let key = box.Sender.Address, identity
-            flights.[key] <- { Destination = destination; Value = payload; Clock = clock }
+
+            flights.[key] <-
+                {
+                    Destination = destination
+                    Value = payload
+                    Clock = clock
+                }
+
             pending.[identity] <- (reply, key, box.Sender)
             false
 
@@ -200,16 +302,23 @@ type ScenarioNetwork(channels: string list, mailboxes: string list, wire: Descri
             | _ ->
                 if frame.Id <> 0UL then
                     owner.Reply(frame.Source, frame.Id, 3, Encoding.UTF8.GetBytes "not a scenario mailbox request")
+
                 []
         | MailReply(cell, result) -> this.Replied(cell, result)
 
     /// A mailbox reply, by the request identity it answers.
     member _.Replied(cell: uint64 ref, result: Result<int * byte[], string>) : Outcome list =
         let identity = cell.Value
+
         match pending.TryGetValue identity with
         | true, (reply, key, _) ->
             pending.Remove identity |> ignore
-            reply (match result with Ok(0, body) when body.Length = 0 -> Ok() | _ -> Error(sprintf "mailbox_send_failed %A" result))
+
+            reply (
+                match result with
+                | Ok(0, body) when body.Length = 0 -> Ok()
+                | _ -> Error(sprintf "mailbox_send_failed %A" result)
+            )
             // A timed-out request may never have arrived: release what it carried.
             match flights.TryGetValue key with
             | true, flight ->
@@ -220,13 +329,24 @@ type ScenarioNetwork(channels: string list, mailboxes: string list, wire: Descri
 
     member _.Stats() =
         let trace = network.Trace()
-        { Frames = trace.Length
-          Lost = trace |> List.filter (fun e -> e.Outcome = "lost") |> List.length
-          Duplicated = trace |> List.filter (fun e -> List.length e.DelaySlots = 2) |> List.length
-          PendingRequests = pending.Count }
+
+        {
+            Frames = trace.Length
+            Lost = trace |> List.filter (fun e -> e.Outcome = "lost") |> List.length
+            Duplicated = trace |> List.filter (fun e -> List.length e.DelaySlots = 2) |> List.length
+            PendingRequests = pending.Count
+        }
 
     member _.Close() =
-        for KeyValue(_, (reply, _, _)) in List.ofSeq pending do reply (Error "network_closed")
+        for KeyValue(_, (reply, _, _)) in List.ofSeq pending do
+            reply (Error "network_closed")
+
         pending.Clear()
-        for node in nodes do (try node.Close() with _ -> ())
+
+        for node in nodes do
+            (try
+                node.Close()
+             with _ ->
+                 ())
+
         network.Close()

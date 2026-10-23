@@ -30,14 +30,21 @@ let private fail code detail : 'a = Fail.raiseWith code detail
 type private FixedRandom(bytes: byte[]) =
     inherit Org.BouncyCastle.Security.SecureRandom()
     let mutable position = 0
+
     let take (buffer: byte[]) start length =
-        if position + length > bytes.Length then fail "FixedRandomExhausted" ""
+        if position + length > bytes.Length then
+            fail "FixedRandomExhausted" ""
+
         Array.blit bytes position buffer start length
         position <- position + length
+
     override _.NextBytes(buffer: byte[]) = take buffer 0 buffer.Length
     override _.NextBytes(buffer: byte[], start: int, length: int) = take buffer start length
+
     override _.NextBytes(buffer: Span<byte>) =
-        if position + buffer.Length > bytes.Length then fail "FixedRandomExhausted" ""
+        if position + buffer.Length > bytes.Length then
+            fail "FixedRandomExhausted" ""
+
         ReadOnlySpan<byte>(bytes, position, buffer.Length).CopyTo(buffer)
         position <- position + buffer.Length
 
@@ -45,7 +52,8 @@ let private secure = Org.BouncyCastle.Security.SecureRandom()
 
 /// Fresh random bytes from the operating system.
 [<CompiledName("RandomBytes")>]
-let randomBytes (count: int) = RandomNumberGenerator.GetBytes(max 0 count)
+let randomBytes (count: int) =
+    RandomNumberGenerator.GetBytes(max 0 count)
 
 // ---------------------------------------------------------------------------
 // FIPS 202
@@ -53,7 +61,8 @@ let randomBytes (count: int) = RandomNumberGenerator.GetBytes(max 0 count)
 /// SHA3-256 of a message.
 [<CompiledName("Sha3")>]
 let sha3 (message: byte[]) : byte[] =
-    if SHA3_256.IsSupported then SHA3_256.HashData message
+    if SHA3_256.IsSupported then
+        SHA3_256.HashData message
     else
         let digest = Sha3Digest(256)
         digest.BlockUpdate(message, 0, message.Length)
@@ -65,8 +74,10 @@ let sha3 (message: byte[]) : byte[] =
 /// positive).
 [<CompiledName("Shake")>]
 let shake (message: byte[]) (count: int) : byte[] =
-    if count <= 0 then [||]
-    elif Shake256.IsSupported then Shake256.HashData(message, count)
+    if count <= 0 then
+        [||]
+    elif Shake256.IsSupported then
+        Shake256.HashData(message, count)
     else
         let digest = ShakeDigest(256)
         digest.BlockUpdate(message, 0, message.Length)
@@ -86,12 +97,16 @@ let private kem = MLKemParameters.ml_kem_768
 /// The encapsulation key and the expanded decapsulation key of a seed.
 [<CompiledName("MlKemExpand")>]
 let mlkemExpand (seed: byte[]) : byte[] * byte[] =
-    if seed.Length <> 64 then fail "InvalidMlKemSeed" ""
+    if seed.Length <> 64 then
+        fail "InvalidMlKemSeed" ""
+
     if MLKem.IsSupported then
         use key = MLKem.ImportPrivateSeed(MLKemAlgorithm.MLKem768, seed)
         key.ExportEncapsulationKey(), key.ExportDecapsulationKey()
     else
-        let key = MLKemPrivateKeyParameters.FromSeed(kem, seed, MLKemPrivateKeyParameters.Format.EncodingOnly)
+        let key =
+            MLKemPrivateKeyParameters.FromSeed(kem, seed, MLKemPrivateKeyParameters.Format.EncodingOnly)
+
         key.GetPublicKeyEncoded(), key.GetEncoded()
 
 /// A key pair from a seed: the public key, and the seed it is kept as.
@@ -99,7 +114,9 @@ let mlkemExpand (seed: byte[]) : byte[] * byte[] =
 let mlkemKeyPair (seed: byte[]) = fst (mlkemExpand seed), seed
 
 let private bcEncapsulate (publicKey: byte[]) (random: Org.BouncyCastle.Security.SecureRandom) =
-    if publicKey.Length <> 1184 then fail "InvalidMlKemPublicKey" ""
+    if publicKey.Length <> 1184 then
+        fail "InvalidMlKemPublicKey" ""
+
     let encapsulator = MLKemEncapsulator(kem)
     encapsulator.Init(ParametersWithRandom(MLKemPublicKeyParameters.FromEncoding(kem, publicKey), random))
     let ciphertext = Array.zeroCreate encapsulator.EncapsulationLength
@@ -111,19 +128,24 @@ let private bcEncapsulate (publicKey: byte[]) (random: Org.BouncyCastle.Security
 [<CompiledName("MlKemEncapsulate")>]
 let mlkemEncapsulate (publicKey: byte[]) : byte[] * byte[] =
     if MLKem.IsSupported then
-        if publicKey.Length <> 1184 then fail "InvalidMlKemPublicKey" ""
+        if publicKey.Length <> 1184 then
+            fail "InvalidMlKemPublicKey" ""
+
         use key = MLKem.ImportEncapsulationKey(MLKemAlgorithm.MLKem768, publicKey)
         let mutable ciphertext = null
         let mutable shared = null
         key.Encapsulate(&ciphertext, &shared)
         ciphertext, shared
-    else bcEncapsulate publicKey secure
+    else
+        bcEncapsulate publicKey secure
 
 /// FIPS 203's deterministic encapsulation with a given 32-byte message, for
 /// known-answer tests only.
 [<CompiledName("MlKemEncapsulateWith")>]
 let mlkemEncapsulateWith (publicKey: byte[]) (message: byte[]) =
-    if message.Length <> 32 then fail "InvalidMlKemMessage" ""
+    if message.Length <> 32 then
+        fail "InvalidMlKemMessage" ""
+
     bcEncapsulate publicKey (new FixedRandom(message))
 
 /// Decapsulate with an expanded decapsulation key.
@@ -141,7 +163,8 @@ let mlkemDecapsulateExpanded (privateKey: byte[]) (ciphertext: byte[]) : byte[] 
 
 /// Decapsulate with a key kept as its seed.
 [<CompiledName("MlKemDecapsulate")>]
-let mlkemDecapsulate (seed: byte[]) (ciphertext: byte[]) = mlkemDecapsulateExpanded (snd (mlkemExpand seed)) ciphertext
+let mlkemDecapsulate (seed: byte[]) (ciphertext: byte[]) =
+    mlkemDecapsulateExpanded (snd (mlkemExpand seed)) ciphertext
 
 // ---------------------------------------------------------------------------
 // FIPS 204: ML-DSA-65, signing keys held as their 32-byte seed
@@ -151,12 +174,16 @@ let private dsa = MLDsaParameters.ml_dsa_65
 /// The public key and the expanded private key of a seed.
 [<CompiledName("MlDsaExpand")>]
 let mldsaExpand (seed: byte[]) : byte[] * byte[] =
-    if seed.Length <> 32 then fail "InvalidMlDsaSeed" ""
+    if seed.Length <> 32 then
+        fail "InvalidMlDsaSeed" ""
+
     if MLDsa.IsSupported then
         use key = MLDsa.ImportMLDsaPrivateSeed(MLDsaAlgorithm.MLDsa65, seed)
         key.ExportMLDsaPublicKey(), key.ExportMLDsaPrivateKey()
     else
-        let key = MLDsaPrivateKeyParameters.FromSeed(dsa, seed, MLDsaPrivateKeyParameters.Format.EncodingOnly)
+        let key =
+            MLDsaPrivateKeyParameters.FromSeed(dsa, seed, MLDsaPrivateKeyParameters.Format.EncodingOnly)
+
         key.GetPublicKeyEncoded(), key.GetEncoded()
 
 /// The public key of a seed.
@@ -165,7 +192,13 @@ let mldsaPublic (seed: byte[]) = fst (mldsaExpand seed)
 
 let private bcSign (deterministic: bool) (key: ICipherParameters) (message: byte[]) (context: byte[]) =
     let signer = MLDsaSigner(dsa, deterministic)
-    let keyed = if deterministic then key else ParametersWithRandom(key, secure) :> ICipherParameters
+
+    let keyed =
+        if deterministic then
+            key
+        else
+            ParametersWithRandom(key, secure) :> ICipherParameters
+
     signer.Init(true, ParametersWithContext(keyed, context))
     signer.BlockUpdate(message, 0, message.Length)
     signer.GenerateSignature()
@@ -174,7 +207,9 @@ let private bcSign (deterministic: bool) (key: ICipherParameters) (message: byte
 /// otherwise.
 [<CompiledName("MlDsaSignWith")>]
 let mldsaSignWith (seed: byte[]) (message: byte[]) (context: byte[]) (deterministic: bool) : byte[] =
-    if seed.Length <> 32 || context.Length > 255 then fail "InvalidMlDsaSignature" ""
+    if seed.Length <> 32 || context.Length > 255 then
+        fail "InvalidMlDsaSignature" ""
+
     if MLDsa.IsSupported && not deterministic then
         use key = MLDsa.ImportMLDsaPrivateSeed(MLDsaAlgorithm.MLDsa65, seed)
         key.SignData(message, context)
@@ -189,7 +224,8 @@ let mldsaSign (seed: byte[]) (message: byte[]) = mldsaSignWith seed message [||]
 /// does not verify.
 [<CompiledName("MlDsaVerifyWith")>]
 let mldsaVerifyWith (publicKey: byte[]) (message: byte[]) (signature: byte[]) (context: byte[]) : bool =
-    if publicKey.Length <> 1952 || signature.Length <> 3309 || context.Length > 255 then false
+    if publicKey.Length <> 1952 || signature.Length <> 3309 || context.Length > 255 then
+        false
     elif MLDsa.IsSupported then
         use key = MLDsa.ImportMLDsaPublicKey(MLDsaAlgorithm.MLDsa65, publicKey)
         key.VerifyData(message, signature, context)
@@ -200,7 +236,8 @@ let mldsaVerifyWith (publicKey: byte[]) (message: byte[]) (signature: byte[]) (c
         signer.VerifySignature signature
 
 [<CompiledName("MlDsaVerify")>]
-let mldsaVerify (publicKey: byte[]) (message: byte[]) (signature: byte[]) = mldsaVerifyWith publicKey message signature [||]
+let mldsaVerify (publicKey: byte[]) (message: byte[]) (signature: byte[]) =
+    mldsaVerifyWith publicKey message signature [||]
 
 // ---------------------------------------------------------------------------
 // FIPS 205: SLH-DSA-SHAKE-128f, private keys of 64 bytes
@@ -219,25 +256,38 @@ let slhKeyPair () : byte[] * byte[] =
     if SlhDsa.IsSupported then
         use key = SlhDsa.GenerateKey(SlhDsaAlgorithm.SlhDsaShake128f)
         key.ExportSlhDsaPublicKey(), key.ExportSlhDsaPrivateKey()
-    else slhGenerate secure
+    else
+        slhGenerate secure
 
 /// The key pair of the 48 bytes SK.seed || SK.prf || PK.seed (known-answer
 /// tests only).
 [<CompiledName("SlhKeyPairOf")>]
 let slhKeyPairOf (seed: byte[]) =
-    if seed.Length <> 48 then fail "InvalidSlhDsaSeed" ""
+    if seed.Length <> 48 then
+        fail "InvalidSlhDsaSeed" ""
+
     slhGenerate (new FixedRandom(seed))
 
 /// Sign with a context string.
 [<CompiledName("SlhSignWith")>]
 let slhSignWith (privateKey: byte[]) (message: byte[]) (context: byte[]) : byte[] =
-    if privateKey.Length <> 64 || context.Length > 255 then fail "InvalidSlhDsaSignature" ""
+    if privateKey.Length <> 64 || context.Length > 255 then
+        fail "InvalidSlhDsaSignature" ""
+
     if SlhDsa.IsSupported then
         use key = SlhDsa.ImportSlhDsaPrivateKey(SlhDsaAlgorithm.SlhDsaShake128f, privateKey)
         key.SignData(message, context)
     else
         let signer = SlhDsaSigner(slh, false)
-        signer.Init(true, ParametersWithContext(ParametersWithRandom(SlhDsaPrivateKeyParameters.FromEncoding(slh, privateKey), secure), context))
+
+        signer.Init(
+            true,
+            ParametersWithContext(
+                ParametersWithRandom(SlhDsaPrivateKeyParameters.FromEncoding(slh, privateKey), secure),
+                context
+            )
+        )
+
         signer.BlockUpdate(message, 0, message.Length)
         signer.GenerateSignature()
 
@@ -247,7 +297,8 @@ let slhSign (privateKey: byte[]) (message: byte[]) = slhSignWith privateKey mess
 /// Verify with a context string; a malformed key or signature does not verify.
 [<CompiledName("SlhVerifyWith")>]
 let slhVerifyWith (publicKey: byte[]) (message: byte[]) (signature: byte[]) (context: byte[]) : bool =
-    if publicKey.Length <> 32 || signature.Length <> 17088 || context.Length > 255 then false
+    if publicKey.Length <> 32 || signature.Length <> 17088 || context.Length > 255 then
+        false
     elif SlhDsa.IsSupported then
         use key = SlhDsa.ImportSlhDsaPublicKey(SlhDsaAlgorithm.SlhDsaShake128f, publicKey)
         key.VerifyData(message, signature, context)
@@ -258,7 +309,8 @@ let slhVerifyWith (publicKey: byte[]) (message: byte[]) (signature: byte[]) (con
         signer.VerifySignature signature
 
 [<CompiledName("SlhVerify")>]
-let slhVerify (publicKey: byte[]) (message: byte[]) (signature: byte[]) = slhVerifyWith publicKey message signature [||]
+let slhVerify (publicKey: byte[]) (message: byte[]) (signature: byte[]) =
+    slhVerifyWith publicKey message signature [||]
 
 // ---------------------------------------------------------------------------
 // SP 800-38D: AES-256-GCM with a 96-bit nonce and a 128-bit tag
@@ -266,7 +318,9 @@ let slhVerify (publicKey: byte[]) (message: byte[]) (signature: byte[]) = slhVer
 /// The ciphertext followed by its tag.
 [<CompiledName("Aes256GcmEncrypt")>]
 let aes256GcmEncrypt (key: byte[]) (nonce: byte[]) (message: byte[]) (associated: byte[]) : byte[] =
-    if key.Length <> 32 || nonce.Length <> 12 then fail "InvalidAeadKey" ""
+    if key.Length <> 32 || nonce.Length <> 12 then
+        fail "InvalidAeadKey" ""
+
     if AesGcm.IsSupported then
         use aes = new AesGcm(key, 16)
         let ciphertext = Array.zeroCreate message.Length
@@ -284,24 +338,29 @@ let aes256GcmEncrypt (key: byte[]) (nonce: byte[]) (message: byte[]) (associated
 /// The plaintext, or None when the tag does not verify.
 [<CompiledName("Aes256GcmDecrypt")>]
 let aes256GcmDecrypt (key: byte[]) (nonce: byte[]) (sealedBytes: byte[]) (associated: byte[]) : byte[] option =
-    if key.Length <> 32 || nonce.Length <> 12 || sealedBytes.Length < 16 then None
+    if key.Length <> 32 || nonce.Length <> 12 || sealedBytes.Length < 16 then
+        None
     elif AesGcm.IsSupported then
         use aes = new AesGcm(key, 16)
         let size = sealedBytes.Length - 16
         let plaintext = Array.zeroCreate size
+
         try
-            aes.Decrypt(nonce, sealedBytes.[.. size - 1], sealedBytes.[size ..], plaintext, associated)
+            aes.Decrypt(nonce, sealedBytes.[.. size - 1], sealedBytes.[size..], plaintext, associated)
             Some plaintext
-        with :? CryptographicException -> None
+        with :? CryptographicException ->
+            None
     else
         let cipher = GcmBlockCipher(AesEngine())
         cipher.Init(false, AeadParameters(KeyParameter(key), 128, nonce, associated))
         let out = Array.zeroCreate (cipher.GetOutputSize sealedBytes.Length)
+
         try
             let n = cipher.ProcessBytes(sealedBytes, 0, sealedBytes.Length, out, 0)
             cipher.DoFinal(out, n) |> ignore
             Some out
-        with :? InvalidCipherTextException -> None
+        with :? InvalidCipherTextException ->
+            None
 
 /// A fresh nonce, then the sealed message.
 [<CompiledName("Seal")>]
@@ -312,13 +371,17 @@ let seal (key: byte[]) (message: byte[]) (associated: byte[]) =
 /// Open what seal made, or None.
 [<CompiledName("Unseal")>]
 let unseal (key: byte[]) (sealedBytes: byte[]) (associated: byte[]) =
-    if sealedBytes.Length < 12 then None
-    else aes256GcmDecrypt key sealedBytes.[.. 11] sealedBytes.[12 ..] associated
+    if sealedBytes.Length < 12 then
+        None
+    else
+        aes256GcmDecrypt key sealedBytes.[..11] sealedBytes.[12..] associated
 
 // ---------------------------------------------------------------------------
 // The abilities' default handlers, over portable values
 
-let private tag name = "lawspec.crypto::type::" + name + "::" + name
+let private tag name =
+    "lawspec.crypto::type::" + name + "::" + name
+
 let private wrap name (bytes: byte[]) = Data(tag name, [ Bytes bytes ])
 let private pair name first second = Data(tag name, [ first; second ])
 
@@ -334,22 +397,29 @@ let private bytes (value: Value) =
 
 let private signatureHandler (make: unit -> byte[] * byte[]) sign verify =
     Effects.stateless
-        [ "signingKeyPair",
-          (fun _ _ ->
-              let publicKey, secret = make ()
-              pair "SigningKeyPair" (wrap "VerifyingKey" publicKey) (wrap "SigningKey" secret))
-          "sign", (fun _ args -> match args with
-                                 | [ secret; message ] -> wrap "SignatureBytes" (sign (unwrap "SigningKey" secret) (bytes message))
-                                 | _ -> fail "InvalidArguments" "sign")
-          "verify", (fun _ args -> match args with
-                                   | [ publicKey; message; signature ] ->
-                                       Bool(verify (unwrap "VerifyingKey" publicKey) (bytes message) (unwrap "SignatureBytes" signature))
-                                   | _ -> fail "InvalidArguments" "verify") ]
+        [
+            "signingKeyPair",
+            (fun _ _ ->
+                let publicKey, secret = make ()
+                pair "SigningKeyPair" (wrap "VerifyingKey" publicKey) (wrap "SigningKey" secret))
+            "sign",
+            (fun _ args ->
+                match args with
+                | [ secret; message ] -> wrap "SignatureBytes" (sign (unwrap "SigningKey" secret) (bytes message))
+                | _ -> fail "InvalidArguments" "sign")
+            "verify",
+            (fun _ args ->
+                match args with
+                | [ publicKey; message; signature ] ->
+                    Bool(verify (unwrap "VerifyingKey" publicKey) (bytes message) (unwrap "SignatureBytes" signature))
+                | _ -> fail "InvalidArguments" "verify")
+        ]
 
 /// The SLH-DSA-SHAKE-128f handler of Signature: stateless hash-based
 /// signatures, for programs that choose them over ML-DSA.
 [<CompiledName("SlhDsaSignatureHandler")>]
-let slhDsaSignatureHandler () = signatureHandler slhKeyPair slhSign slhVerify
+let slhDsaSignatureHandler () =
+    signatureHandler slhKeyPair slhSign slhVerify
 
 /// The default handler of a lawspec.crypto ability.
 [<CompiledName("Handler")>]
@@ -357,51 +427,71 @@ let handler (key: string) : Effects.Handler =
     match key with
     | "lawspec.crypto::ability::Hash" ->
         Effects.stateless
-            [ "sha3", (fun _ args -> wrap "Digest" (sha3 (bytes (List.head args))))
-              "shake",
-              (fun _ args ->
-                  match args with
-                  | [ message; Int count ] -> Bytes(shake (bytes message) (if count > BigInteger(Int32.MaxValue) then Int32.MaxValue else int count))
-                  | _ -> fail "InvalidArguments" "shake") ]
+            [
+                "sha3", (fun _ args -> wrap "Digest" (sha3 (bytes (List.head args))))
+                "shake",
+                (fun _ args ->
+                    match args with
+                    | [ message; Int count ] ->
+                        Bytes(
+                            shake
+                                (bytes message)
+                                (if count > BigInteger(Int32.MaxValue) then
+                                     Int32.MaxValue
+                                 else
+                                     int count)
+                        )
+                    | _ -> fail "InvalidArguments" "shake")
+            ]
     | "lawspec.crypto::ability::KeyExchange" ->
         Effects.stateless
-            [ "exchangeKeyPair",
-              (fun _ _ ->
-                  let publicKey, secret = mlkemKeyPair (randomBytes 64)
-                  pair "ExchangeKeyPair" (wrap "ExchangePublicKey" publicKey) (wrap "ExchangeSecretKey" secret))
-              "encapsulate",
-              (fun _ args ->
-                  let ciphertext, shared = mlkemEncapsulate (unwrap "ExchangePublicKey" (List.head args))
-                  pair "Encapsulated" (wrap "Ciphertext" ciphertext) (wrap "SharedSecret" shared))
-              "decapsulate",
-              (fun _ args ->
-                  match args with
-                  | [ secret; ciphertext ] ->
-                      wrap "SharedSecret" (mlkemDecapsulate (unwrap "ExchangeSecretKey" secret) (unwrap "Ciphertext" ciphertext))
-                  | _ -> fail "InvalidArguments" "decapsulate") ]
+            [
+                "exchangeKeyPair",
+                (fun _ _ ->
+                    let publicKey, secret = mlkemKeyPair (randomBytes 64)
+                    pair "ExchangeKeyPair" (wrap "ExchangePublicKey" publicKey) (wrap "ExchangeSecretKey" secret))
+                "encapsulate",
+                (fun _ args ->
+                    let ciphertext, shared =
+                        mlkemEncapsulate (unwrap "ExchangePublicKey" (List.head args))
+
+                    pair "Encapsulated" (wrap "Ciphertext" ciphertext) (wrap "SharedSecret" shared))
+                "decapsulate",
+                (fun _ args ->
+                    match args with
+                    | [ secret; ciphertext ] ->
+                        wrap
+                            "SharedSecret"
+                            (mlkemDecapsulate (unwrap "ExchangeSecretKey" secret) (unwrap "Ciphertext" ciphertext))
+                    | _ -> fail "InvalidArguments" "decapsulate")
+            ]
     | "lawspec.crypto::ability::Signature" ->
         signatureHandler (fun () -> let seed = randomBytes 32 in mldsaPublic seed, seed) mldsaSign mldsaVerify
     | "lawspec.crypto::ability::Aead" ->
         Effects.stateless
-            [ "aeadKey", (fun _ _ -> wrap "AeadKey" (randomBytes 32))
-              "deriveAeadKey",
-              (fun _ args ->
-                  match args with
-                  | [ secret; context ] -> wrap "AeadKey" (deriveAeadKey (unwrap "SharedSecret" secret) (bytes context))
-                  | _ -> fail "InvalidArguments" "deriveAeadKey")
-              "seal",
-              (fun _ args ->
-                  match args with
-                  | [ key; message; associated ] -> wrap "Sealed" (seal (unwrap "AeadKey" key) (bytes message) (bytes associated))
-                  | _ -> fail "InvalidArguments" "seal")
-              "unseal",
-              (fun _ args ->
-                  match args with
-                  | [ key; sealedValue; associated ] ->
-                      match unseal (unwrap "AeadKey" key) (unwrap "Sealed" sealedValue) (bytes associated) with
-                      | Some message -> Data("Maybe::Present", [ Bytes message ])
-                      | None -> Data("Maybe::Absent", [])
-                  | _ -> fail "InvalidArguments" "unseal") ]
+            [
+                "aeadKey", (fun _ _ -> wrap "AeadKey" (randomBytes 32))
+                "deriveAeadKey",
+                (fun _ args ->
+                    match args with
+                    | [ secret; context ] ->
+                        wrap "AeadKey" (deriveAeadKey (unwrap "SharedSecret" secret) (bytes context))
+                    | _ -> fail "InvalidArguments" "deriveAeadKey")
+                "seal",
+                (fun _ args ->
+                    match args with
+                    | [ key; message; associated ] ->
+                        wrap "Sealed" (seal (unwrap "AeadKey" key) (bytes message) (bytes associated))
+                    | _ -> fail "InvalidArguments" "seal")
+                "unseal",
+                (fun _ args ->
+                    match args with
+                    | [ key; sealedValue; associated ] ->
+                        match unseal (unwrap "AeadKey" key) (unwrap "Sealed" sealedValue) (bytes associated) with
+                        | Some message -> Data("Maybe::Present", [ Bytes message ])
+                        | None -> Data("Maybe::Absent", [])
+                    | _ -> fail "InvalidArguments" "unseal")
+            ]
     | _ -> fail "UnknownDefaultHandler" key
 
 /// Make Defaults.handler answer the lawspec.crypto abilities. The generated
