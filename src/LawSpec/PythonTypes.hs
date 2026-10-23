@@ -151,6 +151,7 @@ requiresSchema declarations ty = case ty of
 pythonLayout :: D.Layout
 pythonLayout = D.styleLayout (D.styleFor "python")
 
+-- | A type hint as Python code, laid out as the rest of the output.
 pythonDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 pythonDataType declarations ty = D.render pythonLayout <$> pythonDataTypeDoc declarations ty
 
