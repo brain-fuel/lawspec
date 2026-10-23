@@ -8,7 +8,11 @@ pub fn audit(value0: Account) -> bool {
 
 pub fn waitlist(value0: SignupError) -> ls::Either<SignupError, Account> {
     if matches!(value0, SignupError::Unavailable) {
-        return ls::Either::Right(Account { name: "waitlist".to_string(), age: 18, level: 0 });
+        return ls::Either::Right(Account {
+            name: "waitlist".to_string(),
+            age: 18,
+            level: 0,
+        });
     }
     ls::Either::Left(value0)
 }
@@ -32,7 +36,11 @@ pub fn openAccount(value0: Signup) -> ls::Either<SignupError, Account> {
     if name == "taken" {
         return ls::Either::Left(SignupError::Unavailable);
     }
-    ls::Either::Right(Account { name, age, level: 1 })
+    ls::Either::Right(Account {
+        name,
+        age,
+        level: 1,
+    })
 }
 
 /// Completes at an instant, woken by a thread that sleeps until then.
@@ -43,7 +51,10 @@ struct Sleep {
 
 impl std::future::Future for Sleep {
     type Output = ();
-    fn poll(mut self: std::pin::Pin<&mut Self>, context: &mut std::task::Context<'_>) -> std::task::Poll<()> {
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
         let now = std::time::Instant::now();
         if now >= self.until {
             return std::task::Poll::Ready(());
@@ -65,13 +76,25 @@ impl std::future::Future for Sleep {
 pub static FINISHED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 // Order -1's slow checks record when they ran, so approvedQuickly can tell whether they ran at the same time. The list is never cleared, so tests running at once cannot erase each other's records.
-pub static SPANS: std::sync::Mutex<Vec<(std::time::Instant, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
+pub static SPANS: std::sync::Mutex<Vec<(std::time::Instant, std::time::Instant)>> =
+    std::sync::Mutex::new(Vec::new());
 
-async fn check(value0: crate::lawspec_data::Order, milliseconds: u64, problem: &str) -> ls::Either<String, crate::lawspec_data::Order> {
+async fn check(
+    value0: crate::lawspec_data::Order,
+    milliseconds: u64,
+    problem: &str,
+) -> ls::Either<String, crate::lawspec_data::Order> {
     if value0.number == -1 {
         let start = std::time::Instant::now();
-        Sleep { until: start + std::time::Duration::from_millis(milliseconds), started: false }.await;
-        SPANS.lock().unwrap().push((start, std::time::Instant::now()));
+        Sleep {
+            until: start + std::time::Duration::from_millis(milliseconds),
+            started: false,
+        }
+        .await;
+        SPANS
+            .lock()
+            .unwrap()
+            .push((start, std::time::Instant::now()));
     }
     if value0.number >= 0 {
         return ls::Either::Right(value0);
@@ -81,11 +104,15 @@ async fn check(value0: crate::lawspec_data::Order, milliseconds: u64, problem: &
 }
 
 /// Order -1's stock check takes 400ms; a negative order has no stock.
-pub async fn checkStock(value0: crate::lawspec_data::Order) -> ls::Either<String, crate::lawspec_data::Order> {
+pub async fn checkStock(
+    value0: crate::lawspec_data::Order,
+) -> ls::Either<String, crate::lawspec_data::Order> {
     check(value0, 400, "no stock").await
 }
 
 /// Order -1's credit check takes 250ms; a negative order has no credit.
-pub async fn checkCredit(value0: crate::lawspec_data::Order) -> ls::Either<String, crate::lawspec_data::Order> {
+pub async fn checkCredit(
+    value0: crate::lawspec_data::Order,
+) -> ls::Either<String, crate::lawspec_data::Order> {
     check(value0, 250, "no credit").await
 }

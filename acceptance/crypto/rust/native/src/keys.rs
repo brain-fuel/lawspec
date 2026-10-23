@@ -11,7 +11,10 @@ pub struct CountingSigner {
 
 /// Makes the bound Signature handler.
 pub fn counting_signer() -> CountingSigner {
-    CountingSigner { inner: crate::lawspec_crypto::SignatureHandler, count: Default::default() }
+    CountingSigner {
+        inner: crate::lawspec_crypto::SignatureHandler,
+        count: Default::default(),
+    }
 }
 
 impl Signature for CountingSigner {
@@ -36,7 +39,10 @@ pub struct CountingExchange {
 
 /// Makes the bound KeyExchange handler.
 pub fn counting_exchange() -> CountingExchange {
-    CountingExchange { inner: crate::lawspec_crypto::KeyExchangeHandler, count: Default::default() }
+    CountingExchange {
+        inner: crate::lawspec_crypto::KeyExchangeHandler,
+        count: Default::default(),
+    }
 }
 
 impl KeyExchange for CountingExchange {

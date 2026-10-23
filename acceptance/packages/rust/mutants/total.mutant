@@ -1,6 +1,9 @@
 @@ src/shop/orders.rs
 <<<<<<<
-Money { currency, cents: (cents
+        currency,
 =======
-Money { currency: { let _ = currency; ShopDomainCurrency::Eur }, cents: (cents
+        currency: {
+            let _ = currency;
+            ShopDomainCurrency::Eur
+        },
 >>>>>>>

@@ -1,6 +1,6 @@
 @@ src/example/indexed.rs
 <<<<<<<
-Vec::VCons { value, .. } => prepend(value.head, append(*value.tail, value1)),
+        Vec::VCons { value, .. } => prepend(value.head, append(*value.tail, value1)),
 =======
-Vec::VCons { value, .. } => append(*value.tail, value1),
+        Vec::VCons { value, .. } => append(*value.tail, value1),
 >>>>>>>

@@ -1,6 +1,6 @@
 @@ src/example/indexed.rs
 <<<<<<<
-for _ in 0..count {
+    for _ in 0..count {
 =======
-for _ in 0..=count {
+    for _ in 0..=count {
 >>>>>>>

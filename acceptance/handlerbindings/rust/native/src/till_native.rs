@@ -44,5 +44,7 @@ pub fn pay(drawer: &dyn Drawer, cents: i64) -> Cash {
     if cents > 1000 {
         std::panic::panic_any(CardDeclined);
     }
-    Cash { cents: drawer.take(crate::lawspec_data::Money { cents }).cents }
+    Cash {
+        cents: drawer.take(crate::lawspec_data::Money { cents }).cents,
+    }
 }

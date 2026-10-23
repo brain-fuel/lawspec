@@ -4,6 +4,7 @@ expect-any: Hello | https://example.com/path
 <<<<<<<
 *
 =======
-pub fn canonicalize(x:String)->String {String::new()}
-
+pub fn canonicalize(x: String) -> String {
+    String::new()
+}
 >>>>>>>

@@ -1,6 +1,10 @@
 @@ src/example/refinements.rs
 <<<<<<<
-pub fn positive(a:i8)->i8 {a}
+pub fn positive(a: i8) -> i8 {
+    a
+}
 =======
-pub fn positive(a:i8)->i8 {0}
+pub fn positive(a: i8) -> i8 {
+    0
+}
 >>>>>>>

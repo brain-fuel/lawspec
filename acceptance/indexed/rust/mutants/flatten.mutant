@@ -1,6 +1,6 @@
 @@ src/example/indexed.rs
 <<<<<<<
-let right = prepend(value, flatten(*right));
+            let right = prepend(value, flatten(*right));
 =======
-let right = prepend(value, nil());
+            let right = prepend(value, nil());
 >>>>>>>

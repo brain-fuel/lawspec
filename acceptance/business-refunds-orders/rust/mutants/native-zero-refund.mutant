@@ -1,7 +1,7 @@
 expect: native refunds conform to the policy
 @@ src/example/refundConformance.rs
 <<<<<<<
-return RefundDecision::Approved;
+        return RefundDecision::Approved;
 =======
-return RefundDecision::Rejected;
+        return RefundDecision::Rejected;
 >>>>>>>

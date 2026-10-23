@@ -12,7 +12,9 @@ impl crate::lawspec_abilities::example_failures::Gateway for GatewayHandler {
             return crate::lawspec_data::Decision::Block;
         }
         if value0 % 2 == 1 {
-            return crate::lawspec_data::Decision::Decline { value: "an odd amount".into() };
+            return crate::lawspec_data::Decision::Decline {
+                value: "an odd amount".into(),
+            };
         }
         crate::lawspec_data::Decision::Approve
     }
@@ -32,7 +34,11 @@ pub async fn settle(value0: i32) -> i32 {
         ls::fail(crate::lawspec_data::PaymentError::Blocked);
     }
     if value0 == 0 {
-        ls::fail(crate::lawspec_data::PaymentError::Declined { value: crate::lawspec_data::DeclinedDetails { message: "there is nothing to settle".into() } });
+        ls::fail(crate::lawspec_data::PaymentError::Declined {
+            value: crate::lawspec_data::DeclinedDetails {
+                message: "there is nothing to settle".into(),
+            },
+        });
     }
     value0
 }

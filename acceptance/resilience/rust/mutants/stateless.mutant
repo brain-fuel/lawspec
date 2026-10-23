@@ -1,6 +1,12 @@
 @@ src/example/resilience.rs
 <<<<<<<
+        .map(|time| {
             let runtime = ctx.workflow.clone().unwrap();
 =======
-            *ctx = ls::Context::with_workflow(ls::WorkflowRuntime::new(Box::new(ls::VirtualClock::default()), 0)); let runtime = ctx.workflow.clone().unwrap();
+        .map(|time| {
+            *ctx = ls::Context::with_workflow(ls::WorkflowRuntime::new(
+                Box::new(ls::VirtualClock::default()),
+                0,
+            ));
+            let runtime = ctx.workflow.clone().unwrap();
 >>>>>>>

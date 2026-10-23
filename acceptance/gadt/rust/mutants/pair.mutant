@@ -1,6 +1,6 @@
 @@ src/example/gadt.rs
 <<<<<<<
-    Pair { first: evalNumber(*first).into(), second: evalTruth(*second) }
+        second: evalTruth(*second),
 =======
-    Pair { first: evalNumber(*first).into(), second: !evalTruth(*second) }
+        second: !evalTruth(*second),
 >>>>>>>

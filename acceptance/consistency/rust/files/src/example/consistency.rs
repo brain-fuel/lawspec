@@ -10,12 +10,16 @@ static REPLICAS: Mutex<Vec<HashMap<std::thread::ThreadId, i64>>> = Mutex::new(Ve
 pub fn newViews(value0: ()) -> Views {
     let mut replicas = REPLICAS.lock().unwrap();
     replicas.push(HashMap::new());
-    Views { id: (replicas.len() - 1) as i32 }
+    Views {
+        id: (replicas.len() - 1) as i32,
+    }
 }
 
 pub fn hit(value0: Views) -> i64 {
     let mut replicas = REPLICAS.lock().unwrap();
-    let mine = replicas[value0.id as usize].entry(std::thread::current().id()).or_insert(0);
+    let mine = replicas[value0.id as usize]
+        .entry(std::thread::current().id())
+        .or_insert(0);
     *mine += 1;
     *mine
 }

@@ -1,6 +1,11 @@
 @@ src/example/arithmetic.rs
 <<<<<<<
-Halves { value: HalvesPayload { front: value0.clone(), back: value0 } }
+            back: value0,
 =======
-Halves { value: HalvesPayload { front: value0.clone(), back: Row::Cell { value: Box::new(RowCell { head: 0, tail: Box::new(value0) }) } } }
+            back: Row::Cell {
+                value: Box::new(RowCell {
+                    head: 0,
+                    tail: Box::new(value0),
+                }),
+            },
 >>>>>>>

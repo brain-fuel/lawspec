@@ -1,6 +1,6 @@
 @@ src/example/resilience.rs
 <<<<<<<
-    ls::Integer(ls::retry_delay(&retry("exponential", int(&value0), 0, int(&value1)), int(&value2)).into())
+            &retry("exponential", int(&value0), 0, int(&value1)),
 =======
-    ls::Integer(ls::retry_delay(&retry("exponential", int(&value0), 0, int(&value1) + 1), int(&value2)).into())
+            &retry("exponential", int(&value0), 0, int(&value1) + 1),
 >>>>>>>

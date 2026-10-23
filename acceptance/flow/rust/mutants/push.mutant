@@ -1,6 +1,13 @@
 @@ src/example/flow.rs
 <<<<<<<
-    PushFlow { state: Stack::Push { value: Box::new(crate::lawspec_data::PushDetails { top: value0, rest: Box::new(value1) }) } }
+    PushFlow {
+        state: Stack::Push {
+            value: Box::new(crate::lawspec_data::PushDetails {
+                top: value0,
+                rest: Box::new(value1),
+            }),
+        },
+    }
 =======
     PushFlow { state: value1 }
 >>>>>>>

@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use crate::lawspec_data::{RefundRequest, RefundDecision};
+use crate::lawspec_data::{RefundDecision, RefundRequest};
 use crate::lawspec_runtime::BigUint;
 
 pub fn nativeRefund(request: RefundRequest) -> RefundDecision {

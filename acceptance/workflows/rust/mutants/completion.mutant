@@ -1,8 +1,10 @@
 @@ src/example/approvals.rs
 <<<<<<<
     messages
-}
 =======
-    if messages.is_empty() { messages } else { crate::example_workflows::FINISHED.lock().unwrap().clone() }
-}
+    if messages.is_empty() {
+        messages
+    } else {
+        crate::example_workflows::FINISHED.lock().unwrap().clone()
+    }
 >>>>>>>

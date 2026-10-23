@@ -1,7 +1,11 @@
 expect: settling nothing is declined, and says why
 @@ src/example/failures.rs
 <<<<<<<
-        ls::fail(crate::lawspec_data::PaymentError::Declined { value: crate::lawspec_data::DeclinedDetails { message: "there is nothing to settle".into() } });
+        ls::fail(crate::lawspec_data::PaymentError::Declined {
+            value: crate::lawspec_data::DeclinedDetails {
+                message: "there is nothing to settle".into(),
+            },
+        });
 =======
         ls::fail(crate::lawspec_data::PaymentError::Blocked);
 >>>>>>>

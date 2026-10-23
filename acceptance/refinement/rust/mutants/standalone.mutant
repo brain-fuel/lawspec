@@ -1,6 +1,6 @@
 @@ src/example/refinements.rs
 <<<<<<<
-a.chars().count().into()
+    a.chars().count().into()
 =======
-0i32.into()
+    0i32.into()
 >>>>>>>

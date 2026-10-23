@@ -5,7 +5,11 @@ use crate::lawspec_runtime as ls;
 // LawSpec: (example.harness::type::Order -> Int32)
 pub fn discount(value0: crate::lawspec_data::Order) -> i32 {
     // Ten percent off orders of more than ten items.
-    if value0.items > 10 { value0.total / 10 } else { 0 }
+    if value0.items > 10 {
+        value0.total / 10
+    } else {
+        0
+    }
 }
 
 // LawSpec: (Int32 -> Int32)

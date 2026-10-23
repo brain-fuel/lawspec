@@ -1,5 +1,7 @@
 // Scaffolded by LawSpec. User-owned; never overwritten.
-use crate::lawspec_data::{NonEmptyList, OrderError, OrderId, PricedOrder, UnitQuantity, UnvalidatedOrder, ValidatedOrder};
+use crate::lawspec_data::{
+    NonEmptyList, OrderError, OrderId, PricedOrder, UnitQuantity, UnvalidatedOrder, ValidatedOrder,
+};
 use crate::lawspec_runtime as ls;
 
 pub fn firstLine(value0: NonEmptyList<i32>) -> i32 {
@@ -28,6 +30,9 @@ pub fn priceOrder(value0: ValidatedOrder) -> ls::Either<OrderError, PricedOrder>
     if total > 20000 {
         return ls::Either::Left(OrderError::PriceTooHigh);
     }
-    ls::Either::Right(PricedOrder { id, quantity, total })
+    ls::Either::Right(PricedOrder {
+        id,
+        quantity,
+        total,
+    })
 }
-
