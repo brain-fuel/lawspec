@@ -40,6 +40,14 @@ formatter target = do
       pure (Just (Formatter "ruff format" python
         (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
+    -- Prettier's default configuration (pinned in the target's lock), with
+    -- no project or repository configuration and no ignore files: the
+    -- staging directory sits under the repository's ignored .artifacts.
+    t | t `elem` ["javascript", "typescript"] ->
+      pure (Just (Formatter "prettier" "node"
+        (\dir -> [root </> ".integration" </> t </> "node_modules/prettier/bin/prettier.cjs",
+          "--check", "--no-config", "--no-editorconfig", "--ignore-path", dir </> ".no-ignore", dir])
+        [".mjs", ".js", ".ts", ".mts"] ["test/locks" </> t </> "package-lock.json"]))
     _ -> pure Nothing
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
