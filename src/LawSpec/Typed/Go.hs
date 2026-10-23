@@ -325,10 +325,10 @@ dataDoc env d = do
     else if isProductType d
     then line ("type " ++ name ++ generics ++ " struct ") <> structOf (firstOf fieldTypes) (firstOf variants)
     else line ("type " ++ name ++ generics ++ " interface ") <> D.block 8 (line (tagMethod name ++ "() int")) <> D.hardline <> D.hardline <>
-      D.joinWith (D.hardline <> D.hardline)
+      mconcat
         [ (if null ts then line ("type " ++ variantType env d c ++ generics ++ " struct{}") else line ("type " ++ variantType env d c ++ generics ++ " struct ") <> structOf ts c) <> D.hardline <> D.hardline <>
-          line ("func (*" ++ variantType env d c ++ applied ++ ") " ++ tagMethod name ++ "() int ") <> block [line ("return " ++ show k)]
-        | (k, (c, ts)) <- zip [0 :: Int ..] (zip variants fieldTypes) ] <> D.hardline <> D.hardline <>
+          line ("func (*" ++ variantType env d c ++ applied ++ ") " ++ tagMethod name ++ "() int ") <> block [line ("return " ++ show k)] <> D.hardline <> D.hardline
+        | (k, (c, ts)) <- zip [0 :: Int ..] (zip variants fieldTypes) ] <>
       line ("var " ++ name ++ "Ranks = [...]int{" ++ intercalate ", " (map (show . rank) variants) ++ "}")
 
 entryHelpers :: Env -> [D.Doc]
