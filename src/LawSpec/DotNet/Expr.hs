@@ -12,7 +12,8 @@ import qualified LawSpec.Core.Value as V
 import LawSpec.DotNet.Code
 import LawSpec.Backend (scalarTypeKey)
 import LawSpec.Scalar (Scalar(..))
-import Data.List (nub, intercalate)
+import Data.List (nub, nubBy, intercalate)
+import LawSpec.DotNet.Names (localName, keywords)
 import Control.Monad.State.Strict (StateT, evalStateT, get, put, lift)
 
 -- | What rendering needs beyond the expression: the machine profile, the
@@ -69,7 +70,11 @@ literal symbols s = case s of
   SRational n d -> call "Scalar" "rationalOf" [Str (show n), Str (show d)]
   SFloat t bits -> call "Scalar" "floatBits" [IntLit (if t == "Float32" then 32 else 64), Str bits]
   SComplex t r i -> valueCall "Complex" [IntLit (if t == "Complex64" then 32 else 64), literal symbols r, literal symbols i]
-  SSequence "Text" units -> call "Scalar" "textUnits" [ListOf tInt (map (IntLit . toInteger) units)]
+  -- Text is a string literal; a sequence that is not Unicode scalar values
+  -- keeps its units, and the runtime rejects it.
+  SSequence "Text" units
+    | all (\u -> u >= 0 && u <= 0x10FFFF && (u < 0xD800 || u > 0xDFFF)) units -> valueCall "Text" [Str (map toEnum units)]
+    | otherwise -> call "Scalar" "textUnits" [ListOf tInt (map (IntLit . toInteger) units)]
   SSequence "Bytes" units -> call "Scalar" "bytesOf" [ListOf tInt (map (IntLit . toInteger) units)]
   SSequence kind units -> call "Scalar" "rawOf" [Str kind, ListOf tInt (map (IntLit . toInteger) units)]
   SSymbol identity description -> call "Scalar" "symbol" [symbols, Str identity, Str description]
@@ -103,15 +108,19 @@ render context root = evalStateT (go context root) 0
       put (n + 1)
       pure (prefix ++ show n)
     external ctx term args = lift (contextExternal ctx ctx term args)
-    ids = nub [C.binderId binder | term <- terms root, binder <- case C.expressionNode term of
+    binders = nubBy (\a b -> C.binderId a == C.binderId b) [binder | term <- terms root, binder <- case C.expressionNode term of
       C.AllElements _ b _ -> [b]
       C.AllPayloads _ ps -> map fst ps
       C.Match _ cs -> concatMap C.caseBinders cs
       C.Let b _ _ -> [b]
       _ -> []]
+    ids = map C.binderId binders
     terms term = term : concatMap terms (C.children term)
     occupied = [contextLocal context identity | term <- terms root, C.Local identity <- [C.expressionNode term], identity `notElem` ids]
-    bindings = zip ids [candidate | n <- [0 :: Int ..], let candidate = "bound" ++ show n, candidate `notElem` occupied]
+    -- Binders inside an expression keep their source names, clear of the
+    -- names around them; shadowing between them is undone when printed.
+    bindings = zip ids [if n `elem` (occupied ++ reservedLocals) then n ++ "_" ++ show k else n
+      | (k, b) <- zip [2 :: Int ..] binders, let n = sourceLocal (C.binderName b)]
     local identity = maybe (contextLocal context identity) id (lookup identity bindings)
     go ctx term
       | Just (fields, binders, body) <- C.concurrentGroup term = do
@@ -209,6 +218,15 @@ render context root = evalStateT (go context root) 0
           bound = foldr (\(i, b) rest -> Let (local (C.binderId b)) tValue (call "Runtime" "field" [subject, IntLit i]) rest)
             body (zip [0 ..] binders)
       pure (C.idText (C.caseConstructor c), bound)
+
+-- | A source binder's name as an expression local. Both languages' keywords
+-- are escaped, since one expression is printed as F# and as C#.
+sourceLocal :: String -> String
+sourceLocal n = let l = localName FSharp n in if l `elem` keywords CSharp then l ++ "_" else l
+
+-- | Names the code around an expression uses for its own values.
+reservedLocals :: [String]
+reservedLocals = ["schema", "symbols", "inputs", "values", "resources", "result", "scoped", "generation", "generator", "withResources", "receiver"]
 
 -- | A proposition as a portable boolean, without failing.
 proposition :: (C.Expr -> Either String Expr) -> C.Proposition -> Either String Expr

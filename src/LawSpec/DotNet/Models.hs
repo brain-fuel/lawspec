@@ -72,7 +72,7 @@ emitModels lang layout bits datas units = concat <$> mapM unitFile
                   then "(fun body -> Workflow.withTestRuntime (fun () -> (" ++ context ++ ") body))"
                   else "(" ++ context ++ ")"
             in D.text ("let private " ++ factoriesName ++ " : Scalar.SymbolContext -> " ++ tyText FSharp factoryTy ++ " =") <>
-              D.nest 4 (D.hardline <> renderBody FSharp (tFun [tSymbols] factoryTy) (Lambda [("symbols", tSymbols)] factoryTy made)) <>
+              D.nest 4 (D.hardline <> renderBody FSharp 4 (tFun [tSymbols] factoryTy) (Lambda [("symbols", tSymbols)] factoryTy made)) <>
               D.hardline <> D.hardline <> D.text ("/// The model " ++ machineName machine ++ ".") <> D.hardline <>
               D.text ("let private " ++ name ++ " () : Model.Model =") <> D.nest 4 (D.hardline <>
                 D.text ("Model.create " ++ stringLiteral FSharp spec) <> D.nest 4 (D.hardline <>
@@ -91,7 +91,7 @@ emitModels lang layout bits datas units = concat <$> mapM unitFile
                   (if null invariants then "FSharpList<FSharpFunc<Tuple<Schema.Schema, Scalar.SymbolContext>, FSharpFunc<FSharpList<Value>, Value>>>.Empty" else list invariants) ++ ")"
                 withContext = "LawSpec.Testing.Model.WithContext(" ++ withRuntime ++ ", " ++ modelExpr ++ ")"
             in D.text ("private static FSharpFunc<Scalar.SymbolContext, " ++ tyText CSharp factoryTy ++ "> " ++ pascal factoriesName ++ "()") <> D.hardline <>
-              D.block 4 (renderBody CSharp (tFun [tSymbols] factoryTy) (Lambda [("symbols", tSymbols)] factoryTy made)) <>
+              D.block 4 (renderBody CSharp 8 (tFun [tSymbols] factoryTy) (Lambda [("symbols", tSymbols)] factoryTy made)) <>
               D.hardline <> D.hardline <> D.text ("/// <summary>The model " ++ machineName machine ++ ".</summary>") <> D.hardline <>
               D.text ("private static LawSpec.Testing.Model.Model " ++ pascal name ++ "() =>") <> D.nest 4 (D.hardline <>
                 D.text (if machineActor machine then "LawSpec.Testing.Model.WithActors(LawSpec.Testing.ActorHost.Host, " ++ withContext ++ ");" else withContext ++ ";"))

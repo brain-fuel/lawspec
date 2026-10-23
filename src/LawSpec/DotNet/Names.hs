@@ -6,13 +6,16 @@
 module LawSpec.DotNet.Names
   ( langOf, extension, pascal, camel, unitNamespace, unitModule, unitQualified, generatedModule
   , adapterPath, functionName, parameterName, dataNames, fsharpKeywords, csharpKeywords, escapeFSharp
-  , splitDots, testModule, handleKey
+  , splitDots, testModule, handleKey, localName, localNames, keywords
   ) where
 
 import qualified LawSpec.Core as C
 import LawSpec.DotNet.Code (Lang(..))
 import Data.Char (isAlphaNum, isAscii, isUpper, isLower, isDigit, toUpper, toLower)
 import Data.List (intercalate, nub)
+import LawSpec.Naming (claimAll, scopeWith, nameWords, cased, Casing(..))
+import LawSpec.RecordNames (recordDisplayNames)
+import qualified Data.Map.Strict as M
 
 langOf :: String -> Lang
 langOf "csharp" = CSharp
@@ -108,7 +111,10 @@ parameterName _ i = "value" ++ show i
 -- when two declarations share one, and constructors named within their type.
 dataNames :: [C.DataDeclaration] -> Either String [(C.Id, String)]
 dataNames declarations = do
-  let shorts = [(C.dataId d, pascal (C.dataName d)) | d <- declarations]
+  -- An anonymous record is shown by a name from where it is used
+  -- (LawSpec.RecordNames); its identity stays its digest.
+  let displayed = recordDisplayNames declarations
+      shorts = [(C.dataId d, pascal (M.findWithDefault (C.dataName d) (C.dataId d) displayed)) | d <- declarations]
       reserved = words "Value Schema Codec Option List Map Set Either Nullable Optional Result Unit String Object Int Bool"
       types = [ (identity, if length (filter ((== n) . snd) shorts) > 1 || n `elem` reserved
                              then concatMap pascal (splitDots (owner (C.idText identity))) ++ n else n)
@@ -127,3 +133,25 @@ dataNames declarations = do
 -- | The marker key under which dataNames lists a handle.
 handleKey :: C.Id -> C.Id
 handleKey identity = C.Id ("handle#" ++ C.idText identity)
+
+keywords :: Lang -> [String]
+keywords FSharp = fsharpKeywords
+keywords CSharp = csharpKeywords
+
+-- | A source binder's name as a .NET local: camelCase, starting with a
+-- letter, with a keyword escaped by a trailing underscore.
+-- ref:DEC-readable-generated-names
+localName :: Lang -> String -> String
+localName lang source = escape (leading (cased Camel ws))
+  where
+    ws = case nameWords source of
+      [] -> ["value"]
+      found -> found
+    leading name@(c : _) | isDigit c = 'v' : name
+    leading name = name
+    escape name = if name `elem` keywords lang then name ++ "_" else name
+
+-- | Source binders' names as locals, unique among themselves and the names
+-- generated code already uses there (_2, _3 on a clash).
+localNames :: Lang -> [String] -> [String] -> [String]
+localNames lang taken = fst . claimAll (scopeWith (taken ++ keywords lang)) . map (localName lang)

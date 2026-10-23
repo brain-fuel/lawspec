@@ -292,6 +292,16 @@ let attempt (ability: string) (failure: Value -> 'e) (body: unit -> 'a) : Either
     with :? RaisedFailure as f when f.Ability = ability ->
         Either.Left(failure f.Failure)
 
+/// A typed handler's operation as its native Result: Ok of the body's value,
+/// or Error of the failure raised with this ability, converted to its native
+/// type.
+[<CompiledName("TryResult")>]
+let tryResult (ability: string) (failure: Value -> 'e) (body: unit -> 'a) : Result<'a, 'e> =
+    try
+        Ok(body ())
+    with :? RaisedFailure as f when f.Ability = ability ->
+        Error(failure f.Failure)
+
 /// An operation's Result, its error raised as the failure the dynamic code raises.
 [<CompiledName("Performed")>]
 let performed (ability: string) (failure: 'e -> Value) (result: Result<'a, 'e>) : 'a =

@@ -14,6 +14,7 @@ import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import LawSpec.DotNet.Code
+import qualified LawSpec.DotNet.Layout as L
 import LawSpec.DotNet.Names
 import qualified LawSpec.DotNet.Data as Data
 import qualified LawSpec.DotNet.Expr as X
@@ -110,8 +111,13 @@ emitEntriesWithLayouts bindings lang layout bits calls typedCall declarations un
     entry names verified unit declaration = do
       let identity = C.declarationId declaration
           (parameterTypes, resultType) = C.functionType (C.declarationType declaration)
-          arguments = ["argument" ++ show i | (i, _) <- zip [0 :: Int ..] parameterTypes]
           definition = lookup identity definitions
+          -- A definition's parameters keep their source names; an adapter's
+          -- declaration has none of its own.
+          arguments = case definition of
+            Just d | length (C.definitionArguments d) == length parameterTypes ->
+              localNames lang ["schema", "symbols", "result", "receiver"] (map C.binderName (C.definitionArguments d))
+            _ -> ["argument" ++ show i | (i, _) <- zip [0 :: Int ..] parameterTypes]
           locals = maybe [] (\d -> zip (map C.binderId (C.definitionArguments d)) arguments) definition
           resolve table variable = maybe (error ("unbound .NET binder: " ++ C.idText variable)) id (lookup variable table)
           context table = X.Context bits X.schemaVar X.symbolsVar (resolve table) (Effects.external units) X.typeRef X.typeKeyOf
@@ -191,19 +197,22 @@ emitEntriesWithLayouts bindings lang layout bits calls typedCall declarations un
           reference <- X.typeRef ty
           pure (argument, call "Schema" "validate" [Var argument, reference, X.schemaVar])
       let inner = foldr (\(argument,value) rest -> Let argument tValue value rest)
-            (Do pre (Let "result" tValue body (Do post (Var "result")))) validated
+            (Do pre (if null post then body else Let "result" tValue body (Do post (Var "result")))) validated
           wrapped = call "Runtime" "contextual" [Str (C.idText identity), Lambda [] tValue inner]
           name = functionName lang declaration
           params = [("schema", tSchema), ("symbols", tSymbols)] ++ [(a, tValue) | a <- arguments]
           comment = "/// " ++ C.idText identity
       pure $ case lang of
-        FSharp -> D.text comment <> D.hardline <>
-          D.text ("let " ++ name ++ " " ++ unwords ["(" ++ p ++ ": " ++ tyText FSharp t ++ ")" | (p, t) <- params] ++ " : Value =") <>
-          D.nest 4 (D.hardline <> renderBody FSharp tValue wrapped)
+        FSharp -> D.text comment <> D.hardline <> linesDoc 0 (functionLines FSharp 0 ("let " ++ name) params tValue wrapped)
         CSharp -> D.text ("/// <summary>" ++ C.idText identity ++ "</summary>") <> D.hardline <>
-          D.text ("public static Value " ++ name ++ "(" ++ intercalate ", " [tyText CSharp t ++ " " ++ p | (p, t) <- params] ++ ")") <>
-          D.hardline <> D.block 4 (renderBody CSharp tValue wrapped)
-    codecCall c member args = Call (Fn (c ++ "." ++ member) (c ++ "." ++ member ++ ".Invoke")) args
+          linesDoc 4 (functionLines CSharp 4 ("public static Value " ++ name) params tValue wrapped)
+    -- A codec built by an expression is applied through Codec.toNative and
+    -- Codec.fromNative in F#, as Fantomas lays out an application.
+    codecCall c member args
+      | lang == FSharp, take 1 c == "(" = Call (Fn ("Codec." ++ lowerFirst member) (c ++ "." ++ member ++ ".Invoke")) (Raw c c : args)
+      | otherwise = Call (Fn (c ++ "." ++ member) (c ++ "." ++ member ++ ".Invoke")) args
+    lowerFirst (x : xs) = toEnum (fromEnum x + (if x >= 'A' && x <= 'Z' then 32 else 0)) : xs
+    lowerFirst [] = []
     refText = intercalate "." . referenceParts
     -- A bound method keeps its name when it is already one .NET would write.
     pascalMethod m = m
@@ -227,36 +236,43 @@ emitApi FSharp layout bits declarations units = do
     functions <- forM (C.unitDefinitions u) $ \definition -> do
       let d = C.definitionDeclaration definition
           (parameterTypes, resultType) = C.functionType (C.declarationType d)
-          arguments = ["value" ++ show i | (i, _) <- zip [0 :: Int ..] parameterTypes]
       handlers <- forM (Effects.uses d) $ \ref -> do
         a <- maybe (Left ("unknown .NET ability " ++ C.abilityKey ref)) Right (N.abilityOf units ref)
         pure (a, camel (N.interfaceName a))
+      -- Parameters keep their source names.
+      let arguments = localNames FSharp (["schema", "symbols", "s"] ++ map snd handlers) (map C.binderName (C.definitionArguments definition))
       (ps, r) <- nativeSignature FSharp bits names units d
       codecs <- mapM (Data.codec FSharp bits names []) parameterTypes
       out <- Data.codec FSharp bits names [] resultType
       failure <- traverse (Data.codec FSharp bits names []) (declarationFailure d)
       e <- maybe (Left "missing .NET entry") Right (lookup (C.declarationId d) (entries units))
       let params = [(n, t) | ((_, n), t) <- zip handlers ps] ++ zip arguments (drop (length handlers) ps)
-          call' = entryModule e ++ "." ++ entryFs e ++ " schema symbols " ++
-            unwords ["((" ++ c ++ ").FromNative " ++ a ++ ")" | (c, a) <- zip codecs arguments]
-          converted = out ++ ".ToNative (" ++ call' ++ ")"
+          -- A codec built by an expression is applied through Codec.toNative
+          -- and Codec.fromNative, as Fantomas lays out an application.
+          convert c member x
+            | take 1 c == "(" = L.App ("Codec." ++ member) [L.A c, x]
+            | otherwise = L.App (c ++ "." ++ capitalised member) [x]
+          capitalised (x : xs) = toEnum (fromEnum x - (if x >= 'a' && x <= 'z' then 32 else 0)) : xs
+          capitalised [] = []
+          call' = L.App (entryModule e ++ "." ++ entryFs e) ([L.A "schema", L.A "symbols"] ++ [convert c "fromNative" (L.A a) | (c, a) <- zip codecs arguments])
+          converted = convert out "toNative" call'
           checked = case failure of
             Nothing -> converted
-            Just fc -> "Effects.nativeTry " ++ stringLiteral FSharp (failureKey d) ++ " " ++ fc ++ ".ToNative (fun () -> " ++ converted ++ ")"
-          scoped = asTask (if null handlers then [D.text checked] else
-            [ D.text "Effects.withScope schema" <> D.nest 4 (D.hardline <> D.text "[ " <> D.joinWith (D.hardline <> D.text "  ")
-                [D.text (stringLiteral FSharp (C.abilityKey (C.abilityInstance a)) ++ ", (fun s -> LawSpec.Generated.Abilities." ++
-                  Effects.bridgeName a "FromNative" ++ " s symbols " ++ n ++ ")") | (a, n) <- handlers] <> D.text " ]" <> D.hardline <>
-                D.text ("(fun schema -> " ++ checked ++ ")")) ])
+            Just fc -> L.App "Effects.nativeTry" [L.A (stringLiteral FSharp (failureKey d)), if take 1 fc == "(" then L.App "Codec.toNative" [L.A fc] else L.A (fc ++ ".ToNative"), L.Fun "()" converted]
+          scoped = asTask (if null handlers then checked else
+            L.App "Effects.withScope" [L.A "schema", L.List
+                [L.Tuple [L.A (stringLiteral FSharp (C.abilityKey (C.abilityInstance a))), L.Fun "s" (L.App ("LawSpec.Generated.Abilities." ++
+                  Effects.bridgeName a "FromNative") [L.A "s", L.A "symbols", L.A n])] | (a, n) <- handlers],
+              L.Fun "schema" checked])
           -- An async definition runs on the thread pool; its entries are
           -- synchronous inside, awaiting their adapters.
           asTask body
-            | C.declarationAsync d = [D.text "System.Threading.Tasks.Task.Run<_>(System.Func<_>(fun () ->" <> D.nest 4 (D.hardline <> D.joinWith D.hardline body) <> D.text "))"]
+            | C.declarationAsync d = L.Method "System.Threading.Tasks.Task.Run<_>" [L.Method "System.Func<_>" [L.Fun "()" body]]
             | otherwise = body
+          setup = [L.LetS "let schema" (L.A "LawSpec.Generated.Program.schema"), L.LetS "let symbols" (L.A "Scalar.SymbolContext()")]
       pure (D.text ("/// " ++ C.idText (C.declarationId d)) <> D.hardline <>
-        D.text ("let " ++ functionName FSharp d ++ " " ++ (if null params then "()" else unwords ["(" ++ n ++ ": " ++ t ++ ")" | (n, t) <- params]) ++ " : " ++ r ++ " =") <>
-        D.nest 4 (D.hardline <> D.text "let schema = LawSpec.Generated.Program.schema" <> D.hardline <>
-          D.text "let symbols = Scalar.SymbolContext()" <> D.hardline <> D.joinWith D.hardline scoped))
+        L.linesDoc 0 (L.function 0 ("let " ++ functionName FSharp d) (if null params then ["()"] else ["(" ++ n ++ ": " ++ t ++ ")" | (n, t) <- params]) (Just r)
+          (L.Block setup scoped)))
     let moduleName = apiModule (C.unitId u)
         doc = D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
           D.text ("/// The checked definitions of " ++ C.idText (C.unitId u) ++ ", on native values.") <> D.hardline <>
@@ -270,10 +286,11 @@ emitApi CSharp layout bits declarations units = do
     methods <- forM (C.unitDefinitions u) $ \definition -> do
       let d = C.definitionDeclaration definition
           (parameterTypes, resultType) = C.functionType (C.declarationType d)
-          kept = [(t, "value" ++ show i) | (i, t) <- zip [0 :: Int ..] parameterTypes]
       handlers <- forM (Effects.uses d) $ \ref -> do
         a <- maybe (Left ("unknown .NET ability " ++ C.abilityKey ref)) Right (N.abilityOf units ref)
         pure (a, camel (N.interfaceName a))
+      -- Parameters keep their source names.
+      let kept = zip parameterTypes (localNames CSharp (["schema", "symbols", "s"] ++ map snd handlers) (map C.binderName (C.definitionArguments definition)))
       (ps, r) <- nativeSignature CSharp bits names units d
       codecs <- mapM (Data.codec CSharp bits names []) parameterTypes
       out <- Data.codec CSharp bits names [] resultType

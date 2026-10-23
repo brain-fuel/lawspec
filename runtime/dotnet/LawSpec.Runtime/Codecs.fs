@@ -17,6 +17,13 @@ type Codec<'T> =
     }
 
 module Codec =
+    /// A value as a codec's native type; generated code calls it with a
+    /// codec it builds, such as a list's.
+    let toNative (codec: Codec<'T>) (value: Value) : 'T = codec.ToNative value
+
+    /// A native value as a portable value.
+    let fromNative (codec: Codec<'T>) (native: 'T) : Value = codec.FromNative native
+
     let private wrong (expected: string) (value: Value) : 'a =
         Fail.raiseWith "InvalidNativeValue" (sprintf "expected %s, got %A" expected value)
 

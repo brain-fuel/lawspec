@@ -656,6 +656,7 @@ library
       LawSpec.DotNet.Entries
       LawSpec.DotNet.Expr
       LawSpec.DotNet.Handlers
+      LawSpec.DotNet.Layout
       LawSpec.DotNet.Mailboxes
       LawSpec.DotNet.Models
       LawSpec.DotNet.Names
