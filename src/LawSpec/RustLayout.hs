@@ -329,9 +329,11 @@ expr e = case e of
   Prefix op a -> D.text op <> expr a
   Infix {} -> infixDoc e
   -- A cast that does not fit breaks before as.
-  Cast a t -> case oneLine e of
-    Just line' -> oneOf [D.text line', expr a <> D.nest 4 (D.hardline <> castType t)]
-    Nothing -> expr a <> D.nest 4 (D.hardline <> castType t)
+  -- (A value that breaks keeps its cast on its last line.)
+  Cast a t -> case (oneLine e, oneLine a) of
+    (Just line', _) -> oneOf [D.text line', expr a <> D.nest 4 (D.hardline <> castType t)]
+    (Nothing, Just _) -> expr a <> D.nest 4 (D.hardline <> castType t)
+    (Nothing, Nothing) -> expr a <> D.text (" as " ++ t)
   Paren a -> D.text "(" <> expr a <> D.text ")"
   Block ss tailExpr -> blockDoc ss tailExpr
   If c a b -> ifDoc c a b
@@ -510,7 +512,18 @@ chainWith root' links' e = case chainOneLine of
       (Just t, Just _) | width t <= 60 || length (snd (unchain e)) <= 1 -> Just t
       _ -> Nothing
     rootDoc = mconcat (map (either expr linkDoc) root')
-    eachLine = rootDoc <> D.nest 4 (mconcat [D.hardline <> linkDoc l | l <- links'])
+    -- After a block-like root (if, match, a block), links do not indent.
+    -- (so does a root that cannot be on one line: its last line closes it)
+    blockRoot = case root' of
+      [Left r] -> case r of
+        If {} -> True
+        Match {} -> True
+        Block _ _ -> True
+        Laid _ -> isNothing (flat r)
+        Call {} -> isNothing (oneLine r)
+        _ -> False
+      _ -> False
+    eachLine = rootDoc <> (if blockRoot then id else D.nest 4) (mconcat [D.hardline <> linkDoc l | l <- links'])
     prefixText = concat <$> mapM (either oneLine flatLink) (root' ++ map Right (init links'))
     -- rustfmt's choice for the last call (format_last_child): on the
     -- chain's line, or the chain broken a link a line.
@@ -714,4 +727,10 @@ signatureDoc head' parameters result end = oneOf [D.text (head' ++ "(" ++ interc
       | null parameters = D.text (head' ++ "()" ++ result' ++ end)
       | otherwise = D.text (head' ++ "(") <> params <> D.hardline <>
           if end /= " {" then D.text (")" ++ result' ++ end) else
-          D.fitsIndentedTwice (width (")" ++ result') + 2) (D.text (")" ++ result' ++ " {")) (D.text (")" ++ result') <> D.hardline <> D.text "{")
+          D.fitsIndentedTwice (width (")" ++ result') + 2) (D.text (")" ++ result' ++ " {"))
+            (D.fitsIndented 0 (width (")" ++ result')) (D.text (")" ++ result') <> D.hardline <> D.text "{") genericResult)
+    -- A result type too long for its line breaks inside its outer brackets.
+    genericResult = case break (== '<') result of
+      (outer, '<' : inner) | not (null inner), last inner == '>' ->
+        D.text (") -> " ++ outer ++ "<") <> D.nest 4 (D.hardline <> D.text (init inner ++ ",")) <> D.hardline <> D.text "> {"
+      _ -> D.text (")" ++ result') <> D.hardline <> D.text "{"
