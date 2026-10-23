@@ -587,6 +587,7 @@ library
       LawSpec.ClojureSources
       LawSpec.Code.Doc
       LawSpec.Code.JavaScript
+      LawSpec.Code.Literal
       LawSpec.Collections
       LawSpec.Common
       LawSpec.Compile
@@ -639,6 +640,7 @@ library
       LawSpec.Dependencies
       LawSpec.Digest
       LawSpec.Discharge
+      LawSpec.DisplayWidthData
       LawSpec.Documentary
       LawSpec.Domain
       LawSpec.DomainModel
@@ -715,6 +717,7 @@ library
       LawSpec.ModelLaws
       LawSpec.ModelProof
       LawSpec.ModelTests
+      LawSpec.Naming
       LawSpec.NativeBinding
       LawSpec.NativeModelChecks
       LawSpec.NativeRequest
@@ -737,6 +740,7 @@ library
       LawSpec.PythonNativeBinding
       LawSpec.PythonTypes
       LawSpec.Railway
+      LawSpec.RecordNames
       LawSpec.Refinement
       LawSpec.Regex
       LawSpec.Release
@@ -771,6 +775,7 @@ library
       LawSpec.Sessions.Web
       LawSpec.Sha3
       LawSpec.SourceContext
+      LawSpec.SourceLink
       LawSpec.SourceOrigins
       LawSpec.SourceRecords
       LawSpec.SourceSyntax

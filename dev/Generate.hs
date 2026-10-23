@@ -27,7 +27,7 @@ import Gen.Api (apiSources)
 import Gen.Embed (embedRuntimes, embedDefaults, embedDotNet, embedJvmLanguage, embedSwift)
 import Gen.Json
 import Gen.Template
-import Gen.Unicode (caseFoldData)
+import Gen.Unicode (caseFoldData, displayWidthData)
 import LawSpec.Code.Doc (Layout(..))
 import qualified LawSpec.Core as Core
 import qualified LawSpec.Targets as Targets
@@ -100,6 +100,7 @@ planOutputs = do
   groovy <- embedJvmLanguage "groovy" "GroovySources"
   clojure <- embedJvmLanguage "clojure" "ClojureSources"
   unicode <- caseFoldData
+  displayWidths <- displayWidthData
   unicodeLicense <- readFile' "vendor/unicode/LICENSE.txt"
   normalizationLicenses <- readFile' "vendor/unicode/NORMALIZATION-LICENSES.txt"
   let whole = [ Output "src/LawSpec/RuntimeSources.hs" runtimes False, Output "src/LawSpec/DefaultSources.hs" defaults False
@@ -108,6 +109,7 @@ planOutputs = do
               , Output "src/LawSpec/ClojureSources.hs" clojure False
               , Output "src/LawSpec/SwiftSources.hs" swift False
               , Output "src/LawSpec/CaseFoldData.hs" unicode False
+              , Output "src/LawSpec/DisplayWidthData.hs" displayWidths False
               , Output "npm/UNICODE-LICENSE.txt" unicodeLicense False
               , Output "npm/NORMALIZATION-LICENSES.txt" normalizationLicenses False ] ++
         [ Output ("npm" </> name) content False | (name, content) <- api ]
