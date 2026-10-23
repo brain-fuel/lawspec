@@ -1,36 +1,18 @@
 -- | Typed expression documents shared by Java tests and reusable definitions.
-module LawSpec.JavaExpr (renderExpression, renderExpressionWithContext, scalarLiteral, call, array, reference, quoted, javaDataKey) where
+module LawSpec.JavaExpr (renderExpression, renderExpressionWithContext, renderExpressionWithSchema, scalarLiteral, call, array, reference, quoted, javaDataKey) where
 
 import LawSpec.Core
 import qualified LawSpec.Core.Schema as Schema
 import LawSpec.Scalar
 import qualified LawSpec.Code.Doc as D
-import Data.Aeson (encode)
-import qualified Data.Text.Lazy as T
-import qualified Data.Text.Lazy.Encoding as T
+import LawSpec.JvmNames (jvmString)
 import Data.List (find)
 
--- | Strings are escaped for Java here, once, so no generated literal can end
--- early or change meaning.
+-- | Strings are Java string literals (LawSpec.Code.Literal), wrapped only
+-- at spaces, so no generated literal can end early or change meaning and no
+-- word is split. ref:DEC-native-string-literals
 quoted :: String -> D.Doc
-quoted value = case chunks value of
-  [] -> token ""
-  first:rest -> D.group (token first <> D.nest 4
-    (mconcat [D.softline <> D.text "+ " <> token part | part <- rest]))
-  where
-    encoded = T.unpack . T.decodeUtf8 . encode
-    token = D.text . encoded
-    chunks "" = []
-    chunks remaining
-      | length (encoded remaining) <= 48 = [remaining]
-      | otherwise =
-          let candidates = takeWhile (\n -> length (encoded (take n remaining)) <= 42) [1 .. length remaining]
-              width = case reverse candidates of n:_ -> n; [] -> 1
-              boundary = case reverse [i | (i,c) <- zip [0..] (take width remaining), c == ' ', i >= 16] of
-                n:_ -> n
-                [] -> width
-              (part,rest) = splitAt boundary remaining
-          in part : chunks rest
+quoted = jvmString "java"
 
 -- | Arguments wrap when a call is too wide, in the Java style LawSpec follows.
 -- ref:DEC-readable-output-default
@@ -66,6 +48,9 @@ scalarLiteral ty value = case value of
     imaginary <- scalarLiteral (scalarType (scalarName i)) i
     pure (runtime "complex" [quoted name,real,imaginary])
   SCharacter name c -> pure (runtime "character" [quoted name,D.text (show c)])
+  -- Text is written as the string it is.
+  SSequence name units | name `elem` ["Text", "Utf16Text", "CodePointText"] ->
+    pure (runtime "text" [quoted name, quoted (map toEnum units)])
   SSequence name units -> pure (runtime "sequence" [quoted name,
     D.group (D.text "new int[] {" <> D.nest 2 (D.softbreak <>
       D.flow [D.text (show unit ++ if index < length units - 1 then "," else "") | (index,unit) <- zip [0::Int ..] units]) <> D.softbreak <> D.text "}")])
@@ -90,7 +75,13 @@ renderExpression declarations bits = renderExpressionWithContext declarations
 renderExpressionWithContext :: [DataDeclaration] -> D.Doc -> (Type -> Either String D.Doc)
   -> (Type -> Either String D.Doc) -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
-renderExpressionWithContext declarations bits reference typeKey local external = render
+renderExpressionWithContext = renderExpressionWithSchema "SCHEMA"
+
+-- | As renderExpressionWithContext, with the schema in scope under a name.
+renderExpressionWithSchema :: String -> [DataDeclaration] -> D.Doc -> (Type -> Either String D.Doc)
+  -> (Type -> Either String D.Doc) -> (Id -> String)
+  -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
+renderExpressionWithSchema schemaName declarations bits reference typeKey local external = render
   where
     runtime name = call ("LawSpecRuntime." ++ name)
     custom (Constructor name args) = any ((== Id name) . dataId) declarations ||
@@ -99,7 +90,7 @@ renderExpressionWithContext declarations bits reference typeKey local external =
     custom _ = False
     checked ty value | custom ty = do
       ref <- reference ty
-      pure (call "_schema.validate" [ref,value,bits,D.text "symbols"])
+      pure (call (schemaName ++ ".validate") [ref,value,bits,D.text "symbols"])
     checked ty value = do
       key <- typeKey ty
       pure (runtime "convert" [key,value,bits])
@@ -108,7 +99,7 @@ renderExpressionWithContext declarations bits reference typeKey local external =
       | Just (fields,binders,body) <- concurrentGroup term = do
           steps <- mapM render fields
           inner <- render body
-          let resultsName = "_group" ++ show (length (show term))
+          let resultsName = "results" ++ show (length (show term))
               bindings = [D.text ("var " ++ local (binderId binder) ++ " = " ++ resultsName ++ ".get(" ++ show i ++ ");")
                 | (i,binder) <- zip [0::Int ..] binders]
           pure (runtime "concurrently" ((D.text (resultsName ++ " -> ") <>
@@ -125,7 +116,7 @@ renderExpressionWithContext declarations bits reference typeKey local external =
           body <- render predicate
           pure (D.group (D.text (local (binderId binder) ++ " ->") <>
             D.nest 4 (D.softline <> body)))) predicates
-        pure (call "_schema.allPayloads"
+        pure (call (schemaName ++ ".allPayloads")
           [ref,argument,call "java.util.List.of" callbacks,bits,D.text "symbols"])
       AllElements value binder predicate -> do
         argument <- render value
@@ -133,6 +124,9 @@ renderExpressionWithContext declarations bits reference typeKey local external =
         pure (runtime "allElements" [argument,
           D.group (D.text (local (binderId binder) ++ " ->") <>
             D.nest 4 (D.softline <> body))])
+      -- A text literal is already its type's value.
+      Constant value@(SSequence n _) | n `elem` ["Text", "Utf16Text", "CodePointText"],
+        expressionType term == scalarType n -> literal (expressionType term) value
       Constant value -> literal (expressionType term) value >>= checked (expressionType term)
       Local identity -> pure (D.text (local identity))
       -- let x = e in body: e runs first, once.
@@ -145,7 +139,7 @@ renderExpressionWithContext declarations bits reference typeKey local external =
         if custom (expressionType term) && idText tag `notElem` ["List::Nil","List::Cons"]
           then do
             ref <- reference (expressionType term)
-            pure (call "_schema.construct" [ref,quoted (idText tag),call "java.util.List.of" values,bits,D.text "symbols"])
+            pure (call (schemaName ++ ".construct") [ref,quoted (idText tag),call "java.util.List.of" values,bits,D.text "symbols"])
           else do
             key <- typeKey (expressionType term)
             pure (runtime "construct" [key,quoted (idText tag),array values])
@@ -168,7 +162,7 @@ renderExpressionWithContext declarations bits reference typeKey local external =
         if custom (expressionType a) then do
           ref <- reference (expressionType a)
           pure (runtime "bool" [(if op == NotEqual then D.text "!" else mempty) <>
-            call "_schema.equal" [ref,left,right,bits,D.text "symbols"]])
+            call (schemaName ++ ".equal") [ref,left,right,bits,D.text "symbols"]])
         else pure (runtime "binary" [quoted (binaryName op),left,right])
       Unary Not value -> do
         argument <- render value
@@ -194,15 +188,15 @@ renderExpressionWithContext declarations bits reference typeKey local external =
       Match scrutinee branches -> do
         -- Values are checked where they are built, decoded or drawn.
         value <- render scrutinee
-        let dataName = "_match" ++ show (length (show term))
+        let dataName = "matched" ++ show (length (show term))
         case expressionType scrutinee of
           Constructor name _ | any ((== Id name) . dataId) declarations -> do
             ref <- reference (expressionType scrutinee)
             arms <- mapM (dataBranch dataName) branches
-            let body = D.text "switch (" <> D.text dataName <> D.text ".tag()) " <>
+            let body = D.text "switch (" <> D.text dataName <> D.text ".tag())" <> D.hardline <>
                   D.block 2 (D.joinWith D.hardline
                     (arms ++ [D.group (D.text "default ->" <> D.nest 4 (D.softline <> D.text "throw new IllegalArgumentException(\"invalid constructor\");"))]))
-            pure (call "_schema.match" [ref,value,bits,D.text "symbols",
+            pure (call (schemaName ++ ".match") [ref,value,bits,D.text "symbols",
               D.text (dataName ++ " ->") <> D.nest 4 (D.hardline <> body)])
           Constructor name _ -> do
             (helper,tags) <- case name of

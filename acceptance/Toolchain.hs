@@ -40,7 +40,30 @@ formatter target = do
       pure (Just (Formatter "ruff format" python
         (\dir -> ["-m", "ruff", "format", "--check", "--diff", "--isolated", "--no-cache", dir]) [".py"]
         ["test/locks/python.txt"]))
+    -- The JVM targets' formatters, pinned here by their Maven coordinates
+    -- and run by Coursier, which fetches each once into its cache.
+    -- Java has no canonical formatter: Checkstyle checks LawSpec's profile,
+    -- Allman braces with Google Java Style's other rules.
+    "java" -> pure (Just (Formatter "checkstyle 14.3.0 (Allman, Google)" "coursier"
+      (\dir -> launch "com.puppycrawl.tools.checkstyle.Main" checkstyle ++ ["-c", root </> javaProfile, dir]) [".java"]
+      [javaProfile]))
+    -- ktfmt's kotlinlang style, its default for Kotlin's own conventions.
+    "kotlin" -> pure (Just (Formatter "ktfmt 0.64 (kotlinlang)" "coursier"
+      (\dir -> launch "com.facebook.ktfmt.cli.Main" "com.facebook:ktfmt:0.64" ++ ["--kotlinlang-style", "--dry-run", "--set-exit-if-changed", dir]) [".kt"]
+      []))
+    -- scalafmt's default configuration; Scala 3 is the projects' dialect.
+    "scala" -> pure (Just (Formatter "scalafmt 3.11.5" "coursier"
+      (\dir -> launch "org.scalafmt.cli.Cli" "org.scalameta:scalafmt-cli_2.13:3.11.5" ++
+        ["--config-str", "version=3.11.5\nrunner.dialect=scala3", "--test", "--non-interactive", dir]) [".scala"]
+      []))
+    "clojure" -> pure (Just (Formatter "cljfmt 0.16.6" "coursier"
+      (\dir -> ["launch", "-r", "clojars", "-M", "clojure.main", "dev.weavejester:cljfmt:0.16.6", "--", "-m", "cljfmt.main", "check", dir])
+      [".clj", ".edn"] []))
     _ -> pure Nothing
+  where
+    launch main coordinates = ["launch", "-M", main, coordinates, "--"]
+    checkstyle = "com.puppycrawl.tools:checkstyle:14.3.0"
+    javaProfile = "acceptance/formatters/java-checkstyle.xml"
 
 -- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain

@@ -44,6 +44,10 @@ import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub)
 import Data.Maybe (listToMaybe)
 import Data.Char (toLower, isAlphaNum)
 import LawSpec.Search (lawDescriptors, searchable)
+import qualified LawSpec.Backend as Backend
+import qualified Data.Map.Strict as M
+import LawSpec.JvmNames (jvmLocalTable, jvmReserved, contractMethod)
+import LawSpec.SourceLink (unitSourceFile, sourceLink, labelled)
 
 q :: String -> String
 q = T.unpack . T.decodeUtf8 . encode
@@ -101,6 +105,15 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     -- The harness plane's runtime, for a unit with a harness.
     ++ [Artifact (intercalate "/" parts ++ "/lawspec_harness_test.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go-harness")) "generated" "test" | go, C.unitHarnessSettings u /= Nothing])
   where
+    -- JVM locals keep their source names (LawSpec.JvmNames), each law's
+    -- distinct within it; other targets keep the generated ones.
+    localName identity
+      | target `elem` ["java", "kotlin"] = M.findWithDefault (Backend.localName identity) identity jvmLocals
+      | otherwise = Backend.localName identity
+    jvmLocals = M.unions (map (jvmLocalTable target (jvmReserved target) . propertyBinders . original) ls ++
+      [jvmLocalTable target (jvmReserved target) (C.contractArguments c ++ [C.contractResult c]) | c <- contracts u])
+    -- A declaration's source line, for the comment on its stub.
+    declarationLink n = listToMaybe [l | d <- C.unitDeclarations u, C.declarationName d == n, Just l <- [sourceLink (C.declarationOrigin d)]]
     adapterFunctions = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u,
       C.declarationId d `notElem` map fst definitions]
     ktCustom = (kt &&) . KotlinData.requiresSchema dataDeclarations
@@ -175,15 +188,15 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
              ([haskellStubFn n t | (n,t) <- adapterFunctions] ++
               [java (HaskellAbilities.productionStub dataDeclarations a) | a <- ownAbilities u]) <> Doc.hardline
          | target == "java" = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) $
-           Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
+           Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <> Doc.hardline <>
            (if null pkg then mempty else Doc.text ("package " ++ pkg ++ ";") <> Doc.hardline <> Doc.hardline) <>
            (if any (javaUses "LawSpecRuntime.") (adapterFunctions)
             then Doc.text "import lawspec.runtime.LawSpecRuntime;" <> Doc.hardline else mempty) <>
            (if any javaNeedsValue (adapterFunctions)
             then Doc.text "import lawspec.runtime.LawSpecRuntime.Value;" <> Doc.hardline <> Doc.hardline
            else if any (javaUses "LawSpecRuntime.") (adapterFunctions) then Doc.hardline else mempty) <>
-           Doc.text ("public final class " ++ cls ++ " ") <>
-           (if null adapterFunctions && null (ownAbilities u) then Doc.text "{}" else
+           Doc.text ("public final class " ++ cls) <> Doc.hardline <>
+           (if null adapterFunctions && null (ownAbilities u) then Doc.text "{" <> Doc.hardline <> Doc.text "}" else
              Doc.block 2 (Doc.joinWith (Doc.hardline <> Doc.hardline) ([javaStubFn n t | (n,t) <- adapterFunctions] ++
                [java (JavaAbilities.productionStub dataDeclarations u a) | a <- ownAbilities u]))) <> Doc.hardline
          | otherwise = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) $
@@ -267,13 +280,13 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             | otherwise = native result
           flatHeader = "public static " ++ resultText ++ " " ++ n ++ "("
           signature = Doc.group $ if length flatHeader <= 98 || asyncStub
-            then Doc.text flatHeader <> Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ") "
+            then Doc.text flatHeader <> Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ")"
             else Doc.text "public static " <> javaTypeDoc False False 8 result <>
               Doc.nest 4 (Doc.softline <> Doc.group (Doc.text (n ++ "(") <>
-                Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ") "))
+                Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ")"))
           body = Doc.group $ Doc.text "throw new UnsupportedOperationException(" <>
             Doc.nest 4 (Doc.softbreak <> Doc.text (q (n ++ " -> " ++ prettyType result))) <> Doc.text ");"
-      in javaComment (prettyType t) <> Doc.hardline <> signature <> Doc.block 2 body
+      in javaComment (labelled (n ++ " :: " ++ prettyType t) (declarationLink n)) <> Doc.hardline <> signature <> Doc.hardline <> Doc.block 2 body
     javaTypeDoc argument nested indentation t = case t of
       Applied "List" inner -> generic "java.util.List" [inner]
       Applied "Maybe" inner -> generic "LawSpecRuntime.Maybe" [inner]
@@ -313,10 +326,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         Doc.group (signature <> Doc.text " =" <>
           Doc.nest 4 (Doc.softline <> Doc.text ("TODO(" ++ quote n ++ ")")))
     testHeader = testHeaderBase ++
-      (if target == "java" && javaSchemaNeeded then
-        "  private static final lawspec.runtime.LawSpecSchema _schema = lawspec.runtime.LawSpecDataSchema.create();\n" else "") ++
-      (if hs || kt then "" else testHelpers) ++
-      (if target == "java" && javaSchemaNeeded then javaDataHelpers else "") ++
+      (if hs || kt || target == "java" then "" else testHelpers) ++
       (if goSchemaNeeded then goDataHelpers else "")
     testHeaderBase | go = "// Generated by LawSpec.\n" ++ header ++ (if goSchemaNeeded then "import \"fmt\"\n" else "") ++ "import (\"testing\"; \"pgregory.net/rapid\")\n"
                | hs = "-- Generated by LawSpec.\n" ++ (if null (C.unitAbilities u) then "" else "{-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}\n") ++ "module " ++ intercalate "." (map hsPart parts) ++ "Spec (spec) where\nimport qualified Prelude as P\nimport Prelude\nimport Test.Hspec\nimport Control.Exception (SomeException, catch, displayException)\nimport Test.Hspec.Hedgehog (hedgehog, modifyMaxSuccess)\nimport Hedgehog (forAll, evalIO, footnote)\nimport qualified Hedgehog.Gen as Gen\nimport qualified Hedgehog.Range as Range\nimport LawSpecRuntime (Scalar(..))\nimport qualified LawSpecRuntime as LS\nimport qualified " ++ intercalate "." (map hsPart parts) ++ " as Impl\n" ++
@@ -326,11 +336,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | hs = hsDocument (HaskellTestHelpers.assertionDoc <> Doc.hardline <> Doc.hardline)
       | go = goDocument GoTestHelpers.assertionDoc
       | kt = ktDocument (KotlinTestHelpers.assertionDoc <> Doc.hardline <> Doc.hardline)
-      | otherwise = javaHelperDocument JavaTestHelpers.scalarHelpersDoc
+      | otherwise = ""
     goDataHelpers = goDocument (GoTestHelpers.dataHelpersDoc bits goGeneratorDoc)
-    javaHelperDocument doc = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
-      (Doc.text "  " <> Doc.nest 2 doc <> Doc.hardline <> Doc.hardline)
-    javaDataHelpers = javaHelperDocument (JavaTestHelpers.dataHelpersDoc bits javaGeneratorDoc)
     quote = if kt then concatMap (\c -> if c == '$' then "\\$" else [c]) . q else q
     call n args | hs = "(LS." ++ n ++ concatMap (\a -> " (" ++ a ++ ")") args ++ ")"
                 | go = "ls" ++ cap n ++ "(" ++ intercalate ", " args ++ ")"
@@ -408,9 +415,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             supplier = if kt then Doc.text "{ " <> call <> Doc.text " }" else Doc.text "() -> " <> call
             mapped = [ (if kt then KotlinExpr.call "LawSpecRuntime.MappedFailure" else JavaExpr.call "new LawSpecRuntime.MappedFailure")
                          [Doc.text (intercalate "." (C.failureNative b) ++ (if kt then "::class.java" else ".class")),
-                          Doc.text (if kt then "{ _error -> " else "_error -> ") <>
+                          Doc.text (if kt then "{ _error -> " else "error -> ") <>
                             (if kt then ktConstruct' failure else javaConstruct' failure) (C.idText (C.failureConstructor b))
-                              (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text (if kt then "(_error.message ?: \"\")" else "java.util.Objects.toString(_error.getMessage(), \"\")"))) b) <> close]
+                              (C.mapFailureFields (\ty tag -> (if kt then ktConstruct' else javaConstruct') ty (C.idText tag)) ((if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text (if kt then "(_error.message ?: \"\")" else "java.util.Objects.toString(error.getMessage(), \"\")"))) b) <> close]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in (if kt then KotlinExpr.call else JavaExpr.call) "LawSpecRuntime.nativeFailures"
              ([(if kt then KotlinExpr.quoted else JavaExpr.quoted) (C.abilityKey ability), Doc.text opening <> convert failure native <> close, supplier] ++ mapped)
@@ -755,7 +762,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       C.SpecHandler h -> maybe [] pure (specNamed h)
       C.RecordingHandler inner -> specsOf inner
       C.ProductionHandler -> []
-    sharedVar h = "_lawspecShared_" ++ C.handlerName h
+    sharedVar h
+      | target == "java" = "shared" ++ cap (C.handlerName h)
+      | otherwise = "_lawspecShared_" ++ C.handlerName h
     -- What an operation that `fails with E` fails with (Fail E).
     operationFailure op = maybe [] pure (abilityNamed (C.operationAbility op) >>= lookup (C.operationName op) . C.abilityFailures)
     resourceFor e a c = case c of
@@ -860,34 +869,37 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           Doc.text "func() LawSpecValue " <> Doc.block 8 (Doc.text "return " <> body)])
       _ -> Left "expected checked Go external call"
     javaDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
-    javaRender term = java (JavaExpr.renderExpression dataDeclarations bits localName javaExternal term)
+    javaRender term = java (JavaExpr.renderExpressionWithContext dataDeclarations javaBits JavaExpr.reference
+      (pure . JavaExpr.quoted . JavaExpr.javaDataKey) localName javaExternal term)
+    -- Java tests name the machine width once (MACHINE_BITS).
+    javaBits = Doc.text "MACHINE_BITS"
     javaRuntime name = JavaExpr.call ("LawSpecRuntime." ++ name)
     javaRef = java . JavaExpr.reference
     javaChecked ty value
-      | custom ty = JavaExpr.call "_schema.validate" [javaRef ty,value,Doc.text (show bits),Doc.text "symbols"]
-      | otherwise = javaRuntime "convert" [JavaExpr.quoted (key ty),value,Doc.text (show bits)]
+      | custom ty = JavaExpr.call "SCHEMA.validate" [javaRef ty,value,javaBits,Doc.text "symbols"]
+      | otherwise = javaRuntime "convert" [JavaExpr.quoted (key ty),value,javaBits]
     javaMethod value name args = Doc.group (Doc.nest 4 value <>
       Doc.nest 4 (Doc.softbreak <> JavaExpr.call ("." ++ name) args))
     javaNativeArgument ty value
       | custom ty = javaMethod (java (javaCodecDoc ty)) "decode" [value]
       | ty == Named "Unit" = value
     javaNativeArgument ty@(Applied name inner) value | name `elem` ["List","Maybe"] =
-      let local = "_element" ++ show (length (key ty))
+      let local = "element" ++ show (length (key ty))
       in javaRuntime (if name == "List" then "listToNative" else "maybeToNative")
-        [JavaExpr.quoted (key ty),value,Doc.text (show bits),
+        [JavaExpr.quoted (key ty),value,javaBits,
          Doc.group (Doc.text (local ++ " ->") <> Doc.nest 4 (Doc.softline <> javaNativeArgument inner (Doc.text local)))]
     javaNativeArgument ty@(C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) value =
-      let local = "_element" ++ show (length (key ty))
-      in javaRuntime "eitherToNative" ([JavaExpr.quoted (key ty),value,Doc.text (show bits)] ++
+      let local = "element" ++ show (length (key ty))
+      in javaRuntime "eitherToNative" ([JavaExpr.quoted (key ty),value,javaBits] ++
         [Doc.group (Doc.text (local ++ " ->") <> Doc.nest 4 (Doc.softline <> javaNativeArgument inner (Doc.text local))) | inner <- [a,b]])
     javaNativeArgument ty value = case nativeRepresentation target (key ty) of
       Nothing -> javaChecked ty value
       Just _ -> Doc.group (Doc.text ("((" ++ nativeArg ty ++ ")") <>
-        Doc.nest 4 (Doc.softline <> javaRuntime "toNative" [JavaExpr.quoted (key ty),value,Doc.text (show bits)]) <> Doc.text ")")
+        Doc.nest 4 (Doc.softline <> javaRuntime "toNative" [JavaExpr.quoted (key ty),value,javaBits]) <> Doc.text ")")
     javaNativeResult ty invocation
       | custom ty = javaMethod (java (javaCodecDoc ty)) "encode" [invocation]
       | ty == Named "Unit" = javaRuntime "unit" [Doc.text "() -> " <> invocation]
-      | otherwise = javaRuntime "fromNative" [JavaExpr.quoted (key ty),invocation,Doc.text (show bits)]
+      | otherwise = javaRuntime "fromNative" [JavaExpr.quoted (key ty),invocation,javaBits]
     javaValueLiteral value = case value of
       V.ScalarValue scalarValue -> either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
         (JavaExpr.scalarLiteral (C.scalarType (scalarName scalarValue)) scalarValue)
@@ -897,8 +909,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         pure (javaRuntime "list" [JavaExpr.quoted (key ty),JavaExpr.call "java.util.List.of" rendered])
       V.DataValue ty tag fields -> do
         rendered <- mapM javaValueLiteral fields
-        pure $ if custom ty then JavaExpr.call "_schema.construct"
-          [javaRef ty,JavaExpr.quoted (C.idText tag),JavaExpr.call "java.util.List.of" rendered,Doc.text (show bits),Doc.text "symbols"]
+        pure $ if custom ty then JavaExpr.call "SCHEMA.construct"
+          [javaRef ty,JavaExpr.quoted (C.idText tag),JavaExpr.call "java.util.List.of" rendered,javaBits,Doc.text "symbols"]
           else javaRuntime "construct" [JavaExpr.quoted (key ty),JavaExpr.quoted (C.idText tag),JavaExpr.array rendered]
       V.PresenceValue ty payload -> do
         rendered <- traverse javaValueLiteral payload
@@ -931,31 +943,34 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.handlerInstalls = javaInstalls
       , JavaProperties.lateHandlerInstalls = javaLateInstalls
       , JavaProperties.searchDescriptors = searchDescriptorsOf
+      , JavaProperties.local = localName
+      , JavaProperties.sourceFile = unitSourceFile u
       }
     -- A handler as the ability's Java interface.
-    javaHandler ability = Doc.text ("((" ++ javaInterface ability ++
-      ") LawSpecRuntime.handler(symbols, " ++ q (C.abilityKey ability) ++ "))")
+    javaHandler ability = Doc.group (Doc.text ("((" ++ javaInterface ability ++ ")") <>
+      Doc.nest 4 (Doc.softline <> JavaExpr.call "LawSpecRuntime.handler" [Doc.text "symbols", JavaExpr.quoted (C.abilityKey ability)]) <> Doc.text ")")
     javaConstruct' ty tag fields
-      | custom ty = JavaExpr.call "_schema.construct" [javaRef ty,JavaExpr.quoted tag,JavaExpr.call "java.util.List.of" fields,Doc.text (show bits),Doc.text "symbols"]
+      | custom ty = JavaExpr.call "SCHEMA.construct" [javaRef ty,JavaExpr.quoted tag,JavaExpr.call "java.util.List.of" fields,javaBits,Doc.text "symbols"]
       | otherwise = javaRuntime "construct" [JavaExpr.quoted (key ty),JavaExpr.quoted tag,JavaExpr.array fields]
     javaEqual ty a b
-      | custom ty = JavaExpr.call "_schema.equal" [javaRef ty,a,b,Doc.text (show bits),Doc.text "symbols"]
+      | custom ty = JavaExpr.call "SCHEMA.equal" [javaRef ty,a,b,javaBits,Doc.text "symbols"]
       | otherwise = javaRuntime "truth" [javaRuntime "binary" [JavaExpr.quoted "==",a,b]]
-    javaInstalls e = [Doc.text ("var " ++ sharedVar h ++ " = " ++ javaConstructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h)) ++ ";") | h <- sharedOf e] ++
+    javaInstalls e = [Doc.group (Doc.text ("var " ++ sharedVar h ++ " =") <> Doc.nest 4 (Doc.softline <>
+        javaConstructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h)))) <> Doc.text ";" | h <- sharedOf e] ++
       javaInstalling e (earlyHandlers e)
     javaLateInstalls e = javaInstalling e (lateHandlers e)
     javaInstalling e chosen = case chosen of
       [] -> []
       _ -> [javaRuntime "installHandlers" [Doc.text "symbols", JavaExpr.call "java.util.Map.<String, Object>of"
-        (concat [[JavaExpr.quoted (C.abilityKey a), Doc.text (javaConstructHandler (lawMaking e) a c)] | (a, c) <- chosen])] <> Doc.text ";"]
+        (concat [[JavaExpr.quoted (C.abilityKey a), javaConstructHandler (lawMaking e) a c] | (a, c) <- chosen])] <> Doc.text ";"]
     javaConstructHandler making@(shared, resourceOf) a c = case c of
-      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> "new " ++ intercalate "." parts ++ "(" ++ madeWith ++ ")"
-      C.ProductionHandler -> "new " ++ maybe "Unknown" jvmProduction (abilityNamed a) ++ "(" ++ madeWith ++ ")"
-      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> sharedVar x
-      C.SpecHandler h -> "new " ++ JavaAbilities.abilitiesClass u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
-      C.RecordingHandler inner -> "new " ++ maybe "Unknown" (\x -> JavaAbilities.abilitiesClassOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a) ++
-        "(" ++ javaConstructHandler making a inner ++ ", symbols)"
-      where madeWith = maybe "" (\(t, local) -> Doc.render Doc.Compact (javaNativeArgument t (Doc.text local))) (resourceOf a c)
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> JavaExpr.call ("new " ++ intercalate "." parts) madeWith
+      C.ProductionHandler -> JavaExpr.call ("new " ++ maybe "Unknown" jvmProduction (abilityNamed a)) madeWith
+      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> Doc.text (sharedVar x)
+      C.SpecHandler h -> JavaExpr.call ("new " ++ JavaAbilities.abilitiesClass u ++ "." ++ maybe "Unknown" specName (specNamed h)) [Doc.text "symbols"]
+      C.RecordingHandler inner -> JavaExpr.call ("new " ++ maybe "Unknown" (\x -> JavaAbilities.abilitiesClassOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a))
+        [javaConstructHandler making a inner, Doc.text "symbols"]
+      where madeWith = maybe [] (\(t, local) -> [javaNativeArgument t (Doc.text local)]) (resourceOf a c)
     javaExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (JavaExpr.call evaluator (Doc.text "symbols" : values))
@@ -964,34 +979,34 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         Right (javaRuntime "raiseFailure" (JavaExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
-        Right (jvmFailingAs (operationFailure op) (\failure native -> javaNativeResult failure (Doc.text ("(" ++ native ++ ") _native"))) "_native -> "
+        Right (jvmFailingAs (operationFailure op) (\failure native -> javaNativeResult failure (Doc.text ("(" ++ native ++ ") nativeValue"))) "nativeValue -> "
           (javaNativeResult (expressionType term) (javaHandler (C.operationAbility op) <> JavaExpr.call ("." ++ C.operationName op)
             [javaNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
-          let side tag ty = Doc.text "_value -> " <> javaConstruct' (expressionType term) tag [javaChecked ty (Doc.text "_value")]
+          let side tag ty = Doc.text "value -> " <> javaConstruct' (expressionType term) tag [javaChecked ty (Doc.text "value")]
           in Right (javaRuntime "attempt" [JavaExpr.quoted (C.abilityKey ability), Doc.text "() -> " <> body,
             side "Either::Right" result, side "Either::Left" failure])
         _ -> Left "attempt gives an Either"
       C.Calls op args ->
         let matches = case args of
               Nothing -> Doc.text "null"
-              Just xs -> Doc.text "_recorded -> " <> Doc.joinWith (Doc.text " && ")
-                [javaEqual (expressionType a) (Doc.text ("_recorded.get(" ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)]
-        in Right (javaRuntime "countCalls" [Doc.text ("LawSpecRuntime.handler(symbols, " ++ q (C.abilityKey (C.operationAbility op)) ++ ")"),
+              Just xs -> Doc.text "recorded -> " <> Doc.joinWith (Doc.text " && ")
+                [javaEqual (expressionType a) (Doc.text ("recorded.get(" ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)]
+        in Right (javaRuntime "countCalls" [javaRuntime "handler" [Doc.text "symbols", JavaExpr.quoted (C.abilityKey (C.operationAbility op))],
           JavaExpr.quoted (C.operationName op), matches])
       C.ExternalCall identity args ->
         let n = declarationName identity
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
-          then JavaExpr.call ("_lawspec_call_" ++ n) (Doc.text "symbols" : [javaChecked ty v | (ty,v) <- typed])
-          else jvmFailing n (\failure native -> javaNativeResult failure (Doc.text ("(" ++ native ++ ") _native"))) "_native -> "
+          then JavaExpr.call (contractMethod n) (Doc.text "symbols" : [javaChecked ty v | (ty,v) <- typed])
+          else jvmFailing n (\failure native -> javaNativeResult failure (Doc.text ("(" ++ native ++ ") nativeValue"))) "nativeValue -> "
             (javaNativeResult (expressionType term) (awaitFor (adapterName u identity) (JavaExpr.call (cls ++ "." ++ adapterName u identity)
             (map javaHandler (usesOf n) ++ [javaNativeArgument ty v | (ty,v) <- typed]))))
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (javaRuntime "withHandlers" [Doc.text "symbols",
-          JavaExpr.call "java.util.Map.<String, Object>of" [JavaExpr.quoted (C.abilityKey ability), Doc.text (javaConstructHandler plainMaking ability choice)],
+          JavaExpr.call "java.util.Map.<String, Object>of" [JavaExpr.quoted (C.abilityKey ability), javaConstructHandler plainMaking ability choice],
           Doc.text "() -> " <> body])
       _ -> Left "expected checked Java external call"
     renderLegacy term = case C.expressionNode term of

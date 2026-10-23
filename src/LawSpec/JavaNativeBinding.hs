@@ -57,9 +57,9 @@ emitBindings minify plan testing files = do
         argTypes <- mapM (J.javaDataTypeDoc declarations) args
         resultType <- J.javaDataTypeDoc declarations result
         canonical <- mapM (J.javaCodecDocWithContext (D.text "symbols") declarations bits) args
-        native <- mapM (codec [] (D.text "_schema") (D.text (show bits))) args
+        native <- mapM (codec [] (D.text "SCHEMA") (D.text (show bits))) args
         canonicalResult <- J.javaCodecDocWithContext (D.text "symbols") declarations bits result
-        nativeResult <- codec [] (D.text "_schema") (D.text (show bits)) result
+        nativeResult <- codec [] (D.text "SCHEMA") (D.text (show bits)) result
         nativeResultType <- nativeType [] result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
             -- An adapter that uses abilities gets their handlers first, as
@@ -129,9 +129,9 @@ emitBindings minify plan testing files = do
           types <- mapM (J.javaDataTypeDoc declarations) args
           resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else J.javaDataTypeDoc declarations result
           canonical <- mapM (J.javaCodecDocWithContext (D.text "symbols") declarations bits) args
-          native <- mapM (codec [] (D.text "_schema") (D.text (show bits))) args
+          native <- mapM (codec [] (D.text "SCHEMA") (D.text (show bits))) args
           canonicalResult <- J.javaCodecDocWithContext (D.text "symbols") declarations bits result
-          nativeResult <- codec [] (D.text "_schema") (D.text (show bits)) result
+          nativeResult <- codec [] (D.text "SCHEMA") (D.text (show bits)) result
           let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
               invocation = call ("inner." ++ op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
               body = if result == C.scalarType "Unit" then invocation <> D.text ";"
@@ -149,7 +149,7 @@ emitBindings minify plan testing files = do
           path = "src/main/java/" ++ concatMap (++ "/") (init parts) ++ name ++ ".java"
           header = if null package then mempty else D.text ("package " ++ package ++ ";") <> D.hardline <> D.hardline
           source = header <> D.text ("public final class " ++ name ++ " ") <> D.block 2
-            (D.group (D.text "private static final lawspec.runtime.LawSpecSchema _schema =" <>
+            (D.group (D.text "private static final lawspec.runtime.LawSpecSchema SCHEMA =" <>
              D.nest 4 (D.softline <> D.text "lawspec.runtime.LawSpecDataSchema.create();")) <>
              D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers))
       pure [Artifact path (render source) "generated" "source"]

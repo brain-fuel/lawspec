@@ -36,11 +36,35 @@ public final class LawSpecRuntime
     @Override
     public String toString()
     {
-      return "Value[type="
-          + type
-          + ", data="
-          + (data instanceof int[] units ? Arrays.toString(units) : String.valueOf(data))
-          + "]";
+      return "Value[type=" + type + ", data=" + shownData() + "]";
+    }
+
+    // Text shows as the string it is, so a failure reads as the law was written.
+    private String shownData()
+    {
+      boolean text =
+          type.equals("Text") || type.equals("CodePointText") || type.equals("Utf16Text");
+      if (text && data instanceof List<?> units)
+      {
+        var shown = new StringBuilder("\"");
+        for (Object unit : units)
+        {
+          if (!(unit instanceof Integer point))
+          {
+            return String.valueOf(data);
+          }
+          if (type.equals("Utf16Text"))
+          {
+            shown.append((char) (int) point);
+          }
+          else
+          {
+            shown.appendCodePoint(point);
+          }
+        }
+        return shown.append('"').toString();
+      }
+      return data instanceof int[] units ? Arrays.toString(units) : String.valueOf(data);
     }
   }
 

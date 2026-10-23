@@ -1,4 +1,4 @@
-expect: expect 
+expect: .lawspec:
 @@ src/example/parse_port.clj
 <<<<<<<
 (defn parse [text] (Integer/parseInt text))

@@ -145,7 +145,7 @@ networkSource target bits datas sessions session = do
     else pure Nothing
   pure (
     [ "" ] ++
-    [ l | not (null codecs), not kotlin, l <- ["  private static final lawspec.runtime.LawSpecSchema _schema =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
+    [ l | not (null codecs), not kotlin, l <- ["  private static final lawspec.runtime.LawSpecSchema SCHEMA =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
     [ "  private static final LawSpecRuntime.Values TYPES = LawSpecRuntime.valuesOf(" ++ show (unwords (map snd (reverse table))) ++ ");"
     , ""
     , "  /** Each step's descriptor and conversion, from the first end. */"

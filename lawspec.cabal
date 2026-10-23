@@ -703,6 +703,7 @@ library
       LawSpec.JavaNativeBinding
       LawSpec.JavaProperties
       LawSpec.JavaTestHelpers
+      LawSpec.JvmNames
       LawSpec.KotlinData
       LawSpec.KotlinDefinitions
       LawSpec.KotlinExpr

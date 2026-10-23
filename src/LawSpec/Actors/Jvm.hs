@@ -185,7 +185,7 @@ javaSource datas wire a = do
           , "    }" ]) (wireHandlers w)
       pure $
         [ ""
-        , "  private static final lawspec.runtime.LawSpecSchema _schema ="
+        , "  private static final lawspec.runtime.LawSpecSchema SCHEMA ="
         , "      lawspec.runtime.LawSpecDataSchema.create();"
         , ""
         , "  private static final LawSpecRuntime.Values TYPES = LawSpecRuntime.valuesOf(" ++ show (wireTypes w) ++ ");"

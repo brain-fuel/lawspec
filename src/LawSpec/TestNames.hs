@@ -12,6 +12,7 @@ module LawSpec.TestNames (lawWords, unitTestNames, unitBenchmarkNames, testIdent
 
 import Data.Char (isAlphaNum, isAscii, isDigit, toLower, toUpper)
 import Data.List (intercalate)
+import LawSpec.TargetNames (targetKeywords)
 
 -- A label's words: ASCII letters and digits, lowercased.
 lawWords :: String -> [String]
@@ -62,6 +63,13 @@ testIdentifier target ws = case target of
   "groovy" -> unwords ws
   -- A Clojure test is named in kebab case.
   "clojure" -> intercalate "-" ws
+  -- The JVM's tests are the law's words in lowerCamelCase, as Google's
+  -- JUnit names are; "law" leads only a keyword or a leading digit.
+  -- A one-letter word (a, i) is left out between others, as camel case
+  -- would make it an abbreviation (gatewayAReceipt).
+  t | t `elem` ["java", "kotlin", "scala"] -> case (case filter (\w -> length w > 1 || all isDigit w) ws of [] -> ws; kept -> kept) of
+    w : rest | w `notElem` targetKeywords "java" && w `notElem` targetKeywords t -> w ++ concatMap capital rest
+    _ -> "law" ++ concatMap capital ws
   _ -> "law" ++ concatMap capital ws
   where capital (c : cs) = toUpper c : cs
         capital [] = []

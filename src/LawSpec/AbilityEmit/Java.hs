@@ -68,7 +68,7 @@ emit minify bits datas units = do
             line ("/** The abilities of " ++ C.idText (C.unitId u) ++ ": an interface for each, its spec handlers, and a recording of any handler of it. */") <> D.hardline <>
             line ("public final class " ++ name ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
               ([line ("private " ++ name ++ "() {}"),
-                line "private static final lawspec.runtime.LawSpecSchema _schema = lawspec.runtime.LawSpecDataSchema.create();"] ++
+                line "private static final lawspec.runtime.LawSpecSchema SCHEMA = lawspec.runtime.LawSpecDataSchema.create();"] ++
                interfaces ++ handlers ++ recordings)) <> D.hardline
       pure (Artifact ("src/main/java/" ++ intercalate "/" qualified ++ ".java") (D.render layout source) "generated" "source")
     signature op ty = do

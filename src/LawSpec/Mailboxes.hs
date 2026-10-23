@@ -874,7 +874,7 @@ jvm kotlin bits datas b = do
       , "    this.logical = logical;"
       , "  }"
       , ""
-      ] ++ [ l | scalar == Nothing, l <- ["  private static final lawspec.runtime.LawSpecSchema _schema =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
+      ] ++ [ l | scalar == Nothing, l <- ["  private static final lawspec.runtime.LawSpecSchema SCHEMA =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
       [ "  @SuppressWarnings(\"unused\")"
       , "  private static LawSpecRuntime.Conversion conversion() {"
       , "    var symbols = new java.util.HashMap<String, Object>();"
