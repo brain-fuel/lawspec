@@ -113,7 +113,7 @@ emitTests Config{..} unit laws = do
         [Run (call "LawSpecHarness.parallelism" [string (C.idText (C.unitId unit))]) | parallel] ++
         -- Workflows read the Clock handler a law installs (any of them).
         [Run (call "runIO" [var "Lawspec.Time.registerClock"]) | readsClock] ++
-        concat [Blank : b | b <- ordered bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)])
+        concat [Blank : b | b <- ordered (filter (not . null) bodies) ++ map benchmark (maybe [] C.harnessBenchmarks settings)])
       -- Shared resources are released after the unit's spec.
       specBody = if sharing then dollar (call "afterAll_" [var "LS.releaseShared"]) (H.Do body) else H.Do body
       declarations =
@@ -406,7 +406,8 @@ emitTests Config{..} unit laws = do
           lawLine (first : rest) = ("law " ++ first) : rest
           lawLine [] = []
           groups = filter (not . null) ([searchBefore] ++ harnessTests base' label h kinds tests ++ map pure searchAfter)
-      pure (boundaryHelpers, lawComment : intercalate [Blank] groups)
+      -- A law with no tests here (its cases are all excluded) has no block.
+      pure (boundaryHelpers, if null groups then [] else lawComment : intercalate [Blank] groups)
     -- The search case's statements sit in an if: run them as one block.
     contextualProperty fn label e check = do
       draws <- mapM (\plan -> do

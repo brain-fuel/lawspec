@@ -12,6 +12,7 @@ import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toUpper, toLower, ord)
 import Data.List (nub, isInfixOf, zip4, intercalate, sort, sortOn)
 import LawSpec.SourceLink (generatedHeader)
+import LawSpec.RecordNames (recordDisplayNames)
 import qualified Data.Map.Strict as M
 import Numeric (showHex)
 import qualified LawSpec.Core as C
@@ -40,8 +41,11 @@ identifier name = unless valid (Left ("invalid Haskell data identifier: " ++ nam
       [] -> False
 
 namesFor :: [C.DataDeclaration] -> Either String Names
-namesFor declarations = do
-  let qualified = flatDataCandidates capitalize (const False) declarations
+namesFor given = do
+  -- An anonymous record shows a name from where it is used (LawSpec.RecordNames).
+  let display = recordDisplayNames given
+      declarations = [maybe d (\n -> d {C.dataName = n}) (M.lookup (C.dataId d) display) | d <- given]
+      qualified = flatDataCandidates capitalize (const False) declarations
       counts = caseInsensitiveCounts qualified
       names = [(identity, if ambiguous counts name then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
@@ -546,7 +550,7 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
           types = ["Schema.Schema", "P.Int"] ++ ["Codec.Codec " ++ name | (_,name) <- parameters] ++ ["Codec.Codec " ++ result]
           gadt = gadtDeclaration declaration
           -- GADT matches need the scoped result type in encodeValue.
-          forall' = if gadt && not (null parameters) then "forall " ++ unwords (map snd parameters) ++ ". " else ""
+          forall' = if gadt && not (null parameters) then "forall " ++ unwords (map snd parameters) ++ "." else ""
           withName = codecName native ++ "With"
           typeRef = H.call "Schema.Named" [H.string (C.idText (C.dataId declaration)),
             H.List [H.call "Codec.reference" [H.var value] | (_,value) <- codecs]]
@@ -642,7 +646,7 @@ emitHaskellCodecsWithLayouts layout declarations owner imports representations c
         , H.declaration (codecName native) (H.call withName [H.var "P.Nothing"]) ]
         <> D.hardline <> D.hardline <>
         D.joinWith D.hardline
-        [ D.group (D.text (withName ++ " ::") <> D.nest 2 (D.softline <> D.text forall' <>
+        [ D.group (D.text (withName ++ " ::") <> D.nest 2 ((if null forall' then mempty else D.softline <> D.text forall') <> D.softline <>
             D.joinWith (D.text " ->" <> D.softline) (map D.text ("P.Maybe LS.SymbolContext" : types))))
         , H.declaration header expression <> D.nest 2 (D.hardline <> D.text "where" <>
             D.nest 2 (D.hardline <> D.joinWith D.hardline implementations)) ])

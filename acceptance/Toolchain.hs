@@ -45,9 +45,15 @@ formatter target = do
     "haskell" -> do
       pinned <- takeWhile (not . isSpace) . dropWhile isSpace . unwords . filter (not . ("#" `isPrefixOf'`)) . lines
         <$> readFile' (root </> "test/locks/haskell/ormolu.txt")
-      let script = "found=$(ormolu --version | head -n 1); " ++
+      -- A file ormolu has passed is remembered by its content, so the
+      -- runtimes every project copies are checked once.
+      let cache = root </> ".artifacts/formatted-cache/ormolu-" ++ pinned
+          script = "found=$(ormolu --version | head -n 1); " ++
             "if [ \"$found\" != \"ormolu " ++ pinned ++ "\" ]; then echo \"ormolu " ++ pinned ++ " is required; found: $found\"; exit 2; fi; " ++
-            "find \"$1\" -name '*.hs' -exec ormolu --mode check {} +"
+            "mkdir -p '" ++ cache ++ "'; " ++
+            "find \"$1\" -name '*.hs' | sort | while IFS= read -r f; do " ++
+            "h=$(shasum -a 256 \"$f\" | cut -d ' ' -f 1); " ++
+            "if [ ! -e '" ++ cache ++ "'/\"$h\" ]; then ormolu --mode check \"$f\" || exit 1; touch '" ++ cache ++ "'/\"$h\"; fi; done"
       pure (Just (Formatter ("ormolu " ++ pinned) "sh" (\dir -> ["-c", script, "sh", dir]) [".hs"]
         ["test/locks/haskell/ormolu.txt"]))
     _ -> pure Nothing
