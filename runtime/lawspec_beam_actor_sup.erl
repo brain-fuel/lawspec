@@ -12,7 +12,8 @@ start_link(Tree, Id) ->
         {ok, Pid} = Result ->
             ok = gen_server:call(Tree, {supervisor_ready, Id, Pid}, infinity),
             Result;
-        Other -> Other
+        Other ->
+            Other
     end.
 
 start_actor(Tree, Id) ->
@@ -22,13 +23,35 @@ start_actor(Tree, Id) ->
     end.
 
 child_spec(Tree, Id, Lifetime, Kind) ->
-    Function = case Kind of actor -> start_actor; supervisor -> start_link end,
-    #{id => Id, start => {?MODULE, Function, [Tree, Id]}, restart => Lifetime,
-        shutdown => case Kind of actor -> 5000; supervisor -> infinity end,
-        type => case Kind of actor -> worker; supervisor -> supervisor end,
-        modules => [case Kind of actor -> lawspec_beam_actor; supervisor -> ?MODULE end]}.
+    Function =
+        case Kind of
+            actor -> start_actor;
+            supervisor -> start_link
+        end,
+    #{
+        id => Id,
+        start => {?MODULE, Function, [Tree, Id]},
+        restart => Lifetime,
+        shutdown =>
+            case Kind of
+                actor -> 5000;
+                supervisor -> infinity
+            end,
+        type =>
+            case Kind of
+                actor -> worker;
+                supervisor -> supervisor
+            end,
+        modules => [
+            case Kind of
+                actor -> lawspec_beam_actor;
+                supervisor -> ?MODULE
+            end
+        ]
+    }.
 
-init({root, _, Spec}) -> {ok, {flags(Spec), []}};
+init({root, _, Spec}) ->
+    {ok, {flags(Spec), []}};
 init({nested, Tree, Id}) ->
     case gen_server:call(Tree, {supervisor_started, Id, self()}, infinity) of
         {ok, Spec, Children} -> {ok, {flags(Spec), Children}};
@@ -45,5 +68,8 @@ flags(Spec) ->
     %% contain, with room for the final failed attempt that stops the tree.
     Windows = 2000000 div maps:get(period, Spec, 5000000) + 1,
     Intensity = max(1, maps:get(restarts, Spec, 3) * Windows + 1),
-    #{strategy => maps:get(strategy, Spec, one_for_one),
-        intensity => Intensity, period => 1}.
+    #{
+        strategy => maps:get(strategy, Spec, one_for_one),
+        intensity => Intensity,
+        period => 1
+    }.

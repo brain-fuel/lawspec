@@ -13,7 +13,10 @@ defmodule LawSpec.Workflow do
   @spec with_real(integer(), (runtime() -> result)) :: result when result: var
   def with_real(seed \\ 0, body), do: :lawspec_beam_workflow.with_real(seed, body)
 
-  @spec with_clock((-> integer()), (integer() -> term()), boolean(), integer(), (runtime() -> result)) :: result when result: var
+  @spec with_clock((-> integer()), (integer() -> term()), boolean(), integer(), (runtime() ->
+                                                                                   result)) ::
+          result
+        when result: var
   def with_clock(now, sleep, virtual, seed \\ 0, body),
     do: :lawspec_beam_workflow.with_clock_callbacks(now, sleep, virtual, seed, body)
 

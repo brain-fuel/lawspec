@@ -49,7 +49,9 @@ defmodule LawSpec.Network do
   @spec open(transport(), options()) :: node_handle()
   def open(transport, options \\ options()), do: :lawspec_network.open(transport, options)
   @spec with_node(transport(), options(), (node_handle() -> result)) :: result when result: var
-  def with_node(transport, options \\ options(), body), do: :lawspec_network.with_node(transport, options, body)
+  def with_node(transport, options \\ options(), body),
+    do: :lawspec_network.with_node(transport, options, body)
+
   @spec close(node_handle()) :: :ok
   defdelegate close(node), to: :lawspec_network
   @spec address(node_handle()) :: String.t()

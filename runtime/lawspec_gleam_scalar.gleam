@@ -1,8 +1,8 @@
 //// Typed operations on the portable exact and IEEE scalar values.
 //// ref:DEC-portable-exact-arithmetic ref:DEC-idiomatic-generated-types
 
-import lawspec/types
 import gleam/option
+import lawspec/types
 
 @external(erlang, "lawspec_beam_scalar", "ratio")
 pub fn rational(numerator: Int, denominator: Int) -> types.Rational
@@ -47,16 +47,26 @@ pub fn float64_to_float(value: types.Float64) -> Result(Float, String)
 pub fn float64_compare(a: types.Float64, b: types.Float64) -> option.Option(Int)
 
 @external(erlang, "lawspec_beam_gleam", "complex64")
-pub fn complex64(real: types.Float32, imaginary: types.Float32) -> types.Complex64
+pub fn complex64(
+  real: types.Float32,
+  imaginary: types.Float32,
+) -> types.Complex64
 
 @external(erlang, "lawspec_beam_gleam", "complex_parts")
-pub fn complex64_parts(value: types.Complex64) -> #(types.Float32, types.Float32)
+pub fn complex64_parts(
+  value: types.Complex64,
+) -> #(types.Float32, types.Float32)
 
 @external(erlang, "lawspec_beam_gleam", "complex128")
-pub fn complex128(real: types.Float64, imaginary: types.Float64) -> types.Complex128
+pub fn complex128(
+  real: types.Float64,
+  imaginary: types.Float64,
+) -> types.Complex128
 
 @external(erlang, "lawspec_beam_gleam", "complex_parts")
-pub fn complex128_parts(value: types.Complex128) -> #(types.Float64, types.Float64)
+pub fn complex128_parts(
+  value: types.Complex128,
+) -> #(types.Float64, types.Float64)
 
 @external(erlang, "lawspec_beam_scalar", "new_symbol")
 pub fn symbol(description: String) -> types.Symbol
@@ -74,11 +84,17 @@ pub fn rational_add(a: types.Rational, b: types.Rational) -> types.Rational {
   binary("+", "Rational", a, b)
 }
 
-pub fn rational_subtract(a: types.Rational, b: types.Rational) -> types.Rational {
+pub fn rational_subtract(
+  a: types.Rational,
+  b: types.Rational,
+) -> types.Rational {
   binary("-", "Rational", a, b)
 }
 
-pub fn rational_multiply(a: types.Rational, b: types.Rational) -> types.Rational {
+pub fn rational_multiply(
+  a: types.Rational,
+  b: types.Rational,
+) -> types.Rational {
   binary("*", "Rational", a, b)
 }
 
@@ -154,19 +170,31 @@ pub fn float64_equal(a: types.Float64, b: types.Float64) -> Bool
 @external(erlang, "lawspec_beam_scalar", "negate")
 pub fn float64_negate(value: types.Float64) -> types.Float64
 
-pub fn complex64_add(a: types.Complex64, b: types.Complex64) -> types.Complex64 {
+pub fn complex64_add(
+  a: types.Complex64,
+  b: types.Complex64,
+) -> types.Complex64 {
   binary("+", "Complex64", a, b)
 }
 
-pub fn complex64_subtract(a: types.Complex64, b: types.Complex64) -> types.Complex64 {
+pub fn complex64_subtract(
+  a: types.Complex64,
+  b: types.Complex64,
+) -> types.Complex64 {
   binary("-", "Complex64", a, b)
 }
 
-pub fn complex64_multiply(a: types.Complex64, b: types.Complex64) -> types.Complex64 {
+pub fn complex64_multiply(
+  a: types.Complex64,
+  b: types.Complex64,
+) -> types.Complex64 {
   binary("*", "Complex64", a, b)
 }
 
-pub fn complex64_divide(a: types.Complex64, b: types.Complex64) -> types.Complex64 {
+pub fn complex64_divide(
+  a: types.Complex64,
+  b: types.Complex64,
+) -> types.Complex64 {
   binary("/", "Complex64", a, b)
 }
 
@@ -176,19 +204,31 @@ pub fn complex64_equal(a: types.Complex64, b: types.Complex64) -> Bool
 @external(erlang, "lawspec_beam_scalar", "negate")
 pub fn complex64_negate(value: types.Complex64) -> types.Complex64
 
-pub fn complex128_add(a: types.Complex128, b: types.Complex128) -> types.Complex128 {
+pub fn complex128_add(
+  a: types.Complex128,
+  b: types.Complex128,
+) -> types.Complex128 {
   binary("+", "Complex128", a, b)
 }
 
-pub fn complex128_subtract(a: types.Complex128, b: types.Complex128) -> types.Complex128 {
+pub fn complex128_subtract(
+  a: types.Complex128,
+  b: types.Complex128,
+) -> types.Complex128 {
   binary("-", "Complex128", a, b)
 }
 
-pub fn complex128_multiply(a: types.Complex128, b: types.Complex128) -> types.Complex128 {
+pub fn complex128_multiply(
+  a: types.Complex128,
+  b: types.Complex128,
+) -> types.Complex128 {
   binary("*", "Complex128", a, b)
 }
 
-pub fn complex128_divide(a: types.Complex128, b: types.Complex128) -> types.Complex128 {
+pub fn complex128_divide(
+  a: types.Complex128,
+  b: types.Complex128,
+) -> types.Complex128 {
   binary("/", "Complex128", a, b)
 }
 

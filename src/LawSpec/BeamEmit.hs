@@ -131,7 +131,7 @@ emitBeamWithBindings target minify bindings plan = do
        Artifact (testSupport ++ "lawspec_beam_crypto_vectors.erl") vectorSource "generated" "test",
        vectorTests]
     vectorSource = unlines [if line == "vector_text() -> @@VECTORS@@."
-      then "vector_text() -> " ++ D.render layout (E.binary (defaultSource "vectors.txt")) ++ "." else line
+      then "vector_text() ->\n    " ++ D.render layout (E.binary (defaultSource "vectors.txt")) ++ "." else line
       | line <- lines (defaultSource "beam/crypto_vectors.erl")]
     vectorKinds = ["sha3-256","shake256","aes-256-gcm","mlkem768-keygen","mlkem768-encaps",
       "mlkem768-decaps","mlkem768-decaps-seed","mldsa65-keygen","mldsa65-verify",

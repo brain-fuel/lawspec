@@ -10,7 +10,10 @@ retry_delay({fixed, Delay}, Attempt) when Attempt >= 2 -> Delay;
 retry_delay({linear, Delay, Step}, Attempt) when Attempt >= 2 -> Delay + Step * (Attempt - 2);
 retry_delay({exponential, Delay, Factor, Cap}, Attempt) when Attempt >= 2 ->
     Value = Delay * power(Factor, Attempt - 2),
-    case Cap of none -> Value; _ -> min(Value, Cap) end;
+    case Cap of
+        none -> Value;
+        _ -> min(Value, Cap)
+    end;
 retry_delay({fibonacci, Delay}, Attempt) when Attempt >= 2 -> Delay * fibonacci(Attempt - 1, 1, 1).
 
 power(_, 0) -> 1;
@@ -20,8 +23,10 @@ power(Base, N) -> Base * power(Base * Base, N div 2).
 fibonacci(1, A, _) -> A;
 fibonacci(N, A, B) -> fibonacci(N - 1, B, A + B).
 
-jitter(none, Delay, _, _, State) -> {Delay, State};
-jitter(full, Delay, _, _, State) -> lawspec_beam_random:below(Delay + 1, State);
+jitter(none, Delay, _, _, State) ->
+    {Delay, State};
+jitter(full, Delay, _, _, State) ->
+    lawspec_beam_random:below(Delay + 1, State);
 jitter(equal, Delay, _, _, State) ->
     Half = Delay div 2,
     {Random, Next} = lawspec_beam_random:below(Delay - Half + 1, State),
@@ -31,13 +36,24 @@ jitter(decorrelated, Delay, Previous, Base, State) ->
     {Random, Next} = lawspec_beam_random:below(High - Base + 1, State),
     {min(Delay, Base + Random), Next}.
 
-retry_decision({ls_data, <<"lawspec.time::type::RetryDecision::RetryAfter">>,
-        [{ls_data, <<"lawspec.time::type::Duration::Duration">>, [Delay]}]}) -> {wait, Delay};
-retry_decision({ls_data, <<"lawspec.time::type::RetryDecision::Stop">>, []}) -> stop.
+retry_decision(
+    {ls_data, <<"lawspec.time::type::RetryDecision::RetryAfter">>, [
+        {ls_data, <<"lawspec.time::type::Duration::Duration">>, [Delay]}
+    ]}
+) ->
+    {wait, Delay};
+retry_decision({ls_data, <<"lawspec.time::type::RetryDecision::Stop">>, []}) ->
+    stop.
 
 failed({ls_data, <<"Either::Left">>, [_]}) -> true;
 failed(_) -> false.
 
-stage_failure(Kind) when Kind =:= <<"TimedOut">>; Kind =:= <<"RateLimited">>;
-        Kind =:= <<"CircuitOpen">>; Kind =:= <<"Saturated">> ->
-    {ls_data, <<"Either::Left">>, [{ls_data, <<"lawspec.resilience::type::StageFailure::", Kind/binary>>, []}]}.
+stage_failure(Kind) when
+    Kind =:= <<"TimedOut">>;
+    Kind =:= <<"RateLimited">>;
+    Kind =:= <<"CircuitOpen">>;
+    Kind =:= <<"Saturated">>
+->
+    {ls_data, <<"Either::Left">>, [
+        {ls_data, <<"lawspec.resilience::type::StageFailure::", Kind/binary>>, []}
+    ]}.
