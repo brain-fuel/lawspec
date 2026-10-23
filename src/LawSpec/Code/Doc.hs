@@ -6,7 +6,7 @@ module LawSpec.Code.Doc
   , nest, group, multiline, prefixChoice, hang, firstLineWidth, whenBroken, joinWith, flow, commaSep, delimit, delimitTrailing, block, render, selectLayout, lineComment
   , parens, unparen, bestFit, operation, argument, prefixed, lambdaBody, statementValue
   , Style(..), Braces(..), Measure(..), ImportOrder(..), styleFor, styleLayout, styleBlock, styleDelimit, styleImports, blankLines, topLevel
-  , fitsIndented, Preference(..), prefer
+  , fitsIndented, Preference(..), prefer, narrow
   ) where
 
 import Data.List (intersperse, sort)
@@ -40,6 +40,7 @@ data Doc
   | Omittable [Doc] String Doc
   | FitsIndented Int Int Doc Doc
   | Prefer Preference Doc Doc Doc Doc
+  | Narrow Int Doc
   deriving (Eq, Show)
 
 -- | How rustfmt chooses between a right-hand side on the same line and on
@@ -372,6 +373,11 @@ fitsIndented = FitsIndented
 prefer :: Preference -> Doc -> Doc -> Doc -> Doc -> Doc
 prefer = Prefer
 
+-- | rustfmt: a document whose first line has a few columns less (rustfmt
+-- keeps one column back after `return`).
+narrow :: Int -> Doc -> Doc
+narrow = Narrow
+
 -- | The separator goes between documents, never after the last.
 joinWith :: Doc -> [Doc] -> Doc
 joinWith separator = mconcat . intersperse separator
@@ -480,6 +486,10 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
               _ | mode == Flat || lastFits || firstFits -> line'
                 | otherwise -> withParens
         in layoutWork column ((indentation, mode, margin, chosen):rest)
+      Narrow n a -> case layout of
+        Compact -> layoutWork column ((indentation, mode, margin, a):rest)
+        CompactTabs -> layoutWork column ((indentation, mode, margin, a):rest)
+        _ -> layoutWork column ((indentation, mode, max 1 (margin - n), a):rest)
       Prefer preference sameValue nextValue sameLayout nextLayout ->
         let standalone d = layoutWork column [(indentation, Broken, margin, d)]
             sameText = standalone sameValue
@@ -593,6 +603,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
       Parens a -> fits column ((indentation, mode, margin, parenthesised a):rest)
       BestFit alternatives -> fits column ((indentation, mode, margin, head alternatives):rest)
       Prefer _ _ _ sameLayout _ -> fits column ((indentation, mode, margin, sameLayout):rest)
+      Narrow n a -> fits column ((indentation, mode, max 1 (margin - n), a):rest)
       FitsIndented offset width first second -> fits column ((indentation, mode, margin,
         if indentation + offset + width <= margin then first else second):rest)
       Operation operands operators -> fits column ((indentation, mode, margin, parenthesised (operationBody operands operators)):rest)
@@ -643,6 +654,7 @@ render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
           BestFit alternatives -> all (line flat) alternatives
           FitsIndented _ _ first second -> line flat first && line flat second
           Prefer _ _ _ first second -> line flat first && line flat second
+          Narrow _ a -> line flat a
           Operation operands operators -> line flat (parenthesised (operationBody operands operators))
           Prefixed _ operand -> line flat operand
           ParenthesiseIfFits a -> line flat a

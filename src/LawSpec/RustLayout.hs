@@ -358,7 +358,14 @@ arguments cap open close limit args =
     -- rustfmt overflows the last argument whenever the line up to its
     -- opening fits.
     firstLine = open ++ concatMap (++ ", ") initialTexts ++ opening lastArg
+    -- A single chain of one link would overflow onto two lines; rustfmt
+    -- puts it on a line of its own instead when it fits there.
+    twoLines = case (args, lastArg) of
+      ([_], Method {}) -> length (snd (unchain lastArg)) == 1
+      ([_], Try a@(Method {})) -> length (snd (unchain a)) == 1
+      _ -> False
     rest
+      | overflowLast, twoLines, Just t <- oneLine lastArg = [D.fitsIndented 4 (width t + 1) vertical (D.prefixChoice firstLine overflowed vertical)]
       | overflowLast = [D.prefixChoice firstLine overflowed vertical]
       | otherwise = [vertical]
 
@@ -384,11 +391,15 @@ simple e = case e of
   _ -> False
   where notInfix needle hay = not (any (\i -> take (length needle) (drop i hay) == needle) [0 .. length hay])
 
--- | rustfmt's nested call: a call or macro as an argument.
+-- | rustfmt's nested call: a call or macro as an argument, or one behind
+-- a reference, ?, a prefix operator or a cast.
 nestedCall :: Expr -> Bool
 nestedCall e = case e of
   Call {} -> True
   Macro {} -> True
+  Try a -> nestedCall a
+  Prefix _ a -> nestedCall a
+  Cast a _ -> nestedCall a
   _ -> False
 
 -- | A call's overflowing last argument, within the columns left to it: a
@@ -399,6 +410,7 @@ overflowing cap e = case e of
   Call f args | Just name <- flat f -> D.text name <> arguments (subtract (width name) <$> cap) "(" ")" 60 args
   Macro name open close args -> D.text name <> arguments (subtract (width name) <$> cap) open close 60 args
   Prefix op a -> D.text op <> overflowing (subtract (width op) <$> cap) a
+  Try a@(Call {}) -> overflowing (subtract 1 <$> cap) a <> D.text "?"
   _ -> expr e
 
 isChain :: Expr -> Bool
@@ -491,6 +503,8 @@ stmt :: Stmt -> D.Doc
 stmt s = case s of
   Item d -> d
   Do e -> expr e
+  -- rustfmt keeps a column back after return.
+  Semi e@(Return (Just _)) -> D.narrow 1 (expr e <> D.text ";")
   Semi e -> expr e <> D.text ";"
   Let pat e -> stmt (Let' ("let " ++ pat) e)
   Let' binding e ->

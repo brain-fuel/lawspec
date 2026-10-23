@@ -16,6 +16,8 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.RustData (rustDataType)
 import qualified LawSpec.MachineSpec as MachineSpec
 import Control.Monad (foldM)
+import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.RustLayout as L
 
 -- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
@@ -54,11 +56,10 @@ emit _ _ bits datas units = do
       , "//! not compile. An end that is dropped (as when its process panics) or"
       , "//! abandoned gives up the conversation: the other end's receive panics with"
       , "//! PeerFailed, and its try_receive returns it, after what was already sent."
-      , "#![allow(dead_code)]"
       , ""
       , "/// The data types the protocols' steps use on the wire."
       , "fn wire_types() -> crate::lawspec_runtime::Values {"
-      , "    crate::lawspec_runtime::values_table(" ++ show (unwords (map snd (reverse types))) ++ ")"
+      , laid 4 (L.expr (L.call "crate::lawspec_runtime::values_table" [L.atom (show (unwords (map snd (reverse types))))]))
       , "}"
       ] ++ concatMap (\body -> '\n' : body ++ "\n") bodies
     unitPrefix = snake . map (\c -> if isAlphaNum c then c else '_') . C.idText
@@ -71,23 +72,26 @@ protocolModule datas modules wire name session = do
   natives <- mapM (valueType datas modules . snd) (C.sessionSteps session)
   let firstStart = "first::" ++ start (stepNames True)
       secondStart = "second::" ++ start (stepNames False)
-      ends = if null (C.sessionSteps session)
-        then "    (" ++ firstStart ++ "(()), " ++ secondStart ++ "(()))"
-        else unlines' [ "    let (first_end, second_end) = ls::sessions::channel();"
-                      , "    (" ++ firstStart ++ "(first_end), " ++ secondStart ++ "(second_end))" ]
+      -- Bodies are laid out as rustfmt lays them out, at the indentation
+      -- of a function in the protocol's module.
+      ends = laid 8 (if null (C.sessionSteps session)
+        then L.expr (L.Macro "" "(" ")" [L.call firstStart [L.atom "()"], L.call secondStart [L.atom "()"]])
+        else L.stmts [L.Let "(first_end, second_end)" (L.call "ls::sessions::channel" [])]
+          (Just (L.Macro "" "(" ")" [L.call firstStart [L.atom "first_end"], L.call secondStart [L.atom "second_end"]])))
       network = case wire of
         Nothing -> []
         Just steps ->
-          let d text = "ls::descriptor(" ++ show text ++ ")"
-              stepList = "vec![" ++ intercalate ", " ["(" ++ (if s then "true" else "false") ++ ", " ++ d t ++ ")" | (s, t, _) <- steps] ++ "]"
-              codec ((_, _, Just q), _) = "ls::net::end_codec::<super::" ++ q ++ "::first::Start>(super::" ++ q ++ "::wire, super::" ++ q ++ "::first_into_endpoint, super::" ++ q ++ "::first_from_endpoint)"
-              codec (_, n) = "ls::net::step_codec::<" ++ n ++ ">()"
-              codecs = "vec![" ++ intercalate ", " (map codec (zip steps natives)) ++ "]"
+          let d text = L.call "ls::descriptor" [L.atom (show text)]
+              stepList = L.vecOf [L.Macro "" "(" ")" [L.atom (if s' then "true" else "false"), d t] | (s', t, _) <- steps]
+              codec ((_, _, Just q), _) = L.call ("ls::net::end_codec::<super::" ++ q ++ "::first::Start>")
+                [L.atom ("super::" ++ q ++ "::wire"), L.atom ("super::" ++ q ++ "::first_into_endpoint"), L.atom ("super::" ++ q ++ "::first_from_endpoint")]
+              codec (_, n) = L.atom ("ls::net::step_codec::<" ++ n ++ ">()")
+              codecs = L.vecOf (map codec (zip steps natives))
           in [ ""
              , "    /// Each step's direction and wire descriptor, from the first end, and"
              , "    /// its codec: how this protocol runs between nodes."
-             , "    pub fn wire() -> (Vec<(bool, ls::Sexp)>, Vec<ls::net::StepCodec>) {"
-             , "        (" ++ stepList ++ ", " ++ codecs ++ ")"
+             , "    pub fn wire() -> ls::net::SessionWire {"
+             , laid 8 (L.expr (L.Macro "" "(" ")" [stepList, codecs]))
              , "    }"
              , ""
              , "    #[doc(hidden)]"
@@ -104,18 +108,12 @@ protocolModule datas modules wire name session = do
              , "    /// dials at <node address>/name. An end sent over it to another node"
              , "    /// moves there (a local end stays and is relayed by this node)."
              , "    pub fn listen(node: &ls::net::Node, name: &str) -> ls::Result<first::Start> {"
-             , "        let (steps, codecs) = wire();"
-             , "        let end = node.listen(name, steps, super::wire_types(), std::time::Duration::from_secs(5))?;"
-             , "        let transport = ls::net::NetSession::new(end, codecs);"
-             , "        Ok(" ++ firstStart ++ "(ls::sessions::Endpoint::on(transport, ls::sessions::Side::First)))"
+             , laid 8 (L.expr (L.call "Ok" [L.call firstStart [L.try' (L.call "ls::net::listen_session" (map L.atom ["node", "name", "wire()", "super::wire_types()"]))]]))
              , "    }"
              , ""
              , "    /// The second end of the channel listening at address on another node."
              , "    pub fn dial(node: &ls::net::Node, address: &str) -> ls::Result<second::Start> {"
-             , "        let (steps, codecs) = wire();"
-             , "        let end = node.dial(address, steps.into_iter().map(|(s, d)| (!s, d)).collect(), super::wire_types(), std::time::Duration::from_secs(5))?;"
-             , "        let transport = ls::net::NetSession::new(end, codecs);"
-             , "        Ok(" ++ secondStart ++ "(ls::sessions::Endpoint::on(transport, ls::sessions::Side::Second)))"
+             , laid 8 (L.expr (L.call "Ok" [L.call secondStart [L.try' (L.call "ls::net::dial_session" (map L.atom ["node", "address", "wire()", "super::wire_types()"]))]]))
              , "    }" ]
   pure $ unlines' $
     [ "/// The protocol " ++ C.sessionName session ++ ": its first end " ++ describe modules True session ++ ";"
@@ -125,7 +123,7 @@ protocolModule datas modules wire name session = do
     , ""
     , "    /// Opens a fresh channel and returns its two ends."
     , "    pub fn open() -> (first::Start, second::Start) {"
-    , indent ends
+    , ends
     , "    }"
     ] ++ network ++
     [ ""
@@ -171,7 +169,7 @@ endModule datas modules session first = do
          , "pub struct " ++ name ++ "(pub(super) ls::sessions::Endpoint);"
          , ""
          , "impl " ++ name ++ " {"
-         ] ++ map ("    " ++) (if sends
+         ] ++ map (\l -> if null l then l else "    " ++ l) (if sends
            then [ "/// Sends " ++ what ++ " to the other end."
                 , "pub fn send(self, value: " ++ value ++ ") -> " ++ next ++ " {"
                 , "    self.0.send(value);"
@@ -186,8 +184,8 @@ endModule datas modules session first = do
                 , ""
                 , "/// Receives " ++ what ++ ", or PeerFailed once the other end gave up"
                 , "/// (its process failed, or it abandoned or dropped its end)."
-                , "pub fn try_receive(self) -> Result<(" ++ value ++ ", " ++ next ++ "), ls::sessions::PeerFailed> {"
-                , "    let value = self.0.try_receive()?;"
+                ] ++ signature 12 "pub fn try_receive" ["self"] ("Result<(" ++ value ++ ", " ++ next ++ "), ls::sessions::PeerFailed>") ++
+                [ "    let value = self.0.try_receive()?;"
                 , "    Ok((value, " ++ nextValue ++ "))"
                 , "}" ]) ++
          [ ""
@@ -273,3 +271,21 @@ indent = intercalate "\n" . map (\l -> if null l then l else "    " ++ l) . line
 
 unlines' :: [String] -> String
 unlines' = intercalate "\n"
+
+-- | A layout's lines at an indentation, as rustfmt would write them there.
+laid :: Int -> D.Doc -> String
+laid n doc = D.render (D.styleLayout (D.styleFor "rust")) (D.text (replicate n ' ') <> D.nest n doc)
+
+-- | A signature at an indentation, on one line when it fits, else one
+-- parameter a line, as rustfmt writes it; it ends with its opening brace,
+-- on a line of its own when the result type leaves no room. Lines after the
+-- first are indented relative to it.
+signature :: Int -> String -> [String] -> String -> [String]
+signature n head' parameters result
+  | n + length oneLine <= 100 = [oneLine]
+  -- rustfmt counts the indentation twice here.
+  | 2 * n + length closing + 2 <= 100 = [head' ++ "("] ++ ["    " ++ p ++ "," | p <- parameters] ++ [closing ++ " {"]
+  | otherwise = [head' ++ "("] ++ ["    " ++ p ++ "," | p <- parameters] ++ [closing, "{"]
+  where
+    oneLine = head' ++ "(" ++ intercalate ", " parameters ++ ") -> " ++ result ++ " {"
+    closing = ") -> " ++ result

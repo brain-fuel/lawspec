@@ -12348,6 +12348,45 @@ pub mod net {
         }
     }
 
+    /// A protocol's steps (direction and descriptor, from the first end)
+    /// and their codecs: how it runs between nodes.
+    pub type SessionWire = (Vec<(bool, Sexp)>, Vec<StepCodec>);
+
+    /// The first end of a protocol's channel named name on node, which
+    /// another node dials at <node address>/name.
+    pub fn listen_session(
+        node: &Node,
+        name: &str,
+        wire: SessionWire,
+        values: Values,
+    ) -> Result<super::sessions::Endpoint> {
+        let (steps, codecs) = wire;
+        let end = node.listen(name, steps, values, Duration::from_secs(5))?;
+        let transport = NetSession::new(end, codecs);
+        Ok(super::sessions::Endpoint::on(
+            transport,
+            super::sessions::Side::First,
+        ))
+    }
+
+    /// The second end of the protocol's channel listening at address on
+    /// another node.
+    pub fn dial_session(
+        node: &Node,
+        address: &str,
+        wire: SessionWire,
+        values: Values,
+    ) -> Result<super::sessions::Endpoint> {
+        let (steps, codecs) = wire;
+        let steps = steps.into_iter().map(|(s, d)| (!s, d)).collect();
+        let end = node.dial(address, steps, values, Duration::from_secs(5))?;
+        let transport = NetSession::new(end, codecs);
+        Ok(super::sessions::Endpoint::on(
+            transport,
+            super::sessions::Side::Second,
+        ))
+    }
+
     /// A typed session end's transport over a network channel end: values
     /// are converted step by step, natively on this side.
     pub struct NetSession {
