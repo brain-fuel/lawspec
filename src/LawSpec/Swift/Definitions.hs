@@ -217,12 +217,12 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
                     caught = "caught" ++ show (k :: Int)
                     fields = arrayDoc (C.mapFailureFields
                       (\ty tag values -> callDoc "try Schema.construct" [D.text (stringLiteral (C.idText tag)), arrayDoc values,
-                        D.text (D.render D.Compact (renderExpr (either error id (X.typeRef ty)))), D.text "schema"])
+                        renderExpr (either error id (X.typeRef ty)), D.text "schema"])
                       (D.text ("Value.text(String(describing: " ++ caught ++ "))")) fb)
                 in Code (callDoc "Effects.mapError" [D.text (native ++ ".self")] <> D.text " " <>
                      closureDoc ("(" ++ caught ++ ": " ++ native ++ ") throws -> Value")
                        (callDoc "try Schema.construct" [D.text (stringLiteral (C.idText (C.failureConstructor fb))), fields,
-                         D.text (D.render D.Compact (renderExpr ref)), D.text "schema"]))
+                         renderExpr ref, D.text "schema"]))
               mappings = map mapping (zip [0 ..] [fb | fb <- C.unitFailureBindings unit, C.failureType fb == failureTy])
           pure (call "Effects" "nativeFailures" [Str key, Lambda [] tValue converted, ListOf (Ty "[(any Error) throws -> Value?]") (mappings ++ [own])])
         _ -> pure converted
@@ -295,7 +295,7 @@ emitAdapters layout bits calls declarations units = do
     functions <- fmap (++ stubs) $ forM (unbound u) $ \d -> do
       (params, r, failure, async) <- nativeSignature bits names units d
       let message = "not implemented: " ++ C.idText (C.declarationId d)
-      pure (sourceDoc (C.declarationName d ++ " :: " ++ showType (C.declarationType d)) (C.declarationOrigin d) <>
+      pure (sourceDoc (C.declarationName d ++ " :: " ++ topType (C.declarationType d)) (C.declarationOrigin d) <>
         signatureDoc "static func" (functionName d) params r failure async (callDoc "fatalError" [D.text (stringLiteral message)]))
     let doc = fileHeader "User-owned LawSpec adapter. Implement these functions." [["import LawSpecRuntime"]] <> D.hardline <>
           D.text ("extension " ++ unitQualified (C.unitId u) ++ " {") <> D.nest 2 (D.hardline <>
@@ -304,6 +304,10 @@ emitAdapters layout bits calls declarations units = do
   where
     unbound u = [d | d <- adapterDeclarations u, lookup (C.declarationId d) calls == Nothing]
     productionAbilities u = [a | a <- N.ownAbilities u, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)]
+    -- A signature's type as it is written: its arrow without parentheses.
+    topType t = case t of
+      C.Arrow a b -> showType a ++ " -> " ++ topType b
+      _ -> showType t
     showType t = case t of
       C.Arrow a b -> "(" ++ showType a ++ " -> " ++ showType b ++ ")"
       C.Constructor n [] -> n

@@ -239,7 +239,7 @@ emitActors bits datas units
               (D.joinWith D.hardline (D.text "self.handle = handle" : [ D.text ("self." ++ member n ++ " = " ++ member n) | (_, n, _) <- children ]))
           , D.text "/// The runtime's spec of this supervisor and its children." <> D.hardline <>
             function "public static func spec" paramList (" throws -> " ++ runtime ++ ".Spec")
-              (callDoc ("try " ++ runtime ++ ".supervisor") [D.text strategy, D.text (show (supervisionRestarts s)), D.text (show (supervisionPeriod s)),
+              (callDoc ("try " ++ runtime ++ ".supervisor") [D.text strategy, D.text (intLiteral (toInteger (supervisionRestarts s))), D.text (intLiteral (toInteger (supervisionPeriod s))),
                 arrayDoc (map childSpec children)])
           , D.text "/// The supervisor a parent started, by its handle." <> D.hardline <>
             function "public static func fromHandle" (("_ handle: " ++ runtime ++ ".Handle") : paramList) (" throws -> " ++ cls)

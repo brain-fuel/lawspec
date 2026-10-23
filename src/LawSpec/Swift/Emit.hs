@@ -28,7 +28,7 @@ import qualified LawSpec.Swift.Mailboxes as Mailboxes
 import qualified LawSpec.Swift.Remote as Remote
 import LawSpec.Typed.Swift (SwiftTyped(..), emitSwiftTyped)
 import Control.Monad (unless)
-import Data.List (isPrefixOf, isSuffixOf, nub, sort, intercalate)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort, intercalate)
 
 emitSwift :: Bool -> Plan -> Either [Diagnostic] [Artifact]
 emitSwift minify = emitSwiftWithBindings minify emptyBindingPlan
@@ -55,6 +55,8 @@ emitSwiftWithBindings minify bindings plan = do
     -- The compact layout drops generated documentation and blank lines. The
     -- runtime and the user's adapters stay as they are.
     compacted artifact@(Artifact path content ownership' placement)
+      -- A multiline literal's lines are its value, so its file keeps them.
+      | "\"\"\"" `isInfixOf` content = artifact
       | ownership' /= "user", ".swift" `isSuffixOf` path, not ("lawspec/" `isPrefixOf` path) =
           Artifact path (unlines [l | l <- lines content, not (blank l), not ("///" `isPrefixOf` dropWhile (== ' ') l)]) ownership' placement
       | otherwise = artifact

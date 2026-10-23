@@ -200,6 +200,13 @@ reaching targets declarations = go (Set.fromList targets)
       C.Constructor n args -> Set.member (C.Id n) found || any (\a -> case a of C.TypeArgument x -> mentions found x; _ -> False) args
       _ -> False
 
+-- | What a data type is, as its documentation says: its identity, or an
+-- anonymous record's fields.
+dataLabel :: C.DataDeclaration -> String
+dataLabel d
+  | isStructuralRecord d = "A record of " ++ intercalate ", " [C.binderName f | c <- C.dataConstructors d, f <- C.constructorFields c]
+  | otherwise = C.idText (C.dataId d)
+
 -- | A conjunction, broken before each && when it does not fit, as
 -- swift-format breaks it.
 conjunction :: [D.Doc] -> D.Doc
@@ -293,13 +300,13 @@ emitData layout bits bound declarations
             ctor = refText (resolvedNativeConstructor rc)
             nativeNames = map snd (resolvedFields rc)
         fieldCodecs <- forM (resolvedFields rc) $ \(binder, _) -> codec bits names (codecScope d c) (C.binderType binder)
-        let converted = [D.text (n ++ ": ") <> callDoc ("try " ++ cd ++ ".toNative") [D.text ("f[" ++ show i ++ "]")] | (i, (n, cd)) <- zip [0 :: Int ..] (zip nativeNames fieldCodecs)]
+        let converted = [D.text (n ++ ": ") <> codecCall cd "toNative" [D.text ("f[" ++ show i ++ "]")] | (i, (n, cd)) <- zip [0 :: Int ..] (zip nativeNames fieldCodecs)]
             caseName' = last (resolvedNativeConstructor rc `seq` referenceParts (resolvedNativeConstructor rc))
             vars = ["f" ++ show i | (i, _) <- zip [0 :: Int ..] fieldCodecs]
             arm opening statements = opening <> D.nest 2 (D.hardline <> D.joinWith D.hardline statements)
             made = if null converted then D.text ctor else callDoc ctor converted
             caseArm = D.text ("case ." ++ caseName' ++ (if null vars then "" else "(" ++ intercalate ", " ["let " ++ v | v <- vars] ++ ")") ++ ":")
-            fromValues inputs = arrayDoc [callDoc ("try " ++ cd ++ ".fromNative") [D.text v] | (cd, v) <- zip fieldCodecs inputs]
+            fromValues inputs = arrayDoc [codecCall cd "fromNative" [D.text v] | (cd, v) <- zip fieldCodecs inputs]
         case resolvedFieldLayout rc of
           Just tree -> do
             let project parent nodes = concat [case node of
@@ -313,14 +320,14 @@ emitData layout bits bound declarations
                     let value = parent ++ "[" ++ show index ++ "]"]
                 lets prefix expressions = [hangValue ("let " ++ prefix ++ show i ++ " =") expression | (i,expression) <- zip [0 :: Int ..] expressions]
                 nativeValues = ["nativeField" ++ show i | (i,_) <- zip [0 :: Int ..] fieldCodecs]
-                toValues = [callDoc ("try " ++ cd ++ ".toNative") [D.text v] | (cd,v) <- zip fieldCodecs vars]
+                toValues = [codecCall cd "toNative" [D.text v] | (cd,v) <- zip fieldCodecs vars]
                 toArm result = arm (dataCase tag (length tree)) (project "f" tree ++ lets "nativeField" toValues ++ [hangValue "return" result])
                 leaf index = pure (D.text ("logicalField" ++ show index))
                 record _ constructor children = pure (callDoc ".data" [D.text (stringLiteral (C.idText (C.constructorId constructor))), arrayDoc children])
             values <- foldNativeLayoutM leaf record tree
             let packed = callDoc ".data" [D.text tag, arrayDoc values]
                 convertedFields = [D.text (n ++ ": " ++ v) | (n,v) <- zip nativeNames nativeValues]
-                fromStatements inputs = lets "logicalField" [callDoc ("try " ++ cd ++ ".fromNative") [D.text v] | (cd,v) <- zip fieldCodecs inputs] ++ [hangValue "return" packed]
+                fromStatements inputs = lets "logicalField" [codecCall cd "fromNative" [D.text v] | (cd,v) <- zip fieldCodecs inputs] ++ [hangValue "return" packed]
             case resolvedConstructorStyle rc of
               RecordConstructor | not single -> Left ("Swift binds a record style only to a type with one constructor: " ++ C.idText (C.dataId d))
               RecordConstructor -> pure (toArm (callDoc ctor convertedFields), D.joinWith D.hardline (fromStatements ["native." ++ n | n <- nativeNames]))
@@ -351,9 +358,7 @@ emitData layout bits bound declarations
     dataType names recursive opaque d = do
       name <- named names d
       self <- selfType names d
-      let header = sourceDoc (if isStructuralRecord d
-            then "A record of " ++ intercalate ", " [C.binderName f | c <- C.dataConstructors d, f <- C.constructorFields c]
-            else C.idText (C.dataId d)) (C.dataOrigin d)
+      let header = sourceDoc (dataLabel d) (C.dataOrigin d)
           portableWhere = if null (C.dataParameters d) then "" else " where " ++ whereClause d
           sendableWhere = intercalate ", " [typeParameter i ++ ": Sendable" | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
           -- Any data type may be a failure (fails with E), thrown as E.
@@ -452,13 +457,13 @@ emitData layout bits bound declarations
             allCodecs = fieldCodecs ++ witnessCodecs
             labels = map (fieldName . C.binderName) (C.constructorFields c) ++ map fieldName (witnessLabels d c)
             tag = stringLiteral (C.idText (C.constructorId c))
-            converted = [callDoc ("try " ++ cd ++ ".toNative") [D.text ("f[" ++ show i ++ "]")] | (i, cd) <- zip [0 :: Int ..] allCodecs]
+            converted = [codecCall cd "toNative" [D.text ("f[" ++ show i ++ "]")] | (i, cd) <- zip [0 :: Int ..] allCodecs]
             labelled' = [D.text (unescaped l ++ ": ") <> v | (l, v) <- zip labels converted]
             made = if isStruct recursive d
               then callDoc name labelled'
               else D.text ("." ++ unescaped (caseName c)) <> (if null converted then mempty else argumentsDoc labelled')
             toArm = dataCase tag (length allCodecs) <> D.nest 2 (D.hardline <> hangValue "return" made)
-            fromValues vars = arrayDoc [callDoc ("try " ++ cd ++ ".fromNative") [D.text v] | (cd, v) <- zip allCodecs vars]
+            fromValues vars = arrayDoc [codecCall cd "fromNative" [D.text v] | (cd, v) <- zip allCodecs vars]
             fromArm
               | isStruct recursive d = hangValue "return" (callDoc ".data" [D.text tag, fromValues ["native." ++ unescaped l | l <- labels]])
               | otherwise =
@@ -475,7 +480,7 @@ emitData layout bits bound declarations
             then D.text ("fromNative: { (native: " ++ self ++ ") throws -> Value in") <> D.nest 2 (D.hardline <> D.joinWith D.hardline [b | (_, b, _) <- arms]) <> D.hardline <> D.text "})"
             else D.text ("fromNative: { (native: " ++ self ++ ") " ++ (if allEmpty then "" else "throws ") ++ "-> Value in") <> D.nest 2 (D.hardline <>
               D.text "switch native {" <> D.hardline <> D.joinWith D.hardline [b | (_, b, _) <- arms] <> D.hardline <> D.text "}") <> D.hardline <> D.text "})"
-      pure (D.text ("/// " ++ C.idText (C.dataId d)) <> D.hardline <> signature opening parameters (" -> Codec<" ++ self ++ ">")
+      pure (sourceDoc (dataLabel d) (C.dataOrigin d) <> signature opening parameters (" -> Codec<" ++ self ++ ">")
         (D.text ("Codec<" ++ self ++ ">(") <> D.nest 2 (D.hardline <> toNative <> D.hardline <> fromNative)))
 
 -- | The program's schema, built through the runtime: every constructor with

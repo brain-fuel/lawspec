@@ -33,19 +33,18 @@ emitRemote plan
       , "  /// Values are portable values, as the runtime's checks use them."
       , "  public enum RemoteDefinitions {"
       , "    /// Each definition's qualified name, content hash and wire forms."
-      , "    static let signatures: [(String, String, [String], String)] = [" ] ++
-      map D.text (lines' signatures) ++
-      [ D.text "    ]"
+      ] ++
+      [ D.text "    " <> D.nest 4 (D.text "static let signatures: [(String, String, [String], String)] = " <>
+          brokenList "[" "]" (length callable > 1) signatures)
       , D.text ""
       , D.text "    /// How each definition runs: its checked entry."
-      , D.text "    static let invokers: [String: @Sendable ([Value]) throws -> Value] = [" ] ++
-      [ D.nest 6 (D.text "      " <> D.text (stringLiteral (remoteName r) ++ ": ") <> renderExpr (Lambda [("arguments", tValues)] tValue
-          (Call e ([Raw "LawSpec.Program.schema", Raw "SymbolContext()"] ++ [Pure "Runtime.item" [IntLit (toInteger i), Var "arguments"] | i <- [0 .. length (remoteArguments r) - 1]])))
-          <> D.text ",")
-      | (r, e) <- callable ] ++
+      , D.text "    " <> D.nest 4 (D.text "static let invokers: [String: @Sendable ([Value]) throws -> Value] = " <>
+          brokenList "[" "]" (length callable > 1)
+            [ D.text (stringLiteral (remoteName r) ++ ": ") <> renderExpr (Lambda [("arguments", tValues)] tValue
+                (Call e ([Raw "LawSpec.Program.schema", Raw "SymbolContext()"] ++ [Pure "Runtime.item" [IntLit (toInteger i), Var "arguments"] | i <- [0 .. length (remoteArguments r) - 1]])))
+            | (r, e) <- callable ]) ] ++
       map D.text
-      [ "    ]"
-      , ""
+      [ ""
       , "    /// The content hash of the definition with this qualified name."
       , "    public static func digest(_ name: String) throws -> String {"
       , "      guard let (_, hash, _, _) = signatures.first(where: { $0.0 == name }) else {"
@@ -82,7 +81,6 @@ emitRemote plan
       , "}" ]
     -- Each signature: its name, content hash and wire forms, one a line
     -- when they do not fit on one.
-    signatures = D.render swiftLayout (D.nest 6 (mconcat [ D.hardline <> renderExpr (TupleOf [Str (remoteName r), Str (remoteDigest r),
-        ListOf (Ty "") (map (Str . (prefix ++)) (remoteArguments r)), Str (prefix ++ remoteResult r)]) <> D.text ","
-      | (r, _) <- callable ]))
-    lines' text = drop 1 (lines text)
+    signatures = [ renderExpr (TupleOf [Str (remoteName r), Str (remoteDigest r),
+        ListOf (Ty "") (map (Str . (prefix ++)) (remoteArguments r)), Str (prefix ++ remoteResult r)])
+      | (r, _) <- callable ]

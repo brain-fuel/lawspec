@@ -51,8 +51,8 @@ emitSessions bits datas units
             , "/// step the end is a Done. An end can be used only once." ] <> D.hardline <>
             D.text "public enum Sessions" <> blockDoc (
               lines' [ "/// Every protocol's steps, as the runtime checks them." ] <> D.hardline <>
-              D.text "static let catalogue: [String: [SessionStep]] = [" <> D.nest 2 (mconcat [D.hardline <> protocolEntry s <> D.text "," | s <- sessions]) <>
-              D.hardline <> D.text "]" <> D.hardline <> D.hardline <>
+              D.text "static let catalogue: [String: [SessionStep]] = " <> brokenList "[" "]" (length sessions > 1) (map protocolEntry sessions) <>
+              D.hardline <> D.hardline <>
               lines'
                 [ "/// A protocol's spec, with the network deadline of its ends."
                 , "static func protocolSpec(_ id: String) -> SessionSpec {"

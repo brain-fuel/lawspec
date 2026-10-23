@@ -9,7 +9,7 @@ module LawSpec.Swift.Code
   ( Ty(..), Expr(..)
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
   , call, pure', str, longStringLiteral, closureDoc, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
-  , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, sourceDoc, fileHeader, blockDoc, comment
+  , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, sourceDoc, codecDoc, codecCall, fileHeader, blockDoc, comment
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -193,9 +193,9 @@ namesIn e = case e of
 nameReceivers :: Expr -> Expr
 nameReceivers e = case e of
   Call f args | Just (receiver, method) <- longReceiver f ->
-    Let "codec" (Ty "") (Raw receiver) (Call ("codec." ++ method) (map nameReceivers args))
+    Let "codec" (Ty "") (Code (codecDoc receiver)) (Call ("codec." ++ method) (map nameReceivers args))
   Pure f args | Just (receiver, method) <- longReceiver f ->
-    Let "codec" (Ty "") (Raw receiver) (Pure ("codec." ++ method) (map nameReceivers args))
+    Let "codec" (Ty "") (Code (codecDoc receiver)) (Pure ("codec." ++ method) (map nameReceivers args))
   Call f args -> Call f (map nameReceivers args)
   Pure f args -> Pure f (map nameReceivers args)
   Invoke f args -> Invoke (nameReceivers f) (map nameReceivers args)
@@ -272,7 +272,9 @@ arguments args
     one a = do
       (ss, a') <- flatten tValue a
       if isInline a && not (simple a') then do
-        name <- fresh "argument"
+        name <- fresh (case a' of
+          Call "Scalar.typeOf" _ -> "typeRef"
+          _ -> "argument")
         pure (ss ++ [Bind name (Ty "") a'], Var name)
       else pure (ss, a')
     simple a = case a of
@@ -322,11 +324,13 @@ distinct e = evalState (go M.empty e) S.empty
       Invoke f args -> Invoke <$> go env f <*> mapM (go env) args
       ListOf t xs -> ListOf t <$> mapM (go env) xs
       TupleOf xs -> TupleOf <$> mapM (go env) xs
-      -- A closure's parameters are its own scope: they keep their names.
+      -- A closure's parameters are its own scope: they keep their names,
+      -- unless one would hide a name the closure is inside, which is
+      -- renamed so the closure's body still reaches both.
       Lambda ps r b -> do
-        modify (S.union (S.fromList (map fst ps)))
-        b' <- go (foldr M.delete env (map fst ps)) b
-        pure (Lambda ps r b')
+        names <- mapM (\p -> if M.member p env then binder p else modify (S.insert p) >> pure p) (map fst ps)
+        b' <- go (foldr (uncurry M.insert) env (zip (map fst ps) names)) b
+        pure (Lambda (zip names (map snd ps)) r b')
       Let n t v b -> do
         v' <- go env v
         n' <- binder n
@@ -461,13 +465,17 @@ lambda ps r b = do
 
 -- | A closure from its header (() throws -> T) and its body's lines.
 closureDoc :: String -> D.Doc -> D.Doc
-closureDoc header inner = D.text ("{ " ++ header ++ " in") <> D.nest indentation (D.hardline <> inner) <> D.hardline <> D.text "}"
+closureDoc header inner = closureHeader header <> D.nest indentation (D.hardline <> inner) <> D.hardline <> D.text "}"
+
+-- | A closure's opening: { header in on one line, or the header and in on
+-- lines of their own, as swift-format breaks one that does not fit.
+closureHeader :: String -> D.Doc
+closureHeader header = D.group (D.text "{" <> D.nest indentation (D.softline <> D.text header <> D.softline <> D.text "in"))
 
 -- | A closure: its signature, then its body on lines of its own.
 closure :: [(String, Ty)] -> Ty -> D.Doc -> D.Doc
 closure ps (Ty rt) inner =
-  D.text ("{ (" ++ intercalate ", " [p ++ ": " ++ t | (p, Ty t) <- ps] ++ ") throws -> " ++ rt ++ " in") <>
-  D.nest indentation (D.hardline <> inner) <> D.hardline <> D.text "}"
+  closureDoc ("(" ++ intercalate ", " [p ++ ": " ++ t | (p, Ty t) <- ps] ++ ") throws -> " ++ rt) inner
 
 inline :: Expr -> Fresh D.Doc
 inline e = case e of
@@ -515,6 +523,9 @@ inline e = case e of
 -- member chain.
 callee :: String -> D.Doc -> D.Doc
 callee f rest = case break (== '.') (reverse f) of
+  -- A method of a made codec: the codec's own calls break.
+  (member@(_ : _), '.' : receiver@(')' : _)) | '(' `notElem` member, ' ' `notElem` f ->
+    codecDoc (reverse receiver) <> D.text ('.' : reverse member) <> rest
   (member@(_ : _), '.' : receiver@(_ : _)) | '(' `notElem` f, ' ' `notElem` f ->
     -- The break is soft: a layout measured flat never holds it.
     D.prefixChoice (f ++ "(") (D.text f <> rest) (D.text (reverse receiver) <> D.nest indentation (D.softbreak <> D.text ('.' : reverse member) <> rest))
@@ -552,6 +563,35 @@ brokenList opening closing trailing ds =
   D.text opening <> D.nest indentation (D.hardline <> D.joinWith (D.text "," <> D.hardline) ds <> (if trailing then D.text "," else mempty)) <>
   D.hardline <> D.text closing
 
+-- | A codec as the emitters write it (Codecs.list(LawSpec.DataCodecs.money())):
+-- its calls break inside their arguments like any other call. Codecs are
+-- names applied to codecs, so that is all this reads.
+codecDoc :: String -> D.Doc
+codecDoc text = case codecTerm text of
+  Just (doc, []) -> doc
+  _ -> D.text text
+  where
+    codecTerm s = case span nameChar s of
+      ([], _) -> Nothing
+      (name, '(' : ')' : rest) -> Just (D.text (name ++ "()"), rest)
+      (name, '(' : rest) -> do
+        (args, rest') <- codecArguments rest
+        pure (callDoc name args, rest')
+      (name, rest) -> Just (D.text name, rest)
+    codecArguments s = do
+      (arg, rest) <- codecTerm s
+      case rest of
+        ',' : ' ' : more -> do
+          (args, rest') <- codecArguments more
+          pure (arg : args, rest')
+        ')' : more -> Just ([arg], more)
+        _ -> Nothing
+    nameChar c = isAscii c && (c `elem` ['a' .. 'z'] || c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9'] || c `elem` ("_.`" :: String))
+
+-- | A codec's method applied (try codec.toNative(value)).
+codecCall :: String -> String -> [D.Doc] -> D.Doc
+codecCall codec method args = D.text "try " <> codecDoc codec <> D.text ('.' : method) <> argumentsDoc args
+
 -- | A call of documents: its arguments on one line, or one a line.
 callDoc :: String -> [D.Doc] -> D.Doc
 callDoc f ds = D.text f <> argumentsDoc ds
@@ -581,6 +621,11 @@ arrayDoc ds = D.group (D.text "[" <> D.nest indentation (D.softbreak <> D.commaS
 -- parameters on one line, or one a line with the closing parenthesis on a
 -- line of its own, then its body as a block.
 signature :: String -> [String] -> String -> D.Doc -> D.Doc
+signature opening [] closing body =
+  -- With no parameters to break, a signature that does not fit puts its
+  -- brace on a line of its own, as swift-format does.
+  D.text (opening ++ "()" ++ closing) <> D.group D.softline <> D.text "{" <>
+  D.nest indentation (D.hardline <> body) <> D.hardline <> D.text "}"
 signature opening parameters closing body =
   D.text opening <> argumentsDoc (map D.text parameters) <> D.text closing <> blockDoc body
 
@@ -625,7 +670,12 @@ swiftLayout = D.styleLayout (D.styleFor "swift")
 hangValue :: String -> D.Doc -> D.Doc
 hangValue prefix value = D.text prefix <> D.prefixChoice (" " ++ firstChunk value) (D.text " " <> value)
   (D.nest indentation (D.hardline <> value))
-  where firstChunk = takeWhile (/= '\n') . D.render (D.Pretty 1)
+  where
+    -- Its opening, up to its first bracket: a qualified call's name is
+    -- whole, as swift-format measures the break after = and return.
+    firstChunk d = case break (`elem` ("([{\n" :: String)) (D.render D.Compact d) of
+      (front, c : _) | c /= '\n' -> front ++ [c]
+      (front, _) -> front
 
 -- | An integer literal, its digits grouped in threes past six, as
 -- swift-format groups them.

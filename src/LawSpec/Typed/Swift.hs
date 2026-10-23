@@ -24,7 +24,7 @@ import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc, sourceDoc)
+import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc, sourceDoc, hangValue)
 import qualified LawSpec.Naming as Nm
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.SourceLink (generatedHeader)
@@ -165,9 +165,23 @@ receiver x = case D.render D.Compact x of
   name@(c : _) | all (\ch -> isAlphaNum ch || ch == '_') name, not (isDigit c) -> x
   _ -> paren x
 
--- | A condition without the parentheses swift-format drops around one.
-condition :: D.Doc -> D.Doc
-condition x = case D.render D.Compact x of
+-- | An if's opening: its brace after the condition, or on a line of its own
+-- when the condition does not fit on one, as swift-format places it.
+ifOpening :: D.Doc -> D.Doc
+ifOpening x
+  -- A condition's operation carries its own break before the brace.
+  | take 1 (reverse (D.render D.Compact x)) == " " = D.text "if " <> x <> D.text "{"
+  | otherwise = D.text ("if ") <> x <> D.text " {"
+
+-- | Two operands and an operator, broken before the operator when they do
+-- not fit, as swift-format breaks them.
+binaryDoc :: D.Doc -> String -> D.Doc -> D.Doc
+binaryDoc a op b = D.group (a <> D.nest 2 (D.softline <> D.text (op ++ " ") <> b))
+
+-- | An operand of && or || as an if's whole condition, without the
+-- parentheses swift-format drops around one (its operand stays whole).
+unwrapped :: D.Doc -> D.Doc
+unwrapped x = case D.render D.Compact x of
   '(' : rest | not (null rest), last rest == ')', closesAtEnd (init rest) -> D.text (init rest)
   _ -> x
   where
@@ -210,7 +224,7 @@ functionDoc env c d = do
   body <- case M.lookup (declarationId declaration) (typedIntrinsics (envPlan env)) of
     Just intrinsic -> do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l), b) <- zip params (definitionArguments d)]
-      pure [D.text "return " <> x]
+      pure [hangValue "return" x]
     Nothing -> statements selfEnv params (Just resultType) Return (definitionBody d)
   assigned <- gets snd
   let looped = loops body
@@ -235,15 +249,15 @@ statements env scope resultType sink e = case expressionNode e of
       then do
         local <- fresh (binderName binder)
         rest <- statements env ((binderId binder, local) : scope) resultType sink body
-        pure (s ++ [D.text ("let " ++ local ++ " = ") <> x] ++ rest)
+        pure (s ++ [hangValue ("let " ++ local ++ " =") $ x] ++ rest)
       else do
         rest <- statements env scope resultType sink body
         pure (s ++ discard value x ++ rest)
   If c a b -> do
-    (s, x) <- cexpr env scope c
+    (s, x) <- cexprWith Condition env scope c
     yes <- statements env scope resultType sink a
     no <- statements env scope resultType sink b
-    pure (s ++ [D.text "if " <> condition x <> D.text " {" <> block yes <> D.hardline <> D.text "} else {" <> block no <> D.hardline <> D.text "}"])
+    pure (s ++ [ifOpening x <> block yes <> D.hardline <> D.text "} else {" <> block no <> D.hardline <> D.text "}"])
   Helper Select [c, a, b] -> statements env scope resultType sink (e { expressionNode = If c a b })
   Match value cases -> matchStatements env scope resultType sink value cases
   ExternalCall i args
@@ -254,17 +268,17 @@ statements env scope resultType sink e = case expressionNode e of
         let changed = [(p, x) | (p, (_, x)) <- zip params parts, D.render D.Compact x /= p]
             assignment = case changed of
               [] -> []
-              [(p, x)] -> [D.text (p ++ " = ") <> x]
+              [(p, x)] -> [hangValue (p ++ " =") x]
               _ -> [D.text ("(" ++ intercalate ", " (map fst changed) ++ ") = (") <> D.joinWith (D.text ", ") (map snd changed) <> D.text ")"]
         modify (\(n, assigned) -> (n, map fst changed ++ assigned))
         pure (concatMap fst parts ++ assignment ++ [D.text "continue"])
   _ -> do
-    (s, x) <- cexpr env scope e
+    (s, x) <- cexprWith Top env scope e
     pure (s ++ [finish x])
   where
     finish x = case sink of
-      Return -> D.text "return " <> condition x
-      Assign name -> D.text (name ++ " = ") <> condition x
+      Return -> hangValue "return" x
+      Assign name -> hangValue (name ++ " =") x
     -- A value computed for its effects only.
     discard value x = case expressionNode value of
       Local _ -> []
@@ -273,7 +287,17 @@ statements env scope resultType sink e = case expressionNode e of
 
 -- | An expression's value: the lines that compute it, and an atom.
 cexpr :: Env -> Scope -> Expr -> M ([D.Doc], D.Doc)
-cexpr env scope e = case expressionNode e of
+cexpr = cexprWith Inner
+
+-- | Where an expression is: inside another, at a statement's top (a
+-- return, an assignment), or an if's condition. At the top an operation
+-- goes without the parentheses it needs inside another; as a condition
+-- it also carries the break before the if's brace, which goes on a line
+-- of its own when the operation breaks, as swift-format places it.
+data Position = Inner | Top | Condition deriving Eq
+
+cexprWith :: Position -> Env -> Scope -> Expr -> M ([D.Doc], D.Doc)
+cexprWith position env scope e = case expressionNode e of
   Let {} -> viaStatements
   Match {} -> viaStatements
   If {} -> viaStatements
@@ -306,11 +330,14 @@ cexpr env scope e = case expressionNode e of
     (sa, xa) <- cexpr env scope a
     (sb, xb) <- cexpr env scope b
     if null sb
-      then pure (sa, paren (xa <> D.text (if op == And then " && " else " || ") <> xb))
+      then pure (sa, wrap (operation xa (if op == And then "&&" else "||") xb))
       else do
         t <- fresh "logic"
-        let rest = sb ++ [D.text (t ++ " = ") <> xb]
-        pure (sa ++ [D.text ("let " ++ t ++ ": Bool"), D.text "if " <> condition xa <> D.text " {" <>
+        -- The first operand is the if's condition: computed again as one
+        -- when it needs no statements, so it breaks as a condition does.
+        condition <- if null sa then snd <$> cexprWith Condition env scope a else pure (unwrapped xa)
+        let rest = sb ++ [hangValue (t ++ " =") xb]
+        pure (sa ++ [D.text ("let " ++ t ++ ": Bool"), ifOpening condition <>
           (if op == And then block rest <> D.hardline <> D.text "} else {" <> block [D.text (t ++ " = false")]
            else block [D.text (t ++ " = true")] <> D.hardline <> D.text "} else {" <> block rest) <> D.hardline <> D.text "}"], D.text t)
   Unary Not a -> do
@@ -334,26 +361,26 @@ cexpr env scope e = case expressionNode e of
         bounded = case ta of Constructor n [] -> n `elem` boundedTypes; _ -> False
         ia = exact ta xa
         ib = exact tb xb
-        compare' symbol = pure (sa ++ sb, if same then paren (xa <> D.text symbol <> xb) else paren (ia <> D.text symbol <> ib))
+        compare' symbol = pure (sa ++ sb, if same then wrap (operation xa symbol xb) else wrap (operation ia symbol ib))
         native f = bindAtom (sa ++ sb) (callDoc ("try Typed." ++ f) [D.text (stringLiteral (typeName ta)), xa, xb])
         arithmetic r = narrow te (sa ++ sb, r)
         sameNative = same && te == ta && bounded
     case op of
       Add | sameNative -> native "add"
-          | otherwise -> arithmetic (paren (ia <> D.text " + " <> ib))
+          | otherwise -> arithmetic (paren (binaryDoc ia "+" ib))
       Subtract | sameNative -> native "subtract"
-               | otherwise -> arithmetic (paren (ia <> D.text " - " <> ib))
+               | otherwise -> arithmetic (paren (binaryDoc ia "-" ib))
       Multiply | sameNative -> native "multiply"
-               | otherwise -> arithmetic (paren (ia <> D.text " * " <> ib))
+               | otherwise -> arithmetic (paren (binaryDoc ia "*" ib))
       Quotient -> bindAtom (sa ++ sb) (callDoc "try Typed.quotient" [ia, ib]) >>= narrow te
       Remainder -> bindAtom (sa ++ sb) (callDoc "try Typed.remainder" [ia, ib]) >>= narrow te
       Power -> bindAtom (sa ++ sb) (callDoc "try Typed.power" [ia, ib]) >>= narrow te
-      Equal -> compare' " == "
-      NotEqual -> compare' " != "
-      Less -> compare' " < "
-      LessEqual -> compare' " <= "
-      Greater -> compare' " > "
-      GreaterEqual -> compare' " >= "
+      Equal -> compare' "=="
+      NotEqual -> compare' "!="
+      Less -> compare' "<"
+      LessEqual -> compare' "<="
+      Greater -> compare' ">"
+      GreaterEqual -> compare' ">="
       _ -> lift' (Left ("typed Swift: unsupported operator " ++ show op))
   Convert _ target value -> do
     (s, x) <- cexpr env scope value
@@ -363,8 +390,8 @@ cexpr env scope e = case expressionNode e of
     (sb, xb) <- cexpr env scope b
     ordering <- orderingOf env
     t <- fresh "order"
-    pure (sa ++ sb ++ [D.text ("let " ++ t ++ " = ") <> callDoc "Typed.compare" [xa, xb]],
-      D.text ("(" ++ t ++ " < 0 ? " ++ ordering ++ ".less : (" ++ t ++ " == 0 ? " ++ ordering ++ ".equal : " ++ ordering ++ ".greater))"))
+    pure (sa ++ sb ++ [hangValue ("let " ++ t ++ " =") $ callDoc "Typed.compare" [xa, xb]],
+      paren (D.group (D.text (t ++ " < 0") <> D.nest 2 (D.softline <> D.text ("? " ++ ordering ++ ".less : (" ++ t ++ " == 0 ? " ++ ordering ++ ".equal : " ++ ordering ++ ".greater)")))))
   Helper Length [x] -> do
     (s, v) <- cexpr env scope x
     pure (s, case expressionType x of
@@ -393,7 +420,7 @@ cexpr env scope e = case expressionNode e of
     c <- lift' (codecOf env (expressionType x))
     result <- lift' (nativeType env (expressionType e))
     t <- fresh "result"
-    pure (s ++ [D.text ("let " ++ t ++ ": " ++ result ++ " = ") <> callDoc "try Typed.raiseFailure" [D.text (stringLiteral (abilityKey ref)), callDoc (c ++ ".fromNative") [v]]], D.text t)
+    pure (s ++ [hangValue ("let " ++ t ++ ": " ++ result ++ " =") $ callDoc "try Typed.raiseFailure" [D.text (stringLiteral (abilityKey ref)), callDoc (c ++ ".fromNative") [v]]], D.text t)
   Perform op args -> do
     parts <- mapM (cexpr env scope) args
     a <- lift' (maybe (Left ("typed Swift: unknown ability " ++ abilityKey (operationAbility op))) Right (N.abilityOf (envUnits env) (operationAbility op)))
@@ -412,8 +439,8 @@ cexpr env scope e = case expressionNode e of
           D.text (" { () throws(" ++ e' ++ ") -> " ++ r ++ " in") <> block [D.text "try " <> operationCall] <> D.hardline <> D.text "}")
       _ -> pure operationCall
     if isUnit'
-      then pure (concatMap fst parts ++ [D.text ("let " ++ handler ++ " = ") <> native, invocation], D.text "Unit()")
-      else bindAtom (concatMap fst parts ++ [D.text ("let " ++ handler ++ " = ") <> native]) invocation
+      then pure (concatMap fst parts ++ [hangValue ("let " ++ handler ++ " =") $ native, invocation], D.text "Unit()")
+      else bindAtom (concatMap fst parts ++ [hangValue ("let " ++ handler ++ " =") $ native]) invocation
   Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, _] <- expressionType e -> do
     c <- lift' (codecOf env failure)
     bodyType <- case expressionType e of
@@ -421,9 +448,9 @@ cexpr env scope e = case expressionNode e of
       _ -> lift' (Left "typed Swift: attempt without Either")
     lines' <- statements env scope (Just bodyType) Return body
     t <- fresh "attempted"
-    pure ([D.text ("let " ++ t ++ " = ") <> callDoc "try Typed.attempt" [D.text (stringLiteral (abilityKey ref)), D.text ("{ try " ++ c ++ ".toNative($0) }")] <>
+    pure ([hangValue ("let " ++ t ++ " =") $ callDoc "try Typed.attempt" [D.text (stringLiteral (abilityKey ref)), D.text ("{ try " ++ c ++ ".toNative($0) }")] <>
       D.text (" { () throws -> " ++ bodyType ++ " in") <> block lines' <> D.hardline <> D.text "}"], D.text t)
-  Helper Append [a, b] -> infixOp " + " a b
+  Helper Append [a, b] -> infixOp "+" a b
   Helper Slice [x, from, to] -> do
     (sx, v) <- cexpr env scope x
     (si, i) <- cexpr env scope from
@@ -456,6 +483,10 @@ cexpr env scope e = case expressionNode e of
   Helper Join [sep, parts] -> call2 "Typed.join" sep parts
   _ -> lift' (Left ("typed Swift: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    wrap = if position == Inner then paren else id
+    operation a op b
+      | position == Condition = D.group (a <> D.nest 2 (D.softline <> D.text (op ++ " ") <> b) <> D.softline)
+      | otherwise = binaryDoc a op b
     one f a = do
       (s, x) <- cexpr env scope a
       pure (s, callDoc f [x])
@@ -466,7 +497,7 @@ cexpr env scope e = case expressionNode e of
     infixOp op a b = do
       (sa, xa) <- cexpr env scope a
       (sb, xb) <- cexpr env scope b
-      pure (sa ++ sb, paren (xa <> D.text op <> xb))
+      pure (sa ++ sb, wrap (operation xa op xb))
     viaStatements = do
       t <- fresh "value"
       ty <- lift' (nativeType env (expressionType e))
@@ -475,7 +506,7 @@ cexpr env scope e = case expressionNode e of
     -- A call is bound to a constant, so effects keep their order.
     bindAtom s invocation = do
       t <- fresh "result"
-      pure (s ++ [D.text ("let " ++ t ++ " = ") <> invocation], D.text t)
+      pure (s ++ [hangValue ("let " ++ t ++ " =") $ invocation], D.text t)
 
 -- | A list's items, when it is made of Cons cells ending in Nil.
 listItems :: Expr -> Maybe [Expr]
@@ -505,7 +536,7 @@ narrow :: Type -> ([D.Doc], D.Doc) -> M ([D.Doc], D.Doc)
 narrow ty (s, x) = case ty of
   Constructor t [] | t `elem` boundedTypes -> do
     n <- fresh "narrowed"
-    pure (s ++ [D.text ("let " ++ n ++ " = ") <> callDoc "try Typed.narrow" [D.text (stringLiteral t), x, D.text (t ++ ".self")]], D.text n)
+    pure (s ++ [hangValue ("let " ++ n ++ " =") $ callDoc "try Typed.narrow" [D.text (stringLiteral t), x, D.text (t ++ ".self")]], D.text n)
   _ -> pure (s, x)
 
 boundsOf :: String -> Maybe (Integer, Integer)
@@ -633,10 +664,10 @@ matchStatements env scope resultType sink value cases = do
           bs <- binders c
           let names = map snd bs
               heads = case names of
-                (h : _) | h /= "_" -> [D.text ("let " ++ h ++ " = ") <> subject <> D.text ".first!"]
+                (h : _) | h /= "_" -> [hangValue ("let " ++ h ++ " =") $ subject <> D.text ".first!"]
                 _ -> []
               tails = case names of
-                (_ : t : _) | t /= "_" -> [D.text ("let " ++ t ++ " = ") <> subject <> D.text ".rest"]
+                (_ : t : _) | t /= "_" -> [hangValue ("let " ++ t ++ " =") $ subject <> D.text ".rest"]
                 _ -> []
           rest <- armBody c bs
           pure (heads ++ tails ++ rest)
@@ -672,7 +703,7 @@ matchStatements env scope resultType sink value cases = do
           [c] -> do
             bs <- binders c
             let ctor = snd (envConstructors env M.! caseConstructor c)
-                fields = [D.text ("let " ++ name ++ " = ") <> subject <> D.text ("." ++ filter (/= '`') (Data.fieldName (binderName b))) | ((_, name), b) <- zip bs (constructorFields ctor), name /= "_"]
+                fields = [hangValue ("let " ++ name ++ " =") $ subject <> D.text ("." ++ filter (/= '`') (Data.fieldName (binderName b))) | ((_, name), b) <- zip bs (constructorFields ctor), name /= "_"]
             body <- armBody c bs
             pure (fields ++ body)
           _ -> lift' (Left "typed Swift: a record has one constructor")
