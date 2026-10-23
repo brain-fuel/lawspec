@@ -9,7 +9,7 @@ export function empty(value0: unknown): data.Stack {
 }
 
 export function push(value0: number, value1: data.Stack): data.PushFlow {
-  return new data.PushFlow(new data.StackPush(new data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(value1, value0)));
+  return new data.PushFlow(new data.StackPush(new data.PushDetails(value1, value0)));
 }
 
 // The flow signature guarantees a nonempty stack.

@@ -1,6 +1,6 @@
 @@ src/example/arithmetic.ts
 <<<<<<<
-new data.PerfectNode(new data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(value0.value.right), mirror(value0.value.left)))
+new data.PerfectNode(new data.NodeDetails(mirror(value0.value.right), mirror(value0.value.left)))
 =======
-new data.PerfectNode(new data.Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8(mirror(value0.value.right), value0.value.right))
+new data.PerfectNode(new data.NodeDetails(mirror(value0.value.right), value0.value.right))
 >>>>>>>

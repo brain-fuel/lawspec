@@ -1,6 +1,6 @@
 @@ src/example/indexed.ts
 <<<<<<<
-  return new data.VecVCons(new data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value1.value.head, zip(value0.value.tail, value1.value.tail)));
+  return new data.VecVCons(new data.VConsDetails(value1.value.head, zip(value0.value.tail, value1.value.tail)));
 =======
   return zip(value0.value.tail, value1.value.tail);
 >>>>>>>

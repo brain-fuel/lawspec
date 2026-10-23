@@ -9,7 +9,7 @@ export function empty(value0) {
 }
 
 export function push(value0, value1) {
-  return new data.PushFlow(new data.StackPush(new data.Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949(value1, value0)));
+  return new data.PushFlow(new data.StackPush(new data.PushDetails(value1, value0)));
 }
 
 export function pop(value0) {

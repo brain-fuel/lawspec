@@ -1,6 +1,6 @@
 @@ src/example/indexed.mjs
 <<<<<<<
-  for (let i = 0n; i < BigInt(value0); i++) result = new data.VecVCons(new data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value1, result));
+  for (let i = 0n; i < BigInt(value0); i++) result = new data.VecVCons(new data.VConsDetails(value1, result));
 =======
-  for (let i = 0n; i <= BigInt(value0); i++) result = new data.VecVCons(new data.Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec(value1, result));
+  for (let i = 0n; i <= BigInt(value0); i++) result = new data.VecVCons(new data.VConsDetails(value1, result));
 >>>>>>>
