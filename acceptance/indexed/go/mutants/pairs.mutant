@@ -2,5 +2,5 @@
 <<<<<<<
 Pairs{Value: value0}
 =======
-Pairs{Value: RowCell{Value: Record3b011c4276dbdecc2735ac0f8fa7ce5517233cc5b302ba305baeed3dec2f677f{Head: 0, Tail: value0}}}
+Pairs{Value: RowCell{Value: CellDetails{Head: 0, Tail: value0}}}
 >>>>>>>

@@ -33,8 +33,15 @@ definitionCalls units = zip (map (declarationId . definitionDeclaration) definit
   (uniqueNames ["lawSpecEvaluate" ++ pascal d | d <- definitions])
   where
     definitions = concatMap unitDefinitions units
+    -- An imported definition (lawspec.collections::setOf) by its own name.
+    shortName n = case breakOn n of
+      Just rest -> shortName rest
+      Nothing -> n
+    breakOn (':' : ':' : rest) = Just rest
+    breakOn (_ : rest) = breakOn rest
+    breakOn [] = Nothing
     pascal d = let declaration = definitionDeclaration d
-               in case nameWords (readableDefinitionName (declarationName declaration) (fst (functionType (declarationType declaration)))) of
+               in case nameWords (readableDefinitionName (shortName (declarationName declaration)) (fst (functionType (declarationType declaration)))) of
                     [] -> "Definition"
                     ws -> concatMap (\w -> case w of { c : cs -> toUpper c : cs; [] -> [] }) ws
 
@@ -192,8 +199,8 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
             line ("package " ++ packageName) <> D.hardline <> D.hardline <>
             line ("var " ++ schema ++ " = lawSpecDataSchemaRegistry()") <> D.hardline <> D.hardline <>
             line "type lawSpecDefinitions struct{}" <> D.hardline <> D.hardline <>
-            line "var LawSpecDefinitions lawSpecDefinitions" <> D.hardline <> D.hardline <>
-            D.joinWith (D.hardline <> D.hardline) (wrappers ++ bodies) <> D.hardline
+            line "var LawSpecDefinitions lawSpecDefinitions" <> D.hardline <>
+            mconcat [D.hardline <> doc <> D.hardline | doc <- wrappers ++ bodies]
       pure (Artifact (map (\c -> if c == '.' then '/' else c) identity ++ "/lawspec_definitions.go")
         (D.render (if layout == D.Compact then D.CompactTabs else layout) source) "generated" "source")
     implementation contracts (index,d) = do
@@ -332,29 +339,32 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                 Custom _ -> ("custom", 0, 0, 0, -1)
           condition <- case retryWhen r of
             Nothing -> pure (line "nil")
-            Just p -> (\name -> line ("func(failure LawSpecValue) bool { return lsTruth(" ++ name ++ "(symbols, failure)) }")) <$> evaluator p
+            Just p -> (\name -> E.funcLiteral "(failure LawSpecValue) bool" [line ("return lsTruth(" ++ name ++ "(symbols, failure))")]) <$> evaluator p
           decide <- case retryStrategy r of
-            Custom f -> (\name -> line ("func(attempt int64, failure LawSpecValue, previous int64) (int64, bool) { return lsRetryDecision(" ++
-              name ++ "(symbols, lsInteger64(attempt), failure, lsDuration(previous))) }")) <$> evaluator f
+            Custom f -> (\name -> E.funcLiteral "(attempt int64, failure LawSpecValue, previous int64) (int64, bool)" [line ("return lsRetryDecision(" ++
+              name ++ "(symbols, lsInteger64(attempt), failure, lsDuration(previous)))")]) <$> evaluator f
             _ -> pure (line "nil")
-          pure (line "&lawSpecRetry" <> D.block 8 (D.joinWith D.hardline
-            [ line ("Strategy: " ++ show (kind :: String) ++ ",")
-            , line ("Delay: " ++ show (delay :: Integer) ++ ", Step: " ++ show (step :: Integer) ++ ", Factor: " ++ show (factor :: Integer) ++ ", Cap: " ++ show (cap :: Integer) ++ ",")
-            , line ("Attempts: " ++ show (retryAttempts r) ++ ",")
-            , line ("Jitter: " ++ show (jitterName (retryJitter r)) ++ ",")
-            , line "When: " <> condition <> line ","
-            , line "Decide: " <> decide <> line "," ]))
-      pure (line "lawSpecStagePolicy" <> D.block 8 (D.joinWith D.hardline
-        [ line ("Stage: " ++ show (policyStage policy) ++ ",")
-        , line "Retry: " <> retry <> line ","
-        , line ("Timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",")
-        , line ("Key: " ++ show key ++ ",")
-        , line "Gates: []lawSpecGate" <> D.block 8 (D.joinWith D.hardline [gate <> line "," | gate <- gates]) <> line ","
-        , line ("Cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
-        , line ("Wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",")
-        , line "Fail: " <> fail' <> line ","
-        , line "Compensate: " <> compensate <> line ","
-        , line ("Hedge: " ++ maybe "nil" (\h -> "&lawSpecHedge{Delay: " ++ show (hedgeDelay h) ++ ", Most: " ++ show (hedgeMost h) ++ "}") (policyHedge policy) ++ ",") ]))
+          pure (E.keyed "&lawSpecRetry"
+            [ ("Strategy", E.quoted kind)
+            , ("Delay", line (show (delay :: Integer)))
+            , ("Step", line (show (step :: Integer)))
+            , ("Factor", line (show (factor :: Integer)))
+            , ("Cap", line (show (cap :: Integer)))
+            , ("Attempts", line (show (retryAttempts r)))
+            , ("Jitter", E.quoted (jitterName (retryJitter r)))
+            , ("When", condition)
+            , ("Decide", decide) ])
+      pure (E.keyed "lawSpecStagePolicy"
+        [ ("Stage", E.quoted (policyStage policy))
+        , ("Retry", retry)
+        , ("Timeout", line (show (maybe (-1) id (policyTimeout policy))))
+        , ("Key", E.quoted key)
+        , ("Gates", if null gates then line "[]lawSpecGate{}" else line "[]lawSpecGate" <> D.block 8 (D.joinWith D.hardline [gate <> line "," | gate <- gates]))
+        , ("Cache", line (show (maybe (-1) id (policyCache policy))))
+        , ("Wraps", line (if null (policyFailures policy) then "false" else "true"))
+        , ("Fail", fail')
+        , ("Compensate", compensate)
+        , ("Hedge", maybe (line "nil") (\h -> line ("&lawSpecHedge{Delay: " ++ show (hedgeDelay h) ++ ", Most: " ++ show (hedgeMost h) ++ "}")) (policyHedge policy)) ])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do
@@ -378,12 +388,12 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
         pure (gateDoc "bulkhead" (start ++ "(symbols, " ++ n ++ ", lsInteger64(now))") (admit ++ "(symbols, " ++ n ++ ", state, lsInteger64(now))")
           (Just (release ++ "(symbols, state)")) (waitCode (bulkheadWait b)))
       pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
-    gateDoc kind start admit finish wait = line "lawSpecGate" <> D.block 8 (D.joinWith D.hardline
-      [ line ("Kind: " ++ show (kind :: String) ++ ",")
-      , line ("Start: func(now int64) LawSpecValue { return " ++ start ++ " },")
-      , line ("Admit: func(state LawSpecValue, now int64) LawSpecValue { return " ++ admit ++ " },")
-      , line ("Finish: " ++ maybe "nil" (\f -> "func(state LawSpecValue, now int64, succeeded bool) LawSpecValue { return " ++ f ++ " }") finish ++ ",")
-      , line ("Wait: " ++ show (wait :: Integer) ++ ",") ])
+    gateDoc kind start admit finish wait = E.keyed "lawSpecGate"
+      [ ("Kind", E.quoted (kind :: String))
+      , ("Start", E.funcLiteral "(now int64) LawSpecValue" [line ("return " ++ start)])
+      , ("Admit", E.funcLiteral "(state LawSpecValue, now int64) LawSpecValue" [line ("return " ++ admit)])
+      , ("Finish", maybe (line "nil") (\f -> E.funcLiteral "(state LawSpecValue, now int64, succeeded bool) LawSpecValue" [line ("return " ++ f)]) finish)
+      , ("Wait", line (show (wait :: Integer))) ]
     integers numbers = intercalate ", " ["lsInteger64(" ++ show n ++ ")" | n <- numbers]
     waitCode wait = case wait of
       Nothing -> -2

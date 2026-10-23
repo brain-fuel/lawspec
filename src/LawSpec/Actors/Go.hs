@@ -208,8 +208,8 @@ remoteText bits datas a (Just hs) = do
     , "// waits up to timeout, then fails with LawSpecUnreachable."
     , "func Connect" ++ cls ++ "(node *LawSpecNode, address string, timeout time.Duration) " ++ cls ++ "Remote {"
     , "\treturn " ++ cls ++ "Remote{node.RemoteActor(address, map[string]LawSpecSignature{" ] ++
-    [ "\t\t" ++ show (handlerName h) ++ ": {" ++ descriptors ds ++ ", LawSpecDescriptor(" ++ show r ++ ")},"
-    | (h, ds, r) <- hs ] ++
+    -- gofmt aligns these one-line values in a column.
+    aligned "\t\t" [(show (handlerName h) ++ ":", "{" ++ descriptors ds ++ ", LawSpecDescriptor(" ++ show r ++ ")},") | (h, ds, r) <- hs] ++
     [ "\t}, lawSpecActorTypes, timeout)}"
     , "}" ] ++ concat methods
   where
@@ -266,6 +266,11 @@ remoteText bits datas a (Just hs) = do
           , "\treturn err"
           , "}" ]
 
+-- | Lines of a key (or field name) and its value, the values in a column.
+aligned :: String -> [(String, String)] -> [String]
+aligned indent pairs = [indent ++ k ++ replicate (width - length k + 1) ' ' ++ v | (k, v) <- pairs]
+  where width = maximum (0 : map (length . fst) pairs)
+
 replace :: String -> String -> String -> String
 replace old new s = case s of
   [] -> []
@@ -279,9 +284,9 @@ supervisorText s =
   [ ""
   , "// " ++ cls ++ " is supervisor " ++ supervisionName s ++ ": " ++ strategyText ++ ", at most " ++
       show (supervisionRestarts s) ++ " restarts in " ++ show (supervisionPeriod s) ++ "µs."
-  , "type " ++ cls ++ " struct {"
-  , "\tsupervisor *LawSpecSupervisor" ] ++
-  [ "\t" ++ capitalize name ++ " " ++ childClass child | (_, name, child) <- supervisionChildren s ] ++
+  , "type " ++ cls ++ " struct {" ] ++
+  -- gofmt aligns a struct's field types in a column.
+  aligned "\t" (("supervisor", "*LawSpecSupervisor") : [(capitalize name, childClass child) | (_, name, child) <- supervisionChildren s]) ++
   [ "}"
   , ""
   , "// Start" ++ cls ++ " starts the supervisor and its children."

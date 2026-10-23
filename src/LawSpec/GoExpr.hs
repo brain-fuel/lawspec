@@ -1,7 +1,7 @@
 -- | Go expression documents for checked Core, shared by definitions and properties.
 module LawSpec.GoExpr
   ( renderExpression, renderExpressionWithContext, scalarLiteral, textLiteral, call, array, quoted, runeLiteral
-  , declare, identifiers, generatedHeader, goHeaderDoc, condition
+  , declare, identifiers, generatedHeader, goHeaderDoc, condition, keyed, funcLiteral
   ) where
 
 import LawSpec.Core
@@ -106,6 +106,25 @@ condition doc
                      | otherwise -> go stack '{' more
           c : more -> go stack c more
 
+-- | A keyed composite literal, Type{ Key: value, ... }, one field a line.
+-- gofmt aligns the values of consecutive one-line fields in a column; a
+-- field whose value spans lines stands alone. An empty literal is Type{}.
+keyed :: String -> [(String, D.Doc)] -> D.Doc
+keyed ty [] = D.text (ty ++ "{}")
+keyed ty fields = D.text (ty ++ "{") <> D.nest 8 (mconcat (map (D.hardline <>) (concatMap run (groups fields)))) <> D.hardline <> D.text "}"
+  where
+    oneLine value = '\n' `notElem` D.render D.Compact value
+    groups [] = []
+    groups xs@((_, v) : _) | oneLine v = let (single, rest) = span (oneLine . snd) xs in single : groups rest
+    groups (x : rest) = [x] : groups rest
+    run entries = let width = maximum (map (length . fst) entries) in
+      [ D.text (key ++ ":" ++ replicate (if length entries > 1 then width - length key + 1 else 1) ' ') <> value <> D.text ","
+      | (key, value) <- entries ]
+
+-- | A function literal whose body spans lines, so gofmt keeps it as it is.
+funcLiteral :: String -> [D.Doc] -> D.Doc
+funcLiteral signature body = D.text ("func" ++ signature ++ " ") <> D.block 8 (D.joinWith D.hardline body)
+
 -- | The identifiers Go code mentions, outside string, rune and raw literals
 -- and comments.
 identifiers :: String -> [String]
@@ -132,9 +151,15 @@ call :: String -> [D.Doc] -> D.Doc
 -- also keeps nested function-literal blocks at the correct lexical indentation.
 call name values = D.text (name ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
 
--- | Lists of runtime values are written in one shape so they wrap like calls.
+-- | Lists of runtime values are written in one shape: on one line when they
+-- fit, otherwise one value a line with a trailing comma, as gofmt keeps them.
 array :: [D.Doc] -> D.Doc
-array values = D.text "[]LawSpecValue{" <> D.joinWith (D.text ", ") values <> D.text "}"
+array values
+  -- A function literal inside keeps the list on its line, so the literal's
+  -- block is indented from that line, as gofmt indents it.
+  | any multiline values = D.text "[]LawSpecValue{" <> D.joinWith (D.text ", ") values <> D.text "}"
+  | otherwise = D.delimitTrailing 8 "[]LawSpecValue{" "}" values
+  where multiline value = '\n' `elem` D.render D.Compact value
 
 -- | Literals become runtime values built from their declared type and exact
 -- digits, so Go never reads a number at its own precision.

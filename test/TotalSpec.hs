@@ -316,7 +316,7 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
         map ownership native `shouldBe` ["generated"]
         map artifactPlacement native `shouldBe` ["source"]
         concatMap artifactContent native `shouldSatisfy` isInfixOf "func (lawSpecDefinitions) Identity"
-        concatMap artifactContent native `shouldSatisfy` isInfixOf "value0 Identity"
+        concatMap artifactContent native `shouldSatisfy` isInfixOf "x Identity"
         concatMap artifactContent [f | f <- files, ownership f == "user"]
           `shouldNotSatisfy` isInfixOf "func Identity"
   it "does not emit Go definition source into an unused empty unit" $ do

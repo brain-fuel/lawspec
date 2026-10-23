@@ -41,5 +41,5 @@ func Slug(value0 string) string {
 
 // Ship implements ship :: (Int32 -> example.matchers::type::Order).
 func Ship(value0 int32) Order {
-	return OrderShipped{Value: Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911{Carrier: "post", Id: value0}}
+	return OrderShipped{Value: ShippedDetails{Carrier: "post", Id: value0}}
 }

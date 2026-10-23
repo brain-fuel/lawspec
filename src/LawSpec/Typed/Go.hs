@@ -234,7 +234,9 @@ emitGoTyped declarations units = do
   where
     functionName d =
       let declaration = definitionDeclaration d
-          pascal = case nameWords (readableDefinitionName (declarationName declaration) (fst (functionType (declarationType declaration)))) of
+          -- An imported definition (lawspec.collections::setOf) by its own name.
+          own = reverse (takeWhile (/= ':') (reverse (declarationName declaration)))
+          pascal = case nameWords (readableDefinitionName own (fst (functionType (declarationType declaration)))) of
             [] -> "Definition"
             ws -> concatMap capitalize ws
       in (if any (`isPrefixOf` pascal) (map helperKind (words "eq cmp to from tonative fromnative")) then "lsfDef" else "lsf") ++ pascal

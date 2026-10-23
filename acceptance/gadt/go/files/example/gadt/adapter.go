@@ -33,7 +33,7 @@ func EvalTruth(value0 Expr[bool]) bool {
 func EvalPair(value0 Expr[Pair[*LawSpecBigInt, bool]]) Pair[*LawSpecBigInt, bool] {
 	both := value0.(ExprBoth[Pair[*LawSpecBigInt, bool]])
 	schema := lawSpecDataSchemaRegistry()
-	payload := lawSpecRecorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365eCodec(schema, 64, lsScalarCodec[*LawSpecBigInt](schema, 64, "Integer"), lsScalarCodec[bool](schema, 64, "Bool")).toNative(both.Value)
+	payload := lawSpecBothDetailsCodec(schema, 64, lsScalarCodec[*LawSpecBigInt](schema, 64, "Integer"), lsScalarCodec[bool](schema, 64, "Bool")).toNative(both.Value)
 
 	return Pair[*LawSpecBigInt, bool]{
 		First:  EvalNumber(payload.First),

@@ -18,7 +18,7 @@ func length(row Row) int64 {
 // Mirror swaps the subtrees of every node.
 func Mirror(value0 Perfect) Perfect {
 	if node, ok := value0.(PerfectNode); ok {
-		return PerfectNode{Value: Recordbf7449c93365b618bf1a5ee73f403facd0ee7b030d813d5e8c718611ac928ef8{Left: Mirror(node.Value.Right), Right: Mirror(node.Value.Left)}}
+		return PerfectNode{Value: NodeDetails{Left: Mirror(node.Value.Right), Right: Mirror(node.Value.Left)}}
 	}
 	return value0
 }
@@ -30,7 +30,7 @@ func Area(value0 Grid) *LawSpecBigInt {
 
 // Duplicate uses a row as both halves.
 func Duplicate(value0 Row) Halves {
-	return Halves{Value: Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d{Back: value0, Front: value0}}
+	return Halves{Value: HalvesDetails{Back: value0, Front: value0}}
 }
 
 // CountPairs groups a row into pairs.

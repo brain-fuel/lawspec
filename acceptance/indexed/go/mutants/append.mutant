@@ -1,6 +1,6 @@
 @@ example/indexed/adapter.go
 <<<<<<<
-	return VecVCons[int8]{Value: Record4715df484a923df1661009999090568502db4ab1a072eddf70dc05c9f83e9cec[int8]{Head: cons.Value.Head, Tail: Append(cons.Value.Tail, value1)}}
+	return VecVCons[int8]{Value: VConsDetails[int8]{Head: cons.Value.Head, Tail: Append(cons.Value.Tail, value1)}}
 =======
 	return Append(cons.Value.Tail, value1)
 >>>>>>>

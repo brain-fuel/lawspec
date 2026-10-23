@@ -16,7 +16,7 @@ func Empty(value0 LawSpecValue) Stack {
 
 // Push puts a value on top of the stack.
 func Push(value0 int8, value1 Stack) PushFlow {
-	return PushFlow{State: StackPush{Value: Recordd055baeeed41ba47fc1e56412cb39424d62fb8f1a3afa343166abc5bf09d2949{Rest: value1, Top: value0}}}
+	return PushFlow{State: StackPush{Value: PushDetails{Rest: value1, Top: value0}}}
 }
 
 // Pop takes the top value; the flow signature guarantees one.

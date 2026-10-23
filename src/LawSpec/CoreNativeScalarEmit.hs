@@ -17,6 +17,7 @@ import qualified LawSpec.JavaTestHelpers as JavaTestHelpers
 import qualified LawSpec.JavaProperties as JavaProperties
 import qualified LawSpec.GoData as GoData
 import qualified LawSpec.GoExpr as GoExpr
+import qualified LawSpec.GoTypeRefs as GoTypeRefs
 import qualified LawSpec.GoTestHelpers as GoTestHelpers
 import qualified LawSpec.GoProperties as GoProperties
 import qualified LawSpec.HaskellData as HaskellData
@@ -40,11 +41,12 @@ import qualified LawSpec.Code.Doc as Doc
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
-import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub)
+import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub, sortOn)
 import Data.Maybe (listToMaybe)
 import Data.Char (toLower, isAlphaNum)
 import qualified Data.Map.Strict as M
-import LawSpec.Naming (claim, scopeWith, localIdentifier, reservedFor, cased, Casing(..), nameWords)
+import LawSpec.Naming (claim, scopeWith, localIdentifier, reservedFor, cased, Casing(..), nameWords, uniqueNames)
+import LawSpec.SourceLink (labelled, sourceLink)
 import LawSpec.Search (lawDescriptors, searchable)
 
 q :: String -> String
@@ -135,7 +137,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     goExpression term | C.AllPayloads _ _ <- C.expressionNode term = True
     goExpression term = goCustom (expressionType term) || any goExpression (C.children term)
     goRef = java . GoData.goTypeReference
-    goCodec = replace "schema, bits" ("_lawspecSchema, " ++ show bits) . java . GoData.goCodecWithContext "symbols" dataDeclarations
+    goCodec = replace "schema, bits" ("_lawspecSchema, " ++ goBits) . java . GoData.goCodecWithContext "symbols" dataDeclarations
+    -- A Go test file names the machine width once (lawspecMachineBits).
+    goBits = "lawspecMachineBits"
     goConstruct ty tag fields = "_lawspecSchema.construct(" ++ intercalate ", " [goRef ty,q tag,arr fields,show bits] ++ ")"
     custom (C.Constructor name args) = target == "java" &&
       (any ((== C.Id name) . C.dataId) dataDeclarations || any (\a -> case a of C.TypeArgument t -> custom t; _ -> False) args)
@@ -329,7 +333,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | go = ""
       | kt = ktDocument (KotlinTestHelpers.assertionDoc <> Doc.hardline <> Doc.hardline)
       | otherwise = javaHelperDocument JavaTestHelpers.scalarHelpersDoc
-    goDataHelpers = goDocument (GoTestHelpers.dataHelpersDoc bits goGeneratorDoc)
+    goDataHelpers = goDocument (GoTestHelpers.dataHelpersDoc goScalarsUsed goGeneratorDoc)
     javaHelperDocument doc = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
       (Doc.text "  " <> Doc.nest 2 doc <> Doc.hardline <> Doc.hardline)
     javaDataHelpers = javaHelperDocument (JavaTestHelpers.dataHelpersDoc bits javaGeneratorDoc)
@@ -685,14 +689,14 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           ["Data.Text" | any C.failureMessage (C.unitFailureBindings u)])
       }
     goChecked ty value
-      | goCustom ty = GoExpr.call "_lawspecSchema.validate" [Doc.text (goRef ty),value,Doc.text (show bits),Doc.text "symbols"]
-      | otherwise = GoExpr.call "lsConvert" [GoExpr.quoted (key ty),value,Doc.text (show bits)]
+      | goCustom ty = GoExpr.call "_lawspecSchema.validate" [Doc.text (goRef ty),value,Doc.text goBits,Doc.text "symbols"]
+      | otherwise = GoExpr.call "lsConvert" [GoExpr.quoted (key ty),value,Doc.text goBits]
     goNativeArgument ty value
       | not (null adapterBindings) = GoExpr.call (goCodec ty ++ ".toNative") [value]
       | goCustom ty = GoExpr.call (goCodec ty ++ ".toNative") [value]
       | ty == Named "Unit" = value
       | Nothing <- nativeRepresentation target (key ty) = GoExpr.call "lsClone" [goChecked ty value]
-      | otherwise = GoExpr.call "lsToNative" [GoExpr.quoted (key ty),value,Doc.text (show bits)] <>
+      | otherwise = GoExpr.call "lsToNative" [GoExpr.quoted (key ty),value,Doc.text goBits] <>
           Doc.text (".(" ++ nativeArg ty ++ ")")
     -- Ability interfaces take concrete native units. Unbound adapter stubs
     -- retain their existing logical-unit parameter convention.
@@ -704,8 +708,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | ty == Named "Unit" = Doc.text "func() LawSpecValue " <> Doc.block 8
           (invocation <> Doc.hardline <> Doc.text "return lsAbsent(\"Unit\")") <> Doc.text "()"
       | not (null adapterBindings) = GoExpr.call (goCodec ty ++ ".fromNative") [invocation]
-      | otherwise = GoExpr.call "lsFromNative" [GoExpr.quoted (key ty),invocation,Doc.text (show bits)]
-    goRender term = java (GoExpr.renderExpression dataDeclarations bits "_lawspecSchema" goLocal goExternal term)
+      | otherwise = GoExpr.call "lsFromNative" [GoExpr.quoted (key ty),invocation,Doc.text goBits]
+    goRender term = java (GoExpr.renderExpressionWithContext dataDeclarations (Doc.text goBits) "_lawspecSchema"
+      (fmap Doc.text . GoTypeRefs.goTypeReference) (pure . GoExpr.quoted . GoTypeRefs.goDataKey) goLocal goExternal term)
     -- Go locals keep their source names (LawSpec.Naming), each law's
     -- distinct within it.
     goLocal identity = M.findWithDefault (localName identity) identity goLocals
@@ -724,7 +729,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       V.DataValue ty tag fields -> do
         rendered <- mapM goValueLiteral fields
         pure (GoExpr.call "_lawspecSchema.construct"
-          [Doc.text (goRef ty),GoExpr.quoted (C.idText tag),GoExpr.array rendered,Doc.text (show bits),Doc.text "symbols"])
+          [Doc.text (goRef ty),GoExpr.quoted (C.idText tag),GoExpr.array rendered,Doc.text goBits,Doc.text "symbols"])
       V.PresenceValue ty payload -> do
         rendered <- traverse goValueLiteral payload
         pure (GoExpr.call "lsPresent" [GoExpr.quoted (key ty),
@@ -732,6 +737,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     goProperties = GoProperties.Config
       { GoProperties.packageName = last parts
       , GoProperties.local = goLocal
+      , GoProperties.adapterWrappers = [doc | (_, (_, _, doc)) <- goAdapterWrappers]
+      , GoProperties.scalarsUsed = goScalarsUsed
       , GoProperties.schemaNeeded = goSchemaNeeded
       , GoProperties.awaitResult = awaitFor
       , GoProperties.constructorContracts = hasConstructorContracts dataDeclarations
@@ -798,12 +805,47 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     goHandler ability = Doc.text ("lsHandler(symbols, " ++ q (C.abilityKey ability) ++ ").(" ++
       maybe "any" interfaceName (abilityNamed ability) ++ ")")
     goConstruct' ty tag fields
-      | goCustom ty = GoExpr.call "_lawspecSchema.construct" [Doc.text (goRef ty),GoExpr.quoted tag,GoExpr.array fields,Doc.text (show bits),Doc.text "symbols"]
+      | goCustom ty = GoExpr.call "_lawspecSchema.construct" [Doc.text (goRef ty),GoExpr.quoted tag,GoExpr.array fields,Doc.text goBits,Doc.text "symbols"]
       | otherwise = GoExpr.call "lsConstruct" [GoExpr.quoted (key ty),GoExpr.quoted tag,GoExpr.array fields]
     goEqual ty a b
-      | goCustom ty = GoExpr.call "_lawspecSchema.equal" [Doc.text (goRef ty),a,b,Doc.text (show bits),Doc.text "symbols"]
+      | goCustom ty = GoExpr.call "_lawspecSchema.equal" [Doc.text (goRef ty),a,b,Doc.text goBits,Doc.text "symbols"]
       | otherwise = GoExpr.call "lsTruth" [GoExpr.call "lsBinary" [GoExpr.quoted "==",a,b]]
     -- An adapter that fails with E: its native code panics with LawSpecFail.
+    goAdapterCall n resultType typed = goFailing n (goNativeResult resultType (awaitFor n (GoExpr.call (goAdapterName n)
+      (map goHandler (usesOf n) ++ [goNativeArgument ty v | (ty,v) <- typed]))))
+    -- Each adapter the unit's laws call, at each type it is called at, is
+    -- wrapped once: lawspec<Adapter> takes logical values, converts them to
+    -- the adapter's native types and its result back. Calls the scan misses
+    -- convert in place.
+    goAdapterUses = sortOn (\(n, _, _) -> length (takeWhile ((/= n) . fst) adapterFunctions)) $ nub [ (declarationName identity, map expressionType args, expressionType term)
+      | e <- ls, root <- C.propertyExpressions (original e), term <- goUniverse root
+      , C.ExternalCall identity args <- [C.expressionNode term]
+      , identity `notElem` map fst definitions, declarationName identity `notElem` map contractName (contracts u)
+      , declarationName identity `elem` map fst adapterFunctions ]
+    goUniverse term = term : concatMap goUniverse (C.children term)
+    -- The scalars a test file's data strategies can meet: those in the data
+    -- declarations' fields, the adapters' types and the laws' inputs and
+    -- expressions. Only their generators are written.
+    goScalarsUsed = nub (concatMap goScalarsIn
+      ([C.binderType f | d <- dataDeclarations, c <- C.dataConstructors d, f <- C.constructorFields c] ++
+       map snd adapterFunctions ++
+       [inputType i | e <- ls, i <- inputs e] ++
+       [expressionType t | e <- ls, root <- C.propertyExpressions (original e), t <- goUniverse root] ++
+       [ty | c <- contracts u, (_, ty) <- contractArguments c ++ [contractResult c]]))
+    goScalarsIn ty = case ty of
+      C.Constructor n args -> [n | n `elem` map primitiveName primitives] ++ concat [goScalarsIn t | C.TypeArgument t <- args]
+      C.Arrow a b -> goScalarsIn a ++ goScalarsIn b
+      _ -> []
+    goAdapterWrappers = zipWith (\(n, argTypes, resultType) name ->
+        let parameters = ["value" ++ show i | i <- [0 .. length argTypes - 1]]
+            body = goAdapterCall n resultType (zip argTypes (map Doc.text parameters))
+            contextual = "symbols" `elem` GoExpr.identifiers (Doc.render Doc.Compact body)
+            link = listToMaybe [l | d <- C.unitDeclarations u, C.declarationName d == n, Just l <- [sourceLink (C.declarationOrigin d)]]
+            doc = Doc.text ("// " ++ labelled (name ++ " calls the adapter " ++ goAdapterName n ++ " on logical values") link ++ ".") <> Doc.hardline <>
+              Doc.text ("func " ++ name ++ "(" ++ intercalate ", " (["symbols map[string]*lawSpecSymbol" | contextual] ++ [p ++ " LawSpecValue" | p <- parameters]) ++ ") LawSpecValue ") <>
+              Doc.block 8 (Doc.text "return " <> body)
+        in ((n, argTypes, resultType), (name, contextual, doc)))
+      goAdapterUses (uniqueNames ["lawspec" ++ cap n | (n, _, _) <- goAdapterUses])
     goFailing n call = goFailingAs [a | a@(C.AbilityRef _ [_]) <- failuresOf n] call
     goFailingAs failing call = case failing of
       ability@(C.AbilityRef _ [failure]) : _ ->
@@ -866,8 +908,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
           then GoExpr.call ("_lawspec_call_" ++ n) (Doc.text "symbols" : [goChecked ty v | (ty,v) <- typed])
-          else goFailing n (goNativeResult (expressionType term) (awaitFor n (GoExpr.call (goAdapterName n)
-            (map goHandler (usesOf n) ++ [goNativeArgument ty v | (ty,v) <- typed]))))
+          else case lookup (n, map expressionType args, expressionType term) goAdapterWrappers of
+            -- An adapter the laws call goes through its wrapper.
+            Just (wrapper, contextual, _) -> GoExpr.call wrapper ([Doc.text "symbols" | contextual] ++ values)
+            Nothing -> goAdapterCall n (expressionType term) typed
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (GoExpr.call "lsWithHandlers" [Doc.text "symbols",

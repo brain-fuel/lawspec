@@ -234,15 +234,21 @@ goMailboxes bits datas unit boxes = do
         , "}"
         , ""
         , "// New" ++ name ++ " makes an empty mailbox."
-        , "func New" ++ name ++ "() " ++ name ++ " { return " ++ name ++ "{box: NewLawSpecMailbox()} }"
+        , "func New" ++ name ++ "() " ++ name ++ " {"
+        , "\treturn " ++ name ++ "{box: NewLawSpecMailbox()}"
+        , "}"
         , ""
         , "// Close refuses later sends; messages already sent can still be received."
-        , "func (m " ++ name ++ ") Close() { m.box.Close() }" ]
+        , "func (m " ++ name ++ ") Close() {"
+        , "\tm.box.Close()"
+        , "}" ]
       remote <- case wire of
         Nothing -> pure
           [ ""
           , "// Send queues value without waiting; it fails once the mailbox is closed."
-          , "func (m " ++ name ++ ") Send(value " ++ native ++ ") error { return m.box.Send(value) }"
+          , "func (m " ++ name ++ ") Send(value " ++ native ++ ") error {"
+          , "\treturn m.box.Send(value)"
+          , "}"
           , ""
           , "// Receive is the next message, waiting up to timeout (forever when zero); it"
           , "// fails on timeout, or once closed and empty."
@@ -329,7 +335,9 @@ goMailboxes bits datas unit boxes = do
             , ""
             , "// Send sends value and waits until the mailbox has it, or fails with"
             , "// LawSpecUnreachable."
-            , "func (s " ++ name ++ "Sender) Send(value " ++ native ++ ") error { return s.remote.Send(" ++ logical ++ ") }" ]
+            , "func (s " ++ name ++ "Sender) Send(value " ++ native ++ ") error {"
+            , "\treturn s.remote.Send(" ++ logical ++ ")"
+            , "}" ]
       pure (local ++ remote)
     replaceAll old new s = case s of
       [] -> []

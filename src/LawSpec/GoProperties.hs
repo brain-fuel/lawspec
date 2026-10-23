@@ -21,6 +21,10 @@ data Config = Config
   { packageName :: String
   -- Each binder's Go name: its source name (LawSpec.Naming).
   , local :: C.Id -> String
+  -- The wrappers of the adapters the laws call (lawspec<Adapter>).
+  , adapterWrappers :: [D.Doc]
+  -- The scalar types whose generators data strategies may ask for.
+  , scalarsUsed :: [String]
   -- An async adapter's call, awaited.
   , awaitResult :: String -> D.Doc -> D.Doc
   , schemaNeeded :: Bool
@@ -56,6 +60,10 @@ separate = D.joinWith (D.hardline <> D.hardline)
 block = D.block 8
 call = E.call
 quoted = E.quoted
+-- | The machine width, named once per test file.
+bitsDoc :: D.Doc
+bitsDoc = D.text "lawspecMachineBits"
+
 number :: Show a => a -> D.Doc
 number = text . show
 returned x = text "return " <> x
@@ -99,15 +107,21 @@ emitTests Config{..} unit laws = do
   let refinedOnly e = not (constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
         || any (structural . inputType) (inputs e)) && (any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract")
       needsRapid = schemaNeeded || harnessed || any (\e -> finiteCases e == Nothing && not (refinedOnly e)) laws
+      definitionsDocs = [Helpers.dataHelpersDoc scalarsUsed generator | schemaNeeded] ++
+        adapterWrappers ++ map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)
+      -- rapid is imported where the tests draw with it; LAWSPEC_SEED still
+      -- seeds it for a harnessed unit's runtime.
+      usesRapid = "rapid" `elem` E.identifiers (D.render D.Compact (D.joinWith D.hardline definitionsDocs))
       importDoc = text "import (" <> D.nest 8 (D.hardline <>
         statements ([quoted "flag" | needsRapid] ++ [quoted "fmt" | schemaNeeded] ++ [quoted "os" | needsRapid || sharing || orderRandom || parallel] ++
           [quoted "testing" | not (null laws)]) <>
-        (if needsRapid then D.hardline <> D.hardline <> quoted "pgregory.net/rapid" else mempty)) <>
+        (if usesRapid then D.hardline <> D.hardline <> quoted "pgregory.net/rapid" else mempty)) <>
         D.hardline <> text ")"
   pure $ separate ([E.generatedHeader (unitSourceFile unit) <> D.hardline <> D.hardline <> text ("package " ++ packageName)] ++
-    [importDoc | schemaNeeded || not (null laws)] ++ [seedDoc | needsRapid] ++ [clockDoc] ++ [testMainDoc | sharing || orderRandom || parallel] ++
-    [Helpers.dataHelpersDoc machineBits generator | schemaNeeded] ++
-    map contract (contracts unit) ++ bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)) <> D.hardline
+    [importDoc | schemaNeeded || not (null laws)] ++
+    [text "// The machine profile's integer width." <> D.hardline <> text ("const lawspecMachineBits = " ++ show machineBits)] ++
+    [seedDoc | needsRapid] ++ [clockDoc] ++ [testMainDoc | sharing || orderRandom || parallel] ++
+    definitionsDocs) <> D.hardline
   where
     inputId = local . C.binderId . C.quantifiedBinder
     fromValues xs = [Declare (inputId input) (text ("values[" ++ show index ++ "]")) | (index,input) <- zip [0::Int ..] xs]
@@ -179,9 +193,7 @@ emitTests Config{..} unit laws = do
     -- LAWSPEC_SEED fixes rapid's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
     seedDoc = text "func init() " <> block (text "if seed := os.Getenv(\"LAWSPEC_SEED\"); seed != \"\" " <>
-      block (text "_ = flag.Set(\"rapid.seed\", seed)")) <> D.hardline <> D.hardline <>
-      -- A harnessed unit whose laws draw nothing still seeds rapid.
-      text "var _ = rapid.Check"
+      block (text "_ = flag.Set(\"rapid.seed\", seed)"))
     -- Workflows wait on a virtual clock under test; where a law installs a
     -- Clock handler, workflows and mailboxes read it (lawspec.time's
     -- LawSpecRegisterClock, in this package's copy of the default handlers).
@@ -312,7 +324,7 @@ emitTests Config{..} unit laws = do
           else pure [testFunction (fn ++ "_Property") $ call "rapid.Check" [text "t",
             closure "t *rapid.T" "" $ body ([Declare "seed" (text "rapid.Int32().Draw(t, \"seed\")"),symbols] ++ plainAll (handlerInstalls e) ++
               [Declare (inputId inp) (call "lsSample" [quoted (typeKey (inputType inp)),
-                text (if i == 0 then "int(seed)" else "int(seed)+" ++ show i),number machineBits]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++ resourceDocs e ++ [Plain check])]]
+                text (if i == 0 then "int(seed)" else "int(seed)+" ++ show i),bitsDoc]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++ resourceDocs e ++ [Plain check])]]
       let kinds = map ("_" ++) (take (length exampleDocs) exampleSuffixes) ++ map ("_" ++) (take (length boundaryDocs) boundarySuffixes) ++
             ["_Property" | not (null property)]
           linkedProperty = map (linked (short ++ ", property") lawLink) property
@@ -342,7 +354,7 @@ emitTests Config{..} unit laws = do
               value:_ -> call "rapid.Just" [expr value]
               -- The target is evaluated from the inputs drawn above.
               [] | Just indexed <- generatorIndex plan -> call "lsIndexedDataStrategy"
-                [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
+                [text "_lawspecSchema",reference ty,bitsDoc,number nodeBudget,
                  expr (indexedTarget indexed),
                  -- Go requires trailing commas across lines; keep the table on one line.
                  text "map[string][]string{" <> D.joinWith (text ", ")
@@ -350,7 +362,7 @@ emitTests Config{..} unit laws = do
                    | (tag,texts) <- indexedEquations indexed] <> text "}",
                  text "_lawspecScalarGenerator"]
               [] -> call "lsCheckedDataStrategyWithAttempts" $
-                [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,number (maxAttempts (generation e)),
+                [text "_lawspecSchema",reference ty,bitsDoc,number nodeBudget,number (maxAttempts (generation e)),
                  text "symbols",E.array (seeds ++ hints),scalar] ++
                 [text "lawSpecNativeFactories()" | nativeGenerators]
             suffix = if nativeGenerators || null (requiredSymbol plan) then text ".requireValue()" else mempty
@@ -407,7 +419,7 @@ emitTests Config{..} unit laws = do
           prior = take index (inputs e)
           bounds = text "[]lawSpecBound{" <> D.joinWith (text ", ")
             [text "{" <> quoted op <> text ", " <> expr v <> text "}" | (op,v) <- domainBounds plan] <> text "}"
-          candidates = call "lsDomainCandidates" [quoted (typeKey (inputType inp)),text "seed",number machineBits,
+          candidates = call "lsDomainCandidates" [quoted (typeKey (inputType inp)),text "seed",bitsDoc,
             bounds,E.array (seeds ++ map expr (generatorHints plan))]
           seedFn = closure "values []LawSpecValue, seed int" "[]LawSpecValue"
             (body (fromValues prior ++ [Plain (returned candidates)]))
