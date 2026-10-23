@@ -854,7 +854,7 @@
     "src/LawSpec/DotNet/Properties.hs": "c39d475c0d55bee190348c79d70f7fde80d541123a91e8a118159d2b9ddb345b",
     "src/LawSpec/DotNet/Remote.hs": "28620124dc08d438b63aa7f9ad81482b9193094bb80d71ed07d367f7b2418bd1",
     "src/LawSpec/DotNet/Sessions.hs": "d6d5948bd67e5938231e06c569f868944906a9078333c401097d75344544dd3d",
-    "src/LawSpec/DotNetSources.hs": "c12a5083bb6e9d4806c11df61cb8d096bb8ba76fc7269ba4ad504f832691a3a2",
+    "src/LawSpec/DotNetSources.hs": "3c6fde79d45bca1184ff826601cc2fa11443c1e3aa0229995c606d42761243ee",
     "src/LawSpec/Elaboration.hs": "74e2481fcaf88e484e344b40322736552f88af9735f0aa92ab86fb506ab909f2",
     "src/LawSpec/ElixirCode.hs": "822f0a758f9b148e6b421f51e26975311c92e5438190c0b455eb84e667e7a01e",
     "src/LawSpec/ElixirNative.hs": "877b30fcc03f481470b1b5b04485c8da53eee15caa7a94e2edff5a5667c22046",
@@ -990,7 +990,7 @@
     "src/LawSpec/Swift/Properties.hs": "37957f4f245f0709e8a077378179d5c67d1919f487184c6480e2f53710c9cd89",
     "src/LawSpec/Swift/Remote.hs": "8b2e431edd950c1a3f52a3724e95638e94503ccf6b19162cb430bf5d8d1e55a1",
     "src/LawSpec/Swift/Sessions.hs": "ce467f4dbf948de8834fb61855721e6cff85c55b81fdb14adf599f03de03f4a7",
-    "src/LawSpec/SwiftSources.hs": "f7a8ac929b53536705a06817f53e00c92a4d3f8b9d423275413906cc2bf3a1f3",
+    "src/LawSpec/SwiftSources.hs": "c874631da7f477b4515916fd76b110ac30d2c8d73e5e4bd4e133e5881bac4847",
     "src/LawSpec/TargetNames.hs": "f97f4fba7f33fed9d3b30670bae56693fe258308c7b0fac251ac7b8a48bb30d4",
     "src/LawSpec/Targets.hs": "ad9c43ac022ae6d79d84bd2433fec699360ca6111809443bca1829d2b6f192d0",
     "src/LawSpec/Temporal.hs": "68ad4fca89f75476030428edf5d1d22f868605b07f1ee59f2641025b5cab1c00",
@@ -1023,9 +1023,9 @@
     "wasm/cabal.project": "91ad752c055a034fff42bf1815125ce2174630a41859fe8d5c571e9a12e50b7d",
     "wasm/cabal.project.freeze": "e067df77442b8111c97b3f12cc215af5ca69668aa65f95f3ff90110c22933170",
     "wasm/lawspec-wasm.cabal": "f83f1757aeedaa3630e3b427941713d030da467a0dc2211bde08c10ba0be5059",
-    "npm/core.wasm": "add45947f8b57779bc072a1a72f3a2e11e30064fb21edcdf35c6d98e45694851",
+    "npm/core.wasm": "2790d1742e0109693991a726f1d17f204e203ef28088cb683178d30e85c915ff",
     "npm/core_jsffi.js": "f50c6a1229b99e42f6940caaada5ffdae0847bd558b0e9d0fe17554b9f39a6a9",
     "npm/api.mjs": "fd40ec7034402e4456504182d80e2e97f535713ae5d227ffad6456fa9091f59b",
-    "npm/index.d.ts": "9afa9a638e981435c0af99b43d3c728aa3a9caf984628cf665370294d3d654af"
+    "npm/index.d.ts": "49b088786e08eeaf6916689823054f0c64ed08e695bbb07c0e1a076a67e71f8b"
   }
 }
