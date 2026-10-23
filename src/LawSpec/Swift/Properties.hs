@@ -24,6 +24,7 @@ import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.BeamGenerators as BeamGenerators
 import qualified LawSpec.BeamProperties as BeamProperties
 import Control.Monad (forM, foldM)
+import Data.Char (isDigit)
 import Data.List (nub, intercalate)
 
 -- | The root suites: the serialized one every unit's laws run in, one at a
@@ -368,14 +369,19 @@ generators bits plan external local planned = walk [] (generatorRequirements pla
       in pure' "Gens" "bind" [selector, Lambda [(name, tInt)] genTy
            (Invoke (pure' "Gens" "nth" [Var name, ListOf (Ty "[() throws -> Gen<Value>]") branches]) [])]
 
--- | A strategy draw's place, written short (from is b, rest r, such that
--- s): unique within its law, so a nested draw never hides an outer one.
+-- | A strategy draw's name: its depth among the strategy's nested draws.
+-- A draw is inside only draws of lesser depth, so no draw hides another
+-- it reads; siblings may share a name.
 shortPath :: String -> String
-shortPath p = case p of
-  'f' : 'r' : 'o' : 'm' : rest -> 'b' : shortPath rest
-  'r' : 'e' : 's' : 't' : rest -> 'r' : shortPath rest
-  c : rest -> c : shortPath rest
-  [] -> []
+shortPath p = show (depth (dropWhile isDigit p) :: Int)
+  where
+    depth s = case s of
+      'f' : 'r' : 'o' : 'm' : rest -> 1 + depth rest
+      'r' : 'e' : 's' : 't' : rest -> 1 + depth rest
+      's' : rest -> 1 + depth rest
+      'f' : rest -> 1 + depth (dropWhile isDigit rest)
+      _ : rest -> depth rest
+      [] -> 0
 
 -- | The application's generators bound in lawspec.json, by type: each
 -- factory gives a generator of native values, which its type's codec makes
