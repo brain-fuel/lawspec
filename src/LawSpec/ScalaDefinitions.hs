@@ -72,8 +72,8 @@ emitScalaDefinitions layout bits declarations units = do
       ([], [], []) -> pure []
       (adapters, operations, scoped) -> do
         -- A spec handler a body installs with handle ... with h end.
-        let made = [ D.text ("def " ++ Jvm.kotlinHandlerBridge h ++ "(symbols: " ++ Native.symbolsType ++ "): Object = " ++
-                       abilitiesObject o ++ "." ++ specName x ++ "(symbols)")
+        let made = [ L.equalsBody (L.parameters (D.text ("def " ++ Jvm.kotlinHandlerBridge h)) [D.text ("symbols: " ++ Native.symbolsType)] <> D.text ": Object")
+                       (D.text (abilitiesObject o ++ "." ++ specName x ++ "(symbols)"))
                    | h <- scoped, (o, x) <- take 1 [(o, x) | o <- units, x <- unitHandlers o, handlerId x == h] ]
         -- An operation the shared bodies perform: its handler, from symbols,
         -- through Scala codecs.

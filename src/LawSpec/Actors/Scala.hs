@@ -139,15 +139,15 @@ scalaSource datas wire a = do
           replyType = maybe "Unit" id reply
           next = "LawSpecRuntime.Next[" ++ replyType ++ ", " ++ own ++ "]"
           step = case reply of
-            Just _ -> D.text ("(s: " ++ own ++ ") => ") <> L.block [L.bind "next" call, D.text (next ++ "(next.first, next.second)")]
-            Nothing -> D.text ("(s: " ++ own ++ ") => ") <> L.call next [D.text "()", call]
+            Just _ -> [L.bind "next" call, L.call next [D.text "next.first", D.text "next.second"]]
+            Nothing -> [L.call next [D.text "()", call]]
           name = handlerName h
           signature n result = L.parameters (D.text ("def " ++ n)) (map D.text params) <> D.text (": " ++ result)
       pure $ D.joinWith (D.hardline <> D.hardline)
         [ comment 2 ("Sends " ++ name ++ " and waits for the reply.") <>
-          L.equalsBody (signature name replyType) (L.call ("actor.call[" ++ replyType ++ "]") [step])
+          L.equalsBody (signature name replyType) (L.trailing (D.text ("actor.call[" ++ replyType ++ "]")) ["(s: " ++ own ++ ")"] step)
         , comment 2 ("Sends " ++ name ++ " without waiting for the reply.") <>
-          L.equalsBody (signature ("tell" ++ capital name) "Unit") (L.call "actor.cast" [step]) ]
+          L.equalsBody (signature ("tell" ++ capital name) "Unit") (L.trailing (D.text "actor.cast") ["(s: " ++ own ++ ")"] step) ]
 
 scalaSupervisor :: Supervision -> String
 scalaSupervisor s = D.render L.scalaStyle $

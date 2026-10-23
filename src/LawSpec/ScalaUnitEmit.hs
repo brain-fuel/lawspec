@@ -77,7 +77,7 @@ emitScalaUnit budget nativeGenerators minify dataDeclarations definitions bits u
     -- An async adapter's Future is awaited where it is called.
     awaitFor adapter call
       | adapter `notElem` asyncFunctions u = call
-      | otherwise = Doc.text "scala.concurrent.Await.result(" <> call <> Doc.text ", scala.concurrent.duration.Duration.Inf)"
+      | otherwise = ScalaExpr.call "scala.concurrent.Await.result" [call, Doc.text "scala.concurrent.duration.Duration.Inf"]
     render = java . ScalaExpr.renderExpression dataDeclarations bits localName' scExternal
     scChecked ty = java . ScalaExpr.checked dataDeclarations bits ty
     -- Each codec maker is applied to the declarations once per unit, so its

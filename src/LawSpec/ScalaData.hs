@@ -403,6 +403,7 @@ emitCodecs mappings owner layout declarations = do
     -- case pattern => body, the body on a line of its own, so scalafmt aligns
     -- no arrows.
     arm pattern body = pattern <> D.text " =>" <> D.nest 2 (D.hardline <> body)
+    arrow params body = D.group (D.text (params ++ " =>") <> D.nest 2 (D.softline <> body))
     -- The native codec of any instantiated type, built at run time: a GADT
     -- case's existential fields learn their types from the value's own type.
     dynamicCodec names = do
@@ -452,8 +453,8 @@ emitCodecs mappings owner layout declarations = do
         (L.bind "tpe" (call "LawSpecSchema.Named" [quoted (C.idText (C.dataId declaration))]) <> D.hardline <>
          D.text ("schema.codec[" ++ handleType ++ "](") <> D.nest 2 (D.hardline <> D.joinWith (D.text "," <> D.hardline)
            [D.text "tpe", D.text "bits", D.text "symbols",
-            D.text ("(value: " ++ handleType ++ ") => LawSpecRuntime.handle(LawSpecSchema.key(tpe), value)"),
-            D.text ("(value: LawSpecRuntime.Value) => LawSpecRuntime.handleTarget(value).asInstanceOf[" ++ handleType ++ "]")]) <> D.hardline <> D.text ")"))
+            arrow ("(value: " ++ handleType ++ ")") (D.text "LawSpecRuntime.handle(LawSpecSchema.key(tpe), value)"),
+            arrow "(value: LawSpecRuntime.Value)" (D.text ("LawSpecRuntime.handleTarget(value).asInstanceOf[" ++ handleType ++ "]"))]) <> D.hardline <> D.text ")"))
       where handleType = maybe "scala.Any" id (C.dataNative declaration)
     definition names declaration = do
       name <- maybe (Left "unplanned Scala codec") Right (lookup (C.dataId declaration) names)

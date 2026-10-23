@@ -64,8 +64,12 @@ modelTestArtifacts target bits datas calls u
       (map D.text (splitArguments (takeWhile (/= ')') (drop 1 (dropWhile (/= '(') body)))))]
     -- A Scala callback: ((s, a) => name(args)) as the runtime's interface.
     scCallback body = D.group (D.text "((s, a) =>" <> D.nest 2 (D.softline <> ScalaLayout.call (takeWhile (/= '(') body)
-      (map D.text (splitArguments (takeWhile (/= ')') (drop 1 (dropWhile (/= '(') body)))))) <> D.text "): LawSpecRuntime.ModelCallback")
+      (map D.text (splitArguments (init (drop 1 (dropWhile (/= '(') body)))))) <> D.text "): LawSpecRuntime.ModelCallback")
     scString = ScalaLayout.scalaString
+    -- A Java callback: (s, a) -> name(args), broken after the arrow.
+    jCallback body = case break (== '>') body of
+      (params, '>' : ' ' : call) -> D.group (D.text (params ++ ">") <> D.nest 4 (D.softline <> D.text call))
+      _ -> D.text body
     splitArguments s = case break (== ',') s of
       (a, []) -> [a]
       (a, _ : rest) -> a : splitArguments (dropWhile (== ' ') rest)
@@ -146,10 +150,10 @@ modelTestArtifacts target bits datas calls u
              D.block 2 (D.joinWith D.hardline (
                [ D.group (D.text "var model =" <> D.nest 4 (D.softline <> E.call "new LawSpecRuntime.Model"
                    [ jvmString "java" spec
-                   , array "LawSpecRuntime.ModelCallback" (maybe [] (\(r, f) -> [D.text r, D.text f]) (startCallbacks cs))
-                   , array "LawSpecRuntime.ModelCallback[]" [braces [D.text r, D.text f, D.text (maybe nil id w)] | (r, f, w) <- commandCallbacks cs]
-                   , D.text (maybe nil id (abstractCallback cs))
-                   , array "LawSpecRuntime.ModelCallback" (map D.text (invariantCallbacks cs)) ])) <> D.text ";"
+                   , array "LawSpecRuntime.ModelCallback" (maybe [] (\(r, f) -> [jCallback r, jCallback f]) (startCallbacks cs))
+                   , array "LawSpecRuntime.ModelCallback[]" [braces [jCallback r, jCallback f, maybe (D.text nil) jCallback w] | (r, f, w) <- commandCallbacks cs]
+                   , maybe (D.text nil) jCallback (abstractCallback cs)
+                   , array "LawSpecRuntime.ModelCallback" (map jCallback (invariantCallbacks cs)) ])) <> D.text ";"
                , D.text "LawSpecRuntime.checkModel(model);" ] ++
                [ D.text "LawSpecRuntime.checkModelParallel(model);" | machineShared m ] ++
                [ E.call "LawSpecRuntime.checkScenario" [D.text "model", jvmString "java" (programSpec p)] <> D.text ";" | p <- machineScenarios m ]))
