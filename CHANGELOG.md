@@ -8,6 +8,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.30.0] - 2026-10-23
 
+### Added
+
+- Triple-double-quoted multiline text literals (`"""..."""`) support ordinary
+  quotes within their content and share existing text escapes. Literal
+  whitespace, newlines and Unicode are preserved without implicit indentation
+  removal. Parser recovery, formatting and editor highlighting recognize the
+  same delimiters.
+
 ### Changed
 
 - Acknowledged law mismatches are called **known discrepancies**. Use
@@ -19,6 +27,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   passing checks still fail the run and request review before removing the
   annotation. Concrete execution failures and proof refutations retain their
   meanings, and mandatory definition validation is unchanged.
+
+### Fixed
+
+- Formatting preserves trailing whitespace on the opening line of a multiline
+  literal, retaining its exact text value across repeated formatting.
 
 ## [0.29.2] - 2026-10-22
 

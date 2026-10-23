@@ -333,6 +333,14 @@ DEC-proof-producing-index-layer:
   opened: 0.12.0
   decided: 0.16.0
 
+DEC-triple-quoted-text:
+  status: decided
+  question: How does explicitly delimited multiline text preserve its value?
+  answer: |
+    Triple-double-quoted text uses the existing text escape decoder and preserves literal content, including leading and trailing whitespace, newlines, CRLF and Unicode, without implicit dedentation. Ordinary single- and double-quote characters may appear inside it; three consecutive unescaped double quotes close it. Escape a quote to include that closing sequence in the value. The authoritative parser, lossless token scanner, formatter and editor recognize the same delimiters. Unterminated triples are parse errors and formatting writes nothing. Ordinary text strings retain their existing semantics. This uses the existing Megaparsec parser and source-token infrastructure, without a new proof mechanism or a parallel admission grammar.
+  opened: 0.30.0
+  decided: 0.30.0
+
 DEC-known-discrepancy:
   status: decided
   question: Does an acknowledged law mismatch establish that the implementation is wrong?

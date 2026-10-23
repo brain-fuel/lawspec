@@ -52,6 +52,25 @@ test('a known discrepancy cannot override a compiler proof or mandatory definiti
   assert.ok(invalid.diagnostics.every(d=>d.code!=='parse'));
 });
 
+test('triple-quoted discrepancy reasons preserve their content through formatting and native plans',async()=>{
+  const compiler=await createCompiler();
+  const multiline='Review "the specification"\nand the implementation together.\n  Either or both may need correction.  ';
+  const source=content.replace(`"${reason}"`,'"""'+multiline+'"""');
+  const request={...input,sources:[{path:'mismatch.lawspec',content:source}]};
+  const checked=await compiler.check(request);
+  assert.deepEqual(checked.diagnostics,[]);
+  assert.ok(checked.evidence.find(row=>row.stage==='law').reason.includes(multiline));
+  const formatted=await compiler.format(request);
+  assert.deepEqual(formatted.diagnostics,[]);
+  const again=await compiler.format({...request,sources:formatted.formattedSources});
+  assert.deepEqual(again.formattedSources,formatted.formattedSources);
+  for(const target of programTargets){
+    const plan=await compiler.planGeneration({...request,sources:formatted.formattedSources,target});
+    assert.deepEqual(plan.diagnostics,[],target);
+    assert.equal(plan.tests[0].knownDiscrepancy,multiline,target);
+  }
+});
+
 test('the native harness reports a reproduced discrepancy and requires review when it disappears',async()=>{
   const {knownDiscrepancy,HarnessError}=await import('../../runtime/lawspec_harness.mjs');
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-discrepancy-'));
