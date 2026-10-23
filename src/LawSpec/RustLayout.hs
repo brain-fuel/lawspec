@@ -665,7 +665,12 @@ letDoc binding e =
         value = expr e <> D.text ";"
         sameValue = D.text " " <> value
         nextValue = D.nest 4 (D.hardline <> value)
-    in if shallow e
+        -- (a match whose scrutinee breaks on the let's line goes to the
+        -- next line when its scrutinee is on one line there)
+        matched = case e of
+          Match {} -> True
+          _ -> False
+    in if shallow e || matched
       then head' <> D.prefer (D.NextLineValue (isChain e) (if triedChain e then 2 else 0)) sameValue nextValue sameValue nextValue
       else head' <> sameValue
 
