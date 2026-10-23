@@ -32,7 +32,7 @@ pub async fn settle(value0: i32) -> i32 {
         ls::fail(crate::lawspec_data::PaymentError::Blocked);
     }
     if value0 == 0 {
-        ls::fail(crate::lawspec_data::PaymentError::Declined { value: crate::lawspec_data::Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7 { message: "there is nothing to settle".into() } });
+        ls::fail(crate::lawspec_data::PaymentError::Declined { value: crate::lawspec_data::DeclinedDetails { message: "there is nothing to settle".into() } });
     }
     value0
 }

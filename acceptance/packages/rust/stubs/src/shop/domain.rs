@@ -1,8 +1,8 @@
-// Scaffolded by LawSpec. User-owned; never overwritten.
-#![allow(unused_variables, unused_imports, non_snake_case)]
-use crate::lawspec_runtime as ls;
+// Scaffolded by LawSpec from examples/packages/shop-domain/src/domain.lawspec. User-owned; never overwritten.
 
-// LawSpec: (shop.domain::type::Currency -> (shop.domain::type::Money -> shop.domain::type::Money))
+// convert — examples/packages/shop-domain/src/domain.lawspec:47
+// LawSpec type: shop.domain::type::Currency -> (shop.domain::type::Money ->
+// shop.domain::type::Money)
 pub fn convert(
     value0: crate::lawspec_data::ShopDomainCurrency,
     value1: crate::lawspec_data::Money,

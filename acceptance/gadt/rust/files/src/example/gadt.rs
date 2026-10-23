@@ -27,7 +27,7 @@ pub fn evalTruth(value0: Expr<bool>) -> bool {
 // arrive as checked values, decoded at the types this one implies.
 pub fn evalPair(value0: Expr<Pair<ls::Integer, bool>>) -> Pair<ls::Integer, bool> {
     let Expr::Both { value, .. } = value0 else { unreachable!("not an Expr<Pair>") };
-    let payload: crate::lawspec_data::Recorddf69a8df6c38a0adbe741f620a312261d0d3b0973eba2bc27135c83989a8365e<ls::Integer, bool> =
+    let payload: crate::lawspec_data::BothDetails<ls::Integer, bool> =
         ls::FromValue::from_value(value).expect("a paired expression");
     let first = payload.first;
     let second = payload.second;
