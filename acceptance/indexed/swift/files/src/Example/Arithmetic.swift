@@ -18,7 +18,7 @@ extension Example.Arithmetic {
 
     static func area(_ value0: Grid) -> BigInt { BigInt(length(value0.value.rows) * length(value0.value.columns)) }
 
-    static func duplicate(_ value0: Row) -> Halves { Halves(value: Record90e2e86ad982c9c5e71a6cd286ab605cf2b3d771c37021fb930810c33933eb3d(back: value0, front: value0)) }
+    static func duplicate(_ value0: Row) -> Halves { Halves(value: HalvesDetails(back: value0, front: value0)) }
 
     static func countPairs(_ value0: Row) -> Pairs { Pairs(value: value0) }
 

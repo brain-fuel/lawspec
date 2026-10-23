@@ -9,7 +9,7 @@ module LawSpec.Swift.Code
   ( Ty(..), Expr(..)
   , tValue, tValues, tBool, tVoid, tString, tSchema, tSymbols, tInt, tFun, tArray, tOptional, tGen, tType
   , call, pure', str, longStringLiteral, renderBody, renderStatements, renderExpr, stringLiteral, isInline, throws
-  , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, fileHeader, blockDoc, comment
+  , indentation, swiftLayout, hangValue, intLiteral, closure, brokenList, callDoc, argumentsDoc, arrayDoc, signature, typeDeclaration, sourceDoc, fileHeader, blockDoc, comment
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -19,6 +19,8 @@ import qualified Data.Set as S
 import Data.Char (isAscii)
 import Data.List (intercalate, sort)
 import LawSpec.Code.Literal (literalFor)
+import qualified LawSpec.Core as C
+import LawSpec.SourceLink (labelled, sourceLink)
 
 -- | A Swift type, as written.
 newtype Ty = Ty String deriving (Eq, Show)
@@ -470,7 +472,9 @@ inline e = case e of
     applied (fd <>) args
   ListOf _ xs -> do
     ds <- mapM inline xs
-    pure (arrayDoc ds)
+    -- Many short values (names, numbers) fill each line, as swift-format
+    -- packs them.
+    pure (if length xs > 3 && all atomic xs then packedArray ds else arrayDoc ds)
   TupleOf xs -> do
     ds <- mapM inline xs
     pure (argumentsDoc ds)
@@ -505,6 +509,22 @@ callee f rest = case break (== '.') (reverse f) of
 -- | A generic initializer takes its closure in parentheses.
 trailing :: D.Doc -> Bool
 trailing f = D.render D.Compact f `notElem` ["UncheckedBox"]
+
+-- | A value written as one short token.
+atomic :: Expr -> Bool
+atomic e = case e of
+  Str s -> length s <= 40
+  IntLit _ -> True
+  BoolLit _ -> True
+  Var _ -> True
+  _ -> False
+
+-- | An array whose items fill each line: on one line, or broken after its
+-- opening with as many items a line as fit and a trailing comma.
+packedArray :: [D.Doc] -> D.Doc
+packedArray ds = D.group (D.text "[" <> D.nest indentation (D.softbreak <>
+  D.flow ([d <> D.text "," | d <- init ds] ++ [last ds <> D.whenBroken (D.text ",")])) <>
+  D.softbreak <> D.text "]" <> D.flatReserve 1)
 
 isLambda :: Expr -> Bool
 isLambda e = case e of
@@ -560,6 +580,10 @@ typeDeclaration opening conformances inner =
 -- | A braced block's body on lines of its own.
 blockDoc :: D.Doc -> D.Doc
 blockDoc body = D.text " {" <> D.nest indentation (D.hardline <> body) <> D.hardline <> D.text "}"
+
+-- | A declaration's documentation: what it is, and its source line.
+sourceDoc :: String -> C.Origin -> D.Doc
+sourceDoc label origin = D.lineComment 96 "/// " (labelled label (sourceLink origin))
 
 -- | A line comment, wrapped at the width.
 comment :: String -> D.Doc

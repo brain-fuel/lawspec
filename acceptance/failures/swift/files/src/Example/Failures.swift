@@ -14,7 +14,7 @@ extension Example.Failures {
     static func settle(_ value0: Int32) async throws(PaymentError) -> Int32 {
         await Task.yield()
         if value0 < 0 { throw .blocked }
-        if value0 == 0 { throw .declined(value: Recordf5f10555f6c6efcfede6a1b5b3a543dda5cd98cceb0297c257aa71c41066c7c7(message: "there is nothing to settle")) }
+        if value0 == 0 { throw .declined(value: DeclinedDetails(message: "there is nothing to settle")) }
         return value0
     }
 

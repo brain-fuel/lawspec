@@ -29,5 +29,5 @@ extension Example.Matchers {
         return words.joined(separator: "-")
     }
 
-    static func ship(_ id: Int32) -> Order { .shipped(value: Recordaaeb2c3925832586ac7d5e3c9a9cd234d3a26f7d9d0e264664a4ae58c6f71911(carrier: "post", id: id)) }
+    static func ship(_ id: Int32) -> Order { .shipped(value: ShippedDetails(carrier: "post", id: id)) }
 }

@@ -132,9 +132,11 @@ in `LawSpec.TypedProgram` over the same structs, enums, lists, optionals,
 entry converts only its arguments and result. Bounded integers are Swift's
 own, checked as LawSpec checks them; `Integer` is `BigInt`; `Text` is a
 `String` measured in code points. A self-recursive call in tail position
-becomes a loop. Each function is named for its definition and a digest of its
-identity, so its name survives unrelated edits. `lawspec-dev bench kafka
---typed` lists the definitions that stay dynamic, and why.
+becomes a loop. Each function is named for its definition (`settings`; a
+specialised copy for its definition and argument types, `countListInt32`),
+with `_2` only when two would share a name, so its name survives unrelated
+edits. `lawspec-dev bench kafka --typed` lists the definitions that stay
+dynamic, and why.
 
 ## Spec handlers
 
@@ -219,3 +221,27 @@ their statistics go to `LAWSPEC_STATS`.
 tests with `swift test --filter`, and reads which ran from the xUnit report.
 `--coverage` adds `--enable-code-coverage`. `npx lawspec doctor` checks the
 Swift version and that `Package.swift` declares the two runtime targets.
+
+## Formatting
+
+Output is what `swift-format` (6.3.0, from the Swift toolchain, with its
+default configuration) writes: two-space indentation, 100 columns, sorted
+imports, and a trailing comma after the last item of an array that spans
+lines. A call, an array or a signature that does not fit has one item a
+line, and a closure passed last is a trailing closure. The runtime targets
+are formatted the same way. LawSpec lays the code out itself, so generation
+needs no formatter, and LawSpec's own acceptance checks every generated
+project against `swift format`. `--minify` allows a compact layout.
+
+## Names
+
+Generated code uses the specification's names. A law's inputs and a
+definition's arguments keep their source names in lowerCamelCase, and
+acronyms are lowercased whole (`USD` is the case `usd`). A test is named
+after its law and example: `lawNormalizersAgree_spacesBecomeHyphens`, and
+`_boundary`, `_property`, `_search` for the law's other tests; its
+`@Test` display name is the law's and example's labels. An anonymous record
+is a type named from where it is used: the payload of a `Declined` case is
+`DeclinedDetails`. Each test, law and definition has a comment linking it to
+its source line, assertion messages name the law and example and point at
+the expectation's line, and text is written as Swift string literals.

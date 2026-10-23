@@ -156,7 +156,7 @@ emitEntriesWithLayouts bindings layout bits calls typedCall declarations units =
             (Do pre (Let "result" tValue body (Do post (Var "result")))) validated
           wrapped = call "Runtime" "contextual" [Str (C.idText identity), Lambda [] tValue inner]
           params = ["_ schema: Schema", "_ symbols: SymbolContext"] ++ ["_ " ++ a ++ ": Value" | a <- arguments]
-      pure (D.text ("/// " ++ C.idText identity) <> D.hardline <>
+      pure (sourceDoc (C.idText identity) (C.declarationOrigin declaration) <>
         signature ("public static func " ++ entryFunction declaration) params " throws -> Value" (renderBody tValue wrapped))
     -- The call of an adapter: its arguments to native values, the call, a
     -- typed failure raised as the logical one, and the result back, checked.
@@ -270,7 +270,7 @@ emitApi layout bits declarations units = do
             (Just _, Just fc, True) -> Call "await Embedding.runFailingAsync" [Str (failureKey d), toNative fc, Pure "UncheckedBox" [body]]
             (_, _, True) -> Pure "await Embedding.runAsync" [Pure "UncheckedBox" [body]]
             _ -> Pure "Embedding.run" [body]
-      pure (D.text ("/// " ++ C.idText (C.declarationId d)) <> D.hardline <>
+      pure (sourceDoc (C.idText (C.declarationId d)) (C.declarationOrigin d) <>
         signatureDoc "public static func" (entryName e) params r failure async
           (if void then renderStatements (Statement runner) else renderBody resultTy runner))
     let enumName = last (splitDots (apiName (C.unitId u)))
@@ -291,7 +291,7 @@ emitAdapters layout bits calls declarations units = do
     functions <- fmap (++ stubs) $ forM (unbound u) $ \d -> do
       (params, r, failure, async) <- nativeSignature bits names units d
       let message = "not implemented: " ++ C.idText (C.declarationId d)
-      pure (D.text ("/// " ++ showType (C.declarationType d)) <> D.hardline <>
+      pure (sourceDoc (C.declarationName d ++ " :: " ++ showType (C.declarationType d)) (C.declarationOrigin d) <>
         signatureDoc "static func" (functionName d) params r failure async (callDoc "fatalError" [D.text (stringLiteral message)]))
     let doc = fileHeader "User-owned LawSpec adapter. Implement these functions." [["import LawSpecRuntime"]] <> D.hardline <>
           D.text ("extension " ++ unitQualified (C.unitId u) ++ " {") <> D.nest 2 (D.hardline <>

@@ -6,7 +6,7 @@
 module LawSpec.Swift.Names
   ( pascal, camel, escape, unitNamespace, unitPath, unitQualified, generatedName, apiName
   , adapterPath, functionName, parameterName, dataNames, swiftKeywords, splitDots, testName
-  , handleKey, moduleName, testModuleName, typeParameter, localName, reservedLocals, exampleSuffixes
+  , handleKey, moduleName, testModuleName, typeParameter, localName, reservedLocals, exampleSuffixes, splitDigest
   ) where
 
 import qualified LawSpec.Naming as N
@@ -76,7 +76,7 @@ localName = escape . N.localIdentifier "swift"
 -- | The names generated code binds around a law's or a definition's
 -- values, which a source binder's name must not shadow.
 reservedLocals :: [String]
-reservedLocals = words "schema symbols inputs resources values scoped withResources generation generator result scope native handler argument"
+reservedLocals = words "schema symbols inputs resources values scoped withResources generation generator result scope machineBits"
 
 -- | The suffixes naming a law's example tests (after its name and _): each
 -- example's words in lowerCamelCase, numbered when they repeat or have
@@ -96,6 +96,13 @@ exampleSuffixes budget names = map (filter (/= '_')) $ fst (N.claimAll (N.scopeW
     splitUnderscores s = case break (== '_') s of
       (a, []) -> [a]
       (a, _ : rest) -> a : splitUnderscores rest
+
+-- | A word with a digest on its end (view4c41...) as the word and the
+-- digest.
+splitDigest :: String -> [String]
+splitDigest w = case span isHexDigit (reverse w) of
+  (digest, front@(_ : _)) | length digest >= 16 -> [reverse front, reverse digest]
+  _ -> [w]
 
 -- | The type parameter at a position: T0, T1, ...
 typeParameter :: Int -> String
@@ -135,7 +142,7 @@ functionName d
   where
     name = C.declarationName d
     readable = N.readableDefinitionName name (fst (C.functionType (C.declarationType d)))
-    ws = N.nameWords readable
+    ws = concatMap splitDigest (N.nameWords readable)
     -- An anonymous record's digest reads as record; a clash is numbered
     -- (LawSpec.Swift.Entries). A compiler-made definition (lawspecRecordView)
     -- is named without the lawspec prefix.

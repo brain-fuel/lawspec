@@ -24,11 +24,12 @@ import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc)
+import LawSpec.Swift.Code (stringLiteral, swiftLayout, intLiteral, signature, callDoc, arrayDoc, sourceDoc)
 import qualified LawSpec.Naming as Nm
 import LawSpec.RecordNames (recordDisplayNames)
 import LawSpec.SourceLink (generatedHeader)
-import LawSpec.Swift.Names (dataNames, escape, localName, pascal)
+import LawSpec.Swift.Names (dataNames, escape, localName, pascal, splitDigest)
+import Data.Char (isHexDigit)
 import qualified LawSpec.Swift.Data as Data
 import qualified LawSpec.Swift.Effects as Effects
 
@@ -131,14 +132,15 @@ emitSwiftTyped bits bound allDeclarations units = do
     , swiftTypedPlan = plan }
   where
     functionName d = let declaration = definitionDeclaration d in
-      escape (Nm.cased Nm.Camel (case concatMap shown (dropMade (Nm.nameWords (Nm.readableDefinitionName (declarationName declaration)
-          (map displayed (fst (functionType (declarationType declaration))))))) of
+      escape (Nm.cased Nm.Camel (case concatMap shown (dropMade (concatMap splitDigest (Nm.nameWords (Nm.readableDefinitionName (declarationName declaration)
+          (map displayed (fst (functionType (declarationType declaration)))))))) of
         [] -> ["definition"]
         ws -> ws))
     -- A digest in a compiler-made name (lawspecRecordView<digest>) reads
     -- as its record's display name.
     shown w = case M.lookup (Id ("lawspec::structural::record::" ++ w)) display of
       Just n | length w >= 16 -> Nm.nameWords n
+      _ | length w >= 16, all isHexDigit w -> ["record"]
       _ -> [w]
     dropMade ws = case ws of
       "lawspec" : rest@(_ : _) -> rest
@@ -212,7 +214,7 @@ functionDoc env c d = do
         then [D.text ("var " ++ l ++ " = " ++ l) | l <- reassigned] ++
              [D.text "while true {" <> block body <> D.hardline <> D.text "}"]
         else body
-  pure (D.text ("/// " ++ idText (declarationId declaration)) <> D.hardline <>
+  pure (sourceDoc (idText (declarationId declaration)) (declarationOrigin declaration) <>
     signature ("static func " ++ name) parameters (" throws -> " ++ resultType) (D.joinWith D.hardline bodyDoc))
   where
     loops docs = any (\doc -> "continue" `elem` words (D.render D.Compact doc)) docs

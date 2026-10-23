@@ -13,7 +13,7 @@ import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..))
 import LawSpec.Swift.Code
-import LawSpec.SourceLink (generatedHeader, unitSourceFile)
+import LawSpec.SourceLink (generatedHeader, unitSourceFile, labelled, sourceLink)
 import LawSpec.Swift.Names
 import qualified LawSpec.Swift.Data as Data
 import qualified LawSpec.Swift.Effects as Effects
@@ -49,7 +49,7 @@ emitHandlers layout bits typed declarations units = do
       let cls = pascal (N.specName h)
           (owner, factory) = Effects.specFunction units h
           protocols = [Effects.protocolType a | a <- answered]
-          summary = "The spec handler " ++ C.handlerName h ++ " for " ++ intercalate ", " (map N.displayName answered) ++ "."
+          summary = labelled ("The spec handler " ++ C.handlerName h ++ " for " ++ intercalate ", " (map N.displayName answered)) (sourceLink (C.handlerOrigin h)) ++ "."
           stateful = C.handlerState h /= Nothing
       operations <- fmap concat $ forM answered $ \a -> forM (C.abilityOperations a) $ \(op, ty) -> do
         signature <- Abilities.operationSignature bits names a (op, ty)

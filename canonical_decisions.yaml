@@ -603,6 +603,15 @@ DEC-swift-runtime-from-scratch:
   opened: 0.24.0
   decided: 0.24.0
 
+DEC-swift-readable-output:
+  status: decided
+  question: How is generated Swift made readable?
+  answer: |
+    Generated Swift is laid out as swift-format 6.3.0 (from the Swift toolchain) lays it out with its default configuration, byte for byte (DEC-readable-output-default): two-space indentation and 100 columns; a call, an array, a tuple, a signature or a conformance list that does not fit has one item a line, and any list holding a closure or another multi-line item always does; a closure passed last is a trailing closure (a generic initializer such as UncheckedBox takes it in parentheses); an array of several items ends in a comma when it spans lines, and on one line keeps a column free for that comma, as swift-format measures it (Doc.flatReserve); a value moves after = or return only when its first line does not fit; a qualified call whose name does not fit puts its last member on a line of its own; integer literals are grouped in threes past six digits; conditions lose redundant parentheses; imports are sorted, after the header and a blank line. LawSpec prints this itself; acceptance formats a copy of each project with the pinned swift format and fails on any difference, and the runtime and the Package.swift scaffold are fixed points of it. Names follow DEC-readable-generated-names in lowerCamelCase, with acronyms lowercased whole (usd), keywords in backticks and made values named by what they hold (chosen, argument, codec); a test is the law's name, an underscore and the example's words in lowerCamelCase, cut at a whole word so its declaration fits a line. Text is a Swift string literal (DEC-native-string-literals), and text too long for a line without line breaks of its own (a machine or scenario spec) a multiline literal whose lines end in a backslash, so the value is unchanged. Decided by the owner's readable-output direction of 2026-10-22, for 0.30.0.
+  opened: 0.30.0
+  decided: 0.30.0
+  refs: [swift-format, swift-api-design-guidelines, swift-string-literals]
+
 DEC-swift-property-library:
   status: decided
   question: Every target runs properties on its ecosystem's property library. Which library runs Swift properties, and how do LawSpec's generators and harness sit on it?

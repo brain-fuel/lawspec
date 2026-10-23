@@ -21,6 +21,7 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.Swift.Code
 import LawSpec.SourceLink (generatedHeader, unitSourceFile)
 import LawSpec.Swift.Names
+import LawSpec.RecordNames (isStructuralRecord)
 import qualified LawSpec.Swift.Expr as X
 import qualified LawSpec.BeamGenerators as BeamGenerators
 import LawSpec.NativeBinding (NativeRef(..), ConstructorStyle(..), ResolvedTypeBinding(..), ResolvedConstructorBinding(..), NativeLayout(..), foldNativeLayoutM)
@@ -234,12 +235,11 @@ emitData layout bits bound declarations
         let ps = [(typeParameter i, "t" ++ show i) | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
             tag = stringLiteral (C.idText (C.dataId d))
             (native, made) = case boundOf d of
-              Just b -> (refText (resolvedNativeType b), "Codecs.handle(" ++ tag ++ ", " ++ refText (resolvedNativeType b) ++ ".self)")
-              Nothing -> ("AnyHandle", "Codecs.anyHandle(" ++ tag ++ ")")
-        pure (D.text ("/// " ++ C.idText (C.dataId d)) <> D.hardline <>
-          D.text ("public static func " ++ codecName name ++ genericClause ps ++ "(" ++ intercalate ", " ["_ " ++ v ++ ": Codec<" ++ p ++ ">" | (p, v) <- ps] ++
-            ") -> Codec<" ++ native ++ "> {") <> D.nest 2 (D.hardline <> D.text made) <>
-          D.hardline <> D.text "}")
+              Just b -> (refText (resolvedNativeType b), callDoc "Codecs.handle" [D.text tag, D.text (refText (resolvedNativeType b) ++ ".self")])
+              Nothing -> ("AnyHandle", callDoc "Codecs.anyHandle" [D.text tag])
+        pure (sourceDoc (C.idText (C.dataId d)) (C.dataOrigin d) <>
+          signature ("public static func " ++ codecName name ++ genericClause ps) ["_ " ++ v ++ ": Codec<" ++ p ++ ">" | (p, v) <- ps]
+            (" -> Codec<" ++ native ++ ">") made)
       boundTypes <- forM [b | b <- bound, not (C.dataHandle (resolvedDeclaration b))] $ \b -> do
         let d = resolvedDeclaration b
         name <- named names d
@@ -293,64 +293,67 @@ emitData layout bits bound declarations
             ctor = refText (resolvedNativeConstructor rc)
             nativeNames = map snd (resolvedFields rc)
         fieldCodecs <- forM (resolvedFields rc) $ \(binder, _) -> codec bits names (codecScope d c) (C.binderType binder)
-        let converted = [n ++ ": try " ++ cd ++ ".toNative(f[" ++ show i ++ "])" | (i, (n, cd)) <- zip [0 :: Int ..] (zip nativeNames fieldCodecs)]
-            count = show (length fieldCodecs)
+        let converted = [D.text (n ++ ": ") <> callDoc ("try " ++ cd ++ ".toNative") [D.text ("f[" ++ show i ++ "]")] | (i, (n, cd)) <- zip [0 :: Int ..] (zip nativeNames fieldCodecs)]
             caseName' = last (resolvedNativeConstructor rc `seq` referenceParts (resolvedNativeConstructor rc))
             vars = ["f" ++ show i | (i, _) <- zip [0 :: Int ..] fieldCodecs]
+            arm opening statements = opening <> D.nest 2 (D.hardline <> D.joinWith D.hardline statements)
+            made = if null converted then D.text ctor else callDoc ctor converted
+            caseArm = D.text ("case ." ++ caseName' ++ (if null vars then "" else "(" ++ intercalate ", " ["let " ++ v | v <- vars] ++ ")") ++ ":")
+            fromValues inputs = arrayDoc [callDoc ("try " ++ cd ++ ".fromNative") [D.text v] | (cd, v) <- zip fieldCodecs inputs]
         case resolvedFieldLayout rc of
           Just tree -> do
             let project parent nodes = concat [case node of
-                  NativeLeaf _ argument -> ["let f" ++ show argument ++ " = " ++ value]
+                  NativeLeaf _ argument -> [D.text ("let f" ++ show argument ++ " = " ++ value)]
                   NativeRecord _ constructor children ->
-                    ("guard case .data(" ++ stringLiteral (C.idText (C.constructorId constructor)) ++ ", let " ++ child ++ ") = " ++ value ++
-                      ", " ++ child ++ ".count == " ++ show (length children) ++ " else { throw Codecs.invalid(" ++ stringLiteral name ++ ", value) }") : project child children
+                    (D.text "guard case " <> callDoc ".data" [D.text (stringLiteral (C.idText (C.constructorId constructor))), D.text ("let " ++ child)] <>
+                      D.text (" = " ++ value ++ ", " ++ child ++ ".count == " ++ show (length children) ++ " else") <>
+                      blockDoc (callDoc "throw Codecs.invalid" [D.text (stringLiteral name), D.text "value"])) : project child children
                   | (index,node) <- zip [0 :: Int ..] nodes,
                     let child = parent ++ "_" ++ show index,
                     let value = parent ++ "[" ++ show index ++ "]"]
-                lets prefix expressions = ["let " ++ prefix ++ show i ++ " = " ++ expression | (i,expression) <- zip [0 :: Int ..] expressions]
-                sequenceText = intercalate "; "
+                lets prefix expressions = [hangValue ("let " ++ prefix ++ show i ++ " =") expression | (i,expression) <- zip [0 :: Int ..] expressions]
                 nativeValues = ["nativeField" ++ show i | (i,_) <- zip [0 :: Int ..] fieldCodecs]
-                toValues = ["try " ++ cd ++ ".toNative(" ++ v ++ ")" | (cd,v) <- zip fieldCodecs vars]
-                toArm result = "case .data(" ++ tag ++ ", let f) where f.count == " ++ show (length tree) ++ ": " ++
-                  sequenceText (project "f" tree ++ lets "nativeField" toValues ++ ["return " ++ result])
-                leaf index = pure ("logicalField" ++ show index)
-                record _ constructor children = pure (".data(" ++ stringLiteral (C.idText (C.constructorId constructor)) ++ ", [" ++ intercalate ", " children ++ "])")
+                toValues = [callDoc ("try " ++ cd ++ ".toNative") [D.text v] | (cd,v) <- zip fieldCodecs vars]
+                toArm result = arm (dataCase tag (length tree)) (project "f" tree ++ lets "nativeField" toValues ++ [hangValue "return" result])
+                leaf index = pure (D.text ("logicalField" ++ show index))
+                record _ constructor children = pure (callDoc ".data" [D.text (stringLiteral (C.idText (C.constructorId constructor))), arrayDoc children])
             values <- foldNativeLayoutM leaf record tree
-            let packed = ".data(" ++ tag ++ ", [" ++ intercalate ", " values ++ "])"
-                convertedFields = intercalate ", " [n ++ ": " ++ v | (n,v) <- zip nativeNames nativeValues]
-                fromArm inputs = sequenceText (lets "logicalField" ["try " ++ cd ++ ".fromNative(" ++ v ++ ")" | (cd,v) <- zip fieldCodecs inputs] ++ ["return " ++ packed])
+            let packed = callDoc ".data" [D.text tag, arrayDoc values]
+                convertedFields = [D.text (n ++ ": " ++ v) | (n,v) <- zip nativeNames nativeValues]
+                fromStatements inputs = lets "logicalField" [callDoc ("try " ++ cd ++ ".fromNative") [D.text v] | (cd,v) <- zip fieldCodecs inputs] ++ [hangValue "return" packed]
             case resolvedConstructorStyle rc of
               RecordConstructor | not single -> Left ("Swift binds a record style only to a type with one constructor: " ++ C.idText (C.dataId d))
-              RecordConstructor -> pure (toArm (ctor ++ "(" ++ convertedFields ++ ")"), fromArm ["native." ++ n | n <- nativeNames])
+              RecordConstructor -> pure (toArm (callDoc ctor convertedFields), D.joinWith D.hardline (fromStatements ["native." ++ n | n <- nativeNames]))
               _ -> pure
-                (toArm (ctor ++ if null nativeValues then "" else "(" ++ convertedFields ++ ")"),
-                 "case ." ++ caseName' ++ (if null vars then "" else "(" ++ intercalate ", " ["let " ++ v | v <- vars] ++ ")") ++ ": " ++ fromArm vars)
+                (toArm (if null nativeValues then D.text ctor else callDoc ctor convertedFields),
+                 arm caseArm (fromStatements vars))
           Nothing -> case resolvedConstructorStyle rc of
             RecordConstructor | not single -> Left ("Swift binds a record style only to a type with one constructor: " ++ C.idText (C.dataId d))
             RecordConstructor -> pure
-              ( "case .data(" ++ tag ++ ", let f) where f.count == " ++ count ++ ": return " ++ ctor ++ "(" ++ intercalate ", " converted ++ ")"
-              , "return .data(" ++ tag ++ ", [" ++ intercalate ", " ["try " ++ cd ++ ".fromNative(native." ++ n ++ ")" | (n, cd) <- zip nativeNames fieldCodecs] ++ "])" )
+              ( arm (dataCase tag (length fieldCodecs)) [hangValue "return" made]
+              , hangValue "return" (callDoc ".data" [D.text tag, fromValues ["native." ++ n | n <- nativeNames]]) )
             _ -> pure
-              ( "case .data(" ++ tag ++ ", let f) where f.count == " ++ count ++ ": return " ++ ctor ++ (if null converted then "" else "(" ++ intercalate ", " converted ++ ")")
-              , "case ." ++ caseName' ++ (if null vars then "" else "(" ++ intercalate ", " ["let " ++ v | v <- vars] ++ ")") ++ ": return .data(" ++ tag ++ ", [" ++
-                  intercalate ", " ["try " ++ cd ++ ".fromNative(" ++ v ++ ")" | (cd, v) <- zip fieldCodecs vars] ++ "])" )
+              ( arm (dataCase tag (length fieldCodecs)) [hangValue "return" made]
+              , arm caseArm [hangValue "return" (callDoc ".data" [D.text tag, fromValues vars])] )
       let params = [(typeParameter i, "t" ++ show i) | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
           record = all (\rc -> resolvedConstructorStyle rc == RecordConstructor) (resolvedConstructors b)
-          fromBody = if record then map (D.text . snd) arms
-            else [D.text "switch native {", D.joinWith D.hardline (map (D.text . snd) arms), D.text "}"]
+          fromBody = if record then map snd arms
+            else [D.text "switch native {", D.joinWith D.hardline (map snd arms), D.text "}"]
       pure (D.text ("/// " ++ C.idText (C.dataId d) ++ ", bound to " ++ native ++ ".") <> D.hardline <>
-        D.text ("public static func " ++ codecName name ++ genericClause params ++ "(" ++ intercalate ", " ["_ " ++ v ++ ": Codec<" ++ p ++ ">" | (p,v) <- params] ++ ") -> Codec<" ++ native ++ "> {") <> D.nest 2 (D.hardline <>
+        signature ("public static func " ++ codecName name ++ genericClause params) ["_ " ++ v ++ ": Codec<" ++ p ++ ">" | (p,v) <- params] (" -> Codec<" ++ native ++ ">") (
           D.text ("Codec<" ++ native ++ ">(") <> D.nest 2 (D.hardline <>
             D.text ("toNative: { (value: Value) throws -> " ++ native ++ " in") <> D.nest 2 (D.hardline <>
-              D.text "switch value {" <> D.hardline <> D.joinWith D.hardline (map (D.text . fst) arms) <> D.hardline <>
-              D.text "default:" <> D.nest 2 (D.hardline <> D.text ("throw Codecs.invalid(" ++ stringLiteral name ++ ", value)")) <> D.hardline <> D.text "}") <>
+              D.text "switch value {" <> D.hardline <> D.joinWith D.hardline (map fst arms) <> D.hardline <>
+              D.text "default:" <> D.nest 2 (D.hardline <> callDoc "throw Codecs.invalid" [D.text (stringLiteral name), D.text "value"]) <> D.hardline <> D.text "}") <>
             D.hardline <> D.text "}," <> D.hardline <>
             D.text ("fromNative: { (native: " ++ native ++ ") throws -> Value in") <> D.nest 2 (D.hardline <> D.joinWith D.hardline fromBody) <>
-            D.hardline <> D.text "})")) <> D.hardline <> D.text "}")
+            D.hardline <> D.text "})")))
     dataType names recursive opaque d = do
       name <- named names d
       self <- selfType names d
-      let header = "/// " ++ C.idText (C.dataId d)
+      let header = sourceDoc (if isStructuralRecord d
+            then "A record of " ++ intercalate ", " [C.binderName f | c <- C.dataConstructors d, f <- C.constructorFields c]
+            else C.idText (C.dataId d)) (C.dataOrigin d)
           portableWhere = if null (C.dataParameters d) then "" else " where " ++ whereClause d
           sendableWhere = intercalate ", " [typeParameter i ++ ": Sendable" | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
           -- Any data type may be a failure (fails with E), thrown as E.
@@ -361,7 +364,7 @@ emitData layout bits bound declarations
         fields <- forM (C.constructorFields c) $ \b -> do
           t <- nativeType bits names (scopeOf d c) (C.binderType b)
           pure (fieldName (C.binderName b), t)
-        let declaration = D.text header <> D.hardline <>
+        let declaration = header <>
               D.text ("public struct " ++ name ++ typeParameterDeclarations declarations d ++ conformances d ++ " {") <> D.nest 2 (D.hardline <>
                 D.joinWith D.hardline [D.text ("public var " ++ f ++ ": " ++ t) | (f, t) <- fields] <> D.hardline <> D.hardline <>
                 signature "public init" [f ++ ": " ++ t | (f, t) <- fields] ""
@@ -391,7 +394,7 @@ emitData layout bits bound declarations
           let all' = fields ++ [(fieldName w, "String") | w <- witnessLabels d c]
           pure (c, all')
         let indirect = if Set.member (C.dataId d) recursive then "indirect " else ""
-            declaration = D.text header <> D.hardline <>
+            declaration = header <>
               D.text ("public " ++ indirect ++ "enum " ++ name ++ typeParameterDeclarations declarations d ++ conformances d ++ " {") <> D.nest 2 (D.hardline <>
                 D.joinWith D.hardline [ D.text ("case " ++ caseName c) <> (if null fs then mempty else argumentsDoc [D.text (f ++ ": " ++ t) | (f, t) <- fs])
                                       | (c, fs) <- cases ]) <> D.hardline <> D.text "}"
@@ -449,13 +452,13 @@ emitData layout bits bound declarations
             allCodecs = fieldCodecs ++ witnessCodecs
             labels = map (fieldName . C.binderName) (C.constructorFields c) ++ map fieldName (witnessLabels d c)
             tag = stringLiteral (C.idText (C.constructorId c))
-            converted = ["try " ++ cd ++ ".toNative(f[" ++ show i ++ "])" | (i, cd) <- zip [0 :: Int ..] allCodecs]
-            labelled' = [D.text (unescaped l ++ ": " ++ v) | (l, v) <- zip labels converted]
+            converted = [callDoc ("try " ++ cd ++ ".toNative") [D.text ("f[" ++ show i ++ "]")] | (i, cd) <- zip [0 :: Int ..] allCodecs]
+            labelled' = [D.text (unescaped l ++ ": ") <> v | (l, v) <- zip labels converted]
             made = if isStruct recursive d
               then callDoc name labelled'
               else D.text ("." ++ unescaped (caseName c)) <> (if null converted then mempty else argumentsDoc labelled')
             toArm = dataCase tag (length allCodecs) <> D.nest 2 (D.hardline <> hangValue "return" made)
-            fromValues vars = arrayDoc [D.text ("try " ++ cd ++ ".fromNative(" ++ v ++ ")") | (cd, v) <- zip allCodecs vars]
+            fromValues vars = arrayDoc [callDoc ("try " ++ cd ++ ".fromNative") [D.text v] | (cd, v) <- zip allCodecs vars]
             fromArm
               | isStruct recursive d = hangValue "return" (callDoc ".data" [D.text tag, fromValues ["native." ++ unescaped l | l <- labels]])
               | otherwise =
@@ -503,10 +506,12 @@ emitSchema layout bits crypto declarations = do
   let names = ["definition" ++ show i | (i, _) <- zip [0 :: Int ..] definitions]
       schema = foldr (\(n, d) rest -> Let n (Ty "Schema.DataDefinition") d rest)
         (call "Schema" "create" [ListOf (Ty "[Schema.DataDefinition]") (map Var names),
-          ListOf (Ty "[String]") (map (Str . primitiveName) primitives), IntLit (toInteger bits)]) (zip names definitions)
+          ListOf (Ty "[String]") (map (Str . primitiveName) primitives), Var "machineBits"]) (zip names definitions)
       body = renderBody tSchema schema
       doc = fileHeader (generatedHeader Nothing) [["import LawSpecRuntime"]] <> D.hardline <>
 
+        D.text "/// The machine profile's integer width, which the program's checks use." <> D.hardline <>
+        D.text ("let machineBits = " ++ show bits) <> D.hardline <> D.hardline <>
         D.text "extension LawSpec {" <> D.nest 2 (D.hardline <>
           D.text "/// The program's data, as the runtime checks it." <> D.hardline <>
           D.text "public enum Program {" <> D.nest 2 (D.hardline <>

@@ -226,6 +226,18 @@ fscheck:
   kind: package
   title: FsCheck, random testing for .NET
   locator: https://fscheck.github.io/FsCheck/
+swift-format:
+  kind: article
+  title: swift-format, formatting technology for Swift source code
+  locator: https://github.com/swiftlang/swift-format
+swift-api-design-guidelines:
+  kind: article
+  title: Swift API Design Guidelines
+  locator: https://www.swift.org/documentation/api-design-guidelines/
+swift-string-literals:
+  kind: article
+  title: The Swift Programming Language, Strings and Characters
+  locator: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/
 swift-testing:
   kind: package
   title: Swift Testing, the Swift toolchain's test library

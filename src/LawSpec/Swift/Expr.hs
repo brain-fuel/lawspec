@@ -32,6 +32,11 @@ schemaVar, symbolsVar :: Expr
 schemaVar = Var "schema"
 symbolsVar = Var "symbols"
 
+-- | The machine profile's integer width, named once in the program's
+-- schema file.
+machineBits :: Expr
+machineBits = Var "machineBits"
+
 -- | A portable value made by one of its cases.
 valueCall :: String -> [Expr] -> Expr
 valueCall name = Pure ("Value." ++ name)
@@ -184,10 +189,10 @@ render context root = evalStateT (go context root) scope0
           -- before validation. Core excludes nominal/product conversions here.
           C.CheckedArgument -> do
             ref <- lift (contextType ctx ty)
-            checked ctx ty (call "Scalar" "convert" [v, ref, IntLit (toInteger (contextBits ctx))])
+            checked ctx ty (call "Scalar" "convert" [v, ref, machineBits])
           C.Explicit -> do
             ref <- lift (contextType ctx ty)
-            pure (call "Scalar" "convert" [v, ref, IntLit (toInteger (contextBits ctx))])
+            pure (call "Scalar" "convert" [v, ref, machineBits])
       C.If condition yes no -> do
         c <- go ctx condition
         a <- go ctx yes
@@ -215,7 +220,7 @@ render context root = evalStateT (go context root) scope0
         values <- mapM (go ctx) args
         types <- lift (mapM (contextKey ctx . C.expressionType) args)
         pure (call "Runtime" "helper" [Str (C.builtinName builtin), ListOf tValues values, ListOf (Ty "[String]") types,
-          IntLit (toInteger (contextBits ctx))])
+          machineBits])
       _ -> lift $ Left ("no Swift rendering for " ++ take 80 (show (C.expressionNode term)))
     checked ctx ty v = do
       ref <- lift (contextType ctx ty)
