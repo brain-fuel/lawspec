@@ -400,8 +400,8 @@ webTests nativeGenerators minify declarations definitions bits target u allLaws 
       _ -> foldl1 E.and' expressions
     propertyInvocation label generators parameters body options =
       let checked = E.call (if asyncMode then "fc.asyncProperty" else "fc.property") (generators ++ [callback parameters body])
-          assertion = awaitIf (E.call "fc.assert" [checked, runtime "seeded" (take 1 (options ++ [E.Object []]))])
-      in testCall (label ++ " property") [E.ExprStmt assertion]
+          asserted = awaitIf (E.call "fc.assert" [checked, runtime "seeded" (take 1 (options ++ [E.Object []]))])
+      in testCall (label ++ " property") [E.ExprStmt asserted]
     lawTests (index,e) = do
       let label = owner e ++ "::" ++ name e
           harness = C.propertyHarness (original e)

@@ -73,3 +73,18 @@ test_javascriptIsLaidOutAsPrettierLaysItOut = describe "Prettier's layout" $ do
       , "  ls.binary(\">\", upper, lower) &&"
       , "  ls.binary(\"<=\", upper, limit);"
       , "for (let cell = members; cell !== null; cell = cell.t) {}" ]
+  it "breaks a defaulted parameter onto its own line and a cast's tuple type" $
+    printModule TypeScript
+      [ FunctionDecl True False "start" []
+          [(typedParam "options" (TObject [("supervisor", True, TRef "ls.Supervisor" []), ("lifetime", True, TKeyword "string")])) { paramDefault = Just (Object []) }]
+          (Just (TRef "AccountActor" []))
+          [ret (As (call "ls.receiveNowOn" [This, ident "ReceiveInt32Step2"]) (TTuple [TKeyword "number", TRef "ReceiveInt32Step2WithALongName" []]))] ]
+      `shouldBe` unlines
+      [ "export function start("
+      , "  options: { supervisor?: ls.Supervisor; lifetime?: string } = {},"
+      , "): AccountActor {"
+      , "  return ls.receiveNowOn(this, ReceiveInt32Step2) as ["
+      , "    number,"
+      , "    ReceiveInt32Step2WithALongName,"
+      , "  ];"
+      , "}" ]

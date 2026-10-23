@@ -1163,10 +1163,18 @@ functionParameters p ps expand inTestCall = do
 
 shouldHugTheOnlyParameter :: [Param] -> Bool
 shouldHugTheOnlyParameter ps = case ps of
-  [Param (PArray _) _ _ _] -> True
-  [Param (PObject _) _ _ _] -> True
-  [Param (PIdent _) (Just t) _ _] -> isObjectTypeT t
+  [Param pat _ Nothing _] | destructuring pat -> True
+  [Param (PIdent _) (Just t) Nothing _] -> isObjectTypeT t
+  -- A default is an assignment pattern: hugged only around a destructuring
+  -- pattern whose default is a name or an empty literal.
+  [Param pat _ (Just d) _] | destructuring pat -> case d of
+    Ident _ -> True
+    Object [] -> True
+    Array [] -> True
+    _ -> False
   _ -> False
+  where
+    destructuring pat = case pat of PObject _ -> True; PArray _ -> True; _ -> False
 
 isObjectTypeT :: Type -> Bool
 isObjectTypeT t = case t of TObject _ -> True; _ -> False
@@ -1684,7 +1692,7 @@ memberDoc p m isInterface' = let here = NMember m in case m of
   MemberBlank -> pure mempty
   Field modifiers name ty value -> do
     tyDoc <- maybe (pure mempty) (\t -> (\d -> cat [text ": ", d]) <$> typeDoc ((here, "typeAnnotation") : p) t) ty
-    let left = cat [cat [text (m ++ " ") | m <- modifiers], text name, tyDoc]
+    let left = cat [cat [text (modifier ++ " ") | modifier <- modifiers], text name, tyDoc]
     d <- case value of
       Nothing -> pure left
       Just v -> assignmentWith ((here, "value") : p) left " =" v

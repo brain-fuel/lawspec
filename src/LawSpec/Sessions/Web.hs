@@ -266,7 +266,7 @@ protocol ts native wire unit session = do
         Just (False, ty) -> do
           value <- native ty
           let pair = "[" ++ value ++ ", " ++ nextRef ++ "]"
-              pairT = E.TRaw pair
+              pairT = E.TTuple [E.TRaw value, E.TRef nextRef []]
           pure
             [ E.Comment ["/** " ++ position ++ " before step " ++ show k ++ ": receives " ++ specType ty ++ ". */"]
             , declared
