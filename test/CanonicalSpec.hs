@@ -1374,7 +1374,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
   it "retains multiline literal whitespace while processing blocks closed after the literal" $ do
-    let body=unlines ["function text (ignored :: ()) -> Text is \"first", "   ",
+    let body=unlines ["function text (ignored :: ()) -> Text is \"first  ", "   ",
           "second\" end function", "function same (value :: Bool) -> Bool is", "value", "end function"]
         input=source body
         formatted=formatSource input
@@ -1382,7 +1382,7 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
     lines (LawSpec.Model.content formatted) `shouldBe`
       [ "unit example.canonical"
       , ""
-      , "function text (ignored :: ()) -> Text is \"first"
+      , "function text (ignored :: ()) -> Text is \"first  "
       , "   "
       , "second\" end function"
       , "function same (value :: Bool) -> Bool is"
@@ -1393,6 +1393,47 @@ test_canonicalAuthoringPreservesIntrinsicGuarantees = describe "RC1 canonical au
       `shouldBe` restoreSource (filter ((==LiteralToken) . tokenKind) (sourceTokens (LawSpec.Model.content input)))
     formatSource formatted `shouldBe` formatted
     compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+  it "decodes triple-quoted text with ordinary escapes and preserves every authored newline and space" $ do
+    let cases =
+          [ ("\"\"\"\"\"\"", "")
+          , ("\"\"\"\"leading\"\"\"", "\"leading")
+          , ("\"\"\"trailing \\\"\"\"\"", "trailing \"")
+          , ("\"\"\"one \"quote\" and \"\"two\"\" quotes\"\"\"", "one \"quote\" and \"\"two\"\" quotes")
+          , ("\"\"\"escaped \\\"\"\" delimiter\"\"\"", "escaped \"\"\" delimiter")
+          , ("\"\"\"first  \n\t😀Ａé\r\nlast \"\"\"", "first  \n\t😀Ａé\r\nlast ")
+          , ("\"\"\"\n  line\\n\\t\\x41\\\\\n\"\"\"", "\n  line\n\tA\\\n") ]
+    mapM_ (\(literal,expected) -> case core ("function text (ignored :: Bool) -> Text is " ++ literal ++ " end function") of
+      Left ds -> expectationFailure (show ds)
+      Right program -> case prepareDefinitions program of
+        Left ds -> expectationFailure (show ds)
+        Right invoke -> invoke (C.Id "example.canonical::text") [CV.ScalarValue (SBool True)]
+          `shouldBe` Right (CV.ScalarValue (LawSpec.Scalar.textScalar expected))) cases
+  it "keeps a triple-quoted literal opaque to header discovery, comments, recovery and formatting" $ do
+    let literal = "\"\"\"first \"quoted\" line  \n-- comment?\nunit imaginary\nimport no.such.package\nend unit\n\"\"\""
+        input = source ("function text (ignored :: Bool) -> Text is " ++ literal ++
+          " end function\nfunction same (value :: Bool) -> Bool is value end function")
+        formatted = formatSource input
+        literals value = [tokenText token | token <- sourceTokens (content value),tokenKind token == LiteralToken]
+    compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
+    literals input `shouldBe` [literal]
+    literals formatted `shouldBe` [literal]
+    restoreSource (sourceTokens (content input)) `shouldBe` content input
+    formatSource formatted `shouldBe` formatted
+    compileCoreCanonical 64 defaultGeneration [formatted] `shouldSatisfy` isRight
+    content formatted `shouldSatisfy` isInfixOf "function same (value :: Bool) -> Bool is value end function"
+  it "uses triple-quoted strings in examples and regexes through the same text parser" $ do
+    text <- readFile "test/fixtures/triple-quoted-strings.lawspec"
+    let input = Source "triple-quoted-strings.lawspec" text
+    compileCoreCanonical 64 defaultGeneration [input] `shouldSatisfy` isRight
+    formatSource (formatSource input) `shouldBe` formatSource input
+  it "reports an unterminated triple string without admitting adjacent empty ordinary strings" $ do
+    let text = "unit strings\nfunction text (ignored :: Bool) -> Text is \"\"\"unfinished\nend function\nend unit\n"
+    case parseSourceCanonical (Source "unfinished.lawspec" text) of
+      Right _ -> expectationFailure "unterminated triple string was accepted"
+      Left ds -> do
+        ds `shouldSatisfy` any (isInfixOf "closing triple quote" . LawSpec.Model.message)
+        ds `shouldSatisfy` all ((=="parse") . LawSpec.Model.code)
+    formatSources [Source "unfinished.lawspec" text] `shouldSatisfy` isLeft
   it "uses parsed separator roles to omit record-type commas while retaining tuple, value, pattern and documentary commas" $ do
     body <- readFile "test/fixtures/canonical-record-type-separators.lawspec"
     let input=Source "record-type-separators.lawspec" body

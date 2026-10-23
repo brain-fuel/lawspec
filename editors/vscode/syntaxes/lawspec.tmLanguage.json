@@ -161,6 +161,26 @@
       "name": "entity.name.function.infix.lawspec"
     },
     {
+      "name": "string.quoted.triple.double.lawspec",
+      "begin": "\"\"\"",
+      "end": "\"\"\"",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.lawspec"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.lawspec"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#string-escapes"
+        }
+      ]
+    },
+    {
       "name": "string.quoted.double.lawspec",
       "begin": "\"",
       "end": "\"",
@@ -176,8 +196,7 @@
       },
       "patterns": [
         {
-          "match": "\\\\(?:[abfnrtv\\\\\"\\x27]|[0-9]+|[oO][0-7]+|[xX][0-9a-fA-F]+|\\^[A-Z@\\[\\]\\\\^_]|NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC[1-4]|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL)",
-          "name": "constant.character.escape.lawspec"
+          "include": "#string-escapes"
         }
       ]
     },
@@ -337,5 +356,15 @@
       "match": "\\b\\p{L}[\\p{L}\\p{N}_]*\\b",
       "name": "variable.other.lawspec"
     }
-  ]
+  ],
+  "repository": {
+    "string-escapes": {
+      "patterns": [
+        {
+          "match": "\\\\(?:[abfnrtv\\\\\"\\x27]|[0-9]+|[oO][0-7]+|[xX][0-9a-fA-F]+|\\^[A-Z@\\[\\]\\\\^_]|NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC[1-4]|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL)",
+          "name": "constant.character.escape.lawspec"
+        }
+      ]
+    }
+  }
 }

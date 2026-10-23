@@ -125,6 +125,26 @@ test('extension registers the grammar and valid editor configuration', async () 
     await readFile(new URL('../../../LICENSE', import.meta.url), 'utf8'));
 });
 
+test('triple-quoted multiline strings retain quotes and keyword text until their complete closing delimiter', () => {
+  const lines = ['function text (x :: Bool) -> Text is """first "quote"  ',
+    'end unit -- this is string content', String.raw`escaped \""" quotes`,
+    'last""" end function'];
+  let state = textmate.INITIAL;
+  for (const [index,line] of lines.entries()) {
+    const result = tokens(line,state);
+    state = result.ruleStack;
+    const position = index === 0 ? line.indexOf('first') : 0;
+    const token = result.tokens.find(t => t.startIndex <= position && position < t.endIndex);
+    assert.ok(token.scopes.includes('string.quoted.triple.double.lawspec'));
+    if (index === lines.length-1) {
+      const closing = result.tokens.find(t => t.startIndex <= line.indexOf('end function') &&
+        line.indexOf('end function') < t.endIndex);
+      assert.ok(closing.scopes.includes('keyword.control.block.end.lawspec'));
+      assert.ok(!closing.scopes.includes('string.quoted.triple.double.lawspec'));
+    }
+  }
+});
+
 test('every bundled spec and parser fixture tokenizes without stopping early', async () => {
   let files = 0;
   for (const directory of ['examples/specs/', 'npm/examples/specs/', 'test/fixtures/']) {

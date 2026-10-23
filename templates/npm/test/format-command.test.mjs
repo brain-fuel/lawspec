@@ -12,6 +12,45 @@ const input = sources => ({languageProfile:'1.0-rc.2', verification:{layers:[]},
 const run = (root, args) => spawnSync(process.execPath, [cli, ...args], {cwd:root, encoding:'utf8'});
 const text = result => result.stdout + result.stderr;
 
+test('triple-quoted multiline text preserves its exact value and spelling through checked and draft formatting', async () => {
+  const compiler = await createCompiler();
+  const expected = 'first "quote"  \n-- end unit\n   \nlast 😀';
+  const literal = '"""'+expected+'"""';
+  const content = 'unit triple\nfunction text (ignored :: Bool) -> Text is '+literal+' end function\n'
+    + 'law exact is definition: text true must be '+JSON.stringify(expected)+' end definition end law\nend unit\n';
+  for (const machineBits of [32,64]) {
+    const sources = [{path:'triple.lawspec',content}];
+    const checked = await compiler.check({...input(sources),machineBits,verification:{layers:['exhaustive']}});
+    assert.deepEqual(checked.diagnostics,[]);
+    assert.equal(checked.evidence.find(row=>row.stage==='law').status,'exhaustively-checked');
+    for (const compile of [false,true]) {
+      const formatted = await compiler.format({...input(sources),machineBits,compile});
+      assert.deepEqual(formatted.diagnostics,[]);
+      assert.ok(formatted.formattedSources[0].content.includes(literal));
+      const repeated = await compiler.format({...input(formatted.formattedSources),machineBits,compile});
+      assert.deepEqual(repeated.formattedSources,formatted.formattedSources);
+    }
+  }
+});
+
+test('an unterminated triple-quoted string prevents every formatting write', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(),'lawspec-triple-errors-'));
+  try {
+    const valid = 'unit valid\nfunction same (x :: Bool) -> Bool is\nx\nend function\nend unit\n';
+    const broken = 'unit broken\nfunction text (x :: Bool) -> Text is """unfinished\nend function\nend unit\n';
+    await writeFile(path.join(root,'valid.lawspec'),valid);
+    await writeFile(path.join(root,'broken.lawspec'),broken);
+    await writeFile(path.join(root,'lawspec.json'),JSON.stringify({version:2,languageProfile:'1.0-rc.2',sources:['valid.lawspec','broken.lawspec']}));
+    for (const flags of [[],['--compile']]) {
+      const result = run(root,['fmt','--json',...flags]);
+      assert.equal(result.status,1,text(result));
+      assert.ok(JSON.parse(result.stdout).diagnostics.some(d=>d.message.includes('closing triple quote')));
+      assert.equal(await readFile(path.join(root,'valid.lawspec'),'utf8'),valid);
+      assert.equal(await readFile(path.join(root,'broken.lawspec'),'utf8'),broken);
+    }
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
+
 test('fmt parses by default; --compile validates definitions before writing', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lawspec-fmt-modes-'));
   try {

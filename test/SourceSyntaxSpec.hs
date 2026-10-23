@@ -38,6 +38,23 @@ packageVersions package versions =
   in (Project Nothing dependencies,map package versions++[bridge | multiple])
 
 test_sourceSyntax = describe "checked source syntax" $ do
+  it "keeps triple-string contents opaque and later diagnostics authored through package version insertion" $ do
+    let package version=Package "shop.tax" version M.empty
+          [Source (version++".lawspec") "unit shop.tax.api\ntype Band is one of Low | High end type\nend unit\n"]
+        prefix=unlines ["unit caller", "import shop.tax.api (Band)",
+          "function text (value :: Band) -> Text is \"\"\"😀",
+          "import counterfeit.api -- inside a string", "\"\"\" end function"] ++
+          "function broken (value :: Band) -> Text is "
+        source=Source "triple-origin.lawspec" (prefix++"? end function\nend unit\n")
+        expected=Just (Location "triple-origin.lawspec" (length (lines prefix)) (length (last (lines prefix))+1))
+        run versions=do
+          let (project,packages)=packageVersions package versions
+          (prepared,origins,visible,referenceUnit,_)<-preparePackagesWithOrigins False project packages [source]
+          compileWithSourceOrigins origins True False referenceUnit visible 64 defaultGeneration prepared
+    mapM_ (\versions -> case run versions of
+      Left diagnostics -> map at diagnostics `shouldBe` [expected]
+      Right _ -> expectationFailure "malformed expression was accepted")
+      [["2.0.0"],["1.0.0","2.0.0"]]
   it "retains original parser and intrinsic-definition error positions after namespace insertion" $ do
     let package version=Package "shop.tax" version M.empty
           [Source (version++".lawspec") "unit shop.tax.api\n\ntype Band is one of Low | High end type\nend unit\n"]

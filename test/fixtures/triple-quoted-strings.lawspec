@@ -1,0 +1,33 @@
+unit example.tripleStrings
+
+function message (ignored :: Bool) -> Text is
+  """Hello, "reader".
+-- This is text, not a comment.
+unit imaginary
+"""
+end function
+
+function quoted (text :: Text) -> Bool is
+  text matches regex """say "yes" now"""
+end function
+
+law textValue is
+  definition:
+    message true must be "Hello, \"reader\".\n-- This is text, not a comment.\nunit imaginary\n"
+  end definition
+end law
+
+law examples is
+  definition:
+    for all (text :: Text) => text must be text end for all
+  end definition
+
+  expect text = expected in table (text, expected):
+    row """first
+second""", "first\nsecond"
+    row """a "quoted" word""", "a \"quoted\" word"
+    row """""", ""
+  end table
+end law
+
+end unit

@@ -367,6 +367,7 @@ extra-source-files:
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/recorded.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/triple-quoted-strings.lawspec
     test/fixtures/smt-v1/authorization-snapshots.lawspec
     test/fixtures/smt-v1/banner-filenames.lawspec
     test/fixtures/smt-v1/bit-codec.lawspec

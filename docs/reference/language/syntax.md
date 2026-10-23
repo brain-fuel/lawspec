@@ -10,6 +10,33 @@ mandatory named ending. This applies to compiler-owned sources as well as
 application specifications. Pre-1.0 migration and compatibility grammars are
 not provided.
 
+## Text literals
+
+Text can use ordinary double quotes (`"text"`) or triple double quotes
+(`"""text"""`). Triple-quoted text can span physical lines and include single
+or paired double quotes without escaping them:
+
+```lawspec fragment
+function notice (ignored :: Bool) -> Text is
+  """The law says "paid".
+The run says "pending"."""
+end function
+```
+
+Both forms decode the same escapes, including `\n`, `\t`, `\\` and `\"`.
+The first unescaped `"""` closes a triple-quoted literal; escape a quote to
+include that sequence in the value. Every physical newline, leading or trailing
+space, tab and Unicode character between the delimiters is part of the value.
+There is no implicit indentation removal or first/last newline trimming.
+Ordinary quoted literals retain their existing behavior, including physical
+newlines. Triple-quoted text works wherever a text literal is accepted,
+including examples, table cells and `regex` literals; regex validation remains
+unchanged. Comments and declaration words inside a literal remain text.
+
+Formatting preserves the delimiters and the complete literal spelling,
+including whitespace on its opening line. An unterminated triple-quoted
+literal is a syntax error and prevents formatting writes.
+
 ## Blocks and endings
 
 | Construct | Required ending |
