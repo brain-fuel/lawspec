@@ -227,6 +227,8 @@ overflowable :: Int -> Expr -> Bool
 overflowable count e = case e of
   Closure {} -> True
   Block _ _ -> True
+  -- A single operation breaks before its operators inside the call.
+  Infix {} -> count == 1
   Call {} -> count == 1
   Macro {} -> count == 1
   Method {} -> count == 1 && isJust (chainPrefix e)
@@ -291,6 +293,7 @@ extendable e = case e of
 -- | The text an expression's first line starts with however it breaks.
 opening :: Expr -> String
 opening e = case e of
+  Infix _ _ a _ -> opening a
   Call f _ -> maybe "" id (flat f) ++ "("
   Macro name open _ _ -> name ++ open
   Closure h (Block _ _) -> h ++ " {"

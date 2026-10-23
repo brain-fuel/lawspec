@@ -182,19 +182,19 @@ dataDoc env d = do
       tagOf c = E.quoted (idText (constructorId c))
       variants = dataConstructors d
       line = D.text
-      header = line ("/// " ++ dataName d ++ " (" ++ idText (dataId d) ++ ").")
+      header = line ("/// " ++ name ++ " (" ++ idText (dataId d) ++ ").")
       impl head' items = line (head' ++ " ") <> D.block 4 (D.joinWith D.hardline items)
       method' head' params result body = L.function ("fn " ++ head') params result (L.stmts [] (Just body))
       matchOn subject arms = L.Match (L.atom subject) arms
       arm p body = Arm p Nothing body
-      expected = L.call "Err" [L.macroCall "format" [L.Laid (E.stringLiteral ("expected " ++ dataName d ++ ", found {other}"))]]
+      expected = L.call "Err" [L.macroCall "format" [L.Laid (E.stringLiteral ("expected " ++ name ++ ", found {other}"))]]
   fieldTypes <- forM variants $ \c -> mapM (rustTypeP env { envPrefix = "" } parameters . binderType) (constructorFields c)
   if null variants then pure (header <> D.hardline <>
     line "#[derive(Clone, Copy, PartialEq, Eq, Debug)]" <> D.hardline <> line ("pub enum " ++ name ++ " {}") <> D.hardline <>
     impl ("impl POrd for " ++ name) [method' "pcmp" ["&self", "_: &Self"] "std::cmp::Ordering" (L.atom "match *self {}")] <> D.hardline <>
     impl ("impl Dyn for " ++ name)
       [ method' "to_dyn" ["&self"] "ls::Value" (L.atom "match *self {}")
-      , method' "from_dyn" ["_: ls::Value"] "ls::Result<Self>" (L.call "Err" [L.method (L.Laid (E.stringLiteral ("no value of " ++ dataName d))) "into" []]) ])
+      , method' "from_dyn" ["_: ls::Value"] "ls::Result<Self>" (L.call "Err" [L.method (L.Laid (E.stringLiteral ("no value of " ++ name))) "into" []]) ])
   else if fieldless d then pure (header <> D.hardline <>
     line "#[derive(Clone, Copy, PartialEq, Eq, Debug)]" <> D.hardline <>
     line ("pub enum " ++ name ++ " ") <> D.block 4 (D.joinWith D.hardline [line (variantName c ++ ",") | c <- variants]) <> D.hardline <>
@@ -211,10 +211,15 @@ dataDoc env d = do
         patternOf prefix' c = node ++ "::" ++ variantName c ++ (if null (constructorFields c) then "" else
           "(" ++ intercalate ", " [prefix' ++ show k | k <- [0 .. length (constructorFields c) - 1]] ++ ")")
         -- The pair of patterns is on one line when the arm's line has room.
-        pairPattern c = let flatPair = "(" ++ patternOf "a" c ++ ", " ++ patternOf "b" c ++ ")" in L.Laid (D.fitsIndented 0 (length flatPair + 3)
-          (D.text flatPair)
-          (D.text "(" <> D.nest 4 (D.hardline <> D.text (patternOf "a" c ++ ",") <> D.hardline <> D.text (patternOf "b" c ++ ",")) <> D.hardline <> D.text ")"))
-        compareArm c = ArmOf (pairPattern c) Nothing
+        -- rustfmt breaks the pair of patterns rather than block a body that
+        -- fits on the arm's line once they are broken.
+        pairPattern c body = let flatPair = "(" ++ patternOf "a" c ++ ", " ++ patternOf "b" c ++ ")"
+                                 broken = D.text "(" <> D.nest 4 (D.hardline <> D.text (patternOf "a" c ++ ",") <> D.hardline <> D.text (patternOf "b" c ++ ",")) <> D.hardline <> D.text ")"
+          in L.Laid (case L.oneLine body of
+            Just t -> D.fitsIndented 0 (length (flatPair ++ " => " ++ t ++ ",")) (D.text flatPair) broken
+            Nothing -> D.fitsIndented 0 (length flatPair + 3) (D.text flatPair) broken)
+        compareArm c = let body = compareBody c in ArmOf (pairPattern c body) Nothing body
+        compareBody c =
           (if null (constructorFields c) then L.atom "std::cmp::Ordering::Equal" else
             foldl1 (\acc x -> L.method acc "then_with" [L.closure "||" x])
               [L.method (L.atom ("a" ++ show k)) "pcmp" [L.atom ("b" ++ show k)] | k <- [0 .. length (constructorFields c) - 1]])
