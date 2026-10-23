@@ -199,6 +199,16 @@ reaching targets declarations = go (Set.fromList targets)
       C.Constructor n args -> Set.member (C.Id n) found || any (\a -> case a of C.TypeArgument x -> mentions found x; _ -> False) args
       _ -> False
 
+-- | A conjunction, broken before each && when it does not fit, as
+-- swift-format breaks it.
+conjunction :: [D.Doc] -> D.Doc
+conjunction [] = D.text "true"
+conjunction (first : rest) = D.group (first <> D.nest indentation (mconcat [D.softline <> D.text "&& " <> d | d <- rest]))
+
+-- | A codec's arm for a constructor's portable value.
+dataCase :: String -> Int -> D.Doc
+dataCase tag count = D.text "case " <> callDoc ".data" [D.text tag, D.text "let f"] <> D.text (" where f.count == " ++ show count ++ ":")
+
 -- | The data types file and the codecs file.
 emitData :: D.Layout -> Int -> [ResolvedTypeBinding] -> [C.DataDeclaration] -> Either String [Artifact]
 emitData layout bits bound declarations
@@ -362,7 +372,7 @@ emitData layout bits bound declarations
             portable = D.text ("extension " ++ name ++ ": Portable" ++ portableWhere ++ " {") <> D.nest 2 (D.hardline <>
               D.joinWith (D.hardline <> D.hardline)
                 [ D.text ("public static func portableEqual(_ a: " ++ self ++ ", _ b: " ++ self ++ ") -> Bool {") <> D.nest 2 (D.hardline <>
-                    D.text (intercalate " && " [ "Typed.equal(" ++ access f ++ ", " ++ other f ++ ")" | (f, _) <- fields ])) <> D.hardline <> D.text "}"
+                    conjunction [ D.text ("Typed.equal(" ++ access f ++ ", " ++ other f ++ ")") | (f, _) <- fields ]) <> D.hardline <> D.text "}"
                 , D.text ("public static func portableCompare(_ a: " ++ self ++ ", _ b: " ++ self ++ ") -> Int {") <> D.nest 2 (D.hardline <>
                     D.joinWith D.hardline (
                       [ D.text ("let c" ++ show i ++ " = Typed.compare(" ++ access f ++ ", " ++ other f ++ ")") <> D.hardline <>
@@ -385,14 +395,13 @@ emitData layout bits bound declarations
               D.text ("public " ++ indirect ++ "enum " ++ name ++ typeParameterDeclarations declarations d ++ conformances d ++ " {") <> D.nest 2 (D.hardline <>
                 D.joinWith D.hardline [ D.text ("case " ++ caseName c ++ (if null fs then "" else "(" ++ intercalate ", " [f ++ ": " ++ t | (f, t) <- fs] ++ ")"))
                                       | (c, fs) <- cases ]) <> D.hardline <> D.text "}"
-            binds prefix fs = if null fs then "" else "(" ++ intercalate ", " [prefix ++ show i | (i, _) <- zip [0 :: Int ..] fs] ++ ")"
+            binds prefix fs = if null fs then "" else "(" ++ intercalate ", " ["let " ++ prefix ++ show i | (i, _) <- zip [0 :: Int ..] fs] ++ ")"
             pattern prefix c fs = "." ++ unescaped (caseName c) ++ binds prefix fs
             single = length cases == 1
-            letCase fs = if null fs then "case (" else "case let ("
-            equalArms = [ D.text (letCase fs ++ pattern "x" c fs ++ ", " ++ pattern "y" c fs ++ "):") <> D.nest 2 (D.hardline <>
-                            D.text ("return " ++ (if null fs then "true" else intercalate " && " ["Typed.equal(x" ++ show i ++ ", y" ++ show i ++ ")" | (i, _) <- zip [0 :: Int ..] fs])))
+            equalArms = [ D.text ("case (" ++ pattern "x" c fs ++ ", " ++ pattern "y" c fs ++ "):") <> D.nest 2 (D.hardline <>
+                            hangValue "return" (if null fs then D.text "true" else conjunction [D.text ("Typed.equal(x" ++ show i ++ ", y" ++ show i ++ ")") | (i, _) <- zip [0 :: Int ..] fs]))
                         | (c, fs) <- cases ] ++ [D.text "default:" <> D.nest 2 (D.hardline <> D.text "return false") | not single]
-            compareArms = [ D.text (letCase fs ++ pattern "x" c fs ++ ", " ++ pattern "y" c fs ++ "):") <> D.nest 2 (D.hardline <>
+            compareArms = [ D.text ("case (" ++ pattern "x" c fs ++ ", " ++ pattern "y" c fs ++ "):") <> D.nest 2 (D.hardline <>
                               D.joinWith D.hardline (
                                 [ D.text ("let c" ++ show i ++ " = Typed.compare(x" ++ show i ++ ", y" ++ show i ++ ")") <> D.hardline <>
                                   D.text ("if c" ++ show i ++ " != 0 { return c" ++ show i ++ " }") | (i, _) <- zip [0 :: Int ..] fs ] ++
@@ -429,8 +438,8 @@ emitData layout bits bound declarations
       name <- named names d
       self <- selfType names d
       let params = [(typeParameter i, "t" ++ show i) | (i, _) <- zip [0 :: Int ..] (C.dataParameters d)]
-          signature = "public static func " ++ codecName name ++ typeParameterDeclarations declarations d ++ "(" ++
-            intercalate ", " ["_ " ++ v ++ ": Codec<" ++ p ++ ">" | (p, v) <- params] ++ ") -> Codec<" ++ self ++ "> {"
+          opening = "public static func " ++ codecName name ++ typeParameterDeclarations declarations d
+          parameters = ["_ " ++ v ++ ": Codec<" ++ p ++ ">" | (p, v) <- params]
       arms <- forM (C.dataConstructors d) $ \c -> do
         fieldCodecs <- forM (C.constructorFields c) $ \b -> codec bits names (codecScope d c) (C.binderType b)
         let witnessCodecs = replicate (witnessCount d c) "Codecs.text"
@@ -438,18 +447,18 @@ emitData layout bits bound declarations
             labels = map (fieldName . C.binderName) (C.constructorFields c) ++ map fieldName (witnessLabels d c)
             tag = stringLiteral (C.idText (C.constructorId c))
             converted = ["try " ++ cd ++ ".toNative(f[" ++ show i ++ "])" | (i, cd) <- zip [0 :: Int ..] allCodecs]
+            labelled' = [D.text (unescaped l ++ ": " ++ v) | (l, v) <- zip labels converted]
             made = if isStruct recursive d
-              then name ++ "(" ++ intercalate ", " [unescaped l ++ ": " ++ v | (l, v) <- zip labels converted] ++ ")"
-              else "." ++ unescaped (caseName c) ++ (if null converted then "" else "(" ++ intercalate ", " [unescaped l ++ ": " ++ v | (l, v) <- zip labels converted] ++ ")")
-            toArm = D.text ("case .data(" ++ tag ++ ", let f) where f.count == " ++ show (length allCodecs) ++ ":") <>
-              D.nest 2 (D.hardline <> D.text ("return " ++ made))
-            fromValues vars = "[" ++ intercalate ", " ["try " ++ cd ++ ".fromNative(" ++ v ++ ")" | (cd, v) <- zip allCodecs vars] ++ "]"
+              then callDoc name labelled'
+              else D.text ("." ++ unescaped (caseName c)) <> (if null converted then mempty else argumentsDoc labelled')
+            toArm = dataCase tag (length allCodecs) <> D.nest 2 (D.hardline <> hangValue "return" made)
+            fromValues vars = arrayDoc [D.text ("try " ++ cd ++ ".fromNative(" ++ v ++ ")") | (cd, v) <- zip allCodecs vars]
             fromArm
-              | isStruct recursive d = D.text ("return .data(" ++ tag ++ ", " ++ fromValues ["native." ++ unescaped l | l <- labels] ++ ")")
+              | isStruct recursive d = hangValue "return" (callDoc ".data" [D.text tag, fromValues ["native." ++ unescaped l | l <- labels]])
               | otherwise =
                   let vars = ["f" ++ show i | (i, _) <- zip [0 :: Int ..] allCodecs]
                   in D.text ("case ." ++ unescaped (caseName c) ++ (if null vars then "" else "(" ++ intercalate ", " ["let " ++ v | v <- vars] ++ ")") ++ ":") <>
-                     D.nest 2 (D.hardline <> D.text ("return .data(" ++ tag ++ ", " ++ fromValues vars ++ ")"))
+                     D.nest 2 (D.hardline <> hangValue "return" (callDoc ".data" [D.text tag, fromValues vars]))
         pure (toArm, fromArm, null allCodecs)
       let allEmpty = all (\(_, _, e) -> e) arms
           toNative = D.text ("toNative: { (value: Value) throws -> " ++ self ++ " in") <> D.nest 2 (D.hardline <>
@@ -460,8 +469,8 @@ emitData layout bits bound declarations
             then D.text ("fromNative: { (native: " ++ self ++ ") throws -> Value in") <> D.nest 2 (D.hardline <> D.joinWith D.hardline [b | (_, b, _) <- arms]) <> D.hardline <> D.text "})"
             else D.text ("fromNative: { (native: " ++ self ++ ") " ++ (if allEmpty then "" else "throws ") ++ "-> Value in") <> D.nest 2 (D.hardline <>
               D.text "switch native {" <> D.hardline <> D.joinWith D.hardline [b | (_, b, _) <- arms] <> D.hardline <> D.text "}") <> D.hardline <> D.text "})"
-      pure (D.text ("/// " ++ C.idText (C.dataId d)) <> D.hardline <> D.text signature <> D.nest 2 (D.hardline <>
-        D.text ("Codec<" ++ self ++ ">(") <> D.nest 2 (D.hardline <> toNative <> D.hardline <> fromNative)) <> D.hardline <> D.text "}")
+      pure (D.text ("/// " ++ C.idText (C.dataId d)) <> D.hardline <> signature opening parameters (" -> Codec<" ++ self ++ ">")
+        (D.text ("Codec<" ++ self ++ ">(") <> D.nest 2 (D.hardline <> toNative <> D.hardline <> fromNative)))
 
 -- | The program's schema, built through the runtime: every constructor with
 -- its field types, contracts, generation hints, index terms and witnesses.
